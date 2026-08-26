@@ -209,19 +209,130 @@ def load_birth_keystore(
     root = Path(root)
     forbidden = _forbidden_raw(forbidden_public_keys)
     if os.name == "nt":
-        _check_directory(root)
+        return _load_birth_keystore_below_windows(root, forbidden)
+    return _load_birth_keystore_below(root, forbidden)
+
+
+def _load_birth_keystore_below_windows(root: Path, forbidden) -> LoadedBirthKeyStore:
+    """Read one store on Windows with its root as the only absolute name.
+
+    The two subtrees and the lock are opened relative to the anchor, and the
+    closed inventory is enumerated on the handles that were opened, so no name
+    below the root is ever resolved again as a path.
+    """
+    import executor_birth_secure_fs as secure
+
+    try:
+        anchor = secure._open_win_directory_root(os.fspath(root))
+    except (secure.BirthSecureFSError, OSError) as exc:
+        raise BirthKeyStoreError("birth_keystore_unavailable", str(root)) from exc
+    subdirectories: dict[str, int] = {}
+    try:
+        try:
+            for name in ("private", "public"):
+                subdirectories[name] = secure._win_open_relative_v1(
+                    anchor,
+                    name,
+                    purpose=secure._NtOpenPurposeV1.read_required,
+                    directory=True,
+                )
+                secure._require_protected_dacl_v1(subdirectories[name])
+        except secure.BirthSecureFSError as exc:
+            raise BirthKeyStoreError(
+                "birth_keystore_unsafe", f"directory permissions: {root}"
+            ) from exc
 
         def read(relative: str, limit: int) -> bytes:
-            return _read_checked(root / relative, limit=limit)
+            components = PurePosixPath(relative).parts
+            if not components or any(
+                part in {"", ".", ".."} for part in components
+            ):
+                raise BirthKeyStoreError("birth_keystore_unsafe", relative)
+            directory = anchor
+            for part in components[:-1]:
+                directory = subdirectories.get(part)
+                if directory is None:
+                    raise BirthKeyStoreError("birth_keystore_unsafe", relative)
+            try:
+                return secure._read_win_relative_v1(
+                    directory, components[-1], maximum=limit,
+                )
+            except secure.BirthSecureFSError as exc:
+                raise BirthKeyStoreError("birth_keystore_unsafe", relative) from exc
+            except OSError as exc:
+                raise BirthKeyStoreError(
+                    "birth_keystore_unavailable", relative
+                ) from exc
 
         def check_inventory(public_files: set[str], private_file: str) -> None:
-            _closed_inventory(
-                root, public_files=public_files, private_file=private_file
-            )
+            try:
+                observed = {
+                    "": {item.name for item in secure._win_inventory(anchor)},
+                    "public": {
+                        item.name
+                        for item in secure._win_inventory(subdirectories["public"])
+                    },
+                    "private": {
+                        item.name
+                        for item in secure._win_inventory(subdirectories["private"])
+                    },
+                }
+            except (secure.BirthSecureFSError, OSError) as exc:
+                raise BirthKeyStoreError(
+                    "birth_keystore_unavailable", "inventory"
+                ) from exc
+            if observed[""] != {CONFIG_BASENAME, LOCK_BASENAME, "private", "public"}:
+                raise BirthKeyStoreError(
+                    "birth_keystore_unsafe", "undeclared root entry"
+                )
+            if observed["public"] != {
+                PurePosixPath(item).name for item in public_files
+            }:
+                raise BirthKeyStoreError(
+                    "birth_keystore_unsafe", "public inventory mismatch"
+                )
+            if observed["private"] != {PurePosixPath(private_file).name}:
+                raise BirthKeyStoreError(
+                    "birth_keystore_unsafe", "private inventory mismatch"
+                )
 
-        with _store_lock(root / LOCK_BASENAME):
+        with _store_lock_below_windows(anchor):
             return _decode_birth_keystore(read, check_inventory, forbidden)
-    return _load_birth_keystore_below(root, forbidden)
+    finally:
+        for handle in subdirectories.values():
+            secure._win_close(handle)
+        secure._win_close(anchor)
+
+
+@contextlib.contextmanager
+def _store_lock_below_windows(anchor: int) -> Iterator[None]:
+    """Take the shared store lock through the authenticated root handle."""
+    import msvcrt
+
+    import executor_birth_secure_fs as secure
+
+    handle = secure._win_open_relative_v1(
+        anchor,
+        LOCK_BASENAME,
+        purpose=secure._NtOpenPurposeV1.lock_reader,
+        directory=False,
+    )
+    try:
+        descriptor = msvcrt.open_osfhandle(handle, 0)
+    except OSError as exc:
+        secure._win_close(handle)
+        raise BirthKeyStoreError("birth_keystore_unavailable", LOCK_BASENAME) from exc
+    try:
+        if os.fstat(descriptor).st_size < 1:
+            raise BirthKeyStoreError("birth_keystore_unsafe", "empty lock file")
+        msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)
+        try:
+            yield
+        finally:
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+    finally:
+        os.close(descriptor)
 
 
 def _load_birth_keystore_below(root: Path, forbidden) -> LoadedBirthKeyStore:

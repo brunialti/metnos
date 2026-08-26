@@ -970,6 +970,8 @@ _ERROR_PRIVILEGE_NOT_HELD = 1314
 _ERROR_FILE_EXISTS = 80
 _ERROR_ALREADY_EXISTS = 183
 _ERROR_NOT_SAME_DEVICE = 17
+_ERROR_INVALID_PARAMETER = 87
+_ERROR_CALL_NOT_IMPLEMENTED = 120
 _FILE_STANDARD_INFO_CLASS = 1
 _FILE_RENAME_INFO_CLASS = 3
 _FILE_DISPOSITION_INFO_EX_CLASS = 21
@@ -1058,6 +1060,58 @@ class _TOKEN_PRIVILEGES(ctypes.Structure):
 class _TOKEN_USER(ctypes.Structure):
     _fields_ = [("Sid", ctypes.c_void_p), ("Attributes", wintypes.DWORD)]
 
+class _UNICODE_STRING(ctypes.Structure):
+    """Counted UTF-16 name; the two lengths are byte counts, not characters."""
+
+    _fields_ = [
+        ("Length", wintypes.USHORT),
+        ("MaximumLength", wintypes.USHORT),
+        ("Buffer", ctypes.c_void_p),
+    ]
+
+
+class _IO_STATUS_BLOCK_RESULT(ctypes.Union):
+    _fields_ = [("Status", ctypes.c_long), ("Pointer", ctypes.c_void_p)]
+
+
+class _IO_STATUS_BLOCK(ctypes.Structure):
+    _fields_ = [
+        ("Result", _IO_STATUS_BLOCK_RESULT),
+        ("Information", ctypes.c_size_t),
+    ]
+
+
+class _OBJECT_ATTRIBUTES(ctypes.Structure):
+    """Name resolved against ``RootDirectory``, which makes the open relative."""
+
+    _fields_ = [
+        ("Length", wintypes.ULONG),
+        ("RootDirectory", wintypes.HANDLE),
+        ("ObjectName", ctypes.POINTER(_UNICODE_STRING)),
+        ("Attributes", wintypes.ULONG),
+        ("SecurityDescriptor", ctypes.c_void_p),
+        ("SecurityQualityOfService", ctypes.c_void_p),
+    ]
+
+
+# Native create dispositions and options of the relative opening path.
+_FILE_OPEN = 0x00000001
+_FILE_CREATE = 0x00000002
+_FILE_DIRECTORY_FILE = 0x00000001
+_FILE_WRITE_THROUGH = 0x00000002
+_FILE_SYNCHRONOUS_IO_NONALERT = 0x00000020
+_FILE_NON_DIRECTORY_FILE = 0x00000040
+_FILE_OPEN_REPARSE_POINT = 0x00200000
+_OBJ_CASE_INSENSITIVE = 0x00000040
+
+# Exact access masks of the two exclusive creations.  They are written as one
+# literal each because the contract fixes the mask, not a way of composing it:
+# DELETE|SYNCHRONIZE|READ_CONTROL|WRITE_DAC|WRITE_OWNER|FILE_READ_ATTRIBUTES
+# plus data access for a file and directory access for a container.
+_WIN_FILE_CREATE_ACCESS_V1 = 0x001f0083
+_WIN_DIRECTORY_CREATE_ACCESS_V1 = 0x001f00a1
+
+
 class _FILE_ID_EXTD_DIR_INFO(ctypes.Structure):
     _fields_ = [
         ("NextEntryOffset", wintypes.DWORD),
@@ -1078,6 +1132,23 @@ class _FILE_ID_EXTD_DIR_INFO(ctypes.Structure):
 
 if os.name == "nt":  # pragma: no cover - bindings exercised by Windows CI
     _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _NTDLL = ctypes.WinDLL("ntdll", use_last_error=True)
+    _NTDLL.NtCreateFile.restype = ctypes.c_long
+    _NTDLL.NtCreateFile.argtypes = (
+        ctypes.POINTER(wintypes.HANDLE),
+        wintypes.DWORD,
+        ctypes.POINTER(_OBJECT_ATTRIBUTES),
+        ctypes.POINTER(_IO_STATUS_BLOCK),
+        ctypes.POINTER(ctypes.c_longlong),
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        ctypes.c_void_p,
+        wintypes.ULONG,
+    )
+    _NTDLL.RtlNtStatusToDosError.restype = wintypes.ULONG
+    _NTDLL.RtlNtStatusToDosError.argtypes = (ctypes.c_long,)
     _ADVAPI32 = ctypes.WinDLL("advapi32", use_last_error=True)
     _KERNEL32.CreateFileW.argtypes = (
         wintypes.LPCWSTR,
@@ -1259,6 +1330,218 @@ if os.name == "nt":  # pragma: no cover - bindings exercised by Windows CI
         ctypes.POINTER(ctypes.c_void_p),
     )
     _ADVAPI32.GetSecurityInfo.restype = wintypes.DWORD
+
+
+class _NtOpenPurposeV1(str, Enum):
+    """Why a name is opened; it fixes access, disposition and refusal."""
+
+    read_required = "read_required"
+    lock_reader = "lock_reader"
+    create_exclusive = "create_exclusive"
+    mutating_open = "mutating_open"
+    disposition = "disposition"
+
+
+# Access mask of each purpose.  A file loader asks only for what it reads; a
+# creation asks for the exact mask the contract fixes; publication and removal
+# ask for DELETE on the same handle they will act through, never by name.
+_NT_FILE_ACCESS_V1 = {
+    _NtOpenPurposeV1.read_required: 0x00120081,
+    _NtOpenPurposeV1.lock_reader: 0x00120081,
+    _NtOpenPurposeV1.create_exclusive: _WIN_FILE_CREATE_ACCESS_V1,
+    _NtOpenPurposeV1.mutating_open: 0x001f0080,
+    # Removal also compares the bytes against the expectation, so it reads
+    # through the same handle it will delete through.
+    _NtOpenPurposeV1.disposition: 0x00130081,
+}
+_NT_DIRECTORY_ACCESS_V1 = {
+    # Enumerating a container needs its own attributes as well: the volume and
+    # the object identity are read from the same handle that lists the names.
+    _NtOpenPurposeV1.read_required: 0x001200a1,
+    _NtOpenPurposeV1.lock_reader: 0x001200a1,
+    _NtOpenPurposeV1.create_exclusive: _WIN_DIRECTORY_CREATE_ACCESS_V1,
+    _NtOpenPurposeV1.mutating_open: 0x001f00a0,
+    _NtOpenPurposeV1.disposition: 0x00130021,
+}
+_NT_SHARE_ACCESS_V1 = 0x00000003
+_NT_FILE_ATTRIBUTES_V1 = 0x00000080
+
+
+def _nt_birth_code_v1(error: int, purpose: _NtOpenPurposeV1) -> str:
+    """Closed conversion of one system error into the Birth taxonomy."""
+    if error in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
+        if purpose is _NtOpenPurposeV1.create_exclusive:
+            return "birth_provisioning_transaction_conflict"
+        return "birth_provisioning_io_unavailable"
+    if error in {_ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND}:
+        if purpose is _NtOpenPurposeV1.lock_reader:
+            return "birth_provisioning_lock_unavailable"
+        if purpose is _NtOpenPurposeV1.disposition:
+            return "birth_provisioning_recovery_ambiguous"
+        return "birth_provisioning_io_unavailable"
+    if error in {_ERROR_ACCESS_DENIED, _ERROR_PRIVILEGE_NOT_HELD}:
+        if purpose in {
+            _NtOpenPurposeV1.create_exclusive,
+            _NtOpenPurposeV1.mutating_open,
+            _NtOpenPurposeV1.disposition,
+        }:
+            return "birth_provisioning_elevation_required"
+        return "birth_provisioning_acl_unsafe"
+    if error == _ERROR_SHARING_VIOLATION:
+        if purpose is _NtOpenPurposeV1.lock_reader:
+            return "birth_provisioning_lock_unavailable"
+        return "birth_provisioning_io_unavailable"
+    if error in {
+        _ERROR_INVALID_PARAMETER,
+        _ERROR_NOT_SUPPORTED,
+        _ERROR_CALL_NOT_IMPLEMENTED,
+    }:
+        return "birth_provisioning_atomic_install_unsupported"
+    return "birth_provisioning_io_unavailable"
+
+
+def _win_open_relative_v1(
+    parent: int,
+    component: str,
+    *,
+    purpose: _NtOpenPurposeV1,
+    directory: bool,
+    security_descriptor=None,
+) -> int:
+    """Open or create one component relative to an already open directory.
+
+    The name is resolved by the object manager against ``RootDirectory``, so
+    no absolute path is ever rebuilt for a descendant and no component of the
+    chain can be substituted between two steps.  A reparse point is opened as
+    itself and never followed.
+    """
+    if component != _relative_components((component,))[0]:
+        raise BirthSecureFSError("birth_provisioning_io_unavailable")
+    create = purpose is _NtOpenPurposeV1.create_exclusive
+    access = (
+        _NT_DIRECTORY_ACCESS_V1[purpose]
+        if directory
+        else _NT_FILE_ACCESS_V1[purpose]
+    )
+    options = _FILE_OPEN_REPARSE_POINT | _FILE_SYNCHRONOUS_IO_NONALERT
+    options |= _FILE_DIRECTORY_FILE if directory else _FILE_NON_DIRECTORY_FILE
+    if create:
+        options |= _FILE_WRITE_THROUGH
+    name = ctypes.create_unicode_buffer(component)
+    counted = _UNICODE_STRING(
+        Length=len(component) * 2,
+        MaximumLength=len(component) * 2,
+        Buffer=ctypes.cast(name, ctypes.c_void_p),
+    )
+    attributes = _OBJECT_ATTRIBUTES(
+        Length=ctypes.sizeof(_OBJECT_ATTRIBUTES),
+        RootDirectory=parent,
+        ObjectName=ctypes.pointer(counted),
+        Attributes=_OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor=security_descriptor,
+        SecurityQualityOfService=None,
+    )
+    handle = wintypes.HANDLE()
+    status_block = _IO_STATUS_BLOCK()
+    status = _NTDLL.NtCreateFile(
+        ctypes.byref(handle),
+        access,
+        ctypes.byref(attributes),
+        ctypes.byref(status_block),
+        None,
+        _NT_FILE_ATTRIBUTES_V1,
+        _NT_SHARE_ACCESS_V1,
+        _FILE_CREATE if create else _FILE_OPEN,
+        options,
+        None,
+        0,
+    )
+    if status < 0:
+        error = _NTDLL.RtlNtStatusToDosError(status)
+        raise BirthSecureFSError(
+            _nt_birth_code_v1(error, purpose),
+            OSError(0, "NtCreateFile", None, error),
+        )
+    return handle.value
+
+
+def _open_win_directory_root(path: str) -> int:
+    """Open one absolute directory as the anchor of a handle-bound read."""
+    handle = _win_open_path(path, directory=True)
+    try:
+        _require_protected_dacl_v1(handle)
+    except BaseException:
+        _win_close(handle)
+        raise
+    return handle
+
+
+def _require_protected_dacl_v1(handle: int) -> None:
+    """Refuse an object whose permissions are inherited from its container.
+
+    A historical root has no catalogue to compare against, so what is verified
+    is the property the contract fixes for it: the list is its own, protected,
+    and therefore carries no entry that arrived from an ancestor.
+    """
+    descriptor = ctypes.c_void_p()
+    result = _ADVAPI32.GetSecurityInfo(
+        handle,
+        _SE_FILE_OBJECT,
+        _DACL_SECURITY_INFORMATION,
+        None,
+        None,
+        None,
+        None,
+        ctypes.byref(descriptor),
+    )
+    if result:
+        raise BirthSecureFSError(
+            "birth_provisioning_acl_unsafe", OSError(result, "GetSecurityInfo")
+        )
+    try:
+        _, flags, _ = _win_dacl_parts_v1(_win_descriptor_sddl(descriptor.value))
+    except OSError as exc:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe", exc)
+    finally:
+        _KERNEL32.LocalFree(descriptor)
+    if "P" not in flags:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+
+
+def _read_win_relative_v1(directory: int, name: str, *, maximum: int) -> bytes:
+    """Read one regular file relative to an already authenticated directory.
+
+    The name is resolved by the object manager against the parent handle, so a
+    component substituted after the anchor cannot redirect the read; the object
+    is compared before and after, so a replacement during the read is refused
+    instead of returning a mixture of two objects.
+    """
+    handle = _win_open_relative_v1(
+        directory, name, purpose=_NtOpenPurposeV1.read_required, directory=False,
+    )
+    try:
+        _require_protected_dacl_v1(handle)
+        before = _win_info(handle)
+        if before[5] > maximum:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        result = bytearray()
+        while len(result) <= maximum:
+            capacity = min(8192, maximum + 1 - len(result))
+            buffer = ctypes.create_string_buffer(capacity)
+            count = wintypes.DWORD()
+            if not _KERNEL32.ReadFile(
+                handle, buffer, capacity, ctypes.byref(count), None
+            ):
+                raise _win_error("ReadFile")
+            if not count.value:
+                break
+            result.extend(buffer.raw[: count.value])
+        after = _win_info(handle)
+        if len(result) > maximum or len(result) != before[5] or before != after:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        return bytes(result)
+    finally:
+        _win_close(handle)
 
 
 def _win_close(handle: int) -> None:
@@ -1614,6 +1897,33 @@ def _win_security_attributes(
         _KERNEL32.LocalFree(descriptor)
 
 
+def _win_dacl_parts_v1(sddl: str) -> tuple[str, frozenset[str], str]:
+    """Split one descriptor into owner, list control flags and entries."""
+    head, opened, entries = sddl.partition("(")
+    owner, marker, flags = head.partition("D:")
+    if not opened or not marker:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    return owner.casefold(), frozenset(flags.upper()), (opened + entries).casefold()
+
+
+def _require_equivalent_dacl_v1(expected: str, actual: str) -> None:
+    """Compare what the product decides, not what the system computes.
+
+    The owner and the whole ordered list of entries must match exactly, and
+    the list must be protected.  The system additionally marks a list it has
+    written itself as auto-inherited; that bit is not a decision of this code
+    and, with protection in force, it cannot bring in an inherited entry.
+    """
+    expected_owner, expected_flags, expected_entries = _win_dacl_parts_v1(expected)
+    actual_owner, actual_flags, actual_entries = _win_dacl_parts_v1(actual)
+    if expected_owner != actual_owner or expected_entries != actual_entries:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    if "P" not in actual_flags or not expected_flags <= actual_flags:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    if actual_flags - expected_flags - {"A", "I"}:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+
+
 def _win_descriptor_sddl(descriptor: int) -> str:
     encoded = wintypes.LPWSTR()
     length = wintypes.DWORD()
@@ -1689,14 +1999,14 @@ def _win_verify_security(handle: int, expected_descriptor: int) -> None:
         ctypes.byref(actual_descriptor),
     )
     if result:
-        raise BirthSecureFSError("birth_provisioning_acl_unsafe", OSError)(
-            result, "GetSecurityInfo"
+        raise BirthSecureFSError(
+            "birth_provisioning_acl_unsafe",
+            OSError(result, "GetSecurityInfo"),
         )
     try:
         expected = _win_descriptor_sddl(expected_descriptor)
         actual = _win_descriptor_sddl(actual_descriptor.value)
-        if actual.casefold() != expected.casefold():
-            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        _require_equivalent_dacl_v1(expected, actual)
     except OSError as exc:
         raise BirthSecureFSError("birth_provisioning_acl_unsafe", exc)
     finally:
@@ -1848,8 +2158,8 @@ class _SecureRootSession:
         self._closed = False
         try:
             if os.name == "nt":
-                self._verify_windows_role(
-                    self._root_handle, directory=True, role=root_role
+                self._verify_windows_profile(
+                    self._root_handle, directory=True, profile=root_role
                 )
             else:
                 _verify_posix_directory(
@@ -2057,6 +2367,7 @@ class _SecureRootSession:
         components = _relative_components(components)
         current = self._root_handle
         current_path = self._root_path
+        established = False
         # A role a caller declares for the last name is a claim about the
         # catalogue, checked here once and before any traversal syscall.  The
         # walk below then treats every component the same way, because the
@@ -2081,10 +2392,18 @@ class _SecureRootSession:
                 if child is None:
                     try:
                         if os.name == "nt":
-                            child = _win_open_path(current_path, directory=True)
+                            # Each component is resolved against the handle of
+                            # the previous one: an absolute name rebuilt here
+                            # could be redirected between two steps.
+                            child = _win_open_relative_v1(
+                                current,
+                                component,
+                                purpose=_NtOpenPurposeV1.read_required,
+                                directory=True,
+                            )
                             _verify_win_object(child, current_path, directory=True)
-                            self._verify_windows_role(
-                                child, directory=True, role=role
+                            self._verify_windows_profile(
+                                child, directory=True, profile=role
                             )
                         else:
                             flags = (
@@ -2108,8 +2427,8 @@ class _SecureRootSession:
                     self._handles.append(child)
                 elif os.name == "nt":
                     _verify_win_object(child, current_path, directory=True)
-                    self._verify_windows_role(
-                        child, directory=True, role=role
+                    self._verify_windows_profile(
+                        child, directory=True, profile=role
                     )
                 else:
                     _verify_posix_directory(
@@ -2132,18 +2451,23 @@ class _SecureRootSession:
                     finally:
                         os.close(rebound)
                 current = child
+            established = True
             yield current, current_path
         except BirthSecureFSError:
             raise
         except OSError as exc:
+            if established:
+                # The chain was already open: this error came from the body and
+                # belongs to the caller, so it keeps its own identity.
+                raise
             raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
-    def _verify_windows_role(
+    def _verify_windows_profile(
         self,
         handle: int,
         *,
         directory: bool,
-        role: _BirthObjectRole,
+        profile: _BirthObjectRole,
     ) -> None:
         if os.name != "nt":
             return
@@ -2154,7 +2478,7 @@ class _SecureRootSession:
             _BirthObjectRole.birth_integrity_only: "integrity_only",
             _BirthObjectRole.historical_private: "historical_private",
             _BirthObjectRole.historical_public: "historical_public",
-        }[role]
+        }[profile]
         with _win_security_attributes(
             profile, directory=directory, service_sid=self._service_sid
         ) as (_, descriptor):
@@ -2314,8 +2638,8 @@ class _SecureRootSession:
         try:
             handle = _win_open_path(path, directory=False)
             before = _verify_win_object(handle, path, directory=False)
-            self._verify_windows_role(
-                handle, directory=False, role=role
+            self._verify_windows_profile(
+                handle, directory=False, profile=role
             )
             bound = self._file_roles.get(components)
             # A name that now holds a different object is an ambiguity; the
@@ -2658,6 +2982,7 @@ class _SecureRootSession:
         path = os.path.join(directory_path, name)
         handle = None
         locked = False
+        acquired = False
         overlapped = _OVERLAPPED()
         try:
             try:
@@ -2700,6 +3025,10 @@ class _SecureRootSession:
             if exclusive:
                 flags |= _LOCKFILE_EXCLUSIVE_LOCK
             while True:
+                # Each attempt gets its own zeroed structure: the system writes
+                # the outcome of a failed attempt into it, and a reused one
+                # would carry that state into the next call.
+                overlapped = _OVERLAPPED()
                 if _KERNEL32.LockFileEx(
                     handle, flags, 0, 1, 0, ctypes.byref(overlapped)
                 ):
@@ -2735,6 +3064,7 @@ class _SecureRootSession:
                 raise _win_error("ReadFile")
             if count.value != 1 or buffer.raw[:1] != _LOCK_BYTE:
                 raise BirthSecureFSError("birth_provisioning_lock_unsafe")
+            acquired = True
             yield
         except BirthSecureFSError:
             raise
@@ -2742,10 +3072,15 @@ class _SecureRootSession:
             code = "birth_provisioning_lock_unavailable" if exc.errno in {
                 _ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND
             } else "birth_provisioning_lock_unsafe"
+            if acquired:
+                # The lock was already held: this error came from the body and
+                # belongs to the caller, so it is not reclassified as a failure
+                # of the lock.
+                raise
             raise BirthSecureFSError(code, exc)
         finally:
             if locked and not _KERNEL32.UnlockFileEx(
-                handle, 0, 1, 0, ctypes.byref(overlapped)
+                handle, 0, 1, 0, ctypes.byref(_OVERLAPPED())
             ):
                 unlock_error = _win_error("UnlockFileEx")
                 raise BirthSecureFSError("birth_provisioning_lock_unsafe", unlock_error)
@@ -2963,7 +3298,9 @@ class _SecureRootSession:
                 self._directories[components] = handle
                 self._directory_roles[components] = role
                 self._handles.append(handle)
-                return _SecureDirectoryHandle(self, components)
+                return _SecureDirectoryHandle(
+                    self, components, handle, os.path.join(directory_path, name),
+                )
             try:
                 mode = (
                     0o700
@@ -3231,17 +3568,34 @@ class _SecureRootSession:
     ) -> _ObjectIdentity:
         source_parent, source_name = source[:-1], source[-1]
         target_parent, target_name = destination[:-1], destination[-1]
-        with self._directory_chain(source_parent) as (_, source_path):
+        with self._directory_chain(source_parent) as (source_fd, source_path):
             with self._directory_chain(target_parent) as (target_handle, target_path):
                 source_path = os.path.join(source_path, source_name)
                 source_handle = self._directories.get(source) if directory else None
                 close_source = source_handle is None
                 try:
                     if source_handle is None:
-                        source_handle = _win_open_path(
-                            source_path, directory=directory, delete=True
+                        # The object being moved is opened relative to its own
+                        # container: rebuilding its absolute name would let a
+                        # component substituted meanwhile decide what moves.
+                        source_handle = _win_open_relative_v1(
+                            source_fd,
+                            source_name,
+                            purpose=_NtOpenPurposeV1.mutating_open,
+                            directory=directory,
                         )
                     before = _verify_win_object(source_handle, source_path, directory=directory)
+                    # The profile of what is moving is verified on its own
+                    # handle, before the native call: afterwards the object is
+                    # no longer where the catalogue declares it.
+                    source_role = self._catalog_role_v1(
+                        source,
+                        _ObjectKind.directory if directory else _ObjectKind.regular_file,
+                    )
+                    if source_role is not None:
+                        self._verify_windows_profile(
+                            source_handle, directory=directory, profile=source_role,
+                        )
                     target_identity = _win_info(target_handle)[0]
                     if before[0].volume != target_identity.volume:
                         raise BirthSecureFSError(
@@ -3338,10 +3692,114 @@ class _SecureRootSession:
             ):
                 raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
         if os.name == "nt":
-            raise BirthSecureFSError(
-                "birth_provisioning_atomic_install_unsupported"
-            )
+            return self._dispose_transaction_object_windows(expectation, components)
         return self._dispose_transaction_object_posix(expectation, components)
+
+    def _dispose_transaction_object_windows(
+        self, expectation: _DisposalExpectation, components: tuple[str, ...],
+    ) -> _DispositionResult:
+        """Remove one transaction object through the handle that observed it.
+
+        The object is opened once for removal, compared against the whole
+        expectation on that same handle, and marked for deletion through it:
+        the name is never resolved a second time, so what is removed is what
+        was verified.
+        """
+        parent, name = components[:-1], components[-1]
+        directory_expected = expectation.kind is _ObjectKind.directory
+        with self._directory_chain(parent) as (directory, _):
+            try:
+                target = _win_open_relative_v1(
+                    directory,
+                    name,
+                    purpose=_NtOpenPurposeV1.disposition,
+                    directory=directory_expected,
+                )
+            except BirthSecureFSError:
+                raise
+            except OSError as exc:
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
+            try:
+                observed = _win_info(target)
+                identity = observed[0]
+                if identity != expectation.identity:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                # The tuple carries attributes, links, deletion pending, kind
+                # and size in this order after the identity.
+                if observed[4] != directory_expected or observed[2] != expectation.links:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                if observed[3]:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                self._verify_windows_profile(
+                    target, directory=directory_expected, profile=expectation.role,
+                )
+                if directory_expected:
+                    entries = _win_inventory(target)
+                    if entries != (expectation.inventory or ()):
+                        raise BirthSecureFSError(
+                            "birth_provisioning_recovery_ambiguous"
+                        )
+                else:
+                    self._verify_disposal_payload_windows(target, expectation, observed)
+                disposition = _FILE_DISPOSITION_INFO_EX(
+                    Flags=_FILE_DISPOSITION_FLAG_DELETE
+                    | _FILE_DISPOSITION_FLAG_POSIX_SEMANTICS
+                )
+                if not _KERNEL32.SetFileInformationByHandle(
+                    target,
+                    _FILE_DISPOSITION_INFO_EX_CLASS,
+                    ctypes.byref(disposition),
+                    ctypes.sizeof(disposition),
+                ):
+                    raise _win_error("SetFileInformationByHandle(disposition)")
+            finally:
+                _win_close(target)
+        remaining = self._inventory_state(parent)
+        if any(item.name == name for item in remaining):
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        self._file_roles.pop(components, None)
+        self._directory_roles.pop(components, None)
+        self._role_overlay.pop(components, None)
+        return _DispositionResult(
+            identity=identity, kind=expectation.kind, removed=True,
+        )
+
+    def _verify_disposal_payload_windows(
+        self, target: int, expectation: _DisposalExpectation, observed,
+    ) -> None:
+        """Compare the bytes of a file against the expectation, on its handle."""
+        size = observed[5]
+        if expectation.disposal_class is _DisposalClass.complete_file:
+            if size != expectation.expected_size:
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        elif size > (expectation.maximum_partial_size or 0):
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        if expectation.content_sha256 is None:
+            return
+        if not _KERNEL32.SetFilePointerEx(target, 0, None, 0):
+            raise _win_error("SetFilePointerEx")
+        digest = hashlib.sha256()
+        remaining = size
+        while remaining > 0:
+            capacity = min(8192, remaining)
+            buffer = ctypes.create_string_buffer(capacity)
+            count = wintypes.DWORD()
+            if not _KERNEL32.ReadFile(
+                target, buffer, capacity, ctypes.byref(count), None
+            ):
+                raise _win_error("ReadFile")
+            if not count.value:
+                break
+            digest.update(buffer.raw[: count.value])
+            remaining -= count.value
+        if remaining or "sha256:" + digest.hexdigest() != expectation.content_sha256:
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
 
     def _dispose_transaction_object_posix(
         self, expectation: _DisposalExpectation, components: tuple[str, ...],
@@ -3972,10 +4430,20 @@ def _win_inventory(
                 binding = resolve((name,)) if resolve is not None else None
                 if binding is not None and binding.kind is not kind:
                     raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-                size = None if directory_entry else int(entry.EndOfFile)
-                identity = _ObjectIdentity(
-                    volume, bytes(entry.FileId.Identifier).hex()
+                # Each name is reopened once against this directory and the
+                # record is built from that handle: a name whose object is
+                # exchanged between the two scans is then observed.
+                child = _win_open_relative_v1(
+                    handle,
+                    name,
+                    purpose=_NtOpenPurposeV1.read_required,
+                    directory=directory_entry,
                 )
+                try:
+                    observed = _win_info(child)
+                finally:
+                    _win_close(child)
+                identity = observed[0]
                 budget.include(scope + (name,), identity)
                 result.append(
                     _InventoryEntry(
@@ -3987,8 +4455,8 @@ def _win_inventory(
                             if binding is not None
                             else _BirthObjectRole.birth_integrity_only
                         ),
-                        links=1,
-                        size=size,
+                        links=observed[2],
+                        size=None if directory_entry else observed[5],
                     )
                 )
             if entry.NextEntryOffset == 0:

@@ -131,21 +131,26 @@ def load_approval_authority(path: Path) -> ApprovalAuthority:
 
 
 def _read_windows_registry(path: Path) -> bytes:
-    """Historical Windows reading of the registry, unchanged by increment 2A."""
+    """Read the registry with the containing directory as the only absolute name."""
+    from executor_birth_secure_fs import (
+        BirthSecureFSError,
+        _open_win_directory_root,
+        _read_win_relative_v1,
+        _win_close,
+    )
+
     try:
-        info = path.lstat()
-        if (stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode)
-                or info.st_nlink != 1
-                or info.st_size > MAXIMUM_APPROVAL_REGISTRY_BYTES):
-            raise OSError("unsafe registry")
-        raw = path.read_bytes()
-        after = path.stat()
-        if (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns) != (
-                after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
-            raise OSError("registry changed")
-    except OSError as exc:
+        directory = _open_win_directory_root(os.fspath(path.parent))
+    except (BirthSecureFSError, OSError) as exc:
         raise BirthApprovalError("approval_authority_unavailable") from exc
-    return raw
+    try:
+        return _read_win_relative_v1(
+            directory, path.name, maximum=MAXIMUM_APPROVAL_REGISTRY_BYTES,
+        )
+    except (BirthSecureFSError, OSError) as exc:
+        raise BirthApprovalError("approval_authority_unavailable") from exc
+    finally:
+        _win_close(directory)
 
 
 def _decode_approval_authority(raw: bytes) -> ApprovalAuthority:

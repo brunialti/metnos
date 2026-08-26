@@ -93,7 +93,7 @@ def token_privileges_snapshot() -> bytes:
     try:
         return bytes(oracle._token_information(token.value, 3))
     finally:
-        oracle._close(token.value)
+        oracle._close_handle(token.value)
 
 
 def privilege_attributes(snapshot: bytes, privilege_name: str) -> int:
@@ -296,7 +296,12 @@ def exact_role_catalog(sf, bindings=(), *, root: Path | None = None):
             )
         )
     )
-    if root is not None:
+    if root is None:
+        # Without a root nothing is inspected: the declared bindings are taken
+        # as they are, which is what a cell needs when it declares a name it is
+        # about to create.
+        values.extend(candidates)
+    else:
         for binding in candidates:
             path = root.joinpath(*binding.components)
             try:
@@ -361,7 +366,10 @@ def session(
         tuple(handles),
         absolute,
         sf._PlatformIdentity(None, sid),
-        exact_role_catalog(sf, role_bindings, root=root),
+        # The declared bindings are the caller's, as the helper that builds
+        # them states: filtering them by what already exists on disk would
+        # silently drop the name a cell is about to create and then dispose.
+        exact_role_catalog(sf, role_bindings),
     )
     try:
         adopted = required(sf, "_adopt_authenticated_root")(descriptor)
@@ -472,11 +480,11 @@ def identity(path: Path, *, directory: bool, open_reparse: bool = False):
 
             raise ctypes.WinError(ctypes.get_last_error())
     else:
-        handle = oracle._open_path(path, directory=directory)
+        handle = oracle._open_path(path, oracle._READ_CONTROL, directory=directory)
     try:
         return _identity_from_handle(handle)
     finally:
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def volume_facts(path: Path, *, directory: bool = True) -> dict[str, object]:
@@ -498,7 +506,7 @@ def volume_facts(path: Path, *, directory: bool = True) -> dict[str, object]:
         wintypes.DWORD,
     )
     query_volume.restype = wintypes.BOOL
-    handle = oracle._open_path(path, directory=directory)
+    handle = oracle._open_path(path, oracle._READ_CONTROL, directory=directory)
     try:
         flags = wintypes.DWORD()
         filesystem = ctypes.create_unicode_buffer(64)
@@ -517,7 +525,7 @@ def volume_facts(path: Path, *, directory: bool = True) -> dict[str, object]:
         result.update(filesystem=filesystem.value, filesystem_flags=int(flags.value))
         return result
     finally:
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def reparse_tag(path: Path, *, directory: bool) -> int:
@@ -558,7 +566,7 @@ def reparse_tag(path: Path, *, directory: bool) -> int:
             raise ctypes.WinError(ctypes.get_last_error())
         return int(info.ReparseTag)
     finally:
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def _security_descriptor_bytes(
@@ -611,7 +619,7 @@ def _security_descriptor_bytes(
     finally:
         if descriptor.value:
             oracle._KERNEL32.LocalFree(descriptor)
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def acl_profile_facts(path: Path, *, directory: bool) -> dict[str, object]:
@@ -684,7 +692,7 @@ def acl_profile_facts(path: Path, *, directory: bool) -> dict[str, object]:
     finally:
         if descriptor.value:
             oracle._KERNEL32.LocalFree(descriptor)
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def windows_tree_snapshot(root: Path) -> tuple[tuple[object, ...], ...]:
@@ -711,7 +719,14 @@ def windows_tree_snapshot(root: Path) -> tuple[tuple[object, ...], ...]:
         facts = identity(path, directory=directory, open_reparse=True)
         payload_sha256 = None
         if not directory:
-            payload_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            # A byte-range lock is mandatory on this platform: the object the
+            # product holds cannot be read while it holds it.  The refusal is
+            # recorded as such, so the comparison still notices an object that
+            # becomes readable or stops being so.
+            try:
+                payload_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            except PermissionError:
+                payload_sha256 = "locked"
         rows.append(
             (
                 relative,
@@ -812,7 +827,7 @@ def apply_sddl(
             raise OSError(result, "SetSecurityInfo")
     finally:
         if handle is not None:
-            oracle._close(handle)
+            oracle._close_handle(handle)
         if descriptor.value:
             oracle._KERNEL32.LocalFree(descriptor)
 
@@ -1017,7 +1032,7 @@ def assert_historical_profile(
     finally:
         if descriptor.value:
             oracle._KERNEL32.LocalFree(descriptor)
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def provision_authorities(root: Path, sid: str) -> dict[str, tuple[str, ...]]:
