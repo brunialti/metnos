@@ -2001,7 +2001,7 @@ def test_inventory_closure_and_budget(
         )
     elif case.startswith("local-"):
         count = int(case.split("-")[1])
-        root_payload_count = count - 1
+        root_payload_count = count - 2
         bindings.extend(
             role_binding(
                 module,
@@ -2073,7 +2073,7 @@ def test_inventory_closure_and_budget(
                 inspect.getsource(module)
             )
             count = int(case.split("-")[1])
-            root_payload_count = count - 1
+            root_payload_count = count - 2
             real_entry = module._InventoryEntry
             inventory_scope: tuple[str, ...] = ()
             distinct_records: set[tuple[tuple[str, ...], str, str]] = set()
@@ -2297,7 +2297,8 @@ def test_inventory_closure_and_budget(
                         root_entries = session._inventory_state(())
                     assert {item.name for item in root_entries} == {
                         "provisioning-v1.lock",
-                        *(f"root-entry-{index:04d}.bin" for index in range(4095)),
+                        "local",
+                        *(f"root-entry-{index:04d}.bin" for index in range(4094)),
                     }
                     assert len(distinct_records) == 4096
                     assert_trace_finished(rejected=False)

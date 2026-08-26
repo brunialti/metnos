@@ -3064,21 +3064,57 @@ class _SecureRootSession:
             return self._rename_no_replace_windows(source, destination, directory)
         return self._rename_no_replace_posix(source, destination, directory)
 
+    def _reconcile_moved_away_v1(
+        self,
+        target_fd: int,
+        target_name: str,
+        directory: bool,
+        role: _BirthObjectRole | None,
+    ) -> None:
+        """Look once at the destination of a move whose source has vanished."""
+        if role is None:
+            return
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        if directory:
+            flags |= getattr(os, "O_DIRECTORY", 0)
+        try:
+            settled_fd = os.open(target_name, flags, dir_fd=target_fd)
+        except OSError:
+            return
+        try:
+            if directory:
+                _verify_posix_directory(
+                    settled_fd, role=role, expected_uid=self._expected_uid
+                )
+            else:
+                _verify_posix_file(
+                    settled_fd, role=role, expected_uid=self._expected_uid
+                )
+        except BirthSecureFSError:
+            return
+        finally:
+            os.close(settled_fd)
+        raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+
     def _rename_no_replace_posix(
         self, source: tuple[str, ...], destination: tuple[str, ...], directory: bool
     ) -> _ObjectIdentity:
         source_parent, source_name = source[:-1], source[-1]
         target_parent, target_name = destination[:-1], destination[-1]
-        if directory:
-            role = self._directory_roles.get(source)
-        else:
-            binding = self._file_roles.get(source)
-            role = binding[1] if binding is not None else None
-        if role not in {
+        # The profile of the object being moved comes from the catalogue, not
+        # from what this session happens to remember: after a crash the retry
+        # runs in a new session that has never opened the name, and the move
+        # must still know what it is moving.
+        kind = _ObjectKind.directory if directory else _ObjectKind.regular_file
+        # A source that no longer exists has no row in an exact catalogue, and
+        # that absence is not yet an answer: it is the reason to go and look at
+        # the destination once, below.
+        role = self._catalog_role_v1(source, kind)
+        if role is not None and role not in {
             _BirthObjectRole.birth_confidential,
             _BirthObjectRole.birth_integrity_only,
         }:
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         with self._directory_chain(source_parent) as (source_fd, _):
             with self._directory_chain(target_parent) as (target_fd, _):
                 flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -3098,6 +3134,10 @@ class _SecureRootSession:
                                 object_fd,
                                 role=role,
                                 expected_uid=self._expected_uid,
+                            )
+                        if role is None:
+                            raise BirthSecureFSError(
+                                "birth_provisioning_recovery_ambiguous"
                             )
                         identity = _posix_identity(object_fd)
                         if os.fstat(source_fd).st_dev != os.fstat(target_fd).st_dev:
@@ -3127,8 +3167,24 @@ class _SecureRootSession:
                         os.close(object_fd)
                 except BirthSecureFSError:
                     raise
+                except FileNotFoundError as exc:
+                    # The source is gone.  Before calling this a failure the
+                    # destination is looked at once: an object of the expected
+                    # shape already there means an earlier attempt completed,
+                    # and this session cannot claim that move as its own.
+                    self._reconcile_moved_away_v1(
+                        target_fd,
+                        target_name,
+                        directory,
+                        self._catalog_role_v1(destination, kind),
+                    )
+                    raise BirthSecureFSError(
+                        "birth_provisioning_io_unavailable", exc
+                    )
                 except OSError as exc:
                     raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
+        # Both containers are re-read after the move, which is what shows the
+        # name has left one and arrived in the other.
         source_entries = self._inventory_state(source_parent)
         if any(item.name == source_name for item in source_entries):
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
@@ -3583,13 +3639,19 @@ def _adopt_authenticated_root(
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
     elif identity.posix_uid is None or identity.windows_service_sid is not None:
         raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-    return _SecureRootSession(
-        _SESSION_TOKEN,
-        descriptor.handles,
-        descriptor.root_path,
-        identity=descriptor.identity,
-        role_catalog=descriptor.role_catalog,
-    )
+    try:
+        return _SecureRootSession(
+            _SESSION_TOKEN,
+            descriptor.handles,
+            descriptor.root_path,
+            identity=descriptor.identity,
+            role_catalog=descriptor.role_catalog,
+        )
+    except OSError as exc:
+        # A descriptor the device cannot report on is unavailability, and the
+        # adoption boundary is where that becomes a stable code: no caller of
+        # this entry ever sees a raw system error.
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc) from exc
 
 
 def _read_path_once(
@@ -3741,6 +3803,10 @@ def _posix_inventory(
     with os.scandir(directory) as entries:
         for entry in entries:
             name = _relative_components((entry.name,))[0]
+            # Each entry is opened without following links and inspected on the
+            # descriptor: a name whose object is exchanged between the two
+            # scans is then observed, which a metadata read of the directory
+            # entry alone could not guarantee.
             handle = os.open(name, flags, dir_fd=directory)
             try:
                 value = os.fstat(handle)

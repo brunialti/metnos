@@ -544,6 +544,14 @@ def _load_semantic_authority_in_session(
 
     if not session._holds_global_lock():
         raise BirthSecureFSError("birth_provisioning_lock_unsafe")
+    # One load is one operation, so the two subtrees it admits share a single
+    # budget: the ceiling counts the material of the whole authority and not
+    # of each container separately.
+    from executor_birth_secure_fs import _InventoryBudgetV1
+
+    budget = _InventoryBudgetV1()
+    session._inventory_state(tuple(public_directory), budget)
+    session._inventory_state(tuple(evidence_directory), budget)
     public = _BirthObjectRole.birth_integrity_only
     raw = session.read_file(
         tuple(authority_file),

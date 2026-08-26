@@ -279,9 +279,10 @@ def _load_birth_keystore_below(root: Path, forbidden) -> LoadedBirthKeyStore:
                     directory,
                     components[-1],
                     maximum=limit,
-                    role=_BirthObjectRole.historical_private
-                    if directory is not subdirectories["public"]
-                    else _BirthObjectRole.historical_public,
+                    # Section 16.13.4 gives the whole historical key store one
+                    # constant profile: even the public keys of this store are
+                    # read with the private one, unlike the semantic authority.
+                    role=_BirthObjectRole.historical_private,
                     expected_uid=os.geteuid(),
                 )
             except BirthSecureFSError as exc:
@@ -332,7 +333,11 @@ def _store_lock_below(anchor: int) -> Iterator[None]:
     """Take the shared store lock through the authenticated root descriptor."""
     import fcntl
 
-    from executor_birth_secure_fs import _BirthObjectRole, _verify_posix_file
+    from executor_birth_secure_fs import (
+        BirthSecureFSError,
+        _BirthObjectRole,
+        _verify_posix_file,
+    )
 
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
@@ -340,11 +345,14 @@ def _store_lock_below(anchor: int) -> Iterator[None]:
     except OSError as exc:
         raise BirthKeyStoreError("birth_keystore_unavailable", LOCK_BASENAME) from exc
     try:
-        _verify_posix_file(
-            fd,
-            role=_BirthObjectRole.historical_private,
-            expected_uid=os.geteuid(),
-        )
+        try:
+            _verify_posix_file(
+                fd,
+                role=_BirthObjectRole.historical_private,
+                expected_uid=os.geteuid(),
+            )
+        except BirthSecureFSError as exc:
+            raise BirthKeyStoreError("birth_keystore_unsafe", LOCK_BASENAME) from exc
         fcntl.flock(fd, fcntl.LOCK_SH)
         try:
             yield
