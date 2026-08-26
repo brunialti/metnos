@@ -3102,12 +3102,13 @@ class _SecureRootSession:
                             directory=False,
                             service_sid=self._service_sid,
                         ) as (attributes, descriptor):
-                            handle = _win_open_relative_v1(
-                                directory,
-                                name,
-                                purpose=_NtOpenPurposeV1.create_exclusive,
+                            handle = _win_open_path(
+                                path,
                                 directory=False,
-                                security_descriptor=attributes.lpSecurityDescriptor,
+                                writable=True,
+                                create=True,
+                                security_attributes=ctypes.byref(attributes),
+                                security_write=True,
                             )
                             _win_apply_and_verify_security(handle, descriptor)
                 else:
@@ -3120,19 +3121,10 @@ class _SecureRootSession:
                         purpose=_NtOpenPurposeV1.lock_reader,
                         directory=False,
                     )
-            except BirthSecureFSError as exc:
-                # The lock already exists: it is opened where it lives, with the
-                # purpose of a lock taker, and never through a rebuilt name.
-                if (
-                    create
-                    and exclusive
-                    and exc.code == "birth_provisioning_transaction_conflict"
-                ):
-                    handle = _win_open_relative_v1(
-                        directory,
-                        name,
-                        purpose=_NtOpenPurposeV1.lock_reader,
-                        directory=False,
+            except OSError as exc:
+                if create and exclusive and exc.errno in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
+                    handle = _win_open_path(
+                        path, directory=False, writable=True, generic_read=True
                     )
                 else:
                     raise
@@ -3382,7 +3374,10 @@ class _SecureRootSession:
                     try:
                         _win_dispose_created(handle)
                         _win_reconcile_disposed(handle)
-                    except OSError:
+                    except (BirthSecureFSError, OSError):
+                        # The cleanup of a residue must never hide the error
+                        # that caused it, nor keep the handle open: the primary
+                        # failure is the one the caller receives.
                         pass
                 _win_close(handle)
 
@@ -3515,7 +3510,10 @@ class _SecureRootSession:
                     try:
                         _win_dispose_created(handle)
                         _win_reconcile_disposed(handle)
-                    except OSError:
+                    except (BirthSecureFSError, OSError):
+                        # The cleanup of a residue must never hide the error
+                        # that caused it, nor keep the handle open: the primary
+                        # failure is the one the caller receives.
                         pass
                 _win_close(handle)
 
