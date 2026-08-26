@@ -884,149 +884,154 @@ def _open_posix_root(
         raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
 
 
-if os.name == "nt":  # pragma: no cover - definitions exercised by Windows CI
-    from ctypes import wintypes
+# The Windows constants and structures are defined on every platform so a
+# local probe can decode a request buffer, an access mask or a status code
+# without a Windows runner.  Only the library handles below are bound
+# lazily, because ctypes.WinDLL exists on Windows alone.
+from ctypes import wintypes
 
-    _INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
-    _FILE_READ_DATA = 0x0001
-    _FILE_LIST_DIRECTORY = 0x0001
-    _FILE_TRAVERSE = 0x0020
-    _FILE_READ_ATTRIBUTES = 0x0080
-    _DELETE = 0x00010000
-    _READ_CONTROL = 0x00020000
-    _WRITE_DAC = 0x00040000
-    _WRITE_OWNER = 0x00080000
-    _SYNCHRONIZE = 0x00100000
-    _GENERIC_READ = 0x80000000
-    _GENERIC_WRITE = 0x40000000
-    _FILE_SHARE_READ = 0x00000001
-    _FILE_SHARE_WRITE = 0x00000002
-    _CREATE_NEW = 1
-    _OPEN_EXISTING = 3
-    _FILE_FLAG_WRITE_THROUGH = 0x80000000
-    _FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
-    _FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
-    _FILE_ATTRIBUTE_DIRECTORY = 0x00000010
-    _FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
-    _FILE_PERSISTENT_ACLS = 0x00000008
-    _ERROR_FILE_NOT_FOUND = 2
-    _ERROR_PATH_NOT_FOUND = 3
-    _ERROR_ACCESS_DENIED = 5
-    _ERROR_NO_MORE_FILES = 18
-    _ERROR_SHARING_VIOLATION = 32
-    _ERROR_LOCK_VIOLATION = 33
-    _ERROR_NOT_SUPPORTED = 50
-    _ERROR_NOT_ALL_ASSIGNED = 1300
-    _ERROR_PRIVILEGE_NOT_HELD = 1314
-    _ERROR_FILE_EXISTS = 80
-    _ERROR_ALREADY_EXISTS = 183
-    _ERROR_NOT_SAME_DEVICE = 17
-    _FILE_STANDARD_INFO_CLASS = 1
-    _FILE_RENAME_INFO_CLASS = 3
-    _FILE_DISPOSITION_INFO_EX_CLASS = 21
-    _FILE_ATTRIBUTE_TAG_INFO_CLASS = 9
-    _FILE_ID_INFO_CLASS = 18
-    _FILE_ID_EXTD_DIRECTORY_INFO_CLASS = 19
-    _FILE_ID_EXTD_DIRECTORY_RESTART_INFO_CLASS = 20
-    _LOCKFILE_FAIL_IMMEDIATELY = 0x00000001
-    _LOCKFILE_EXCLUSIVE_LOCK = 0x00000002
-    _FILE_DISPOSITION_FLAG_DELETE = 0x00000001
-    _FILE_DISPOSITION_FLAG_POSIX_SEMANTICS = 0x00000002
-    _FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE = 0x00000010
-    _TOKEN_QUERY = 0x0008
-    _TOKEN_ADJUST_PRIVILEGES = 0x0020
-    _SE_PRIVILEGE_ENABLED = 0x00000002
-    _TOKEN_USER_CLASS = 1
-    _SE_FILE_OBJECT = 1
-    _OWNER_SECURITY_INFORMATION = 0x00000001
-    _DACL_SECURITY_INFORMATION = 0x00000004
-    _PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
-    _SDDL_REVISION_1 = 1
 
-    class _FILE_STANDARD_INFO(ctypes.Structure):
-        _fields_ = [
-            ("AllocationSize", ctypes.c_longlong),
-            ("EndOfFile", ctypes.c_longlong),
-            ("NumberOfLinks", wintypes.DWORD),
-            ("DeletePending", wintypes.BOOLEAN),
-            ("Directory", wintypes.BOOLEAN),
-        ]
+_INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+_FILE_READ_DATA = 0x0001
+_FILE_LIST_DIRECTORY = 0x0001
+_FILE_TRAVERSE = 0x0020
+_FILE_READ_ATTRIBUTES = 0x0080
+_DELETE = 0x00010000
+_READ_CONTROL = 0x00020000
+_WRITE_DAC = 0x00040000
+_WRITE_OWNER = 0x00080000
+_SYNCHRONIZE = 0x00100000
+_GENERIC_READ = 0x80000000
+_GENERIC_WRITE = 0x40000000
+_FILE_SHARE_READ = 0x00000001
+_FILE_SHARE_WRITE = 0x00000002
+_CREATE_NEW = 1
+_OPEN_EXISTING = 3
+_FILE_FLAG_WRITE_THROUGH = 0x80000000
+_FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+_FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
+_FILE_ATTRIBUTE_DIRECTORY = 0x00000010
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
+_FILE_PERSISTENT_ACLS = 0x00000008
+_ERROR_FILE_NOT_FOUND = 2
+_ERROR_PATH_NOT_FOUND = 3
+_ERROR_ACCESS_DENIED = 5
+_ERROR_NO_MORE_FILES = 18
+_ERROR_SHARING_VIOLATION = 32
+_ERROR_LOCK_VIOLATION = 33
+_ERROR_NOT_SUPPORTED = 50
+_ERROR_NOT_ALL_ASSIGNED = 1300
+_ERROR_PRIVILEGE_NOT_HELD = 1314
+_ERROR_FILE_EXISTS = 80
+_ERROR_ALREADY_EXISTS = 183
+_ERROR_NOT_SAME_DEVICE = 17
+_FILE_STANDARD_INFO_CLASS = 1
+_FILE_RENAME_INFO_CLASS = 3
+_FILE_DISPOSITION_INFO_EX_CLASS = 21
+_FILE_ATTRIBUTE_TAG_INFO_CLASS = 9
+_FILE_ID_INFO_CLASS = 18
+_FILE_ID_EXTD_DIRECTORY_INFO_CLASS = 19
+_FILE_ID_EXTD_DIRECTORY_RESTART_INFO_CLASS = 20
+_LOCKFILE_FAIL_IMMEDIATELY = 0x00000001
+_LOCKFILE_EXCLUSIVE_LOCK = 0x00000002
+_FILE_DISPOSITION_FLAG_DELETE = 0x00000001
+_FILE_DISPOSITION_FLAG_POSIX_SEMANTICS = 0x00000002
+_FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE = 0x00000010
+_TOKEN_QUERY = 0x0008
+_TOKEN_ADJUST_PRIVILEGES = 0x0020
+_SE_PRIVILEGE_ENABLED = 0x00000002
+_TOKEN_USER_CLASS = 1
+_SE_FILE_OBJECT = 1
+_OWNER_SECURITY_INFORMATION = 0x00000001
+_DACL_SECURITY_INFORMATION = 0x00000004
+_PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
+_SDDL_REVISION_1 = 1
 
-    class _FILE_ATTRIBUTE_TAG_INFO(ctypes.Structure):
-        _fields_ = [("FileAttributes", wintypes.DWORD), ("ReparseTag", wintypes.DWORD)]
+class _FILE_STANDARD_INFO(ctypes.Structure):
+    _fields_ = [
+        ("AllocationSize", ctypes.c_longlong),
+        ("EndOfFile", ctypes.c_longlong),
+        ("NumberOfLinks", wintypes.DWORD),
+        ("DeletePending", wintypes.BOOLEAN),
+        ("Directory", wintypes.BOOLEAN),
+    ]
 
-    class _FILE_ID_128(ctypes.Structure):
-        _fields_ = [("Identifier", ctypes.c_ubyte * 16)]
+class _FILE_ATTRIBUTE_TAG_INFO(ctypes.Structure):
+    _fields_ = [("FileAttributes", wintypes.DWORD), ("ReparseTag", wintypes.DWORD)]
 
-    class _FILE_ID_INFO(ctypes.Structure):
-        _fields_ = [("VolumeSerialNumber", ctypes.c_ulonglong), ("FileId", _FILE_ID_128)]
+class _FILE_ID_128(ctypes.Structure):
+    _fields_ = [("Identifier", ctypes.c_ubyte * 16)]
 
-    class _OVERLAPPED_UNION_OFFSET(ctypes.Structure):
-        _fields_ = [("Offset", wintypes.DWORD), ("OffsetHigh", wintypes.DWORD)]
+class _FILE_ID_INFO(ctypes.Structure):
+    _fields_ = [("VolumeSerialNumber", ctypes.c_ulonglong), ("FileId", _FILE_ID_128)]
 
-    class _OVERLAPPED_UNION(ctypes.Union):
-        _fields_ = [("offset", _OVERLAPPED_UNION_OFFSET), ("Pointer", ctypes.c_void_p)]
+class _OVERLAPPED_UNION_OFFSET(ctypes.Structure):
+    _fields_ = [("Offset", wintypes.DWORD), ("OffsetHigh", wintypes.DWORD)]
 
-    class _OVERLAPPED(ctypes.Structure):
-        _anonymous_ = ("union",)
-        _fields_ = [
-            ("Internal", ctypes.c_size_t),
-            ("InternalHigh", ctypes.c_size_t),
-            ("union", _OVERLAPPED_UNION),
-            ("hEvent", wintypes.HANDLE),
-        ]
+class _OVERLAPPED_UNION(ctypes.Union):
+    _fields_ = [("offset", _OVERLAPPED_UNION_OFFSET), ("Pointer", ctypes.c_void_p)]
 
-    class _FILE_RENAME_INFO_HEADER(ctypes.Structure):
-        _fields_ = [
-            ("ReplaceIfExists", wintypes.BOOLEAN),
-            ("RootDirectory", wintypes.HANDLE),
-            ("FileNameLength", wintypes.DWORD),
-            ("FileName", wintypes.WCHAR * 1),
-        ]
+class _OVERLAPPED(ctypes.Structure):
+    _anonymous_ = ("union",)
+    _fields_ = [
+        ("Internal", ctypes.c_size_t),
+        ("InternalHigh", ctypes.c_size_t),
+        ("union", _OVERLAPPED_UNION),
+        ("hEvent", wintypes.HANDLE),
+    ]
 
-    class _FILE_DISPOSITION_INFO_EX(ctypes.Structure):
-        _fields_ = [("Flags", wintypes.DWORD)]
+class _FILE_RENAME_INFO_HEADER(ctypes.Structure):
+    _fields_ = [
+        ("ReplaceIfExists", wintypes.BOOLEAN),
+        ("RootDirectory", wintypes.HANDLE),
+        ("FileNameLength", wintypes.DWORD),
+        ("FileName", wintypes.WCHAR * 1),
+    ]
 
-    class _SECURITY_ATTRIBUTES(ctypes.Structure):
-        _fields_ = [
-            ("nLength", wintypes.DWORD),
-            ("lpSecurityDescriptor", ctypes.c_void_p),
-            ("bInheritHandle", wintypes.BOOL),
-        ]
+class _FILE_DISPOSITION_INFO_EX(ctypes.Structure):
+    _fields_ = [("Flags", wintypes.DWORD)]
 
-    class _LUID(ctypes.Structure):
-        _fields_ = [("LowPart", wintypes.DWORD), ("HighPart", wintypes.LONG)]
+class _SECURITY_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [
+        ("nLength", wintypes.DWORD),
+        ("lpSecurityDescriptor", ctypes.c_void_p),
+        ("bInheritHandle", wintypes.BOOL),
+    ]
 
-    class _LUID_AND_ATTRIBUTES(ctypes.Structure):
-        _fields_ = [("Luid", _LUID), ("Attributes", wintypes.DWORD)]
+class _LUID(ctypes.Structure):
+    _fields_ = [("LowPart", wintypes.DWORD), ("HighPart", wintypes.LONG)]
 
-    class _TOKEN_PRIVILEGES(ctypes.Structure):
-        _fields_ = [
-            ("PrivilegeCount", wintypes.DWORD),
-            ("Privileges", _LUID_AND_ATTRIBUTES * 1),
-        ]
+class _LUID_AND_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [("Luid", _LUID), ("Attributes", wintypes.DWORD)]
 
-    class _TOKEN_USER(ctypes.Structure):
-        _fields_ = [("Sid", ctypes.c_void_p), ("Attributes", wintypes.DWORD)]
+class _TOKEN_PRIVILEGES(ctypes.Structure):
+    _fields_ = [
+        ("PrivilegeCount", wintypes.DWORD),
+        ("Privileges", _LUID_AND_ATTRIBUTES * 1),
+    ]
 
-    class _FILE_ID_EXTD_DIR_INFO(ctypes.Structure):
-        _fields_ = [
-            ("NextEntryOffset", wintypes.DWORD),
-            ("FileIndex", wintypes.DWORD),
-            ("CreationTime", ctypes.c_longlong),
-            ("LastAccessTime", ctypes.c_longlong),
-            ("LastWriteTime", ctypes.c_longlong),
-            ("ChangeTime", ctypes.c_longlong),
-            ("EndOfFile", ctypes.c_longlong),
-            ("AllocationSize", ctypes.c_longlong),
-            ("FileAttributes", wintypes.DWORD),
-            ("FileNameLength", wintypes.DWORD),
-            ("EaSize", wintypes.DWORD),
-            ("ReparsePointTag", wintypes.DWORD),
-            ("FileId", _FILE_ID_128),
-            ("FileName", wintypes.WCHAR * 1),
-        ]
+class _TOKEN_USER(ctypes.Structure):
+    _fields_ = [("Sid", ctypes.c_void_p), ("Attributes", wintypes.DWORD)]
 
+class _FILE_ID_EXTD_DIR_INFO(ctypes.Structure):
+    _fields_ = [
+        ("NextEntryOffset", wintypes.DWORD),
+        ("FileIndex", wintypes.DWORD),
+        ("CreationTime", ctypes.c_longlong),
+        ("LastAccessTime", ctypes.c_longlong),
+        ("LastWriteTime", ctypes.c_longlong),
+        ("ChangeTime", ctypes.c_longlong),
+        ("EndOfFile", ctypes.c_longlong),
+        ("AllocationSize", ctypes.c_longlong),
+        ("FileAttributes", wintypes.DWORD),
+        ("FileNameLength", wintypes.DWORD),
+        ("EaSize", wintypes.DWORD),
+        ("ReparsePointTag", wintypes.DWORD),
+        ("FileId", _FILE_ID_128),
+        ("FileName", wintypes.WCHAR * 1),
+    ]
+
+if os.name == "nt":  # pragma: no cover - bindings exercised by Windows CI
     _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
     _ADVAPI32 = ctypes.WinDLL("advapi32", use_last_error=True)
     _KERNEL32.CreateFileW.argtypes = (
