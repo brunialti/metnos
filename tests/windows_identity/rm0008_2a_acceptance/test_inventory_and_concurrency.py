@@ -426,6 +426,12 @@ def test_r7_windows_inventory_records(case: str, tmp_path: Path, monkeypatch) ->
                     and value
                     in {"provisioning-v1.lock", "record.bin", "second-link.bin", "record-dir"}
                 ]
+                if names and call.get("purpose") is sf._NtOpenPurposeV1.lock_reader:
+                    # Taking the global lock opens the same name for its own
+                    # reason, inside this window: it is not one of the reopens
+                    # the enumeration performs, and the enumeration's own proof
+                    # for that name is still required below.
+                    names = []
                 if names:
                     handle = int(getattr(result, "value", result) or 0)
                     if not handle or handle in open_generations:
