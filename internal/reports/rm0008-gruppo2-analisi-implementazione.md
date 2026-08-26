@@ -3879,3 +3879,24 @@ l'amministratore.
 Verifica minima: `whoami /priv` sulla macchina di prova prima di attribuire
 al prodotto un fallimento di quel gruppo.
 
+### 17.18 Processi figli e collocazione delle dipendenze
+
+Le celle che avviano un processo figlio gli passano un ambiente chiuso con
+`PYTHONNOUSERSITE=1`, così che nulla dell'ambiente di esecuzione entri nella
+prova. Sull'esecuzione pubblica le dipendenze sono installate nel sito di
+sistema e il figlio le trova; sulla macchina usata per la diagnosi sono nel
+sito dell'utente, quindi il figlio termina con «No module named
+'cryptography'» prima di raggiungere qualsiasi barriera.
+
+Anche questo è un fatto dell'ambiente, non del prodotto, e si riconosce da un
+solo comando:
+
+```
+python -c "import cryptography; print(cryptography.__file__)"
+```
+
+Se il percorso sta sotto `AppData\Roaming`, i figli non vedranno la
+dipendenza. Installarla nel sito di sistema della macchina di prova
+risolverebbe il gruppo, ma è una modifica alla macchina e non viene fatta
+d'iniziativa.
+
