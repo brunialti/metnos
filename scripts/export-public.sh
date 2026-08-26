@@ -113,6 +113,29 @@ if [ -n "${METNOS_PUBLIC_INDEX_FILE:-}" ]; then
 else
   mapfile -t ALL < <(git ls-files --cached --others --exclude-standard)
 fi
+# Il filesystem non è un'autorità sufficiente per i link Git: con
+# `core.symlinks=false` un mode 120000 appare come file regolare contenente il
+# target. Memorizza quindi mode e stage dell'indice sorgente; il controllo è
+# applicato più sotto soltanto ai Python effettivamente inclusi nell'export.
+declare -A PY_INDEX_MODE=()
+while IFS= read -r -d '' record; do
+  metadata=${record%%$'\t'*}
+  relative=${record#*$'\t'}
+  mode=${metadata%% *}
+  stage=${metadata##* }
+  if [ -n "${PY_INDEX_MODE[$relative]+present}" ]; then
+    echo "ERRORE: indice Python con stage multipli: $relative" >&2
+    exit 1
+  fi
+  PY_INDEX_MODE["$relative"]="$mode:$stage"
+done < <(
+  if [ -n "${METNOS_PUBLIC_INDEX_FILE:-}" ]; then
+    GIT_INDEX_FILE="$METNOS_PUBLIC_INDEX_FILE" \
+      git ls-files --cached --stage -z -- '*.py'
+  else
+    git ls-files --cached --stage -z -- '*.py'
+  fi
+)
 # Le pagine canoniche appena generate possono non essere ancora nell'indice
 # Git. L'inventario pubblico e' gia' stato validato sopra ed e' l'autorita' per
 # docs/, quindi entra esplicitamente nell'insieme da esportare.
@@ -129,6 +152,16 @@ for f in "${ALL[@]}"; do
     DROP+=("$f")
     continue
   fi
+  if [[ "$f" == *.py ]] && [ -n "${PY_INDEX_MODE[$f]+present}" ] \
+    && [ "${PY_INDEX_MODE[$f]}" != "100644:0" ] \
+    && [ "${PY_INDEX_MODE[$f]}" != "100755:0" ]; then
+    echo "ERRORE: mode/stage Git non regolare per Python pubblico: $f (${PY_INDEX_MODE[$f]})" >&2
+    exit 1
+  fi
+  if [[ "$f" == *.py ]] && [ -L "$f" ]; then
+    echo "ERRORE: la proiezione pubblica contiene un link Python: $f" >&2
+    exit 1
+  fi
   if [[ "$f" =~ $BIN_KEEP_RE ]]; then
     KEEP+=("$f"); continue
   fi
@@ -144,8 +177,8 @@ done
 # RM-0008 R1 congela tutti e soli i file Python tracciati ed esportati. Questa
 # modalita' espone direttamente l'insieme KEEP calcolato sopra: il validatore
 # privato e il publisher condividono cosi' la stessa autorita', senza duplicare
-# la regex di esclusione. I link con suffisso .py restano nell'elenco: il gate
-# G6 deve poterli osservare e rifiutare esplicitamente.
+# la regex di esclusione. I link con suffisso `.py` sono già stati rifiutati;
+# G6 ripete il controllo sul mode dell'indice pubblico dopo `git add -A`.
 if [ "$LIST_PYTHON" = 1 ]; then
   for f in "${KEEP[@]}"; do
     if [[ "$f" == *.py ]]; then

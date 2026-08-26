@@ -7,10 +7,12 @@ import pytest
 
 from ._support import (
     assert_posix_security,
+    lock_role_binding,
     make_root,
     object_identity,
     open_session,
     private_role,
+    role_binding,
     secure_fs,
     tree_snapshot,
     waitpid_killed,
@@ -18,6 +20,30 @@ from ._support import (
 
 
 CASES = ("rename-crash-before-native", "rename-crash-after-native")
+
+
+def _fixture_bindings(module):
+    return (
+        lock_role_binding(module),
+        role_binding(
+            module, ("source",), directory=True, role=private_role(module)
+        ),
+        role_binding(
+            module, ("target",), directory=True, role=private_role(module)
+        ),
+        role_binding(
+            module,
+            ("source", "payload.bin"),
+            directory=False,
+            role=private_role(module),
+        ),
+        role_binding(
+            module,
+            ("target", "payload.bin"),
+            directory=False,
+            role=private_role(module),
+        ),
+    )
 
 
 def _kill_at_native_rename(root: Path, case: str) -> None:
@@ -34,7 +60,7 @@ def _kill_at_native_rename(root: Path, case: str) -> None:
         return result
 
     module._renameat2_no_replace = intercepted_rename
-    with open_session(root) as session:
+    with open_session(root, role_bindings=_fixture_bindings(module)) as session:
         with session.global_lock(exclusive=True, create=False):
             session.rename_no_replace(
                 ("source", "payload.bin"),
@@ -45,14 +71,16 @@ def _kill_at_native_rename(root: Path, case: str) -> None:
 
 
 @pytest.mark.parametrize("case", CASES, ids=CASES)
-def test_posix_rename_crash_boundary(tmp_path: Path, case: str) -> None:
+def test_posix_rename_crash_boundary(
+    tmp_path: Path, case: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = secure_fs()
     root = make_root(tmp_path / "birth")
     source_directory = root / "source"
     target_directory = root / "target"
     source = source_directory / "payload.bin"
     target = target_directory / "payload.bin"
-    with open_session(root) as session:
+    with open_session(root, role_bindings=_fixture_bindings(module)) as session:
         with session.global_lock(exclusive=True, create=True):
             session.create_directory_exclusive(
                 ("source",), role=private_role(module)
@@ -77,7 +105,7 @@ def test_posix_rename_crash_boundary(tmp_path: Path, case: str) -> None:
         assert object_identity(source, module) == identity
         assert source.read_bytes() == b"rename"
         assert not target.exists()
-        with open_session(root) as retry:
+        with open_session(root, role_bindings=_fixture_bindings(module)) as retry:
             with retry.global_lock(exclusive=True, create=False):
                 result = retry.rename_no_replace(
                     ("source", "payload.bin"),
@@ -115,8 +143,29 @@ def test_posix_rename_crash_boundary(tmp_path: Path, case: str) -> None:
             directory_name
         ][1:8]
     before_retry = tree_snapshot(root)
-    with open_session(root) as retry:
+    with open_session(root, role_bindings=_fixture_bindings(module)) as retry:
         with retry.global_lock(exclusive=True, create=False):
+            real_open = os.open
+            target_parent_identity = (
+                target_directory.stat().st_dev,
+                target_directory.stat().st_ino,
+            )
+            observed_target = []
+
+            def observe_target(path, flags, mode=0o777, *, dir_fd=None):
+                result = real_open(path, flags, mode, dir_fd=dir_fd)
+                if path == "payload.bin" and dir_fd is not None:
+                    parent = os.fstat(dir_fd)
+                    if (parent.st_dev, parent.st_ino) == target_parent_identity:
+                        observed = module._posix_identity(result)
+                        if observed != identity:
+                            raise AssertionError(
+                                "rename retry observed a different target identity"
+                            )
+                        observed_target.append(observed)
+                return result
+
+            monkeypatch.setattr(os, "open", observe_target)
             with pytest.raises(module.BirthSecureFSError) as caught:
                 retry.rename_no_replace(
                     ("source", "payload.bin"),
@@ -124,4 +173,5 @@ def test_posix_rename_crash_boundary(tmp_path: Path, case: str) -> None:
                     directory=False,
                 )
     assert caught.value.code == "birth_provisioning_recovery_ambiguous"
+    assert observed_target == [identity]
     assert tree_snapshot(root) == before_retry

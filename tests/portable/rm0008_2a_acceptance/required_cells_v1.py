@@ -178,6 +178,8 @@ REQUIRED_CELLS_V1: tuple[RequiredCell, ...] = (
     ("G3", "portable-ubuntu", "linux", "crash-complete", "may_green"),
     ("G3", "portable-ubuntu", "linux", "crash-file-fsync", "may_green"),
     ("G3", "portable-ubuntu", "linux", "crash-parent-fsync", "may_green"),
+    ("G3", "concurrency-ubuntu", "linux", "rename-crash-before-native", "may_green"),
+    ("G3", "concurrency-ubuntu", "linux", "rename-crash-after-native", "red"),
     ("G4", "portable-ubuntu", "linux", "close-error-primary-preserved", "may_green"),
     ("G4", "portable-ubuntu", "linux", "unlock-error-primary-preserved", "may_green"),
     ("G4", "portable-ubuntu", "linux", "adoption-error-normalized", "may_green"),
@@ -260,10 +262,10 @@ EXPECTED_ACTIVITY_COUNTS_V1 = {
     "manifest": 12,
     "portable-ubuntu": 67,
     "portable-windows": 60,
-    "concurrency-ubuntu": 17,
+    "concurrency-ubuntu": 19,
     "concurrency-windows": 21,
     "windows-acl": 71,
 }
 
-if len(REQUIRED_CELLS_V1) != 248:  # pragma: no cover - import-time corruption guard
-    raise RuntimeError("RM-0008 2A normative inventory must contain 248 cells")
+if len(REQUIRED_CELLS_V1) != 250:  # pragma: no cover - import-time corruption guard
+    raise RuntimeError("RM-0008 2A normative inventory must contain 250 cells")

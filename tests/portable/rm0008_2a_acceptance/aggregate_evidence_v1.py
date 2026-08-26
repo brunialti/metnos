@@ -9,9 +9,16 @@ from pathlib import Path
 from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_A_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(_A_ROOT))
+import certification_v1 as _certification
+
+if Path(_certification.__file__).resolve() != _A_ROOT / "certification_v1.py":
+    raise RuntimeError("certification_v1 did not resolve to the A-only package")
+
 sys.path.insert(0, str(_REPO_ROOT))
 sys.path.insert(0, str(_REPO_ROOT / "runtime"))
-from certification_v1 import (
+from certification_v1 import (  # noqa: E402 - provenance precedes product paths.
     ACTIVITIES,
     CertificationError,
     INVENTORY_PATH,
@@ -22,6 +29,7 @@ from certification_v1 import (
     validate_final_evidence,
     validate_manifest,
     validate_snapshot_activity_evidence,
+    validate_snapshot_aggregate,
     write_canonical_json,
 )
 
@@ -66,6 +74,7 @@ def aggregate(mode: str, evidence_dir: Path, output: Path | None) -> None:
     ):
         raise CertificationError("activity evidence production inventory digest is stale")
     if mode == "final":
+        validate_snapshot_aggregate(manifest=manifest)
         if output is not None:
             raise CertificationError("final summary does not emit an aggregate file")
         return

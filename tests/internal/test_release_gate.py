@@ -248,6 +248,10 @@ def test_public_export_includes_only_the_public_documentation_boundary() -> None
     assert "tutor/cards/retired/|" in exporter
     assert "runtime/published_docs.py validate" in exporter
     assert "runtime/published_docs.py files" in exporter
+    assert "git ls-files --cached --stage -z -- '*.py'" in exporter
+    assert '"100644:0"' in exporter
+    assert '"100755:0"' in exporter
+    assert "mode/stage Git non regolare per Python pubblico" in exporter
 
 
 def test_public_publisher_refreshes_rm0008_inventory_fail_closed() -> None:

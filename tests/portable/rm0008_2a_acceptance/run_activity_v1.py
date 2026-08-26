@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import importlib
+import importlib.metadata
 import os
 import platform
 import sys
@@ -9,12 +11,51 @@ from pathlib import Path
 from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_A_ROOT = Path(__file__).resolve().parent
+_PYTEST_CONFIG = _A_ROOT / "pytest-certification.ini"
+
+
+def _inside_repository(entry: str) -> bool:
+    try:
+        candidate = Path(entry or os.curdir).resolve()
+        candidate.relative_to(_REPO_ROOT)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+os.environ["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+os.environ.pop("PYTEST_ADDOPTS", None)
+os.environ.pop("PYTEST_PLUGINS", None)
+_original_sys_path = sys.path[:]
+try:
+    sys.path[:] = [entry for entry in sys.path if not _inside_repository(entry)]
+    pytest = importlib.import_module("pytest")
+finally:
+    sys.path[:] = _original_sys_path
+try:
+    Path(pytest.__file__).resolve().relative_to(_REPO_ROOT)
+except ValueError:
+    pass
+else:
+    raise RuntimeError("pytest resolved inside the repository")
+_distribution_pytest = Path(
+    importlib.metadata.distribution("pytest").locate_file("pytest/__init__.py")
+).resolve()
+if Path(pytest.__file__).resolve() != _distribution_pytest:
+    raise RuntimeError("pytest did not resolve to the installed distribution")
+
+sys.path.insert(0, str(_A_ROOT))
+import certification_v1 as _certification
+
+if Path(_certification.__file__).resolve() != _A_ROOT / "certification_v1.py":
+    raise RuntimeError("certification_v1 did not resolve to the A-only package")
+
 sys.path.insert(0, str(_REPO_ROOT))
 sys.path.insert(0, str(_REPO_ROOT / "runtime"))
 sys.path.insert(0, str(_REPO_ROOT / "tests/windows_identity/rm0008_2a_acceptance"))
-import pytest
 
-from certification_v1 import (
+from certification_v1 import (  # noqa: E402 - provenance is checked before product paths.
     CertificationError,
     INVENTORY_PATH,
     MANIFEST_PATH,
@@ -22,8 +63,11 @@ from certification_v1 import (
     digest_file,
     git_sha,
     select_cells,
+    validate_clean_tracked_worktree,
     validate_manifest,
+    validate_pytest_boundary_configuration,
     validate_production_inventory,
+    validate_snapshot_aggregate,
     write_canonical_json,
 )
 
@@ -68,8 +112,12 @@ def run_activity(
 ) -> None:
     if import_mode != "importlib":
         raise CertificationError("the two A-only packages require pytest importlib mode")
+    validate_clean_tracked_worktree()
+    validate_pytest_boundary_configuration(_PYTEST_CONFIG)
     manifest = validate_manifest()
-    validate_production_inventory(enforce_filesystem=False)
+    validate_production_inventory()
+    if mode == "final":
+        validate_snapshot_aggregate(manifest=manifest)
     cells = select_cells(manifest, activity)
     expected_nodes = [cell["node_id"] for cell in cells]
     recorder = _EvidenceRecorder()
@@ -78,6 +126,12 @@ def run_activity(
             "-q",
             "-p",
             "no:cacheprovider",
+            "-c",
+            str(_PYTEST_CONFIG),
+            "--rootdir",
+            str(_REPO_ROOT),
+            "--confcutdir",
+            str(_REPO_ROOT),
             "--strict-markers",
             f"--import-mode={import_mode}",
             *expected_nodes,
@@ -131,6 +185,7 @@ def run_activity(
                     "observed_outcome": outcome,
                 }
             )
+    validate_clean_tracked_worktree()
     evidence = {
         "schema_version": 1,
         "suite_id": SUITE_ID,
