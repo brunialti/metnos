@@ -2067,7 +2067,10 @@ def _win_reconcile_disposed(handle: int) -> None:
     act through if the object were still there.
     """
     if not _win_info(handle)[3]:
-        raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        # The system accepted the removal and then does not report it pending:
+        # it did not do what it said, which is unavailability and not an
+        # ambiguity about what the object is.
+        raise BirthSecureFSError("birth_provisioning_io_unavailable")
 
 
 def _win_dispose_created(handle: int) -> None:
