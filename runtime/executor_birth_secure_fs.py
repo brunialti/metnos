@@ -970,6 +970,8 @@ _ERROR_PRIVILEGE_NOT_HELD = 1314
 _ERROR_FILE_EXISTS = 80
 _ERROR_ALREADY_EXISTS = 183
 _ERROR_NOT_SAME_DEVICE = 17
+_ERROR_INVALID_PARAMETER = 87
+_ERROR_CALL_NOT_IMPLEMENTED = 120
 _FILE_STANDARD_INFO_CLASS = 1
 _FILE_RENAME_INFO_CLASS = 3
 _FILE_DISPOSITION_INFO_EX_CLASS = 21
@@ -1130,6 +1132,23 @@ class _FILE_ID_EXTD_DIR_INFO(ctypes.Structure):
 
 if os.name == "nt":  # pragma: no cover - bindings exercised by Windows CI
     _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _NTDLL = ctypes.WinDLL("ntdll", use_last_error=True)
+    _NTDLL.NtCreateFile.restype = ctypes.c_long
+    _NTDLL.NtCreateFile.argtypes = (
+        ctypes.POINTER(wintypes.HANDLE),
+        wintypes.DWORD,
+        ctypes.POINTER(_OBJECT_ATTRIBUTES),
+        ctypes.POINTER(_IO_STATUS_BLOCK),
+        ctypes.POINTER(ctypes.c_longlong),
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        ctypes.c_void_p,
+        wintypes.ULONG,
+    )
+    _NTDLL.RtlNtStatusToDosError.restype = wintypes.ULONG
+    _NTDLL.RtlNtStatusToDosError.argtypes = (ctypes.c_long,)
     _ADVAPI32 = ctypes.WinDLL("advapi32", use_last_error=True)
     _KERNEL32.CreateFileW.argtypes = (
         wintypes.LPCWSTR,
@@ -1311,6 +1330,135 @@ if os.name == "nt":  # pragma: no cover - bindings exercised by Windows CI
         ctypes.POINTER(ctypes.c_void_p),
     )
     _ADVAPI32.GetSecurityInfo.restype = wintypes.DWORD
+
+
+class _NtOpenPurposeV1(str, Enum):
+    """Why a name is opened; it fixes access, disposition and refusal."""
+
+    read_required = "read_required"
+    lock_reader = "lock_reader"
+    create_exclusive = "create_exclusive"
+    mutating_open = "mutating_open"
+    disposition = "disposition"
+
+
+# Access mask of each purpose.  A file loader asks only for what it reads; a
+# creation asks for the exact mask the contract fixes; publication and removal
+# ask for DELETE on the same handle they will act through, never by name.
+_NT_FILE_ACCESS_V1 = {
+    _NtOpenPurposeV1.read_required: 0x00120081,
+    _NtOpenPurposeV1.lock_reader: 0x00120081,
+    _NtOpenPurposeV1.create_exclusive: _WIN_FILE_CREATE_ACCESS_V1,
+    _NtOpenPurposeV1.mutating_open: 0x001f0080,
+    _NtOpenPurposeV1.disposition: 0x00130080,
+}
+_NT_DIRECTORY_ACCESS_V1 = {
+    _NtOpenPurposeV1.read_required: 0x00120021,
+    _NtOpenPurposeV1.lock_reader: 0x00120021,
+    _NtOpenPurposeV1.create_exclusive: _WIN_DIRECTORY_CREATE_ACCESS_V1,
+    _NtOpenPurposeV1.mutating_open: 0x001f00a0,
+    _NtOpenPurposeV1.disposition: 0x00130080,
+}
+_NT_SHARE_ACCESS_V1 = 0x00000003
+_NT_FILE_ATTRIBUTES_V1 = 0x00000080
+
+
+def _nt_birth_code_v1(error: int, purpose: _NtOpenPurposeV1) -> str:
+    """Closed conversion of one system error into the Birth taxonomy."""
+    if error in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
+        if purpose is _NtOpenPurposeV1.create_exclusive:
+            return "birth_provisioning_transaction_conflict"
+        return "birth_provisioning_io_unavailable"
+    if error in {_ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND}:
+        if purpose is _NtOpenPurposeV1.lock_reader:
+            return "birth_provisioning_lock_unavailable"
+        if purpose is _NtOpenPurposeV1.disposition:
+            return "birth_provisioning_recovery_ambiguous"
+        return "birth_provisioning_io_unavailable"
+    if error in {_ERROR_ACCESS_DENIED, _ERROR_PRIVILEGE_NOT_HELD}:
+        if purpose in {
+            _NtOpenPurposeV1.create_exclusive,
+            _NtOpenPurposeV1.mutating_open,
+            _NtOpenPurposeV1.disposition,
+        }:
+            return "birth_provisioning_elevation_required"
+        return "birth_provisioning_acl_unsafe"
+    if error == _ERROR_SHARING_VIOLATION:
+        if purpose is _NtOpenPurposeV1.lock_reader:
+            return "birth_provisioning_lock_unavailable"
+        return "birth_provisioning_io_unavailable"
+    if error in {
+        _ERROR_INVALID_PARAMETER,
+        _ERROR_NOT_SUPPORTED,
+        _ERROR_CALL_NOT_IMPLEMENTED,
+    }:
+        return "birth_provisioning_atomic_install_unsupported"
+    return "birth_provisioning_io_unavailable"
+
+
+def _win_open_relative_v1(
+    parent: int,
+    component: str,
+    *,
+    purpose: _NtOpenPurposeV1,
+    directory: bool,
+    security_descriptor=None,
+) -> int:
+    """Open or create one component relative to an already open directory.
+
+    The name is resolved by the object manager against ``RootDirectory``, so
+    no absolute path is ever rebuilt for a descendant and no component of the
+    chain can be substituted between two steps.  A reparse point is opened as
+    itself and never followed.
+    """
+    if component != _relative_components((component,))[0]:
+        raise BirthSecureFSError("birth_provisioning_io_unavailable")
+    create = purpose is _NtOpenPurposeV1.create_exclusive
+    access = (
+        _NT_DIRECTORY_ACCESS_V1[purpose]
+        if directory
+        else _NT_FILE_ACCESS_V1[purpose]
+    )
+    options = _FILE_OPEN_REPARSE_POINT | _FILE_SYNCHRONOUS_IO_NONALERT
+    options |= _FILE_DIRECTORY_FILE if directory else _FILE_NON_DIRECTORY_FILE
+    if create:
+        options |= _FILE_WRITE_THROUGH
+    name = ctypes.create_unicode_buffer(component)
+    counted = _UNICODE_STRING(
+        Length=len(component) * 2,
+        MaximumLength=len(component) * 2,
+        Buffer=ctypes.cast(name, ctypes.c_void_p),
+    )
+    attributes = _OBJECT_ATTRIBUTES(
+        Length=ctypes.sizeof(_OBJECT_ATTRIBUTES),
+        RootDirectory=parent,
+        ObjectName=ctypes.pointer(counted),
+        Attributes=_OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor=security_descriptor,
+        SecurityQualityOfService=None,
+    )
+    handle = wintypes.HANDLE()
+    status_block = _IO_STATUS_BLOCK()
+    status = _NTDLL.NtCreateFile(
+        ctypes.byref(handle),
+        access,
+        ctypes.byref(attributes),
+        ctypes.byref(status_block),
+        None,
+        _NT_FILE_ATTRIBUTES_V1,
+        _NT_SHARE_ACCESS_V1,
+        _FILE_CREATE if create else _FILE_OPEN,
+        options,
+        None,
+        0,
+    )
+    if status < 0:
+        error = _NTDLL.RtlNtStatusToDosError(status)
+        raise BirthSecureFSError(
+            _nt_birth_code_v1(error, purpose),
+            OSError(0, "NtCreateFile", None, error),
+        )
+    return handle.value
 
 
 def _win_close(handle: int) -> None:
