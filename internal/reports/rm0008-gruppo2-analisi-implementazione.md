@@ -3857,3 +3857,25 @@ Non è stata modificata né la cella né il prodotto: le due strade sono
 alternative di contratto e vanno decise insieme ai punti dei §§17.14-17.15.
 La cella resta rossa e dichiarata.
 
+### 17.17 Celle Windows legate all'ambiente, non al prodotto
+
+Sulla macchina Windows usata per la diagnosi il privilegio di ripristino
+risulta **già abilitato** nella sessione (`whoami /priv` lo riporta
+«Abilitato»). Le celle del ciclo di vita di quel privilegio pretendono invece
+che il prodotto lo abiliti dentro il proprio ambito partendo da disabilitato,
+e falliscono con «SeRestorePrivilege was already enabled before the scope».
+
+Non è un difetto del prodotto: è la differenza fra una sessione interattiva
+di amministratore e il token di servizio o del runner pubblico, dove il
+privilegio è presente ma disabilitato. Vale anche per le celle che misurano
+l'accesso effettivo creando account locali, il cui esito dipende dalla
+politica della macchina.
+
+Queste celle vanno certificate dove il contratto le colloca, cioè
+sull'esecuzione pubblica; qui restano rosse e dichiarate. La distinzione è
+la stessa già accettata su Linux per le celle che richiedono
+l'amministratore.
+
+Verifica minima: `whoami /priv` sulla macchina di prova prima di attribuire
+al prodotto un fallimento di quel gruppo.
+
