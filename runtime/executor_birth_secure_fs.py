@@ -3135,7 +3135,7 @@ class _SecureRootSession:
         if True:
             if os.name == "nt":
                 return self._create_file_exclusive_windows(
-                    components, directory_path, name, payload, role
+                    components, directory, directory_path, name, payload, role
                 )
             flags = (
                 os.O_RDWR
@@ -3192,6 +3192,7 @@ class _SecureRootSession:
     def _create_file_exclusive_windows(
         self,
         components: tuple[str, ...],
+        directory: int,
         directory_path: str,
         name: str,
         payload: bytes,
@@ -3214,14 +3215,15 @@ class _SecureRootSession:
                 with _win_security_attributes(
                     profile, directory=False, service_sid=self._service_sid
                 ) as (attributes, descriptor):
-                    handle = _win_open_path(
-                        path,
+                    # The object is created inside the container that is
+                    # already open, with its restrictive descriptor present
+                    # from the first instant of its existence.
+                    handle = _win_open_relative_v1(
+                        directory,
+                        name,
+                        purpose=_NtOpenPurposeV1.create_exclusive,
                         directory=False,
-                        writable=True,
-                        delete=True,
-                        create=True,
-                        security_attributes=ctypes.byref(attributes),
-                        security_write=True,
+                        security_descriptor=attributes.lpSecurityDescriptor,
                     )
                     created = True
                     before = _verify_win_object(handle, path, directory=False)
@@ -3298,6 +3300,7 @@ class _SecureRootSession:
         if True:
             if os.name == "nt":
                 handle = self._create_directory_exclusive_windows(
+                    directory,
                     directory_path,
                     name,
                     role,
@@ -3343,6 +3346,7 @@ class _SecureRootSession:
 
     def _create_directory_exclusive_windows(
         self,
+        directory: int,
         directory_path: str,
         name: str,
         role: _BirthObjectRole,
@@ -3364,15 +3368,17 @@ class _SecureRootSession:
                 with _win_security_attributes(
                     profile, directory=True, service_sid=self._service_sid
                 ) as (attributes, descriptor):
-                    if not _KERNEL32.CreateDirectoryW(path, ctypes.byref(attributes)):
-                        raise _win_error("CreateDirectoryW")
-                    created = True
-                    handle = _win_open_path(
-                        path,
+                    # One native creation inside the open container returns
+                    # the handle of the object it just created: nothing is
+                    # created by name and then reopened by name.
+                    handle = _win_open_relative_v1(
+                        directory,
+                        name,
+                        purpose=_NtOpenPurposeV1.create_exclusive,
                         directory=True,
-                        delete=True,
-                        security_write=True,
+                        security_descriptor=attributes.lpSecurityDescriptor,
                     )
+                    created = True
                     _verify_win_object(handle, path, directory=True)
                     _win_apply_and_verify_security(handle, descriptor)
                     complete = True
