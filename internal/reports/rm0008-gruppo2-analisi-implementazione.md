@@ -2924,9 +2924,13 @@ selezioni basate sulla capacità osservata.
 #### 16.13.7 Profondità sentinella per C2 e C3
 
 Le prove di sostituzione usano la catena fissa
-`first/middle/last/payload.bin`. Le barriere sono cinque e producono cinque
-`node-id` distinti: radice, primo intermedio, intermedio centrale, ultimo
-intermedio e oggetto finale. Una guardia AST separata rifiuta rami produttivi
+`first/middle/last/payload.bin`. Le barriere sono **tre** e producono tre
+`node-id` distinti: radice, intermedio centrale e oggetto finale. La riduzione
+da cinque a tre, approvata il 26 agosto 2026, è una scelta di campionamento e
+non di copertura: la proprietà provata è strutturale — ogni componente viene
+aperto relativamente al padre senza seguire collegamenti — e le tre barriere
+coprono inizio, centro e fine del medesimo ciclo, come questo stesso paragrafo
+già dichiarava. Una guardia AST separata rifiuta rami produttivi
 che trattino una posizione dell'intermedio in modo diverso dal ciclo comune.
 Questa profondità non riduce il contratto: il prodotto deve applicare la stessa
 regola a ogni componente fino al limite di 1.024 byte; la sentinella copre
