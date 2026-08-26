@@ -50,8 +50,12 @@ def build_production_inventory_v1() -> dict[str, object]:
     files: list[dict[str, str]] = []
     for path_text in _tracked_public_python_paths():
         classification = (
+            # A file the public projection never ships is apparatus, not
+            # product: the productive graph must mean what the exporter
+            # actually installs (scripts/export-public.sh).
             "test"
-            if path_text == "conftest.py" or path_text.startswith("tests/")
+            if path_text == "conftest.py"
+            or path_text.startswith(("tests/", "internal/", "runtime/testing/"))
             else "documentation"
             if path_text.startswith("docs/")
             else "productive"

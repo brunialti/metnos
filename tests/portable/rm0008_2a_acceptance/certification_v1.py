@@ -443,8 +443,12 @@ def validate_production_inventory(
         ):
             raise CertificationError(f"non-canonical inventory path: {path_text}")
         expected_class = (
+            # A file the public projection never ships is apparatus, not
+            # product: the productive graph must mean what the exporter
+            # actually installs (scripts/export-public.sh).
             "test"
-            if path_text == "conftest.py" or path_text.startswith("tests/")
+            if path_text == "conftest.py"
+            or path_text.startswith(("tests/", "internal/", "runtime/testing/"))
             else "documentation"
             if path_text.startswith("docs/")
             else "productive"

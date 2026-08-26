@@ -3434,6 +3434,27 @@ _ADOPTED_DESCRIPTOR_IDS: dict[int, weakref.ReferenceType[_AuthenticatedRootDescr
 _ADOPTED_DESCRIPTOR_LOCK = threading.Lock()
 
 
+# The two historical profiles are constants, not something computed for each
+# call: the only catalogue that is built at run time is the authoritative one
+# the installer entry hands to the descriptor.
+_HISTORICAL_ROLE_CATALOGS_V1 = {
+    role: _BirthRoleCatalogV1(
+        schema_version=1,
+        patterns=(),
+        exact_bindings=(
+            _BirthRoleBindingV1(
+                components=(), kind=_ObjectKind.directory, role=role,
+            ),
+        ),
+        generation=0,
+    )
+    for role in (
+        _BirthObjectRole.historical_private,
+        _BirthObjectRole.historical_public,
+    )
+}
+
+
 def _historical_role_catalog_v1(
     role: _BirthObjectRole,
 ) -> _BirthRoleCatalogV1:
@@ -3444,21 +3465,10 @@ def _historical_role_catalog_v1(
     the whole subtree carries the same historical profile and no Birth pattern
     is enabled.  The exact name set of the three loaders is closed by G2.
     """
-    if role not in {
-        _BirthObjectRole.historical_private,
-        _BirthObjectRole.historical_public,
-    }:
+    catalog = _HISTORICAL_ROLE_CATALOGS_V1.get(role)
+    if catalog is None:
         raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-    return _BirthRoleCatalogV1(
-        schema_version=1,
-        patterns=(),
-        exact_bindings=(
-            _BirthRoleBindingV1(
-                components=(), kind=_ObjectKind.directory, role=role,
-            ),
-        ),
-        generation=0,
-    )
+    return catalog
 
 
 def _open_legacy_root_session(

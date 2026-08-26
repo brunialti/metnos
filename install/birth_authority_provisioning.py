@@ -107,16 +107,19 @@ def open_birth_provisioning_layout_v1() -> ProvisioningLayoutV1:
     root = _resolve_path_user_config_v1() / BIRTH_ROOT_NAME
     identity = _resolve_birth_service_identity_v1()
     handles, absolute = _resolve_birth_root_v1(root, identity)
+    # The catalogue is built once, named, and handed over unchanged: the
+    # descriptor must not be able to receive a narrowed or reordered variant.
+    catalog = _BirthRoleCatalogV1(
+        schema_version=1,
+        patterns=tuple(_BirthRolePatternV1),
+        exact_bindings=(),
+        generation=0,
+    )
     descriptor = _AuthenticatedRootDescriptor(
         handles=handles,
         root_path=absolute,
         identity=identity,
-        role_catalog=_BirthRoleCatalogV1(
-            schema_version=1,
-            patterns=tuple(_BirthRolePatternV1),
-            exact_bindings=(),
-            generation=0,
-        ),
+        role_catalog=catalog,
     )
     # Adoption is looked up on the module that defines it, so the single
     # adoption point of section 16.13.1 cannot be captured at import time.

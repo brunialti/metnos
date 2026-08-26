@@ -47,7 +47,7 @@ def _call_through_handles(
         # None" would accept a nominal reopen against the process directory.
         # Only a descriptor whose identity descends from the authenticated
         # root counts as handle-bound.
-        if dir_fd is not None and dir_fd == getattr(os, "AT_FDCWD", -100):
+        if dir_fd is not None and dir_fd == os.AT_FDCWD:
             raise AssertionError("legacy loader opened relative to AT_FDCWD")
         if dir_fd is not None:
             parent = os.fstat(dir_fd)
