@@ -551,6 +551,13 @@ class _BirthRoleCatalogV1:
         if list(sorted(keys)) != keys:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
 
+    @property
+    def is_constant_subtree_v1(self) -> bool:
+        """One profile for a whole historical root, declared by its only row."""
+        return not self.patterns and len(self.exact_bindings) == 1 and (
+            self.exact_bindings[0].components == ()
+        )
+
     def _resolve_binding_v1(
         self, components: tuple[str, ...],
     ) -> _BirthRoleBindingV1:
@@ -1924,6 +1931,31 @@ class _SecureRootSession:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         return _ResolvedBirthRoleBindingV1(binding=binding, origin=origin)
 
+    def _required_read_role_v1(
+        self, components: tuple[str, ...], role: _BirthObjectRole,
+    ) -> None:
+        """Refuse a read the catalogue does not admit, before any traversal.
+
+        Reading is admission, not observation: a name the catalogue does not
+        declare cannot be reconciled with the layout, and a name it declares
+        with another profile is a security contradiction.  A historical root
+        carries one constant profile for its whole subtree, so there the
+        absence of a row is not a refusal.
+        """
+        try:
+            resolved = self._resolve_effective_role_binding_v1(components)
+        except BirthSecureFSError as exc:
+            if (
+                exc.code == "birth_provisioning_recovery_ambiguous"
+                and self._role_catalog.is_constant_subtree_v1
+            ):
+                return
+            raise
+        if resolved.binding.kind is not _ObjectKind.regular_file:
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        if resolved.binding.role is not role:
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+
     def _catalog_role_v1(
         self, components: tuple[str, ...], kind: _ObjectKind,
     ) -> _BirthObjectRole | None:
@@ -2196,6 +2228,9 @@ class _SecureRootSession:
         declared = self._catalog_role_v1(components, _ObjectKind.regular_file)
         if declared is not None and declared is not role:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        # The profile is settled before the first traversal syscall: a request
+        # the catalogue refuses must not reach the filesystem at all.
+        self._required_read_role_v1(components, role)
         parent = components[:-1]
         with self._directory_chain(parent) as (directory, directory_path):
             return self._read_in_directory(
@@ -2221,9 +2256,7 @@ class _SecureRootSession:
         role = self._root_role if role is None else role
         if not isinstance(role, _BirthObjectRole):
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-        declared = self._catalog_role_v1(components, _ObjectKind.regular_file)
-        if declared is not None and declared is not role:
-            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        self._required_read_role_v1(components, role)
         name = components[-1]
         if os.name == "nt":
             return self._read_file_windows(
@@ -2243,7 +2276,12 @@ class _SecureRootSession:
 
         def bind(identity: _ObjectIdentity) -> None:
             bound = self._file_roles.get(components)
-            if bound is not None and bound != (identity, role):
+            # A name that now holds a different object is an ambiguity; the
+            # same object under a different profile is a security
+            # contradiction.  The two refusals must not be confused.
+            if bound is not None and bound[0] != identity:
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            if bound is not None and bound[1] is not role:
                 raise BirthSecureFSError("birth_provisioning_acl_unsafe")
             observed.append(identity)
 
@@ -2280,7 +2318,12 @@ class _SecureRootSession:
                 handle, directory=False, role=role
             )
             bound = self._file_roles.get(components)
-            if bound is not None and bound != (before[0], role):
+            # A name that now holds a different object is an ambiguity; the
+            # same object under a different profile is a security
+            # contradiction.  The two refusals must not be confused.
+            if bound is not None and bound[0] != before[0]:
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            if bound is not None and bound[1] is not role:
                 raise BirthSecureFSError("birth_provisioning_acl_unsafe")
             size = before[5]
             if size > maximum:
