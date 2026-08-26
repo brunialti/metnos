@@ -2159,7 +2159,7 @@ class _SecureRootSession:
         try:
             if os.name == "nt":
                 self._verify_windows_profile(
-                    self._root_handle, directory=True, role=root_role
+                    self._root_handle, directory=True, profile=root_role
                 )
             else:
                 _verify_posix_directory(
@@ -2403,7 +2403,7 @@ class _SecureRootSession:
                             )
                             _verify_win_object(child, current_path, directory=True)
                             self._verify_windows_profile(
-                                child, directory=True, role=role
+                                child, directory=True, profile=role
                             )
                         else:
                             flags = (
@@ -2428,7 +2428,7 @@ class _SecureRootSession:
                 elif os.name == "nt":
                     _verify_win_object(child, current_path, directory=True)
                     self._verify_windows_profile(
-                        child, directory=True, role=role
+                        child, directory=True, profile=role
                     )
                 else:
                     _verify_posix_directory(
@@ -2467,7 +2467,7 @@ class _SecureRootSession:
         handle: int,
         *,
         directory: bool,
-        role: _BirthObjectRole,
+        profile: _BirthObjectRole,
     ) -> None:
         if os.name != "nt":
             return
@@ -2478,7 +2478,7 @@ class _SecureRootSession:
             _BirthObjectRole.birth_integrity_only: "integrity_only",
             _BirthObjectRole.historical_private: "historical_private",
             _BirthObjectRole.historical_public: "historical_public",
-        }[role]
+        }[profile]
         with _win_security_attributes(
             profile, directory=directory, service_sid=self._service_sid
         ) as (_, descriptor):
@@ -2639,7 +2639,7 @@ class _SecureRootSession:
             handle = _win_open_path(path, directory=False)
             before = _verify_win_object(handle, path, directory=False)
             self._verify_windows_profile(
-                handle, directory=False, role=role
+                handle, directory=False, profile=role
             )
             bound = self._file_roles.get(components)
             # A name that now holds a different object is an ambiguity; the
@@ -3594,7 +3594,7 @@ class _SecureRootSession:
                     )
                     if source_role is not None:
                         self._verify_windows_profile(
-                            source_handle, directory=directory, role=source_role,
+                            source_handle, directory=directory, profile=source_role,
                         )
                     target_identity = _win_info(target_handle)[0]
                     if before[0].volume != target_identity.volume:
@@ -3737,7 +3737,7 @@ class _SecureRootSession:
                         "birth_provisioning_recovery_ambiguous"
                     )
                 self._verify_windows_profile(
-                    target, directory=directory_expected, role=expectation.role,
+                    target, directory=directory_expected, profile=expectation.role,
                 )
                 if directory_expected:
                     entries = _win_inventory(target)
