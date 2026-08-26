@@ -25,13 +25,123 @@ def public_role(module=None):
     return module._BirthObjectRole("birth_integrity_only")
 
 
+def lock_role_binding(module=None):
+    module = module or secure_fs()
+    return role_binding(
+        module,
+        ("provisioning-v1.lock",),
+        directory=False,
+        role=public_role(module),
+    )
+
+
+def role_binding(module, components, *, directory: bool, role):
+    return module._BirthRoleBindingV1(
+        components=tuple(components),
+        kind=module._ObjectKind("directory" if directory else "regular_file"),
+        role=role,
+    )
+
+
+def exact_role_catalog(module, bindings=(), *, root: Path | None = None):
+    values = [
+        role_binding(
+            module,
+            (),
+            directory=True,
+            role=public_role(module),
+        )
+    ]
+    candidates = tuple(set((lock_role_binding(module), *bindings)))
+    if root is not None:
+        for binding in candidates:
+            path = root.joinpath(*binding.components)
+            try:
+                observed = path.lstat()
+            except FileNotFoundError:
+                continue
+            assert (
+                stat.S_IFMT(observed.st_mode),
+                binding.kind.value,
+            ) in {
+                (stat.S_IFDIR, "directory"),
+                (stat.S_IFREG, "regular_file"),
+            }, "preexisting exact binding kind mismatch"
+            values.append(binding)
+    ordered = sorted(
+        values,
+        key=lambda item: (
+            tuple(os.fsencode(part) for part in item.components),
+            item.kind.value,
+            item.role.value,
+        ),
+    )
+    keys = [(item.components, item.kind) for item in ordered]
+    assert len(keys) == len(set(keys))
+    return module._BirthRoleCatalogV1(
+        schema_version=1,
+        patterns=(),
+        exact_bindings=tuple(ordered),
+        generation=0,
+    )
+
+
+def birth_keystore_role_bindings(module, components, key_id: str):
+    base = tuple(components)
+    return (
+        role_binding(module, base, directory=True, role=private_role(module)),
+        role_binding(
+            module,
+            base + ("keystore.json",),
+            directory=False,
+            role=private_role(module),
+        ),
+        role_binding(
+            module,
+            base + ("birth-keystore.lock",),
+            directory=False,
+            role=private_role(module),
+        ),
+        role_binding(
+            module,
+            base + ("private",),
+            directory=True,
+            role=private_role(module),
+        ),
+        role_binding(
+            module,
+            base + ("private", f"{key_id}.key"),
+            directory=False,
+            role=private_role(module),
+        ),
+        role_binding(
+            module,
+            base + ("public",),
+            directory=True,
+            role=public_role(module),
+        ),
+        role_binding(
+            module,
+            base + ("public", f"{key_id}.pub"),
+            directory=False,
+            role=public_role(module),
+        ),
+    )
+
+
 def make_root(path: Path) -> Path:
     path.mkdir(mode=0o755)
     path.chmod(0o755)
     return path
 
 
-def open_session(root: Path, *, authenticated_uid: int | None = None):
+def open_session(
+    root: Path,
+    *,
+    authenticated_uid: int | None = None,
+    role_bindings=(),
+    role_catalog=None,
+):
     """Build the immutable test descriptor specified by section 16.13.1.
 
     This intentionally uses the post-fix constructor contract.  On the frozen
@@ -51,10 +161,7 @@ def open_session(root: Path, *, authenticated_uid: int | None = None):
         )
     else:
         flags = (
-            os.O_RDONLY
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_DIRECTORY", 0)
-            | getattr(os, "O_NOFOLLOW", 0)
+            os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW
         )
         comparison_path = os.path.abspath(os.fspath(root))
         opened = [os.open(os.sep, flags)]
@@ -70,6 +177,11 @@ def open_session(root: Path, *, authenticated_uid: int | None = None):
             handles=tuple(handles),
             root_path=comparison_path,
             identity=identity,
+            role_catalog=(
+                exact_role_catalog(module, role_bindings, root=root)
+                if role_catalog is None
+                else role_catalog
+            ),
         )
     except BaseException:
         closer = module._win_close if os.name == "nt" else os.close
@@ -134,35 +246,62 @@ def canonical_json(value: object) -> bytes:
 
 def tree_snapshot(root: Path) -> tuple[tuple[object, ...], ...]:
     rows: list[tuple[object, ...]] = []
+
+    def append_path(path: Path, relative: str) -> None:
+        value = path.lstat()
+        payload_hash = None
+        if stat.S_ISREG(value.st_mode):
+            payload_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        rows.append(
+            (
+                relative,
+                stat.S_IFMT(value.st_mode),
+                stat.S_IMODE(value.st_mode),
+                value.st_dev,
+                value.st_ino,
+                value.st_nlink,
+                value.st_uid,
+                value.st_gid,
+                value.st_size,
+                value.st_mtime_ns,
+                value.st_ctime_ns,
+                payload_hash,
+            )
+        )
+
+    append_path(root, ".")
     for current, directory_names, file_names in os.walk(root, topdown=True, followlinks=False):
         directory_names.sort(key=os.fsencode)
         file_names.sort(key=os.fsencode)
         current_path = Path(current)
         for name in directory_names + file_names:
             path = current_path / name
-            value = path.lstat()
             relative = path.relative_to(root).as_posix()
-            payload_hash = None
-            if stat.S_ISREG(value.st_mode):
-                payload_hash = hashlib.sha256(path.read_bytes()).hexdigest()
-            rows.append(
-                (
-                    relative,
-                    stat.S_IFMT(value.st_mode),
-                    stat.S_IMODE(value.st_mode),
-                    value.st_dev,
-                    value.st_ino,
-                    value.st_nlink,
-                    value.st_uid,
-                    value.st_size,
-                    payload_hash,
-                )
-            )
+            append_path(path, relative)
     return tuple(rows)
+
+
+def assert_posix_security(
+    path: Path, *, directory: bool, mode: int, uid: int | None = None
+) -> os.stat_result:
+    value = path.stat(follow_symlinks=False)
+    assert (
+        stat.S_ISDIR(value.st_mode) if directory else stat.S_ISREG(value.st_mode)
+    )
+    assert not stat.S_ISLNK(value.st_mode)
+    assert stat.S_IMODE(value.st_mode) == mode
+    assert value.st_uid == (os.geteuid() if uid is None else uid)
+    if not directory:
+        assert value.st_nlink == 1
+    return value
 
 
 def object_identity(path: Path, module=None):
     module = module or secure_fs()
+    if os.name == "nt":
+        windows_support = importlib.import_module("_windows_support")
+        facts = windows_support.identity(path, directory=path.is_dir())
+        return module._ObjectIdentity(facts["volume"], facts["file_id"])
     value = path.stat(follow_symlinks=False)
     return module._ObjectIdentity(f"{value.st_dev:x}", f"{value.st_ino:x}")
 
@@ -184,13 +323,16 @@ def invalid_descriptor(module, root: Path):
             windows_service_sid=windows_support.service_sid(),
         )
     else:
-        handle = os.open(root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        handle = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
         os.close(handle)
         identity = module._PlatformIdentity(
             posix_uid=os.geteuid(), windows_service_sid=None
         )
     return module._AuthenticatedRootDescriptor(
-        handles=(handle,), root_path=os.fspath(root), identity=identity
+        handles=(handle,),
+        root_path=os.fspath(root),
+        identity=identity,
+        role_catalog=exact_role_catalog(module, root=root),
     )
 
 
@@ -200,20 +342,42 @@ def close_primitive(module):
     return os, "close"
 
 
-def inject_unlock_failure(module, monkeypatch) -> None:
+def inject_unlock_failure(module, monkeypatch) -> dict[str, list[int]]:
+    state: dict[str, list[int]] = {
+        "unlock_handles": [],
+        "closed_handles": [],
+    }
+    owner, closer_name = close_primitive(module)
+    real_close = getattr(owner, closer_name)
+
+    def tracked_close(handle: int) -> None:
+        value = int(getattr(handle, "value", handle) or 0)
+        if value in state["unlock_handles"]:
+            state["closed_handles"].append(value)
+        return real_close(handle)
+
+    monkeypatch.setattr(owner, closer_name, tracked_close)
     if os.name == "nt":
-        monkeypatch.setattr(module._KERNEL32, "UnlockFileEx", lambda *args: False)
-        return
+        def failing_unlock(*args):
+            state["unlock_handles"].append(
+                int(getattr(args[0], "value", args[0]) or 0)
+            )
+            return False
+
+        monkeypatch.setattr(module._KERNEL32, "UnlockFileEx", failing_unlock)
+        return state
     import fcntl
 
     real_flock = fcntl.flock
 
     def failing_unlock(fd: int, operation: int) -> None:
         if operation == fcntl.LOCK_UN:
+            state["unlock_handles"].append(int(fd))
             raise OSError(5, "private unlock diagnostic")
         return real_flock(fd, operation)
 
     monkeypatch.setattr(fcntl, "flock", failing_unlock)
+    return state
 
 
 def assert_birth_error(error: BaseException, *, code: str | None = None) -> None:
@@ -243,7 +407,7 @@ def restore_owner(paths: Iterator[Path]) -> None:
     subprocess.run(command + [os.fspath(path) for path in paths], check=True)
 
 
-def provision_keystore(root: Path) -> None:
+def provision_keystore(root: Path) -> str:
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -276,6 +440,15 @@ def provision_keystore(root: Path) -> None:
         "schema_version": 1,
     }
     write_private(root / "keystore.json", canonical_json(config))
+    return key_id
+
+
+def provision_birth_keystore(root: Path) -> str:
+    """Provision the known Birth profile variant of the keystore fixture."""
+    key_id = provision_keystore(root)
+    (root / "public").chmod(0o755)
+    (root / "public" / f"{key_id}.pub").chmod(0o644)
+    return key_id
 
 
 def provision_approval(path: Path) -> None:

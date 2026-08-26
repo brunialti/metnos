@@ -7,7 +7,6 @@ worktree after ``git add -A`` and before the public commit is created.
 from __future__ import annotations
 
 import argparse
-import subprocess
 import unicodedata
 from pathlib import PurePosixPath
 
@@ -16,6 +15,7 @@ try:
         INVENTORY_PATH,
         REPO_ROOT,
         canonical_json_bytes,
+        tracked_python_index_paths,
         validate_production_inventory,
         write_canonical_json,
     )
@@ -24,23 +24,14 @@ except ImportError:  # Direct execution by the private publication gate.
         INVENTORY_PATH,
         REPO_ROOT,
         canonical_json_bytes,
+        tracked_python_index_paths,
         validate_production_inventory,
         write_canonical_json,
     )
 
 
 def _tracked_public_python_paths() -> list[str]:
-    result = subprocess.run(
-        ["git", "ls-files", "--cached", "-z", "--", "*.py"],
-        cwd=REPO_ROOT,
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    paths = [item.decode("utf-8") for item in result.stdout.split(b"\0") if item]
-    ordered = sorted(paths, key=lambda item: item.encode("utf-8"))
-    if len(ordered) != len(set(ordered)):
-        raise RuntimeError("public Python index contains duplicate paths")
+    ordered = tracked_python_index_paths()
     for path_text in ordered:
         parts = PurePosixPath(path_text).parts
         if (

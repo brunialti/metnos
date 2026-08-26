@@ -39,6 +39,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -120,6 +121,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -129,7 +131,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check --requirement tests/portable/requirements.txt
       - name: Run the owned manifest cells
         run: >-
-          python tests/portable/rm0008_2a_acceptance/run_activity_v1.py
+          python -P tests/portable/rm0008_2a_acceptance/run_activity_v1.py
           --activity manifest --mode "$RM0008_A_MODE" --import-mode=importlib
           --evidence rm0008-2a-evidence-manifest.json
       - name: Upload canonical evidence
@@ -148,6 +150,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -157,7 +160,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check --requirement tests/portable/requirements.txt
       - name: Run the owned portable Ubuntu cells
         run: >-
-          python tests/portable/rm0008_2a_acceptance/run_activity_v1.py
+          python -P tests/portable/rm0008_2a_acceptance/run_activity_v1.py
           --activity portable-ubuntu --mode "$RM0008_A_MODE" --import-mode=importlib
           --evidence rm0008-2a-evidence-portable-ubuntu.json
       - name: Upload canonical evidence
@@ -176,6 +179,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -185,7 +189,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check --requirement tests/portable/requirements.txt
       - name: Run the owned portable Windows cells
         run: >-
-          python tests/portable/rm0008_2a_acceptance/run_activity_v1.py
+          python -P tests/portable/rm0008_2a_acceptance/run_activity_v1.py
           --activity portable-windows --mode "$env:RM0008_A_MODE" --import-mode=importlib
           --evidence rm0008-2a-evidence-portable-windows.json
       - name: Upload canonical evidence
@@ -204,6 +208,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -213,7 +218,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check --requirement tests/portable/requirements.txt
       - name: Run the owned concurrency Ubuntu cells
         run: >-
-          python tests/portable/rm0008_2a_acceptance/run_activity_v1.py
+          python -P tests/portable/rm0008_2a_acceptance/run_activity_v1.py
           --activity concurrency-ubuntu --mode "$RM0008_A_MODE" --import-mode=importlib
           --evidence rm0008-2a-evidence-concurrency-ubuntu.json
       - name: Upload canonical evidence
@@ -232,6 +237,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -241,7 +247,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check --requirement tests/portable/requirements.txt
       - name: Run the owned concurrency Windows cells
         run: >-
-          python tests/portable/rm0008_2a_acceptance/run_activity_v1.py
+          python -P tests/portable/rm0008_2a_acceptance/run_activity_v1.py
           --activity concurrency-windows --mode "$env:RM0008_A_MODE" --import-mode=importlib
           --evidence rm0008-2a-evidence-concurrency-windows.json
       - name: Upload canonical evidence
@@ -260,6 +266,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -271,7 +278,7 @@ jobs:
         env:
           PYTHONPATH: tests/windows_identity
         run: >-
-          python tests/portable/rm0008_2a_acceptance/run_activity_v1.py
+          python -P tests/portable/rm0008_2a_acceptance/run_activity_v1.py
           --activity windows-acl --mode "$env:RM0008_A_MODE" --import-mode=importlib
           --evidence rm0008-2a-evidence-windows-acl.json
       - name: Upload canonical evidence
@@ -313,6 +320,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up Python 3.12
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -328,9 +336,9 @@ jobs:
         shell: bash
         run: |
           if [[ "$RM0008_A_MODE" = snapshot ]]; then
-            python tests/portable/rm0008_2a_acceptance/aggregate_evidence_v1.py --mode snapshot --evidence-dir rm0008-2a-evidence --output tests/portable/rm0008-2a-pre-fix-evidence-v1.json
+            python -P tests/portable/rm0008_2a_acceptance/aggregate_evidence_v1.py --mode snapshot --evidence-dir rm0008-2a-evidence --output tests/portable/rm0008-2a-pre-fix-evidence-v1.json
           else
-            python tests/portable/rm0008_2a_acceptance/aggregate_evidence_v1.py --mode final --evidence-dir rm0008-2a-evidence
+            python -P tests/portable/rm0008_2a_acceptance/aggregate_evidence_v1.py --mode final --evidence-dir rm0008-2a-evidence
           fi
       - name: Upload the manual pre-fix snapshot
         if: github.event_name == 'workflow_dispatch' && inputs.rm0008_snapshot_pre_fix
