@@ -13,14 +13,11 @@ import pytest
 import _windows_support as support
 
 
+# Section 17.12: only a local canonical drive path is supported.  A UNC share,
+# a verbatim prefix, a path beyond the classic limit and a case variant are
+# refused rather than proven, so their proof cases collapse into the refusals.
 G9_CASES = (
     "local-canonical",
-    "local-long",
-    "local-verbatim",
-    "local-case-variant",
-    "unc-loopback-positive",
-    "unc-unreachable-rejected",
-    "unc-no-persistent-acls-rejected",
     "malformed-prefix-rejected",
     "relative-rejected",
     "parent-traversal-rejected",
