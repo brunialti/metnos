@@ -4049,3 +4049,23 @@ propria, e' se un manico aperto per leggere possa portare l'autorita' di
 rimuovere un nome: se non puo', il riuso e' sbagliato in se' e il secondo
 tentativo va ripreso capendo prima quale altra cella rompe.
 
+### 17.25 La rinomina nativa Windows non ha mai funzionato
+
+Misurato dal vivo con una sonda: qualunque spostamento su Windows — anche il
+piu' semplice, dentro lo stesso contenitore — fallisce con
+`ERROR_INVALID_PARAMETER` (87). Il volume delle due parti coincide, la
+disposizione in memoria della struttura e' quella attesa (nome all'offset 20,
+buffer 48 byte per un nome di quattordici caratteri) e il manico della
+sorgente porta l'autorita' di rimuovere il nome.
+
+Prima della tabella chiusa quell'errore usciva come indisponibilita' del
+dispositivo; ora come installazione atomica non supportata. In entrambi i casi
+il sintomo nascondeva il fatto: **la primitiva di spostamento non ha mai
+spostato nulla su questa piattaforma**, e le cinque celle che la riguardano
+misurano quello.
+
+Prossimo passo, gia' definito: una sonda che confronti le due forme ammesse
+della richiesta — cartella radice piu' nome relativo, oppure nome pienamente
+qualificato senza cartella radice — per stabilire quale delle due il sistema
+accetta attraverso questa via.
+
