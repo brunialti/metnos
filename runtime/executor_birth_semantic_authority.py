@@ -616,35 +616,49 @@ def _read_verifier_below(config_dir: Path, declared: PurePosixPath) -> bytes:
     obtained for the previous one, so the key that is read is the key that
     hangs from the anchor and not one a substituted component points at.
     """
-    from executor_birth_secure_fs import (
-        BirthSecureFSError,
-        _BirthObjectRole,
-        _open_posix_child_directory,
-        _open_posix_directory_root,
-        _read_posix_relative,
-    )
+    import executor_birth_secure_fs as secure
 
     components = declared.parts
     if not components or any(part in {"", ".", ".."} for part in components):
         raise SemanticReviewError("semantic_review_unavailable", "authority config")
-    handles = [_open_posix_directory_root(os.fspath(config_dir))]
+    windows = os.name == "nt"
+    open_root = (
+        secure._open_win_directory_root
+        if windows
+        else secure._open_posix_directory_root
+    )
+    close = secure._win_close if windows else os.close
+    handles = [open_root(os.fspath(config_dir))]
     try:
         for part in components[:-1]:
-            handles.append(_open_posix_child_directory(handles[-1], part))
-        return _read_posix_relative(
+            handles.append(
+                secure._win_open_relative_v1(
+                    handles[-1],
+                    part,
+                    purpose=secure._NtOpenPurposeV1.read_required,
+                    directory=True,
+                )
+                if windows
+                else secure._open_posix_child_directory(handles[-1], part)
+            )
+        if windows:
+            return secure._read_win_relative_v1(
+                handles[-1], components[-1], maximum=_MAX_KEY_BYTES,
+            )
+        return secure._read_posix_relative(
             handles[-1],
             components[-1],
             maximum=_MAX_KEY_BYTES,
-            role=_BirthObjectRole.historical_public,
+            role=secure._BirthObjectRole.historical_public,
             expected_uid=None,
         )
-    except (BirthSecureFSError, OSError) as exc:
+    except (secure.BirthSecureFSError, OSError) as exc:
         raise SemanticReviewError(
             "semantic_review_unavailable", "authority config"
         ) from exc
     finally:
         for handle in reversed(handles):
-            os.close(handle)
+            close(handle)
 
 
 def load_semantic_authority(value: object, config_dir: Path) -> PreprovisionedSemanticAuthority:
@@ -684,7 +698,7 @@ def load_semantic_authority(value: object, config_dir: Path) -> PreprovisionedSe
                     maximum=_MAX_KEY_BYTES,
                     error="semantic_review_unavailable",
                 )
-                if declared.is_absolute() or os.name == "nt"
+                if declared.is_absolute()
                 else _read_verifier_below(config_dir, declared)
             )
         evidence_dir = Path(value["evidence_dir"])
