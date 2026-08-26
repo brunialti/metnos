@@ -3718,10 +3718,23 @@ class _SecureRootSession:
                         source,
                         _ObjectKind.directory if directory else _ObjectKind.regular_file,
                     )
-                    if source_role is not None:
-                        self._verify_windows_profile(
-                            source_handle, directory=directory, profile=source_role,
+                    if source_role is None:
+                        # A container this session already holds carries the
+                        # profile it was opened with: moving an object whose
+                        # profile nobody can state is not admissible.
+                        bound = self._file_roles.get(source)
+                        source_role = (
+                            self._directory_roles.get(source)
+                            if directory
+                            else (bound[1] if bound is not None else None)
                         )
+                    if source_role is None:
+                        raise BirthSecureFSError(
+                            "birth_provisioning_recovery_ambiguous"
+                        )
+                    self._verify_windows_profile(
+                        source_handle, directory=directory, profile=source_role,
+                    )
                     target_identity = _win_info(target_handle)[0]
                     if before[0].volume != target_identity.volume:
                         raise BirthSecureFSError(
