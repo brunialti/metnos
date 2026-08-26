@@ -1885,6 +1885,26 @@ def _win_restore_privilege() -> Iterator[None]:
         _win_close(token.value)
 
 
+def _win_name_taken_v1(directory: int, name: str, is_directory: bool) -> bool:
+    """Whether one name is already used inside an authenticated container.
+
+    The question is asked of the container that is open, never by rebuilding
+    an absolute name: a refusal that mentions access or sharing may mean the
+    destination is occupied, and only the container can say so.
+    """
+    try:
+        handle = _win_open_relative_v1(
+            directory,
+            name,
+            purpose=_NtOpenPurposeV1.read_required,
+            directory=is_directory,
+        )
+    except (BirthSecureFSError, OSError):
+        return False
+    _win_close(handle)
+    return True
+
+
 def _win_profile_name_v1(role: _BirthObjectRole) -> str:
     """Name of the security profile that carries one Birth role."""
     if role is _BirthObjectRole.birth_confidential:
@@ -3727,7 +3747,16 @@ class _SecureRootSession:
                         # destination is not reopened by name to confirm it: the
                         # system already answered, and rebuilding that name is
                         # exactly what this primitive avoids everywhere else.
-                        if error in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
+                        if error in {
+                            _ERROR_FILE_EXISTS,
+                            _ERROR_ALREADY_EXISTS,
+                        } or (
+                            error
+                            in {_ERROR_ACCESS_DENIED, _ERROR_SHARING_VIOLATION}
+                            and _win_name_taken_v1(
+                                target_handle, target_name, directory
+                            )
+                        ):
                             raise BirthSecureFSError(
                                 "birth_provisioning_transaction_conflict"
                             )
