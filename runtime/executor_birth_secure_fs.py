@@ -3521,6 +3521,20 @@ def _open_posix_directory_root(path: str) -> int:
         raise BirthSecureFSError("birth_provisioning_io_unavailable", exc) from exc
 
 
+def _open_posix_child_directory(directory: int, name: str) -> int:
+    """Open one child directory relative to an already authenticated parent."""
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        return os.open(name, flags, dir_fd=directory)
+    except OSError as exc:
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc) from exc
+
+
 def _read_posix_relative(
     directory: int,
     name: str,

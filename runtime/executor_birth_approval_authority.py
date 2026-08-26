@@ -94,13 +94,49 @@ def _load_approval_authority_in_session(
 
 
 def load_approval_authority(path: Path) -> ApprovalAuthority:
-    """Load a canonical public-only registry; retained keys verify old decisions."""
+    """Load a canonical public-only registry; retained keys verify old decisions.
+
+    The containing directory is the only absolute name resolved here; the
+    registry itself is opened relative to that descriptor, verified before the
+    first byte and compared again after the last, so a component substituted
+    after the anchor cannot redirect the read.
+    """
+    path = Path(path)
+    if os.name == "nt":
+        return _decode_approval_authority(_read_windows_registry(path))
+    from executor_birth_secure_fs import (
+        BirthSecureFSError,
+        _BirthObjectRole,
+        _open_posix_directory_root,
+        _read_posix_relative,
+    )
+
     try:
-        path = Path(path)
+        directory = _open_posix_directory_root(os.fspath(path.parent))
+    except BirthSecureFSError as exc:
+        raise BirthApprovalError("approval_authority_unavailable") from exc
+    try:
+        raw = _read_posix_relative(
+            directory,
+            path.name,
+            maximum=MAXIMUM_APPROVAL_REGISTRY_BYTES,
+            role=_BirthObjectRole.historical_public,
+            expected_uid=None,
+        )
+    except (BirthSecureFSError, OSError) as exc:
+        raise BirthApprovalError("approval_authority_unavailable") from exc
+    finally:
+        os.close(directory)
+    return _decode_approval_authority(raw)
+
+
+def _read_windows_registry(path: Path) -> bytes:
+    """Historical Windows reading of the registry, unchanged by increment 2A."""
+    try:
         info = path.lstat()
         if (stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode)
-                or info.st_nlink != 1 or info.st_size > 64 * 1024
-                or (os.name != "nt" and info.st_mode & 0o022)):
+                or info.st_nlink != 1
+                or info.st_size > MAXIMUM_APPROVAL_REGISTRY_BYTES):
             raise OSError("unsafe registry")
         raw = path.read_bytes()
         after = path.stat()
@@ -109,7 +145,7 @@ def load_approval_authority(path: Path) -> ApprovalAuthority:
             raise OSError("registry changed")
     except OSError as exc:
         raise BirthApprovalError("approval_authority_unavailable") from exc
-    return _decode_approval_authority(raw)
+    return raw
 
 
 def _decode_approval_authority(raw: bytes) -> ApprovalAuthority:

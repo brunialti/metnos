@@ -538,6 +538,45 @@ def _load_semantic_authority_in_session(
     )
 
 
+def _read_verifier_below(config_dir: Path, declared: PurePosixPath) -> bytes:
+    """Read one declared verifier key without ever resolving it as a path.
+
+    The configuration directory is the only absolute name resolved; each
+    declared component below it is then opened relative to the descriptor
+    obtained for the previous one, so the key that is read is the key that
+    hangs from the anchor and not one a substituted component points at.
+    """
+    from executor_birth_secure_fs import (
+        BirthSecureFSError,
+        _BirthObjectRole,
+        _open_posix_child_directory,
+        _open_posix_directory_root,
+        _read_posix_relative,
+    )
+
+    components = declared.parts
+    if not components or any(part in {"", ".", ".."} for part in components):
+        raise SemanticReviewError("semantic_review_unavailable", "authority config")
+    handles = [_open_posix_directory_root(os.fspath(config_dir))]
+    try:
+        for part in components[:-1]:
+            handles.append(_open_posix_child_directory(handles[-1], part))
+        return _read_posix_relative(
+            handles[-1],
+            components[-1],
+            maximum=_MAX_KEY_BYTES,
+            role=_BirthObjectRole.historical_public,
+            expected_uid=None,
+        )
+    except (BirthSecureFSError, OSError) as exc:
+        raise SemanticReviewError(
+            "semantic_review_unavailable", "authority config"
+        ) from exc
+    finally:
+        for handle in reversed(handles):
+            os.close(handle)
+
+
 def load_semantic_authority(value: object, config_dir: Path) -> PreprovisionedSemanticAuthority:
     """Load an exact, explicitly provisioned productive authority configuration."""
     if not isinstance(value, dict) or set(value) != {"evidence_dir", "verifiers", "versions", "owners"}:
@@ -568,10 +607,16 @@ def load_semantic_authority(value: object, config_dir: Path) -> PreprovisionedSe
                 raise ValueError("verifier schema")
             if spec["status"] == "revoked":
                 continue
-            path = Path(spec["path"])
-            path = path if path.is_absolute() else config_dir / path
+            declared = PurePosixPath(spec["path"])
             verifiers[key_id] = Ed25519PublicKey.from_public_bytes(
-                _secure_file_bytes(path, maximum=_MAX_KEY_BYTES, error="semantic_review_unavailable"))
+                _secure_file_bytes(
+                    Path(spec["path"]),
+                    maximum=_MAX_KEY_BYTES,
+                    error="semantic_review_unavailable",
+                )
+                if declared.is_absolute() or os.name == "nt"
+                else _read_verifier_below(config_dir, declared)
+            )
         evidence_dir = Path(value["evidence_dir"])
         evidence_dir = evidence_dir if evidence_dir.is_absolute() else config_dir / evidence_dir
         return PreprovisionedSemanticAuthority(ReviewPolicyV1(versions, owners), evidence_dir, verifiers)
