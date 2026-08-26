@@ -815,10 +815,22 @@ def test_g12_secure_creation_failure_states(case: str, tmp_path: Path, monkeypat
                 raise AssertionError(
                     f"crashed creation left an unexpected full inventory: {sorted(snapshot_names)}"
                 )
+            # The child holds the global lock while it reports its own view and
+            # the parent looks after the child is gone: a byte-range lock is
+            # mandatory here, so the content of the lock is readable at one
+            # moment and not at the other.  That single column is therefore not
+            # comparable across the two moments; identity, links, size,
+            # attributes, reparse tag and security descriptor still are.
+            def _comparable(row: tuple[object, ...]) -> tuple[object, ...]:
+                return row[:-1] if row[0] == "provisioning-v1.lock" else row
+
             if {
-                name: crash_by_name[name]
+                name: _comparable(crash_by_name[name])
                 for name in (".", "provisioning-v1.lock")
-            } != pre_create_snapshot:
+            } != {
+                name: _comparable(row)
+                for name, row in pre_create_snapshot.items()
+            }:
                 raise AssertionError(
                     "creation crash changed preexisting root/lock metadata, ACL or bytes"
                 )
