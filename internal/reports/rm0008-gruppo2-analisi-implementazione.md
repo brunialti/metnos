@@ -3919,3 +3919,27 @@ Verifica minima: `probe_dir.py` mostra la rimozione riuscita in isolamento;
 la cella `disposition-directory-access-mask` mostra il nome ancora presente
 nella riconciliazione.
 
+### 17.20 Prima misura reale in ambiente certificante
+
+Con la fotografia registrata e il prodotto riapplicato, l'esecuzione pubblica
+misura finalmente il prodotto invece di fermarsi prima. Esito per attivita':
+
+| Attivita' | verdi | rosse |
+|---|---|---|
+| portatile Ubuntu | 64 | 3 |
+| concorrenza Ubuntu | 16 | 1 |
+| manifesto | 6 | 1 |
+| portatile Windows | 27 | 33 |
+| concorrenza Windows | 6 | 13 |
+| ACL Windows identita' reali | 52 | 13 |
+| **totale** | **171** | **64** |
+
+Il lato Linux e' a cinque celle dalla chiusura. Il lato Windows misura molto
+meglio qui che sulla macchina di diagnosi, perche' l'ambiente pubblico ha il
+privilegio nella forma attesa, le dipendenze nel sito di sistema e la sonda
+di accesso funzionante: le tre famiglie registrate ai §§17.17-17.18 non si
+manifestano.
+
+Un'attivita' finale fallisce se contiene un solo esito non verde: i numeri
+sopra sono lo stato di avanzamento, non un verdetto.
+
