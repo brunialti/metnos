@@ -2803,14 +2803,20 @@ class _SecureRootSession:
                 )
                 os.mkdir(name, mode, dir_fd=directory)
                 os.fsync(directory)
+                # A descriptor opened for path resolution alone cannot be
+                # synchronised, so the new directory is reopened for reading:
+                # the parent carries the entry, but the directory itself must
+                # be durable before anything is created inside it (section 7.2).
                 opened = os.open(
                     name,
-                    getattr(os, "O_PATH", os.O_RDONLY)
+                    os.O_RDONLY
+                    | getattr(os, "O_DIRECTORY", 0)
                     | getattr(os, "O_CLOEXEC", 0)
                     | getattr(os, "O_NOFOLLOW", 0),
                     dir_fd=directory,
                 )
                 try:
+                    os.fsync(opened)
                     self._commit_exact_role_binding_v1(
                         components, _posix_identity(opened),
                     )
