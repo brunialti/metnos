@@ -2022,18 +2022,14 @@ def _win_verify_security(handle: int, expected_descriptor: int) -> None:
         _KERNEL32.LocalFree(actual_descriptor)
 
 
-def _win_reconcile_disposed(directory: int, name: str) -> None:
-    """Confirm on the container that a disposed residue is really gone.
+def _win_reconcile_disposed(handle: int) -> None:
+    """Confirm on the object itself that its removal is really pending.
 
-    The check runs while the handle of the object is still open, because that
-    handle is what carries the authority to remove it: closing first would
-    leave nothing to act through if the name were still there.
+    The check runs while the handle is still open, because that handle is what
+    carries the authority to remove it: closing first would leave nothing to
+    act through if the object were still there.
     """
-    try:
-        remaining = {item.name for item in _win_inventory(directory)}
-    except (BirthSecureFSError, OSError):
-        return
-    if name in remaining:
+    if not _win_info(handle)[3]:
         raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
 
 
@@ -3283,7 +3279,7 @@ class _SecureRootSession:
                 if created and not complete:
                     try:
                         _win_dispose_created(handle)
-                        _win_reconcile_disposed(directory, name)
+                        _win_reconcile_disposed(handle)
                     except OSError:
                         pass
                 _win_close(handle)
@@ -3416,7 +3412,7 @@ class _SecureRootSession:
                 if created and not complete:
                     try:
                         _win_dispose_created(handle)
-                        _win_reconcile_disposed(directory, name)
+                        _win_reconcile_disposed(handle)
                     except OSError:
                         pass
                 _win_close(handle)
