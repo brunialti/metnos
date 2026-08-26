@@ -2392,7 +2392,15 @@ class _SecureRootSession:
                 if child is None:
                     try:
                         if os.name == "nt":
-                            child = _win_open_path(current_path, directory=True)
+                            # Each component is resolved against the handle of
+                            # the previous one: an absolute name rebuilt here
+                            # could be redirected between two steps.
+                            child = _win_open_relative_v1(
+                                current,
+                                component,
+                                purpose=_NtOpenPurposeV1.read_required,
+                                directory=True,
+                            )
                             _verify_win_object(child, current_path, directory=True)
                             self._verify_windows_profile(
                                 child, directory=True, role=role
