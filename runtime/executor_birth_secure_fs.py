@@ -505,7 +505,21 @@ class _BirthRoleCatalogV1:
             keys.append(
                 (binding.components, binding.kind.value, binding.role.value)
             )
-        if len(set(keys)) != len(keys) or list(sorted(keys)) != keys:
+        # The three defects are distinguished: an order that is not canonical
+        # is a malformed input, the same binding twice is an ambiguous
+        # resolution, and the same components with a different kind or role
+        # contradict each other (section 16.13.4).
+        # A contradiction is reported before a merely unordered list: two
+        # results for the same components is the graver defect and must not be
+        # masked by the canonical-order check (section 16.13.4).
+        by_components: dict[tuple[str, ...], set[tuple[str, str]]] = {}
+        for components, kind, role in keys:
+            by_components.setdefault(components, set()).add((kind, role))
+        if any(len(values) > 1 for values in by_components.values()):
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        if len(set(keys)) != len(keys):
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        if list(sorted(keys)) != keys:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
 
     def _resolve_binding_v1(
