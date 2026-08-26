@@ -96,8 +96,29 @@ int main(void) {
     if located.returncode != 0 or not installation:
         raise AssertionError("Visual C++ build tools are unavailable on windows-2022")
     vcvars = Path(installation) / "VC" / "Auxiliary" / "Build" / "vcvars64.bat"
-    command = f'call "{vcvars}" >nul && cl /nologo /W4 /WX "{source}" /Fe:"{executable}"'
-    compiled = subprocess.run(["cmd.exe", "/d", "/s", "/c", command], capture_output=True, text=True)
+    if not vcvars.is_file():
+        raise AssertionError("vcvars64.bat is absent from the selected Visual Studio installation")
+    compile_script = work / "compile.cmd"
+    compile_script.write_text(
+        (
+            "@echo off\n"
+            f'@call "{vcvars}" >nul\n'
+            "@if errorlevel 1 exit /b %errorlevel%\n"
+            f'@cl.exe /nologo /W4 /WX /TC "{source.name}" '
+            f'/Fo:"{source.with_suffix(".obj").name}" /Fe:"{executable.name}"\n'
+            "@exit /b %errorlevel%\n"
+        ),
+        encoding="utf-8",
+        newline="\r\n",
+    )
+    # A command file avoids cmd.exe /s quote stripping around the Program Files
+    # path while preserving the environment changes made by vcvars64.bat.
+    compiled = subprocess.run(
+        [os.environ["COMSPEC"], "/d", "/c", compile_script.name],
+        cwd=work,
+        capture_output=True,
+        text=True,
+    )
     if compiled.returncode != 0:
         raise AssertionError(f"Win32 ABI probe compilation failed: {compiled.stdout} {compiled.stderr}")
     measured = subprocess.run([str(executable)], capture_output=True, text=True)
