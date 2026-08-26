@@ -3029,6 +3029,147 @@ class _SecureRootSession:
         self._remap_cached_directories(source, destination)
         return identity
 
+    def dispose_transaction_object(
+        self, expectation: _DisposalExpectation,
+    ) -> _DispositionResult:
+        """Remove one transaction object that matches the expectation exactly.
+
+        The operation is relative to a handle, requires the exclusive global
+        lock and never follows a link.  It compares identity, kind, security
+        role, link count, size and inventory on the very handle it opened, and
+        it knows nothing about a journal or a checkpoint: recording the outcome
+        belongs to the caller of increment 2B (section 16.13.2).
+        """
+        self._require_global_exclusive()
+        if not isinstance(expectation, _DisposalExpectation):
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        components = _relative_components(expectation.components)
+        if not components:
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        resolved = self._resolve_effective_role_binding_v1(components)
+        if (
+            resolved.binding.kind is not expectation.kind
+            or resolved.binding.role is not expectation.role
+        ):
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        if expectation.disposal_class is _DisposalClass.partial_pending_file:
+            # A partial pending carries no digest and no complete inventory, so
+            # only the private provenance register of the session that created
+            # it can authorise its removal (section 7.6).
+            recorded = self._file_roles.get(components)
+            if recorded is None or recorded[0] != expectation.identity or (
+                recorded[1] is not expectation.role
+            ):
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        if os.name == "nt":
+            raise BirthSecureFSError(
+                "birth_provisioning_atomic_install_unsupported"
+            )
+        return self._dispose_transaction_object_posix(expectation, components)
+
+    def _dispose_transaction_object_posix(
+        self, expectation: _DisposalExpectation, components: tuple[str, ...],
+    ) -> _DispositionResult:
+        parent, name = components[:-1], components[-1]
+        directory_expected = expectation.kind is _ObjectKind.directory
+        with self._directory_chain(parent) as (directory, _path):
+            flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+                os, "O_NOFOLLOW", 0
+            )
+            if directory_expected:
+                flags |= getattr(os, "O_DIRECTORY", 0)
+            try:
+                target = os.open(name, flags, dir_fd=directory)
+            except FileNotFoundError as exc:
+                # An initial absence is not an idempotent success: increment 2A
+                # owns no journal that could prove an earlier disposal.
+                raise BirthSecureFSError(
+                    "birth_provisioning_recovery_ambiguous"
+                ) from exc
+            except OSError as exc:
+                raise BirthSecureFSError(
+                    "birth_provisioning_io_unavailable"
+                ) from exc
+            try:
+                value = os.fstat(target)
+                observed_directory = stat.S_ISDIR(value.st_mode)
+                if observed_directory != directory_expected or not (
+                    observed_directory or stat.S_ISREG(value.st_mode)
+                ):
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                if _posix_identity(target) != expectation.identity:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                if value.st_nlink != expectation.links:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                if directory_expected:
+                    _verify_posix_directory(
+                        target,
+                        role=expectation.role,
+                        expected_uid=self._expected_uid,
+                    )
+                    entries = _posix_inventory(target)
+                    if entries != (expectation.inventory or ()):
+                        raise BirthSecureFSError(
+                            "birth_provisioning_recovery_ambiguous"
+                        )
+                else:
+                    _verify_posix_file(
+                        target,
+                        role=expectation.role,
+                        expected_uid=self._expected_uid,
+                    )
+                    self._verify_disposal_payload(target, expectation, value)
+                identity = _posix_identity(target)
+            finally:
+                os.close(target)
+            try:
+                if directory_expected:
+                    os.rmdir(name, dir_fd=directory)
+                else:
+                    os.unlink(name, dir_fd=directory)
+                os.fsync(directory)
+            except OSError as exc:
+                raise BirthSecureFSError(
+                    "birth_provisioning_io_unavailable"
+                ) from exc
+            try:
+                os.open(name, flags, dir_fd=directory)
+            except FileNotFoundError:
+                pass
+            else:
+                raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        self._file_roles.pop(components, None)
+        self._directory_roles.pop(components, None)
+        self._role_overlay.pop(components, None)
+        return _DispositionResult(
+            identity=identity, kind=expectation.kind, removed=True,
+        )
+
+    @staticmethod
+    def _verify_disposal_payload(
+        target: int, expectation: _DisposalExpectation, value,
+    ) -> None:
+        """Check the bytes of a file on the very handle that was opened."""
+        if expectation.disposal_class is _DisposalClass.partial_pending_file:
+            maximum = expectation.maximum_partial_size
+            if maximum is None or value.st_size > maximum:
+                raise BirthSecureFSError(
+                    "birth_provisioning_recovery_ambiguous"
+                )
+            return
+        if value.st_size != expectation.expected_size:
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        payload = _read_all_posix(target, value.st_size)
+        digest = "sha256:" + hashlib.sha256(payload).hexdigest()
+        if digest != expectation.content_sha256:
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+
     def _remap_cached_directories(
         self, source: tuple[str, ...], destination: tuple[str, ...]
     ) -> None:
