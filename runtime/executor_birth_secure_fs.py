@@ -1364,7 +1364,9 @@ _NT_DIRECTORY_ACCESS_V1 = {
     _NtOpenPurposeV1.lock_reader: 0x001200a1,
     _NtOpenPurposeV1.create_exclusive: _WIN_DIRECTORY_CREATE_ACCESS_V1,
     _NtOpenPurposeV1.mutating_open: 0x001f00a0,
-    _NtOpenPurposeV1.disposition: 0x00130021,
+    # Removing a container also reads its attributes and enumerates it to
+    # compare the declared inventory, so both rights belong to this mask.
+    _NtOpenPurposeV1.disposition: 0x001300a1,
 }
 _NT_SHARE_ACCESS_V1 = 0x00000003
 _NT_FILE_ATTRIBUTES_V1 = 0x00000080
