@@ -1352,6 +1352,27 @@ def test_g10_windows_native_contract(
                 active["events"].append("read")
                 return original_read(handle, *args)
 
+            def foreign(handle) -> int:
+                # The system reassigns the number of a closed handle to the
+                # next object, whichever API opens it: a number that has been
+                # handed out again no longer names the generation that retired
+                # it, and closing it is not a repetition.
+                value = int(getattr(handle, "value", handle) or 0)
+                retired_generations.pop(value, None)
+                return value
+
+            def opened_token(process, access, out):
+                result = original_open_token(process, access, out)
+                if result:
+                    foreign(ctypes.cast(out, ctypes.POINTER(ctypes.c_void_p)).contents)
+                return result
+
+            def opened_path(*args):
+                result = original_create_file(*args)
+                if result not in {0, -1, 0xFFFFFFFFFFFFFFFF}:
+                    foreign(result)
+                return result
+
             def close(handle):
                 value = scalar(handle)
                 active = active_generations.get(value)
@@ -1385,6 +1406,10 @@ def test_g10_windows_native_contract(
                 del active_generations[value]
                 return result
 
+            original_open_token = sf._ADVAPI32.OpenProcessToken
+            original_create_file = sf._KERNEL32.CreateFileW
+            monkeypatch.setattr(sf._ADVAPI32, "OpenProcessToken", opened_token)
+            monkeypatch.setattr(sf._KERNEL32, "CreateFileW", opened_path)
             monkeypatch.setattr(ntdll, "NtCreateFile", record)
             if case == "ntcreate-relative-rootdirectory":
                 monkeypatch.setattr(
