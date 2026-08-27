@@ -826,6 +826,9 @@ def _assert_standard_token(token: int, expected_sid: str) -> None:
         raise AssertionError("standard child token has an unexpected linked-token type")
 
 
+REPOSITORY_RUNTIME = Path(__file__).resolve().parents[2] / "runtime"
+
+
 def run_probe_as(
     account: LocalAccount,
     probe_script: Path,
@@ -859,7 +862,7 @@ def run_probe_as(
         "except OSError:\n"
         "    import io\n    handle=io.StringIO()\n"
         "try:\n"
-        f"    sys.path.insert(0, {str(probe_script.parents[3] / 'runtime')!r})\n"
+        f"    sys.path.insert(0, {str(REPOSITORY_RUNTIME)!r})\n"
         "    import executor_birth_secure_fs as product\n"
         "    original=product.BirthSecureFSError.__init__\n"
         "    def traced(self, code, cause=None):\n"
@@ -868,6 +871,9 @@ def run_probe_as(
         "        traceback.print_stack(limit=4, file=handle)\n"
         "        original(self, code, cause)\n"
         "    product.BirthSecureFSError.__init__=traced\n"
+        "except Exception:\n"
+        "    pass\n"
+        "try:\n"
         f"    runpy.run_path({str(probe_script)!r}, run_name='__main__')\n"
         "except SystemExit as exit_code:\n"
         "    handle.flush()\n"
