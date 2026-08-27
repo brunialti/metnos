@@ -13,8 +13,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import secrets
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
@@ -506,3 +510,398 @@ def decode_checkpoint_v1(raw: bytes) -> CheckpointV1:
     if checkpoint.encode() != raw:
         raise _conflict()
     return checkpoint
+
+
+TRANSACTION_PREFIX_V1 = ".birth-provisioning-v1.txn."
+HEADER_PENDING_PREFIX_V1 = ".transaction-v1.pending."
+CHECKPOINT_PENDING_PREFIX_V1 = ".checkpoint-pending-"
+
+
+def transaction_root_name_v1(transaction_id: str) -> str:
+    """The only admitted name of one transaction directory."""
+    if not _is_hex(transaction_id, 32):
+        raise _conflict()
+    return TRANSACTION_PREFIX_V1 + transaction_id
+
+
+def new_transaction_id_v1() -> str:
+    """A fresh 128-bit nonce, from the operating system alone."""
+    return secrets.token_hex(16)
+
+
+def _checkpoint_pending_name_v1(sequence: int, transaction_id: str) -> str:
+    if not _is_hex(transaction_id, 32):
+        raise _conflict()
+    return (
+        CHECKPOINT_PENDING_PREFIX_V1
+        + checkpoint_name_v1(sequence)[: -len(".json")]
+        + "-" + transaction_id
+    )
+
+
+def _is_checkpoint_name_v1(name: str) -> int | None:
+    """Return the sequence of an authoritative checkpoint name, or nothing."""
+    if not name.endswith(".json"):
+        return None
+    body = name[: -len(".json")]
+    if len(body) != 20 or not body.isdigit() or not body.isascii():
+        return None
+    sequence = int(body)
+    return sequence if sequence <= MAXIMUM_CHECKPOINT_SEQUENCE_V1 else None
+
+
+@dataclass(frozen=True, slots=True)
+class TransactionStateV1:
+    """What one transaction directory holds right now."""
+
+    header: TransactionHeaderV1 | None
+    chain: tuple[CheckpointV1, ...]
+    header_pending: bool
+    pending_checkpoint_sequence: int | None
+
+    @property
+    def last(self) -> CheckpointV1 | None:
+        return self.chain[-1] if self.chain else None
+
+
+class _TransactionJournalV1:
+    """Append-only durable memory of one provisioning transaction.
+
+    Every authoritative file is born under a pending name, is written whole,
+    is re-read from the same session and only then is renamed without
+    replacement, so a name that exists is always a complete file (section 4.3).
+    The journal records; it decides nothing about authority.
+    """
+
+    __slots__ = ("_session", "_transaction_id", "_root", "_checkpoints")
+
+    def __init__(self, session, transaction_id: str) -> None:
+        self._session = session
+        self._transaction_id = transaction_id
+        self._root = (transaction_root_name_v1(transaction_id),)
+        self._checkpoints = self._root + (CHECKPOINTS_BASENAME_V1,)
+
+    @property
+    def transaction_id(self) -> str:
+        return self._transaction_id
+
+    @property
+    def root_components(self) -> tuple[str, ...]:
+        return self._root
+
+    @property
+    def checkpoints_components(self) -> tuple[str, ...]:
+        return self._checkpoints
+
+    # -- writing ---------------------------------------------------------
+
+    def create_root(self) -> None:
+        """Create the transaction directory and its checkpoint container."""
+        role = _integrity_role()
+        with _translated():
+            self._session.create_directory_exclusive(self._root, role=role)
+            self._session.create_directory_exclusive(self._checkpoints, role=role)
+
+    def write_header(self, header: TransactionHeaderV1) -> None:
+        if header.transaction_id != self._transaction_id:
+            raise _conflict()
+        self._publish(
+            self._root,
+            HEADER_PENDING_PREFIX_V1 + self._transaction_id,
+            TRANSACTION_HEADER_BASENAME_V1,
+            header.encode(),
+        )
+
+    def append(self, checkpoint: CheckpointV1) -> None:
+        """Make one further step durable, without touching the previous ones."""
+        if checkpoint.transaction_id != self._transaction_id:
+            raise _conflict()
+        self._publish(
+            self._checkpoints,
+            _checkpoint_pending_name_v1(
+                checkpoint.checkpoint_sequence, self._transaction_id,
+            ),
+            checkpoint.name(),
+            checkpoint.encode(),
+        )
+
+    def _publish(
+        self, parent: tuple[str, ...], pending: str, final: str, payload: bytes,
+    ) -> None:
+        role = _integrity_role()
+        with _translated():
+            identity = self._session.create_file_exclusive(
+                parent + (pending,), payload, role=role,
+            )
+            try:
+                observed = self._session.read_file(
+                    parent + (pending,),
+                    maximum=MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1,
+                    role=role,
+                )
+                if observed != payload:
+                    raise _reject("birth_provisioning_io_unavailable")
+                self._session.rename_no_replace(
+                    parent + (pending,), parent + (final,), directory=False,
+                )
+            except BaseException:
+                # At most one pending may exist under the exclusive lock, so a
+                # promotion that did not happen takes its own object away
+                # again.  The primary failure travels: the removal is the
+                # cleanup, never the news.
+                self._discard_pending(parent + (pending,), identity, payload)
+                raise
+
+    def _discard_pending(
+        self, components: tuple[str, ...], identity, payload: bytes,
+    ) -> None:
+        from executor_birth_secure_fs import (
+            _DisposalClass, _DisposalExpectation, _ObjectKind,
+        )
+
+        expectation = _DisposalExpectation(
+            components=components,
+            identity=identity,
+            kind=_ObjectKind.regular_file,
+            role=_integrity_role(),
+            disposal_class=_DisposalClass.complete_file,
+            links=1,
+            expected_size=len(payload),
+            maximum_partial_size=None,
+            content_sha256="sha256:" + hashlib.sha256(payload).hexdigest(),
+            inventory=None,
+        )
+        self._session.dispose_transaction_object(expectation)
+
+    # -- reading ---------------------------------------------------------
+
+    def read_state(self) -> TransactionStateV1:
+        """Classify the whole transaction directory before trusting any of it."""
+        with _translated():
+            names = set(self._session.inventory(self._root))
+        header_pending = HEADER_PENDING_PREFIX_V1 + self._transaction_id
+        admitted = {
+            TRANSACTION_HEADER_BASENAME_V1, CHECKPOINTS_BASENAME_V1,
+            header_pending,
+        }
+        if names - admitted:
+            # Anything else here belongs to a payload of a later increment; the
+            # journal refuses to guess and asks for a human (section 7.6).
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        header = None
+        if TRANSACTION_HEADER_BASENAME_V1 in names:
+            header = self.read_header()
+            if header.transaction_id != self._transaction_id:
+                raise _conflict()
+        chain, pending = ((), None)
+        if CHECKPOINTS_BASENAME_V1 in names:
+            chain, pending = self._read_chain()
+        return TransactionStateV1(
+            header=header,
+            chain=chain,
+            header_pending=header_pending in names,
+            pending_checkpoint_sequence=pending,
+        )
+
+    def read_header(self) -> TransactionHeaderV1:
+        return decode_transaction_header_v1(
+            self._read(self._root + (TRANSACTION_HEADER_BASENAME_V1,))
+        )
+
+    def _read_chain(self) -> tuple[tuple[CheckpointV1, ...], int | None]:
+        with _translated():
+            names = self._session.inventory(self._checkpoints)
+        sequences: dict[int, str] = {}
+        pendings: list[int] = []
+        prefix = CHECKPOINT_PENDING_PREFIX_V1
+        suffix = "-" + self._transaction_id
+        for name in names:
+            sequence = _is_checkpoint_name_v1(name)
+            if sequence is not None:
+                if sequence in sequences:
+                    raise _reject("birth_provisioning_recovery_ambiguous")
+                sequences[sequence] = name
+                continue
+            if name.startswith(prefix) and name.endswith(suffix):
+                body = name[len(prefix): -len(suffix)]
+                pending = _is_checkpoint_name_v1(body + ".json")
+                if pending is not None:
+                    pendings.append(pending)
+                    continue
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        if sequences and sorted(sequences) != list(range(len(sequences))):
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        if len(pendings) > 1 or (pendings and pendings[0] != len(sequences)):
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        chain: list[CheckpointV1] = []
+        previous: CheckpointV1 | None = None
+        for sequence in range(len(sequences)):
+            checkpoint = decode_checkpoint_v1(
+                self._read(self._checkpoints + (sequences[sequence],))
+            )
+            if (
+                checkpoint.transaction_id != self._transaction_id
+                or checkpoint.checkpoint_sequence != sequence
+            ):
+                raise _conflict()
+            if previous is None:
+                if checkpoint.previous_checkpoint_sha256 is not None:
+                    raise _conflict()
+            elif (
+                checkpoint.previous_checkpoint_sha256 != previous.digest()
+                or state_rank_v1(checkpoint.state) < state_rank_v1(previous.state)
+            ):
+                raise _conflict()
+            chain.append(checkpoint)
+            previous = checkpoint
+        return tuple(chain), (pendings[0] if pendings else None)
+
+    def _read(self, components: tuple[str, ...]) -> bytes:
+        with _translated():
+            return self._session.read_file(
+                components,
+                maximum=MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1,
+                role=_integrity_role(),
+            )
+
+
+def _integrity_role():
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    return _BirthObjectRole.birth_integrity_only
+
+
+@contextmanager
+def _translated():
+    """Present a filesystem refusal under the single public provisioning type.
+
+    The stable code is already the one section 11 declares, so it travels
+    unchanged: only the type is unified, and the original stays private.
+    """
+    from executor_birth_secure_fs import BirthSecureFSError
+
+    try:
+        yield
+    except BirthSecureFSError as exc:
+        raise BirthProvisioningError(exc.code, exc) from None
+
+
+def _productive_role_catalog_v1():
+    """The whole closed grammar of the layout, with no exact binding.
+
+    The provisioner works on the real names of section 4.1, so it installs the
+    productive catalogue: every pattern in declaration order and nothing added
+    by a caller.
+    """
+    from executor_birth_secure_fs import _BirthRoleCatalogV1, _BirthRolePatternV1
+
+    return _BirthRoleCatalogV1(
+        schema_version=1,
+        patterns=tuple(_BirthRolePatternV1),
+        exact_bindings=(),
+        generation=0,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ProvisioningLayoutV1:
+    """Already-open roots the installer hands to the provisioner.
+
+    Section 4.1 admits no path from JSON, from the environment read by the
+    runtime or from the candidate: the installer adapter resolves the fixed
+    locations once, opens them and passes the descriptors.  The root
+    descriptor is consumed exactly once.
+    """
+
+    root: object
+    author_source: object | None
+    provisioner_build_id: str
+
+    def __post_init__(self) -> None:
+        from executor_birth_secure_fs import _AuthenticatedRootDescriptor
+
+        if not isinstance(self.root, _AuthenticatedRootDescriptor):
+            raise _reject("birth_provisioning_io_unavailable")
+        if (
+            not isinstance(self.provisioner_build_id, str)
+            or not self.provisioner_build_id
+        ):
+            raise _reject("birth_provisioning_io_unavailable")
+
+    def open_root_session(self):
+        """Consume the root descriptor and return the provisioning session."""
+        from executor_birth_secure_fs import _adopt_authenticated_root
+
+        with _translated():
+            return _adopt_authenticated_root(self.root)
+
+    def close_author_source(self) -> None:
+        if self.author_source is not None:
+            self.author_source.close()
+
+
+AUTHOR_SOURCE_BASENAME_V1 = "keys"
+BIRTH_ROOT_BASENAME_V1 = "birth"
+
+
+def open_provisioning_layout_v1(
+    config_directory, *, provisioner_build_id: str,
+) -> ProvisioningLayoutV1:
+    """Installer adapter: resolve the two fixed locations once and open them.
+
+    The Birth root must already exist with its own owner and profile, because
+    creating it is a distribution decision and not a cryptographic one.  The
+    previous author source may be missing, which is the ordinary state of an
+    installation that never had one.
+    """
+    from executor_birth_secure_fs import (
+        BirthSecureFSError, _AuthenticatedRootDescriptor, _PlatformIdentity,
+        _open_legacy_root_session,
+        _open_posix_root, _open_win_root, _win_close,
+        _windows_service_sid_for_current_process,
+    )
+
+    base = Path(config_directory)
+    root_path = base / BIRTH_ROOT_BASENAME_V1
+    with _translated():
+        if os.name == "nt":
+            handles, absolute = _open_win_root(root_path)
+            identity = _PlatformIdentity(
+                posix_uid=None,
+                windows_service_sid=_windows_service_sid_for_current_process(),
+            )
+        else:
+            handles, absolute = _open_posix_root(
+                root_path, exact_private=False, expected_uid=None,
+            )
+            identity = _PlatformIdentity(
+                posix_uid=os.geteuid(), windows_service_sid=None,
+            )
+        try:
+            descriptor = _AuthenticatedRootDescriptor(
+                handles=tuple(handles),
+                root_path=absolute,
+                identity=identity,
+                role_catalog=_productive_role_catalog_v1(),
+            )
+        except BaseException:
+            closer = _win_close if os.name == "nt" else os.close
+            for handle in reversed(tuple(handles)):
+                closer(handle)
+            raise
+        source_path = base / AUTHOR_SOURCE_BASENAME_V1
+        try:
+            source = _open_legacy_root_session(source_path, exact_private=True)
+        except BirthSecureFSError:
+            # An installation with no previous author identity is ordinary, so
+            # the absence is a state and not a failure.  Anything else is a
+            # refusal and travels: a source that exists but cannot be opened
+            # safely must never be read as "there was none".
+            if os.path.lexists(source_path):
+                raise
+            source = None
+    return ProvisioningLayoutV1(
+        root=descriptor,
+        author_source=source,
+        provisioner_build_id=provisioner_build_id,
+    )
