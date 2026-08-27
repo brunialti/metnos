@@ -3247,13 +3247,22 @@ class _SecureRootSession:
                 raise
             raise BirthSecureFSError(code, exc)
         finally:
+            unlock_error = None
             if locked and not _KERNEL32.UnlockFileEx(
                 handle, 0, 1, 0, ctypes.byref(acquired_overlapped)
             ):
+                # The reason is read before anything else touches the thread's
+                # last error, and the handle is closed either way: a release
+                # that fails must not also leak what it was holding.
                 unlock_error = _win_error("UnlockFileEx")
-                raise BirthSecureFSError("birth_provisioning_lock_unsafe", unlock_error)
             if handle is not None:
                 _win_close(handle)
+            if unlock_error is not None and sys.exc_info()[1] is None:
+                # A failure to release never replaces the error already on its
+                # way to the caller: that one is the primary outcome.
+                raise BirthSecureFSError(
+                    "birth_provisioning_lock_unsafe", unlock_error
+                )
 
     def create_file_exclusive(
         self,
@@ -4159,6 +4168,14 @@ class _SecureRootSession:
                 if observed_directory != directory_expected or attributes & (
                     _FILE_ATTRIBUTE_REPARSE_POINT | _FILE_ATTRIBUTE_READONLY
                 ):
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                # The number of names that reach this object belongs to the
+                # expectation as much as its identity does: removing one name
+                # of many is not removing the object.  The POSIX twin refuses
+                # the same way.
+                if _win_info(target)[2] != expectation.links:
                     raise BirthSecureFSError(
                         "birth_provisioning_recovery_ambiguous"
                     )
