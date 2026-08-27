@@ -25,7 +25,7 @@ from executor_birth_property_runner import (
     ObservedPropertyRunner, PropertyCandidateProfile, PropertyRunner,
     run_applicable_properties,
 )
-from executor_birth_runner import WindowsSandboxRegistry
+from executor_birth_runner import LinuxSandboxRegistry, WindowsSandboxRegistry
 from executor_birth_semantic_review import (
     IndependentEvidence, ReviewPolicyV1, ReviewRiskFacts, SemanticReviewRequest,
     SemanticVerdict, review_candidate_semantics,
@@ -203,6 +203,7 @@ class _BirthDependencies:
     observer: Observer
     property_runner: PropertyRunner | None
     windows_sandbox_registry: WindowsSandboxRegistry | None
+    linux_sandbox_registry: LinuxSandboxRegistry | None
     semantic_policy: ReviewPolicyV1 | None
     semantic_risk: ReviewRiskFacts | None
     independent_evidence: tuple[IndependentEvidence, ...]
@@ -222,6 +223,7 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
     values: dict[str, object] = {
         "observer": observe_candidate, "property_runner": None,
         "windows_sandbox_registry": None,
+        "linux_sandbox_registry": None,
         "semantic_policy": None, "semantic_risk": None,
         "independent_evidence": (), "semantic_authority": None, "approval_subject": None,
         "approval_evidence": None, "now": None, "_seal": _DEPENDENCY_SEAL,
@@ -233,7 +235,8 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
 
 
 def _assemble_production_dependencies(*, semantic_authority=None,
-                                      windows_sandbox_registry=None) -> _BirthDependencies:
+                                      windows_sandbox_registry=None,
+                                      linux_sandbox_registry=None) -> _BirthDependencies:
     """Single core-owned assembler; it cannot alter the fixed check catalog."""
     # The runner is constructed only after Birth owns the observation.  Keeping
     # it out of this process-global dependency object prevents an unbound or
@@ -241,6 +244,7 @@ def _assemble_production_dependencies(*, semantic_authority=None,
     return _sealed_dependencies_for_test(
         property_runner=None, semantic_authority=semantic_authority,
         windows_sandbox_registry=windows_sandbox_registry,
+        linux_sandbox_registry=linux_sandbox_registry,
     )
 
 
@@ -292,6 +296,7 @@ def _standard_check(observed: ObservedCandidate, _decision: RevisionDecision, _d
 def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
     runner = deps.property_runner or ObservedPropertyRunner(
         observed, windows_registry=deps.windows_sandbox_registry,
+        linux_registry=deps.linux_sandbox_registry,
     )
     evidence = run_applicable_properties(_profile(_manifest(observed)), _runner=runner)
     digest = _shadow_evidence("properties", observed.identities.candidate_id,

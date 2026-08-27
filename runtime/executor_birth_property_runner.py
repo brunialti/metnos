@@ -20,7 +20,8 @@ from executor_birth_properties import (
     PropertyStatus,
 )
 from executor_birth_runner import (
-    FixtureOp, FixtureOpKind, RunnerStatus, WindowsSandboxRegistry,
+    FixtureOp, FixtureOpKind, LinuxSandboxRegistry, RunnerStatus,
+    WindowsSandboxRegistry,
     run_birth_phase,
 )
 
@@ -125,12 +126,14 @@ class ObservedPropertyRunner:
     """
 
     def __init__(self, observed: object, *,
-                 windows_registry: WindowsSandboxRegistry | None = None) -> None:
+                 windows_registry: WindowsSandboxRegistry | None = None,
+                 linux_registry: LinuxSandboxRegistry | None = None) -> None:
         from executor_birth import ObservedCandidate
         if not isinstance(observed, ObservedCandidate):
             raise PropertyContractError("property_candidate_invalid", "observation")
         self._observed = observed
         self._windows_registry = windows_registry
+        self._linux_registry = linux_registry
 
     def _entrypoint(self) -> str:
         try:
@@ -191,6 +194,7 @@ class ObservedPropertyRunner:
             candidate_id=self._observed.identities.candidate_id,
             candidate_files=candidate_files,
             windows_registry=self._windows_registry,
+            linux_registry=self._linux_registry,
         )
         attestation_hash = _attestation_hash(
             result, candidate_id=self._observed.identities.candidate_id,
