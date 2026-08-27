@@ -4252,6 +4252,49 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.70 Incremento 2B, primo tratto: giornale, radice autore e una porta sola
+
+Implementato il primo tratto del §10.2. Il giornale della transazione ha
+intestazione immutabile, checkpoint a schema chiuso con digest legato a un
+dominio e inventario del payload ordinato per byte; i byte sono fissati da
+vettori golden, perche' sono l'unica memoria durevole di una ripresa. Nessun
+nome autorevole nasce definitivo: si crea un pendente, lo si rilegge dalla
+stessa sessione e lo si promuove con una rinomina senza sostituzione. Una
+promozione che non avviene riporta via il proprio pendente, cosi' l'invariante
+di un solo pendente sotto il blocco sopravvive anche all'errore.
+
+La radice autore si acquisisce dai soli nomi fissi del §4.2, senza
+`sign.list_trusted_publics()` che scarta in silenzio un file invalido: una
+pubblica malformata e' un rifiuto, non una chiave in meno. Viaggia soltanto la
+privata predefinita; le altre private del vecchio registro non vengono nemmeno
+lette. L'archivio nasce dentro la transazione, lo rilegge il caricatore
+produttivo, diventa definitivo con una rinomina senza sostituzione e viene
+riletto ancora dalla collocazione finale. Un archivio finale non valido non
+viene riparato.
+
+**La base ha colto un errore di collocazione.** Il predispositore era nato in
+`runtime/`; la cella R1 lo ha respinto: la capacita' mutante del 2A ha una sola
+porta e quella porta e' dell'installatore. Il modulo e' quindi
+`install/birth_authority_provisioner.py`. La cella e' stata estesa di
+conseguenza, e l'estensione **restringe**: ammette il grafo privato della nuova
+entrata e nient'altro, pretende che l'entrata esista, vieta a qualunque modulo
+di runtime di raggiungerla (anche con un import che il risolutore di alias non
+segue), e porta tre mutanti che lo dimostrano — una porta pubblica in piu' nel
+modulo, un modulo di runtime che la chiama, l'entrata rinominata via.
+
+**Nona fotografia.** Cambiare la base rompe il sigillo, che confronta l'albero
+congelato di HEAD con quello del commit pre-correzione. La manovra e' stata
+rifatta: prodotto riportato allo stato precedente la correzione, prove 2B
+rimosse insieme al prodotto perche' fanno parte della correzione, fotografia
+rigenerata (`890381a`, 235 risultati), prodotto e prove ripristinati identici
+al salvato. Il ciclo finale pubblico e' verde su tutti e nove i lavori.
+
+Restano per 2B le righe della matrice §8.2 che riguardano una transazione
+interrotta prima dei checkpoint: intestazione pendente da promuovere o da
+riscrivere, directory di transazione vuota col nonce valido, intestazione senza
+checkpoint, checkpoint pendente da promuovere. Il giornale li riconosce gia'
+tutti; il predispositore per ora li rifiuta come recupero ambiguo.
+
 ### 17.69 Parte formale di 2A chiusa
 
 Registrato dove serve, senza aggiungere superficie pubblica: l'ADR 0224 riporta
