@@ -4231,6 +4231,29 @@ il cancelletto finale non puo' diventare verde. E' una contraddizione interna
 alla base, non un difetto del prodotto, e la sua soluzione — cambiare una delle
 due celle — non spetta a chi implementa.
 
+### 17.59 Sesto congelamento: il lotto e' misurato
+
+Il lotto dell'apparato e' entrato con la procedura del passo 5 (prodotto
+riportato indietro, fotografia, ripristino nello stesso ciclo; confronto vuoto
+sugli alberi produttivi). Misura:
+
+- **la cella del giro completo sul gettone e' verde**: stabilire da se' la
+  propria precondizione era il rimedio giusto — le celle che iniettano un
+  ripristino fallito girano prima e lasciano il privilegio abilitato;
+- **le due celle della doppia chiusura non accusano piu' una ripetizione**: la
+  sorveglianza ora capisce che un numero riassegnato non e' la stessa
+  generazione. Falliscono pero' per una ragione nuova e piu' avanti: chiedono
+  un descrittore di sicurezza su **ogni** apertura nativa che vedono, e da
+  quando il lucchetto passa dall'ingresso nativo (§17.56) le sue aperture di
+  sola presa — che un descrittore non lo portano, perche' non creano nulla —
+  entrano nella loro finestra.
+
+Il conto scende da 5 a 4 celle rosse. Le due restano rosse per un motivo
+diverso da prima, e la scelta e' fra due beni: togliere il ripiego Win32 dal
+lucchetto (fatto) oppure tenerlo fuori dalla vista di quelle due celle. Il
+primo e' una proprieta' del prodotto, il secondo un effetto della finestra di
+sorveglianza: tengo il primo.
+
 ### 17.58 La doppia chiusura e' il numero riassegnato, e il rimedio va in attesa
 
 Trovata la causa vera delle due celle, dopo aver escluso il lucchetto (§17.56) e
