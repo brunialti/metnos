@@ -1904,6 +1904,19 @@ def _win_restore_privilege() -> Iterator[None]:
         _win_close(token.value)
 
 
+def _win_absent_v1(error: BaseException) -> bool:
+    """Whether a refused open means the name is simply not there.
+
+    The system error stays private inside the public failure, so it is read
+    from there and never from the public chain.
+    """
+    for candidate in (error, getattr(error, "_internal_cause", None)):
+        winerror = getattr(candidate, "winerror", None)
+        if winerror in {_ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND}:
+            return True
+    return False
+
+
 def _win_name_taken_v1(
     directory: int, name: str, is_directory: bool, observe=None
 ) -> bool:
@@ -3603,10 +3616,16 @@ class _SecureRootSession:
         target_name: str,
         directory: bool,
         role: _BirthObjectRole | None,
-    ) -> None:
-        """Look once at the destination of a move whose source has vanished."""
+    ) -> bool:
+        """Whether the destination of a move whose source vanished is there.
+
+        The object is opened once, relative to its container and in the domain
+        of the act, and both its identity and its profile are read on that
+        handle: only an object that carries the declared profile says that the
+        move already happened.
+        """
         if role is None:
-            return
+            return False
         try:
             settled = _win_open_relative_v1(
                 target_handle,
@@ -3615,17 +3634,17 @@ class _SecureRootSession:
                 directory=directory,
             )
         except (BirthSecureFSError, OSError):
-            return
+            return False
         try:
             _win_info(settled)
             self._verify_windows_profile(
                 settled, directory=directory, profile=role,
             )
         except (BirthSecureFSError, OSError):
-            return
+            return False
         finally:
             _win_close(settled)
-        raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        return True
 
     def _rename_no_replace_posix(
         self, source: tuple[str, ...], destination: tuple[str, ...], directory: bool
@@ -3760,14 +3779,20 @@ class _SecureRootSession:
     def _rename_no_replace_windows(
         self, source: tuple[str, ...], destination: tuple[str, ...], directory: bool
     ) -> _ObjectIdentity:
+        attempted: list[bool] = []
         try:
-            return self._rename_no_replace_windows_v1(source, destination, directory)
+            return self._rename_no_replace_windows_v1(
+                source, destination, directory, attempted,
+            )
         except BirthSecureFSError:
             # A refused move leaves the containers as they were.  The proof is
             # read once the handles are released, and the classified refusal is
             # raised unchanged: the reconciliation observes, it does not
             # reclassify.
-            self._observe_unmoved_v1(source, destination)
+            # A move that never reached the system moved nothing, and there
+            # is nothing to reconcile.
+            if attempted:
+                self._observe_unmoved_v1(source, destination)
             raise
 
     def _observe_unmoved_v1(
@@ -3784,7 +3809,11 @@ class _SecureRootSession:
                 raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
 
     def _rename_no_replace_windows_v1(
-        self, source: tuple[str, ...], destination: tuple[str, ...], directory: bool
+        self,
+        source: tuple[str, ...],
+        destination: tuple[str, ...],
+        directory: bool,
+        attempted: list[bool],
     ) -> _ObjectIdentity:
         source_parent, source_name = source[:-1], source[-1]
         target_parent, target_name = destination[:-1], destination[-1]
@@ -3808,24 +3837,32 @@ class _SecureRootSession:
                                 purpose=_NtOpenPurposeV1.mutating_open,
                                 directory=directory,
                             )
-                        except (BirthSecureFSError, OSError):
-                            # The name that should move is not there.  Before
-                            # deciding, the destination is looked at once, in
-                            # the domain of the act: an object that carries the
-                            # declared profile says the move already happened,
-                            # and the outcome is an ambiguity, not a failure to
-                            # open something.
-                            self._reconcile_moved_away_windows_v1(
-                                target_handle,
-                                target_name,
-                                directory,
-                                self._catalog_role_v1(
-                                    source,
-                                    _ObjectKind.directory
-                                    if directory
-                                    else _ObjectKind.regular_file,
-                                ),
-                            )
+                        except (BirthSecureFSError, OSError) as refused:
+                            # Only an absent name asks the question: an
+                            # object that is there and refuses to open says
+                            # nothing about having moved.  A name that is
+                            # gone may be gone because the move already
+                            # happened, and the destination is looked at
+                            # once, in the domain of the act, to tell.
+                            if _win_absent_v1(refused) and (
+                                self._reconcile_moved_away_windows_v1(
+                                    target_handle,
+                                    target_name,
+                                    directory,
+                                    self._catalog_role_v1(
+                                        source,
+                                        _ObjectKind.directory
+                                        if directory
+                                        else _ObjectKind.regular_file,
+                                    ),
+                                )
+                            ):
+                                # The move already happened: the containers are
+                                # re-read once before the outcome is declared.
+                                self._observe_unmoved_v1(destination, destination)
+                                raise BirthSecureFSError(
+                                    "birth_provisioning_recovery_ambiguous"
+                                )
                             raise
                     before = _verify_win_object(source_handle, source_path, directory=directory)
                     # The profile of what is moving is verified on its own
@@ -3870,6 +3907,7 @@ class _SecureRootSession:
                     # measured on the platform; the native call honours it and
                     # is the only way to move a name without rebuilding it.
                     status_block = _IO_STATUS_BLOCK()
+                    attempted.append(True)
                     status = _NTDLL.NtSetInformationFile(
                         source_handle,
                         ctypes.byref(status_block),

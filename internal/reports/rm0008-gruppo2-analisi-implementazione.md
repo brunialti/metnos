@@ -4158,6 +4158,24 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.40 Una riconciliazione si accende su cio' che e' successo
+
+Le due riletture aggiunte per lo spostamento (§17.36, §17.38) partivano troppo
+spesso: dopo qualunque rifiuto, e dopo qualunque apertura fallita. Ognuna apre
+altri oggetti, e sei celle che contano **esattamente** un'apertura di sistema e
+una conversione dello stato le vedevano moltiplicarsi.
+
+Ora ciascuna si accende su un fatto:
+- i contenitori si rileggono solo se la chiamata di sistema e' stata davvero
+  tentata — cio' che non ha mai raggiunto il sistema non ha mosso nulla;
+- la destinazione si guarda solo se il nome da spostare **manca**, non se e'
+  li' e rifiuta di aprirsi: un oggetto presente non dice nulla sull'essere
+  stato spostato. Il motivo si legge dall'errore di sistema conservato dentro
+  il fallimento pubblico, non dalla catena pubblica, che resta vuota.
+
+Misura: base Windows del PC da 87 a 92 celle verdi, con il file degli
+spostamenti fermo a 21 su 21.
+
 ### 17.39 File delle rimozioni e degli spostamenti: 21 su 21
 
 Il conflitto di nome viene ora affermato sempre sull'occupante osservato, anche
