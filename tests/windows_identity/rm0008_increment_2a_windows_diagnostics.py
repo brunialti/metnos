@@ -594,6 +594,37 @@ def _diagnose_r7_inventory(parent: Path, service_sid: str) -> dict[str, object]:
             os.rmdir(junction)
 
 
+def _diagnose_restore_privilege_cycle() -> dict[str, object]:
+    """Observe the enable and the restore of ``SeRestorePrivilege`` separately.
+
+    The provisioner publishes its finals through a rename that reapplies a
+    descriptor owned by ``SYSTEM``, so it enters this scope.  Reporting the two
+    halves apart says whether a refusal means "the token does not hold the
+    privilege" or "the scope could not give it back".
+    """
+    import importlib
+
+    secure_fs = importlib.import_module("executor_birth_secure_fs")
+    observed: dict[str, object] = {
+        "id": "restore_privilege_cycle",
+        "entered": False,
+        "left": False,
+    }
+    try:
+        with secure_fs._win_restore_privilege():
+            observed["entered"] = True
+        observed["left"] = True
+    except BaseException as exc:
+        observed["error_type"] = type(exc).__name__
+        observed["error"] = str(exc)
+        if isinstance(exc, BaseExceptionGroup):
+            observed["group"] = [str(item) for item in exc.exceptions]
+        cause = getattr(exc, "_internal_cause", None)
+        if cause is not None:
+            observed["cause"] = str(cause)
+    return observed
+
+
 def main() -> int:
     _require(
         ctypes.sizeof(ctypes.c_void_p) == 8,
@@ -636,6 +667,7 @@ def main() -> int:
             _diagnose_r6_cached_handle(root, service.sid),
         ]
         observations.append(_diagnose_r6_fresh_handle(root, service.sid))
+        observations.append(_diagnose_restore_privilege_cycle())
         observations.append(_diagnose_r7_inventory(root, service.sid))
         print(json.dumps({
             "schema_version": 1,
