@@ -1,0 +1,79 @@
+# RM-0008 — prompt di subentro per il gruppo 3
+
+Da incollare tale e quale a un agente che subentra. Aggiornare solo se cambia
+lo stato descritto nella prima sezione.
+
+```
+Continua RM-0008 nel worktree /tmp/metnos-rm0008-a-only (ramo main).
+NON toccare /opt/metnos, non creare rami.
+
+STATO: il gruppo 2 e' chiuso. L'installatore prepara un insieme di autorita'
+completo ma INERTE: il runtime Birth non e' attivo e nessun chiamante e'
+migrato. Il ciclo pubblico e' verde su tutti e nove i lavori. Tutto e'
+committato; non esiste lavoro in file temporanei.
+
+LEGGI PRIMA, IN QUEST'ORDINE:
+1. internal/reports/rm0008-gruppo3-piano-ottimizzato.md
+   — cosa fare ora, le quattro ottimizzazioni, l'ordine che evita di rifare i
+     vettori golden, e §7 la PROCEDURA DI RIFOTOGRAFIA (otto passi, trappole
+     gia' pagate: eseguila cosi', non improvvisarla).
+2. internal/reports/rm0008-gruppo2-analisi-implementazione.md §13
+   — criterio di uscita compilato del gruppo 2, con i tre requisiti dichiarati
+     NON provati. Non spacciarli per provati e non toccarli senza mandato.
+3. lo stesso rapporto §17.70-§17.81
+   — diario: cosa e' stato costruito, i difetti trovati, e soprattutto le
+     deduzioni sbagliate corrette dalla misura. Leggile: impediscono di rifare
+     lo stesso giro.
+
+COMPITO: il gruppo 3, seguendo il piano ottimizzato. Rende attivo cio' che il
+gruppo 2 ha predisposto. L'ordine del §4 del piano non e' negoziabile: portare
+gli `enforcement_state` a `productive` va fatto PER ULTIMO, perche' cambia
+identificativo ed epoca e obbliga a rifare tutti i vettori golden.
+
+MODO DI LAVORARE:
+- commit piccoli e tematici solo su main, con il marcatore
+  `RM-0008-Status: candidate-not-certified` in coda al messaggio;
+- pubblicazione incrementale:
+  `METNOS_VENV=/opt/metnos/.venv bash scripts/publish-public.sh --incremental -m "<inglese>"`;
+- dopo OGNI pubblicazione verifica il workflow pubblico e non proseguire se e'
+  rosso;
+- riporta una sola riga di avanzamento per volta, in parole semplici.
+
+QUATTRO VINCOLI CHE COSTANO CARI SE IGNORATI:
+1. Ogni modifica alla base congelata costa un ciclo intero di rifotografia: nel
+   gruppo 2 ne sono serviti dieci. ACCUMULA le modifiche alla base e congela
+   UNA VOLTA SOLA alla fine dell'incremento.
+2. La cella R1 del grafo produttivo respinge ogni nuova "porta" verso la
+   capacita' che scrive su disco. Ha colto due errori veri di collocazione:
+   estendila dichiarando esattamente chi puo' passare, non aggirarla.
+3. Non riesercitare cio' che il gruppo 2 ha gia' certificato (primitiva a
+   handle, giornale, documenti canonici, disposizione). Prova il contratto del
+   TUO gruppo.
+4. Non costruire strumenti diagnostici per curiosita': nel gruppo 2 tre su tre
+   hanno risposto per conto proprio prima di dire la verita'. Costruiscine uno
+   solo se la sua risposta cambia una decisione, e fagli dichiarare come l'ha
+   ottenuta.
+
+REGOLA DI ONESTA': "solo i test necessari" non significa "solo i test che
+passano". Cio' che non provi va scritto come non provato, con il motivo, nel
+criterio di uscita del gruppo 3.
+
+APERTO E DA NON RISOLVERE A OCCHI CHIUSI: su Windows il predispositore arriva
+fino alla rinomina che pubblica il primo finale e riceve accesso negato. Il
+privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
+in tensione con due celle verdi: non toccare la maschera prima di una misura.
+
+GIA' INIZIATO DEL GRUPPO 3: `runtime/executor_birth_prepared_set.py` rilegge
+l'insieme predisposto sotto la propria barriera e rifiuta se marcatore, insieme,
+archivi e materiale non concordano; riceve una sessione gia' aperta e non ne
+apre nessuna, cosi' la cella R1 resta intatta. Prove:
+`tests/portable/rm0008_2b/test_group3_prepared_set.py`. Il prossimo passo del
+piano e' la migrazione del bootstrap al pubblicatore sigillato.
+```
+
+## Avvertenze per chi consegna
+
+- L'agente parte da freddo: il primo giro serve a leggere, non a produrre.
+- Il prompt fa continuare il piano. Se invece si vuole **rimettere in
+  discussione** una scelta, va detto esplicitamente cosa riaprire, altrimenti
+  l'agente la trattera' come acquisita.
