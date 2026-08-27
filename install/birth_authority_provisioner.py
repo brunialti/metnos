@@ -1605,3 +1605,206 @@ def _resume_before_staging_v1(
         staged.digests["author_store_public_inventory_sha256"],
         transaction_id,
     )
+
+
+OPERATOR_APPROVAL_BASENAME_V1 = "approval-authority.json"
+OPERATOR_SEMANTIC_BASENAME_V1 = "semantic-authority.json"
+OPERATOR_SEMANTIC_PUBLIC_BASENAME_V1 = "semantic-public"
+SEMANTIC_EVIDENCE_BASENAME_V1 = "evidence"
+OPERATOR_SEMANTIC_KEY_PREFIX_V1 = "public/"
+MAXIMUM_OPERATOR_DOCUMENT_BYTES_V1 = 64 * 1024
+APPROVAL_INPUT_DIGEST_DOMAIN_V1 = b"metnos.executor-birth.approval-input/v1\0"
+SEMANTIC_INPUT_DIGEST_DOMAIN_V1 = b"metnos.executor-birth.semantic-input/v1\0"
+PRODUCER_CATALOG_DIGEST_DOMAIN_V1 = (
+    b"metnos.executor-birth.producer-catalog/v1\0"
+)
+PRODUCER_PATH_DIGEST_DOMAIN_V1 = (
+    b"metnos.executor-birth.producer-capability-path/v1\0"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class OperatorInputsV1:
+    """The two public registries the administrator installed, as bytes.
+
+    No private key of the approver or of the semantic reviewer belongs here,
+    in the authority set or in the Birth process (section 4.1).
+    """
+
+    approval_document: bytes
+    approval_sha256: str
+    semantic_document: bytes
+    semantic_publics: Mapping[str, bytes]
+    semantic_sha256: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "semantic_publics", MappingProxyType(dict(self.semantic_publics))
+        )
+
+
+def acquire_operator_inputs_v1(operator_input) -> OperatorInputsV1:
+    """Read and validate the operator registries before anything is created.
+
+    Absence and invalidity are different outcomes on purpose: an installation
+    that never received the registries is incomplete, while one that received a
+    malformed registry must not be completed by inventing a key
+    (sections 6.3 and 6.4).
+    """
+    with _translated():
+        names = set(operator_input.inventory())
+    if OPERATOR_APPROVAL_BASENAME_V1 not in names:
+        raise _reject("birth_approval_authority_input_missing")
+    if OPERATOR_SEMANTIC_BASENAME_V1 not in names:
+        raise _reject("birth_semantic_authority_input_missing")
+    if names - {
+        OPERATOR_APPROVAL_BASENAME_V1, OPERATOR_SEMANTIC_BASENAME_V1,
+        OPERATOR_SEMANTIC_PUBLIC_BASENAME_V1,
+    }:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    if OPERATOR_SEMANTIC_PUBLIC_BASENAME_V1 not in names:
+        raise _reject("birth_semantic_authority_input_missing")
+    approval = _read_operator_document(
+        operator_input, OPERATOR_APPROVAL_BASENAME_V1,
+    )
+    _validate_approval_document_v1(approval)
+    semantic = _read_operator_document(
+        operator_input, OPERATOR_SEMANTIC_BASENAME_V1,
+    )
+    publics = _acquire_semantic_publics_v1(operator_input, semantic)
+    return OperatorInputsV1(
+        approval_document=approval,
+        approval_sha256=hashlib.sha256(
+            APPROVAL_INPUT_DIGEST_DOMAIN_V1 + approval
+        ).hexdigest(),
+        semantic_document=semantic,
+        semantic_publics=publics,
+        semantic_sha256=hashlib.sha256(
+            SEMANTIC_INPUT_DIGEST_DOMAIN_V1 + semantic
+            + encode_canonical_document_v1([
+                {"name": name, "sha256": hashlib.sha256(publics[name]).hexdigest()}
+                for name in sorted(publics)
+            ])
+        ).hexdigest(),
+    )
+
+
+def _read_operator_document(operator_input, name: str) -> bytes:
+    with _translated():
+        return operator_input.read_file(
+            name, maximum=MAXIMUM_OPERATOR_DOCUMENT_BYTES_V1,
+        )
+
+
+def _validate_approval_document_v1(raw: bytes) -> None:
+    """Decode the registry with the productive loader, never with a copy."""
+    from executor_birth_approval import BirthApprovalError
+    from executor_birth_approval_authority import _decode_approval_authority
+
+    try:
+        _decode_approval_authority(raw)
+    except BirthApprovalError as exc:
+        raise _reject("birth_approval_authority_invalid", exc) from None
+
+
+def _acquire_semantic_publics_v1(operator_input, raw: bytes) -> dict[str, bytes]:
+    """Validate the semantic authority and read every key it references."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    from executor_birth_semantic_review import IndependentEvidenceKind
+
+    try:
+        document = decode_canonical_document_v1(raw)
+    except BirthProvisioningError as exc:
+        raise _reject("birth_semantic_authority_invalid", exc) from None
+    if set(document) != {"evidence_dir", "verifiers", "versions", "owners"}:
+        raise _reject("birth_semantic_authority_invalid")
+    if document["evidence_dir"] != SEMANTIC_EVIDENCE_BASENAME_V1:
+        raise _reject("birth_semantic_authority_invalid")
+    kinds = {kind.value for kind in IndependentEvidenceKind}
+    for field in ("versions", "owners"):
+        entry = document[field]
+        if not isinstance(entry, dict) or set(entry) != kinds:
+            raise _reject("birth_semantic_authority_invalid")
+        for item in entry.values():
+            if not isinstance(item, list) or not item or any(
+                not isinstance(value, str) or not value for value in item
+            ):
+                raise _reject("birth_semantic_authority_invalid")
+    verifiers = document["verifiers"]
+    if not isinstance(verifiers, dict) or not verifiers:
+        raise _reject("birth_semantic_authority_invalid")
+    with _translated():
+        container = operator_input.open_directory(
+            OPERATOR_SEMANTIC_PUBLIC_BASENAME_V1
+        )
+        present = set(container.inventory())
+    publics: dict[str, bytes] = {}
+    for key_id, spec in verifiers.items():
+        if (
+            not isinstance(key_id, str) or not key_id
+            or not isinstance(spec, dict) or set(spec) != {"status", "path"}
+            or spec["status"] not in {"active", "revoked"}
+            or not isinstance(spec["path"], str)
+        ):
+            raise _reject("birth_semantic_authority_invalid")
+        # The document names the key where the installed set will hold it, so
+        # the one admitted form is the final relative one.
+        prefix = OPERATOR_SEMANTIC_KEY_PREFIX_V1
+        if not spec["path"].startswith(prefix):
+            raise _reject("birth_semantic_authority_invalid")
+        name = spec["path"][len(prefix):]
+        if not name.endswith(".pub") or "/" in name or len(name) <= len(".pub"):
+            raise _reject("birth_semantic_authority_invalid")
+        if spec["status"] == "revoked":
+            continue
+        if name not in present:
+            raise _reject("birth_semantic_authority_invalid")
+        with _translated():
+            raw_key = container.read_file(name, maximum=RAW_KEY_BYTES_V1)
+        if len(raw_key) != RAW_KEY_BYTES_V1:
+            raise _reject("birth_semantic_authority_invalid")
+        try:
+            Ed25519PublicKey.from_public_bytes(raw_key)
+        except ValueError as exc:
+            raise _reject("birth_semantic_authority_invalid", exc) from None
+        if name in publics and publics[name] != raw_key:
+            raise _reject("birth_semantic_authority_invalid")
+        publics[name] = raw_key
+    if not publics or present != set(publics):
+        # A key nobody references is as much a defect as a missing one: the
+        # location is an import, not a store of spare material.
+        raise _reject("birth_semantic_authority_invalid")
+    return publics
+
+
+def producer_catalog_v1() -> tuple[tuple[str, str], ...]:
+    """The closed capability catalogue, taken once from its sealed symbol."""
+    from executor_birth_intent import _producer_capabilities_for_bootstrap
+
+    catalog = tuple(
+        (capability.producer_id, capability.operation)
+        for capability in _producer_capabilities_for_bootstrap()
+    )
+    if len(set(catalog)) != len(catalog) or not catalog:
+        raise _reject("birth_provisioning_transaction_conflict")
+    return catalog
+
+
+def producer_catalog_sha256_v1(catalog: Sequence[tuple[str, str]]) -> str:
+    return hashlib.sha256(
+        PRODUCER_CATALOG_DIGEST_DOMAIN_V1 + encode_canonical_document_v1([
+            {"producer_id": producer, "operation": operation}
+            for producer, operation in catalog
+        ])
+    ).hexdigest()
+
+
+def producer_store_name_v1(producer_id: str, operation: str) -> str:
+    """The directory name of one capability, derived and never substituted."""
+    from executor_birth_identity import encode_framed_v1
+
+    digest = hashlib.sha256(
+        PRODUCER_PATH_DIGEST_DOMAIN_V1
+        + encode_framed_v1([producer_id, operation])
+    ).hexdigest()
+    return "p-" + digest
