@@ -4252,6 +4252,20 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.66 Verifica di non regressione fuori dalla base
+
+Le modifiche al primitivo di questa sessione sono state provate anche contro la
+suite ordinaria, non solo contro la base congelata:
+
+- in officina, Linux e Windows ordinari sono **verdi** (l'ultimo li ha entrambi
+  a verde nella stessa esecuzione);
+- sulla macchina di sviluppo la suite ordinaria segnala dodici rossi, tutti
+  dello stesso caso e tutti riferiti allo **scaffale reale dell'utente** in
+  `~/.local/state/metnos`: e' lo stato di questa macchina, non un effetto delle
+  modifiche, e infatti in officina — dove lo scaffale non esiste — passano.
+
+Nessuna regressione fuori dalla base.
+
 ### 17.65 Che cosa servirebbe alle tre celle, in concreto
 
 Perche' chi rivedra' la base non debba rifare l'indagine, ecco la modifica
