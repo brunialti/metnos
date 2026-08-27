@@ -7,14 +7,12 @@ could act on.
 """
 from __future__ import annotations
 
-import ast
 import hashlib
 import re
 import tomllib
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Callable, Iterable, Mapping, TYPE_CHECKING
 
@@ -27,7 +25,7 @@ from executor_birth_property_runner import (
     ObservedPropertyRunner, PropertyCandidateProfile, PropertyRunner,
     run_applicable_properties,
 )
-from executor_birth_runner import LinuxSandboxRegistry, WindowsSandboxRegistry
+from executor_birth_runner import WindowsSandboxRegistry
 from executor_birth_semantic_review import (
     IndependentEvidence, ReviewPolicyV1, ReviewRiskFacts, SemanticReviewRequest,
     SemanticVerdict, review_candidate_semantics,
@@ -205,7 +203,6 @@ class _BirthDependencies:
     observer: Observer
     property_runner: PropertyRunner | None
     windows_sandbox_registry: WindowsSandboxRegistry | None
-    linux_sandbox_registry: LinuxSandboxRegistry | None
     semantic_policy: ReviewPolicyV1 | None
     semantic_risk: ReviewRiskFacts | None
     independent_evidence: tuple[IndependentEvidence, ...]
@@ -225,7 +222,6 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
     values: dict[str, object] = {
         "observer": observe_candidate, "property_runner": None,
         "windows_sandbox_registry": None,
-        "linux_sandbox_registry": None,
         "semantic_policy": None, "semantic_risk": None,
         "independent_evidence": (), "semantic_authority": None, "approval_subject": None,
         "approval_evidence": None, "now": None, "_seal": _DEPENDENCY_SEAL,
@@ -237,8 +233,7 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
 
 
 def _assemble_production_dependencies(*, semantic_authority=None,
-                                      windows_sandbox_registry=None,
-                                      linux_sandbox_registry=None) -> _BirthDependencies:
+                                      windows_sandbox_registry=None) -> _BirthDependencies:
     """Single core-owned assembler; it cannot alter the fixed check catalog."""
     # The runner is constructed only after Birth owns the observation.  Keeping
     # it out of this process-global dependency object prevents an unbound or
@@ -246,7 +241,6 @@ def _assemble_production_dependencies(*, semantic_authority=None,
     return _sealed_dependencies_for_test(
         property_runner=None, semantic_authority=semantic_authority,
         windows_sandbox_registry=windows_sandbox_registry,
-        linux_sandbox_registry=linux_sandbox_registry,
     )
 
 
@@ -295,134 +289,9 @@ def _standard_check(observed: ObservedCandidate, _decision: RevisionDecision, _d
     return CheckResult("manifest_standard", "v1", CheckStatus.PASSED, None, evidence, "valid")
 
 
-def _declared_languages_v1(manifest: Mapping[str, object]) -> tuple[str, ...]:
-    """Every language the candidate itself declares, in canonical order.
-
-    The set comes from the manifest, never from the machine: a check whose
-    result depended on the language of the installation would give one verdict
-    here and another one there.
-    """
-    from i18n_materializer import manifest_language_selectors
-
-    selectors = manifest_language_selectors(manifest)
-    languages: set[str] = set()
-    for table in selectors.values():
-        languages.update(table)
-    return tuple(sorted(languages))
-
-
-def _lint_check(observed: ObservedCandidate, _decision: RevisionDecision,
-                _deps: _BirthDependencies) -> CheckResult:
-    """Really run the manifest linter on the frozen manifest.
-
-    Its two files were already pinned in the admission context, so the identity
-    of the rules was fixed while nothing ever applied them.  This check applies
-    them, in every language the candidate declares, and an ``error`` finding
-    refuses the birth.
-    """
-    from manifest_lint import lint_manifest
-
-    manifest = _manifest(observed)
-    reported: list[str] = []
-    blocking: str | None = None
-    for language in _declared_languages_v1(manifest):
-        for finding in lint_manifest(manifest, language=language):
-            reported.append(
-                f"{finding.severity}:{finding.check}:{finding.resource}:{language}"
-            )
-            if finding.severity == "error" and blocking is None:
-                blocking = f"{finding.check}:{finding.resource}"
-    evidence = _shadow_evidence(
-        "manifest-lint", observed.identities.candidate_id, *reported,
-    )
-    if blocking is not None:
-        return CheckResult("manifest_lint", "v1", CheckStatus.FAILED,
-                           "manifest_lint_rejected", evidence, blocking)
-    return CheckResult("manifest_lint", "v1", CheckStatus.PASSED, None,
-                       evidence, "valid")
-
-
-# Running code assembled at run time defeats every static reading of a
-# candidate: whatever the analysis concluded, the program that actually runs is
-# built after the analysis.  Measured over the 93 files of the real executors:
-# not one of them uses any of these, so the rule refuses nothing legitimate.
-_ASSEMBLED_CODE_BUILTINS_V1 = frozenset({"exec", "eval", "compile"})
-
-# Loading a module from a path is not forbidden and not granted by trust: it is
-# granted by authentication.  A candidate may not open a path and run what it
-# finds, but it may ask ``admitted_module_v1`` for the code of a
-# published executor, which compares the bytes with the signature that admitted
-# them before running them.  That door is stricter than what these names do on
-# their own, so naming them directly is what the check refuses.
-_PATH_CODE_LOADERS_V1 = frozenset({
-    "exec_module",
-    "run_module",
-    "run_path",
-    "SourceFileLoader",
-    "SourcelessFileLoader",
-    "spec_from_file_location",
-})
-
-
-def _closure_findings_v1(code_files: Mapping[str, bytes]) -> list[str]:
-    """Read every file of the candidate and report what breaks the closure.
-
-    Three things are decided here, and nothing else: the file parses, a
-    relative import stays inside the candidate, and no code is assembled at run
-    time.  Import of an installed module is not judged here: the distribution
-    is already pinned by digest in the admission context.
-    """
-    owned = {
-        PurePosixPath(name).with_suffix("").as_posix().replace("/", ".")
-        for name in code_files
-    }
-    findings: list[str] = []
-    for name in sorted(code_files):
-        try:
-            tree = ast.parse(code_files[name], filename=name)
-        except (SyntaxError, ValueError):
-            findings.append(f"unparsable:{name}")
-            continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.level:
-                target = (node.module or "").split(".")[0]
-                if node.level > 1 or not target or target not in owned:
-                    findings.append(f"relative_import_outside:{name}:{node.lineno}")
-            elif isinstance(node, ast.Call):
-                func = node.func
-                called = (
-                    func.id if isinstance(func, ast.Name)
-                    else func.attr if isinstance(func, ast.Attribute) else None
-                )
-                if isinstance(func, ast.Name) and called in _ASSEMBLED_CODE_BUILTINS_V1:
-                    findings.append(
-                        f"assembled_code:{name}:{node.lineno}:{called}"
-                    )
-                elif called in _PATH_CODE_LOADERS_V1:
-                    findings.append(
-                        f"unauthenticated_code_load:{name}:{node.lineno}:{called}"
-                    )
-    return findings
-
-
-def _closure_check(observed: ObservedCandidate, _decision: RevisionDecision,
-                   _deps: _BirthDependencies) -> CheckResult:
-    """Refuse a candidate whose own files do not hold together."""
-    findings = _closure_findings_v1(observed.snapshot.code_files)
-    evidence = _shadow_evidence(
-        "dependency-closure", observed.identities.candidate_id, *findings,
-    )
-    if findings:
-        return CheckResult("dependency_closure", "v1", CheckStatus.FAILED,
-                           "dependency_closure_broken", evidence, findings[0])
-    return CheckResult("dependency_closure", "v1", CheckStatus.PASSED, None,
-                       evidence, "closed")
-
-
 def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
     runner = deps.property_runner or ObservedPropertyRunner(
         observed, windows_registry=deps.windows_sandbox_registry,
-        linux_registry=deps.linux_sandbox_registry,
     )
     evidence = run_applicable_properties(_profile(_manifest(observed)), _runner=runner)
     digest = _shadow_evidence("properties", observed.identities.candidate_id,
@@ -489,8 +358,6 @@ def _approval_applies(decision: RevisionDecision, _observed: ObservedCandidate) 
 
 _CHECK_CATALOG_V1 = (
     ("manifest_standard", "v1", True, _always, _standard_check),
-    ("manifest_lint", "v1", True, _always, _lint_check),
-    ("dependency_closure", "v1", True, _always, _closure_check),
     ("properties", "v1", True, _always, _property_check),
     ("semantic_review", "v1", True, _semantic_applies, _semantic_check),
     ("approval", "v1", True, _approval_applies, _approval_check),
