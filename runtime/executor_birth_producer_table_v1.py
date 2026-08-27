@@ -27,6 +27,11 @@ from executor_birth_identity import ExecutorOrigin, RevisionAuthor
 from manifest_inventory import ManifestOrigin
 
 
+PRODUCER_PATH_DIGEST_DOMAIN_V1 = (
+    b"metnos.executor-birth.producer-capability-path/v1\0"
+)
+
+
 class ProducerTableError(RuntimeError):
     """The provenance of one birth cannot be established without inventing it."""
 
@@ -59,6 +64,23 @@ _MANIFEST_ORIGIN_TO_EXECUTOR_V1 = MappingProxyType({
 })
 
 
+def producer_store_name_v1(producer_id: str, operation: str) -> str:
+    """The directory name of one capability, derived and never substituted.
+
+    Both sides need it — the installer to create the store, the runtime to find
+    it — so it lives here and not in either of them.
+    """
+    import hashlib
+
+    from executor_birth_identity import encode_framed_v1
+
+    digest = hashlib.sha256(
+        PRODUCER_PATH_DIGEST_DOMAIN_V1
+        + encode_framed_v1([producer_id, operation])
+    ).hexdigest()
+    return "p-" + digest
+
+
 def producer_author_v1(producer_id: str, operation: str) -> RevisionAuthor:
     """The author this producer always writes; an unknown pair is a defect."""
     author = PRODUCER_AUTHOR_V1.get((producer_id, operation))
@@ -84,5 +106,5 @@ def executor_origin_v1(manifest_origin: ManifestOrigin) -> ExecutorOrigin:
 
 __all__ = [
     "PRODUCER_AUTHOR_V1", "ProducerTableError", "executor_origin_v1",
-    "producer_author_v1",
+    "producer_author_v1", "producer_store_name_v1",
 ]

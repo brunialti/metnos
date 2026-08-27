@@ -101,6 +101,10 @@ class PreparedContextMaterialV1:
     prepared_context_epoch: str
     source_inventory_sha256: str
     material_sha256: str
+    # The frozen context and its pin, already computed here: recomputing them
+    # elsewhere would be a second implementation of the same identity.
+    context: object = None
+    pin: object = None
 
 
 def _canonical(value: object) -> bytes:
@@ -143,6 +147,7 @@ def prepare_context_material_v1(
     from executor_birth_identity import (
         AdmissionContextV1, ContextComponent, admission_context_id,
     )
+    from executor_birth_predecessor import AdmissionContextPin
     from executor_birth_secure_fs import BirthSecureFSError
 
     components: dict[str, dict[str, object]] = {}
@@ -180,7 +185,8 @@ def prepare_context_material_v1(
             "configuration": configuration,
             "component_digest": component_digest,
         }
-    context_id = admission_context_id(AdmissionContextV1(**digests))
+    context = AdmissionContextV1(**digests)
+    context_id = admission_context_id(context)
     epoch = _context_epoch(context_id)
     document = _canonical({
         "schema_version": 1,
@@ -197,6 +203,8 @@ def prepare_context_material_v1(
             CONTEXT_SOURCE_DIGEST_DOMAIN_V1 + _canonical(inventory)
         ).hexdigest(),
         material_sha256=hashlib.sha256(document).hexdigest(),
+        context=context,
+        pin=AdmissionContextPin(context_id, epoch),
     )
 
 
