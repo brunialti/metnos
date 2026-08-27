@@ -3970,6 +3970,17 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   all'aiutante Windows: registrare il rifiuto invece di interrompere.
   Conservato in `apparato-pendente-2.patch`.
 
+- **firma nascosta dall'ispezione** — nelle celle `regular-record` e
+  `directory-record` di `test_r7_windows_inventory_records` la sorveglianza
+  dell'inventario legge il nome della voce riaprendo la firma pubblica
+  dell'ingresso relativo. Quell'ingresso e' pero' gia' avvolto dall'ispezione
+  comune installata prima, che si presenta come `(*args, **kwargs)`: nessun
+  nome viene percio' riconosciuto e le due celle accusano il prodotto di non
+  riaprire cio' che riapre. Non e' un difetto del prodotto: la riapertura c'e',
+  ed e' stata osservata direttamente. Rimedio di una riga — l'ispezione comune
+  dichiara la funzione avvolta — provato sul PC: le due celle passano.
+  Conservato in `apparato-pendente-4.patch`.
+
 - **sonda di causalita' della rinomina** — `_RenameCausalityProbe` sostituisce
   la verifica di profilo con un metodo gia' legato alla sonda, ma la sua firma
   attende `(session, handle, ...)`. Un metodo legato non e' un descrittore:
