@@ -77,7 +77,7 @@ privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
 GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (tredicesima fotografia; ultimo pubblico verde `cc49195`):
+i lavori (tredicesima fotografia; ultimo pubblico verde `f1eba39`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -214,9 +214,16 @@ accertato, cosi' nessuno li scambia per regressioni:
   `scripts/generate_domain_reference.py` e `.gitignore` lo tiene fuori dal
   repository di proposito. Ora le celle **saltano dichiarando il comando** da
   eseguire, invece di rompersi con un errore muto. Sistemato.
-- **due letture in sandbox** (`test_executor_standard_index_readers`,
-  `test_executor_standard_url_reader`): **diagnosticato, difetto di prodotto
-  vero, non risolto perche' e' una scelta di progetto.**
+- **lettura URL in sandbox** (`test_executor_standard_url_reader`):
+  **RISOLTO 28/8** (`0e6156ad`). Causa: `runtime/backends/urls/httpx_default.py`
+  importava tutti e quattro i moduli executor all'istante del caricamento.
+  Fuori dalla sandbox andava perche' ogni cartella era raggiungibile; dentro e'
+  legata solo quella di chi chiama. Ogni entrata ha bisogno di UN fratello e
+  ora chiede quello. Non e' lo stesso difetto dell'altra cella: qui a sbagliare
+  era il RUNTIME, non un executor.
+- **lettura indici in sandbox** (`test_executor_standard_index_readers`):
+  **diagnosticato, difetto di prodotto vero, non risolto perche' e' una scelta
+  di progetto.**
   `executors/find_persons_indices` delega importando il modulo del fratello
   (`import find_images_indices`), ma il suo manifest dichiara
   `files = ["find_persons_indices.py"]` e basta. La sandbox lega quello che il
@@ -237,8 +244,15 @@ accertato, cosi' nessuno li scambia per regressioni:
   invocato, quindi il difetto non ha mai fatto danno — e ritirarlo non toglie
   un comportamento a nessuno.
 
-  Serve una decisione di Roberto e, se si sceglie (b), una rifirma (§7.10).
-  Non toccato.
+  Serve una decisione di Roberto e, se si sceglie (b), una rifirma (§7.10)
+  — che oggi passa da un'intenzione di Executor Birth, perche' `sign.py publish`
+  risponde «unavailable in STORE_ONLY». Non toccato.
+
+  Nota di scala: `find_images_indices.py` sono 1778 righe di implementazione
+  vera dentro l'executor, `find_persons_indices.py` 70 righe di sola
+  inoltrazione. Portare la parte condivisa nel runtime (la strada §7.3, quella
+  usata per `pdf_extract` fra i due lettori URL) e' un lavoro grosso, non una
+  correzione.
 - **cinque celle POSIX della base 2A** (`g2` e `g8`): pretendono un secondo
   utente o i privilegi di root. Verdi nel ciclo pubblico, rosse in locale.
   Attese.
