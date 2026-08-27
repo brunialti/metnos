@@ -6,7 +6,9 @@ them; it never creates, rotates, or repairs key material.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import re
 import stat
 import threading
 from dataclasses import dataclass
@@ -19,9 +21,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 
 from executor_birth import observe_candidate
 from executor_birth_identity import ExecutorOrigin, RevisionAuthor
-from executor_birth_producer_table_v1 import (
-    executor_origin_v1, producer_author_v1,
-)
 from executor_birth_intent import BirthIntent, _ProducerCapability, _producer_capabilities_for_bootstrap
 from executor_birth_operational import (
     BirthRequest, BirthRuntimeBundle, _assemble_birth_core,
@@ -30,6 +29,8 @@ from executor_birth_operational import (
 )
 from executor_birth_producer_store import get_or_issue_producer_receipt
 from executor_birth_receipts import IssuerKey, IssuerRegistry, issue_producer_receipt
+from executor_birth_runner import WindowsSandboxRegistry
+from executor_birth_runner_windows_v1 import helper_binary_hash
 from executor_birth_shadow import _assemble_production_dependencies
 from manifest_inventory import ManifestRef
 
@@ -44,7 +45,14 @@ class _ProducerAuthority:
     issuer_id: str
     key_id: str
     private_key: Ed25519PrivateKey
+    origin: ExecutorOrigin
     author: RevisionAuthor
+
+
+@dataclass(frozen=True, slots=True)
+class BirthBootstrapPaths:
+    config: Path
+    state_dir: Path
 
 
 _BOOT_LOCK = threading.Condition()
@@ -52,42 +60,46 @@ _BOOT_STATE = "cold"
 _BOOT_ERROR: BaseException | None = None
 
 
-BIRTH_STATE_BASENAME_V1 = "birth"
-PRODUCER_RECEIPTS_BASENAME_V1 = "producer_receipts.sqlite"
-APPROVALS_BASENAME_V1 = "approvals.sqlite"
+def default_birth_bootstrap_paths() -> BirthBootstrapPaths:
+    import config as C
+    return BirthBootstrapPaths(
+        C.PATH_USER_CONFIG / "birth" / "bootstrap.json",
+        C.PATH_USER_STATE / "birth",
+    )
 
 
-def _secure_state_dir(state_dir: Path) -> Path:
-    """Create the durable Birth state directory and refuse a loose one."""
+def _object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise BirthBootstrapError(f"birth_bootstrap_config_duplicate:{key}")
+        result[key] = value
+    return result
+
+
+def _read_config(path: Path) -> dict[str, object]:
+    try:
+        raw = path.read_bytes()
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=_object_pairs)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise BirthBootstrapError("birth_bootstrap_config_unavailable") from exc
+    if not isinstance(value, dict):
+        raise BirthBootstrapError("birth_bootstrap_config_invalid")
+    return value
+
+
+def _secure_state_db(state_dir: Path) -> Path:
     try:
         state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         info = state_dir.stat()
-        if (not state_dir.is_dir() or state_dir.is_symlink()
-                or (os.name != "nt" and info.st_mode & 0o077)):
+        if not state_dir.is_dir() or state_dir.is_symlink() or (os.name != "nt" and info.st_mode & 0o077):
             raise BirthBootstrapError("birth_state_permissions")
-        return state_dir
-    except BirthBootstrapError:
-        raise
-    except OSError as exc:
-        raise BirthBootstrapError("birth_state_unavailable") from exc
-
-
-def _secure_state_db(state_dir: Path, basename: str) -> Path:
-    """Create one durable database inside the state directory and check it.
-
-    Receipts and approvals carry the same weight, so they get the same
-    treatment from a single entry: two nearly identical helpers standing side
-    by side is how the two drifted apart in the first place.
-    """
-    try:
-        path = state_dir / basename
-        flags = (os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0)
-                 | getattr(os, "O_NOFOLLOW", 0))
+        path = state_dir / "producer-receipts.sqlite"
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(path, flags, 0o600)
         try:
-            info = os.fstat(descriptor)
-            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                    or (os.name != "nt" and info.st_mode & 0o077)):
+            db_info = os.fstat(descriptor)
+            if not stat.S_ISREG(db_info.st_mode) or db_info.st_nlink != 1 or (os.name != "nt" and db_info.st_mode & 0o077):
                 raise BirthBootstrapError("birth_state_permissions")
         finally:
             os.close(descriptor)
@@ -96,6 +108,77 @@ def _secure_state_db(state_dir: Path, basename: str) -> Path:
         raise
     except OSError as exc:
         raise BirthBootstrapError("birth_state_unavailable") from exc
+
+
+def _secure_approval_db(path: Path) -> Path:
+    """Validate the explicitly configured durable approval database path."""
+    try:
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        parent = path.parent.stat()
+        if (not path.parent.is_dir() or path.parent.is_symlink()
+                or (os.name != "nt" and parent.st_mode & 0o077)):
+            raise BirthBootstrapError("birth_approval_store_permissions")
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags, 0o600)
+        try:
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or (os.name != "nt" and info.st_mode & 0o077)):
+                raise BirthBootstrapError("birth_approval_store_permissions")
+        finally:
+            os.close(descriptor)
+        return path
+    except BirthBootstrapError:
+        raise
+    except OSError as exc:
+        raise BirthBootstrapError("birth_approval_store_unavailable") from exc
+
+
+def _resolve(config_dir: Path, value: object) -> Path:
+    if not isinstance(value, str) or not value or "\0" in value:
+        raise BirthBootstrapError("birth_key_path_invalid")
+    path = Path(value)
+    return path if path.is_absolute() else config_dir / path
+
+
+def _load_authorities(value: Mapping[str, object], config_dir: Path, *,
+                      forbidden_public_keys: tuple[Ed25519PublicKey, ...]):
+    from executor_birth_keystore import load_birth_keystore
+    expected = {f"{cap.producer_id}:{cap.operation}": cap for cap in _producer_capabilities_for_bootstrap()}
+    producers = value.get("producers")
+    if not isinstance(producers, dict) or set(producers) != set(expected):
+        raise BirthBootstrapError("birth_producer_registry_incomplete")
+    authorities: dict[_ProducerCapability, _ProducerAuthority] = {}
+    entries: dict[str, list[IssuerKey]] = {}
+    public_keys: set[bytes] = set()
+    for name, capability in expected.items():
+        item = producers[name]
+        if not isinstance(item, dict) or set(item) != {"issuer_id", "keystore", "origin", "author"}:
+            raise BirthBootstrapError("birth_producer_registry_invalid")
+        try:
+            issuer_id = item["issuer_id"]
+            if not isinstance(issuer_id, str) or not issuer_id:
+                raise ValueError
+            origin, author = ExecutorOrigin(item["origin"]), RevisionAuthor(item["author"])
+        except (KeyError, ValueError, TypeError) as exc:
+            raise BirthBootstrapError("birth_producer_registry_invalid") from exc
+        loaded = load_birth_keystore(
+            _resolve(config_dir, item["keystore"]),
+            forbidden_public_keys=(*forbidden_public_keys, *public_keys),
+        )
+        private = loaded.active_private_key
+        key_id = loaded.active_key_id
+        public_bytes = private.public_key().public_bytes_raw()
+        if public_bytes in public_keys:
+            raise BirthBootstrapError("birth_producer_capability_key_reused")
+        public_keys.update(verifier.public_bytes_raw() for verifier in loaded.verifier_keys.values())
+        authority = _ProducerAuthority(capability, issuer_id, key_id, private, origin, author)
+        authorities[capability] = authority
+        entries.setdefault(issuer_id, []).extend(IssuerKey(
+            verifier_id, verifier, frozenset({origin}), frozenset({author}),
+        ) for verifier_id, verifier in loaded.verifier_keys.items())
+    registry = IssuerRegistry({key: tuple(items) for key, items in entries.items()})
+    return MappingProxyType(authorities), registry
 
 
 def _manifest_ref(intent: BirthIntent) -> ManifestRef:
@@ -125,13 +208,9 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
             raise BirthBootstrapError("birth_intent_invalid")
         objective = _hash(b"metnos.executor-birth.objective/v1\0", intent.reason, *intent.approval_refs)
         context, _pin = context_builder.preview(intent)
-        # The kind of the executor is not a property of who asks for it: it
-        # comes from where the manifest of that contract lives, which the
-        # inventory already authenticated.
-        origin = executor_origin_v1(intent.contract_id.origin)
         observed = observe_candidate(
             intent.candidate_source_root, contract_id=intent.contract_id,
-            executor_origin=origin, revision_authorship=authority.author,
+            executor_origin=authority.origin, revision_authorship=authority.author,
             objective_hash=objective, admission_context=context,
         )
         try:
@@ -146,7 +225,7 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
         expires = instant + timedelta(seconds=ttl_seconds)
         def issue() -> bytes:
             return issue_producer_receipt(
-                issuer_id=authority.issuer_id, executor_origin=origin,
+                issuer_id=authority.issuer_id, executor_origin=authority.origin,
                 revision_authorship=authority.author, objective_hash=objective,
                 candidate_source_id=source_id,
                 issued_at=instant.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -167,6 +246,35 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
             intent.candidate_source_root,
         )
     return create
+
+
+def _context_builder(value: object, config_dir: Path):
+    # Imported only at bootstrap/use time so the independently reviewed F4
+    # builder remains the sole owner of admission-context observations.
+    try:
+        from executor_birth_context import AdmissionContextMaterial, ComponentMaterial, MaterialFile
+        from executor_birth_context_builder import production_context_builder
+        names = set(AdmissionContextMaterial.__dataclass_fields__)
+        if not isinstance(value, dict) or set(value) != names:
+            raise BirthBootstrapError("birth_context_material_incomplete")
+        components = {}
+        for name in names:
+            item = value[name]
+            if not isinstance(item, dict) or set(item) != {"version", "files", "configuration"}:
+                raise BirthBootstrapError("birth_context_material_invalid")
+            if not isinstance(item["files"], list):
+                raise BirthBootstrapError("birth_context_material_invalid")
+            files = []
+            for source in item["files"]:
+                if not isinstance(source, dict) or set(source) != {"label", "path"}:
+                    raise BirthBootstrapError("birth_context_material_invalid")
+                files.append(MaterialFile(source["label"], _resolve(config_dir, source["path"]).resolve()))
+            components[name] = ComponentMaterial(
+                item["version"], tuple(files), item["configuration"],
+            )
+        return production_context_builder(AdmissionContextMaterial(**components))
+    except (ImportError, AttributeError, OSError, TypeError, ValueError) as exc:
+        raise BirthBootstrapError("birth_context_builder_unavailable") from exc
 
 
 class _PostconditionAdapter:
@@ -248,123 +356,111 @@ class _PostconditionAdapter:
                             raise BirthBootstrapError("birth_authoring_recovery_pointer_conflict")
 
 
-def _sealed_authorities(sealed):
-    """Build the producer authorities and the issuer registry from the set.
-
-    The issuer identity is the capability's own producer, the author comes
-    from the closed table, and the keys come from the stores the provisioner
-    prepared: no name, no origin and no key is chosen by a document.
-    """
-    from executor_birth_producer_table_v1 import producer_store_name_v1
-
-    authorities: dict[_ProducerCapability, _ProducerAuthority] = {}
-    entries: dict[str, list[IssuerKey]] = {}
-    public_keys: set[bytes] = set()
-    for capability in _producer_capabilities_for_bootstrap():
-        name = producer_store_name_v1(capability.producer_id, capability.operation)
-        loaded = sealed.producers.get(name)
-        if loaded is None:
-            raise BirthBootstrapError("birth_producer_registry_incomplete")
-        author = producer_author_v1(capability.producer_id, capability.operation)
-        private = loaded.active_private_key
-        public_bytes = private.public_key().public_bytes_raw()
-        if public_bytes in public_keys:
-            raise BirthBootstrapError("birth_producer_capability_key_reused")
-        public_keys.update(
-            verifier.public_bytes_raw() for verifier in loaded.verifier_keys.values()
+def _build(paths: BirthBootstrapPaths, *, now: Callable[[], datetime]) -> BirthRuntimeBundle:
+    value = _read_config(paths.config)
+    required = {"schema_version", "policy_version", "receipt_ttl_seconds", "admission", "approval", "producers", "context", "semantic_review"}
+    expected = required | ({"windows_sandbox"} if os.name == "nt" else set())
+    if set(value) != expected or value["schema_version"] != 1:
+        raise BirthBootstrapError("birth_bootstrap_config_invalid")
+    if not isinstance(value["policy_version"], str) or not value["policy_version"]:
+        raise BirthBootstrapError("birth_bootstrap_config_invalid")
+    ttl = value["receipt_ttl_seconds"]
+    if type(ttl) is not int or not 60 <= ttl <= 86400:
+        raise BirthBootstrapError("birth_bootstrap_config_invalid")
+    admission = value["admission"]
+    if not isinstance(admission, dict) or set(admission) != {"keystore"}:
+        raise BirthBootstrapError("birth_admission_keyring_invalid")
+    approval = value["approval"]
+    if not isinstance(approval, dict) or set(approval) != {"db_path", "authority_registry"}:
+        raise BirthBootstrapError("birth_approval_store_invalid")
+    config_dir = paths.config.parent
+    windows_registry = None
+    if os.name == "nt":
+        sandbox = value["windows_sandbox"]
+        fields = {"helper_path", "helper_binary_hash", "config_path", "config_hash", "runtime_binary_hash"}
+        if not isinstance(sandbox, dict) or set(sandbox) != fields:
+            raise BirthBootstrapError("windows_sandbox_registry_invalid")
+        helper_path = _resolve(config_dir, sandbox["helper_path"]).resolve()
+        helper_config = _resolve(config_dir, sandbox["config_path"]).resolve()
+        digests = tuple(sandbox[name] for name in (
+            "helper_binary_hash", "config_hash", "runtime_binary_hash",
+        ))
+        if any(not isinstance(item, str) or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}", item) for item in digests):
+            raise BirthBootstrapError("windows_sandbox_registry_invalid")
+        try:
+            if (helper_binary_hash(helper_path) != sandbox["helper_binary_hash"]
+                    or helper_binary_hash(helper_config) != sandbox["config_hash"]):
+                raise BirthBootstrapError("windows_sandbox_registry_invalid")
+        except OSError as exc:
+            raise BirthBootstrapError("windows_sandbox_registry_invalid") from exc
+        windows_registry = WindowsSandboxRegistry(
+            helper_path, sandbox["helper_binary_hash"], helper_config,
+            sandbox["config_hash"], sandbox["runtime_binary_hash"],
         )
-        authorities[capability] = _ProducerAuthority(
-            capability, capability.producer_id, loaded.active_key_id, private, author,
+    from executor_birth_keystore import load_birth_keystore
+    from sign import list_trusted_publics
+    trusted_publics = tuple(list_trusted_publics())
+    author_keys = tuple(public for _name, public in trusted_publics)
+    admission_store = load_birth_keystore(
+        _resolve(config_dir, admission["keystore"]),
+        forbidden_public_keys=author_keys,
+    )
+    admission_private = admission_store.active_private_key
+    verifiers = admission_store.verifier_keys
+    key_id = admission_store.active_key_id
+    authorities, registry = _load_authorities(
+        value, config_dir,
+        forbidden_public_keys=(*author_keys, *tuple(verifiers.values())),
+    )
+    producer_db = _secure_state_db(paths.state_dir)
+    approval_db = _secure_approval_db(_resolve(config_dir, approval["db_path"]))
+    from executor_birth_approval_authority import load_approval_authority
+    try:
+        approval_authority = load_approval_authority(
+            _resolve(config_dir, approval["authority_registry"])
         )
-        entries.setdefault(capability.producer_id, []).extend(IssuerKey(
-            verifier_id, verifier, frozenset(ExecutorOrigin), frozenset({author}),
-        ) for verifier_id, verifier in loaded.verifier_keys.items())
-    return MappingProxyType(authorities), IssuerRegistry(
-        {key: tuple(items) for key, items in entries.items()}
-    )
-
-
-def _build_sealed(*, now: Callable[[], datetime]) -> BirthRuntimeBundle:
-    """Assemble the runtime from the prepared authority set, and from nothing else.
-
-    Every authority is read once under the barrier of
-    ``executor_birth_prepared_root``, the context is the one rebuilt there from
-    the installed distribution, and the two policy facts come from the code.
-    No configuration document takes part.
-    """
-    from executor_birth_commit_publisher import _build_prepared_bundle_v1
-    from executor_birth_context import BuiltAdmissionContext
-    from executor_birth_context_builder import ProductionContextBuilder
-    from executor_birth_policy_v1 import (
-        BIRTH_POLICY_VERSION_V1, birth_receipt_ttl_seconds_v1,
-    )
-    from executor_birth_prepared_root import load_sealed_authorities_v1
-    from executor_birth_approval_store import resolve_request_approval
-    import config as _config
-
-    sealed = load_sealed_authorities_v1()
-    state_dir = _secure_state_dir(
-        Path(_config.PATH_USER_STATE) / BIRTH_STATE_BASENAME_V1
-    )
-    producer_db = _secure_state_db(state_dir, PRODUCER_RECEIPTS_BASENAME_V1)
-    approval_db = _secure_state_db(state_dir, APPROVALS_BASENAME_V1)
-
-    authorities, registry = _sealed_authorities(sealed)
-    bundle = _build_prepared_bundle_v1(
-        author=sealed.author,
-        admission=sealed.admission,
-        set_id=sealed.prepared.set_id,
-        prepared_admission_context_id=sealed.prepared.prepared_admission_context_id,
-        prepared_context_epoch=sealed.prepared.prepared_context_epoch,
-        store_root=None,
-    )
-    context_builder = ProductionContextBuilder(
-        BuiltAdmissionContext(sealed.material.context, sealed.material.pin, {})
-    )
-    trusted_publics = tuple(sorted(sealed.author.verifier_keys.items()))
-    verifier = _PostconditionAdapter(
-        trusted_publics=trusted_publics,
-        verifier_keys=sealed.admission.verifier_keys,
-    )
+    except Exception as exc:
+        raise BirthBootstrapError("birth_approval_authority_invalid") from exc
+    verifier = _PostconditionAdapter(trusted_publics=trusted_publics, verifier_keys=verifiers)
     verifier.recover_authoring()
-
+    context_builder = _context_builder(value["context"], config_dir)
+    try:
+        from executor_birth_semantic_authority import load_semantic_authority
+        semantic_authority = load_semantic_authority(value["semantic_review"], config_dir)
+    except Exception as exc:
+        raise BirthBootstrapError("semantic_review_unavailable") from exc
+    from executor_birth_approval_store import resolve_request_approval
     def approval_resolver(request, observed, revision, instant):
         return resolve_request_approval(
             approval_refs=request.approval_refs, request_id=request.request_id,
             candidate_id=observed.identities.candidate_id,
             semantic_core_id=observed.identities.semantic_core_id,
             admission_context_id=observed.identities.admission_context_id,
-            scope=approval_scope(observed, revision), now=instant,
-            db_path=approval_db, authority=sealed.approval,
+            scope=approval_scope(observed, revision), now=instant, db_path=approval_db,
+            authority=approval_authority,
         )
-
     core = _assemble_birth_core(
         producer_registry=registry, producer_db=producer_db,
         context_resolver=context_builder.resolve,
         context_epoch_resolver=context_builder.current_epoch,
         approval_resolver=approval_resolver,
         shadow_dependencies=_assemble_production_dependencies(
-            semantic_authority=sealed.semantic, windows_sandbox_registry=None,
-            linux_sandbox_registry=sealed.sandbox,
+            semantic_authority=semantic_authority,
+            windows_sandbox_registry=windows_registry,
         ),
-        admission_private_key=sealed.admission.active_private_key,
-        admission_verifier_keys=sealed.admission.verifier_keys,
-        admission_key_id=sealed.admission.active_key_id,
-        policy_version=BIRTH_POLICY_VERSION_V1, now=now,
-        commit_publisher=bundle.publisher,
+        admission_private_key=admission_private, admission_verifier_keys=verifiers,
+        admission_key_id=key_id, policy_version=value["policy_version"], now=now,
+        publisher_options={"trusted_publics": trusted_publics},
         postcondition_verifier=verifier.verify,
     )
-    ttl = birth_receipt_ttl_seconds_v1()
-    factories = {
-        cap: _request_factory(auth, registry, producer_db, ttl, now, context_builder)
-        for cap, auth in authorities.items()
-    }
+    factories = {cap: _request_factory(auth, registry, producer_db, ttl, now, context_builder)
+                 for cap, auth in authorities.items()}
     return _assemble_birth_runtime_bundle(core, factories)
 
 
-def bootstrap_birth_runtime(
-    *, now: Callable[[], datetime] | None = None
-) -> BirthRuntimeBundle:
+def bootstrap_birth_runtime(paths: BirthBootstrapPaths | None = None, *,
+                            now: Callable[[], datetime] | None = None) -> BirthRuntimeBundle:
     """Initialize exactly once; concurrent callers see one result or one failure."""
     global _BOOT_STATE, _BOOT_ERROR
     with _BOOT_LOCK:
@@ -377,7 +473,7 @@ def bootstrap_birth_runtime(
             raise BirthBootstrapError("birth_bootstrap_failed") from _BOOT_ERROR
         _BOOT_STATE = "building"
     try:
-        bundle = _build_sealed(now=now or (lambda: datetime.now(timezone.utc)))
+        bundle = _build(paths or default_birth_bootstrap_paths(), now=now or (lambda: datetime.now(timezone.utc)))
         _install_birth_runtime_bundle(bundle)
     except BaseException as exc:
         with _BOOT_LOCK:
@@ -388,43 +484,29 @@ def bootstrap_birth_runtime(
     return bundle
 
 
-def birth_authority_is_prepared_v1() -> bool:
-    """Say whether this installation has a prepared authority set at all.
-
-    The question is asked directly, never inferred from a refusal: an absent
-    Birth root and a failed read produce the same input/output code, and
-    treating that code as "nothing prepared" would hide a real fault behind
-    the declared inactive state.
-    """
-    import config as C
-    from executor_birth_prepared_set import MARKER_BASENAME_V1
-
-    marker = (Path(C.PATH_USER_CONFIG) / BIRTH_STATE_BASENAME_V1
-              / MARKER_BASENAME_V1)
-    try:
-        return marker.is_file()
-    except OSError:
-        return False
-
-
 def require_birth_runtime_before_workers() -> None:
     """Install the Birth authority before any mutating worker starts.
 
-    An installation on which the operator has not run the provisioner yet has
-    no prepared set, so it has no sealed runtime either.  That is the declared
-    ``prepared_not_active`` state, not a failure: refusing to boot there makes
-    the service unstartable, which is exactly what happened once on the
-    reference installation, where the running process was the last surviving
-    instance and no restart could succeed.
+    The authority set is provisioned by increments 2B to 2F, which do not exist
+    yet, so an installation that still lacks ``birth/bootstrap.json`` has no
+    sealed runtime at all.  That is the declared ``prepared_not_active`` state,
+    not a failure: section 3.2 forbids group 2 from making the closed path
+    binding before the cutover.  Refusing to boot there makes the service
+    unstartable, which is exactly what happened on the reference installation
+    between the commit that added this gate and this change: the running
+    process was the last surviving instance and no restart could succeed.
 
-    Once a set is prepared, every failure to activate it stays fatal.
+    Every other bootstrap error stays fatal.
     """
-    if not birth_authority_is_prepared_v1():
+    try:
+        bootstrap_birth_runtime()
+    except BirthBootstrapError as exc:
+        if str(exc) != "birth_bootstrap_config_unavailable":
+            raise
         import logging
 
         logging.getLogger(__name__).warning(
-            "Birth authority not provisioned yet: continuing without the "
-            "sealed runtime, as the prepared_not_active state allows",
+            "Birth runtime not provisioned yet (%s): continuing without the "
+            "sealed authority, as required before the RM-0008 cutover",
+            exc,
         )
-        return
-    bootstrap_birth_runtime()
