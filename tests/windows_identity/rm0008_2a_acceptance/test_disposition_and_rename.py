@@ -281,6 +281,11 @@ def test_r3_windows_disposition_contract(case: str, tmp_path: Path, monkeypatch)
                 "delete_pending": False,
                 "close_count": 0,
             }
+            # The system reuses the number of a closed handle: after the
+            # validation handle is closed, a query carrying the same number
+            # belongs to another object and is not observed here.  This is kept
+            # apart from the state above, which is compared whole.
+            victim_closed: list[int] = []
             post_parent_inventories = []
             expected_parent_inventory = None
             if case in success_cases:
@@ -324,6 +329,7 @@ def test_r3_windows_disposition_contract(case: str, tmp_path: Path, monkeypatch)
                     if (
                         result
                         and disposition_state["native"]
+                        and not victim_closed
                         and _nt_scalar(args[0]) == disposition_handle()
                         and _nt_scalar(args[1]) == 1  # FileStandardInfo
                     ):
@@ -345,7 +351,7 @@ def test_r3_windows_disposition_contract(case: str, tmp_path: Path, monkeypatch)
                         if call.get("name") == "victim"
                         and call.get("returned_handle")
                     ]
-                    if value in candidates:
+                    if value in candidates and not victim_closed:
                         if value != disposition_handle():
                             raise AssertionError("disposition closed a second victim handle")
                         if not (
@@ -356,6 +362,7 @@ def test_r3_windows_disposition_contract(case: str, tmp_path: Path, monkeypatch)
                                 "disposition handle closed before native reconciliation"
                             )
                         disposition_state["close_count"] += 1
+                        victim_closed.append(value)
                     return native_close(handle)
 
                 def checked_inventory(handle, *args, **kwargs):

@@ -3851,10 +3851,12 @@ class _SecureRootSession:
                 # The destination is observed where it now lives, relative to
                 # its container: rebuilding its absolute name would verify a
                 # different object if a component were substituted meanwhile.
+                # The observation stays in the domain of the act: an object the
+                # move could not have produced cannot pass for its result.
                 final_handle = _win_open_relative_v1(
                     target_fd,
                     target_name,
-                    purpose=_NtOpenPurposeV1.read_required,
+                    purpose=_NtOpenPurposeV1.mutating_open,
                     directory=directory,
                 )
                 if _verify_win_object(final_handle, final_path, directory=directory)[0] != identity:

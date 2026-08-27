@@ -4053,6 +4053,17 @@ cancello.
 Entrambe le correzioni toccano l'apparato congelato ed entrano nella lista
 d'attesa del §17.21.
 
+### 17.33 L'osservazione resta nel dominio dell'atto
+
+Dopo aver spostato un oggetto il prodotto lo riapriva per verificarlo nel
+dominio della sola lettura. Due celle della base chiedono invece il dominio
+dell'atto: cio' che il movimento non avrebbe potuto produrre non deve poter
+passare per il suo risultato. Il prodotto e' stato allineato.
+
+Effetto misurato: le due accuse spariscono e la cella della sorgente in cache
+avanza all'asserzione successiva; nessuna cella diventa verde per questo solo
+cambiamento e nessuna regredisce. E' un passo necessario, non sufficiente.
+
 ### 17.32 Cio' che sparisce, prima si lascia andare
 
 La rimozione di un contenitore falliva con un rifiuto di condivisione
