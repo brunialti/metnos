@@ -1883,6 +1883,19 @@ def exposed(name):
             "role_catalog=catalog", "role_catalog=tuple(catalog.exact_bindings)"
         )
     )
+    reader_gains_a_mutation = dict(baseline)
+    reader_gains_a_mutation["runtime/executor_birth_prepared_root.py"] += """
+def also_writes(session):
+    return session.rename_no_replace()
+"""
+    third_construction_site = dict(baseline)
+    third_construction_site["runtime/escape.py"] = """
+import executor_birth_secure_fs as secure_fs
+def exposed():
+    return secure_fs._AuthenticatedRootDescriptor(
+        handles=(), root_path="x", identity=object(), role_catalog=None,
+    )
+"""
     phase_calls_a_mutation = dict(baseline)
     phase_calls_a_mutation["install/phases/phase3_code.py"] = """
 from install.birth_authority_provisioner import (
@@ -1919,6 +1932,8 @@ def exposed():
         )
     )
     for mutant in (
+        reader_gains_a_mutation,
+        third_construction_site,
         phase_calls_a_mutation,
         phase_calls_the_layout,
         public_provisioner_door,
@@ -2058,6 +2073,27 @@ def open_birth_provisioning_layout_v1():
 """,
         # Increment 2B adds the second and last installer-side door.  The
         # baseline carries it so a mutant can prove the door stays single.
+        # Group 3 adds the read-only runtime door; the baseline carries it so
+        # a mutant can prove it stays read-only and stays alone.
+        "runtime/executor_birth_prepared_root.py": """
+import executor_birth_secure_fs as secure_fs
+def _productive_role_catalog_v1():
+    return secure_fs._BirthRoleCatalogV1(
+        schema_version=1,
+        patterns=tuple(secure_fs._BirthRolePatternV1),
+        exact_bindings=(),
+        generation=0,
+    )
+def open_prepared_root_session_v1():
+    catalog = _productive_role_catalog_v1()
+    descriptor = secure_fs._AuthenticatedRootDescriptor(
+        handles=(),
+        root_path="birth",
+        identity=object(),
+        role_catalog=catalog,
+    )
+    return secure_fs._adopt_authenticated_root(descriptor)
+""",
         "install/birth_authority_provisioner.py": """
 import executor_birth_secure_fs as secure_fs
 class _TransactionJournalV1:

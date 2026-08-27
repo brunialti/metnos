@@ -113,3 +113,35 @@ def test_the_reader_opens_nothing_of_its_own():
         "dispose_transaction_object", "birth_authority_provisioner",
     ):
         assert forbidden not in source, forbidden
+
+
+def test_the_runtime_door_is_read_only(tmp_path: Path, monkeypatch):
+    """The runtime opens its own root, and only to read it."""
+    import executor_birth_prepared_root as door
+
+    base = _prepared(tmp_path, monkeypatch)
+    support.use_config(monkeypatch, base)
+    observed = door.read_prepared_set_v1()
+    expected = _read(monkeypatch, base)
+    assert observed == expected
+
+    session = door.open_prepared_root_session_v1()
+    with session:
+        with pytest.raises(Exception):
+            session.create_directory_exclusive(
+                ("author-root-v1",), role=None,
+            )
+
+
+def test_an_absent_prepared_root_is_named_not_guessed(tmp_path: Path, monkeypatch):
+    import executor_birth_prepared_root as door
+
+    base = support.make_config(tmp_path)
+    support.use_config(monkeypatch, base)
+    import shutil
+
+    shutil.rmtree(base / "birth")
+    with pytest.raises(door.PreparedRootError) as error:
+        door.read_prepared_set_v1()
+    assert error.value.code.startswith("birth_provisioning_")
+    assert error.value.__cause__ is None

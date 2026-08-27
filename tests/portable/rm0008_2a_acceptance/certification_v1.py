@@ -1954,6 +1954,24 @@ def validate_productive_mutation_graph(
             "the runtime reaches the installer provisioner: "
             f"{runtime_reaching_provisioner!r}"
         )
+    # Group 3 gives the runtime a door of its own onto the prepared root, and
+    # it must be a different kind of door: it builds and adopts a descriptor,
+    # and it never reaches a mutating method.  The two sites are named, so a
+    # third one is still a violation.
+    reader_module = "runtime.executor_birth_prepared_root"
+    reader_entry_symbol = f"{reader_module}::open_prepared_root_session_v1"
+    reader_catalog_symbol = f"{reader_module}::_productive_role_catalog_v1"
+
+    def _admitted_sites(sites, *, expected_module: str) -> bool:
+        owners = {owner for owner, _ in sites}
+        if owners <= {reader_entry_symbol, reader_catalog_symbol}:
+            return False
+        return all(
+            owner.startswith(expected_module)
+            or owner in {reader_entry_symbol, reader_catalog_symbol}
+            for owner in owners
+        ) and len(owners) <= 2
+
     constructor_sites = _sites_reaching_exact_call(calls, call_sites, descriptor_symbol)
     # Section 16.13.4 gives the historical loaders their own distinct and
     # constant catalogues, so only the authoritative construction — the one
@@ -1978,11 +1996,14 @@ def validate_productive_mutation_graph(
     session_sites = _sites_reaching_exact_call(calls, call_sites, session_symbol)
     layout_sites = _sites_reaching_exact_call(calls, call_sites, layout_symbol)
     expected_site_module = "install.birth_authority_provisioning::"
-    if len(constructor_sites) != 1 or not constructor_sites[0][0].startswith(expected_site_module):
+    if not _admitted_sites(constructor_sites, expected_module=expected_site_module):
         raise CertificationError(
-            f"descriptor must have one installer construction site: {constructor_sites!r}"
+            f"descriptor construction site is not admitted: {constructor_sites!r}"
         )
-    constructor_owner = constructor_sites[0][0]
+    constructor_owner = next(
+        owner for owner, _ in constructor_sites
+        if owner.startswith(expected_site_module)
+    )
     descriptor_calls = call_nodes.get((constructor_owner, descriptor_symbol), [])
     catalog_calls_for_owner = call_nodes.get((constructor_owner, catalog_symbol), [])
     if len(descriptor_calls) != 1 or len(catalog_calls_for_owner) != 1:
@@ -2020,13 +2041,14 @@ def validate_productive_mutation_graph(
         raise CertificationError(
             "authoritative role catalog must be assigned once to catalog"
         )
-    if len(catalog_sites) != 1 or not catalog_sites[0][0].startswith(
-        expected_site_module
-    ):
+    if not _admitted_sites(catalog_sites, expected_module=expected_site_module):
         raise CertificationError(
-            f"role catalog must have one installer construction site: {catalog_sites!r}"
+            f"role catalog construction site is not admitted: {catalog_sites!r}"
         )
-    catalog_owner = catalog_sites[0][0]
+    catalog_owner = next(
+        owner for owner, _ in catalog_sites
+        if owner.startswith(expected_site_module)
+    )
     catalog_calls = call_nodes.get((catalog_owner, catalog_symbol), [])
     if len(catalog_calls) != 1 or not _is_authoritative_catalog_constructor(
         catalog_calls[0],
@@ -2040,9 +2062,9 @@ def validate_productive_mutation_graph(
             "installer role catalog must use schema_version=1, generation=0, "
             "patterns=tuple(_BirthRolePatternV1), and no exact bindings"
         )
-    if len(adopter_sites) != 1 or not adopter_sites[0][0].startswith(expected_site_module):
+    if not _admitted_sites(adopter_sites, expected_module=expected_site_module):
         raise CertificationError(
-            f"descriptor must have one installer adoption site: {adopter_sites!r}"
+            f"descriptor adoption site is not admitted: {adopter_sites!r}"
         )
     if len(layout_sites) != 1 or layout_sites[0][0] != entry_symbol:
         raise CertificationError(
@@ -2187,6 +2209,18 @@ def validate_productive_mutation_graph(
             owner == entry_symbol or owner_name.startswith("_")
         ):
             if owner == entry_symbol or owner in entry_definition_reachable:
+                continue
+        if owner_module == reader_module:
+            # The runtime door is admitted only while it stays read-only: it
+            # may reach the descriptor, the catalogue and the adoption, and
+            # never a mutating method.
+            reached_mutations = {
+                target for target in reached
+                if target in mutation_symbols
+                or target.startswith("@method:")
+                and target.removeprefix("@method:") in _MUTATION_METHODS
+            }
+            if not reached_mutations:
                 continue
         if owner_module == installer_phase_module:
             # Section 10.6 puts the two entries in Phase 3.  What it may name
