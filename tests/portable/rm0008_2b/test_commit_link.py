@@ -31,7 +31,6 @@ def _facts(**overrides) -> BirthCommitFactsV1:
         "manifest_ref": object(),
         "snapshot": object(),
         "request_id": DIGEST,
-        "birth_request_id": DIGEST,
         "policy_version": "birth-policy-v1",
         "contract_id": "contract",
         "candidate_id": DIGEST,
@@ -181,7 +180,7 @@ def test_the_view_is_immutable_and_declares_it_is_not_active():
 
 def test_the_module_exports_no_publisher_and_no_factory():
     assert set(link.__all__) == {
-        "BirthCommitFactsV1", "BirthCommitLinkError",
+        "BirthCommitFactsV1", "BirthCommitLinkError", "BirthCommitOutcomeV1",
         "PREPARED_BUNDLE_STATE_V1", "PreparedBundleViewV1",
     }
     assert not any(

@@ -39,7 +39,6 @@ def _facts(ref, snapshot, predecessor: str, epoch: str) -> BirthCommitFactsV1:
         manifest_ref=ref,
         snapshot=snapshot,
         request_id="sha256:" + "8" * 64,
-        birth_request_id="sha256:" + "8" * 64,
         policy_version="birth-policy-v1",
         contract_id=ref.contract_id,
         candidate_id=DIGEST,
@@ -106,9 +105,11 @@ def test_the_prepared_identities_publish_a_real_generation(
         prepared_context_epoch=epoch,
         store_root=store,
     )
-    publication = bundle.publisher.commit(
+    outcome = bundle.publisher.commit(
         _facts(ref, snapshot, initial.current_generation_id, epoch)
     )
+    publication = outcome.publication
+    assert outcome.admission_receipt, "the issued receipt travels with it"
 
     assert publication.current_generation_id != initial.current_generation_id
     receipts = tuple(store.rglob("admission-receipts/*.json"))

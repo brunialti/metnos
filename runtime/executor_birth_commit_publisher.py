@@ -28,6 +28,11 @@ PREPARED_BUNDLE_STATE_V1 = "prepared_not_active"
 class BirthCommitLinkError(RuntimeError):
     """The commit link was asked for something it must never accept."""
 
+    @property
+    def code(self) -> str:
+        """The stable code, for the caller that turns it into an outcome."""
+        return str(self.args[0]) if self.args else "birth_commit_link_invalid"
+
 
 @dataclass(frozen=True, slots=True)
 class BirthCommitFactsV1:
@@ -40,7 +45,6 @@ class BirthCommitFactsV1:
     manifest_ref: object
     snapshot: object
     request_id: str
-    birth_request_id: str
     policy_version: str
     contract_id: str
     candidate_id: str
@@ -67,8 +71,11 @@ class BirthCommitFactsV1:
         # ``contract_id`` is a typed identity of the inventory, not a string,
         # so it is checked for shape by the store and only for being a value
         # here.
+        # ``birth_request_id`` is not a field: the store passes it to the
+        # issuer at the exact commit point, so carrying a second copy here
+        # would be a value nobody reads.
         for name in (
-            "request_id", "birth_request_id", "policy_version",
+            "request_id", "policy_version",
             "candidate_id", "semantic_core_id", "admission_context_id",
             "observed_context_epoch", "producer_receipt_hash", "issued_at",
         ):
@@ -155,8 +162,13 @@ class _BirthCommitPublisher:
         self._primitive = primitive
         self._store_root = store_root
 
-    def commit(self, facts: BirthCommitFactsV1):
-        """Publish one admitted snapshot through the single owned primitive."""
+    def commit(self, facts: BirthCommitFactsV1) -> "BirthCommitOutcomeV1":
+        """Publish one admitted snapshot through the single owned primitive.
+
+        The issued receipt travels back with the publication instead of being
+        collected in a list the publisher would have to keep: a sealed object
+        shared by concurrent births must not carry mutable state.
+        """
         from contract_store import BirthCommitAuthorization
         from executor_birth_receipts import (
             AdmissionCheck, AdmissionKind, AdmittedCheckStatus,
@@ -165,13 +177,20 @@ class _BirthCommitPublisher:
 
         if not isinstance(facts, BirthCommitFactsV1):
             raise BirthCommitLinkError("birth_commit_facts_required")
+        # The publisher owns the prepared epoch and receives the observed one:
+        # a disagreement means the context moved between the observation and
+        # this commit, and it is refused here rather than deeper down.
+        if facts.observed_context_epoch != self._epoch:
+            raise BirthCommitLinkError("birth_context_changed")
+
+        issued: list[bytes] = []
 
         def issuer(generation_id, _payload_hashes, birth_request_id, journal_hash):
             checks = dict(facts.check_results)
             checks["authoring_install_journal_v1"] = AdmissionCheck(
                 "1", AdmittedCheckStatus.PASSED, journal_hash,
             )
-            return issue_admission_receipt(
+            encoded = issue_admission_receipt(
                 policy_version=facts.policy_version,
                 contract_id=facts.contract_id,
                 generation_id=generation_id,
@@ -192,6 +211,8 @@ class _BirthCommitPublisher:
                 key_id=self._admission_key_id,
                 private_key=self._admission_private,
             )
+            issued.append(encoded)
+            return encoded
 
         def verifier(encoded):
             return verify_admission_receipt(
@@ -206,7 +227,7 @@ class _BirthCommitPublisher:
             context_epoch=facts.observed_context_epoch,
             context_epoch_resolver=self._resolve_epoch,
         )
-        return self._primitive(
+        publication = self._primitive(
             facts.manifest_ref,
             expected_generation_id=facts.expected_generation_id,
             snapshot=facts.snapshot,
@@ -216,6 +237,12 @@ class _BirthCommitPublisher:
             birth_authorization=authorization,
             store_root=self._store_root,
         )
+        return BirthCommitOutcomeV1(publication, issued[-1] if issued else None)
+
+    @property
+    def store_root(self):
+        """Where the store lives, for the callers that must lock around it."""
+        return self._store_root
 
     def resolve_predecessor(self, request):
         """Authenticate the predecessor with the ring this publisher owns.
@@ -234,6 +261,14 @@ class _BirthCommitPublisher:
 
     def _resolve_epoch(self) -> str:
         return self._epoch
+
+
+@dataclass(frozen=True, slots=True)
+class BirthCommitOutcomeV1:
+    """What one commit produced: the publication and the receipt it issued."""
+
+    publication: object
+    admission_receipt: bytes | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,6 +329,6 @@ def _build_prepared_bundle_v1(
 
 
 __all__ = [
-    "BirthCommitFactsV1", "BirthCommitLinkError", "PREPARED_BUNDLE_STATE_V1",
-    "PreparedBundleViewV1",
+    "BirthCommitFactsV1", "BirthCommitLinkError", "BirthCommitOutcomeV1",
+    "PREPARED_BUNDLE_STATE_V1", "PreparedBundleViewV1",
 ]

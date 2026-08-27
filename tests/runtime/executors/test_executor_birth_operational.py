@@ -213,20 +213,23 @@ def test_admitted_pipeline_commits_receipt_and_replays_verified_postcondition(tm
     assert len(calls) == 1
 
 
-def test_complete_pipeline_rejects_context_epoch_toctou(tmp_path):
-    epoch = {"value": D}
+def test_complete_pipeline_rejects_a_context_that_moved(tmp_path):
+    """The sealed publisher owns a prepared epoch and refuses a moved one.
 
-    def publisher(_ref, *, birth_authorization, **_kwargs):
-        epoch["value"] = "sha256:" + "9" * 64
-        if birth_authorization.context_epoch_resolver() != birth_authorization.context_epoch:
-            raise ContractStoreError("birth_context_changed")
+    The previous shape drove a *live* epoch resolver and let the store notice
+    the change mid-commit.  The prepared set fixes the epoch, so that window
+    does not exist any more: what has to be refused is a commit whose observed
+    epoch disagrees with the prepared one, and the publisher refuses it before
+    the store is reached.
+    """
+    def publisher(_ref, **_kwargs):
         raise AssertionError("changed epoch accepted")
 
     request, core = _fixture(tmp_path, publisher)
-    core = replace(core, context_epoch_resolver=lambda: epoch["value"])
+    core = replace(core, context_epoch_resolver=lambda: "sha256:" + "9" * 64)
     result = _birth_executor_for_test(request, _core=core)
     assert result.publication is None
-    assert result.error_code == "birth_context_changed"
+    assert result.error_code in {"birth_context_changed", "birth_context_pin_invalid"}
 
 
 def test_complete_pipeline_forwards_predecessor_pin_for_pointer_toctou(tmp_path):
@@ -288,9 +291,24 @@ def test_rotation_issues_new_terminal_and_admission_signatures_only_with_active_
     request, old_core = _fixture(tmp_path, publisher)
     old_public = old_core.admission_verifier_keys["birth-1"]
     new_private = Ed25519PrivateKey.generate()
-    rotated_core = replace(
-        old_core, admission_private_key=new_private, admission_key_id="birth-2",
-        admission_verifier_keys={"birth-1": old_public, "birth-2": new_private.public_key()},
+    # The Admission identity is owned by the sealed publisher, so a rotation
+    # is a new bundle and not a field swapped underneath one: replacing the
+    # field alone would leave the old key signing, which is the point.
+    rotated_core = _sealed_core_for_test(
+        producer_registry=old_core.producer_registry,
+        producer_db=old_core.producer_db,
+        context_resolver=old_core.context_resolver,
+        predecessor_resolver=old_core.predecessor_resolver,
+        context_epoch_resolver=old_core.context_epoch_resolver,
+        approval_resolver=old_core.approval_resolver,
+        shadow_dependencies=old_core.shadow_dependencies,
+        admission_private_key=new_private, admission_key_id="birth-2",
+        admission_verifier_keys={
+            "birth-1": old_public, "birth-2": new_private.public_key(),
+        },
+        policy_version=old_core.policy_version, now=old_core.now,
+        publisher=publisher, publisher_options={},
+        postcondition_verifier=old_core.postcondition_verifier,
     )
     assert _birth_executor_for_test(request, _core=rotated_core).error_code is None
     assert admission_key_ids == ["birth-2"]

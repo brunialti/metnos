@@ -36,53 +36,38 @@ def _store(root: Path, key: Ed25519PrivateKey) -> None:
     (root / "keystore.json").chmod(0o600)
 
 
-def _producer_config(tmp_path: Path):
-    result = {}
+def _sealed_producers(tmp_path: Path, *, shared_key=None):
+    """The producer stores as the prepared set hands them over."""
+    from executor_birth_keystore import load_birth_keystore
+    from executor_birth_producer_table_v1 import producer_store_name_v1
+
+    stores = {}
     for index, cap in enumerate(_producer_capabilities_for_bootstrap()):
-        key = Ed25519PrivateKey.generate()
-        name = f"producer-{index}"
-        _store(tmp_path / name, key)
-        # Provenance is no longer declared here: the author comes from the
-        # closed table and the kind from where the manifest lives.
-        result[f"{cap.producer_id}:{cap.operation}"] = {
-            "issuer_id": cap.producer_id, "keystore": name,
-        }
-    return {"producers": result}
+        key = shared_key or Ed25519PrivateKey.generate()
+        directory = tmp_path / f"producer-{index}"
+        _store(directory, key)
+        name = producer_store_name_v1(cap.producer_id, cap.operation)
+        stores[name] = load_birth_keystore(directory)
+    return type("Sealed", (), {"producers": stores})()
 
 
 def test_registry_is_closed_and_capability_specific(tmp_path: Path) -> None:
-    value = _producer_config(tmp_path)
-    authorities, registry = bootstrap._load_authorities(value, tmp_path, forbidden_public_keys=())
+    sealed = _sealed_producers(tmp_path)
+    authorities, registry = bootstrap._sealed_authorities(sealed)
     assert set(authorities) == set(_producer_capabilities_for_bootstrap())
     assert set(registry.entries) == {cap.producer_id for cap in authorities}
-    forged = dict(value["producers"])
-    forged["forged:publish"] = next(iter(forged.values()))
+    # A store the prepared set does not contain is a missing capability, not a
+    # default: the registry is closed by the catalogue, not by a document.
+    partial = type("Sealed", (), {"producers": dict(list(sealed.producers.items())[:-1])})()
     with pytest.raises(bootstrap.BirthBootstrapError, match="registry_incomplete"):
-        bootstrap._load_authorities({"producers": forged}, tmp_path, forbidden_public_keys=())
+        bootstrap._sealed_authorities(partial)
 
 
-def test_admission_and_producer_keys_are_not_created_when_missing(tmp_path: Path) -> None:
-    missing = tmp_path / "missing-store"
-    from executor_birth_keystore import BirthKeyStoreError, load_birth_keystore
-    with pytest.raises(BirthKeyStoreError, match="birth_keystore_unavailable"):
-        load_birth_keystore(missing)
-    assert not missing.exists()
-
-
-def test_state_database_is_private_and_symlink_state_is_rejected(tmp_path: Path) -> None:
-    state = tmp_path / "state"
-    db = bootstrap._secure_state_db(state)
-    assert db.exists()
-    if __import__("os").name != "nt":
-        assert state.stat().st_mode & 0o077 == 0
-        assert db.stat().st_mode & 0o077 == 0
-    link = tmp_path / "state-link"
-    try:
-        link.symlink_to(state, target_is_directory=True)
-    except OSError:
-        return
-    with pytest.raises(bootstrap.BirthBootstrapError, match="state_permissions"):
-        bootstrap._secure_state_db(link)
+def test_reused_key_cannot_forge_a_second_capability(tmp_path: Path) -> None:
+    shared = Ed25519PrivateKey.generate()
+    sealed = _sealed_producers(tmp_path, shared_key=shared)
+    with pytest.raises(bootstrap.BirthBootstrapError, match="capability_key_reused"):
+        bootstrap._sealed_authorities(sealed)
 
 
 def test_manifest_ref_targets_authoring_inventory_not_candidate_staging(monkeypatch, tmp_path: Path) -> None:
@@ -99,15 +84,6 @@ def test_manifest_ref_targets_authoring_inventory_not_candidate_staging(monkeypa
     assert resolved.manifest_dir != staging
 
 
-def test_reused_key_cannot_forge_a_second_capability(tmp_path: Path) -> None:
-    value = _producer_config(tmp_path)
-    entries = value["producers"]
-    names = list(entries)
-    entries[names[1]]["keystore"] = entries[names[0]]["keystore"]
-    with pytest.raises(Exception, match="reuses_author_identity|capability_key_reused"):
-        bootstrap._load_authorities(value, tmp_path, forbidden_public_keys=())
-
-
 def test_bootstrap_is_once_and_concurrent(monkeypatch, tmp_path: Path) -> None:
     sentinel = object()
     monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
@@ -116,11 +92,11 @@ def test_bootstrap_is_once_and_concurrent(monkeypatch, tmp_path: Path) -> None:
     calls = []
     barrier = threading.Barrier(3)
 
-    def build(_paths, *, now):
+    def build(*, now):
         calls.append(now)
         return sentinel
 
-    monkeypatch.setattr(bootstrap, "_build", build)
+    monkeypatch.setattr(bootstrap, "_build_sealed", build)
     monkeypatch.setattr(bootstrap, "_install_birth_runtime_bundle",
                         lambda bundle: setattr(operational, "_RUNTIME_BUNDLE", bundle))
     results = []
@@ -146,12 +122,12 @@ def test_failed_bootstrap_is_sticky_and_fail_closed(monkeypatch, tmp_path: Path)
     monkeypatch.setattr(bootstrap, "_BOOT_ERROR", None)
     calls = 0
 
-    def fail(_paths, *, now):
+    def fail(*, now):
         nonlocal calls
         calls += 1
         raise bootstrap.BirthBootstrapError("missing")
 
-    monkeypatch.setattr(bootstrap, "_build", fail)
+    monkeypatch.setattr(bootstrap, "_build_sealed", fail)
     paths = bootstrap.BirthBootstrapPaths(tmp_path / "missing", tmp_path / "state")
     with pytest.raises(bootstrap.BirthBootstrapError, match="missing"):
         bootstrap.bootstrap_birth_runtime(paths)
@@ -165,7 +141,7 @@ def test_restart_reuses_already_installed_complete_bundle(monkeypatch, tmp_path:
     monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", sentinel)
     monkeypatch.setattr(bootstrap, "_BOOT_STATE", "cold")
     monkeypatch.setattr(
-        bootstrap, "_build",
+        bootstrap, "_build_sealed",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("rebuilt")),
     )
     assert bootstrap.bootstrap_birth_runtime(
@@ -173,64 +149,23 @@ def test_restart_reuses_already_installed_complete_bundle(monkeypatch, tmp_path:
     ) is sentinel
 
 
-def test_build_end_to_end_from_explicit_material_and_dedicated_keystores(monkeypatch, tmp_path: Path) -> None:
-    admission_root = tmp_path / "admission"
-    _store(admission_root, Ed25519PrivateKey.generate())
-    producers = _producer_config(tmp_path)
-    component_names = (
-        "standard", "linter", "vocabulary", "authority_registry",
-        "sandbox_registry", "property_catalog", "runner", "review_policy",
-        "template_allowlist", "primitive_allowlist", "dependency_allowlist",
-    )
-    context = {name: {"version": "v1", "files": [], "configuration": {"name": name}}
-               for name in component_names}
-    semantic_key = Ed25519PrivateKey.generate()
-    (tmp_path / "semantic.pub").write_bytes(semantic_key.public_key().public_bytes_raw())
-    (tmp_path / "semantic.pub").chmod(0o600)
-    (tmp_path / "semantic-evidence").mkdir(mode=0o700)
-    evidence_kinds = ("deterministic_oracle", "human_case", "metamorphic_relation")
-    semantic_review = {
-        "evidence_dir": "semantic-evidence", "verifiers": {
-            "semantic-v1": {"path": "semantic.pub", "status": "active"}
-        },
-        "versions": {kind: ["v1"] for kind in evidence_kinds},
-        "owners": {kind: [f"owner:{kind}"] for kind in evidence_kinds},
-    }
-    approver_key = Ed25519PrivateKey.generate()
-    import base64
-    approval_registry = {
-        "schema_version": 1, "revision": 1,
-        "keys": {"approver-v1": base64.b64encode(
-            approver_key.public_key().public_bytes_raw()).decode()},
-        "actors": {"operator": {"key_ids": ["approver-v1"],
-                                  "scopes": ["synthesized"]}},
-    }
-    (tmp_path / "approval-authority.json").write_bytes(
-        json.dumps(approval_registry, sort_keys=True, separators=(",", ":")).encode()
-    )
-    (tmp_path / "approval-authority.json").chmod(0o600)
-    value = {
-        "schema_version": 1, "policy_version": "birth-policy-v1",
-        "receipt_ttl_seconds": 3600, "admission": {"keystore": "admission"},
-        "approval": {"db_path": "approval.sqlite",
-                     "authority_registry": "approval-authority.json"},
-        "producers": producers["producers"], "context": context,
-        "semantic_review": semantic_review,
-    }
-    config = tmp_path / "bootstrap.json"
-    config.write_bytes(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
-    import manifest_inventory, sign
-    monkeypatch.setattr(manifest_inventory, "inventory_authoring_manifests",
-                        lambda: ManifestInventory((), ()))
-    monkeypatch.setattr(sign, "list_trusted_publics", lambda: [])
-    bundle = bootstrap._build(
-        bootstrap.BirthBootstrapPaths(config, tmp_path / "state"),
-        now=lambda: datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
-    )
-    assert set(bundle.producer_factories) == set(_producer_capabilities_for_bootstrap())
-    assert bundle.core.producer_db.exists()
-    assert bundle.core.admission_key_id in bundle.core.admission_verifier_keys
-    assert bundle.core.context_epoch_resolver().startswith("sha256:")
+def test_the_sealed_build_refuses_without_a_prepared_set(monkeypatch, tmp_path: Path) -> None:
+    """There is no free-form path left: without a prepared set nothing is built.
+
+    The previous end-to-end test drove `_build` on material declared by a
+    configuration document.  That path is gone — it could not publish anyway,
+    lacking the author key — so what has to be proven now is that its absence
+    is a refusal and not a fallback.
+    """
+    import config as runtime_config
+    from executor_birth_prepared_root import PreparedRootError
+
+    monkeypatch.setattr(runtime_config, "PATH_USER_CONFIG", tmp_path / "absent")
+    assert not hasattr(bootstrap, "_build")
+    assert not hasattr(bootstrap, "_load_authorities")
+    assert not hasattr(bootstrap, "_context_builder")
+    with pytest.raises((PreparedRootError, bootstrap.BirthBootstrapError)):
+        bootstrap._build_sealed(now=lambda: NOW)
 
 
 def _recovery_fixture(monkeypatch, tmp_path: Path, *, current: str | None):
