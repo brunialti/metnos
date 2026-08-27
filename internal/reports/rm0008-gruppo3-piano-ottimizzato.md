@@ -148,6 +148,29 @@ delle ricevute porta con se' il proprio campo di validita' dichiarato, cosi' una
 futura preferenza firmata avra' dove sedersi e un valore fuori campo sara' un
 difetto invece che una sorpresa.
 
+## 6.ter La fabbrica del contesto va spostata, non duplicata
+
+Il §9.4 impone che il gruppo 3 **non si fidi** del materiale registrato: deve
+riaprire le sorgenti installate, ricostruirlo e confrontare ogni digest sotto la
+propria barriera. Il codice che lo ricostruisce esiste gia', ma vive in
+`install/birth_authority_provisioner.py`, e un modulo di runtime non puo'
+importarlo (la cella R1 vieta al runtime di raggiungere il predispositore).
+
+Duplicarlo sarebbe la scelta peggiore: due implementazioni dello stesso digest
+divergono, e il giorno che divergono nessuno se ne accorge finche' un'identita'
+non cambia da sola.
+
+**Da fare:** spostare catalogo V1 e fabbrica in un modulo di runtime — per
+esempio `runtime/executor_birth_context_v1.py` — e farlo importare dal
+predispositore (install → runtime e' ammesso). La fabbrica **riceve una
+sessione gia' aperta** sulla distribuzione e non ne apre nessuna, cosi' le porte
+ammesse restano due: quella dell'installatore e quella di sola lettura del
+runtime. Chi apre la sessione e' il chiamante, che quell'autorita' ce l'ha gia'.
+
+Nota di esecuzione: il blocco da spostare e' ~190 righe e va spostato a mano,
+non con sostituzioni testuali — un tentativo meccanico si e' rivelato fragile e
+lasciarlo a meta' sarebbe peggio che non iniziarlo.
+
 ## 7. Procedura di rifotografia (l'unica cosa tacita e costosa)
 
 Serve ogni volta che cambia un file sotto `tests/portable/rm0008_2a_acceptance`,
