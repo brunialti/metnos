@@ -1,0 +1,116 @@
+"""The one door through which an executor may load another's code."""
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from executor_birth_admitted_module_v1 import (
+    AdmittedModuleError, code_digest_of_bytes_v1, load_admitted_module_v1,
+)
+
+_ENTRY = b"VALUE = 41\n\n\ndef reverse(plan, results):\n    return {'ok': True}\n"
+_HELPER = b"HELPED = True\n"
+
+
+def _published(tmp_path: Path, *, entry: bytes = _ENTRY, signed: bool = True):
+    """Lay out one published executor the way the store leaves it."""
+    directory = tmp_path / "demo"
+    directory.mkdir()
+    (directory / "demo.py").write_bytes(entry)
+    (directory / "helper.py").write_bytes(_HELPER)
+    manifest = directory / "manifest.toml"
+    manifest.write_text(
+        'name = "demo"\n\n[code]\nfiles = ["demo.py", "helper.py"]\n',
+        encoding="utf-8",
+    )
+    digest = code_digest_of_bytes_v1([entry, _HELPER]) if signed else ""
+    return SimpleNamespace(
+        manifest_path=manifest, code_path=directory / "demo.py", digest=digest,
+    )
+
+
+def test_the_door_agrees_with_the_signer_on_what_the_digest_is(tmp_path: Path):
+    """One digest, two ways of reaching it: they must not drift apart.
+
+    The signer reopens each declared file; the door digests the bytes it is
+    about to run.  Same value, no gap between the check and the run.
+    """
+    import sign
+
+    executor = _published(tmp_path)
+    directory = Path(executor.manifest_path).parent
+    assert code_digest_of_bytes_v1([_ENTRY, _HELPER]) == (
+        "sha256:" + hashlib.sha256(_ENTRY + _HELPER).hexdigest()
+    )
+    assert code_digest_of_bytes_v1([_ENTRY, _HELPER]) == sign.compute_code_digest(
+        directory, ["demo.py", "helper.py"],
+    )
+
+
+def test_signed_code_loads_and_the_module_works(tmp_path: Path):
+    module = load_admitted_module_v1(_published(tmp_path))
+    assert module.VALUE == 41
+    assert module.reverse({}, {}) == {"ok": True}
+
+
+def test_code_changed_after_the_signature_is_refused(tmp_path: Path):
+    """The point of the door: the bytes about to run must be the signed ones."""
+    executor = _published(tmp_path)
+    Path(executor.code_path).write_bytes(_ENTRY + b"VALUE = 999\n")
+    with pytest.raises(AdmittedModuleError, match="admitted_module_digest_mismatch"):
+        load_admitted_module_v1(executor)
+
+
+def test_a_sibling_changed_after_the_signature_is_refused_too(tmp_path: Path):
+    """The signature covers every declared file, not only the entry."""
+    executor = _published(tmp_path)
+    (Path(executor.manifest_path).parent / "helper.py").write_bytes(b"HELPED = 0\n")
+    with pytest.raises(AdmittedModuleError, match="admitted_module_digest_mismatch"):
+        load_admitted_module_v1(executor)
+
+
+def test_without_a_signed_digest_only_the_installed_distribution_is_admitted(
+        tmp_path: Path, monkeypatch):
+    """No digest means the distribution's own code, and nothing else."""
+    import config as runtime_config
+
+    executor = _published(tmp_path, signed=False)
+    monkeypatch.setattr(runtime_config, "PATH_EXECUTORS", tmp_path / "elsewhere")
+    with pytest.raises(AdmittedModuleError,
+                       match="admitted_module_outside_distribution"):
+        load_admitted_module_v1(executor)
+
+    monkeypatch.setattr(runtime_config, "PATH_EXECUTORS", tmp_path)
+    assert load_admitted_module_v1(executor).VALUE == 41
+
+
+def test_a_caller_cannot_point_the_door_at_a_file_of_its_choosing(tmp_path: Path):
+    """The entry is the first declared file, never one the caller names."""
+    executor = _published(tmp_path)
+    intruder = Path(executor.manifest_path).parent / "intruder.py"
+    intruder.write_bytes(b"VALUE = 0\n")
+    executor.code_path = intruder
+    with pytest.raises(AdmittedModuleError, match="admitted_module_entry_mismatch"):
+        load_admitted_module_v1(executor)
+
+
+def test_a_record_without_a_publication_is_refused(tmp_path: Path):
+    with pytest.raises(AdmittedModuleError, match="admitted_module_unpublished"):
+        load_admitted_module_v1(
+            SimpleNamespace(manifest_path="", code_path=None, digest=""),
+        )
+
+
+def test_a_link_in_place_of_the_code_is_refused(tmp_path: Path):
+    """The final component is opened without following a link."""
+    executor = _published(tmp_path)
+    entry = Path(executor.code_path)
+    real = entry.parent / "real.py"
+    real.write_bytes(_ENTRY)
+    entry.unlink()
+    entry.symlink_to(real)
+    with pytest.raises(AdmittedModuleError, match="admitted_module_unreadable"):
+        load_admitted_module_v1(executor)

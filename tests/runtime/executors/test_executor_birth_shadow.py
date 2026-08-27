@@ -260,11 +260,18 @@ def test_a_relative_import_of_a_sibling_in_the_candidate_is_closed():
     }) == []
 
 
-def test_the_closure_costs_nothing_on_the_real_executors():
-    """Measured, not assumed: no published executor breaks any of the three.
+def test_the_closure_cost_on_the_real_executors_is_known_and_named():
+    """Measured, not assumed, and the single exception is named out loud.
 
-    If this ever turns red it is a finding about that executor, not about the
-    rule: the rule was introduced only because its cost here was zero.
+    Every published executor but one is already closed.  ``undo_last_turn``
+    loads the code of another executor to undo it, and it must move to the
+    authenticated door of ``executor_birth_admitted_module_v1``.  It cannot be
+    changed yet: after the cutover an executor changes only through an Executor
+    Birth intent, which is what this very group is making possible.  The ready
+    patch sits in ``internal/design/patch_undo_last_turn_porta_autenticata.diff``
+    and belongs to the first intent once Birth is active.
+
+    When that happens this cell turns red, and the fix is to empty the set.
     """
     import config as runtime_config
     from executor_birth_shadow import _closure_findings_v1
@@ -272,13 +279,17 @@ def test_the_closure_costs_nothing_on_the_real_executors():
     root = Path(runtime_config.PATH_EXECUTORS)
     if not root.is_dir():
         pytest.skip("no executor tree in this installation")
-    broken: list[str] = []
+    findings: dict[str, list[str]] = {}
     for directory in sorted(item for item in root.iterdir() if item.is_dir()):
         files = {
             path.name: path.read_bytes() for path in sorted(directory.glob("*.py"))
         }
-        if files:
-            broken.extend(
-                f"{directory.name}/{item}" for item in _closure_findings_v1(files)
-            )
-    assert broken == []
+        broken = _closure_findings_v1(files) if files else []
+        if broken:
+            findings[directory.name] = broken
+
+    assert set(findings) == {"undo_last_turn"}, findings
+    assert all(
+        item.startswith("unauthenticated_code_load:")
+        for item in findings["undo_last_turn"]
+    ), findings

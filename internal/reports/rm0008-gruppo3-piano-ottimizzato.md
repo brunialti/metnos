@@ -325,36 +325,50 @@ pre-correzione (per questo le prove dell'incremento si rimuovono col prodotto);
 il manifesto **non** puo' cambiare senza una nuova fotografia, perche' il suo
 digest e' confrontato sia col blob storico sia con quello corrente.
 
-## 10. Decisione aperta: caricare codice da un percorso
+## 10. Caricare codice da un percorso: deciso, con una porta autenticata
 
 L'obbligo 7 chiede di fallire quando «un file locale eseguito non appartiene
-allo snapshot o a una dipendenza chiusa». La parte misurabile staticamente è
-stata implementata (sintassi, import relativi, niente codice montato a runtime).
-Resta fuori **una** cosa, perché non si decide da sola.
+allo snapshot o a una dipendenza chiusa».
 
 **Misura** (27/8, sull'albero reale):
 
 | insieme | file | siti che caricano codice da un percorso |
 |---|---|---|
-| `executors/` | 93 | **1** — `undo_last_turn`, `spec_from_file_location` + `exec_module` su un percorso calcolato |
-| `runtime/` | 523 | 3 — `reverse_patterns_patch`, `testing/runner`, tutti di proprietà del runtime |
+| `executors/` | 93 | **1** — `undo_last_turn`, `spec_from_file_location` + `exec_module` |
+| `runtime/` | 523 | 3 — `reverse_patterns_patch`, `testing/runner`, di proprieta' del runtime |
 
-Sui 93 file degli executor non c'è **nessun** `exec`/`eval`/`compile` builtin, e
-l'unico caricamento da percorso è quello di `undo_last_turn`, che carica il
-modulo di un ALTRO executor pubblicato per invocarne l'inverso.
+Sui 93 file degli executor non c'e' **nessun** `exec`/`eval`/`compile` builtin.
 
-**Perché non l'ho deciso da solo.** Staticamente si vede soltanto che il
-percorso è *calcolato*, non dove punterà: la regola onesta sarebbe «un candidato
-non carica codice da un percorso calcolato a runtime», e quella regola rifiuta
-`undo_last_turn`. Le tre uscite possibili:
+**Le tre uscite che avevo elencato erano tutte peggiori del problema.** Vietare
+per tutti obbligava a riprogettare il verbo di sistema `undo`. Esentare per
+origine concedeva l'autorita' alla PROVENIENZA, che e' la cosa che questo
+gruppo esiste per non fare piu'. Una capacita' nuova nel manifest ampliava il
+contratto, che il mandato vieta.
 
-1. la regola vale per tutti, e `undo_last_turn` va riscritto per non caricare
-   moduli per percorso (costo: riprogettare il verbo di sistema `undo`);
-2. la regola esenta per **origine** — un builtin di prima parte può, un
-   candidato sintetizzato o importato no (costo: l'esenzione è per provenienza,
-   non per capacità dichiarata);
-3. si dichiara una capacità nuova nel manifest (costo: **amplia il contratto**,
-   che il mandato corrente vieta).
+**Decisione (Roberto, 27/8, delegata): una quarta uscita — la porta
+autenticata.** Caricare codice da un percorso non e' vietato e non si concede
+per fiducia: si concede per AUTENTICAZIONE.
+`runtime/executor_birth_admitted_module_v1.py` e' l'unica porta. Riceve un
+record di catalogo gia' pubblicato — mai un percorso scelto da chi chiama —
+rilegge i file di codice dichiarati, ricalcola il digest e lo confronta con
+quello firmato, e solo allora **esegue i byte gia' in memoria**: fra il
+controllo e l'esecuzione non resta alcuna finestra. Un record senza digest
+firmato appartiene alla distribuzione installata ed e' ammesso soltanto se vive
+davvero sotto la radice degli executor di quella distribuzione.
 
-Serve il verdetto di Roberto. Fino ad allora la cosa è dichiarata NON provata
-nel criterio di uscita del gruppo 3, non silenziosamente permessa.
+E' **piu' flessibile** dello stato precedente (qualunque executor puo' farlo,
+non solo un builtin per il fatto di esserlo) e **piu' sicura** (prima non si
+verificava nulla: si apriva il percorso e si eseguiva cio' che c'era).
+
+La verifica statica del candidato rifiuta ora i sei nomi che caricano codice da
+un percorso. Costo misurato: 86 executor su 87 gia' chiusi.
+
+**L'unica eccezione, dichiarata.** `undo_last_turn` va portato sulla porta, e
+la modifica e' scritta: `internal/design/patch_undo_last_turn_porta_autenticata.diff`.
+Non si puo' applicare adesso: dopo il cutover un executor cambia SOLO tramite
+un'intenzione di Executor Birth — `sign.py publish` risponde
+«unavailable in STORE_ONLY» — ed e' esattamente cio' che questo gruppo sta
+rendendo possibile. Quella patch e' la prima intenzione da presentare quando
+Birth e' attivo. La cella
+`test_the_closure_cost_on_the_real_executors_is_known_and_named` nomina
+l'eccezione e diventa rossa quando sara' sanata.
