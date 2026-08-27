@@ -4252,6 +4252,40 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.72 Incremento 2C chiuso, e una conseguenza dell'ordine degli stati
+
+Chiuso il §10.3. Gli ingressi pubblici dell'operatore si leggono e si
+convalidano coi caricatori produttivi prima che venga creato qualcosa; assenza e
+invalidita' restano esiti distinti, e una pubblica semantica che nessuno
+referenzia e' un difetto quanto una mancante. Dodici identita' nuove — Admission
+e undici Producer, uno per capacita' del catalogo sigillato — nascono dentro la
+transazione, sotto profilo riservato, con un solo costruttore condiviso: autore,
+Admission e Producer differiscono nelle chiavi e mai nella forma. I due registri
+si copiano byte per byte, la directory delle evidenze nasce vuota, nessuna
+privata dell'approvatore o del revisore entra nell'insieme.
+
+Il controllo di separazione confronta i 32 byte grezzi di ogni ruolo, non i nomi.
+Dettaglio non ovvio, corretto prima delle prove: raccoglieva le pubbliche
+generate in una **mappa** per identificativo, e due ruoli con gli stessi byte vi
+sarebbero collassati in una voce sola, cioe' proprio il caso che il controllo
+esiste per vedere. Ora e' una lista.
+
+**Conseguenza dell'ordine degli stati.** L'enum degli stati e' monotona e
+`author_installed` sta dopo `authorities_staged`; quindi la pubblicazione della
+radice autore, che il 2B faceva subito, non puo' restare dov'era. E' uscita dal
+percorso e torna nel 2E, dove la matrice del §8.2 la colloca: subito dopo
+`verified`, che richiede il materiale del contesto (2D) e `set.json`. Una corsa
+completa oggi si ferma a `authorities_staged` e **non pubblica nulla di
+definitivo** — che e' esattamente quanto il §10.3 prescrive. Le prove del 2B che
+guardavano l'archivio finale ora guardano quello allestito dentro la
+transazione: le proprieta' provate sono le stesse, cambia dove vive l'archivio.
+
+Nota di nomenclatura, da chiudere una volta sola: l'entrata pubblica si chiama
+ancora `provision_author_root_v1` benche' predisponga anche le autorita'. Il
+nome e' fissato nella cella R1 della base, quindi rinominarlo costa una
+fotografia; il §10.6 dice gia' come si chiameranno le due entrate finali, e la
+rinomina si fa li', una volta, invece che a ogni incremento.
+
 ### 17.71 Incremento 2B chiuso: le sette forme interrotte convergono
 
 Chiuso il §10.2. L'ordine di creazione e' cambiato per una ragione precisa:
