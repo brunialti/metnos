@@ -3199,14 +3199,27 @@ class _SecureRootSession:
                             # its absolute name is never rebuilt, and its
                             # restrictive descriptor is present from the first
                             # instant of its existence.
-                            handle = _win_open_relative_v1(
+                            created = _win_open_relative_v1(
                                 directory,
                                 name,
                                 purpose=_NtOpenPurposeV1.create_exclusive,
                                 directory=False,
                                 security_descriptor=attributes.lpSecurityDescriptor,
                             )
-                            _win_apply_and_verify_security(handle, descriptor)
+                            try:
+                                _win_apply_and_verify_security(created, descriptor)
+                                # What stays open while the lock is held is a
+                                # taker, not a creator: a creation handle keeps
+                                # the right to remove, and everyone reading the
+                                # container would collide with it.
+                                handle = _win_open_relative_v1(
+                                    directory,
+                                    name,
+                                    purpose=_NtOpenPurposeV1.lock_reader,
+                                    directory=False,
+                                )
+                            finally:
+                                _win_close(created)
                 else:
                     # The lock lives inside a container that is already open:
                     # it is reached from that handle, never by rebuilding its
