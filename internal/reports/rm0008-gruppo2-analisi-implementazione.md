@@ -4158,6 +4158,28 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.51 La famiglia del privilegio non era ambiente: tre celle su quattro
+
+L'analisi del §17.47 dava per ambientali tutte e quattro le celle del privilegio
+di ripristino. Era vero per una sola. Le altre tre erano difetti del prodotto,
+resi invisibili proprio dall'ambiente:
+
+- l'ambito **saltava** la chiamata di ripristino quando l'adeguamento d'ingresso
+  non aveva cambiato nulla — cioe' proprio quando il privilegio era gia'
+  abilitato, come in entrambi gli ambienti disponibili. Il comportamento
+  dipendeva percio' da come il gettone era configurato, e l'iniezione della
+  prova non poteva neppure scattare. Ora lo stato catturato viene sempre
+  riapplicato, qualunque cosa contenga;
+- se il corpo dell'ambito falliva **e** il privilegio non veniva restituito, il
+  secondo esito nascondeva il primo. I due sono entrambi reali e nessuno spiega
+  l'altro: ora viaggiano insieme.
+
+Misura: ACL Windows da 8 a 5 celle rosse (65 celle in tutto). Resta ambientale
+la sola cella che pretende il privilegio presente ma disabilitato.
+
+**Lezione**: «l'ambiente non me lo fa vedere» non e' una diagnosi. In tre casi
+su quattro l'ambiente nascondeva un difetto invece di causarlo.
+
 ### 17.50 Il prodotto 2A c'e' gia': le 82 celle obbligatorie sono verdi
 
 La fotografia distingue tre dichiarazioni: 48 celle **assenti** (il bersaglio
