@@ -2021,10 +2021,28 @@ def _win_profile_name_v1(role: _BirthObjectRole) -> str:
     raise BirthSecureFSError("birth_provisioning_acl_unsafe")
 
 
+_LOCK_PATTERNS_V1 = frozenset(
+    {_BirthRolePatternV1.global_lock, _BirthRolePatternV1.keystore_lock}
+)
+
+
+def _is_lock_components_v1(components: tuple[str, ...]) -> bool:
+    """Whether the closed catalogue says these components name a lock.
+
+    Being a lock is a property of the position in the layout, not of the call
+    that happens to create or verify the object: deriving it here keeps the
+    writer and the verifier of a profile in agreement by construction.
+    """
+    return any(
+        pattern in _LOCK_PATTERNS_V1 for pattern, _, _ in _matching_rows(components)
+    )
+
+
 def _win_sddl(
     profile: Literal["confidential", "integrity_only"],
     *,
     directory: bool,
+    lock: bool = False,
     service_sid: str,
 ) -> str:
     if (
@@ -2034,7 +2052,12 @@ def _win_sddl(
         in {"s-1-5-18", "s-1-5-32-544", "s-1-5-11"}
     ):
         raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-    service_mask = "0x001200a9" if directory else "0x00120089"
+    # A lock is the one object its owner must be able to write: taking it
+    # means writing its byte, and an owner without administrative rights could
+    # otherwise never take the lock of its own store.
+    service_mask = (
+        "0x001200a9" if directory else ("0x0012008b" if lock else "0x00120089")
+    )
     aces = ["(A;;FA;;;SY)", "(A;;FA;;;BA)", f"(A;;{service_mask};;;{service_sid})"]
     if profile == "integrity_only":
         aces.append(f"(A;;{service_mask};;;AU)")
@@ -2049,11 +2072,12 @@ def _win_security_attributes(
     *,
     directory: bool,
     service_sid: str,
+    lock: bool = False,
 ) -> Iterator[tuple[_SECURITY_ATTRIBUTES, int]]:
     descriptor = ctypes.c_void_p()
     size = wintypes.DWORD()
     if not _ADVAPI32.ConvertStringSecurityDescriptorToSecurityDescriptorW(
-        _win_sddl(profile, directory=directory, service_sid=service_sid),
+        _win_sddl(profile, directory=directory, service_sid=service_sid, lock=lock),
         _SDDL_REVISION_1,
         ctypes.byref(descriptor),
         ctypes.byref(size),
@@ -2657,6 +2681,7 @@ class _SecureRootSession:
         *,
         directory: bool,
         profile: _BirthObjectRole,
+        components: tuple[str, ...] | None = None,
     ) -> None:
         if os.name != "nt":
             return
@@ -2669,7 +2694,10 @@ class _SecureRootSession:
             _BirthObjectRole.historical_public: "historical_public",
         }[profile]
         with _win_security_attributes(
-            profile, directory=directory, service_sid=self._service_sid
+            profile,
+            directory=directory,
+            service_sid=self._service_sid,
+            lock=components is not None and _is_lock_components_v1(components),
         ) as (_, descriptor):
             _win_verify_security(handle, descriptor)
 
@@ -2836,7 +2864,7 @@ class _SecureRootSession:
             )
             before = _verify_win_object(handle, path, directory=False)
             self._verify_windows_profile(
-                handle, directory=False, profile=role
+                handle, directory=False, profile=role, components=components
             )
             bound = self._file_roles.get(components)
             # A name that now holds a different object is an ambiguity; the
@@ -3044,6 +3072,7 @@ class _SecureRootSession:
                         create,
                         timeout,
                         role,
+                        components,
                     ):
                         if create:
                             self._commit_lock_binding(components, directory, name)
@@ -3191,8 +3220,10 @@ class _SecureRootSession:
         create: bool,
         timeout: float,
         role: _BirthObjectRole,
+        components: tuple[str, ...],
     ) -> Iterator[None]:
         path = os.path.join(directory_path, name)
+        lock_object = _is_lock_components_v1(components)
         handle = None
         locked = False
         acquired = False
@@ -3208,6 +3239,7 @@ class _SecureRootSession:
                             _win_profile_name_v1(role),
                             directory=False,
                             service_sid=self._service_sid,
+                            lock=lock_object,
                         ) as (attributes, descriptor):
                             handle = _win_open_path(
                                 path,
@@ -3272,6 +3304,7 @@ class _SecureRootSession:
                     _win_profile_name_v1(role),
                     directory=False,
                     service_sid=self._service_sid,
+                    lock=lock_object,
                 ) as (_, descriptor):
                     _win_verify_security(handle, descriptor)
             size = before[5]
@@ -3440,7 +3473,10 @@ class _SecureRootSession:
         try:
             with _win_restore_privilege():
                 with _win_security_attributes(
-                    profile, directory=False, service_sid=self._service_sid
+                    profile,
+                    directory=False,
+                    service_sid=self._service_sid,
+                    lock=_is_lock_components_v1(components),
                 ) as (attributes, descriptor):
                     # The object is created inside the container that is
                     # already open, with its restrictive descriptor present
@@ -4237,7 +4273,10 @@ class _SecureRootSession:
                         "birth_provisioning_recovery_ambiguous"
                     )
                 self._verify_windows_profile(
-                    target, directory=directory_expected, profile=expectation.role,
+                    target,
+                    directory=directory_expected,
+                    profile=expectation.role,
+                    components=components,
                 )
                 if directory_expected:
                     entries = _win_inventory(target)
