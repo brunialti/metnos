@@ -239,6 +239,33 @@ Lezione da tenere: la tabella fissa sembrava la scelta semplice, ma era falsa
 per sei righe su undici. **Semplice-e-falso non e' semplice**; la versione
 davvero semplice e' arrivata togliendo una sorgente, non aggiungendo un caso.
 
+## 6.quinquies Lo scambio atomico, in tre sotto-passi obbligati
+
+Il §9.1 vuole che il decodificatore libero del contesto sparisca **nello stesso
+incremento** che installa il bootstrap sigillato, e il §5.3 vuole che il nucleo
+riceva soltanto fatti. Sono due cambi che si toccano, e farne uno solo lascia
+due percorsi di pubblicazione vivi contemporaneamente. Ordine obbligato:
+
+1. **Il nucleo accetta un pubblicatore, non delle opzioni.** Oggi
+   `_assemble_birth_core` riceve `publisher_options` e possiede la primitiva;
+   deve invece ricevere il pubblicatore sigillato del 2E e chiamarlo con
+   `BirthCommitFactsV1`. Finche' questo non e' fatto, il resto non ha dove
+   attaccarsi.
+2. **La costruzione sigillata dell'avvio.** `_build_sealed` monta il nucleo da
+   `load_sealed_authorities_v1()`: registro emittenti dalle pubbliche Producer,
+   chiavi Admission, autorita' di approvazione e semantica, anello autore, e il
+   contesto **gia' ricostruito** sotto la barriera (non ricostruirlo di nuovo).
+   Le basi dati di ricevute e approvazioni nascono sotto `PATH_USER_STATE/birth`.
+3. **La rimozione, nello stesso commit del passo 2.** Spariscono
+   `_read_config`, `_load_authorities`, `_context_builder` e la lettura di
+   `bootstrap.json`. Non prima: un decodificatore libero ancora raggiungibile
+   accanto a uno sigillato e' esattamente la doppia verita' che questo gruppo
+   toglie.
+
+Regola pratica gia' pagata una volta in questa sessione: **non iniziare uno
+spostamento che non si finisce nel giro corrente.** Meglio un giro speso a
+scrivere l'ordine che un albero lasciato a meta'.
+
 ## 7. Procedura di rifotografia (l'unica cosa tacita e costosa)
 
 Serve ogni volta che cambia un file sotto `tests/portable/rm0008_2a_acceptance`,
