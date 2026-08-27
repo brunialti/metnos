@@ -170,3 +170,29 @@ def test_the_material_is_rebuilt_from_the_distribution_not_trusted(
     with pytest.raises(PreparedSetError) as error:
         door.read_prepared_set_v1()
     assert error.value.code == "birth_prepared_set_mismatch"
+
+
+def test_every_authority_is_read_once_under_the_barrier(
+    tmp_path: Path, monkeypatch,
+):
+    import executor_birth_prepared_root as door
+
+    base = _prepared(tmp_path, monkeypatch)
+    support.use_config(monkeypatch, base)
+    sealed = door.load_sealed_authorities_v1()
+
+    assert sealed.prepared.set_id == _read(monkeypatch, base).set_id
+    assert sealed.author.active_key_id == sealed.prepared.author_active_key_id
+    assert sealed.admission.active_key_id == (
+        sealed.prepared.admission_active_key_id
+    )
+    assert len(sealed.producers) == 11
+    assert sealed.approval.revision >= 1
+    assert sealed.context_epoch == sealed.prepared.prepared_context_epoch
+    # What travels out is material and values; no live capability onto the
+    # Birth root leaves the barrier.
+    for value in (sealed.author, sealed.admission, *sealed.producers.values()):
+        assert not hasattr(value, "global_lock")
+        assert not hasattr(value, "create_file_exclusive")
+    with pytest.raises(TypeError):
+        sealed.producers["x"] = None

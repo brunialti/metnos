@@ -12,7 +12,10 @@ installation, resolved once from the configuration of the installation itself.
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping
 
 BIRTH_ROOT_BASENAME_V1 = "birth"
 
@@ -151,3 +154,114 @@ def read_prepared_set_v1():
                 # reason to adopt what is on disk.
                 raise PreparedSetError("birth_prepared_set_mismatch")
     return prepared
+
+
+def load_sealed_authorities_v1():
+    """Everything the core needs, read once under the barrier and returned.
+
+    The session is opened, used and closed here: what travels out is key
+    material and immutable values, never a live capability onto the Birth root.
+    The context is the one rebuilt from the installed distribution, so the
+    caller never has to rebuild it a second time.
+    """
+    from executor_birth_context import _context_epoch
+    from executor_birth_context_v1 import (
+        ContextMaterialError, prepare_context_material_v1,
+    )
+    from executor_birth_keystore import (
+        BirthKeyStoreError, _load_birth_keystore_in_session,
+    )
+    from executor_birth_prepared_set import (
+        AUTHORITY_SETS_BASENAME_V1, AUTHOR_STORE_BASENAME_V1, PreparedSetError,
+        authority_registry_v1, load_prepared_set_v1,
+    )
+    from executor_birth_semantic_authority import (
+        _load_semantic_authority_in_session,
+    )
+
+    session = open_prepared_root_session_v1()
+    with session:
+        with session.global_lock(exclusive=False, create=False):
+            prepared = load_prepared_set_v1(session)
+            location = (AUTHORITY_SETS_BASENAME_V1, prepared.set_id)
+            registry = authority_registry_v1(session, location)
+            sources = open_distribution_sources_v1()
+            try:
+                rebuilt = prepare_context_material_v1(sources, registry)
+            except ContextMaterialError as exc:
+                raise PreparedRootError(exc.code, exc) from None
+            finally:
+                sources.close()
+            if (
+                rebuilt.material_sha256 != prepared.context_material_sha256
+                or rebuilt.prepared_admission_context_id
+                != prepared.prepared_admission_context_id
+                or rebuilt.prepared_context_epoch
+                != prepared.prepared_context_epoch
+            ):
+                raise PreparedSetError("birth_prepared_set_mismatch")
+            try:
+                author = _load_birth_keystore_in_session(
+                    (AUTHOR_STORE_BASENAME_V1,), session,
+                )
+                admission = _load_birth_keystore_in_session(
+                    location + ("admission",), session,
+                )
+                producers = {
+                    name: _load_birth_keystore_in_session(
+                        location + ("producers", name), session,
+                    )
+                    for name in sorted(registry["producers"])
+                }
+            except BirthKeyStoreError as exc:
+                raise PreparedSetError(
+                    "birth_prepared_set_unavailable", exc
+                ) from None
+            semantic = _load_semantic_authority_in_session(
+                location + ("semantic", "authority.json"),
+                location + ("semantic", "public"),
+                location + ("semantic", "evidence"),
+                session,
+            )
+            approval_document = _read_prepared_document_v1(
+                session, location + ("approval", "authority.json"),
+            )
+    from executor_birth_approval_authority import _decode_approval_authority
+
+    return SealedAuthoritiesV1(
+        prepared=prepared,
+        author=author,
+        admission=admission,
+        producers=producers,
+        approval=_decode_approval_authority(approval_document),
+        semantic=semantic,
+        context_epoch=_context_epoch(prepared.prepared_admission_context_id),
+        material=rebuilt,
+    )
+
+
+def _read_prepared_document_v1(session, components: tuple[str, ...]) -> bytes:
+    from executor_birth_prepared_set import read_document_v1
+
+    return read_document_v1(session, components)
+
+
+@dataclass(frozen=True, slots=True)
+class SealedAuthoritiesV1:
+    """Key material and values read under one barrier; no session inside."""
+
+    prepared: object
+    author: object
+    admission: object
+    producers: Mapping[str, object]
+    approval: object
+    semantic: object
+    context_epoch: str
+    material: object
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "producers", MappingProxyType(dict(self.producers))
+        )
+        if self.context_epoch != self.prepared.prepared_context_epoch:
+            raise PreparedRootError("birth_prepared_set_mismatch")
