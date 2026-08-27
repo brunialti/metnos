@@ -1586,20 +1586,33 @@ verde.
 
 | Requisito | Simbolo produttivo | Prova di modulo | Prova di integrazione | Prova installata | Esito | Git |
 |---|---|---|---|---|---|---|
-| Radice autore autenticata | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Pubblicatore con consegna privata | da compilare | da compilare | da compilare | N/A — attivazione gruppo 3 | da compilare | da compilare |
-| Admission distinta | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Tutti i Producer distinti | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Approvazione pubblica installata | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Autorità semantica installata | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Materiale del contesto canonico e inerte | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Recupero da ogni arresto | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Sicurezza Linux | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Sicurezza Windows reale nel confine del predispositore | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Vista pubblica priva di autorità | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Runtime ancora non attivo | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Nessuna interpretazione o modifica delle quattro branche Phase 3 | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
-| Limiti dello stesso UID/SID e dell'autenticazione dichiarati | da compilare | da compilare | da compilare | da compilare | da compilare | da compilare |
+| Radice autore autenticata | `_stage_author_store_v1`, `verify_author_store_v1` | `rm0008_2b/test_author.py` | `rm0008_2b/test_recovery.py` | `installed_provisioner_proof_v1`, passo `verify_with_productive_loaders` | verde su POSIX | `a2da27b5` |
+| Pubblicatore con consegna privata | `executor_birth_commit_publisher._BirthCommitPublisher` | `rm0008_2b/test_commit_link.py` | `rm0008_2b/test_commit_crossing.py` | N/A — attivazione gruppo 3 | verde su POSIX | `1d6c4669` |
+| Admission distinta | `_stage_authority_set_v1`, `_require_separated_authority_keys_v1` | `rm0008_2b/test_authority_set.py` | `rm0008_2b/test_set_document.py` | `installed_provisioner_proof_v1`, confronto con `set.json` | verde su POSIX | `c82514e0` |
+| Tutti i Producer distinti | `producer_catalog_v1`, `producer_store_name_v1` | `rm0008_2b/test_operator_inputs.py` | `rm0008_2b/test_authority_set.py` | `installed_provisioner_proof_v1`, `producer_count == 11` | verde su POSIX | `c82514e0` |
+| Approvazione pubblica installata | `acquire_operator_inputs_v1`, `verify_authority_set_v1` | `rm0008_2b/test_operator_inputs.py` | `rm0008_2b/test_authority_set.py` | `installed_provisioner_proof_v1`, `_authority_registry_v1` | verde su POSIX | `5da9ee44` |
+| Autorità semantica installata | `_acquire_semantic_publics_v1`, `verify_authority_set_v1` | `rm0008_2b/test_operator_inputs.py` | `rm0008_2b/test_authority_set.py` | `installed_provisioner_proof_v1`, `_authority_registry_v1` | verde su POSIX | `5da9ee44` |
+| Materiale del contesto canonico e inerte | `_prepare_installed_admission_context_v1` | `rm0008_2b/test_context_material.py` | `rm0008_2b/test_set_document.py` | `installed_provisioner_proof_v1`, ricostruzione dal catalogo installato | verde su POSIX | `8e85bd4d` |
+| Recupero da ogni arresto | `_TransactionJournalV1.recover_header`, `recover_checkpoint_pending` | `rm0008_2b/test_journal.py` | `rm0008_2b/test_recovery.py` | `installed_provisioner_proof_v1`, confini di processo reali | **parziale**: le sette forme interrotte sono costruite con la primitiva e convergono; l'uccisione reale del processo dopo ogni singolo passo di scrittura del §12.1.13 non e' eseguita | `f9b255cb` |
+| Sicurezza Linux | primitiva 2A + predispositore | base 2A (91 celle) | `rm0008_2b/*` | `installed_provisioner_proof_v1` | verde | `b4d648e3`, `a2da27b5` |
+| Sicurezza Windows reale nel confine del predispositore | primitiva 2A | base 2A, tre lavori Windows | N/A — vedi esito | N/A — vedi esito | **non provato per il predispositore**: le celle Windows certificano la primitiva 2A; le prove 2B-2F saltano su `nt`. La matrice pubblica Windows del predispositore resta da eseguire | `b4d648e3` |
+| Vista pubblica priva di autorità | `PreparedBundleViewV1` | `rm0008_2b/test_commit_link.py`, ispezione transitiva | `rm0008_2b/test_commit_crossing.py` | N/A — attivazione gruppo 3 | verde su POSIX | `b752e1fd` |
+| Runtime ancora non attivo | assenza di chiamanti migrati | cella R1 della base | `rm0008_2b/test_installed_proof.py` | `installed_provisioner_proof_v1`, passo `nothing_is_active` | verde | `a2da27b5` |
+| Nessuna interpretazione o modifica delle quattro branche Phase 3 | `_prepare_birth_authorities_or_defer`, `_ensure_birth_authorities_prepared` | lettura del codice: le due funzioni non ricevono ne' leggono la modalita' | `rm0008_2b/test_author.py`, entrate senza parametri | `installed_provisioner_proof_v1` non avvia la macchina Phase 3 | verde | `80261b49` |
+| Limiti dello stesso UID/SID e dell'autenticazione dichiarati | — | — | — | `installed_provisioner_proof_v1`, campo `not_yet_proven` | verde | `a2da27b5` |
+
+**Requisiti non provati, elencati separatamente:**
+
+1. **Confine Windows del predispositore.** Le prove 2B-2F girano soltanto su
+   POSIX. Le tre attivita' Windows della base certificano la primitiva 2A —
+   descrittore di sicurezza, privilegio, rinomina e disposizione per handle —
+   ma nessuna cella attraversa il predispositore su Windows.
+2. **Arresto reale a ogni singolo passo di scrittura** (§12.1.13). Le forme che
+   un arresto lascia sono costruite con la stessa primitiva e convergono tutte,
+   ma il processo non viene ucciso dopo ognuno dei sei momenti di ogni classe di
+   payload.
+3. **Concorrenza fra due processi** (§12.1.12) sul predispositore: il blocco
+   globale e' certificato dalla base 2A, non da una corsa di due predispositori.
 
 L'esito deve elencare separatamente i requisiti non provati. Il verde di test che
 non attraversano il simbolo produttivo non può riempire la colonna della prova
