@@ -4267,7 +4267,20 @@ a descrivere cio' che la predisposizione ha appena fatto.
   (4096 voci distinte), il codice del rifiuto e l'insieme dei nomi osservati,
   oltre alla contabilita' interna del budget. Solido.
 
-Restano 17 file. La resa attesa e' bassa — la base ha gia' dimostrato la propria
+- `test_g4_cleanup.py` (10 celle). Pretende che l'errore che arriva al
+  chiamante sia **lo stesso oggetto** che il corpo ha sollevato, non uno del
+  tipo giusto; che ogni maniglia sia chiusa **una volta sola**, contate per
+  numero; e che il messaggio pubblico non contenga il segreto, ne' un numero di
+  errore, ne' un elenco di permessi. Solido, ed e' il file che tiene la
+  proprieta' piu' facile da perdere in una correzione affrettata.
+- `test_r3_disposition.py` (28 celle). Ogni rimozione riuscita verifica
+  identita', classe, esito, sparizione del nome e la riconciliazione del
+  contenitore ripetuta due volte con lo stesso risultato. Solido.
+- `test_g3_posix_durability.py` (13 celle). I rifiuti verificano il codice
+  esatto, il conteggio delle chiamate della sonda, i byte di entrambi i lati e
+  l'albero immutato. Solido.
+
+Restano 14 file. La resa attesa e' bassa — la base ha gia' dimostrato la propria
 forza scoprendo in questa sessione una quindicina di difetti veri del prodotto —
 ma la revisione continua nell'ordine, e ogni file esaminato viene annotato qui.
 
