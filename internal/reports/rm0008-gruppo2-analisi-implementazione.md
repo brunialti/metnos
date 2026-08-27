@@ -4252,6 +4252,35 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.71 Incremento 2B chiuso: le sette forme interrotte convergono
+
+Chiuso il §10.2. L'ordine di creazione e' cambiato per una ragione precisa:
+l'intestazione nasce prima del contenitore dei checkpoint, cosi' ogni arresto
+lascia una forma che la matrice del §8.2 sa nominare — radice vuota, radice col
+solo pendente dell'intestazione, intestazione senza contenitore, contenitore
+vuoto, catena con un pendente. Prima l'ordine ne produceva una che la matrice
+chiama ambigua.
+
+Il recupero promuove un pendente intero con una rinomina (l'oggetto e' spostato,
+non riscritto), rimuove per handle un pendente parziale e lo riscrive, crea il
+contenitore mancante e riparte dallo zero della propria transazione. Un pendente
+che contiene un documento intero ma incoerente — predecessore sbagliato — non e'
+parziale e non viene promosso: viene scartato. Un documento che dichiara
+un'altra transazione non viene mai adottato, perche' il nonce sta nel nome e non
+si prende da un documento.
+
+Sette forme interrotte, costruite con la stessa primitiva che le produrrebbe
+davvero, convergono tutte allo stesso archivio autore e allo stesso anello
+pubblico, con una sola transazione e nessun pendente residuo. Ciclo pubblico
+verde su tutti e nove i lavori.
+
+Nota misurata, contro un errore facile: **l'inode non prova una riscrittura.**
+Una prova che chiedeva "inode diverso dopo rimozione e riscrittura" e' fallita
+perche' il filesystem ha restituito lo stesso inode. Vale l'implicazione in un
+verso solo: la rinomina conserva l'identita', quindi "inode uguale" e' un segnale
+buono per la promozione; "inode diverso" non e' un segnale di nulla. E' la stessa
+lezione dei numeri di handle su Windows, su un altro oggetto.
+
 ### 17.70 Incremento 2B, primo tratto: giornale, radice autore e una porta sola
 
 Implementato il primo tratto del §10.2. Il giornale della transazione ha
