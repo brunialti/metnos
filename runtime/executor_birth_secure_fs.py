@@ -3875,6 +3875,24 @@ class _SecureRootSession:
             finally:
                 if final_handle is not None:
                     _win_close(final_handle)
+        # The containers are reconciled once the arrived object is released:
+        # the one that lost the name no longer lists it, the one that received
+        # it lists it.  When the two coincide a single reconciliation answers
+        # both questions.
+        pairs = (
+            ((target_parent, target_name, source_name),)
+            if source_parent == target_parent
+            else (
+                (target_parent, target_name, None),
+                (source_parent, None, source_name),
+            )
+        )
+        for parent, present, absent in pairs:
+            listed = {item.name for item in self._inventory_state(parent)}
+            if (present is not None and present not in listed) or (
+                absent is not None and absent in listed
+            ):
+                raise BirthSecureFSError("birth_provisioning_io_unavailable")
         self._remap_cached_directories(source, destination)
         return identity
 

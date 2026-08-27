@@ -4018,7 +4018,13 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   `STATUS_SUCCESS`: la sequenza degli eventi restava percio' vuota e la cella
   accusava il prodotto di non aver riletto nulla. Rimedio di una riga (stato non
   negativo). Provato sul PC: la destinazione viene riconosciuta e la cella
-  avanza. Conservato in `apparato-pendente-7.patch`.
+  avanza. Insieme a questo, altre due correzioni della stessa cella: la
+  sorveglianza smette di attribuire alla destinazione le osservazioni che
+  portano il numero della sua maniglia dopo il rilascio, e la sequenza attesa
+  del contenitore viene riordinata per nome — un inventario e' ordinato per
+  nome, e rinominare una voce la sposta in quell'ordine, mentre l'attesa
+  conservava la posizione del vecchio nome. Con le tre correzioni la cella
+  della post-validazione passa. Conservato in `apparato-pendente-7.patch`.
 
 - **sonda di causalita' della rinomina** — `_RenameCausalityProbe` sostituisce
   la verifica di profilo con un metodo gia' legato alla sonda, ma la sua firma
@@ -4094,12 +4100,12 @@ contenitore — e il prodotto ne saltava un passo: non verificava il profilo
 dell'oggetto arrivato. Quel passo e' stato aggiunto (il profilo viaggia con
 l'oggetto).
 
-Restano due ostacoli misurati, non risolti: la rilettura eseguita **dopo** la
-chiusura della maniglia di arrivo si prende il numero appena liberato e la
-sorveglianza la scambia per una seconda lettura dell'oggetto; eseguita **prima**
-della chiusura, invece, fa fallire sette celle con esito «non disponibile» e fa
-morire il processo figlio delle celle d'interruzione. Il tentativo e' conservato
-in `prodotto-riconciliazione-rinomina.patch`; l'albero resta pulito.
+La rilettura va eseguita **dopo** il rilascio della maniglia di arrivo:
+eseguirla mentre l'oggetto e' ancora tenuto fa fallire la riapertura per nome
+della destinazione, perche' la modalita' di condivisione della maniglia in
+corso non la ammette (stessa legge del §17.32, vista dall'altro lato). Con la
+rilettura al posto giusto e le tre correzioni della sorveglianza, la sequenza
+osservata e' esattamente quella pretesa e la cella passa.
 
 ### 17.34 Un oggetto protetto in scrittura non e' quello osservato
 
