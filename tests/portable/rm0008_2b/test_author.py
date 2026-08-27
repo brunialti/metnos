@@ -15,6 +15,11 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from . import support
+
+pytestmark = pytest.mark.skipif(
+    not support.can_set_owner(),
+    reason="creating a Birth object needs the owner privilege of the elevated job",
+)
 from install import birth_authority_provisioner as provisioning
 from install.birth_authority_provisioner import (
     AuthorProvisioningOutcomeV1, BirthProvisioningError, ProvisioningStateV1,

@@ -23,7 +23,8 @@ from install.birth_authority_provisioner import (
 from . import support
 
 pytestmark = pytest.mark.skipif(
-    os.name == "nt", reason="the Windows profile is certified by its own job"
+    not support.can_set_owner(),
+    reason="creating a Birth object needs the owner privilege of the elevated job",
 )
 
 EXPECTED_FIELDS = {
