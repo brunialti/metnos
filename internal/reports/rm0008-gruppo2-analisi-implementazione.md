@@ -4292,10 +4292,24 @@ Restano due cose, distinte:
    stabile andrebbe scelto sull'errore, non sul proposito: oggi un accesso
    negato dalla DACL viene riferito come problema di privilegi, e manda la
    diagnosi dalla parte sbagliata — come e' successo qui, per tre giri.
-2. **Causa vera dell'accesso negato, da misurare.** La maschera di servizio di
-   una directory Birth (`0x001200a9`) non contiene `DELETE`, che una rinomina
-   richiede sulla sorgente; sul runner la creazione passa comunque per l'ACE
-   degli amministratori, quindi l'ipotesi spiega la rinomina ma non e' provata.
+2. **Causa vera dell'accesso negato, da misurare — e un'ipotesi da NON seguire
+   a occhi chiusi.** La maschera di servizio di una directory Birth
+   (`0x001200a9`) non contiene `DELETE`, che una rinomina richiede sulla
+   sorgente: sembra la spiegazione. Ma **e' in tensione con due fatti gia'
+   verdi**: sullo stesso runner la creazione e la disposizione di directory
+   Birth funzionano, e la disposizione richiede anch'essa `DELETE`. Se il
+   diritto arrivasse per l'ACE degli amministratori — il runner e'
+   amministratore — allora arriverebbe anche alla rinomina, e l'ipotesi cade.
+   Quindi la causa e' altrove: destinazione, condivisione dell'handle o handle
+   ancora aperti sulla sorgente sono i candidati, e vanno misurati prima di
+   toccare una maschera.
+
+   Corollario che vale a prescindere: **su un vero account di servizio, non
+   amministratore, la maschera non concede `DELETE` e la disposizione non
+   potrebbe funzionare.** La base non lo vede perche' il suo runner e'
+   amministratore. E' un secondo elemento per il gruppo che decidera' quali
+   diritti un oggetto Birth concede al proprio servizio; il gruppo 2 lo
+   registra e non lo decide.
 
 Nessun altro strumento viene costruito per chiuderla: il §13 dichiara la lacuna
 e la prossima misura si fa con il minimo che la decide, quando serve davvero.
