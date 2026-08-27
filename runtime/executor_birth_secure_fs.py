@@ -1736,6 +1736,11 @@ def _require_local_canonical_windows_root(absolute: str) -> None:
 
     # ntpath, not os.path: the rule is a property of the Windows form and must
     # stay decidable by the local probe on any platform.
+    # A verbatim or device prefix is not a place this increment declines to
+    # support: it is a request written in a form the contract does not accept,
+    # which is the malformed case.  A share, instead, is a medium.
+    if absolute.startswith(("\\\\?\\", "\\\\.\\")):
+        raise BirthSecureFSError("birth_provisioning_io_unavailable")
     if absolute.startswith("\\\\") or len(absolute) > _WINDOWS_LOCAL_ROOT_LIMIT:
         raise BirthSecureFSError("birth_provisioning_atomic_install_unsupported")
     drive, remainder = ntpath.splitdrive(absolute)

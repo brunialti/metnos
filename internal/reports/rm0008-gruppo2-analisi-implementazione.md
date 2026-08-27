@@ -4158,6 +4158,34 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.41 Una forma sbagliata non e' un supporto mancante
+
+`\\?\...` e `\\.\...` venivano rifiutati come «installazione non
+supportata», insieme alle condivisioni di rete. Non sono la stessa cosa: una
+condivisione e' un supporto che questo incremento non sostiene, un prefisso
+verbatim o di dispositivo e' una richiesta scritta in una forma che il
+contratto non accetta — cioe' malformata. Separati, con la condivisione lasciata
+dov'era. Una cella in piu' verde (95 su 106).
+
+### 17.42 Tensione fra due celle della base, da decidere
+
+Due celle congelate chiedono cose incompatibili quando lo spostamento fallisce
+con «nome non trovato»:
+
+- `test_r6_windows_rename_races[rename-crash-after-native]` pretende che, con la
+  sorgente assente, il prodotto **guardi la destinazione** (aprendola, leggendo
+  identita' e profilo, richiudendola) e rilegga il contenitore;
+- `test_g10_windows_native_contract[ntstatus-read-not-found]` percorre
+  sistematicamente le coppie (scopo, errore) e comprende «spostamento» ×
+  «non trovato», pretendendo **esattamente una** apertura di sistema e una
+  conversione dello stato.
+
+La seconda apertura e' proprio cio' che la prima chiede. Un tentativo di
+distinguere i due casi dalla provenienza dell'oggetto (creato o no da questa
+sessione) e' stato misurato e **scartato**: non risolve la seconda cella e ne
+rompe un'altra. Serve una decisione: quale delle due letture vale. Il prodotto
+oggi soddisfa la prima, e la seconda resta l'unica rossa non ambientale.
+
 ### 17.40 Una riconciliazione si accende su cio' che e' successo
 
 Le due riletture aggiunte per lo spostamento (§17.36, §17.38) partivano troppo
