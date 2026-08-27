@@ -3464,12 +3464,35 @@ class _SecureRootSession:
         name = components[-1]
         if True:
             if os.name == "nt":
-                handle = self._create_directory_exclusive_windows(
+                created = self._create_directory_exclusive_windows(
                     directory,
                     directory_path,
                     name,
                     role,
                 )
+                # What stays open afterwards is a reader, not a creator: the
+                # creation handle keeps an exclusive share mode that would stop
+                # this very container from being removed later.  The reader is
+                # bound to the object just created, not to its name: an object
+                # exchanged in between is refused here.
+                try:
+                    handle = _win_open_relative_v1(
+                        directory,
+                        name,
+                        purpose=_NtOpenPurposeV1.read_required,
+                        directory=True,
+                    )
+                    if _win_info(handle)[0] != _win_info(created)[0]:
+                        _win_close(handle)
+                        raise BirthSecureFSError(
+                            "birth_provisioning_recovery_ambiguous"
+                        )
+                except OSError as exc:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_io_unavailable", exc
+                    )
+                finally:
+                    _win_close(created)
                 self._directories[components] = handle
                 self._directory_roles[components] = role
                 self._handles.append(handle)
@@ -4082,12 +4105,6 @@ class _SecureRootSession:
             ):
                 raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
         if os.name == "nt":
-            # A handle this session keeps open holds the object it names, and
-            # the removal open would collide with its own share mode.  The
-            # constraint belongs to this platform: elsewhere a name is removed
-            # while handles to it stay valid, and releasing them would take a
-            # capability away from whoever holds it.
-            self._forget_cached_directory_v1(components)
             return self._dispose_transaction_object_windows(expectation, components)
         return self._dispose_transaction_object_posix(expectation, components)
 
