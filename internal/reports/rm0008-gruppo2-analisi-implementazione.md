@@ -4158,6 +4158,33 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.50 Il prodotto 2A c'e' gia': le 82 celle obbligatorie sono verdi
+
+La fotografia distingue tre dichiarazioni: 48 celle **assenti** (il bersaglio
+non esisteva), 34 **rosse** (esisteva e falliva) e 153 **possono essere verdi**.
+Le prime 82 sono l'obbligo dell'incremento; le ultime no.
+
+Confronto con l'ultima esecuzione pubblica: nessuna delle 82 e' rossa. Sono
+distribuite su portatile Windows (36), portatile Ubuntu (25), ACL Windows (7,
+tutte della famiglia dei rifiuti di ACL), concorrenza Ubuntu (6), concorrenza
+Windows (5) e manifesto (3), e tutte queste attivita' passano tranne le 8 celle
+«possono» del §17.47.
+
+Ne segue che **il passo 6 non e' un lavoro da iniziare**: il prodotto 2A e'
+implementato — lo hanno costruito le sessioni precedenti, non lo stash — e le
+ultime settimane ne hanno corretto i difetti misurandoli contro la base. Lo
+stash resta una bozza anteriore da non applicare (§17.49).
+
+Cio' che manca alla certificazione e' esattamente il residuo del §17.47, perche'
+il modo finale pretende **tutte** le celle verdi, comprese quelle «possono»:
+
+| gruppo | celle | natura |
+|---|---|---|
+| privilegio di ripristino | 4 | ambiente: serve un gettone dove il privilegio e' presente ma disabilitato |
+| doppia chiusura | 2 | dipende dalla migrazione del lucchetto, fermata quattro volte |
+| contratto nativo | 1 | tensione fra due celle congelate: serve una decisione |
+| chiamata non elevata | 1 | da diagnosticare: l'unica che potrebbe nascondere un difetto |
+
 ### 17.49 Lo stash 2A e' una bozza anteriore, non un blocco da applicare
 
 Applicato in prova, lo stash apre 32 conflitti sullo stesso file. Il primo li
