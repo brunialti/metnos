@@ -21,6 +21,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 
 from executor_birth import observe_candidate
 from executor_birth_identity import ExecutorOrigin, RevisionAuthor
+from executor_birth_producer_table_v1 import (
+    executor_origin_v1, producer_author_v1,
+)
 from executor_birth_intent import BirthIntent, _ProducerCapability, _producer_capabilities_for_bootstrap
 from executor_birth_operational import (
     BirthRequest, BirthRuntimeBundle, _assemble_birth_core,
@@ -45,7 +48,6 @@ class _ProducerAuthority:
     issuer_id: str
     key_id: str
     private_key: Ed25519PrivateKey
-    origin: ExecutorOrigin
     author: RevisionAuthor
 
 
@@ -153,13 +155,13 @@ def _load_authorities(value: Mapping[str, object], config_dir: Path, *,
     public_keys: set[bytes] = set()
     for name, capability in expected.items():
         item = producers[name]
-        if not isinstance(item, dict) or set(item) != {"issuer_id", "keystore", "origin", "author"}:
+        if not isinstance(item, dict) or set(item) != {"issuer_id", "keystore"}:
             raise BirthBootstrapError("birth_producer_registry_invalid")
         try:
             issuer_id = item["issuer_id"]
             if not isinstance(issuer_id, str) or not issuer_id:
                 raise ValueError
-            origin, author = ExecutorOrigin(item["origin"]), RevisionAuthor(item["author"])
+            author = producer_author_v1(capability.producer_id, capability.operation)
         except (KeyError, ValueError, TypeError) as exc:
             raise BirthBootstrapError("birth_producer_registry_invalid") from exc
         loaded = load_birth_keystore(
@@ -172,10 +174,10 @@ def _load_authorities(value: Mapping[str, object], config_dir: Path, *,
         if public_bytes in public_keys:
             raise BirthBootstrapError("birth_producer_capability_key_reused")
         public_keys.update(verifier.public_bytes_raw() for verifier in loaded.verifier_keys.values())
-        authority = _ProducerAuthority(capability, issuer_id, key_id, private, origin, author)
+        authority = _ProducerAuthority(capability, issuer_id, key_id, private, author)
         authorities[capability] = authority
         entries.setdefault(issuer_id, []).extend(IssuerKey(
-            verifier_id, verifier, frozenset({origin}), frozenset({author}),
+            verifier_id, verifier, frozenset(ExecutorOrigin), frozenset({author}),
         ) for verifier_id, verifier in loaded.verifier_keys.items())
     registry = IssuerRegistry({key: tuple(items) for key, items in entries.items()})
     return MappingProxyType(authorities), registry
@@ -208,9 +210,13 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
             raise BirthBootstrapError("birth_intent_invalid")
         objective = _hash(b"metnos.executor-birth.objective/v1\0", intent.reason, *intent.approval_refs)
         context, _pin = context_builder.preview(intent)
+        # The kind of the executor is not a property of who asks for it: it
+        # comes from where the manifest of that contract lives, which the
+        # inventory already authenticated.
+        origin = executor_origin_v1(intent.contract_id.origin)
         observed = observe_candidate(
             intent.candidate_source_root, contract_id=intent.contract_id,
-            executor_origin=authority.origin, revision_authorship=authority.author,
+            executor_origin=origin, revision_authorship=authority.author,
             objective_hash=objective, admission_context=context,
         )
         try:
@@ -225,7 +231,7 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
         expires = instant + timedelta(seconds=ttl_seconds)
         def issue() -> bytes:
             return issue_producer_receipt(
-                issuer_id=authority.issuer_id, executor_origin=authority.origin,
+                issuer_id=authority.issuer_id, executor_origin=origin,
                 revision_authorship=authority.author, objective_hash=objective,
                 candidate_source_id=source_id,
                 issued_at=instant.strftime("%Y-%m-%dT%H:%M:%SZ"),

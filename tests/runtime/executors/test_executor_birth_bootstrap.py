@@ -42,9 +42,10 @@ def _producer_config(tmp_path: Path):
         key = Ed25519PrivateKey.generate()
         name = f"producer-{index}"
         _store(tmp_path / name, key)
+        # Provenance is no longer declared here: the author comes from the
+        # closed table and the kind from where the manifest lives.
         result[f"{cap.producer_id}:{cap.operation}"] = {
             "issuer_id": cap.producer_id, "keystore": name,
-            "origin": "synthesized", "author": "model",
         }
     return {"producers": result}
 
