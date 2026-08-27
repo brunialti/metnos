@@ -4081,12 +4081,13 @@ class _SecureRootSession:
                 recorded[1] is not expectation.role
             ):
                 raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
-        # A handle the session still keeps open holds the object it names: on
-        # this platform the removal open would collide with the share mode of
-        # the session's own handle, and everywhere a cached handle to a removed
-        # object would outlive its name.  What disappears is first let go.
-        self._forget_cached_directory_v1(components)
         if os.name == "nt":
+            # A handle this session keeps open holds the object it names, and
+            # the removal open would collide with its own share mode.  The
+            # constraint belongs to this platform: elsewhere a name is removed
+            # while handles to it stay valid, and releasing them would take a
+            # capability away from whoever holds it.
+            self._forget_cached_directory_v1(components)
             return self._dispose_transaction_object_windows(expectation, components)
         return self._dispose_transaction_object_posix(expectation, components)
 

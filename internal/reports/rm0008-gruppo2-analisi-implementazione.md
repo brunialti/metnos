@@ -4158,6 +4158,22 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.43 Il rilascio delle maniglie appartiene a una sola piattaforma
+
+Lasciare andare le maniglie di cio' che si rimuove (§17.32) era stato applicato
+su entrambe le piattaforme. Su Linux e' un danno: un nome si rimuove mentre le
+maniglie restano valide, e chiudere quelle in cache toglie una capacita' a chi
+la sta usando. Una cella POSIX lo ha mostrato subito — dopo un rifiuto di
+rimozione, il chiamante non poteva piu' leggere il proprio contenitore.
+
+Il rilascio e' ora limitato alla piattaforma che lo impone. Le prove POSIX
+tornano verdi (86 su 91; le 5 rosse restanti dipendono da un privilegio
+amministrativo non disponibile su questa macchina, e passano in officina).
+
+**Nota di metodo**: la regressione e' stata trovata solo perche' ho rieseguito
+le prove POSIX dopo giorni di lavoro su Windows. Ogni cambiamento al codice
+condiviso va misurato su entrambe.
+
 ### 17.41 Una forma sbagliata non e' un supporto mancante
 
 `\\?\...` e `\\.\...` venivano rifiutati come «installazione non
