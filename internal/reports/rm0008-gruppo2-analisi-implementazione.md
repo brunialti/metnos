@@ -1603,14 +1603,15 @@ verde.
 
 **Requisiti non provati, elencati separatamente:**
 
-1. **Confine Windows del predispositore, parte elevata.** Le celle 2B-2F ora
-   girano su `nt`, ma non arrivano in fondo su un token non elevato. Il punto
-   esatto e' la **pubblicazione dei finali**: la rinomina riapplica il
-   descrittore e il proprietario di quel descrittore e' `SYSTEM`, che richiede
-   `SeRestorePrivilege`. Creazione, allestimento e verifica passano; e' l'ultimo
-   passo a fermarsi. Chiudere la riga richiede un'attivita' Windows elevata, e
-   quindi una modifica del flusso di lavoro pubblico, che e' congelato: costa
-   un'altra fotografia.
+1. **Confine Windows del predispositore: la pubblicazione dei finali.** Le celle
+   2B-2F girano su `nt` e arrivano fino alla rinomina che pubblica il primo
+   finale, dove ricevono un accesso negato. Il **privilegio non c'entra**:
+   misurato sul runner, il token possiede `SeRestorePrivilege` e l'ambito del
+   prodotto entra ed esce pulito. Il codice restituito e' fuorviante perche' la
+   tassonomia traduce ogni accesso negato di un'apertura mutante in
+   `elevation_required` (§17.81). Causa probabile e non ancora provata: la
+   maschera di servizio di una directory Birth non concede `DELETE`, che una
+   rinomina richiede sulla sorgente.
 2. **Arresto reale a ogni singolo passo di scrittura** (§12.1.13). Le forme che
    un arresto lascia sono costruite con la stessa primitiva e convergono tutte,
    ma il processo non viene ucciso dopo ognuno dei sei momenti di ogni classe di
@@ -4268,6 +4269,36 @@ cartella pubblica, con la rimozione a fine cella. Va nel prossimo lotto.
 Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
+
+### 17.81 Il privilegio non c'entra: il nome del codice inganna
+
+Misurato sul runner pubblico, con l'unico canale che una corsa silenziosa lascia
+passare: il token possiede `SeRestorePrivilege` (disattivato) e
+`SeTakeOwnershipPrivilege`, ha 24 privilegi, ed e' quindi amministrativo; e
+soprattutto l'ambito del prodotto **entra ed esce senza errori**
+(`scope=entered and left`). Il sospetto che il difetto stesse nella mia modifica
+al ripristino del privilegio e' quindi **smentito**.
+
+Dove nasce allora `birth_provisioning_elevation_required` in
+`_install_author_store_v1`? Dalla tassonomia: la rinomina apre la sorgente con
+proposito `mutating_open`, e per quel proposito un `ACCESS_DENIED` viene
+tradotto in `elevation_required`. Il codice **non dice** che manca un
+privilegio: dice che un'apertura mutante e' stata negata, e per i propositi che
+creano quella e' di solito la stessa cosa. Per una rinomina non lo e'.
+
+Restano due cose, distinte:
+
+1. **Difetto di nomenclatura, gia' stabilito.** Per `mutating_open` il codice
+   stabile andrebbe scelto sull'errore, non sul proposito: oggi un accesso
+   negato dalla DACL viene riferito come problema di privilegi, e manda la
+   diagnosi dalla parte sbagliata — come e' successo qui, per tre giri.
+2. **Causa vera dell'accesso negato, da misurare.** La maschera di servizio di
+   una directory Birth (`0x001200a9`) non contiene `DELETE`, che una rinomina
+   richiede sulla sorgente; sul runner la creazione passa comunque per l'ACE
+   degli amministratori, quindi l'ipotesi spiega la rinomina ma non e' provata.
+
+Nessun altro strumento viene costruito per chiuderla: il §13 dichiara la lacuna
+e la prossima misura si fa con il minimo che la decide, quando serve davvero.
 
 ### 17.80 Due deduzioni sbagliate, corrette dalla misura
 
