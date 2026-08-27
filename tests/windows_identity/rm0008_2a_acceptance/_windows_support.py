@@ -695,6 +695,30 @@ def acl_profile_facts(path: Path, *, directory: bool) -> dict[str, object]:
         oracle._close_handle(handle)
 
 
+STORE_LOCK_BASENAME = "provisioning-v1.lock"
+
+
+def _payload_digest(oracle, path: Path) -> str:
+    """Digest of one file read through a fully shared handle."""
+    import ctypes
+
+    handle = oracle._open_path(path, 0x80000000, directory=False)
+    try:
+        digest = hashlib.sha256()
+        buffer = ctypes.create_string_buffer(64 * 1024)
+        read = oracle.wintypes.DWORD()
+        while True:
+            if not oracle._KERNEL32.ReadFile(
+                handle, buffer, len(buffer), ctypes.byref(read), None
+            ):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if not read.value:
+                return digest.hexdigest()
+            digest.update(buffer.raw[: read.value])
+    finally:
+        oracle._KERNEL32.CloseHandle(handle)
+
+
 def windows_tree_snapshot(root: Path) -> tuple[tuple[object, ...], ...]:
     """Snapshot namespace, identity, metadata, ACL and bytes independently."""
     import ctypes
@@ -719,14 +743,20 @@ def windows_tree_snapshot(root: Path) -> tuple[tuple[object, ...], ...]:
         facts = identity(path, directory=directory, open_reparse=True)
         payload_sha256 = None
         if not directory:
-            # A byte-range lock is mandatory on this platform: the object the
-            # product holds cannot be read while it holds it.  The refusal is
-            # recorded as such, so the comparison still notices an object that
-            # becomes readable or stops being so.
-            try:
-                payload_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
-            except PermissionError:
-                payload_sha256 = "locked"
+            if path.name == STORE_LOCK_BASENAME:
+                # A byte-range lock is mandatory on this platform, so whether
+                # this object can be read depends on whether the product holds
+                # it, not on the tree.  Its content is recorded as one constant
+                # marker; identity, size and ACL of the same row keep guarding
+                # against a substitution.
+                payload_sha256 = "lock"
+            else:
+                # An independent observer must describe the same bytes whether
+                # or not an operation is holding the object: the read shares
+                # what the holder holds, instead of recording a refusal that
+                # would depend on the instant it was taken.
+                payload_sha256 = _payload_digest(oracle, path)
+
         rows.append(
             (
                 relative,

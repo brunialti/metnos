@@ -504,6 +504,10 @@ def test_r7_windows_inventory_records(case: str, tmp_path: Path, monkeypatch) ->
             if open_generations:
                 raise AssertionError("inventory leaked a reopened handle generation")
 
+        # A later watcher in this cell binds the published signature to name the
+        # component it observes: the audit keeps the wrapped function visible so
+        # introspection still sees ``component`` and not ``*args``.
+        common_relative_open.__wrapped__ = relative_open
         monkeypatch.setattr(sf, "_win_open_relative_v1", common_relative_open)
         monkeypatch.setattr(sf, "_win_info", common_info)
         monkeypatch.setattr(sf._KERNEL32, "CloseHandle", common_close)
