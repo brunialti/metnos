@@ -4252,6 +4252,33 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.65 Che cosa servirebbe alle tre celle, in concreto
+
+Perche' chi rivedra' la base non debba rifare l'indagine, ecco la modifica
+minima che ciascuna richiede. Sono proposte, non modifiche: la base non la
+tocco.
+
+**`ntcreate-relative-rootdirectory` e `ntcreate-no-createfilew-fallback`.**
+Pretendono, nella loro finestra, esattamente quattro aperture native — una per
+oggetto creato — ognuna con un descrittore di sicurezza. Il prodotto ne fa sei:
+dopo aver creato un contenitore ne riapre un lettore, perche' la maniglia di
+creazione porta il diritto di rimuovere e con quella in cache lo stesso
+contenitore non si potrebbe piu' rimuovere (lo pretende una cella
+**obbligatoria**, `reject-nonempty-directory`, e lo pretendono le celle della
+rimozione, che l'apertura la vogliono). Verificate e misurate le alternative:
+non cachare la maniglia contraddice il vincolo alla maniglia; togliere il
+diritto di rimuovere contraddice la maschera che queste due celle fissano;
+riusare la maniglia di creazione contraddice le celle della rimozione.
+*Modifica minima*: ammettere, in quelle due celle, le aperture di sola lettura
+senza descrittore — cioe' contare le **creazioni**, non tutte le aperture.
+
+**`ntstatus-read-not-found` (coppia «spostamento» × «non trovato»).** Pretende
+una sola apertura e una sola conversione dello stato; con la sorgente assente il
+prodotto ne fa una seconda per guardare la destinazione, che e' cio' che
+un'altra cella congelata pretende (§17.54). *Modifica minima*: escludere dalla
+matrice quella singola coppia, oppure contare le conversioni per apertura
+invece che per operazione.
+
 ### 17.64 Settimo congelamento: resta solo cio' che dipende da una decisione
 
 Il rimedio della cella non elevata e' entrato con la procedura del passo 5 e la
