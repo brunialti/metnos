@@ -3902,9 +3902,28 @@ class _SecureRootSession:
                 recorded[1] is not expectation.role
             ):
                 raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        # A handle the session still keeps open holds the object it names: on
+        # this platform the removal open would collide with the share mode of
+        # the session's own handle, and everywhere a cached handle to a removed
+        # object would outlive its name.  What disappears is first let go.
+        self._forget_cached_directory_v1(components)
         if os.name == "nt":
             return self._dispose_transaction_object_windows(expectation, components)
         return self._dispose_transaction_object_posix(expectation, components)
+
+    def _forget_cached_directory_v1(self, components: tuple[str, ...]) -> None:
+        """Release the cached handles of the subtree rooted at ``components``."""
+        close = _win_close if os.name == "nt" else os.close
+        for key in tuple(self._directories):
+            if key[: len(components)] != components:
+                continue
+            handle = self._directories.pop(key)
+            self._directory_roles.pop(key, None)
+            try:
+                self._handles.remove(handle)
+            except ValueError:
+                pass
+            close(handle)
 
     def _dispose_transaction_object_windows(
         self, expectation: _DisposalExpectation, components: tuple[str, ...],

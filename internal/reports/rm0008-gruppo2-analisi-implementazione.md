@@ -4051,6 +4051,21 @@ cancello.
 Entrambe le correzioni toccano l'apparato congelato ed entrano nella lista
 d'attesa del §17.21.
 
+### 17.32 Cio' che sparisce, prima si lascia andare
+
+La rimozione di un contenitore falliva con un rifiuto di condivisione
+(`ERROR_SHARING_VIOLATION`, misurato): la sessione teneva ancora aperta la
+maniglia della cartella che stava per togliere, e la sua modalita' di
+condivisione non ammette la cancellazione. Il contratto fissa quella modalita'
+(`share_access` di lettura e scrittura, senza cancellazione), quindi il rimedio
+non e' allargarla ma lasciare andare cio' che sparisce: prima di rimuovere, la
+sessione dimentica le maniglie dell'intero ramo.
+
+Misurato con una sonda che riproduce il caso: con la maniglia in cache
+l'apertura di rimozione e' rifiutata, dopo il rilascio riesce. Vale anche fuori
+da Windows: una maniglia in cache verso un oggetto rimosso sopravviverebbe al
+proprio nome.
+
 ### 17.31 L'elenco e' una diceria: il rifiuto nasce dalla maniglia
 
 L'inventario Windows leggeva dal buffer dell'enumerazione la parola degli
