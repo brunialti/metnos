@@ -554,11 +554,45 @@ def test_g2_historical_role_boundary(case: str, tmp_path: Path, monkeypatch) -> 
         )
 
 
+def _disable_restore_privilege(sf) -> None:
+    """Leave SeRestorePrivilege present and disabled in this process."""
+    import ctypes
+    from ctypes import wintypes
+
+    token = wintypes.HANDLE()
+    if not sf._ADVAPI32.OpenProcessToken(
+        sf._KERNEL32.GetCurrentProcess(),
+        sf._TOKEN_QUERY | sf._TOKEN_ADJUST_PRIVILEGES,
+        ctypes.byref(token),
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        luid = sf._LUID()
+        if not sf._ADVAPI32.LookupPrivilegeValueW(
+            None, "SeRestorePrivilege", ctypes.byref(luid)
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        requested = sf._TOKEN_PRIVILEGES()
+        requested.PrivilegeCount = 1
+        requested.Privileges[0].Luid = luid
+        requested.Privileges[0].Attributes = 0
+        if not sf._ADVAPI32.AdjustTokenPrivileges(
+            token, False, ctypes.byref(requested), 0, None, None
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        sf._KERNEL32.CloseHandle(token)
+
+
 @pytest.mark.parametrize("case", G5_CASES, ids=G5_CASES)
 def test_g5_restore_privilege_lifecycle(case: str, monkeypatch) -> None:
     sf = support.product()
     manager = support.required(sf, "_win_restore_privilege")
     if case == "real-token-roundtrip":
+        # A cell establishes its own precondition instead of assuming the state
+        # of the process: the cases that inject a failing restore run first and
+        # leave the privilege enabled by construction.
+        _disable_restore_privilege(sf)
         before = support.token_privileges_snapshot()
         before_attributes = support.privilege_attributes(
             before, "SeRestorePrivilege"
