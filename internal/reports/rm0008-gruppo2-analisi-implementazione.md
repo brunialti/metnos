@@ -4147,3 +4147,26 @@ maschera del lettore di lucchetti non copre cio' che la presa in esclusiva
 richiede in quel caso. La prossima prova riguarda quella sola apertura, non
 l'intera migrazione.
 
+### 17.29 Il punto del lucchetto e' un conteggio, non un difetto
+
+Due sonde isolate rispondono che nessuna delle due meta' della migrazione e'
+in colpa:
+
+- creare il lucchetto per percorso assoluto o dall'ingresso relativo da' lo
+  stesso esito, creato e verificato;
+- riaprire un lucchetto esistente con la maschera del lettore di lucchetti
+  consente la presa in esclusiva esattamente come la vecchia apertura in
+  scrittura per percorso.
+
+Resta una sola spiegazione compatibile con la misura: spostare il lucchetto
+sull'ingresso relativo **aggiunge chiamate native** dentro finestre in cui
+alcune celle le contano — la stessa collisione gia' vista con la sorveglianza
+dell'inventario, dove la presa del lucchetto veniva scambiata per una
+riapertura. Le celle che contano un numero esatto di aperture native devono
+escludere quelle del lucchetto, riconoscibili dal proprio scopo.
+
+E' una correzione dell'apparato, non del prodotto, e chiude insieme il §17.23
+e le due celle del §17.28. Entra nella lista d'attesa per il prossimo
+congelamento; la migrazione del lucchetto si applica nello stesso passaggio,
+non prima.
+
