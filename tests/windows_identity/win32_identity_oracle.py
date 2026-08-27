@@ -838,7 +838,11 @@ def run_probe_as(
     # Temporary diagnostic: the child of CreateProcessWithLogonW cannot inherit
     # handles, so its output would be lost.  It is redirected into a file the
     # caller can read back.
-    diagnostic = target.parent / "probe-output.txt"
+    diagnostic = (
+        Path(os.environ.get("SystemRoot", "C:\\Windows"))
+        / "Temp"
+        / f"rm0008-probe-{operation}.txt"
+    )
     child_argv = [
         str(probe_script),
         "--child",
@@ -849,8 +853,11 @@ def run_probe_as(
     inline = (
         "import runpy,sys\n"
         f"sys.argv={child_argv!r}\n"
-        f"handle=open({str(diagnostic)!r},'w',encoding='utf-8')\n"
-        "sys.stdout=handle\nsys.stderr=handle\n"
+        "try:\n"
+        f"    handle=open({str(diagnostic)!r},'w',encoding='utf-8')\n"
+        "    sys.stdout=handle\n    sys.stderr=handle\n"
+        "except OSError:\n"
+        "    import io\n    handle=io.StringIO()\n"
         "try:\n"
         f"    runpy.run_path({str(probe_script)!r}, run_name='__main__')\n"
         "except SystemExit as exit_code:\n"
