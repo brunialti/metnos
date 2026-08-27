@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-import executor_birth_provisioning as provisioning
-from executor_birth_provisioning import (
+from install import birth_authority_provisioner as provisioning
+from install.birth_authority_provisioner import (
     BirthProvisioningError, CheckpointV1, PayloadConfidentialityV1,
     PayloadObjectTypeV1, PayloadRecordV1, PlatformIdentityV1,
     ProvisioningStateV1, TransactionHeaderV1, checkpoint_name_v1,

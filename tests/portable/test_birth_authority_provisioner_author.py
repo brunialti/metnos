@@ -1,0 +1,348 @@
+"""Certification of the author root: acquisition, staging and installation.
+
+The previous identity is read from the fixed names alone, the store is built
+inside the transaction and it becomes final by a rename without replacement.
+Every check observes the real store through the productive loader, on an
+installer configuration that lives entirely in a temporary directory.
+"""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+import _rm0008_2b_support as support
+from install import birth_authority_provisioner as provisioning
+from install.birth_authority_provisioner import (
+    AuthorProvisioningOutcomeV1, BirthProvisioningError, ProvisioningStateV1,
+    acquire_author_source_v1,
+)
+
+pytestmark = pytest.mark.skipif(
+    os.name == "nt", reason="the Windows profile is certified by its own job"
+)
+
+BUILD = support.BUILD
+
+
+def _config(tmp_path: Path, *, author=None, extra=()) -> Path:
+    return support.make_config(tmp_path, author=author, extra=extra)
+
+
+def _source(base: Path, monkeypatch):
+    support.use_config(monkeypatch, base)
+    opened = provisioning._resolve_author_source_v1()
+    if opened is None:
+        raise BirthProvisioningError("birth_author_identity_incomplete")
+    try:
+        return acquire_author_source_v1(opened)
+    finally:
+        opened.close()
+
+
+def _store(base: Path) -> Path:
+    return base / "birth" / "author-root-v1"
+
+
+def _transaction_root(base: Path) -> Path:
+    roots = [
+        item for item in (base / "birth").iterdir()
+        if item.name.startswith(provisioning.TRANSACTION_PREFIX_V1)
+    ]
+    assert len(roots) == 1
+    return roots[0]
+
+
+def test_a_first_migration_installs_the_previous_identity(
+    tmp_path: Path, monkeypatch,
+):
+    author = Ed25519PrivateKey.generate()
+    peer = Ed25519PrivateKey.generate()
+    base = _config(tmp_path, author=author, extra=[
+        ("peer_pub.bin", support.public_bytes(peer), 0o644),
+        ("peer_priv.bin", support.private_bytes(peer), 0o600),
+    ])
+    source = _source(base, monkeypatch)
+    result = support.provision(monkeypatch, base)
+
+    assert result.outcome is AuthorProvisioningOutcomeV1.installed
+    assert result.active_key_id == source.active_key_id
+    store = _store(base)
+    assert sorted(item.name for item in store.iterdir()) == [
+        "birth-keystore.lock", "keystore.json", "private", "public",
+    ]
+    # Only the default private key travels; the other one is never read.
+    assert len(list((store / "private").iterdir())) == 1
+    assert len(list((store / "public").iterdir())) == 2
+    assert (
+        store / "private" / f"{source.active_key_id}.key"
+    ).read_bytes() == support.private_bytes(author)
+
+    config = json.loads((store / "keystore.json").read_text())
+    assert config["private_file"] == f"private/{source.active_key_id}.key"
+    assert [item["key_id"] for item in config["keys"]] == sorted(source.publics)
+    assert [item["status"] for item in config["keys"]].count("active") == 1
+
+
+def test_the_journal_records_every_step_in_order(tmp_path: Path, monkeypatch):
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate())
+    source = _source(base, monkeypatch)
+    result = support.provision(monkeypatch, base)
+
+    checkpoints = sorted(
+        (_transaction_root(base) / "checkpoints-v1").iterdir(),
+        key=lambda item: item.name,
+    )
+    chain = [
+        provisioning.decode_checkpoint_v1(item.read_bytes())
+        for item in checkpoints
+    ]
+    assert [item.state for item in chain] == [
+        ProvisioningStateV1.created, ProvisioningStateV1.created,
+        ProvisioningStateV1.author_staged, ProvisioningStateV1.author_installed,
+    ]
+    assert chain[0].digests["author_source_public_inventory_sha256"] is None
+    assert chain[1].digests[
+        "author_source_public_inventory_sha256"
+    ] == source.inventory_sha256
+    assert chain[2].digests[
+        "author_store_public_inventory_sha256"
+    ] == result.public_inventory_sha256
+    assert chain[0].payload_inventory == () and len(chain[2].payload_inventory) == 7
+    for previous, current in zip(chain, chain[1:]):
+        assert current.previous_checkpoint_sha256 == previous.digest()
+
+
+def test_the_recorded_identity_survives_the_installation(
+    tmp_path: Path, monkeypatch,
+):
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate())
+    support.provision(monkeypatch, base)
+    checkpoints = sorted(
+        (_transaction_root(base) / "checkpoints-v1").iterdir(),
+        key=lambda item: item.name,
+    )
+    staged = provisioning.decode_checkpoint_v1(checkpoints[2].read_bytes())
+    for record in staged.payload_inventory:
+        observed = (base / "birth" / record.relative_path).stat()
+        assert record.platform_identity.device == observed.st_dev
+        assert record.platform_identity.inode == observed.st_ino
+
+
+def test_a_second_run_only_inspects(tmp_path: Path, monkeypatch):
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate())
+    first = support.provision(monkeypatch, base)
+    before = sorted(
+        (item.relative_to(base).as_posix(), item.stat().st_ino)
+        for item in _store(base).rglob("*")
+    )
+    second = support.provision(monkeypatch, base)
+    # The transaction survives until the marker of increment 2F, so a further
+    # run is a resumption that verifies; it is not a second migration.
+    assert second.outcome is AuthorProvisioningOutcomeV1.resumed
+    assert second.active_key_id == first.active_key_id
+    assert second.public_inventory_sha256 == first.public_inventory_sha256
+    after = sorted(
+        (item.relative_to(base).as_posix(), item.stat().st_ino)
+        for item in _store(base).rglob("*")
+    )
+    assert after == before
+
+
+def test_a_second_run_needs_no_previous_source(tmp_path: Path, monkeypatch):
+    """Section 10.2: the restart converges with the old key directory gone."""
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate())
+    first = support.provision(monkeypatch, base)
+    for item in (base / "keys").iterdir():
+        item.unlink()
+    (base / "keys").rmdir()
+    second = support.provision(monkeypatch, base)
+    assert second.outcome is AuthorProvisioningOutcomeV1.resumed
+    assert second.public_inventory_sha256 == first.public_inventory_sha256
+
+
+def test_an_installation_without_any_author_creates_nothing(
+    tmp_path: Path, monkeypatch,
+):
+    base = _config(tmp_path)
+    result = support.provision(monkeypatch, base)
+    assert result.outcome is AuthorProvisioningOutcomeV1.author_not_yet_created
+    assert sorted(item.name for item in (base / "birth").iterdir()) == [
+        "operator-input-v1", "provisioning-v1.lock",
+    ]
+
+
+def test_a_staged_transaction_completes_from_its_own_bytes(
+    tmp_path: Path, monkeypatch,
+):
+    author = Ed25519PrivateKey.generate()
+    base = _config(tmp_path, author=author)
+    source = _source(base, monkeypatch)
+    layout = support.open_layout(monkeypatch, base)
+    session = layout.birth_session
+    transaction = provisioning.new_transaction_id_v1()
+    journal = provisioning._TransactionJournalV1(session, transaction)
+    with session:
+        with session.global_lock(exclusive=True, create=True):
+            journal.create_root()
+            journal.write_header(
+                provisioning.TransactionHeaderV1(transaction, BUILD)
+            )
+            zero = provisioning.CheckpointV1(
+                transaction, 0, None, ProvisioningStateV1.created, (),
+                provisioning.empty_digests_v1(), None,
+            )
+            journal.append(zero)
+            acquired = provisioning._record_author_source_v1(
+                journal, zero, source,
+            )
+            provisioning._stage_and_record_v1(
+                session, journal, acquired, source,
+            )
+    # The previous source disappears between the two runs.
+    for item in (base / "keys").iterdir():
+        item.unlink()
+    (base / "keys").rmdir()
+
+    result = support.provision(monkeypatch, base)
+    assert result.outcome is AuthorProvisioningOutcomeV1.resumed
+    assert result.transaction_id == transaction
+    assert (
+        _store(base) / "private" / f"{source.active_key_id}.key"
+    ).read_bytes() == support.private_bytes(author)
+
+
+def test_a_transaction_of_another_build_is_a_conflict(
+    tmp_path: Path, monkeypatch,
+):
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate())
+    source = _source(base, monkeypatch)
+    layout = support.open_layout(monkeypatch, base)
+    session = layout.birth_session
+    transaction = provisioning.new_transaction_id_v1()
+    journal = provisioning._TransactionJournalV1(session, transaction)
+    with session:
+        with session.global_lock(exclusive=True, create=True):
+            journal.create_root()
+            journal.write_header(
+                provisioning.TransactionHeaderV1(transaction, "another-build")
+            )
+            zero = provisioning.CheckpointV1(
+                transaction, 0, None, ProvisioningStateV1.created, (),
+                provisioning.empty_digests_v1(), None,
+            )
+            journal.append(zero)
+            provisioning._record_author_source_v1(journal, zero, source)
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_provisioning_transaction_conflict"
+
+
+def test_two_transactions_stop_the_provisioner(tmp_path: Path, monkeypatch):
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate())
+    support.use_config(monkeypatch, base)
+    for _ in range(2):
+        (base / "birth" / provisioning.transaction_root_name_v1(
+            provisioning.new_transaction_id_v1()
+        )).mkdir(mode=0o755)
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_provisioning_recovery_ambiguous"
+
+
+@pytest.mark.parametrize("missing", ["author_priv.bin", "author_pub.bin"])
+def test_an_incomplete_identity_is_named_as_such(
+    tmp_path: Path, monkeypatch, missing: str,
+):
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate())
+    (base / "keys" / missing).unlink()
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_author_identity_incomplete"
+
+
+def test_a_public_that_is_not_the_pair_is_refused(tmp_path: Path, monkeypatch):
+    author = Ed25519PrivateKey.generate()
+    other = Ed25519PrivateKey.generate()
+    base = _config(tmp_path, author=author)
+    support.write(
+        base / "keys" / "author_pub.bin", support.public_bytes(other), 0o644,
+    )
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_author_identity_mismatch"
+
+
+@pytest.mark.parametrize("case", ["short", "long", "empty"])
+def test_a_malformed_public_is_a_refusal_not_a_key_fewer(
+    tmp_path: Path, monkeypatch, case: str,
+):
+    payload = {"short": b"x" * 31, "long": b"x" * 33, "empty": b""}[case]
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate(), extra=[
+        ("broken_pub.bin", payload, 0o644),
+    ])
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_author_source_invalid"
+
+
+def test_a_hard_linked_public_stops_the_enumeration(
+    tmp_path: Path, monkeypatch,
+):
+    """The refusal comes one layer lower, before a single byte is read."""
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate())
+    victim = base / "keys" / "author_pub.bin"
+    before = victim.read_bytes()
+    os.link(victim, base / "keys" / "copy_pub.bin")
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_provisioning_recovery_ambiguous"
+    assert victim.read_bytes() == before
+
+
+def test_a_symlinked_public_is_never_followed(tmp_path: Path, monkeypatch):
+    peer = Ed25519PrivateKey.generate()
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate(), extra=[
+        ("real_pub.bin", support.public_bytes(peer), 0o644),
+    ])
+    victim = base / "keys" / "real_pub.bin"
+    before = victim.read_bytes()
+    (base / "keys" / "link_pub.bin").symlink_to(victim)
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_provisioning_recovery_ambiguous"
+    assert victim.read_bytes() == before
+
+
+def test_an_invalid_final_store_is_not_repaired(tmp_path: Path, monkeypatch):
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate())
+    support.provision(monkeypatch, base)
+    broken = _store(base) / "keystore.json"
+    broken.write_bytes(b'{"schema_version":1}')
+    os.chmod(broken, 0o600)
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_author_keystore_existing_invalid"
+    assert broken.read_bytes() == b'{"schema_version":1}'
+
+
+def test_a_store_without_a_transaction_is_only_inspected(
+    tmp_path: Path, monkeypatch,
+):
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate())
+    first = support.provision(monkeypatch, base)
+    before = (_store(base) / "keystore.json").read_bytes()
+    # With the transaction gone the run is a pure inspection: it opens no
+    # previous source and reports what is already installed.
+    import shutil
+
+    shutil.rmtree(_transaction_root(base))
+    (base / "keys" / "author_priv.bin").unlink()
+    third = support.provision(monkeypatch, base)
+    assert third.outcome is AuthorProvisioningOutcomeV1.already_installed
+    assert third.transaction_id is None
+    assert (_store(base) / "keystore.json").read_bytes() == before
+    assert third.active_key_id == first.active_key_id

@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 
-import executor_birth_provisioning as provisioning
-from executor_birth_provisioning import (
+import _rm0008_2b_support as support
+from install import birth_authority_provisioner as provisioning
+from install.birth_authority_provisioner import (
     BirthProvisioningError, CheckpointV1, ProvisioningStateV1,
     TransactionHeaderV1, empty_digests_v1, new_transaction_id_v1,
 )
@@ -21,17 +22,7 @@ pytestmark = pytest.mark.skipif(
     os.name == "nt", reason="the Windows profile is certified by its own job"
 )
 
-BUILD = "rm0008-group2-2b"
-
-
-def _layout(tmp_path: Path, *, with_source: bool = False):
-    base = tmp_path / "config"
-    (base / "birth").mkdir(mode=0o755, parents=True)
-    if with_source:
-        (base / "keys").mkdir(mode=0o700)
-    return provisioning.open_provisioning_layout_v1(
-        base, provisioner_build_id=BUILD,
-    )
+BUILD = support.BUILD
 
 
 def _integrity():
@@ -55,16 +46,17 @@ def _next(previous: CheckpointV1, state: ProvisioningStateV1) -> CheckpointV1:
     )
 
 
-def _open(tmp_path: Path, **kwargs):
-    layout = _layout(tmp_path, **kwargs)
-    session = layout.open_root_session()
+def _open(tmp_path: Path, monkeypatch, **kwargs):
+    base = support.make_config(tmp_path, **kwargs)
+    layout = support.open_layout(monkeypatch, base)
+    session = layout.birth_session
     transaction = new_transaction_id_v1()
     journal = provisioning._TransactionJournalV1(session, transaction)
-    return layout, session, journal, transaction
+    return base, session, journal, transaction
 
 
-def test_header_and_chain_survive_a_reopened_session(tmp_path: Path):
-    layout, session, journal, transaction = _open(tmp_path)
+def test_header_and_chain_survive_a_reopened_session(tmp_path: Path, monkeypatch):
+    base, session, journal, transaction = _open(tmp_path, monkeypatch)
     with session:
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
@@ -73,10 +65,7 @@ def test_header_and_chain_survive_a_reopened_session(tmp_path: Path):
             journal.append(zero)
             journal.append(_next(zero, ProvisioningStateV1.author_staged))
 
-    second = provisioning.open_provisioning_layout_v1(
-        tmp_path / "config", provisioner_build_id=BUILD,
-    )
-    reopened = second.open_root_session()
+    reopened = support.open_layout(monkeypatch, base).birth_session
     with reopened:
         with reopened.global_lock(exclusive=True, create=True):
             state = provisioning._TransactionJournalV1(
@@ -90,7 +79,7 @@ def test_header_and_chain_survive_a_reopened_session(tmp_path: Path):
 
 
 def test_no_authoritative_name_is_born_final(tmp_path: Path, monkeypatch):
-    layout, session, journal, transaction = _open(tmp_path)
+    base, session, journal, transaction = _open(tmp_path, monkeypatch)
     calls: list[tuple[str, tuple[str, ...]]] = []
     original_create = type(session).create_file_exclusive
     original_rename = type(session).rename_no_replace
@@ -124,8 +113,8 @@ def test_no_authoritative_name_is_born_final(tmp_path: Path, monkeypatch):
     ]
 
 
-def test_a_pending_checkpoint_is_reported_not_read(tmp_path: Path):
-    layout, session, journal, transaction = _open(tmp_path)
+def test_a_pending_checkpoint_is_reported_not_read(tmp_path: Path, monkeypatch):
+    base, session, journal, transaction = _open(tmp_path, monkeypatch)
     with session:
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
@@ -146,8 +135,10 @@ def test_a_pending_checkpoint_is_reported_not_read(tmp_path: Path):
     "second-pending", "pending-out-of-order", "foreign-name-in-root",
     "foreign-name-in-checkpoints", "gap-in-the-chain",
 ])
-def test_ambiguous_shapes_are_refused(tmp_path: Path, case: str):
-    layout, session, journal, transaction = _open(tmp_path)
+def test_ambiguous_shapes_are_refused(
+    tmp_path: Path, monkeypatch, case: str,
+):
+    base, session, journal, transaction = _open(tmp_path, monkeypatch)
     with session:
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
@@ -181,7 +172,7 @@ def test_ambiguous_shapes_are_refused(tmp_path: Path, case: str):
                 # from outside the capability, which is where it would come
                 # from in reality.
                 stray = (
-                    tmp_path / "config" / "birth"
+                    base / "birth"
                     / provisioning.transaction_root_name_v1(transaction)
                     / "checkpoints-v1" / "stray.txt"
                 )
@@ -195,8 +186,8 @@ def test_ambiguous_shapes_are_refused(tmp_path: Path, case: str):
     assert error.value.code == "birth_provisioning_recovery_ambiguous"
 
 
-def test_a_broken_predecessor_is_a_conflict(tmp_path: Path):
-    layout, session, journal, transaction = _open(tmp_path)
+def test_a_broken_predecessor_is_a_conflict(tmp_path: Path, monkeypatch):
+    base, session, journal, transaction = _open(tmp_path, monkeypatch)
     with session:
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
@@ -213,8 +204,8 @@ def test_a_broken_predecessor_is_a_conflict(tmp_path: Path):
     assert error.value.code == "birth_provisioning_transaction_conflict"
 
 
-def test_a_state_never_goes_back(tmp_path: Path):
-    layout, session, journal, transaction = _open(tmp_path)
+def test_a_state_never_goes_back(tmp_path: Path, monkeypatch):
+    base, session, journal, transaction = _open(tmp_path, monkeypatch)
     with session:
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
@@ -229,8 +220,8 @@ def test_a_state_never_goes_back(tmp_path: Path):
     assert error.value.code == "birth_provisioning_transaction_conflict"
 
 
-def test_a_document_of_another_transaction_is_refused(tmp_path: Path):
-    layout, session, journal, transaction = _open(tmp_path)
+def test_a_document_of_another_transaction_is_refused(tmp_path: Path, monkeypatch):
+    base, session, journal, transaction = _open(tmp_path, monkeypatch)
     other = new_transaction_id_v1()
     with session:
         with session.global_lock(exclusive=True, create=True):
@@ -243,8 +234,8 @@ def test_a_document_of_another_transaction_is_refused(tmp_path: Path):
     assert checkpoint_error.value.code == "birth_provisioning_transaction_conflict"
 
 
-def test_writing_twice_is_a_conflict_not_a_replacement(tmp_path: Path):
-    layout, session, journal, transaction = _open(tmp_path)
+def test_writing_twice_is_a_conflict_not_a_replacement(tmp_path: Path, monkeypatch):
+    base, session, journal, transaction = _open(tmp_path, monkeypatch)
     with session:
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
@@ -262,64 +253,41 @@ def test_writing_twice_is_a_conflict_not_a_replacement(tmp_path: Path):
     assert names == ("0" * 20 + ".json",)
 
 
-def test_the_journal_needs_the_exclusive_global_lock(tmp_path: Path):
-    layout, session, journal, transaction = _open(tmp_path)
+def test_the_journal_needs_the_exclusive_global_lock(tmp_path: Path, monkeypatch):
+    base, session, journal, transaction = _open(tmp_path, monkeypatch)
     with session:
         with pytest.raises(BirthProvisioningError) as error:
             journal.create_root()
     assert error.value.code == "birth_provisioning_lock_unsafe"
 
 
-def test_an_absent_author_source_is_a_state(tmp_path: Path):
-    layout = _layout(tmp_path)
-    assert layout.author_source is None
-    layout.close_author_source()
+def test_an_absent_author_source_is_a_state(tmp_path: Path, monkeypatch):
+    support.use_config(monkeypatch, support.make_config(tmp_path))
+    assert provisioning._resolve_author_source_v1() is None
 
 
-def test_a_present_author_source_is_opened_read_only(tmp_path: Path):
-    layout = _layout(tmp_path, with_source=True)
-    assert layout.author_source is not None
-    assert not hasattr(layout.author_source, "create_file_exclusive")
-    assert not hasattr(layout.author_source, "global_lock")
-    layout.close_author_source()
+def test_a_present_author_source_is_opened_read_only(
+    tmp_path: Path, monkeypatch,
+):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+    )
+
+    base = support.make_config(tmp_path, author=Ed25519PrivateKey.generate())
+    support.use_config(monkeypatch, base)
+    opened = provisioning._resolve_author_source_v1()
+    assert opened is not None
+    assert not hasattr(opened, "create_file_exclusive")
+    assert not hasattr(opened, "global_lock")
+    opened.close()
 
 
-def test_an_unsafe_author_source_is_refused_not_ignored(tmp_path: Path):
-    base = tmp_path / "config"
-    (base / "birth").mkdir(mode=0o755, parents=True)
+def test_an_unsafe_author_source_is_refused_not_ignored(
+    tmp_path: Path, monkeypatch,
+):
+    base = support.make_config(tmp_path)
     (base / "keys").mkdir(mode=0o777)
+    support.use_config(monkeypatch, base)
     with pytest.raises(BirthProvisioningError) as error:
-        provisioning.open_provisioning_layout_v1(
-            base, provisioner_build_id=BUILD,
-        )
+        provisioning._resolve_author_source_v1()
     assert error.value.code == "birth_provisioning_acl_unsafe"
-
-
-def test_the_root_descriptor_is_consumed_once(tmp_path: Path):
-    layout = _layout(tmp_path)
-    session = layout.open_root_session()
-    with session:
-        with pytest.raises(BirthProvisioningError) as error:
-            layout.open_root_session()
-    assert error.value.code == "birth_provisioning_io_unavailable"
-
-
-def test_the_layout_refuses_a_descriptor_it_did_not_receive(tmp_path: Path):
-    with pytest.raises(BirthProvisioningError) as error:
-        provisioning.ProvisioningLayoutV1(
-            root=object(), author_source=None, provisioner_build_id=BUILD,
-        )
-    assert error.value.code == "birth_provisioning_io_unavailable"
-    layout = _layout(tmp_path)
-    with pytest.raises(BirthProvisioningError):
-        provisioning.ProvisioningLayoutV1(
-            root=layout.root, author_source=None, provisioner_build_id="",
-        )
-
-
-def test_the_productive_catalogue_is_the_whole_closed_grammar():
-    from executor_birth_secure_fs import _BirthRolePatternV1
-
-    catalog = provisioning._productive_role_catalog_v1()
-    assert catalog.patterns == tuple(_BirthRolePatternV1)
-    assert catalog.exact_bindings == () and catalog.generation == 0
