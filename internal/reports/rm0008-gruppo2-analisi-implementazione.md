@@ -3981,6 +3981,17 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   dichiara la funzione avvolta — provato sul PC: le due celle passano.
   Conservato in `apparato-pendente-4.patch`.
 
+- **il lucchetto non ha un contenuto confrontabile** — la fotografia
+  indipendente dell'albero Windows legge i byte di ogni file. Del lucchetto,
+  pero', la leggibilita' dipende da chi lo tiene in quel momento, non
+  dall'albero: la fotografia presa fuori dalla presa esclusiva ne legge il
+  contenuto, quella presa dentro riceve un rifiuto. Il confronto accusava
+  allora un «oggetto estraneo cambiato» che non era cambiato. Rimedio:
+  registrare per quel solo nome un contrassegno costante, lasciando identita',
+  dimensione e permessi della stessa riga a fare la guardia. Provato sul PC:
+  la cella `mutation-between-scans-rejected` passa e il file va da 3 rossi a 2.
+  Conservato in `apparato-pendente-5.patch`.
+
 - **sonda di causalita' della rinomina** — `_RenameCausalityProbe` sostituisce
   la verifica di profilo con un metodo gia' legato alla sonda, ma la sua firma
   attende `(session, handle, ...)`. Un metodo legato non e' un descrittore:
