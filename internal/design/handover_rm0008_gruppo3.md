@@ -77,7 +77,7 @@ privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
 GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (tredicesima fotografia; ultimo pubblico verde `f1eba39`):
+i lavori (sedicesima fotografia; ultimo pubblico verde `3a4840e`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -244,7 +244,17 @@ accertato, cosi' nessuno li scambia per regressioni:
   invocato, quindi il difetto non ha mai fatto danno — e ritirarlo non toglie
   un comportamento a nessuno.
 
-  Serve una decisione di Roberto e, se si sceglie (b), una rifirma (§7.10)
+  **DECISO 28/8 (delega di Roberto): NON si ritira.** La misura «0 invocazioni»
+  era vera e la conclusione sbagliata: il nome e' un riferimento di
+  instradamento che il pianificatore legge in quattro `.j2` e in un manifest
+  FIRMATO (`read_persons`). Vale per il fatto di essere NOMINATO, non di essere
+  invocato. Motivazione completa nel §13 del piano ottimizzato. Il difetto vero
+  — l'attraversamento del confine di un'altra unita' firmata — passa dal
+  cancello: e' il SECONDO cliente, accanto a `undo_last_turn`. La cella resta
+  rossa e dichiarata: la base 2A vieta `xfail`, quindi qui un caso e' verde
+  oppure e' un rilievo.
+
+  (Storico) Se un giorno si scegliesse (b), servirebbe una rifirma (§7.10)
   — che oggi passa da un'intenzione di Executor Birth, perche' `sign.py publish`
   risponde «unavailable in STORE_ONLY». Non toccato.
 
