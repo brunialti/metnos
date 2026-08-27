@@ -46,7 +46,7 @@ REGISTRY = {"author": {"key_ids": ["one"]}}
 
 def _prepare(tmp_path: Path, monkeypatch, registry=None):
     support.stage_runtime_sources(tmp_path, monkeypatch)
-    return provisioning.prepare_installed_admission_context_v1(
+    return provisioning._prepare_installed_admission_context_v1(
         REGISTRY if registry is None else registry
     )
 
@@ -139,7 +139,7 @@ def test_the_material_is_stable_and_follows_its_sources(
         (stage / "vocab.py").read_bytes() + b"\n# changed\n"
     )
     os.chmod(stage / "vocab.py", 0o644)
-    changed = provisioning.prepare_installed_admission_context_v1(REGISTRY)
+    changed = provisioning._prepare_installed_admission_context_v1(REGISTRY)
     assert changed.prepared_admission_context_id != (
         first.prepared_admission_context_id
     )
@@ -173,7 +173,7 @@ def test_a_catalogue_entry_that_moves_changes_the_identity(
         for name, version, files, state in original
     )
     monkeypatch.setattr(provisioning, "_CONTEXT_CATALOG_V1", shortened)
-    fewer = provisioning.prepare_installed_admission_context_v1(REGISTRY)
+    fewer = provisioning._prepare_installed_admission_context_v1(REGISTRY)
     assert fewer.prepared_admission_context_id != (
         first.prepared_admission_context_id
     )
@@ -183,7 +183,7 @@ def test_a_catalogue_entry_that_moves_changes_the_identity(
         for name, version, files, state in original
     )
     monkeypatch.setattr(provisioning, "_CONTEXT_CATALOG_V1", promoted)
-    changed = provisioning.prepare_installed_admission_context_v1(REGISTRY)
+    changed = provisioning._prepare_installed_admission_context_v1(REGISTRY)
     assert changed.prepared_admission_context_id != (
         first.prepared_admission_context_id
     )
@@ -193,7 +193,7 @@ def test_the_factory_takes_no_catalogue_from_the_caller():
     import inspect
 
     signature = inspect.signature(
-        provisioning.prepare_installed_admission_context_v1
+        provisioning._prepare_installed_admission_context_v1
     )
     assert list(signature.parameters) == ["authority_registry"]
 
@@ -206,7 +206,7 @@ def test_an_absent_distribution_is_an_incomplete_catalogue(
     runtime_config = importlib.import_module("config")
     monkeypatch.setattr(runtime_config, "PATH_RUNTIME", tmp_path / "absent")
     with pytest.raises(BirthProvisioningError) as error:
-        provisioning.prepare_installed_admission_context_v1(REGISTRY)
+        provisioning._prepare_installed_admission_context_v1(REGISTRY)
     assert error.value.code == "birth_context_catalog_incomplete"
 
 
@@ -214,5 +214,5 @@ def test_a_writable_distribution_is_refused(tmp_path: Path, monkeypatch):
     stage = support.stage_runtime_sources(tmp_path, monkeypatch)
     os.chmod(stage, 0o777)
     with pytest.raises(BirthProvisioningError) as error:
-        provisioning.prepare_installed_admission_context_v1(REGISTRY)
+        provisioning._prepare_installed_admission_context_v1(REGISTRY)
     assert error.value.code == "birth_provisioning_acl_unsafe"

@@ -2168,10 +2168,14 @@ def _resolve_context_sources_v1():
         raise _reject("birth_context_catalog_incomplete", exc) from None
 
 
-def prepare_installed_admission_context_v1(
+def _prepare_installed_admission_context_v1(
     authority_registry: Mapping[str, object],
 ) -> PreparedContextMaterialV1:
     """Freeze the eleven components once and describe them.
+
+    The factory is internal because it opens a source of its own: the module
+    keeps a single public door, which is what the productive graph of the
+    acceptance base requires (section 16.13.4).
 
     Nothing is chosen by a caller: the files come from the closed catalogue,
     the bytes are read through the secure session and the configurations are
