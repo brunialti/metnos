@@ -119,6 +119,32 @@ semantic review requires an independent high tier, not a vendor or one fixed
 model. Frontier remains available for complexity and is mandatory for
 post-failure review; lower tiers may not be substituted silently.
 
+## Implementation notes — increment 2A on Windows
+
+The handle-bound filesystem primitive behaves the same on both platforms, but
+three properties were settled while certifying it against the frozen acceptance
+base and are recorded here so they are not rediscovered:
+
+- **The anchor of a chain is opened by path; every descendant is opened
+  relative to it.** The prohibition on the Win32 wrapper is a prohibition on
+  falling back to it after a native refusal, not on using it for the anchor.
+- **The provisioning lock is created and reopened through the relative native
+  entry, without the right to remove.** Keeping that right in the handle that
+  stays open while the lock is held makes every later read of the container
+  collide with it.
+- **What stays open after a container is created is a reader, not a creator**,
+  for the same reason; and the owner of a store may write its own global lock,
+  a property derived from the closed catalogue so that the writer and the
+  verifier of a profile cannot disagree.
+
+Two acceptance cells of the frozen base require exactly one native open per
+created object, which the reader above contradicts; a third requires a single
+status conversion where a refused move must also look at its destination. Both
+conflicts are with mandatory cells, and the mandatory ones prevail. The
+measurements and the minimal base change each would need are recorded in
+`internal/reports/rm0008-gruppo2-analisi-implementazione.md`, sections 17.54,
+17.60 and 17.65.
+
 ## Consequences
 
 - Local models may remain useful even when imperfect: poor output is rejected
