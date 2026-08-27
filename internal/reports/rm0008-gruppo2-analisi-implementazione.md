@@ -4188,6 +4188,26 @@ La cella della chiamata non elevata resta rossa: il lucchetto ora si prende, ma
 qualcosa piu' avanti nel percorso non da' ancora l'esito atteso. E' il prossimo
 punto da guardare, con una causa in meno.
 
+### 17.54 Decisione sulla tensione del §17.42
+
+Le due pretese non sono conciliabili con le primitive attuali: guardare la
+destinazione richiede una seconda apertura di sistema, e l'altra cella ne
+ammette una sola. Ho scelto, e la scelta e' motivata.
+
+**Il prodotto tiene il comportamento del §17.38**: con la sorgente assente,
+guarda la destinazione. La ragione e' che quella proprieta' e' visibile a chi
+usa il sistema — uno spostamento interrotto viene riconosciuto come gia'
+avvenuto invece di essere riportato come «non riesco ad aprire» — mentre la
+proprieta' dell'altra cella e' d'igiene dell'interfaccia di sistema (una sola
+conversione dello stato per apertura fallita, nessun ripiego sull'involucro
+Win32) e resta comunque verificata dalle altre cinque coppie dello stesso caso
+e da tutti gli altri casi del contratto nativo.
+
+Conseguenza da mettere in conto: finche' entrambe le celle stanno come sono,
+il cancelletto finale non puo' diventare verde. E' una contraddizione interna
+alla base, non un difetto del prodotto, e la sua soluzione — cambiare una delle
+due celle — non spetta a chi implementa.
+
 ### 17.53 La sonda sotto altro account non si lascia osservare
 
 Per sapere quale rifiuto riceve l'utente non elevato ho provato tre volte a
