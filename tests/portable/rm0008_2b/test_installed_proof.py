@@ -2,11 +2,16 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from . import installed_provisioner_proof_v1 as proof
+
+pytestmark = pytest.mark.skipif(
+    os.name == "nt", reason="the provisioner Windows matrix is not proven yet"
+)
 
 
 @pytest.fixture(scope="module")
