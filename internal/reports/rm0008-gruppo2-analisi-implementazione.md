@@ -4252,6 +4252,48 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.75 Incremento 2F: i tre finali, le due entrate, la fase 3
+
+I tre finali si pubblicano con tre rinomine senza sostituzione — radice autore,
+insieme col nome derivato da `set_id`, marcatore — e il giornale sopravvive fino
+al marcatore, cosi' un arresto fra due rinomine resta classificabile. Dopo la
+rilettura coi caricatori produttivi viene rimossa soltanto la transazione
+concorde, oggetto per oggetto e dal basso. Una seconda corsa e' sola ispezione:
+non apre sorgente precedente ne' ingressi.
+
+**Lacuna vera del catalogo 2A, trovata pubblicando.** Un pendente di payload il
+cui padre e' la radice di transazione non era classificabile — la grammatica
+chiedeva almeno tre componenti — e il marcatore vive esattamente li'. Senza la
+correzione l'unico modo di scrivere il marcatore sarebbe stato farlo nascere col
+proprio nome finale, cioe' rompere la regola che il §4.3 impone a ogni payload.
+Corretto nel prodotto, coperto da una prova che risolve il nome e ne verifica
+tipo e profilo.
+
+**Le entrate sono due e non prendono parametri.** La prima ispeziona, riprende e
+rimanda soltanto da uno stato del tutto vuoto senza autore; la seconda pretende
+l'identita' e completa. L'identificativo di build lo deriva il codice dal proprio
+sorgente, quindi una transazione di un'altra build resta un conflitto per
+costruzione, senza che nessuno debba ricordarsi di aggiornare una costante. La
+fase 3 le chiama nei due punti del §10.6, col preflight di sola lettura degli
+ingressi pubblici prima di pubblicare i contratti.
+
+**Conseguenza operativa dichiarata:** i due registri pubblici dell'operatore
+diventano un prerequisito della fase 3. Senza, la fase si ferma con l'errore
+distinto invece di completarsi generando una chiave e buttandola. E' scritto in
+`install/INSTALL_NOTES.md`.
+
+La cella R1 e' stata estesa una seconda volta, e di nuovo restringendo: ammette
+esattamente due porte nel predispositore e consente alla fase 3 di **nominare
+quelle due e nient'altro di sensibile** — il controllo guarda i bersagli diretti,
+non la chiusura transitiva, quindi una fase che chiamasse una mutazione o la
+disposizione dell'installatore verrebbe colta. Due mutanti lo dimostrano.
+Decima fotografia rifatta (`496bb7a`, 235 risultati); ciclo finale verde su tutti
+e nove i lavori.
+
+Resta da fare per chiudere 2F: la prova installata limitata al predispositore
+(`installed_provisioner_proof_v1`), che deve invocare lo stesso adattatore reale
+dalla copia installata.
+
 ### 17.74 Incremento 2E chiuso, e una divergenza fra i due caricatori
 
 Chiuso il §10.5. Il nucleo puo' consegnare soltanto fatti: `BirthCommitFactsV1`
