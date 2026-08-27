@@ -4231,6 +4231,37 @@ il cancelletto finale non puo' diventare verde. E' una contraddizione interna
 alla base, non un difetto del prodotto, e la sua soluzione — cambiare una delle
 due celle — non spetta a chi implementa.
 
+### 17.60 Le due celle non sono chiudibili senza rompere una obbligatoria
+
+Seguito fino in fondo il motivo nuovo del §17.59. Le due celle pretendono
+**esattamente quattro** aperture native nella loro finestra, una per oggetto
+creato, e un descrittore di sicurezza su ognuna. Il prodotto ne fa sei: dopo
+aver creato un contenitore riapre un lettore, perche' la maniglia di creazione
+porta il diritto di rimuovere e la sua condivisione non ammette la
+cancellazione — con quella in cache, rimuovere piu' tardi quello stesso
+contenitore e' impossibile.
+
+Le tre pretese in gioco:
+
+1. la creazione e' **una** chiamata nativa (cella `may_green`);
+2. la maschera della creazione di un contenitore e' fissata a `0x001F00A1`,
+   che **contiene** il diritto di rimuovere, e la condivisione a lettura e
+   scrittura (fissate dalla stessa cella);
+3. un contenitore creato deve poter essere rimosso mentre la sessione lo tiene
+   (cella **assente**, cioe' obbligatoria).
+
+Su Windows non possono valere tutte e tre. Ho verificato le alternative:
+rilasciare la maniglia prima del tentativo rompe la cella obbligatoria quando
+il tentativo fallisce (misurato); togliere il diritto di rimuovere dalla
+maschera contraddice il punto 2; riusare la maniglia di creazione al posto
+dell'apertura di rimozione contraddice le celle della rimozione, che quell'
+apertura la pretendono.
+
+**Decisione: vince l'obbligatoria.** Il prodotto tiene il lettore dopo la
+creazione e le due celle `may_green` restano rosse. Non e' un difetto da
+inseguire: e' una contraddizione interna alla base, come quella del §17.54, e
+si scioglie solo rivedendo una delle celle.
+
 ### 17.59 Sesto congelamento: il lotto e' misurato
 
 Il lotto dell'apparato e' entrato con la procedura del passo 5 (prodotto
