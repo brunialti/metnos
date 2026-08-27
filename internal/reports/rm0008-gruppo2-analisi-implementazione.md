@@ -4231,6 +4231,24 @@ il cancelletto finale non puo' diventare verde. E' una contraddizione interna
 alla base, non un difetto del prodotto, e la sua soluzione — cambiare una delle
 due celle — non spetta a chi implementa.
 
+### 17.63 L'utente comune riceve l'esito giusto: la cella fallisce altrove
+
+Ultima incognita sciolta, con una sonda propria eseguita in officina sotto un
+account comune vero. Stesso percorso della cella congelata — sessione, presa
+del lucchetto, creazione del file riservato — e l'esito e' **esattamente quello
+atteso**: «servono privilegi», codice 40. Il prodotto e' corretto.
+
+La cella congelata fallisce quindi per un'altra ragione, e la piu' probabile e'
+scritta nel suo stesso disegno: essa esegue il lavoratore **dalla copia del
+repository**, mentre le celle sorelle che riescono copiano prima la sonda in una
+cartella pubblica, leggibile da un account comune. Un figlio che non puo'
+nemmeno leggere il proprio programma muore prima di cominciare, e infatti non
+scrive nulla: e' esattamente cio' che avevo osservato (§17.53).
+
+Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
+prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
+temporanea e' stata tolta dopo la misura.
+
 ### 17.62 La suite Windows ordinaria e' verde: due cause, entrambe reali
 
 Guardare tutto il flusso e non solo i sei lavori ha reso un difetto vero.
