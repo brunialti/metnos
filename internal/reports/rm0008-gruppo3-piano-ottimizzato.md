@@ -450,3 +450,39 @@ Conseguenza per chi affrontera' il blocco Windows del predispositore: le due
 cose sono davvero diverse, e la rinomina non ha mai avuto un problema di
 privilegi. L'ipotesi «manca `DELETE` nella maschera» resta da misurare, ma ora
 il codice restituito non la contraddice piu' ne' la conferma per sbaglio.
+
+## 13. `find_persons_indices`: deciso di NON ritirarlo (28/8, delega di Roberto)
+
+La misura «0 invocazioni su 8.716 passi reali» sembrava chiudere la questione:
+nessuno lo chiama, quindi si ritira. **La misura era vera e la conclusione
+sbagliata**, e vale la pena scrivere perche'.
+
+Guardando dove il nome compare, non e' peso morto: e' un **riferimento di
+instradamento** che il pianificatore legge.
+
+| Dove | Che ruolo ha |
+|---|---|
+| `prompts/{it,en}/planner/sections/photos.j2` | dichiarato alias accettato, con esempio OK e due anti-pattern |
+| `prompts/{it,en}/engine_proposer.j2` | composizione raccomandata: `find_persons_indices(name=X)` → `find_images_web(face_boxes=...)`, che usa la sua proiezione `bbox` |
+| `executors/read_persons/manifest.toml` (FIRMATO) | disambiguazione «foto → find_persons_indices» |
+| `runtime/{vocab,prefilter,loader}.py`, `engine/{dispatch,executor}.py` | appartenenza al dominio `*_persons` |
+
+Il suo valore sta nell'**essere nominato**, non nell'essere invocato: e' cosi'
+che il pianificatore instrada altrove correttamente. Zero invocazioni misura
+che il riferimento funziona, non che e' inutile.
+
+Togliere il nome sarebbe quindi un cambio di instradamento su quattro
+`.j2` — che si tocca solo con una misura, non a intuito — piu' una rifirma di
+`read_persons`, che oggi **non e' possibile**: dopo il cutover un manifest
+cambia solo tramite un'intenzione di Executor Birth.
+
+**Decisione: non si ritira.** Il difetto vero e' un altro e resta: l'executor
+attraversa il confine di un'altra unita' firmata importandone il modulo. Anche
+quella correzione passa dal cancello, perche' vive nel codice dell'executor.
+
+Quindi `find_persons_indices` e' il **secondo cliente** del cancello di
+nascita, accanto a `undo_last_turn`. La cella
+`test_sandboxed_readers_reuse_logical_symlink_index_without_source_bind` resta
+ROSSA e dichiarata: in questa casa un caso e' verde oppure e' un rilievo, e
+`xfail` e' vietato dalla base 2A (`no-skip-xfail`). Nasconderlo sarebbe peggio
+del rosso.
