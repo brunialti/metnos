@@ -3994,7 +3994,11 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   aperto con diritto di rimozione non si lascia leggere, e la fotografia
   registra il rifiuto invece di interrompersi. Serve alle celle di gara, dove
   un osservatore indipendente fotografa l'albero mentre l'operazione e' in
-  corso. Conservato in `apparato-pendente-5.patch`.
+  corso. La forma finale non registra piu' un rifiuto: legge i byte attraverso
+  una maniglia che **condivide** cio' che il titolare tiene, cosi' la fotografia
+  descrive gli stessi byte sia durante un'operazione sia dopo. Registrare il
+  rifiuto rendeva le due fotografie diverse a seconda dell'istante, ed era il
+  difetto che restava. Conservato in `apparato-pendente-5.patch`.
 
 - **numeri di maniglia riciclati** — le celle della rimozione seguono la
   maniglia di validazione dal suo numero. Il sistema pero' riassegna quel
@@ -4153,6 +4157,17 @@ Prossimo passo, deciso e non ancora eseguito: riprodurre il rifiuto in uno
 script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
+
+### 17.39 File delle rimozioni e degli spostamenti: 21 su 21
+
+Il conflitto di nome viene ora affermato sempre sull'occupante osservato, anche
+quando e' il sistema stesso a dichiarare la collisione: la dichiarazione dice
+che il nome e' occupato, non da che cosa. Con questo e con la lettura condivisa
+della fotografia, il file chiude a **21 celle su 21**.
+
+Sull'intera base Windows del PC si passa da 84 a 87 celle verdi. Le rosse
+rimaste sono in altri tre file e comprendono le famiglie legate all'ambiente
+(§17.17, §17.18), che sul PC amministratore non sono decidibili.
 
 ### 17.38 Se il nome da spostare non c'e', si guarda dove sarebbe andato
 

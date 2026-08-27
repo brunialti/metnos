@@ -3905,18 +3905,21 @@ class _SecureRootSession:
                             directory=directory,
                             profile=source_role,
                         )
-                        # A move that must not replace anything, refused because
-                        # the name is taken, is a conflict of transactions. The
-                        # destination is not reopened by name to confirm it: the
-                        # system already answered, and rebuilding that name is
-                        # exactly what this primitive avoids everywhere else.
-                        if error in {
+                        # A move that must not replace anything, refused
+                        # because the name is taken, is a conflict of
+                        # transactions.  The occupant is observed once, relative
+                        # to the same container and in the domain of the act:
+                        # the conflict is asserted about an object this session
+                        # has seen, never about a name rebuilt from a path.
+                        declared = error in {
                             _ERROR_FILE_EXISTS,
                             _ERROR_ALREADY_EXISTS,
-                        } or (
-                            error
-                            in {_ERROR_ACCESS_DENIED, _ERROR_SHARING_VIOLATION}
-                            and _win_name_taken_v1(
+                        }
+                        if declared or error in {
+                            _ERROR_ACCESS_DENIED,
+                            _ERROR_SHARING_VIOLATION,
+                        }:
+                            occupied = _win_name_taken_v1(
                                 target_handle,
                                 target_name,
                                 directory,
@@ -3928,10 +3931,10 @@ class _SecureRootSession:
                                     )
                                 ),
                             )
-                        ):
-                            raise BirthSecureFSError(
-                                "birth_provisioning_transaction_conflict"
-                            )
+                            if declared or occupied:
+                                raise BirthSecureFSError(
+                                    "birth_provisioning_transaction_conflict"
+                                )
                         if error in {_ERROR_NOT_SUPPORTED, _ERROR_NOT_SAME_DEVICE}:
                             raise BirthSecureFSError(
                                 "birth_provisioning_atomic_install_unsupported"
