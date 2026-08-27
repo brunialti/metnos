@@ -195,7 +195,9 @@ def run_proof(source: Path, workspace: Path) -> dict[str, object]:
     # ``mkdir`` applies the umask, and a Birth root anyone may write is
     # refused by the capability on purpose: an installation is not a working
     # tree.  On Windows the same fact is a security descriptor.
-    for path in (home, config, config / "birth", config / "birth" / "operator-input-v1"):
+    support.relax_directory(home)
+    support.relax_directory(config)
+    for path in (config / "birth", config / "birth" / "operator-input-v1"):
         support.apply_profile(path, directory=True, private=False)
     keys = support.complete_operator_input(config)
     root = config / "birth"
