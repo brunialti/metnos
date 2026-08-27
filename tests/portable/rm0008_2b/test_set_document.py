@@ -24,7 +24,7 @@ from . import support
 
 pytestmark = pytest.mark.skipif(
     not support.can_set_owner(),
-    reason="creating a Birth object needs the owner privilege of the elevated job",
+    reason="the owner probe refused: " + support.owner_privilege_reason(),
 )
 
 EXPECTED_FIELDS = {
