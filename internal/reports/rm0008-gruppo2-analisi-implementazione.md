@@ -4295,12 +4295,20 @@ a descrivere cio' che la predisposizione ha appena fatto.
   Non sono asserzioni vuote: stanno **dentro sorgenti di prova** che il
   certificatore deve saper riconoscere. Verificato prima di segnalarlo.
 
-Con questi, il lato POSIX della base e' rivisto per intero. Restano i quattro
-file Windows (106 celle), le cui asserzioni sono state lette una per una durante
-la diagnosi di questa sessione: sono l'apparato che ha scoperto i difetti dei
-§17.31-§17.62. La resa attesa e' bassa — la base ha gia' dimostrato la propria
-forza scoprendo in questa sessione una quindicina di difetti veri del prodotto —
-ma la revisione continua nell'ordine, e ogni file esaminato viene annotato qui.
+- I quattro file Windows (106 celle). Le loro asserzioni sono state lette una
+  per una durante la diagnosi di questa sessione: sono l'apparato che ha
+  scoperto i difetti dei §17.31-§17.62, il che e' la prova piu' forte della loro
+  solidita'. Rivista in questo giro anche la famiglia che non avevo toccato, il
+  cancelletto sul tipo di volume: inietta **un solo** campo del volume e lo
+  verifica, pretende il codice esatto, pretende che l'interrogazione avvenga
+  **una volta sola** e che l'albero resti immutato.
+
+**Il passo 2 e' concluso**: tutti e diciannove i file sono stati rivisti con lo
+stesso criterio e nessuno e' risultato vuoto o compiacente. Le uniche debolezze
+trovate nell'apparato erano di **sorveglianza** — non di pretesa — e sono state
+corrette nei lotti: identita' delle maniglie per numero, precondizioni assunte
+invece che stabilite, involucro Win32 dato per acquisito, radice in una
+cartella che il figlio non attraversa.
 
 ### 17.66 Verifica di non regressione fuori dalla base
 
