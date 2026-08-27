@@ -3217,10 +3217,22 @@ class _SecureRootSession:
                         purpose=_NtOpenPurposeV1.lock_reader,
                         directory=False,
                     )
-            except OSError as exc:
-                if create and exclusive and exc.errno in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
-                    handle = _win_open_path(
-                        path, directory=False, writable=True, generic_read=True
+            except (BirthSecureFSError, OSError) as exc:
+                # A lock that already exists is not a conflict: it is the
+                # normal case for every taker after the first, and it is opened
+                # from the same container, never by rebuilding its name.
+                taken = getattr(exc, "errno", None) in {
+                    _ERROR_FILE_EXISTS,
+                    _ERROR_ALREADY_EXISTS,
+                } or getattr(exc, "code", None) == (
+                    "birth_provisioning_transaction_conflict"
+                )
+                if create and exclusive and taken:
+                    handle = _win_open_relative_v1(
+                        directory,
+                        name,
+                        purpose=_NtOpenPurposeV1.lock_reader,
+                        directory=False,
                     )
                 else:
                     raise
