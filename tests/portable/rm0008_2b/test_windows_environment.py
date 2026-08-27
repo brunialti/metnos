@@ -17,6 +17,22 @@ def _token_privileges() -> dict[str, object]:
 
     advapi = ctypes.WinDLL("advapi32", use_last_error=True)
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    # Without these the pseudo handle is truncated to a 32-bit int and the
+    # open fails for a reason that has nothing to do with the token.
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel.GetCurrentProcess.argtypes = ()
+    kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+    advapi.OpenProcessToken.argtypes = (
+        wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE),
+    )
+    advapi.GetTokenInformation.argtypes = (
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    )
+    advapi.LookupPrivilegeNameW.argtypes = (
+        wintypes.LPCWSTR, ctypes.c_void_p, wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD),
+    )
     token = wintypes.HANDLE()
     if not advapi.OpenProcessToken(
         kernel.GetCurrentProcess(), 0x0008, ctypes.byref(token)
@@ -25,9 +41,9 @@ def _token_privileges() -> dict[str, object]:
     try:
         size = wintypes.DWORD(0)
         advapi.GetTokenInformation(token, 3, None, 0, ctypes.byref(size))
-        buffer = (ctypes.c_byte * size.value)()
+        buffer = (ctypes.c_byte * max(size.value, 4))()
         if not advapi.GetTokenInformation(
-            token, 3, buffer, size, ctypes.byref(size)
+            token, 3, ctypes.byref(buffer), size, ctypes.byref(size)
         ):
             return {
                 "error": "GetTokenInformation", "code": ctypes.get_last_error(),
@@ -43,7 +59,8 @@ def _token_privileges() -> dict[str, object]:
             name = ctypes.create_unicode_buffer(256)
             length = wintypes.DWORD(256)
             if advapi.LookupPrivilegeNameW(
-                None, luid, name, ctypes.byref(length)
+                None, ctypes.byref(ctypes.create_string_buffer(luid, 8)),
+                name, ctypes.byref(length),
             ):
                 found[name.value] = attributes
         return {"count": count, "privileges": found}
