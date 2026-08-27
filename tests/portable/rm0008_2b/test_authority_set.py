@@ -179,18 +179,19 @@ def test_a_restart_reuses_the_generated_identities(tmp_path: Path, monkeypatch):
     base = support.make_config(
         tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
     )
-    first = support.provision(monkeypatch, base)
-    location = support.transaction_root(base) / "authority-set"
+    support.provision_until_verified(monkeypatch, base)
+    staged = support.transaction_root(base) / "authority-set"
     before = {
-        item.relative_to(location).as_posix(): item.read_bytes()
-        for item in location.rglob("*") if item.is_file()
+        item.relative_to(staged).as_posix(): item.read_bytes()
+        for item in staged.rglob("*") if item.is_file()
     }
-    second = support.provision(monkeypatch, base)
+    support.provision(monkeypatch, base)
+    location = support.installed_set(base)
     after = {
         item.relative_to(location).as_posix(): item.read_bytes()
         for item in location.rglob("*") if item.is_file()
     }
-    assert second.transaction_id == first.transaction_id
+    # The set is moved to its final name, not generated a second time.
     assert after == before
 
 
@@ -227,7 +228,7 @@ def test_a_stop_after_the_inputs_completes_the_set(tmp_path: Path, monkeypatch):
 
     result = support.provision(monkeypatch, base)
     assert result.transaction_id == transaction
-    location = support.transaction_root(base) / "authority-set"
+    location = support.installed_set(base)
     assert len(list((location / "producers").iterdir())) == len(
         producer_catalog_v1()
     )

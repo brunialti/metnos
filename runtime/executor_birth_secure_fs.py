@@ -484,8 +484,10 @@ def _pending_payload_parent(
 
     The pending inherits the role of its parent, so the tail must already be
     classifiable under the same transaction and must not be another pending.
+    The parent may be the transaction root itself: the marker is a payload
+    like any other and is staged beside the header before it is published.
     """
-    if len(components) < 3:
+    if len(components) < 2:
         return None
     nonce = _transaction_id(components)
     if nonce is None:

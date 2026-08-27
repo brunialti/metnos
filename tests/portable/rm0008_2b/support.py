@@ -372,3 +372,68 @@ def load_staged_author_store(monkeypatch, base: Path):
     with session:
         with session.global_lock(exclusive=True, create=True):
             return keystore._load_birth_keystore_in_session(components, session)
+
+
+def installed_author_store(base: Path) -> Path:
+    return base / "birth" / "author-root-v1"
+
+
+def installed_marker(base: Path) -> Path:
+    return base / "birth" / "prepared-v1.json"
+
+
+def installed_set(base: Path) -> Path:
+    import json
+
+    marker = json.loads(installed_marker(base).read_bytes())
+    return base / "birth" / "authority-sets" / marker["set_id"]
+
+
+def load_installed_author_store(monkeypatch, base: Path):
+    """Read the installed author store through the session loader."""
+    import importlib
+
+    keystore = importlib.import_module("executor_birth_keystore")
+    layout = open_layout(monkeypatch, base)
+    session = layout.birth_session
+    with session:
+        with session.global_lock(exclusive=True, create=True):
+            return keystore._load_birth_keystore_in_session(
+                ("author-root-v1",), session,
+            )
+
+
+def provision_until_verified(monkeypatch, base: Path):
+    """Drive one transaction to ``verified`` and leave it there.
+
+    The complete run publishes the finals and removes its transaction, so a
+    test that wants to look inside the journal has to stop before that.
+    """
+    module = provisioner()
+    layout = open_layout(monkeypatch, base)
+    session = layout.birth_session
+    transaction = module.new_transaction_id_v1()
+    journal = module._TransactionJournalV1(session, transaction)
+    opened = module._resolve_author_source_v1()
+    try:
+        source = module.acquire_author_source_v1(opened)
+    finally:
+        opened.close()
+    with session:
+        with session.global_lock(exclusive=True, create=True):
+            journal.create_root()
+            journal.write_header(
+                module.TransactionHeaderV1(transaction, BUILD)
+            )
+            journal.ensure_checkpoints()
+            zero = module.CheckpointV1(
+                transaction, 0, None, module.ProvisioningStateV1.created, (),
+                module.empty_digests_v1(), None,
+            )
+            journal.append(zero)
+            acquired = module._record_author_source_v1(journal, zero, source)
+            staged = module._stage_and_record_v1(
+                session, journal, acquired, source,
+            )
+            module._advance_to_authorities_v1(session, journal, layout, staged)
+    return transaction

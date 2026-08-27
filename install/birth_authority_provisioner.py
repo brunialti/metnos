@@ -1347,8 +1347,8 @@ AUTHOR_SOURCE_BASENAME_V1 = "keys"
 class AuthorProvisioningOutcomeV1(str, Enum):
     """What one provisioning run actually did, never what it hoped to do."""
 
-    staged = "staged"
-    resumed = "resumed"
+    installed = "installed"
+    already_installed = "already_installed"
     author_not_yet_created = "author_not_yet_created"
 
 
@@ -1404,17 +1404,63 @@ def provision_author_root_v1(
         if len(transactions) > 1:
             raise _reject("birth_provisioning_recovery_ambiguous")
         installed = AUTHOR_STORE_BASENAME_V1 in names
+        marker = PREPARED_MARKER_BASENAME_V1 in names
         if transactions:
             return _resume_author_root_v1(
                 session, layout, transactions[0][len(TRANSACTION_PREFIX_V1):],
                 provisioner_build_id=provisioner_build_id,
                 installed=installed,
             )
+        if marker:
+            # Inspection only: with the three finals in place and no
+            # transaction, no previous source and no operator input is opened.
+            return _inspect_installed_v1(session, installed)
         if installed:
             raise _reject("birth_provisioning_recovery_ambiguous")
         return _provision_from_nothing_v1(
             session, layout, provisioner_build_id=provisioner_build_id,
         )
+
+
+def _inspect_installed_v1(session, installed: bool) -> AuthorProvisioningResultV1:
+    """Verify what is installed without opening anything external."""
+    from executor_birth_keystore import raw_public_key
+
+    if not installed:
+        raise _reject("birth_authority_set_conflict")
+    payload = _read_set_document_v1(session, (PREPARED_MARKER_BASENAME_V1,))
+    marker = decode_canonical_document_v1(payload)
+    if set(marker) != {
+        "schema_version", "state", "set_id", "authority_set", "author_store",
+        "author_store_public_inventory_sha256", "set_json_sha256",
+        "context_material_sha256", "provisioner_build_id", "transaction_id",
+    } or marker["state"] != PREPARED_MARKER_STATE_V1:
+        raise _reject("birth_authority_set_conflict")
+    author = verify_author_store_v1(session, (AUTHOR_STORE_BASENAME_V1,), None)
+    observed = author_store_public_inventory_sha256_v1({
+        key_id: raw_public_key(key)
+        for key_id, key in author.verifier_keys.items()
+    })
+    if observed != marker["author_store_public_inventory_sha256"]:
+        raise _reject("birth_author_keystore_existing_invalid")
+    location = (AUTHORITY_SETS_BASENAME_V1, marker["set_id"])
+    document = _read_set_document_v1(
+        session, location + (SET_DOCUMENT_BASENAME_V1,),
+    )
+    if hashlib.sha256(document).hexdigest() != marker["set_json_sha256"]:
+        raise _reject("birth_authority_set_conflict")
+    material = _read_set_document_v1(
+        session,
+        location + (CONTEXT_CONTAINER_BASENAME_V1, CONTEXT_MATERIAL_BASENAME_V1),
+    )
+    if hashlib.sha256(material).hexdigest() != marker["context_material_sha256"]:
+        raise _reject("birth_context_material_changed")
+    return AuthorProvisioningResultV1(
+        AuthorProvisioningOutcomeV1.already_installed,
+        author.active_key_id,
+        marker["author_store_public_inventory_sha256"],
+        None,
+    )
 
 
 def _provision_from_nothing_v1(
@@ -1445,8 +1491,11 @@ def _provision_from_nothing_v1(
     last = _record_author_source_v1(journal, zero, source)
     last = _stage_and_record_v1(session, journal, last, source)
     last = _advance_to_authorities_v1(session, journal, layout, last)
+    last = _complete_provisioning_v1(
+        session, journal, last, provisioner_build_id=provisioner_build_id,
+    )
     return AuthorProvisioningResultV1(
-        AuthorProvisioningOutcomeV1.staged,
+        AuthorProvisioningOutcomeV1.installed,
         source.active_key_id,
         last.digests["author_store_public_inventory_sha256"],
         transaction_id,
@@ -1508,6 +1557,18 @@ def _advance_to_authorities_v1(
         last = _stage_context_and_record_v1(session, journal, last)
     if state_rank_v1(last.state) < state_rank_v1(ProvisioningStateV1.verified):
         last = _write_set_and_record_v1(session, journal, last)
+    return last
+
+
+def _complete_provisioning_v1(
+    session, journal: "_TransactionJournalV1", last: CheckpointV1,
+    *, provisioner_build_id: str,
+) -> CheckpointV1:
+    """Publish the finals, verify them once more and drop the transaction."""
+    last = _advance_to_installed_v1(
+        session, journal, last, provisioner_build_id=provisioner_build_id,
+    )
+    _remove_transaction_v1(session, journal)
     return last
 
 
@@ -1634,20 +1695,22 @@ def _resume_author_root_v1(
         last = _resume_before_staging_v1(
             session, journal, last, installed=installed,
         )
-    if installed:
-        # Nothing is published before the whole set is verified, so a final
-        # author root beside a staged transaction is not a state this
-        # increment can produce.
+    if installed and state_rank_v1(last.state) < state_rank_v1(
+        ProvisioningStateV1.verified
+    ):
+        # A final author root beside a transaction that has not been verified
+        # yet is a state no conforming stop can produce.
         raise _reject("birth_provisioning_recovery_ambiguous")
     if state_rank_v1(last.state) < state_rank_v1(ProvisioningStateV1.verified):
         last = _advance_to_authorities_v1(session, journal, layout, last)
-    # The identity is read back from the store the transaction holds, not
-    # remembered from a run that may not be this one.
-    loaded = verify_author_store_v1(
-        session, journal.root_components + (AUTHOR_STORE_BASENAME_V1,), None,
+    last = _complete_provisioning_v1(
+        session, journal, last, provisioner_build_id=provisioner_build_id,
     )
+    # The identity is read back from the installed store, not remembered from
+    # a run that may not be this one.
+    loaded = verify_author_store_v1(session, (AUTHOR_STORE_BASENAME_V1,), None)
     return AuthorProvisioningResultV1(
-        AuthorProvisioningOutcomeV1.resumed,
+        AuthorProvisioningOutcomeV1.installed,
         loaded.active_key_id,
         last.digests["author_store_public_inventory_sha256"],
         transaction_id,
@@ -2521,3 +2584,286 @@ def _write_set_and_record_v1(
     )
     journal.append(checkpoint)
     return checkpoint
+
+
+AUTHORITY_SETS_BASENAME_V1 = "authority-sets"
+PREPARED_MARKER_BASENAME_V1 = "prepared-v1.json"
+PREPARED_MARKER_STATE_V1 = "prepared_not_active"
+
+
+def build_prepared_marker_v1(
+    *, set_id: str, transaction_id: str, provisioner_build_id: str,
+    digests: Mapping[str, str | None],
+) -> bytes:
+    """The marker of a prepared, inactive installation.
+
+    It does not enable Birth, does not attest a Phase 3 state, does not
+    authenticate the distribution and does not replace the future F4
+    certificate (section 4.3).
+    """
+    if not _is_hex(set_id, 64):
+        raise _reject("birth_authority_set_conflict")
+    document = {
+        "schema_version": 1,
+        "state": PREPARED_MARKER_STATE_V1,
+        "set_id": set_id,
+        "authority_set": f"{AUTHORITY_SETS_BASENAME_V1}/{set_id}",
+        "author_store": AUTHOR_STORE_BASENAME_V1,
+        "author_store_public_inventory_sha256": digests[
+            "author_store_public_inventory_sha256"
+        ],
+        "set_json_sha256": digests["set_json_sha256"],
+        "context_material_sha256": digests["context_material_sha256"],
+        "provisioner_build_id": provisioner_build_id,
+        "transaction_id": transaction_id,
+    }
+    if any(value is None for value in document.values()):
+        raise _reject("birth_authority_set_conflict")
+    return encode_canonical_document_v1(document)
+
+
+def _install_author_store_v1(session, journal: "_TransactionJournalV1") -> None:
+    """Publish the staged author root under its final name, no replacement."""
+    with _translated():
+        session.rename_no_replace(
+            journal.root_components + (AUTHOR_STORE_BASENAME_V1,),
+            (AUTHOR_STORE_BASENAME_V1,),
+            directory=True,
+        )
+
+
+def _install_authority_set_v1(
+    session, journal: "_TransactionJournalV1", set_id: str,
+) -> None:
+    """Publish the staged set under the immutable name derived from its id."""
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    with _translated():
+        if AUTHORITY_SETS_BASENAME_V1 not in set(session.inventory(())):
+            session.create_directory_exclusive(
+                (AUTHORITY_SETS_BASENAME_V1,),
+                role=_BirthObjectRole.birth_integrity_only,
+            )
+        session.rename_no_replace(
+            journal.root_components + (AUTHORITY_SET_BASENAME_V1,),
+            (AUTHORITY_SETS_BASENAME_V1, set_id),
+            directory=True,
+        )
+
+
+def _install_marker_v1(
+    session, journal: "_TransactionJournalV1", payload: bytes,
+) -> None:
+    """Write the marker inside the transaction, then publish it."""
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    journal.publish_payload(
+        journal.root_components, PREPARED_MARKER_BASENAME_V1, payload,
+        role=_BirthObjectRole.birth_integrity_only,
+        object_sequence=MAXIMUM_CHECKPOINT_SEQUENCE_V1,
+    )
+    with _translated():
+        session.rename_no_replace(
+            journal.root_components + (PREPARED_MARKER_BASENAME_V1,),
+            (PREPARED_MARKER_BASENAME_V1,),
+            directory=False,
+        )
+
+
+def _verify_installed_finals_v1(session, last: CheckpointV1) -> None:
+    """Re-read the three finals with the productive loaders and compare.
+
+    A rename does not change the identity of an object, so what the journal
+    recorded about the staged tree must still describe the installed one; and
+    a coherent marker never makes an incoherent set authoritative.
+    """
+    from executor_birth_keystore import raw_public_key
+
+    author = verify_author_store_v1(session, (AUTHOR_STORE_BASENAME_V1,), None)
+    observed = author_store_public_inventory_sha256_v1({
+        key_id: raw_public_key(key)
+        for key_id, key in author.verifier_keys.items()
+    })
+    if observed != last.digests["author_store_public_inventory_sha256"]:
+        raise _reject("birth_author_keystore_existing_invalid")
+    location = (AUTHORITY_SETS_BASENAME_V1, last.set_id)
+    payload = _read_set_document_v1(
+        session, location + (SET_DOCUMENT_BASENAME_V1,),
+    )
+    if hashlib.sha256(payload).hexdigest() != last.digests["set_json_sha256"]:
+        raise _reject("birth_authority_set_conflict")
+    document = decode_canonical_document_v1(payload)
+    if (
+        document["set_id"] != last.set_id
+        or document["author_active_key_id"] != author.active_key_id
+        or document["author_verifier_key_ids"] != sorted(author.verifier_keys)
+    ):
+        raise _reject("birth_authority_set_conflict")
+    material = _read_set_document_v1(
+        session,
+        location + (CONTEXT_CONTAINER_BASENAME_V1, CONTEXT_MATERIAL_BASENAME_V1),
+    )
+    if hashlib.sha256(material).hexdigest() != last.digests[
+        "context_material_sha256"
+    ]:
+        raise _reject("birth_context_material_changed")
+
+
+def _verify_installed_marker_v1(session, last: CheckpointV1) -> dict[str, object]:
+    payload = _read_set_document_v1(session, (PREPARED_MARKER_BASENAME_V1,))
+    document = decode_canonical_document_v1(payload)
+    expected = build_prepared_marker_v1(
+        set_id=last.set_id,
+        transaction_id=last.transaction_id,
+        provisioner_build_id=document.get("provisioner_build_id", ""),
+        digests=last.digests,
+    )
+    if payload != expected:
+        raise _reject("birth_authority_set_conflict")
+    return document
+
+
+def _advance_to_installed_v1(
+    session, journal: "_TransactionJournalV1", last: CheckpointV1,
+    *, provisioner_build_id: str,
+) -> CheckpointV1:
+    """Publish the three finals in the only admitted order.
+
+    There is no replacement of a final destination.  The author root may be
+    published before the set because it keeps the previous identity and stays
+    inert, and the journal survives until the marker, so a stop between two
+    renames is always classifiable (section 8.1).
+    """
+    if state_rank_v1(last.state) < state_rank_v1(
+        ProvisioningStateV1.author_installed
+    ):
+        with _translated():
+            staged = AUTHOR_STORE_BASENAME_V1 in set(
+                session.inventory(journal.root_components)
+            )
+        if staged:
+            _install_author_store_v1(session, journal)
+        last = _record_state_v1(
+            journal, last, ProvisioningStateV1.author_installed,
+        )
+    if state_rank_v1(last.state) < state_rank_v1(
+        ProvisioningStateV1.set_installed
+    ):
+        with _translated():
+            staged = AUTHORITY_SET_BASENAME_V1 in set(
+                session.inventory(journal.root_components)
+            )
+        if staged:
+            _install_authority_set_v1(session, journal, last.set_id)
+        last = _record_state_v1(journal, last, ProvisioningStateV1.set_installed)
+    _verify_installed_finals_v1(session, last)
+    if state_rank_v1(last.state) < state_rank_v1(
+        ProvisioningStateV1.marker_installed
+    ):
+        with _translated():
+            present = PREPARED_MARKER_BASENAME_V1 in set(session.inventory(()))
+        if not present:
+            _install_marker_v1(session, journal, build_prepared_marker_v1(
+                set_id=last.set_id,
+                transaction_id=last.transaction_id,
+                provisioner_build_id=provisioner_build_id,
+                digests=last.digests,
+            ))
+        last = _record_state_v1(
+            journal, last, ProvisioningStateV1.marker_installed,
+        )
+    _verify_installed_marker_v1(session, last)
+    return last
+
+
+def _record_state_v1(
+    journal: "_TransactionJournalV1", previous: CheckpointV1,
+    state: ProvisioningStateV1,
+) -> CheckpointV1:
+    checkpoint = CheckpointV1(
+        previous.transaction_id, previous.checkpoint_sequence + 1,
+        previous.digest(), state, previous.payload_inventory,
+        dict(previous.digests), previous.set_id,
+    )
+    journal.append(checkpoint)
+    return checkpoint
+
+
+def _remove_transaction_v1(session, journal: "_TransactionJournalV1") -> None:
+    """Remove only the transaction that agrees with what was installed.
+
+    Every object is opened and compared before it is disposed of, bottom up,
+    and no glob or recursive walk is involved (section 7.6).
+    """
+    from executor_birth_secure_fs import (
+        _DisposalClass, _DisposalExpectation, _ObjectKind,
+    )
+
+    checkpoints = journal.checkpoints_components
+    with _translated():
+        for entry in session._inventory_state(checkpoints):
+            payload = session.read_file(
+                checkpoints + (entry.name,),
+                maximum=MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1,
+                role=_integrity_role(),
+            )
+            session.dispose_transaction_object(_DisposalExpectation(
+                components=checkpoints + (entry.name,),
+                identity=entry.identity,
+                kind=_ObjectKind.regular_file,
+                role=_integrity_role(),
+                disposal_class=_DisposalClass.complete_file,
+                links=entry.links,
+                expected_size=len(payload),
+                maximum_partial_size=None,
+                content_sha256="sha256:" + hashlib.sha256(payload).hexdigest(),
+                inventory=None,
+            ))
+        for components in (checkpoints, journal.root_components):
+            for entry in session._inventory_state(components[:-1]):
+                if entry.name != components[-1]:
+                    continue
+                if entry.name == TRANSACTION_HEADER_BASENAME_V1:
+                    continue
+                session.dispose_transaction_object(_DisposalExpectation(
+                    components=components,
+                    identity=entry.identity,
+                    kind=_ObjectKind.directory,
+                    role=_integrity_role(),
+                    disposal_class=_DisposalClass.empty_directory,
+                    links=entry.links,
+                    expected_size=None,
+                    maximum_partial_size=None,
+                    content_sha256=None,
+                    inventory=(),
+                ))
+            if components is checkpoints:
+                _dispose_header_v1(session, journal)
+
+
+def _dispose_header_v1(session, journal: "_TransactionJournalV1") -> None:
+    from executor_birth_secure_fs import (
+        _DisposalClass, _DisposalExpectation, _ObjectKind,
+    )
+
+    components = journal.root_components + (TRANSACTION_HEADER_BASENAME_V1,)
+    for entry in session._inventory_state(journal.root_components):
+        if entry.name != TRANSACTION_HEADER_BASENAME_V1:
+            continue
+        payload = session.read_file(
+            components,
+            maximum=MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1,
+            role=_integrity_role(),
+        )
+        session.dispose_transaction_object(_DisposalExpectation(
+            components=components,
+            identity=entry.identity,
+            kind=_ObjectKind.regular_file,
+            role=_integrity_role(),
+            disposal_class=_DisposalClass.complete_file,
+            links=entry.links,
+            expected_size=len(payload),
+            maximum_partial_size=None,
+            content_sha256="sha256:" + hashlib.sha256(payload).hexdigest(),
+            inventory=None,
+        ))

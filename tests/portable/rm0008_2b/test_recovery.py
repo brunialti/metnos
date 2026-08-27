@@ -111,31 +111,22 @@ def test_an_interrupted_transaction_converges(
             _build_shape(session, journal, transaction, shape)
 
     result = support.provision(monkeypatch, base)
-    assert result.outcome is AuthorProvisioningOutcomeV1.resumed
+    assert result.outcome is AuthorProvisioningOutcomeV1.installed
     assert result.transaction_id == transaction
     assert result.public_inventory_sha256 == reference.public_inventory_sha256
 
-    store = support.staged_author_store(base)
+    store = support.installed_author_store(base)
     assert sorted(item.name for item in store.iterdir()) == [
         "birth-keystore.lock", "keystore.json", "private", "public",
     ]
-    assert support.transaction_root(base).name == (
-        provisioning.transaction_root_name_v1(transaction)
-    )
-    assert sorted(
-        item.name for item in support.transaction_root(base).iterdir()
-    ) == ["author-root-v1", "authority-set", "checkpoints-v1",
-          "transaction-v1.json"]
-    pendings = [
-        item.name
-        for item in support.transaction_root(base).rglob("*")
-        if item.name.startswith((
-            provisioning.HEADER_PENDING_PREFIX_V1,
-            provisioning.CHECKPOINT_PENDING_PREFIX_V1,
-            provisioning.PAYLOAD_PENDING_PREFIX_V1,
-        ))
+    assert support.installed_marker(base).is_file()
+    assert (support.installed_set(base) / "set.json").is_file()
+    # The transaction that agreed with what was installed is gone, and it left
+    # nothing behind.
+    assert sorted(item.name for item in (base / "birth").iterdir()) == [
+        "author-root-v1", "authority-sets", "operator-input-v1",
+        "prepared-v1.json", "provisioning-v1.lock",
     ]
-    assert pendings == []
 
 
 @pytest.mark.parametrize("shape", ["complete-header-pending", "partial-header-pending"])
@@ -169,11 +160,18 @@ def test_a_complete_header_pending_is_promoted_not_rewritten(
         with session.global_lock(exclusive=True, create=True):
             _build_shape(session, journal, transaction, "complete-header-pending")
     root = base / "birth" / provisioning.transaction_root_name_v1(transaction)
-    before = (
-        root / (provisioning.HEADER_PENDING_PREFIX_V1 + transaction)
-    ).stat().st_ino
-
-    support.provision(monkeypatch, base)
+    pending = root / (provisioning.HEADER_PENDING_PREFIX_V1 + transaction)
+    before = pending.stat().st_ino
+    module = support.provisioner()
+    layout = support.open_layout(monkeypatch, base)
+    session = layout.birth_session
+    journal = module._TransactionJournalV1(session, transaction)
+    with session:
+        with session.global_lock(exclusive=True, create=True):
+            journal.recover_header(
+                module.TransactionHeaderV1(transaction, BUILD),
+                journal.read_state(),
+            )
     assert (root / "transaction-v1.json").stat().st_ino == before
 
 
@@ -192,7 +190,16 @@ def test_a_partial_header_pending_is_removed_and_rewritten(
     pending = root / (provisioning.HEADER_PENDING_PREFIX_V1 + transaction)
     assert pending.read_bytes() != TransactionHeaderV1(transaction, BUILD).encode()
 
-    support.provision(monkeypatch, base)
+    module = support.provisioner()
+    layout = support.open_layout(monkeypatch, base)
+    session = layout.birth_session
+    journal = module._TransactionJournalV1(session, transaction)
+    with session:
+        with session.global_lock(exclusive=True, create=True):
+            journal.recover_header(
+                module.TransactionHeaderV1(transaction, BUILD),
+                journal.read_state(),
+            )
     # The truncated bytes are gone, not promoted: the name that survives holds
     # a whole header, and the pending no longer exists.  The inode says
     # nothing here, because a filesystem may hand the same one back.
@@ -220,14 +227,24 @@ def test_a_pending_of_another_transaction_is_never_adopted(
                 ),
                 TransactionHeaderV1(other, BUILD).encode(), role=_integrity(),
             )
-    result = support.provision(monkeypatch, base)
     # The foreign document is discarded and the header is written again for
     # this transaction: a nonce is never taken from a document.
-    assert result.transaction_id == transaction
+    module = support.provisioner()
+    layout = support.open_layout(monkeypatch, base)
+    session = layout.birth_session
+    journal = module._TransactionJournalV1(session, transaction)
+    with session:
+        with session.global_lock(exclusive=True, create=True):
+            journal.recover_header(
+                module.TransactionHeaderV1(transaction, BUILD),
+                journal.read_state(),
+            )
     root = base / "birth" / provisioning.transaction_root_name_v1(transaction)
     assert provisioning.decode_transaction_header_v1(
         (root / "transaction-v1.json").read_bytes()
     ) == TransactionHeaderV1(transaction, BUILD)
+    result = support.provision(monkeypatch, base)
+    assert result.transaction_id == transaction
 
 
 def test_a_checkpoint_pending_that_lies_is_discarded(
@@ -260,11 +277,63 @@ def test_a_checkpoint_pending_that_lies_is_discarded(
                 ),
                 liar.encode(), role=_integrity(),
             )
-    support.provision(monkeypatch, base)
+    module = support.provisioner()
+    layout = support.open_layout(monkeypatch, base)
+    session = layout.birth_session
+    journal = module._TransactionJournalV1(session, transaction)
+    with session:
+        with session.global_lock(exclusive=True, create=True):
+            journal.recover_checkpoint_pending(journal.read_state())
     checkpoints = base / "birth" / provisioning.transaction_root_name_v1(
         transaction
     ) / "checkpoints-v1"
-    promoted = provisioning.decode_checkpoint_v1(
-        (checkpoints / provisioning.checkpoint_name_v1(1)).read_bytes()
+    assert sorted(item.name for item in checkpoints.iterdir()) == [
+        provisioning.checkpoint_name_v1(0),
+    ]
+    support.provision(monkeypatch, base)
+
+
+def test_the_marker_is_staged_under_a_pending_like_any_payload(
+    tmp_path: Path, monkeypatch,
+):
+    """The marker lives directly in the transaction root, and still gets one.
+
+    Its parent is the transaction root itself, which the closed grammar had to
+    admit: no authoritative name is born final, the marker included.
+    """
+    from executor_birth_secure_fs import _BirthObjectRole, _pending_payload_parent
+
+    base = support.make_config(
+        tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
     )
-    assert promoted.previous_checkpoint_sha256 == zero.digest()
+    layout = support.open_layout(monkeypatch, base)
+    session = layout.birth_session
+    transaction = new_transaction_id_v1()
+    root = provisioning.transaction_root_name_v1(transaction)
+    pending = (
+        provisioning.PAYLOAD_PENDING_PREFIX_V1 + "0" * 16 + "8191-" + transaction
+    )
+    assert _pending_payload_parent((root, pending)) == (root,)
+    with session:
+        resolved = session._resolve_effective_role_binding_v1((root, pending))
+    assert resolved.binding.kind.value == "regular_file"
+    assert resolved.binding.role is _BirthObjectRole.birth_integrity_only
+
+
+def test_no_pending_survives_a_complete_provisioning(
+    tmp_path: Path, monkeypatch,
+):
+    base = support.make_config(
+        tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
+    )
+    support.provision(monkeypatch, base)
+    leftovers = [
+        item.name for item in (base / "birth").rglob("*")
+        if item.name.startswith((
+            provisioning.HEADER_PENDING_PREFIX_V1,
+            provisioning.CHECKPOINT_PENDING_PREFIX_V1,
+            provisioning.PAYLOAD_PENDING_PREFIX_V1,
+            provisioning.TRANSACTION_PREFIX_V1,
+        ))
+    ]
+    assert leftovers == []
