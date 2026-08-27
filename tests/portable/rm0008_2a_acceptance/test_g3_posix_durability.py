@@ -333,6 +333,11 @@ def test_posix_mutation_durability(
                     (root / "target").stat().st_dev,
                     (root / "target").stat().st_ino,
                 )
+                # An enumeration opens every entry of the container it reads,
+                # including the object that has just moved.  Those openings are
+                # observed here on their own and are not the final validation
+                # this cell counts.
+                enumerating = False
                 post_state = {
                     "native": False,
                     "opened": False,
@@ -364,6 +369,7 @@ def test_posix_mutation_durability(
                     result = real_open(path, flags, mode, dir_fd=dir_fd)
                     if (
                         post_state["native"]
+                        and not enumerating
                         and path == "payload.bin"
                         and dir_fd is not None
                     ):
@@ -388,7 +394,12 @@ def test_posix_mutation_durability(
                     return real_verify(fd, *args, **kwargs)
 
                 def traced_inventory(fd, *args, **kwargs):
-                    result = real_inventory(fd, *args, **kwargs)
+                    nonlocal enumerating
+                    enumerating = True
+                    try:
+                        result = real_inventory(fd, *args, **kwargs)
+                    finally:
+                        enumerating = False
                     value = os.fstat(fd)
                     identity = (value.st_dev, value.st_ino)
                     if post_state["native"]:

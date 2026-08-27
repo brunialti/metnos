@@ -321,11 +321,14 @@ def test_posix_component_substitution(tmp_path: Path, case: str) -> None:
     os.close(parent_to_child_r)
     assert _read_exact(child_to_parent_r, 1) == b"R"
 
+    # Each case swaps the component the traversal has just opened, exactly as
+    # the Windows twin does: swapping the *next* one describes a substitution
+    # that happens before any observation exists, which nothing can detect.
     next_path = {
         "swap-after-root": root,
-        "swap-after-first": middle,
-        "swap-after-middle": last,
-        "swap-after-last": last / "payload.bin",
+        "swap-after-first": first,
+        "swap-after-middle": middle,
+        "swap-after-last": last,
         "swap-final-object": last / "payload.bin",
     }[case]
     saved = next_path.with_name(next_path.name + ".original")

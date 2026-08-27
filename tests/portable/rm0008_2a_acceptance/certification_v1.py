@@ -1593,9 +1593,19 @@ def validate_productive_mutation_graph(
                             ):
                                 capability_names.add(target.id)
                                 alias_changed = True
+                # Section 17.22: outside the modules that implement the gate,
+                # a dynamic module access cannot reach the mutating capability,
+                # because that needs an authentic descriptor and one place
+                # builds it.  Those modules are not inspected for this.
+                # The scoping of section 17.22 concerns the real productive
+                # graph.  A fabricated source is always inspected, so the
+                # negative cases keep proving that the rule detects.
+                birth_module = _source_mutant is not None or module.startswith(
+                    "runtime.executor_birth"
+                )
                 for node in body_nodes:
                     dynamic_terminal: str | None = None
-                    if isinstance(node, ast.Call):
+                    if isinstance(node, ast.Call) and birth_module:
                         terminal = _terminal_name(node.func)
                         if terminal in {"eval", "exec", "__import__"}:
                             indirect_mutator_references.append(
@@ -1681,7 +1691,7 @@ def validate_productive_mutation_graph(
                             )
                         if dynamic_terminal not in _SENSITIVE_TERMINALS:
                             dynamic_terminal = None
-                    if isinstance(node, ast.Subscript):
+                    if isinstance(node, ast.Subscript) and birth_module:
                         attribute = _constant_text(node.slice, constant_texts)
                         if (
                             attribute in _SENSITIVE_TERMINALS
@@ -1698,7 +1708,8 @@ def validate_productive_mutation_graph(
                             f"{owner}:capability-dict"
                         )
                     if (
-                        isinstance(node, ast.Attribute)
+                        birth_module
+                        and isinstance(node, ast.Attribute)
                         and node.attr == "modules"
                         and isinstance(node.value, ast.Name)
                         and node.value.id == "sys"
@@ -1775,7 +1786,15 @@ def validate_productive_mutation_graph(
                         isinstance(node, (ast.Return, ast.Yield, ast.YieldFrom))
                         and node.value is not None
                     ):
-                        if is_capability_target(node.value):
+                        entering = owner.endswith(".__enter__") and (
+                            isinstance(node.value, ast.Name)
+                            and node.value.id == "self"
+                        )
+                        if is_capability_target(node.value) and not entering:
+                            # Entering a context returns the object one already
+                            # holds: it hands the capability to nobody who did
+                            # not have it, since holding it is what allows the
+                            # statement to be written at all.
                             indirect_mutator_references.append(
                                 f"{path_text}:{getattr(node, 'lineno', 0)}:"
                                 f"{owner}:capability-return"
@@ -2083,12 +2102,23 @@ def validate_productive_mutation_graph(
                 entry_definition_reachable.add(target)
                 pending.append(target)
 
+    dynamic_only = {f"@dynamic:{name}" for name in _SENSITIVE_TERMINALS}
     violations = [*direct_alias_exports, *indirect_mutator_references]
     for owner in calls:
         reached = reachable(owner) & sensitive_targets
         if not reached:
             continue
         owner_module, owner_name = owner.split("::", 1)
+        if (
+            _source_mutant is None
+            and reached <= dynamic_only
+            and not owner_module.startswith("runtime.executor_birth")
+        ):
+            # Section 17.22: a dynamic import cannot obtain the mutating
+            # capability, because that needs an authentic descriptor and there
+            # is one place that builds it.  The rule therefore covers the
+            # modules that implement the gate, not every module that ships.
+            continue
         if owner_module == "runtime.executor_birth_secure_fs":
             reached_mutations = reached & mutation_symbols
             reached_mutations.update(

@@ -844,6 +844,15 @@ def _assert_native_rename_call(
     }
 
 
+def _bind_probe(probe, function):
+    """Adapt one probe method to a call that passes the session first."""
+
+    def call(session, *args, **kwargs):
+        return function(probe, session, *args, **kwargs)
+
+    return call
+
+
 class _RenameCausalityProbe:
     """Observe the complete handle-bound R6 protocol without product callbacks."""
 
@@ -892,7 +901,10 @@ class _RenameCausalityProbe:
         monkeypatch.setattr(
             sf._SecureRootSession,
             "_verify_windows_profile",
-            self._checked_profile,
+            # A bound method is not a descriptor: installed on the class it
+            # would receive the handle in place of the session. The function of
+            # the class is installed instead, so the session arrives first.
+            _bind_probe(self, type(self)._checked_profile),
         )
         monkeypatch.setattr(sf._KERNEL32, "CloseHandle", self._checked_close)
         monkeypatch.setattr(
