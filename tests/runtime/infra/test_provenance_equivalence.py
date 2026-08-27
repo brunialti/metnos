@@ -35,6 +35,14 @@ def _corpus():
     contratto + casi ARGS-PESANTI (args clause-derivabili OMESSI dal proposer
     che fill_clause_args oggi riempie — quelli che PROV.3 deve riprodurre)."""
     from engine.types import Framework, StepSpec, Intent
+
+    # The corpus lives in the sibling engine suite.  Naming its directory here
+    # is what makes this module importable on its own: relying on pytest having
+    # collected that suite first made the result depend on which other tests
+    # ran, and running this file alone failed outright.
+    engine_suite = str(Path(__file__).resolve().parent.parent / "engine")
+    if engine_suite not in sys.path:
+        sys.path.insert(0, engine_suite)
     import test_guard_pipeline_contract as _T
 
     cases = []

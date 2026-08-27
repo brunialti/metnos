@@ -69,7 +69,7 @@ privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
 GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (dodicesima fotografia; ultimo pubblico verde `e866ba6`):
+i lavori (dodicesima fotografia; ultimo pubblico verde `91d8e86`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -119,6 +119,17 @@ fotografia ciascuno, invece di una per modifica.
   importava un modulo che da quel livello non esiste e rompeva la raccolta
   dell'INTERA suite e2e da quando e' nata. Rimossa insieme al predispositore
   e2e che scriveva un documento che nessuno legge; la suite raccoglie pulita.
+- su Linux il fondo della sandbox lo dichiara un REGISTRO, non l'ambiente
+  (obbligo 4, parte Linux): `LinuxSandboxRegistry` nomina `bwrap` e
+  l'interprete e li confronta col digest un istante prima dell'uso, con un
+  manico che rifiuta i collegamenti finali. Senza registro il fondo Linux e'
+  indisponibile, come lo era Windows senza il suo. Tre rifiuti nominati:
+  registro assente, programma sparito, programma che non corrisponde.
+  NB: nessuno predispone ancora quel registro — il provisioner non scrive nulla
+  sulla sandbox. Il prossimo passo dell'obbligo 4 e' registrarlo nell'insieme.
+- i due contenitori di dipendenze presi in prestito DERIVANO ora da quello
+  ombra (`replace`) invece di rielencarne i campi: aggiungerne uno li aveva
+  rotti entrambi in silenzio, mascherato da `birth_unavailable`.
 
 PROSSIMO PASSO: gli obblighi che restano del piano, nell'ordine del §4 —
 invocazione vera del verificatore statico, controlli su albero sintattico e
