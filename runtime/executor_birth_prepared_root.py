@@ -97,11 +97,57 @@ def open_prepared_root_session_v1():
         raise PreparedRootError(exc.code, exc) from None
 
 
+def open_distribution_sources_v1():
+    """Open the installed distribution read-only, to rebuild the material."""
+    import config as runtime_config
+    from executor_birth_secure_fs import BirthSecureFSError, _open_legacy_root_session
+
+    try:
+        return _open_legacy_root_session(
+            Path(runtime_config.PATH_RUNTIME), exact_private=False,
+        )
+    except BirthSecureFSError as exc:
+        raise PreparedRootError(exc.code, exc) from None
+
+
 def read_prepared_set_v1():
-    """Open, revalidate and close: the runtime holds no session afterwards."""
-    from executor_birth_prepared_set import load_prepared_set_v1
+    """Open, revalidate and close: the runtime holds no session afterwards.
+
+    Section 9.4 forbids trusting the recorded description: the material is
+    rebuilt from the installed distribution and every digest is compared here,
+    under the same lock that read the set.
+    """
+    from executor_birth_context_v1 import (
+        ContextMaterialError, prepare_context_material_v1,
+    )
+    from executor_birth_prepared_set import (
+        AUTHORITY_SETS_BASENAME_V1, PreparedSetError, authority_registry_v1,
+        load_prepared_set_v1,
+    )
 
     session = open_prepared_root_session_v1()
     with session:
         with session.global_lock(exclusive=False, create=False):
-            return load_prepared_set_v1(session)
+            prepared = load_prepared_set_v1(session)
+            registry = authority_registry_v1(
+                session, (AUTHORITY_SETS_BASENAME_V1, prepared.set_id),
+            )
+            sources = open_distribution_sources_v1()
+            try:
+                rebuilt = prepare_context_material_v1(sources, registry)
+            except ContextMaterialError as exc:
+                raise PreparedRootError(exc.code, exc) from None
+            finally:
+                sources.close()
+            if (
+                rebuilt.material_sha256 != prepared.context_material_sha256
+                or rebuilt.prepared_admission_context_id
+                != prepared.prepared_admission_context_id
+                or rebuilt.prepared_context_epoch
+                != prepared.prepared_context_epoch
+            ):
+                # The installed distribution no longer produces the material
+                # the set describes.  That is a mismatch to report, never a
+                # reason to adopt what is on disk.
+                raise PreparedSetError("birth_prepared_set_mismatch")
+    return prepared

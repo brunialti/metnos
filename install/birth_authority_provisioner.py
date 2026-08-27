@@ -2197,71 +2197,10 @@ SET_DOCUMENT_BASENAME_V1 = "set.json"
 SET_ID_DIGEST_DOMAIN_V1 = b"metnos.executor-birth.authority-set/v1\0"
 
 
-def _authority_registry_v1(session, base: tuple[str, ...]) -> dict[str, object]:
-    """The public identities of one staged set, read back from the stores.
-
-    Only public material appears here: identifiers, public bytes, scopes and
-    states.  A private key never reaches the registry, the context material or
-    ``set.json`` (section 9.2).
-    """
-    from executor_birth_approval_authority import _load_approval_authority_in_session
-    from executor_birth_keystore import _load_birth_keystore_in_session, raw_public_key
-
-    def store(components: tuple[str, ...]) -> dict[str, object]:
-        loaded = _load_birth_keystore_in_session(components, session)
-        return {
-            "active_key_id": loaded.active_key_id,
-            "verifier_key_ids": sorted(loaded.verifier_keys),
-            "public_keys": {
-                key_id: raw_public_key(key).hex()
-                for key_id, key in sorted(loaded.verifier_keys.items())
-            },
-        }
-
-    with _translated():
-        producer_names = sorted(session.inventory(base + ("producers",)))
-    producers = {
-        name: store(base + ("producers", name)) for name in producer_names
-    }
-    approval = _load_approval_authority_in_session(
-        base + ("approval", "authority.json"), session,
-    )
-    semantic = decode_canonical_document_v1(
-        _read_set_document_v1(session, base + ("semantic", "authority.json"))
-    )
-    return {
-        "admission": store(base + ("admission",)),
-        "producers": producers,
-        "approval": {
-            "revision": approval.revision,
-            "keys": {
-                key_id: raw_public_key(key).hex()
-                for key_id, key in sorted(approval.keys.items())
-            },
-            "actors": {
-                actor: {
-                    "key_ids": sorted(entry["key_ids"]),
-                    "scopes": sorted(entry["scopes"]),
-                }
-                for actor, entry in sorted(approval.actors.items())
-            },
-        },
-        "semantic": {
-            key_id: spec["status"]
-            for key_id, spec in sorted(semantic["verifiers"].items())
-        },
-    }
-
-
-def _read_set_document_v1(session, components: tuple[str, ...]) -> bytes:
-    from executor_birth_secure_fs import _BirthObjectRole
-
-    with _translated():
-        return session.read_file(
-            components,
-            maximum=MAXIMUM_OPERATOR_DOCUMENT_BYTES_V1,
-            role=_BirthObjectRole.birth_integrity_only,
-        )
+from executor_birth_prepared_set import (  # noqa: E402
+    authority_registry_v1 as _authority_registry_v1,
+    read_document_v1 as _read_set_document_v1,
+)
 
 
 def build_set_document_v1(

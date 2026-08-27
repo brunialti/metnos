@@ -221,3 +221,76 @@ def _public_inventory_sha256_v1(publics: Mapping[str, bytes]) -> str:
             allow_nan=False,
         ).encode("utf-8")
     ).hexdigest()
+
+
+def read_document_v1(session, components: tuple[str, ...]) -> bytes:
+    """Read one integrity document of the layout through a held session."""
+    from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+
+    try:
+        return session.read_file(
+            components,
+            maximum=MAXIMUM_DOCUMENT_BYTES_V1,
+            role=_BirthObjectRole.birth_integrity_only,
+        )
+    except BirthSecureFSError as exc:
+        raise PreparedSetError("birth_prepared_set_unavailable", exc) from None
+
+
+def authority_registry_v1(session, base: tuple[str, ...]) -> dict[str, object]:
+    """The public identities of one set, read back from its own stores.
+
+    Only public material appears here: identifiers, public bytes, scopes and
+    states.  A private key never reaches the registry, the context material or
+    ``set.json`` (section 9.2).  The installer builds this to describe what it
+    prepared; the runtime rebuilds it to check that description, so there is
+    one implementation and not two.
+    """
+    from executor_birth_approval_authority import _load_approval_authority_in_session
+    from executor_birth_keystore import _load_birth_keystore_in_session, raw_public_key
+    from executor_birth_secure_fs import BirthSecureFSError
+
+    def store(components: tuple[str, ...]) -> dict[str, object]:
+        loaded = _load_birth_keystore_in_session(components, session)
+        return {
+            "active_key_id": loaded.active_key_id,
+            "verifier_key_ids": sorted(loaded.verifier_keys),
+            "public_keys": {
+                key_id: raw_public_key(key).hex()
+                for key_id, key in sorted(loaded.verifier_keys.items())
+            },
+        }
+
+    try:
+        producer_names = sorted(session.inventory(base + ("producers",)))
+    except BirthSecureFSError as exc:
+        raise PreparedSetError("birth_prepared_set_unavailable", exc) from None
+    producers = {
+        name: store(base + ("producers", name)) for name in producer_names
+    }
+    approval = _load_approval_authority_in_session(
+        base + ("approval", "authority.json"), session,
+    )
+    semantic = _decode(read_document_v1(session, base + ("semantic", "authority.json")))
+    return {
+        "admission": store(base + ("admission",)),
+        "producers": producers,
+        "approval": {
+            "revision": approval.revision,
+            "keys": {
+                key_id: raw_public_key(key).hex()
+                for key_id, key in sorted(approval.keys.items())
+            },
+            "actors": {
+                actor: {
+                    "key_ids": sorted(entry["key_ids"]),
+                    "scopes": sorted(entry["scopes"]),
+                }
+                for actor, entry in sorted(approval.actors.items())
+            },
+        },
+        "semantic": {
+            key_id: spec["status"]
+            for key_id, spec in sorted(semantic["verifiers"].items())
+        },
+    }

@@ -145,3 +145,28 @@ def test_an_absent_prepared_root_is_named_not_guessed(tmp_path: Path, monkeypatc
         door.read_prepared_set_v1()
     assert error.value.code.startswith("birth_provisioning_")
     assert error.value.__cause__ is None
+
+
+def test_the_material_is_rebuilt_from_the_distribution_not_trusted(
+    tmp_path: Path, monkeypatch,
+):
+    """Section 9.4: the runtime does not take the recorded description on faith."""
+    import executor_birth_prepared_root as door
+    from executor_birth_prepared_set import PreparedSetError
+
+    base = _prepared(tmp_path, monkeypatch)
+    support.use_config(monkeypatch, base)
+    assert door.read_prepared_set_v1().set_id
+
+    # One byte of the installed distribution changes: the description recorded
+    # in the set no longer matches what the code would produce today.
+    import importlib
+
+    runtime_config = importlib.import_module("config")
+    changed = Path(runtime_config.PATH_RUNTIME) / "vocab.py"
+    changed.write_bytes(changed.read_bytes() + b"\n# changed\n")
+    support.apply_profile(changed, directory=False, private=False)
+
+    with pytest.raises(PreparedSetError) as error:
+        door.read_prepared_set_v1()
+    assert error.value.code == "birth_prepared_set_mismatch"
