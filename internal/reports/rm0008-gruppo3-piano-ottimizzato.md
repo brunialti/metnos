@@ -429,3 +429,24 @@ che la possiede e il motivo; non resta vuota e non si colora di verde.
 4. **Cinque celle POSIX della base** (`g2` pubbliche di altro UID, `g8` binding
    UID) restano rosse in locale perché richiedono `sudo` senza password; sono
    verdi nel ciclo pubblico, che è l'oracolo.
+
+## 12. Cosa ha misurato la separazione fra DACL e privilegio (28/8)
+
+Separare i due errori non era solo igiene di nomi: ha **distinto due cause che
+prima si presentavano identiche**, ed e' la misura che il §17.81 del gruppo 2
+chiedeva senza costruire strumenti.
+
+| Situazione su Windows | Errore vero | Codice prima | Codice ora |
+|---|---|---|---|
+| creazione di un oggetto Birth sotto identita' non elevata | `PRIVILEGE_NOT_HELD` (1314) | `elevation_required` | `elevation_required` (invariato) |
+| rinomina che pubblica un finale | `ACCESS_DENIED` (5) | `elevation_required` | **`acl_unsafe`** |
+
+Come si e' saputo: la cella `nonelevated-stable-error-no-secret` era stata
+cambiata in `acl_unsafe` insieme alle altre ed e' diventata **rossa**. Quel
+rosso e' la misura: se l'errore fosse stato un accesso negato dalla DACL, la
+cella sarebbe passata. Non lo era.
+
+Conseguenza per chi affrontera' il blocco Windows del predispositore: le due
+cose sono davvero diverse, e la rinomina non ha mai avuto un problema di
+privilegi. L'ipotesi «manca `DELETE` nella maschera» resta da misurare, ma ora
+il codice restituito non la contraddice piu' ne' la conferma per sbaglio.
