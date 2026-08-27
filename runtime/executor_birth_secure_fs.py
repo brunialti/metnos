@@ -3792,8 +3792,18 @@ class _SecureRootSession:
                         # After a refused move both sides are read again on
                         # their handles: the object that did not move must be
                         # exactly the one that was verified, and only then is
-                        # the refusal classified.
-                        if _win_info(source_handle)[0] != before[0]:
+                        # the refusal classified.  A name that is no longer
+                        # there leaves the outcome unreconstructable.
+                        try:
+                            settled = _win_info(source_handle)[0]
+                        except OSError as reread:
+                            raise BirthSecureFSError(
+                                "birth_provisioning_recovery_ambiguous", reread
+                            )
+                        if settled != before[0] or error in {
+                            _ERROR_FILE_NOT_FOUND,
+                            _ERROR_PATH_NOT_FOUND,
+                        }:
                             raise BirthSecureFSError(
                                 "birth_provisioning_recovery_ambiguous"
                             )
