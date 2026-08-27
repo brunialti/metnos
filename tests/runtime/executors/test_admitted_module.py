@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from executor_birth_admitted_module_v1 import (
+from admitted_module_v1 import (
     AdmittedModuleError, code_digest_of_bytes_v1, load_admitted_module_v1,
 )
 
@@ -114,3 +114,30 @@ def test_a_link_in_place_of_the_code_is_refused(tmp_path: Path):
     entry.symlink_to(real)
     with pytest.raises(AdmittedModuleError, match="admitted_module_unreadable"):
         load_admitted_module_v1(executor)
+
+
+def test_the_gate_never_imports_this_door():
+    """Proved, not asserted: no Birth-gate module reaches this one.
+
+    Inside the gate, dynamic evaluation is forbidden outright, because code
+    evaluated there could rebuild the authority that writes to disk.  This door
+    evaluates code by design, so it must stay outside — and stay unreachable
+    from inside.
+    """
+    import ast
+
+    import config as runtime_config
+
+    root = Path(runtime_config.PATH_RUNTIME)
+    offenders: list[str] = []
+    for path in sorted(root.glob("executor_birth*.py")):
+        tree = ast.parse(path.read_bytes(), filename=path.name)
+        for node in ast.walk(tree):
+            names: list[str] = []
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            if any(name.split(".")[0] == "admitted_module_v1" for name in names):
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert offenders == [], offenders

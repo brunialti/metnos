@@ -14,7 +14,7 @@ index d878546e..defd3382 100644
  sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
      str(p / "runtime") for p in Path(__file__).resolve().parents
      if (p / "runtime" / "config.py").is_file()))
-+from executor_birth_admitted_module_v1 import (  # noqa: E402
++from admitted_module_v1 import (  # noqa: E402
 +    AdmittedModuleError, load_admitted_module_v1,
 +)
  from messages import get as _msg  # noqa: E402

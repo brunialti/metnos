@@ -348,7 +348,7 @@ contratto, che il mandato vieta.
 **Decisione (Roberto, 27/8, delegata): una quarta uscita — la porta
 autenticata.** Caricare codice da un percorso non e' vietato e non si concede
 per fiducia: si concede per AUTENTICAZIONE.
-`runtime/executor_birth_admitted_module_v1.py` e' l'unica porta. Riceve un
+`runtime/admitted_module_v1.py` e' l'unica porta. Riceve un
 record di catalogo gia' pubblicato — mai un percorso scelto da chi chiama —
 rilegge i file di codice dichiarati, ricalcola il digest e lo confronta con
 quello firmato, e solo allora **esegue i byte gia' in memoria**: fra il

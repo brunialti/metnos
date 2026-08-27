@@ -350,7 +350,7 @@ _ASSEMBLED_CODE_BUILTINS_V1 = frozenset({"exec", "eval", "compile"})
 
 # Loading a module from a path is not forbidden and not granted by trust: it is
 # granted by authentication.  A candidate may not open a path and run what it
-# finds, but it may ask ``executor_birth_admitted_module_v1`` for the code of a
+# finds, but it may ask ``admitted_module_v1`` for the code of a
 # published executor, which compares the bytes with the signature that admitted
 # them before running them.  That door is stricter than what these names do on
 # their own, so naming them directly is what the check refuses.

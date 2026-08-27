@@ -265,7 +265,7 @@ def test_the_closure_cost_on_the_real_executors_is_known_and_named():
 
     Every published executor but one is already closed.  ``undo_last_turn``
     loads the code of another executor to undo it, and it must move to the
-    authenticated door of ``executor_birth_admitted_module_v1``.  It cannot be
+    authenticated door of ``admitted_module_v1``.  It cannot be
     changed yet: after the cutover an executor changes only through an Executor
     Birth intent, which is what this very group is making possible.  The ready
     patch sits in ``internal/design/patch_undo_last_turn_porta_autenticata.diff``
