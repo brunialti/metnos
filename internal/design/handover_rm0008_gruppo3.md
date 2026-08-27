@@ -63,13 +63,18 @@ REGOLA DI ONESTA': "solo i test necessari" non significa "solo i test che
 passano". Cio' che non provi va scritto come non provato, con il motivo, nel
 criterio di uscita del gruppo 3.
 
+APERTO, SERVE IL VERDETTO DI ROBERTO: il resto dell'obbligo 7, cioe' se un
+candidato possa caricare codice da un percorso calcolato. Misura e tre uscite
+possibili nel §10 del piano ottimizzato. Oggi e' dichiarato NON provato, non
+silenziosamente permesso.
+
 APERTO E DA NON RISOLVERE A OCCHI CHIUSI: su Windows il predispositore arriva
 fino alla rinomina che pubblica il primo finale e riceve accesso negato. Il
 privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
 GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (dodicesima fotografia; ultimo pubblico verde `4df80cd`):
+i lavori (dodicesima fotografia; ultimo pubblico verde `863866e`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -137,11 +142,15 @@ fotografia ciascuno, invece di una per modifica.
   Il catalogo delle verifiche cresce di un membro; l'identita' del contesto NON
   si muove, perche' il catalogo non ne fa parte (verificato: i vettori golden
   del contesto restano validi).
+- il candidato deve REGGERSI DA SOLO (obbligo 2 + meta' del 7): una verifica
+  legge ogni suo file e decide tre cose — che si analizzi, che un import
+  relativo resti dentro il candidato, che non ci sia codice montato mentre gira
+  (`exec`/`eval`/`compile` builtin). Costo MISURATO a zero sui 93 file degli
+  executor pubblicati; una cella rifa' quella misura a ogni giro.
 
 PROSSIMO PASSO: gli obblighi che restano del piano (§2), nell'ordine del §4 —
-(2) controlli su albero sintattico e risoluzione delle importazioni; (3)
-risoluzione chiusa di modelli e primitive; (7) importazioni statiche e
-caricamenti dinamici noti; (4, resto) REGISTRARE il registro sandbox
+(3) risoluzione chiusa di modelli e primitive; (4, resto) REGISTRARE il
+registro sandbox
 nell'insieme predisposto e completare il legame Windows; (5) installare i
 registri di autorita' nel pacchetto privato e provarne il consumo. PER ULTIMO,
 e solo allora, (6) portare gli `enforcement_state` a `productive`, ricostruire
