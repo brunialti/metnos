@@ -4120,3 +4120,20 @@ La lezione vale oltre questo punto: prima di dichiarare impossibile una
 proprieta', si confronta con l'altra piattaforma, dove la stessa proprieta'
 puo' essere gia' dimostrata.
 
+### 17.28 La doppia chiusura e il lucchetto sono lo stesso punto
+
+Le due celle che riportano una chiusura ripetuta su una generazione di manico
+ritirata sorvegliano le aperture attraverso l'ingresso relativo. Il lucchetto
+e' l'unico punto rimasto che apre per percorso assoluto (§17.23): quelle
+aperture non passano dalla sorveglianza, quindi la sonda non registra la nuova
+generazione e la chiusura successiva le sembra una ripetizione.
+
+Una traccia sulle chiusure ha mostrato soltanto il riuso del numero di manico
+del token dei privilegi, che e' normale: il sistema riassegna i numeri. La
+sonda distingue le generazioni proprio per questo, e il suo verdetto va letto
+insieme al punto aperto del lucchetto.
+
+Ne segue che le due celle non richiedono un lavoro proprio: si chiudono
+quando si chiude il §17.23, e vanno riprovate allora prima di cercarne una
+causa distinta.
+
