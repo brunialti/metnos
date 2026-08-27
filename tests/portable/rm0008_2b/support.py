@@ -81,3 +81,75 @@ def provision(monkeypatch, base: Path):
         )
     finally:
         layout.birth_session.close()
+
+
+def canonical_json(value: object) -> bytes:
+    import json
+
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def approval_document(actors=None) -> bytes:
+    """One canonical operator approval registry, with no private key."""
+    import base64
+
+    key = public_bytes(Ed25519PrivateKey.generate())
+    return canonical_json({
+        "actors": actors if actors is not None else {
+            "operator": {"key_ids": ["operator-key"], "scopes": ["birth"]}
+        },
+        "keys": {"operator-key": base64.b64encode(key).decode("ascii")},
+        "revision": 1,
+        "schema_version": 1,
+    })
+
+
+def semantic_document(names=("review.pub",), *, revoked=()) -> bytes:
+    import importlib
+
+    review = importlib.import_module("executor_birth_semantic_review")
+    kinds = sorted(item.value for item in review.IndependentEvidenceKind)
+    verifiers = {
+        f"review-key-{index}": {
+            "path": f"public/{name}",
+            "status": "revoked" if name in revoked else "active",
+        }
+        for index, name in enumerate(names)
+    }
+    return canonical_json({
+        "evidence_dir": "evidence",
+        "owners": {kind: ["independent-owner"] for kind in kinds},
+        "verifiers": verifiers,
+        "versions": {kind: ["v1"] for kind in kinds},
+    })
+
+
+def install_operator_input(
+    base: Path, *, approval: bytes | None = None, semantic: bytes | None = None,
+    keys=None,
+) -> None:
+    """Write the two public registries the administrator is expected to install."""
+    location = base / "birth" / "operator-input-v1"
+    if approval is not None:
+        write(location / "approval-authority.json", approval, 0o644)
+    if semantic is not None:
+        write(location / "semantic-authority.json", semantic, 0o644)
+    if keys is not None:
+        container = location / "semantic-public"
+        container.mkdir(mode=0o755, exist_ok=True)
+        for name, payload in keys.items():
+            write(container / name, payload, 0o644)
+
+
+def complete_operator_input(base: Path) -> dict[str, bytes]:
+    """The ordinary, valid operator input of a supported installation."""
+    keys = {"review.pub": public_bytes(Ed25519PrivateKey.generate())}
+    install_operator_input(
+        base,
+        approval=approval_document(),
+        semantic=semantic_document(tuple(keys)),
+        keys=keys,
+    )
+    return keys
