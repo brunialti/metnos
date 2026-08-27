@@ -18,13 +18,11 @@ Run: `python3 -m pytest tests/runtime/infra/test_sqlite_snapshot_completa.py -v`
 from __future__ import annotations
 
 import sqlite3
-import sys
 from pathlib import Path
 
-_CONFTEST = Path(__file__).resolve().parents[1] / "conftest.py"
-sys.path.insert(0, str(_CONFTEST.parent))
+from _runtime_conftest import module as _runtime_conftest  # noqa: E402
 
-from conftest import _copy_if_present  # noqa: E402
+_copy_if_present = _runtime_conftest._copy_if_present
 
 
 def _db_in_wal(percorso: Path, valore: str) -> None:

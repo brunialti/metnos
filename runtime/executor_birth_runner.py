@@ -28,6 +28,8 @@ from executor_birth_runner_windows_v1 import (
     invoke_helper as invoke_windows_birth_helper,
 )
 
+from executor_birth_template_table_v1 import template_v1
+
 from bounded_subprocess import (
     SubprocessOutputLimitExceeded,
     SubprocessTerminationError,
@@ -587,40 +589,7 @@ def run_birth_phase(
                 pass
             return _unavailable("cgroup_scope_unavailable", "linux-bwrap-cgroup-v2", started)
 
-        # The launcher joins the delegated cgroup before exec.  It contains no
-        # candidate-controlled shell and passes only the already-validated argv.
-        launcher = """
-import json, os, subprocess, sys
-scope, status, *args = sys.argv[1:]
-open(scope + '/cgroup.procs', 'w').write(str(os.getpid()))
-r, w = os.pipe()
-args = [str(w) if item == '{STATUS_FD}' else item for item in args]
-p = subprocess.Popen(args, pass_fds=(w,))
-os.close(w)
-started = False
-exit_code = None
-with os.fdopen(r) as stream:
-    for line in stream:
-        try:
-            event = json.loads(line)
-        except Exception:
-            continue
-        if isinstance(event, dict) and isinstance(event.get('child-pid'), int):
-            started = True
-            with open(status, 'w') as out:
-                json.dump({'child_started': True, 'exit_code': None}, out,
-                          separators=(',', ':'))
-        if isinstance(event, dict) and isinstance(event.get('exit-code'), int):
-            exit_code = event['exit-code']
-rc = p.wait()
-result = {'child_started': started,
-          'exit_code': exit_code if exit_code is not None else rc}
-temporary = status + '.complete'
-with open(temporary, 'x') as out:
-    json.dump(result, out, separators=(',', ':'))
-os.replace(temporary, status)
-sys.exit(0 if started else 125)
-"""
+        launcher = template_v1("runner.linux_launcher")
         wrapped = _bwrap_command(bwrap, work, argv)
         # The placeholder is replaced in the launcher with a private pipe passed only to
         # bwrap.  Its JSON event is emitted after namespaces and mounts exist.

@@ -3,7 +3,7 @@ from __future__ import annotations
 import errno
 from pathlib import Path
 
-import conftest
+from _runtime_conftest import module as conftest
 
 
 def test_full_suite_detection_does_not_block_focused_tests(tmp_path) -> None:
