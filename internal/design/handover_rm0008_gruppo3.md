@@ -94,11 +94,25 @@ fotografia per tutto l'incremento invece di sei.
   da nient'altro. Deciso con Roberto; il §6.quater del piano spiega perche' la
   tabella fissa per il tipo sarebbe stata falsa per sei righe su undici.
 
-PROSSIMO PASSO: la migrazione del bootstrap vera e propria, con la mappa nel
-§6.bis del piano. Il nucleo va costruito dall'insieme predisposto invece che da
-`bootstrap.json`, usando la tabella della provenienza al posto delle voci
-`producers` del file, e il decodificatore libero del contesto sparisce NELLO
-STESSO passaggio (§9.1).
+- lo SCAMBIO ATOMICO e' fatto (§6.quinquies, un solo commit): l'avvio monta
+  ogni autorita' dall'insieme letto sotto barriera, il nucleo riceve il
+  pubblicatore sigillato e gli consegna soltanto fatti, e nello STESSO
+  passaggio spariscono `_build`, `_load_authorities`, `_context_builder` e la
+  lettura di `bootstrap.json`. Un decodificatore libero accanto a uno sigillato
+  sarebbe la doppia verita' che questo gruppo toglie (§9.1).
+  Due difetti corretti passando: un rifiuto di contesto si presentava come
+  indisponibilita' generica, e il pubblicatore non confrontava l'epoca
+  osservata con quella predisposta.
+  La cella R1 tratta ora la porta di sola lettura come TERMINALE della
+  raggiungibilita': chi la chiama eredita una sessione con cui puo' solo
+  leggere. Senza, ogni chiamante dell'avvio sembrava un mutante.
+
+PROSSIMO PASSO: gli obblighi che restano del piano, nell'ordine del §4 —
+invocazione vera del verificatore statico, controlli su albero sintattico e
+importazioni, risoluzione chiusa di modelli e primitive, registro della
+sandbox, e la prova che il registro venga davvero consumato. PER ULTIMO, e solo
+allora, portare gli `enforcement_state` a `productive` e rifare i vettori
+golden.
 ```
 
 ## Fallimenti locali che NON sono del gruppo 3
