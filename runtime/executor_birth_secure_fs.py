@@ -3597,6 +3597,36 @@ class _SecureRootSession:
             os.close(settled_fd)
         raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
 
+    def _reconcile_moved_away_windows_v1(
+        self,
+        target_handle: int,
+        target_name: str,
+        directory: bool,
+        role: _BirthObjectRole | None,
+    ) -> None:
+        """Look once at the destination of a move whose source has vanished."""
+        if role is None:
+            return
+        try:
+            settled = _win_open_relative_v1(
+                target_handle,
+                target_name,
+                purpose=_NtOpenPurposeV1.mutating_open,
+                directory=directory,
+            )
+        except (BirthSecureFSError, OSError):
+            return
+        try:
+            _win_info(settled)
+            self._verify_windows_profile(
+                settled, directory=directory, profile=role,
+            )
+        except (BirthSecureFSError, OSError):
+            return
+        finally:
+            _win_close(settled)
+        raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+
     def _rename_no_replace_posix(
         self, source: tuple[str, ...], destination: tuple[str, ...], directory: bool
     ) -> _ObjectIdentity:
@@ -3771,12 +3801,32 @@ class _SecureRootSession:
                         # The object being moved is opened relative to its own
                         # container: rebuilding its absolute name would let a
                         # component substituted meanwhile decide what moves.
-                        source_handle = _win_open_relative_v1(
-                            source_fd,
-                            source_name,
-                            purpose=_NtOpenPurposeV1.mutating_open,
-                            directory=directory,
-                        )
+                        try:
+                            source_handle = _win_open_relative_v1(
+                                source_fd,
+                                source_name,
+                                purpose=_NtOpenPurposeV1.mutating_open,
+                                directory=directory,
+                            )
+                        except (BirthSecureFSError, OSError):
+                            # The name that should move is not there.  Before
+                            # deciding, the destination is looked at once, in
+                            # the domain of the act: an object that carries the
+                            # declared profile says the move already happened,
+                            # and the outcome is an ambiguity, not a failure to
+                            # open something.
+                            self._reconcile_moved_away_windows_v1(
+                                target_handle,
+                                target_name,
+                                directory,
+                                self._catalog_role_v1(
+                                    source,
+                                    _ObjectKind.directory
+                                    if directory
+                                    else _ObjectKind.regular_file,
+                                ),
+                            )
+                            raise
                     before = _verify_win_object(source_handle, source_path, directory=directory)
                     # The profile of what is moving is verified on its own
                     # handle, before the native call: afterwards the object is

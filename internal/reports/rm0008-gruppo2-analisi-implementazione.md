@@ -4154,6 +4154,17 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.38 Se il nome da spostare non c'e', si guarda dove sarebbe andato
+
+Su POSIX il prodotto lo faceva gia': quando il nome da spostare non si apre, si
+guarda una volta la destinazione, e un oggetto che porta il profilo dichiarato
+dice che lo spostamento e' gia' avvenuto — esito ambiguo, non «non riesco ad
+aprire». Su Windows quel gemello mancava. Aggiunto, nel dominio dell'atto e con
+identita' e profilo letti sulla maniglia aperta.
+
+Effetto misurato: la cella dell'interruzione dopo la chiamata di sistema passa,
+e il file arriva a 20 celle verdi su 21.
+
 ### 17.36 Un rifiuto si riconcilia come una riuscita
 
 Uno spostamento rifiutato deve lasciare i contenitori come li ha trovati, e la
