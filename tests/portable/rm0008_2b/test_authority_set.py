@@ -172,3 +172,141 @@ def test_the_staged_inventory_names_every_object(tmp_path: Path, monkeypatch):
         assert record.platform_identity.inode == target.stat().st_ino
         if record.object_type.value == "file":
             assert record.size == target.stat().st_size
+
+
+def test_a_restart_reuses_the_generated_identities(tmp_path: Path, monkeypatch):
+    """Section 6.1: a valid transaction is resumed, never generated again."""
+    base = support.make_config(
+        tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
+    )
+    first = support.provision(monkeypatch, base)
+    location = support.transaction_root(base) / "authority-set"
+    before = {
+        item.relative_to(location).as_posix(): item.read_bytes()
+        for item in location.rglob("*") if item.is_file()
+    }
+    second = support.provision(monkeypatch, base)
+    after = {
+        item.relative_to(location).as_posix(): item.read_bytes()
+        for item in location.rglob("*") if item.is_file()
+    }
+    assert second.transaction_id == first.transaction_id
+    assert after == before
+
+
+def test_a_stop_after_the_inputs_completes_the_set(tmp_path: Path, monkeypatch):
+    base = support.make_config(
+        tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
+    )
+    layout = support.open_layout(monkeypatch, base)
+    session = layout.birth_session
+    transaction = new_transaction_id_v1()
+    journal = provisioning._TransactionJournalV1(session, transaction)
+    opened = provisioning._resolve_author_source_v1()
+    try:
+        source = acquire_author_source_v1(opened)
+    finally:
+        opened.close()
+    with session:
+        with session.global_lock(exclusive=True, create=True):
+            journal.create_root()
+            journal.write_header(TransactionHeaderV1(transaction, BUILD))
+            journal.ensure_checkpoints()
+            zero = provisioning.CheckpointV1(
+                transaction, 0, None, provisioning.ProvisioningStateV1.created,
+                (), provisioning.empty_digests_v1(), None,
+            )
+            journal.append(zero)
+            acquired = provisioning._record_author_source_v1(
+                journal, zero, source,
+            )
+            staged = provisioning._stage_and_record_v1(
+                session, journal, acquired, source,
+            )
+            provisioning._record_operator_inputs_v1(journal, staged, layout)
+
+    result = support.provision(monkeypatch, base)
+    assert result.transaction_id == transaction
+    location = support.transaction_root(base) / "authority-set"
+    assert len(list((location / "producers").iterdir())) == len(
+        producer_catalog_v1()
+    )
+
+
+def test_a_half_generated_set_is_never_adopted(tmp_path: Path, monkeypatch):
+    base = support.make_config(
+        tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
+    )
+    layout = support.open_layout(monkeypatch, base)
+    session = layout.birth_session
+    transaction = new_transaction_id_v1()
+    journal = provisioning._TransactionJournalV1(session, transaction)
+    opened = provisioning._resolve_author_source_v1()
+    try:
+        source = acquire_author_source_v1(opened)
+    finally:
+        opened.close()
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    with session:
+        with session.global_lock(exclusive=True, create=True):
+            journal.create_root()
+            journal.write_header(TransactionHeaderV1(transaction, BUILD))
+            journal.ensure_checkpoints()
+            zero = provisioning.CheckpointV1(
+                transaction, 0, None, provisioning.ProvisioningStateV1.created,
+                (), provisioning.empty_digests_v1(), None,
+            )
+            journal.append(zero)
+            acquired = provisioning._record_author_source_v1(
+                journal, zero, source,
+            )
+            staged = provisioning._stage_and_record_v1(
+                session, journal, acquired, source,
+            )
+            provisioning._record_operator_inputs_v1(journal, staged, layout)
+            session.create_directory_exclusive(
+                journal.root_components + ("authority-set",),
+                role=_BirthObjectRole.birth_integrity_only,
+            )
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_provisioning_recovery_ambiguous"
+
+
+def test_an_operator_input_that_changed_is_a_conflict(
+    tmp_path: Path, monkeypatch,
+):
+    base = support.make_config(
+        tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
+    )
+    layout = support.open_layout(monkeypatch, base)
+    session = layout.birth_session
+    transaction = new_transaction_id_v1()
+    journal = provisioning._TransactionJournalV1(session, transaction)
+    opened = provisioning._resolve_author_source_v1()
+    try:
+        source = acquire_author_source_v1(opened)
+    finally:
+        opened.close()
+    with session:
+        with session.global_lock(exclusive=True, create=True):
+            journal.create_root()
+            journal.write_header(TransactionHeaderV1(transaction, BUILD))
+            journal.ensure_checkpoints()
+            zero = provisioning.CheckpointV1(
+                transaction, 0, None, provisioning.ProvisioningStateV1.created,
+                (), provisioning.empty_digests_v1(), None,
+            )
+            journal.append(zero)
+            acquired = provisioning._record_author_source_v1(
+                journal, zero, source,
+            )
+            staged = provisioning._stage_and_record_v1(
+                session, journal, acquired, source,
+            )
+            provisioning._record_operator_inputs_v1(journal, staged, layout)
+    support.install_operator_input(base, approval=support.approval_document())
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_provisioning_transaction_conflict"

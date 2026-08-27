@@ -1341,24 +1341,13 @@ def verify_author_store_v1(session, components: tuple[str, ...], source):
     return loaded
 
 
-def _install_author_store_v1(session, journal: "_TransactionJournalV1") -> None:
-    """Publish the staged store under its final name, without replacement."""
-    with _translated():
-        session.rename_no_replace(
-            journal.root_components + (AUTHOR_STORE_BASENAME_V1,),
-            (AUTHOR_STORE_BASENAME_V1,),
-            directory=True,
-        )
-
-
 AUTHOR_SOURCE_BASENAME_V1 = "keys"
 
 
 class AuthorProvisioningOutcomeV1(str, Enum):
     """What one provisioning run actually did, never what it hoped to do."""
 
-    installed = "installed"
-    already_installed = "already_installed"
+    staged = "staged"
     resumed = "resumed"
     author_not_yet_created = "author_not_yet_created"
 
@@ -1415,42 +1404,23 @@ def provision_author_root_v1(
         if len(transactions) > 1:
             raise _reject("birth_provisioning_recovery_ambiguous")
         installed = AUTHOR_STORE_BASENAME_V1 in names
-        if installed and not transactions:
-            loaded = verify_author_store_v1(
-                session, (AUTHOR_STORE_BASENAME_V1,), None,
-            )
-            return AuthorProvisioningResultV1(
-                AuthorProvisioningOutcomeV1.already_installed,
-                loaded.active_key_id,
-                author_store_public_inventory_sha256_v1({
-                    key_id: _raw_public(key)
-                    for key_id, key in loaded.verifier_keys.items()
-                }),
-                None,
-            )
         if transactions:
             return _resume_author_root_v1(
-                session, transactions[0][len(TRANSACTION_PREFIX_V1):],
+                session, layout, transactions[0][len(TRANSACTION_PREFIX_V1):],
                 provisioner_build_id=provisioner_build_id,
                 installed=installed,
             )
         if installed:
             raise _reject("birth_provisioning_recovery_ambiguous")
-        return _first_author_migration_v1(
-            session, provisioner_build_id=provisioner_build_id,
+        return _provision_from_nothing_v1(
+            session, layout, provisioner_build_id=provisioner_build_id,
         )
 
 
-def _raw_public(key) -> bytes:
-    from executor_birth_keystore import raw_public_key
-
-    return raw_public_key(key)
-
-
-def _first_author_migration_v1(
-    session, *, provisioner_build_id: str,
+def _provision_from_nothing_v1(
+    session, layout, *, provisioner_build_id: str,
 ) -> AuthorProvisioningResultV1:
-    """Acquire the previous identity and install it inside one transaction."""
+    """Create the transaction and advance it as far as this increment goes."""
     source_session = _resolve_author_source_v1()
     if source_session is None:
         return AuthorProvisioningResultV1(
@@ -1472,13 +1442,13 @@ def _first_author_migration_v1(
         empty_digests_v1(), None,
     )
     journal.append(zero)
-    acquired = _record_author_source_v1(journal, zero, source)
-    staged_checkpoint = _stage_and_record_v1(session, journal, acquired, source)
-    _install_and_record_v1(session, journal, staged_checkpoint)
+    last = _record_author_source_v1(journal, zero, source)
+    last = _stage_and_record_v1(session, journal, last, source)
+    last = _advance_to_authorities_v1(session, journal, layout, last)
     return AuthorProvisioningResultV1(
-        AuthorProvisioningOutcomeV1.installed,
+        AuthorProvisioningOutcomeV1.staged,
         source.active_key_id,
-        staged_checkpoint.digests["author_store_public_inventory_sha256"],
+        last.digests["author_store_public_inventory_sha256"],
         transaction_id,
     )
 
@@ -1502,7 +1472,10 @@ def _stage_and_record_v1(
     session, journal: "_TransactionJournalV1", previous: CheckpointV1, source,
 ) -> CheckpointV1:
     """Build the store inside the transaction and record what it contains."""
-    staged = _stage_author_store_v1(session, journal, source)
+    staged = _stage_author_store_v1(
+        session, journal, source,
+        first_object_sequence=_next_object_sequence_v1(previous),
+    )
     digests = dict(previous.digests)
     digests["author_store_public_inventory_sha256"] = (
         staged.public_inventory_sha256
@@ -1519,45 +1492,111 @@ def _stage_and_record_v1(
     return checkpoint
 
 
-def _install_and_record_v1(
-    session, journal: "_TransactionJournalV1", staged: CheckpointV1,
-) -> None:
-    """Publish the author root and make the fact durable before cleaning up."""
-    _install_author_store_v1(session, journal)
-    verify_installed_author_root_v1(session, staged)
-    journal.append(CheckpointV1(
-        staged.transaction_id, staged.checkpoint_sequence + 1,
-        staged.digest(), ProvisioningStateV1.author_installed,
-        staged.payload_inventory, dict(staged.digests), staged.set_id,
-    ))
+def _advance_to_authorities_v1(
+    session, journal: "_TransactionJournalV1", layout, last: CheckpointV1,
+) -> CheckpointV1:
+    """Carry one transaction from a staged author to a staged authority set."""
+    if state_rank_v1(last.state) < state_rank_v1(ProvisioningStateV1.inputs_staged):
+        last = _record_operator_inputs_v1(journal, last, layout)
+    if state_rank_v1(last.state) < state_rank_v1(
+        ProvisioningStateV1.authorities_staged
+    ):
+        last = _stage_authorities_and_record_v1(session, journal, layout, last)
+    return last
 
 
-def verify_installed_author_root_v1(session, staged: CheckpointV1):
-    """Re-read the final store and compare it with what the journal recorded.
+def _record_operator_inputs_v1(
+    journal: "_TransactionJournalV1", previous: CheckpointV1, layout,
+) -> CheckpointV1:
+    """Acquire the public registries and make their digests durable."""
+    inputs = acquire_operator_inputs_v1(layout.operator_input)
+    catalog_digest = producer_catalog_sha256_v1(producer_catalog_v1())
+    digests = dict(previous.digests)
+    recorded = (
+        ("approval_input_sha256", inputs.approval_sha256),
+        ("semantic_input_sha256", inputs.semantic_sha256),
+        ("producer_catalog_sha256", catalog_digest),
+    )
+    for field, value in recorded:
+        if digests[field] not in (None, value):
+            # An input that comes back different is a conflict, never a new
+            # start: the transaction already promised these bytes.
+            raise _conflict()
+        digests[field] = value
+    checkpoint = CheckpointV1(
+        previous.transaction_id, previous.checkpoint_sequence + 1,
+        previous.digest(), ProvisioningStateV1.inputs_staged,
+        previous.payload_inventory, digests, previous.set_id,
+    )
+    journal.append(checkpoint)
+    return checkpoint
 
-    The rename does not change the identity of an object, so the recorded
-    device and inode must still describe the installed tree: a store that
-    matches by name but not by identity is a different object.
-    """
+
+def _stage_authorities_and_record_v1(
+    session, journal: "_TransactionJournalV1", layout, previous: CheckpointV1,
+) -> CheckpointV1:
+    """Generate the authority set once and record everything it produced."""
+    with _translated():
+        present = set(session.inventory(journal.root_components))
+    if AUTHORITY_SET_BASENAME_V1 in present:
+        # A set half generated by an interrupted run is never adopted: the keys
+        # inside it were never inventoried, and nothing final was published.
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    inputs = acquire_operator_inputs_v1(layout.operator_input)
+    if inputs.approval_sha256 != previous.digests["approval_input_sha256"]:
+        raise _conflict()
+    if inputs.semantic_sha256 != previous.digests["semantic_input_sha256"]:
+        raise _conflict()
+    catalog = producer_catalog_v1()
+    if producer_catalog_sha256_v1(catalog) != previous.digests[
+        "producer_catalog_sha256"
+    ]:
+        raise _conflict()
+    author_publics = _staged_author_publics_v1(session, journal)
+    staged = _stage_authority_set_v1(
+        session, journal, inputs, catalog,
+        author_publics=author_publics,
+        first_object_sequence=_next_object_sequence_v1(previous),
+    )
+    verify_authority_set_v1(
+        session,
+        journal.root_components + (AUTHORITY_SET_BASENAME_V1,),
+        staged,
+    )
+    checkpoint = CheckpointV1(
+        previous.transaction_id, previous.checkpoint_sequence + 1,
+        previous.digest(), ProvisioningStateV1.authorities_staged,
+        previous.payload_inventory + staged.payload_inventory,
+        dict(previous.digests), previous.set_id,
+    )
+    journal.append(checkpoint)
+    return checkpoint
+
+
+def _staged_author_publics_v1(session, journal: "_TransactionJournalV1"):
+    """The public ring of the staged author root, read back from the store."""
     from executor_birth_keystore import raw_public_key
 
-    loaded = verify_author_store_v1(session, (AUTHOR_STORE_BASENAME_V1,), None)
-    observed = author_store_public_inventory_sha256_v1({
+    loaded = verify_author_store_v1(
+        session, journal.root_components + (AUTHOR_STORE_BASENAME_V1,), None,
+    )
+    return {
         key_id: raw_public_key(key)
         for key_id, key in loaded.verifier_keys.items()
-    })
-    if observed != staged.digests["author_store_public_inventory_sha256"]:
-        raise _reject("birth_author_keystore_existing_invalid")
-    for record in staged.payload_inventory:
-        components = tuple(record.relative_path.split("/"))
-        identity = _platform_identity_v1(_identity_v1(session, components))
-        if identity != record.platform_identity:
-            raise _reject("birth_provisioning_recovery_ambiguous")
-    return loaded
+    }
+
+
+def _next_object_sequence_v1(checkpoint: CheckpointV1) -> int:
+    """Continue the payload sequence where the recorded inventory left it."""
+    return sum(
+        1 for record in checkpoint.payload_inventory
+        if record.object_type is PayloadObjectTypeV1.file
+    )
 
 
 def _resume_author_root_v1(
-    session, transaction_id: str, *, provisioner_build_id: str, installed: bool,
+    session, layout, transaction_id: str, *, provisioner_build_id: str,
+    installed: bool,
 ) -> AuthorProvisioningResultV1:
     """Continue the one recognised transaction from the bytes it already holds.
 
@@ -1586,35 +1625,35 @@ def _resume_author_root_v1(
         journal.append(zero)
         last = zero
     if last.state is ProvisioningStateV1.created:
-        return _resume_before_staging_v1(
+        last = _resume_before_staging_v1(
             session, journal, last, installed=installed,
-            transaction_id=transaction_id,
         )
-    if last.state is ProvisioningStateV1.author_staged:
-        if installed:
-            raise _reject("birth_provisioning_recovery_ambiguous")
-        _install_and_record_v1(session, journal, last)
-        return AuthorProvisioningResultV1(
-            AuthorProvisioningOutcomeV1.resumed,
-            None,
-            last.digests["author_store_public_inventory_sha256"],
-            transaction_id,
-        )
-    if last.state is ProvisioningStateV1.author_installed and installed:
-        loaded = verify_installed_author_root_v1(session, last)
-        return AuthorProvisioningResultV1(
-            AuthorProvisioningOutcomeV1.resumed,
-            loaded.active_key_id,
-            last.digests["author_store_public_inventory_sha256"],
-            transaction_id,
-        )
-    raise _reject("birth_provisioning_recovery_ambiguous")
+    if installed:
+        # Nothing is published before the whole set is verified, so a final
+        # author root beside a staged transaction is not a state this
+        # increment can produce.
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    if state_rank_v1(last.state) < state_rank_v1(
+        ProvisioningStateV1.authorities_staged
+    ):
+        last = _advance_to_authorities_v1(session, journal, layout, last)
+    # The identity is read back from the store the transaction holds, not
+    # remembered from a run that may not be this one.
+    loaded = verify_author_store_v1(
+        session, journal.root_components + (AUTHOR_STORE_BASENAME_V1,), None,
+    )
+    return AuthorProvisioningResultV1(
+        AuthorProvisioningOutcomeV1.resumed,
+        loaded.active_key_id,
+        last.digests["author_store_public_inventory_sha256"],
+        transaction_id,
+    )
 
 
 def _resume_before_staging_v1(
     session, journal: "_TransactionJournalV1", last: CheckpointV1, *,
-    installed: bool, transaction_id: str,
-) -> AuthorProvisioningResultV1:
+    installed: bool,
+) -> CheckpointV1:
     """Continue a transaction that has not staged any byte yet.
 
     Only the inputs that were not acquired are consulted again, and an input
@@ -1640,14 +1679,7 @@ def _resume_before_staging_v1(
         last if recorded is not None
         else _record_author_source_v1(journal, last, source)
     )
-    staged = _stage_and_record_v1(session, journal, acquired, source)
-    _install_and_record_v1(session, journal, staged)
-    return AuthorProvisioningResultV1(
-        AuthorProvisioningOutcomeV1.resumed,
-        source.active_key_id,
-        staged.digests["author_store_public_inventory_sha256"],
-        transaction_id,
-    )
+    return _stage_and_record_v1(session, journal, acquired, source)
 
 
 OPERATOR_APPROVAL_BASENAME_V1 = "approval-authority.json"
