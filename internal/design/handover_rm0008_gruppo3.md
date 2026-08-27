@@ -69,7 +69,7 @@ privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
 GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (dodicesima fotografia; ultimo pubblico verde `91d8e86`):
+i lavori (dodicesima fotografia; ultimo pubblico verde `4df80cd`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -130,13 +130,22 @@ fotografia ciascuno, invece di una per modifica.
 - i due contenitori di dipendenze presi in prestito DERIVANO ora da quello
   ombra (`replace`) invece di rielencarne i campi: aggiungerne uno li aveva
   rotti entrambi in silenzio, mascherato da `birth_unavailable`.
+- il LINTER dei manifest smette di essere solo un'identita' e decide (obbligo
+  1): una verifica del ciclo di nascita applica `lint_manifest` sul manifest
+  congelato, in OGNI lingua che il candidato dichiara, e un rilievo "errore"
+  rifiuta la nascita. Le lingue le dichiara il candidato, mai la macchina.
+  Il catalogo delle verifiche cresce di un membro; l'identita' del contesto NON
+  si muove, perche' il catalogo non ne fa parte (verificato: i vettori golden
+  del contesto restano validi).
 
-PROSSIMO PASSO: gli obblighi che restano del piano, nell'ordine del §4 —
-invocazione vera del verificatore statico, controlli su albero sintattico e
-importazioni, risoluzione chiusa di modelli e primitive, registro della
-sandbox, e la prova che il registro venga davvero consumato. PER ULTIMO, e solo
-allora, portare gli `enforcement_state` a `productive` e rifare i vettori
-golden.
+PROSSIMO PASSO: gli obblighi che restano del piano (§2), nell'ordine del §4 —
+(2) controlli su albero sintattico e risoluzione delle importazioni; (3)
+risoluzione chiusa di modelli e primitive; (7) importazioni statiche e
+caricamenti dinamici noti; (4, resto) REGISTRARE il registro sandbox
+nell'insieme predisposto e completare il legame Windows; (5) installare i
+registri di autorita' nel pacchetto privato e provarne il consumo. PER ULTIMO,
+e solo allora, (6) portare gli `enforcement_state` a `productive`, ricostruire
+identificativo ed epoca e rifare i vettori golden UNA volta sola.
 ```
 
 ## Fallimenti locali che NON sono del gruppo 3
