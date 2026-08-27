@@ -1502,6 +1502,12 @@ def _advance_to_authorities_v1(
         ProvisioningStateV1.authorities_staged
     ):
         last = _stage_authorities_and_record_v1(session, journal, layout, last)
+    if state_rank_v1(last.state) < state_rank_v1(
+        ProvisioningStateV1.context_staged
+    ):
+        last = _stage_context_and_record_v1(session, journal, last)
+    if state_rank_v1(last.state) < state_rank_v1(ProvisioningStateV1.verified):
+        last = _write_set_and_record_v1(session, journal, last)
     return last
 
 
@@ -1633,9 +1639,7 @@ def _resume_author_root_v1(
         # author root beside a staged transaction is not a state this
         # increment can produce.
         raise _reject("birth_provisioning_recovery_ambiguous")
-    if state_rank_v1(last.state) < state_rank_v1(
-        ProvisioningStateV1.authorities_staged
-    ):
+    if state_rank_v1(last.state) < state_rank_v1(ProvisioningStateV1.verified):
         last = _advance_to_authorities_v1(session, journal, layout, last)
     # The identity is read back from the store the transaction holds, not
     # remembered from a run that may not be this one.
@@ -2269,3 +2273,251 @@ def _component_configuration_v1(
     if name == "authority_registry":
         configuration["registry"] = dict(authority_registry)
     return configuration
+
+
+SET_DOCUMENT_BASENAME_V1 = "set.json"
+SET_ID_DIGEST_DOMAIN_V1 = b"metnos.executor-birth.authority-set/v1\0"
+
+
+def _authority_registry_v1(session, base: tuple[str, ...]) -> dict[str, object]:
+    """The public identities of one staged set, read back from the stores.
+
+    Only public material appears here: identifiers, public bytes, scopes and
+    states.  A private key never reaches the registry, the context material or
+    ``set.json`` (section 9.2).
+    """
+    from executor_birth_approval_authority import _load_approval_authority_in_session
+    from executor_birth_keystore import _load_birth_keystore_in_session, raw_public_key
+
+    def store(components: tuple[str, ...]) -> dict[str, object]:
+        loaded = _load_birth_keystore_in_session(components, session)
+        return {
+            "active_key_id": loaded.active_key_id,
+            "verifier_key_ids": sorted(loaded.verifier_keys),
+            "public_keys": {
+                key_id: raw_public_key(key).hex()
+                for key_id, key in sorted(loaded.verifier_keys.items())
+            },
+        }
+
+    with _translated():
+        producer_names = sorted(session.inventory(base + ("producers",)))
+    producers = {
+        name: store(base + ("producers", name)) for name in producer_names
+    }
+    approval = _load_approval_authority_in_session(
+        base + ("approval", "authority.json"), session,
+    )
+    semantic = decode_canonical_document_v1(
+        _read_set_document_v1(session, base + ("semantic", "authority.json"))
+    )
+    return {
+        "admission": store(base + ("admission",)),
+        "producers": producers,
+        "approval": {
+            "revision": approval.revision,
+            "keys": {
+                key_id: raw_public_key(key).hex()
+                for key_id, key in sorted(approval.keys.items())
+            },
+            "actors": {
+                actor: {
+                    "key_ids": sorted(entry["key_ids"]),
+                    "scopes": sorted(entry["scopes"]),
+                }
+                for actor, entry in sorted(approval.actors.items())
+            },
+        },
+        "semantic": {
+            key_id: spec["status"]
+            for key_id, spec in sorted(semantic["verifiers"].items())
+        },
+    }
+
+
+def _read_set_document_v1(session, components: tuple[str, ...]) -> bytes:
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    with _translated():
+        return session.read_file(
+            components,
+            maximum=MAXIMUM_OPERATOR_DOCUMENT_BYTES_V1,
+            role=_BirthObjectRole.birth_integrity_only,
+        )
+
+
+def build_set_document_v1(
+    *,
+    transaction_id: str,
+    provisioner_build_id: str,
+    author: Mapping[str, object],
+    registry: Mapping[str, object],
+    catalog: Sequence[tuple[str, str]],
+    digests: Mapping[str, str | None],
+    prepared: PreparedContextMaterialV1,
+    approval_document: bytes,
+    semantic_document: bytes,
+) -> tuple[bytes, str]:
+    """Build ``set.json`` and derive the immutable identity of the set."""
+    producers = {}
+    for producer_id, operation in catalog:
+        name = producer_store_name_v1(producer_id, operation)
+        entry = registry["producers"].get(name)
+        if entry is None:
+            raise _reject("birth_authority_set_conflict")
+        producers[f"{producer_id}:{operation}"] = {
+            "store_name": name,
+            "active_key_id": entry["active_key_id"],
+            "verifier_key_ids": list(entry["verifier_key_ids"]),
+        }
+    document: dict[str, object] = {
+        "schema_version": 1,
+        "state": "complete",
+        "provisioning_transaction_id": transaction_id,
+        "provisioner_build_id": provisioner_build_id,
+        "author_active_key_id": author["active_key_id"],
+        "author_verifier_key_ids": list(author["verifier_key_ids"]),
+        "admission_active_key_id": registry["admission"]["active_key_id"],
+        "admission_verifier_key_ids": list(
+            registry["admission"]["verifier_key_ids"]
+        ),
+        "producer_keys": producers,
+        "approval_authority_sha256": hashlib.sha256(
+            approval_document
+        ).hexdigest(),
+        "semantic_authority_sha256": hashlib.sha256(
+            semantic_document
+        ).hexdigest(),
+        "semantic_public_key_ids": sorted(registry["semantic"]),
+        "approval_input_sha256": digests["approval_input_sha256"],
+        "semantic_input_sha256": digests["semantic_input_sha256"],
+        "producer_catalog_sha256": digests["producer_catalog_sha256"],
+        "context_source_inventory_sha256": prepared.source_inventory_sha256,
+        "prepared_admission_context_id": prepared.prepared_admission_context_id,
+        "prepared_context_epoch": prepared.prepared_context_epoch,
+        "context_material_sha256": prepared.material_sha256,
+    }
+    if any(value is None for value in document.values()):
+        raise _reject("birth_authority_set_conflict")
+    set_id = hashlib.sha256(
+        SET_ID_DIGEST_DOMAIN_V1 + encode_canonical_document_v1(document)
+    ).hexdigest()
+    document["set_id"] = set_id
+    return encode_canonical_document_v1(document), set_id
+
+
+def _stage_context_and_record_v1(
+    session, journal: "_TransactionJournalV1", previous: CheckpointV1,
+) -> CheckpointV1:
+    """Freeze the context material and make it durable before ``set.json``.
+
+    The identity of the set depends on this document, so nothing about the set
+    may be written until these bytes are on disk and read back (section 10.4).
+    """
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    integrity = _BirthObjectRole.birth_integrity_only
+    base = journal.root_components + (AUTHORITY_SET_BASENAME_V1,)
+    with _translated():
+        if CONTEXT_CONTAINER_BASENAME_V1 in set(session.inventory(base)):
+            raise _reject("birth_provisioning_recovery_ambiguous")
+    registry = _authority_registry_v1(session, base)
+    prepared = _prepare_installed_admission_context_v1(registry)
+    records = _create_directories_v1(session, journal, (
+        (base + (CONTEXT_CONTAINER_BASENAME_V1,), integrity),
+    ))
+    written, _ = _publish_files_v1(
+        session, journal,
+        [(
+            base + (CONTEXT_CONTAINER_BASENAME_V1,),
+            CONTEXT_MATERIAL_BASENAME_V1, prepared.document, integrity,
+        )],
+        _next_object_sequence_v1(previous),
+    )
+    observed = _read_set_document_v1(
+        session,
+        base + (CONTEXT_CONTAINER_BASENAME_V1, CONTEXT_MATERIAL_BASENAME_V1),
+    )
+    if observed != prepared.document:
+        raise _reject("birth_context_material_changed")
+    digests = dict(previous.digests)
+    digests["context_source_inventory_sha256"] = prepared.source_inventory_sha256
+    digests["context_material_sha256"] = prepared.material_sha256
+    checkpoint = CheckpointV1(
+        previous.transaction_id, previous.checkpoint_sequence + 1,
+        previous.digest(), ProvisioningStateV1.context_staged,
+        previous.payload_inventory + tuple(records) + tuple(written),
+        digests, previous.set_id,
+    )
+    journal.append(checkpoint)
+    return checkpoint
+
+
+def _write_set_and_record_v1(
+    session, journal: "_TransactionJournalV1", previous: CheckpointV1,
+) -> CheckpointV1:
+    """Write ``set.json``, derive ``set_id`` and close the payload inventory."""
+    from executor_birth_keystore import _load_birth_keystore_in_session
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    integrity = _BirthObjectRole.birth_integrity_only
+    base = journal.root_components + (AUTHORITY_SET_BASENAME_V1,)
+    with _translated():
+        if SET_DOCUMENT_BASENAME_V1 in set(session.inventory(base)):
+            raise _reject("birth_authority_set_conflict")
+    material = _read_set_document_v1(
+        session,
+        base + (CONTEXT_CONTAINER_BASENAME_V1, CONTEXT_MATERIAL_BASENAME_V1),
+    )
+    if hashlib.sha256(material).hexdigest() != previous.digests[
+        "context_material_sha256"
+    ]:
+        raise _reject("birth_context_material_changed")
+    document = decode_canonical_document_v1(material)
+    prepared = PreparedContextMaterialV1(
+        document=material,
+        prepared_admission_context_id=document["prepared_admission_context_id"],
+        prepared_context_epoch=document["prepared_context_epoch"],
+        source_inventory_sha256=previous.digests[
+            "context_source_inventory_sha256"
+        ],
+        material_sha256=previous.digests["context_material_sha256"],
+    )
+    author = _load_birth_keystore_in_session(
+        journal.root_components + (AUTHOR_STORE_BASENAME_V1,), session,
+    )
+    payload, set_id = build_set_document_v1(
+        transaction_id=journal.transaction_id,
+        provisioner_build_id=journal.read_header().provisioner_build_id,
+        author={
+            "active_key_id": author.active_key_id,
+            "verifier_key_ids": sorted(author.verifier_keys),
+        },
+        registry=_authority_registry_v1(session, base),
+        catalog=producer_catalog_v1(),
+        digests=previous.digests,
+        prepared=prepared,
+        approval_document=_read_set_document_v1(
+            session, base + ("approval", "authority.json"),
+        ),
+        semantic_document=_read_set_document_v1(
+            session, base + ("semantic", "authority.json"),
+        ),
+    )
+    written, _ = _publish_files_v1(
+        session, journal,
+        [(base, SET_DOCUMENT_BASENAME_V1, payload, integrity)],
+        _next_object_sequence_v1(previous),
+    )
+    observed = _read_set_document_v1(session, base + (SET_DOCUMENT_BASENAME_V1,))
+    if observed != payload:
+        raise _reject("birth_authority_set_conflict")
+    digests = dict(previous.digests)
+    digests["set_json_sha256"] = hashlib.sha256(payload).hexdigest()
+    checkpoint = CheckpointV1(
+        previous.transaction_id, previous.checkpoint_sequence + 1,
+        previous.digest(), ProvisioningStateV1.verified,
+        previous.payload_inventory + tuple(written), digests, set_id,
+    )
+    journal.append(checkpoint)
+    return checkpoint
