@@ -4994,6 +4994,20 @@ def _win_write_all(handle: int, payload: bytes) -> None:
         written += count.value
 
 
+def _win_destination_exists(parent_path: str, name: str, directory: bool) -> bool:
+    handle = None
+    try:
+        handle = _win_open_path(os.path.join(parent_path, name), directory=directory)
+        return True
+    except OSError as exc:
+        if exc.errno in {_ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND}:
+            return False
+        raise
+    finally:
+        if handle is not None:
+            _win_close(handle)
+
+
 def _win_inventory(
     handle: int, resolve=None, budget=None, scope: tuple[str, ...] = (),
 ) -> tuple[_InventoryEntry, ...]:
