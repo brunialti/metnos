@@ -9,7 +9,7 @@ import hashlib
 import base64
 import json
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
@@ -563,17 +563,16 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         shadow = core.shadow_dependencies
         property_runner = shadow.property_runner or ObservedPropertyRunner(
             observed, windows_registry=shadow.windows_sandbox_registry,
+            linux_registry=shadow.linux_sandbox_registry,
         )
-        borrowed_dependencies = _BirthDependencies(
+        # Derived from the shadow container, never re-listed field by field:
+        # a new dependency would otherwise be silently dropped here.
+        borrowed_dependencies = replace(
+            shadow,
             observer=lambda *_args, **_kwargs: _BorrowedObserved(observed),
-            property_runner=property_runner, semantic_policy=shadow.semantic_policy,
-            windows_sandbox_registry=shadow.windows_sandbox_registry,
-            semantic_risk=shadow.semantic_risk,
-            independent_evidence=shadow.independent_evidence,
-            semantic_authority=shadow.semantic_authority,
+            property_runner=property_runner,
             approval_subject=approval_subject,
             approval_evidence=approval_evidence, now=instant,
-            _seal=shadow._seal,
         )
         report = _observe_birth_for_test(
             request.candidate_source_root, contract_id=request.manifest_ref.contract_id,

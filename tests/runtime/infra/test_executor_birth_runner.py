@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -101,21 +102,66 @@ def test_bwrap_command_contains_every_required_namespace(tmp_path):
     assert "/sensitive/home" not in command
 
 
-def test_linux_without_bwrap_is_typed_unavailable(monkeypatch):
+def _registered(tmp_path: Path, *, bwrap: Path | None = None,
+                interpreter: Path | None = None) -> runner.LinuxSandboxRegistry:
+    """Register two programs by their real digest, as the operator would."""
+    if bwrap is None:
+        bwrap = tmp_path / "bwrap"
+        bwrap.write_bytes(b"#!/bin/sh\nexit 0\n")
+    if interpreter is None:
+        interpreter = tmp_path / "python"
+        interpreter.write_bytes(b"#!/bin/sh\nexit 0\n")
+    # A registry names the real program, never a link to it: that is what
+    # makes the digest mean something at launch.
+    bwrap, interpreter = bwrap.resolve(), interpreter.resolve()
+    return runner.LinuxSandboxRegistry(
+        bwrap_path=bwrap,
+        bwrap_binary_hash=runner._binary_digest_v1(bwrap),
+        interpreter_path=interpreter,
+        interpreter_binary_hash=runner._binary_digest_v1(interpreter),
+    )
+
+
+def test_linux_without_a_registry_is_typed_unavailable(monkeypatch):
+    """No registry means no backend: the environment cannot supply one."""
     monkeypatch.setattr(runner.os, "name", "posix")
     monkeypatch.setattr(runner.sys, "platform", "linux")
-    monkeypatch.setattr(runner.shutil, "which", lambda _name: None)
     result = runner.run_birth_phase(("/usr/bin/true",))
     assert result.status is runner.RunnerStatus.UNAVAILABLE
-    assert result.error_code == "bwrap_unavailable"
+    assert result.error_code == "linux_sandbox_registry_unavailable"
     assert result.attestation.sandboxed is False
     assert result.attestation.termination_attested is False
 
 
-def test_linux_without_delegated_cgroup_never_falls_back(monkeypatch):
+def test_linux_refuses_a_program_that_no_longer_matches(monkeypatch, tmp_path):
+    """A registered program replaced after registration is refused, not run."""
     monkeypatch.setattr(runner.os, "name", "posix")
     monkeypatch.setattr(runner.sys, "platform", "linux")
-    monkeypatch.setattr(runner.shutil, "which", lambda _name: "/usr/bin/bwrap")
+    registry = _registered(tmp_path)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("launched a program that failed its digest")
+
+    monkeypatch.setattr(runner, "run_bounded_subprocess", forbidden)
+    registry.bwrap_path.write_bytes(b"#!/bin/sh\nexit 1\n")
+    result = runner.run_birth_phase(("/usr/bin/true",), linux_registry=registry)
+    assert result.status is runner.RunnerStatus.UNAVAILABLE
+    assert result.error_code == "linux_sandbox_program_mismatch"
+
+
+def test_linux_refuses_a_program_that_disappeared(monkeypatch, tmp_path):
+    monkeypatch.setattr(runner.os, "name", "posix")
+    monkeypatch.setattr(runner.sys, "platform", "linux")
+    registry = _registered(tmp_path)
+    registry.interpreter_path.unlink()
+    result = runner.run_birth_phase(("/usr/bin/true",), linux_registry=registry)
+    assert result.status is runner.RunnerStatus.UNAVAILABLE
+    assert result.error_code == "linux_sandbox_program_unavailable"
+
+
+def test_linux_without_delegated_cgroup_never_falls_back(monkeypatch, tmp_path):
+    monkeypatch.setattr(runner.os, "name", "posix")
+    monkeypatch.setattr(runner.sys, "platform", "linux")
     monkeypatch.setattr(
         runner, "_cgroup_v2_delegate", lambda: (None, "cgroup_delegate_missing"),
     )
@@ -127,7 +173,9 @@ def test_linux_without_delegated_cgroup_never_falls_back(monkeypatch):
         raise AssertionError("host execution fallback")
 
     monkeypatch.setattr(runner, "run_bounded_subprocess", forbidden)
-    result = runner.run_birth_phase(("/usr/bin/true",))
+    result = runner.run_birth_phase(
+        ("/usr/bin/true",), linux_registry=_registered(tmp_path),
+    )
     assert result.status is runner.RunnerStatus.UNAVAILABLE
     assert result.error_code == "cgroup_delegate_missing"
     assert called is False
@@ -277,7 +325,7 @@ def test_shell_setup_and_teardown_are_not_part_of_public_api():
     parameters = inspect.signature(runner.run_birth_phase).parameters
     assert set(parameters) == {
         "command", "fixture_ops", "phase", "deadline", "candidate_id",
-        "windows_registry", "candidate_files",
+        "windows_registry", "linux_registry", "candidate_files",
     }
     assert not {"shell", "setup", "teardown", "env", "policy"} & set(parameters)
 
@@ -313,9 +361,9 @@ def test_setup_handshake_is_strict_and_core_owned(tmp_path):
 def _install_fake_linux_backend(monkeypatch, tmp_path, *, handshake):
     delegate = tmp_path / "delegate"
     delegate.mkdir()
+    registry = _registered(tmp_path)
     monkeypatch.setattr(runner.os, "name", "posix")
     monkeypatch.setattr(runner.sys, "platform", "linux")
-    monkeypatch.setattr(runner.shutil, "which", lambda _name: "/usr/bin/bwrap")
     monkeypatch.setattr(runner, "_cgroup_v2_delegate", lambda: (delegate, None))
     monkeypatch.setattr(runner, "_write_control", lambda _path, _value: None)
     monkeypatch.setattr(runner, "_tree_empty", lambda _scope: True)
@@ -327,14 +375,15 @@ def _install_fake_linux_backend(monkeypatch, tmp_path, *, handshake):
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(runner, "run_bounded_subprocess", fake_run)
+    return registry
 
 
 def test_candidate_failure_requires_successful_core_setup_handshake(monkeypatch, tmp_path):
-    _install_fake_linux_backend(
+    registry = _install_fake_linux_backend(
         monkeypatch, tmp_path,
         handshake={"child_started": True, "exit_code": 17},
     )
-    result = runner.run_birth_phase(("/bin/false",))
+    result = runner.run_birth_phase(("/bin/false",), linux_registry=registry)
     assert result.status is runner.RunnerStatus.FAILED
     assert result.error_code == "candidate_process_failed"
     assert result.returncode == 17
@@ -342,8 +391,8 @@ def test_candidate_failure_requires_successful_core_setup_handshake(monkeypatch,
 
 
 def test_missing_setup_handshake_is_unavailable_not_candidate_failure(monkeypatch, tmp_path):
-    _install_fake_linux_backend(monkeypatch, tmp_path, handshake=None)
-    result = runner.run_birth_phase(("/bin/false",))
+    registry = _install_fake_linux_backend(monkeypatch, tmp_path, handshake=None)
+    result = runner.run_birth_phase(("/bin/false",), linux_registry=registry)
     assert result.status is runner.RunnerStatus.UNAVAILABLE
     assert result.error_code == "sandbox_setup_unattested"
     assert result.returncode is None
@@ -353,7 +402,15 @@ def test_missing_setup_handshake_is_unavailable_not_candidate_failure(monkeypatc
 def _real_linux_result(command):
     if not runner.sys.platform.startswith("linux"):
         pytest.skip("Linux-only isolation proof")
-    result = runner.run_birth_phase(command)
+    import shutil as _shutil
+
+    found = _shutil.which("bwrap")
+    if not found:
+        pytest.skip("bwrap is not installed on this machine")
+    registry = _registered(
+        Path("/nonexistent"), bwrap=Path(found), interpreter=Path(sys.executable),
+    )
+    result = runner.run_birth_phase(command, linux_registry=registry)
     if result.status is runner.RunnerStatus.UNAVAILABLE:
         pytest.skip(f"complete Linux backend unavailable: {result.error_code}")
     return result
