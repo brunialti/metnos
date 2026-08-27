@@ -69,7 +69,7 @@ privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
 GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (dodicesima fotografia, pubblico `90e1a6b`):
+i lavori (dodicesima fotografia; ultimo pubblico verde `e866ba6`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -107,6 +107,18 @@ fotografia ciascuno, invece di una per modifica.
   La cella R1 tratta ora la porta di sola lettura come TERMINALE della
   raggiungibilita': chi la chiama eredita una sessione con cui puo' solo
   leggere. Senza, ogni chiamante dell'avvio sembrava un mutante.
+
+- le due basi dati durevoli (ricevute e approvazioni) stanno sotto la cartella
+  di stato con la protezione rimessa: lo scambio l'aveva lasciata cadere. Una
+  sola entrata tratta i due archivi allo stesso modo (obbligo 10 del §2).
+- il cancello dei lavoratori NON deduce piu' lo stato inattivo da un rifiuto:
+  una radice assente e una lettura fallita hanno lo stesso codice. Ora cerca il
+  marcatore e chiede la domanda vera. Sparito anche il parametro che nominava
+  un file di configurazione inesistente.
+- corretto un fallimento non nostro: `tests/e2e/driver/test_birth_bootstrap.py`
+  importava un modulo che da quel livello non esiste e rompeva la raccolta
+  dell'INTERA suite e2e da quando e' nata. Rimossa insieme al predispositore
+  e2e che scriveva un documento che nessuno legge; la suite raccoglie pulita.
 
 PROSSIMO PASSO: gli obblighi che restano del piano, nell'ordine del §4 —
 invocazione vera del verificatore statico, controlli su albero sintattico e
