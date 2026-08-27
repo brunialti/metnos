@@ -111,11 +111,22 @@ accertato, cosi' nessuno li scambia per regressioni:
   repository di proposito. Ora le celle **saltano dichiarando il comando** da
   eseguire, invece di rompersi con un errore muto. Sistemato.
 - **due letture in sandbox** (`test_executor_standard_index_readers`,
-  `test_executor_standard_url_reader`): un executor non riesce a importare un
-  suo fratello dentro la sandbox. `bwrap` c'e', quindi non e' quello. La
-  sandbox dei test copia gli executor dall'installazione reale della macchina,
-  che qui non ne contiene: dipende dallo stato della macchina, non dal
-  repository. **Aperto, non diagnosticato a fondo.**
+  `test_executor_standard_url_reader`): **diagnosticato, difetto di prodotto
+  vero, non risolto perche' e' una scelta di progetto.**
+  `executors/find_persons_indices` delega importando il modulo del fratello
+  (`import find_images_indices`), ma il suo manifest dichiara
+  `files = ["find_persons_indices.py"]` e basta. La sandbox lega quello che il
+  manifest dichiara, quindi dentro l'isolamento l'import non trova il fratello.
+  Funziona solo dove la sandbox espone per caso anche gli altri executor.
+
+  Due riparazioni possibili, e non sono equivalenti:
+  (a) l'executor smette di delegare per import e passa dal runtime — piu'
+      pulito, perche' un executor e' un'unita' firmata e importare il modulo di
+      un'altra unita' ne attraversa il confine;
+  (b) il manifest dichiara anche il file del fratello — piu' rapido, ma mette
+      il codice di un'unita' nella firma di un'altra.
+
+  Serve una decisione di Roberto e una rifirma (§7.10). Non toccato.
 - **cinque celle POSIX della base 2A** (`g2` e `g8`): pretendono un secondo
   utente o i privilegi di root. Verdi nel ciclo pubblico, rosse in locale.
   Attese.
