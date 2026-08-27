@@ -4252,6 +4252,28 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.68 Cancelletto finale verde: 235 celle su 235
+
+Roberto ha deciso (27/8) di sistemare le tre celle. Fatto, riferendo ciascuna
+pretesa all'oggetto giusto invece di toglierla:
+
+- le due celle del contratto nativo contavano **ogni apertura** della loro
+  finestra e pretendevano un descrittore di sicurezza su ognuna. Un descrittore
+  appartiene all'istante in cui un oggetto nasce: chi apre qualcosa che gia'
+  esiste non ne porta. Ora contano le **creazioni**, e la sequenza di vita e'
+  verificata sulle sole maniglie di creazione;
+- la cella dello stato nativo pretendeva **una conversione per operazione**. Ne
+  serve una per **apertura rifiutata**: uno spostamento la cui sorgente non c'e'
+  guarda una volta la destinazione prima di decidere, ed e' cio' che le celle di
+  ripristino di questa stessa base pretendono.
+
+Ottavo congelamento eseguito con la procedura del passo 5 e misura pubblica
+(`23a8f9f`): **tutte e nove le attivita' sono verdi**, compreso il riassunto di
+certificazione, che gira in modo finale e pretende **tutte** le celle verdi.
+
+RM-0008 2A supera il proprio cancelletto di accettazione: 235 celle su 235, su
+Linux e su Windows, piu' le due suite ordinarie.
+
 ### 17.67 Revisione sequenziale: primi due file, entrambi solidi
 
 La revisione del passo 2 procede file per file. Criterio: una cella e' solida se
