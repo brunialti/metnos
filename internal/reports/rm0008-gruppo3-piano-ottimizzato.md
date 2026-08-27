@@ -171,6 +171,55 @@ Nota di esecuzione: il blocco da spostare e' ~190 righe e va spostato a mano,
 non con sostituzioni testuali — un tentativo meccanico si e' rivelato fragile e
 lasciarlo a meta' sarebbe peggio che non iniziarlo.
 
+## 6.quater Provenienza: la tabella degli undici, e cosa dice davvero
+
+Il file di configurazione sceglie oggi, per ognuno degli undici produttori, due
+fatti che finiscono timbrati sull'executor: **tipo** (`ExecutorOrigin`) e
+**autore della revisione** (`RevisionAuthor`). Scriverli in una tabella chiusa
+sembrava la mossa ovvia. Guardando gli undici uno per uno, non lo e'.
+
+| Produttore | Operazione | Che cosa fa | Tipo (`origin`) | Autore |
+|---|---|---|---|---|
+| `synt_multistage` | `create_or_replay` | crea un executor nuovo | sintetizzato | modello |
+| `synt_specialize` | `specialize_or_replay` | crea un fratello specializzato | sintetizzato | modello |
+| `synt_approve` | `approve_or_replay` | approva un candidato sintetizzato | sintetizzato | modello |
+| `skills_cli` | `skill_import_or_reactivation` | importa da fuori | importato | importatore |
+| `builtin_contract_generator` | `generate_builtin` | genera i contratti builtin | builtin | manutenzione |
+| `installer_phase3` | `install` | installa i contratti spediti | **dipende dal bersaglio** | manutenzione |
+| `change_applier` | `extend` | revisiona un executor esistente | **dipende dal predecessore** | modello |
+| `change_rollback` | `rollback` | annulla una modifica | **dipende dal predecessore** | manutenzione |
+| `promoter` | `promote` | promuove un executor esistente | **dipende dal predecessore** | manutenzione |
+| `promoter` | `rollback` | annulla una promozione | **dipende dal predecessore** | manutenzione |
+| `stack_reconcile` | `restart_sign_first` | rifirma al riavvio | **dipende dal predecessore** | manutenzione |
+
+**Sei righe su undici non hanno un tipo proprio.** Cinque revisionano un
+executor che esiste gia', e per loro il tipo e' quello del predecessore.
+L'installatore e' un caso a se': installa contratti di origine diversa (core,
+builtin, skill utente) e su una installazione nuova **non esiste nemmeno un
+predecessore** da cui prenderlo.
+
+### Conseguenza
+
+Il tipo non e' quasi mai una proprieta' del produttore: e' una proprieta'
+**dell'executor che sta nascendo**. Esiste gia' autenticato in due forme —
+l'origine strutturale del manifest, che l'inventario calcola da dove il
+manifest vive, e l'origine del predecessore per chi revisiona.
+
+**Proposta:**
+
+- l'**autore** resta fisso per produttore, in tabella chiusa: dice chi ha
+  scritto *questa* revisione, ed e' davvero una proprieta' di chi la produce;
+- il **tipo** si deriva dall'executor: dal predecessore autenticato quando
+  c'e', dall'origine strutturale del manifest quando si nasce da zero. Mai dal
+  produttore, mai da un file.
+
+Cosi' nessuno *dichiara* una provenienza: o la porta il predecessore, o la
+porta il posto in cui il manifest vive. Il costo onesto: due sorgenti invece di
+una, e in entrambi i casi va verificato che il dato sia gia' autenticato nel
+punto in cui serve — nel flusso attuale lo e', ma va provato, non supposto.
+
+**Decisione ancora aperta**: in attesa di Roberto.
+
 ## 7. Procedura di rifotografia (l'unica cosa tacita e costosa)
 
 Serve ogni volta che cambia un file sotto `tests/portable/rm0008_2a_acceptance`,
