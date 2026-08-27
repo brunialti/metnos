@@ -4158,6 +4158,34 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.47 Che cosa resta rosso, cella per cella
+
+Il solo lavoro rosso e' ACL Windows, con 8 celle su 65. Non sono un unico
+problema: sono quattro cose distinte, e tre non dipendono dal prodotto.
+
+1. **Due celle della doppia chiusura** (`ntcreate-relative-rootdirectory`,
+   `ntcreate-no-createfilew-fallback`). Causa gia' accertata al §17.28: la
+   creazione del lucchetto passa dall'involucro Win32, quindi la sorveglianza
+   non registra quella generazione di maniglia e la chiusura le sembra
+   ripetuta. Si chiudono con la migrazione del lucchetto, che il §17.46 ha
+   fermato per la quarta volta: sono una conseguenza di quel punto, non un
+   lavoro proprio.
+2. **Una cella del contratto nativo** (`ntstatus-read-not-found`): la tensione
+   del §17.42 fra due celle congelate. Serve una decisione, non una correzione.
+3. **Quattro celle del privilegio di ripristino**. La base presuppone un
+   gettone in cui `SeRestorePrivilege` e' **presente ma disabilitato**: solo
+   allora l'ambito lo abilita all'ingresso e lo ripristina all'uscita, ed e'
+   quel ripristino che le celle fanno fallire. Misurato in due ambienti
+   diversi — il PC amministratore e l'officina pubblica — in entrambi il
+   privilegio e' gia' abilitato, l'ambito non ha nulla da ripristinare e
+   l'iniezione non scatta. Il prodotto si comporta correttamente: ripristinare
+   uno stato che non ha cambiato sarebbe sbagliato.
+4. **Una cella della chiamata non elevata**: esegue una sonda sotto un altro
+   account. E' la famiglia gia' descritta al §17.17; in officina l'account si
+   crea, ma la sonda non restituisce l'esito atteso. E' l'unica delle otto che
+   potrebbe ancora nascondere un difetto del prodotto e va guardata per prima
+   quando si riprende.
+
 ### 17.46 Quarto tentativo sul lucchetto: fermato di nuovo, ma ora si sa perche'
 
 La base vieta esplicitamente il ripiego sull'involucro Win32, e la creazione del
