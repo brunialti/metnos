@@ -1070,8 +1070,10 @@ def test_g12_secure_creation_failure_states(case: str, tmp_path: Path, monkeypat
                         )
                     )
                 )
-                expected = "birth_provisioning_elevation_required" if result == 5 else "birth_provisioning_acl_unsafe"
-                support.require_code(call, expected)
+                # Both injected results are ACL facts now: an access denied by
+                # the DACL and a device error are alike in that neither is a
+                # missing privilege, which is the only elevation case left.
+                support.require_code(call, "birth_provisioning_acl_unsafe")
                 if (
                     creation_handle is None
                     or calls != 1

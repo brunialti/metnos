@@ -2196,9 +2196,12 @@ def _win_apply_and_verify_security(handle: int, expected_descriptor: int) -> Non
         None,
     )
     if result:
+        # Same rule as the open taxonomy: only a missing privilege is an
+        # elevation problem.  A descriptor refused by the DACL is an ACL fact
+        # and saying otherwise sends the diagnosis the wrong way.
         code = (
             "birth_provisioning_elevation_required"
-            if result in {_ERROR_ACCESS_DENIED, _ERROR_PRIVILEGE_NOT_HELD}
+            if result == _ERROR_PRIVILEGE_NOT_HELD
             else "birth_provisioning_acl_unsafe"
         )
         raise BirthSecureFSError(code) from OSError(result, "SetSecurityInfo")
