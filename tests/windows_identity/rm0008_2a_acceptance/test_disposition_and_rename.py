@@ -795,8 +795,12 @@ def _assert_native_rename_call(
 ) -> dict[str, object]:
     import ctypes
 
-    if len(arguments) != 4:
-        raise AssertionError("rename did not use the four-argument Win32 ABI")
+    # Section 17.26: the move goes through the native call, which alone
+    # honours the containing directory of the request.  Its shape is handle,
+    # status block, buffer, length, class.
+    if len(arguments) != 5:
+        raise AssertionError("rename did not use the five-argument native ABI")
+    arguments = (arguments[0], arguments[4], arguments[2], arguments[3])
 
     def scalar(value) -> int:
         return int(getattr(value, "value", value) or 0)
@@ -811,7 +815,7 @@ def _assert_native_rename_call(
         raise AssertionError(
             "rename did not use the exact validated source-handle generation"
         )
-    if scalar(arguments[1]) != 3:  # FileRenameInfo
+    if scalar(arguments[1]) != 10:  # FileRenameInformation
         raise AssertionError("rename used the wrong file-information class")
     if not arguments[2]:
         raise AssertionError("rename information buffer is absent")
@@ -908,8 +912,8 @@ class _RenameCausalityProbe:
         )
         monkeypatch.setattr(sf._KERNEL32, "CloseHandle", self._checked_close)
         monkeypatch.setattr(
-            sf._KERNEL32,
-            "SetFileInformationByHandle",
+            sf._NTDLL,
+            "NtSetInformationFile",
             self._checked_native,
         )
         monkeypatch.setattr(sf, "_win_inventory", self._checked_inventory)
@@ -1213,7 +1217,7 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
                     key=lambda item: item.name.encode("utf-8"),
                 )
             )
-            native = sf._KERNEL32.SetFileInformationByHandle
+            native = sf._NTDLL.NtSetInformationFile
             native_close = sf._KERNEL32.CloseHandle
             relative = support.required(sf, "_win_open_relative_v1")
             real_info = sf._win_info
@@ -1354,8 +1358,8 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
 
             monkeypatch.setattr(sf, "_win_open_relative_v1", checked_relative)
             monkeypatch.setattr(
-                sf._KERNEL32,
-                "SetFileInformationByHandle",
+                sf._NTDLL,
+                "NtSetInformationFile",
                 checked_nested_directory_rename,
             )
             monkeypatch.setattr(
@@ -1492,7 +1496,7 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
                 raise AssertionError("native error changed metadata, bytes or inventory")
             return
         if case in {"success-postvalidation", "source-fileid128-preserved"}:
-            native = sf._KERNEL32.SetFileInformationByHandle
+            native = sf._NTDLL.NtSetInformationFile
             native_close = sf._KERNEL32.CloseHandle
             relative = support.required(sf, "_win_open_relative_v1")
             real_info = sf._win_info
@@ -1676,7 +1680,7 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
 
             monkeypatch.setattr(sf, "_win_open_relative_v1", checked_relative)
             monkeypatch.setattr(
-                sf._KERNEL32, "SetFileInformationByHandle", checked_rename
+                sf._NTDLL, "NtSetInformationFile", checked_rename
             )
             monkeypatch.setattr(sf._KERNEL32, "CloseHandle", checked_close)
             monkeypatch.setattr(sf, "_win_info", checked_info)
@@ -1742,7 +1746,7 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
         source, before = _rename_fixture(active, root)
         snapshot = support.windows_tree_snapshot(root)
         original_info = sf._win_info
-        original_native = sf._KERNEL32.SetFileInformationByHandle
+        original_native = sf._NTDLL.NtSetInformationFile
         source_seen = False
         native_calls = 0
 
@@ -1768,7 +1772,7 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
 
         monkeypatch.setattr(sf, "_win_info", different_volume)
         monkeypatch.setattr(
-            sf._KERNEL32, "SetFileInformationByHandle", record_native
+            sf._NTDLL, "NtSetInformationFile", record_native
         )
         support.require_code(
             lambda: active.rename_no_replace(("source",), ("destination",), directory=False),
@@ -1834,7 +1838,7 @@ def test_r6_windows_rename_races(case: str, tmp_path: Path, monkeypatch) -> None
 
                 thread = threading.Thread(target=competitor)
                 thread.start()
-                native = sf._KERNEL32.SetFileInformationByHandle
+                native = sf._NTDLL.NtSetInformationFile
                 expected_parent = None
 
                 def raced_native(*args):
@@ -1979,7 +1983,7 @@ def test_r6_windows_rename_races(case: str, tmp_path: Path, monkeypatch) -> None
         ) as active:
             with support.exclusive(active):
                 retry_parent = active._inventory_state(())
-                native_rename = sf._KERNEL32.SetFileInformationByHandle
+                native_rename = sf._NTDLL.NtSetInformationFile
                 if case.endswith("before-native"):
                     source_entry = next(
                         item for item in retry_parent if item.name == "source"

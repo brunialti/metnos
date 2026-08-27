@@ -9,7 +9,6 @@ execution.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import shutil
@@ -456,7 +455,7 @@ def run_birth_phase(
         if (not isinstance(candidate_id, str) or not isinstance(windows_registry, WindowsSandboxRegistry)
                 or not isinstance(candidate_files, Mapping)):
             return _unavailable("windows_sandbox_registry_unavailable", "windows-appcontainer-job-v1", started)
-        request_id = "sha256:" + hashlib.sha256(uuid.uuid4().bytes).hexdigest()
+        request_id = "sha256:" + __import__("hashlib").sha256(uuid.uuid4().bytes).hexdigest()
         with tempfile.TemporaryDirectory(prefix="metnos-birth-runner-") as temporary:
             private_root = Path(temporary).resolve()
             try:
