@@ -486,3 +486,42 @@ nascita, accanto a `undo_last_turn`. La cella
 ROSSA e dichiarata: in questa casa un caso e' verde oppure e' un rilievo, e
 `xfail` e' vietato dalla base 2A (`no-skip-xfail`). Nasconderlo sarebbe peggio
 del rosso.
+
+## 14. Blocco Windows: una causa candidata trovata leggendo, non indovinando (28/8)
+
+Il §17.81 del gruppo 2 lasciava la causa aperta con tre candidati
+(«destinazione, condivisione dell'handle o handle ancora aperti sulla
+sorgente») e una tensione che non riusciva a sciogliere: se mancasse `DELETE`
+la **disposizione** non funzionerebbe, e invece funziona sullo stesso runner.
+
+C'e' un quarto candidato che il rapporto non elencava, e scioglie la tensione.
+
+**Le maschere richieste, a confronto:**
+
+| Proposito | Maschera file | Contiene |
+|---|---|---|
+| `disposition` | `0x00130081` | DELETE, READ_CONTROL, SYNCHRONIZE, letture |
+| `mutating_open` (prima) | `0x001f0080` | tutto quanto sopra **+ WRITE_DAC + WRITE_OWNER** |
+| maschera di servizio di un oggetto Birth | `0x001200a9` | SYNCHRONIZE, READ_CONTROL, letture — **niente WRITE_DAC/WRITE_OWNER** |
+
+`STANDARD_RIGHTS_ALL` (`0x001f0000`) aggiunge i due diritti che **riscrivono il
+descrittore**. La disposizione non li chiede e passa; la rinomina li chiedeva e
+riceveva accesso negato. Non e' `DELETE` a mancare — la disposizione dimostra
+che c'e' — sono quei due.
+
+**Nessuno dei quattro punti d'uso di `mutating_open` li adopera.** Tre aprono
+per OSSERVARE identita' e profilo (destinazione candidata, destinazione
+assestata, destinazione dopo la mossa); il quarto apre la sorgente della
+rinomina, che ha bisogno di `DELETE` e di nient'altro. Chiedere un diritto che
+non si usa e' il modo in cui un'apertura viene negata per un motivo che con
+l'operazione non c'entra.
+
+**Correzione applicata**: `mutating_open` chiede ora `0x00130080` (file) e
+`0x001300a0` (directory) — la stessa forma della disposizione, piu' il bit di
+attraversamento per i contenitori. E' anche la direzione giusta a prescindere
+dall'esito: si chiede meno, non di piu', e non si tocca alcuna maschera di
+servizio, cosa che il §17.81 vietava esplicitamente senza misura.
+
+**Falsificabile**: se la rinomina che pubblica un finale continua a ricevere
+accesso negato, l'ipotesi cade e restano i tre candidati originali. La
+riduzione resta comunque corretta per minimo privilegio.

@@ -1374,7 +1374,13 @@ _NT_FILE_ACCESS_V1 = {
     # needs write access for an exclusive byte-range lock.
     _NtOpenPurposeV1.lock_reader: 0x00120083,
     _NtOpenPurposeV1.create_exclusive: _WIN_FILE_CREATE_ACCESS_V1,
-    _NtOpenPurposeV1.mutating_open: 0x001f0080,
+    # A move asks for DELETE on the source handle it will rename through, and
+    # reads attributes on the destination it verifies.  It used to ask for the
+    # whole of STANDARD_RIGHTS_ALL, which adds WRITE_DAC and WRITE_OWNER: two
+    # rights no call site here uses, and that the service mask of a Birth
+    # object (0x001200a9) does not grant.  Asking for a right one never uses is
+    # how an open is denied for a reason the operation has nothing to do with.
+    _NtOpenPurposeV1.mutating_open: 0x00130080,
     # Removal also compares the bytes against the expectation, so it reads
     # through the same handle it will delete through.
     _NtOpenPurposeV1.disposition: 0x00130081,
@@ -1385,7 +1391,9 @@ _NT_DIRECTORY_ACCESS_V1 = {
     _NtOpenPurposeV1.read_required: 0x001200a1,
     _NtOpenPurposeV1.lock_reader: 0x001200a1,
     _NtOpenPurposeV1.create_exclusive: _WIN_DIRECTORY_CREATE_ACCESS_V1,
-    _NtOpenPurposeV1.mutating_open: 0x001f00a0,
+    # Same reduction as the file mask, keeping the traversal bit a container
+    # needs to be opened at all.
+    _NtOpenPurposeV1.mutating_open: 0x001300a0,
     # Removing a container also reads its attributes and enumerates it to
     # compare the declared inventory, so both rights belong to this mask.
     _NtOpenPurposeV1.disposition: 0x001300a1,
