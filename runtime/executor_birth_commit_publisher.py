@@ -64,8 +64,11 @@ class BirthCommitFactsV1:
             value = getattr(self, name)
             if callable(value) and not isinstance(value, type):
                 raise BirthCommitLinkError("birth_commit_facts_invalid")
+        # ``contract_id`` is a typed identity of the inventory, not a string,
+        # so it is checked for shape by the store and only for being a value
+        # here.
         for name in (
-            "request_id", "birth_request_id", "policy_version", "contract_id",
+            "request_id", "birth_request_id", "policy_version",
             "candidate_id", "semantic_core_id", "admission_context_id",
             "observed_context_epoch", "producer_receipt_hash", "issued_at",
         ):
