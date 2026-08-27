@@ -6,9 +6,7 @@ them; it never creates, rotates, or repairs key material.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
-import re
 import stat
 import threading
 from dataclasses import dataclass
@@ -32,8 +30,6 @@ from executor_birth_operational import (
 )
 from executor_birth_producer_store import get_or_issue_producer_receipt
 from executor_birth_receipts import IssuerKey, IssuerRegistry, issue_producer_receipt
-from executor_birth_runner import WindowsSandboxRegistry
-from executor_birth_runner_windows_v1 import helper_binary_hash
 from executor_birth_shadow import _assemble_production_dependencies
 from manifest_inventory import ManifestRef
 
@@ -51,46 +47,47 @@ class _ProducerAuthority:
     author: RevisionAuthor
 
 
-@dataclass(frozen=True, slots=True)
-class BirthBootstrapPaths:
-    config: Path
-    state_dir: Path
-
-
 _BOOT_LOCK = threading.Condition()
 _BOOT_STATE = "cold"
 _BOOT_ERROR: BaseException | None = None
 
 
-def default_birth_bootstrap_paths() -> BirthBootstrapPaths:
-    import config as C
-    return BirthBootstrapPaths(
-        C.PATH_USER_CONFIG / "birth" / "bootstrap.json",
-        C.PATH_USER_STATE / "birth",
-    )
+BIRTH_STATE_BASENAME_V1 = "birth"
+PRODUCER_RECEIPTS_BASENAME_V1 = "producer_receipts.sqlite"
+APPROVALS_BASENAME_V1 = "approvals.sqlite"
 
 
-def _object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise BirthBootstrapError(f"birth_bootstrap_config_duplicate:{key}")
-        result[key] = value
-    return result
-
-
-def _secure_state_db(state_dir: Path) -> Path:
+def _secure_state_dir(state_dir: Path) -> Path:
+    """Create the durable Birth state directory and refuse a loose one."""
     try:
         state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         info = state_dir.stat()
-        if not state_dir.is_dir() or state_dir.is_symlink() or (os.name != "nt" and info.st_mode & 0o077):
+        if (not state_dir.is_dir() or state_dir.is_symlink()
+                or (os.name != "nt" and info.st_mode & 0o077)):
             raise BirthBootstrapError("birth_state_permissions")
-        path = state_dir / "producer-receipts.sqlite"
-        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        return state_dir
+    except BirthBootstrapError:
+        raise
+    except OSError as exc:
+        raise BirthBootstrapError("birth_state_unavailable") from exc
+
+
+def _secure_state_db(state_dir: Path, basename: str) -> Path:
+    """Create one durable database inside the state directory and check it.
+
+    Receipts and approvals carry the same weight, so they get the same
+    treatment from a single entry: two nearly identical helpers standing side
+    by side is how the two drifted apart in the first place.
+    """
+    try:
+        path = state_dir / basename
+        flags = (os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0)
+                 | getattr(os, "O_NOFOLLOW", 0))
         descriptor = os.open(path, flags, 0o600)
         try:
-            db_info = os.fstat(descriptor)
-            if not stat.S_ISREG(db_info.st_mode) or db_info.st_nlink != 1 or (os.name != "nt" and db_info.st_mode & 0o077):
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or (os.name != "nt" and info.st_mode & 0o077)):
                 raise BirthBootstrapError("birth_state_permissions")
         finally:
             os.close(descriptor)
@@ -99,37 +96,6 @@ def _secure_state_db(state_dir: Path) -> Path:
         raise
     except OSError as exc:
         raise BirthBootstrapError("birth_state_unavailable") from exc
-
-
-def _secure_approval_db(path: Path) -> Path:
-    """Validate the explicitly configured durable approval database path."""
-    try:
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        parent = path.parent.stat()
-        if (not path.parent.is_dir() or path.parent.is_symlink()
-                or (os.name != "nt" and parent.st_mode & 0o077)):
-            raise BirthBootstrapError("birth_approval_store_permissions")
-        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-        descriptor = os.open(path, flags, 0o600)
-        try:
-            info = os.fstat(descriptor)
-            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                    or (os.name != "nt" and info.st_mode & 0o077)):
-                raise BirthBootstrapError("birth_approval_store_permissions")
-        finally:
-            os.close(descriptor)
-        return path
-    except BirthBootstrapError:
-        raise
-    except OSError as exc:
-        raise BirthBootstrapError("birth_approval_store_unavailable") from exc
-
-
-def _resolve(config_dir: Path, value: object) -> Path:
-    if not isinstance(value, str) or not value or "\0" in value:
-        raise BirthBootstrapError("birth_key_path_invalid")
-    path = Path(value)
-    return path if path.is_absolute() else config_dir / path
 
 
 def _manifest_ref(intent: BirthIntent) -> ManifestRef:
@@ -337,10 +303,11 @@ def _build_sealed(*, now: Callable[[], datetime]) -> BirthRuntimeBundle:
     import config as _config
 
     sealed = load_sealed_authorities_v1()
-    state_dir = Path(_config.PATH_USER_STATE) / "birth"
-    state_dir.mkdir(parents=True, exist_ok=True)
-    producer_db = state_dir / "producer_receipts.sqlite"
-    approval_db = state_dir / "approvals.sqlite"
+    state_dir = _secure_state_dir(
+        Path(_config.PATH_USER_STATE) / BIRTH_STATE_BASENAME_V1
+    )
+    producer_db = _secure_state_db(state_dir, PRODUCER_RECEIPTS_BASENAME_V1)
+    approval_db = _secure_state_db(state_dir, APPROVALS_BASENAME_V1)
 
     authorities, registry = _sealed_authorities(sealed)
     bundle = _build_prepared_bundle_v1(
@@ -394,8 +361,9 @@ def _build_sealed(*, now: Callable[[], datetime]) -> BirthRuntimeBundle:
     return _assemble_birth_runtime_bundle(core, factories)
 
 
-def bootstrap_birth_runtime(paths: BirthBootstrapPaths | None = None, *,
-                            now: Callable[[], datetime] | None = None) -> BirthRuntimeBundle:
+def bootstrap_birth_runtime(
+    *, now: Callable[[], datetime] | None = None
+) -> BirthRuntimeBundle:
     """Initialize exactly once; concurrent callers see one result or one failure."""
     global _BOOT_STATE, _BOOT_ERROR
     with _BOOT_LOCK:
@@ -419,29 +387,43 @@ def bootstrap_birth_runtime(paths: BirthBootstrapPaths | None = None, *,
     return bundle
 
 
+def birth_authority_is_prepared_v1() -> bool:
+    """Say whether this installation has a prepared authority set at all.
+
+    The question is asked directly, never inferred from a refusal: an absent
+    Birth root and a failed read produce the same input/output code, and
+    treating that code as "nothing prepared" would hide a real fault behind
+    the declared inactive state.
+    """
+    import config as C
+    from executor_birth_prepared_set import MARKER_BASENAME_V1
+
+    marker = (Path(C.PATH_USER_CONFIG) / BIRTH_STATE_BASENAME_V1
+              / MARKER_BASENAME_V1)
+    try:
+        return marker.is_file()
+    except OSError:
+        return False
+
+
 def require_birth_runtime_before_workers() -> None:
     """Install the Birth authority before any mutating worker starts.
 
-    The authority set is provisioned by increments 2B to 2F, which do not exist
-    yet, so an installation that still lacks ``birth/bootstrap.json`` has no
-    sealed runtime at all.  That is the declared ``prepared_not_active`` state,
-    not a failure: section 3.2 forbids group 2 from making the closed path
-    binding before the cutover.  Refusing to boot there makes the service
-    unstartable, which is exactly what happened on the reference installation
-    between the commit that added this gate and this change: the running
-    process was the last surviving instance and no restart could succeed.
+    An installation on which the operator has not run the provisioner yet has
+    no prepared set, so it has no sealed runtime either.  That is the declared
+    ``prepared_not_active`` state, not a failure: refusing to boot there makes
+    the service unstartable, which is exactly what happened once on the
+    reference installation, where the running process was the last surviving
+    instance and no restart could succeed.
 
-    Every other bootstrap error stays fatal.
+    Once a set is prepared, every failure to activate it stays fatal.
     """
-    try:
-        bootstrap_birth_runtime()
-    except BirthBootstrapError as exc:
-        if str(exc) != "birth_bootstrap_config_unavailable":
-            raise
+    if not birth_authority_is_prepared_v1():
         import logging
 
         logging.getLogger(__name__).warning(
-            "Birth runtime not provisioned yet (%s): continuing without the "
-            "sealed authority, as required before the RM-0008 cutover",
-            exc,
+            "Birth authority not provisioned yet: continuing without the "
+            "sealed runtime, as the prepared_not_active state allows",
         )
+        return
+    bootstrap_birth_runtime()

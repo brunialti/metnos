@@ -103,8 +103,7 @@ def test_bootstrap_is_once_and_concurrent(monkeypatch, tmp_path: Path) -> None:
 
     def run():
         barrier.wait()
-        results.append(bootstrap.bootstrap_birth_runtime(
-            bootstrap.BirthBootstrapPaths(tmp_path / "config", tmp_path / "state")))
+        results.append(bootstrap.bootstrap_birth_runtime())
 
     threads = [threading.Thread(target=run) for _ in range(2)]
     for thread in threads:
@@ -128,11 +127,10 @@ def test_failed_bootstrap_is_sticky_and_fail_closed(monkeypatch, tmp_path: Path)
         raise bootstrap.BirthBootstrapError("missing")
 
     monkeypatch.setattr(bootstrap, "_build_sealed", fail)
-    paths = bootstrap.BirthBootstrapPaths(tmp_path / "missing", tmp_path / "state")
     with pytest.raises(bootstrap.BirthBootstrapError, match="missing"):
-        bootstrap.bootstrap_birth_runtime(paths)
+        bootstrap.bootstrap_birth_runtime()
     with pytest.raises(bootstrap.BirthBootstrapError, match="birth_bootstrap_failed"):
-        bootstrap.bootstrap_birth_runtime(paths)
+        bootstrap.bootstrap_birth_runtime()
     assert calls == 1
 
 
@@ -144,9 +142,7 @@ def test_restart_reuses_already_installed_complete_bundle(monkeypatch, tmp_path:
         bootstrap, "_build_sealed",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("rebuilt")),
     )
-    assert bootstrap.bootstrap_birth_runtime(
-        bootstrap.BirthBootstrapPaths(tmp_path / "config", tmp_path / "state")
-    ) is sentinel
+    assert bootstrap.bootstrap_birth_runtime() is sentinel
 
 
 def test_the_sealed_build_refuses_without_a_prepared_set(monkeypatch, tmp_path: Path) -> None:
@@ -236,3 +232,75 @@ def test_recovery_blocks_ambiguous_pointer(monkeypatch, tmp_path: Path) -> None:
     with pytest.raises(bootstrap.BirthBootstrapError, match="pointer_conflict"):
         adapter.recover_authoring()
     assert calls == []
+
+
+def test_the_gate_asks_whether_anything_is_prepared(monkeypatch, tmp_path: Path) -> None:
+    """An installation with no prepared set continues; it does not try to boot.
+
+    The question is answered by looking for the marker, never by reading a
+    refusal: an absent root and a failed read share one input/output code, so
+    inferring the inactive state from it would hide a real fault.
+    """
+    import config as runtime_config
+
+    monkeypatch.setattr(runtime_config, "PATH_USER_CONFIG", tmp_path / "config")
+    monkeypatch.setattr(
+        bootstrap, "bootstrap_birth_runtime",
+        lambda **_kwargs: pytest.fail("booted without a prepared set"),
+    )
+    assert bootstrap.birth_authority_is_prepared_v1() is False
+    bootstrap.require_birth_runtime_before_workers()
+
+
+def test_the_gate_lets_a_failure_through_once_a_set_is_prepared(
+        monkeypatch, tmp_path: Path) -> None:
+    """With a set on disk every activation failure stays fatal."""
+    import config as runtime_config
+    from executor_birth_prepared_set import MARKER_BASENAME_V1
+
+    root = tmp_path / "config" / bootstrap.BIRTH_STATE_BASENAME_V1
+    root.mkdir(mode=0o700, parents=True)
+    (root / MARKER_BASENAME_V1).write_bytes(b"{}")
+    monkeypatch.setattr(runtime_config, "PATH_USER_CONFIG", tmp_path / "config")
+
+    def refuse(**_kwargs):
+        raise bootstrap.BirthBootstrapError("birth_prepared_set_mismatch")
+
+    monkeypatch.setattr(bootstrap, "bootstrap_birth_runtime", refuse)
+    assert bootstrap.birth_authority_is_prepared_v1() is True
+    with pytest.raises(bootstrap.BirthBootstrapError,
+                       match="birth_prepared_set_mismatch"):
+        bootstrap.require_birth_runtime_before_workers()
+
+
+def test_the_durable_databases_are_created_private(tmp_path: Path) -> None:
+    """Receipts and approvals live under the state directory, both private."""
+    import os
+    import stat as stat_module
+
+    state = bootstrap._secure_state_dir(tmp_path / "state" / "birth")
+    receipts = bootstrap._secure_state_db(
+        state, bootstrap.PRODUCER_RECEIPTS_BASENAME_V1,
+    )
+    approvals = bootstrap._secure_state_db(
+        state, bootstrap.APPROVALS_BASENAME_V1,
+    )
+    assert receipts.parent == state and approvals.parent == state
+    assert receipts != approvals
+    if os.name != "nt":
+        assert stat_module.S_IMODE(state.stat().st_mode) & 0o077 == 0
+        for path in (receipts, approvals):
+            assert stat_module.S_IMODE(path.stat().st_mode) & 0o077 == 0
+
+
+def test_a_loose_state_directory_is_refused(tmp_path: Path) -> None:
+    """A directory others can reach is a refusal, not something to repair."""
+    import os
+
+    if os.name == "nt":
+        pytest.skip("POSIX permission bits do not carry the same meaning here")
+    state = tmp_path / "state" / "birth"
+    state.mkdir(mode=0o755, parents=True)
+    with pytest.raises(bootstrap.BirthBootstrapError,
+                       match="birth_state_permissions"):
+        bootstrap._secure_state_dir(state)
