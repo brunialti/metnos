@@ -4158,6 +4158,30 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.44 Quinto congelamento e prima misura pubblica del lotto
+
+Il lotto dell'apparato ha cambiato gli alberi congelati, e l'esecuzione
+pubblica lo ha rifiutato prima di misurare — come deve. La fotografia e' stata
+rigenerata con la procedura del passo 5: prodotto riportato allo stato
+precedente la correzione, pubblicazione, esecuzione in modo fotografia,
+evidenza scaricata, prodotto ripristinato nello stesso ciclo. Il confronto
+`git diff` fra la testa salvata e quella finale, sui soli alberi produttivi,
+e' vuoto: nulla del prodotto e' rimasto indietro.
+
+Misura pubblica successiva (`eee2e1f`):
+
+| lavoro | esito |
+|---|---|
+| portatile Ubuntu | verde |
+| concorrenza Ubuntu | verde |
+| manifesto | verde |
+| **concorrenza Windows** | **verde** (era rosso) |
+| portatile Windows | 3 rosse su 60 |
+| ACL Windows identita' reali | 8 rosse su 65 |
+
+Restano 11 celle rosse in due lavori, contro i tre lavori interamente rossi
+della fotografia iniziale.
+
 ### 17.43 Il rilascio delle maniglie appartiene a una sola piattaforma
 
 Lasciare andare le maniglie di cio' che si rimuove (§17.32) era stato applicato
