@@ -4067,6 +4067,22 @@ Effetto misurato: le due accuse spariscono e la cella della sorgente in cache
 avanza all'asserzione successiva; nessuna cella diventa verde per questo solo
 cambiamento e nessuna regredisce. E' un passo necessario, non sufficiente.
 
+### 17.35 La riconciliazione dello spostamento e' ancora aperta
+
+Due celle chiedono che, dopo uno spostamento, il prodotto rilegga il
+contenitore due volte e lo trovi nello stato finale esatto. Il prodotto oggi
+non lo fa. Il primo tentativo (rileggere il contenitore di partenza e quello di
+arrivo) e' stato **misurato e messo da parte**: la rilettura riapre per nome
+ogni voce elencata, e un'altra cella della stessa famiglia vieta di riaprire la
+destinazione nel dominio della sola lettura dopo la chiamata di sistema. Le due
+pretese, come le leggo oggi, si escludono.
+
+Prima di dichiarare una contraddizione dell'apparato serve la prova diretta:
+eseguire la sola cella della post-validazione con il tentativo applicato e
+leggere quale asserzione scatta e cosa contiene l'elenco raccolto. Il tentativo
+e' conservato in `prodotto-riconciliazione-rinomina.patch`; l'albero resta
+pulito.
+
 ### 17.34 Un oggetto protetto in scrittura non e' quello osservato
 
 La rimozione accettava un oggetto reso protetto in scrittura dopo essere stato
