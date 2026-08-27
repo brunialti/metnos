@@ -512,6 +512,7 @@ def prepare_or_defer(monkeypatch, base: Path):
 
 
 _OWNER_PRIVILEGE: list[bool] = []
+_OWNER_PRIVILEGE_REASON: list[str] = []
 
 
 def can_set_owner() -> bool:
@@ -562,8 +563,24 @@ def can_set_owner() -> bool:
                         ("author-root-v1",),
                         role=_BirthObjectRole.birth_confidential,
                     )
-        except Exception:
+        except Exception as exc:
+            # The reason travels: a skip that only says "not allowed" hides
+            # whether the apparatus or the product refused, and on a runner
+            # the log is the only place the answer can appear.
+            cause = getattr(exc, "_internal_cause", None)
+            _OWNER_PRIVILEGE_REASON.append(
+                f"{type(exc).__name__}: {exc}"
+                + (f" (cause: {cause})" if cause is not None else "")
+            )
             _OWNER_PRIVILEGE.append(False)
             return False
     _OWNER_PRIVILEGE.append(True)
     return True
+
+
+def owner_privilege_reason() -> str:
+    """Why the owner probe refused, for the skip reason of a cell."""
+    can_set_owner()
+    if not _OWNER_PRIVILEGE_REASON:
+        return "the owner privilege is available"
+    return _OWNER_PRIVILEGE_REASON[0]
