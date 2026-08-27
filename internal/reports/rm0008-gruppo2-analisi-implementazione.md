@@ -4252,6 +4252,25 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.67 Revisione sequenziale: primi due file, entrambi solidi
+
+La revisione del passo 2 procede file per file. Criterio: una cella e' solida se
+la sua asserzione **cadrebbe** qualora il prodotto sbagliasse, e non se si limita
+a descrivere cio' che la predisposizione ha appena fatto.
+
+- `test_r2_lock_preconditions.py` (20 celle). I casi di rifiuto pretendono il
+  codice esatto **e** l'albero immutato dopo il tentativo; i casi ammessi
+  seguono le chiamate di sistema realmente eseguite — aperture, creazioni di
+  cartella, rinomine, sincronizzazioni — e ne verificano l'ordine e gli
+  argomenti. Solido.
+- `test_g1_inventory_limits.py` (18 celle). Verifica i confini con numeri esatti
+  (4096 voci distinte), il codice del rifiuto e l'insieme dei nomi osservati,
+  oltre alla contabilita' interna del budget. Solido.
+
+Restano 17 file. La resa attesa e' bassa — la base ha gia' dimostrato la propria
+forza scoprendo in questa sessione una quindicina di difetti veri del prodotto —
+ma la revisione continua nell'ordine, e ogni file esaminato viene annotato qui.
+
 ### 17.66 Verifica di non regressione fuori dalla base
 
 Le modifiche al primitivo di questa sessione sono state provate anche contro la
