@@ -1887,7 +1887,10 @@ def _win_restore_privilege() -> Iterator[None]:
     try:
         yield
     finally:
-        if previous.PrivilegeCount:
+        # The scope restores exactly the state it captured, whatever it holds:
+        # skipping the call when nothing changed would make the restore of the
+        # privilege depend on how the token happened to be configured.
+        if True:
             _KERNEL32.SetLastError(0)
             restored = _ADVAPI32.AdjustTokenPrivileges(
                 token,
