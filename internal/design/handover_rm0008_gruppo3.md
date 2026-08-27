@@ -63,10 +63,13 @@ REGOLA DI ONESTA': "solo i test necessari" non significa "solo i test che
 passano". Cio' che non provi va scritto come non provato, con il motivo, nel
 criterio di uscita del gruppo 3.
 
-APERTO, SERVE IL VERDETTO DI ROBERTO: il resto dell'obbligo 7, cioe' se un
-candidato possa caricare codice da un percorso calcolato. Misura e tre uscite
-possibili nel §10 del piano ottimizzato. Oggi e' dichiarato NON provato, non
-silenziosamente permesso.
+DECISO (Roberto, 27/8, delegata): caricare codice da un percorso passa da UNA
+PORTA CHE AUTENTICA — `runtime/admitted_module_v1.py`. Non si vieta e non si
+concede per fiducia: si concede per autenticazione. Vedi §10 del piano. Unica
+eccezione dichiarata: `undo_last_turn`, la cui modifica e' gia' scritta in
+`internal/design/patch_undo_last_turn_porta_autenticata.diff` e va presentata
+come PRIMA intenzione quando Birth e' attivo (dopo il cutover un executor
+cambia solo cosi': `sign.py publish` risponde «unavailable in STORE_ONLY»).
 
 APERTO E DA NON RISOLVERE A OCCHI CHIUSI: su Windows il predispositore arriva
 fino alla rinomina che pubblica il primo finale e riceve accesso negato. Il
@@ -74,7 +77,7 @@ privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
 GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (dodicesima fotografia; ultimo pubblico verde `863866e`):
+i lavori (dodicesima fotografia; ultimo pubblico verde `ce2b4a3`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -147,10 +150,25 @@ fotografia ciascuno, invece di una per modifica.
   relativo resti dentro il candidato, che non ci sia codice montato mentre gira
   (`exec`/`eval`/`compile` builtin). Costo MISURATO a zero sui 93 file degli
   executor pubblicati; una cella rifa' quella misura a ogni giro.
+- le PRIMITIVE delle proprieta' si risolvono da una tabella chiusa (obbligo 3,
+  meta'): `runtime/executor_birth_primitive_table_v1.py` possiede l'insieme una
+  volta sola; il corridore confronta i quattro registri con la tabella nei due
+  sensi all'importazione. Il digest della tabella e' pronto per il componente
+  del contesto, che lo prendera' all'ULTIMO passo.
+- caricare codice da un percorso passa da `runtime/admitted_module_v1.py`, che
+  ricalcola il digest dei file dichiarati, lo confronta con quello firmato ed
+  esegue i byte GIA' IN MEMORIA. La verifica del candidato rifiuta i sei nomi
+  che caricano da percorso. 🚨 La porta sta FUORI dallo spazio dei nomi
+  `executor_birth_*` di proposito: dentro il cancello la valutazione dinamica e'
+  vietata (R1 l'ha colto), e una cella prova che nessun modulo del cancello la
+  importa.
+- 🚨 LEZIONE: la cella R1 legge l'albero TRACCIATO. Un file non ancora aggiunto
+  all'indice non viene esaminato: in locale si verifica DOPO `git add`, o il
+  ciclo pubblico trova cio' che tu non hai trovato.
 
 PROSSIMO PASSO: gli obblighi che restano del piano (§2), nell'ordine del §4 —
-(3) risoluzione chiusa di modelli e primitive; (4, resto) REGISTRARE il
-registro sandbox
+(3, resto) risoluzione chiusa dei MODELLI interni (le primitive sono fatte);
+(4, resto) REGISTRARE il registro sandbox
 nell'insieme predisposto e completare il legame Windows; (5) installare i
 registri di autorita' nel pacchetto privato e provarne il consumo. PER ULTIMO,
 e solo allora, (6) portare gli `enforcement_state` a `productive`, ricostruire
