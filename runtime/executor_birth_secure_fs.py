@@ -3862,6 +3862,12 @@ class _SecureRootSession:
                 )
                 if _verify_win_object(final_handle, final_path, directory=directory)[0] != identity:
                     raise BirthSecureFSError("birth_provisioning_io_unavailable")
+                # The profile travels with the object: what arrived must
+                # carry the one the catalogue declared before the move,
+                # read on the handle that observed the arrival.
+                self._verify_windows_profile(
+                    final_handle, directory=directory, profile=source_role,
+                )
             except BirthSecureFSError:
                 raise
             except OSError as exc:

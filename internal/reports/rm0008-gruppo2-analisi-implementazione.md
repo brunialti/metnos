@@ -4011,6 +4011,15 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   l'apparato intatto (misurato: 13 verdi su 21 senza alcuna modifica ai test).
   La correzione resta descritta qui come lezione, non come debito.
 
+- **la riuscita nativa e' uno stato, non una verita'** — la cella della
+  post-validazione dello spostamento segna la chiamata riuscita solo se il
+  valore restituito e' vero. La chiamata nativa che ha sostituito
+  l'involucro Win32 (§17.26) riporta invece la riuscita con lo **zero** di
+  `STATUS_SUCCESS`: la sequenza degli eventi restava percio' vuota e la cella
+  accusava il prodotto di non aver riletto nulla. Rimedio di una riga (stato non
+  negativo). Provato sul PC: la destinazione viene riconosciuta e la cella
+  avanza. Conservato in `apparato-pendente-7.patch`.
+
 - **sonda di causalita' della rinomina** — `_RenameCausalityProbe` sostituisce
   la verifica di profilo con un metodo gia' legato alla sonda, ma la sua firma
   attende `(session, handle, ...)`. Un metodo legato non e' un descrittore:
@@ -4077,11 +4086,20 @@ ogni voce elencata, e un'altra cella della stessa famiglia vieta di riaprire la
 destinazione nel dominio della sola lettura dopo la chiamata di sistema. Le due
 pretese, come le leggo oggi, si escludono.
 
-Prima di dichiarare una contraddizione dell'apparato serve la prova diretta:
-eseguire la sola cella della post-validazione con il tentativo applicato e
-leggere quale asserzione scatta e cosa contiene l'elenco raccolto. Il tentativo
-e' conservato in `prodotto-riconciliazione-rinomina.patch`; l'albero resta
-pulito.
+La prova diretta e' stata fatta e **smentisce la contraddizione**: la cella
+della post-validazione non applica affatto la regola del dominio alla
+rilettura. La sequenza che pretende e' esatta — chiamata nativa, riapertura
+della destinazione, sua identita', suo profilo, poi due riletture del
+contenitore — e il prodotto ne saltava un passo: non verificava il profilo
+dell'oggetto arrivato. Quel passo e' stato aggiunto (il profilo viaggia con
+l'oggetto).
+
+Restano due ostacoli misurati, non risolti: la rilettura eseguita **dopo** la
+chiusura della maniglia di arrivo si prende il numero appena liberato e la
+sorveglianza la scambia per una seconda lettura dell'oggetto; eseguita **prima**
+della chiusura, invece, fa fallire sette celle con esito «non disponibile» e fa
+morire il processo figlio delle celle d'interruzione. Il tentativo e' conservato
+in `prodotto-riconciliazione-rinomina.patch`; l'albero resta pulito.
 
 ### 17.34 Un oggetto protetto in scrittura non e' quello osservato
 
