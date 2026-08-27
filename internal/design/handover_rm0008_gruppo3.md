@@ -77,7 +77,7 @@ privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
 GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (dodicesima fotografia; ultimo pubblico verde `9683416`):
+i lavori (dodicesima fotografia; ultimo pubblico verde `9e2be01`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -174,11 +174,17 @@ fotografia ciascuno, invece di una per modifica.
   `import conftest` prende quello della suite raccolta per PRIMA. Ora il
   conftest del runtime si carica per percorso con un nome suo
   (`tests/runtime/infra/_runtime_conftest.py`).
+- i registri di autorita' installati sono DAVVERO consumati (obbligo 5):
+  `tests/portable/rm0008_2b/test_group3_authority_consumption.py`. Due
+  installazioni con attori diversi producono autorita' diverse nel nucleo. E
+  l'esito e' piu' forte del previsto: modificare un registro DOPO la
+  predisposizione non cambia l'autorita', la RIFIUTA — il documento
+  dell'insieme ne porta il digest, quindi i byte sono autenticati, non solo
+  letti.
 
 PROSSIMO PASSO: gli obblighi che restano del piano (§2), nell'ordine del §4 —
 (4, resto) REGISTRARE il registro sandbox
-nell'insieme predisposto e completare il legame Windows; (5) installare i
-registri di autorita' nel pacchetto privato e provarne il consumo. PER ULTIMO,
+nell'insieme predisposto e completare il legame Windows. PER ULTIMO,
 e solo allora, (6) portare gli `enforcement_state` a `productive`, ricostruire
 identificativo ed epoca e rifare i vettori golden UNA volta sola.
 ```
