@@ -4231,6 +4231,24 @@ il cancelletto finale non puo' diventare verde. E' una contraddizione interna
 alla base, non un difetto del prodotto, e la sua soluzione — cambiare una delle
 due celle — non spetta a chi implementa.
 
+### 17.62 La suite Windows ordinaria e' verde: due cause, entrambe reali
+
+Guardare tutto il flusso e non solo i sei lavori ha reso un difetto vero.
+
+1. **Le prove predisponevano una radice non ammessa.** Una lettura storica
+   rifiuta un oggetto i cui permessi arrivano dall'antenato, e la cartella
+   provvisoria li eredita. Ora l'albero della prova riceve permessi propri —
+   le voci ereditate vengono copiate sul posto e l'ereditarieta' spenta — su
+   **tutto** l'albero, perche' la regola vale per ogni oggetto che la lettura
+   tocca, non solo per la radice.
+2. **Il prodotto non rifiutava, su Windows, un file storico raggiunto da piu'
+   nomi.** Il gemello POSIX lo fa da sempre, sullo stesso fatto: un file che
+   piu' di un nome raggiunge non e' il file che era stato descritto. Aggiunto.
+
+Esito: `Python 3.12 / windows-2022` torna verde dopo essere stato rosso dalla
+prima esecuzione con il prodotto vero. Tutto il flusso pubblico e' verde tranne
+il lavoro ACL, fermo alle sue quattro celle facoltative.
+
 ### 17.61 Una regressione fuori dai sei lavori: la suite Windows ordinaria
 
 Guardando **tutto** il flusso pubblico e non solo i sei lavori dell'incremento,
