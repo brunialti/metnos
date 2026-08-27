@@ -278,3 +278,60 @@ print(json.dumps({"entries":entries,"results":entries,"truncated":limit is not N
         "entries.results.coherence",
     }
     assert all(item.status is PropertyStatus.PASSED for item in evidence)
+
+
+def test_the_registries_and_the_closed_table_must_agree_exactly():
+    """Both directions: nothing reachable unlisted, nothing listed unbuilt."""
+    from executor_birth_primitive_table_v1 import (
+        PRIMITIVE_TABLE_V1, PrimitiveTableError, check_registry_v1,
+    )
+    import executor_birth_property_runner as runner_module
+
+    for kind, registry in (
+        ("applicability", runner_module._APPLICABILITY),
+        ("fixture", runner_module._FIXTURES),
+        ("generator", runner_module._GENERATORS),
+        ("oracle", runner_module._ORACLES),
+    ):
+        check_registry_v1(kind, registry)
+        assert tuple(sorted(registry)) == PRIMITIVE_TABLE_V1[kind]
+
+    with pytest.raises(PrimitiveTableError, match="primitive_registry_mismatch"):
+        check_registry_v1("oracle", {*PRIMITIVE_TABLE_V1["oracle"], "invented"})
+    with pytest.raises(PrimitiveTableError, match="primitive_registry_mismatch"):
+        check_registry_v1("fixture", set(PRIMITIVE_TABLE_V1["fixture"][:-1]))
+
+
+def test_every_property_of_the_catalog_names_only_admitted_primitives():
+    """The seven groups resolve entirely inside the closed table."""
+    from executor_birth_primitive_table_v1 import check_primitive_v1
+    from executor_birth_properties import PROPERTY_CATALOG_V1
+
+    for spec in PROPERTY_CATALOG_V1.values():
+        check_primitive_v1("applicability", spec.applicability_id)
+        check_primitive_v1("fixture", spec.fixture_id)
+        check_primitive_v1("generator", spec.generator_id)
+        check_primitive_v1("oracle", spec.oracle_id)
+
+
+def test_a_primitive_outside_the_table_is_refused_by_the_resolution():
+    """An invented identifier does not reach an implementation."""
+    from dataclasses import replace
+
+    from executor_birth_properties import PROPERTY_CATALOG_V1, PropertyContractError
+    import executor_birth_property_runner as runner_module
+
+    spec = replace(
+        next(iter(PROPERTY_CATALOG_V1.values())), oracle_id="invented",
+    )
+    with pytest.raises(PropertyContractError, match="property_registry_invalid"):
+        runner_module._resolve(spec)
+
+
+def test_the_table_carries_one_stable_digest():
+    """The digest is what the context component will carry; it must be fixed."""
+    from executor_birth_primitive_table_v1 import primitive_table_digest_v1
+
+    assert primitive_table_digest_v1() == (
+        "sha256:b63167a560356f542abcb6a3a3f30186a5906cae9508a36d4455493c11fe1de9"
+    )
