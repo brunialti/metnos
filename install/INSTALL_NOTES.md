@@ -35,6 +35,30 @@ facts with the installation author key and atomically writes
 with the same selection and corpus version leaves the signed document byte for
 byte unchanged.
 
+## Birth authority inputs (RM-0008 group 2)
+
+Phase 3 prepares an **inactive** Birth authority set. It does not activate the
+Birth runtime and it migrates no caller.
+
+Before Phase 3 the administrator installs two public registries in the fixed
+location `$METNOS_USER_CONFIG/birth/operator-input-v1/`:
+
+- `approval-authority.json` — public approver keys, actors and scopes;
+- `semantic-authority.json` plus `semantic-public/<name>.pub` — the public
+  semantic reviewer keys the document references.
+
+The corresponding private keys must never be placed there, in the authority set
+or anywhere the Birth process can read. Phase 3 performs a read-only preflight
+of these two documents before it publishes the executor contracts: a missing or
+malformed registry stops the phase with a distinct error rather than being
+completed by a generated key.
+
+On a fresh installation the author key does not exist yet, so the first call
+defers without creating any object; the provisioner runs to completion right
+after the contracts are installed, and is idempotent. It creates
+`author-root-v1`, one immutable `authority-sets/<set_id>` and the marker
+`prepared-v1.json`, whose state is `prepared_not_active`.
+
 ## Canonical paths and user isolation
 
 The installer and every generated unit use the same environment contract as
