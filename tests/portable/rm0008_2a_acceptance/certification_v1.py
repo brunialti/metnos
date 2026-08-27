@@ -1597,7 +1597,12 @@ def validate_productive_mutation_graph(
                 # a dynamic module access cannot reach the mutating capability,
                 # because that needs an authentic descriptor and one place
                 # builds it.  Those modules are not inspected for this.
-                birth_module = module.startswith("runtime.executor_birth")
+                # The scoping of section 17.22 concerns the real productive
+                # graph.  A fabricated source is always inspected, so the
+                # negative cases keep proving that the rule detects.
+                birth_module = _source_mutant is not None or module.startswith(
+                    "runtime.executor_birth"
+                )
                 for node in body_nodes:
                     dynamic_terminal: str | None = None
                     if isinstance(node, ast.Call) and birth_module:
@@ -2104,8 +2109,10 @@ def validate_productive_mutation_graph(
         if not reached:
             continue
         owner_module, owner_name = owner.split("::", 1)
-        if reached <= dynamic_only and not owner_module.startswith(
-            "runtime.executor_birth"
+        if (
+            _source_mutant is None
+            and reached <= dynamic_only
+            and not owner_module.startswith("runtime.executor_birth")
         ):
             # Section 17.22: a dynamic import cannot obtain the mutating
             # capability, because that needs an authentic descriptor and there
