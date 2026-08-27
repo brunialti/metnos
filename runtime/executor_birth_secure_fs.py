@@ -1552,6 +1552,10 @@ def _read_win_relative_v1(directory: int, name: str, *, maximum: int) -> bytes:
     try:
         _require_protected_dacl_v1(handle)
         before = _win_info(handle)
+        # A file that more than one name reaches is not the file that was
+        # described: the POSIX twin refuses it the same way, on the same fact.
+        if before[2] != 1:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         if before[5] > maximum:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
         result = bytearray()
