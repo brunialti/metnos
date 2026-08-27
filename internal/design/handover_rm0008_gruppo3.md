@@ -126,7 +126,15 @@ accertato, cosi' nessuno li scambia per regressioni:
   (b) il manifest dichiara anche il file del fratello — piu' rapido, ma mette
       il codice di un'unita' nella firma di un'altra.
 
-  Serve una decisione di Roberto e una rifirma (§7.10). Non toccato.
+  **Misurato sullo storico reale dei turni** (57 file giornalieri, 8.716 passi
+  osservati): `find_persons_indices` e' stato scelto **0 volte**, mentre
+  `find_images_indices` 106 e `get_images_indices` 4. L'alias compare soltanto
+  negli elenchi di candidati e nel testo dei prompt (4 righe). Non e' mai stato
+  invocato, quindi il difetto non ha mai fatto danno — e ritirarlo non toglie
+  un comportamento a nessuno.
+
+  Serve una decisione di Roberto e, se si sceglie (b), una rifirma (§7.10).
+  Non toccato.
 - **cinque celle POSIX della base 2A** (`g2` e `g8`): pretendono un secondo
   utente o i privilegi di root. Verdi nel ciclo pubblico, rosse in locale.
   Attese.
