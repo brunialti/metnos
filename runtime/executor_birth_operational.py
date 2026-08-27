@@ -9,7 +9,7 @@ import hashlib
 import base64
 import json
 import threading
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
@@ -290,8 +290,9 @@ class _BirthCore:
     admission_key_id: str
     policy_version: str
     now: Callable[[], datetime]
-    commit_publisher: object
+    publisher: Publisher
     postcondition_verifier: PostconditionVerifier
+    publisher_options: Mapping[str, object]
     _seal: object
 
     def __post_init__(self) -> None:
@@ -316,7 +317,7 @@ class _BirthCore:
         if active_public != configured_public:
             raise ValueError("birth_core_admission_keyring_invalid")
         object.__setattr__(self, "admission_verifier_keys", MappingProxyType(verifiers))
-
+        object.__setattr__(self, "publisher_options", MappingProxyType(dict(self.publisher_options)))
 
 
 def _sealed_core_for_test(**values: object) -> _BirthCore:
@@ -327,64 +328,8 @@ def _sealed_core_for_test(**values: object) -> _BirthCore:
     if "admission_verifier_keys" not in values and "admission_public_key" in values:
         public = values.pop("admission_public_key")
         values["admission_verifier_keys"] = {values["admission_key_id"]: public}
-    # The productive core takes a sealed publisher; a test that wants to drive
-    # the publication supplies a plain callable, and this seam — and only this
-    # seam — wraps it so the productive shape is the one under test.
-    if "commit_publisher" not in values and "publisher" in values:
-        publisher = values.pop("publisher")
-        options = dict(values.pop("publisher_options", {}) or {})
-        predecessor = values.get("predecessor_resolver")
-        values["commit_publisher"] = _TestCommitPublisher(
-            publisher, options, predecessor, values,
-        )
     values["_seal"] = _CORE_SEAL
     return _BirthCore(**values)  # type: ignore[arg-type]
-
-
-class _TestCommitPublisher:
-    """Test-only adapter: the productive publisher with a driven primitive.
-
-    It builds the real sealed publisher and substitutes only the store call,
-    so what the test exercises is the productive issuer, verifier and epoch
-    resolver rather than a stand-in that could disagree with them.
-    """
-
-    __slots__ = ("_inner", "_options", "_predecessor")
-
-    def __init__(self, publisher, options, predecessor, values) -> None:
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-            Ed25519PrivateKey,
-        )
-        from executor_birth_commit_publisher import (
-            _BirthCommitPublisher, _PUBLISHER_TOKEN,
-        )
-
-        self._options = dict(options)
-        self._predecessor = predecessor
-        resolver = values.get("context_epoch_resolver")
-        self._inner = _BirthCommitPublisher(
-            _PUBLISHER_TOKEN,
-            author_private=Ed25519PrivateKey.generate(),
-            author_ring=tuple(self._options.get("trusted_publics", ())),
-            admission_private=values["admission_private_key"],
-            admission_key_id=values["admission_key_id"],
-            admission_verifiers=values["admission_verifier_keys"],
-            prepared_context_epoch=resolver() if resolver else "",
-            primitive=lambda ref, **kwargs: publisher(ref, **kwargs),
-            store_root=self._options.get("store_root"),
-        )
-
-    @property
-    def store_root(self):
-        return self._options.get("store_root")
-
-    def resolve_predecessor(self, request):
-        if self._predecessor is None:
-            raise ValueError("birth_predecessor_resolver_missing")
-        return self._predecessor(request)
-
-    def commit(self, facts):
-        return self._inner.commit(facts)
 
 
 def _assemble_birth_core(
@@ -394,27 +339,29 @@ def _assemble_birth_core(
     approval_resolver: ApprovalResolver,
     shadow_dependencies: _BirthDependencies, admission_private_key: object,
     admission_verifier_keys: Mapping[str, object], admission_key_id: str, policy_version: str,
-    now: Callable[[], datetime], commit_publisher: object,
+    now: Callable[[], datetime], publisher_options: Mapping[str, object],
     postcondition_verifier: PostconditionVerifier,
 ) -> _BirthCore:
-    """Core bootstrap assembler; productive publication is not selectable.
+    """Core bootstrap assembler; productive publication is not selectable."""
+    from contract_store import authenticate_birth_predecessor, commit_birth_snapshot
+    options = dict(publisher_options)
+    trusted_publics = options.get("trusted_publics")
+    if trusted_publics is None:
+        raise ValueError("birth_predecessor_trust_missing")
 
-    The publisher is sealed: it owns the author key, the trusted ring, the
-    Admission identity and the single store primitive.  The core can hand it
-    facts and nothing else, so no option and no caller can substitute an
-    authority (section 5.3).
-    """
-    for name in ("commit", "resolve_predecessor"):
-        if not callable(getattr(commit_publisher, name, None)):
-            raise ValueError("birth_commit_publisher_invalid")
+    def resolve_predecessor(request: BirthRequest):
+        return authenticate_birth_predecessor(
+            request.manifest_ref, trusted_publics=trusted_publics,
+            store_root=options.get("store_root"),
+            lock_timeout=float(options.get("lock_timeout", 10.0)),
+        )
 
     return _BirthCore(
-        producer_registry, producer_db, context_resolver,
-        commit_publisher.resolve_predecessor,
+        producer_registry, producer_db, context_resolver, resolve_predecessor,
         context_epoch_resolver, approval_resolver,
         shadow_dependencies, admission_private_key, admission_verifier_keys,
-        admission_key_id, policy_version, now, commit_publisher,
-        postcondition_verifier, _CORE_SEAL,
+        admission_key_id, policy_version, now, commit_birth_snapshot, postcondition_verifier,
+        publisher_options, _CORE_SEAL,
     )
 
 
@@ -499,14 +446,10 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         if (not isinstance(context_pin, AdmissionContextPin)
                 or context_pin.admission_context_id != admission_context_id(context)
                 or core.context_epoch_resolver() != context_pin.context_epoch):
-            # A refusal that reports itself as a generic unavailability sends
-            # the diagnosis the wrong way: the code travels.
-            from executor_birth_commit_publisher import BirthCommitLinkError
-
-            raise BirthCommitLinkError("birth_context_pin_invalid")
+            raise ValueError("birth_context_pin_invalid")
         # The admission lock serializes receipt consumption and acquisition of
         # the only source snapshot.  All expensive checks run after release.
-        lock_root = core.commit_publisher.store_root
+        lock_root = core.publisher_options.get("store_root")
         with catalog_admission_lock(store_root=lock_root):
             producer_preview = _peek_receipt(core, request, instant)
             observed = observe_candidate(
@@ -563,16 +506,17 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         shadow = core.shadow_dependencies
         property_runner = shadow.property_runner or ObservedPropertyRunner(
             observed, windows_registry=shadow.windows_sandbox_registry,
-            linux_registry=shadow.linux_sandbox_registry,
         )
-        # Derived from the shadow container, never re-listed field by field:
-        # a new dependency would otherwise be silently dropped here.
-        borrowed_dependencies = replace(
-            shadow,
+        borrowed_dependencies = _BirthDependencies(
             observer=lambda *_args, **_kwargs: _BorrowedObserved(observed),
-            property_runner=property_runner,
+            property_runner=property_runner, semantic_policy=shadow.semantic_policy,
+            windows_sandbox_registry=shadow.windows_sandbox_registry,
+            semantic_risk=shadow.semantic_risk,
+            independent_evidence=shadow.independent_evidence,
+            semantic_authority=shadow.semantic_authority,
             approval_subject=approval_subject,
             approval_evidence=approval_evidence, now=instant,
+            _seal=shadow._seal,
         )
         report = _observe_birth_for_test(
             request.candidate_source_root, contract_id=request.manifest_ref.contract_id,
@@ -602,31 +546,40 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         lifecycle = ApprovedLifecycle.PREEXERCISE if report.outcome is BirthOutcome.PREEXERCISE else ApprovedLifecycle.ACTIVE
         predecessor = predecessor_snapshot.revision_id
 
-        # The core hands over facts; the sealed publisher owns the keys, the
-        # issuer, the verifier, the epoch resolver and the store primitive.
-        from executor_birth_commit_publisher import BirthCommitFactsV1
+        issued_receipts: list[bytes] = []
+        def issuer(generation_id: str, _payload_hashes: Mapping[str, str],
+                   birth_request_id: str, journal_hash: str) -> bytes:
+            receipt_checks = dict(checks)
+            receipt_checks["authoring_install_journal_v1"] = AdmissionCheck(
+                "1", AdmittedCheckStatus.PASSED, journal_hash,
+            )
+            encoded = issue_admission_receipt(
+                policy_version=core.policy_version, contract_id=request.manifest_ref.contract_id,
+                generation_id=generation_id, candidate_id=observed.identities.candidate_id,
+                semantic_core_id=observed.identities.semantic_core_id,
+                admission_context_id=observed.identities.admission_context_id,
+                birth_request_id=birth_request_id, authoring_journal_hash=journal_hash,
+                predecessor_id=predecessor,
+                producer_receipt_hash=producer_receipt_hash(request.producer_receipt),
+                revision_class=_receipt_revision(report), check_results=receipt_checks,
+                semantic_review_hash=semantic_hash, approval_hash=approval_hash,
+                approved_lifecycle=lifecycle, kind=AdmissionKind.ADMISSION,
+                issued_at=instant.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                key_id=core.admission_key_id, private_key=core.admission_private_key,
+            )
+            issued_receipts.append(encoded)
+            return encoded
 
-        commit_facts = BirthCommitFactsV1(
-            manifest_ref=request.manifest_ref,
-            snapshot=observed.snapshot,
-            request_id=request.request_id,
-            policy_version=core.policy_version,
-            contract_id=request.manifest_ref.contract_id,
-            candidate_id=observed.identities.candidate_id,
-            semantic_core_id=observed.identities.semantic_core_id,
-            admission_context_id=observed.identities.admission_context_id,
-            expected_generation_id=predecessor,
-            predecessor_id=predecessor,
+        authorization = BirthCommitAuthorization(
+            observed.identities.candidate_id, observed.identities.semantic_core_id,
+            observed.identities.admission_context_id, predecessor, issuer,
+            lambda encoded: verify_admission_receipt(
+                encoded, verifier_keys=core.admission_verifier_keys,
+            ),
             predecessor_snapshot_id=predecessor_snapshot.snapshot_id,
             revision_facts_id=revision_facts_id(facts),
-            observed_context_epoch=context_pin.context_epoch,
-            producer_receipt_hash=producer_receipt_hash(request.producer_receipt),
-            revision_class=_receipt_revision(report),
-            approved_lifecycle=lifecycle,
-            check_results=dict(checks),
-            semantic_review_hash=semantic_hash,
-            approval_hash=approval_hash,
-            issued_at=instant.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            context_epoch=context_pin.context_epoch,
+            context_epoch_resolver=core.context_epoch_resolver,
         )
         # The signed admitted report is sufficient for a read-only recovery
         # verifier to reconcile a crash after the publisher's durable point.
@@ -638,10 +591,10 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             terminal_auth=_sign_terminal(core, hint),
         )
         publication_started = True
-        outcome = core.commit_publisher.commit(commit_facts)
-        publication = outcome.publication
-        issued_receipts = (
-            [outcome.admission_receipt] if outcome.admission_receipt else []
+        publication = core.publisher(
+            request.manifest_ref, expected_generation_id=predecessor,
+            snapshot=observed.snapshot, request_id=request.request_id,
+            birth_authorization=authorization, **dict(core.publisher_options),
         )
         _publication_binding(request, publication, predecessor)
         successful = BirthResult(request.request_id, report, publication, None)
