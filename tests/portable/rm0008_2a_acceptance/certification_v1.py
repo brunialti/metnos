@@ -1881,6 +1881,12 @@ def validate_productive_mutation_graph(
     legacy_wrapper_symbol = "runtime.executor_birth_secure_fs::_LegacyReadSession"
     entry_symbol = "install.birth_authority_provisioning::open_birth_provisioning_layout_v1"
     layout_symbol = "install.birth_authority_provisioning::ProvisioningLayoutV1"
+    # Increment 2B adds the provisioner, which must mutate.  It gets one door
+    # and no more: the module is installer-side, its single public entry is
+    # named here, everything else that mutates inside it is private, and no
+    # runtime module may reach it (section 16.13.4).
+    provisioner_module = "install.birth_authority_provisioner"
+    provisioner_entry_symbol = f"{provisioner_module}::provision_author_root_v1"
     installer_resolver_symbols = {
         "install.birth_authority_provisioning::_resolve_path_user_config_v1",
         "install.birth_authority_provisioning::_resolve_birth_service_identity_v1",
@@ -1899,6 +1905,7 @@ def validate_productive_mutation_graph(
         session_symbol,
         session_token_symbol,
         entry_symbol,
+        provisioner_entry_symbol,
         *mutation_symbols,
     }
     sensitive_targets.update(f"@method:{name}" for name in _MUTATION_METHODS)
@@ -1906,6 +1913,41 @@ def validate_productive_mutation_graph(
 
     if entry_symbol not in definitions or layout_symbol not in definitions:
         raise CertificationError("installer-only entry is absent from the productive graph")
+    if provisioner_entry_symbol not in definitions:
+        raise CertificationError("2B provisioner entry is absent from the productive graph")
+    provisioner_basename = provisioner_module.rsplit(".", 1)[1]
+    runtime_reaching_provisioner = sorted(
+        owner
+        for owner, targets in calls.items()
+        if owner.startswith("runtime.")
+        and any(target.startswith(f"{provisioner_module}::") for target in targets)
+    )
+    # An import that the alias resolver cannot follow is still an import: the
+    # name alone is enough to say the runtime went looking for the installer.
+    for module, (module_path, module_tree) in sources.items():
+        if not module.startswith("runtime."):
+            continue
+        for node in ast.walk(module_tree):
+            named: list[str] = []
+            if isinstance(node, ast.Import):
+                named = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                named = [node.module or ""]
+                named.extend(alias.name for alias in node.names)
+            if any(
+                part == provisioner_basename
+                for name in named
+                for part in name.split(".")
+            ):
+                runtime_reaching_provisioner.append(
+                    f"{module_path}:{getattr(node, 'lineno', 0)}"
+                )
+    runtime_reaching_provisioner = sorted(set(runtime_reaching_provisioner))
+    if runtime_reaching_provisioner:
+        raise CertificationError(
+            "the runtime reaches the installer provisioner: "
+            f"{runtime_reaching_provisioner!r}"
+        )
     constructor_sites = _sites_reaching_exact_call(calls, call_sites, descriptor_symbol)
     # Section 16.13.4 gives the historical loaders their own distinct and
     # constant catalogues, so only the authoritative construction — the one
@@ -2140,6 +2182,15 @@ def validate_productive_mutation_graph(
         ):
             if owner == entry_symbol or owner in entry_definition_reachable:
                 continue
+        if owner_module == provisioner_module and (
+            owner == provisioner_entry_symbol
+            or owner_name.startswith("_")
+            or owner_name.split(".", 1)[0].startswith("_")
+        ):
+            # The provisioner may mutate through its own private graph and
+            # through the single entry that names it; a public helper that
+            # mutates would be a second door and falls through to a violation.
+            continue
         sites = sorted(
             site
             for (site_owner, _), values in call_sites.items()
@@ -2171,6 +2222,7 @@ _SENSITIVE_TERMINALS = {
     "_SecureRootSession",
     "_SESSION_TOKEN",
     "open_birth_provisioning_layout_v1",
+    "provision_author_root_v1",
     *_MUTATION_METHODS,
 }
 

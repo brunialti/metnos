@@ -1883,7 +1883,28 @@ def exposed(name):
             "role_catalog=catalog", "role_catalog=tuple(catalog.exact_bindings)"
         )
     )
+    public_provisioner_door = dict(baseline)
+    public_provisioner_door["install/birth_authority_provisioner.py"] += """
+def stage_author_store_v1(session):
+    return session.create_file_exclusive()
+"""
+    runtime_reaches_provisioner = dict(baseline)
+    runtime_reaches_provisioner["runtime/escape.py"] = """
+from birth_authority_provisioner import provision_author_root_v1
+def exposed(layout):
+    return provision_author_root_v1(layout)
+"""
+    absent_provisioner_entry = dict(baseline)
+    absent_provisioner_entry["install/birth_authority_provisioner.py"] = (
+        absent_provisioner_entry["install/birth_authority_provisioner.py"].replace(
+            "def provision_author_root_v1(layout):",
+            "def _provision_author_root_v1(layout):",
+        )
+    )
     for mutant in (
+        public_provisioner_door,
+        runtime_reaches_provisioner,
+        absent_provisioner_entry,
         top_level_alias_escape,
         in_function_alias_escape,
         second_session_factory,
@@ -2015,6 +2036,26 @@ def open_birth_provisioning_layout_v1():
         operator_input=operator_input,
         service_identity=identity,
     )
+""",
+        # Increment 2B adds the second and last installer-side door.  The
+        # baseline carries it so a mutant can prove the door stays single.
+        "install/birth_authority_provisioner.py": """
+import executor_birth_secure_fs as secure_fs
+class _TransactionJournalV1:
+    def __init__(self, session):
+        self._session = session
+    def _publish(self):
+        self._session.create_directory_exclusive()
+        return self._session.create_file_exclusive()
+def _resolve_author_source_v1():
+    return secure_fs._open_legacy_root_session()
+def _install_author_store_v1(session):
+    return session.rename_no_replace()
+def provision_author_root_v1(layout):
+    _resolve_author_source_v1()
+    journal = _TransactionJournalV1(layout.birth_session)
+    journal._publish()
+    return _install_author_store_v1(layout.birth_session)
 """,
     }
 

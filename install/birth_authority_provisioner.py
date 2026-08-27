@@ -1,6 +1,11 @@
-"""Canonical journal of the Birth provisioning transaction (increment 2B).
+"""The Birth authority provisioner: journal, author root and recovery (2B).
 
-Sections 4.3 and 8 of the group 2 analysis fix these bytes.  The header and
+This module is installer-side by construction.  Section 4.1 gives the layout
+to the installer, and the mutating capability of increment 2A must not gain a
+second door in the runtime: the provisioner runs while an installation is being
+prepared, never while Metnos serves a turn.
+
+Sections 4.3 and 8 of the group 2 analysis fix the journal bytes.  The header and
 every checkpoint are immutable documents with a closed schema, a canonical
 encoding and a digest bound to a domain, so a resumed run can tell an expected
 state from a tampered one without interpreting anything written by a candidate.
@@ -12,6 +17,7 @@ coherent journal, so none of these documents is an authorisation decision.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -21,6 +27,11 @@ from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping, Sequence
+import sys
+
+_RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
+if str(_RUNTIME) not in sys.path:  # pragma: no cover - import bootstrap
+    sys.path.insert(0, str(_RUNTIME))
 
 TRANSACTION_PROTOCOL_V1 = "birth-authority-provisioning-v1"
 CHECKPOINT_DIGEST_DOMAIN_V1 = b"metnos.executor-birth.provisioning-checkpoint/v1\0"
@@ -454,14 +465,19 @@ class CheckpointV1:
         return checkpoint_name_v1(self.checkpoint_sequence)
 
 
-def checkpoint_name_v1(sequence: int) -> str:
-    """The only authoritative name of one checkpoint."""
+def _sequence_component_v1(sequence: int) -> str:
+    """The single 20-digit form every sequenced name of the layout shares."""
     if (
         not _is_exact_int(sequence)
         or not 0 <= sequence <= MAXIMUM_CHECKPOINT_SEQUENCE_V1
     ):
         raise _conflict()
-    return f"{sequence:020d}.json"
+    return f"{sequence:020d}"
+
+
+def checkpoint_name_v1(sequence: int) -> str:
+    """The only authoritative name of one checkpoint."""
+    return _sequence_component_v1(sequence) + ".json"
 
 
 def empty_digests_v1() -> dict[str, str | None]:
@@ -529,12 +545,31 @@ def new_transaction_id_v1() -> str:
     return secrets.token_hex(16)
 
 
+PAYLOAD_PENDING_PREFIX_V1 = ".payload-pending-"
+
+
+def _payload_pending_name_v1(sequence: int, transaction_id: str) -> str:
+    if not _is_hex(transaction_id, 32):
+        raise _conflict()
+    return (
+        PAYLOAD_PENDING_PREFIX_V1 + _sequence_component_v1(sequence)
+        + "-" + transaction_id
+    )
+
+
+def _is_payload_pending_name_v1(name: str, transaction_id: str) -> bool:
+    suffix = "-" + transaction_id
+    if not name.startswith(PAYLOAD_PENDING_PREFIX_V1) or not name.endswith(suffix):
+        return False
+    body = name[len(PAYLOAD_PENDING_PREFIX_V1): -len(suffix)]
+    return len(body) == 20 and body.isdigit() and body.isascii()
+
+
 def _checkpoint_pending_name_v1(sequence: int, transaction_id: str) -> str:
     if not _is_hex(transaction_id, 32):
         raise _conflict()
     return (
-        CHECKPOINT_PENDING_PREFIX_V1
-        + checkpoint_name_v1(sequence)[: -len(".json")]
+        CHECKPOINT_PENDING_PREFIX_V1 + _sequence_component_v1(sequence)
         + "-" + transaction_id
     )
 
@@ -625,10 +660,29 @@ class _TransactionJournalV1:
             checkpoint.encode(),
         )
 
+    def publish_payload(
+        self,
+        parent: tuple[str, ...],
+        final: str,
+        payload: bytes,
+        *,
+        role,
+        object_sequence: int,
+    ):
+        """Write one payload file under the same pending discipline.
+
+        No authoritative name is born final, here either: the object sequence
+        keeps at most one pending in the whole transaction, so recovery knows
+        which step was interrupted (section 4.3).
+        """
+        pending = _payload_pending_name_v1(object_sequence, self._transaction_id)
+        return self._publish(parent, pending, final, payload, role=role)
+
     def _publish(
         self, parent: tuple[str, ...], pending: str, final: str, payload: bytes,
-    ) -> None:
-        role = _integrity_role()
+        *, role=None,
+    ):
+        role = _integrity_role() if role is None else role
         with _translated():
             identity = self._session.create_file_exclusive(
                 parent + (pending,), payload, role=role,
@@ -649,11 +703,14 @@ class _TransactionJournalV1:
                 # promotion that did not happen takes its own object away
                 # again.  The primary failure travels: the removal is the
                 # cleanup, never the news.
-                self._discard_pending(parent + (pending,), identity, payload)
+                self._discard_pending(
+                    parent + (pending,), identity, payload, role=role,
+                )
                 raise
+            return identity
 
     def _discard_pending(
-        self, components: tuple[str, ...], identity, payload: bytes,
+        self, components: tuple[str, ...], identity, payload: bytes, *, role,
     ) -> None:
         from executor_birth_secure_fs import (
             _DisposalClass, _DisposalExpectation, _ObjectKind,
@@ -663,7 +720,7 @@ class _TransactionJournalV1:
             components=components,
             identity=identity,
             kind=_ObjectKind.regular_file,
-            role=_integrity_role(),
+            role=role,
             disposal_class=_DisposalClass.complete_file,
             links=1,
             expected_size=len(payload),
@@ -680,22 +737,32 @@ class _TransactionJournalV1:
         with _translated():
             names = set(self._session.inventory(self._root))
         header_pending = HEADER_PENDING_PREFIX_V1 + self._transaction_id
+        chain, pending = ((), None)
+        if CHECKPOINTS_BASENAME_V1 in names:
+            chain, pending = self._read_chain()
         admitted = {
             TRANSACTION_HEADER_BASENAME_V1, CHECKPOINTS_BASENAME_V1,
             header_pending,
         }
-        if names - admitted:
-            # Anything else here belongs to a payload of a later increment; the
-            # journal refuses to guess and asks for a human (section 7.6).
+        # A payload is admitted only where the most recent checkpoint declares
+        # it: the journal is the authority on what may exist, and anything
+        # else asks for a human rather than a guess (sections 4.3 and 7.6).
+        if chain:
+            admitted.update(
+                record.relative_path.split("/", 1)[0]
+                for record in chain[-1].payload_inventory
+            )
+        payload_pendings = {
+            name for name in names - admitted
+            if _is_payload_pending_name_v1(name, self._transaction_id)
+        }
+        if len(payload_pendings) > 1 or (names - admitted) - payload_pendings:
             raise _reject("birth_provisioning_recovery_ambiguous")
         header = None
         if TRANSACTION_HEADER_BASENAME_V1 in names:
             header = self.read_header()
             if header.transaction_id != self._transaction_id:
                 raise _conflict()
-        chain, pending = ((), None)
-        if CHECKPOINTS_BASENAME_V1 in names:
-            chain, pending = self._read_chain()
         return TransactionStateV1(
             header=header,
             chain=chain,
@@ -786,122 +853,602 @@ def _translated():
         raise BirthProvisioningError(exc.code, exc) from None
 
 
-def _productive_role_catalog_v1():
-    """The whole closed grammar of the layout, with no exact binding.
-
-    The provisioner works on the real names of section 4.1, so it installs the
-    productive catalogue: every pattern in declaration order and nothing added
-    by a caller.
-    """
-    from executor_birth_secure_fs import _BirthRoleCatalogV1, _BirthRolePatternV1
-
-    return _BirthRoleCatalogV1(
-        schema_version=1,
-        patterns=tuple(_BirthRolePatternV1),
-        exact_bindings=(),
-        generation=0,
-    )
+AUTHOR_PRIVATE_BASENAME_V1 = "author_priv.bin"
+PUBLIC_SUFFIX_V1 = "_pub.bin"
+AUTHOR_PUBLIC_BASENAME_V1 = "author" + PUBLIC_SUFFIX_V1
+RAW_KEY_BYTES_V1 = 32
+AUTHOR_SOURCE_DIGEST_DOMAIN_V1 = (
+    b"metnos.executor-birth.author-source-public-inventory/v1\0"
+)
 
 
 @dataclass(frozen=True, slots=True)
-class ProvisioningLayoutV1:
-    """Already-open roots the installer hands to the provisioner.
+class AuthorSourceV1:
+    """The previous author identity, exactly as the fixed names declare it.
 
-    Section 4.1 admits no path from JSON, from the environment read by the
-    runtime or from the candidate: the installer adapter resolves the fixed
-    locations once, opens them and passes the descriptors.  The root
-    descriptor is consumed exactly once.
+    Only the default private key travels; every other private key of the old
+    registry is neither read nor copied (section 4.2).
     """
 
-    root: object
-    author_source: object | None
-    provisioner_build_id: str
+    active_key_id: str
+    active_private: bytes
+    publics: Mapping[str, bytes]
+    inventory_sha256: str
 
     def __post_init__(self) -> None:
-        from executor_birth_secure_fs import _AuthenticatedRootDescriptor
+        object.__setattr__(self, "publics", MappingProxyType(dict(self.publics)))
 
-        if not isinstance(self.root, _AuthenticatedRootDescriptor):
-            raise _reject("birth_provisioning_io_unavailable")
+
+def acquire_author_source_v1(source_session) -> AuthorSourceV1:
+    """Read the previous author identity from the fixed names alone.
+
+    The enumeration is the authority on what exists: ``sign.list_trusted_publics``
+    is not called, because it drops an invalid file in silence, and a malformed
+    public key here is a refusal rather than a key fewer.
+    """
+    from executor_birth_keystore import birth_key_id
+
+    with _translated():
+        entries = {item.name: item for item in source_session._inventory_state(())}
+    regular = {
+        name: entry
+        for name, entry in entries.items()
+        if entry.kind.value == "regular_file"
+    }
+    for required in (AUTHOR_PRIVATE_BASENAME_V1, AUTHOR_PUBLIC_BASENAME_V1):
+        if required not in regular:
+            raise _reject("birth_author_identity_incomplete")
+    publics: dict[str, bytes] = {}
+    records: list[dict[str, str]] = []
+    for name in sorted(
+        (item for item in entries if item.endswith(PUBLIC_SUFFIX_V1)),
+        key=lambda item: item.encode("utf-8"),
+    ):
+        entry = entries[name]
         if (
-            not isinstance(self.provisioner_build_id, str)
-            or not self.provisioner_build_id
+            entry.kind.value != "regular_file"
+            or entry.links != 1
+            or entry.size != RAW_KEY_BYTES_V1
         ):
-            raise _reject("birth_provisioning_io_unavailable")
+            raise _reject("birth_author_source_invalid")
+        raw = _read_raw_key(source_session, name, private=False)
+        publics[birth_key_id(raw)] = raw
+        records.append(
+            {"name": name, "sha256": hashlib.sha256(raw).hexdigest()}
+        )
+    private_entry = regular[AUTHOR_PRIVATE_BASENAME_V1]
+    if private_entry.links != 1 or private_entry.size != RAW_KEY_BYTES_V1:
+        raise _reject("birth_author_identity_incomplete")
+    private_raw = _read_raw_key(
+        source_session, AUTHOR_PRIVATE_BASENAME_V1, private=True,
+    )
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives import serialization
 
-    def open_root_session(self):
-        """Consume the root descriptor and return the provisioning session."""
-        from executor_birth_secure_fs import _adopt_authenticated_root
+    try:
+        derived = Ed25519PrivateKey.from_private_bytes(private_raw).public_key(
+        ).public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+    except ValueError as exc:
+        raise _reject("birth_author_identity_mismatch", exc) from None
+    active_key_id = birth_key_id(derived)
+    declared = publics.get(active_key_id)
+    if declared is None or not hmac.compare_digest(declared, derived):
+        raise _reject("birth_author_identity_mismatch")
+    return AuthorSourceV1(
+        active_key_id=active_key_id,
+        active_private=private_raw,
+        publics=publics,
+        inventory_sha256=hashlib.sha256(
+            AUTHOR_SOURCE_DIGEST_DOMAIN_V1
+            + encode_canonical_document_v1(records)
+        ).hexdigest(),
+    )
 
-        with _translated():
-            return _adopt_authenticated_root(self.root)
 
-    def close_author_source(self) -> None:
-        if self.author_source is not None:
-            self.author_source.close()
+def _read_raw_key(source_session, name: str, *, private: bool) -> bytes:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey, Ed25519PublicKey,
+    )
+
+    with _translated():
+        raw = source_session.read_file(
+            (name,), maximum=RAW_KEY_BYTES_V1, exact_private=private,
+        )
+    if len(raw) != RAW_KEY_BYTES_V1:
+        raise _reject(
+            "birth_author_identity_incomplete" if private
+            else "birth_author_source_invalid"
+        )
+    try:
+        if private:
+            Ed25519PrivateKey.from_private_bytes(raw)
+        else:
+            Ed25519PublicKey.from_public_bytes(raw)
+    except ValueError as exc:
+        raise _reject(
+            "birth_author_identity_mismatch" if private
+            else "birth_author_source_invalid", exc,
+        ) from None
+    return raw
+
+
+AUTHOR_STORE_BASENAME_V1 = "author-root-v1"
+AUTHOR_STORE_DIGEST_DOMAIN_V1 = (
+    b"metnos.executor-birth.author-store-public-inventory/v1\0"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class StagedAuthorStoreV1:
+    """What the staged author store contributes to the journal."""
+
+    payload_inventory: tuple[PayloadRecordV1, ...]
+    public_inventory_sha256: str
+    next_object_sequence: int
+
+
+def _platform_identity_v1(identity) -> PlatformIdentityV1:
+    """Translate one filesystem identity into the journal's typed form."""
+    if os.name == "nt":
+        return PlatformIdentityV1(
+            "windows", volume_serial=identity.volume, file_id=identity.object_id,
+        )
+    return PlatformIdentityV1(
+        "posix", device=int(identity.volume, 16), inode=int(identity.object_id, 16),
+    )
+
+
+def author_store_public_inventory_sha256_v1(publics: Mapping[str, bytes]) -> str:
+    """Digest of the public ring alone, independent of where it is stored."""
+    return hashlib.sha256(
+        AUTHOR_STORE_DIGEST_DOMAIN_V1 + encode_canonical_document_v1([
+            {"key_id": key_id, "sha256": hashlib.sha256(publics[key_id]).hexdigest()}
+            for key_id in sorted(publics)
+        ])
+    ).hexdigest()
+
+
+def author_store_config_v1(source: AuthorSourceV1) -> bytes:
+    """The store configuration the productive loader already validates."""
+    from executor_birth_keystore import SCHEMA_VERSION
+
+    key_ids = sorted(source.publics)
+    if source.active_key_id not in source.publics:
+        raise _reject("birth_author_identity_mismatch")
+    return encode_canonical_document_v1({
+        "active_key_id": source.active_key_id,
+        "config_revision": 1,
+        "keys": [
+            {
+                "key_id": key_id,
+                "public_file": f"public/{key_id}.pub",
+                "status": "active" if key_id == source.active_key_id else "verifier",
+            }
+            for key_id in key_ids
+        ],
+        "private_file": f"private/{source.active_key_id}.key",
+        "schema_version": SCHEMA_VERSION,
+    })
+
+
+def _stage_author_store_v1(
+    session,
+    journal: "_TransactionJournalV1",
+    source: AuthorSourceV1,
+    *,
+    first_object_sequence: int = 0,
+) -> StagedAuthorStoreV1:
+    """Build the author store inside the transaction, never in a temporary place.
+
+    The private key is written under the confidential profile of the layout, so
+    it never exists outside an object the transaction owns (section 6.1 applies
+    the same rule to every generated key).
+    """
+    from executor_birth_keystore import CONFIG_BASENAME, LOCK_BASENAME
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    confidential = _BirthObjectRole.birth_confidential
+    integrity = _BirthObjectRole.birth_integrity_only
+    base = journal.root_components + (AUTHOR_STORE_BASENAME_V1,)
+    records: list[PayloadRecordV1] = []
+    sequence = first_object_sequence
+
+    def relative(components: tuple[str, ...]) -> str:
+        return "/".join(components[len(journal.root_components):])
+
+    with _translated():
+        for components, role in (
+            (base, confidential),
+            (base + ("private",), confidential),
+            (base + ("public",), integrity),
+        ):
+            session.create_directory_exclusive(components, role=role)
+            records.append(PayloadRecordV1(
+                relative(components), PayloadObjectTypeV1.directory,
+                _confidentiality_v1(role), None, None,
+                _platform_identity_v1(_identity_v1(session, components)),
+            ))
+
+    files: list[tuple[tuple[str, ...], str, bytes, object]] = [
+        (base + ("public",), f"{key_id}.pub", source.publics[key_id], integrity)
+        for key_id in sorted(source.publics)
+    ]
+    files.append((
+        base + ("private",), f"{source.active_key_id}.key",
+        source.active_private, confidential,
+    ))
+    files.append((base, CONFIG_BASENAME, author_store_config_v1(source), confidential))
+    # The store lock is a payload like any other: the loader takes a shared
+    # lock on it before reading, so it must already carry the marker byte the
+    # capability writes when it creates one itself.
+    from executor_birth_secure_fs import _LOCK_BYTE
+
+    files.append((base, LOCK_BASENAME, _LOCK_BYTE, confidential))
+    for parent, name, payload, role in files:
+        identity = journal.publish_payload(
+            parent, name, payload, role=role, object_sequence=sequence,
+        )
+        sequence += 1
+        records.append(PayloadRecordV1(
+            relative(parent + (name,)), PayloadObjectTypeV1.file,
+            _confidentiality_v1(role), len(payload),
+            hashlib.sha256(payload).hexdigest(),
+            _platform_identity_v1(identity),
+        ))
+    return StagedAuthorStoreV1(
+        payload_inventory=tuple(records),
+        public_inventory_sha256=author_store_public_inventory_sha256_v1(
+            source.publics
+        ),
+        next_object_sequence=sequence,
+    )
+
+
+def _identity_v1(session, components: tuple[str, ...]):
+    """Identity of one object, observed from its authenticated parent.
+
+    The directory capability deliberately reveals neither path nor handle, so
+    the journal takes the identity from the enumeration of the parent, which is
+    the same source the recovery uses when it reopens the object later.
+    """
+    name = components[-1]
+    for entry in session._inventory_state(components[:-1]):
+        if entry.name == name:
+            return entry.identity
+    raise _reject("birth_provisioning_io_unavailable")
+
+
+def _confidentiality_v1(role) -> PayloadConfidentialityV1:
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    return (
+        PayloadConfidentialityV1.confidential
+        if role is _BirthObjectRole.birth_confidential
+        else PayloadConfidentialityV1.integrity_only
+    )
+
+
+def verify_author_store_v1(session, components: tuple[str, ...], source):
+    """Re-read one store with the productive loader and compare the identity."""
+    from executor_birth_keystore import (
+        BirthKeyStoreError, _load_birth_keystore_in_session, raw_public_key,
+    )
+
+    try:
+        loaded = _load_birth_keystore_in_session(tuple(components), session)
+    except BirthKeyStoreError as exc:
+        raise _reject("birth_author_keystore_existing_invalid", exc) from None
+    except Exception as exc:
+        code = getattr(exc, "code", None)
+        raise _reject(
+            code if isinstance(code, str) else "birth_author_keystore_existing_invalid",
+            exc,
+        ) from None
+    observed = {
+        key_id: raw_public_key(key) for key_id, key in loaded.verifier_keys.items()
+    }
+    if source is not None and (
+        loaded.active_key_id != source.active_key_id
+        or observed != dict(source.publics)
+    ):
+        raise _reject("birth_author_keystore_existing_invalid")
+    return loaded
+
+
+def _install_author_store_v1(session, journal: "_TransactionJournalV1") -> None:
+    """Publish the staged store under its final name, without replacement."""
+    with _translated():
+        session.rename_no_replace(
+            journal.root_components + (AUTHOR_STORE_BASENAME_V1,),
+            (AUTHOR_STORE_BASENAME_V1,),
+            directory=True,
+        )
 
 
 AUTHOR_SOURCE_BASENAME_V1 = "keys"
-BIRTH_ROOT_BASENAME_V1 = "birth"
 
 
-def open_provisioning_layout_v1(
-    config_directory, *, provisioner_build_id: str,
-) -> ProvisioningLayoutV1:
-    """Installer adapter: resolve the two fixed locations once and open them.
+class AuthorProvisioningOutcomeV1(str, Enum):
+    """What one provisioning run actually did, never what it hoped to do."""
 
-    The Birth root must already exist with its own owner and profile, because
-    creating it is a distribution decision and not a cryptographic one.  The
-    previous author source may be missing, which is the ordinary state of an
-    installation that never had one.
+    installed = "installed"
+    already_installed = "already_installed"
+    resumed = "resumed"
+    author_not_yet_created = "author_not_yet_created"
+
+
+@dataclass(frozen=True, slots=True)
+class AuthorProvisioningResultV1:
+    outcome: AuthorProvisioningOutcomeV1
+    active_key_id: str | None
+    public_inventory_sha256: str | None
+    transaction_id: str | None
+
+
+def _resolve_author_source_v1():
+    """Open the previous author source from the one fixed name of section 4.2.
+
+    The location belongs to the installer, exactly like the Birth root: the
+    provisioner never receives it from a caller, an environment read at runtime
+    or a document.  Absence is an ordinary state; a source that exists but
+    cannot be opened safely is a refusal.
     """
-    from executor_birth_secure_fs import (
-        BirthSecureFSError, _AuthenticatedRootDescriptor, _PlatformIdentity,
-        _open_legacy_root_session,
-        _open_posix_root, _open_win_root, _win_close,
-        _windows_service_sid_for_current_process,
+    import config as runtime_config
+    from executor_birth_secure_fs import BirthSecureFSError, _open_legacy_root_session
+
+    path = Path(runtime_config.PATH_USER_CONFIG) / AUTHOR_SOURCE_BASENAME_V1
+    try:
+        return _open_legacy_root_session(path, exact_private=True)
+    except BirthSecureFSError:
+        if os.path.lexists(path):
+            raise BirthProvisioningError(
+                "birth_provisioning_acl_unsafe"
+            ) from None
+        return None
+
+
+def provision_author_root_v1(
+    layout, *, provisioner_build_id: str,
+) -> AuthorProvisioningResultV1:
+    """Inspect first, migrate only when there is nothing installed yet.
+
+    The census happens by handle under the exclusive lock and before any
+    external input is opened (section 8.1).  A run that finds a valid author
+    root does not open the previous source at all, which is what makes the
+    second execution an inspection and not a second migration.
+    """
+    session = layout.birth_session
+    with _translated():
+        lock = session.global_lock(exclusive=True, create=True)
+    with lock:
+        with _translated():
+            names = set(session.inventory(()))
+        transactions = sorted(
+            name for name in names if name.startswith(TRANSACTION_PREFIX_V1)
+        )
+        if len(transactions) > 1:
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        installed = AUTHOR_STORE_BASENAME_V1 in names
+        if installed and not transactions:
+            loaded = verify_author_store_v1(
+                session, (AUTHOR_STORE_BASENAME_V1,), None,
+            )
+            return AuthorProvisioningResultV1(
+                AuthorProvisioningOutcomeV1.already_installed,
+                loaded.active_key_id,
+                author_store_public_inventory_sha256_v1({
+                    key_id: _raw_public(key)
+                    for key_id, key in loaded.verifier_keys.items()
+                }),
+                None,
+            )
+        if transactions:
+            return _resume_author_root_v1(
+                session, transactions[0][len(TRANSACTION_PREFIX_V1):],
+                provisioner_build_id=provisioner_build_id,
+                installed=installed,
+            )
+        if installed:
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        return _first_author_migration_v1(
+            session, provisioner_build_id=provisioner_build_id,
+        )
+
+
+def _raw_public(key) -> bytes:
+    from executor_birth_keystore import raw_public_key
+
+    return raw_public_key(key)
+
+
+def _first_author_migration_v1(
+    session, *, provisioner_build_id: str,
+) -> AuthorProvisioningResultV1:
+    """Acquire the previous identity and install it inside one transaction."""
+    source_session = _resolve_author_source_v1()
+    if source_session is None:
+        return AuthorProvisioningResultV1(
+            AuthorProvisioningOutcomeV1.author_not_yet_created, None, None, None,
+        )
+    try:
+        source = acquire_author_source_v1(source_session)
+    finally:
+        source_session.close()
+    transaction_id = new_transaction_id_v1()
+    journal = _TransactionJournalV1(session, transaction_id)
+    journal.create_root()
+    journal.write_header(
+        TransactionHeaderV1(transaction_id, provisioner_build_id)
+    )
+    zero = CheckpointV1(
+        transaction_id, 0, None, ProvisioningStateV1.created, (),
+        empty_digests_v1(), None,
+    )
+    journal.append(zero)
+    acquired = _record_author_source_v1(journal, zero, source)
+    staged_checkpoint = _stage_and_record_v1(session, journal, acquired, source)
+    _install_and_record_v1(session, journal, staged_checkpoint)
+    return AuthorProvisioningResultV1(
+        AuthorProvisioningOutcomeV1.installed,
+        source.active_key_id,
+        staged_checkpoint.digests["author_store_public_inventory_sha256"],
+        transaction_id,
     )
 
-    base = Path(config_directory)
-    root_path = base / BIRTH_ROOT_BASENAME_V1
-    with _translated():
-        if os.name == "nt":
-            handles, absolute = _open_win_root(root_path)
-            identity = _PlatformIdentity(
-                posix_uid=None,
-                windows_service_sid=_windows_service_sid_for_current_process(),
-            )
-        else:
-            handles, absolute = _open_posix_root(
-                root_path, exact_private=False, expected_uid=None,
-            )
-            identity = _PlatformIdentity(
-                posix_uid=os.geteuid(), windows_service_sid=None,
-            )
-        try:
-            descriptor = _AuthenticatedRootDescriptor(
-                handles=tuple(handles),
-                root_path=absolute,
-                identity=identity,
-                role_catalog=_productive_role_catalog_v1(),
-            )
-        except BaseException:
-            closer = _win_close if os.name == "nt" else os.close
-            for handle in reversed(tuple(handles)):
-                closer(handle)
-            raise
-        source_path = base / AUTHOR_SOURCE_BASENAME_V1
-        try:
-            source = _open_legacy_root_session(source_path, exact_private=True)
-        except BirthSecureFSError:
-            # An installation with no previous author identity is ordinary, so
-            # the absence is a state and not a failure.  Anything else is a
-            # refusal and travels: a source that exists but cannot be opened
-            # safely must never be read as "there was none".
-            if os.path.lexists(source_path):
-                raise
-            source = None
-    return ProvisioningLayoutV1(
-        root=descriptor,
-        author_source=source,
-        provisioner_build_id=provisioner_build_id,
+
+def _record_author_source_v1(
+    journal: "_TransactionJournalV1", previous: CheckpointV1, source,
+) -> CheckpointV1:
+    """Make the digest of what was acquired durable before building anything."""
+    digests = dict(previous.digests)
+    digests["author_source_public_inventory_sha256"] = source.inventory_sha256
+    acquired = CheckpointV1(
+        previous.transaction_id, previous.checkpoint_sequence + 1,
+        previous.digest(), ProvisioningStateV1.created,
+        previous.payload_inventory, digests, previous.set_id,
+    )
+    journal.append(acquired)
+    return acquired
+
+
+def _stage_and_record_v1(
+    session, journal: "_TransactionJournalV1", previous: CheckpointV1, source,
+) -> CheckpointV1:
+    """Build the store inside the transaction and record what it contains."""
+    staged = _stage_author_store_v1(session, journal, source)
+    digests = dict(previous.digests)
+    digests["author_store_public_inventory_sha256"] = (
+        staged.public_inventory_sha256
+    )
+    checkpoint = CheckpointV1(
+        previous.transaction_id, previous.checkpoint_sequence + 1,
+        previous.digest(), ProvisioningStateV1.author_staged,
+        staged.payload_inventory, digests, previous.set_id,
+    )
+    journal.append(checkpoint)
+    verify_author_store_v1(
+        session, journal.root_components + (AUTHOR_STORE_BASENAME_V1,), source,
+    )
+    return checkpoint
+
+
+def _install_and_record_v1(
+    session, journal: "_TransactionJournalV1", staged: CheckpointV1,
+) -> None:
+    """Publish the author root and make the fact durable before cleaning up."""
+    _install_author_store_v1(session, journal)
+    verify_installed_author_root_v1(session, staged)
+    journal.append(CheckpointV1(
+        staged.transaction_id, staged.checkpoint_sequence + 1,
+        staged.digest(), ProvisioningStateV1.author_installed,
+        staged.payload_inventory, dict(staged.digests), staged.set_id,
+    ))
+
+
+def verify_installed_author_root_v1(session, staged: CheckpointV1):
+    """Re-read the final store and compare it with what the journal recorded.
+
+    The rename does not change the identity of an object, so the recorded
+    device and inode must still describe the installed tree: a store that
+    matches by name but not by identity is a different object.
+    """
+    from executor_birth_keystore import raw_public_key
+
+    loaded = verify_author_store_v1(session, (AUTHOR_STORE_BASENAME_V1,), None)
+    observed = author_store_public_inventory_sha256_v1({
+        key_id: raw_public_key(key)
+        for key_id, key in loaded.verifier_keys.items()
+    })
+    if observed != staged.digests["author_store_public_inventory_sha256"]:
+        raise _reject("birth_author_keystore_existing_invalid")
+    for record in staged.payload_inventory:
+        components = tuple(record.relative_path.split("/"))
+        identity = _platform_identity_v1(_identity_v1(session, components))
+        if identity != record.platform_identity:
+            raise _reject("birth_provisioning_recovery_ambiguous")
+    return loaded
+
+
+def _resume_author_root_v1(
+    session, transaction_id: str, *, provisioner_build_id: str, installed: bool,
+) -> AuthorProvisioningResultV1:
+    """Continue the one recognised transaction from the bytes it already holds.
+
+    From ``author_staged`` on, completion never consults the previous source
+    again: everything the installation needs is inside the transaction, so a
+    restart converges even when the old key directory has disappeared.
+    """
+    journal = _TransactionJournalV1(session, transaction_id)
+    state = journal.read_state()
+    header = state.header
+    if header is None or header.provisioner_build_id != provisioner_build_id:
+        raise _conflict()
+    last = state.last
+    if last is None:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    if last.state is ProvisioningStateV1.created:
+        return _resume_before_staging_v1(
+            session, journal, last, installed=installed,
+            transaction_id=transaction_id,
+        )
+    if last.state is ProvisioningStateV1.author_staged:
+        if installed:
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        _install_and_record_v1(session, journal, last)
+        return AuthorProvisioningResultV1(
+            AuthorProvisioningOutcomeV1.resumed,
+            None,
+            last.digests["author_store_public_inventory_sha256"],
+            transaction_id,
+        )
+    if last.state is ProvisioningStateV1.author_installed and installed:
+        loaded = verify_installed_author_root_v1(session, last)
+        return AuthorProvisioningResultV1(
+            AuthorProvisioningOutcomeV1.resumed,
+            loaded.active_key_id,
+            last.digests["author_store_public_inventory_sha256"],
+            transaction_id,
+        )
+    raise _reject("birth_provisioning_recovery_ambiguous")
+
+
+def _resume_before_staging_v1(
+    session, journal: "_TransactionJournalV1", last: CheckpointV1, *,
+    installed: bool, transaction_id: str,
+) -> AuthorProvisioningResultV1:
+    """Continue a transaction that has not staged any byte yet.
+
+    Only the inputs that were not acquired are consulted again, and an input
+    that comes back different is a conflict rather than a new start.  A store
+    already half-built inside the transaction is not adopted here: refusing is
+    safe, because nothing final has been published yet.
+    """
+    if installed or AUTHOR_STORE_BASENAME_V1 in set(
+        session.inventory(journal.root_components)
+    ):
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    source_session = _resolve_author_source_v1()
+    if source_session is None:
+        raise _reject("birth_author_identity_incomplete")
+    try:
+        source = acquire_author_source_v1(source_session)
+    finally:
+        source_session.close()
+    recorded = last.digests["author_source_public_inventory_sha256"]
+    if recorded is not None and recorded != source.inventory_sha256:
+        raise _conflict()
+    acquired = (
+        last if recorded is not None
+        else _record_author_source_v1(journal, last, source)
+    )
+    staged = _stage_and_record_v1(session, journal, acquired, source)
+    _install_and_record_v1(session, journal, staged)
+    return AuthorProvisioningResultV1(
+        AuthorProvisioningOutcomeV1.resumed,
+        source.active_key_id,
+        staged.digests["author_store_public_inventory_sha256"],
+        transaction_id,
     )
