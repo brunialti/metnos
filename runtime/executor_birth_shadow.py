@@ -293,6 +293,53 @@ def _standard_check(observed: ObservedCandidate, _decision: RevisionDecision, _d
     return CheckResult("manifest_standard", "v1", CheckStatus.PASSED, None, evidence, "valid")
 
 
+def _declared_languages_v1(manifest: Mapping[str, object]) -> tuple[str, ...]:
+    """Every language the candidate itself declares, in canonical order.
+
+    The set comes from the manifest, never from the machine: a check whose
+    result depended on the language of the installation would give one verdict
+    here and another one there.
+    """
+    from i18n_materializer import manifest_language_selectors
+
+    selectors = manifest_language_selectors(manifest)
+    languages: set[str] = set()
+    for table in selectors.values():
+        languages.update(table)
+    return tuple(sorted(languages))
+
+
+def _lint_check(observed: ObservedCandidate, _decision: RevisionDecision,
+                _deps: _BirthDependencies) -> CheckResult:
+    """Really run the manifest linter on the frozen manifest.
+
+    Its two files were already pinned in the admission context, so the identity
+    of the rules was fixed while nothing ever applied them.  This check applies
+    them, in every language the candidate declares, and an ``error`` finding
+    refuses the birth.
+    """
+    from manifest_lint import lint_manifest
+
+    manifest = _manifest(observed)
+    reported: list[str] = []
+    blocking: str | None = None
+    for language in _declared_languages_v1(manifest):
+        for finding in lint_manifest(manifest, language=language):
+            reported.append(
+                f"{finding.severity}:{finding.check}:{finding.resource}:{language}"
+            )
+            if finding.severity == "error" and blocking is None:
+                blocking = f"{finding.check}:{finding.resource}"
+    evidence = _shadow_evidence(
+        "manifest-lint", observed.identities.candidate_id, *reported,
+    )
+    if blocking is not None:
+        return CheckResult("manifest_lint", "v1", CheckStatus.FAILED,
+                           "manifest_lint_rejected", evidence, blocking)
+    return CheckResult("manifest_lint", "v1", CheckStatus.PASSED, None,
+                       evidence, "valid")
+
+
 def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
     runner = deps.property_runner or ObservedPropertyRunner(
         observed, windows_registry=deps.windows_sandbox_registry,
@@ -363,6 +410,7 @@ def _approval_applies(decision: RevisionDecision, _observed: ObservedCandidate) 
 
 _CHECK_CATALOG_V1 = (
     ("manifest_standard", "v1", True, _always, _standard_check),
+    ("manifest_lint", "v1", True, _always, _lint_check),
     ("properties", "v1", True, _always, _property_check),
     ("semantic_review", "v1", True, _semantic_applies, _semantic_check),
     ("approval", "v1", True, _approval_applies, _approval_check),
