@@ -1048,6 +1048,10 @@ def _expect_nt_error(
         )
 
 
+# One status stands for every injected failure; the conversion turns it
+# into the system error each subcase wants to observe.
+_INJECTED_STATUS = -1073741823
+
 _RENAME_ERROR_SUBCASES = {
     # FILE_EXISTS/ALREADY_EXISTS are exercised with both namespace states.
     # ACCESS_DENIED/SHARING_VIOLATION with a racing destination prove the
@@ -1611,7 +1615,8 @@ def test_g10_windows_native_contract(
             support.create_file(
                 active, (source_name,), b"source", "birth_confidential"
             )
-        native = sf._KERNEL32.SetFileInformationByHandle
+        native = sf._NTDLL.NtSetInformationFile
+        native_convert = sf._NTDLL.RtlNtStatusToDosError
         for (
             index,
             (dos_error, install_destination, expected),
@@ -1630,7 +1635,9 @@ def test_g10_windows_native_contract(
             def fail(*args):
                 nonlocal calls, raced_destination_identity, raced_destination_row
                 calls += 1
-                if int(getattr(args[1], "value", args[1])) != 3:
+                # The native shape is handle, status block, buffer, length,
+                # class: the class is the last argument, not the second.
+                if int(getattr(args[4], "value", args[4])) != 10:
                     raise AssertionError("rename error probe intercepted the wrong class")
                 if support.handle_identity(args[0]) != source_identity:
                     raise AssertionError("rename error probe received the wrong source handle")
@@ -1652,20 +1659,26 @@ def test_g10_windows_native_contract(
                         for row in support.windows_tree_snapshot(root)
                         if row[0] == destination_name
                     )
-                sf._KERNEL32.SetLastError(dos_error)
-                return 0
+                # Section 17.26: the move goes through the native call, which
+                # answers with a status.  The intended system error is produced
+                # by the conversion, exactly as the product reads it.
+                return _INJECTED_STATUS
+
+            def convert(status):
+                if status == _INJECTED_STATUS:
+                    return dos_error
+                return native_convert(status)
 
             with monkeypatch.context() as patch:
-                patch.setattr(
-                    sf._KERNEL32, "SetFileInformationByHandle", fail
-                )
+                patch.setattr(sf._NTDLL, "NtSetInformationFile", fail)
+                patch.setattr(sf._NTDLL, "RtlNtStatusToDosError", convert)
                 _assert_stable_error(
                     lambda: active.rename_no_replace(
                         (source_name,), (destination_name,), directory=False
                     ),
                     expected,
                 )
-            if calls != 1 or sf._KERNEL32.SetFileInformationByHandle is not native:
+            if calls != 1 or sf._NTDLL.NtSetInformationFile is not native:
                 raise AssertionError("rename native error was not injected exactly once")
             after = {
                 row[0]: row for row in support.windows_tree_snapshot(root)
