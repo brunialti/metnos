@@ -4158,6 +4158,27 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.52 Il proprietario non puo' scrivere il proprio lucchetto
+
+Diagnosi della cella della chiamata non elevata: il profilo assegna al
+proprietario dello scaffale un accesso di **sola lettura**, e vale anche per il
+lucchetto. Prenderlo significa scriverne il byte, quindi un proprietario senza
+diritti amministrativi non puo' prendere il proprio lucchetto e non potrebbe mai
+predisporre nulla. La cella se ne accorge perche' l'utente non elevato viene
+fermato al lucchetto — con «permessi non sicuri» — invece di arrivare alla
+creazione del file, dove il contratto vuole «servono privilegi».
+
+La correzione minima (scrittura al proprietario per il solo lucchetto) e' stata
+scritta e **misurata**: non basta e rompe due celle della concorrenza. La
+ragione e' che «essere un lucchetto» non e' una proprieta' del punto di
+chiamata ma della posizione nel catalogo: la verifica del profilo, che passa
+per l'inventario, non sa di stare guardando un lucchetto e trova un permesso in
+piu'. La correzione va quindi ricavata dal legame di catalogo, non passata a
+mano dove il lucchetto viene creato.
+
+Il tentativo e' stato annullato per non lasciare rosse due celle in cambio di
+una. La direzione resta questa ed e' scritta qui.
+
 ### 17.51 La famiglia del privilegio non era ambiente: tre celle su quattro
 
 L'analisi del §17.47 dava per ambientali tutte e quattro le celle del privilegio
