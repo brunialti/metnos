@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -78,7 +79,9 @@ def test_public_api_has_no_check_catalog_or_publisher_authority():
 def test_core_catalog_cannot_be_omitted_and_snapshot_is_closed():
     observed, observer = _observer_holder()
     report = _call(observer)
-    assert [item.check_id for item in report.checks] == ["manifest_standard", "properties"]
+    assert [item.check_id for item in report.checks] == [
+        "manifest_standard", "manifest_lint", "properties",
+    ]
     assert report.outcome is BirthOutcome.REJECTED
     assert report.publisher_call_count == 0
     assert observed.snapshot.closed
@@ -102,7 +105,7 @@ def test_core_assembler_rejects_non_owned_test_observation():
     )
     assert report.outcome is BirthOutcome.REJECTED
     assert [item.status.value for item in report.checks] == [
-        "passed", "unavailable",
+        "passed", "passed", "unavailable",
     ]
     assert observed.snapshot.closed
 
@@ -128,7 +131,7 @@ def test_core_applicability_requires_semantic_review_for_model_authorship():
     _, observer = _observer_holder(authorship=RevisionAuthor.MODEL)
     report = _call(observer, authorship=RevisionAuthor.MODEL, property_runner=object())
     assert [item.check_id for item in report.checks] == [
-        "manifest_standard", "properties", "semantic_review",
+        "manifest_standard", "manifest_lint", "properties", "semantic_review",
     ]
     assert report.checks[-1].error_code == "check_unavailable"
     assert report.outcome is BirthOutcome.REJECTED
@@ -139,7 +142,8 @@ def test_core_applicability_requires_approval_for_authority_revision():
     report = _call(observer, property_runner=object(),
                    facts=RevisionFacts(authority_changed=True))
     assert [item.check_id for item in report.checks] == [
-        "manifest_standard", "properties", "semantic_review", "approval",
+        "manifest_standard", "manifest_lint", "properties", "semantic_review",
+        "approval",
     ]
     assert report.checks[-1].error_code == "approval_required"
     assert report.outcome is BirthOutcome.NEEDS_HUMAN
@@ -167,3 +171,56 @@ def test_observation_failure_has_closed_rejection_report():
     assert report.error_code == "candidate_observation_unavailable"
     assert report.candidate_id is None
     assert report.publisher_call_count == 0
+
+
+def _observed_with_manifest(manifest_text: str):
+    """The slice of an observation the linter check actually reads."""
+    return SimpleNamespace(
+        snapshot=SimpleNamespace(manifest_bytes=manifest_text.encode("utf-8")),
+        identities=SimpleNamespace(candidate_id="sha256:" + "c" * 64),
+    )
+
+
+_LINT_MANIFEST = """
+name = "find_files"
+
+[description]
+it = "{it}"
+en = "{en}"
+"""
+
+
+def test_the_linter_really_runs_and_refuses_what_it_rejects():
+    """The two pinned rule files were identity only; now they decide."""
+    from executor_birth_shadow import _lint_check
+
+    refused = _lint_check(
+        _observed_with_manifest(_LINT_MANIFEST.format(
+            it="una descrizione senza capitoli",
+            en="a description without chapters",
+        )),
+        None, None,
+    )
+    assert refused.status.value == "failed"
+    assert refused.error_code == "manifest_lint_rejected"
+    assert refused.redacted_detail.startswith("chapter_order:")
+
+
+def test_the_linter_reads_every_language_the_candidate_declares():
+    """A manifest correct in one language and broken in another is refused.
+
+    The set of languages comes from the candidate, never from the machine: a
+    verdict that changed with the language of the installation would not be a
+    verdict at all.
+    """
+    from executor_birth_shadow import _declared_languages_v1, _lint_check
+
+    good = ("SCOPO: trova file. PATTERN: find_files(paths=['/tmp']). "
+            "NON: non legge il contenuto. OUT: entries.")
+    manifest = _LINT_MANIFEST.format(it=good, en="broken in this language only")
+    import tomllib
+
+    assert _declared_languages_v1(tomllib.loads(manifest)) == ("en", "it")
+    result = _lint_check(_observed_with_manifest(manifest), None, None)
+    assert result.status.value == "failed"
+    assert result.error_code == "manifest_lint_rejected"
