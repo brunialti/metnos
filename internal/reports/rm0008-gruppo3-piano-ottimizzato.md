@@ -218,7 +218,26 @@ porta il posto in cui il manifest vive. Il costo onesto: due sorgenti invece di
 una, e in entrambi i casi va verificato che il dato sia gia' autenticato nel
 punto in cui serve — nel flusso attuale lo e', ma va provato, non supposto.
 
-**Decisione ancora aperta**: in attesa di Roberto.
+### Decisione presa (27/8/2026)
+
+Roberto ha scelto la forma «fisso tranne chi revisiona», poi ha chiesto di
+preferire sempre l'opzione piu' semplice e robusta. Rileggendola con quel
+criterio, la seconda sorgente e' sparita: **una revisione non sposta il
+manifest**, quindi la posizione del manifest serve identica sia a chi crea sia
+a chi revisiona.
+
+Forma finale, in `runtime/executor_birth_producer_table_v1.py`:
+
+- **autore** fisso per produttore, tabella chiusa di undici righe;
+- **tipo** derivato da dove vive il manifest, e da nient'altro. Una posizione
+  che non prevede nascite (`retired`) e' un rifiuto, non un valore indovinato.
+
+Nessun produttore, chiamante o documento puo' aggiungere una seconda sorgente:
+la firma della funzione ha un solo parametro e una prova lo verifica.
+
+Lezione da tenere: la tabella fissa sembrava la scelta semplice, ma era falsa
+per sei righe su undici. **Semplice-e-falso non e' semplice**; la versione
+davvero semplice e' arrivata togliendo una sorgente, non aggiungendo un caso.
 
 ## 7. Procedura di rifotografia (l'unica cosa tacita e costosa)
 

@@ -89,11 +89,16 @@ i lavori (undicesima fotografia, `9c6f428`):
 **Regola 1 applicata e misurata**: sei modifiche accumulate, UNA sola
 fotografia per tutto l'incremento invece di sei.
 
+- `runtime/executor_birth_producer_table_v1.py` chiude la provenienza: autore
+  fisso per produttore (undici righe), tipo derivato da dove vive il manifest e
+  da nient'altro. Deciso con Roberto; il §6.quater del piano spiega perche' la
+  tabella fissa per il tipo sarebbe stata falsa per sei righe su undici.
+
 PROSSIMO PASSO: la migrazione del bootstrap vera e propria, con la mappa nel
 §6.bis del piano. Il nucleo va costruito dall'insieme predisposto invece che da
-`bootstrap.json`, e il decodificatore libero del contesto sparisce NELLO STESSO
-passaggio (§9.1). Restano da assegnare le voci `producers` con `origin` e
-`author`, che oggi il file sceglie: servono la tabella chiusa `ContractId`.
+`bootstrap.json`, usando la tabella della provenienza al posto delle voci
+`producers` del file, e il decodificatore libero del contesto sparisce NELLO
+STESSO passaggio (§9.1).
 ```
 
 ## Perche' i gruppi 4-6 non hanno un piano
