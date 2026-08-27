@@ -3990,7 +3990,11 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   registrare per quel solo nome un contrassegno costante, lasciando identita',
   dimensione e permessi della stessa riga a fare la guardia. Provato sul PC:
   la cella `mutation-between-scans-rejected` passa e il file va da 3 rossi a 2.
-  Conservato in `apparato-pendente-5.patch`.
+  Il rimedio conserva anche il caso opposto: un file che il prodotto tiene
+  aperto con diritto di rimozione non si lascia leggere, e la fotografia
+  registra il rifiuto invece di interrompersi. Serve alle celle di gara, dove
+  un osservatore indipendente fotografa l'albero mentre l'operazione e' in
+  corso. Conservato in `apparato-pendente-5.patch`.
 
 - **numeri di maniglia riciclati** — le celle della rimozione seguono la
   maniglia di validazione dal suo numero. Il sistema pero' riassegna quel
@@ -4033,7 +4037,12 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   servono nella cella dello spostamento fra due contenitori, dove le chiusure
   della destinazione risultavano sette invece di una. Con l'insieme delle
   correzioni il file va da 9 a 16 celle verdi su 21 (18 col rimedio del
-  lucchetto). Conservato in `apparato-pendente-7.patch`.
+  lucchetto). Il processo figlio delle celle di gara intercettava ancora
+  l'involucro Win32 per fermarsi sulla barriera: non passandoci piu' nessuno,
+  il figlio arrivava a fine corsa senza fermarsi e la cella lo dichiarava mai
+  arrivato. Spostata l'intercettazione sulla chiamata nativa, con la riuscita
+  letta come stato, le tre celle di gara si sbloccano: il file arriva a 19 celle
+  verdi su 21. Conservato in `apparato-pendente-7.patch`.
 
 - **sonda di causalita' della rinomina** — `_RenameCausalityProbe` sostituisce
   la verifica di profilo con un metodo gia' legato alla sonda, ma la sua firma

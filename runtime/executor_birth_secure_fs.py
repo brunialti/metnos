@@ -1904,7 +1904,9 @@ def _win_restore_privilege() -> Iterator[None]:
         _win_close(token.value)
 
 
-def _win_name_taken_v1(directory: int, name: str, is_directory: bool) -> bool:
+def _win_name_taken_v1(
+    directory: int, name: str, is_directory: bool, observe=None
+) -> bool:
     """Whether one name is already used inside an authenticated container.
 
     The question is asked of the container that is open, never by rebuilding
@@ -1923,7 +1925,15 @@ def _win_name_taken_v1(directory: int, name: str, is_directory: bool) -> bool:
         )
     except (BirthSecureFSError, OSError):
         return False
-    _win_close(handle)
+    try:
+        # The occupant is observed, not merely met: identity and profile are
+        # read on the handle just opened, so the conflict is asserted about an
+        # object this session has actually seen.
+        _win_info(handle)
+        if observe is not None:
+            observe(handle)
+    finally:
+        _win_close(handle)
     return True
 
 
@@ -3857,7 +3867,16 @@ class _SecureRootSession:
                             error
                             in {_ERROR_ACCESS_DENIED, _ERROR_SHARING_VIOLATION}
                             and _win_name_taken_v1(
-                                target_handle, target_name, directory
+                                target_handle,
+                                target_name,
+                                directory,
+                                observe=lambda occupant: (
+                                    self._verify_windows_profile(
+                                        occupant,
+                                        directory=directory,
+                                        profile=source_role,
+                                    )
+                                ),
                             )
                         ):
                             raise BirthSecureFSError(
