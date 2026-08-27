@@ -4265,6 +4265,32 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.77 Matrice Windows del predispositore: tentata, misurata, dichiarata
+
+Tentativo reale, non rinuncia a tavolino. L'apparato delle prove non chiede piu'
+un modo POSIX ma il **profilo del ruolo**, e su Windows lo applica l'oracolo ACL
+della base invece di una copia. Tre difetti dell'apparato sono stati trovati e
+corretti dal vivo, e sono fatti utili anche per il futuro:
+
+1. la radice di configurazione **non e' un oggetto Birth**: darle un DACL
+   protetto chiude fuori chi deve ancora crearvi dentro;
+2. un contenitore va **sigillato dopo il contenuto**: il profilo applicato prima
+   nega le copie che devono entrarci;
+3. il profilo di un oggetto Birth **non concede di riscrivere un descrittore**,
+   quindi si sigilla una volta sola.
+
+Dopo le tre correzioni gli errori di accesso sono spariti e sono rimaste venti
+celle che falliscono con `birth_provisioning_acl_unsafe`: l'apparato sa dare il
+profilo giusto a radice Birth e ingressi operatore, non ancora alla **radice
+storica delle chiavi**, che vuole il proprio profilo storico e non quello Birth.
+
+Decisione: le celle 2B-2F tornano a saltare su `nt`. Una cella rossa che dice
+soltanto "l'apparato non sa costruire quel profilo" vale meno di una lacuna
+dichiarata, e lascerebbe il ciclo pubblico rosso mascherando ogni regressione
+vera. Il §13 continua a elencare il confine Windows del predispositore fra i
+requisiti non provati, e l'apparato consapevole della piattaforma resta al suo
+posto: il lavoro riprende da li', con un solo problema aperto e conosciuto.
+
 ### 17.76 Prova installata: 2F chiuso
 
 `installed_provisioner_proof_v1` parte da una copia installata e da una radice
