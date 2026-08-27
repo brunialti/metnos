@@ -4096,3 +4096,27 @@ Conseguenza per l'apparato: le celle che sorvegliano la rinomina agganciano
 `SetFileInformationByHandle` e non vedranno piu' la chiamata. La correzione —
 sorvegliare `NtSetInformationFile` — entra nella lista d'attesa del §17.21.
 
+### 17.27 Revisione della decisione §17.22 sulla sostituzione
+
+La decisione di ritirare `swap-after-middle` si fondava su un'analisi del solo
+caso POSIX. Una misura successiva l'ha smentita: **il gemello Windows dello
+stesso caso passa**. Confrontando i due allestimenti, la ragione e' che essi
+scambiano componenti diversi:
+
+- su Windows si scambia il componente **appena aperto** (`first/middle` al
+  punto due della catena);
+- su POSIX si scambiava il componente **successivo**, non ancora aperto.
+
+Il primo e' una proprieta' vera e verificabile — una sostituzione di cio' che
+si e' gia' attraversato non deve dirottare nulla — e il prodotto la rispetta,
+perche' la traversata usa i manici. Il secondo descrive una sostituzione
+anteriore a qualunque osservazione, che nulla puo' rilevare.
+
+L'allestimento POSIX era quindi disallineato dal proprio gemello di un
+componente. E' stato allineato, il caso resta nel contratto (nessuna riduzione
+a 234) e le tre celle di sostituzione POSIX sono verdi.
+
+La lezione vale oltre questo punto: prima di dichiarare impossibile una
+proprieta', si confronta con l'altra piattaforma, dove la stessa proprieta'
+puo' essere gia' dimostrata.
+
