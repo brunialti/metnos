@@ -4231,6 +4231,24 @@ il cancelletto finale non puo' diventare verde. E' una contraddizione interna
 alla base, non un difetto del prodotto, e la sua soluzione — cambiare una delle
 due celle — non spetta a chi implementa.
 
+### 17.58 La doppia chiusura e' il numero riassegnato, e il rimedio va in attesa
+
+Trovata la causa vera delle due celle, dopo aver escluso il lucchetto (§17.56) e
+gli ancoraggi (§17.57): la sorveglianza identifica le generazioni di maniglia
+dal **numero**, e il sistema riassegna quel numero alla prima maniglia aperta
+dopo la chiusura, **da qualunque interfaccia**. Il gettone dei privilegi viene
+aperto una volta per ogni ambito — la base lo pretende, e una cella lo verifica
+— quindi il secondo ambito riceve regolarmente il numero appena ritirato da una
+maniglia di creazione, e la sua chiusura sembra una ripetizione.
+
+Il rimedio e' la stessa disciplina gia' applicata altrove: seguire anche le
+aperture che non passano dalla chiamata nativa e togliere il marchio di
+ritirato quando il numero torna in circolo. Scritto, ma **non misurabile
+adesso**: qualunque modifica agli alberi congelati fa rifiutare l'esecuzione
+prima di misurare, e rigenerare la fotografia per una correzione non provata
+sarebbe sprecato. Conservato in `apparato-pendente-8.patch` per il prossimo
+lotto, insieme a cio' che si accumulera'.
+
 ### 17.57 L'ancoraggio si apre per percorso: e' il modello della base
 
 Dopo il lucchetto ho provato a togliere l'involucro Win32 anche dagli
