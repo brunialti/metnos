@@ -341,3 +341,42 @@ def test_oracle_source_is_independent_from_product_security_helpers() -> None:
     assert "GetAce" in source
     assert "EqualSid" in source
 
+
+
+def test_diagnostic_worker_from_repository(identity_lab: _IdentityLab) -> None:
+    """Temporary diagnostic: can a standard account run the frozen worker?
+
+    The frozen cell runs it straight from the repository copy; its sister cells
+    copy their probe into a public directory first.  This measures whether that
+    difference is what stops the child.
+    """
+    import sys
+
+    lab = identity_lab
+    repository = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(repository / "runtime"))
+    sys.path.insert(0, str(repository / "tests" / "windows_identity" / "rm0008_2a_acceptance"))
+    import _windows_support as support
+
+    product = support.product()
+    root = lab.root / "birth-worker"
+    root.mkdir()
+    oracle.apply_profile(root, "integrity_only", lab.service.sid, directory=True)
+    bindings = support.explicit_role_bindings(
+        product, (("never-log-this-secret.bin",), False, "birth_confidential")
+    )
+    with support.session(
+        root,
+        authenticated_sid=lab.service.sid,
+        create_root=False,
+        role_bindings=bindings,
+    ) as provisioner:
+        with support.exclusive(provisioner):
+            pass
+    worker = (
+        repository / "tests" / "windows_identity" / "rm0008_2a_acceptance" / "_worker.py"
+    )
+    code = oracle.run_probe_as(
+        lab.service, worker, "product-create", root, directory=True
+    )
+    assert code == 40, f"WORKER-FROM-REPO code={code}"
