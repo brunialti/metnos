@@ -21,8 +21,8 @@ from install.birth_authority_provisioner import (
     acquire_author_source_v1,
 )
 
-pytestmark = pytest.mark.skipif(
-    os.name == "nt", reason="the Windows profile is certified by its own job"
+posix_only = pytest.mark.skipif(
+    os.name == "nt", reason="the fact under test is a POSIX one"
 )
 
 BUILD = support.build_id()
@@ -114,6 +114,7 @@ def test_the_journal_records_every_step_in_order(tmp_path: Path, monkeypatch):
         assert current.previous_checkpoint_sha256 == previous.digest()
 
 
+@posix_only
 def test_the_recorded_identity_survives_the_installation(
     tmp_path: Path, monkeypatch,
 ):
@@ -297,6 +298,7 @@ def test_a_hard_linked_public_stops_the_enumeration(
     assert victim.read_bytes() == before
 
 
+@posix_only
 def test_a_symlinked_public_is_never_followed(tmp_path: Path, monkeypatch):
     peer = Ed25519PrivateKey.generate()
     base = _config(tmp_path, author=Ed25519PrivateKey.generate(), extra=[

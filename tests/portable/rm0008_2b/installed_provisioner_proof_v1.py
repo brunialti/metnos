@@ -42,8 +42,10 @@ def install_copy(source: Path, target: Path) -> Path:
             source / name, target / name,
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
         )
+    from . import support
+
     for path in (target, *target.rglob("*")):
-        os.chmod(path, 0o755 if path.is_dir() else 0o644)
+        support.apply_profile(path, directory=path.is_dir(), private=False)
     return target
 
 
@@ -185,15 +187,16 @@ print(json.dumps({
 def run_proof(source: Path, workspace: Path) -> dict[str, object]:
     """Run every step and return the canonical report."""
     installed = install_copy(source, workspace / "installed")
+    from . import support
+
     home = workspace / "home"
     config = home / "config"
     (config / "birth" / "operator-input-v1").mkdir(mode=0o755, parents=True)
-    # ``mkdir`` applies the umask, and a group-writable Birth root is refused
-    # by the capability on purpose: an installation is not a working tree.
-    for path in (home, config, config / "birth"):
-        os.chmod(path, 0o755)
-    from . import support
-
+    # ``mkdir`` applies the umask, and a Birth root anyone may write is
+    # refused by the capability on purpose: an installation is not a working
+    # tree.  On Windows the same fact is a security descriptor.
+    for path in (home, config, config / "birth", config / "birth" / "operator-input-v1"):
+        support.apply_profile(path, directory=True, private=False)
     keys = support.complete_operator_input(config)
     root = config / "birth"
 

@@ -41,9 +41,40 @@ def public_bytes(key: Ed25519PrivateKey) -> bytes:
     )
 
 
+def windows_support():
+    """The ACL apparatus of the acceptance base, reused rather than copied."""
+    import importlib
+    import sys
+
+    root = (
+        Path(__file__).resolve().parents[2]
+        / "windows_identity" / "rm0008_2a_acceptance"
+    )
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    return importlib.import_module("_windows_support")
+
+
+def apply_profile(path: Path, *, directory: bool, private: bool) -> None:
+    """Give one object the profile its role requires, on either platform."""
+    if os.name == "nt":
+        helper = windows_support()
+        helper.apply_profile(
+            path,
+            "confidential" if private else "integrity_only",
+            directory=directory,
+            sid=helper.service_sid(),
+        )
+        return
+    if directory:
+        os.chmod(path, 0o700 if private else 0o755)
+    else:
+        os.chmod(path, 0o600 if private else 0o644)
+
+
 def write(path: Path, payload: bytes, mode: int) -> None:
     path.write_bytes(payload)
-    os.chmod(path, mode)
+    apply_profile(path, directory=False, private=mode == 0o600)
 
 
 def make_config(tmp_path: Path, *, author=None, extra=(), operator=False) -> Path:
@@ -54,10 +85,12 @@ def make_config(tmp_path: Path, *, author=None, extra=(), operator=False) -> Pat
     """
     base = tmp_path / "config"
     (base / "birth" / "operator-input-v1").mkdir(mode=0o755, parents=True)
-    os.chmod(base / "birth", 0o755)
+    for location in (base, base / "birth", base / "birth" / "operator-input-v1"):
+        apply_profile(location, directory=True, private=False)
     if author is not None or extra:
         keys = base / "keys"
         keys.mkdir(mode=0o700)
+        apply_profile(keys, directory=True, private=True)
         if author is not None:
             write(keys / "author_priv.bin", private_bytes(author), 0o600)
             write(keys / "author_pub.bin", public_bytes(author), 0o644)
@@ -82,6 +115,7 @@ def use_config(monkeypatch, base: Path) -> None:
     for name in ("PATH_USER_STATE", "PATH_USER_DATA"):
         location = base.parent / name.lower()
         location.mkdir(mode=0o700, parents=True, exist_ok=True)
+        apply_profile(location, directory=True, private=True)
         monkeypatch.setattr(runtime_config, name, location)
     stage_runtime_sources(base.parent, monkeypatch)
 
@@ -154,6 +188,7 @@ def install_operator_input(
     if keys is not None:
         container = location / "semantic-public"
         container.mkdir(mode=0o755, exist_ok=True)
+        apply_profile(container, directory=True, private=False)
         for name, payload in keys.items():
             write(container / name, payload, 0o644)
 
@@ -199,12 +234,13 @@ def stage_runtime_sources(tmp_path: Path, monkeypatch) -> Path:
     stage = tmp_path / "distribution"
     if not stage.is_dir():
         stage.mkdir(mode=0o755, parents=True)
+        apply_profile(stage, directory=True, private=False)
         for _, _, files, _ in module._CONTEXT_CATALOG_V1:
             for name in files:
                 shutil.copy(
                     Path(runtime_config.PATH_RUNTIME) / name, stage / name,
                 )
-                os.chmod(stage / name, 0o644)
+                apply_profile(stage / name, directory=False, private=False)
     monkeypatch.setattr(runtime_config, "PATH_RUNTIME", stage)
     return stage
 
