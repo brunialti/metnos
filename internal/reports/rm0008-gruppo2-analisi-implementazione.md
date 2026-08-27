@@ -3992,6 +3992,20 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   la cella `mutation-between-scans-rejected` passa e il file va da 3 rossi a 2.
   Conservato in `apparato-pendente-5.patch`.
 
+- **numeri di maniglia riciclati** — le celle della rimozione seguono la
+  maniglia di validazione dal suo numero. Il sistema pero' riassegna quel
+  numero appena la maniglia e' chiusa: l'inventario che il prodotto esegue
+  subito dopo riapre le voci rimaste e una di esse ha ricevuto lo stesso
+  numero. La sorveglianza leggeva percio' i fatti di un altro oggetto e
+  accusava la rimozione di non essere annotata come pendente. Misurato in due
+  modi: la piattaforma annota sempre la rimozione (sonda diretta e sonda
+  attraverso le primitive del prodotto), e la traccia mostra la lettura
+  provenire dall'inventario successivo. Rimedio: dopo la chiusura la
+  sorveglianza smette di attribuire a quella maniglia le letture con lo stesso
+  numero. Provato sul PC: `disposition-relative-open` e
+  `disposition-file-access-mask` passano. Conservato in
+  `apparato-pendente-6.patch`.
+
 - **sonda di causalita' della rinomina** — `_RenameCausalityProbe` sostituisce
   la verifica di profilo con un metodo gia' legato alla sonda, ma la sua firma
   attende `(session, handle, ...)`. Un metodo legato non e' un descrittore:
