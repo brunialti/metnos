@@ -4280,7 +4280,25 @@ a descrivere cio' che la predisposizione ha appena fatto.
   esatto, il conteggio delle chiamate della sonda, i byte di entrambi i lati e
   l'albero immutato. Solido.
 
-Restano 14 file. La resa attesa e' bassa — la base ha gia' dimostrato la propria
+- `test_c3_posix_substitution.py`, `test_c4_posix_concurrency.py`,
+  `test_g2_posix_legacy_loaders.py`, `test_g8_posix_uid.py`,
+  `test_g3_posix_rename_crash.py`, `test_r3_posix_crash.py`,
+  `test_r4_posix_lock_durability.py`, `test_r7_posix_inventory.py`,
+  `test_r8_posix_loader_locking.py`, `test_manifest_acceptance.py`. Tutti
+  solidi, ciascuno con un aggancio che cadrebbe se il prodotto sbagliasse: il
+  contenuto **non** dell'aggressore dopo una sostituzione, la successione esatta
+  delle attese fra due prendenti, l'assenza di un lucchetto creato da un
+  caricatore per percorso, il modo esatto del file, il contenuto del lucchetto
+  byte per byte, l'identita' dell'inventario confrontata con `stat`, la
+  serializzazione osservata su un canale con scadenza.
+- Nota di lettura: in `test_manifest_acceptance.py` compaiono due `assert True`.
+  Non sono asserzioni vuote: stanno **dentro sorgenti di prova** che il
+  certificatore deve saper riconoscere. Verificato prima di segnalarlo.
+
+Con questi, il lato POSIX della base e' rivisto per intero. Restano i quattro
+file Windows (106 celle), le cui asserzioni sono state lette una per una durante
+la diagnosi di questa sessione: sono l'apparato che ha scoperto i difetti dei
+§17.31-§17.62. La resa attesa e' bassa — la base ha gia' dimostrato la propria
 forza scoprendo in questa sessione una quindicina di difetti veri del prodotto —
 ma la revisione continua nell'ordine, e ogni file esaminato viene annotato qui.
 
