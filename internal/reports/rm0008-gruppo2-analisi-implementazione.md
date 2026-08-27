@@ -4029,7 +4029,11 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   vecchio involucro (altrimenti il prodotto, correttamente, legge una riuscita),
   e le riaperture eseguite **dentro** un'enumerazione non vanno giudicate con
   la regola del dominio dello spostamento: appartengono al contenitore che si
-  sta leggendo. Conservato in `apparato-pendente-7.patch`.
+  sta leggendo. La stessa esenzione e lo stesso oblio del numero rilasciato
+  servono nella cella dello spostamento fra due contenitori, dove le chiusure
+  della destinazione risultavano sette invece di una. Con l'insieme delle
+  correzioni il file va da 9 a 16 celle verdi su 21 (18 col rimedio del
+  lucchetto). Conservato in `apparato-pendente-7.patch`.
 
 - **sonda di causalita' della rinomina** — `_RenameCausalityProbe` sostituisce
   la verifica di profilo con un metodo gia' legato alla sonda, ma la sua firma
