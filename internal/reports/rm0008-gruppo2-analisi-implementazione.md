@@ -4112,7 +4112,22 @@ corso non la ammette (stessa legge del §17.32, vista dall'altro lato). Con la
 rilettura al posto giusto e le tre correzioni della sorveglianza, la sequenza
 osservata e' esattamente quella pretesa e la cella passa.
 
-### 17.37 Punto aperto: la riconciliazione del rifiuto non viene vista
+### 17.37 L'ultimo errore del sistema non si falsifica per tutti
+
+La cella dell'errore nativo forzava l'accessorio «ultimo errore del sistema» a
+rispondere sempre «accesso negato», per simulare il rifiuto nel modo del
+vecchio involucro Win32. Quel valore pero' e' globale: la riconciliazione che
+segue enumera un contenitore, l'enumerazione finisce normalmente e chiede
+all'accessorio il motivo — e riceve il motivo falsificato. La rilettura moriva
+cosi', e la cella accusava il prodotto di non averla fatta.
+
+Con la chiamata nativa il motivo di un rifiuto si legge dal suo **stato**, non
+dall'ultimo errore del filo: la falsificazione non serve piu' ed e' stata tolta.
+La cella passa. Diagnosi ottenuta riproducendo il rifiuto fuori dalla cella
+(dove la riconciliazione funzionava) e poi guardando l'eccezione dentro: due
+misure, nessuna congettura.
+
+### 17.37-bis Traccia storica: la riconciliazione sembrava non partire
 
 Con le correzioni della sorveglianza la cella dell'errore nativo arriva
 all'ultima pretesa: due riletture del contenitore dopo il rifiuto. Il prodotto
