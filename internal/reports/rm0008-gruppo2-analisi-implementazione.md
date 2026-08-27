@@ -4269,14 +4269,42 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.80 Due deduzioni sbagliate, corrette dalla misura
+
+Due affermazioni che avevo scritto non reggono alla verifica, e vale la pena
+tenerle a verbale perche' erano entrambe deduzioni, non misure.
+
+**Prima.** Avevo dedotto che il runner Windows pubblico fosse amministratore
+elevato, perche' la diagnostica storica lo pretende e "passa". Guardando i passi
+del lavoro: quel passo e' **saltato**. L'elevazione del runner resta quindi
+ignota, non stabilita, e con essa il motivo per cui l'abilitazione del
+privilegio fallisce.
+
+**Seconda.** Avevo introdotto una sonda che tentava la creazione di un oggetto
+Birth per decidere se saltare le celle su Windows, e ne avevo scritto la ragione
+come "manca il privilegio di proprietario". Fatta parlare, la sonda ha risposto
+`birth_provisioning_io_unavailable`: si fermava molto prima, sulla propria
+radice temporanea, e non stava misurando affatto il privilegio. Una sonda che
+salta per un motivo e lo dichiara per un altro e' peggio di nessuna sonda: e'
+stata tolta.
+
+Resta il fatto misurato, quello sì: le celle 2B-2F, eseguite davvero su
+Windows, arrivano fino a `_install_author_store_v1` e li' ricevono
+`birth_provisioning_elevation_required`. Il salto ora dichiara esattamente
+questo, e nient'altro.
+
+Lezione operativa, gia' vista in questa sessione con gli inode e i numeri di
+handle: **su una macchina che non si puo' ispezionare, una deduzione plausibile
+va trattata come un'ipotesi finche' un canale non la stampa.** L'unico canale
+che una corsa silenziosa lascia passare e' un avviso.
+
 ### 17.79 Il punto esatto in cui Windows si ferma, e una parentesi
 
 Il rifiuto `birth_provisioning_elevation_required` non arriva dalla creazione,
 come sembrava: arriva da `_install_author_store_v1`, cioe' dalla **rinomina che
 pubblica il finale**. La rinomina riapplica il descrittore, e il proprietario di
 quel descrittore e' `SYSTEM`; assegnare `SYSTEM` come proprietario richiede
-`SeRestorePrivilege`, che un token amministrativo filtrato da UAC non porta.
-Sul runner pubblico non elevato tutto il resto passa — sorgente letta, archivi
+`SeRestorePrivilege`. Sul runner pubblico tutto il resto passa — sorgente letta, archivi
 generati, insieme verificato — e si ferma soltanto l'ultimo passo. La riga si
 chiude con un'attivita' Windows elevata; il flusso di lavoro pubblico e'
 congelato, quindi costa un'altra fotografia.

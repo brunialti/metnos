@@ -22,8 +22,7 @@ from install.birth_authority_provisioner import (
 from . import support
 
 pytestmark = pytest.mark.skipif(
-    not support.can_set_owner(),
-    reason="the owner probe refused: " + support.owner_privilege_reason(),
+    os.name == "nt", reason=support.WINDOWS_BLOCKER_V1
 )
 
 BUILD = support.build_id()
