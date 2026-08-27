@@ -4158,6 +4158,25 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.48 Le otto rosse sono ammesse: la fase pre-correzione e' chiusa
+
+Il manifesto dichiara tutte e otto `may_green`: **possono** essere verdi prima
+della correzione, non **devono**. La fotografia le registra come sono, e il modo
+fotografia dell'esecuzione pubblica passa. Il lavoro «riassunto» resta rosso
+perche' gira in modo finale, che pretende tutte le celle verdi: e' l'esito
+atteso finche' il prodotto 2A non e' implementato, non un difetto da inseguire.
+
+Ne segue lo stato reale della sequenza del §17.8:
+
+- passo 1 (i tre lavori Windows rossi) — **chiuso**: tutte e sei le attivita'
+  eseguono e registrano; cinque sono verdi anche in modo finale;
+- passo 5 (congelamento e fotografia) — **fatto**, quinta fotografia;
+- passo 6 — **il prossimo**: applicare lo stash 2A e implementare il prodotto
+  contro la base congelata.
+
+Le otto celle del §17.47 non bloccano il passo 6: si rivedranno quando il
+prodotto sara' implementato, che e' il momento in cui la base pretende il verde.
+
 ### 17.47 Che cosa resta rosso, cella per cella
 
 Il solo lavoro rosso e' ACL Windows, con 8 celle su 65. Non sono un unico
