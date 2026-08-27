@@ -1595,7 +1595,7 @@ verde.
 | Materiale del contesto canonico e inerte | `_prepare_installed_admission_context_v1` | `rm0008_2b/test_context_material.py` | `rm0008_2b/test_set_document.py` | `installed_provisioner_proof_v1`, ricostruzione dal catalogo installato | verde su POSIX | `8e85bd4d` |
 | Recupero da ogni arresto | `_TransactionJournalV1.recover_header`, `recover_checkpoint_pending` | `rm0008_2b/test_journal.py` | `rm0008_2b/test_recovery.py` | `installed_provisioner_proof_v1`, confini di processo reali | **parziale**: le sette forme interrotte sono costruite con la primitiva e convergono; l'uccisione reale del processo dopo ogni singolo passo di scrittura del §12.1.13 non e' eseguita | `f9b255cb` |
 | Sicurezza Linux | primitiva 2A + predispositore | base 2A (91 celle) | `rm0008_2b/*` | `installed_provisioner_proof_v1` | verde | `b4d648e3`, `a2da27b5` |
-| Sicurezza Windows reale nel confine del predispositore | primitiva 2A | base 2A, tre lavori Windows | N/A — vedi esito | N/A — vedi esito | **non provato per il predispositore**: le celle Windows certificano la primitiva 2A; le prove 2B-2F saltano su `nt`. La matrice pubblica Windows del predispositore resta da eseguire | `b4d648e3` |
+| Sicurezza Windows reale nel confine del predispositore | primitiva 2A + predispositore | base 2A, tre lavori Windows | `rm0008_2b/*` girano su `nt` dove il token puo' dare il proprietario esatto | `installed_provisioner_proof_v1` | **parziale**: la lettura storica su Windows era rotta nel prodotto ed e' corretta; le celle che creano un oggetto Birth chiedono il privilegio di proprietario e girano soltanto nel lavoro elevato. Il lavoro Windows ordinario le salta dichiarandolo | `5b7301a`, `631f3a9` |
 | Vista pubblica priva di autorità | `PreparedBundleViewV1` | `rm0008_2b/test_commit_link.py`, ispezione transitiva | `rm0008_2b/test_commit_crossing.py` | N/A — attivazione gruppo 3 | verde su POSIX | `b752e1fd` |
 | Runtime ancora non attivo | assenza di chiamanti migrati | cella R1 della base | `rm0008_2b/test_installed_proof.py` | `installed_provisioner_proof_v1`, passo `nothing_is_active` | verde | `a2da27b5` |
 | Nessuna interpretazione o modifica delle quattro branche Phase 3 | `_prepare_birth_authorities_or_defer`, `_ensure_birth_authorities_prepared` | lettura del codice: le due funzioni non ricevono ne' leggono la modalita' | `rm0008_2b/test_author.py`, entrate senza parametri | `installed_provisioner_proof_v1` non avvia la macchina Phase 3 | verde | `80261b49` |
@@ -1603,10 +1603,11 @@ verde.
 
 **Requisiti non provati, elencati separatamente:**
 
-1. **Confine Windows del predispositore.** Le prove 2B-2F girano soltanto su
-   POSIX. Le tre attivita' Windows della base certificano la primitiva 2A —
-   descrittore di sicurezza, privilegio, rinomina e disposizione per handle —
-   ma nessuna cella attraversa il predispositore su Windows.
+1. **Confine Windows del predispositore, parte elevata.** Le celle 2B-2F ora
+   girano su `nt`, ma soltanto dove il token puo' dare a un oggetto Birth il
+   proprietario esatto: nel lavoro Windows ordinario si saltano dichiarando il
+   motivo. Resta da collegarle a un'attivita' elevata come quella della base,
+   perche' oggi nessun lavoro pubblico le esegue davvero su Windows.
 2. **Arresto reale a ogni singolo passo di scrittura** (§12.1.13). Le forme che
    un arresto lascia sono costruite con la stessa primitiva e convergono tutte,
    ma il processo non viene ucciso dopo ognuno dei sei momenti di ogni classe di
@@ -4264,6 +4265,30 @@ cartella pubblica, con la rimozione a fine cella. Va nel prossimo lotto.
 Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
+
+### 17.78 Su Windows una radice storica non aveva alcun profilo
+
+Insistere sulla matrice Windows ha trovato un **difetto di prodotto**, non
+dell'apparato. La verifica del profilo su Windows nominava quattro profili —
+`confidential`, `integrity_only`, `historical_private`, `historical_public` — ma
+il costruttore del descrittore ne conosce due e rifiuta ogni altro nome. Ne
+seguiva che **ogni lettura di una radice storica su Windows finiva in
+`birth_provisioning_acl_unsafe`**: la sorgente autore precedente, il registro di
+approvazione e l'autorita' semantica non erano leggibili li'. Su POSIX il
+difetto non si vede, perche' quel ramo non passa dal costruttore di descrittori.
+
+Correzione minima e vera: una radice storica porta gli stessi due descrittori —
+privata significa riservata, pubblica significa sola integrita'. Dopo la
+correzione i fallimenti Windows sono passati da venti a dieci e la natura e'
+cambiata: non piu' "non so leggere", ma "non ho il privilegio per dare il
+proprietario". Che e' un fatto dell'ambiente, non del codice: le celle che
+creano un oggetto Birth ora lo chiedono con una sonda che usa il percorso di
+creazione del prodotto, e si saltano dove manca invece di fallire dicendo
+altro. Il ciclo pubblico e' verde su tutti e nove i lavori.
+
+Resta un solo passo per chiudere la riga: collegare le celle 2B-2F a
+un'attivita' elevata come quella della base, perche' oggi nessun lavoro
+pubblico le esegue davvero su Windows.
 
 ### 17.77 Matrice Windows del predispositore: tentata, misurata, dichiarata
 
