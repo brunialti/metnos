@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-import _rm0008_2b_support as support
+from . import support
 from install import birth_authority_provisioner as provisioning
 from install.birth_authority_provisioner import (
     BirthProvisioningError, CheckpointV1, ProvisioningStateV1,

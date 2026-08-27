@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-import _rm0008_2b_support as support
+from . import support
 from install import birth_authority_provisioner as provisioning
 from install.birth_authority_provisioner import (
     AuthorProvisioningOutcomeV1, BirthProvisioningError, ProvisioningStateV1,
