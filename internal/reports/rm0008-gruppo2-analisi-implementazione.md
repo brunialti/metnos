@@ -4158,6 +4158,22 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.49 Lo stash 2A e' una bozza anteriore, non un blocco da applicare
+
+Applicato in prova, lo stash apre 32 conflitti sullo stesso file. Il primo li
+riassume tutti: lo stash aggiunge al tipo dell'oggetto i valori «collegamento
+simbolico» e «punto di reinstradamento», mentre il codice attuale ne dichiara
+due soli e rifiuta un collegamento **prima** di costruire il record — che e'
+esattamente cio' che la base congelata pretende e che le celle misurano oggi.
+
+Lo stash e' quindi anteriore a gran parte del lavoro ora nel file: applicarlo
+in blocco riporterebbe indietro decisioni gia' misurate. Il criterio di fusione
+e': tenere cio' che la base congelata pretende e prendere dallo stash solo le
+capacita' nuove che il file attuale non ha.
+
+La prova e' stata annullata e l'albero e' pulito. La fusione procede per parti,
+con la suite POSIX come rete a ogni passo.
+
 ### 17.48 Le otto rosse sono ammesse: la fase pre-correzione e' chiusa
 
 Il manifesto dichiara tutte e otto `may_green`: **possono** essere verdi prima
