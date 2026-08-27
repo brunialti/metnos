@@ -21,13 +21,6 @@ from install.birth_authority_provisioner import (
     acquire_author_source_v1,
 )
 
-# The Windows matrix of the provisioner is not proven yet: the historical
-# private root wants a profile the apparatus does not build correctly on
-# Windows, and a red cell that only says that is worse than a declared gap.
-# The gap is declared in section 13 of the group 2 report.
-pytestmark = pytest.mark.skipif(
-    os.name == "nt", reason="the provisioner Windows matrix is not proven yet"
-)
 posix_only = pytest.mark.skipif(
     os.name == "nt", reason="the fact under test is a POSIX one"
 )

@@ -2700,11 +2700,15 @@ class _SecureRootSession:
             return
         if self._service_sid is None:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        # A historical root carries the same two descriptors: private means
+        # confidential and public means integrity only.  Naming them
+        # differently here asked the builder for a profile it does not know,
+        # so every historical read on Windows ended in a refusal.
         profile = {
             _BirthObjectRole.birth_confidential: "confidential",
             _BirthObjectRole.birth_integrity_only: "integrity_only",
-            _BirthObjectRole.historical_private: "historical_private",
-            _BirthObjectRole.historical_public: "historical_public",
+            _BirthObjectRole.historical_private: "confidential",
+            _BirthObjectRole.historical_public: "integrity_only",
         }[profile]
         with _win_security_attributes(
             profile,
