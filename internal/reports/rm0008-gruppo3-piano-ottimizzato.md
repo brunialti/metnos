@@ -140,9 +140,13 @@ chiusa**, da decidere prima di finire la migrazione:
 2. `receipt_ttl_seconds` — stesso problema in forma minore: e' un parametro
    operativo, ma governa la validita' di una ricevuta.
 
-Nessuna delle due si risolve inventando un valore: vanno assegnate a una fonte
-chiusa e dichiarate, oppure lasciate fuori dalla migrazione con il motivo
-scritto.
+**Decise con Roberto il 27/8/2026: entrambe diventano costanti possedute dal
+codice**, in `runtime/executor_birth_policy_v1.py`. La versione della politica e'
+una proprieta' del codice che decide, non dell'installazione che lo esegue: si
+muove quando si muovono le regole ed e' uguale su ogni macchina. La durata
+delle ricevute porta con se' il proprio campo di validita' dichiarato, cosi' una
+futura preferenza firmata avra' dove sedersi e un valore fuori campo sara' un
+difetto invece che una sorpresa.
 
 ## 7. Procedura di rifotografia (l'unica cosa tacita e costosa)
 
