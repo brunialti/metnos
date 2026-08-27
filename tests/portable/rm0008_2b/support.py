@@ -174,3 +174,24 @@ def transaction_root(base: Path) -> Path:
 
 def staged_author_store(base: Path) -> Path:
     return transaction_root(base) / "author-root-v1"
+
+
+def stage_runtime_sources(tmp_path: Path, monkeypatch) -> Path:
+    """Copy the catalogued distribution files into an isolated, safe root.
+
+    The working tree of a developer is group-writable, and the capability
+    refuses such a source on purpose: a real installation is not.
+    """
+    import importlib
+    import shutil
+
+    module = provisioner()
+    runtime_config = importlib.import_module("config")
+    stage = tmp_path / "distribution"
+    stage.mkdir(mode=0o755, parents=True)
+    for _, _, files, _ in module._CONTEXT_CATALOG_V1:
+        for name in files:
+            shutil.copy(Path(runtime_config.PATH_RUNTIME) / name, stage / name)
+            os.chmod(stage / name, 0o644)
+    monkeypatch.setattr(runtime_config, "PATH_RUNTIME", stage)
+    return stage
