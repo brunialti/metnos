@@ -2142,6 +2142,14 @@ def validate_productive_mutation_graph(
         active.add(symbol)
         result = set(calls.get(symbol, ()))
         for target in tuple(result):
+            # The read-only door is a terminal: whoever calls it inherits a
+            # session it may only read with, and the door itself is checked
+            # separately for never reaching a mutation.  Expanding through it
+            # would make every caller of the bootstrap look like a mutator.
+            if target.startswith(f"{reader_module}::") and not symbol.startswith(
+                f"{reader_module}::"
+            ):
+                continue
             if target in definitions:
                 result.update(reachable(target, active))
         reachable_cache[symbol] = result
