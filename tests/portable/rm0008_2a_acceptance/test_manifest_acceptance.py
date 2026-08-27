@@ -1883,6 +1883,23 @@ def exposed(name):
             "role_catalog=catalog", "role_catalog=tuple(catalog.exact_bindings)"
         )
     )
+    phase_calls_a_mutation = dict(baseline)
+    phase_calls_a_mutation["install/phases/phase3_code.py"] = """
+from install.birth_authority_provisioner import (
+    ensure_executor_birth_authorities_prepared,
+)
+def run(session):
+    ensure_executor_birth_authorities_prepared()
+    return session.rename_no_replace()
+"""
+    phase_calls_the_layout = dict(baseline)
+    phase_calls_the_layout["install/phases/phase3_code.py"] = """
+from install.birth_authority_provisioning import (
+    open_birth_provisioning_layout_v1,
+)
+def run():
+    return open_birth_provisioning_layout_v1()
+"""
     public_provisioner_door = dict(baseline)
     public_provisioner_door["install/birth_authority_provisioner.py"] += """
 def stage_author_store_v1(session):
@@ -1890,18 +1907,20 @@ def stage_author_store_v1(session):
 """
     runtime_reaches_provisioner = dict(baseline)
     runtime_reaches_provisioner["runtime/escape.py"] = """
-from birth_authority_provisioner import provision_author_root_v1
-def exposed(layout):
-    return provision_author_root_v1(layout)
+from birth_authority_provisioner import ensure_executor_birth_authorities_prepared
+def exposed():
+    return ensure_executor_birth_authorities_prepared()
 """
     absent_provisioner_entry = dict(baseline)
     absent_provisioner_entry["install/birth_authority_provisioner.py"] = (
         absent_provisioner_entry["install/birth_authority_provisioner.py"].replace(
-            "def provision_author_root_v1(layout):",
-            "def _provision_author_root_v1(layout):",
+            "def ensure_executor_birth_authorities_prepared():",
+            "def _ensure_executor_birth_authorities_prepared():",
         )
     )
     for mutant in (
+        phase_calls_a_mutation,
+        phase_calls_the_layout,
         public_provisioner_door,
         runtime_reaches_provisioner,
         absent_provisioner_entry,
@@ -2051,11 +2070,15 @@ def _resolve_author_source_v1():
     return secure_fs._open_legacy_root_session()
 def _install_author_store_v1(session):
     return session.rename_no_replace()
-def provision_author_root_v1(layout):
+def _provision_prepared_authorities_v1(layout):
     _resolve_author_source_v1()
     journal = _TransactionJournalV1(layout.birth_session)
     journal._publish()
     return _install_author_store_v1(layout.birth_session)
+def prepare_or_defer_until_legacy_author_exists():
+    return _provision_prepared_authorities_v1(None)
+def ensure_executor_birth_authorities_prepared():
+    return _provision_prepared_authorities_v1(None)
 """,
     }
 

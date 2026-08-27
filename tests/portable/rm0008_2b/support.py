@@ -13,7 +13,9 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-BUILD = "rm0008-group2-2b"
+def build_id() -> str:
+    """The identifier the provisioner derives from its own loaded code."""
+    return provisioner()._provisioner_build_id_v1()
 
 
 def provisioner():
@@ -92,13 +94,8 @@ def open_layout(monkeypatch, base: Path):
 def provision(monkeypatch, base: Path):
     """Run one whole provisioning attempt on its own session."""
     module = provisioner()
-    layout = open_layout(monkeypatch, base)
-    try:
-        return module.provision_author_root_v1(
-            layout, provisioner_build_id=BUILD,
-        )
-    finally:
-        layout.birth_session.close()
+    use_config(monkeypatch, base)
+    return module.ensure_executor_birth_authorities_prepared()
 
 
 def canonical_json(value: object) -> bytes:
@@ -423,7 +420,7 @@ def provision_until_verified(monkeypatch, base: Path):
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
             journal.write_header(
-                module.TransactionHeaderV1(transaction, BUILD)
+                module.TransactionHeaderV1(transaction, build_id())
             )
             journal.ensure_checkpoints()
             zero = module.CheckpointV1(
@@ -437,3 +434,10 @@ def provision_until_verified(monkeypatch, base: Path):
             )
             module._advance_to_authorities_v1(session, journal, layout, staged)
     return transaction
+
+
+def prepare_or_defer(monkeypatch, base: Path):
+    """The first installer entry: inspects, resumes, or defers."""
+    module = provisioner()
+    use_config(monkeypatch, base)
+    return module.prepare_or_defer_until_legacy_author_exists()

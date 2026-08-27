@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(
     os.name == "nt", reason="the Windows profile is certified by its own job"
 )
 
-BUILD = support.BUILD
+BUILD = support.build_id()
 
 
 def _config(tmp_path: Path, *, author=None, extra=()) -> Path:
@@ -170,7 +170,7 @@ def test_an_installation_without_any_author_creates_nothing(
     tmp_path: Path, monkeypatch,
 ):
     base = _config(tmp_path)
-    result = support.provision(monkeypatch, base)
+    result = support.prepare_or_defer(monkeypatch, base)
     assert result.outcome is AuthorProvisioningOutcomeV1.author_not_yet_created
     assert sorted(item.name for item in (base / "birth").iterdir()) == [
         "operator-input-v1", "provisioning-v1.lock",
@@ -332,3 +332,32 @@ def test_a_store_without_a_marker_is_ambiguous(tmp_path: Path, monkeypatch):
         support.provision(monkeypatch, base)
     assert error.value.code == "birth_provisioning_recovery_ambiguous"
     assert (_store(base) / "keystore.json").exists()
+
+
+def test_the_two_entries_take_no_cryptographic_parameter():
+    """Section 10.6: fixed layout, no path, no key, no mode."""
+    import inspect
+
+    for name in (
+        "prepare_or_defer_until_legacy_author_exists",
+        "ensure_executor_birth_authorities_prepared",
+    ):
+        entry = getattr(provisioning, name)
+        assert list(inspect.signature(entry).parameters) == []
+
+
+def test_deferring_is_not_an_outcome_of_the_second_entry(
+    tmp_path: Path, monkeypatch,
+):
+    base = _config(tmp_path)
+    deferred = support.prepare_or_defer(monkeypatch, base)
+    assert deferred.outcome is AuthorProvisioningOutcomeV1.author_not_yet_created
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_author_identity_incomplete"
+
+
+def test_the_build_identifier_follows_the_loaded_code(monkeypatch):
+    first = provisioning._provisioner_build_id_v1()
+    assert first == provisioning._provisioner_build_id_v1()
+    assert first.startswith("birth-provisioner-v1-") and len(first) == 85

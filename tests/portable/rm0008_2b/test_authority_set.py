@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(
     os.name == "nt", reason="the Windows profile is certified by its own job"
 )
 
-BUILD = support.BUILD
+BUILD = support.build_id()
 
 
 def _stage(tmp_path: Path, monkeypatch, *, author=None, keys=None):
