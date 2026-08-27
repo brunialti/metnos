@@ -4645,10 +4645,6 @@ def _win_inventory(
             )
             if name not in {".", ".."}:
                 name = _relative_components((name,))[0]
-                if entry.FileAttributes & _FILE_ATTRIBUTE_REPARSE_POINT:
-                    raise BirthSecureFSError(
-                        "birth_provisioning_recovery_ambiguous"
-                    )
                 directory_entry = bool(
                     entry.FileAttributes & _FILE_ATTRIBUTE_DIRECTORY
                 )
@@ -4673,6 +4669,16 @@ def _win_inventory(
                     observed = _win_info(child)
                 finally:
                     _win_close(child)
+                # The enumeration buffer is hearsay: the object behind a
+                # listed name can be exchanged before it is opened.  Every
+                # refusal is therefore taken from the handle just opened, and
+                # a name that reaches more than one object is refused too.
+                if observed[1] & _FILE_ATTRIBUTE_REPARSE_POINT or (
+                    not directory_entry and observed[2] != 1
+                ):
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
                 identity = observed[0]
                 budget.include(scope + (name,), identity)
                 result.append(

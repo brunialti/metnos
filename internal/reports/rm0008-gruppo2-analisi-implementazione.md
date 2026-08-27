@@ -4037,6 +4037,20 @@ cancello.
 Entrambe le correzioni toccano l'apparato congelato ed entrano nella lista
 d'attesa del §17.21.
 
+### 17.31 L'elenco e' una diceria: il rifiuto nasce dalla maniglia
+
+L'inventario Windows leggeva dal buffer dell'enumerazione la parola degli
+attributi e rifiutava li' il punto di reinstradamento. Fra il momento in cui un
+nome viene elencato e quello in cui viene aperto l'oggetto puo' essere
+scambiato: la decisione stava percio' su una diceria, non su cio' che il
+prodotto ha davvero in mano.
+
+Il rifiuto e' stato spostato **dopo** la riapertura ed e' preso dai fatti della
+maniglia: reinstradamento e nome che raggiunge piu' di un oggetto. Le due celle
+che chiedevano proprio questo — il collegamento fisico e la giunzione — sono
+passate senza toccarle, e il file dell'inventario Windows e' andato da 15 a
+19 celle su 19 sul PC. L'elenco resta solo la sorgente dei nomi.
+
 ### 17.23 Il lucchetto e' l'unico punto dove il nome assoluto resiste
 
 La creazione del lucchetto con il proprio descrittore e la sua riapertura
