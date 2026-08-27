@@ -1604,10 +1604,13 @@ verde.
 **Requisiti non provati, elencati separatamente:**
 
 1. **Confine Windows del predispositore, parte elevata.** Le celle 2B-2F ora
-   girano su `nt`, ma soltanto dove il token puo' dare a un oggetto Birth il
-   proprietario esatto: nel lavoro Windows ordinario si saltano dichiarando il
-   motivo. Resta da collegarle a un'attivita' elevata come quella della base,
-   perche' oggi nessun lavoro pubblico le esegue davvero su Windows.
+   girano su `nt`, ma non arrivano in fondo su un token non elevato. Il punto
+   esatto e' la **pubblicazione dei finali**: la rinomina riapplica il
+   descrittore e il proprietario di quel descrittore e' `SYSTEM`, che richiede
+   `SeRestorePrivilege`. Creazione, allestimento e verifica passano; e' l'ultimo
+   passo a fermarsi. Chiudere la riga richiede un'attivita' Windows elevata, e
+   quindi una modifica del flusso di lavoro pubblico, che e' congelato: costa
+   un'altra fotografia.
 2. **Arresto reale a ogni singolo passo di scrittura** (§12.1.13). Le forme che
    un arresto lascia sono costruite con la stessa primitiva e convergono tutte,
    ma il processo non viene ucciso dopo ognuno dei sei momenti di ogni classe di
@@ -4265,6 +4268,24 @@ cartella pubblica, con la rimozione a fine cella. Va nel prossimo lotto.
 Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
+
+### 17.79 Il punto esatto in cui Windows si ferma, e una parentesi
+
+Il rifiuto `birth_provisioning_elevation_required` non arriva dalla creazione,
+come sembrava: arriva da `_install_author_store_v1`, cioe' dalla **rinomina che
+pubblica il finale**. La rinomina riapplica il descrittore, e il proprietario di
+quel descrittore e' `SYSTEM`; assegnare `SYSTEM` come proprietario richiede
+`SeRestorePrivilege`, che un token amministrativo filtrato da UAC non porta.
+Sul runner pubblico non elevato tutto il resto passa — sorgente letta, archivi
+generati, insieme verificato — e si ferma soltanto l'ultimo passo. La riga si
+chiude con un'attivita' Windows elevata; il flusso di lavoro pubblico e'
+congelato, quindi costa un'altra fotografia.
+
+Guardando quel codice e' saltata fuori una **parentesi fuori posto** in
+`_win_restore_privilege`: `raise BirthSecureFSError(code, _win_error)("OpenProcessToken")`
+costruisce l'errore, poi **chiama** l'oggetto costruito. Se `OpenProcessToken`
+fallisse, il chiamante riceverebbe un `TypeError` invece del codice stabile, e
+la causa registrata sarebbe la funzione invece dell'errore di sistema. Corretta.
 
 ### 17.78 Su Windows una radice storica non aveva alcun profilo
 

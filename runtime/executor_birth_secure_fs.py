@@ -1863,8 +1863,9 @@ def _win_restore_privilege() -> Iterator[None]:
         _TOKEN_QUERY | _TOKEN_ADJUST_PRIVILEGES,
         ctypes.byref(token),
     ):
-        raise BirthSecureFSError("birth_provisioning_elevation_required", _win_error)(
-            "OpenProcessToken"
+        raise BirthSecureFSError(
+            "birth_provisioning_elevation_required",
+            _win_error("OpenProcessToken"),
         )
     previous = _TOKEN_PRIVILEGES()
     previous_size = wintypes.DWORD(ctypes.sizeof(previous))
