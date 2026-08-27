@@ -1,6 +1,7 @@
 """Core-owned orchestration of the seven RM-0008 property groups."""
 from __future__ import annotations
 
+import tomllib
 import hashlib
 import json
 import math
@@ -133,7 +134,9 @@ class ObservedPropertyRunner:
 
     def _entrypoint(self) -> str:
         try:
-            manifest = __import__("tomllib").loads(self._observed.snapshot.manifest_bytes.decode("utf-8"))
+            manifest = tomllib.loads(
+                self._observed.snapshot.manifest_bytes.decode("utf-8")
+            )
             files = manifest["code"]["files"]
             entrypoint = files[0]
         except (KeyError, IndexError, TypeError, UnicodeDecodeError, ValueError) as exc:
