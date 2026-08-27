@@ -4252,6 +4252,37 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.74 Incremento 2E chiuso, e una divergenza fra i due caricatori
+
+Chiuso il §10.5. Il nucleo puo' consegnare soltanto fatti: `BirthCommitFactsV1`
+non ha un campo dove far passare emittente, verificatore, risolutore d'epoca,
+chiave, percorso, primitiva o un'autorizzazione gia' costruita, e rifiuta un
+valore chiamabile in qualunque campo. Il pubblicatore e' costruito dal modulo
+privato con chiave autore, anello, chiave Admission, emittente e verificatore
+esatti, e possiede una sola primitiva d'archivio. L'ispezione transitiva della
+vista pubblica cammina su tutti gli oggetti raggiungibili e non trova nucleo,
+chiavi private, closure di firma o fabbriche.
+
+L'attraversamento e' reale e sta nella suite pubblica: **la chiave che il
+predispositore installa e' la stessa che pubblica**. Una generazione nasce
+davvero attraverso `commit_birth_snapshot` su una radice isolata, la ricevuta la
+emette l'identita' Admission predisposta e la autentica il verificatore
+produttivo dello stesso insieme; una ricevuta di un'altra identita' non passa.
+
+**Divergenza trovata attraversando, non leggendo.** Il caricatore storico
+`load_birth_keystore()` pretende che la directory `public` di un archivio sia
+privata (0700), mentre la disposizione firmata le assegna il profilo di sola
+integrita' (0755), perche' le pubbliche sono pubbliche. Conseguenza: un archivio
+costruito dal predispositore **non e' leggibile dal caricatore storico**. Oggi
+non rompe nulla, perche' nessuno punta quel caricatore all'archivio predisposto,
+ma e' esattamente il genere di incompatibilita' che il gruppo 3 incontrerebbe
+migrando i chiamanti: va sanata li', allineando il caricatore storico al
+profilo della disposizione, non allentando la disposizione.
+
+Effetto collaterale utile: per attraversare la primitiva vera le prove pubbliche
+hanno dovuto spostare anche le radici mutabili. Prima una prova portatile poteva
+leggere l'installazione reale della macchina che la esegue; ora non piu'.
+
 ### 17.73 Incremento 2D chiuso, e le sette politiche non ancora applicate
 
 Chiuso il §10.4. Il catalogo V1 e' una costante posseduta dal codice: undici
