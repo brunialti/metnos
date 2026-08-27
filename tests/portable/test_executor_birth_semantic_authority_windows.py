@@ -26,7 +26,22 @@ def _canonical(value: object) -> bytes:
                       separators=(",", ":"), allow_nan=False).encode()
 
 
+def _own_permissions(path: Path) -> None:
+    """Give one directory its own permission list, as a real root has.
+
+    A historical read refuses a root whose permissions arrive from an ancestor,
+    so the fixture must provision what the contract admits: the inherited
+    entries are copied in place and inheritance is switched off.
+    """
+    subprocess.run(
+        ["icacls", str(path), "/inheritance:d"],
+        check=True,
+        capture_output=True,
+    )
+
+
 def _provision(root: Path) -> tuple[dict[str, object], Ed25519PrivateKey]:
+    _own_permissions(root)
     private = Ed25519PrivateKey.generate()
     (root / "evidence").mkdir()
     (root / "semantic.pub").write_bytes(private.public_key().public_bytes_raw())
