@@ -572,6 +572,14 @@ def can_set_owner() -> bool:
                 f"{type(exc).__name__}: {exc}"
                 + (f" (cause: {cause})" if cause is not None else "")
             )
+            # A warning is the one channel a quiet run still prints, and on a
+            # runner the log is the only place this answer can appear.
+            import warnings
+
+            warnings.warn(
+                "RM-0008 owner probe refused: " + _OWNER_PRIVILEGE_REASON[0],
+                stacklevel=1,
+            )
             _OWNER_PRIVILEGE.append(False)
             return False
     _OWNER_PRIVILEGE.append(True)
