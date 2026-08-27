@@ -80,7 +80,10 @@ def test_the_catalogue_covers_the_eleven_closed_names():
     assert len(set(names)) == len(names)
     states = {item[3] for item in catalog.CONTEXT_CATALOG_V1}
     assert states <= {"productive", "prepared_only"}
-    assert "prepared_only" in states
+    # Group 3 made the last seven policies real, so today every component is
+    # productive.  A `prepared_only` reappearing here is a statement that some
+    # policy stopped being applied, and it must be argued, not slipped in.
+    assert states == {"productive"}
 
 
 def test_every_catalogued_file_exists_in_the_distribution():
@@ -179,15 +182,18 @@ def test_a_catalogue_entry_that_moves_changes_the_identity(
         first.prepared_admission_context_id
     )
 
-    promoted = tuple(
-        (name, version, files, "productive" if name == "linter" else state)
+    # The enforcement state is part of the identity in both directions.  Every
+    # component is productive today, so the move that proves it is a demotion.
+    demoted = tuple(
+        (name, version, files, "prepared_only" if name == "linter" else state)
         for name, version, files, state in original
     )
-    monkeypatch.setattr(catalog, "CONTEXT_CATALOG_V1", promoted)
+    monkeypatch.setattr(catalog, "CONTEXT_CATALOG_V1", demoted)
     changed = provisioning._prepare_installed_admission_context_v1(REGISTRY)
     assert changed.prepared_admission_context_id != (
         first.prepared_admission_context_id
     )
+    assert changed.prepared_context_epoch != first.prepared_context_epoch
 
 
 def test_the_factory_takes_no_catalogue_from_the_caller():

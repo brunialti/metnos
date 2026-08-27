@@ -28,7 +28,12 @@ PREPARED_STATE_V1 = "prepared_not_active"
 # add, remove or rename an entry, and no configuration arrives from a document.
 # ``enforcement_state`` says the truth about today, not the intention: section
 # 9.2 requires ``prepared_only`` wherever the current code does not really
-# apply the policy, and group 3 is what turns one of these to ``productive``.
+# apply the policy.  Group 3 made the last seven real — the linter decides, the
+# vocabulary is consulted by the standard check, the authority registry is read
+# under the barrier and proven consumed, the sandbox backend is measured and
+# authenticated, and templates, primitives and code paths resolve from closed
+# owners — so every component is now ``productive``.  Turning one back is a
+# statement that its policy stopped being applied, never a convenience.
 CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
     (
         "standard", "1",
@@ -38,14 +43,18 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
         ),
         "productive",
     ),
-    ("linter", "1", ("manifest_lint.py", "manifest_rules.py"), "prepared_only"),
+    ("linter", "1", ("manifest_lint.py", "manifest_rules.py"), "productive"),
     (
         "vocabulary", "1",
         ("policy.py", "capabilities.py", "vocab.py"),
-        "prepared_only",
+        "productive",
     ),
-    ("authority_registry", "1", (), "prepared_only"),
-    ("sandbox_registry", "1", ("sandbox.py",), "prepared_only"),
+    ("authority_registry", "1", (), "productive"),
+    (
+        "sandbox_registry", "1",
+        ("executor_birth_sandbox_registry_v1.py",),
+        "productive",
+    ),
     (
         "property_catalog", "1",
         ("executor_birth_properties.py", "executor_birth_property_runner.py"),
@@ -67,9 +76,17 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
         ),
         "productive",
     ),
-    ("template_allowlist", "1", (), "prepared_only"),
-    ("primitive_allowlist", "1", ("executor_birth_properties.py",), "prepared_only"),
-    ("dependency_allowlist", "1", ("code_file_paths.py",), "prepared_only"),
+    (
+        "template_allowlist", "1",
+        ("executor_birth_template_table_v1.py",),
+        "productive",
+    ),
+    (
+        "primitive_allowlist", "1",
+        ("executor_birth_properties.py", "executor_birth_primitive_table_v1.py"),
+        "productive",
+    ),
+    ("dependency_allowlist", "1", ("code_file_paths.py",), "productive"),
 )
 
 
