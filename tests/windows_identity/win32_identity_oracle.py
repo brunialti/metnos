@@ -835,16 +835,36 @@ def run_probe_as(
     directory: bool = False,
     timeout_ms: int = 30_000,
 ) -> int:
-    arguments = [
-        sys.executable,
-        "-I",
-        "-B",
+    # Temporary diagnostic: the child of CreateProcessWithLogonW cannot inherit
+    # handles, so its output would be lost.  It is redirected into a file the
+    # caller can read back.
+    diagnostic = target.parent / "probe-output.txt"
+    child_argv = [
         str(probe_script),
         "--child",
         operation,
         str(target),
         "directory" if directory else "file",
     ]
+    inline = (
+        "import runpy,sys\n"
+        f"sys.argv={child_argv!r}\n"
+        f"handle=open({str(diagnostic)!r},'w',encoding='utf-8')\n"
+        "sys.stdout=handle\nsys.stderr=handle\n"
+        "try:\n"
+        f"    runpy.run_path({str(probe_script)!r}, run_name='__main__')\n"
+        "except SystemExit as exit_code:\n"
+        "    handle.flush()\n"
+        "    raise\n"
+        "except BaseException:\n"
+        "    import traceback\n"
+        "    traceback.print_exc(file=handle)\n"
+        "    handle.flush()\n"
+        "    raise\n"
+        "finally:\n"
+        "    handle.flush()\n"
+    )
+    arguments = [sys.executable, "-I", "-B", "-c", inline]
     command_line = ctypes.create_unicode_buffer(subprocess.list2cmdline(arguments))
     startup = _STARTUPINFOW()
     startup.cb = ctypes.sizeof(startup)
@@ -886,6 +906,10 @@ def run_probe_as(
         wait_result = _KERNEL32.WaitForSingleObject(process.hProcess, timeout_ms)
         if wait_result == _WAIT_TIMEOUT:
             raise TimeoutError("real-identity child probe timed out")
+        try:
+            print("PROBE-OUTPUT", diagnostic.read_text(encoding="utf-8")[:2000])
+        except OSError as unreadable:
+            print("PROBE-OUTPUT missing:", unreadable)
         if wait_result != _WAIT_OBJECT_0:
             _raise_last_error("WaitForSingleObject")
         exit_code = wintypes.DWORD(_STILL_ACTIVE)
