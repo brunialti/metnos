@@ -1508,7 +1508,7 @@ def _win_open_absolute_v1(path: str, *, directory: bool) -> int:
     counted = _UNICODE_STRING(
         Length=len(path.encode("utf-16-le")) + 8,
         MaximumLength=ctypes.sizeof(name),
-        Buffer=ctypes.cast(name, ctypes.c_wchar_p),
+        Buffer=ctypes.cast(name, ctypes.c_void_p),
     )
     attributes = _OBJECT_ATTRIBUTES(
         Length=ctypes.sizeof(_OBJECT_ATTRIBUTES),
