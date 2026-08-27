@@ -4188,6 +4188,27 @@ La cella della chiamata non elevata resta rossa: il lucchetto ora si prende, ma
 qualcosa piu' avanti nel percorso non da' ancora l'esito atteso. E' il prossimo
 punto da guardare, con una causa in meno.
 
+### 17.53 La sonda sotto altro account non si lascia osservare
+
+Per sapere quale rifiuto riceve l'utente non elevato ho provato tre volte a
+farne uscire la voce, lavorando **fuori** dagli alberi congelati (l'oracolo
+indipendente non e' congelato):
+
+1. redirigere l'uscita del figlio in un file accanto al bersaglio — il figlio
+   non puo' scrivere li', ed e' proprio il punto: quella cartella e' in sola
+   lettura per lui;
+2. redirigerla in una cartella scrivibile da tutti — riesce, ma il figlio non
+   stampa nulla: percorre il ramo «codice diverso da quello atteso» in
+   silenzio, quindi il rifiuto c'e' e non e' quello voluto;
+3. annotare ogni rifiuto costruito dal prodotto dentro il figlio — l'oracolo
+   pero' e' anche la sonda di altre celle, e l'aggiunta le ha rotte.
+
+Ogni tentativo e' stato annullato e l'oracolo e' tornato esattamente com'era.
+Cio' che si sa ora e' un fatto in piu': il figlio **non fallisce**, riceve un
+rifiuto tipizzato diverso da «servono privilegi». Per identificarlo servira'
+una sonda propria, non l'oracolo condiviso, oppure una macchina Windows su cui
+eseguire il caso a mano.
+
 ### 17.51 La famiglia del privilegio non era ambiente: tre celle su quattro
 
 L'analisi del §17.47 dava per ambientali tutte e quattro le celle del privilegio

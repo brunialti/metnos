@@ -826,9 +826,6 @@ def _assert_standard_token(token: int, expected_sid: str) -> None:
         raise AssertionError("standard child token has an unexpected linked-token type")
 
 
-REPOSITORY_RUNTIME = Path(__file__).resolve().parents[2] / "runtime"
-
-
 def run_probe_as(
     account: LocalAccount,
     probe_script: Path,
@@ -838,55 +835,16 @@ def run_probe_as(
     directory: bool = False,
     timeout_ms: int = 30_000,
 ) -> int:
-    # Temporary diagnostic: the child of CreateProcessWithLogonW cannot inherit
-    # handles, so its output would be lost.  It is redirected into a file the
-    # caller can read back.
-    diagnostic = (
-        Path(os.environ.get("SystemRoot", "C:\\Windows"))
-        / "Temp"
-        / f"rm0008-probe-{operation}.txt"
-    )
-    child_argv = [
+    arguments = [
+        sys.executable,
+        "-I",
+        "-B",
         str(probe_script),
         "--child",
         operation,
         str(target),
         "directory" if directory else "file",
     ]
-    inline = (
-        "import runpy,sys\n"
-        f"sys.argv={child_argv!r}\n"
-        "try:\n"
-        f"    handle=open({str(diagnostic)!r},'w',encoding='utf-8')\n"
-        "    sys.stdout=handle\n    sys.stderr=handle\n"
-        "except OSError:\n"
-        "    import io\n    handle=io.StringIO()\n"
-        "try:\n"
-        f"    sys.path.insert(0, {str(REPOSITORY_RUNTIME)!r})\n"
-        "    import executor_birth_secure_fs as product\n"
-        "    original=product.BirthSecureFSError.__init__\n"
-        "    def traced(self, code, cause=None):\n"
-        "        import traceback\n"
-        "        print('REFUSAL', code, file=handle)\n"
-        "        traceback.print_stack(limit=4, file=handle)\n"
-        "        original(self, code, cause)\n"
-        "    product.BirthSecureFSError.__init__=traced\n"
-        "except Exception:\n"
-        "    pass\n"
-        "try:\n"
-        f"    runpy.run_path({str(probe_script)!r}, run_name='__main__')\n"
-        "except SystemExit as exit_code:\n"
-        "    handle.flush()\n"
-        "    raise\n"
-        "except BaseException:\n"
-        "    import traceback\n"
-        "    traceback.print_exc(file=handle)\n"
-        "    handle.flush()\n"
-        "    raise\n"
-        "finally:\n"
-        "    handle.flush()\n"
-    )
-    arguments = [sys.executable, "-I", "-B", "-c", inline]
     command_line = ctypes.create_unicode_buffer(subprocess.list2cmdline(arguments))
     startup = _STARTUPINFOW()
     startup.cb = ctypes.sizeof(startup)
@@ -928,10 +886,6 @@ def run_probe_as(
         wait_result = _KERNEL32.WaitForSingleObject(process.hProcess, timeout_ms)
         if wait_result == _WAIT_TIMEOUT:
             raise TimeoutError("real-identity child probe timed out")
-        try:
-            print("PROBE-OUTPUT", diagnostic.read_text(encoding="utf-8")[:2000])
-        except OSError as unreadable:
-            print("PROBE-OUTPUT missing:", unreadable)
         if wait_result != _WAIT_OBJECT_0:
             _raise_last_error("WaitForSingleObject")
         exit_code = wintypes.DWORD(_STILL_ACTIVE)
