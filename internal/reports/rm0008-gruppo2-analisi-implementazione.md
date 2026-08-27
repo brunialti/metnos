@@ -4252,6 +4252,45 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.73 Incremento 2D chiuso, e le sette politiche non ancora applicate
+
+Chiuso il §10.4. Il catalogo V1 e' una costante posseduta dal codice: undici
+componenti, elenco di file chiuso, byte letti dalla distribuzione con la
+primitiva sicura. Identificativo ed epoca riusano senza varianti il framing del
+runtime, e il **vettore normativo del §9.5 e' fissato nelle prove**: undici
+digest di componente piu' identificativo ed epoca, tredici valori, tutti
+riprodotti alla lettera. Il materiale diventa durevole e viene riletto prima che
+dell'insieme si scriva una riga, perche' `set_id` dipende da quei byte;
+`set.json` ha lo schema chiuso del §4.3, non contiene percorsi ne' byte privati,
+e la sua identita' e' il digest con dominio del documento senza quel campo. Il
+flusso arriva a `verified` e li' si ferma.
+
+**Rapporto delle politiche non ancora applicate** (§10.4). Quattro componenti
+sono `productive` perche' il loro materiale e' davvero il codice che oggi
+decide: `standard`, `property_catalog`, `runner`, `review_policy`. Sette sono
+`prepared_only`, e ognuno dice perche':
+
+| Componente | Perche' non e' ancora applicato |
+|---|---|
+| `linter` | il catalogo dei controlli non invoca ancora il linter completo |
+| `vocabulary` | il consumo completo di politica e capacita' non e' provato |
+| `authority_registry` | l'insieme non e' installato nel bundle privato |
+| `sandbox_registry` | su Linux la risoluzione dell'ambiente non e' autenticata |
+| `template_allowlist` | l'identita' non governa ancora una risoluzione chiusa |
+| `primitive_allowlist` | l'identita' non governa ancora la raggiungibilita' |
+| `dependency_allowlist` | non esiste ancora un controllo completo degli import |
+
+Portarne uno a `productive` e' lavoro del gruppo 3, e cambia identificativo ed
+epoca per costruzione: una prova lo verifica.
+
+Due cose colte dai controlli, non da me. La cella R1 ha respinto la fabbrica del
+contesto perche' era pubblica e apriva una sorgente propria: il modulo deve avere
+**una porta sola**, e il §9.1 la chiama gia' "fabbrica interna". E la primitiva ha
+rifiutato di leggere la distribuzione dell'albero di lavoro, che e' scrivibile dal
+gruppo: e' il comportamento giusto — una sorgente che chiunque del gruppo puo'
+riscrivere non e' una sorgente — e ha costretto le prove a fornire una
+installazione vera invece di appoggiarsi ai permessi della macchina.
+
 ### 17.72 Incremento 2C chiuso, e una conseguenza dell'ordine degli stati
 
 Chiuso il §10.3. Gli ingressi pubblici dell'operatore si leggono e si
