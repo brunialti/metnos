@@ -3789,6 +3789,14 @@ class _SecureRootSession:
                     )
                     if status < 0:
                         error = _NTDLL.RtlNtStatusToDosError(status)
+                        # After a refused move both sides are read again on
+                        # their handles: the object that did not move must be
+                        # exactly the one that was verified, and only then is
+                        # the refusal classified.
+                        if _win_info(source_handle)[0] != before[0]:
+                            raise BirthSecureFSError(
+                                "birth_provisioning_recovery_ambiguous"
+                            )
                         # A move that must not replace anything, refused because
                         # the name is taken, is a conflict of transactions. The
                         # destination is not reopened by name to confirm it: the
