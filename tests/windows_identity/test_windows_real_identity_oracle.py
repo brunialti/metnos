@@ -340,3 +340,54 @@ def test_oracle_source_is_independent_from_product_security_helpers() -> None:
     assert "GetSecurityInfo" in source
     assert "GetAce" in source
     assert "EqualSid" in source
+
+
+def test_diagnostic_standard_user_refusal_is_reported(identity_lab: _IdentityLab) -> None:
+    """Temporary diagnostic: name the refusal a standard user receives.
+
+    The frozen worker reports only a numeric outcome, so the stable code never
+    reaches the cell that observes it.  This runs the same flow through a probe
+    that writes the code where the parent can read it.
+    """
+    import sys
+
+    repository = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(repository / "runtime"))
+    sys.path.insert(0, str(repository / "tests" / "windows_identity" / "rm0008_2a_acceptance"))
+    import _windows_support as support
+
+    product = support.product()
+    lab = identity_lab
+    root = lab.root / "birth"
+    root.mkdir()
+    oracle.apply_profile(root, "integrity_only", lab.service.sid, directory=True)
+    bindings = support.explicit_role_bindings(
+        product, (("never-log-this-secret.bin",), False, "birth_confidential")
+    )
+    with support.session(
+        root,
+        authenticated_sid=lab.service.sid,
+        create_root=False,
+        role_bindings=bindings,
+    ) as provisioner:
+        with support.exclusive(provisioner):
+            pass
+
+    source = (
+        repository / "tests" / "windows_identity" / "rm0008_nonelevated_probe.py"
+    ).read_text(encoding="utf-8")
+    source = source.replace(
+        "REPOSITORY = Path(__file__).resolve().parents[2]",
+        f"REPOSITORY = Path(r{str(repository)!r})",
+    )
+    probe = lab.root / "rm0008_nonelevated_probe.py"
+    probe.write_text(source, encoding="utf-8")
+    oracle.apply_profile(probe, "integrity_only", lab.service.sid, directory=False)
+    report = Path(os.environ.get("SystemRoot", "C:\\Windows")) / "Temp" / "rm0008-nonelevated.txt"
+    if report.exists():
+        report.unlink()
+    code = oracle.run_probe_as(
+        lab.service, probe, "product-create", root, directory=True
+    )
+    detail = report.read_text(encoding="utf-8").strip() if report.exists() else "(nessun rapporto)"
+    print(f"NONELEVATED code={code} detail={detail}")
