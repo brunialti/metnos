@@ -77,7 +77,7 @@ privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
 GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (dodicesima fotografia; ultimo pubblico verde `9e2be01`):
+i lavori (tredicesima fotografia; ultimo pubblico verde `cc49195`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -181,12 +181,28 @@ fotografia ciascuno, invece di una per modifica.
   predisposizione non cambia l'autorita', la RIFIUTA — il documento
   dell'insieme ne porta il digest, quindi i byte sono autenticati, non solo
   letti.
+- il FONDO della sandbox si misura una volta e si congela nell'insieme
+  (obbligo 4, parte Linux): `runtime/executor_birth_sandbox_registry_v1.py`.
+  Non e' un'opinione dell'amministratore, e' una misura della macchina. La
+  grammatica chiusa della disposizione ha due voci nuove (`sandbox_container`,
+  `sandbox_registry`) e la base 2A e' emendata di conseguenza. Windows resta
+  DICHIARATO NON PROVATO: il predispositore non completa su Windows.
+- OGNI componente del contesto e' ora `productive` (obbligo 6, l'ultimo).
+  Identificativo ed epoca sono cambiati. La cella che lega politica e identita'
+  ora lo prova con una RETROCESSIONE, perche' non resta altra mossa.
+- 🚨 LEZIONE (tredicesima fotografia, pagata due volte): torna indietro col
+  prodotto anche una prova PUBBLICATA che vive FUORI da
+  `tests/portable/rm0008_2b/`. `test_executor_birth_runner_linux_real.py`
+  nominava il registro della sandbox e ha fatto fallire il lavoro Ubuntu
+  ordinario nello stato precedente la correzione.
 
-PROSSIMO PASSO: gli obblighi che restano del piano (§2), nell'ordine del §4 —
-(4, resto) REGISTRARE il registro sandbox
-nell'insieme predisposto e completare il legame Windows. PER ULTIMO,
-e solo allora, (6) portare gli `enforcement_state` a `productive`, ricostruire
-identificativo ed epoca e rifare i vettori golden UNA volta sola.
+PROSSIMO PASSO: i dodici obblighi del §2 del piano sono CHIUSI, tranne il
+legame Windows del registro sandbox, dichiarato non provato. Restano: (a)
+compilare il criterio di uscita del gruppo 3 con cio' che e' provato e cio' che
+non lo e'; (b) la modifica di `undo_last_turn` come prima intenzione, quando il
+cancello e' attivo; (c) decidere con Roberto se ritirare `find_persons_indices`
+(misura: 0 invocazioni su 8716 passi reali) — da cui dipendono le due prove in
+sandbox ancora rosse.
 ```
 
 ## Fallimenti locali che NON sono del gruppo 3
