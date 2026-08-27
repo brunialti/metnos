@@ -68,6 +68,25 @@ def _token_privileges() -> dict[str, object]:
         kernel.CloseHandle(token)
 
 
+def _privilege_scope_outcome() -> str:
+    """Which half of the product's privilege scope refuses, if either does."""
+    import importlib
+
+    secure_fs = importlib.import_module("executor_birth_secure_fs")
+    try:
+        with secure_fs._win_restore_privilege():
+            entered = True
+    except BaseException as exc:
+        cause = getattr(exc, "_internal_cause", None)
+        parts = [f"{type(exc).__name__}: {exc}"]
+        if cause is not None:
+            parts.append(f"cause={cause!r}")
+        if isinstance(exc, BaseExceptionGroup):
+            parts.append("group=" + "; ".join(str(item) for item in exc.exceptions))
+        return "refused(" + " | ".join(parts) + ")"
+    return "entered and left" if entered else "entered without body"
+
+
 def test_the_windows_token_is_reported_not_assumed():
     if os.name != "nt":
         return
@@ -79,6 +98,7 @@ def test_the_windows_token_is_reported_not_assumed():
         + ("absent" if restore is None else f"attributes={restore:#x}")
         + f"; privileges={observed.get('count')}"
         + f"; takeownership={'SeTakeOwnershipPrivilege' in privileges}"
-        + f"; error={observed.get('error')}",
+        + f"; error={observed.get('error')}"
+        + f"; scope={_privilege_scope_outcome()}",
         stacklevel=1,
     )
