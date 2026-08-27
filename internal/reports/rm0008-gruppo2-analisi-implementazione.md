@@ -4231,6 +4231,29 @@ il cancelletto finale non puo' diventare verde. E' una contraddizione interna
 alla base, non un difetto del prodotto, e la sua soluzione — cambiare una delle
 due celle — non spetta a chi implementa.
 
+### 17.56 Quinto tentativo sul lucchetto: riuscito
+
+Con le tre cause del §17.46 in mano, la migrazione e' passata. La chiave era la
+terza parete, che avevo letto male: tenere il lucchetto con la maniglia di chi
+lo prende non serve, basta **non chiedere il diritto di rimuovere** quando lo
+si crea. E' quel diritto — non l'ingresso nativo — a far scontrare chiunque
+rilegga il contenitore mentre il lucchetto e' tenuto.
+
+Un errore mio ha rallentato di un giro: togliendo il diritto di rimuovere ho
+tolto anche la sincronizzazione, e senza quella l'apertura sincrona non e'
+ammessa; il sistema rispondeva «parametro non valido» e il prodotto lo
+traduceva in «installazione non supportata». Corretta la maschera, tutto e'
+andato a posto.
+
+Ora il lucchetto nasce e si riapre dal contenitore gia' aperto, come ogni altro
+oggetto: **non resta un solo punto in cui il prodotto ricostruisca un nome
+assoluto o usi l'involucro Win32** nel percorso del lucchetto. Cinque lavori su
+sei restano verdi.
+
+Le due celle della doppia chiusura, che il §17.28 dava per conseguenti, restano
+pero' rosse: la loro causa non era (solo) il lucchetto. Vanno riprese come un
+punto proprio, ora che il lucchetto non le spiega piu'.
+
 ### 17.53 La sonda sotto altro account non si lascia osservare
 
 Per sapere quale rifiuto riceve l'utente non elevato ho provato tre volte a
