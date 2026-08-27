@@ -2150,72 +2150,11 @@ def verify_authority_set_v1(
         raise _reject("birth_semantic_authority_invalid", exc) from None
 
 
-CONTEXT_MATERIAL_BASENAME_V1 = "material-v1.json"
-CONTEXT_CONTAINER_BASENAME_V1 = "context"
-CONTEXT_SOURCE_DIGEST_DOMAIN_V1 = (
-    b"metnos.executor-birth.context-source-inventory/v1\0"
+from executor_birth_context_v1 import (  # noqa: E402
+    CONTEXT_CONTAINER_BASENAME_V1, CONTEXT_MATERIAL_BASENAME_V1,
+    ContextMaterialError, PreparedContextMaterialV1,
+    prepare_context_material_v1,
 )
-
-# The V1 catalogue is owned by the code and reviewed as a whole: no caller can
-# add, remove or rename an entry, and no configuration arrives from a document.
-# ``enforcement_state`` says the truth about today, not the intention: section
-# 9.2 requires ``prepared_only`` wherever the current code does not really
-# apply the policy, and group 3 is what turns one of these to ``productive``.
-_CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
-    (
-        "standard", "1",
-        (
-            "executor_standard.py", "presentation_contract.py",
-            "code_file_paths.py", "naming_grammar.py",
-        ),
-        "productive",
-    ),
-    ("linter", "1", ("manifest_lint.py", "manifest_rules.py"), "prepared_only"),
-    (
-        "vocabulary", "1",
-        ("policy.py", "capabilities.py", "vocab.py"),
-        "prepared_only",
-    ),
-    ("authority_registry", "1", (), "prepared_only"),
-    ("sandbox_registry", "1", ("sandbox.py",), "prepared_only"),
-    (
-        "property_catalog", "1",
-        ("executor_birth_properties.py", "executor_birth_property_runner.py"),
-        "productive",
-    ),
-    (
-        "runner", "1",
-        (
-            "executor_birth_runner.py", "executor_birth_runner_windows_v1.py",
-            "bounded_subprocess.py",
-        ),
-        "productive",
-    ),
-    (
-        "review_policy", "1",
-        (
-            "executor_birth_semantic_review.py",
-            "executor_birth_semantic_authority.py", "llm_workloads.py",
-        ),
-        "productive",
-    ),
-    ("template_allowlist", "1", (), "prepared_only"),
-    ("primitive_allowlist", "1", ("executor_birth_properties.py",), "prepared_only"),
-    ("dependency_allowlist", "1", ("code_file_paths.py",), "prepared_only"),
-)
-
-MAXIMUM_CONTEXT_SOURCE_BYTES_V1 = 4 * 1024 * 1024
-
-
-@dataclass(frozen=True, slots=True)
-class PreparedContextMaterialV1:
-    """The inert material: described, never applied by this increment."""
-
-    document: bytes
-    prepared_admission_context_id: str
-    prepared_context_epoch: str
-    source_inventory_sha256: str
-    material_sha256: str
 
 
 def _resolve_context_sources_v1():
@@ -2238,104 +2177,20 @@ def _resolve_context_sources_v1():
 def _prepare_installed_admission_context_v1(
     authority_registry: Mapping[str, object],
 ) -> PreparedContextMaterialV1:
-    """Freeze the eleven components once and describe them.
+    """Open the distribution and hand it to the shared factory.
 
-    The factory is internal because it opens a source of its own: the module
-    keeps a single public door, which is what the productive graph of the
-    acceptance base requires (section 16.13.4).
-
-    Nothing is chosen by a caller: the files come from the closed catalogue,
-    the bytes are read through the secure session and the configurations are
-    already resolved values.  The identifier and the epoch attest the prepared
-    bytes; they do not attest that any check consumes them (section 9.1).
+    The catalogue and the freezing live in the runtime module, because the
+    runtime has to rebuild the very same material under its own barrier and two
+    implementations of one digest would diverge unnoticed.  What belongs here
+    is only the authority to open the source.
     """
-    from executor_birth_context import (
-        FrozenComponentMaterial, _component_digest, _context_epoch,
-    )
-    from executor_birth_identity import (
-        AdmissionContextV1, ContextComponent, admission_context_id,
-    )
-
     sources = _resolve_context_sources_v1()
     try:
-        components: dict[str, dict[str, object]] = {}
-        digests: dict[str, ContextComponent] = {}
-        inventory: list[dict[str, object]] = []
-        for name, version, files, enforcement in _CONTEXT_CATALOG_V1:
-            payloads: dict[str, bytes] = {}
-            records: list[dict[str, object]] = []
-            for label in files:
-                with _translated():
-                    raw = sources.read_file(
-                        (label,),
-                        maximum=MAXIMUM_CONTEXT_SOURCE_BYTES_V1,
-                        exact_private=False,
-                    )
-                payloads[label] = raw
-                digest = hashlib.sha256(raw).hexdigest()
-                records.append(
-                    {"label": label, "size": len(raw), "sha256": digest}
-                )
-                inventory.append(
-                    {"component": name, "label": label, "sha256": digest}
-                )
-            configuration = _component_configuration_v1(
-                name, enforcement, authority_registry,
-            )
-            frozen = FrozenComponentMaterial(
-                version, payloads, _context_configuration_bytes_v1(configuration),
-            )
-            component_digest = _component_digest(name, frozen)
-            digests[name] = ContextComponent(version, component_digest)
-            components[name] = {
-                "version": version,
-                "files": records,
-                "configuration": configuration,
-                "component_digest": component_digest,
-            }
+        return prepare_context_material_v1(sources, authority_registry)
+    except ContextMaterialError as exc:
+        raise BirthProvisioningError(exc.code, exc) from None
     finally:
         sources.close()
-    context_id = admission_context_id(AdmissionContextV1(**digests))
-    epoch = _context_epoch(context_id)
-    document = encode_canonical_document_v1({
-        "schema_version": 1,
-        "state": "prepared_not_active",
-        "components": components,
-        "prepared_admission_context_id": context_id,
-        "prepared_context_epoch": epoch,
-    })
-    return PreparedContextMaterialV1(
-        document=document,
-        prepared_admission_context_id=context_id,
-        prepared_context_epoch=epoch,
-        source_inventory_sha256=hashlib.sha256(
-            CONTEXT_SOURCE_DIGEST_DOMAIN_V1
-            + encode_canonical_document_v1(inventory)
-        ).hexdigest(),
-        material_sha256=hashlib.sha256(document).hexdigest(),
-    )
-
-
-def _context_configuration_bytes_v1(configuration: object) -> bytes:
-    """Serialise one resolved configuration with the framing of the context."""
-    from executor_birth_context import _canonical_json
-
-    return _canonical_json(configuration)
-
-
-def _component_configuration_v1(
-    name: str, enforcement: str, authority_registry: Mapping[str, object],
-) -> dict[str, object]:
-    """The already resolved configuration of one component.
-
-    ``authority_registry`` is the only component whose material is not a file:
-    it is the set of public identities just staged, so the prepared material
-    changes whenever those identities change.
-    """
-    configuration: dict[str, object] = {"enforcement_state": enforcement}
-    if name == "authority_registry":
-        configuration["registry"] = dict(authority_registry)
-    return configuration
 
 
 SET_DOCUMENT_BASENAME_V1 = "set.json"

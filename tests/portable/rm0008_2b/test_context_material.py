@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+import executor_birth_context_v1 as catalog
 from install import birth_authority_provisioner as provisioning
 from install.birth_authority_provisioner import BirthProvisioningError
 
@@ -74,10 +75,10 @@ def test_the_normative_vector_of_the_framing_still_holds():
 def test_the_catalogue_covers_the_eleven_closed_names():
     import executor_birth_context as context
 
-    names = tuple(item[0] for item in provisioning._CONTEXT_CATALOG_V1)
+    names = tuple(item[0] for item in catalog.CONTEXT_CATALOG_V1)
     assert names == context._COMPONENT_NAMES
     assert len(set(names)) == len(names)
-    states = {item[3] for item in provisioning._CONTEXT_CATALOG_V1}
+    states = {item[3] for item in catalog.CONTEXT_CATALOG_V1}
     assert states <= {"productive", "prepared_only"}
     assert "prepared_only" in states
 
@@ -86,7 +87,7 @@ def test_every_catalogued_file_exists_in_the_distribution():
     import importlib
 
     runtime_config = importlib.import_module("config")
-    for _, _, files, _ in provisioning._CONTEXT_CATALOG_V1:
+    for _, _, files, _ in catalog.CONTEXT_CATALOG_V1:
         for name in files:
             assert (Path(runtime_config.PATH_RUNTIME) / name).is_file(), name
 
@@ -167,12 +168,12 @@ def test_a_catalogue_entry_that_moves_changes_the_identity(
 ):
     """Section 9.2: adding or removing an entry must change the digests."""
     first = _prepare(tmp_path, monkeypatch)
-    original = provisioning._CONTEXT_CATALOG_V1
+    original = catalog.CONTEXT_CATALOG_V1
     shortened = tuple(
         (name, version, files[:-1] if name == "standard" else files, state)
         for name, version, files, state in original
     )
-    monkeypatch.setattr(provisioning, "_CONTEXT_CATALOG_V1", shortened)
+    monkeypatch.setattr(catalog, "CONTEXT_CATALOG_V1", shortened)
     fewer = provisioning._prepare_installed_admission_context_v1(REGISTRY)
     assert fewer.prepared_admission_context_id != (
         first.prepared_admission_context_id
@@ -182,7 +183,7 @@ def test_a_catalogue_entry_that_moves_changes_the_identity(
         (name, version, files, "productive" if name == "linter" else state)
         for name, version, files, state in original
     )
-    monkeypatch.setattr(provisioning, "_CONTEXT_CATALOG_V1", promoted)
+    monkeypatch.setattr(catalog, "CONTEXT_CATALOG_V1", promoted)
     changed = provisioning._prepare_installed_admission_context_v1(REGISTRY)
     assert changed.prepared_admission_context_id != (
         first.prepared_admission_context_id

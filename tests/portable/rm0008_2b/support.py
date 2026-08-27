@@ -259,12 +259,12 @@ def stage_runtime_sources(tmp_path: Path, monkeypatch) -> Path:
     import importlib
     import shutil
 
-    module = provisioner()
+    catalog = importlib.import_module("executor_birth_context_v1")
     runtime_config = importlib.import_module("config")
     stage = tmp_path / "distribution"
     if not stage.is_dir():
         stage.mkdir(mode=0o755, parents=True)
-        for _, _, files, _ in module._CONTEXT_CATALOG_V1:
+        for _, _, files, _ in catalog.CONTEXT_CATALOG_V1:
             for name in files:
                 shutil.copy(
                     Path(runtime_config.PATH_RUNTIME) / name, stage / name,
