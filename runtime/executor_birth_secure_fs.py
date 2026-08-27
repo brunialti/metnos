@@ -1407,13 +1407,14 @@ def _nt_birth_code_v1(error: int, purpose: _NtOpenPurposeV1) -> str:
         if purpose is _NtOpenPurposeV1.disposition:
             return "birth_provisioning_recovery_ambiguous"
         return "birth_provisioning_io_unavailable"
-    if error in {_ERROR_ACCESS_DENIED, _ERROR_PRIVILEGE_NOT_HELD}:
-        if purpose in {
-            _NtOpenPurposeV1.create_exclusive,
-            _NtOpenPurposeV1.mutating_open,
-            _NtOpenPurposeV1.disposition,
-        }:
-            return "birth_provisioning_elevation_required"
+    # These two are chosen by the ERROR, never by the purpose.  Windows raises
+    # PRIVILEGE_NOT_HELD when a privilege is missing and ACCESS_DENIED when the
+    # DACL refused; deciding on the purpose reported a refused rename as a
+    # privilege problem and sent the diagnosis the wrong way for three rounds
+    # (section 17.81).
+    if error == _ERROR_PRIVILEGE_NOT_HELD:
+        return "birth_provisioning_elevation_required"
+    if error == _ERROR_ACCESS_DENIED:
         return "birth_provisioning_acl_unsafe"
     if error == _ERROR_SHARING_VIOLATION:
         if purpose is _NtOpenPurposeV1.lock_reader:

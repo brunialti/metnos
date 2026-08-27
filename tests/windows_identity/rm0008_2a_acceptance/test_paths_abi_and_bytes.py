@@ -69,7 +69,7 @@ _NT_OPEN_EXPECTED = {
         2: "birth_provisioning_io_unavailable",
         3: "birth_provisioning_io_unavailable",
         5: "birth_provisioning_acl_unsafe",
-        1314: "birth_provisioning_acl_unsafe",
+        1314: "birth_provisioning_elevation_required",
         32: "birth_provisioning_io_unavailable",
         87: "birth_provisioning_atomic_install_unsupported",
         50: "birth_provisioning_atomic_install_unsupported",
@@ -82,7 +82,7 @@ _NT_OPEN_EXPECTED = {
         2: "birth_provisioning_lock_unavailable",
         3: "birth_provisioning_lock_unavailable",
         5: "birth_provisioning_acl_unsafe",
-        1314: "birth_provisioning_acl_unsafe",
+        1314: "birth_provisioning_elevation_required",
         32: "birth_provisioning_lock_unavailable",
         87: "birth_provisioning_atomic_install_unsupported",
         50: "birth_provisioning_atomic_install_unsupported",
@@ -94,7 +94,7 @@ _NT_OPEN_EXPECTED = {
         183: "birth_provisioning_transaction_conflict",
         2: "birth_provisioning_io_unavailable",
         3: "birth_provisioning_io_unavailable",
-        5: "birth_provisioning_elevation_required",
+        5: "birth_provisioning_acl_unsafe",
         1314: "birth_provisioning_elevation_required",
         32: "birth_provisioning_io_unavailable",
         87: "birth_provisioning_atomic_install_unsupported",
@@ -107,7 +107,7 @@ _NT_OPEN_EXPECTED = {
         183: "birth_provisioning_io_unavailable",
         2: "birth_provisioning_io_unavailable",
         3: "birth_provisioning_io_unavailable",
-        5: "birth_provisioning_elevation_required",
+        5: "birth_provisioning_acl_unsafe",
         1314: "birth_provisioning_elevation_required",
         32: "birth_provisioning_io_unavailable",
         87: "birth_provisioning_atomic_install_unsupported",
@@ -120,7 +120,7 @@ _NT_OPEN_EXPECTED = {
         183: "birth_provisioning_io_unavailable",
         2: "birth_provisioning_recovery_ambiguous",
         3: "birth_provisioning_recovery_ambiguous",
-        5: "birth_provisioning_elevation_required",
+        5: "birth_provisioning_acl_unsafe",
         1314: "birth_provisioning_elevation_required",
         32: "birth_provisioning_io_unavailable",
         87: "birth_provisioning_atomic_install_unsupported",
@@ -1074,7 +1074,7 @@ _RENAME_ERROR_SUBCASES = {
     # The same two ambiguous native failures have distinct absent-destination
     # results, forcing an actual reconciliation decision.
     "rename-error-access-denied": (
-        (5, False, "birth_provisioning_elevation_required"),
+        (5, False, "birth_provisioning_acl_unsafe"),
         (32, False, "birth_provisioning_io_unavailable"),
     ),
     "rename-error-unsupported": (
@@ -1100,7 +1100,7 @@ def _assert_rename_error_matrix_complete() -> None:
     if absent != {
         (80, "birth_provisioning_transaction_conflict"),
         (183, "birth_provisioning_transaction_conflict"),
-        (5, "birth_provisioning_elevation_required"),
+        (5, "birth_provisioning_acl_unsafe"),
         (32, "birth_provisioning_io_unavailable"),
         (50, "birth_provisioning_atomic_install_unsupported"),
         (17, "birth_provisioning_atomic_install_unsupported"),

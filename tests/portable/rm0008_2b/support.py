@@ -512,7 +512,7 @@ def prepare_or_defer(monkeypatch, base: Path):
 
 
 WINDOWS_BLOCKER_V1 = (
-    "on Windows the rename that publishes a final reapplies a descriptor owned "
-    "by SYSTEM, and the public runner refuses it with "
-    "birth_provisioning_elevation_required"
+    "on Windows the rename that publishes a final is denied by the DACL and "
+    "refused with birth_provisioning_acl_unsafe; the privilege is not the "
+    "cause and the taxonomy no longer says it is (section 17.81)"
 )
