@@ -113,6 +113,37 @@ di una prova che non attraversa il simbolo produttivo non riempie la colonna
 della prova installata.
 
 
+## 6.bis Mappa di migrazione del bootstrap
+
+Lette le voci che `_assemble_birth_core` riceve oggi da `_build`, ecco che cosa
+diventa ciascuna sotto la costruzione sigillata. La colonna «oggi» dice da dove
+arriva ora; quasi tutte arrivano da `bootstrap.json`, cioe' da un file di
+configurazione che sceglie fatti autorevoli — ed e' esattamente cio' che il
+§23.8 vieta.
+
+| Ingresso del nucleo | Oggi | Sotto la costruzione sigillata |
+|---|---|---|
+| `producer_registry`, `producer_db` | voci `producers` del file, con `origin` e `author` scelti li' | archivi Producer dell'insieme predisposto + tabella chiusa `ContractId` |
+| `context_resolver`, `context_epoch_resolver` | `_context_builder(value["context"], …)`, undici componenti scelti dal file | fabbrica interna sul materiale predisposto; il decodificatore libero sparisce **nello stesso passaggio** |
+| `approval_resolver` | registro indicato dal file | registro copiato nell'insieme, riletto sotto la barriera |
+| `shadow_dependencies` | autorita' semantica indicata dal file | autorita' semantica dell'insieme |
+| `admission_*` | archivio indicato dal file | archivio Admission dell'insieme |
+| `postcondition_verifier` | `trusted_publics` dal file | anello pubblico dell'archivio autore |
+| `publisher_options` | `{"trusted_publics": …}` | **sparisce**: il pubblicatore sigillato possiede la primitiva e l'anello (§5.3) |
+
+**Due fatti che oggi vengono dalla configurazione e non hanno ancora una casa
+chiusa**, da decidere prima di finire la migrazione:
+
+1. `policy_version` — stringa scelta dal file. Deve venire da una costante
+   posseduta dal codice, altrimenti la configurazione continua a scegliere un
+   fatto autorevole.
+2. `receipt_ttl_seconds` — stesso problema in forma minore: e' un parametro
+   operativo, ma governa la validita' di una ricevuta.
+
+Nessuna delle due si risolve inventando un valore: vanno assegnate a una fonte
+chiusa e dichiarate, oppure lasciate fuori dalla migrazione con il motivo
+scritto.
+
 ## 7. Procedura di rifotografia (l'unica cosa tacita e costosa)
 
 Serve ogni volta che cambia un file sotto `tests/portable/rm0008_2a_acceptance`,
