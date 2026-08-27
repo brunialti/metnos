@@ -4112,6 +4112,20 @@ corso non la ammette (stessa legge del §17.32, vista dall'altro lato). Con la
 rilettura al posto giusto e le tre correzioni della sorveglianza, la sequenza
 osservata e' esattamente quella pretesa e la cella passa.
 
+### 17.37 Punto aperto: la riconciliazione del rifiuto non viene vista
+
+Con le correzioni della sorveglianza la cella dell'errore nativo arriva
+all'ultima pretesa: due riletture del contenitore dopo il rifiuto. Il prodotto
+le esegue — l'involucro del §17.36 e' installato e non viene aggirato — ma la
+sorveglianza ne raccoglie **zero**, e una stampa temporanea messa all'ingresso
+della riconciliazione non compare affatto. Le due cose insieme dicono che il
+ramo non viene percorso in quel caso, non che la rilettura sbaglia contenitore.
+
+Prossimo passo, deciso e non ancora eseguito: riprodurre il rifiuto in uno
+script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
+parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
+sorveglianza.
+
 ### 17.36 Un rifiuto si riconcilia come una riuscita
 
 Uno spostamento rifiutato deve lasciare i contenitori come li ha trovati, e la
