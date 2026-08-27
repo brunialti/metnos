@@ -35,6 +35,16 @@
   Il job notturno è bounded, idempotente e non attiva autonomamente; device e
   Tutor ricevono solo risorse pubbliche ammesse. Fixture di terza lingua e
   suite i18n certificano fallback bootstrap e ripresa.
+- **RM-0008 gruppo 2 chiuso — insieme di autorita' predisposto e inerte** (27/8,
+  ADR 0224): l'installatore prepara identita' autore, Admission e un archivio
+  per capacita' Producer dentro una transazione durevole; nessun nome
+  autorevole nasce definitivo e i tre finali arrivano con rinomine senza
+  sostituzione. Il nucleo puo' consegnare soltanto fatti al pubblicatore
+  sigillato. Il runtime Birth **non** e' attivo e nessun chiamante e' migrato.
+  Tre requisiti sono dichiarati non provati (confine Windows oltre la
+  pubblicazione, uccisione reale a ogni passo di scrittura, due predispositori
+  concorrenti). Dettaglio e criterio di uscita:
+  `internal/reports/rm0008-gruppo2-analisi-implementazione.md` §13.
 - **Lingua unica firmata** (23/8, ADR 0219):
   `runtime.config` definisce `INSTANCE_LANG`, `REQUESTED_LANG` e
   `LOCALIZATION_STATE` da una richiesta BCP-47 firmata Ed25519 e scritta
