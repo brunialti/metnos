@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import builtins
 import os
+import shutil
+import uuid
 import ctypes
 import io
 from pathlib import Path
@@ -345,7 +347,15 @@ def test_r5_exact_acl_and_real_access(case: str, tmp_path: Path) -> None:
 
         account = oracle.create_standard_account("rm8svc")
         try:
-            root = tmp_path / "birth"
+            # A standard account cannot traverse the temporary directory of
+            # this session: the child would stop at the root instead of
+            # reaching the creation, which is what this cell observes.  The
+            # sister cells of this file use the public location for the same
+            # reason.
+            public = os.environ.get("PUBLIC")
+            if not public:
+                raise AssertionError("Windows did not expose the public profile")
+            root = Path(public) / f"rm0008-nonelevated-{uuid.uuid4().hex}"
             root.mkdir()
             oracle.apply_profile(
                 root, "integrity_only", account.sid, directory=True
@@ -372,6 +382,9 @@ def test_r5_exact_acl_and_real_access(case: str, tmp_path: Path) -> None:
             if result != 40 or (root / "never-log-this-secret.bin").exists():
                 raise AssertionError("non-elevated product call was not stably redacted")
         finally:
+            # The public location is not cleaned by the session's temporary
+            # directory, so this cell removes what it created there.
+            shutil.rmtree(root, ignore_errors=True)
             oracle.delete_account(account)
         return
     profile = "confidential" if "confidential" in case else "integrity_only"
