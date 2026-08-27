@@ -34,14 +34,13 @@ def _own_permissions(path: Path) -> None:
     entries are copied in place and inheritance is switched off.
     """
     subprocess.run(
-        ["icacls", str(path), "/inheritance:d"],
+        ["icacls", str(path), "/inheritance:d", "/t", "/c", "/q"],
         check=True,
         capture_output=True,
     )
 
 
 def _provision(root: Path) -> tuple[dict[str, object], Ed25519PrivateKey]:
-    _own_permissions(root)
     private = Ed25519PrivateKey.generate()
     (root / "evidence").mkdir()
     (root / "semantic.pub").write_bytes(private.public_key().public_bytes_raw())
@@ -56,6 +55,9 @@ def _provision(root: Path) -> tuple[dict[str, object], Ed25519PrivateKey]:
             private.sign(EVIDENCE_DOMAIN + _canonical(evidence))).decode(),
     }
     (root / "evidence" / "proof.json").write_bytes(_canonical(record))
+    # Every object the historical read touches must carry its own list, so
+    # the whole provisioned tree is detached from its ancestor at the end.
+    _own_permissions(root)
     spec: dict[str, object] = {
         "evidence_dir": "evidence",
         "verifiers": {"oracle-key": {"path": "semantic.pub", "status": "active"}},
