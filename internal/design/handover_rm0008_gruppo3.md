@@ -68,24 +68,32 @@ fino alla rinomina che pubblica il primo finale e riceve accesso negato. Il
 privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
-GIA' INIZIATO DEL GRUPPO 3, tutto committato e con la suite locale verde:
-- `runtime/executor_birth_prepared_set.py` rilegge l'insieme predisposto sotto
-  la propria barriera e rifiuta se marcatore, insieme, archivi e materiale non
-  concordano; riceve una sessione gia' aperta e non ne apre nessuna;
-- `runtime/executor_birth_prepared_root.py` e' la porta del runtime sulla
-  radice predisposta, in **sola lettura**; la cella R1 e' gia' estesa per
-  ammetterla (due sedi nominate, e la porta vale solo finche' non tocca una
-  mutazione) con due mutanti che lo dimostrano;
-- prove: `tests/portable/rm0008_2b/test_group3_prepared_set.py`.
+GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
+i lavori (undicesima fotografia, `9c6f428`):
+- `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
+  barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
+- `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
+  LETTURA, e all'avvio **ricostruisce il materiale dalla distribuzione
+  installata** confrontando identificativo, epoca e digest (§9.4): la
+  descrizione registrata non basta;
+- `runtime/executor_birth_context_v1.py` tiene catalogo e fabbrica del
+  contesto, importati sia dal predispositore sia dal runtime — una sola
+  implementazione, mai due;
+- `runtime/executor_birth_policy_v1.py` tiene i due fatti autorevoli che hanno
+  lasciato il file di configurazione (versione della politica, durata delle
+  ricevute), decisi con Roberto;
+- la cella R1 ammette due sedi nominate e la porta del runtime solo finche' non
+  tocca una mutazione, con due mutanti a dimostrarlo;
+- prove: `tests/portable/rm0008_2b/test_group3_*.py`.
 
-**NON ANCORA PUBBLICATO**: la modifica alla base e' in coda per congelare una
-volta sola a fine incremento. Prima di pubblicare serve la rifotografia (§7 del
-piano).
+**Regola 1 applicata e misurata**: sei modifiche accumulate, UNA sola
+fotografia per tutto l'incremento invece di sei.
 
-PROSSIMO PASSO: migrazione del bootstrap, con la mappa gia' scritta nel §6.bis
-del piano. Attenzione ai due fatti che oggi la configurazione sceglie e che non
-hanno ancora una fonte chiusa (`policy_version`, `receipt_ttl_seconds`): vanno
-assegnati o dichiarati, non inventati.
+PROSSIMO PASSO: la migrazione del bootstrap vera e propria, con la mappa nel
+§6.bis del piano. Il nucleo va costruito dall'insieme predisposto invece che da
+`bootstrap.json`, e il decodificatore libero del contesto sparisce NELLO STESSO
+passaggio (§9.1). Restano da assegnare le voci `producers` con `origin` e
+`author`, che oggi il file sceglie: servono la tabella chiusa `ContractId`.
 ```
 
 ## Perche' i gruppi 4-6 non hanno un piano
