@@ -348,6 +348,21 @@ def _lint_check(observed: ObservedCandidate, _decision: RevisionDecision,
 # not one of them uses any of these, so the rule refuses nothing legitimate.
 _ASSEMBLED_CODE_BUILTINS_V1 = frozenset({"exec", "eval", "compile"})
 
+# Loading a module from a path is not forbidden and not granted by trust: it is
+# granted by authentication.  A candidate may not open a path and run what it
+# finds, but it may ask ``executor_birth_admitted_module_v1`` for the code of a
+# published executor, which compares the bytes with the signature that admitted
+# them before running them.  That door is stricter than what these names do on
+# their own, so naming them directly is what the check refuses.
+_PATH_CODE_LOADERS_V1 = frozenset({
+    "exec_module",
+    "run_module",
+    "run_path",
+    "SourceFileLoader",
+    "SourcelessFileLoader",
+    "spec_from_file_location",
+})
+
 
 def _closure_findings_v1(code_files: Mapping[str, bytes]) -> list[str]:
     """Read every file of the candidate and report what breaks the closure.
@@ -373,11 +388,20 @@ def _closure_findings_v1(code_files: Mapping[str, bytes]) -> list[str]:
                 target = (node.module or "").split(".")[0]
                 if node.level > 1 or not target or target not in owned:
                     findings.append(f"relative_import_outside:{name}:{node.lineno}")
-            elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id in _ASSEMBLED_CODE_BUILTINS_V1):
-                findings.append(
-                    f"assembled_code:{name}:{node.lineno}:{node.func.id}"
+            elif isinstance(node, ast.Call):
+                func = node.func
+                called = (
+                    func.id if isinstance(func, ast.Name)
+                    else func.attr if isinstance(func, ast.Attribute) else None
                 )
+                if isinstance(func, ast.Name) and called in _ASSEMBLED_CODE_BUILTINS_V1:
+                    findings.append(
+                        f"assembled_code:{name}:{node.lineno}:{called}"
+                    )
+                elif called in _PATH_CODE_LOADERS_V1:
+                    findings.append(
+                        f"unauthenticated_code_load:{name}:{node.lineno}:{called}"
+                    )
     return findings
 
 
