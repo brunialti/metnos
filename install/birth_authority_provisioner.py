@@ -1382,7 +1382,7 @@ def _resolve_author_source_v1():
         return None
 
 
-def provision_author_root_v1(
+def _provision_prepared_authorities_v1(
     layout, *, provisioner_build_id: str,
 ) -> AuthorProvisioningResultV1:
     """Inspect first, migrate only when there is nothing installed yet.
@@ -2867,3 +2867,78 @@ def _dispose_header_v1(session, journal: "_TransactionJournalV1") -> None:
             content_sha256="sha256:" + hashlib.sha256(payload).hexdigest(),
             inventory=None,
         ))
+
+
+PROVISIONER_BUILD_DIGEST_DOMAIN_V1 = (
+    b"metnos.executor-birth.provisioner-build/v1\0"
+)
+
+
+def _provisioner_build_id_v1() -> str:
+    """Identify this build from the code that is actually loaded.
+
+    The identifier changes together with the modules, which is exactly what
+    section 10 requires: a transaction of another build is a conflict and is
+    never continued by a different provisioner.
+    """
+    import inspect
+
+    import executor_birth_commit_publisher
+
+    body = bytearray(PROVISIONER_BUILD_DIGEST_DOMAIN_V1)
+    for module in (inspect.getmodule(_provisioner_build_id_v1),
+                   executor_birth_commit_publisher):
+        source = inspect.getsource(module).encode("utf-8")
+        body += len(source).to_bytes(8, "big") + source
+    return "birth-provisioner-v1-" + hashlib.sha256(body).hexdigest()
+
+
+def _open_installer_layout_v1():
+    """Take the one layout the installer knows how to build."""
+    from install.birth_authority_provisioning import (
+        open_birth_provisioning_layout_v1,
+    )
+
+    with _translated():
+        return open_birth_provisioning_layout_v1()
+
+
+def prepare_or_defer_until_legacy_author_exists() -> AuthorProvisioningResultV1:
+    """Inspect first; defer only from a completely empty installation.
+
+    The entry always inspects and resumes an existing transaction or an
+    installed set.  It creates no object when there is nothing at all and no
+    previous author identity yet, because on a fresh installation the author
+    key is created later in the same phase (section 10.6).
+    """
+    layout = _open_installer_layout_v1()
+    try:
+        # Read-only preflight first: the administrator installs the two public
+        # registries before Phase 3, so their absence or invalidity is named
+        # here, with the distinct codes of section 11 and before any
+        # transaction exists.
+        acquire_operator_inputs_v1(layout.operator_input)
+        return _provision_prepared_authorities_v1(
+            layout, provisioner_build_id=_provisioner_build_id_v1(),
+        )
+    finally:
+        layout.birth_session.close()
+
+
+def ensure_executor_birth_authorities_prepared() -> AuthorProvisioningResultV1:
+    """Run the idempotent provisioner once the author identity exists.
+
+    The adapter receives no path, no key and no mode: it resolves the fixed
+    layout of the installer and calls the same provisioner as the first entry.
+    Deferring is no longer an admitted outcome here.
+    """
+    layout = _open_installer_layout_v1()
+    try:
+        result = _provision_prepared_authorities_v1(
+            layout, provisioner_build_id=_provisioner_build_id_v1(),
+        )
+    finally:
+        layout.birth_session.close()
+    if result.outcome is AuthorProvisioningOutcomeV1.author_not_yet_created:
+        raise _reject("birth_author_identity_incomplete")
+    return result

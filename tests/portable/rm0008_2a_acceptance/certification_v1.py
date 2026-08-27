@@ -1886,7 +1886,11 @@ def validate_productive_mutation_graph(
     # named here, everything else that mutates inside it is private, and no
     # runtime module may reach it (section 16.13.4).
     provisioner_module = "install.birth_authority_provisioner"
-    provisioner_entry_symbol = f"{provisioner_module}::provision_author_root_v1"
+    installer_phase_module = "install.phases.phase3_code"
+    provisioner_entry_symbols = frozenset({
+        f"{provisioner_module}::prepare_or_defer_until_legacy_author_exists",
+        f"{provisioner_module}::ensure_executor_birth_authorities_prepared",
+    })
     installer_resolver_symbols = {
         "install.birth_authority_provisioning::_resolve_path_user_config_v1",
         "install.birth_authority_provisioning::_resolve_birth_service_identity_v1",
@@ -1905,7 +1909,7 @@ def validate_productive_mutation_graph(
         session_symbol,
         session_token_symbol,
         entry_symbol,
-        provisioner_entry_symbol,
+        *provisioner_entry_symbols,
         *mutation_symbols,
     }
     sensitive_targets.update(f"@method:{name}" for name in _MUTATION_METHODS)
@@ -1913,8 +1917,10 @@ def validate_productive_mutation_graph(
 
     if entry_symbol not in definitions or layout_symbol not in definitions:
         raise CertificationError("installer-only entry is absent from the productive graph")
-    if provisioner_entry_symbol not in definitions:
-        raise CertificationError("2B provisioner entry is absent from the productive graph")
+    if not provisioner_entry_symbols <= set(definitions):
+        raise CertificationError(
+            "a provisioner entry is absent from the productive graph"
+        )
     provisioner_basename = provisioner_module.rsplit(".", 1)[1]
     runtime_reaching_provisioner = sorted(
         owner
@@ -2182,8 +2188,18 @@ def validate_productive_mutation_graph(
         ):
             if owner == entry_symbol or owner in entry_definition_reachable:
                 continue
+        if owner_module == installer_phase_module:
+            # Section 10.6 puts the two entries in Phase 3.  What it may name
+            # is exactly those two: everything else it reaches must be reached
+            # through them, never called directly.
+            # Every sensitive symbol must be reached through an entry, so it
+            # is the direct targets that are checked: an empty set means this
+            # owner only calls its own helpers.
+            direct = calls.get(owner, set()) & sensitive_targets
+            if direct <= provisioner_entry_symbols:
+                continue
         if owner_module == provisioner_module and (
-            owner == provisioner_entry_symbol
+            owner in provisioner_entry_symbols
             or owner_name.startswith("_")
             or owner_name.split(".", 1)[0].startswith("_")
         ):
@@ -2222,7 +2238,8 @@ _SENSITIVE_TERMINALS = {
     "_SecureRootSession",
     "_SESSION_TOKEN",
     "open_birth_provisioning_layout_v1",
-    "provision_author_root_v1",
+    "prepare_or_defer_until_legacy_author_exists",
+    "ensure_executor_birth_authorities_prepared",
     *_MUTATION_METHODS,
 }
 
