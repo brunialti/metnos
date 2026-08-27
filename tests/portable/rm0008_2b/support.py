@@ -67,9 +67,15 @@ def make_config(tmp_path: Path, *, author=None, extra=(), operator=False) -> Pat
 
 
 def use_config(monkeypatch, base: Path) -> None:
-    """Point every installer resolver at the temporary configuration root."""
+    """Point every installer resolver at the temporary installation.
+
+    The distribution is staged too: a working tree is group-writable, and the
+    capability refuses such a source on purpose, so a test that wants a real
+    provisioning must provide a real installation.
+    """
     runtime_config = importlib.import_module("config")
     monkeypatch.setattr(runtime_config, "PATH_USER_CONFIG", base)
+    stage_runtime_sources(base.parent, monkeypatch)
 
 
 def open_layout(monkeypatch, base: Path):
@@ -188,10 +194,13 @@ def stage_runtime_sources(tmp_path: Path, monkeypatch) -> Path:
     module = provisioner()
     runtime_config = importlib.import_module("config")
     stage = tmp_path / "distribution"
-    stage.mkdir(mode=0o755, parents=True)
-    for _, _, files, _ in module._CONTEXT_CATALOG_V1:
-        for name in files:
-            shutil.copy(Path(runtime_config.PATH_RUNTIME) / name, stage / name)
-            os.chmod(stage / name, 0o644)
+    if not stage.is_dir():
+        stage.mkdir(mode=0o755, parents=True)
+        for _, _, files, _ in module._CONTEXT_CATALOG_V1:
+            for name in files:
+                shutil.copy(
+                    Path(runtime_config.PATH_RUNTIME) / name, stage / name,
+                )
+                os.chmod(stage / name, 0o644)
     monkeypatch.setattr(runtime_config, "PATH_RUNTIME", stage)
     return stage

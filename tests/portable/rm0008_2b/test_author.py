@@ -102,6 +102,7 @@ def test_the_journal_records_every_step_in_order(tmp_path: Path, monkeypatch):
         ProvisioningStateV1.created, ProvisioningStateV1.created,
         ProvisioningStateV1.author_staged, ProvisioningStateV1.inputs_staged,
         ProvisioningStateV1.authorities_staged,
+        ProvisioningStateV1.context_staged, ProvisioningStateV1.verified,
     ]
     assert chain[0].digests["author_source_public_inventory_sha256"] is None
     assert chain[1].digests[
