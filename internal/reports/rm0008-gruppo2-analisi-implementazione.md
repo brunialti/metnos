@@ -4002,9 +4002,11 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   attraverso le primitive del prodotto), e la traccia mostra la lettura
   provenire dall'inventario successivo. Rimedio: dopo la chiusura la
   sorveglianza smette di attribuire a quella maniglia le letture con lo stesso
-  numero. Provato sul PC: `disposition-relative-open` e
-  `disposition-file-access-mask` passano. Conservato in
-  `apparato-pendente-6.patch`.
+  numero. Lo stesso vale per le chiusure, contate tre volte invece di una. La
+  correzione tiene l'osservazione **fuori** dallo stato che la cella confronta
+  per intero: aggiungere una voce a quell'elenco lo faceva fallire piu' avanti.
+  Provato sul PC: l'intera famiglia della rimozione passa, il file va da 9 a 12
+  celle verdi. Conservato in `apparato-pendente-6.patch`.
 
 - **sonda di causalita' della rinomina** — `_RenameCausalityProbe` sostituisce
   la verifica di profilo con un metodo gia' legato alla sonda, ma la sua firma
