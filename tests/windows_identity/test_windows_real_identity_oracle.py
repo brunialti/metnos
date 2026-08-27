@@ -390,4 +390,4 @@ def test_diagnostic_standard_user_refusal_is_reported(identity_lab: _IdentityLab
         lab.service, probe, "product-create", root, directory=True
     )
     detail = report.read_text(encoding="utf-8").strip() if report.exists() else "(nessun rapporto)"
-    print(f"NONELEVATED code={code} detail={detail}")
+    assert code == 40, f"NONELEVATED code={code} detail={detail}"
