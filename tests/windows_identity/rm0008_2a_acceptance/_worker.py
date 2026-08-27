@@ -316,7 +316,7 @@ def product_create_as_standard_user(root: Path) -> int:
     except sf.BirthSecureFSError as exc:
         rendered = str(exc)
         if (
-            exc.code == "birth_provisioning_elevation_required"
+            exc.code == "birth_provisioning_acl_unsafe"
             and rendered == exc.code
             and "never-log-this-secret" not in rendered
         ):

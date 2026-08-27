@@ -634,7 +634,7 @@ def test_r3_windows_disposition_contract(case: str, tmp_path: Path, monkeypatch)
                 "disposition-ex-invalid-parameter-no-fallback": "birth_provisioning_atomic_install_unsupported",
                 "disposition-ex-not-supported-no-fallback": "birth_provisioning_atomic_install_unsupported",
                 "disposition-deletepending-false": "birth_provisioning_io_unavailable",
-                "disposition-access-denied-mapping": "birth_provisioning_elevation_required",
+                "disposition-access-denied-mapping": "birth_provisioning_acl_unsafe",
                 "disposition-residual-error-mapping": "birth_provisioning_io_unavailable",
             }
             failure_snapshot = support.windows_tree_snapshot(root)
@@ -1528,7 +1528,7 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
                 lambda: active.rename_no_replace(
                     ("source",), ("destination",), directory=False
                 ),
-                "birth_provisioning_elevation_required",
+                "birth_provisioning_acl_unsafe",
             )
             probe.assert_error_reconciled(expected_parent)
             if not source.exists() or (root / "destination").exists():
