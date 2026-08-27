@@ -4137,3 +4137,13 @@ Ne segue che le due celle non richiedono un lavoro proprio: si chiudono
 quando si chiude il §17.23, e vanno riprovate allora prima di cercarne una
 causa distinta.
 
+Aggiornamento §17.23: la sonda prescritta e' stata eseguita. Creare il
+lucchetto per percorso assoluto e crearlo dall'ingresso relativo danno lo
+stesso esito — creato e verificato in entrambi i casi — quindi la creazione non
+e' la causa. La migrazione completa e' stata riprovata con questa conoscenza e
+peggiora ancora la misura (74 -> 72 celle sulla macchina di diagnosi), il che
+sposta il sospetto sulla riapertura quando il lucchetto esiste gia': la
+maschera del lettore di lucchetti non copre cio' che la presa in esclusiva
+richiede in quel caso. La prossima prova riguarda quella sola apertura, non
+l'intera migrazione.
+
