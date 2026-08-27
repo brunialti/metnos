@@ -2021,9 +2021,10 @@ def _win_profile_name_v1(role: _BirthObjectRole) -> str:
     raise BirthSecureFSError("birth_provisioning_acl_unsafe")
 
 
-_LOCK_PATTERNS_V1 = frozenset(
-    {_BirthRolePatternV1.global_lock, _BirthRolePatternV1.keystore_lock}
-)
+# Only the global lock, for now: the store lock of the key store is also
+# created by the historical path-based loader, which does not consult the
+# catalogue, and widening it there would make writer and verifier disagree.
+_LOCK_PATTERNS_V1 = frozenset({_BirthRolePatternV1.global_lock})
 
 
 def _is_lock_components_v1(components: tuple[str, ...]) -> bool:
