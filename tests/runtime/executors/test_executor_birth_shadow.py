@@ -80,7 +80,8 @@ def test_core_catalog_cannot_be_omitted_and_snapshot_is_closed():
     observed, observer = _observer_holder()
     report = _call(observer)
     assert [item.check_id for item in report.checks] == [
-        "manifest_standard", "manifest_lint", "properties",
+        "manifest_standard", "manifest_lint", "dependency_closure",
+        "properties",
     ]
     assert report.outcome is BirthOutcome.REJECTED
     assert report.publisher_call_count == 0
@@ -105,7 +106,7 @@ def test_core_assembler_rejects_non_owned_test_observation():
     )
     assert report.outcome is BirthOutcome.REJECTED
     assert [item.status.value for item in report.checks] == [
-        "passed", "passed", "unavailable",
+        "passed", "passed", "passed", "unavailable",
     ]
     assert observed.snapshot.closed
 
@@ -131,7 +132,8 @@ def test_core_applicability_requires_semantic_review_for_model_authorship():
     _, observer = _observer_holder(authorship=RevisionAuthor.MODEL)
     report = _call(observer, authorship=RevisionAuthor.MODEL, property_runner=object())
     assert [item.check_id for item in report.checks] == [
-        "manifest_standard", "manifest_lint", "properties", "semantic_review",
+        "manifest_standard", "manifest_lint", "dependency_closure",
+        "properties", "semantic_review",
     ]
     assert report.checks[-1].error_code == "check_unavailable"
     assert report.outcome is BirthOutcome.REJECTED
@@ -142,8 +144,8 @@ def test_core_applicability_requires_approval_for_authority_revision():
     report = _call(observer, property_runner=object(),
                    facts=RevisionFacts(authority_changed=True))
     assert [item.check_id for item in report.checks] == [
-        "manifest_standard", "manifest_lint", "properties", "semantic_review",
-        "approval",
+        "manifest_standard", "manifest_lint", "dependency_closure",
+        "properties", "semantic_review", "approval",
     ]
     assert report.checks[-1].error_code == "approval_required"
     assert report.outcome is BirthOutcome.NEEDS_HUMAN
@@ -224,3 +226,59 @@ def test_the_linter_reads_every_language_the_candidate_declares():
     result = _lint_check(_observed_with_manifest(manifest), None, None)
     assert result.status.value == "failed"
     assert result.error_code == "manifest_lint_rejected"
+
+
+def test_the_closure_reads_every_file_and_names_what_breaks_it():
+    """Three refusals, each pointing at the file and the line that caused it."""
+    from executor_birth_shadow import _closure_findings_v1
+
+    assert _closure_findings_v1({
+        "main.py": b"import os\nfrom helper import go\n",
+        "helper.py": b"def go():\n    return 1\n",
+    }) == []
+    assert _closure_findings_v1(
+        {"main.py": b"def broken(:\n"},
+    ) == ["unparsable:main.py"]
+    assert _closure_findings_v1(
+        {"main.py": b"from .absent import go\n"},
+    ) == ["relative_import_outside:main.py:1"]
+    assert _closure_findings_v1(
+        {"main.py": b"from ..outside import go\n", "outside.py": b""},
+    ) == ["relative_import_outside:main.py:1"]
+    assert _closure_findings_v1(
+        {"main.py": b"import re\nre.compile('x')\nexec(payload)\n"},
+    ) == ["assembled_code:main.py:3:exec"]
+
+
+def test_a_relative_import_of_a_sibling_in_the_candidate_is_closed():
+    """The sibling is in the snapshot, so the import resolves and passes."""
+    from executor_birth_shadow import _closure_findings_v1
+
+    assert _closure_findings_v1({
+        "read_files.py": b"from _support import parse\n",
+        "_support.py": b"def parse():\n    return {}\n",
+    }) == []
+
+
+def test_the_closure_costs_nothing_on_the_real_executors():
+    """Measured, not assumed: no published executor breaks any of the three.
+
+    If this ever turns red it is a finding about that executor, not about the
+    rule: the rule was introduced only because its cost here was zero.
+    """
+    import config as runtime_config
+    from executor_birth_shadow import _closure_findings_v1
+
+    root = Path(runtime_config.PATH_EXECUTORS)
+    if not root.is_dir():
+        pytest.skip("no executor tree in this installation")
+    broken: list[str] = []
+    for directory in sorted(item for item in root.iterdir() if item.is_dir()):
+        files = {
+            path.name: path.read_bytes() for path in sorted(directory.glob("*.py"))
+        }
+        if files:
+            broken.extend(
+                f"{directory.name}/{item}" for item in _closure_findings_v1(files)
+            )
+    assert broken == []

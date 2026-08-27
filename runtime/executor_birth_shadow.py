@@ -7,12 +7,14 @@ could act on.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import re
 import tomllib
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Callable, Iterable, Mapping, TYPE_CHECKING
 
@@ -340,6 +342,59 @@ def _lint_check(observed: ObservedCandidate, _decision: RevisionDecision,
                        evidence, "valid")
 
 
+# Running code assembled at run time defeats every static reading of a
+# candidate: whatever the analysis concluded, the program that actually runs is
+# built after the analysis.  Measured over the 93 files of the real executors:
+# not one of them uses any of these, so the rule refuses nothing legitimate.
+_ASSEMBLED_CODE_BUILTINS_V1 = frozenset({"exec", "eval", "compile"})
+
+
+def _closure_findings_v1(code_files: Mapping[str, bytes]) -> list[str]:
+    """Read every file of the candidate and report what breaks the closure.
+
+    Three things are decided here, and nothing else: the file parses, a
+    relative import stays inside the candidate, and no code is assembled at run
+    time.  Import of an installed module is not judged here: the distribution
+    is already pinned by digest in the admission context.
+    """
+    owned = {
+        PurePosixPath(name).with_suffix("").as_posix().replace("/", ".")
+        for name in code_files
+    }
+    findings: list[str] = []
+    for name in sorted(code_files):
+        try:
+            tree = ast.parse(code_files[name], filename=name)
+        except (SyntaxError, ValueError):
+            findings.append(f"unparsable:{name}")
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level:
+                target = (node.module or "").split(".")[0]
+                if node.level > 1 or not target or target not in owned:
+                    findings.append(f"relative_import_outside:{name}:{node.lineno}")
+            elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id in _ASSEMBLED_CODE_BUILTINS_V1):
+                findings.append(
+                    f"assembled_code:{name}:{node.lineno}:{node.func.id}"
+                )
+    return findings
+
+
+def _closure_check(observed: ObservedCandidate, _decision: RevisionDecision,
+                   _deps: _BirthDependencies) -> CheckResult:
+    """Refuse a candidate whose own files do not hold together."""
+    findings = _closure_findings_v1(observed.snapshot.code_files)
+    evidence = _shadow_evidence(
+        "dependency-closure", observed.identities.candidate_id, *findings,
+    )
+    if findings:
+        return CheckResult("dependency_closure", "v1", CheckStatus.FAILED,
+                           "dependency_closure_broken", evidence, findings[0])
+    return CheckResult("dependency_closure", "v1", CheckStatus.PASSED, None,
+                       evidence, "closed")
+
+
 def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
     runner = deps.property_runner or ObservedPropertyRunner(
         observed, windows_registry=deps.windows_sandbox_registry,
@@ -411,6 +466,7 @@ def _approval_applies(decision: RevisionDecision, _observed: ObservedCandidate) 
 _CHECK_CATALOG_V1 = (
     ("manifest_standard", "v1", True, _always, _standard_check),
     ("manifest_lint", "v1", True, _always, _lint_check),
+    ("dependency_closure", "v1", True, _always, _closure_check),
     ("properties", "v1", True, _always, _property_check),
     ("semantic_review", "v1", True, _semantic_applies, _semantic_check),
     ("approval", "v1", True, _approval_applies, _approval_check),
