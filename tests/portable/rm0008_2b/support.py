@@ -98,12 +98,9 @@ def make_config(tmp_path: Path, *, author=None, extra=(), operator=False) -> Pat
     base = tmp_path / "config"
     (base / "birth" / "operator-input-v1").mkdir(mode=0o755, parents=True)
     relax_directory(base)
-    for location in (base / "birth", base / "birth" / "operator-input-v1"):
-        apply_profile(location, directory=True, private=False)
     if author is not None or extra:
         keys = base / "keys"
         keys.mkdir(mode=0o700)
-        apply_profile(keys, directory=True, private=True)
         if author is not None:
             write(keys / "author_priv.bin", private_bytes(author), 0o600)
             write(keys / "author_pub.bin", public_bytes(author), 0o644)
@@ -111,7 +108,27 @@ def make_config(tmp_path: Path, *, author=None, extra=(), operator=False) -> Pat
             write(keys / name, payload, mode)
     if operator:
         complete_operator_input(base)
+    if author is not None or extra:
+        apply_profile(base / "keys", directory=True, private=True)
     return base
+
+
+_SEALED: set[str] = set()
+
+
+def seal_birth_root(base: Path) -> None:
+    """Give the Birth root and the operator location their exact profile.
+
+    Sealing happens once and after the content exists: the profile of a Birth
+    object does not grant the right to rewrite a descriptor, so a container
+    sealed before its content can never receive it.
+    """
+    for location in (base / "birth" / "operator-input-v1", base / "birth"):
+        key = str(location)
+        if key in _SEALED:
+            continue
+        apply_profile(location, directory=True, private=False)
+        _SEALED.add(key)
 
 
 def use_config(monkeypatch, base: Path) -> None:
@@ -122,6 +139,7 @@ def use_config(monkeypatch, base: Path) -> None:
     provisioning must provide a real installation.
     """
     runtime_config = importlib.import_module("config")
+    seal_birth_root(base)
     monkeypatch.setattr(runtime_config, "PATH_USER_CONFIG", base)
     # The mutable roots move too: a public certification must never read or
     # write the installation of the machine that runs it.

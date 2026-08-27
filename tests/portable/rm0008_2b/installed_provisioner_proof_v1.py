@@ -200,9 +200,8 @@ def run_proof(source: Path, workspace: Path) -> dict[str, object]:
     # tree.  On Windows the same fact is a security descriptor.
     support.relax_directory(home)
     support.relax_directory(config)
-    for path in (config / "birth", config / "birth" / "operator-input-v1"):
-        support.apply_profile(path, directory=True, private=False)
     keys = support.complete_operator_input(config)
+    support.seal_birth_root(config)
     root = config / "birth"
 
     steps: list[dict[str, object]] = []
