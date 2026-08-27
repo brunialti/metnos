@@ -1112,6 +1112,8 @@ _OBJ_CASE_INSENSITIVE = 0x00000040
 # DELETE|SYNCHRONIZE|READ_CONTROL|WRITE_DAC|WRITE_OWNER|FILE_READ_ATTRIBUTES
 # plus data access for a file and directory access for a container.
 _WIN_FILE_CREATE_ACCESS_V1 = 0x001f0083
+# The same rights without DELETE: a held lock must not keep that one.
+_WIN_LOCK_CREATE_ACCESS_V1 = 0x000f0083
 _WIN_DIRECTORY_CREATE_ACCESS_V1 = 0x001f00a1
 
 
@@ -1423,6 +1425,7 @@ def _win_open_relative_v1(
     purpose: _NtOpenPurposeV1,
     directory: bool,
     security_descriptor=None,
+    access_override: int | None = None,
 ) -> int:
     """Open or create one component relative to an already open directory.
 
@@ -1434,7 +1437,10 @@ def _win_open_relative_v1(
     if component != _relative_components((component,))[0]:
         raise BirthSecureFSError("birth_provisioning_io_unavailable")
     create = purpose is _NtOpenPurposeV1.create_exclusive
-    access = (
+    # The lock is the one creation that must not keep the right to remove: the
+    # handle stays open while the lock is held, and anyone reading the
+    # container would collide with it.  Nothing else overrides its mask.
+    access = access_override if access_override is not None else (
         _NT_DIRECTORY_ACCESS_V1[purpose]
         if directory
         else _NT_FILE_ACCESS_V1[purpose]
@@ -3242,13 +3248,13 @@ class _SecureRootSession:
                             service_sid=self._service_sid,
                             lock=lock_object,
                         ) as (attributes, descriptor):
-                            handle = _win_open_path(
-                                path,
+                            handle = _win_open_relative_v1(
+                                directory,
+                                name,
+                                purpose=_NtOpenPurposeV1.create_exclusive,
                                 directory=False,
-                                writable=True,
-                                create=True,
-                                security_attributes=ctypes.byref(attributes),
-                                security_write=True,
+                                security_descriptor=attributes.lpSecurityDescriptor,
+                                access_override=_WIN_LOCK_CREATE_ACCESS_V1,
                             )
                             _win_apply_and_verify_security(handle, descriptor)
                 else:
@@ -3261,8 +3267,14 @@ class _SecureRootSession:
                         purpose=_NtOpenPurposeV1.lock_reader,
                         directory=False,
                     )
-            except OSError as exc:
-                if create and exclusive and exc.errno in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
+            except (BirthSecureFSError, OSError) as exc:
+                taken = getattr(exc, "errno", None) in {
+                    _ERROR_FILE_EXISTS,
+                    _ERROR_ALREADY_EXISTS,
+                } or getattr(exc, "code", None) == (
+                    "birth_provisioning_transaction_conflict"
+                )
+                if create and exclusive and taken:
                     handle = _win_open_path(
                         path, directory=False, writable=True, generic_read=True
                     )
