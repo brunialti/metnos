@@ -13,6 +13,11 @@ migrato. Il ciclo pubblico e' verde su tutti e nove i lavori. Tutto e'
 committato; non esiste lavoro in file temporanei.
 
 LEGGI PRIMA, IN QUEST'ORDINE:
+0. internal/reports/rm0008-regole-di-lavoro-fra-gruppi.md
+   — cinque regole valide per TUTTI i gruppi dal 3 al 6, misurate sul gruppo 2.
+     Si ereditano cosi' come sono. Contengono anche la regola che i piani di
+     dettaglio di un gruppo si scrivono QUANDO quel gruppo inizia: i gruppi 4-6
+     non hanno un piano e non devono averlo in anticipo.
 1. internal/reports/rm0008-gruppo3-piano-ottimizzato.md
    — cosa fare ora, le quattro ottimizzazioni, l'ordine che evita di rifare i
      vettori golden, e §7 la PROCEDURA DI RIFOTOGRAFIA (otto passi, trappole
@@ -82,6 +87,17 @@ del piano. Attenzione ai due fatti che oggi la configurazione sceglie e che non
 hanno ancora una fonte chiusa (`policy_version`, `receipt_ttl_seconds`): vanno
 assegnati o dichiarati, non inventati.
 ```
+
+## Perche' i gruppi 4-6 non hanno un piano
+
+Deciso con Roberto il 27/8/2026. La forma dei gruppi 4-6 dipende da cosa il
+gruppo 3 consegna davvero; un piano scritto in anticipo va riscritto, e
+riscriverlo costa piu' che non averlo. Cio' che invece non invecchia — le
+regole di lavoro fra gruppi — e' stato sollevato in un documento separato che
+quei gruppi ereditano.
+
+Quindi: quando il gruppo 3 chiude, il gruppo 4 comincia scrivendo il **proprio**
+piano ottimizzato sullo stesso modello, non prendendone uno gia' pronto.
 
 ## Avvertenze per chi consegna
 
