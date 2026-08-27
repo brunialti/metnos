@@ -246,13 +246,15 @@ def stage_runtime_sources(tmp_path: Path, monkeypatch) -> Path:
     stage = tmp_path / "distribution"
     if not stage.is_dir():
         stage.mkdir(mode=0o755, parents=True)
-        apply_profile(stage, directory=True, private=False)
         for _, _, files, _ in module._CONTEXT_CATALOG_V1:
             for name in files:
                 shutil.copy(
                     Path(runtime_config.PATH_RUNTIME) / name, stage / name,
                 )
                 apply_profile(stage / name, directory=False, private=False)
+        # The container is sealed last: a protected descriptor applied first
+        # would deny the very copies that have to go inside it.
+        apply_profile(stage, directory=True, private=False)
     monkeypatch.setattr(runtime_config, "PATH_RUNTIME", stage)
     return stage
 

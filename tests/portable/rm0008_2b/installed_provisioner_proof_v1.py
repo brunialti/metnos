@@ -44,8 +44,11 @@ def install_copy(source: Path, target: Path) -> Path:
         )
     from . import support
 
-    for path in (target, *target.rglob("*")):
+    # Deepest first: a container sealed before its content would deny every
+    # descriptor that still has to be written.
+    for path in sorted(target.rglob("*"), key=lambda item: -len(item.parts)):
         support.apply_profile(path, directory=path.is_dir(), private=False)
+    support.apply_profile(target, directory=True, private=False)
     return target
 
 
