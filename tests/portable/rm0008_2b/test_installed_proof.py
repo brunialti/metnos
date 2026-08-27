@@ -2,16 +2,11 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
 
 from . import installed_provisioner_proof_v1 as proof
-
-pytestmark = pytest.mark.skipif(
-    os.name == "nt", reason="the Windows profile is certified by its own job"
-)
 
 
 @pytest.fixture(scope="module")
