@@ -325,6 +325,18 @@ pre-correzione (per questo le prove dell'incremento si rimuovono col prodotto);
 il manifesto **non** puo' cambiare senza una nuova fotografia, perche' il suo
 digest e' confrontato sia col blob storico sia con quello corrente.
 
+Terza trappola, pagata il 28/8: **non si puo' verificare un emendamento alla
+base pubblicandolo prima della fotografia.** Ogni lavoro 2A confronta la base
+col commit fotografato e si ferma con `frozen acceptance baseline differs from
+the pre-fix commit` PRIMA di eseguire una sola cella. Non e' una scorciatoia
+piu' economica: e' zero informazione. Se l'emendamento tocca celle che girano
+solo su Windows, l'unico canale e' la fotografia, e un'attesa sbagliata costa un
+ciclo intero.
+
+Quarta trappola, stessa data: anche una prova PUBBLICATA che vive fuori da
+`tests/portable/rm0008_2b/` deve tornare indietro col prodotto se nomina
+qualcosa che nello stato precedente la correzione non esiste.
+
 ## 10. Caricare codice da un percorso: deciso, con una porta autenticata
 
 L'obbligo 7 chiede di fallire quando «un file locale eseguito non appartiene
