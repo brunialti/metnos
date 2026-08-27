@@ -4231,6 +4231,25 @@ il cancelletto finale non puo' diventare verde. E' una contraddizione interna
 alla base, non un difetto del prodotto, e la sua soluzione — cambiare una delle
 due celle — non spetta a chi implementa.
 
+### 17.57 L'ancoraggio si apre per percorso: e' il modello della base
+
+Dopo il lucchetto ho provato a togliere l'involucro Win32 anche dagli
+ancoraggi assoluti, aprendoli con la chiamata nativa sotto il prefisso del
+gestore degli oggetti. La misura ha risposto subito: sei celle del confine
+storico si sono accese con «l'apertura nativa di un discendente non era
+relativa».
+
+Il modello della base e' quindi esplicito e diverso da come lo leggevo:
+**l'ancoraggio si apre per percorso, i discendenti si aprono relativi**, e la
+cella che vieta il ripiego sull'involucro Win32 vieta il *ripiego* — riprovare
+con quell'involucro dopo un rifiuto della chiamata nativa — non l'uso per
+l'ancoraggio. Con questa lettura le due celle della doppia chiusura non
+dipendono ne' dal lucchetto (§17.56) ne' dagli ancoraggi: la loro causa e'
+ancora ignota e va cercata altrove.
+
+Il tentativo e' stato annullato. Resta acquisito il §17.56: il lucchetto passa
+dall'ingresso relativo, e quello era davvero un ripiego.
+
 ### 17.56 Quinto tentativo sul lucchetto: riuscito
 
 Con le tre cause del §17.46 in mano, la migrazione e' passata. La chiave era la

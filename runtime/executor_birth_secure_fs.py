@@ -1495,62 +1495,9 @@ def _win_open_relative_v1(
     return handle.value
 
 
-def _win_open_absolute_v1(path: str, *, directory: bool) -> int:
-    """Open one absolute name through the native entry.
-
-    The object manager resolves a DOS name under its own prefix, so the anchor
-    of a chain is opened with the same call, the same options and the same
-    refusals as every descendant: nothing in this module falls back to the
-    Win32 wrapper.
-    """
-    handle = wintypes.HANDLE()
-    name = ctypes.create_unicode_buffer("\\??\\" + path)
-    counted = _UNICODE_STRING(
-        Length=len(path.encode("utf-16-le")) + 8,
-        MaximumLength=ctypes.sizeof(name),
-        Buffer=ctypes.cast(name, ctypes.c_void_p),
-    )
-    attributes = _OBJECT_ATTRIBUTES(
-        Length=ctypes.sizeof(_OBJECT_ATTRIBUTES),
-        RootDirectory=None,
-        ObjectName=ctypes.pointer(counted),
-        Attributes=_OBJ_CASE_INSENSITIVE,
-        SecurityDescriptor=None,
-        SecurityQualityOfService=None,
-    )
-    status_block = _IO_STATUS_BLOCK()
-    access = (
-        _NT_DIRECTORY_ACCESS_V1[_NtOpenPurposeV1.read_required]
-        if directory
-        else _NT_FILE_ACCESS_V1[_NtOpenPurposeV1.read_required]
-    )
-    options = _FILE_OPEN_REPARSE_POINT | _FILE_SYNCHRONOUS_IO_NONALERT
-    options |= _FILE_DIRECTORY_FILE if directory else _FILE_NON_DIRECTORY_FILE
-    status = _NTDLL.NtCreateFile(
-        ctypes.byref(handle),
-        access,
-        ctypes.byref(attributes),
-        ctypes.byref(status_block),
-        None,
-        _NT_FILE_ATTRIBUTES_V1,
-        _NT_SHARE_ACCESS_V1 | _FILE_SHARE_DELETE,
-        _FILE_OPEN,
-        options,
-        None,
-        0,
-    )
-    if status < 0:
-        error = _NTDLL.RtlNtStatusToDosError(status)
-        raise BirthSecureFSError(
-            _nt_birth_code_v1(error, _NtOpenPurposeV1.read_required),
-            OSError(0, "NtCreateFile", None, error),
-        )
-    return handle.value
-
-
 def _open_win_directory_root(path: str) -> int:
     """Open one absolute directory as the anchor of a handle-bound read."""
-    handle = _win_open_absolute_v1(path, directory=True)
+    handle = _win_open_path(path, directory=True)
     try:
         _require_protected_dacl_v1(handle)
     except BaseException:
@@ -1827,7 +1774,7 @@ def _open_win_root(path: Path) -> tuple[list[int], str]:
     opened: list[int] = []
     try:
         for prefix in _win_prefixes(absolute):
-            handle = _win_open_absolute_v1(prefix, directory=True)
+            handle = _win_open_path(prefix, directory=True)
             opened.append(handle)
             _verify_win_object(handle, prefix, directory=True)
         return opened, absolute
