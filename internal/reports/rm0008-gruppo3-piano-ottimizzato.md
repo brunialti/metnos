@@ -111,3 +111,34 @@ produttivo, prova di modulo, prova di integrazione, prova installata ed esito.
 Una cella rinviata dice `N/A`, il gruppo che la possiede e il motivo. Il verde
 di una prova che non attraversa il simbolo produttivo non riempie la colonna
 della prova installata.
+
+
+## 7. Procedura di rifotografia (l'unica cosa tacita e costosa)
+
+Serve ogni volta che cambia un file sotto `tests/portable/rm0008_2a_acceptance`,
+`tests/windows_identity/rm0008_2a_acceptance`, o uno dei percorsi esatti
+congelati (flusso di lavoro pubblico, `pytest.ini`, i due `conftest.py`, il
+manifesto). L'inventario produttivo e' **escluso** dal sigillo e si rigenera
+liberamente.
+
+1. `SAVED=$(git rev-parse HEAD)` e annotarlo fuori dall'albero;
+2. riportare il prodotto allo stato precedente la correzione:
+   `git checkout f4512d04 -- runtime/ install/`; rimuovere dall'indice i file di
+   prodotto nati dopo (oggi `install/birth_authority_provisioner.py`,
+   `runtime/executor_birth_commit_publisher.py`) e le prove degli incrementi
+   (`tests/portable/rm0008_2b/`), perche' fanno parte della correzione;
+3. rigenerare l'inventario:
+   `python tests/portable/rm0008_2a_acceptance/generate_production_inventory_v1.py --write`;
+4. committare e pubblicare (`scripts/publish-public.sh --incremental`);
+5. `gh workflow run 341670856 --repo brunialti/metnos -f rm0008_snapshot_pre_fix=true`
+   e attendere il verde;
+6. scaricare l'artefatto `rm0008-2a-pre-fix-evidence-v1` e copiarlo in
+   `tests/portable/rm0008-2a-pre-fix-evidence-v1.json`;
+7. ripristinare: `git checkout "$SAVED" -- runtime/ install/ tests/portable/rm0008_2b/`,
+   rigenerare l'inventario, verificare che il confronto col salvato sia vuoto;
+8. committare, pubblicare, verificare il ciclo finale verde.
+
+Trappole gia' pagate: il lavoro storico ordinario deve restare verde nello stato
+pre-correzione (per questo le prove dell'incremento si rimuovono col prodotto);
+il manifesto **non** puo' cambiare senza una nuova fotografia, perche' il suo
+digest e' confrontato sia col blob storico sia con quello corrente.
