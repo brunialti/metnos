@@ -4252,6 +4252,33 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.76 Prova installata: 2F chiuso
+
+`installed_provisioner_proof_v1` parte da una copia installata e da una radice
+vuota creata dall'entrata interna, non da un aiutante che scrive gli archivi
+direttamente. Ogni passo che deve sopravvivere a un arresto gira nel proprio
+processo, quindi l'arresto e' reale e non simulato: rimanda senza autore
+lasciando la radice senza artefatti, crea l'autore con la stessa funzione
+legacy che usa l'installatore, converge prima della macchina, ripete
+l'adattatore senza la sorgente precedente in una copia isolata, rilegge ogni
+archivio coi caricatori produttivi, ricostruisce il materiale dal catalogo
+installato e ritrova lo stesso identificativo, la stessa epoca e lo stesso
+digest. Il rapporto e' canonico, porta piattaforma, commit e passi, e dichiara
+cio' che **non** prova: il runtime non e' avviato, nessun chiamante e' migrato,
+le fabbriche Producer restano inattive, e autenticita' della distribuzione e
+protezione dallo stesso UID appartengono ai gruppi 4-6.
+
+Osservazione che vale la pena tenere: "radice invariata" del §12.4 non puo'
+significare *nessun file*, perche' l'entrata prende il blocco globale e il
+blocco e' un oggetto. Cio' che deve mancare e' ogni artefatto di
+predisposizione — nessuna transazione, nessuna radice autore, nessun insieme,
+nessun marcatore — e la prova verifica quello.
+
+Con questo gli incrementi 2A-2F del §10 sono implementati. Restano fuori da
+RM-0008 gruppo 2, per assegnazione esplicita: la migrazione dei chiamanti,
+l'attivazione del runtime Birth e i punti del §9.3 che appartengono al
+gruppo 3.
+
 ### 17.75 Incremento 2F: i tre finali, le due entrate, la fase 3
 
 I tre finali si pubblicano con tre rinomine senza sostituzione — radice autore,
