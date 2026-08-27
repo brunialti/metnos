@@ -31,6 +31,7 @@ EXPECTED_FIELDS = {
     "provisioner_build_id", "author_active_key_id", "author_verifier_key_ids",
     "admission_active_key_id", "admission_verifier_key_ids", "producer_keys",
     "approval_authority_sha256", "semantic_authority_sha256",
+    "sandbox_registry_sha256",
     "semantic_public_key_ids", "approval_input_sha256", "semantic_input_sha256",
     "producer_catalog_sha256", "context_source_inventory_sha256",
     "prepared_admission_context_id", "prepared_context_epoch",
@@ -190,9 +191,10 @@ def test_the_derivation_is_a_fixed_function_of_its_inputs():
         prepared=prepared,
         approval_document=b"approval",
         semantic_document=b"semantic",
+        sandbox_document=b"sandbox",
     )
     assert set_id == (
-        "03b78d75b73c10b08d52ce7a3889fa43c3e3a60fbc8ef3c9657be12b9c0674b5"
+        "d18a1fe5d7d4c0486a92ce087a9e1f0324fc2e1b2b46332ad185b46c3a67c288"
     )
     assert json.loads(payload)["set_id"] == set_id
 

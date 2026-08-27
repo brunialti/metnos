@@ -175,6 +175,10 @@ def load_sealed_authorities_v1():
         AUTHORITY_SETS_BASENAME_V1, AUTHOR_STORE_BASENAME_V1, PreparedSetError,
         authority_registry_v1, load_prepared_set_v1,
     )
+    from executor_birth_sandbox_registry_v1 import (
+        SANDBOX_CONTAINER_BASENAME_V1, SANDBOX_REGISTRY_BASENAME_V1,
+        decode_sandbox_registry_v1,
+    )
     from executor_birth_semantic_authority import (
         _load_semantic_authority_in_session,
     )
@@ -226,9 +230,15 @@ def load_sealed_authorities_v1():
             approval_document = _read_prepared_document_v1(
                 session, location + ("approval", "authority.json"),
             )
+            sandbox_document = _read_prepared_document_v1(
+                session,
+                location + (SANDBOX_CONTAINER_BASENAME_V1,
+                            SANDBOX_REGISTRY_BASENAME_V1),
+            )
     from executor_birth_approval_authority import _decode_approval_authority
 
     return SealedAuthoritiesV1(
+        sandbox=decode_sandbox_registry_v1(sandbox_document),
         prepared=prepared,
         author=author,
         admission=admission,
@@ -256,6 +266,8 @@ class SealedAuthoritiesV1:
     producers: Mapping[str, object]
     approval: object
     semantic: object
+    # The measured backend, or ``None`` on a machine measured without one.
+    sandbox: object
     context_epoch: str
     material: object
 

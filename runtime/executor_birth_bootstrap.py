@@ -345,6 +345,7 @@ def _build_sealed(*, now: Callable[[], datetime]) -> BirthRuntimeBundle:
         approval_resolver=approval_resolver,
         shadow_dependencies=_assemble_production_dependencies(
             semantic_authority=sealed.semantic, windows_sandbox_registry=None,
+            linux_sandbox_registry=sealed.sandbox,
         ),
         admission_private_key=sealed.admission.active_private_key,
         admission_verifier_keys=sealed.admission.verifier_keys,

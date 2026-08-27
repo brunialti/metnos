@@ -73,7 +73,7 @@ def test_every_authority_is_generated_once(tmp_path: Path, monkeypatch):
     base, location, authority, inputs, source = _stage(tmp_path, monkeypatch)
 
     assert sorted(item.name for item in location.iterdir()) == [
-        "admission", "approval", "producers", "semantic",
+        "admission", "approval", "producers", "sandbox", "semantic",
     ]
     catalog = producer_catalog_v1()
     expected = {

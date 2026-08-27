@@ -2012,6 +2012,7 @@ def _stage_authority_set_v1(
         (base + ("semantic",), integrity),
         (base + ("semantic", "public"), integrity),
         (base + ("semantic", SEMANTIC_EVIDENCE_BASENAME_V1), integrity),
+        (base + (SANDBOX_CONTAINER_BASENAME_V1,), integrity),
     ))
     sequence = first_object_sequence
 
@@ -2048,6 +2049,11 @@ def _stage_authority_set_v1(
     files = [
         (base + ("approval",), "authority.json", inputs.approval_document, integrity),
         (base + ("semantic",), "authority.json", inputs.semantic_document, integrity),
+        # A measurement of this machine, not an operator opinion: the two
+        # programs that run a phase are named and digested here, once, while
+        # the installer holds its single door.
+        (base + (SANDBOX_CONTAINER_BASENAME_V1,), SANDBOX_REGISTRY_BASENAME_V1,
+         measure_sandbox_backend_v1(), integrity),
     ]
     files.extend(
         (base + ("semantic", "public"), name, inputs.semantic_publics[name], integrity)
@@ -2149,6 +2155,10 @@ from executor_birth_context_v1 import (  # noqa: E402
     ContextMaterialError, PreparedContextMaterialV1,
     prepare_context_material_v1,
 )
+from executor_birth_sandbox_registry_v1 import (
+    SANDBOX_CONTAINER_BASENAME_V1, SANDBOX_REGISTRY_BASENAME_V1,
+    measure_sandbox_backend_v1,
+)
 
 
 def _resolve_context_sources_v1():
@@ -2208,6 +2218,7 @@ def build_set_document_v1(
     prepared: PreparedContextMaterialV1,
     approval_document: bytes,
     semantic_document: bytes,
+    sandbox_document: bytes,
 ) -> tuple[bytes, str]:
     """Build ``set.json`` and derive the immutable identity of the set."""
     producers = {}
@@ -2238,6 +2249,9 @@ def build_set_document_v1(
         ).hexdigest(),
         "semantic_authority_sha256": hashlib.sha256(
             semantic_document
+        ).hexdigest(),
+        "sandbox_registry_sha256": hashlib.sha256(
+            sandbox_document
         ).hexdigest(),
         "semantic_public_key_ids": sorted(registry["semantic"]),
         "approval_input_sha256": digests["approval_input_sha256"],
@@ -2353,6 +2367,10 @@ def _write_set_and_record_v1(
         ),
         semantic_document=_read_set_document_v1(
             session, base + ("semantic", "authority.json"),
+        ),
+        sandbox_document=_read_set_document_v1(
+            session,
+            base + (SANDBOX_CONTAINER_BASENAME_V1, SANDBOX_REGISTRY_BASENAME_V1),
         ),
     )
     written, _ = _publish_files_v1(

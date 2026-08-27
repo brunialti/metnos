@@ -135,6 +135,8 @@ class _BirthRolePatternV1(str, Enum):
     semantic_evidence_record = "semantic_evidence_record"
     context_container = "context_container"
     context_material = "context_material"
+    sandbox_container = "sandbox_container"
+    sandbox_registry = "sandbox_registry"
     keystore_config = "keystore_config"
     keystore_lock = "keystore_lock"
     keystore_private_container = "keystore_private_container"
@@ -304,8 +306,10 @@ def _authority_row(
         and _is_hex(tail[1][len(_PRODUCER_PREFIX):], 64)
     ):
         return (_DIRECTORY, _CONFIDENTIAL)
-    if tail in {("approval",), ("semantic",), ("context",)}:
+    if tail in {("approval",), ("semantic",), ("context",), ("sandbox",)}:
         return (_DIRECTORY, _INTEGRITY)
+    if tail == ("sandbox", "registry.json"):
+        return (_FILE, _INTEGRITY)
     if tail == ("approval", "authority.json"):
         return (_FILE, _INTEGRITY)
     if tail == ("semantic", "authority.json"):
@@ -447,6 +451,10 @@ def _matching_rows(
                 add(P.semantic_evidence_record, kind, role)
             elif authority_tail == ("context",):
                 add(P.context_container, kind, role)
+            elif authority_tail == ("sandbox",):
+                add(P.sandbox_container, kind, role)
+            elif authority_tail == ("sandbox", "registry.json"):
+                add(P.sandbox_registry, kind, role)
             else:
                 add(P.context_material, kind, role)
 

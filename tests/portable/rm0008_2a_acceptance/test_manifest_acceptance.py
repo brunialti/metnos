@@ -81,6 +81,8 @@ _BIRTH_ROLE_PATTERN_NAMES_V1 = (
     "semantic_evidence_record",
     "context_container",
     "context_material",
+    "sandbox_container",
+    "sandbox_registry",
     "keystore_config",
     "keystore_lock",
     "keystore_private_container",
@@ -385,6 +387,12 @@ def _productive_catalog_cases_v1() -> tuple[tuple[tuple[str, ...], bool, str], .
                     False,
                     "birth_integrity_only",
                 ),
+                (authority_root + ("sandbox",), True, "birth_integrity_only"),
+                (
+                    authority_root + ("sandbox", "registry.json"),
+                    False,
+                    "birth_integrity_only",
+                ),
             )
         )
     keystore_anchors = (
@@ -460,6 +468,8 @@ def _productive_catalog_case_patterns_v1() -> tuple[str, ...]:
         "semantic_evidence_record",
         "context_container",
         "context_material",
+        "sandbox_container",
+        "sandbox_registry",
     )
     keystore = (
         "keystore_config",

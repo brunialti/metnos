@@ -36,6 +36,7 @@ SET_FIELDS_V1 = frozenset({
     "provisioner_build_id", "author_active_key_id", "author_verifier_key_ids",
     "admission_active_key_id", "admission_verifier_key_ids", "producer_keys",
     "approval_authority_sha256", "semantic_authority_sha256",
+    "sandbox_registry_sha256",
     "semantic_public_key_ids", "approval_input_sha256", "semantic_input_sha256",
     "producer_catalog_sha256", "context_source_inventory_sha256",
     "prepared_admission_context_id", "prepared_context_epoch",
@@ -178,9 +179,17 @@ def load_prepared_set_v1(session) -> PreparedSetV1:
     ):
         raise PreparedSetError("birth_prepared_set_mismatch")
 
+    from executor_birth_sandbox_registry_v1 import (
+        SANDBOX_CONTAINER_BASENAME_V1, SANDBOX_REGISTRY_BASENAME_V1,
+    )
+
     for registry, digest in (
         (("approval", "authority.json"), "approval_authority_sha256"),
         (("semantic", "authority.json"), "semantic_authority_sha256"),
+        (
+            (SANDBOX_CONTAINER_BASENAME_V1, SANDBOX_REGISTRY_BASENAME_V1),
+            "sandbox_registry_sha256",
+        ),
     ):
         if hashlib.sha256(
             read(location + registry)
