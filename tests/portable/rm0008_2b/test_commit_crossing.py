@@ -62,7 +62,7 @@ def _facts(ref, snapshot, predecessor: str, epoch: str) -> BirthCommitFactsV1:
 
 def _prepared_author(monkeypatch, base: Path):
     """The author identity the provisioner staged, read back from its store."""
-    return support.load_staged_author_store(monkeypatch, base)
+    return support.load_installed_author_store(monkeypatch, base)
 
 
 def test_the_prepared_identities_publish_a_real_generation(

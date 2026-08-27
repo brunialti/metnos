@@ -47,7 +47,7 @@ def _source(base: Path, monkeypatch):
 
 def _store(base: Path) -> Path:
     """The author store, which stays inside its transaction until 2E."""
-    return support.staged_author_store(base)
+    return support.installed_author_store(base)
 
 
 def _transaction_root(base: Path) -> Path:
@@ -66,7 +66,7 @@ def test_a_first_migration_installs_the_previous_identity(
     source = _source(base, monkeypatch)
     result = support.provision(monkeypatch, base)
 
-    assert result.outcome is AuthorProvisioningOutcomeV1.staged
+    assert result.outcome is AuthorProvisioningOutcomeV1.installed
     assert result.active_key_id == source.active_key_id
     store = _store(base)
     assert sorted(item.name for item in store.iterdir()) == [
@@ -88,10 +88,10 @@ def test_a_first_migration_installs_the_previous_identity(
 def test_the_journal_records_every_step_in_order(tmp_path: Path, monkeypatch):
     base = _config(tmp_path, author=Ed25519PrivateKey.generate())
     source = _source(base, monkeypatch)
-    result = support.provision(monkeypatch, base)
+    support.provision_until_verified(monkeypatch, base)
 
     checkpoints = sorted(
-        (_transaction_root(base) / "checkpoints-v1").iterdir(),
+        (support.transaction_root(base) / "checkpoints-v1").iterdir(),
         key=lambda item: item.name,
     )
     chain = [
@@ -108,9 +108,6 @@ def test_the_journal_records_every_step_in_order(tmp_path: Path, monkeypatch):
     assert chain[1].digests[
         "author_source_public_inventory_sha256"
     ] == source.inventory_sha256
-    assert chain[2].digests[
-        "author_store_public_inventory_sha256"
-    ] == result.public_inventory_sha256
     assert chain[0].payload_inventory == () and len(chain[2].payload_inventory) == 7
     assert len(chain[4].payload_inventory) > len(chain[2].payload_inventory)
     for previous, current in zip(chain, chain[1:]):
@@ -120,33 +117,36 @@ def test_the_journal_records_every_step_in_order(tmp_path: Path, monkeypatch):
 def test_the_recorded_identity_survives_the_installation(
     tmp_path: Path, monkeypatch,
 ):
+    """A rename does not change an object: what was recorded still describes it."""
     base = _config(tmp_path, author=Ed25519PrivateKey.generate())
-    support.provision(monkeypatch, base)
+    support.provision_until_verified(monkeypatch, base)
     checkpoints = sorted(
-        (_transaction_root(base) / "checkpoints-v1").iterdir(),
+        (support.transaction_root(base) / "checkpoints-v1").iterdir(),
         key=lambda item: item.name,
     )
     staged = provisioning.decode_checkpoint_v1(checkpoints[2].read_bytes())
-    root = support.transaction_root(base)
-    for record in staged.payload_inventory:
-        observed = (root / record.relative_path).stat()
-        assert record.platform_identity.device == observed.st_dev
-        assert record.platform_identity.inode == observed.st_ino
+    recorded = {
+        item.relative_path: item.platform_identity.inode
+        for item in staged.payload_inventory
+    }
+    support.provision(monkeypatch, base)
+    for relative, inode in recorded.items():
+        assert (base / "birth" / relative).stat().st_ino == inode
 
 
 def test_a_second_run_only_inspects(tmp_path: Path, monkeypatch):
     base = _config(tmp_path, author=Ed25519PrivateKey.generate())
     first = support.provision(monkeypatch, base)
+    assert first.outcome is AuthorProvisioningOutcomeV1.installed
     before = sorted(
         (item.relative_to(base).as_posix(), item.stat().st_ino)
         for item in _store(base).rglob("*")
     )
     second = support.provision(monkeypatch, base)
-    # The transaction survives until the marker of increment 2F, so a further
-    # run is a resumption that verifies; it is not a second migration.
-    assert second.outcome is AuthorProvisioningOutcomeV1.resumed
+    assert second.outcome is AuthorProvisioningOutcomeV1.already_installed
     assert second.active_key_id == first.active_key_id
     assert second.public_inventory_sha256 == first.public_inventory_sha256
+    assert second.transaction_id is None
     after = sorted(
         (item.relative_to(base).as_posix(), item.stat().st_ino)
         for item in _store(base).rglob("*")
@@ -162,7 +162,7 @@ def test_a_second_run_needs_no_previous_source(tmp_path: Path, monkeypatch):
         item.unlink()
     (base / "keys").rmdir()
     second = support.provision(monkeypatch, base)
-    assert second.outcome is AuthorProvisioningOutcomeV1.resumed
+    assert second.outcome is AuthorProvisioningOutcomeV1.already_installed
     assert second.public_inventory_sha256 == first.public_inventory_sha256
 
 
@@ -177,45 +177,35 @@ def test_an_installation_without_any_author_creates_nothing(
     ]
 
 
-def test_a_staged_transaction_completes_from_its_own_bytes(
+def test_a_verified_transaction_completes_from_its_own_bytes(
     tmp_path: Path, monkeypatch,
 ):
     author = Ed25519PrivateKey.generate()
     base = _config(tmp_path, author=author)
     source = _source(base, monkeypatch)
-    layout = support.open_layout(monkeypatch, base)
-    session = layout.birth_session
-    transaction = provisioning.new_transaction_id_v1()
-    journal = provisioning._TransactionJournalV1(session, transaction)
-    with session:
-        with session.global_lock(exclusive=True, create=True):
-            journal.create_root()
-            journal.write_header(
-                provisioning.TransactionHeaderV1(transaction, BUILD)
-            )
-            journal.ensure_checkpoints()
-            zero = provisioning.CheckpointV1(
-                transaction, 0, None, ProvisioningStateV1.created, (),
-                provisioning.empty_digests_v1(), None,
-            )
-            journal.append(zero)
-            acquired = provisioning._record_author_source_v1(
-                journal, zero, source,
-            )
-            provisioning._stage_and_record_v1(
-                session, journal, acquired, source,
-            )
-    # The previous source disappears between the two runs.
+    transaction = support.provision_until_verified(monkeypatch, base)
+    # Every external input disappears between the two runs.
+    import shutil
+
     for item in (base / "keys").iterdir():
         item.unlink()
     (base / "keys").rmdir()
+    for item in sorted(
+        (base / "birth" / "operator-input-v1").rglob("*"), reverse=True,
+    ):
+        item.unlink() if item.is_file() else item.rmdir()
 
     result = support.provision(monkeypatch, base)
-    assert result.outcome is AuthorProvisioningOutcomeV1.resumed
+    assert result.outcome is AuthorProvisioningOutcomeV1.installed
     assert result.transaction_id == transaction
     assert (
         _store(base) / "private" / f"{source.active_key_id}.key"
     ).read_bytes() == support.private_bytes(author)
+    assert support.installed_marker(base).is_file()
+    assert not any(
+        item.name.startswith(provisioning.TRANSACTION_PREFIX_V1)
+        for item in (base / "birth").iterdir()
+    )
 
 
 def test_a_transaction_of_another_build_is_a_conflict(
@@ -333,24 +323,12 @@ def test_an_invalid_final_store_is_not_repaired(tmp_path: Path, monkeypatch):
     assert broken.read_bytes() == b'{"schema_version":1}'
 
 
-def test_a_store_beside_no_transaction_is_ambiguous(
-    tmp_path: Path, monkeypatch,
-):
-    """Nothing is published before the whole set is verified.
-
-    A final author root without a transaction is therefore a state this
-    increment cannot have produced, and it is refused instead of adopted.
-    """
+def test_a_store_without_a_marker_is_ambiguous(tmp_path: Path, monkeypatch):
+    """A final author root alone is a state no conforming stop can produce."""
     base = _config(tmp_path, author=Ed25519PrivateKey.generate())
     support.provision(monkeypatch, base)
-    import shutil
-
-    shutil.move(
-        str(support.staged_author_store(base)),
-        str(base / "birth" / "author-root-v1"),
-    )
-    shutil.rmtree(support.transaction_root(base))
+    support.installed_marker(base).unlink()
     with pytest.raises(BirthProvisioningError) as error:
         support.provision(monkeypatch, base)
     assert error.value.code == "birth_provisioning_recovery_ambiguous"
-    assert (base / "birth" / "author-root-v1" / "keystore.json").exists()
+    assert (_store(base) / "keystore.json").exists()

@@ -43,7 +43,7 @@ def _provision(tmp_path: Path, monkeypatch):
         tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
     )
     result = support.provision(monkeypatch, base)
-    location = support.transaction_root(base) / "authority-set"
+    location = support.installed_set(base)
     return base, location, result
 
 
@@ -87,7 +87,11 @@ def test_the_document_carries_nothing_private(tmp_path: Path, monkeypatch):
 
 
 def test_the_material_is_durable_before_the_set(tmp_path: Path, monkeypatch):
-    base, location, _ = _provision(tmp_path, monkeypatch)
+    base = support.make_config(
+        tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
+    )
+    support.provision_until_verified(monkeypatch, base)
+    location = support.transaction_root(base) / "authority-set"
     checkpoints = sorted(
         (support.transaction_root(base) / "checkpoints-v1").iterdir(),
         key=lambda item: item.name,
@@ -131,7 +135,8 @@ def test_a_second_run_rewrites_nothing(tmp_path: Path, monkeypatch):
         item.relative_to(location).as_posix(): item.read_bytes()
         for item in location.rglob("*") if item.is_file()
     }
-    assert second.transaction_id == first.transaction_id
+    assert second.outcome.value == "already_installed"
+    assert second.transaction_id is None
     assert after == before
 
 
