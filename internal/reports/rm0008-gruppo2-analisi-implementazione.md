@@ -4188,6 +4188,29 @@ La cella della chiamata non elevata resta rossa: il lucchetto ora si prende, ma
 qualcosa piu' avanti nel percorso non da' ancora l'esito atteso. E' il prossimo
 punto da guardare, con una causa in meno.
 
+### 17.55 Stato di RM-0008 2A, in breve
+
+Per chi legge senza seguire il diario:
+
+- **Le 82 celle obbligatorie della base sono verdi** su entrambe le
+  piattaforme. Il prodotto 2A e' implementato e provato.
+- **Cinque lavori su sei** dell'officina pubblica sono verdi: portatile Ubuntu,
+  concorrenza Ubuntu, manifesto, portatile Windows, concorrenza Windows.
+- **Restano 5 celle** nel lavoro ACL Windows, tutte dichiarate «possono essere
+  verdi»: 2 dipendono dalla migrazione del lucchetto (fermata quattro volte,
+  cause note), 1 e' la contraddizione interna alla base del §17.54, 1 chiede un
+  gettone dove il privilegio di ripristino sia presente ma disabilitato — non
+  disponibile ne' sul PC ne' in officina — e 1 e' la sonda sotto altro account,
+  che non si lascia osservare (§17.53).
+- **Il cancelletto finale pretende tutte le celle verdi**, quindi non e' verde.
+  Delle cinque, nessuna e' oggi risolvibile senza una decisione sulla base o un
+  ambiente diverso.
+
+Da qui si puo': (a) rivedere le due celle in contraddizione e quella del
+privilegio, che e' un lavoro sulla base e non sul prodotto; (b) riprendere la
+migrazione del lucchetto con le tre cause gia' scritte; (c) dare a chi
+implementa una macchina Windows dove eseguire a mano il caso non elevato.
+
 ### 17.54 Decisione sulla tensione del §17.42
 
 Le due pretese non sono conciliabili con le primitive attuali: guardare la
