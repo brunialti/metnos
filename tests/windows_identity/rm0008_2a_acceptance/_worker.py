@@ -316,7 +316,11 @@ def product_create_as_standard_user(root: Path) -> int:
     except sf.BirthSecureFSError as exc:
         rendered = str(exc)
         if (
-            exc.code == "birth_provisioning_acl_unsafe"
+            # Measured 28/8 by the split itself: under a non-elevated identity
+            # the refusal is PRIVILEGE_NOT_HELD, a genuinely missing privilege,
+            # while the rename that publishes a final is denied by the DACL.
+            # The old taxonomy showed the two as one code; they are not.
+            exc.code == "birth_provisioning_elevation_required"
             and rendered == exc.code
             and "never-log-this-secret" not in rendered
         ):

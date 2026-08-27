@@ -22,30 +22,6 @@ def _runner():
     return executor_birth_runner
 
 
-def _registered_backend(runner):
-    """Register the real bwrap and the real interpreter, as an operator would.
-
-    The backend no longer accepts whatever ``PATH`` names at that instant, so a
-    real proof has to say which two programs it authorises.
-    """
-    import shutil
-    import sys
-
-    found = shutil.which("bwrap")
-    if not found:
-        if os.environ.get("METNOS_REQUIRE_REAL_BIRTH_LINUX") == "1":
-            pytest.fail("real Linux Birth runner unavailable: bwrap absent")
-        pytest.skip("real Linux Birth runner unavailable: bwrap absent")
-    bwrap = Path(found).resolve()
-    interpreter = Path(sys.executable).resolve()
-    return runner.LinuxSandboxRegistry(
-        bwrap_path=bwrap,
-        bwrap_binary_hash=runner._binary_digest_v1(bwrap),
-        interpreter_path=interpreter,
-        interpreter_binary_hash=runner._binary_digest_v1(interpreter),
-    )
-
-
 def _require_real(result) -> None:
     if result.status.value == "test_environment_unavailable":
         if os.environ.get("METNOS_REQUIRE_REAL_BIRTH_LINUX") == "1":
@@ -73,7 +49,6 @@ print(json.dumps({
         ("/usr/bin/python3", "/work/candidate/main.py"),
         candidate_id="sha256:" + "a" * 64,
         candidate_files={"main.py": source},
-        linux_registry=_registered_backend(runner),
     )
     _require_real(result)
     assert result.status is runner.RunnerStatus.PASSED, result.error_code
@@ -114,7 +89,6 @@ time.sleep(60)
         deadline=deadline,
         candidate_id="sha256:" + "b" * 64,
         candidate_files={"main.py": source},
-        linux_registry=_registered_backend(runner),
     )
     _require_real(result)
     assert result.status is runner.RunnerStatus.FAILED
