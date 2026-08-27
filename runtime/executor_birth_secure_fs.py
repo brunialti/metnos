@@ -1908,7 +1908,19 @@ def _win_restore_privilege() -> Iterator[None]:
                     else OSError(restore_error, "AdjustTokenPrivileges(restore)")
                 )
                 _win_close(token.value)
-                raise BirthSecureFSError("birth_provisioning_elevation_required", failure)
+                refusal = BirthSecureFSError(
+                    "birth_provisioning_elevation_required", failure
+                )
+                travelling = sys.exc_info()[1]
+                if travelling is None:
+                    raise refusal
+                # Both outcomes are real and neither explains the other: the
+                # body failed and the privilege was not given back.  They are
+                # delivered together instead of one hiding the other.
+                raise BaseExceptionGroup(
+                    "birth_provisioning_elevation_required",
+                    [travelling, refusal],
+                ) from None
         _win_close(token.value)
 
 
