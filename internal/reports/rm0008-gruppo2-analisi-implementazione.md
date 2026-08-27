@@ -4238,12 +4238,17 @@ account comune vero. Stesso percorso della cella congelata — sessione, presa
 del lucchetto, creazione del file riservato — e l'esito e' **esattamente quello
 atteso**: «servono privilegi», codice 40. Il prodotto e' corretto.
 
-La cella congelata fallisce quindi per un'altra ragione, e la piu' probabile e'
-scritta nel suo stesso disegno: essa esegue il lavoratore **dalla copia del
-repository**, mentre le celle sorelle che riescono copiano prima la sonda in una
-cartella pubblica, leggibile da un account comune. Un figlio che non puo'
-nemmeno leggere il proprio programma muore prima di cominciare, e infatti non
-scrive nulla: e' esattamente cio' che avevo osservato (§17.53).
+La prima spiegazione che avevo dato — il lavoratore eseguito dalla copia del
+repository, illeggibile a un account comune — e' stata **misurata e smentita**:
+il lavoratore congelato, eseguito in place da un account comune vero, restituisce
+l'esito atteso. La differenza vera e' un'altra: la cella predispone la radice
+nella cartella temporanea della sessione, che un account comune non puo'
+attraversare, mentre le celle sorelle dello stesso file usano la cartella
+pubblica proprio per questo. Il figlio si ferma alla radice e non arriva mai
+alla creazione.
+
+Rimedio scritto e conservato in `apparato-pendente-9.patch`: radice nella
+cartella pubblica, con la rimozione a fine cella. Va nel prossimo lotto.
 
 Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
