@@ -69,7 +69,7 @@ privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
 GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (undicesima fotografia, `9c6f428`):
+i lavori (dodicesima fotografia, pubblico `90e1a6b`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -86,8 +86,9 @@ i lavori (undicesima fotografia, `9c6f428`):
   tocca una mutazione, con due mutanti a dimostrarlo;
 - prove: `tests/portable/rm0008_2b/test_group3_*.py`.
 
-**Regola 1 applicata e misurata**: sei modifiche accumulate, UNA sola
-fotografia per tutto l'incremento invece di sei.
+**Regola 1 applicata e misurata**: dodici cicli in tutto, ma gli ultimi due
+incrementi hanno accumulato sei e poi due modifiche alla base con UNA sola
+fotografia ciascuno, invece di una per modifica.
 
 - `runtime/executor_birth_producer_table_v1.py` chiude la provenienza: autore
   fisso per produttore (undici righe), tipo derivato da dove vive il manifest e
