@@ -4252,6 +4252,19 @@ Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
 
+### 17.69 Parte formale di 2A chiusa
+
+Registrato dove serve, senza aggiungere superficie pubblica: l'ADR 0224 riporta
+lo stato dell'incremento e le tre proprieta' Windows stabilite certificandolo;
+la memoria di sessione e il suo indice riportano l'esito. La documentazione
+pubblica dell'architettura **non** viene toccata: il cancelletto non e' ancora
+attivo in esercizio, e descriverlo li' anticiperebbe una capacita' che l'utente
+non ha.
+
+Restano fuori dalla chiusura di RM-0008, per il criterio del §17.1: gli
+incrementi 2B-2F e la migrazione dei chiamanti (oggi il predispositore in
+`executor_birth_bootstrap.py` usa ancora i caricatori per percorso).
+
 ### 17.68 Cancelletto finale verde: 235 celle su 235
 
 Roberto ha deciso (27/8) di sistemare le tre celle. Fatto, riferendo ciascuna
