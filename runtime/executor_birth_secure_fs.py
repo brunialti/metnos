@@ -3194,32 +3194,15 @@ class _SecureRootSession:
                             directory=False,
                             service_sid=self._service_sid,
                         ) as (attributes, descriptor):
-                            # The lock is created inside the container that
-                            # is already open, exactly like every other object:
-                            # its absolute name is never rebuilt, and its
-                            # restrictive descriptor is present from the first
-                            # instant of its existence.
-                            created = _win_open_relative_v1(
-                                directory,
-                                name,
-                                purpose=_NtOpenPurposeV1.create_exclusive,
+                            handle = _win_open_path(
+                                path,
                                 directory=False,
-                                security_descriptor=attributes.lpSecurityDescriptor,
+                                writable=True,
+                                create=True,
+                                security_attributes=ctypes.byref(attributes),
+                                security_write=True,
                             )
-                            try:
-                                _win_apply_and_verify_security(created, descriptor)
-                                # What stays open while the lock is held is a
-                                # taker, not a creator: a creation handle keeps
-                                # the right to remove, and everyone reading the
-                                # container would collide with it.
-                                handle = _win_open_relative_v1(
-                                    directory,
-                                    name,
-                                    purpose=_NtOpenPurposeV1.lock_reader,
-                                    directory=False,
-                                )
-                            finally:
-                                _win_close(created)
+                            _win_apply_and_verify_security(handle, descriptor)
                 else:
                     # The lock lives inside a container that is already open:
                     # it is reached from that handle, never by rebuilding its
@@ -3230,22 +3213,10 @@ class _SecureRootSession:
                         purpose=_NtOpenPurposeV1.lock_reader,
                         directory=False,
                     )
-            except (BirthSecureFSError, OSError) as exc:
-                # A lock that already exists is not a conflict: it is the
-                # normal case for every taker after the first, and it is opened
-                # from the same container, never by rebuilding its name.
-                taken = getattr(exc, "errno", None) in {
-                    _ERROR_FILE_EXISTS,
-                    _ERROR_ALREADY_EXISTS,
-                } or getattr(exc, "code", None) == (
-                    "birth_provisioning_transaction_conflict"
-                )
-                if create and exclusive and taken:
-                    handle = _win_open_relative_v1(
-                        directory,
-                        name,
-                        purpose=_NtOpenPurposeV1.lock_reader,
-                        directory=False,
+            except OSError as exc:
+                if create and exclusive and exc.errno in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
+                    handle = _win_open_path(
+                        path, directory=False, writable=True, generic_read=True
                     )
                 else:
                     raise

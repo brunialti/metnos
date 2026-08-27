@@ -4158,6 +4158,28 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.46 Quarto tentativo sul lucchetto: fermato di nuovo, ma ora si sa perche'
+
+La base vieta esplicitamente il ripiego sull'involucro Win32, e la creazione del
+lucchetto era l'ultimo punto che lo usava: il tentativo andava fatto. E' stato
+fatto in officina, in tre passi, ciascuno misurato:
+
+1. **creazione dall'ingresso relativo** — «esiste gia'» smette di arrivare come
+   errore di sistema e arriva come esito tipizzato: il ripiego che riapriva il
+   lucchetto non scattava piu' e tutto cadeva. Corretto.
+2. **riapertura del lucchetto esistente dallo stesso contenitore** — restava un
+   rifiuto di condivisione diffuso: la maniglia di creazione porta il diritto di
+   rimuovere, e chiunque rilegga il contenitore mentre il lucchetto e' tenuto si
+   scontra con essa. Corretto tenendo il lucchetto con la maniglia di chi lo
+   prende, non di chi lo ha creato.
+3. **presa con la maniglia del prendente** — cadono invece la matrice dei
+   blocchi a byte e i limiti d'inventario.
+
+Tre pareti in fila, come nelle tre prove precedenti (§17.23, §17.30). La
+migrazione e' stata annullata di nuovo, ma stavolta le tre cause sono scritte:
+chi la riprendera' sa da dove ripartire e cosa misurare per primo. Il costo
+misurato di questo tentativo: due lavori Windows tornati rossi, poi ripristinati.
+
 ### 17.45 Portatile Windows chiuso: cinque lavori su sei verdi
 
 Tre difetti veri, trovati leggendo i registri pubblici e corretti nel prodotto:
