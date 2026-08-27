@@ -4158,6 +4158,30 @@ script autonomo sul PC, fuori dalla cella, e guardare se la riconciliazione
 parte. E' l'unico modo per separare un difetto del prodotto da un effetto della
 sorveglianza.
 
+### 17.45 Portatile Windows chiuso: cinque lavori su sei verdi
+
+Tre difetti veri, trovati leggendo i registri pubblici e corretti nel prodotto:
+
+1. **Dopo la creazione resta aperto un lettore, non un creatore.** La maniglia
+   di creazione conserva una condivisione esclusiva che impediva di rimuovere
+   piu' tardi quello stesso contenitore. Il lettore che la sostituisce e'
+   legato all'oggetto appena creato, non al suo nome. Cade cosi' anche il
+   rilascio delle maniglie del §17.43, che era un rimedio al sintomo.
+2. **Un rilascio del lucchetto fallito non sostituisce l'errore primario** e
+   non lascia aperta la maniglia: la ragione si legge prima, la chiusura
+   avviene comunque, e l'esito del rilascio emerge solo se non ce n'e' gia' uno
+   in viaggio verso il chiamante.
+3. **Il numero di nomi che raggiungono un oggetto** viene confrontato con
+   l'attesa anche su Windows. Il contratto vieta di consultare l'informazione
+   standard prima di aver agito, quindi la lettura usa la richiesta nativa
+   dedicata — il corrispettivo esatto del `fstat` che il gemello POSIX usa gia'.
+
+Misura pubblica (`1f8b8ba`): portatile Windows **60 su 60**. Restano verdi
+portatile Ubuntu, concorrenza Ubuntu, concorrenza Windows e manifesto. L'unico
+lavoro rosso e' ACL Windows con 8 celle su 65: tre del contratto nativo (fra cui
+la tensione del §17.42) e cinque delle famiglie legate al privilegio e
+all'elevazione.
+
 ### 17.44 Quinto congelamento e prima misura pubblica del lotto
 
 Il lotto dell'apparato ha cambiato gli alberi congelati, e l'esecuzione
