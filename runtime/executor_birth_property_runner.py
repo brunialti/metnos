@@ -19,6 +19,9 @@ from executor_birth_properties import (
     PropertySpec,
     PropertyStatus,
 )
+from executor_birth_primitive_table_v1 import (
+    PrimitiveTableError, check_primitive_v1, check_registry_v1,
+)
 from executor_birth_runner import (
     FixtureOp, FixtureOpKind, LinuxSandboxRegistry, RunnerStatus,
     WindowsSandboxRegistry,
@@ -381,11 +384,29 @@ _APPLICABILITY = {
 
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
+# The four registries above are the implementation; the table is the closed set
+# the admission context speaks about.  Comparing them here, at import, is what
+# stops the identity and the reachable set from drifting apart in silence.
+for _kind, _names in (
+    ("applicability", _APPLICABILITY),
+    ("fixture", _FIXTURES),
+    ("generator", _GENERATORS),
+    ("oracle", _ORACLES),
+):
+    check_registry_v1(_kind, _names)
+del _kind, _names
+
 
 def _resolve(spec: PropertySpec):
+    """Resolve one property against the closed table, then the registries."""
     try:
+        check_primitive_v1("applicability", spec.applicability_id)
+        check_primitive_v1("generator", spec.generator_id)
+        check_primitive_v1("oracle", spec.oracle_id)
         return (_APPLICABILITY[spec.applicability_id], _GENERATORS[spec.generator_id],
                 _ORACLES[spec.oracle_id])
+    except PrimitiveTableError as exc:
+        raise PropertyContractError("property_registry_invalid", exc.detail) from exc
     except KeyError as exc:  # closed core configuration failure
         raise PropertyContractError("property_registry_invalid", str(exc)) from exc
 
@@ -404,8 +425,10 @@ def run_property(
     except KeyError as exc:
         raise PropertyContractError("property_unknown", property_id) from exc
     applicable, generate, oracle = _resolve(spec)
-    if spec.fixture_id not in _FIXTURES:
-        raise PropertyContractError("property_registry_invalid", spec.fixture_id)
+    try:
+        check_primitive_v1("fixture", spec.fixture_id)
+    except PrimitiveTableError as exc:
+        raise PropertyContractError("property_registry_invalid", exc.detail) from exc
     if not applicable(candidate):
         return ()
     cases = generate(candidate)
