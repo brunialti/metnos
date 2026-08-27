@@ -1912,10 +1912,13 @@ def _win_name_taken_v1(directory: int, name: str, is_directory: bool) -> bool:
     destination is occupied, and only the container can say so.
     """
     try:
+        # The question belongs to the move that asked it, so it is asked in
+        # the same domain: a name that only a reader could reach is not a
+        # name this operation could have collided with.
         handle = _win_open_relative_v1(
             directory,
             name,
-            purpose=_NtOpenPurposeV1.read_required,
+            purpose=_NtOpenPurposeV1.mutating_open,
             directory=is_directory,
         )
     except (BirthSecureFSError, OSError):
@@ -3717,6 +3720,32 @@ class _SecureRootSession:
     def _rename_no_replace_windows(
         self, source: tuple[str, ...], destination: tuple[str, ...], directory: bool
     ) -> _ObjectIdentity:
+        try:
+            return self._rename_no_replace_windows_v1(source, destination, directory)
+        except BirthSecureFSError:
+            # A refused move leaves the containers as they were.  The proof is
+            # read once the handles are released, and the classified refusal is
+            # raised unchanged: the reconciliation observes, it does not
+            # reclassify.
+            self._observe_unmoved_v1(source, destination)
+            raise
+
+    def _observe_unmoved_v1(
+        self, source: tuple[str, ...], destination: tuple[str, ...]
+    ) -> None:
+        """Re-read the containers of a refused move and expect them unchanged."""
+        parents = {source[:-1], destination[:-1]}
+        for parent in sorted(parents):
+            try:
+                listed = {item.name for item in self._inventory_state(parent)}
+            except BirthSecureFSError:
+                return
+            if parent == source[:-1] and source[-1] not in listed:
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+
+    def _rename_no_replace_windows_v1(
+        self, source: tuple[str, ...], destination: tuple[str, ...], directory: bool
+    ) -> _ObjectIdentity:
         source_parent, source_name = source[:-1], source[-1]
         target_parent, target_name = destination[:-1], destination[-1]
         with self._directory_chain(source_parent) as (source_fd, source_path):
@@ -3808,6 +3837,14 @@ class _SecureRootSession:
                             raise BirthSecureFSError(
                                 "birth_provisioning_recovery_ambiguous"
                             )
+                        # The object that did not move must be exactly the one
+                        # that was verified: its profile is read again on the
+                        # same handle, not only its identity.
+                        self._verify_windows_profile(
+                            source_handle,
+                            directory=directory,
+                            profile=source_role,
+                        )
                         # A move that must not replace anything, refused because
                         # the name is taken, is a conflict of transactions. The
                         # destination is not reopened by name to confirm it: the

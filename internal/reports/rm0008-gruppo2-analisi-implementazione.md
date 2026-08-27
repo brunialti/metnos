@@ -4024,7 +4024,12 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   del contenitore viene riordinata per nome — un inventario e' ordinato per
   nome, e rinominare una voce la sposta in quell'ordine, mentre l'attesa
   conservava la posizione del vecchio nome. Con le tre correzioni la cella
-  della post-validazione passa. Conservato in `apparato-pendente-7.patch`.
+  della post-validazione passa. La stessa famiglia ne chiede altre due:
+  l'errore nativo va simulato con uno **stato negativo** e non con lo zero del
+  vecchio involucro (altrimenti il prodotto, correttamente, legge una riuscita),
+  e le riaperture eseguite **dentro** un'enumerazione non vanno giudicate con
+  la regola del dominio dello spostamento: appartengono al contenitore che si
+  sta leggendo. Conservato in `apparato-pendente-7.patch`.
 
 - **sonda di causalita' della rinomina** — `_RenameCausalityProbe` sostituisce
   la verifica di profilo con un metodo gia' legato alla sonda, ma la sua firma
@@ -4106,6 +4111,20 @@ della destinazione, perche' la modalita' di condivisione della maniglia in
 corso non la ammette (stessa legge del §17.32, vista dall'altro lato). Con la
 rilettura al posto giusto e le tre correzioni della sorveglianza, la sequenza
 osservata e' esattamente quella pretesa e la cella passa.
+
+### 17.36 Un rifiuto si riconcilia come una riuscita
+
+Uno spostamento rifiutato deve lasciare i contenitori come li ha trovati, e la
+base chiede che il prodotto lo dimostri: rilettura dell'oggetto rimasto —
+identita' **e** profilo, non solo identita' — e rilettura del contenitore.
+Chiedere se il nome di destinazione e' gia' occupato appartiene allo
+spostamento che lo chiede, quindi avviene nel dominio dell'atto: un nome che
+solo un lettore potrebbe raggiungere non e' un nome con cui questa operazione
+poteva scontrarsi.
+
+La riconciliazione del rifiuto e' un involucro attorno all'operazione, non un
+ramo dentro di essa: osserva e non riclassifica, e il rifiuto originale esce
+invariato.
 
 ### 17.34 Un oggetto protetto in scrittura non e' quello osservato
 
