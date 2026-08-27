@@ -4005,8 +4005,11 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   numero. Lo stesso vale per le chiusure, contate tre volte invece di una. La
   correzione tiene l'osservazione **fuori** dallo stato che la cella confronta
   per intero: aggiungere una voce a quell'elenco lo faceva fallire piu' avanti.
-  Provato sul PC: l'intera famiglia della rimozione passa, il file va da 9 a 12
-  celle verdi. Conservato in `apparato-pendente-6.patch`.
+  **Non serve piu'**: da quando la sessione lascia andare le maniglie di cio'
+  che rimuove (§17.32), il numero della maniglia di validazione non viene piu'
+  riassegnato durante l'inventario successivo, e le celle passano con
+  l'apparato intatto (misurato: 13 verdi su 21 senza alcuna modifica ai test).
+  La correzione resta descritta qui come lezione, non come debito.
 
 - **sonda di causalita' della rinomina** — `_RenameCausalityProbe` sostituisce
   la verifica di profilo con un metodo gia' legato alla sonda, ma la sua firma
@@ -4063,6 +4066,15 @@ passare per il suo risultato. Il prodotto e' stato allineato.
 Effetto misurato: le due accuse spariscono e la cella della sorgente in cache
 avanza all'asserzione successiva; nessuna cella diventa verde per questo solo
 cambiamento e nessuna regredisce. E' un passo necessario, non sufficiente.
+
+### 17.34 Un oggetto protetto in scrittura non e' quello osservato
+
+La rimozione accettava un oggetto reso protetto in scrittura dopo essere stato
+descritto e arrivava fino alla chiamata di sistema. Nulla di cio' che la
+sessione prepara porta quell'attributo: la sua comparsa dice che l'oggetto e'
+cambiato dopo la descrizione, ed e' percio' un'ambiguita' di riconciliazione,
+rifiutata prima di toccare il sistema. Misurato: la cella passa e il file va da
+12 a 13 celle verdi su 21.
 
 ### 17.32 Cio' che sparisce, prima si lascia andare
 

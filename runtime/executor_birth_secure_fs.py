@@ -955,6 +955,7 @@ _OPEN_EXISTING = 3
 _FILE_FLAG_WRITE_THROUGH = 0x80000000
 _FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
 _FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
+_FILE_ATTRIBUTE_READONLY = 0x00000001
 _FILE_ATTRIBUTE_DIRECTORY = 0x00000010
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
 _FILE_PERSISTENT_ACLS = 0x00000008
@@ -3958,8 +3959,11 @@ class _SecureRootSession:
                         "birth_provisioning_recovery_ambiguous"
                     )
                 observed_directory = bool(attributes & _FILE_ATTRIBUTE_DIRECTORY)
-                if observed_directory != directory_expected or (
-                    attributes & _FILE_ATTRIBUTE_REPARSE_POINT
+                # A write-protected object is not the one that was observed:
+                # nothing this session prepares carries that attribute, so its
+                # presence means the object changed after it was described.
+                if observed_directory != directory_expected or attributes & (
+                    _FILE_ATTRIBUTE_REPARSE_POINT | _FILE_ATTRIBUTE_READONLY
                 ):
                     raise BirthSecureFSError(
                         "birth_provisioning_recovery_ambiguous"
