@@ -61,6 +61,7 @@ def test_header_and_chain_survive_a_reopened_session(tmp_path: Path, monkeypatch
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
             journal.write_header(TransactionHeaderV1(transaction, BUILD))
+            journal.ensure_checkpoints()
             zero = _zero(transaction)
             journal.append(zero)
             journal.append(_next(zero, ProvisioningStateV1.author_staged))
@@ -104,6 +105,7 @@ def test_no_authoritative_name_is_born_final(tmp_path: Path, monkeypatch):
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
             journal.write_header(TransactionHeaderV1(transaction, BUILD))
+            journal.ensure_checkpoints()
     root = provisioning.transaction_root_name_v1(transaction)
     pending = provisioning.HEADER_PENDING_PREFIX_V1 + transaction
     assert calls == [
@@ -119,6 +121,7 @@ def test_a_pending_checkpoint_is_reported_not_read(tmp_path: Path, monkeypatch):
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
             journal.write_header(TransactionHeaderV1(transaction, BUILD))
+            journal.ensure_checkpoints()
             journal.append(_zero(transaction))
             session.create_file_exclusive(
                 journal.checkpoints_components + (
@@ -143,6 +146,7 @@ def test_ambiguous_shapes_are_refused(
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
             journal.write_header(TransactionHeaderV1(transaction, BUILD))
+            journal.ensure_checkpoints()
             zero = _zero(transaction)
             journal.append(zero)
             if case == "second-pending":
@@ -192,6 +196,7 @@ def test_a_broken_predecessor_is_a_conflict(tmp_path: Path, monkeypatch):
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
             journal.write_header(TransactionHeaderV1(transaction, BUILD))
+            journal.ensure_checkpoints()
             zero = _zero(transaction)
             journal.append(zero)
             broken = CheckpointV1(
@@ -210,6 +215,7 @@ def test_a_state_never_goes_back(tmp_path: Path, monkeypatch):
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
             journal.write_header(TransactionHeaderV1(transaction, BUILD))
+            journal.ensure_checkpoints()
             zero = _zero(transaction)
             journal.append(zero)
             staged = _next(zero, ProvisioningStateV1.author_staged)
@@ -240,8 +246,10 @@ def test_writing_twice_is_a_conflict_not_a_replacement(tmp_path: Path, monkeypat
         with session.global_lock(exclusive=True, create=True):
             journal.create_root()
             journal.write_header(TransactionHeaderV1(transaction, BUILD))
+            journal.ensure_checkpoints()
             with pytest.raises(BirthProvisioningError):
                 journal.write_header(TransactionHeaderV1(transaction, BUILD))
+            journal.ensure_checkpoints()
             journal.append(_zero(transaction))
             with pytest.raises(BirthProvisioningError):
                 journal.append(_zero(transaction))

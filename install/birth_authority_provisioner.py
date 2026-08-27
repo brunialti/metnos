@@ -631,11 +631,26 @@ class _TransactionJournalV1:
     # -- writing ---------------------------------------------------------
 
     def create_root(self) -> None:
-        """Create the transaction directory and its checkpoint container."""
-        role = _integrity_role()
+        """Create the transaction directory alone.
+
+        The checkpoint container comes after the header on purpose: every stop
+        between two steps then leaves a shape the recovery matrix of section
+        8.2 names — an empty root, a root with the header, a root with the
+        header and an empty container.
+        """
         with _translated():
-            self._session.create_directory_exclusive(self._root, role=role)
-            self._session.create_directory_exclusive(self._checkpoints, role=role)
+            self._session.create_directory_exclusive(
+                self._root, role=_integrity_role(),
+            )
+
+    def ensure_checkpoints(self) -> None:
+        """Create the checkpoint container when the stop happened before it."""
+        with _translated():
+            if CHECKPOINTS_BASENAME_V1 in self._session.inventory(self._root):
+                return
+            self._session.create_directory_exclusive(
+                self._checkpoints, role=_integrity_role(),
+            )
 
     def write_header(self, header: TransactionHeaderV1) -> None:
         if header.transaction_id != self._transaction_id:
@@ -729,6 +744,131 @@ class _TransactionJournalV1:
             inventory=None,
         )
         self._session.dispose_transaction_object(expectation)
+
+
+    # -- recovery --------------------------------------------------------
+
+    def recover_header(
+        self, header: TransactionHeaderV1, state: "TransactionStateV1",
+    ) -> "TransactionStateV1":
+        """Bring the header into existence from whatever the stop left behind.
+
+        A complete pending is promoted; an empty or partial one is removed on
+        the handle it was opened with and written again.  Nothing here reads an
+        instruction from the pending: the name and the content of the next step
+        come from the closed catalogue and from this transaction alone.
+        """
+        if state.header is not None:
+            return state
+        # Before the header exists nothing else may: the matrix admits an empty
+        # transaction root, or one that holds the single header pending, and
+        # calls any other child ambiguous.
+        with _translated():
+            names = set(self._session.inventory(self._root))
+        pending = HEADER_PENDING_PREFIX_V1 + self._transaction_id
+        if names - ({pending} if state.header_pending else set()):
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        if state.header_pending:
+            if self._promote_pending_header():
+                return self.read_state()
+            self._discard_pending_by_name(
+                self._root, pending, role=_integrity_role(),
+                maximum=MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1,
+            )
+        self.write_header(header)
+        return self.read_state()
+
+    def _promote_pending_header(self) -> bool:
+        """Promote the header pending when it is already whole and coherent."""
+        pending = HEADER_PENDING_PREFIX_V1 + self._transaction_id
+        try:
+            observed = decode_transaction_header_v1(
+                self._read(self._root + (pending,))
+            )
+        except BirthProvisioningError:
+            return False
+        if observed.transaction_id != self._transaction_id:
+            return False
+        with _translated():
+            self._session.rename_no_replace(
+                self._root + (pending,),
+                self._root + (TRANSACTION_HEADER_BASENAME_V1,),
+                directory=False,
+            )
+        return True
+
+    def recover_checkpoint_pending(
+        self, state: "TransactionStateV1",
+    ) -> "TransactionStateV1":
+        """Promote or remove the single pending of the immediately next step."""
+        sequence = state.pending_checkpoint_sequence
+        if sequence is None:
+            return state
+        name = _checkpoint_pending_name_v1(sequence, self._transaction_id)
+        previous = state.chain[-1] if state.chain else None
+        if not self._promote_pending_checkpoint(name, sequence, previous):
+            self._discard_pending_by_name(
+                self._checkpoints, name, role=_integrity_role(),
+                maximum=MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1,
+            )
+        return self.read_state()
+
+    def _promote_pending_checkpoint(
+        self, name: str, sequence: int, previous: CheckpointV1 | None,
+    ) -> bool:
+        try:
+            observed = decode_checkpoint_v1(
+                self._read(self._checkpoints + (name,))
+            )
+        except BirthProvisioningError:
+            return False
+        if (
+            observed.transaction_id != self._transaction_id
+            or observed.checkpoint_sequence != sequence
+        ):
+            return False
+        if previous is None:
+            if observed.previous_checkpoint_sha256 is not None:
+                return False
+        elif (
+            observed.previous_checkpoint_sha256 != previous.digest()
+            or state_rank_v1(observed.state) < state_rank_v1(previous.state)
+        ):
+            return False
+        with _translated():
+            self._session.rename_no_replace(
+                self._checkpoints + (name,),
+                self._checkpoints + (observed.name(),),
+                directory=False,
+            )
+        return True
+
+    def _discard_pending_by_name(
+        self, parent: tuple[str, ...], name: str, *, role, maximum: int,
+    ) -> None:
+        """Remove one partial pending after observing exactly what it is."""
+        from executor_birth_secure_fs import (
+            _DisposalClass, _DisposalExpectation, _ObjectKind,
+        )
+
+        with _translated():
+            entries = self._session._inventory_state(parent)
+        entry = next((item for item in entries if item.name == name), None)
+        if entry is None or entry.kind is not _ObjectKind.regular_file:
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        with _translated():
+            self._session.dispose_transaction_object(_DisposalExpectation(
+                components=parent + (name,),
+                identity=entry.identity,
+                kind=_ObjectKind.regular_file,
+                role=role,
+                disposal_class=_DisposalClass.partial_pending_file,
+                links=entry.links,
+                expected_size=None,
+                maximum_partial_size=maximum,
+                content_sha256=None,
+                inventory=None,
+            ))
 
     # -- reading ---------------------------------------------------------
 
@@ -1283,6 +1423,7 @@ def _first_author_migration_v1(
     journal.write_header(
         TransactionHeaderV1(transaction_id, provisioner_build_id)
     )
+    journal.ensure_checkpoints()
     zero = CheckpointV1(
         transaction_id, 0, None, ProvisioningStateV1.created, (),
         empty_digests_v1(), None,
@@ -1382,13 +1523,25 @@ def _resume_author_root_v1(
     restart converges even when the old key directory has disappeared.
     """
     journal = _TransactionJournalV1(session, transaction_id)
-    state = journal.read_state()
+    state = journal.recover_header(
+        TransactionHeaderV1(transaction_id, provisioner_build_id),
+        journal.read_state(),
+    )
     header = state.header
     if header is None or header.provisioner_build_id != provisioner_build_id:
         raise _conflict()
+    journal.ensure_checkpoints()
+    state = journal.recover_checkpoint_pending(journal.read_state())
     last = state.last
     if last is None:
-        raise _reject("birth_provisioning_recovery_ambiguous")
+        # The stop happened before the first durable step, so the transaction
+        # starts from its own zero rather than from a new nonce.
+        zero = CheckpointV1(
+            transaction_id, 0, None, ProvisioningStateV1.created, (),
+            empty_digests_v1(), None,
+        )
+        journal.append(zero)
+        last = zero
     if last.state is ProvisioningStateV1.created:
         return _resume_before_staging_v1(
             session, journal, last, installed=installed,

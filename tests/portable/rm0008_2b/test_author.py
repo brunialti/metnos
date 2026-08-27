@@ -191,6 +191,7 @@ def test_a_staged_transaction_completes_from_its_own_bytes(
             journal.write_header(
                 provisioning.TransactionHeaderV1(transaction, BUILD)
             )
+            journal.ensure_checkpoints()
             zero = provisioning.CheckpointV1(
                 transaction, 0, None, ProvisioningStateV1.created, (),
                 provisioning.empty_digests_v1(), None,
@@ -230,6 +231,7 @@ def test_a_transaction_of_another_build_is_a_conflict(
             journal.write_header(
                 provisioning.TransactionHeaderV1(transaction, "another-build")
             )
+            journal.ensure_checkpoints()
             zero = provisioning.CheckpointV1(
                 transaction, 0, None, ProvisioningStateV1.created, (),
                 provisioning.empty_digests_v1(), None,
