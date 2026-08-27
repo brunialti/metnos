@@ -2025,6 +2025,7 @@ def _win_sddl(
     profile: Literal["confidential", "integrity_only"],
     *,
     directory: bool,
+    lock: bool = False,
     service_sid: str,
 ) -> str:
     if (
@@ -2034,7 +2035,10 @@ def _win_sddl(
         in {"s-1-5-18", "s-1-5-32-544", "s-1-5-11"}
     ):
         raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-    service_mask = "0x001200a9" if directory else "0x00120089"
+    # A lock is the one object its owner must be able to write: taking it
+    # means writing its byte, and an owner that could not take its own lock
+    # could never provision anything without administrative rights.
+    service_mask = "0x001200a9" if directory else ("0x0012008b" if lock else "0x00120089")
     aces = ["(A;;FA;;;SY)", "(A;;FA;;;BA)", f"(A;;{service_mask};;;{service_sid})"]
     if profile == "integrity_only":
         aces.append(f"(A;;{service_mask};;;AU)")
@@ -2049,11 +2053,12 @@ def _win_security_attributes(
     *,
     directory: bool,
     service_sid: str,
+    lock: bool = False,
 ) -> Iterator[tuple[_SECURITY_ATTRIBUTES, int]]:
     descriptor = ctypes.c_void_p()
     size = wintypes.DWORD()
     if not _ADVAPI32.ConvertStringSecurityDescriptorToSecurityDescriptorW(
-        _win_sddl(profile, directory=directory, service_sid=service_sid),
+        _win_sddl(profile, directory=directory, service_sid=service_sid, lock=lock),
         _SDDL_REVISION_1,
         ctypes.byref(descriptor),
         ctypes.byref(size),
@@ -3208,6 +3213,7 @@ class _SecureRootSession:
                             _win_profile_name_v1(role),
                             directory=False,
                             service_sid=self._service_sid,
+                            lock=True,
                         ) as (attributes, descriptor):
                             handle = _win_open_path(
                                 path,
@@ -3272,6 +3278,7 @@ class _SecureRootSession:
                     _win_profile_name_v1(role),
                     directory=False,
                     service_sid=self._service_sid,
+                    lock=True,
                 ) as (_, descriptor):
                     _win_verify_security(handle, descriptor)
             size = before[5]
