@@ -1,5 +1,12 @@
 """The single door through which one executor may load another's code.
 
+This module deliberately does **not** live in the ``executor_birth_*``
+namespace.  Inside the gate, dynamic evaluation is forbidden outright, because
+code evaluated there could rebuild the authority that writes to disk; the
+acceptance base enforces that.  This door is the opposite kind of thing: it is
+consumed by executors, never by the gate, and a cell proves no gate module
+imports it.  Naming it as gate code would have been a claim that is not true.
+
 Loading a module from a path is not forbidden and not granted by trust: it is
 granted by *authentication*.  A candidate may not open a path and execute what
 it finds there, but it may ask this door for the code of a published executor,
