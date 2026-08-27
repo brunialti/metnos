@@ -372,3 +372,48 @@ rendendo possibile. Quella patch e' la prima intenzione da presentare quando
 Birth e' attivo. La cella
 `test_the_closure_cost_on_the_real_executors_is_known_and_named` nomina
 l'eccezione e diventa rossa quando sara' sanata.
+
+## 11. Criterio di uscita del gruppo 3
+
+Stessa forma del §13 del gruppo 2: una cella rinviata contiene `N/A`, il gruppo
+che la possiede e il motivo; non resta vuota e non si colora di verde.
+
+| Obbligo (§2) | Simbolo produttivo | Prova | Esito | Git |
+|---|---|---|---|---|
+| 1 · linter invocato davvero | `executor_birth_shadow._lint_check` | `test_executor_birth_shadow.py::test_the_linter_really_runs_and_refuses_what_it_rejects`, `..._reads_every_language_the_candidate_declares` | verde | `092caa23` |
+| 2 · albero sintattico e import | `executor_birth_shadow._closure_findings_v1` | `..._the_closure_reads_every_file_and_names_what_breaks_it`, `..._costs_nothing`(misura sugli 87 executor) | verde | `0d75e21b` |
+| 3 · risoluzione chiusa di primitive | `executor_birth_primitive_table_v1`, `executor_birth_property_runner._resolve` | `test_executor_birth_property_runner.py`, quattro celle | verde | `74b6945f` |
+| 3 · risoluzione chiusa dei modelli | `executor_birth_template_table_v1.template_v1` | `test_executor_birth_template_table.py`, cinque celle | verde | `67822d48` |
+| 4 · fondo sandbox autenticato (Linux) | `LinuxSandboxRegistry`, `_checked_linux_backend_v1`, `executor_birth_sandbox_registry_v1` | `test_executor_birth_runner.py` (tre rifiuti nominati), `rm0008_2b/test_group3_sandbox_registry.py` (cinque celle) | verde su POSIX | `0838d560`, `57f4dc3e` |
+| 4 · legame Windows | `WindowsSandboxRegistry` | — | **NON PROVATO** — vedi sotto | — |
+| 5 · registri di autorità consumati | `load_sealed_authorities_v1` | `rm0008_2b/test_group3_authority_consumption.py`, quattro celle | verde su POSIX | `f6ffeca2` |
+| 6 · politiche produttive, identità mossa | `CONTEXT_CATALOG_V1` | `rm0008_2b/test_context_material.py::test_a_catalogue_entry_that_moves_changes_the_identity` (retrocessione: identificativo **ed** epoca) | verde | `0a625147` |
+| 7 · caricamenti dinamici noti | `admitted_module_v1.load_admitted_module_v1`, `_PATH_CODE_LOADERS_V1` | `test_admitted_module.py`, nove celle | verde, con una eccezione dichiarata | `b111bafd`, `592aceca` |
+| 8 · bootstrap sul pubblicatore sigillato | `executor_birth_bootstrap._build_sealed` | `test_executor_birth_bootstrap.py` | verde | `620464e8` |
+| 9 · tabella chiusa e fabbriche Producer | `executor_birth_producer_table_v1` | `rm0008_2b/test_group3_producer_table.py` | verde | `14efd6ce` |
+| 10 · basi dati sotto la cartella di stato | `_secure_state_dir`, `_secure_state_db` | `test_executor_birth_bootstrap.py`, due celle | verde | `84452ca2` |
+| 11 · decodificatore libero rimosso nello stesso passo | assenza di `_build`, `_load_authorities`, `_context_builder`, `_read_config` | `test_executor_birth_bootstrap.py::test_the_sealed_build_refuses_without_a_prepared_set` | verde | `620464e8` |
+| 12 · barriera di riconvalida | `executor_birth_prepared_set.load_prepared_set_v1` | `rm0008_2b/test_group3_prepared_set.py` | verde su POSIX | `bc465b41` |
+
+**Requisiti non provati, elencati separatamente:**
+
+1. **Legame Windows del registro sandbox.** Il documento misurato dichiara
+   `unavailable` su `nt` e il predispositore non completa comunque su Windows
+   (blocco 2A del §13 del gruppo 2, causa non ancora provata). Finché quel
+   blocco resta, il fondo Windows non si può né misurare né esercitare: il
+   corridore continua a pretendere il suo registro e a rifiutare senza, come
+   prima di questo gruppo.
+2. **`undo_last_turn` sulla porta autenticata.** È l'unico dei 87 executor che
+   carica codice da un percorso calcolato. La modifica è scritta
+   (`internal/design/patch_undo_last_turn_porta_autenticata.diff`) e **non
+   applicabile ora**: dopo il cutover un executor cambia soltanto tramite
+   un'intenzione di Executor Birth, che è ciò che questo gruppo abilita.
+   La cella `test_the_closure_cost_on_the_real_executors_is_known_and_named`
+   nomina l'eccezione e diventa rossa quando sarà sanata.
+3. **Nascita reale di un executor attraverso il bundle attivato** (§3.3 b). Le
+   celle partono dall'insieme già predisposto e provano attivazione, consumo e
+   identità; nessun executor è ancora nato attraverso il cancello, perché
+   nessun chiamante è migrato. È lavoro del gruppo 4, non un rinvio di questo.
+4. **Cinque celle POSIX della base** (`g2` pubbliche di altro UID, `g8` binding
+   UID) restano rosse in locale perché richiedono `sudo` senza password; sono
+   verdi nel ciclo pubblico, che è l'oracolo.
