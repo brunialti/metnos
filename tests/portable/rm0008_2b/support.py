@@ -511,84 +511,8 @@ def prepare_or_defer(monkeypatch, base: Path):
     return module.prepare_or_defer_until_legacy_author_exists()
 
 
-_OWNER_PRIVILEGE: list[bool] = []
-_OWNER_PRIVILEGE_REASON: list[str] = []
-
-
-def can_set_owner() -> bool:
-    """Whether this token may give a new object its exact Birth owner.
-
-    Creating a Birth object with an exact owner needs a privilege the ordinary
-    Windows runner does not hold; the elevated job does.  The probe uses the
-    product's own creation path, because that is the fact under question.
-    """
-    if _OWNER_PRIVILEGE:
-        return _OWNER_PRIVILEGE[0]
-    if os.name != "nt":
-        _OWNER_PRIVILEGE.append(True)
-        return True
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as raw:
-        root = Path(raw) / "probe"
-        root.mkdir()
-        try:
-            apply_profile(root, directory=True, private=False)
-            from executor_birth_secure_fs import (
-                _AuthenticatedRootDescriptor, _BirthObjectRole,
-                _PlatformIdentity, _adopt_authenticated_root, _open_win_root,
-                _windows_service_sid_for_current_process,
-            )
-
-            from executor_birth_secure_fs import (
-                _BirthRoleCatalogV1, _BirthRolePatternV1,
-            )
-
-            handles, absolute = _open_win_root(root)
-            session = _adopt_authenticated_root(_AuthenticatedRootDescriptor(
-                handles=tuple(handles), root_path=absolute,
-                identity=_PlatformIdentity(
-                    posix_uid=None,
-                    windows_service_sid=_windows_service_sid_for_current_process(),
-                ),
-                role_catalog=_BirthRoleCatalogV1(
-                    schema_version=1,
-                    patterns=tuple(_BirthRolePatternV1),
-                    exact_bindings=(), generation=0,
-                ),
-            ))
-            with session:
-                with session.global_lock(exclusive=True, create=True):
-                    session.create_directory_exclusive(
-                        ("author-root-v1",),
-                        role=_BirthObjectRole.birth_confidential,
-                    )
-        except Exception as exc:
-            # The reason travels: a skip that only says "not allowed" hides
-            # whether the apparatus or the product refused, and on a runner
-            # the log is the only place the answer can appear.
-            cause = getattr(exc, "_internal_cause", None)
-            _OWNER_PRIVILEGE_REASON.append(
-                f"{type(exc).__name__}: {exc}"
-                + (f" (cause: {cause})" if cause is not None else "")
-            )
-            # A warning is the one channel a quiet run still prints, and on a
-            # runner the log is the only place this answer can appear.
-            import warnings
-
-            warnings.warn(
-                "RM-0008 owner probe refused: " + _OWNER_PRIVILEGE_REASON[0],
-                stacklevel=1,
-            )
-            _OWNER_PRIVILEGE.append(False)
-            return False
-    _OWNER_PRIVILEGE.append(True)
-    return True
-
-
-def owner_privilege_reason() -> str:
-    """Why the owner probe refused, for the skip reason of a cell."""
-    can_set_owner()
-    if not _OWNER_PRIVILEGE_REASON:
-        return "the owner privilege is available"
-    return _OWNER_PRIVILEGE_REASON[0]
+WINDOWS_BLOCKER_V1 = (
+    "on Windows the rename that publishes a final reapplies a descriptor owned "
+    "by SYSTEM, and the public runner refuses it with "
+    "birth_provisioning_elevation_required"
+)
