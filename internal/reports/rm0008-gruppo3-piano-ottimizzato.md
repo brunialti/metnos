@@ -324,3 +324,37 @@ Trappole gia' pagate: il lavoro storico ordinario deve restare verde nello stato
 pre-correzione (per questo le prove dell'incremento si rimuovono col prodotto);
 il manifesto **non** puo' cambiare senza una nuova fotografia, perche' il suo
 digest e' confrontato sia col blob storico sia con quello corrente.
+
+## 10. Decisione aperta: caricare codice da un percorso
+
+L'obbligo 7 chiede di fallire quando «un file locale eseguito non appartiene
+allo snapshot o a una dipendenza chiusa». La parte misurabile staticamente è
+stata implementata (sintassi, import relativi, niente codice montato a runtime).
+Resta fuori **una** cosa, perché non si decide da sola.
+
+**Misura** (27/8, sull'albero reale):
+
+| insieme | file | siti che caricano codice da un percorso |
+|---|---|---|
+| `executors/` | 93 | **1** — `undo_last_turn`, `spec_from_file_location` + `exec_module` su un percorso calcolato |
+| `runtime/` | 523 | 3 — `reverse_patterns_patch`, `testing/runner`, tutti di proprietà del runtime |
+
+Sui 93 file degli executor non c'è **nessun** `exec`/`eval`/`compile` builtin, e
+l'unico caricamento da percorso è quello di `undo_last_turn`, che carica il
+modulo di un ALTRO executor pubblicato per invocarne l'inverso.
+
+**Perché non l'ho deciso da solo.** Staticamente si vede soltanto che il
+percorso è *calcolato*, non dove punterà: la regola onesta sarebbe «un candidato
+non carica codice da un percorso calcolato a runtime», e quella regola rifiuta
+`undo_last_turn`. Le tre uscite possibili:
+
+1. la regola vale per tutti, e `undo_last_turn` va riscritto per non caricare
+   moduli per percorso (costo: riprogettare il verbo di sistema `undo`);
+2. la regola esenta per **origine** — un builtin di prima parte può, un
+   candidato sintetizzato o importato no (costo: l'esenzione è per provenienza,
+   non per capacità dichiarata);
+3. si dichiara una capacità nuova nel manifest (costo: **amplia il contratto**,
+   che il mandato corrente vieta).
+
+Serve il verdetto di Roberto. Fino ad allora la cosa è dichiarata NON provata
+nel criterio di uscita del gruppo 3, non silenziosamente permessa.
