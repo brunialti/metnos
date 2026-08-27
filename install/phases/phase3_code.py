@@ -809,6 +809,28 @@ def _compile_tutor_catalog() -> dict[str, Any]:
     }
 
 
+def _prepare_birth_authorities_or_defer() -> dict[str, Any]:
+    """Inspect the Birth inputs and resume a preparation already started."""
+    from ..birth_authority_provisioner import (
+        prepare_or_defer_until_legacy_author_exists,
+    )
+
+    result = prepare_or_defer_until_legacy_author_exists()
+    return {"outcome": result.outcome.value,
+            "transaction": result.transaction_id is not None}
+
+
+def _ensure_birth_authorities_prepared() -> dict[str, Any]:
+    """Prepare the inactive authority set once the author identity exists."""
+    from ..birth_authority_provisioner import (
+        ensure_executor_birth_authorities_prepared,
+    )
+
+    result = ensure_executor_birth_authorities_prepared()
+    return {"outcome": result.outcome.value,
+            "author_key_id": result.active_key_id}
+
+
 def run(args: Any) -> dict[str, Any]:
     notes: dict[str, Any] = {}
     ui.banner("Phase 3 — Metnos code & workspace", "Verify source, prepare empty databases")
@@ -832,12 +854,26 @@ def run(args: Any) -> dict[str, Any]:
     ui.step("Bootstrapping i18n message store")
     _init_i18n(data)
 
-    # 4. Canonical, resumable publication boundary.  A legacy fresh install
+    # 4. Birth authority inputs.  The read-only preflight names a missing or
+    # malformed operator registry before anything is created, and the same
+    # entry resumes an interrupted preparation.  On a fresh installation the
+    # author key does not exist yet, so this call defers without creating any
+    # object.
+    ui.step("Verifying the Birth authority inputs")
+    notes["birth_inputs"] = _prepare_birth_authorities_or_defer()
+
+    # 5. Canonical, resumable publication boundary.  A legacy fresh install
     # signs locally before the one-way cutover; an active installation uses
     # only the generation publisher.  An interrupted cutover resumes only
     # from its exact durable preparation report.
     ui.step("Publishing and verifying executor contracts")
     notes["contracts"] = _install_executor_contracts()
+
+    # The previous step creates the author key on a fresh installation, so the
+    # idempotent provisioner can complete now.  It prepares an inactive
+    # authority set: it does not activate Birth.
+    ui.step("Preparing the Birth authority set")
+    notes["birth_authorities"] = _ensure_birth_authorities_prepared()
 
     # The language selection predates the signing key. Materialize its signed,
     # atomic authority now; repeating phase 3 is byte-idempotent.
