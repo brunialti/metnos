@@ -55,6 +55,18 @@ def windows_support():
     return importlib.import_module("_windows_support")
 
 
+def relax_directory(path: Path) -> None:
+    """Make one ordinary container safe without giving it a Birth profile.
+
+    The configuration root and the mutable roots are not Birth objects: on
+    POSIX they only have to stop being group-writable, which the umask of a
+    working tree leaves them; on Windows their inherited descriptor is the
+    right one and a protected Birth DACL there would lock the installer out.
+    """
+    if os.name != "nt":
+        os.chmod(path, 0o755)
+
+
 def apply_profile(path: Path, *, directory: bool, private: bool) -> None:
     """Give one object the profile its role requires, on either platform."""
     if os.name == "nt":
@@ -85,7 +97,8 @@ def make_config(tmp_path: Path, *, author=None, extra=(), operator=False) -> Pat
     """
     base = tmp_path / "config"
     (base / "birth" / "operator-input-v1").mkdir(mode=0o755, parents=True)
-    for location in (base, base / "birth", base / "birth" / "operator-input-v1"):
+    relax_directory(base)
+    for location in (base / "birth", base / "birth" / "operator-input-v1"):
         apply_profile(location, directory=True, private=False)
     if author is not None or extra:
         keys = base / "keys"
@@ -115,7 +128,6 @@ def use_config(monkeypatch, base: Path) -> None:
     for name in ("PATH_USER_STATE", "PATH_USER_DATA"):
         location = base.parent / name.lower()
         location.mkdir(mode=0o700, parents=True, exist_ok=True)
-        apply_profile(location, directory=True, private=True)
         monkeypatch.setattr(runtime_config, name, location)
     stage_runtime_sources(base.parent, monkeypatch)
 
