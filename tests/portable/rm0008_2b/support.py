@@ -44,8 +44,12 @@ def write(path: Path, payload: bytes, mode: int) -> None:
     os.chmod(path, mode)
 
 
-def make_config(tmp_path: Path, *, author=None, extra=()) -> Path:
-    """Build one isolated installer configuration root."""
+def make_config(tmp_path: Path, *, author=None, extra=(), operator=False) -> Path:
+    """Build one isolated installer configuration root.
+
+    ``operator`` installs the ordinary, valid public registries; the tests that
+    certify their absence or their defects install their own instead.
+    """
     base = tmp_path / "config"
     (base / "birth" / "operator-input-v1").mkdir(mode=0o755, parents=True)
     os.chmod(base / "birth", 0o755)
@@ -57,6 +61,8 @@ def make_config(tmp_path: Path, *, author=None, extra=()) -> Path:
             write(keys / "author_pub.bin", public_bytes(author), 0o644)
         for name, payload, mode in extra:
             write(keys / name, payload, mode)
+    if operator:
+        complete_operator_input(base)
     return base
 
 
@@ -153,3 +159,18 @@ def complete_operator_input(base: Path) -> dict[str, bytes]:
         keys=keys,
     )
     return keys
+
+
+def transaction_root(base: Path) -> Path:
+    """The one transaction directory of an isolated root."""
+    module = provisioner()
+    roots = [
+        item for item in (base / "birth").iterdir()
+        if item.name.startswith(module.TRANSACTION_PREFIX_V1)
+    ]
+    assert len(roots) == 1, roots
+    return roots[0]
+
+
+def staged_author_store(base: Path) -> Path:
+    return transaction_root(base) / "author-root-v1"

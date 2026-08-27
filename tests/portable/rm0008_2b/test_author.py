@@ -29,7 +29,9 @@ BUILD = support.BUILD
 
 
 def _config(tmp_path: Path, *, author=None, extra=()) -> Path:
-    return support.make_config(tmp_path, author=author, extra=extra)
+    return support.make_config(
+        tmp_path, author=author, extra=extra, operator=True,
+    )
 
 
 def _source(base: Path, monkeypatch):
@@ -44,16 +46,12 @@ def _source(base: Path, monkeypatch):
 
 
 def _store(base: Path) -> Path:
-    return base / "birth" / "author-root-v1"
+    """The author store, which stays inside its transaction until 2E."""
+    return support.staged_author_store(base)
 
 
 def _transaction_root(base: Path) -> Path:
-    roots = [
-        item for item in (base / "birth").iterdir()
-        if item.name.startswith(provisioning.TRANSACTION_PREFIX_V1)
-    ]
-    assert len(roots) == 1
-    return roots[0]
+    return support.transaction_root(base)
 
 
 def test_a_first_migration_installs_the_previous_identity(
@@ -68,7 +66,7 @@ def test_a_first_migration_installs_the_previous_identity(
     source = _source(base, monkeypatch)
     result = support.provision(monkeypatch, base)
 
-    assert result.outcome is AuthorProvisioningOutcomeV1.installed
+    assert result.outcome is AuthorProvisioningOutcomeV1.staged
     assert result.active_key_id == source.active_key_id
     store = _store(base)
     assert sorted(item.name for item in store.iterdir()) == [
@@ -102,7 +100,8 @@ def test_the_journal_records_every_step_in_order(tmp_path: Path, monkeypatch):
     ]
     assert [item.state for item in chain] == [
         ProvisioningStateV1.created, ProvisioningStateV1.created,
-        ProvisioningStateV1.author_staged, ProvisioningStateV1.author_installed,
+        ProvisioningStateV1.author_staged, ProvisioningStateV1.inputs_staged,
+        ProvisioningStateV1.authorities_staged,
     ]
     assert chain[0].digests["author_source_public_inventory_sha256"] is None
     assert chain[1].digests[
@@ -112,6 +111,7 @@ def test_the_journal_records_every_step_in_order(tmp_path: Path, monkeypatch):
         "author_store_public_inventory_sha256"
     ] == result.public_inventory_sha256
     assert chain[0].payload_inventory == () and len(chain[2].payload_inventory) == 7
+    assert len(chain[4].payload_inventory) > len(chain[2].payload_inventory)
     for previous, current in zip(chain, chain[1:]):
         assert current.previous_checkpoint_sha256 == previous.digest()
 
@@ -126,8 +126,9 @@ def test_the_recorded_identity_survives_the_installation(
         key=lambda item: item.name,
     )
     staged = provisioning.decode_checkpoint_v1(checkpoints[2].read_bytes())
+    root = support.transaction_root(base)
     for record in staged.payload_inventory:
-        observed = (base / "birth" / record.relative_path).stat()
+        observed = (root / record.relative_path).stat()
         assert record.platform_identity.device == observed.st_dev
         assert record.platform_identity.inode == observed.st_ino
 
@@ -331,20 +332,24 @@ def test_an_invalid_final_store_is_not_repaired(tmp_path: Path, monkeypatch):
     assert broken.read_bytes() == b'{"schema_version":1}'
 
 
-def test_a_store_without_a_transaction_is_only_inspected(
+def test_a_store_beside_no_transaction_is_ambiguous(
     tmp_path: Path, monkeypatch,
 ):
+    """Nothing is published before the whole set is verified.
+
+    A final author root without a transaction is therefore a state this
+    increment cannot have produced, and it is refused instead of adopted.
+    """
     base = _config(tmp_path, author=Ed25519PrivateKey.generate())
-    first = support.provision(monkeypatch, base)
-    before = (_store(base) / "keystore.json").read_bytes()
-    # With the transaction gone the run is a pure inspection: it opens no
-    # previous source and reports what is already installed.
+    support.provision(monkeypatch, base)
     import shutil
 
-    shutil.rmtree(_transaction_root(base))
-    (base / "keys" / "author_priv.bin").unlink()
-    third = support.provision(monkeypatch, base)
-    assert third.outcome is AuthorProvisioningOutcomeV1.already_installed
-    assert third.transaction_id is None
-    assert (_store(base) / "keystore.json").read_bytes() == before
-    assert third.active_key_id == first.active_key_id
+    shutil.move(
+        str(support.staged_author_store(base)),
+        str(base / "birth" / "author-root-v1"),
+    )
+    shutil.rmtree(support.transaction_root(base))
+    with pytest.raises(BirthProvisioningError) as error:
+        support.provision(monkeypatch, base)
+    assert error.value.code == "birth_provisioning_recovery_ambiguous"
+    assert (base / "birth" / "author-root-v1" / "keystore.json").exists()

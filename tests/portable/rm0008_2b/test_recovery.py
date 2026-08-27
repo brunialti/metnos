@@ -46,7 +46,7 @@ def _integrity():
 
 def _reference(tmp_path: Path, monkeypatch, author):
     """One complete provisioning, used as the value every shape must reach."""
-    base = support.make_config(tmp_path / "reference", author=author)
+    base = support.make_config(tmp_path / "reference", author=author, operator=True)
     return base, support.provision(monkeypatch, base)
 
 
@@ -101,7 +101,7 @@ def test_an_interrupted_transaction_converges(
     author = Ed25519PrivateKey.generate()
     _, reference = _reference(tmp_path, monkeypatch, author)
 
-    base = support.make_config(tmp_path / "case", author=author)
+    base = support.make_config(tmp_path / "case", author=author, operator=True)
     layout = support.open_layout(monkeypatch, base)
     session = layout.birth_session
     transaction = new_transaction_id_v1()
@@ -115,18 +115,20 @@ def test_an_interrupted_transaction_converges(
     assert result.transaction_id == transaction
     assert result.public_inventory_sha256 == reference.public_inventory_sha256
 
-    store = base / "birth" / "author-root-v1"
+    store = support.staged_author_store(base)
     assert sorted(item.name for item in store.iterdir()) == [
         "birth-keystore.lock", "keystore.json", "private", "public",
     ]
-    roots = [
-        item.name for item in (base / "birth").iterdir()
-        if item.name.startswith(provisioning.TRANSACTION_PREFIX_V1)
-    ]
-    assert roots == [provisioning.transaction_root_name_v1(transaction)]
+    assert support.transaction_root(base).name == (
+        provisioning.transaction_root_name_v1(transaction)
+    )
+    assert sorted(
+        item.name for item in support.transaction_root(base).iterdir()
+    ) == ["author-root-v1", "authority-set", "checkpoints-v1",
+          "transaction-v1.json"]
     pendings = [
         item.name
-        for item in (base / "birth" / roots[0]).rglob("*")
+        for item in support.transaction_root(base).rglob("*")
         if item.name.startswith((
             provisioning.HEADER_PENDING_PREFIX_V1,
             provisioning.CHECKPOINT_PENDING_PREFIX_V1,
@@ -140,7 +142,7 @@ def test_an_interrupted_transaction_converges(
 def test_a_second_child_beside_the_header_pending_is_ambiguous(
     tmp_path: Path, monkeypatch, shape: str,
 ):
-    base = support.make_config(tmp_path, author=Ed25519PrivateKey.generate())
+    base = support.make_config(tmp_path, author=Ed25519PrivateKey.generate(), operator=True)
     layout = support.open_layout(monkeypatch, base)
     session = layout.birth_session
     transaction = new_transaction_id_v1()
@@ -158,7 +160,7 @@ def test_a_complete_header_pending_is_promoted_not_rewritten(
     tmp_path: Path, monkeypatch,
 ):
     """The promoted object keeps its identity: it is moved, not written again."""
-    base = support.make_config(tmp_path, author=Ed25519PrivateKey.generate())
+    base = support.make_config(tmp_path, author=Ed25519PrivateKey.generate(), operator=True)
     layout = support.open_layout(monkeypatch, base)
     session = layout.birth_session
     transaction = new_transaction_id_v1()
@@ -178,7 +180,7 @@ def test_a_complete_header_pending_is_promoted_not_rewritten(
 def test_a_partial_header_pending_is_removed_and_rewritten(
     tmp_path: Path, monkeypatch,
 ):
-    base = support.make_config(tmp_path, author=Ed25519PrivateKey.generate())
+    base = support.make_config(tmp_path, author=Ed25519PrivateKey.generate(), operator=True)
     layout = support.open_layout(monkeypatch, base)
     session = layout.birth_session
     transaction = new_transaction_id_v1()
@@ -203,7 +205,7 @@ def test_a_partial_header_pending_is_removed_and_rewritten(
 def test_a_pending_of_another_transaction_is_never_adopted(
     tmp_path: Path, monkeypatch,
 ):
-    base = support.make_config(tmp_path, author=Ed25519PrivateKey.generate())
+    base = support.make_config(tmp_path, author=Ed25519PrivateKey.generate(), operator=True)
     layout = support.open_layout(monkeypatch, base)
     session = layout.birth_session
     transaction = new_transaction_id_v1()
@@ -231,7 +233,7 @@ def test_a_pending_of_another_transaction_is_never_adopted(
 def test_a_checkpoint_pending_that_lies_is_discarded(
     tmp_path: Path, monkeypatch,
 ):
-    base = support.make_config(tmp_path, author=Ed25519PrivateKey.generate())
+    base = support.make_config(tmp_path, author=Ed25519PrivateKey.generate(), operator=True)
     layout = support.open_layout(monkeypatch, base)
     session = layout.birth_session
     transaction = new_transaction_id_v1()
