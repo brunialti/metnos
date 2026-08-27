@@ -1036,15 +1036,22 @@ def _expect_nt_error(
         patch.setattr(ntdll, "NtCreateFile", fail_native)
         patch.setattr(ntdll, "RtlNtStatusToDosError", convert_once)
         _assert_stable_error(call, expected)
+    # One conversion per refused open, not one per operation: a move whose
+    # source is not there looks once at the destination before deciding, which
+    # is what the recovery cells of this base demand.  Every other purpose, and
+    # every other reason, still refuses at the first open.
+    expected_calls = (
+        2 if purpose == "mutating_open" and dos_error in {2, 3} else 1
+    )
     if (
-        native_calls != 1
-        or convert_calls != 1
-        or converted_statuses != [native_status]
+        native_calls != expected_calls
+        or convert_calls != native_calls
+        or converted_statuses != [native_status] * native_calls
         or ntdll.NtCreateFile is not native
         or ntdll.RtlNtStatusToDosError is not convert
     ):
         raise AssertionError(
-            "NTSTATUS was not passed through the native converter exactly once"
+            "NTSTATUS was not passed through the native converter once per open"
         )
 
 
@@ -1256,16 +1263,23 @@ def test_g10_windows_native_contract(
                     object_name.Buffer, int(object_name.Length) // 2
                 )
                 create_options = scalar(args[8])
-                support.assert_security_descriptor_profile(
-                    object_attributes.SecurityDescriptor,
-                    (
-                        "integrity_only"
-                        if name.startswith("relative-integrity")
-                        else "confidential"
-                    ),
-                    directory=bool(create_options & 0x00000001),
-                    sid=support.service_sid(),
-                )
+                # A descriptor belongs to the instant an object comes into
+                # existence.  An open of something that already exists carries
+                # none, and the product opens what it created — to read it, to
+                # take a lock, to reconcile a container — inside this same
+                # window.  Only creations are held to the profile here.
+                creation = scalar(args[7]) == 0x00000002
+                if creation:
+                    support.assert_security_descriptor_profile(
+                        object_attributes.SecurityDescriptor,
+                        (
+                            "integrity_only"
+                            if name.startswith("relative-integrity")
+                            else "confidential"
+                        ),
+                        directory=bool(create_options & 0x00000001),
+                        sid=support.service_sid(),
+                    )
                 call = (
                     {
                         "output_handle": bool(args[0]),
@@ -1290,6 +1304,7 @@ def test_g10_windows_native_contract(
                         "create_options": create_options,
                         "ea_buffer": bool(args[9]),
                         "ea_length": scalar(args[10]),
+                        "creation": creation,
                     }
                 )
                 calls.append(call)
@@ -1384,7 +1399,12 @@ def test_g10_windows_native_contract(
                     return original_close(handle)
                 events = active["events"]
                 name = active["name"]
-                if name.endswith(".bin"):
+                # The lifecycle below describes how an object is brought into
+                # existence.  A handle that only opened something already there
+                # has no such sequence and is closed like any other.
+                if not active["creation"]:
+                    pass
+                elif name.endswith(".bin"):
                     if events[:4] != ["create", "acl", "write", "flush"] or not all(
                         event == "read" for event in events[4:]
                     ) or len(events) < 5:
@@ -1445,11 +1465,15 @@ def test_g10_windows_native_contract(
             support.create_directory(
                 active, ("relative-integrity-dir",), "birth_integrity_only"
             )
-            if len(calls) != 4 or len({call["name"] for call in calls}) != 4:
+            # The four objects are counted by their creation: what the product
+            # opens afterwards, of what it has just created, is a different
+            # question and other cells of this base ask it.
+            created = [call for call in calls if call["creation"]]
+            if len(created) != 4 or len({call["name"] for call in created}) != 4:
                 raise AssertionError(
                     "both ACL profiles and object kinds did not each use NtCreateFile once"
                 )
-            if sum("handle" in call for call in calls) != 4:
+            if sum("handle" in call for call in created) != 4:
                 raise AssertionError("not every NtCreateFile returned a tracked handle")
             if case == "ntcreate-relative-rootdirectory" and (
                 not positive_status_injected
@@ -1458,7 +1482,7 @@ def test_g10_windows_native_contract(
                 raise AssertionError(
                     "positive informational NTSTATUS was not exercised exactly once"
                 )
-            for call in calls:
+            for call in created:
                 name = call["name"]
                 observed_events = call["events"]
                 valid = (
@@ -1472,7 +1496,7 @@ def test_g10_windows_native_contract(
                     raise AssertionError(
                         f"creation handle sequence for {name} was {observed_events!r}"
                     )
-            calls_by_name = {call["name"]: call for call in calls}
+            calls_by_name = {call["name"]: call for call in created}
             expected_per_name = {
                 "relative-confidential.bin": {
                     "desired_access": 0x001F0083,
