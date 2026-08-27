@@ -1941,15 +1941,9 @@ def producer_catalog_sha256_v1(catalog: Sequence[tuple[str, str]]) -> str:
     ).hexdigest()
 
 
-def producer_store_name_v1(producer_id: str, operation: str) -> str:
-    """The directory name of one capability, derived and never substituted."""
-    from executor_birth_identity import encode_framed_v1
-
-    digest = hashlib.sha256(
-        PRODUCER_PATH_DIGEST_DOMAIN_V1
-        + encode_framed_v1([producer_id, operation])
-    ).hexdigest()
-    return "p-" + digest
+from executor_birth_producer_table_v1 import (  # noqa: E402
+    producer_store_name_v1,
+)
 
 
 AUTHORITY_SET_BASENAME_V1 = "authority-set"

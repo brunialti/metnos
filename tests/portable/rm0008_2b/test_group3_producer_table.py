@@ -68,3 +68,20 @@ def test_no_producer_can_choose_the_kind():
     assert list(signature.parameters) == ["manifest_origin"]
     body = inspect.getsource(table.executor_origin_v1)
     assert "predecessor" not in body and "origin=" not in body
+
+
+def test_the_store_name_is_derived_and_shared_by_both_sides():
+    """Installer and runtime need the same name, so it has one owner."""
+    from install import birth_authority_provisioner as provisioner
+
+    caps = [
+        (item.producer_id, item.operation)
+        for item in _producer_capabilities_for_bootstrap()
+    ]
+    names = {table.producer_store_name_v1(*item) for item in caps}
+    assert len(names) == len(caps)
+    assert all(
+        name.startswith("p-") and len(name) == 66 for name in names
+    )
+    # The provisioner does not own a second implementation of it.
+    assert provisioner.producer_store_name_v1 is table.producer_store_name_v1
