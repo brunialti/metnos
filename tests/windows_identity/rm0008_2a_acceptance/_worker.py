@@ -142,18 +142,21 @@ def rename(case: str, root: Path, barrier: Path) -> None:
                 payload_sha256=support.digest(b"crash-rename"),
                 snapshot=support.windows_tree_snapshot(root),
             )
-            native = sf._KERNEL32.SetFileInformationByHandle
+            # The move is asked of the native entry point, which reports a
+            # refusal with a negative status and not with the truth value of
+            # the Win32 wrapper it replaced.
+            native = sf._NTDLL.NtSetInformationFile
 
             def intercepted(*args):
                 if case.endswith("before-native"):
                     _barrier(barrier)
                 result = native(*args)
-                if not result:
+                if int(result) < 0:
                     return result
                 _barrier(barrier)
                 return result
 
-            with mock.patch.object(sf._KERNEL32, "SetFileInformationByHandle", intercepted):
+            with mock.patch.object(sf._NTDLL, "NtSetInformationFile", intercepted):
                 active.rename_no_replace(("source",), ("destination",), directory=False)
 
 

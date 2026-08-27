@@ -160,7 +160,10 @@ def _invalid_sddl(case: str, sid: str, *, directory: bool) -> str:
     if case == "reject-ace-order":
         return "O:SYD:P" + "".join((canonical[1], canonical[0], canonical[2]))
     if case == "reject-ace-type-or-flags":
-        return "O:SYD:P(A;CI;FA;;;SY)" + "".join(canonical[1:])
+        # On a file the container-inherit flag has no meaning and the system
+        # drops it: the observable half of this case is the ACE type, which a
+        # file keeps exactly as written.
+        return "O:SYD:P(D;;FA;;;SY)" + "".join(canonical[1:])
     if case == "reject-ace-sid":
         return "O:SYD:P" + "".join(canonical[:2]) + f"(A;;0x{read:08x};;;AU)"
     return "O:SYD:P" + "".join(canonical[:2]) + f"(A;;0x{read ^ 1:08x};;;{sid})"
@@ -210,7 +213,7 @@ def test_r5_exact_acl_and_real_access(case: str, tmp_path: Path) -> None:
                     "reject-owner": "owner",
                     "reject-unprotected-dacl": "protected",
                     "reject-ace-order": "ace_sids",
-                    "reject-ace-type-or-flags": "ace_flags",
+                    "reject-ace-type-or-flags": "ace_types",
                     "reject-ace-sid": "ace_sids",
                     "reject-ace-mask": "ace_masks",
                 }[case]

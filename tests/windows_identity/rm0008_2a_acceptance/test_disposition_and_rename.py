@@ -281,6 +281,11 @@ def test_r3_windows_disposition_contract(case: str, tmp_path: Path, monkeypatch)
                 "delete_pending": False,
                 "close_count": 0,
             }
+            # The system reuses the number of a closed handle: after the
+            # validation handle is closed, a query carrying the same number
+            # belongs to another object and is not observed here.  This is kept
+            # apart from the state above, which is compared whole.
+            victim_closed: list[int] = []
             post_parent_inventories = []
             expected_parent_inventory = None
             if case in success_cases:
@@ -324,6 +329,7 @@ def test_r3_windows_disposition_contract(case: str, tmp_path: Path, monkeypatch)
                     if (
                         result
                         and disposition_state["native"]
+                        and not victim_closed
                         and _nt_scalar(args[0]) == disposition_handle()
                         and _nt_scalar(args[1]) == 1  # FileStandardInfo
                     ):
@@ -345,7 +351,7 @@ def test_r3_windows_disposition_contract(case: str, tmp_path: Path, monkeypatch)
                         if call.get("name") == "victim"
                         and call.get("returned_handle")
                     ]
-                    if value in candidates:
+                    if value in candidates and not victim_closed:
                         if value != disposition_handle():
                             raise AssertionError("disposition closed a second victim handle")
                         if not (
@@ -356,6 +362,7 @@ def test_r3_windows_disposition_contract(case: str, tmp_path: Path, monkeypatch)
                                 "disposition handle closed before native reconciliation"
                             )
                         disposition_state["close_count"] += 1
+                        victim_closed.append(value)
                     return native_close(handle)
 
                 def checked_inventory(handle, *args, **kwargs):
@@ -899,6 +906,7 @@ class _RenameCausalityProbe:
         self.native_started = False
         self.native_finished = False
         self.post_inventories = []
+        self.inside_inventory = False
 
         monkeypatch.setattr(sf, "_win_open_relative_v1", self._checked_relative)
         monkeypatch.setattr(sf, "_win_info", self._checked_info)
@@ -947,7 +955,10 @@ class _RenameCausalityProbe:
         call = _bound_call(self.relative, args, kwargs)
         source = self._contains_component(call, "source")
         destination = self._contains_component(call, "destination")
-        if source == destination:
+        # An enumeration reopens every listed name to observe it: those opens
+        # belong to the container being read, not to the move, and carry the
+        # reading domain by construction.
+        if source == destination or self.inside_inventory:
             return self.relative(*args, **kwargs)
         if call.get("purpose") != self.sf._NtOpenPurposeV1.mutating_open:
             raise AssertionError("R6 reconciliation used the wrong relative-open domain")
@@ -1062,14 +1073,22 @@ class _RenameCausalityProbe:
             if self.expect_native and not self.native_finished:
                 raise AssertionError("R6 closed the source before its native rename")
             self.source_close_count += 1
+            # The system reassigns the number of a released handle: from here
+            # on, an observation carrying it belongs to another object.
+            self.source_handle = None
         if self.destination_handle is not None and scalar == self.destination_handle:
             if self.destination_identity_seen < 1 or self.destination_profile_seen < 1:
                 raise AssertionError("R6 closed destination before FileId/profile validation")
             self.destination_close_count += 1
+            self.destination_handle = None
         return self.real_close(handle)
 
     def _checked_inventory(self, handle, *args, **kwargs):
-        result = self.real_inventory(handle, *args, **kwargs)
+        self.inside_inventory = True
+        try:
+            result = self.real_inventory(handle, *args, **kwargs)
+        finally:
+            self.inside_inventory = False
         destination_validated = (
             self.destination_identity_seen >= 1 and self.destination_profile_seen >= 1
         )
@@ -1233,6 +1252,7 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
             post_identity_seen = False
             post_profile_seen = False
             post_close_count = 0
+            in_inventory: list[bool] = []
             post_inventories: dict[str, list[tuple[object, ...]]] = {
                 "source-parent": [],
                 "target-parent": [],
@@ -1252,8 +1272,16 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
             def checked_relative(*args, **kwargs):
                 nonlocal mutating_handle, mutating_active, post_handle
                 call = _bound_call(relative, args, kwargs)
-                source_open = "source" in call.values() and not native_started
-                destination_open = "destination" in call.values() and native_started
+                source_open = (
+                    "source" in call.values()
+                    and not native_started
+                    and not in_inventory
+                )
+                destination_open = (
+                    "destination" in call.values()
+                    and native_started
+                    and not in_inventory
+                )
                 if source_open:
                     if call.get("purpose") != sf._NtOpenPurposeV1.mutating_open:
                         raise AssertionError("cached rename did not request a mutating source")
@@ -1312,6 +1340,7 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
 
             def protect_cached_source(handle):
                 nonlocal mutating_active, mutating_close_count, post_close_count
+                nonlocal post_handle
                 value = _nt_scalar(handle)
                 if value == _nt_scalar(cached_handle) and not operation_complete:
                     raise AssertionError(
@@ -1324,6 +1353,9 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
                     mutating_close_count += 1
                 elif post_handle is not None and value == post_handle:
                     post_close_count += 1
+                    # The system reassigns the number of a released handle: a
+                    # later close carrying it belongs to another object.
+                    post_handle = None
                 return native_close(handle)
 
             def checked_nested_directory_rename(*args):
@@ -1348,7 +1380,13 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
                 return native(*args)
 
             def checked_inventory(handle, *args, **kwargs):
-                result = real_inventory(handle, *args, **kwargs)
+                # An enumeration reopens every listed name to observe it: those
+                # opens belong to the container being read, not to the move.
+                in_inventory.append(True)
+                try:
+                    result = real_inventory(handle, *args, **kwargs)
+                finally:
+                    in_inventory.pop()
                 if native_started:
                     if _nt_scalar(handle) == _nt_scalar(active._root_handle):
                         post_inventories["source-parent"].append(result)
@@ -1478,9 +1516,14 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
                 active,
                 monkeypatch,
                 source_identity=before,
-                native_impl=lambda *args: 0,
+                # The native call refuses with a negative status, not with
+                # the zero the Win32 wrapper used to return: STATUS_ACCESS_
+                # DENIED is what the system would report here.
+                native_impl=lambda *args: -1073741790,
             )
-            monkeypatch.setattr(sf.ctypes, "get_last_error", lambda: 5)
+            # The reason of a native refusal comes from its status, not from
+            # the thread's last error: forcing that accessor would also poison
+            # every later system call, enumeration included.
             support.require_code(
                 lambda: active.rename_no_replace(
                     ("source",), ("destination",), directory=False
@@ -1595,7 +1638,9 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
                 )
                 native_started = True
                 result = native(*args)
-                if result:
+                # The native call reports success with a non-negative status,
+                # not with the truth value of the Win32 wrapper it replaced.
+                if int(result) >= 0:
                     events.append("native-rename")
                 return result
 
@@ -1664,7 +1709,12 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
                 return result
 
             def checked_close(handle):
-                nonlocal source_active, source_close_count
+                nonlocal source_active, source_close_count, post_handle
+                # The system reassigns the number of a closed handle: once the
+                # destination handle is released, a later observation carrying
+                # that number belongs to another object.
+                if post_handle is not None and _nt_scalar(handle) == post_handle:
+                    post_handle = None
                 if (
                     source_active
                     and source_handle is not None
@@ -1692,8 +1742,12 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
             monkeypatch.setattr(sf, "_win_inventory", checked_inventory)
             source, before = _rename_fixture(active, root)
             parent_before = active._inventory_state(())
+            # An inventory is ordered by name: renaming an entry moves it in
+            # that order, so the expected sequence is sorted like the observed
+            # one instead of keeping the position the old name held.
             expected_parent = tuple(
-                sf._InventoryEntry(
+                sorted(
+                (sf._InventoryEntry(
                     name="destination" if item.name == "source" else item.name,
                     identity=item.identity,
                     kind=item.kind,
@@ -1701,7 +1755,9 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
                     links=item.links,
                     size=item.size,
                 )
-                for item in parent_before
+                for item in parent_before),
+                key=lambda item: item.name.encode("utf-8"),
+                )
             )
             returned = active.rename_no_replace(
                 ("source",), ("destination",), directory=False
@@ -1726,6 +1782,16 @@ def test_r6_windows_rename_contract(case: str, tmp_path: Path, monkeypatch) -> N
                 expected_parent,
                 expected_parent,
             ]:
+                import os as _os
+                if _os.environ.get("RM0008_R6"):
+                    import sys as _sys
+                    print("EVENTI", events, "POST", len(post_inventories),
+                          file=_sys.stderr)
+                    for _row in post_inventories[:1]:
+                        print("VISTO", [ (i.name, i.role, i.size) for i in _row ],
+                              file=_sys.stderr)
+                    print("ATTESO", [ (i.name, i.role, i.size) for i in expected_parent ],
+                          file=_sys.stderr)
                 raise AssertionError(
                     "rename post-validation inventories differ from exact final state"
                 )
