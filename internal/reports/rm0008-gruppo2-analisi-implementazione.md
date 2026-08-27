@@ -4196,12 +4196,10 @@ Per chi legge senza seguire il diario:
   piattaforme. Il prodotto 2A e' implementato e provato.
 - **Cinque lavori su sei** dell'officina pubblica sono verdi: portatile Ubuntu,
   concorrenza Ubuntu, manifesto, portatile Windows, concorrenza Windows.
-- **Restano 5 celle** nel lavoro ACL Windows, tutte dichiarate «possono essere
-  verdi»: 2 dipendono dalla migrazione del lucchetto (fermata quattro volte,
-  cause note), 1 e' la contraddizione interna alla base del §17.54, 1 chiede un
-  gettone dove il privilegio di ripristino sia presente ma disabilitato — non
-  disponibile ne' sul PC ne' in officina — e 1 e' la sonda sotto altro account,
-  che non si lascia osservare (§17.53).
+- **Restano 3 celle** nel lavoro ACL Windows, tutte dichiarate «possono essere
+  verdi» e tutte contraddizioni interne alla base (§17.54, §17.60). Le altre
+  che elencavo qui — il privilegio, il lucchetto, la chiamata non elevata —
+  sono state chiuse: erano difetti veri del prodotto o dell'apparato.
 - **Il cancelletto finale pretende tutte le celle verdi**, quindi non e' verde.
   Delle cinque, nessuna e' oggi risolvibile senza una decisione sulla base o un
   ambiente diverso.
@@ -4253,6 +4251,25 @@ cartella pubblica, con la rimozione a fine cella. Va nel prossimo lotto.
 Non e' quindi un difetto del prodotto ne' un'incognita: e' una voce per il
 prossimo lotto dell'apparato, insieme a quelle gia' in attesa. La sonda
 temporanea e' stata tolta dopo la misura.
+
+### 17.64 Settimo congelamento: resta solo cio' che dipende da una decisione
+
+Il rimedio della cella non elevata e' entrato con la procedura del passo 5 e la
+misura conferma la causa: **quella cella e' verde**. Il flusso pubblico e' ora
+verde ovunque tranne tre celle, tutte nello stesso gruppo del contratto nativo:
+
+- due chiedono un descrittore di sicurezza su ogni apertura nativa della loro
+  finestra ed esattamente quattro aperture; il prodotto ne fa sei perche' dopo
+  aver creato un contenitore riapre un lettore, e senza quel lettore una cella
+  **obbligatoria** cade (§17.60);
+- una e' la tensione fra due celle congelate gia' decisa (§17.54).
+
+Nessuna delle tre e' lavoro di prodotto: sono contraddizioni interne alla base.
+Tutto cio' che dipendeva dal prodotto, dall'apparato o dall'ambiente e' stato
+chiuso.
+
+**Stato finale raggiungibile senza rivedere la base**: 232 celle su 235 verdi
+nell'esecuzione pubblica, con le tre eccezioni tracciate, motivate e decise.
 
 ### 17.62 La suite Windows ordinaria e' verde: due cause, entrambe reali
 
