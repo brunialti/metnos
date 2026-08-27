@@ -1909,6 +1909,48 @@ def _win_restore_privilege() -> Iterator[None]:
         _win_close(token.value)
 
 
+_FILE_STAT_INFORMATION_CLASS = 68
+
+
+class _FILE_STAT_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("FileId", ctypes.c_longlong),
+        ("CreationTime", ctypes.c_longlong),
+        ("LastAccessTime", ctypes.c_longlong),
+        ("LastWriteTime", ctypes.c_longlong),
+        ("ChangeTime", ctypes.c_longlong),
+        ("AllocationSize", ctypes.c_longlong),
+        ("EndOfFile", ctypes.c_longlong),
+        ("FileAttributes", wintypes.DWORD),
+        ("ReparseTag", wintypes.DWORD),
+        ("NumberOfLinks", wintypes.DWORD),
+        ("EffectiveAccess", wintypes.DWORD),
+    ]
+
+
+def _win_names_reaching_v1(handle: int) -> int:
+    """How many names reach the object behind one handle.
+
+    This is the native counterpart of the POSIX ``fstat`` the twin uses, asked
+    in one call of its own: the removal must not consult the standard
+    information before it has acted, and the number of names is not part of
+    that information here.
+    """
+    info = _FILE_STAT_INFORMATION()
+    status_block = _IO_STATUS_BLOCK()
+    status = _NTDLL.NtQueryInformationFile(
+        handle,
+        ctypes.byref(status_block),
+        ctypes.byref(info),
+        ctypes.sizeof(info),
+        _FILE_STAT_INFORMATION_CLASS,
+    )
+    if status < 0:
+        error = _NTDLL.RtlNtStatusToDosError(status)
+        raise OSError(0, "NtQueryInformationFile", None, error)
+    return int(info.NumberOfLinks)
+
+
 def _win_absent_v1(error: BaseException) -> bool:
     """Whether a refused open means the name is simply not there.
 
@@ -4175,7 +4217,7 @@ class _SecureRootSession:
                 # expectation as much as its identity does: removing one name
                 # of many is not removing the object.  The POSIX twin refuses
                 # the same way.
-                if _win_info(target)[2] != expectation.links:
+                if _win_names_reaching_v1(target) != expectation.links:
                     raise BirthSecureFSError(
                         "birth_provisioning_recovery_ambiguous"
                     )
