@@ -9,9 +9,9 @@ execution.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-import shutil
 import stat
 import subprocess
 import sys
@@ -27,6 +27,8 @@ from executor_birth_runner_windows_v1 import (
     WindowsBirthHelperError,
     invoke_helper as invoke_windows_birth_helper,
 )
+
+from executor_birth_template_table_v1 import template_v1
 
 from bounded_subprocess import (
     SubprocessOutputLimitExceeded,
@@ -100,6 +102,66 @@ class WindowsSandboxRegistry:
     config_path: Path
     config_hash: str
     runtime_binary_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class LinuxSandboxRegistry:
+    """The authenticated Linux backend: which two programs may be launched.
+
+    Windows already worked this way.  On Linux the two programs used to be
+    whatever ``PATH`` and ``sys.executable`` happened to name at that instant,
+    which is an authority the environment must not have: a candidate that
+    reaches either one decides what runs the sandbox.  Both are named here and
+    both are checked against their digest immediately before use.
+
+    Each path names the real program, never a link to it: the digest is taken
+    through a handle that refuses to follow a final symbolic link, so a link
+    repointed after registration is a refusal instead of a silent substitution.
+    """
+
+    bwrap_path: Path
+    bwrap_binary_hash: str
+    interpreter_path: Path
+    interpreter_binary_hash: str
+
+
+def _binary_digest_v1(path: Path) -> str:
+    """Digest one registered program, reading it through a single handle."""
+    digest = hashlib.sha256()
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError("registered program is not a regular file")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+    finally:
+        os.close(descriptor)
+    return digest.hexdigest()
+
+
+def _checked_linux_backend_v1(
+    registry: object,
+) -> tuple[str, str] | str:
+    """Return the two authenticated programs, or the code that refuses them."""
+    if not isinstance(registry, LinuxSandboxRegistry):
+        return "linux_sandbox_registry_unavailable"
+    pairs = (
+        (registry.bwrap_path, registry.bwrap_binary_hash),
+        (registry.interpreter_path, registry.interpreter_binary_hash),
+    )
+    for path, expected in pairs:
+        try:
+            observed = _binary_digest_v1(Path(path))
+        except OSError:
+            return "linux_sandbox_program_unavailable"
+        if observed != expected:
+            # The installed program is not the one the operator registered.
+            # Running it anyway would defeat the whole registry.
+            return "linux_sandbox_program_mismatch"
+    return str(registry.bwrap_path), str(registry.interpreter_path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -432,6 +494,7 @@ def run_birth_phase(
     deadline: BirthDeadline | None = None,
     candidate_id: str | None = None,
     windows_registry: WindowsSandboxRegistry | None = None,
+    linux_registry: LinuxSandboxRegistry | None = None,
     candidate_files: Mapping[str, bytes] | None = None,
 ) -> RunnerResult:
     """Run one birth-test phase under the complete fixed v1 policy."""
@@ -455,7 +518,7 @@ def run_birth_phase(
         if (not isinstance(candidate_id, str) or not isinstance(windows_registry, WindowsSandboxRegistry)
                 or not isinstance(candidate_files, Mapping)):
             return _unavailable("windows_sandbox_registry_unavailable", "windows-appcontainer-job-v1", started)
-        request_id = "sha256:" + __import__("hashlib").sha256(uuid.uuid4().bytes).hexdigest()
+        request_id = "sha256:" + hashlib.sha256(uuid.uuid4().bytes).hexdigest()
         with tempfile.TemporaryDirectory(prefix="metnos-birth-runner-") as temporary:
             private_root = Path(temporary).resolve()
             try:
@@ -497,9 +560,10 @@ def run_birth_phase(
                             result.elapsed_ms / 1000.0, attestation)
     if not sys.platform.startswith("linux"):
         return _unavailable("platform_backend_unavailable", sys.platform, started)
-    bwrap = shutil.which("bwrap")
-    if not bwrap:
-        return _unavailable("bwrap_unavailable", "linux-bwrap-cgroup-v2", started)
+    checked = _checked_linux_backend_v1(linux_registry)
+    if isinstance(checked, str):
+        return _unavailable(checked, "linux-bwrap-cgroup-v2", started)
+    bwrap, interpreter = checked
     delegate, error = _cgroup_v2_delegate()
     if delegate is None:
         return _unavailable(error or "cgroup_delegate_unavailable", "linux-bwrap-cgroup-v2", started)
@@ -525,46 +589,13 @@ def run_birth_phase(
                 pass
             return _unavailable("cgroup_scope_unavailable", "linux-bwrap-cgroup-v2", started)
 
-        # The launcher joins the delegated cgroup before exec.  It contains no
-        # candidate-controlled shell and passes only the already-validated argv.
-        launcher = """
-import json, os, subprocess, sys
-scope, status, *args = sys.argv[1:]
-open(scope + '/cgroup.procs', 'w').write(str(os.getpid()))
-r, w = os.pipe()
-args = [str(w) if item == '{STATUS_FD}' else item for item in args]
-p = subprocess.Popen(args, pass_fds=(w,))
-os.close(w)
-started = False
-exit_code = None
-with os.fdopen(r) as stream:
-    for line in stream:
-        try:
-            event = json.loads(line)
-        except Exception:
-            continue
-        if isinstance(event, dict) and isinstance(event.get('child-pid'), int):
-            started = True
-            with open(status, 'w') as out:
-                json.dump({'child_started': True, 'exit_code': None}, out,
-                          separators=(',', ':'))
-        if isinstance(event, dict) and isinstance(event.get('exit-code'), int):
-            exit_code = event['exit-code']
-rc = p.wait()
-result = {'child_started': started,
-          'exit_code': exit_code if exit_code is not None else rc}
-temporary = status + '.complete'
-with open(temporary, 'x') as out:
-    json.dump(result, out, separators=(',', ':'))
-os.replace(temporary, status)
-sys.exit(0 if started else 125)
-"""
+        launcher = template_v1("runner.linux_launcher")
         wrapped = _bwrap_command(bwrap, work, argv)
         # The placeholder is replaced in the launcher with a private pipe passed only to
         # bwrap.  Its JSON event is emitted after namespaces and mounts exist.
         wrapped = (wrapped[0], "--json-status-fd", "{STATUS_FD}", *wrapped[1:])
         host_command = (
-            sys.executable, "-I", "-c", launcher, str(scope), str(handshake),
+            interpreter, "-I", "-c", launcher, str(scope), str(handshake),
             *wrapped,
         )
         returncode: int | None = None

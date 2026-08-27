@@ -10,7 +10,7 @@ point; no API in this module can install a generation or move ``current``.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timezone
 from pathlib import Path
 from types import MappingProxyType
@@ -286,20 +286,17 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
         shadow = birth.shadow_dependencies
         property_runner = shadow.property_runner or ObservedPropertyRunner(
             observed, windows_registry=shadow.windows_sandbox_registry,
+            linux_registry=shadow.linux_sandbox_registry,
         )
         approval_subject, approval_evidence = birth.approval_resolver(
             request, observed, ShadowRevisionClass.REATTESTATION, instant,  # type: ignore[arg-type]
         )
-        dependencies = _BirthDependencies(
+        dependencies = replace(
+            shadow,
             observer=lambda *_args, **_kwargs: _BorrowedObserved(observed),
-            property_runner=property_runner, semantic_policy=shadow.semantic_policy,
-            windows_sandbox_registry=shadow.windows_sandbox_registry,
-            semantic_risk=shadow.semantic_risk,
-            independent_evidence=shadow.independent_evidence,
-            semantic_authority=shadow.semantic_authority,
+            property_runner=property_runner,
             approval_subject=approval_subject, approval_evidence=approval_evidence,
             now=instant,
-            _seal=shadow._seal,
         )
         report = _observe_birth_for_test(
             request.current.ref.manifest_dir,
