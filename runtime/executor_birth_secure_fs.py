@@ -1535,8 +1535,6 @@ def _require_protected_dacl_v1(handle: int) -> None:
     finally:
         _KERNEL32.LocalFree(descriptor)
     if "P" not in flags:
-        import sys as _diagnostic_sys
-        print("RM0008-DACL", repr(flags), file=_diagnostic_sys.stderr)
         raise BirthSecureFSError("birth_provisioning_acl_unsafe")
 
 

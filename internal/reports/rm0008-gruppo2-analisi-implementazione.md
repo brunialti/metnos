@@ -4244,10 +4244,19 @@ congelamento lo hanno toccato, e a saldo zero), quindi la causa e' nel
 primitivo. Il sospetto principale e' il primo cambiamento di quella
 pubblicazione: il rifiuto dell'inventario ricavato dalla maniglia.
 
-Non e' diagnosticabile a occhio: serve il numero dell'errore che
-`GetSecurityInfo` restituisce, oggi nascosto dal messaggio pubblico. Prossimo
-passo: farlo emergere temporaneamente e leggerlo in officina. E' una
-regressione vera e va davanti al residuo delle celle «possono».
+**Correzione della diagnosi.** Non e' una regressione di questa sessione, ed
+e' un errore mio di lettura: l'esecuzione «verde» che avevo preso come
+riferimento era quella del ciclo di congelamento, cioe' con il prodotto
+riportato **indietro**, dove i caricatori vincolati alla maniglia non esistono.
+La prima esecuzione con il prodotto vero — all'inizio di questa sessione, prima
+di ogni mia modifica — era gia' rossa.
+
+La causa reale, misurata facendo emergere il dato: la lista dei permessi della
+cartella provvisoria non e' **protetta**, e i caricatori storici rifiutano una
+radice i cui permessi arrivano dall'antenato. Il rifiuto e' corretto ed e'
+proprio la proprieta' che il contratto fissa; sono le cinque prove a
+predisporre una radice che il contratto non ammette piu'. Vanno aggiornate:
+predisporre la radice con permessi propri, come fa ogni altra prova Windows.
 
 ### 17.60 Le due celle non sono chiudibili senza rompere una obbligatoria
 
