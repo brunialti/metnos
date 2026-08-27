@@ -217,6 +217,21 @@ class _BirthCommitPublisher:
             store_root=self._store_root,
         )
 
+    def resolve_predecessor(self, request):
+        """Authenticate the predecessor with the ring this publisher owns.
+
+        The core used to receive the trusted ring as an option and pass it
+        around; owning both ends here means there is one place that knows
+        which keys authenticate a generation, and no caller can substitute it.
+        """
+        from contract_store import authenticate_birth_predecessor
+
+        return authenticate_birth_predecessor(
+            request.manifest_ref,
+            trusted_publics=self._author_ring,
+            store_root=self._store_root,
+        )
+
     def _resolve_epoch(self) -> str:
         return self._epoch
 

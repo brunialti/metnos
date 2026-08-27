@@ -202,3 +202,16 @@ def test_the_primitive_is_the_single_owned_one():
     assert "publish_technical_update" not in source
     bundle = _bundle()
     assert bundle.publisher._primitive is contract_store.commit_birth_snapshot
+
+
+def test_the_publisher_owns_the_ring_that_authenticates_a_predecessor():
+    """One place knows which keys authenticate a generation, and it is sealed."""
+    import inspect
+
+    bundle = _bundle()
+    assert hasattr(bundle.publisher, "resolve_predecessor")
+    source = inspect.getsource(link._BirthCommitPublisher.resolve_predecessor)
+    # The ring and the store root come from the publisher, never from a
+    # caller-supplied option.
+    assert "self._author_ring" in source and "self._store_root" in source
+    assert "trusted_publics=" in source and "options" not in source
