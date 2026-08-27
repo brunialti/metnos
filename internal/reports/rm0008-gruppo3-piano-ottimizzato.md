@@ -266,6 +266,35 @@ Regola pratica gia' pagata una volta in questa sessione: **non iniziare uno
 spostamento che non si finisce nel giro corrente.** Meglio un giro speso a
 scrivere l'ordine che un albero lasciato a meta'.
 
+## 6.sexies Il percorso di pubblicazione precedente non pubblica affatto
+
+Verificato leggendo, non supposto. In `executor_birth_operational._execute` la
+pubblicazione e':
+
+```
+core.publisher(ref, expected_generation_id=..., snapshot=..., request_id=...,
+               birth_authorization=..., **dict(core.publisher_options))
+```
+
+`core.publisher` e' `contract_store.commit_birth_snapshot`, che richiede
+`private_key` come argomento obbligatorio senza valore predefinito. Le
+`publisher_options` che il bootstrap passa contengono soltanto
+`trusted_publics`, e in tutto `executor_birth_bootstrap.py` **non compare mai
+una chiave privata autore**: c'e' solo quella di Admission.
+
+Conseguenza: quella chiamata solleverebbe un `TypeError` per argomento
+mancante. Il percorso produttivo precedente **non e' incompleto in teoria: non
+puo' pubblicare**. Coerente con lo stato dichiarato — il runtime Birth non e'
+mai stato attivo, e un'installazione senza `bootstrap.json` non lo costruisce
+nemmeno.
+
+**Effetto sul piano.** I sotto-passi 2 e 3 del §6.quinquies non sono una
+migrazione: sono la **prima** implementazione completa di quel percorso, e
+la rimozione di uno che non ha mai funzionato. Il pubblicatore sigillato del
+2E porta la chiave autore, l'anello e la primitiva; il vecchio non portava
+nulla. Non c'e' comportamento da preservare, e questo toglie il rischio
+principale dello scambio atomico.
+
 ## 7. Procedura di rifotografia (l'unica cosa tacita e costosa)
 
 Serve ogni volta che cambia un file sotto `tests/portable/rm0008_2a_acceptance`,
