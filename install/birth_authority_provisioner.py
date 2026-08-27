@@ -1151,25 +1151,24 @@ def author_store_public_inventory_sha256_v1(publics: Mapping[str, bytes]) -> str
     ).hexdigest()
 
 
-def author_store_config_v1(source: AuthorSourceV1) -> bytes:
+def keystore_config_v1(active_key_id: str, publics: Mapping[str, bytes]) -> bytes:
     """The store configuration the productive loader already validates."""
     from executor_birth_keystore import SCHEMA_VERSION
 
-    key_ids = sorted(source.publics)
-    if source.active_key_id not in source.publics:
+    if active_key_id not in publics:
         raise _reject("birth_author_identity_mismatch")
     return encode_canonical_document_v1({
-        "active_key_id": source.active_key_id,
+        "active_key_id": active_key_id,
         "config_revision": 1,
         "keys": [
             {
                 "key_id": key_id,
                 "public_file": f"public/{key_id}.pub",
-                "status": "active" if key_id == source.active_key_id else "verifier",
+                "status": "active" if key_id == active_key_id else "verifier",
             }
-            for key_id in key_ids
+            for key_id in sorted(publics)
         ],
-        "private_file": f"private/{source.active_key_id}.key",
+        "private_file": f"private/{active_key_id}.key",
         "schema_version": SCHEMA_VERSION,
     })
 
@@ -1187,57 +1186,13 @@ def _stage_author_store_v1(
     it never exists outside an object the transaction owns (section 6.1 applies
     the same rule to every generated key).
     """
-    from executor_birth_keystore import CONFIG_BASENAME, LOCK_BASENAME
-    from executor_birth_secure_fs import _BirthObjectRole
-
-    confidential = _BirthObjectRole.birth_confidential
-    integrity = _BirthObjectRole.birth_integrity_only
-    base = journal.root_components + (AUTHOR_STORE_BASENAME_V1,)
-    records: list[PayloadRecordV1] = []
-    sequence = first_object_sequence
-
-    def relative(components: tuple[str, ...]) -> str:
-        return "/".join(components[len(journal.root_components):])
-
-    with _translated():
-        for components, role in (
-            (base, confidential),
-            (base + ("private",), confidential),
-            (base + ("public",), integrity),
-        ):
-            session.create_directory_exclusive(components, role=role)
-            records.append(PayloadRecordV1(
-                relative(components), PayloadObjectTypeV1.directory,
-                _confidentiality_v1(role), None, None,
-                _platform_identity_v1(_identity_v1(session, components)),
-            ))
-
-    files: list[tuple[tuple[str, ...], str, bytes, object]] = [
-        (base + ("public",), f"{key_id}.pub", source.publics[key_id], integrity)
-        for key_id in sorted(source.publics)
-    ]
-    files.append((
-        base + ("private",), f"{source.active_key_id}.key",
-        source.active_private, confidential,
-    ))
-    files.append((base, CONFIG_BASENAME, author_store_config_v1(source), confidential))
-    # The store lock is a payload like any other: the loader takes a shared
-    # lock on it before reading, so it must already carry the marker byte the
-    # capability writes when it creates one itself.
-    from executor_birth_secure_fs import _LOCK_BYTE
-
-    files.append((base, LOCK_BASENAME, _LOCK_BYTE, confidential))
-    for parent, name, payload, role in files:
-        identity = journal.publish_payload(
-            parent, name, payload, role=role, object_sequence=sequence,
-        )
-        sequence += 1
-        records.append(PayloadRecordV1(
-            relative(parent + (name,)), PayloadObjectTypeV1.file,
-            _confidentiality_v1(role), len(payload),
-            hashlib.sha256(payload).hexdigest(),
-            _platform_identity_v1(identity),
-        ))
+    records, sequence = _stage_keystore_v1(
+        session, journal, journal.root_components + (AUTHOR_STORE_BASENAME_V1,),
+        active_key_id=source.active_key_id,
+        active_private=source.active_private,
+        publics=source.publics,
+        first_object_sequence=first_object_sequence,
+    )
     return StagedAuthorStoreV1(
         payload_inventory=tuple(records),
         public_inventory_sha256=author_store_public_inventory_sha256_v1(
@@ -1245,6 +1200,94 @@ def _stage_author_store_v1(
         ),
         next_object_sequence=sequence,
     )
+
+
+def _stage_keystore_v1(
+    session,
+    journal: "_TransactionJournalV1",
+    base: tuple[str, ...],
+    *,
+    active_key_id: str,
+    active_private: bytes,
+    publics: Mapping[str, bytes],
+    first_object_sequence: int,
+) -> tuple[list[PayloadRecordV1], int]:
+    """Build one V1 key store inside the transaction.
+
+    Every store of the layout has the same shape, so it has one builder: the
+    author root, Admission and each Producer differ in their keys, never in
+    their form.
+    """
+    from executor_birth_keystore import CONFIG_BASENAME, LOCK_BASENAME
+    from executor_birth_secure_fs import _BirthObjectRole, _LOCK_BYTE
+
+    confidential = _BirthObjectRole.birth_confidential
+    integrity = _BirthObjectRole.birth_integrity_only
+    records = _create_directories_v1(session, journal, (
+        (base, confidential),
+        (base + ("private",), confidential),
+        (base + ("public",), integrity),
+    ))
+    files: list[tuple[tuple[str, ...], str, bytes, object]] = [
+        (base + ("public",), f"{key_id}.pub", publics[key_id], integrity)
+        for key_id in sorted(publics)
+    ]
+    files.append(
+        (base + ("private",), f"{active_key_id}.key", active_private, confidential)
+    )
+    files.append((
+        base, CONFIG_BASENAME,
+        keystore_config_v1(active_key_id, publics), confidential,
+    ))
+    # The store lock is a payload like any other: the loader takes a shared
+    # lock on it before reading, so it must already carry the marker byte the
+    # capability writes when it creates one itself.
+    files.append((base, LOCK_BASENAME, _LOCK_BYTE, confidential))
+    written, sequence = _publish_files_v1(
+        session, journal, files, first_object_sequence,
+    )
+    return records + written, sequence
+
+
+def _create_directories_v1(
+    session, journal: "_TransactionJournalV1", requested,
+) -> list[PayloadRecordV1]:
+    records: list[PayloadRecordV1] = []
+    with _translated():
+        for components, role in requested:
+            session.create_directory_exclusive(components, role=role)
+            records.append(PayloadRecordV1(
+                _transaction_relative_v1(journal, components),
+                PayloadObjectTypeV1.directory,
+                _confidentiality_v1(role), None, None,
+                _platform_identity_v1(_identity_v1(session, components)),
+            ))
+    return records
+
+
+def _publish_files_v1(
+    session, journal: "_TransactionJournalV1", files, sequence: int,
+) -> tuple[list[PayloadRecordV1], int]:
+    records: list[PayloadRecordV1] = []
+    for parent, name, payload, role in files:
+        identity = journal.publish_payload(
+            parent, name, payload, role=role, object_sequence=sequence,
+        )
+        sequence += 1
+        records.append(PayloadRecordV1(
+            _transaction_relative_v1(journal, parent + (name,)),
+            PayloadObjectTypeV1.file,
+            _confidentiality_v1(role), len(payload),
+            hashlib.sha256(payload).hexdigest(),
+            _platform_identity_v1(identity),
+        ))
+    return records, sequence
+
+
+def _transaction_relative_v1(
+    journal: "_TransactionJournalV1", components: tuple[str, ...],
+) -> str:
+    return "/".join(components[len(journal.root_components):])
 
 
 def _identity_v1(session, components: tuple[str, ...]):
@@ -1808,3 +1851,201 @@ def producer_store_name_v1(producer_id: str, operation: str) -> str:
         + encode_framed_v1([producer_id, operation])
     ).hexdigest()
     return "p-" + digest
+
+
+AUTHORITY_SET_BASENAME_V1 = "authority-set"
+
+
+@dataclass(frozen=True, slots=True)
+class StagedAuthoritySetV1:
+    """What the staged authority set contributes to the journal."""
+
+    payload_inventory: tuple[PayloadRecordV1, ...]
+    admission_key_id: str
+    producer_key_ids: Mapping[str, str]
+    next_object_sequence: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "producer_key_ids", MappingProxyType(dict(self.producer_key_ids))
+        )
+
+
+def _generate_keypair_v1() -> tuple[str, bytes, dict[str, bytes]]:
+    """One fresh Ed25519 identity, generated inside the transaction alone."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from executor_birth_keystore import birth_key_id
+
+    private = Ed25519PrivateKey.generate()
+    private_raw = private.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_raw = private.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    key_id = birth_key_id(public_raw)
+    return key_id, private_raw, {key_id: public_raw}
+
+
+def _stage_authority_set_v1(
+    session,
+    journal: "_TransactionJournalV1",
+    inputs: OperatorInputsV1,
+    catalog: Sequence[tuple[str, str]],
+    *,
+    author_publics: Mapping[str, bytes],
+    first_object_sequence: int,
+) -> StagedAuthoritySetV1:
+    """Generate Admission and every Producer, and copy the public registries.
+
+    Generation happens once and inside the transaction: a restart that finds a
+    valid transaction reuses the same pair rather than making another one
+    (section 6.1).  The registries are copied byte for byte; nothing here
+    creates an approver or a reviewer key.
+    """
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    confidential = _BirthObjectRole.birth_confidential
+    integrity = _BirthObjectRole.birth_integrity_only
+    base = journal.root_components + (AUTHORITY_SET_BASENAME_V1,)
+    records = _create_directories_v1(session, journal, (
+        (base, integrity),
+        (base + ("producers",), integrity),
+        (base + ("approval",), integrity),
+        (base + ("semantic",), integrity),
+        (base + ("semantic", "public"), integrity),
+        (base + ("semantic", SEMANTIC_EVIDENCE_BASENAME_V1), integrity),
+    ))
+    sequence = first_object_sequence
+
+    admission_key_id, admission_private, admission_publics = _generate_keypair_v1()
+    written, sequence = _stage_keystore_v1(
+        session, journal, base + ("admission",),
+        active_key_id=admission_key_id,
+        active_private=admission_private,
+        publics=admission_publics,
+        first_object_sequence=sequence,
+    )
+    records.extend(written)
+
+    producer_key_ids: dict[str, str] = {}
+    # A list, not a map: two roles that shared the same bytes would collapse
+    # into one entry of a map and the separation check would never see them.
+    generated: list[bytes] = list(admission_publics.values())
+    for producer_id, operation in catalog:
+        name = producer_store_name_v1(producer_id, operation)
+        if name in producer_key_ids:
+            raise _conflict()
+        key_id, private_raw, publics = _generate_keypair_v1()
+        written, sequence = _stage_keystore_v1(
+            session, journal, base + ("producers", name),
+            active_key_id=key_id,
+            active_private=private_raw,
+            publics=publics,
+            first_object_sequence=sequence,
+        )
+        records.extend(written)
+        producer_key_ids[name] = key_id
+        generated.extend(publics.values())
+
+    files = [
+        (base + ("approval",), "authority.json", inputs.approval_document, integrity),
+        (base + ("semantic",), "authority.json", inputs.semantic_document, integrity),
+    ]
+    files.extend(
+        (base + ("semantic", "public"), name, inputs.semantic_publics[name], integrity)
+        for name in sorted(inputs.semantic_publics)
+    )
+    written, sequence = _publish_files_v1(session, journal, files, sequence)
+    records.extend(written)
+
+    _require_separated_authority_keys_v1(
+        author_publics=author_publics, generated=generated, inputs=inputs,
+    )
+    return StagedAuthoritySetV1(
+        payload_inventory=tuple(records),
+        admission_key_id=admission_key_id,
+        producer_key_ids=producer_key_ids,
+        next_object_sequence=sequence,
+    )
+
+
+def _require_separated_authority_keys_v1(
+    *,
+    author_publics: Mapping[str, bytes],
+    generated: Sequence[bytes],
+    inputs: OperatorInputsV1,
+) -> None:
+    """No two cryptographic roles may share the same public bytes.
+
+    The comparison is on the raw 32 bytes, not on a name or an identifier, so
+    a key reused under a different label is still caught (section 5.2).
+    """
+    from executor_birth_approval_authority import _decode_approval_authority
+    from executor_birth_keystore import raw_public_key
+
+    seen: set[bytes] = set()
+    approval = _decode_approval_authority(inputs.approval_document)
+    groups = (
+        tuple(author_publics.values()),
+        tuple(generated),
+        tuple(raw_public_key(key) for key in approval.keys.values()),
+        tuple(inputs.semantic_publics.values()),
+    )
+    for group in groups:
+        for raw in group:
+            if raw in seen:
+                raise _reject("birth_authority_key_reused")
+            seen.add(raw)
+
+
+def verify_authority_set_v1(
+    session, base: tuple[str, ...], staged: StagedAuthoritySetV1,
+) -> None:
+    """Re-read every staged authority with the loader that will use it.
+
+    A store that only looks right is not enough: the productive loader must
+    prove the pair, the closed inventory, the single active key and the
+    ordered ring, and the two registries must load through their own
+    decoders (section 8.1, step 10).
+    """
+    from executor_birth_approval import BirthApprovalError
+    from executor_birth_approval_authority import _load_approval_authority_in_session
+    from executor_birth_keystore import BirthKeyStoreError, _load_birth_keystore_in_session
+    from executor_birth_semantic_authority import (
+        _load_semantic_authority_in_session,
+    )
+    from executor_birth_semantic_review import SemanticReviewError
+
+    expected = {"admission": staged.admission_key_id}
+    expected.update(
+        (f"producers/{name}", key_id)
+        for name, key_id in staged.producer_key_ids.items()
+    )
+    for relative, key_id in expected.items():
+        components = base + tuple(relative.split("/"))
+        try:
+            loaded = _load_birth_keystore_in_session(components, session)
+        except BirthKeyStoreError as exc:
+            raise _reject("birth_author_keystore_existing_invalid", exc) from None
+        if loaded.active_key_id != key_id or set(loaded.verifier_keys) != {key_id}:
+            raise _reject("birth_author_keystore_existing_invalid")
+    try:
+        _load_approval_authority_in_session(
+            base + ("approval", "authority.json"), session,
+        )
+    except BirthApprovalError as exc:
+        raise _reject("birth_approval_authority_invalid", exc) from None
+    try:
+        _load_semantic_authority_in_session(
+            base + ("semantic", "authority.json"),
+            base + ("semantic", "public"),
+            base + ("semantic", SEMANTIC_EVIDENCE_BASENAME_V1),
+            session,
+        )
+    except SemanticReviewError as exc:
+        raise _reject("birth_semantic_authority_invalid", exc) from None
