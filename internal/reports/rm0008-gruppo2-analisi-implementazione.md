@@ -4176,8 +4176,17 @@ per l'inventario, non sa di stare guardando un lucchetto e trova un permesso in
 piu'. La correzione va quindi ricavata dal legame di catalogo, non passata a
 mano dove il lucchetto viene creato.
 
-Il tentativo e' stato annullato per non lasciare rosse due celle in cambio di
-una. La direzione resta questa ed e' scritta qui.
+Ripresa e portata a termine come indicato: «essere un lucchetto» si ricava ora
+dal catalogo chiuso, cosi' chi scrive il profilo e chi lo verifica leggono la
+stessa fonte e non possono discordare. Il raggio della regola e' per ora il solo
+lucchetto globale: quello dello scaffale delle chiavi viene creato anche dal
+caricatore storico per percorso, che il catalogo non lo consulta, e allargarlo
+li' rompeva due celle della concorrenza (misurato). Con il raggio ristretto
+tutti gli altri lavori restano verdi.
+
+La cella della chiamata non elevata resta rossa: il lucchetto ora si prende, ma
+qualcosa piu' avanti nel percorso non da' ancora l'esito atteso. E' il prossimo
+punto da guardare, con una causa in meno.
 
 ### 17.51 La famiglia del privilegio non era ambiente: tre celle su quattro
 
