@@ -101,6 +101,25 @@ PROSSIMO PASSO: la migrazione del bootstrap vera e propria, con la mappa nel
 STESSO passaggio (§9.1).
 ```
 
+## Fallimenti locali che NON sono del gruppo 3
+
+In una copia di lavoro nuova la suite `tests/runtime` non e' tutta verde. Stato
+accertato, cosi' nessuno li scambia per regressioni:
+
+- **riferimento dei domini** (2 celle): il file e' generato da
+  `scripts/generate_domain_reference.py` e `.gitignore` lo tiene fuori dal
+  repository di proposito. Ora le celle **saltano dichiarando il comando** da
+  eseguire, invece di rompersi con un errore muto. Sistemato.
+- **due letture in sandbox** (`test_executor_standard_index_readers`,
+  `test_executor_standard_url_reader`): un executor non riesce a importare un
+  suo fratello dentro la sandbox. `bwrap` c'e', quindi non e' quello. La
+  sandbox dei test copia gli executor dall'installazione reale della macchina,
+  che qui non ne contiene: dipende dallo stato della macchina, non dal
+  repository. **Aperto, non diagnosticato a fondo.**
+- **cinque celle POSIX della base 2A** (`g2` e `g8`): pretendono un secondo
+  utente o i privilegi di root. Verdi nel ciclo pubblico, rosse in locale.
+  Attese.
+
 ## Perche' i gruppi 4-6 non hanno un piano
 
 Deciso con Roberto il 27/8/2026. La forma dei gruppi 4-6 dipende da cosa il
