@@ -3275,8 +3275,14 @@ class _SecureRootSession:
                     "birth_provisioning_transaction_conflict"
                 )
                 if create and exclusive and taken:
-                    handle = _win_open_path(
-                        path, directory=False, writable=True, generic_read=True
+                    # A lock that already exists is opened from the same
+                    # container as every other object: this was the last place
+                    # where a name was rebuilt from a path.
+                    handle = _win_open_relative_v1(
+                        directory,
+                        name,
+                        purpose=_NtOpenPurposeV1.lock_reader,
+                        directory=False,
                     )
                 else:
                     raise
