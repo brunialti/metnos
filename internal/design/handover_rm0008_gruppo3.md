@@ -77,7 +77,7 @@ privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
 in tensione con due celle verdi: non toccare la maschera prima di una misura.
 
 GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (dodicesima fotografia; ultimo pubblico verde `ce2b4a3`):
+i lavori (dodicesima fotografia; ultimo pubblico verde `9683416`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -165,9 +165,17 @@ fotografia ciascuno, invece di una per modifica.
 - 🚨 LEZIONE: la cella R1 legge l'albero TRACCIATO. Un file non ancora aggiunto
   all'indice non viene esaminato: in locale si verifica DOPO `git add`, o il
   ciclo pubblico trova cio' che tu non hai trovato.
+- i due MODELLI interni del cancello escono da una tabella chiusa (obbligo 3,
+  completo): `runtime/executor_birth_template_table_v1.py` possiede il
+  programma che il corridore Linux lancia e l'istruzione del revisore
+  semantico; un nome non elencato e' un rifiuto, non una stringa vuota. Digest
+  ricavato dal testo, pronto per il componente del contesto all'ULTIMO passo.
+- corretto un altro fallimento non nostro della famiglia gia' vista:
+  `import conftest` prende quello della suite raccolta per PRIMA. Ora il
+  conftest del runtime si carica per percorso con un nome suo
+  (`tests/runtime/infra/_runtime_conftest.py`).
 
 PROSSIMO PASSO: gli obblighi che restano del piano (§2), nell'ordine del §4 —
-(3, resto) risoluzione chiusa dei MODELLI interni (le primitive sono fatte);
 (4, resto) REGISTRARE il registro sandbox
 nell'insieme predisposto e completare il legame Windows; (5) installare i
 registri di autorita' nel pacchetto privato e provarne il consumo. PER ULTIMO,
