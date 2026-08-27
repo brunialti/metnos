@@ -7,6 +7,12 @@ from pathlib import Path
 import pytest
 
 from . import installed_provisioner_proof_v1 as proof
+from . import support
+
+pytestmark = pytest.mark.skipif(
+    not support.can_set_owner(),
+    reason="creating a Birth object needs the owner privilege of the elevated job",
+)
 
 
 @pytest.fixture(scope="module")

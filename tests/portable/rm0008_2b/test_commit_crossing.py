@@ -18,7 +18,8 @@ from executor_birth_commit_publisher import BirthCommitFactsV1
 from . import support
 
 pytestmark = pytest.mark.skipif(
-    os.name == "nt", reason="the Windows profile is certified by its own job"
+    not support.can_set_owner(),
+    reason="creating a Birth object needs the owner privilege of the elevated job",
 )
 
 DIGEST = "sha256:" + "3" * 64
