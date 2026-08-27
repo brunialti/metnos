@@ -4170,3 +4170,22 @@ e le due celle del §17.28. Entra nella lista d'attesa per il prossimo
 congelamento; la migrazione del lucchetto si applica nello stesso passaggio,
 non prima.
 
+### 17.30 Arresto definitivo sul lucchetto: tre tentativi, nessun guadagno
+
+Terzo tentativo, con la correzione dell'apparato applicata insieme alla
+migrazione: la misura resta 72 contro 74. Le tre spiegazioni verificate — la
+creazione, la riapertura, il conteggio delle chiamate native — sono tutte
+escluse dalle sonde o dalla misura.
+
+La regola del §17.9 chiude qui il punto. Lo stato dichiarato e':
+
+- il lucchetto e' l'unico oggetto che il prodotto apre per percorso assoluto,
+  e la sua radice e' gia' autenticata dal descrittore della sessione, quindi
+  il rischio residuo e' limitato al solo nome del lucchetto dentro una radice
+  gia' verificata;
+- due celle del §17.28 restano rosse per questa ragione, dichiarate;
+- una ripresa richiede un'informazione che oggi non abbiamo: quale cella
+  esattamente perde il verde con la migrazione. Va ottenuta confrontando gli
+  insiemi delle celle rosse prima e dopo, in ambiente pubblico e non sulla
+  macchina di diagnosi, dove il campione e' piu' piccolo.
+
