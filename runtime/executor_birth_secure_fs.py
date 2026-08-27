@@ -1113,7 +1113,7 @@ _OBJ_CASE_INSENSITIVE = 0x00000040
 # plus data access for a file and directory access for a container.
 _WIN_FILE_CREATE_ACCESS_V1 = 0x001f0083
 # The same rights without DELETE: a held lock must not keep that one.
-_WIN_LOCK_CREATE_ACCESS_V1 = 0x000f0083
+_WIN_LOCK_CREATE_ACCESS_V1 = 0x001e0083
 _WIN_DIRECTORY_CREATE_ACCESS_V1 = 0x001f00a1
 
 
