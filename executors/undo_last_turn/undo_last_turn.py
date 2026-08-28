@@ -18,7 +18,6 @@ Implementazione:
 Idempotenza: una seconda invocazione consecutiva non trova `done`
 non-undone in quel turno → no-op con messaggio.
 """
-import importlib.util
 import json
 import os
 import sys
@@ -28,6 +27,9 @@ from pathlib import Path
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
+from admitted_module_v1 import (  # noqa: E402
+    AdmittedModuleError, load_admitted_module_v1,
+)
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from loader import load_catalog
@@ -135,16 +137,12 @@ def _reverse_on_device(patterns, rec) -> dict:
             "fail_count": total_fail, "stages": stages}
 
 
-def _load_module(code_path: Path):
-    spec = importlib.util.spec_from_file_location("_undoable_executor", str(code_path))
-    if spec is None or spec.loader is None:
-        return None
-    mod = importlib.util.module_from_spec(spec)
+def _load_module(ex):
+    """Load only bytes authenticated by the executor catalogue record."""
     try:
-        spec.loader.exec_module(mod)
-    except Exception:
+        return load_admitted_module_v1(ex)
+    except AdmittedModuleError:
         return None
-    return mod
 
 
 def _unknown_patterns(patterns) -> list[str]:
@@ -177,7 +175,7 @@ def _effective_reverse_pattern(ex, rec):
 
 def _reverse_with_module(ex, rec):
     """Fallback custom per executor manuali con pattern legacy/assente."""
-    mod = _load_module(ex.code_path)
+    mod = _load_module(ex)
     if mod is None or not hasattr(mod, "reverse"):
         return None, _msg("ERR_UNDO_NO_REVERSE")
     try:

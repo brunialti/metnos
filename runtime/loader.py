@@ -60,6 +60,29 @@ BUILTIN_EXECUTOR_CONTRACTS_DIR = (
 ALLOWED_PLATFORMS = {"linux", "windows", "macos"}
 
 
+def _code_dependencies(raw: object, *, owner: str) -> tuple[str, ...]:
+    """Validate signed names of executors whose code may be loaded.
+
+    This is deliberately separate from planning companions: a routing
+    relationship does not grant access to another executor's code.
+    """
+    if raw is None:
+        return ()
+    if (not isinstance(raw, list) or any(
+            not isinstance(value, str) or not value or not value.isascii()
+            or len(value) > 128 or not value[0].isalnum()
+            or any(not (character.isalnum() or character == "_")
+                   for character in value)
+            for value in raw)):
+        raise ValueError("code_dependencies_invalid")
+    dependencies = tuple(raw)
+    if len(set(dependencies)) != len(dependencies):
+        raise ValueError("code_dependencies_duplicate")
+    if owner in dependencies:
+        raise ValueError("code_dependency_self_reference")
+    return dependencies
+
+
 @dataclass(frozen=True)
 class ManagedDependency:
     """One signed package dependency declared by a consumer manifest.
@@ -403,6 +426,10 @@ def builtin_contract_executor(name: str, module_path: Path,
         undo=dict(manifest.get("undo") or {}),
         platforms=list(manifest.get("platforms") or ["linux"]),
         digest=str((manifest.get("code") or {}).get("digest") or ""),
+        code_files=tuple((manifest.get("code") or {}).get("files") or ()),
+        code_dependencies=_code_dependencies(
+            (manifest.get("code") or {}).get("dependencies"), owner=name,
+        ),
         generation_id=generation_id,
         authoring_manifest_path=(
             BUILTIN_EXECUTOR_CONTRACTS_DIR / name / "manifest.toml"
@@ -751,6 +778,12 @@ class Executor:
     # Vuoto per builtin/virtual (cambiano solo col deploy+restart, che azzera
     # la cache in-process; limite onesto documentato in ADR 0182).
     digest: str = ""
+    # Elenco ordinato dei file coperti da ``digest``. Arriva dallo stesso
+    # manifest gia' autenticato del record, senza riaprire il TOML.
+    code_files: tuple[str, ...] = ()
+    # Dipendenze di codice tra executor, distinte dalle relazioni di planning.
+    # Il runtime rende visibili alla sandbox soltanto questi record verificati.
+    code_dependencies: tuple[str, ...] = ()
     # Identita' dell'intera generazione pubblicata. ``None`` appartiene solo
     # al layout authoring pre-cutover e ai virtuali senza contratto persistito.
     generation_id: str | None = None
@@ -1706,6 +1739,13 @@ def _load_parsed_manifest_into_catalog(
             catalog.rejected.append((str(sub), "no [code].files"))
             continue
         code_path = (sub / code_files[0]) if code_files else None
+        try:
+            _code_imports = _code_dependencies(
+                (manifest.get("code") or {}).get("dependencies"), owner=name,
+            )
+        except ValueError as exc:
+            catalog.rejected.append((str(sub), str(exc)))
+            continue
 
         # Main entry check §7.3 (24/5/2026): ogni executor file deve avere
         # `if __name__ == "__main__":` per il dispatch stdin/stdout JSON
@@ -1954,6 +1994,8 @@ def _load_parsed_manifest_into_catalog(
             planning_object_aliases=_object_aliases,
             platforms=_platforms,
             digest=str((manifest.get("code") or {}).get("digest") or ""),
+            code_files=tuple(code_files),
+            code_dependencies=_code_imports,
             generation_id=generation_id,
             contract_id=contract_id,
             authoring_manifest_path=authoring_manifest_path,

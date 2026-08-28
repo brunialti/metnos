@@ -18,7 +18,6 @@ CLI:
 """
 import hashlib
 import os
-import re
 import stat
 import sys
 import tempfile
@@ -34,6 +33,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from cryptography.hazmat.primitives import serialization
 
 from logging_setup import get_logger
+from manifest_code_digest import compute_code_digest, update_digest_in_text
 import config as _C  # §7.11
 log = get_logger(__name__)
 
@@ -201,27 +201,6 @@ def installation_manifest_paths():
     """
     roots = (_C.PATH_EXECUTORS, BUILTIN_CONTRACTS_DIR)
     return sorted({path for root in roots for path in root.glob("**/manifest.toml")})
-
-
-def compute_code_digest(manifest_dir, code_files):
-    """SHA-256 della concatenazione dei file di codice in ordine dichiarato."""
-    h = hashlib.sha256()
-    for fname in code_files:
-        path = manifest_dir / fname
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                h.update(chunk)
-    return f"sha256:{h.hexdigest()}"
-
-
-_DIGEST_RE = re.compile(r'(digest\s*=\s*")sha256:[^"]*(")')
-
-
-def update_digest_in_text(manifest_text, new_digest):
-    """Sostituisce la riga digest = '...' con il nuovo valore."""
-    if not _DIGEST_RE.search(manifest_text):
-        raise ValueError("manifest non contiene una riga 'digest = \"sha256:...\"'")
-    return _DIGEST_RE.sub(rf'\g<1>{new_digest}\g<2>', manifest_text)
 
 
 def _validate_capabilities_schema(manifest: dict, manifest_path: Path) -> None:

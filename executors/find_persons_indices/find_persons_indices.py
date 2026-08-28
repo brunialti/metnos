@@ -26,6 +26,10 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
+from admitted_module_v1 import (  # noqa: E402
+    AdmittedModuleError, load_admitted_module_v1,
+    runtime_admitted_executor_v1,
+)
 
 
 def invoke(args):
@@ -50,10 +54,20 @@ def invoke(args):
             "error_code": "search_criterion_missing",
         }
 
-    # Glue: forwarda name/reference_images all'executor unificato.
-    sib = Path(__file__).resolve().parent.parent / "find_images_indices"
-    sys.path.insert(0, str(sib))
-    import find_images_indices as fii
+    # The parent runtime projects only the signed dependency declared by this
+    # executor. The door compares every byte before executing the unified
+    # engine from the same in-memory copy.
+    try:
+        executor = runtime_admitted_executor_v1("find_images_indices")
+        fii = load_admitted_module_v1(executor)
+    except AdmittedModuleError:
+        return {
+            "ok": False,
+            "entries": [],
+            "error": _msg("ERR_DURABLE_DEPENDENCIES_UNAVAILABLE"),
+            "error_class": "dependency_unavailable",
+            "error_code": "executor_dependency_unavailable",
+        }
 
     forwarded = dict(args)
     # Drop `idx` se presente (deprecato, non instrada via unified).
