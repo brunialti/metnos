@@ -265,6 +265,23 @@ Due revisioni indipendenti sullo snapshot esatto hanno concluso
 criterio prima di dichiarare certificato G6-B1b; G6-B nel suo complesso resta
 aperto per B2, B3 e B4.
 
+Il primo commit pubblico di B1b e' `7fae026`; il ciclo GitHub Actions
+`33215057932` ha però rilevato lo stesso errore di prova su Linux e Windows.
+Il catalogo completo conserva correttamente quattro ingressi e quattro unita'
+storiche da ritirare, mentre l'export pubblico esclude intenzionalmente
+`deploy/`, lo script di migrazione del percorso Python e lo script storico di
+rinomina. L'oracolo pretendeva erroneamente la presenza fisica anche nel
+sottoinsieme pubblico.
+
+La correzione lascia invariato il catalogo. Nell'albero completo il censimento
+continua a pretendere uguaglianza totale; nell'export ammette esclusivamente
+gli otto elementi nominati dalla politica pubblica e rifiuta ogni omissione o
+presenza ulteriore. Il vero export generato localmente ha dato `32 passed` su
+Linux e `31 passed, 1 skipped` su Windows; la regressione completa resta
+`266 passed, 1 skipped`. Due revisioni indipendenti della sola correzione hanno
+nuovamente concluso `P0=0`, `P1=0`, `P2=0`. B1b attende ora il ciclo pubblico
+sostitutivo e non e' ancora dichiarato certificato.
+
 ## Analisi del gruppo 6
 
 Prima dell'avvio del codice, tre revisioni indipendenti hanno
