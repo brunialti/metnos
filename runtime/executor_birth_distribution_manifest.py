@@ -18,7 +18,7 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
-from typing import Mapping
+from typing import Mapping, NamedTuple
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -43,6 +43,9 @@ BOUNDARY_INVENTORY_DOMAIN = b"metnos.executor-birth.boundary-inventory/v1\0"
 PURPOSE = "closed_distribution_v1"
 MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 MAX_FILE_BYTES = 512 * 1024 * 1024
+DEFAULT_RELEASE_DIRECTORY_V1 = Path(
+    "/var/lib/metnos/executor-birth/releases-v1"
+)
 
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _KEY_ID_RE = re.compile(r"distribution-ed25519-v1-sha256-[0-9a-f]{64}\Z")
@@ -144,6 +147,102 @@ class DistributionFile:
 
 
 @dataclass(frozen=True, slots=True)
+class AuthenticatedDistributionRecordV1:
+    """Signed historical manifest; it makes no claim about live files."""
+
+    closed_build_id: str
+    previous_closed_build_id: str | None
+    release_sequence: int
+    product_version: str
+    platform: str
+    architecture: str
+    signing_key_id: str
+    installation_root: str
+    certificate_directory: str
+    boundary_inventory_path: str
+    boundary_inventory_hash: str
+    boundary_guard_version: str
+    preflight_entrypoint: str
+    files: tuple[DistributionFile, ...]
+    encoded: bytes
+    signature: bytes
+    _artifact_binding: bytes
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _AUTHENTICATED_DISTRIBUTION_SEAL
+            or not isinstance(self.encoded, bytes)
+            or not isinstance(self.signature, bytes)
+            or len(self.signature) != 64
+            or self._artifact_binding != _authenticated_artifact_binding(
+                self.encoded, self.signature,
+            )
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_invalid", "authenticated artifact",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class _AuthenticatedDistributionRecordForTestV1:
+    """Nominally separate test result; productive verification rejects it."""
+
+    closed_build_id: str
+    previous_closed_build_id: str | None
+    release_sequence: int
+    product_version: str
+    platform: str
+    architecture: str
+    signing_key_id: str
+    installation_root: str
+    certificate_directory: str
+    boundary_inventory_path: str
+    boundary_inventory_hash: str
+    boundary_guard_version: str
+    preflight_entrypoint: str
+    files: tuple[DistributionFile, ...]
+    encoded: bytes
+    signature: bytes
+    _artifact_binding: bytes
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _TEST_AUTHENTICATED_DISTRIBUTION_SEAL
+            or not isinstance(self.encoded, bytes)
+            or not isinstance(self.signature, bytes)
+            or len(self.signature) != 64
+            or self._artifact_binding != _authenticated_artifact_binding(
+                self.encoded, self.signature,
+            )
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_invalid", "test authenticated artifact",
+            )
+
+
+class _AuthenticatedDistributionMaterialV1(NamedTuple):
+    closed_build_id: str
+    previous_closed_build_id: str | None
+    release_sequence: int
+    product_version: str
+    platform: str
+    architecture: str
+    signing_key_id: str
+    installation_root: str
+    certificate_directory: str
+    boundary_inventory_path: str
+    boundary_inventory_hash: str
+    boundary_guard_version: str
+    preflight_entrypoint: str
+    files: tuple[DistributionFile, ...]
+    encoded: bytes
+    signature: bytes
+    artifact_binding: bytes
+
+
+@dataclass(frozen=True, slots=True)
 class VerifiedDistribution:
     """Authenticated result; its sealed identity cannot be caller-populated."""
 
@@ -177,7 +276,16 @@ class VerifiedDistribution:
             )
 
 
+_AUTHENTICATED_DISTRIBUTION_SEAL = object()
+_TEST_AUTHENTICATED_DISTRIBUTION_SEAL = object()
 _VERIFIED_DISTRIBUTION_SEAL = object()
+
+
+def _authenticated_artifact_binding(encoded: bytes, signature: bytes) -> bytes:
+    return hashlib.sha256(
+        b"metnos.executor-birth.authenticated-distribution-record/v1\0"
+        + len(encoded).to_bytes(8, "big") + encoded + signature
+    ).digest()
 
 
 def _distribution_artifact_binding(encoded: bytes, signature: bytes) -> bytes:
@@ -338,6 +446,26 @@ def _runtime_environment() -> _VerificationEnvironment:
     return _VerificationEnvironment(
         target, architecture, root, str(root), True, True, _ENVIRONMENT_SEAL,
     )
+
+
+def _require_product_release_metadata_v1(root: Path) -> None:
+    absolute = Path(os.path.abspath(root))
+    for component in reversed((absolute, *absolute.parents)):
+        try:
+            info = component.lstat()
+        except OSError as exc:
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "release metadata",
+            ) from exc
+        if (
+            not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+            or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+            or info.st_uid != 0 or info.st_gid != 0
+            or info.st_mode & 0o022
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "release metadata",
+            )
 
 
 def _parse(encoded: bytes) -> tuple[dict[str, object], tuple[DistributionFile, ...]]:
@@ -646,11 +774,10 @@ def _verify_local_import_closure(
                 )
 
 
-def verify_distribution_manifest(
+def _authenticated_distribution_material_with_registry(
     encoded: bytes, signature: bytes, *, registry: DistributionRegistry,
-    _environment: _VerificationEnvironment | None = None,
-) -> VerifiedDistribution:
-    """Authenticate schema, authority, target and every declared build file."""
+) -> _AuthenticatedDistributionMaterialV1:
+    """Authenticate immutable manifest facts without looking at live files."""
     value, files = _parse(encoded)
     if not isinstance(signature, bytes) or len(signature) != 64:
         raise DistributionManifestError("birth_ownership_distribution_invalid", "signature")
@@ -669,7 +796,138 @@ def verify_distribution_manifest(
         key.public_key.verify(signature, SIGNATURE_DOMAIN + encoded)
     except InvalidSignature as exc:
         raise DistributionManifestError("birth_ownership_distribution_invalid", "signature") from exc
-    environment = _environment or _runtime_environment()
+
+    return _AuthenticatedDistributionMaterialV1(
+        str(value["closed_build_id"]), value["previous_closed_build_id"],
+        sequence, str(value["product_version"]), str(value["platform"]),
+        str(value["architecture"]), key_id, str(value["installation_root"]),
+        str(value["certificate_directory"]),
+        str(value["boundary_inventory_path"]),
+        str(value["boundary_inventory_hash"]),
+        str(value["boundary_guard_version"]),
+        str(value["preflight_entrypoint"]), files, bytes(encoded),
+        bytes(signature), _authenticated_artifact_binding(encoded, signature),
+    )
+
+
+def authenticate_distribution_record_v1(
+    encoded: bytes, signature: bytes,
+) -> AuthenticatedDistributionRecordV1:
+    """Cold-authenticate one record using only the fixed public trust store."""
+    from executor_birth_ownership_authorities import (
+        _load_fixed_ownership_public_snapshot_v1,
+    )
+
+    return _authenticate_distribution_record_from_fixed_snapshot_v1(
+        encoded, signature, _load_fixed_ownership_public_snapshot_v1(),
+    )
+
+
+def _authenticate_distribution_record_from_fixed_snapshot_v1(
+    encoded: bytes, signature: bytes, snapshot,
+) -> AuthenticatedDistributionRecordV1:
+    from executor_birth_ownership_authorities import (
+        _FIXED_PUBLIC_SNAPSHOT_SEAL, _FixedOwnershipPublicSnapshotV1,
+    )
+
+    if (
+        type(snapshot) is not _FixedOwnershipPublicSnapshotV1
+        or snapshot._seal is not _FIXED_PUBLIC_SNAPSHOT_SEAL
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "authority snapshot",
+        )
+    material = _authenticated_distribution_material_with_registry(
+        encoded, signature,
+        registry=snapshot.public.distribution,
+    )
+    return AuthenticatedDistributionRecordV1(
+        *material, _AUTHENTICATED_DISTRIBUTION_SEAL,
+    )
+
+
+def _authenticate_distribution_record_for_test(
+    encoded: bytes, signature: bytes, *, registry: DistributionRegistry,
+) -> _AuthenticatedDistributionRecordForTestV1:
+    """Portable seam with a nominal result rejected by production APIs."""
+    material = _authenticated_distribution_material_with_registry(
+        encoded, signature, registry=registry,
+    )
+    return _AuthenticatedDistributionRecordForTestV1(
+        *material, _TEST_AUTHENTICATED_DISTRIBUTION_SEAL,
+    )
+
+
+def _is_authenticated_distribution_record_v1(
+    value: object, *, for_test: bool = False,
+) -> bool:
+    expected_type = (
+        _AuthenticatedDistributionRecordForTestV1
+        if for_test else AuthenticatedDistributionRecordV1
+    )
+    expected_seal = (
+        _TEST_AUTHENTICATED_DISTRIBUTION_SEAL
+        if for_test else _AUTHENTICATED_DISTRIBUTION_SEAL
+    )
+    return (
+        type(value) is expected_type
+        and value._seal is expected_seal
+        and value._artifact_binding == _authenticated_artifact_binding(
+            value.encoded, value.signature,
+        )
+    )
+
+
+def _record_matches_parsed_value(
+    record: AuthenticatedDistributionRecordV1 | _AuthenticatedDistributionRecordForTestV1,
+    value: Mapping[str, object], files: tuple[DistributionFile, ...],
+) -> bool:
+    return (
+        record.closed_build_id == value["closed_build_id"]
+        and record.previous_closed_build_id == value["previous_closed_build_id"]
+        and record.release_sequence == value["release_sequence"]
+        and record.product_version == value["product_version"]
+        and record.platform == value["platform"]
+        and record.architecture == value["architecture"]
+        and record.signing_key_id == value["signing_key_id"]
+        and record.installation_root == value["installation_root"]
+        and record.certificate_directory == value["certificate_directory"]
+        and record.boundary_inventory_path == value["boundary_inventory_path"]
+        and record.boundary_inventory_hash == value["boundary_inventory_hash"]
+        and record.boundary_guard_version == value["boundary_guard_version"]
+        and record.preflight_entrypoint == value["preflight_entrypoint"]
+        and record.files == files
+    )
+
+
+def _verify_authenticated_distribution_record(
+    record: AuthenticatedDistributionRecordV1 | _AuthenticatedDistributionRecordForTestV1,
+    environment: _VerificationEnvironment, *, for_test: bool,
+) -> VerifiedDistribution:
+    expected_type = (
+        _AuthenticatedDistributionRecordForTestV1
+        if for_test else AuthenticatedDistributionRecordV1
+    )
+    expected_seal = (
+        _TEST_AUTHENTICATED_DISTRIBUTION_SEAL
+        if for_test else _AUTHENTICATED_DISTRIBUTION_SEAL
+    )
+    if (
+        type(record) is not expected_type
+        or record._seal is not expected_seal
+        or record._artifact_binding != _authenticated_artifact_binding(
+            record.encoded, record.signature,
+        )
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "authenticated artifact",
+        )
+    value, files = _parse(record.encoded)
+    if not _record_matches_parsed_value(record, value, files):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "record binding",
+        )
+    sequence = record.release_sequence
     if not isinstance(environment, _VerificationEnvironment) or environment._seal is not _ENVIRONMENT_SEAL:
         raise DistributionManifestError("birth_ownership_distribution_platform_mismatch")
     if (value["platform"], value["architecture"]) != (
@@ -678,6 +936,23 @@ def verify_distribution_manifest(
         raise DistributionManifestError("birth_ownership_distribution_platform_mismatch")
     if str(value["installation_root"]) != environment.claimed_installation_root:
         raise DistributionManifestError("birth_ownership_distribution_platform_mismatch", "root")
+    try:
+        root_info = environment.installation_root.lstat()
+    except OSError as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "installation root",
+        ) from exc
+    if (
+        not stat.S_ISDIR(root_info.st_mode) or stat.S_ISLNK(root_info.st_mode)
+        or bool(getattr(root_info, "st_file_attributes", 0) & 0x400)
+        or (environment.require_administrative_metadata and os.name != "nt" and (
+            root_info.st_uid != 0 or root_info.st_gid != 0
+            or root_info.st_mode & 0o022
+        ))
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "installation root",
+        )
     by_path = {item.path: item for item in files}
     verified_content: dict[str, bytes] = {}
     for item in files:
@@ -749,9 +1024,74 @@ def verify_distribution_manifest(
         str(value["product_version"]), str(value["platform"]),
         str(value["architecture"]), str(value["installation_root"]),
         str(value["certificate_directory"]), str(value["preflight_entrypoint"]),
-        files, bytes(encoded), bytes(signature),
-        _distribution_artifact_binding(encoded, signature),
+        files, bytes(record.encoded), bytes(record.signature),
+        _distribution_artifact_binding(record.encoded, record.signature),
         _VERIFIED_DISTRIBUTION_SEAL,
+    )
+
+
+def verify_installed_distribution_record_v1(
+    record: AuthenticatedDistributionRecordV1,
+) -> VerifiedDistribution:
+    """Verify the one live release selected solely by its signed sequence."""
+    if not sys.platform.startswith("linux"):
+        raise DistributionManifestError("birth_ownership_platform_unsupported")
+    if (
+        type(record) is not AuthenticatedDistributionRecordV1
+        or record._seal is not _AUTHENTICATED_DISTRIBUTION_SEAL
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "authenticated artifact",
+        )
+    expected_root = (
+        DEFAULT_RELEASE_DIRECTORY_V1 / f"{record.release_sequence:020d}"
+    )
+    if record.installation_root != expected_root.as_posix():
+        raise DistributionManifestError(
+            "birth_ownership_distribution_platform_mismatch", "root",
+        )
+    _require_product_release_metadata_v1(expected_root)
+    observed = _runtime_environment()
+    environment = _VerificationEnvironment(
+        observed.platform, observed.architecture, expected_root,
+        expected_root.as_posix(), True, True, _ENVIRONMENT_SEAL,
+    )
+    return _verify_authenticated_distribution_record(
+        record, environment, for_test=False,
+    )
+
+
+def verify_current_installation_distribution_v1(
+    encoded: bytes, signature: bytes,
+) -> VerifiedDistribution:
+    """Reverify the G5 installation using fixed trust and the runtime root."""
+    record = authenticate_distribution_record_v1(encoded, signature)
+    environment = _runtime_environment()
+    _require_product_release_metadata_v1(environment.installation_root)
+    return _verify_authenticated_distribution_record(
+        record, environment, for_test=False,
+    )
+
+
+def _verify_authenticated_distribution_record_for_test(
+    record: _AuthenticatedDistributionRecordForTestV1,
+    *, environment: _VerificationEnvironment,
+) -> VerifiedDistribution:
+    return _verify_authenticated_distribution_record(
+        record, environment, for_test=True,
+    )
+
+
+def _verify_distribution_manifest_for_test(
+    encoded: bytes, signature: bytes, *, registry: DistributionRegistry,
+    _environment: _VerificationEnvironment | None = None,
+) -> VerifiedDistribution:
+    """Compatibility verifier; productive cold paths use the fixed trust store."""
+    record = _authenticate_distribution_record_for_test(
+        encoded, signature, registry=registry,
+    )
+    return _verify_authenticated_distribution_record_for_test(
+        record, environment=_environment or _runtime_environment(),
     )
 
 
@@ -780,9 +1120,12 @@ def _verified_distribution_for_test(
 
 __all__ = [
     "BOUNDARY_INVENTORY_DOMAIN", "BUILD_ID_DOMAIN", "FILE_HASH_DOMAIN",
-    "MAX_PAYLOAD_BYTES", "PURPOSE",
-    "SIGNATURE_DOMAIN", "DistributionFile", "DistributionKey",
+    "DEFAULT_RELEASE_DIRECTORY_V1", "MAX_PAYLOAD_BYTES", "PURPOSE",
+    "SIGNATURE_DOMAIN", "AuthenticatedDistributionRecordV1",
+    "DistributionFile", "DistributionKey",
     "DistributionManifestError", "DistributionRegistry", "VerifiedDistribution",
-    "distribution_key_id", "file_content_hash", "is_verified_distribution",
-    "verify_distribution_manifest",
+    "authenticate_distribution_record_v1", "distribution_key_id",
+    "file_content_hash", "is_verified_distribution",
+    "verify_current_installation_distribution_v1",
+    "verify_installed_distribution_record_v1",
 ]

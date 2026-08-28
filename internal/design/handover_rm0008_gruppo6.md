@@ -10,9 +10,44 @@ Il gruppo 5 e' chiuso. Il commit pubblico e' `a5bd396`; il ciclo GitHub Actions
 Windows. Il commit sorgente di ingresso del gruppo 6 e' `225f9437`.
 RM-0008 resta `active`; `closed_build_enforcement()` resta `False`.
 
+### Incremento G6-A1 completato localmente
+
+E' completato il primo sottoincremento di G6-A: record storico autenticato e
+lettura produttiva a freddo della catena. Non sono ancora implementati il codec
+V2, `successor-claims-v1`, la disposizione del journal V1 e la sessione
+sigillata del blocco di deployment; pertanto G6-A e RM-0008 restano aperti.
+
+Il codice ora:
+
+- separa nominalmente il record storico autenticato dalla distribuzione viva;
+- carica una sola fotografia sigillata delle tre autorita' fisse e non accetta
+  root o registri dal chiamante produttivo;
+- autentica tutti i manifesti storici, verifica file e guardie soltanto per la
+  release richiesta e ricostruisce due o piu' versioni in un processo nuovo;
+- deriva le radici produttive fisse e respinge link, proprietari, modi e
+  hardlink non ammessi su antenati, directory e oggetti;
+- mantiene il verificatore G5 dell'installazione corrente separato dal nuovo
+  percorso `releases-v1`, con autorita' fissa e rilettura completa;
+- crea e riprende le directory con modo esatto `0755`, sincronizzando sempre
+  prima la directory e poi il parent; gli errori restano chiusi e stabili;
+- lascia le seam con root e autorita' iniettabili in tipi privati di prova che
+  non producono capacita' accettate dal prodotto.
+
+Le prove mirate finali hanno dato `131 passed, 1 skipped`; la guardia
+dell'inventario ha dato `1 passed`; la suite portabile completa ha dato
+`410 passed, 24 skipped`, con errore zero. Tre revisioni indipendenti finali
+hanno dato `P1=0`, `P2=0`. Le prove discriminano firma storica, predecessore,
+sequenza, buco, duplicato, fork, testa richiesta, fotografia unica delle
+autorita', tipo produttivo, metadati, umask e ripresa dopo errore di `fsync`.
+
+La prova diretta su `192.168.1.137` non e' stata eseguita: la connessione SSH
+alla porta 22 e' scaduta. Il percorso Windows ha comunque superato la review
+dedicata; la matrice pubblica Linux/Windows resta unica e viene eseguita alla
+chiusura del gruppo 6, come stabilito dal piano.
+
 ## Analisi del gruppo 6
 
-Il codice del gruppo 6 non e' ancora iniziato. Tre revisioni indipendenti hanno
+Prima dell'avvio del codice, tre revisioni indipendenti hanno
 esaminato distribuzione, catena, coordinatore, servizi e installatore. Hanno
 concordato quattro lacune bloccanti:
 
@@ -141,9 +176,10 @@ incrementi successivi restano chiusi fino al criterio di uscita di G6-A.
 
 ## Prossimo passo unico
 
-Implementare e provare soltanto G6-A: record storico autenticato, lettura a
-freddo della catena, journal V2 separato e claim store senza ancora esporre il
-percorso che pubblica claim o `PREPARED`. Non aprire in parallelo G6-B, G6-C o
+Completare soltanto G6-A con codec/store di `successor-claims-v1`, codec V2,
+resolver del journal per transazione, disposizione esplicita del journal V1 e
+sessione sigillata restituita da `_deployment_lock_v1()`. Non esporre ancora il
+percorso che pubblica claim o `PREPARED` e non aprire in parallelo G6-B, G6-C o
 G6-D.
 
 ## Regole operative

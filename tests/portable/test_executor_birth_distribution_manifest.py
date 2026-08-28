@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from types import SimpleNamespace
@@ -38,6 +39,15 @@ def _authority(*purposes: str, first: int = 1, last: int | None = None):
         ),
     })
     return private, key_id, registry
+
+
+def _fixed_public_bundle(distribution_private):
+    import executor_birth_ownership_authorities as authority_module
+
+    return authority_module._root_ownership_authorities_for_test(
+        distribution_private, Ed25519PrivateKey.generate(),
+        Ed25519PrivateKey.generate(),
+    ).public
 
 
 def _test_environment(root: Path):
@@ -151,7 +161,7 @@ def _verify(tmp_path, *, purposes=(distribution.PURPOSE,), mutate=None,
     environment = environment or distribution._environment_for_test(
         "windows" if os.name == "nt" else "linux", "x86_64", tmp_path,
     )
-    result = distribution.verify_distribution_manifest(
+    result = distribution._verify_distribution_manifest_for_test(
         encoded, signature, registry=registry, _environment=environment,
     )
     return value, encoded, signature, registry, result
@@ -169,6 +179,192 @@ def test_signed_manifest_produces_only_sealed_preflight_identity(tmp_path):
         result.encoded = b"replacement"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="productive release root is Linux-only")
+def test_historical_record_is_nominally_separate_and_live_root_is_derived(
+    tmp_path, monkeypatch,
+):
+    private, key_id, registry = _authority(distribution.PURPOSE)
+    releases = tmp_path / "releases-v1"
+    exact_root = releases / "00000000000000000001"
+    _value, encoded, signature = _manifest(
+        exact_root, private, key_id,
+    )
+    test_record = distribution._authenticate_distribution_record_for_test(
+        encoded, signature, registry=registry,
+    )
+    with pytest.raises(distribution.DistributionManifestError):
+        distribution.verify_installed_distribution_record_v1(test_record)
+
+    import executor_birth_ownership_authorities as authority_module
+
+    authority_bundle = _fixed_public_bundle(private)
+    monkeypatch.setattr(
+        authority_module, "load_ownership_public_registries_v1",
+        lambda: authority_bundle,
+    )
+    productive_record = distribution.authenticate_distribution_record_v1(
+        encoded, signature,
+    )
+    observed = []
+    sentinel = object()
+
+    def capture(record, environment, *, for_test):
+        observed.append((record, environment.installation_root, for_test))
+        return sentinel
+
+    monkeypatch.setattr(distribution, "DEFAULT_RELEASE_DIRECTORY_V1", releases)
+    monkeypatch.setattr(
+        distribution, "_require_product_release_metadata_v1", lambda _root: None,
+    )
+    monkeypatch.setattr(
+        distribution, "_verify_authenticated_distribution_record", capture,
+    )
+    assert distribution.verify_installed_distribution_record_v1(
+        productive_record
+    ) is sentinel
+    assert observed == [(productive_record, exact_root, False)]
+
+    wrong_root = releases / "00000000000000000001-extra"
+    _value, wrong_encoded, wrong_signature = _manifest(
+        wrong_root, private, key_id,
+    )
+    wrong_record = distribution.authenticate_distribution_record_v1(
+        wrong_encoded, wrong_signature,
+    )
+    with pytest.raises(distribution.DistributionManifestError, match="root"):
+        distribution.verify_installed_distribution_record_v1(wrong_record)
+
+
+def test_current_installation_product_verifier_uses_fixed_trust_and_rereads_files(
+    tmp_path, monkeypatch,
+):
+    private, key_id, _registry = _authority(distribution.PURPOSE)
+    _value, encoded, signature = _manifest(tmp_path, private, key_id)
+    import executor_birth_ownership_authorities as authority_module
+
+    monkeypatch.setattr(
+        authority_module, "load_ownership_public_registries_v1",
+        lambda: _fixed_public_bundle(private),
+    )
+    monkeypatch.setattr(
+        distribution, "_runtime_environment",
+        lambda: _test_environment(tmp_path),
+    )
+    original_lstat = Path.lstat
+    trusted_directories = {tmp_path, *tmp_path.parents}
+
+    def root_owned_ancestor_lstat(path):
+        if Path(path) in trusted_directories:
+            return SimpleNamespace(
+                st_mode=stat.S_IFDIR | 0o755, st_uid=0, st_gid=0,
+                st_file_attributes=0,
+            )
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", root_owned_ancestor_lstat)
+    verified = distribution.verify_current_installation_distribution_v1(
+        encoded, signature,
+    )
+    assert verified.encoded == encoded
+    (tmp_path / "runtime" / "sign.py").write_bytes(b"tampered")
+    with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
+        distribution.verify_current_installation_distribution_v1(
+            encoded, signature,
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="productive ancestor metadata is POSIX")
+def test_current_installation_rejects_writable_parent_before_file_verification(
+    tmp_path, monkeypatch,
+):
+    private, key_id, _registry = _authority(distribution.PURPOSE)
+    installation_root = tmp_path / "relocated" / "metnos"
+    _value, encoded, signature = _manifest(
+        installation_root, private, key_id,
+    )
+    import executor_birth_ownership_authorities as authority_module
+
+    monkeypatch.setattr(
+        authority_module, "load_ownership_public_registries_v1",
+        lambda: _fixed_public_bundle(private),
+    )
+    monkeypatch.setattr(
+        distribution, "_runtime_environment",
+        lambda: distribution._environment_for_test(
+            "linux", "x86_64", installation_root,
+        ),
+    )
+    unsafe_parent = installation_root.parent
+
+    def synthetic_lstat(path):
+        return SimpleNamespace(
+            st_mode=stat.S_IFDIR | (
+                0o775 if Path(path) == unsafe_parent else 0o755
+            ),
+            st_uid=0, st_gid=0, st_file_attributes=0,
+        )
+
+    monkeypatch.setattr(Path, "lstat", synthetic_lstat)
+    monkeypatch.setattr(
+        distribution, "_verify_authenticated_distribution_record",
+        lambda *_args, **_kwargs: pytest.fail(
+            "file verification reached after unsafe current-install parent"
+        ),
+    )
+    with pytest.raises(
+        distribution.DistributionManifestError, match="release metadata",
+    ):
+        distribution.verify_current_installation_distribution_v1(
+            encoded, signature,
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="productive release metadata is POSIX")
+@pytest.mark.parametrize("mutation", ("ancestor_link", "ancestor_owner", "ancestor_mode"))
+def test_product_release_rejects_unsafe_ancestor_before_file_verification(
+    tmp_path, monkeypatch, mutation,
+):
+    private, key_id, _registry = _authority(distribution.PURPOSE)
+    releases = tmp_path / "releases-v1"
+    exact_root = releases / "00000000000000000001"
+    _value, encoded, signature = _manifest(exact_root, private, key_id)
+    import executor_birth_ownership_authorities as authority_module
+
+    monkeypatch.setattr(
+        authority_module, "load_ownership_public_registries_v1",
+        lambda: _fixed_public_bundle(private),
+    )
+    record = distribution.authenticate_distribution_record_v1(encoded, signature)
+    monkeypatch.setattr(distribution, "DEFAULT_RELEASE_DIRECTORY_V1", releases)
+    unsafe_ancestor = releases
+
+    def synthetic_lstat(path):
+        mode = stat.S_IFDIR | 0o755
+        uid = gid = 0
+        if Path(path) == unsafe_ancestor:
+            if mutation == "ancestor_link":
+                mode = stat.S_IFLNK | 0o777
+            elif mutation == "ancestor_owner":
+                uid = 1000
+            else:
+                mode = stat.S_IFDIR | 0o775
+        return SimpleNamespace(
+            st_mode=mode, st_uid=uid, st_gid=gid, st_file_attributes=0,
+        )
+
+    monkeypatch.setattr(Path, "lstat", synthetic_lstat)
+    monkeypatch.setattr(
+        distribution, "_verify_authenticated_distribution_record",
+        lambda *_args, **_kwargs: pytest.fail(
+            "file verification reached after unsafe release metadata"
+        ),
+    )
+    with pytest.raises(
+        distribution.DistributionManifestError, match="release metadata",
+    ):
+        distribution.verify_installed_distribution_record_v1(record)
+
+
 @pytest.mark.parametrize("source", [
     b'__version__ = "9.9.9"\n',
     b'def version(): return "1.2.3"\n__version__ = version()\n',
@@ -183,7 +379,7 @@ def test_product_version_must_equal_single_literal_in_signed_source(tmp_path, so
         ),
     )
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=_test_environment(tmp_path),
         )
 
@@ -195,7 +391,7 @@ def test_guard_version_inventory_policy_and_full_static_gate_are_fail_closed(tmp
         mutate=lambda value: value.update(boundary_guard_version="caller-guard/1"),
     )
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=_test_environment(tmp_path),
         )
 
@@ -213,14 +409,14 @@ def test_guard_version_inventory_policy_and_full_static_gate_are_fail_closed(tmp
             ).hexdigest()),
     )
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=_test_environment(tmp_path),
         )
 
     # Structural fixture is valid, but cannot counterfeit the compiled census.
     _value, encoded, signature = _manifest(tmp_path, private, key_id)
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry,
             _environment=distribution._environment_for_test(
                 "windows" if os.name == "nt" else "linux", "x86_64", tmp_path,
@@ -241,7 +437,7 @@ def test_uncovered_local_and_dynamic_imports_fail_closed(tmp_path):
             tmp_path, private, key_id, files_mutate=mutate_files,
         )
         with pytest.raises(distribution.DistributionManifestError, match="extra_file"):
-            distribution.verify_distribution_manifest(
+            distribution._verify_distribution_manifest_for_test(
                 encoded, signature, registry=registry,
                 _environment=_test_environment(tmp_path),
             )
@@ -287,7 +483,7 @@ def test_closed_schema_numbers_order_duplicates_and_paths_fail(tmp_path, mutatio
     private, key_id, registry = _authority(distribution.PURPOSE)
     _value, encoded, signature = _manifest(tmp_path, private, key_id, mutate=mutation)
     with pytest.raises(distribution.DistributionManifestError):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry,
             _environment=_test_environment(tmp_path),
         )
@@ -299,7 +495,7 @@ def test_duplicate_json_noncanonical_and_signature_tamper_fail(tmp_path):
     for payload, proof in ((encoded + b"\n", signature), (duplicate, signature),
                            (encoded, b"x" * 64)):
         with pytest.raises(distribution.DistributionManifestError):
-            distribution.verify_distribution_manifest(
+            distribution._verify_distribution_manifest_for_test(
                 payload, proof, registry=registry,
                 _environment=_test_environment(tmp_path),
             )
@@ -317,7 +513,7 @@ def test_wrong_purpose_and_key_epoch_are_unauthorized(tmp_path):
         private, key_id, registry = _authority(*purposes, first=first, last=last)
         _value, encoded, signature = _manifest(tmp_path, private, key_id)
         with pytest.raises(distribution.DistributionManifestError, match="key_unauthorized"):
-            distribution.verify_distribution_manifest(
+            distribution._verify_distribution_manifest_for_test(
                 encoded, signature, registry=registry,
                 _environment=_test_environment(tmp_path),
             )
@@ -330,12 +526,12 @@ def test_file_tamper_missing_symlink_hardlink_and_extra_birth_module_fail(tmp_pa
     target = tmp_path / "runtime" / "sign.py"
     target.write_bytes(b"changed")
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=environment,
         )
     target.unlink()
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=environment,
         )
 
@@ -349,20 +545,20 @@ def test_file_tamper_missing_symlink_hardlink_and_extra_birth_module_fail(tmp_pa
     target.unlink()
     target.symlink_to(backup)
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=environment,
         )
     target.unlink()
     target.write_bytes(backup.read_bytes())
     os.link(target, tmp_path / "sign-hardlink.py")
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=environment,
         )
     (tmp_path / "sign-hardlink.py").unlink()
     (tmp_path / "runtime" / "executor_birth_shadow_authority.py").write_bytes(b"x")
     with pytest.raises(distribution.DistributionManifestError, match="extra_file"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=environment,
         )
 
@@ -374,7 +570,7 @@ def test_inventory_domain_binding_and_parent_symlink_fail(tmp_path):
     inventory = tmp_path.joinpath(*value["boundary_inventory_path"].split("/"))
     inventory.write_bytes(b'{"changed":true}')
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=environment,
         )
 
@@ -385,7 +581,7 @@ def test_inventory_domain_binding_and_parent_symlink_fail(tmp_path):
     (tmp_path / "share").rename(real_share)
     (tmp_path / "share").symlink_to(real_share, target_is_directory=True)
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=environment,
         )
 
@@ -400,7 +596,7 @@ def test_platform_and_architecture_mismatch_fail_before_authority_is_returned(
     platform = ("linux" if native == "windows" else "windows") if axis == "platform" else native
     architecture = "aarch64" if axis == "architecture" else "x86_64"
     with pytest.raises(distribution.DistributionManifestError, match="platform_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry,
             _environment=distribution._environment_for_test(
                 platform, architecture, tmp_path,
@@ -451,7 +647,7 @@ def test_windows_verification_dispatches_to_certified_handle_reader(tmp_path, mo
         return root.joinpath(*item.path.split("/")).read_bytes()
 
     monkeypatch.setattr(distribution, "_secure_read_windows", certified_read)
-    result = distribution.verify_distribution_manifest(
+    result = distribution._verify_distribution_manifest_for_test(
         encoded, signature, registry=registry,
         _environment=distribution._environment_for_test(
             "windows", "x86_64", tmp_path,
@@ -467,7 +663,7 @@ def test_windows_real_handle_reader_rejects_hardlinked_release_file(tmp_path):
     target = tmp_path / "runtime" / "sign.py"
     os.link(target, tmp_path / "sign-second-name.py")
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
-        distribution.verify_distribution_manifest(
+        distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=_test_environment(tmp_path),
         )
 
@@ -480,7 +676,7 @@ def test_previous_build_is_null_only_for_first_sequence(tmp_path):
     ):
         _value, encoded, signature = _manifest(tmp_path, private, key_id, mutate=mutation)
         with pytest.raises(distribution.DistributionManifestError, match="chain_invalid"):
-            distribution.verify_distribution_manifest(
+            distribution._verify_distribution_manifest_for_test(
                 encoded, signature, registry=registry,
                 _environment=_test_environment(tmp_path),
             )

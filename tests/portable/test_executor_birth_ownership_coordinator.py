@@ -5,11 +5,13 @@ import json
 import multiprocessing
 import os
 import sys
+from contextlib import contextmanager
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import executor_birth_distribution_manifest as distribution
+import executor_birth_ownership_coordinator as coordinator_module
 from contract_boundary_guard import (
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS, BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_GUARD_VERSION, BIRTH_CLOSED_OWNER, BIRTH_CLOSED_SCHEMA,
@@ -132,7 +134,7 @@ def _distribution(tmp_path, name="current"):
     ).hexdigest()
     encoded = _canonical(value)
     signature = private.sign(distribution.SIGNATURE_DOMAIN + encoded)
-    return distribution.verify_distribution_manifest(
+    return distribution._verify_distribution_manifest_for_test(
         encoded, signature, registry=registry,
         _environment=distribution._environment_for_test(
             target, "x86_64", root,
@@ -218,6 +220,50 @@ def test_productive_core_stops_at_receipts_complete_and_replays(tmp_path):
             initial_maintenance=_maintenance(),
             observe_maintenance=_maintenance, prepare_receipts=lambda: changed,
         )
+
+
+def test_productive_entry_rechecks_live_files_before_journal(tmp_path, monkeypatch):
+    verified = _distribution(tmp_path)
+    root = tmp_path / "distribution-current"
+    private = Ed25519PrivateKey.from_private_bytes(
+        hashlib.sha256(b"current").digest()
+    )
+    key_id = distribution.distribution_key_id(private.public_key())
+    registry = distribution.DistributionRegistry({
+        key_id: distribution.DistributionKey(
+            key_id, private.public_key(), frozenset({distribution.PURPOSE}),
+        ),
+    })
+    record = distribution._authenticate_distribution_record_for_test(
+        verified.encoded, verified.signature, registry=registry,
+    )
+
+    @contextmanager
+    def deployment_lock():
+        yield
+
+    def verify_live(_record):
+        return distribution._verify_authenticated_distribution_record_for_test(
+            record, environment=distribution._environment_for_test(
+                "windows" if os.name == "nt" else "linux",
+                "x86_64", root,
+            ),
+        )
+
+    def unexpected_journal(*_args, **_kwargs):
+        raise AssertionError("journal reached before live verification")
+
+    monkeypatch.setattr(coordinator_module, "_deployment_lock_v1", deployment_lock)
+    monkeypatch.setattr(
+        coordinator_module, "verify_current_installation_distribution_v1",
+        lambda _encoded, _signature: verify_live(record),
+    )
+    monkeypatch.setattr(
+        coordinator_module, "OwnershipCoordinatorJournalV1", unexpected_journal,
+    )
+    (root / "runtime" / "sign.py").write_bytes(b"tampered")
+    with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
+        coordinator_module.prepare_ownership_cutover_v1(verified)
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux journal")
