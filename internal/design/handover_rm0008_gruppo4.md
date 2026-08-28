@@ -12,7 +12,8 @@ verdi. RM-0008 resta `active`.
 Il gruppo 4 e' soltanto la chiusura statica F4 del §23.6.4. Il piano completo
 e' `internal/reports/rm0008-gruppo4-piano-ottimizzato.md`.
 
-G4-A e' implementato e non ancora committato. Le due revisioni reali sono state
+G4-A e' implementato nel commit sorgente `3eeb4b1b`. Non e' ancora pubblicato.
+Le due revisioni reali sono state
 pubblicate tramite Birth, non tramite firma diretta:
 
 - `undo_last_turn`: generazione
@@ -25,14 +26,29 @@ sono stati rimossi. Il padre legge le dipendenze dal manifest firmato, proietta
 soltanto record gia' verificati e monta le sole radici necessarie in sola
 lettura. Il figlio confronta i byte con il digest prima di eseguirli.
 
-Prove locali eseguite:
+Prove locali eseguite sul commit:
 
-- 100 prove funzionali e di sicurezza verdi;
+- 100 prove funzionali e di sicurezza verdi; la sola prova rossa nello stesso
+  lotto e' il congelamento dell'inventario, rinviato espressamente a G4-B+C;
+- tre celle R1 del grafo produttivo verdi;
+- gruppo 3: 228 verdi e una non applicabile;
+- intera suite portatile in radici di stato isolate: 325 verdi e 22 non
+  applicabili, zero errori;
 - 1 prova della guardia normale rossa per cinque classificazioni rinviate al
   congelamento G4-B+C, come previsto dal piano;
 - cella portatile con intenzione Birth reale verde;
-- prova sandbox reale non eseguibile su questo host per diniego del kernel a
-  Bubblewrap; la matrice Ubuntu resta la prova autorevole.
+- attraversamento padre-processo-dipendenza verde senza sandbox; la stessa
+  prova con Bubblewrap non e' eseguibile su questo host per diniego del kernel,
+  quindi la matrice Ubuntu resta la prova autorevole;
+- il manifesto finale 2A richiede la cronologia pubblica e non e' eseguibile
+  nel repository sorgente; verra' eseguito dalla matrice pubblica.
+
+Una prima esecuzione non isolata della suite portatile ha prodotto 13 errori
+con la stessa causa: leggeva i binding dell'installazione reale sotto
+`~/.local/state/metnos`. Dodici errori appartenevano a prove storiche e uno alla
+nuova cella. La singola misura discriminante con radici temporanee ha portato
+lo stesso insieme a zero errori; non e' stata applicata alcuna correzione al
+prodotto per questo fatto ambientale.
 
 La misura corrente della guardia `--birth-closed` e' **28 rilievi**:
 
@@ -53,9 +69,9 @@ nuova porta autenticata.
 
 ## Prossimo passo unico
 
-Completare i controlli locali di G4-A, creare il commit sorgente, pubblicare
-l'unico incremento su `main` e attendere gli otto lavori GitHub verdi. Non
-iniziare G4-B+C prima di quel risultato.
+Registrare questo aggiornamento, pubblicare l'unico incremento su `main` e
+attendere gli otto lavori GitHub verdi. Non iniziare G4-B+C prima di quel
+risultato.
 
 Non rigenerare ancora l'inventario. Non toccare
 `closed_build_enforcement()`: deve restare `False` per tutto il gruppo 4.

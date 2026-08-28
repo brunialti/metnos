@@ -321,7 +321,7 @@ Se un incremento progettato fallisce la matrice pubblica:
 
 | Requisito | Prova richiesta | Esito iniziale |
 |---|---|---|
-| due dipendenze fra executor autenticate | sandbox, alterazione, invocazione reale | non provato |
+| due dipendenze fra executor autenticate | sandbox, alterazione, invocazione reale | prove locali verdi; matrice pubblica in attesa |
 | nessuna firma diretta dell'installatore | nuovo impianto e ripresa | 3 rilievi |
 | nessuna firma diretta del generatore | generazione e rifiuto atomico | 2 rilievi |
 | unico proprietario Birth | inventario e guardia | proprietario mancante |
