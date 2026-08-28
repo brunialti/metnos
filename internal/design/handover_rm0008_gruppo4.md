@@ -11,6 +11,13 @@ I gruppi 2 e 3 sono chiusi. Il loro ultimo ciclo GitHub completamente verde e'
 Il gruppo 4 e' soltanto la chiusura statica F4 del §23.6.4. Il piano completo
 e' `internal/reports/rm0008-gruppo4-piano-ottimizzato.md`.
 
+Stato piu' recente: G4-B+C e' completo localmente fino al commit `44affb51`.
+Guardie e inventario hanno zero rilievi, le prove mirate sono 150 verdi e la
+suite portatile completa conta 326 prove verdi, 23 non applicabili e zero
+errori. Manca la sola pubblicazione e la conferma GitHub Linux/Windows; il
+gruppo 4 non e'
+ancora chiuso.
+
 G4-A e' implementato nel commit sorgente `3eeb4b1b` e documentato in
 `e45a192e`. Il primo commit pubblico e' `74c6997`, ciclo GitHub
 `33158138028`, **rosso**.
@@ -174,7 +181,7 @@ posseduti, suite generale Linux, suite generale Windows e riepilogo finale. La
 prova Linux delegata ha eseguito nello stesso servizio sia Birth sia la nuova
 porta autenticata. G4-A e' quindi chiuso con zero errori pubblici.
 
-## Prossimo passo unico
+## Passo successivo dopo G4-A
 
 Iniziare G4-B+C: rimuovere le cinque autorita' di firma dirette, classificare
 una sola volta l'inventario risultante e portare la guardia chiusa a zero. Non
@@ -239,7 +246,33 @@ di firma di `manifest_refactor` e' stato sostituito dalla chiamata statica
 offline. Sulla materializzazione esatta dell'indice Git, guardia normale e
 guardia chiusa hanno zero rilievi e il rendering dell'inventario e' identico
 byte per byte. Tutte le 56 prove della guardia sono verdi. Restano la verifica
-mirata complessiva, una sola suite portatile completa e la prova pubblica.
+mirata complessiva, una sola suite portatile completa e la prova pubblica. Le
+righe seguenti registrano il loro esito.
+
+La verifica locale finale di G4-B+C e' conclusa. I commit produttivi sono
+`dd2afda0`, `5c57aeaa` e `8f501197`. La politica
+`closed_build_enforcement()` resta `False`, come richiesto per tutto il gruppo
+4. La guardia normale, la guardia `--birth-closed` e il confronto byte per byte
+dell'inventario sono tutti a zero errori sul commit candidato.
+
+Il primo insieme mirato ha trovato una sola configurazione di prova del
+caricatore rimasta al vecchio percorso `../../recurring_tasks.py`. Il prodotto
+rifiutava correttamente quel formato. La configurazione e' stata allineata
+all'involucro `implementation.py.src` nel commit `61e0f4b3`; l'insieme mirato
+finale conta 150 prove verdi.
+
+La suite portatile completa ha poi trovato 13 errori con una sola causa: due
+funzioni di costruzione chiedevano l'inventario vivo e, su una macchina gia'
+attiva, leggevano correttamente il catalogo reale dell'utente. Ora chiedono
+esplicitamente `inventory_authoring_manifests()` nel commit `44affb51`. Due
+prove discriminanti e la successiva suite completa confermano la diagnosi. Il
+risultato finale e' 326 prove verdi, 23 non applicabili e zero errori. Questa
+correzione riguarda soltanto l'isolamento delle prove e non modifica il
+prodotto.
+
+Il candidato locale G4-B+C e' quindi completo. Manca soltanto la pubblicazione
+su `main` e la matrice GitHub Linux/Windows interamente verde; prima di tale
+risultato il gruppo 4 non e' dichiarato chiuso.
 
 `PC-ROBERTO` e' visibile come host Codex locale, ma non espone un progetto
 Metnos salvato. Il trasporto remoto del prodotto accetta soltanto executor
@@ -247,6 +280,34 @@ firmati e non permette di lanciare una suite arbitraria. Non verra' creato un
 executor di test privilegiato. Finche' un clone Metnos non viene configurato
 come progetto Codex sul PC, la matrice GitHub Windows resta la prova
 autorevole.
+
+## Ottimizzazione preliminare del gruppo 5
+
+Il gruppo 5 del §23.6 non e' ancora F5. Completa il coordinatore F4: prepara le
+tre autorita' distinte `closed_distribution_v1`, `ownership_cutover_v1` e
+`ownership_head_v1`, installa i registri posseduti da `root`, riusa la fabbrica
+sigillata di riattestazione, acquisisce la prova canonica di manutenzione e
+gestisce la ripresa oltre il punto di non ritorno.
+
+Il perimetro e' medio e viene ridotto a due incrementi sorgente:
+
+1. predisposizione delle tre autorita' e verifica di separazione, proprieta' e
+   registri;
+2. composizione del coordinatore e una prova integrata di arresto e ripresa
+   prima e dopo il punto di non ritorno.
+
+Le primitive crittografiche e di archivio gia' provate non saranno ricoperte
+con copie di test equivalenti. Restano obbligatorie una prova mirata per ogni
+nuovo confine, un solo attraversamento produttivo del coordinatore e una sola
+matrice pubblica finale. La stima prudente e' 3-5 ore, esclusa l'attesa GitHub.
+Il gruppo 5 non inizia prima della chiusura pubblica verde del gruppo 4.
+
+## Prossimo passo unico corrente
+
+Pubblicare una sola volta il candidato G4-B+C su `main`, attendere tutti i
+lavori GitHub e aggiornare questo file con commit pubblico e ciclo. Se un
+lavoro e' rosso, fermarsi e diagnosticare il primo errore reale prima di ogni
+nuova modifica.
 
 ## Regole operative
 
