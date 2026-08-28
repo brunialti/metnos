@@ -19,6 +19,96 @@
       "phase": "M4"
     },
     {
+      "path": "install/birth_ownership_authority_provisioner.py",
+      "scope": "_discard_temporary",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned immutable deployment-authority provisioner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_ownership_authority_provisioner.py",
+      "scope": "_load_or_create_pair",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned immutable deployment-authority provisioner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_ownership_authority_provisioner.py",
+      "scope": "_provision_ownership_authorities_at_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned immutable deployment-authority provisioner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_ownership_authority_provisioner.py",
+      "scope": "_provision_ownership_authorities_locked_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned immutable deployment-authority provisioner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_ownership_authority_provisioner.py",
+      "scope": "_provisioning_lock",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned immutable deployment-authority provisioner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_ownership_authority_provisioner.py",
+      "scope": "_publish_no_replace",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned immutable deployment-authority provisioner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_ownership_authority_provisioner.py",
+      "scope": "_sync_directory",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned immutable deployment-authority provisioner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_ownership_authority_provisioner.py",
+      "scope": "_write_exclusive",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned immutable deployment-authority provisioner",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_ownership_authority_provisioner.py",
+      "scope": "provision_root_ownership_authorities_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned immutable deployment-authority provisioner",
+      "phase": "M4"
+    },
+    {
       "path": "install/phases/phase3_code.py",
       "scope": "_activate_prepared_report",
       "role": "migration_boundary",
@@ -2928,6 +3018,15 @@
     "guard_version": "metnos.contract-boundary-inventory/2+birth-closed/1",
     "owner": "runtime/executor_birth_operational.py:birth_executor",
     "coordinator_store_owners": [
+      "install/birth_ownership_authority_provisioner.py:_discard_temporary",
+      "install/birth_ownership_authority_provisioner.py:_load_or_create_pair",
+      "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_at_v1",
+      "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_locked_v1",
+      "install/birth_ownership_authority_provisioner.py:_provisioning_lock",
+      "install/birth_ownership_authority_provisioner.py:_publish_no_replace",
+      "install/birth_ownership_authority_provisioner.py:_sync_directory",
+      "install/birth_ownership_authority_provisioner.py:_write_exclusive",
+      "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",

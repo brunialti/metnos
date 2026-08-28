@@ -15,7 +15,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import TYPE_CHECKING, Iterable, Mapping
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -27,10 +27,14 @@ from executor_birth_ownership_cutover import (
     OwnershipCutoverRegistry,
     _publish_no_replace, _safe_directory, _safe_read, _sync_directory,
     _write_temporary, verify_ownership_cutover_certificate,
+    PURPOSE as CUTOVER_PURPOSE,
 )
 from executor_birth_distribution_manifest import (
     VerifiedDistribution, is_verified_distribution,
 )
+
+if TYPE_CHECKING:
+    from executor_birth_ownership_authorities import OwnershipPublicRegistriesV1
 
 
 HEAD_ID_DOMAIN = b"metnos.executor-birth.ownership-head-id/v1\0"
@@ -369,12 +373,75 @@ def verify_contiguous_chain(
     return VerifiedOwnershipChain(anchor.cutover_id, materialized)
 
 
+def _require_separate_ownership_registries(
+    cutover_registry: OwnershipCutoverRegistry,
+    head_registry: OwnershipCutoverRegistry,
+) -> None:
+    if (
+        not isinstance(cutover_registry, OwnershipCutoverRegistry)
+        or not isinstance(head_registry, OwnershipCutoverRegistry)
+        or any(
+            entry.purposes != frozenset({CUTOVER_PURPOSE})
+            for entry in cutover_registry.keys.values()
+        )
+        or any(
+            entry.purposes != frozenset({HEAD_PURPOSE})
+            for entry in head_registry.keys.values()
+        )
+        or {
+            entry.public_key.public_bytes_raw()
+            for entry in cutover_registry.keys.values()
+        } & {
+            entry.public_key.public_bytes_raw()
+            for entry in head_registry.keys.values()
+        }
+    ):
+        raise OwnershipChainError(
+            "birth_ownership_key_unauthorized", "shared ownership registry",
+        )
+
+
+def _registries_from_authorities(
+    authorities: "OwnershipPublicRegistriesV1",
+) -> tuple[OwnershipCutoverRegistry, OwnershipCutoverRegistry]:
+    # Lazy import avoids the codec/chain import cycle.  Productive construction
+    # accepts only the sealed bundle returned by the ownership cold loader.
+    from executor_birth_ownership_authorities import (
+        OwnershipPublicRegistriesV1, _PUBLIC_SEAL,
+    )
+
+    if (
+        not isinstance(authorities, OwnershipPublicRegistriesV1)
+        or authorities._seal is not _PUBLIC_SEAL
+    ):
+        raise OwnershipChainError(
+            "birth_ownership_key_unauthorized", "untrusted authority bundle",
+        )
+    _require_separate_ownership_registries(
+        authorities.cutover, authorities.head,
+    )
+    return authorities.cutover, authorities.head
+
+
 class OwnershipChainStore:
     """No-replace object store plus an atomic signed required-head pointer."""
 
-    def __init__(self, root: Path, *, registry: OwnershipCutoverRegistry) -> None:
+    def __init__(self, root: Path) -> None:
+        from executor_birth_ownership_authorities import (
+            load_ownership_public_registries_v1,
+        )
+
+        self._open_with_authorities(
+            root, load_ownership_public_registries_v1(),
+        )
+
+    def _open_with_authorities(
+        self, root: Path, authorities: "OwnershipPublicRegistriesV1",
+    ) -> None:
         self.root = Path(root)
-        self.registry = registry
+        self.cutover_registry, self.head_registry = _registries_from_authorities(
+            authorities,
+        )
         try:
             _safe_directory(self.root)
             for name in ("builds-v1", "cutovers-v1", "heads-v1"):
@@ -385,10 +452,21 @@ class OwnershipChainStore:
             ) from exc
 
     @classmethod
-    def initialize(
-        cls, root: Path, *, registry: OwnershipCutoverRegistry,
-    ) -> "OwnershipChainStore":
+    def initialize(cls, root: Path) -> "OwnershipChainStore":
         """Explicit installer/coordinator initialization; ordinary open never writes."""
+        from executor_birth_ownership_authorities import (
+            load_ownership_public_registries_v1,
+        )
+
+        return cls._initialize_with_authorities(
+            root, load_ownership_public_registries_v1(),
+        )
+
+    @classmethod
+    def _initialize_with_authorities(
+        cls, root: Path, authorities: "OwnershipPublicRegistriesV1",
+    ) -> "OwnershipChainStore":
+        _registries_from_authorities(authorities)
         root = Path(root)
         root.mkdir(mode=0o755, exist_ok=True)
         _safe_directory(root)
@@ -397,7 +475,9 @@ class OwnershipChainStore:
             directory.mkdir(mode=0o755, exist_ok=True)
             _safe_directory(directory)
         _sync_directory(root)
-        return cls(root, registry=registry)
+        result = cls.__new__(cls)
+        result._open_with_authorities(root, authorities)
+        return result
 
     def _append_pair(
         self, directory: str, stem: str, encoded: bytes, signature: bytes,
@@ -480,7 +560,7 @@ class OwnershipChainStore:
     ) -> OwnershipCutoverCertificate:
         try:
             certificate = verify_ownership_cutover_certificate(
-                encoded, signature, registry=self.registry,
+                encoded, signature, registry=self.cutover_registry,
             )
         except Exception as exc:
             raise OwnershipChainError("birth_ownership_distribution_chain_invalid", "cutover") from exc
@@ -493,7 +573,9 @@ class OwnershipChainStore:
     def append_head(
         self, encoded: bytes, signature: bytes, *, _crash_seam=None,
     ) -> OwnershipHead:
-        head = verify_ownership_head(encoded, signature, registry=self.registry)
+        head = verify_ownership_head(
+            encoded, signature, registry=self.head_registry,
+        )
         stem = f"{head.release_sequence:020d}-{head.cutover_id.removeprefix('sha256:')}"
         self._append_pair(
             "heads-v1", stem, encoded, signature, _crash_seam=_crash_seam,
@@ -519,7 +601,9 @@ class OwnershipChainStore:
         _crash_seam=None,
     ) -> OwnershipHead:
         """CAS the single-file pointer; exact retry succeeds without fallback."""
-        head = verify_ownership_head(encoded, signature, registry=self.registry)
+        head = verify_ownership_head(
+            encoded, signature, registry=self.head_registry,
+        )
         stem = f"{head.release_sequence:020d}-{head.cutover_id.removeprefix('sha256:')}"
         stored_bytes, stored_signature = self._read_pair(
             self.root / "heads-v1", stem, maximum=MAX_HEAD_BYTES,
@@ -533,7 +617,9 @@ class OwnershipChainStore:
         if destination.exists():
             try:
                 current_frame = _safe_read(destination, MAX_REQUIRED_HEAD_BYTES)
-                current = decode_required_head(current_frame, registry=self.registry)
+                current = decode_required_head(
+                    current_frame, registry=self.head_registry,
+                )
             except Exception as exc:
                 raise OwnershipChainError(
                     "birth_ownership_distribution_recovery_required", "required pointer",
@@ -615,7 +701,7 @@ class OwnershipChainStore:
             raise OwnershipChainError("birth_ownership_downgrade", "required head missing")
         try:
             framed = _safe_read(path, MAX_REQUIRED_HEAD_BYTES)
-            return decode_required_head(framed, registry=self.registry)
+            return decode_required_head(framed, registry=self.head_registry)
         except OwnershipChainError:
             raise
         except Exception as exc:
@@ -688,7 +774,9 @@ class OwnershipChainStore:
             encoded, signature = self._read_pair(
                 head_directory, stem, maximum=MAX_HEAD_BYTES,
             )
-            head = verify_ownership_head(encoded, signature, registry=self.registry)
+            head = verify_ownership_head(
+                encoded, signature, registry=self.head_registry,
+            )
             expected_stem = (
                 f"{head.release_sequence:020d}-"
                 f"{head.cutover_id.removeprefix('sha256:')}"
@@ -714,7 +802,8 @@ class OwnershipChainStore:
             )
             try:
                 cutovers[head.cutover_id] = verify_ownership_cutover_certificate(
-                    cutover_bytes, cutover_signature, registry=self.registry,
+                    cutover_bytes, cutover_signature,
+                    registry=self.cutover_registry,
                 )
             except Exception as exc:
                 raise OwnershipChainError(

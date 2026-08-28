@@ -1,6 +1,6 @@
 # RM-0008 — regole di lavoro valide per tutti i gruppi
 
-Queste regole non appartengono a un gruppo: valgono dal 3 al 6 e vanno ereditate
+Queste regole non appartengono a un gruppo: valgono dal 3 all'11 e vanno ereditate
 così come sono. Sono **misurate sul gruppo 2**, non ipotizzate.
 
 Il piano di dettaglio di un gruppo si scrive **quando quel gruppo inizia**, con i
@@ -103,3 +103,27 @@ In ogni gruppo restano tre livelli di verifica: prove possedute durante lo
 sviluppo, un attraversamento reale del percorso rivendicato e la matrice
 pubblica alla fine della fetta verticale. Le suite gia' certificate non vengono
 ripetute localmente se il nuovo codice non attraversa il loro confine.
+
+## 8. Vincolo permanente: copertura minima sufficiente
+
+Ogni gruppo deve essere ottimizzato prima di iniziare il codice. Il piano deve
+associare ciascun rischio nuovo a una sola famiglia di prove capace di
+distinguerlo. Due prove che attraversano lo stesso percorso, mutano lo stesso
+confine e osservano lo stesso risultato sono duplicazioni: se entrambe non
+aggiungono un'invariante indipendente, ne resta una sola.
+
+La sequenza obbligatoria e':
+
+1. prove mirate del simbolo modificato durante lo sviluppo;
+2. una prova del percorso produttivo reale per ciascun confine nuovo;
+3. R1 soltanto quando cambia il grafo produttivo o il suo inventario;
+4. regressioni ereditarie soltanto se il cambiamento attraversa il loro confine;
+5. matrice Linux/Windows completa una sola volta alla chiusura del gruppo.
+
+Varianti che esercitano la stessa invariante devono essere parametrizzate nello
+stesso test. Le prove costose, privilegiate o multiprocesso restano soltanto
+quando un test in processo non puo' osservare il rischio (per esempio morte
+improvvisa, identita' del sistema operativo o pubblicazione atomica). Nessun
+gruppo puo' ridurre le condizioni di sicurezza per ridurre il tempo: un rischio
+non provato deve essere dichiarato e assegnato esplicitamente, non coperto da
+test equivalenti o da conteggi.

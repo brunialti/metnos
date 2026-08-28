@@ -118,6 +118,17 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "initialize": ("store_write",),
         "update_required_head": ("store_write",),
     },
+    "birth_ownership_authority_provisioner": {
+        "_discard_temporary": ("store_write",),
+        "_load_or_create_pair": ("store_write",),
+        "_publish_no_replace": ("store_write",),
+        "_provision_ownership_authorities_at_v1": ("store_write",),
+        "_provision_ownership_authorities_locked_v1": ("store_write",),
+        "_provisioning_lock": ("store_write",),
+        "_sync_directory": ("store_write",),
+        "_write_exclusive": ("store_write",),
+        "provision_root_ownership_authorities_v1": ("store_write",),
+    },
 }
 BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth": frozenset({"executor_birth", "runtime.executor_birth"}),
@@ -152,6 +163,9 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth_ownership_chain": frozenset({
         "executor_birth_ownership_chain", "runtime.executor_birth_ownership_chain",
     }),
+    "birth_ownership_authority_provisioner": frozenset({
+        "install.birth_ownership_authority_provisioner",
+    }),
 }
 BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/executor_birth.py": "executor_birth",
@@ -166,6 +180,9 @@ BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/manifest_inventory.py": "manifest_inventory",
     "runtime/executor_birth_authoring.py": "executor_birth_authoring",
     "runtime/executor_birth_ownership_chain.py": "executor_birth_ownership_chain",
+    "install/birth_ownership_authority_provisioner.py": (
+        "birth_ownership_authority_provisioner"
+    ),
 }
 READ_OPERATIONS = frozenset({
     "exists",
@@ -262,6 +279,15 @@ BIRTH_CLOSED_SEALED_MODULES = (
 )
 BIRTH_CLOSED_OWNER = "runtime/executor_birth_operational.py:birth_executor"
 BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
+    "install/birth_ownership_authority_provisioner.py:_discard_temporary",
+    "install/birth_ownership_authority_provisioner.py:_load_or_create_pair",
+    "install/birth_ownership_authority_provisioner.py:_publish_no_replace",
+    "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_at_v1",
+    "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_locked_v1",
+    "install/birth_ownership_authority_provisioner.py:_provisioning_lock",
+    "install/birth_ownership_authority_provisioner.py:_sync_directory",
+    "install/birth_ownership_authority_provisioner.py:_write_exclusive",
+    "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",

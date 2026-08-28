@@ -277,3 +277,21 @@ class SealedAuthoritiesV1:
         )
         if self.context_epoch != self.prepared.prepared_context_epoch:
             raise PreparedRootError("birth_prepared_set_mismatch")
+
+
+def _birth_public_inventory_v1() -> frozenset[bytes]:
+    """Reload the fixed Birth set and return its authenticated public keys."""
+    sealed = load_sealed_authorities_v1()
+    stores = (sealed.author, sealed.admission, *sealed.producers.values())
+    result: set[bytes] = set()
+    try:
+        for store in stores:
+            result.update(
+                public_key.public_bytes_raw()
+                for public_key in store.verifier_keys.values()
+            )
+    except (AttributeError, TypeError) as exc:
+        raise PreparedRootError("birth_prepared_set_untrusted") from exc
+    if not result or any(len(item) != 32 for item in result):
+        raise PreparedRootError("birth_prepared_set_untrusted")
+    return frozenset(result)

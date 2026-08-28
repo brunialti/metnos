@@ -40,14 +40,41 @@ non ritorno soltanto in un ambiente isolato e non dichiara un cutover installato
 
 ## Prossimo passo unico
 
-Rileggere il piano contro il codice una volta, poi implementare G5-A senza
-aprire G5-B in parallelo. Il primo criterio e' il cold load di tre registri
-distinti e il rifiuto dello scambio fra chiave di cutover e chiave della testa.
+G5-A e' implementato nel worktree ma non e' ancora committato. Sono presenti:
+
+- codec e cold loader di tre registri a scopo singolo;
+- tre chiavi private separate e controllo sui byte pubblici contro autore,
+  Admission e tutti i Producer Birth;
+- provisioner recuperabile con file esclusivi, checkpoint monotoni, fsync,
+  pubblicazione finale e nuova apertura a freddo;
+- due registri obbligatori e disgiunti in `OwnershipChainStore`;
+- proprieta' `root:root`, modalita' e diniego dell'identita' di servizio nella
+  cella Linux delegata gia' esistente;
+- cinque nuovi store owner compilati nella guardia e nell'inventario.
+
+Le prove locali correnti sono: 67 prove autorita'/catena verdi; 77 regressioni
+dei soli confini attraversati verdi e 4 prove Linux reali non applicabili nella
+sessione locale non delegata. Guardia normale e chiusa sono entrambe a zero e
+il rendering e' byte-identico all'inventario. La matrice completa non viene
+ripetuta ora: verra' eseguita una volta sola dopo G5-B, alla chiusura del gruppo.
+
+La revisione avversariale del diff G5-A e' conclusa e non rileva blocchi
+residui. Il prossimo passo unico e' registrare il commit sorgente G5-A su
+`main`, quindi aprire G5-B senza ancora eseguire la matrice pubblica completa.
+
+L'ultimo giro ha corretto due rilievi circoscritti: la fixture Windows non
+invoca piu' il provisioner Linux e il codec rifiuta tipi numerici JSON o Base64
+non canonici. I riproduttori del revisore sono ora tutti rifiutati; il verdetto
+finale e' `APPROVATO`.
 
 ## Regole operative
 
 - commit piccoli soltanto su `main`, con footer
   `RM-0008-Status: candidate-not-certified`;
+- applicare a ogni incremento il budget minimo sufficiente definito in
+  `internal/reports/rm0008-regole-di-lavoro-fra-gruppi.md` §8: una sola famiglia
+  di prove per rischio distinto, nessuna ripetizione delle suite gia'
+  certificate e matrice completa soltanto alla chiusura;
 - una sola pubblicazione pubblica alla chiusura locale del gruppo;
 - nessuna correzione successiva senza una nuova diagnosi se una prova fallisce;
 - aggiornare questo file dopo ogni nuova evidenza, commit e risultato pubblico;

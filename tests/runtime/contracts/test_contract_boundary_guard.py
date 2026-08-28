@@ -895,6 +895,19 @@ def _closed_facts(
         "        Path('x').write_bytes(b'x')\n",
         relative="runtime/executor_birth_ownership_chain.py",
     )
+    _scan(
+        tmp_path,
+        "def _discard_temporary(path): return path\n"
+        "def _sync_directory(path): return path\n"
+        "def _write_exclusive(path, payload, mode): return path\n"
+        "def _publish_no_replace(source, destination): return destination\n"
+        "def _load_or_create_pair(path, kind): return path\n"
+        "def _provision_ownership_authorities_at_v1(path): return path\n"
+        "def _provision_ownership_authorities_locked_v1(path): return path\n"
+        "def _provisioning_lock(path): return path\n"
+        "def provision_root_ownership_authorities_v1(value): return value\n",
+        relative="install/birth_ownership_authority_provisioner.py",
+    )
     facts = discover(tmp_path)
     present = {fact.key for fact in facts}
     for key, exception in BIRTH_CLOSED_EXCEPTION_SCOPES.items():

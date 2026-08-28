@@ -99,6 +99,14 @@ coincide con una chiave autore, Admission o Producer riletta dal set Birth
 autenticato. La separazione confronta i 32 byte pubblici, non soltanto nomi,
 prefissi o scopi.
 
+La superficie amministrativa produttiva di G5-A e' esplicitamente Linux-only:
+su altri sistemi restituisce `birth_ownership_authority_platform_unsupported`
+prima di accedere al filesystem. La logica portabile della catena viene provata
+con una giuntura privata che non costituisce prova di provenienza. La prova
+produttiva della provenienza usa invece soltanto il cold loader Linux a percorso
+fisso. Un eventuale contenitore autoritativo Windows richiederebbe una propria
+protezione ACL autenticata e non viene simulato con i permessi POSIX.
+
 ### 4.2 Predisposizione e recupero
 
 La predisposizione genera le tre chiavi una sola volta in una directory di
@@ -131,6 +139,11 @@ un registro multipurpose.
 Le prove esistenti della catena vengono riscritte con due coppie Ed25519
 diverse. Un mutante che usa la chiave di cutover per una testa, o viceversa,
 deve fallire con `birth_ownership_key_unauthorized`.
+
+Il costruttore produttivo non accetta registri o bundle dal chiamante e usa
+sempre il cold loader fisso. La giuntura privata dei test portabili verifica
+soltanto codec, contiguita', persistenza atomica e comportamento Windows della
+catena; non viene conteggiata come prova della provenienza root-owned.
 
 ### 4.4 Prove minime G5-A
 
@@ -327,6 +340,13 @@ Durante lo sviluppo si eseguono soltanto le prove del file modificato, la cella
 produttiva posseduta dal gruppo e R1. Alla fine si eseguono una volta guardia
 normale, guardia `--birth-closed`, rendering byte-identico dell'inventario e
 suite portatile completa in radici isolate.
+
+Il budget delle prove segue `rm0008-regole-di-lavoro-fra-gruppi.md` §8. Ogni
+rilievo avversariale riceve il piu' piccolo riproduttore che distingua davvero
+il difetto: le varianti dello stesso protocollo sono parametrizzate, mentre un
+processo reale e' usato soltanto per morte improvvisa, identita' del sistema o
+atomicita'. Una prova nuova sostituisce, invece di affiancare, una prova
+precedente che osservava lo stesso rischio in modo meno autorevole.
 
 I due incrementi ricevono commit sorgente separati su `main`, sempre con footer
 `RM-0008-Status: candidate-not-certified`. Si esegue una sola pubblicazione

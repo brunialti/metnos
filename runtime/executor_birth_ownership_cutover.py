@@ -25,6 +25,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey, Ed25519PublicKey,
 )
+from cryptography.hazmat.primitives import serialization
 
 from executor_birth_cutover import CurrentReceiptProof
 
@@ -45,6 +46,7 @@ _PAYLOAD_KEYS = frozenset({
     "boundary_guard_version", "closed_build_id",
 })
 _RECEIPT_KEYS = frozenset({"contract_id", "generation_id", "receipt_hash"})
+_OWNERSHIP_PURPOSES = frozenset({PURPOSE, "ownership_head_v1"})
 
 
 class OwnershipCutoverError(RuntimeError):
@@ -52,6 +54,16 @@ class OwnershipCutoverError(RuntimeError):
         self.code = code
         self.detail = detail
         super().__init__(f"{code}: {detail}" if detail else code)
+
+
+def ownership_key_id(public_key: Ed25519PublicKey) -> str:
+    """Derive the only admitted ownership key identifier from raw Ed25519."""
+    if not isinstance(public_key, Ed25519PublicKey):
+        raise OwnershipCutoverError("birth_ownership_proof_invalid", "key registry")
+    raw = public_key.public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw,
+    )
+    return "birth-ed25519-v1-sha256-" + hashlib.sha256(raw).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +76,10 @@ class OwnershipCutoverKey:
         if (
             not isinstance(self.key_id, str) or _KEY_ID_RE.fullmatch(self.key_id) is None
             or not isinstance(self.public_key, Ed25519PublicKey)
+            or self.key_id != ownership_key_id(self.public_key)
             or not isinstance(self.purposes, frozenset)
-            or any(not isinstance(item, str) or not item for item in self.purposes)
+            or len(self.purposes) != 1
+            or not self.purposes.issubset(_OWNERSHIP_PURPOSES)
         ):
             raise OwnershipCutoverError("birth_ownership_proof_invalid", "key registry")
 
@@ -475,5 +489,6 @@ __all__ = [
     "OwnershipCutoverCertificate", "OwnershipCutoverError", "OwnershipCutoverKey",
     "OwnershipCutoverRegistry", "OwnershipReceiptBinding", "PURPOSE",
     "install_ownership_cutover_certificate", "issue_ownership_cutover_certificate",
+    "ownership_key_id",
     "read_ownership_cutover_certificate", "verify_ownership_cutover_certificate",
 ]
