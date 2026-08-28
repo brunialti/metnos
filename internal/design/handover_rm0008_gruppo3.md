@@ -205,6 +205,45 @@ cancello e' attivo; (c) decidere con Roberto se ritirare `find_persons_indices`
 sandbox ancora rosse.
 ```
 
+## Stato operativo del blocco Windows — 28/8/2026, misura discriminante
+
+Questa sezione e' il punto di ripresa corrente. Non sostituisce lo storico del
+gruppo 2: registra soltanto cio' che la nuova misura ha deciso.
+
+- Commit sorgente della sonda temporanea: `582032df`.
+- Commit esportato su `main` pubblico: `32602fa`.
+- Ciclo GitHub Actions: `33152572168`; solo il lavoro Windows portatile e il
+  riepilogo dipendente sono rossi. Lavoro Windows: `98787762928`.
+- Esito: i primi **66** spostamenti di file completano apertura, controllo del
+  profilo, chiamata nativa e riconciliazione. Lo spostamento **67**, il primo
+  spostamento di una directory finale, arriva a `NtSetInformationFile` e viene
+  rifiutato con `ERROR_ACCESS_DENIED` (5). La sorgente era stata aperta con
+  successo usando `mutating_open` e il suo profilo era valido.
+- L'ipotesi del §14 del piano e' quindi **falsificata**: togliere
+  `WRITE_DAC|WRITE_OWNER` dalla maschera era corretto per minimo privilegio,
+  ma non risolve il blocco. Il rifiuto non avviene durante l'apertura.
+- Il caso produttivo che manca alla base e' ora delimitato: il predispositore
+  sposta un **albero non vuoto** e la sessione conserva maniglie autenticate
+  sui suoi discendenti; `cached-source-renames` misura soltanto una directory
+  vuota. La specifica Windows `MS-FSA 2.1.5.15.12` stabilisce che
+  `FileRenameInformation` rifiuta con accesso negato una directory che contiene
+  file aperti. Questo coincide con il punto e con il codice osservati.
+- Non e' autorizzato un secondo giro diagnostico. Il prossimo cambiamento deve
+  prima chiudere la decisione sulle capacita' discendenti: non si possono
+  semplicemente chiudere maniglie in cache se esistono
+  `_SecureDirectoryHandle` consegnati al chiamante. Occorre una soluzione che
+  conservi il confine autenticato e renda esplicita la validita' delle
+  capacita' dopo lo spostamento.
+- La sonda e' temporanea e rende rosso intenzionalmente il ciclo quando il
+  predispositore rifiuta. Va rimossa nel primo commit successivo; `main`
+  pubblico non deve essere lasciato in quello stato.
+
+PROSSIMO PASSO: decidere e verificare localmente la semantica delle capacita'
+discendenti durante una rinomina di albero non vuoto; solo dopo applicare una
+correzione unica e misurarla sullo stesso ciclo Windows. Se quella semantica
+non e' dimostrabile senza ampliare il contratto 2A, il blocco resta dichiarato
+non provato e il gruppo 3 si chiude senza una toppa speculativa.
+
 ## Fallimenti locali che NON sono del gruppo 3
 
 In una copia di lavoro nuova la suite `tests/runtime` non e' tutta verde. Stato
