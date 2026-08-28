@@ -84,7 +84,7 @@ jobs:
           --ignore=tests/portable/rm0008_2a_acceptance
           tests/portable
 
-      - name: Certify the real delegated Linux Birth runner
+      - name: Certify the real delegated Linux boundaries
         if: runner.os == 'Linux'
         shell: bash
         run: |
@@ -101,10 +101,12 @@ jobs:
             --setenv="PATH=$PATH" \
             --setenv=PYTHONPATH=runtime \
             --setenv=METNOS_REQUIRE_REAL_BIRTH_LINUX=1 \
+            --setenv=METNOS_REQUIRE_REAL_EXECUTOR_SANDBOX=1 \
             "${pythonLocation}/bin/python" -m pytest -q -p no:cacheprovider \
             --import-mode=importlib \
             --confcutdir=tests/portable \
-            tests/portable/test_executor_birth_runner_linux_real.py
+            tests/portable/test_executor_birth_runner_linux_real.py \
+            "tests/portable/rm0008_2b/test_group4_authenticated_dependencies.py::test_parent_projection_crosses_the_real_executor_subprocess"
 
       - name: Run the historical RM-0008 D diagnostic explicitly
         if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch' && inputs.rm0008_run_diagnostic

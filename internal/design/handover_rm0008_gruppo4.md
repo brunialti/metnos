@@ -118,21 +118,37 @@ Questa cella certifica invece la proiezione autenticata e il montaggio in sola
 lettura. La separata prova Birth Linux certifica gia' l'isolamento di rete nel
 servizio delegato ed era verde nell'ultimo ciclo completo.
 
-La correzione candidata rende esplicita nel manifest sintetico della cella
-l'autorita' `network:http`. Non disabilita la sandbox e non usa una variabile
-di bypass: attraversa ancora il vero `wrap_command()`, Bubblewrap, il processo
-figlio, il record autenticato e la porta del modulo. La cella controlla anche
-che la radice della dipendenza compaia esattamente come `--ro-bind` e che
-`--unshare-net` sia assente per effetto dell'autorita' dichiarata. Le due prove
-del file sono verdi localmente in stato isolato. L'intera suite portatile
-isolata dopo la correzione ha **326 prove verdi, 21 non applicabili e zero
-errori**: la precedente non applicabilita' Bubblewrap e' ora una prova reale
-verde anche su questo host.
+La prima ipotesi correttiva ha isolato il confine di rete dichiarando
+`network:http` nel solo executor sintetico. Era verde localmente con 326 prove
+verdi, 21 non applicabili e zero errori. E' stata salvata nel commit sorgente
+`a081a48b`, pubblicata come `820dcb4` e verificata nel ciclo `33159721631`.
+Tutti i lavori tranne Linux generale sono verdi, ma il nuovo log mostra ancora
+un errore: `bwrap: setting up uid map: Permission denied`, con 325 altre prove
+verdi. La prima limitazione di rete mascherava quindi una limitazione piu'
+bassa: il runner ordinario GitHub non possiede la delega necessaria per creare
+la sandbox Bubblewrap completa. L'ipotesi `network:http` e' superata e viene
+rimossa.
+
+La correzione finale non indebolisce il confine e non modifica il prodotto.
+Nella suite Linux ordinaria la sola prova reale dichiara non applicabile
+l'esecuzione quando Bubblewrap restituisce uno dei due dinieghi di namespace.
+Lo stesso nodo di prova viene poi rieseguito obbligatoriamente nel servizio
+Linux delegato gia' usato dalla prova Birth. In quel servizio la variabile
+`METNOS_REQUIRE_REAL_EXECUTOR_SANDBOX=1` trasforma ogni indisponibilita' in un
+errore. La prova conserva l'executor senza rete, richiede `--unshare-net` e
+verifica anche il montaggio esatto `--ro-bind` della dipendenza. Windows resta
+eseguito dalla suite generale sul runner Windows autorevole. La verifica locale
+mirata produce una prova verde e una sola non applicabile per il confine Linux
+non delegato.
+
+L'intera suite portatile locale, eseguita con le quattro radici di stato
+isolate dopo questa correzione finale, ha **325 prove verdi, 22 non applicabili
+e zero errori**. Il flusso GitHub e' sintatticamente valido.
 
 ## Prossimo passo unico
 
-Salvare la sola correzione della cella, pubblicare un incremento su `main` e
-attendere tutti i lavori GitHub verdi. Non iniziare G4-B+C prima di quel
+Salvare la correzione della prova e del flusso GitHub, pubblicare un incremento
+su `main` e attendere tutti i lavori verdi. Non iniziare G4-B+C prima di quel
 risultato.
 
 Non rigenerare ancora l'inventario. Non toccare
