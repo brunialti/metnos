@@ -5,9 +5,8 @@
 Worktree: `/tmp/metnos-rm0008-a-only`, ramo unico `main`. Non toccare
 `/opt/metnos` e non creare rami.
 
-I gruppi 2 e 3 sono chiusi. Ultimo commit sorgente: `d510ef50`; ultimo commit
-pubblico: `57ec5a9`; ciclo GitHub Actions `33154494801`: otto lavori su otto
-verdi. RM-0008 resta `active`.
+I gruppi 2 e 3 sono chiusi. Il loro ultimo ciclo GitHub completamente verde e'
+`33154494801`. RM-0008 resta `active`.
 
 Il gruppo 4 e' soltanto la chiusura statica F4 del §23.6.4. Il piano completo
 e' `internal/reports/rm0008-gruppo4-piano-ottimizzato.md`.
@@ -89,8 +88,9 @@ attraversera' il vero processo figlio e la sandbox, senza importare il motore
 completo. Risultato atteso: il test raggiunge il figlio su entrambi i sistemi;
 su Linux il risultato deve inoltre attestare Bubblewrap.
 
-La correzione e' ora implementata e non ancora committata. Il simbolo leggero
-e' `admitted_code_dependency_projection_v1()`; `agent_runtime` lo consuma senza
+La correzione e' stata salvata nel commit sorgente `19119f5f` e pubblicata nel
+commit `df4070f`. Il simbolo leggero e'
+`admitted_code_dependency_projection_v1()`; `agent_runtime` lo consuma senza
 duplicare la selezione. Evidenza locale successiva:
 
 - nuova cella con importazione di `minijinja` vietata: 2 verdi;
@@ -104,11 +104,36 @@ questi confini. `PC-ROBERTO` e' online, ma il protocollo remoto accetta soltanto
 executor firmati e non consente l'esecuzione arbitraria di `pytest`; non e'
 stato aperto un bypass.
 
+Il secondo ciclo pubblico `33158999751` ha confermato la correzione originaria:
+tutti i lavori Windows, tutti i lavori posseduti e la suite portatile Windows
+sono verdi. La sola suite Linux generale ha un errore nella nuova prova; il
+riepilogo e' rosso soltanto come conseguenza.
+
+Il log delimita una seconda causa ambientale indipendente. La prova sintetica
+usava un executor senza autorita' di rete, quindi `sandbox.wrap_command()`
+chiedeva anche una nuova rete isolata. Bubblewrap sul runner non delegato di
+GitHub falliva nel configurarne il loopback con
+`Failed RTM_NEWADDR: Operation not permitted`; 325 altre prove erano verdi.
+Questa cella certifica invece la proiezione autenticata e il montaggio in sola
+lettura. La separata prova Birth Linux certifica gia' l'isolamento di rete nel
+servizio delegato ed era verde nell'ultimo ciclo completo.
+
+La correzione candidata rende esplicita nel manifest sintetico della cella
+l'autorita' `network:http`. Non disabilita la sandbox e non usa una variabile
+di bypass: attraversa ancora il vero `wrap_command()`, Bubblewrap, il processo
+figlio, il record autenticato e la porta del modulo. La cella controlla anche
+che la radice della dipendenza compaia esattamente come `--ro-bind` e che
+`--unshare-net` sia assente per effetto dell'autorita' dichiarata. Le due prove
+del file sono verdi localmente in stato isolato. L'intera suite portatile
+isolata dopo la correzione ha **326 prove verdi, 21 non applicabili e zero
+errori**: la precedente non applicabilita' Bubblewrap e' ora una prova reale
+verde anche su questo host.
+
 ## Prossimo passo unico
 
-Committare la sola estrazione descritta sopra, pubblicare un solo incremento
-correttivo su `main` e attendere tutti i lavori GitHub verdi. Non iniziare
-G4-B+C prima di quel risultato.
+Salvare la sola correzione della cella, pubblicare un incremento su `main` e
+attendere tutti i lavori GitHub verdi. Non iniziare G4-B+C prima di quel
+risultato.
 
 Non rigenerare ancora l'inventario. Non toccare
 `closed_build_enforcement()`: deve restare `False` per tutto il gruppo 4.
