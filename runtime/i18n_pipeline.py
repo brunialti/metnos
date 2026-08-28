@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol
 
-import yaml
 import config as _C
 
 from i18n_materializer import (
@@ -742,6 +741,8 @@ def _yaml_shape(node: Any, *, field_name: str = "") -> Any:
 
 
 def _translate_yaml(item: InventoryItem, target: str, translator: Translator) -> str:
+    import yaml
+
     source_obj = yaml.safe_load(item.source_text)
     translated_obj = _translate_yaml_node(
         source_obj, source_lang=item.source_lang, target_lang=target,
