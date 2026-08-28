@@ -141,6 +141,13 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_deployment_lock_for_test_v1": ("store_write",),
         "_deployment_lock_v1": ("store_write",),
         "_publish_certificate_with_prerequisite_v1": ("store_write",),
+        "_LockedOwnershipCoordinatorGraphSnapshotV2": ("store_write",),
+        "_require_locked_coordinator_graph_snapshot_v2": ("store_write",),
+        "_require_locked_coordinator_graph_issued_v2": ("store_write",),
+        "_resolve_locked_coordinator_graph_issued_v2": ("store_write",),
+        "_resolve_ownership_coordinator_locked_v2": ("store_write",),
+        "require_issued": ("store_write",),
+        "resolve_issued": ("store_write",),
         "prepare_ownership_cutover_v1": ("cutover_guard",),
     },
     "birth_ownership_authority_provisioner": {
@@ -213,6 +220,9 @@ BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/manifest_inventory.py": "manifest_inventory",
     "runtime/executor_birth_authoring.py": "executor_birth_authoring",
     "runtime/executor_birth_ownership_chain.py": "executor_birth_ownership_chain",
+    "runtime/executor_birth_ownership_coordinator.py": (
+        "executor_birth_ownership_coordinator"
+    ),
     "install/birth_ownership_authority_provisioner.py": (
         "birth_ownership_authority_provisioner"
     ),
@@ -345,6 +355,10 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",
     "runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1",
     "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete",
+    "runtime/executor_birth_ownership_coordinator.py:_DeploymentLockLeaseV1",
+    "runtime/executor_birth_ownership_coordinator.py:_LockedOwnershipCoordinatorGraphSnapshotV2",
+    "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.require_issued",
+    "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.resolve_issued",
     "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_at_v1",
     "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_for_test_v1",
     "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_v1",
@@ -353,6 +367,8 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
     "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",
     "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1",
+    "runtime/executor_birth_ownership_coordinator.py:_require_locked_coordinator_graph_snapshot_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_resolve_ownership_coordinator_locked_v2",
 })
 BIRTH_CLOSED_LEGACY_CAPABILITIES = frozenset({
     "publish_localization", "publish_technical", "reactivate", "retire",
@@ -1271,6 +1287,7 @@ class _ScopeCollector(ast.NodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         qualified = ".".join((*self.stack, node.name))
+        self.scopes.append((qualified, node))
         self.containers[qualified] = node
         self.stack.append(node.name)
         self.generic_visit(node)

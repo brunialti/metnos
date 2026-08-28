@@ -1713,6 +1713,26 @@
     },
     {
       "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_DeploymentLockLeaseV1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "opaque process-local lease for the sealed deployment lock",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_LockedOwnershipCoordinatorGraphSnapshotV2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "opaque registered observation of the fixed coordinator graph",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
       "scope": "_append_coordinator_record_v1",
       "role": "store_owner",
       "capabilities": [
@@ -1729,6 +1749,46 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_build_locked_coordinator_graph_registry_v2.require_issued",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "identity registry validator for a live-session coordinator observation",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_build_locked_coordinator_graph_registry_v2.resolve_issued",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "fixed-root coordinator observation issued only after exact lock validation",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_coordinator_inventory_snapshot_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "read-only closed inventory of the root-owned ownership coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_coordinator_inventory_snapshot_v2.add",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "read-only metadata capture inside the closed coordinator inventory",
       "phase": "M4"
     },
     {
@@ -1809,6 +1869,86 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_read_legacy_journal_snapshot_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "read-only validation of original root-owned V1 coordinator bytes",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_read_successor_claims_snapshot_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "read-only validation of root-owned successor claims",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_read_transaction_directory_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "read-only validation of one root-owned V2 transaction journal",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_read_transactions_snapshot_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "read-only validation of the root-owned V2 transaction set",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_require_locked_coordinator_graph_snapshot_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "exact-session validator for an issued coordinator graph observation",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_resolve_ownership_coordinator_at_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "read-only closed resolver for the durable ownership graph",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_resolve_ownership_coordinator_locked_for_test_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "private portable read-only resolver test seam under an exact lock session",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_resolve_ownership_coordinator_locked_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "read-only resolver for the fixed root-owned graph under an exact lock session",
       "phase": "M4"
     },
     {
@@ -3267,8 +3407,12 @@
       "runtime/executor_birth_ownership_chain.py:inspect_ownership_chain_state_v1",
       "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.append",
       "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",
+      "runtime/executor_birth_ownership_coordinator.py:_DeploymentLockLeaseV1",
+      "runtime/executor_birth_ownership_coordinator.py:_LockedOwnershipCoordinatorGraphSnapshotV2",
       "runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1",
       "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete",
+      "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.require_issued",
+      "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.resolve_issued",
       "runtime/executor_birth_ownership_coordinator.py:_decode_record",
       "runtime/executor_birth_ownership_coordinator.py:_decode_record_v2",
       "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_at_v1",
@@ -3276,7 +3420,9 @@
       "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_v1",
       "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
       "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",
-      "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1"
+      "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1",
+      "runtime/executor_birth_ownership_coordinator.py:_require_locked_coordinator_graph_snapshot_v2",
+      "runtime/executor_birth_ownership_coordinator.py:_resolve_ownership_coordinator_locked_v2"
     ],
     "sealed_modules": [
       "runtime/contract_store.py",

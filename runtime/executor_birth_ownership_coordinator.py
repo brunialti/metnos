@@ -15,6 +15,7 @@ import re
 import stat
 import sys
 import threading
+import weakref
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
@@ -43,12 +44,20 @@ COORDINATOR_DIRECTORY_BASENAME_V1 = "coordinator-v1"
 DEFAULT_COORDINATOR_DIRECTORY_V1 = (
     DEFAULT_OWNERSHIP_ROOT_V1 / COORDINATOR_DIRECTORY_BASENAME_V1
 )
+SUCCESSOR_CLAIMS_DIRECTORY_BASENAME_V1 = "successor-claims-v1"
+TRANSACTIONS_DIRECTORY_BASENAME_V2 = "transactions-v2"
+LEGACY_DISPOSITION_BASENAME_V2 = "legacy-disposition-v2.json"
 DEPLOYMENT_LOCK_BASENAME_V1 = "ownership-deployment-v1.lock"
 MAX_RECORD_BYTES_V1 = 8 * 1024 * 1024
 MAX_COORDINATOR_CONTROL_BYTES_V2 = 16 * 1024
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _TEMPORARY_RECORD_RE = re.compile(
     r"\.record-([0-9]{3})-v1\.json\.([0-9a-f]{64})\.tmp\Z"
+)
+_LEGACY_RECORD_RE_V1 = re.compile(r"record-([0-9]{3})-v1\.json\Z")
+_TRANSACTION_RECORD_RE_V2 = re.compile(r"record-([0-9]{3})-v2\.json\Z")
+_SUCCESSOR_CLAIM_BASENAME_RE_V1 = re.compile(
+    r"(?:initial|[0-9a-f]{64})\.json\Z"
 )
 _RECORD_DOMAIN = b"metnos.executor-birth.ownership-coordinator-record/v1\0"
 _RECORD_DOMAIN_V2 = b"metnos.executor-birth.ownership-coordinator-record/v2\0"
@@ -201,6 +210,25 @@ def _require_release_predecessor_v1(
             "birth_ownership_journal_invalid", "previous_head_id",
         )
     return release_sequence, predecessor
+
+
+def _coordinator_request_id_v1(
+    closed_build_id: object, previous_closed_build_id: object,
+    previous_cutover_id: object,
+) -> str:
+    closed = _require_digest(closed_build_id, "closed_build_id")
+    previous_build = _require_digest(
+        previous_closed_build_id, "previous_closed_build_id", nullable=True,
+    )
+    previous_cutover = _require_digest(
+        previous_cutover_id, "previous_cutover_id", nullable=True,
+    )
+    framed = bytearray(_REQUEST_DOMAIN)
+    for field in (closed, previous_build or "none", previous_cutover or "none"):
+        encoded = field.encode("ascii")
+        framed.extend(len(encoded).to_bytes(8, "big"))
+        framed.extend(encoded)
+    return _digest(bytes(framed))
 
 
 @dataclass(frozen=True, slots=True)
@@ -569,6 +597,7 @@ def _decode_record(encoded: bytes) -> OwnershipCoordinatorRecordV1:
         ) from exc
     if (
         not isinstance(value, dict) or set(value) != _RECORD_KEYS
+        or type(value.get("schema_version")) is not int
         or value.get("schema_version") != 1 or _canonical(value) != encoded
     ):
         raise OwnershipCoordinatorError(
@@ -940,6 +969,601 @@ def _record_basename_v2(sequence: int) -> str:
             "birth_ownership_journal_invalid", "state sequence",
         )
     return f"record-{sequence:03d}-v2.json"
+
+
+@dataclass(frozen=True, slots=True)
+class _ResolvedOwnershipTransactionV2:
+    claim: SuccessorClaimV1
+    records: tuple[OwnershipCoordinatorRecordV2, ...]
+    encoded_records: tuple[bytes, ...]
+
+    @property
+    def latest(self) -> OwnershipCoordinatorRecordV2:
+        return self.records[-1]
+
+
+@dataclass(frozen=True, slots=True)
+class _ObservedOwnershipCoordinatorGraphV2:
+    """Durable graph observation; never proves the corresponding live state."""
+
+    claims: tuple[SuccessorClaimV1, ...]
+    pending_claims: tuple[SuccessorClaimV1, ...]
+    transactions: tuple[_ResolvedOwnershipTransactionV2, ...]
+    legacy_records: tuple[OwnershipCoordinatorRecordV1, ...]
+    legacy_record_bytes: tuple[bytes, ...]
+    legacy_disposition: LegacyDispositionV2 | None
+
+
+class _LockedOwnershipCoordinatorGraphSnapshotV2:
+    """Opaque fixed-root observation; it is not live certification."""
+
+    __slots__ = ("_token", "__weakref__")
+
+    def __init__(self, token: object) -> None:
+        if type(token) is not object:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "graph authority",
+            )
+        object.__setattr__(self, "_token", token)
+
+    def __copy__(self):
+        raise TypeError("coordinator graph snapshots cannot be copied")
+
+    def __deepcopy__(self, _memo):
+        raise TypeError("coordinator graph snapshots cannot be copied")
+
+    def __reduce__(self):
+        raise TypeError("coordinator graph snapshots cannot be serialized")
+
+    def __reduce_ex__(self, _protocol):
+        raise TypeError("coordinator graph snapshots cannot be serialized")
+
+
+_TEST_COORDINATOR_GRAPH_SNAPSHOT_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _OwnershipCoordinatorGraphSnapshotForTestV2:
+    observation: _ObservedOwnershipCoordinatorGraphV2
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _TEST_COORDINATOR_GRAPH_SNAPSHOT_SEAL_V2
+            or type(self.observation) is not _ObservedOwnershipCoordinatorGraphV2
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "test graph observation",
+            )
+
+
+def _require_read_only_directory_v2(
+    directory: Path, *, root_owned: bool,
+) -> None:
+    try:
+        info = directory.lstat()
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "directory inventory",
+        ) from exc
+    invalid = (
+        not stat.S_ISDIR(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+    )
+    if os.name != "nt":
+        expected_owner = (0, 0) if root_owned else (os.geteuid(), os.getegid())
+        invalid = invalid or (
+            stat.S_IMODE(info.st_mode) != 0o755
+            or (info.st_uid, info.st_gid) != expected_owner
+        )
+    if invalid:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "directory metadata",
+        )
+
+
+def _read_control_file_v2(
+    path: Path, maximum: int, *, root_owned: bool,
+) -> bytes:
+    try:
+        before = path.lstat()
+        invalid = (
+            not stat.S_ISREG(before.st_mode)
+            or stat.S_ISLNK(before.st_mode)
+            or bool(getattr(before, "st_file_attributes", 0) & 0x400)
+            or before.st_nlink != 1
+            or before.st_size <= 0
+            or before.st_size > maximum
+        )
+        if os.name != "nt":
+            expected_owner = (
+                (0, 0) if root_owned else (os.geteuid(), os.getegid())
+            )
+            invalid = invalid or (
+                stat.S_IMODE(before.st_mode) != 0o644
+                or (before.st_uid, before.st_gid) != expected_owner
+            )
+        if invalid:
+            raise ValueError("unsafe control file")
+        encoded = _safe_read(path, maximum)
+        after = path.lstat()
+        identity_before = (
+            before.st_dev, before.st_ino, before.st_mode, before.st_nlink,
+            before.st_uid, before.st_gid, before.st_size,
+            getattr(before, "st_file_attributes", 0),
+        )
+        identity_after = (
+            after.st_dev, after.st_ino, after.st_mode, after.st_nlink,
+            after.st_uid, after.st_gid, after.st_size,
+            getattr(after, "st_file_attributes", 0),
+        )
+        if identity_after != identity_before or len(encoded) != before.st_size:
+            raise ValueError("control file changed")
+        return encoded
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "control file metadata",
+        ) from exc
+
+
+def _read_directory_entries_v2(directory: Path) -> tuple[Path, ...]:
+    try:
+        return tuple(sorted(directory.iterdir(), key=lambda item: item.name))
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "directory inventory",
+        ) from exc
+
+
+_LEGACY_CARRY_KEYS_V1 = frozenset({
+    "request_id", "previous_closed_build_id", "previous_cutover_id",
+    "closed_build_id", "distribution_payload_hash",
+    "distribution_signature_hash", "boundary_inventory_hash",
+    "boundary_guard_version",
+})
+_TRANSACTION_CARRY_KEYS_V2 = _LEGACY_CARRY_KEYS_V1 | frozenset({
+    "source_id", "successor_claim_id", "deployment_descriptor_id",
+    "install_transaction_id", "release_sequence", "previous_head_id",
+    "service_coverage_hash", "administrative_bundle_hash",
+})
+_TRANSACTION_THRESHOLD_KEYS_V2 = (
+    (1, frozenset({
+        "current_receipts", "maintenance_before_hash",
+        "maintenance_after_hash", "maintenance_proof_b64",
+    })),
+    (2, frozenset({
+        "startup_prerequisite_id", "startup_prerequisite_digest",
+        "cutover_id", "catalog_id", "certificate_payload_hash",
+        "certificate_signature_hash",
+    })),
+    (4, frozenset({"installed_tree_hash"})),
+    (5, frozenset({
+        "head_id", "head_payload_hash", "head_signature_hash",
+        "required_head_frame_hash", "verified_chain_head_id",
+    })),
+    (6, frozenset({"preflight_attestation_hash"})),
+)
+
+
+def _read_legacy_journal_snapshot_v2(
+    paths: tuple[Path, ...], *, root_owned: bool,
+) -> tuple[tuple[OwnershipCoordinatorRecordV1, ...], tuple[bytes, ...]]:
+    records: list[OwnershipCoordinatorRecordV1] = []
+    encoded_records: list[bytes] = []
+    previous_hash = None
+    for sequence, path in enumerate(paths):
+        if path.name != _record_basename(sequence):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "legacy journal gap",
+            )
+        encoded = _read_control_file_v2(
+            path, MAX_RECORD_BYTES_V1, root_owned=root_owned,
+        )
+        try:
+            record = _decode_record(encoded)
+        except Exception as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "legacy journal record",
+            ) from exc
+        if (
+            record.sequence != sequence
+            or record.previous_record_sha256 != previous_hash
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "legacy journal chain",
+            )
+        if records:
+            first_value = records[0].as_value()
+            value = record.as_value()
+            if any(value[key] != first_value[key] for key in _LEGACY_CARRY_KEYS_V1):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required", "legacy journal carry",
+                )
+        records.append(record)
+        encoded_records.append(encoded)
+        previous_hash = _record_hash(encoded)
+    if len(records) > 2 or (
+        records
+        and records[-1].state not in {
+            OwnershipCoordinatorStateV1.PREPARED,
+            OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE,
+        }
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "legacy journal state",
+        )
+    if records and records[0].request_id != _coordinator_request_id_v1(
+        records[0].closed_build_id,
+        records[0].previous_closed_build_id,
+        records[0].previous_cutover_id,
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "legacy request",
+        )
+    return tuple(records), tuple(encoded_records)
+
+
+def _read_successor_claims_snapshot_v1(
+    directory: Path | None, *, root_owned: bool,
+) -> tuple[SuccessorClaimV1, ...]:
+    if directory is None:
+        return ()
+    _require_read_only_directory_v2(directory, root_owned=root_owned)
+    claims: list[SuccessorClaimV1] = []
+    seen_claim_ids: set[str] = set()
+    seen_request_ids: set[str] = set()
+    for path in _read_directory_entries_v2(directory):
+        if _SUCCESSOR_CLAIM_BASENAME_RE_V1.fullmatch(path.name) is None:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "claim inventory",
+            )
+        encoded = _read_control_file_v2(
+            path, MAX_COORDINATOR_CONTROL_BYTES_V2, root_owned=root_owned,
+        )
+        try:
+            claim = _decode_successor_claim_v1(encoded)
+        except Exception as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "successor claim",
+            ) from exc
+        if path.name != _successor_claim_basename_v1(
+            claim.release_sequence, claim.previous_head_id,
+        ) or claim.claim_id in seen_claim_ids or claim.request_id in seen_request_ids:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "claim binding",
+            )
+        seen_claim_ids.add(claim.claim_id)
+        seen_request_ids.add(claim.request_id)
+        claims.append(claim)
+    claims.sort(key=lambda item: item.release_sequence)
+    if tuple(item.release_sequence for item in claims) != tuple(
+        range(1, len(claims) + 1)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "claim sequence",
+        )
+    return tuple(claims)
+
+
+def _read_transaction_directory_v2(
+    directory: Path, *, request_id: str, root_owned: bool,
+) -> tuple[tuple[OwnershipCoordinatorRecordV2, ...], tuple[bytes, ...]]:
+    _require_digest(request_id, "request_id")
+    _require_read_only_directory_v2(directory, root_owned=root_owned)
+    paths = _read_directory_entries_v2(directory)
+    if not 1 <= len(paths) <= len(_STATES):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "transaction cardinality",
+        )
+    records: list[OwnershipCoordinatorRecordV2] = []
+    encoded_records: list[bytes] = []
+    previous_hash = None
+    for sequence, path in enumerate(paths):
+        if (
+            _TRANSACTION_RECORD_RE_V2.fullmatch(path.name) is None
+            or path.name != _record_basename_v2(sequence)
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction inventory",
+            )
+        encoded = _read_control_file_v2(
+            path, MAX_RECORD_BYTES_V1, root_owned=root_owned,
+        )
+        try:
+            record = _decode_record_v2(encoded)
+        except Exception as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction record",
+            ) from exc
+        if (
+            record.sequence != sequence
+            or record.request_id != request_id
+            or record.previous_record_sha256 != previous_hash
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction chain",
+            )
+        if records:
+            first_value = records[0].as_value()
+            value = record.as_value()
+            if any(
+                value[key] != first_value[key]
+                for key in _TRANSACTION_CARRY_KEYS_V2
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required", "transaction carry",
+                )
+            for threshold, keys in _TRANSACTION_THRESHOLD_KEYS_V2:
+                if sequence > threshold:
+                    threshold_value = records[threshold].as_value()
+                    if any(value[key] != threshold_value[key] for key in keys):
+                        raise OwnershipCoordinatorError(
+                            "birth_ownership_recovery_required",
+                            "transaction threshold carry",
+                        )
+        records.append(record)
+        encoded_records.append(encoded)
+        previous_hash = _record_hash_v2(encoded)
+    return tuple(records), tuple(encoded_records)
+
+
+def _read_transactions_snapshot_v2(
+    directory: Path | None, *, root_owned: bool,
+) -> tuple[tuple[OwnershipCoordinatorRecordV2, ...], tuple[tuple[bytes, ...], ...]]:
+    if directory is None:
+        return (), ()
+    _require_read_only_directory_v2(directory, root_owned=root_owned)
+    transactions: list[tuple[OwnershipCoordinatorRecordV2, ...]] = []
+    encoded_transactions: list[tuple[bytes, ...]] = []
+    for path in _read_directory_entries_v2(directory):
+        if _DIGEST_RE.fullmatch(path.name) is None:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction directory",
+            )
+        records, encoded = _read_transaction_directory_v2(
+            path, request_id=path.name, root_owned=root_owned,
+        )
+        transactions.append(records)
+        encoded_transactions.append(encoded)
+    return tuple(transactions), tuple(encoded_transactions)
+
+
+def _coordinator_inventory_snapshot_v2(
+    directory: Path,
+) -> tuple[tuple[object, ...], ...]:
+    observed: list[tuple[object, ...]] = []
+
+    def add(path: Path, relative: str) -> os.stat_result:
+        info = path.lstat()
+        observed.append((
+            relative, info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+            info.st_uid, info.st_gid, info.st_size,
+            getattr(info, "st_mtime_ns", None),
+            getattr(info, "st_ctime_ns", None),
+            getattr(info, "st_file_attributes", 0),
+        ))
+        return info
+
+    def is_plain_directory(info: os.stat_result) -> bool:
+        return (
+            stat.S_ISDIR(info.st_mode)
+            and not stat.S_ISLNK(info.st_mode)
+            and not bool(getattr(info, "st_file_attributes", 0) & 0x400)
+        )
+
+    try:
+        add(directory, ".")
+        for path in _read_directory_entries_v2(directory):
+            path_info = add(path, path.name)
+            if (
+                path.name == SUCCESSOR_CLAIMS_DIRECTORY_BASENAME_V1
+                and is_plain_directory(path_info)
+            ):
+                for claim_path in _read_directory_entries_v2(path):
+                    add(claim_path, f"{path.name}/{claim_path.name}")
+            elif (
+                path.name == TRANSACTIONS_DIRECTORY_BASENAME_V2
+                and is_plain_directory(path_info)
+            ):
+                for transaction_path in _read_directory_entries_v2(path):
+                    transaction_info = add(
+                        transaction_path,
+                        f"{path.name}/{transaction_path.name}",
+                    )
+                    if is_plain_directory(transaction_info):
+                        for record_path in _read_directory_entries_v2(
+                            transaction_path,
+                        ):
+                            add(record_path, (
+                                f"{path.name}/{transaction_path.name}/"
+                                f"{record_path.name}"
+                            ))
+    except OwnershipCoordinatorError:
+        raise
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "coordinator snapshot",
+        ) from exc
+    return tuple(observed)
+
+
+def _resolve_ownership_coordinator_at_v2(
+    directory: Path, *, root_owned: bool,
+) -> _ObservedOwnershipCoordinatorGraphV2:
+    directory = Path(directory)
+    _require_read_only_directory_v2(directory, root_owned=root_owned)
+    initial_snapshot = _coordinator_inventory_snapshot_v2(directory)
+    entries = _read_directory_entries_v2(directory)
+    legacy_paths: list[Path] = []
+    claim_directory = None
+    transaction_directory = None
+    disposition_path = None
+    for path in entries:
+        if _LEGACY_RECORD_RE_V1.fullmatch(path.name):
+            legacy_paths.append(path)
+        elif path.name == SUCCESSOR_CLAIMS_DIRECTORY_BASENAME_V1:
+            if claim_directory is not None:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required", "claim directory",
+                )
+            claim_directory = path
+        elif path.name == TRANSACTIONS_DIRECTORY_BASENAME_V2:
+            if transaction_directory is not None:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required", "transaction root",
+                )
+            transaction_directory = path
+        elif path.name == LEGACY_DISPOSITION_BASENAME_V2:
+            disposition_path = path
+        else:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "coordinator inventory",
+            )
+    legacy_records, legacy_bytes = _read_legacy_journal_snapshot_v2(
+        tuple(sorted(legacy_paths, key=lambda item: item.name)),
+        root_owned=root_owned,
+    )
+    claims = _read_successor_claims_snapshot_v1(
+        claim_directory, root_owned=root_owned,
+    )
+    raw_transactions, encoded_transactions = _read_transactions_snapshot_v2(
+        transaction_directory, root_owned=root_owned,
+    )
+    disposition = None
+    if disposition_path is not None:
+        encoded = _read_control_file_v2(
+            disposition_path, MAX_COORDINATOR_CONTROL_BYTES_V2,
+            root_owned=root_owned,
+        )
+        try:
+            disposition = _decode_legacy_disposition_v2(encoded)
+        except Exception as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "legacy disposition",
+            ) from exc
+
+    claims_by_id = {claim.claim_id: claim for claim in claims}
+    transaction_by_claim: dict[str, _ResolvedOwnershipTransactionV2] = {}
+    resolved_transactions: list[_ResolvedOwnershipTransactionV2] = []
+    for records, encoded_records in zip(
+        raw_transactions, encoded_transactions, strict=True,
+    ):
+        first = records[0]
+        claim = claims_by_id.get(first.successor_claim_id)
+        if (
+            claim is None
+            or claim.claim_id in transaction_by_claim
+            or claim.request_id != first.request_id
+            or claim.source_id != first.source_id
+            or claim.closed_build_id != first.closed_build_id
+            or claim.release_sequence != first.release_sequence
+            or claim.previous_head_id != first.previous_head_id
+            or first.request_id != _coordinator_request_id_v1(
+                first.closed_build_id, first.previous_closed_build_id,
+                first.previous_cutover_id,
+            )
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "claim transaction binding",
+            )
+        resolved = _ResolvedOwnershipTransactionV2(
+            claim, records, encoded_records,
+        )
+        transaction_by_claim[claim.claim_id] = resolved
+        resolved_transactions.append(resolved)
+    resolved_transactions.sort(key=lambda item: item.claim.release_sequence)
+
+    pending: list[SuccessorClaimV1] = []
+    previous_transaction = None
+    for index, claim in enumerate(claims):
+        transaction = transaction_by_claim.get(claim.claim_id)
+        if claim.release_sequence == 1:
+            expected_request_id = _coordinator_request_id_v1(
+                claim.closed_build_id, None, None,
+            )
+        else:
+            if (
+                previous_transaction is None
+                or previous_transaction.latest.sequence != 6
+                or claim.previous_head_id != previous_transaction.latest.head_id
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required", "claim predecessor",
+                )
+            expected_request_id = _coordinator_request_id_v1(
+                claim.closed_build_id,
+                previous_transaction.records[0].closed_build_id,
+                previous_transaction.latest.cutover_id,
+            )
+        if claim.request_id != expected_request_id:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "claim request",
+            )
+        if transaction is None:
+            if index != len(claims) - 1:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required", "nonterminal pending claim",
+                )
+            pending.append(claim)
+            continue
+        first = transaction.records[0]
+        if claim.release_sequence == 1:
+            if (
+                first.previous_closed_build_id is not None
+                or first.previous_cutover_id is not None
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required", "initial predecessor",
+                )
+        else:
+            if (
+                first.previous_closed_build_id
+                != previous_transaction.records[0].closed_build_id
+                or first.previous_cutover_id != previous_transaction.latest.cutover_id
+                or first.previous_head_id != previous_transaction.latest.head_id
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required", "successor predecessor",
+                )
+        previous_transaction = transaction
+
+    if legacy_records:
+        latest_legacy = legacy_records[-1]
+        if disposition is None:
+            if raw_transactions or len(claims) > 1:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required", "legacy prefix order",
+                )
+        else:
+            successor = tuple(
+                claim for claim in claims
+                if claim.request_id == disposition.successor_request_id
+            )
+            if (
+                len(successor) != 1
+                or successor[0].release_sequence != 1
+                or disposition.legacy_journal_hash
+                != _legacy_journal_hash_v2(legacy_bytes)
+                or disposition.legacy_request_id != latest_legacy.request_id
+                or disposition.legacy_state is not latest_legacy.state
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required", "legacy disposition binding",
+                )
+    elif disposition is not None:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "orphan legacy disposition",
+        )
+
+    if _coordinator_inventory_snapshot_v2(directory) != initial_snapshot:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "coordinator changed",
+        )
+    return _ObservedOwnershipCoordinatorGraphV2(
+        claims, tuple(pending), tuple(resolved_transactions), legacy_records,
+        legacy_bytes, disposition,
+    )
 
 
 def _record_hash(encoded: bytes) -> str:
@@ -1527,20 +2151,96 @@ def _deployment_lock_for_test_v1(
                     _ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1.pop(token, None)
 
 
+def _build_locked_coordinator_graph_registry_v2():
+    issued = weakref.WeakKeyDictionary()
+
+    def resolve_issued(
+        session: _DeploymentLockSessionV1,
+    ) -> _LockedOwnershipCoordinatorGraphSnapshotV2:
+        if not sys.platform.startswith("linux"):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_platform_unsupported",
+            )
+        _require_deployment_lock_session_v1(session)
+        observation = _resolve_ownership_coordinator_at_v2(
+            DEFAULT_COORDINATOR_DIRECTORY_V1, root_owned=True,
+        )
+        _require_deployment_lock_session_v1(session)
+        token = object()
+        snapshot = _LockedOwnershipCoordinatorGraphSnapshotV2(token)
+        issued[snapshot] = (token, session, observation)
+        return snapshot
+
+    def require_issued(
+        snapshot: object, session: _DeploymentLockSessionV1,
+    ) -> _ObservedOwnershipCoordinatorGraphV2:
+        _require_deployment_lock_session_v1(session)
+        if type(snapshot) is not _LockedOwnershipCoordinatorGraphSnapshotV2:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "graph authority",
+            )
+        try:
+            registration = issued.get(snapshot)
+        except (AttributeError, TypeError) as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "graph authority",
+            ) from exc
+        if (
+            registration is None
+            or snapshot._token is not registration[0]
+            or registration[1] is not session
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "graph authority",
+            )
+        return registration[2]
+
+    return resolve_issued, require_issued
+
+
+(
+    _resolve_locked_coordinator_graph_issued_v2,
+    _require_locked_coordinator_graph_issued_v2,
+) = _build_locked_coordinator_graph_registry_v2()
+del _build_locked_coordinator_graph_registry_v2
+
+
+def _resolve_ownership_coordinator_locked_v2(
+    session: _DeploymentLockSessionV1,
+) -> _LockedOwnershipCoordinatorGraphSnapshotV2:
+    return _resolve_locked_coordinator_graph_issued_v2(session)
+
+
+def _require_locked_coordinator_graph_snapshot_v2(
+    snapshot: object, session: _DeploymentLockSessionV1,
+) -> _ObservedOwnershipCoordinatorGraphV2:
+    return _require_locked_coordinator_graph_issued_v2(snapshot, session)
+
+
+def _resolve_ownership_coordinator_locked_for_test_v2(
+    session: _DeploymentLockSessionForTestV1, ownership_root: Path,
+) -> _OwnershipCoordinatorGraphSnapshotForTestV2:
+    """Portable nominal seam; its session is never accepted by product."""
+    ownership_root = Path(ownership_root)
+    _require_test_deployment_lock_session_v1(session, ownership_root)
+    observation = _resolve_ownership_coordinator_at_v2(
+        ownership_root / COORDINATOR_DIRECTORY_BASENAME_V1,
+        root_owned=False,
+    )
+    _require_test_deployment_lock_session_v1(session, ownership_root)
+    return _OwnershipCoordinatorGraphSnapshotForTestV2(
+        observation, _TEST_COORDINATOR_GRAPH_SNAPSHOT_SEAL_V2,
+    )
+
+
 def _request_id(
     distribution: VerifiedDistribution, previous_cutover_id: str | None,
 ) -> str:
-    fields = (
+    return _coordinator_request_id_v1(
         distribution.identity.closed_build_id,
-        distribution.previous_closed_build_id or "none",
-        previous_cutover_id or "none",
+        distribution.previous_closed_build_id,
+        previous_cutover_id,
     )
-    framed = bytearray(_REQUEST_DOMAIN)
-    for field in fields:
-        encoded = field.encode("ascii")
-        framed.extend(len(encoded).to_bytes(8, "big"))
-        framed.extend(encoded)
-    return _digest(bytes(framed))
 
 
 def _prepared_record(

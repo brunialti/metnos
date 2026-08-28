@@ -10,15 +10,15 @@ Il gruppo 5 e' chiuso. Il commit pubblico e' `a5bd396`; il ciclo GitHub Actions
 Windows. Il commit sorgente di ingresso del gruppo 6 e' `225f9437`.
 RM-0008 resta `active`; `closed_build_enforcement()` resta `False`.
 
-### Incremento G6-A1 completato localmente
+### Incremento G6-A completato localmente; certificazione pubblica in attesa
 
-E' completato il primo sottoincremento di G6-A: record storico autenticato e
-lettura produttiva a freddo della catena. E' completata anche la sessione
-sigillata del blocco di deployment. Sono completati inoltre i codec di claim,
-disposizione legacy e record V2. L'ispezione chiusa dello stato iniziale della
-catena e' implementata e attende il verdetto conclusivo dei due revisori. Non
-sono ancora implementati i lettori compositi e il resolver per transazione;
-pertanto G6-A e RM-0008 restano aperti.
+Sono completati tutti i sottoincrementi di G6-A: record storico autenticato,
+lettura produttiva a freddo della catena, sessione sigillata del blocco di
+deployment, codec di claim/disposizione/record V2, ispezione chiusa `INITIAL`
+e resolver non mutante del grafo durevole. Due revisioni indipendenti finali
+hanno approvato il diff con `P0=0`, `P1=0`, `P2=0`. Manca soltanto il commit
+pubblico e il relativo ciclo GitHub Linux/Windows; pertanto G6-A e RM-0008
+restano formalmente aperti.
 
 Il codice ora:
 
@@ -93,9 +93,10 @@ I tipi non sono stati aggiunti a `__all__`; non esistono ancora API che
 pubblicano claim, disposizione o `PREPARED`. Le prove definitive di codec,
 lock e guardia hanno dato `119 passed`, con diff pulito. Due revisioni
 indipendenti hanno concluso `P1=0`, `P2=0`. Il prossimo incremento deve
-aggiungere soltanto letture non mutanti, inventario completo e resolver.
+aggiungere soltanto letture non mutanti, inventario completo e resolver; tale
+incremento e' descritto e concluso nella sezione seguente.
 
-### Sottoincremento ispezione `INITIAL` di G6-A in verifica
+### Sottoincremento ispezione `INITIAL` di G6-A completato e pubblicato
 
 La nuova ispezione non crea directory, file o riparazioni. Restituisce una
 capacita' produttiva `INITIAL` soltanto sulla radice fissa, dopo due fotografie
@@ -120,6 +121,39 @@ modo, proprietario, hardlink, marker e dimensione del lock, fabbricazione della
 capacita', chiamata diretta al nucleo, accessi ostili, assenza di ripiego e
 diniego Windows prima di I/O. I due riesami finali hanno concluso `P1=0` e
 `P2=0`.
+
+Il commit pubblico e' `3e6d05c`; il ciclo GitHub Actions `33203156363` ha
+concluso con successo. Questo ciclo comprende anche i sottoincrementi lock e
+codec precedenti, quindi il vecchio errore Windows del commit `e9fb5d6` non e'
+piu' un errore aperto.
+
+### Sottoincremento resolver non mutante di G6-A completato localmente
+
+Il resolver legge soltanto `coordinator-v1` sotto la sessione esatta del
+blocco di deployment. Non crea directory, non pubblica file, non ripara e non
+adotta prefissi. Verifica due inventari identici, metadati, nomi, cardinalita',
+byte V1 originali, catene hash V1/V2, carry immutabili, claim, disposizione,
+transazioni e predecessori. Un nuovo successore e' ammesso soltanto dopo
+`PREFLIGHT_VERIFIED`; anche un claim pendente deve avere il `request_id`
+ricalcolabile dai predecessori.
+
+Il risultato G6-A e' deliberatamente una fotografia del grafo durevole, non
+una certificazione operativa dello stato vivo. Il prodotto restituisce un tipo
+opaco registrato per identita' e legato alla stessa sessione ancora viva; non
+espone osservazione o sigillo. Costruzione diretta, token copiato, sessione
+diversa, copia, serializzazione e `dataclasses.replace` non producono
+autorita'. La seam di prova restituisce un tipo nominalmente distinto. La
+riattestazione di catena, installazione e controllo vivo resta nel G6-D.
+
+Le prove finali danno `54 passed` sul V2, `78 passed` sulla regressione del
+coordinatore e `494 passed, 24 skipped` sulla suite locale equivalente al
+workflow pubblico. La guardia reale `--birth-closed` e `git diff --check` sono
+verdi. La suite estesa ha inoltre mostrato cinque sole prove UID non eseguibili
+nel sandbox locale perche' `sudo` e' vietato; non sono regressioni del diff e
+restano coperte dal runner Ubuntu pubblico. Due revisioni indipendenti hanno
+concluso `P0=0`, `P1=0`, `P2=0` dopo mutanti su request pendenti, predecessore
+non concluso, migrazione legacy A→B, ottavo record, oggetti hash ostili,
+fabbricazione nominale e alias della guardia.
 
 ## Analisi del gruppo 6
 
@@ -252,10 +286,11 @@ incrementi successivi restano chiusi fino al criterio di uscita di G6-A.
 
 ## Prossimo passo unico
 
-Completare soltanto G6-A con lettori non mutanti di claim, disposizione e
-journal V1/V2, resolver per transazione e ispezione chiusa `INITIAL` della
-catena. Non esporre il percorso che pubblica claim, disposizione o `PREPARED`
-e non aprire in parallelo G6-B, G6-C o G6-D.
+Pubblicare l'incremento finale G6-A e pretendere errore zero nella matrice
+GitHub Linux/Windows. Solo dopo quel risultato chiudere G6-A, riesaminare G6-B
+per eliminare prove duplicate senza ridurre i rischi coperti e iniziare il
+ricevitore/assemblatore firmato. Non esporre ancora il percorso che pubblica
+claim, disposizione o `PREPARED` e non aprire in parallelo G6-C o G6-D.
 
 ## Regole operative
 
