@@ -53,10 +53,9 @@ STACK_UNITS = (
     "metnos-i18n-translator.timer",
     "metnos-stack-watchdog.timer",
 )
-# The canonical cutover inventory lives in the portable maintenance module.
-# Supporting services (LLM, search, geocoding and display) remain outside it;
-# Playwright is proved independently because the broker may stay running while
-# holding no browser work.
+# The canonical cutover inventory is projected from the RM-0008 service source.
+# Every directly startable user unit is included; absence is an observed state,
+# never a reason to omit an optional service from the maintenance proof.
 RUNTIME_COMPONENT_UNITS = (
     "metnos-durable-worker.service",
     "metnos-side-display.service",

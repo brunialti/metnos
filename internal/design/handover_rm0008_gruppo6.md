@@ -1,6 +1,6 @@
 # RM-0008 — passaggio di consegne del gruppo 6
 
-## Stato corrente — 28/8/2026
+## Stato corrente — 29/8/2026
 
 Worktree: `/tmp/metnos-rm0008-a-only`, ramo unico `main`. Non toccare
 `/opt/metnos` e non creare rami.
@@ -217,6 +217,53 @@ riepilogo finale. G6-B1a ha quindi errore pubblico zero.
 Questo sottoincremento non implementa ancora catalogo, renderer o proiezione
 di manutenzione e non effettua scritture produttive. Il passo successivo resta
 G6-B1b, fonte dichiarativa unica e codec del catalogo.
+
+### Sottoincremento G6-B1b completato localmente e approvato
+
+La fonte dichiarativa unica descrive ora tutte le sei classi previste: servizi,
+timer, arresto di quarantena, target, dipendenze esterne e ingressi
+amministrativi. Da questa sola fonte vengono compilati il catalogo firmabile,
+le unita' candidate e le proiezioni usate da manutenzione e cutover. Il
+censimento meccanico comprende quindici unita' candidate, le quattro unita'
+storiche di backup e traduzione prompt da ritirare nel gruppo 7 e tutti gli
+ingressi amministrativi presenti in `install/`, `deploy/`,
+`runtime/playwright_sidecar` e `scripts/`.
+
+Il codec del catalogo applica schema e relazioni chiusi, JSON canonico, limiti,
+ordinamenti, digest del catalogo e della copertura, binding degli eseguibili e
+hash dei frammenti. Il renderer produce i frammenti esclusivamente dal
+catalogo; un parser indipendente li rilegge e deve ricostruire la stessa
+specifica. La sorgente statica contiene anche le ricette di target e direttive:
+la rilettura produttiva ricompila la sorgente con radice, interprete, identita',
+gruppi, home e hash autenticati e pretende uguaglianza esatta. Il caricatore
+pubblico accetta soltanto il record produttivo autenticato, lo riattesta e
+rilegge catalogo e unita' dai percorsi fissi gia' legati al manifesto.
+
+L'analisi avversariale ha mostrato che gli installer storici controllano
+servizi `systemd` utente e non possono diventare target amministrativi root
+semplicemente impostando `HOME`. G6-B1b non anticipa quindi il cutover del
+gruppo 7: gli storici restano esclusivamente `legacy_bindings` con
+`retire_in_group7`. I sedici ingressi candidati puntano tutti a un solo modulo
+stdlib, `runtime.executor_birth_admin_operations`, con una sola operazione
+firmata, directory ribasata sulla release e ambiente vuoto. Il modulo firma il
+vocabolario finale ma, fino al gruppo 7, nega prima di ogni I/O operativo con
+`birth_ownership_closed_enforcement_required`; fuori Linux nega prima di I/O
+con `birth_ownership_platform_unsupported`.
+
+La prova causale verifica la mappa esatta operazione-binding, il caricamento
+reale con `python -I -S` da una release ribasata, directory corrente esterna e
+ambiente vuoto. Una guardia AST chiude tutto il codice eseguito durante
+l'import; un solo processo auditato prova tutte le sedici operazioni e i due
+argomenti invalidi rendendo fatale qualunque accesso a file, processi o rete.
+La regressione Linux combinata ha dato `266 passed, 1 skipped`; guardia dei
+confini, compilazione e controllo del diff sono verdi. La prova diretta su
+Windows 11, Python 3.14, tramite `192.168.1.137` ha dato
+`31 passed, 1 skipped`.
+
+Due revisioni indipendenti sullo snapshot esatto hanno concluso
+`P0=0`, `P1=0`, `P2=0`. La pubblicazione e la matrice GitHub restano l'ultimo
+criterio prima di dichiarare certificato G6-B1b; G6-B nel suo complesso resta
+aperto per B2, B3 e B4.
 
 ## Analisi del gruppo 6
 

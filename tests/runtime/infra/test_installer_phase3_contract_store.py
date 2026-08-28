@@ -52,11 +52,7 @@ def test_shared_cutover_guard_proves_the_complete_lifecycle_catalog() -> None:
     }
     expected_user = stack_reconcile.CONTRACT_CUTOVER_UNITS
     assert len(expected_user) == len(set(expected_user))
-    assert set(expected_user).issubset(lifecycle_catalog)
-    assert "metnos-llm.service" not in expected_user
-    assert "metnos-searxng.service" not in expected_user
-    assert "metnos-photon.service" not in expected_user
-    assert "metnos-playwright.service" not in expected_user
+    assert set(expected_user) == lifecycle_catalog
     assert observations == list(MAINTENANCE_TARGETS_V1)
     assert tuple(
         (item["scope"], item["unit"]) for item in evidence["units"]
