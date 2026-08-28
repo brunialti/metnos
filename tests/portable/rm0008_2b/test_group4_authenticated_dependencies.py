@@ -263,6 +263,11 @@ def test_parent_projection_crosses_the_real_executor_subprocess(
     )
     consumer = executor(
         "read_consumer", consumer_root, consumer_code, consumer_payload,
+        # This cell certifies the authenticated read-only code mount.  Give
+        # its synthetic consumer an explicit network authority so Bubblewrap
+        # does not also exercise network-namespace creation: that independent
+        # boundary is certified by test_executor_birth_runner_linux_real.py.
+        capabilities=[{"name": "network:http", "hint": []}],
         code_dependencies=("read_dependency",),
     )
     catalog = SimpleNamespace(
@@ -294,6 +299,14 @@ def test_parent_projection_crosses_the_real_executor_subprocess(
         assert sandbox.bwrap_available(), "Linux certification requires bubblewrap"
         if not sandbox.sandbox_disabled():
             assert command[0].endswith("bwrap")
+            mount = [
+                "--ro-bind", str(dependency_root), str(dependency_root),
+            ]
+            assert any(
+                command[index:index + len(mount)] == mount
+                for index in range(len(command) - len(mount) + 1)
+            )
+            assert "--unshare-net" not in command
     assert process.returncode == 0, process.stderr
     result = json.loads(process.stdout)
     assert result == {"ok": True, "dependency": "authenticated"}
