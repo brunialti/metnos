@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -226,6 +227,72 @@ def test_person_alias_requires_a_search_criterion() -> None:
     result = person_reader.invoke({})
     assert result["ok"] is False
     assert result["error_code"] == "search_criterion_missing"
+
+
+def test_person_alias_uses_the_parent_authenticated_engine_record(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from admitted_module_v1 import (
+        ADMITTED_EXECUTORS_ENV_V1, code_digest_of_bytes_v1,
+        encode_admitted_executor_records_v1,
+    )
+
+    directory = tmp_path / "find_images_indices"
+    directory.mkdir()
+    payload = (
+        b"def invoke(args):\n"
+        b"    return {'ok': True, 'entries': [], 'forwarded': args}\n"
+    )
+    code = directory / "find_images_indices.py"
+    code.write_bytes(payload)
+    record = SimpleNamespace(
+        name="find_images_indices", manifest_path=directory / "manifest.toml",
+        code_path=code, code_files=(code.name,),
+        digest=code_digest_of_bytes_v1([payload]),
+    )
+    monkeypatch.setenv(
+        ADMITTED_EXECUTORS_ENV_V1,
+        encode_admitted_executor_records_v1([record]),
+    )
+
+    result = person_reader.invoke({"name": "Ada", "idx": "legacy"})
+
+    assert result["ok"] is True
+    assert result["forwarded"] == {"name": "Ada"}
+
+
+def test_person_alias_refuses_changed_engine_before_execution(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from admitted_module_v1 import (
+        ADMITTED_EXECUTORS_ENV_V1, code_digest_of_bytes_v1,
+        encode_admitted_executor_records_v1,
+    )
+
+    directory = tmp_path / "find_images_indices"
+    directory.mkdir()
+    original = b"def invoke(args): return {'ok': True}\n"
+    code = directory / "find_images_indices.py"
+    code.write_bytes(original)
+    record = SimpleNamespace(
+        name="find_images_indices", manifest_path=directory / "manifest.toml",
+        code_path=code, code_files=(code.name,),
+        digest=code_digest_of_bytes_v1([original]),
+    )
+    monkeypatch.setenv(
+        ADMITTED_EXECUTORS_ENV_V1,
+        encode_admitted_executor_records_v1([record]),
+    )
+    marker = tmp_path / "executed"
+    code.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).touch()\n"
+        "def invoke(args): return {'ok': True}\n",
+        encoding="utf-8",
+    )
+
+    result = person_reader.invoke({"name": "Ada"})
+
+    assert result["error_code"] == "executor_dependency_unavailable"
+    assert not marker.exists()
 
 
 def test_local_embedder_cannot_follow_remote_configuration(monkeypatch) -> None:

@@ -56,20 +56,24 @@ preliminare. Anticiparlo renderebbe inutilizzabile l'installazione.
 - Cambiare il bit della politica chiusa prima che esista l'artefatto F4.
 - Avviare F5 o F6 mentre la guardia statica e' ancora rossa.
 
-## 4. Ordine non permutabile
+## 4. Ordine non permutabile e semplificazione verificata
 
-Il gruppo usa tre incrementi causali. L'inventario viene congelato una sola
-volta, alla fine del secondo incremento.
+Il gruppo usa due incrementi pubblici. Il riesame svolto durante G4-A ha
+mostrato che il vecchio G4-C non introduce codice produttivo: classifica e
+congela i fatti prodotti da G4-B. Separarlo imporrebbe una matrice pubblica in
+piu' senza isolare un rischio nuovo. Per questo G4-B e G4-C diventano una sola
+fetta verticale; l'inventario viene comunque scritto una sola volta e soltanto
+dopo la rimozione delle autorita' precedenti.
 
 1. **G4-A — dipendenze fra executor autenticate.** Riparare
    `undo_last_turn` e `find_persons_indices`; provare alterazione, sandbox e
    percorso Birth reale.
-2. **G4-B — rimozione delle cinque firme dirette.** Il nuovo impianto e il
-   generatore consegnano intenzioni prive di autorita'; il bootstrap iniziale
-   e' privato, sigillato e limitato allo stato precedente al certificato.
-3. **G4-C — inventario chiuso e guardia a zero.** Classificare i fatti rimasti,
-   controllare una per una le 16 eccezioni gia' compilate, congelare
-   l'inventario e ottenere zero rilievi senza cambiare il bit F4.
+2. **G4-B+C — rimozione delle cinque firme dirette e chiusura della guardia.**
+   Il nuovo impianto e il generatore consegnano intenzioni prive di autorita';
+   il bootstrap iniziale e' privato, sigillato e limitato allo stato precedente
+   al certificato. Dopo le prove produttive si classificano i fatti rimasti, si
+   controllano le 16 eccezioni compilate, si congela l'inventario e si ottengono
+   zero rilievi senza cambiare il bit F4.
 
 Un incremento si pubblica soltanto quando simbolo produttivo, prova diretta e
 prova del percorso reale sono nello stesso commit. Se la matrice pubblica e'
@@ -95,6 +99,8 @@ una volta, confronta il digest firmato e compila la stessa copia in memoria.
 
 1. `runtime/loader.py`
    - aggiungere a `Executor` il tuple immutabile `code_files`;
+   - aggiungere il tuple immutabile `code_dependencies`, distinto dalle
+     relazioni usate dal pianificatore;
    - popolarlo dalla lista `[code].files` del manifest gia' autenticato;
    - non riaprire il manifest per ricostruire questa lista.
 2. `runtime/admitted_module_v1.py`
@@ -122,6 +128,16 @@ una volta, confronta il digest firmato e compila la stessa copia in memoria.
    - rimuovere inserimento in `sys.path` e import del fratello;
    - in caso di catalogo assente, digest diverso o modulo non caricabile,
      restituire un rifiuto stabile e non eseguire il fratello.
+
+Il processo figlio nella sandbox non possiede il catalogo verificato del
+processo padre. La soluzione osservata e provata durante l'implementazione e'
+quindi un trasporto chiuso: il manifest firmato dichiara
+`[code].dependencies`; il padre seleziona soltanto quei nomi dal proprio
+catalogo verificato, monta le sole radici corrispondenti in sola lettura e
+trasmette un record limitato. Il figlio ricontrolla i byte con la porta
+autenticata prima di eseguirli. Il processo padre elimina sempre un eventuale
+record ereditato dall'ambiente, quindi un executor non riceve dipendenze che il
+proprio manifest non dichiara.
 
 ### 5.3 Preparazione del candidato e pubblicazione
 
@@ -160,7 +176,10 @@ devono essere quelli prodotti da Birth; nessun test o comando richiama
   - nessun uso di `spec_from_file_location` resta nell'executor.
 - `tests/runtime/executors/test_executor_standard_index_readers.py`
   - `test_sandboxed_readers_reuse_logical_symlink_index_without_source_bind`
-    diventa verde senza legare la sorgente del fratello nella sandbox.
+    diventa verde montando soltanto la radice autenticata del fratello in sola
+    lettura, senza aggiungere percorsi scelti dall'executor;
+  - il record proiettato dal padre attraversa il processo reale e il codice
+    alterato viene rifiutato prima dell'esecuzione.
 - `tests/runtime/executors/test_executor_birth_shadow.py`
   - `test_the_closure_cost_on_the_real_executors_is_known_and_named` non deve
     piu' elencare eccezioni per questi due executor.
@@ -179,7 +198,7 @@ devono essere quelli prodotti da Birth; nessun test o comando richiama
 - R1 e le prove del gruppo 3 restano verdi;
 - matrice pubblica Linux/Windows interamente verde.
 
-## 6. G4-B — eliminazione delle firme dirette
+## 6. G4-B+C — eliminazione delle firme dirette e chiusura della guardia
 
 ### 6.1 Cinque rilievi da portare a zero
 
@@ -248,9 +267,10 @@ rimosso, non nascosto dietro una condizione di layout.
 - il prodotto resta avviabile con `closed_build_enforcement() == False`;
 - matrice pubblica Linux/Windows interamente verde.
 
-## 7. G4-C — inventario e guardia
+## 7. Congelamento finale dell'inventario nello stesso incremento
 
-Solo dopo G4-A e G4-B:
+Solo dopo le modifiche produttive e le prove di G4-B, ma prima del suo unico
+commit pubblico:
 
 1. rigenerare meccanicamente il candidato dell'inventario chiuso;
 2. classificare `_build_sealed` come proprietario dell'inizializzazione dei

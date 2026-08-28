@@ -261,18 +261,7 @@ def test_a_relative_import_of_a_sibling_in_the_candidate_is_closed():
 
 
 def test_the_closure_cost_on_the_real_executors_is_known_and_named():
-    """Measured, not assumed, and the single exception is named out loud.
-
-    Every published executor but one is already closed.  ``undo_last_turn``
-    loads the code of another executor to undo it, and it must move to the
-    authenticated door of ``admitted_module_v1``.  It cannot be
-    changed yet: after the cutover an executor changes only through an Executor
-    Birth intent, which is what this very group is making possible.  The ready
-    patch sits in ``internal/design/patch_undo_last_turn_porta_autenticata.diff``
-    and belongs to the first intent once Birth is active.
-
-    When that happens this cell turns red, and the fix is to empty the set.
-    """
+    """Every real executor is closed after the two authenticated migrations."""
     import config as runtime_config
     from executor_birth_shadow import _closure_findings_v1
 
@@ -288,8 +277,4 @@ def test_the_closure_cost_on_the_real_executors_is_known_and_named():
         if broken:
             findings[directory.name] = broken
 
-    assert set(findings) == {"undo_last_turn"}, findings
-    assert all(
-        item.startswith("unauthenticated_code_load:")
-        for item in findings["undo_last_turn"]
-    ), findings
+    assert findings == {}, findings

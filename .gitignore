@@ -170,6 +170,11 @@ tests/simulator/typing_cache/
 # --- GitHub workflow: stato runtime delle issue (dati, non codice) -------
 /issues/
 
+# Stato locale delle pubblicazioni Birth su un albero di authoring.
+# Manifest, firma e codice sono la revisione; lock/versione dipendono invece
+# dal percorso della singola copia di lavoro e non sono distribuibili.
+/executors/.*.birth-control-*/
+
 # --- Memoria persistente assistente (mai in repo) ------------------------
 MEMORY.md
 SOUL.md

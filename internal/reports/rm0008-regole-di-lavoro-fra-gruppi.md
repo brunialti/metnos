@@ -82,3 +82,24 @@ Servono a ridurre i cicli senza ridurre le prove.
 Per il gruppo 4 questo significa: prima si scrive il suo piano sullo stato
 chiuso del gruppo 3; poi si esegue la prima fetta verticale completa. Non si
 iniziano F5 o F6 e non si costruisce in anticipo il loro dettaglio.
+
+## 7. Riesame di semplificazione durante il gruppo 4
+
+Il riesame richiesto dopo la chiusura del gruppo 3 ha prodotto una
+semplificazione concreta e un limite prudenziale.
+
+- G4-A resta separato, perche' introduce una nuova porta di esecuzione e deve
+  dimostrarla su Linux e Windows prima di toccare le autorita' di firma.
+- G4-B e G4-C diventano un solo incremento pubblico. L'inventario e' una prova
+  derivata dai fatti di G4-B, non un secondo cambiamento produttivo. Viene
+  scritto una volta sola, dopo il codice e prima del commit. Si risparmia una
+  matrice completa senza perdere alcuna prova.
+- I gruppi successivi non vengono uniti in anticipo. Coordinatore,
+  distribuzione, passaggio reale, F5 e cancellazione F6 hanno punti di non
+  ritorno diversi. Saranno riesaminati uno alla volta usando lo stato pubblico
+  verde del gruppo precedente.
+
+In ogni gruppo restano tre livelli di verifica: prove possedute durante lo
+sviluppo, un attraversamento reale del percorso rivendicato e la matrice
+pubblica alla fine della fetta verticale. Le suite gia' certificate non vengono
+ripetute localmente se il nuovo codice non attraversa il loro confine.

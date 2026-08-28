@@ -183,6 +183,10 @@ def test_unknown_manifest_pattern_falls_back_to_module_reverse(
     ex = SimpleNamespace(
         name="legacy_delete", revertible=True,
         reverse_pattern="restore_legacy", code_path=code,
+        manifest_path=tmp_path / "manifest.toml",
+        code_files=(code.name,),
+        digest=("sha256:" + __import__("hashlib").sha256(
+            code.read_bytes()).hexdigest()),
     )
     monkeypatch.setattr(
         ult, "load_catalog", lambda: SimpleNamespace(get=lambda name: ex))
@@ -191,6 +195,32 @@ def test_unknown_manifest_pattern_falls_back_to_module_reverse(
 
     assert out["ok"] is True
     assert out["undone_count"] == 1
+
+
+def test_changed_custom_reverse_is_refused_before_execution(tmp_path):
+    sys.path.insert(0, str(_RUNTIME.parent / "executors" / "undo_last_turn"))
+    try:
+        import undo_last_turn as ult
+    finally:
+        sys.path.pop(0)
+    original = b"def reverse(plan, results):\n    return {'ok': True}\n"
+    code = tmp_path / "custom_reverse.py"
+    code.write_bytes(original)
+    executor = SimpleNamespace(
+        name="custom_reverse", manifest_path=tmp_path / "manifest.toml",
+        code_path=code, code_files=(code.name,),
+        digest="sha256:" + __import__("hashlib").sha256(original).hexdigest(),
+    )
+    marker = tmp_path / "executed"
+    code.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).touch()\n"
+        "def reverse(plan, results): return {'ok': True}\n",
+        encoding="utf-8",
+    )
+
+    assert ult._load_module(executor) is None
+    assert not marker.exists()
 
 
 def test_known_pattern_failure_never_falls_back_to_module_reverse(

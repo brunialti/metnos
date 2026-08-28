@@ -3446,6 +3446,31 @@ def _fill_runtime_sourced_args(executor, args: dict) -> dict:
     return args
 
 
+def _admitted_code_dependency_projection(executor) -> tuple[str, list[Path]]:
+    """Project signed dependency records and their exact read-only roots.
+
+    The parent owns the verified catalogue.  The child receives no catalogue
+    key and no free-form path: only records named by its own signed manifest.
+    """
+    from admitted_module_v1 import encode_admitted_executor_records_v1
+
+    names = tuple(getattr(executor, "code_dependencies", ()) or ())
+    if not names:
+        return "", []
+    catalog = load_catalog()
+    records = []
+    roots: list[Path] = []
+    for name in names:
+        target = catalog.get(name)
+        if target is None:
+            raise RuntimeError("executor_code_dependency_unavailable")
+        records.append(target)
+        root = Path(target.manifest_path).parent
+        if root not in roots:
+            roots.append(root)
+    return encode_admitted_executor_records_v1(records), roots
+
+
 def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised",
                           turn_id=None, actor=None, channel=None,
                           target_device=None, owner_user_id=None,
@@ -3631,6 +3656,22 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             "error_code": "ERR_PERMISSION_DENIED",
         }
 
+    try:
+        _admitted_dependencies, _dependency_roots = (
+            _admitted_code_dependency_projection(executor)
+        )
+    except Exception:
+        log.warning(
+            "verified code dependency unavailable for %s",
+            getattr(executor, "name", ""), exc_info=True,
+        )
+        return {
+            "ok": False,
+            "error": msg("ERR_DURABLE_DEPENDENCIES_UNAVAILABLE"),
+            "error_class": "dependency_unavailable",
+            "error_code": "executor_code_dependency_unavailable",
+        }
+
     _undo_op = _undo_pending(executor, args, turn_id=turn_id,
                              actor=actor, channel=channel, device="")
 
@@ -3645,6 +3686,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # resolver returns only read-only mail credential files; it never exposes
     # the shared web-credential vault directory to an executor.
     _extra_ro, _mail_net = _sandbox.mail_extras(executor, args)
+    _extra_ro.extend(_dependency_roots)
     # Dynamic filesystem inputs remain exact and capability-derived: only
     # signed ``fs:read`` hints such as ``arg:reference_images`` can add them.
     _extra_ro.extend(_sandbox.filesystem_extras(executor, args))
@@ -3668,6 +3710,9 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # ModuleNotFoundError. Vedi caso live 29/4/2026 sera (move_messages errore in
     # esecuzione anche dopo birth tests verdi).
     env = os.environ.copy()
+    env.pop("METNOS_ADMITTED_EXECUTORS_V1", None)
+    if _admitted_dependencies:
+        env["METNOS_ADMITTED_EXECUTORS_V1"] = _admitted_dependencies
     # Executor generated under the central execution contract receive one
     # runtime-owned item-worker budget. Legacy/handcrafted manifests without
     # [execution] keep their exact historical internal-concurrency behavior.

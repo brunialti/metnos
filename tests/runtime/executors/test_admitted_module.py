@@ -8,7 +8,9 @@ from types import SimpleNamespace
 import pytest
 
 from admitted_module_v1 import (
-    AdmittedModuleError, code_digest_of_bytes_v1, load_admitted_module_v1,
+    ADMITTED_EXECUTORS_ENV_V1, AdmittedModuleError,
+    code_digest_of_bytes_v1, encode_admitted_executor_records_v1,
+    load_admitted_module_v1, runtime_admitted_executor_v1,
 )
 
 _ENTRY = b"VALUE = 41\n\n\ndef reverse(plan, results):\n    return {'ok': True}\n"
@@ -28,7 +30,8 @@ def _published(tmp_path: Path, *, entry: bytes = _ENTRY, signed: bool = True):
     )
     digest = code_digest_of_bytes_v1([entry, _HELPER]) if signed else ""
     return SimpleNamespace(
-        manifest_path=manifest, code_path=directory / "demo.py", digest=digest,
+        name="demo", manifest_path=manifest, code_path=directory / "demo.py",
+        digest=digest, code_files=("demo.py", "helper.py"),
     )
 
 
@@ -54,6 +57,18 @@ def test_signed_code_loads_and_the_module_works(tmp_path: Path):
     module = load_admitted_module_v1(_published(tmp_path))
     assert module.VALUE == 41
     assert module.reverse({}, {}) == {"ok": True}
+
+
+def test_standard_dataclass_decorators_work_during_isolated_execution(
+        tmp_path: Path):
+    entry = (
+        b"from dataclasses import dataclass\n"
+        b"@dataclass\n"
+        b"class Value:\n"
+        b"    number: int\n"
+    )
+    module = load_admitted_module_v1(_published(tmp_path, entry=entry))
+    assert module.Value(3).number == 3
 
 
 def test_code_changed_after_the_signature_is_refused(tmp_path: Path):
@@ -104,6 +119,34 @@ def test_a_record_without_a_publication_is_refused(tmp_path: Path):
         )
 
 
+@pytest.mark.parametrize("files", [
+    ("../demo.py",),
+    ("demo.py", "DEMO.py"),
+    ("demo.py", "demo.py"),
+    ("/demo.py",),
+])
+def test_non_portable_or_colliding_record_paths_are_refused(
+        tmp_path: Path, files: tuple[str, ...]):
+    executor = _published(tmp_path)
+    executor.code_files = files
+    with pytest.raises(AdmittedModuleError,
+                       match="admitted_module_files_undeclared"):
+        load_admitted_module_v1(executor)
+
+
+def test_the_parent_projection_round_trips_without_reopening_the_manifest(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    executor = _published(tmp_path)
+    encoded = encode_admitted_executor_records_v1([executor])
+    Path(executor.manifest_path).write_text("not toml", encoding="utf-8")
+    monkeypatch.setenv(ADMITTED_EXECUTORS_ENV_V1, encoded)
+
+    projected = runtime_admitted_executor_v1("demo")
+
+    assert projected.code_files == ("demo.py", "helper.py")
+    assert load_admitted_module_v1(projected).VALUE == 41
+
+
 def test_a_link_in_place_of_the_code_is_refused(tmp_path: Path):
     """The final component is opened without following a link."""
     executor = _published(tmp_path)
@@ -112,6 +155,21 @@ def test_a_link_in_place_of_the_code_is_refused(tmp_path: Path):
     real.write_bytes(_ENTRY)
     entry.unlink()
     entry.symlink_to(real)
+    with pytest.raises(AdmittedModuleError, match="admitted_module_unreadable"):
+        load_admitted_module_v1(executor)
+
+
+def test_a_link_in_an_intermediate_component_is_refused(tmp_path: Path):
+    executor = _published(tmp_path)
+    directory = Path(executor.manifest_path).parent
+    real = directory / "real"
+    real.mkdir()
+    (real / "entry.py").write_bytes(_ENTRY)
+    link = directory / "linked"
+    link.symlink_to(real, target_is_directory=True)
+    executor.code_files = ("linked/entry.py",)
+    executor.code_path = link / "entry.py"
+    executor.digest = code_digest_of_bytes_v1([_ENTRY])
     with pytest.raises(AdmittedModuleError, match="admitted_module_unreadable"):
         load_admitted_module_v1(executor)
 

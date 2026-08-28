@@ -5,28 +5,57 @@
 Worktree: `/tmp/metnos-rm0008-a-only`, ramo unico `main`. Non toccare
 `/opt/metnos` e non creare rami.
 
-I gruppi 2 e 3 sono chiusi. Ultimo commit sorgente: `baf9557e`; ultimo commit
+I gruppi 2 e 3 sono chiusi. Ultimo commit sorgente: `d510ef50`; ultimo commit
 pubblico: `57ec5a9`; ciclo GitHub Actions `33154494801`: otto lavori su otto
 verdi. RM-0008 resta `active`.
 
 Il gruppo 4 e' soltanto la chiusura statica F4 del §23.6.4. Il piano completo
 e' `internal/reports/rm0008-gruppo4-piano-ottimizzato.md`.
 
-Misura iniziale della guardia `--birth-closed`: **26 rilievi**:
+G4-A e' implementato e non ancora committato. Le due revisioni reali sono state
+pubblicate tramite Birth, non tramite firma diretta:
+
+- `undo_last_turn`: generazione
+  `sha256:81aa2cb088306d57c90a2af136e6d95d3564058374811e2a9793ab58a5a0ed6a`;
+- `find_persons_indices`: generazione
+  `sha256:c3432e96b7ff44dbb88d332cf03f7b7717129cd04e75fd3c0015ff3db6b93600`.
+
+Il caricamento diretto da percorso e l'inserimento del fratello in `sys.path`
+sono stati rimossi. Il padre legge le dipendenze dal manifest firmato, proietta
+soltanto record gia' verificati e monta le sole radici necessarie in sola
+lettura. Il figlio confronta i byte con il digest prima di eseguirli.
+
+Prove locali eseguite:
+
+- 100 prove funzionali e di sicurezza verdi;
+- 1 prova della guardia normale rossa per cinque classificazioni rinviate al
+  congelamento G4-B+C, come previsto dal piano;
+- cella portatile con intenzione Birth reale verde;
+- prova sandbox reale non eseguibile su questo host per diniego del kernel a
+  Bubblewrap; la matrice Ubuntu resta la prova autorevole.
+
+La misura corrente della guardia `--birth-closed` e' **28 rilievi**:
 
 - 5 vecchie autorita' di firma;
-- 2 ambiti non classificati;
+- 3 ambiti non classificati;
 - 16 eccezioni compilate non riportate nell'inventario;
 - 1 politica chiusa mancante;
 - 1 proprietario Birth mancante;
-- 1 voce stale.
+- 2 voci stale.
+
+L'aumento da 26 a 28 non introduce autorita' di firma: registra il nuovo
+lettore autenticato, il nuovo preparatore puro del digest e lo spostamento del
+vecchio simbolo. Queste voci saranno classificate una sola volta in G4-B+C.
+
+Il riesame di velocizzazione ha unito G4-B e G4-C in un solo incremento
+pubblico. G4-A resta separato per ottenere prima la prova Linux e Windows della
+nuova porta autenticata.
 
 ## Prossimo passo unico
 
-Eseguire G4-A: portare `undo_last_turn` e `find_persons_indices` sulla porta
-autenticata `admitted_module_v1`, includendo preparazione del digest senza
-firma diretta, pubblicazione tramite una vera intenzione Birth, prova sandbox e
-prova di alterazione.
+Completare i controlli locali di G4-A, creare il commit sorgente, pubblicare
+l'unico incremento su `main` e attendere gli otto lavori GitHub verdi. Non
+iniziare G4-B+C prima di quel risultato.
 
 Non rigenerare ancora l'inventario. Non toccare
 `closed_build_enforcement()`: deve restare `False` per tutto il gruppo 4.

@@ -255,7 +255,7 @@ MANIFEST_FIELD_GRAMMAR_V1: dict[str, object] = {
     "timeout_s": None, "superseded_by": None, "deprecated_at": None,
     "deprecation_ttl_hours": None, "origin": None,
     "description": {"*": None}, "args": _SCHEMA_NODE,
-    "code": {"files": None, "digest": None},
+    "code": {"files": None, "dependencies": None, "digest": None},
     "output": {"schema_inline": None},
     "execution": {"effect": None, "parallelism_class": None, "resource_class": None,
                   "concurrency_key": None, "equivalence_gate": None},

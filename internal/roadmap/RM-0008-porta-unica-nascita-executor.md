@@ -1289,6 +1289,7 @@ sviluppo.
 | 2026-08-28 | `active` | Gruppi 2 e 3 della ripresa completati: autorità predisposte, bootstrap sigillato attivo, registri consumati, controlli chiusi e politiche produttive. Il criterio di uscita dettagliato è in `internal/reports/rm0008-gruppo3-piano-ottimizzato.md` §11. |
 | 2026-08-28 | `active` | Chiuso il blocco Windows del predispositore: preparazione e pubblicazione sono separate dal checkpoint durevole `verified`; ciclo pubblico `33153843377`, commit `a04267b`, otto lavori su otto verdi. Il gruppo 4, chiusura statica F4, è il successivo. |
 | 2026-08-28 | `active` | Riesame dopo il gruppo 3 completato: la guardia chiusa misura 26 rilievi iniziali e il piano ottimizzato del gruppo 4 li divide in tre incrementi causali. Primo incremento: autenticare i due caricamenti fra executor; il bit F4 resta falso. |
+| 2026-08-28 | `active` | G4-A implementato e in certificazione locale: due dipendenze fra executor passano dalla porta autenticata e le revisioni sono state pubblicate da intenzioni Birth reali. Il riesame di velocizzazione conserva G4-A separato e unisce rimozione delle firme e congelamento dell'inventario in G4-B+C, risparmiando una matrice pubblica senza ridurre le prove. |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 

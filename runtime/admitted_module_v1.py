@@ -23,14 +23,20 @@ run.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import stat
-import tomllib
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
+from code_file_paths import PortableCodePathError, validate_portable_code_files
+
 ADMITTED_MODULE_NAME_V1 = "_metnos_admitted_executor"
 MAXIMUM_CODE_FILE_BYTES_V1 = 4 * 1024 * 1024
+ADMITTED_EXECUTORS_ENV_V1 = "METNOS_ADMITTED_EXECUTORS_V1"
+MAXIMUM_ADMITTED_ENV_BYTES_V1 = 64 * 1024
 
 
 class AdmittedModuleError(RuntimeError):
@@ -74,20 +80,125 @@ def code_digest_of_bytes_v1(payloads) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
-def _declared_code_files_v1(manifest_path: Path) -> tuple[str, ...]:
+def _closed_code_files_v1(value: object) -> tuple[str, ...]:
     try:
-        manifest = tomllib.loads(
-            _read_exact_file_v1(manifest_path).decode("utf-8")
+        return validate_portable_code_files(value)
+    except PortableCodePathError as exc:
+        raise AdmittedModuleError("admitted_module_files_undeclared") from exc
+
+
+def _contained_file_v1(directory: Path, relative: str) -> Path:
+    """Resolve one validated relative path without crossing a link."""
+    try:
+        root_info = directory.lstat()
+    except OSError as exc:
+        raise AdmittedModuleError("admitted_module_unreadable") from exc
+    if (not stat.S_ISDIR(root_info.st_mode) or stat.S_ISLNK(root_info.st_mode)
+            or bool(getattr(root_info, "st_file_attributes", 0)
+                    & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))):
+        raise AdmittedModuleError("admitted_module_path_invalid")
+    current = directory
+    for component in relative.split("/"):
+        current = current / component
+        try:
+            info = current.lstat()
+        except OSError as exc:
+            raise AdmittedModuleError(
+                "admitted_module_unreadable", Path(relative).name,
+            ) from exc
+        if stat.S_ISLNK(info.st_mode) or bool(
+            getattr(info, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        ):
+            raise AdmittedModuleError(
+                "admitted_module_unreadable", Path(relative).name,
+            )
+    try:
+        root = directory.resolve(strict=True)
+        resolved = current.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise AdmittedModuleError(
+            "admitted_module_path_invalid", Path(relative).name,
+        ) from exc
+    return current
+
+
+@dataclass(frozen=True, slots=True)
+class AdmittedExecutorRecordV1:
+    """Bounded record projected by the parent from its verified catalogue."""
+
+    name: str
+    manifest_path: Path
+    code_path: Path
+    digest: str
+    code_files: tuple[str, ...]
+
+
+def encode_admitted_executor_records_v1(executors) -> str:
+    """Encode only fields already authenticated in the parent catalogue."""
+    records = []
+    names: set[str] = set()
+    for executor in executors:
+        name = str(getattr(executor, "name", "") or "")
+        if (not name or not name.isascii() or len(name) > 128
+                or name in names):
+            raise AdmittedModuleError("admitted_module_record_invalid")
+        names.add(name)
+        code_files = _closed_code_files_v1(
+            getattr(executor, "code_files", ()),
         )
-    except (AdmittedModuleError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
-        raise AdmittedModuleError("admitted_module_manifest_unreadable") from exc
-    section = manifest.get("code")
-    files = section.get("files") if isinstance(section, dict) else None
-    if not isinstance(files, list) or not files or not all(
-        isinstance(item, str) and item for item in files
-    ):
-        raise AdmittedModuleError("admitted_module_files_undeclared")
-    return tuple(files)
+        manifest_path = Path(getattr(executor, "manifest_path", "") or "")
+        code_path = Path(getattr(executor, "code_path", "") or "")
+        digest = str(getattr(executor, "digest", "") or "")
+        if not manifest_path.name or not code_path.name:
+            raise AdmittedModuleError("admitted_module_record_invalid")
+        records.append({
+            "code_files": list(code_files),
+            "code_path": str(code_path),
+            "digest": digest,
+            "manifest_path": str(manifest_path),
+            "name": name,
+        })
+    encoded = json.dumps(
+        records, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
+    )
+    if len(encoded.encode("utf-8")) > MAXIMUM_ADMITTED_ENV_BYTES_V1:
+        raise AdmittedModuleError("admitted_module_record_invalid")
+    return encoded
+
+
+def runtime_admitted_executor_v1(name: str) -> AdmittedExecutorRecordV1:
+    """Read one parent-owned verified record made visible to this process."""
+    encoded = os.environ.get(ADMITTED_EXECUTORS_ENV_V1, "")
+    if not encoded or len(encoded.encode("utf-8")) > MAXIMUM_ADMITTED_ENV_BYTES_V1:
+        raise AdmittedModuleError("admitted_module_dependency_unavailable")
+    try:
+        values = json.loads(encoded)
+    except (TypeError, ValueError) as exc:
+        raise AdmittedModuleError("admitted_module_record_invalid") from exc
+    if not isinstance(values, list) or len(values) > 32:
+        raise AdmittedModuleError("admitted_module_record_invalid")
+    matches = []
+    expected = {"name", "manifest_path", "code_path", "digest", "code_files"}
+    for value in values:
+        if not isinstance(value, dict) or set(value) != expected:
+            raise AdmittedModuleError("admitted_module_record_invalid")
+        if value.get("name") == name:
+            matches.append(value)
+    if len(matches) != 1:
+        raise AdmittedModuleError("admitted_module_dependency_unavailable")
+    value = matches[0]
+    if any(not isinstance(value[key], str) for key in (
+            "name", "manifest_path", "code_path", "digest")):
+        raise AdmittedModuleError("admitted_module_record_invalid")
+    return AdmittedExecutorRecordV1(
+        name=value["name"],
+        manifest_path=Path(value["manifest_path"]),
+        code_path=Path(value["code_path"]),
+        digest=value["digest"],
+        code_files=_closed_code_files_v1(value["code_files"]),
+    )
 
 
 def load_admitted_module_v1(executor) -> ModuleType:
@@ -109,9 +220,10 @@ def load_admitted_module_v1(executor) -> ModuleType:
     directory = manifest_path.parent
     entry = Path(code_path).resolve()
 
-    declared = _declared_code_files_v1(manifest_path)
-    payloads = [_read_exact_file_v1(directory / name) for name in declared]
-    if entry != (directory / declared[0]).resolve():
+    declared = _closed_code_files_v1(getattr(executor, "code_files", ()))
+    paths = [_contained_file_v1(directory, name) for name in declared]
+    payloads = [_read_exact_file_v1(path) for path in paths]
+    if entry != paths[0].resolve(strict=True):
         raise AdmittedModuleError("admitted_module_entry_mismatch")
 
     signed = str(getattr(executor, "digest", "") or "")
@@ -126,8 +238,15 @@ def load_admitted_module_v1(executor) -> ModuleType:
         if root not in entry.parents:
             raise AdmittedModuleError("admitted_module_outside_distribution")
 
-    module = ModuleType(ADMITTED_MODULE_NAME_V1)
+    # Some standard decorators (notably ``dataclasses.dataclass``) resolve the
+    # defining module through ``sys.modules`` while the class body executes.
+    # Give this isolated load a unique identity. Executor subprocesses are
+    # bounded; retaining the module for their lifetime preserves normal Python
+    # reflection and pickling semantics without a cross-load name collision.
+    module_name = f"{ADMITTED_MODULE_NAME_V1}_{id(payloads):x}"
+    module = ModuleType(module_name)
     module.__file__ = str(entry)
+    sys.modules[module_name] = module
     try:
         # Compiled from the very bytes that were authenticated a line above:
         # re-opening the path here would reintroduce the gap this door closes.
