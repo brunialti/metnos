@@ -26,7 +26,7 @@ from executor_birth_semantic_review import (
 )
 from executor_birth_secure_file import (
     SecureFileReadError, _same_file, _win_close, _win_file_shape,
-    _win_final_path, _win_info, _win_open, _win_read,
+    _win_expected_path, _win_final_path, _win_info, _win_open, _win_read,
     read_immutable_regular_file,
 )
 
@@ -222,7 +222,7 @@ class PreprovisionedSemanticAuthority:
             if not attributes & 0x00000010 or attributes & 0x00000400:
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store type")
             final_directory = _win_final_path(handle)
-            if final_directory != os.path.normcase(os.path.abspath(self.evidence_dir)):
+            if final_directory != _win_expected_path(self.evidence_dir):
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store path")
             names = sorted((name for name in os.listdir(self.evidence_dir)
                             if name.endswith(".json")), key=lambda name: name.encode())

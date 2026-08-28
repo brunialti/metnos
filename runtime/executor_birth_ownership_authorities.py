@@ -429,6 +429,49 @@ def _ownership_public_registries_for_test(
     )
 
 
+def _root_ownership_authorities_for_test(
+    distribution_private: Ed25519PrivateKey,
+    cutover_private: Ed25519PrivateKey,
+    head_private: Ed25519PrivateKey,
+) -> RootOwnershipAuthoritiesV1:
+    """Build private authorities only for portable coordinator tests.
+
+    The productive private loader remains bound to the root-owned Linux
+    deployment directory; this seam exercises only the portable algorithms.
+    """
+    private_keys = (
+        distribution_private, cutover_private, head_private,
+    )
+    if any(not isinstance(key, Ed25519PrivateKey) for key in private_keys):
+        raise OwnershipAuthorityError(
+            "birth_ownership_authority_invalid", "private key",
+        )
+    public = _ownership_public_registries_for_test(
+        decode_ownership_registry_v1(
+            encode_ownership_registry_v1(
+                "distribution", distribution_private.public_key(),
+            ),
+            expected_kind="distribution",
+        ),
+        decode_ownership_registry_v1(
+            encode_ownership_registry_v1(
+                "cutover", cutover_private.public_key(),
+            ),
+            expected_kind="cutover",
+        ),
+        decode_ownership_registry_v1(
+            encode_ownership_registry_v1(
+                "head", head_private.public_key(),
+            ),
+            expected_kind="head",
+        ),
+    )
+    return RootOwnershipAuthoritiesV1(
+        public, distribution_private, cutover_private, head_private,
+        _PRIVATE_SEAL,
+    )
+
+
 def _managed_authority_platform_supported_v1() -> bool:
     """The G5-A administrative authority surface is Linux-only."""
     return sys.platform.startswith("linux")

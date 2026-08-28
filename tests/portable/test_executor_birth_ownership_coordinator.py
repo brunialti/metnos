@@ -21,7 +21,9 @@ from install.birth_ownership_authority_provisioner import (
 )
 from executor_birth_cutover import CurrentReceiptProof
 from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
-from executor_birth_ownership_authorities import _load_private_at_v1
+from executor_birth_ownership_authorities import (
+    _load_private_at_v1, _root_ownership_authorities_for_test,
+)
 from executor_birth_ownership_coordinator import (
     OwnershipCoordinatorError, OwnershipCoordinatorJournalV1,
     OwnershipCoordinatorStateV1, _prepare_under_maintenance_v1,
@@ -167,13 +169,26 @@ def _prepared(tmp_path):
     return journal, result
 
 
-def _authorities(tmp_path):
+def _disk_authorities(tmp_path):
     root = tmp_path / "authority-root"
     root.mkdir(mode=0o755)
     _provision_ownership_authorities_at_v1(
         root, forbidden_public_keys=(), root_owned=False,
     )
     return _load_private_at_v1(root / "authorities-v1", root_owned=False)
+
+
+def _portable_authorities():
+    names = (
+        "coordinator-distribution", "coordinator-cutover",
+        "coordinator-head",
+    )
+    return _root_ownership_authorities_for_test(*(
+        Ed25519PrivateKey.from_private_bytes(
+            hashlib.sha256(name.encode("ascii")).digest()
+        )
+        for name in names
+    ))
 
 
 def test_productive_core_stops_at_receipts_complete_and_replays(tmp_path):
@@ -295,7 +310,7 @@ def _resume_publish(journal_path, certificate_path, authority_path, queue):
 ])
 def test_process_death_resumes_from_every_certificate_boundary(tmp_path, point):
     journal, _result = _prepared(tmp_path)
-    authorities = _authorities(tmp_path)
+    authorities = _disk_authorities(tmp_path)
     authority_path = tmp_path / "authority-root" / "authorities-v1"
     certificate = tmp_path / "certificate"
     certificate.mkdir(mode=0o755)
@@ -324,7 +339,7 @@ def test_process_death_resumes_from_every_certificate_boundary(tmp_path, point):
 
 def test_signature_without_certificate_ready_is_never_adopted(tmp_path):
     journal, _result = _prepared(tmp_path)
-    authorities = _authorities(tmp_path)
+    authorities = _portable_authorities()
     certificate = tmp_path / "certificate"
     certificate.mkdir(mode=0o755)
     (certificate / "ownership-cutover-v1.sig").write_bytes(b"x" * 64)
@@ -339,7 +354,7 @@ def test_signature_without_certificate_ready_is_never_adopted(tmp_path):
 
 def test_fresh_maintenance_is_required_before_certificate_ready(tmp_path):
     journal, _result = _prepared(tmp_path)
-    authorities = _authorities(tmp_path)
+    authorities = _portable_authorities()
     certificate = tmp_path / "certificate"
     certificate.mkdir(mode=0o755)
     with pytest.raises(OwnershipCoordinatorError, match="maintenance drift"):
@@ -361,7 +376,7 @@ def test_partial_certificate_temporary_is_rebuilt_before_publication(tmp_path):
     from executor_birth_ownership_cutover import issue_ownership_cutover_certificate
 
     journal, result = _prepared(tmp_path)
-    authorities = _authorities(tmp_path)
+    authorities = _portable_authorities()
     latest = journal.load()[-1]
     key_id = next(iter(authorities.public.cutover.keys))
     _payload, signature = issue_ownership_cutover_certificate(

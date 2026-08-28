@@ -166,12 +166,38 @@ helper condivisi; il secondo giro ha concluso `P1=0`, `P2=0` e 49 prove
 pertinenti verdi. La prova decisiva resta il nuovo lavoro Windows pubblico; il
 gruppo 6 non e' iniziato.
 
+Il secondo ciclo pubblico `33182553868`, sul commit pubblico `5703a53`, ha
+confermato verdi gli altri sette lavori primari e ha ridotto il solo lavoro
+portatile Windows a quattro errori. Il log completo del lavoro `98887176342`
+ha separato due cause residue:
+
+- una lettura sicura riceveva il percorso breve NTFS `RUNNER~1`, mentre
+  l'handle Win32 restituiva correttamente lo stesso percorso in forma estesa;
+  il confronto rifiutava quindi due nomi della stessa identita';
+- tre prove portatili del coordinatore chiamavano il provisioner privato
+  Linux. Rendere quel provisioner compatibile con Windows sarebbe contrario
+  al confine gia' concordato e introdurrebbe una seconda implementazione di
+  locking e pubblicazione.
+
+La correzione candidata conserva il controllo del percorso finale: prima del
+confronto espande la forma attesa con `GetLongPathNameW`, senza seguire reparse
+point e senza indebolire le verifiche sull'handle. Le tre prove del
+coordinatore usano invece una giuntura privata in memoria per costruire tre
+autorita' reali e separate; il provisioner su disco resta Linux-only ed e'
+ancora usato dalla prova Linux di morte e ripresa fra processi.
+
+Evidenze locali della seconda correzione: 103 prove pertinenti verdi e un
+salto Linux previsto; tre celle R1 verdi; guardia normale e chiusa a zero;
+rendering dell'inventario byte-identico. La revisione indipendente del diff
+preparato ha concluso `APPROVATO`, `P1=0`, `P2=0` e 49 prove mirate verdi.
+Resta, dopo il commit, un solo nuovo ciclo pubblico Linux/Windows.
+
 Questi conteggi descrivono esecuzioni mirate parzialmente sovrapposte e non
 vanno sommati. La suite finale portatile deve essere eseguita una sola volta.
 
 ## Prossimo passo unico
 
-Registrare su `main` la correzione causale Windows, eseguire una pubblicazione
+Registrare la seconda correzione su `main`, eseguire una pubblicazione
 incrementale e richiedere tutti i lavori Linux/Windows verdi. Non avviare il
 gruppo 6.
 
