@@ -10,15 +10,16 @@ Il gruppo 5 e' chiuso. Il commit pubblico e' `a5bd396`; il ciclo GitHub Actions
 Windows. Il commit sorgente di ingresso del gruppo 6 e' `225f9437`.
 RM-0008 resta `active`; `closed_build_enforcement()` resta `False`.
 
-### Incremento G6-A completato localmente; certificazione pubblica in attesa
+### Incremento G6-A completato e certificato pubblicamente
 
 Sono completati tutti i sottoincrementi di G6-A: record storico autenticato,
 lettura produttiva a freddo della catena, sessione sigillata del blocco di
 deployment, codec di claim/disposizione/record V2, ispezione chiusa `INITIAL`
 e resolver non mutante del grafo durevole. Due revisioni indipendenti finali
-hanno approvato il diff con `P0=0`, `P1=0`, `P2=0`. Manca soltanto il commit
-pubblico e il relativo ciclo GitHub Linux/Windows; pertanto G6-A e RM-0008
-restano formalmente aperti.
+hanno approvato il diff con `P0=0`, `P1=0`, `P2=0`. Il commit pubblico finale
+e' `3a50b71`; il ciclo GitHub Actions `33206146506` ha concluso verdi nove
+lavori su nove, compreso il riepilogo bloccante, con errore zero su Linux e
+Windows. G6-A e' quindi chiuso; RM-0008 resta aperto per G6-B, G6-C e G6-D.
 
 Il codice ora:
 
@@ -44,9 +45,9 @@ sequenza, buco, duplicato, fork, testa richiesta, fotografia unica delle
 autorita', tipo produttivo, metadati, umask e ripresa dopo errore di `fsync`.
 
 La prova diretta su `192.168.1.137` non e' stata eseguita: la connessione SSH
-alla porta 22 e' scaduta. Il percorso Windows ha comunque superato la review
-dedicata; la matrice pubblica Linux/Windows resta unica e viene eseguita alla
-chiusura del gruppo 6, come stabilito dal piano.
+alla porta 22 e' scaduta. Questo non lascia un vuoto di certificazione: il
+percorso Windows ha superato la review dedicata e i lavori Windows della
+matrice pubblica finale di G6-A.
 
 ### Sottoincremento lock di G6-A completato localmente
 
@@ -127,7 +128,7 @@ concluso con successo. Questo ciclo comprende anche i sottoincrementi lock e
 codec precedenti, quindi il vecchio errore Windows del commit `e9fb5d6` non e'
 piu' un errore aperto.
 
-### Sottoincremento resolver non mutante di G6-A completato localmente
+### Sottoincremento resolver non mutante di G6-A completato e pubblicato
 
 Il resolver legge soltanto `coordinator-v1` sotto la sessione esatta del
 blocco di deployment. Non crea directory, non pubblica file, non ripara e non
@@ -154,6 +155,11 @@ restano coperte dal runner Ubuntu pubblico. Due revisioni indipendenti hanno
 concluso `P0=0`, `P1=0`, `P2=0` dopo mutanti su request pendenti, predecessore
 non concluso, migrazione legacy A→B, ottavo record, oggetti hash ostili,
 fabbricazione nominale e alias della guardia.
+
+Il commit pubblico e' `3a50b71`; il ciclo GitHub Actions `33206146506` ha
+concluso con successo tutti i nove lavori, inclusi portabilita', concorrenza,
+identita' ACL reali e suite completa su Windows, le corrispondenti prove Linux
+e il riepilogo finale. Non rimangono errori pubblici aperti per G6-A.
 
 ## Analisi del gruppo 6
 
@@ -286,11 +292,11 @@ incrementi successivi restano chiusi fino al criterio di uscita di G6-A.
 
 ## Prossimo passo unico
 
-Pubblicare l'incremento finale G6-A e pretendere errore zero nella matrice
-GitHub Linux/Windows. Solo dopo quel risultato chiudere G6-A, riesaminare G6-B
-per eliminare prove duplicate senza ridurre i rischi coperti e iniziare il
-ricevitore/assemblatore firmato. Non esporre ancora il percorso che pubblica
-claim, disposizione o `PREPARED` e non aprire in parallelo G6-C o G6-D.
+G6-A e' chiuso con errore zero. Prima di modificare il codice, riesaminare G6-B
+per eliminare prove duplicate senza ridurre i rischi coperti; poi implementare
+soltanto il ricevitore/assemblatore firmato e la relativa installazione della
+release. Non esporre ancora il percorso che pubblica claim, disposizione o
+`PREPARED` e non aprire in parallelo G6-C o G6-D.
 
 ## Regole operative
 

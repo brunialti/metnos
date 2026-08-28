@@ -5,8 +5,8 @@
 > dossier risolti nel §21 · prove in
 > `internal/reports/rm0008-adversarial-evidence-20260825.md` · implementazione
 > autorizzata e in corso: gruppi 1-5 della ripresa (§23.6) completati e verdi
-> su Linux/Windows; G6-A completato localmente e in attesa della matrice
-> pubblica finale; G6-B/G6-C/G6-D e F4-F6 non ancora completati
+> su Linux/Windows; G6-A completato e certificato pubblicamente con errore
+> zero; G6-B/G6-C/G6-D e F4-F6 non ancora completati
 
 ## 1. Obiettivo
 
