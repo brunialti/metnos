@@ -516,3 +516,132 @@ POSIX_SCENARIO_ONLY_V1 = (
     "Windows publication and the group-3 handoff are certified end to end "
     "by test_group3_windows_publication.py"
 )
+
+
+def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
+    """Cross the real executor process with one authenticated code mount."""
+    import json
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+
+    import pytest
+    import sandbox
+    from admitted_module_v1 import (
+        ADMITTED_EXECUTORS_ENV_V1,
+        admitted_code_dependency_projection_v1,
+        code_digest_of_bytes_v1,
+    )
+
+    dependency_root = tmp_path / "dependency"
+    consumer_root = tmp_path / "consumer"
+    runtime_root = tmp_path / "runtime"
+    dependency_root.mkdir()
+    consumer_root.mkdir()
+    runtime_root.mkdir()
+    source_runtime = Path(sandbox.__file__).resolve().parent
+    for name in ("admitted_module_v1.py", "code_file_paths.py"):
+        (runtime_root / name).write_bytes((source_runtime / name).read_bytes())
+    dependency_payload = (
+        b"def invoke(args):\n"
+        b"    return {'ok': True, 'dependency': 'authenticated'}\n"
+    )
+    consumer_payload = (
+        b"import json, os, sys\n"
+        b"sys.path.insert(0, os.environ['METNOS_RUNTIME'])\n"
+        b"from admitted_module_v1 import (load_admitted_module_v1, "
+        b"runtime_admitted_executor_v1)\n"
+        b"def invoke(args):\n"
+        b"    record = runtime_admitted_executor_v1('read_dependency')\n"
+        b"    return load_admitted_module_v1(record).invoke(args)\n"
+        b"if __name__ == '__main__':\n"
+        b"    print(json.dumps(invoke(json.loads(sys.stdin.read() or '{}'))))\n"
+    )
+    dependency_code = dependency_root / "read_dependency.py"
+    consumer_code = consumer_root / "read_consumer.py"
+    dependency_code.write_bytes(dependency_payload)
+    consumer_code.write_bytes(consumer_payload)
+
+    def executor(name: str, root: Path, code: Path, payload: bytes, **values):
+        fields = {
+            "name": name,
+            "capabilities": [],
+            "code_path": code,
+            "manifest_path": root / "manifest.toml",
+            "code_files": (code.name,),
+            "code_dependencies": (),
+            "digest": code_digest_of_bytes_v1([payload]),
+        }
+        fields.update(values)
+        return SimpleNamespace(**fields)
+
+    dependency = executor(
+        "read_dependency", dependency_root, dependency_code,
+        dependency_payload,
+    )
+    consumer = executor(
+        "read_consumer", consumer_root, consumer_code, consumer_payload,
+        code_dependencies=("read_dependency",),
+    )
+    catalog = SimpleNamespace(
+        get=lambda name: dependency if name == dependency.name else None,
+    )
+    encoded, roots = admitted_code_dependency_projection_v1(consumer, catalog)
+    original_sandbox_file = sandbox.__file__
+    try:
+        # A GitHub systemd service runs as root while its checkout lives below
+        # the runner's protected home.  Model the supported relocatable
+        # installation under this test's private /tmp root so Bubblewrap sees
+        # the exact runtime modules without widening host-directory access.
+        sandbox.__file__ = str(runtime_root / "sandbox.py")
+        command = sandbox.wrap_command(
+            consumer, [sys.executable, str(consumer_code)], extra_ro=roots,
+        )
+    finally:
+        sandbox.__file__ = original_sandbox_file
+    environment = os.environ.copy()
+    environment[ADMITTED_EXECUTORS_ENV_V1] = encoded
+    environment["METNOS_RUNTIME"] = str(runtime_root)
+    process = subprocess.run(
+        command, input="{}", capture_output=True, text=True, timeout=15,
+        env=environment, check=False,
+    )
+
+    sandbox_denied = (
+        sys.platform.startswith("linux")
+        and process.returncode != 0
+        and "bwrap:" in process.stderr
+        and any(message in process.stderr for message in (
+            "Operation not permitted", "Permission denied",
+        ))
+    )
+    if sandbox_denied:
+        if os.environ.get("METNOS_REQUIRE_REAL_EXECUTOR_SANDBOX") == "1":
+            pytest.fail(
+                "delegated Linux executor sandbox unavailable: "
+                + process.stderr.strip()
+            )
+        pytest.skip("non-delegated host denied Bubblewrap namespace creation")
+    if sys.platform.startswith("linux"):
+        assert sandbox.bwrap_available(), "Linux certification requires bubblewrap"
+        if not sandbox.sandbox_disabled():
+            assert command[0].endswith("bwrap")
+            mount = [
+                "--ro-bind", str(dependency_root), str(dependency_root),
+            ]
+            runtime_mount = [
+                "--ro-bind", str(runtime_root), str(runtime_root),
+            ]
+            assert any(
+                command[index:index + len(mount)] == mount
+                for index in range(len(command) - len(mount) + 1)
+            )
+            assert any(
+                command[index:index + len(runtime_mount)] == runtime_mount
+                for index in range(len(command) - len(runtime_mount) + 1)
+            )
+            assert str(source_runtime) not in command
+            assert "--unshare-net" in command
+    assert process.returncode == 0, process.stderr
+    result = json.loads(process.stdout)
+    assert result == {"ok": True, "dependency": "authenticated"}

@@ -129,27 +129,48 @@ bassa: il runner ordinario GitHub non possiede la delega necessaria per creare
 la sandbox Bubblewrap completa. L'ipotesi `network:http` e' superata e viene
 rimossa.
 
-La correzione finale non indebolisce il confine e non modifica il prodotto.
-Nella suite Linux ordinaria la sola prova reale dichiara non applicabile
-l'esecuzione quando Bubblewrap restituisce uno dei due dinieghi di namespace.
-Lo stesso nodo di prova viene poi rieseguito obbligatoriamente nel servizio
-Linux delegato gia' usato dalla prova Birth. In quel servizio la variabile
-`METNOS_REQUIRE_REAL_EXECUTOR_SANDBOX=1` trasforma ogni indisponibilita' in un
-errore. La prova conserva l'executor senza rete, richiede `--unshare-net` e
-verifica anche il montaggio esatto `--ro-bind` della dipendenza. Windows resta
-eseguito dalla suite generale sul runner Windows autorevole. La verifica locale
-mirata produce una prova verde e una sola non applicabile per il confine Linux
-non delegato.
+La correzione seguente e' stata salvata nel commit sorgente `ff218021`,
+pubblicata come `9d5c711` e verificata nel ciclo `33160084022`. Il ciclo ha
+fornito due fatti distinti. La suite Linux generale e' verde con 325 prove
+verdi e 22 non applicabili. Nel servizio delegato le due prove Birth sono
+verdi, mentre la prova G4-A raggiunge Bubblewrap ma non puo' montare
+`/home/runner/work/metnos/metnos/runtime`: il servizio root non puo' attraversare
+quel percorso protetto dopo l'apertura della mappa utente.
 
-L'intera suite portatile locale, eseguita con le quattro radici di stato
-isolate dopo questa correzione finale, ha **325 prove verdi, 22 non applicabili
-e zero errori**. Il flusso GitHub e' sintatticamente valido.
+Lo stesso ciclo ha inoltre confermato che il flusso GitHub e' parte della base
+2A congelata. I sei lavori posseduti, e di conseguenza anche il lavoro Windows
+generale, rifiutano qualsiasi variazione con
+`frozen acceptance baseline differs from the pre-fix commit`. Il flusso non
+deve essere modificato. Il suo contenuto originale e il digest congelato
+`3e953be12480be9a4e6dfa19812a053492b5e26e155c9ecb7b749c29bde135e9`
+sono stati ripristinati.
+
+La correzione finale riusa senza modificarlo il passo delegato esistente, che
+esegue gia' tutto `test_executor_birth_runner_linux_real.py`. La prova G4-A e'
+stata aggiunta a quel file e chiama lo stesso helper usato dalla cella
+portatile. Quando il passo esistente imposta
+`METNOS_REQUIRE_REAL_BIRTH_LINUX=1`, la nuova prova rende obbligatoria anche la
+sandbox executor e trasforma ogni indisponibilita' in errore.
+
+L'helper prepara sotto la propria radice temporanea una copia byte-per-byte dei
+soli `admitted_module_v1.py` e `code_file_paths.py`, quindi usa la capacita'
+relocabile gia' prevista da `sandbox.wrap_command()`. Bubblewrap non deve piu'
+attraversare la home protetta del runner. Non viene concesso alcun percorso
+host aggiuntivo: la prova richiede `--unshare-net`, il montaggio `--ro-bind`
+della dipendenza, il montaggio `--ro-bind` della runtime temporanea e l'assenza
+del percorso runtime sorgente dal comando. Windows resta eseguito dalla suite
+generale sul runner Windows autorevole.
+
+La verifica locale mirata e' verde con sandbox disabilitata; con la sandbox
+ordinaria produce una prova verde e la sola non applicabilita' attesa sul
+confine Linux non delegato. L'intera suite portatile isolata e' verde con 325
+prove verdi, 23 non applicabili e zero errori.
 
 ## Prossimo passo unico
 
-Salvare la correzione della prova e del flusso GitHub, pubblicare un incremento
-su `main` e attendere tutti i lavori verdi. Non iniziare G4-B+C prima di quel
-risultato.
+Salvare la correzione delle prove con il flusso GitHub congelato e invariato,
+pubblicare un incremento su `main` e attendere tutti i lavori verdi. Non
+iniziare G4-B+C prima di quel risultato.
 
 Non rigenerare ancora l'inventario. Non toccare
 `closed_build_enforcement()`: deve restare `False` per tutto il gruppo 4.
