@@ -51,6 +51,7 @@ HEAD_SIGNATURE_DOMAIN = b"metnos.executor-birth.ownership-head/v1\0"
 HEAD_PURPOSE = "ownership_head_v1"
 REQUIRED_HEAD_MAGIC = b"metnos-ownership-required-head-v1\0"
 REQUIRED_HEAD_BASENAME = "required-head-v1.bin"
+REQUIRED_HEAD_LOCK_BASENAME = ".required-head-v1.lock"
 MAX_HEAD_BYTES = 16 * 1024
 MAX_REQUIRED_HEAD_BYTES = len(REQUIRED_HEAD_MAGIC) + 4 + MAX_HEAD_BYTES + 64
 MAX_BUILD_BYTES = 16 * 1024 * 1024
@@ -102,6 +103,53 @@ class VerifiedOwnershipChain:
     @property
     def required_head(self) -> OwnershipHead:
         return self.heads[-1]
+
+
+_TEST_INITIAL_CHAIN_STATE_SEAL_V1 = object()
+
+
+def _build_initial_chain_state_factory_v1():
+    seal = object()
+
+    @dataclass(frozen=True, slots=True)
+    class InitialOwnershipChainStateV1:
+        root: Path
+        _seal: object
+
+        def __post_init__(self) -> None:
+            if (
+                self._seal is not seal
+                or self.root != DEFAULT_OWNERSHIP_CHAIN_ROOT_V1
+            ):
+                raise OwnershipChainError(
+                    "birth_ownership_recovery_required",
+                    "initial state authority",
+                )
+
+    def mint(root: Path):
+        return InitialOwnershipChainStateV1(root, seal)
+
+    return InitialOwnershipChainStateV1, mint
+
+
+(
+    _InitialOwnershipChainStateV1,
+    _mint_initial_ownership_chain_state_v1,
+) = _build_initial_chain_state_factory_v1()
+del _build_initial_chain_state_factory_v1
+
+
+@dataclass(frozen=True, slots=True)
+class _InitialOwnershipChainStateForTestV1:
+    root: Path
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if self._seal is not _TEST_INITIAL_CHAIN_STATE_SEAL_V1:
+            raise OwnershipChainError(
+                "birth_ownership_recovery_required",
+                "initial state authority",
+            )
 
 
 def _canonical(value: object) -> bytes:
@@ -252,7 +300,7 @@ def decode_required_head(
 @contextmanager
 def _required_head_lock(root: Path):
     """Serialize the read/compare/replace CAS across cooperating processes."""
-    path = root / ".required-head-v1.lock"
+    path = root / REQUIRED_HEAD_LOCK_BASENAME
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(path, flags, 0o600)
@@ -1464,6 +1512,242 @@ class _OwnershipChainStoreForTest(OwnershipChainStore):
             authenticate_record=authenticate, verify_live_record=verify_live,
             for_test=True,
         )
+
+
+def _chain_inventory_snapshot_v1(root: Path) -> tuple[object, ...]:
+    try:
+        root_names = tuple(sorted(item.name for item in root.iterdir()))
+        object_names = tuple(
+            tuple(sorted(item.name for item in (root / name).iterdir()))
+            for name in ("builds-v1", "cutovers-v1", "heads-v1")
+        )
+        anchor_names = tuple(sorted(
+            item.name for item in root.parent.iterdir()
+            if item.name.lstrip(".").startswith("ownership-cutover-v1.")
+        ))
+    except OSError as exc:
+        raise OwnershipChainError(
+            "birth_ownership_recovery_required",
+            "chain inventory",
+        ) from exc
+    return root_names, object_names, anchor_names
+
+
+def _require_required_head_lock_metadata_v1(
+    root: Path, *, root_owned: bool,
+) -> None:
+    lock_path = root / REQUIRED_HEAD_LOCK_BASENAME
+    try:
+        info = lock_path.lstat()
+        marker = _safe_read(lock_path, 1)
+    except Exception as exc:
+        raise OwnershipChainError(
+            "birth_ownership_recovery_required",
+            "required lock metadata",
+        ) from exc
+    invalid = (
+        not stat.S_ISREG(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+        or info.st_nlink != 1
+        or info.st_size != 1
+        or marker != b"\0"
+    )
+    if os.name != "nt":
+        expected_owner = (0, 0) if root_owned else (os.geteuid(), os.getegid())
+        invalid = invalid or (
+            stat.S_IMODE(info.st_mode) != 0o600
+            or (info.st_uid, info.st_gid) != expected_owner
+        )
+    if invalid:
+        raise OwnershipChainError(
+            "birth_ownership_recovery_required",
+            "required lock metadata",
+        )
+
+
+def _inspect_ownership_chain_state_core_v1(
+    store: OwnershipChainStore, *, for_test: bool,
+) -> (
+    _InitialOwnershipChainStateV1
+    | _InitialOwnershipChainStateForTestV1
+    | VerifiedOwnershipChain
+):
+    if type(for_test) is not bool:
+        raise OwnershipChainError(
+            "birth_ownership_recovery_required",
+            "inspection mode",
+        )
+    if for_test:
+        if type(store) is not _OwnershipChainStoreForTest:
+            raise OwnershipChainError(
+                "birth_ownership_recovery_required",
+                "test store",
+            )
+    else:
+        from executor_birth_ownership_authorities import (
+            OwnershipPublicRegistriesV1, _FIXED_PUBLIC_SNAPSHOT_SEAL,
+            _FixedOwnershipPublicSnapshotV1, _PUBLIC_SEAL,
+        )
+
+        if type(store) is not OwnershipChainStore:
+            raise OwnershipChainError(
+                "birth_ownership_recovery_required",
+                "productive store",
+            )
+        try:
+            snapshot = store._fixed_authority_snapshot
+            if type(snapshot) is not _FixedOwnershipPublicSnapshotV1:
+                raise TypeError("unexpected authority snapshot")
+            authorities = snapshot.public
+            exact_product_store = (
+                store.root is DEFAULT_OWNERSHIP_CHAIN_ROOT_V1
+                and snapshot._seal is _FIXED_PUBLIC_SNAPSHOT_SEAL
+                and type(authorities) is OwnershipPublicRegistriesV1
+                and authorities._seal is _PUBLIC_SEAL
+                and store._authorities is authorities
+                and store.distribution_registry is authorities.distribution
+                and store.cutover_registry is authorities.cutover
+                and store.head_registry is authorities.head
+            )
+        except Exception:
+            exact_product_store = False
+        if not exact_product_store:
+            raise OwnershipChainError(
+                "birth_ownership_recovery_required",
+                "productive store",
+            )
+    root = store.root
+    if for_test:
+        try:
+            _safe_directory(root)
+            for name in ("builds-v1", "cutovers-v1", "heads-v1"):
+                _safe_directory(root / name)
+        except Exception as exc:
+            raise OwnershipChainError(
+                "birth_ownership_recovery_required",
+                "chain metadata",
+            ) from exc
+    else:
+        try:
+            _require_product_chain_metadata_v1(root)
+        except Exception as exc:
+            raise OwnershipChainError(
+                "birth_ownership_recovery_required",
+                "chain metadata",
+            ) from exc
+
+    first = _chain_inventory_snapshot_v1(root)
+    root_names, object_names, anchor_names = first
+    expected_anchor_names = {PAYLOAD_BASENAME, SIGNATURE_BASENAME}
+    anchor_name_set = set(anchor_names)
+    if anchor_name_set - expected_anchor_names:
+        raise OwnershipChainError(
+            "birth_ownership_recovery_required",
+            "unexpected anchor object",
+        )
+    anchor_payload = PAYLOAD_BASENAME in anchor_name_set
+    anchor_signature = SIGNATURE_BASENAME in anchor_name_set
+    allowed_root_names = {
+        "builds-v1", "cutovers-v1", "heads-v1", REQUIRED_HEAD_BASENAME,
+        REQUIRED_HEAD_LOCK_BASENAME,
+    }
+    if set(root_names) - allowed_root_names:
+        raise OwnershipChainError(
+            "birth_ownership_recovery_required",
+            "unexpected chain object",
+        )
+    required_present = REQUIRED_HEAD_BASENAME in root_names
+    required_lock_present = REQUIRED_HEAD_LOCK_BASENAME in root_names
+    if required_lock_present:
+        _require_required_head_lock_metadata_v1(
+            root, root_owned=not for_test,
+        )
+    any_chain_object = any(object_names)
+    completely_empty = (
+        not required_present
+        and not required_lock_present
+        and not any_chain_object
+        and not anchor_payload
+        and not anchor_signature
+    )
+    if completely_empty:
+        if for_test:
+            try:
+                _safe_directory(root)
+                for name in ("builds-v1", "cutovers-v1", "heads-v1"):
+                    _safe_directory(root / name)
+            except Exception as exc:
+                raise OwnershipChainError(
+                    "birth_ownership_recovery_required",
+                    "chain metadata",
+                ) from exc
+        else:
+            try:
+                _require_product_chain_metadata_v1(root)
+            except Exception as exc:
+                raise OwnershipChainError(
+                    "birth_ownership_recovery_required",
+                    "chain metadata",
+                ) from exc
+        if _chain_inventory_snapshot_v1(root) != first:
+            raise OwnershipChainError(
+                "birth_ownership_recovery_required",
+                "chain inventory changed",
+            )
+        if for_test:
+            return _InitialOwnershipChainStateForTestV1(
+                root, _TEST_INITIAL_CHAIN_STATE_SEAL_V1,
+            )
+        return _mint_initial_ownership_chain_state_v1(root)
+
+    if not (anchor_payload and anchor_signature and required_present):
+        raise OwnershipChainError(
+            "birth_ownership_recovery_required",
+            "partial chain",
+        )
+    try:
+        return (
+            store._read_required_chain_cold_for_test()
+            if for_test
+            else store.read_required_chain_cold_v1()
+        )
+    except Exception as exc:
+        raise OwnershipChainError(
+            "birth_ownership_recovery_required",
+            "cold chain",
+        ) from exc
+
+
+def inspect_ownership_chain_state_v1() -> (
+    _InitialOwnershipChainStateV1 | VerifiedOwnershipChain
+):
+    """Inspect the fixed product chain without creating or repairing state."""
+    _require_linux_product_v1()
+    try:
+        store = OwnershipChainStore()
+    except Exception as exc:
+        raise OwnershipChainError(
+            "birth_ownership_recovery_required",
+            "productive store",
+        ) from exc
+    if type(store) is not OwnershipChainStore:
+        raise OwnershipChainError(
+            "birth_ownership_recovery_required",
+            "productive store",
+        )
+    return _inspect_ownership_chain_state_core_v1(store, for_test=False)
+
+
+def _inspect_ownership_chain_state_for_test_v1(
+    store: _OwnershipChainStoreForTest,
+) -> _InitialOwnershipChainStateForTestV1 | VerifiedOwnershipChain:
+    if type(store) is not _OwnershipChainStoreForTest:
+        raise OwnershipChainError(
+            "birth_ownership_recovery_required",
+            "test store",
+        )
+    return _inspect_ownership_chain_state_core_v1(store, for_test=True)
 
 
 __all__ = [

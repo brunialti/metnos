@@ -285,6 +285,26 @@ def test_private_deployment_lock_state_cannot_escape_boundary(
     assert "store_write_outside_boundary" in _codes(check(facts, inventory))
 
 
+@pytest.mark.parametrize("api", (
+    "_InitialOwnershipChainStateV1",
+    "_inspect_ownership_chain_state_core_v1",
+    "_mint_initial_ownership_chain_state_v1",
+))
+def test_private_initial_chain_authority_cannot_escape_boundary(
+    tmp_path: Path, api: str,
+) -> None:
+    facts = _scan(
+        tmp_path,
+        "from executor_birth_ownership_chain import " + api + "\n"
+        "def mutate(root):\n"
+        "    return " + api + "\n",
+    )
+    inventory = _inventory(facts, {"mutate": "operational_producer"})
+
+    assert _fact(facts, "mutate").capabilities == ("store_write",)
+    assert "store_write_outside_boundary" in _codes(check(facts, inventory))
+
+
 def test_operational_sign_is_found_through_a_local_helper(tmp_path: Path) -> None:
     facts = _scan(
         tmp_path,

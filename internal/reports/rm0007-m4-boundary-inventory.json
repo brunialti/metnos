@@ -1662,6 +1662,36 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "_inspect_ownership_chain_state_core_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership initial-state authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "_inspect_ownership_chain_state_for_test_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "private portable ownership initial-state test seam",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "inspect_ownership_chain_state_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership initial-state authority",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/executor_birth_ownership_coordinator.py",
       "scope": "OwnershipCoordinatorJournalV1.append",
       "role": "store_owner",
@@ -3221,26 +3251,29 @@
       "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
       "runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher._persist_current_reattestation",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
-      "runtime/executor_birth_ownership_chain.py:_OwnershipChainStoreForTest._initialize_with_authorities",
-      "runtime/executor_birth_ownership_chain.py:_ensure_exact_directory_v1",
-      "runtime/executor_birth_ownership_chain.py:_ensure_product_directory_v1",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_cutover",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_head",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.initialize",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.update_required_head",
+      "runtime/executor_birth_ownership_chain.py:_OwnershipChainStoreForTest._initialize_with_authorities",
+      "runtime/executor_birth_ownership_chain.py:_ensure_exact_directory_v1",
+      "runtime/executor_birth_ownership_chain.py:_ensure_product_directory_v1",
+      "runtime/executor_birth_ownership_chain.py:_inspect_ownership_chain_state_core_v1",
+      "runtime/executor_birth_ownership_chain.py:_inspect_ownership_chain_state_for_test_v1",
       "runtime/executor_birth_ownership_chain.py:_replace_required_pointer",
       "runtime/executor_birth_ownership_chain.py:_required_head_lock",
+      "runtime/executor_birth_ownership_chain.py:inspect_ownership_chain_state_v1",
       "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.append",
       "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",
       "runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1",
       "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete",
+      "runtime/executor_birth_ownership_coordinator.py:_decode_record",
+      "runtime/executor_birth_ownership_coordinator.py:_decode_record_v2",
       "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_at_v1",
       "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_for_test_v1",
       "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_v1",
-      "runtime/executor_birth_ownership_coordinator.py:_decode_record",
-      "runtime/executor_birth_ownership_coordinator.py:_decode_record_v2",
       "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
       "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",
       "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1"

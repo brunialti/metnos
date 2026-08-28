@@ -15,9 +15,10 @@ RM-0008 resta `active`; `closed_build_enforcement()` resta `False`.
 E' completato il primo sottoincremento di G6-A: record storico autenticato e
 lettura produttiva a freddo della catena. E' completata anche la sessione
 sigillata del blocco di deployment. Sono completati inoltre i codec di claim,
-disposizione legacy e record V2. Non sono ancora implementati i lettori
-compositi, il resolver per transazione e l'ispezione chiusa dello stato
-iniziale della catena; pertanto G6-A e RM-0008 restano aperti.
+disposizione legacy e record V2. L'ispezione chiusa dello stato iniziale della
+catena e' implementata e attende il verdetto conclusivo dei due revisori. Non
+sono ancora implementati i lettori compositi e il resolver per transazione;
+pertanto G6-A e RM-0008 restano aperti.
 
 Il codice ora:
 
@@ -93,6 +94,32 @@ pubblicano claim, disposizione o `PREPARED`. Le prove definitive di codec,
 lock e guardia hanno dato `119 passed`, con diff pulito. Due revisioni
 indipendenti hanno concluso `P1=0`, `P2=0`. Il prossimo incremento deve
 aggiungere soltanto letture non mutanti, inventario completo e resolver.
+
+### Sottoincremento ispezione `INITIAL` di G6-A in verifica
+
+La nuova ispezione non crea directory, file o riparazioni. Restituisce una
+capacita' produttiva `INITIAL` soltanto sulla radice fissa, dopo due fotografie
+identiche di directory vuote e assenza completa di ancora, puntatore, lock,
+oggetti e temporanei correlati. Qualunque prefisso parziale o ambiguo usa
+`birth_ownership_recovery_required`; una catena presente viene sempre delegata
+alla lettura fredda e un suo errore non ripiega mai su `INITIAL`.
+
+Il tipo produttivo usa un sigillo chiuso in una closure. Tipo, minter e nucleo
+di ispezione sono classificati dalla guardia come autorita' privilegiate. Il
+nucleo verifica direttamente tipo nominale, radice fissa e identita' della
+fotografia delle autorita' e dei tre registri, per impedire che una chiamata
+privata salti il costruttore produttivo. La seam portabile resta di tipo
+distinto. Il lock persistente viene accettato nel solo percorso di catena
+completa dopo verifica di tipo, link, dimensione, marker e, su POSIX, modo e
+proprietario.
+
+Le prove definitive danno `122 passed` su catena e guardia, mentre la guardia
+reale `--birth-closed` e `git diff --check` sono verdi. I mutanti coprono
+temporanei dell'ancora validi e malformati, variazione fra le due fotografie,
+modo, proprietario, hardlink, marker e dimensione del lock, fabbricazione della
+capacita', chiamata diretta al nucleo, accessi ostili, assenza di ripiego e
+diniego Windows prima di I/O. I due riesami finali hanno concluso `P1=0` e
+`P2=0`.
 
 ## Analisi del gruppo 6
 
