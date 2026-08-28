@@ -25,6 +25,19 @@ _HASH_A = "sha256:" + "1" * 64
 _PYTHON = "/usr/bin/python3"
 _SYSTEMCTL = "/usr/bin/systemctl"
 
+_PUBLIC_EXPORT_OMITTED_ENTRYPOINTS = {
+    "deploy/backup_nas.sh",
+    "deploy/run_prompts_translator.sh",
+    "scripts/migrate-syspath-to-package.py",
+    "scripts/rename-myclaw-to-metnos.sh",
+}
+_PUBLIC_EXPORT_OMITTED_UNITS = {
+    "metnos-backup.service",
+    "metnos-backup.timer",
+    "metnos-prompts-translator.service",
+    "metnos-prompts-translator.timer",
+}
+
 
 def _has_python_main_guard(path: Path) -> bool:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -182,7 +195,11 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
         )
         and (path.suffix == ".sh" or _has_python_main_guard(path))
     }
-    assert repository_bindings == discovered_entrypoints
+    complete_source_tree = (root / "scripts/export-public.sh").is_file()
+    assert discovered_entrypoints <= repository_bindings
+    assert repository_bindings - discovered_entrypoints == (
+        set() if complete_source_tree else _PUBLIC_EXPORT_OMITTED_ENTRYPOINTS
+    )
 
     from executor_birth_maintenance_units import (
         CONTRACT_CUTOVER_UNITS, MAINTENANCE_TARGETS_V1,
@@ -231,7 +248,12 @@ def test_current_unit_directives_have_an_explicit_codec_decision() -> None:
         if binding.kind in {"user_unit", "system_unit"}
         and binding.locator not in candidate
     }
-    assert set(observed) - set(candidate) == set(legacy_unit_owners)
+    observed_legacy_units = set(observed) - set(candidate)
+    assert observed_legacy_units <= set(legacy_unit_owners)
+    assert set(legacy_unit_owners) - observed_legacy_units == (
+        set() if (root / "scripts/export-public.sh").is_file()
+        else _PUBLIC_EXPORT_OMITTED_UNITS
+    )
     assert set(legacy_unit_owners.values()) == {"gated_entrypoint"}
     missing = {
         (unit_name, section, name)
