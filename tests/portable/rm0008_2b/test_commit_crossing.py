@@ -18,7 +18,7 @@ from executor_birth_commit_publisher import BirthCommitFactsV1
 from . import support
 
 pytestmark = pytest.mark.skipif(
-    os.name == "nt", reason=support.WINDOWS_BLOCKER_V1
+    os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1
 )
 
 DIGEST = "sha256:" + "3" * 64

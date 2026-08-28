@@ -11,7 +11,7 @@ from . import installed_provisioner_proof_v1 as proof
 from . import support
 
 pytestmark = pytest.mark.skipif(
-    os.name == "nt", reason=support.WINDOWS_BLOCKER_V1
+    os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1
 )
 
 

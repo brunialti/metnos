@@ -23,7 +23,7 @@ from install.birth_authority_provisioner import (
 from . import support
 
 pytestmark = pytest.mark.skipif(
-    os.name == "nt", reason=support.WINDOWS_BLOCKER_V1
+    os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1
 )
 
 EXPECTED_FIELDS = {
