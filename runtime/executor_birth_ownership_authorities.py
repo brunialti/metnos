@@ -414,6 +414,23 @@ _PUBLIC_SEAL = object()
 _PRIVATE_SEAL = object()
 
 
+@dataclass(frozen=True, slots=True)
+class _FixedOwnershipPublicSnapshotV1:
+    public: OwnershipPublicRegistriesV1
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _FIXED_PUBLIC_SNAPSHOT_SEAL
+            or not isinstance(self.public, OwnershipPublicRegistriesV1)
+            or self.public._seal is not _PUBLIC_SEAL
+        ):
+            raise OwnershipAuthorityError("birth_ownership_authority_untrusted")
+
+
+_FIXED_PUBLIC_SNAPSHOT_SEAL = object()
+
+
 def _ownership_public_registries_for_test(
     distribution: DistributionRegistry,
     cutover: OwnershipCutoverRegistry,
@@ -590,6 +607,13 @@ def load_ownership_public_registries_v1() -> OwnershipPublicRegistriesV1:
     )
     _require_public_keys_disjoint_v1(loaded, _birth_public_keys_v1())
     return loaded
+
+
+def _load_fixed_ownership_public_snapshot_v1() -> _FixedOwnershipPublicSnapshotV1:
+    """Seal one all-domain snapshot obtained through the fixed cold loader."""
+    return _FixedOwnershipPublicSnapshotV1(
+        load_ownership_public_registries_v1(), _FIXED_PUBLIC_SNAPSHOT_SEAL,
+    )
 
 
 def load_root_ownership_authorities_v1() -> RootOwnershipAuthoritiesV1:

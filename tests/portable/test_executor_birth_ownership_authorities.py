@@ -19,7 +19,7 @@ from executor_birth_ownership_authorities import (
     _load_public_at_v1,
     decode_ownership_registry_v1, encode_ownership_registry_v1,
 )
-from executor_birth_ownership_chain import OwnershipChainStore
+from executor_birth_ownership_chain import _OwnershipChainStoreForTest
 from executor_birth_ownership_cutover import OwnershipCutoverRegistry
 from install.birth_ownership_authority_provisioner import (
     _provision_ownership_authorities_at_v1,
@@ -157,7 +157,9 @@ def test_provisioner_cold_loads_three_distinct_authorities_and_exact_retry(
     monkeypatch.setattr(
         authority_module, "load_ownership_public_registries_v1", load_cold,
     )
-    chain = OwnershipChainStore.initialize(root / "chain-v1")
+    chain = _OwnershipChainStoreForTest._initialize_with_authorities(
+        root / "chain-v1", cold.public,
+    )
     repeated = _provision_ownership_authorities_at_v1(
         root, forbidden_public_keys=(), root_owned=False,
     )
@@ -170,7 +172,7 @@ def test_provisioner_cold_loads_three_distinct_authorities_and_exact_retry(
     }
     assert len(raw) == 3
     assert repeated.public == cold.public
-    assert cold_loads == [True]
+    assert cold_loads == []
     assert chain.cutover_registry is cold.public.cutover
     assert chain.head_registry is cold.public.head
     for basename in _PRIVATE_BASENAMES.values():

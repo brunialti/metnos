@@ -23,11 +23,11 @@ from typing import Callable, Iterator, Mapping
 
 from executor_birth_cutover import CurrentReceiptProof
 from executor_birth_distribution_manifest import (
-    VerifiedDistribution, is_verified_distribution, verify_distribution_manifest,
+    VerifiedDistribution, is_verified_distribution,
+    verify_current_installation_distribution_v1,
 )
 from executor_birth_ownership_authorities import (
     DEFAULT_OWNERSHIP_ROOT_V1, RootOwnershipAuthoritiesV1,
-    load_root_ownership_authorities_v1,
 )
 from executor_birth_ownership_cutover import (
     MAX_PAYLOAD_BYTES, PAYLOAD_BASENAME, SIGNATURE_BASENAME,
@@ -716,14 +716,12 @@ def prepare_ownership_cutover_v1(
     if not is_verified_distribution(distribution):
         raise OwnershipCoordinatorError("birth_ownership_distribution_untrusted")
     with _deployment_lock_v1():
-        authorities = load_root_ownership_authorities_v1()
-        verified = verify_distribution_manifest(
+        verified = verify_current_installation_distribution_v1(
             distribution.encoded, distribution.signature,
-            registry=authorities.public.distribution,
         )
-        if not _same_distribution(_prepared_record(
-            distribution, previous_cutover_id=None,
-        ), verified):
+        if not _same_distribution(
+            _prepared_record(distribution, previous_cutover_id=None), verified,
+        ):
             raise OwnershipCoordinatorError("birth_ownership_distribution_changed")
         from contract_cutover_guard import (
             _verify_store_only_catalog_locked, contract_cutover_guard,
