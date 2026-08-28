@@ -183,6 +183,37 @@ iniziare F5 o F6.
 Non rigenerare ancora l'inventario. Non toccare
 `closed_build_enforcement()`: deve restare `False` per tutto il gruppo 4.
 
+## Arresto di analisi prima di G4-B+C
+
+Il riesame precedente alla modifica ha trovato due lacune che renderebbero
+insicura una sostituzione meccanica delle cinque firme dirette.
+
+Il generatore incorporato dichiara oggi file come
+`../../recurring_tasks.py`. Birth rifiuta correttamente questi percorsi perche'
+un candidato deve essere un albero chiuso; il codice di rifiuto riprodotto e'
+`candidate_path_invalid`. Il ramo `--sign` gia' presente per l'archivio attivo
+e' quindi nominale, ma non puo' pubblicare i candidati correnti. G4-B deve
+prima rendere portabile il contenuto attestato e verificare che il runtime usi
+esattamente quei byte. Copiare un file nel candidato continuando a eseguire un
+file esterno non autenticato sarebbe un falso risultato verde.
+
+La guardia chiusa contiene inoltre una lacuna indipendente: `retire` e
+`publish_localization` non appartengono a
+`BIRTH_CLOSED_LEGACY_CAPABILITIES`. Un nuovo ambito non compilato che usa una
+di queste capacita' puo' quindi passare senza rilievi. Prima del congelamento
+occorre provare che le due capacita' esistano soltanto negli ambiti compilati e
+che gli ambiti dedicati non possano assorbire una seconda mutazione.
+
+Questi fatti sono cause delimitate, non errori di una modifica tentata. Non e'
+stato ancora cambiato codice G4-B+C.
+
+`PC-ROBERTO` e' visibile come host Codex locale, ma non espone un progetto
+Metnos salvato. Il trasporto remoto del prodotto accetta soltanto executor
+firmati e non permette di lanciare una suite arbitraria. Non verra' creato un
+executor di test privilegiato. Finche' un clone Metnos non viene configurato
+come progetto Codex sul PC, la matrice GitHub Windows resta la prova
+autorevole.
+
 ## Regole operative
 
 - commit piccoli solo su `main`, con footer

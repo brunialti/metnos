@@ -248,6 +248,13 @@ Il generatore incorporato produce candidati. Con `--sign` deve consegnarli a
 `submit_builtin_generation_birth`; il ramo che chiama `sign_executor` va
 rimosso, non nascosto dietro una condizione di layout.
 
+Il riesame prima dell'implementazione ha mostrato che i manifest incorporati
+attuali non sono ancora candidati Birth validi: dichiarano percorsi esterni
+come `../../recurring_tasks.py`. Il cambiamento deve quindi rendere chiuso il
+contenuto attestato e dimostrare che il modulo eseguito dal runtime coincide
+con quei byte. Non si allarga la grammatica di F1 e non si considera valida una
+copia che il runtime non usa o non confronta.
+
 ### 6.3 Prove possedute da G4-B
 
 - impianto nuovo con zero, uno e molti contratti;
@@ -284,8 +291,15 @@ commit pubblico:
    - `localization_only` puo' soltanto pubblicare localizzazione;
    - `retirement_only` puo' soltanto ritirare;
    - ogni ambito deve esistere e usare davvero la capacita' giustificata;
+   - ogni ambito deve avere l'insieme esatto delle capacita' compilate: una
+     seconda lettura del prodotto o una seconda mutazione deve essere
+     rifiutata;
 7. aggiungere `closed_exception` soltanto dopo quel controllo;
 8. eseguire guardia normale e `--birth-closed` sullo stesso albero tracciato.
+
+La guardia deve inoltre rifiutare `retire` e `publish_localization` in ogni
+ambito diverso dai due ambiti compilati. La sola assenza di queste capacita'
+dall'insieme delle vecchie autorita' non costituisce una chiusura.
 
 Non si aggiorna l'inventario prima di `git add`: la guardia legge l'albero
 tracciato. Non si cambia `closed_build_enforcement()`.
