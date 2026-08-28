@@ -12,7 +12,9 @@ verdi. RM-0008 resta `active`.
 Il gruppo 4 e' soltanto la chiusura statica F4 del §23.6.4. Il piano completo
 e' `internal/reports/rm0008-gruppo4-piano-ottimizzato.md`.
 
-G4-A e' implementato nel commit sorgente `3eeb4b1b`. Non e' ancora pubblicato.
+G4-A e' implementato nel commit sorgente `3eeb4b1b` e documentato in
+`e45a192e`. Il primo commit pubblico e' `74c6997`, ciclo GitHub
+`33158138028`, **rosso**.
 Le due revisioni reali sono state
 pubblicate tramite Birth, non tramite firma diretta:
 
@@ -67,11 +69,46 @@ Il riesame di velocizzazione ha unito G4-B e G4-C in un solo incremento
 pubblico. G4-A resta separato per ottenere prima la prova Linux e Windows della
 nuova porta autenticata.
 
+## Arresto pubblico G4-A
+
+Nel ciclo `33158138028` sei lavori posseduti sono verdi, comprese le tre prove
+Windows 2A. I due lavori della suite portatile generale sono rossi sullo stesso
+test nuovo; il riepilogo e' rosso di conseguenza.
+
+La causa e' delimitata: il test importava `agent_runtime`, che al caricamento
+importa il sistema dei prompt e quindi `minijinja`. La suite portatile installa
+intenzionalmente soltanto `cryptography`, `pytest` e `tomlkit`; non deve
+trascinare l'intero prodotto. Linux e Windows falliscono entrambi con
+`ModuleNotFoundError: minijinja` prima di eseguire il corpo della prova.
+
+Non si aggiunge `minijinja` alla suite, perche' il problema non e' una
+dipendenza produttiva mancante. La correzione prevista e' estrarre la piccola
+proiezione dei record autenticati in un modulo leggero gia' consumato da
+`agent_runtime`. La prova portatile chiamera' quel simbolo produttivo e poi
+attraversera' il vero processo figlio e la sandbox, senza importare il motore
+completo. Risultato atteso: il test raggiunge il figlio su entrambi i sistemi;
+su Linux il risultato deve inoltre attestare Bubblewrap.
+
+La correzione e' ora implementata e non ancora committata. Il simbolo leggero
+e' `admitted_code_dependency_projection_v1()`; `agent_runtime` lo consuma senza
+duplicare la selezione. Evidenza locale successiva:
+
+- nuova cella con importazione di `minijinja` vietata: 2 verdi;
+- porta, proiezione e rifiuti avversariali: 20 verdi;
+- intera suite portatile isolata: 325 verdi, 22 non applicabili, zero errori.
+
+I 22 casi non applicabili sono esatti: 19 appartengono a Windows, due al
+delegatore Linux cgroup non disponibile nella sessione ordinaria e uno a
+Bubblewrap negato dal kernel locale. GitHub possiede le esecuzioni reali per
+questi confini. `PC-ROBERTO` e' online, ma il protocollo remoto accetta soltanto
+executor firmati e non consente l'esecuzione arbitraria di `pytest`; non e'
+stato aperto un bypass.
+
 ## Prossimo passo unico
 
-Registrare questo aggiornamento, pubblicare l'unico incremento su `main` e
-attendere gli otto lavori GitHub verdi. Non iniziare G4-B+C prima di quel
-risultato.
+Committare la sola estrazione descritta sopra, pubblicare un solo incremento
+correttivo su `main` e attendere tutti i lavori GitHub verdi. Non iniziare
+G4-B+C prima di quel risultato.
 
 Non rigenerare ancora l'inventario. Non toccare
 `closed_build_enforcement()`: deve restare `False` per tutto il gruppo 4.

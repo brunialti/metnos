@@ -3452,23 +3452,9 @@ def _admitted_code_dependency_projection(executor) -> tuple[str, list[Path]]:
     The parent owns the verified catalogue.  The child receives no catalogue
     key and no free-form path: only records named by its own signed manifest.
     """
-    from admitted_module_v1 import encode_admitted_executor_records_v1
+    from admitted_module_v1 import admitted_code_dependency_projection_v1
 
-    names = tuple(getattr(executor, "code_dependencies", ()) or ())
-    if not names:
-        return "", []
-    catalog = load_catalog()
-    records = []
-    roots: list[Path] = []
-    for name in names:
-        target = catalog.get(name)
-        if target is None:
-            raise RuntimeError("executor_code_dependency_unavailable")
-        records.append(target)
-        root = Path(target.manifest_path).parent
-        if root not in roots:
-            roots.append(root)
-    return encode_admitted_executor_records_v1(records), roots
+    return admitted_code_dependency_projection_v1(executor, load_catalog())
 
 
 def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised",

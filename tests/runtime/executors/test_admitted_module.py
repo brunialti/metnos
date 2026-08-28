@@ -9,6 +9,7 @@ import pytest
 
 from admitted_module_v1 import (
     ADMITTED_EXECUTORS_ENV_V1, AdmittedModuleError,
+    admitted_code_dependency_projection_v1,
     code_digest_of_bytes_v1, encode_admitted_executor_records_v1,
     load_admitted_module_v1, runtime_admitted_executor_v1,
 )
@@ -145,6 +146,24 @@ def test_the_parent_projection_round_trips_without_reopening_the_manifest(
 
     assert projected.code_files == ("demo.py", "helper.py")
     assert load_admitted_module_v1(projected).VALUE == 41
+
+
+@pytest.mark.parametrize("catalog_value", [None, "wrong-name"])
+def test_dependency_projection_fails_closed_on_a_missing_or_mismatched_record(
+        tmp_path: Path, catalog_value: str | None):
+    consumer = _published(tmp_path)
+    consumer.code_dependencies = ("dependency",)
+    target_root = tmp_path / "target"
+    target_root.mkdir()
+    target = _published(target_root) if catalog_value else None
+    if target is not None:
+        target.name = catalog_value
+    catalog = SimpleNamespace(get=lambda _name: target)
+
+    with pytest.raises(
+        AdmittedModuleError, match="admitted_module_dependency_unavailable",
+    ):
+        admitted_code_dependency_projection_v1(consumer, catalog)
 
 
 def test_a_link_in_place_of_the_code_is_refused(tmp_path: Path):
