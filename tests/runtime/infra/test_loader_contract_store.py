@@ -151,7 +151,11 @@ def _builtin_source(
     directory.mkdir(parents=True)
     module_path = runtime_root / "recurring_tasks.py"
     module_path.write_text("def invoke(args):\n    return {'ok': True}\n")
-    digest = "sha256:" + hashlib.sha256(module_path.read_bytes()).hexdigest()
+    implementation_path = directory / "implementation.py.src"
+    implementation_path.write_bytes(module_path.read_bytes())
+    digest = "sha256:" + hashlib.sha256(
+        implementation_path.read_bytes(),
+    ).hexdigest()
     manifest = directory / "manifest.toml"
     manifest.write_text(
         f'''manifest_format = "1.0"
@@ -167,7 +171,7 @@ it = "SCOPO: Elenca task. PATTERN: list_tasks(). NON: modificare task. OUT: entr
 en = "SCOPO: Lists tasks. PATTERN: list_tasks(). NON: modify tasks. OUT: entries=[]."
 
 [code]
-files = ["../../recurring_tasks.py"]
+files = ["implementation.py.src"]
 digest = "{digest}"
 
 [placement]
