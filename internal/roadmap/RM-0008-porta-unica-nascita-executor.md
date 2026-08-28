@@ -1288,6 +1288,7 @@ sviluppo.
 | 2026-08-25 | `active` | La verifica precedente alla chiusura statica ha trovato tre prerequisiti non aggirabili: chiave autore assente dal pubblicatore Birth produttivo, 21 executor incorporati con involucro incompatibile e bootstrap iniziale dell'installatore ancora affidato a firma precedente. I §§23.6 e 23.8 correggono l'ordine di sviluppo senza ridurre i criteri di F4-F6. |
 | 2026-08-28 | `active` | Gruppi 2 e 3 della ripresa completati: autorità predisposte, bootstrap sigillato attivo, registri consumati, controlli chiusi e politiche produttive. Il criterio di uscita dettagliato è in `internal/reports/rm0008-gruppo3-piano-ottimizzato.md` §11. |
 | 2026-08-28 | `active` | Chiuso il blocco Windows del predispositore: preparazione e pubblicazione sono separate dal checkpoint durevole `verified`; ciclo pubblico `33153843377`, commit `a04267b`, otto lavori su otto verdi. Il gruppo 4, chiusura statica F4, è il successivo. |
+| 2026-08-28 | `active` | Riesame dopo il gruppo 3 completato: la guardia chiusa misura 26 rilievi iniziali e il piano ottimizzato del gruppo 4 li divide in tre incrementi causali. Primo incremento: autenticare i due caricamenti fra executor; il bit F4 resta falso. |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 

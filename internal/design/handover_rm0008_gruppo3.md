@@ -32,9 +32,9 @@ LEGGI PRIMA, IN QUEST'ORDINE:
      lo stesso giro.
 
 COMPITO AL SUBENTRO: non rifare il gruppo 3. Leggere il suo criterio di uscita,
-poi preparare il piano ottimizzato del gruppo 4 usando lo stato reale appena
-consegnato e le regole comuni aggiornate dopo il gruppo 3. Il gruppo 4 e' la
-chiusura statica F4 del §23.6.4 della roadmap; non autorizza ancora F5 o F6.
+poi seguire `internal/reports/rm0008-gruppo4-piano-ottimizzato.md`. Il gruppo 4
+e' la chiusura statica F4 del §23.6.4 della roadmap; non autorizza ancora F5 o
+F6. Lo stato breve e' in `internal/design/handover_rm0008_gruppo4.md`.
 
 MODO DI LAVORARE:
 - commit piccoli e tematici solo su main, con il marcatore
@@ -199,8 +199,8 @@ fotografia ciascuno, invece di una per modifica.
   nominava il registro della sandbox e ha fatto fallire il lavoro Ubuntu
   ordinario nello stato precedente la correzione.
 
-PROSSIMO PASSO: scrivere il piano del gruppo 4. La sua prima intenzione deve
-portare `undo_last_turn` sulla porta autenticata gia' predisposta e trattare
+PROSSIMO PASSO: eseguire G4-A. La prima intenzione deve portare
+`undo_last_turn` sulla porta autenticata gia' predisposta e trattare
 `find_persons_indices` senza ritirarne il nome. Solo dopo si affrontano
 inventario `birth_closed`, vecchie autorita' e guardia statica F4. Non
 dichiarare RM-0008 chiusa: restano i gruppi 4-6.

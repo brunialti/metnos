@@ -80,4 +80,4 @@ Ogni roadmap deve inoltre separare chiaramente:
 | [RM-0005](RM-0005-multilinguismo-full-auto-localizzante.md) | Multilinguismo full e auto-localizzazione dell’istanza | `closed` | F0-F8 certificate; export GitHub pubblico e documentazione Cloudflare verificati | 2026-08-23 |
 | [RM-0006](RM-0006-certificazione-logica-e2e.md) | Certificazione logica da capo a fondo | `implemented` | C0-C6 completate; cinque sonde reali e certificazione finale 96/96 | 2026-08-23 |
 | [RM-0007](RM-0007-pubblicazione-verificata-contratti.md) | Pubblicazione verificata delle varianti linguistiche dei contratti | `closed` | M0-M4, cutover, due cicli operativi e distribuzione certificati | 2026-08-25 |
-| [RM-0008](RM-0008-porta-unica-nascita-executor.md) | Porta unica di nascita e ciclo controllato degli executor sintetizzati | `active` | gruppi 1-3 della ripresa chiusi e verdi su Linux/Windows; gruppo 4 (chiusura statica F4) successivo | 2026-08-28 |
+| [RM-0008](RM-0008-porta-unica-nascita-executor.md) | Porta unica di nascita e ciclo controllato degli executor sintetizzati | `active` | gruppi 1-3 chiusi e verdi; gruppo 4 pianificato, 26 rilievi statici iniziali | 2026-08-28 |
