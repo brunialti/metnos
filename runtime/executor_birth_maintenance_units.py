@@ -1,24 +1,13 @@
-"""Single portable inventory of services covered by the F4 maintenance proof."""
+"""Compatibility projections from the single RM-0008 service topology."""
 from __future__ import annotations
 
+from executor_birth_service_catalog import (
+    contract_cutover_units_from_source_v1,
+    maintenance_targets_from_source_v1,
+)
 
-CONTRACT_CUTOVER_UNITS = tuple(sorted({
-    "metnos.target",
-    "metnos-http.service",
-    "metnos-durable-worker.service",
-    "metnos-telegram-daemon.service",
-    "metnos-i18n-translator.service",
-    "metnos-i18n-translator.timer",
-    "metnos-stack-ready.service",
-    "metnos-stack-quarantine.service",
-    "metnos-stack-watchdog.service",
-    "metnos-stack-watchdog.timer",
-}))
-
-MAINTENANCE_TARGETS_V1 = tuple(sorted({
-    *(('user', unit) for unit in CONTRACT_CUTOVER_UNITS),
-    ("system", "metnos-http.service"),
-}))
+CONTRACT_CUTOVER_UNITS = contract_cutover_units_from_source_v1()
+MAINTENANCE_TARGETS_V1 = maintenance_targets_from_source_v1()
 
 
 __all__ = ["CONTRACT_CUTOVER_UNITS", "MAINTENANCE_TARGETS_V1"]
