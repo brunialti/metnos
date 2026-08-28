@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
+import subprocess
 import sys
 import tomllib
 from datetime import datetime, timedelta, timezone
@@ -208,12 +210,14 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
 
 
 def test_parent_projection_crosses_the_real_executor_subprocess(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        tmp_path: Path):
     """The verified record, read-only mount and child door work together."""
-    import agent_runtime
     import sandbox
-    from admitted_module_v1 import code_digest_of_bytes_v1
-    from loader import Catalog, Executor
+    from admitted_module_v1 import (
+        ADMITTED_EXECUTORS_ENV_V1,
+        admitted_code_dependency_projection_v1,
+        code_digest_of_bytes_v1,
+    )
 
     dependency_root = tmp_path / "dependency"
     consumer_root = tmp_path / "consumer"
@@ -241,13 +245,17 @@ def test_parent_projection_crosses_the_real_executor_subprocess(
     consumer_code.write_bytes(consumer_payload)
 
     def executor(name: str, root: Path, code: Path, payload: bytes, **values):
-        return Executor(
-            name=name, version="1", description=name, affinity=[],
-            args_schema={"type": "object"}, capabilities=[], tests=[],
-            code_path=code, manifest_path=root / "manifest.toml",
-            signed_by="author", code_files=(code.name,),
-            digest=code_digest_of_bytes_v1([payload]), **values,
-        )
+        fields = {
+            "name": name,
+            "capabilities": [],
+            "code_path": code,
+            "manifest_path": root / "manifest.toml",
+            "code_files": (code.name,),
+            "code_dependencies": (),
+            "digest": code_digest_of_bytes_v1([payload]),
+        }
+        fields.update(values)
+        return SimpleNamespace(**fields)
 
     dependency = executor(
         "read_dependency", dependency_root, dependency_code,
@@ -257,23 +265,35 @@ def test_parent_projection_crosses_the_real_executor_subprocess(
         "read_consumer", consumer_root, consumer_code, consumer_payload,
         code_dependencies=("read_dependency",),
     )
-    monkeypatch.setattr(
-        agent_runtime, "load_catalog",
-        lambda: Catalog(executors={dependency.name: dependency}),
+    catalog = SimpleNamespace(
+        get=lambda name: dependency if name == dependency.name else None,
     )
-
-    result = agent_runtime.invoke_executor(
-        consumer, {}, timeout_s=15, actor="host", channel="test",
+    encoded, roots = admitted_code_dependency_projection_v1(consumer, catalog)
+    command = sandbox.wrap_command(
+        consumer, [sys.executable, str(consumer_code)], extra_ro=roots,
+    )
+    environment = os.environ.copy()
+    environment[ADMITTED_EXECUTORS_ENV_V1] = encoded
+    environment["METNOS_RUNTIME"] = str(
+        Path(__file__).resolve().parents[3] / "runtime"
+    )
+    process = subprocess.run(
+        command, input="{}", capture_output=True, text=True, timeout=15,
+        env=environment, check=False,
     )
 
     if (
         sys.platform.startswith("linux")
         and not os.environ.get("CI")
-        and not result.get("ok")
-        and "bwrap:" in str(result.get("error"))
-        and "Operation not permitted" in str(result.get("error"))
+        and process.returncode != 0
+        and "bwrap:" in process.stderr
+        and "Operation not permitted" in process.stderr
     ):
         pytest.skip("local kernel denied bubblewrap namespace creation")
     if sys.platform.startswith("linux"):
         assert sandbox.bwrap_available(), "Linux certification requires bubblewrap"
+        if not sandbox.sandbox_disabled():
+            assert command[0].endswith("bwrap")
+    assert process.returncode == 0, process.stderr
+    result = json.loads(process.stdout)
     assert result == {"ok": True, "dependency": "authenticated"}

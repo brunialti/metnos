@@ -168,6 +168,41 @@ def encode_admitted_executor_records_v1(executors) -> str:
     return encoded
 
 
+def admitted_code_dependency_projection_v1(
+    executor, catalog,
+) -> tuple[str, list[Path]]:
+    """Project only signed dependency names from a verified catalogue."""
+    names = getattr(executor, "code_dependencies", ()) or ()
+    if (
+        not isinstance(names, tuple)
+        or len(names) > 32
+        or len(names) != len(set(names))
+        or any(
+            not isinstance(name, str)
+            or not name
+            or not name.isascii()
+            or len(name) > 128
+            for name in names
+        )
+    ):
+        raise AdmittedModuleError("admitted_module_record_invalid")
+    if not names:
+        return "", []
+    records = []
+    roots: list[Path] = []
+    for name in names:
+        target = catalog.get(name)
+        if target is None or getattr(target, "name", None) != name:
+            raise AdmittedModuleError("admitted_module_dependency_unavailable")
+        records.append(target)
+        root = Path(getattr(target, "manifest_path", "") or "").parent
+        if not root.is_absolute():
+            raise AdmittedModuleError("admitted_module_record_invalid")
+        if root not in roots:
+            roots.append(root)
+    return encode_admitted_executor_records_v1(records), roots
+
+
 def runtime_admitted_executor_v1(name: str) -> AdmittedExecutorRecordV1:
     """Read one parent-owned verified record made visible to this process."""
     encoded = os.environ.get(ADMITTED_EXECUTORS_ENV_V1, "")
