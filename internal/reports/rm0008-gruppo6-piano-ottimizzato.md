@@ -1386,13 +1386,15 @@ Modifiche produttive:
 - catalogo compilato dei ruoli e dei file;
 - assemblatore e firma tramite la sola autorita' di distribuzione caricata a
   freddo;
-- area di preparazione sul filesystem di destinazione, sincronizzazione e pubblicazione
-  finale senza sovrascrittura;
+- area di preparazione sul filesystem di destinazione e sincronizzazione dal
+  basso; la primitiva di pubblicazione finale senza sovrascrittura resta
+  privata e non e' autorizzabile dalla sola capacita' preparata;
 - verifica dell'area di preparazione tramite capacita' sigillata, senza esporre una
   `Path` produttiva libera;
 - restituzione della sola capacita' preparata; claim e journal appartengono
   alla composizione G6-D;
-- rilettura completa della distribuzione finale.
+- rilettura completa della distribuzione finale nella seam nominale di prova;
+  l'autorizzazione produttiva alla pubblicazione nasce soltanto in G6-D.
 
 Prova discriminante unica: una matrice parametrica copre determinismo,
 mancanza, extra, alterazione, pluralita' delle unita', link e mutazione durante
@@ -1408,6 +1410,73 @@ non rigenera un secondo catalogo o un secondo inventario.
 Un caso costruisce due release con modulo, argomenti, directory e ambiente del
 target differenti e prova che cataloghi e manifesti cambiano, mentre tutti i
 frammenti di unita' e `administrative_bundle_hash` restano byte-identici.
+
+Il riesame adversarial precedente al codice rende vincolanti quattro
+sottoincrementi, eseguiti e revisionati in ordine.
+
+1. **G6-B1, compatibilita' e fonte unica.** Correggere ruoli e cardinalita'
+   del manifesto; introdurre codec, tabella dichiarativa unica, renderer,
+   parser indipendente e proiezione di manutenzione. Il caricatore produttivo
+   accetta soltanto un `AuthenticatedDistributionRecordV1` produttivo, lo
+   riattesta dalla radice fissa con `verify_installed_distribution_record_v1()`
+   e rilegge il file `service_catalog` gia' legato al manifesto; non accetta
+   `VerifiedDistribution` fornita dal chiamante, byte, mapping o percorsi. La
+   sola famiglia di prove combina una tabella canonica comune a tutti i nuovi
+   codec, compresi `received-source`, catalogo e descrittore di deployment,
+   inventario meccanico degli ingressi, copertura delle sei classi, pluralita'
+   delle unita' e round-trip parser/renderer.
+2. **G6-B2, ingresso reale.** Implementare il ricevitore root-only e la
+   transazione content-addressed da sorgente a `source_id`. Una famiglia Linux
+   usa un albero non banale e combina account, link, hardlink, sostituzione
+   durante la lettura, idempotenza e fotografia di non mutazione delle altre
+   radici. La tabella portabile prova soltanto codec, limiti e rifiuto prima di
+   I/O fuori da Linux.
+3. **G6-B3, nucleo preparatore bloccato.** La preparazione produttiva e' un
+   nucleo privato che riceve la sessione esatta e viva di deployment, la
+   fotografia opaca G6-A e il solo `source_id`; sequenza e predecessori sono
+   ricalcolati sotto quel blocco. Compila preflight, catalogo, unita',
+   descrittore e inventario, carica a freddo una sola volta l'autorita' privata
+   di distribuzione, firma, rilegge integralmente lo staging e restituisce una
+   capacita' nominale non copiabile e priva di `Path`. Una famiglia integrata
+   copre autorita', determinismo fra due release e i mutanti mancante, extra,
+   alterato, link e sostituzione durante la lettura. La stessa famiglia esegue
+   il vero `admin_preflight.py` con `-I -S`, prova che importa soltanto libreria
+   standard e rifiuta ogni placeholder o dipendenza G6-C non ancora definita.
+4. **G6-B4, transazione di pubblicazione non autorizzante.** Implementare il
+   solo nucleo filesystem di rename no-replace, sincronizzazione e rilettura,
+   senza una funzione produttiva che lo renda raggiungibile o che accetti una
+   autorizzazione ancora inesistente. Una seam di tipo distinto esercita
+   pubblicazione, rilettura tramite
+   `verify_installed_distribution_record_v1()` e concorrenza. G6-D definira'
+   tipo, proprietario, minter e validatore dell'autorizzazione nominale e,
+   soltanto dopo averli verificati insieme alla stessa sessione viva, invochera'
+   questo nucleo. L'unico harness di arresto viene riusato per ricevitore,
+   staging, profilo privato `administrative_directory` e pubblicazione; G6-C
+   riusa quel profilo senza una nuova matrice. Non si moltiplicano matrici per
+   helper o killpoint. Una prova causale separata passa una capacita' preparata
+   al solo grafo produttivo disponibile in B e pretende diniego prima di ogni
+   I/O: autorizzazione assente, fabbricata o di test non puo' rendere
+   raggiungibile il nucleo. La fotografia prima/dopo di claim, journal,
+   `PREPARED`, certificato, head, piano amministrativo e systemd deve essere
+   identica.
+
+Questa divisione conserva nove rischi distinti — schema, ricezione e TOCTOU,
+copertura del catalogo, autorita', binding degli artefatti, stabilita' fra
+release, arresto, gara no-replace e confine di gruppo — ma li esercita in sole
+quattro famiglie. Non ripete firma alterata, scopo/epoca delle chiavi, chiusura
+degli import, path Windows, lettura handle-bound, catena fredda, claim, journal
+V2 o deployment lock gia' certificati. `systemd` reale, startup gate, cgroup e
+controllo operativo appartengono a G6-C; claim, `PREPARED` e recupero del
+coordinatore appartengono a G6-D.
+
+I criteri di piattaforma sono comuni ai quattro sottoincrementi. Su Windows si
+eseguono codec, parser, renderer, determinismo e inventario; ogni ingresso o
+nucleo amministrativo importabile di B2, B3 e B4 deve restituire
+`birth_ownership_platform_unsupported` prima di consultare sessione,
+fotografia, autorita' o filesystem. Non si simula `systemd`. Su Linux un unico
+runner root usa processi realmente terminati con `SIGKILL` e prova fsync,
+rename no-replace, metadati e ripresa per i quattro profili del medesimo
+harness.
 
 ### 5.3 G6-C — controllo dominante e installatore unico
 
@@ -1575,8 +1644,13 @@ essere non privilegiato secondo il §3.5.2.
 
 Il nuovo `runtime/executor_birth_service_catalog.py` possiede enum, codec,
 domini e catalogo compilato del §3.5.1. Espone soltanto
-`load_service_catalog_v1(record)` sul percorso produttivo; l'emittente resta
-privato all'assemblatore. L'elenco non viene duplicato in
+`load_service_catalog_v1(record: AuthenticatedDistributionRecordV1)` sul
+percorso produttivo: il tipo deve essere l'artefatto nominale emesso
+dall'autenticazione produttiva; il caricatore lo riattesta con
+`verify_installed_distribution_record_v1()` e deriva il file dal ruolo e dalla
+radice firmati. Non accetta una `VerifiedDistribution` fornita dal chiamante,
+byte, mapping, registri o percorsi liberi. L'emittente resta privato
+all'assemblatore. L'elenco non viene duplicato in
 `executor_birth_maintenance_units.py`: quel modulo deriva le proprie tuple dal
 catalogo e rifiuta una classe sconosciuta.
 
@@ -1589,24 +1663,35 @@ e completi; non esistono placeholder dipendenti da G6-C.
 
 Il nuovo `runtime/executor_birth_distribution_assembler.py` possiede i codec
 dei §§3.5.0-3.5.4 e una capacita' sigillata `_StagedSourceV1`. L'entrata
-produttiva `prepare_closed_distribution_v1(source_id)` non accetta percorsi o
-liste di file: valida il solo digest, deriva e rilegge la directory sotto la
-radice fissa `incoming-v1/sources-v1`, compila i
-materiali in `deployment/admin/` e `deployment/systemd/`, firma con
+produttiva pubblica non viene ancora esposta. Il nucleo privato
+`_prepare_closed_distribution_locked_v1(session, graph_snapshot, source_id)`
+richiede la sessione esatta e viva di `_deployment_lock_v1()` e la fotografia
+opaca emessa dal resolver G6-A per la medesima sessione. Non accetta percorsi,
+liste di file, sequenze o predecessori: valida il solo digest, deriva e rilegge
+la directory sotto la radice fissa `incoming-v1/sources-v1`, ricalcola
+sequenza e predecessori dalla fotografia, compila i materiali in
+`deployment/admin/` e `deployment/systemd/`, firma con
 `distribution_private`, verifica l'area di preparazione e restituisce una
-capacita' sigillata `_VerifiedStagedDistributionV1`.
+capacita' sigillata `_VerifiedStagedDistributionV1`. La seam portabile usa
+sessione, fotografia e risultato di tipi nominalmente distinti che il percorso
+produttivo rifiuta.
 
 G6-B termina restituendo la capacita' preparata. Non installa il piano
 amministrativo, non pubblica claim e non crea `PREPARED`; queste azioni
 richiedono le primitive G6-C e la composizione G6-D. G6-A non anticipa la
 pubblicazione.
 
-Il nuovo `runtime/executor_birth_distribution_installer.py` espone
-`publish_verified_distribution_v1(staged)`. Accetta soltanto la capacita'
-sigillata, pubblica la directory finale sullo stesso filesystem, sincronizza,
-rilegge con `verify_installed_distribution_record_v1()` e restituisce la
-`VerifiedDistribution` riletta. Non accetta destinazione, comportamento su
-conflitto o funzione di richiamo dal chiamante.
+Il nuovo `runtime/executor_birth_distribution_installer.py` non espone ancora
+alcun installatore produttivo. Contiene il solo nucleo filesystem privato di
+pubblicazione no-replace, sincronizzazione e rilettura e una seam nominalmente
+distinta che lo prova con una capacita' di test. Il nucleo non decide se la
+pubblicazione sia autorizzata e non e' raggiungibile dal grafo produttivo G6-B.
+G6-D aggiungera' tipo, proprietario, minter e validatore dell'autorizzazione e
+la funzione produttiva che, dopo aver verificato autorizzazione, sessione viva
+e capacita' preparata legate per identita', invochera' il nucleo, rileggera' con
+`verify_installed_distribution_record_v1()` e restituira' la
+`VerifiedDistribution`. Ne' la seam ne' il futuro involucro accettano
+destinazione, comportamento su conflitto o funzione di richiamo dal chiamante.
 
 Le copie amministrative hanno nomi fissi:
 

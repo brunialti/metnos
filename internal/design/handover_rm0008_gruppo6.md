@@ -161,6 +161,40 @@ concluso con successo tutti i nove lavori, inclusi portabilita', concorrenza,
 identita' ACL reali e suite completa su Windows, le corrispondenti prove Linux
 e il riepilogo finale. Non rimangono errori pubblici aperti per G6-A.
 
+### Riesame e ottimizzazione di G6-B completati prima del codice
+
+Due revisioni indipendenti hanno confrontato il piano G6-B col codice. Non
+esiste ancora implementazione produttiva di ricevitore, catalogo unico,
+programma amministrativo, assemblatore o installatore. Sono stati chiusi nel
+disegno tre rischi P1 che avrebbero prodotto una falsa convergenza:
+
+- il manifesto corrente ammette un solo `service_unit` e non conosce i ruoli
+  `service_catalog` e `deployment_descriptor`;
+- una capacita' preparata da sola non puo' autorizzare la pubblicazione finale,
+  perche' salterebbe l'ordine claim, `PREPARED`, prerequisito e certificato;
+- l'elenco autonomo in `executor_birth_maintenance_units.py` e' incompleto e
+  deve essere una proiezione della sola tabella dichiarativa del catalogo.
+
+Il piano normativo ora divide G6-B in quattro sottoincrementi: B1 corregge il
+manifesto e introduce fonte unica, codec e renderer; B2 implementa la
+ricezione content-addressed root-only; B3 prepara e firma la distribuzione
+soltanto sotto la sessione viva e la fotografia G6-A; B4 prova il solo nucleo
+filesystem di pubblicazione, senza esporlo nel grafo produttivo. Tipo, minter,
+validatore e involucro produttivo dell'autorizzazione appartengono a G6-D.
+
+Le nove aree di rischio sono conservate ma aggregate in quattro famiglie di
+prove. Si riusa un solo harness di arresto per ricezione, staging, directory
+amministrativa e pubblicazione; una prova causale separata pretende invece
+zero I/O e fotografia invariata quando manca l'autorizzazione G6-D. Non si
+ripetono firma, epoca/scopo delle chiavi, chiusura degli import, path Windows,
+lettura handle-bound, catena fredda, claim, journal V2 o deployment lock gia'
+certificati. `systemd` reale appartiene a G6-C; claim, `PREPARED` e recupero del
+coordinatore appartengono a G6-D. Su Windows B2-B4 negano prima di sessione,
+autorita' o filesystem; su Linux un unico runner root prova i killpoint reali.
+Il piano corretto e' stato riletto da entrambi i revisori con esito finale
+`P0=0`, `P1=0`, `P2=0`. Il primo passo di codice autorizzato e' soltanto
+G6-B1.
+
 ## Analisi del gruppo 6
 
 Prima dell'avvio del codice, tre revisioni indipendenti hanno
