@@ -273,7 +273,8 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "runtime/executor_birth_ownership_chain.py:_required_head_lock",
 })
 BIRTH_CLOSED_LEGACY_CAPABILITIES = frozenset({
-    "publish_technical", "reactivate", "rollback", "sign",
+    "publish_localization", "publish_technical", "reactivate", "retire",
+    "rollback", "sign",
 })
 BIRTH_CLOSED_EXCEPTIONS = frozenset({
     "localization_only", "retirement_only", "offline_nonproductive_authoring",
@@ -295,6 +296,56 @@ BIRTH_CLOSED_EXCEPTION_SCOPES: Mapping[str, str] = {
     "runtime/migrate_manifest_descriptions.py:migrate_one": "offline_nonproductive_authoring",
     "runtime/change_rollback.py:_rollback_create_executor": "retirement_only",
     "runtime/cli/skills_cli.py:_cmd_uninstall": "retirement_only",
+}
+BIRTH_CLOSED_EXCEPTION_CAPABILITIES: Mapping[str, frozenset[str]] = {
+    "runtime/admin/manifest_refactor.py:<module>": frozenset({
+        "authoring_write", "sign",
+    }),
+    "runtime/admin/manifest_refactor.py:main": frozenset({
+        "authoring_read", "authoring_write", "sign",
+    }),
+    "runtime/admin/manifest_refactor.py:refactor_manifest": frozenset({
+        "authoring_read", "authoring_write", "sign",
+    }),
+    "runtime/i18n_pipeline.py:live_contract_context": frozenset({
+        "publish_localization", "verified_store_read",
+    }),
+    "runtime/i18n_translator.py:<module>": frozenset({
+        "authoring_write", "sign",
+    }),
+    "runtime/i18n_translator.py:_align_one_manifest": frozenset({
+        "authoring_read", "authoring_write", "sign",
+    }),
+    "runtime/i18n_translator.py:align_manifest_descriptions": frozenset({
+        "authoring_read", "authoring_write", "sign",
+    }),
+    "runtime/manifest_normalize.py:<module>": frozenset({
+        "authoring_write", "sign",
+    }),
+    "runtime/manifest_normalize.py:apply_one": frozenset({
+        "authoring_write", "sign",
+    }),
+    "runtime/manifest_normalize.py:main": frozenset({
+        "authoring_write", "sign",
+    }),
+    "runtime/migrate_manifest_descriptions.py:<module>": frozenset({
+        "authoring_write", "sign",
+    }),
+    "runtime/migrate_manifest_descriptions.py:main": frozenset({
+        "authoring_write", "sign",
+    }),
+    "runtime/migrate_manifest_descriptions.py:migrate_dirs": frozenset({
+        "authoring_read", "authoring_write", "sign",
+    }),
+    "runtime/migrate_manifest_descriptions.py:migrate_one": frozenset({
+        "authoring_read", "authoring_write", "sign",
+    }),
+    "runtime/change_rollback.py:_rollback_create_executor": frozenset({
+        "retire",
+    }),
+    "runtime/cli/skills_cli.py:_cmd_uninstall": frozenset({
+        "authoring_read", "retire",
+    }),
 }
 VALID_ROLES = frozenset({
     "administrative_tool",
@@ -1636,6 +1687,13 @@ def birth_closed_findings(
                 f"expected compiled exception {expected_exception!r}, found {exception!r}",
             ))
             continue
+        expected_capabilities = BIRTH_CLOSED_EXCEPTION_CAPABILITIES.get(fact.key)
+        if expected_capabilities is not None and capabilities != expected_capabilities:
+            findings.append(Finding(
+                "birth_closed_exception_invalid", fact.key,
+                "compiled exception must have exact capabilities "
+                f"{sorted(expected_capabilities)!r}, found {sorted(capabilities)!r}",
+            ))
         if "dynamic_boundary_access" in capabilities or fact.closed_dynamic_boundary:
             findings.append(Finding(
                 "birth_closed_dynamic_boundary", fact.key,

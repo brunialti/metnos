@@ -27,9 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -45,6 +43,7 @@ except ImportError:
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11
+from sign import sign_executor
 EXECUTORS_DIR = _C.PATH_EXECUTORS
 REFERENCE = EXECUTORS_DIR / "get_processes" / "manifest.toml"
 
@@ -247,13 +246,13 @@ def refactor_manifest(path: Path, reference: dict, *,
     new_lines = len(path.read_text().splitlines())
 
     # Re-sign §7.10
-    proc = subprocess.run(
-        ["python3", "-m", "runtime.sign", "sign", str(path.parent)],
-        cwd="/opt/metnos",
-        env={**os.environ, "PYTHONPATH": "/opt/metnos/runtime"},
-        capture_output=True, text=True,
-    )
-    sign_ok = proc.returncode == 0
+    sign_error = ""
+    try:
+        sign_executor(path.parent)
+        sign_ok = True
+    except Exception as exc:
+        sign_ok = False
+        sign_error = str(exc)[:200]
 
     return {
         "name": name, "applied": True,
@@ -261,7 +260,7 @@ def refactor_manifest(path: Path, reference: dict, *,
         "lines_saved": old_lines - new_lines,
         "delta_it_chars": delta_it, "delta_en_chars": delta_en,
         "signed": sign_ok,
-        "sign_stderr": proc.stderr.strip()[:200] if not sign_ok else "",
+        "sign_stderr": sign_error,
     }
 
 

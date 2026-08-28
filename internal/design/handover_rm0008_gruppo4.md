@@ -231,6 +231,16 @@ report e attivazione iniziale. Restano da completare la guardia chiusa,
 l'inventario e la verifica finale; nessuna modifica di questo blocco e' ancora
 su GitHub.
 
+La guardia chiusa e l'inventario sono ora completati localmente. Le sedici
+eccezioni compilate ammettono ciascuna il proprio insieme esatto di capacita';
+`retire` e `publish_localization` sono rifiutate fuori dagli ambiti compilati e
+un'eccezione non puo' assorbire una seconda autorita'. Il vecchio sottoprocesso
+di firma di `manifest_refactor` e' stato sostituito dalla chiamata statica
+offline. Sulla materializzazione esatta dell'indice Git, guardia normale e
+guardia chiusa hanno zero rilievi e il rendering dell'inventario e' identico
+byte per byte. Tutte le 56 prove della guardia sono verdi. Restano la verifica
+mirata complessiva, una sola suite portatile completa e la prova pubblica.
+
 `PC-ROBERTO` e' visibile come host Codex locale, ma non espone un progetto
 Metnos salvato. Il trasporto remoto del prodotto accetta soltanto executor
 firmati e non permette di lanciare una suite arbitraria. Non verra' creato un

@@ -56,8 +56,7 @@
       "capabilities": [
         "birth",
         "cutover_guard",
-        "legacy_bootstrap",
-        "sign"
+        "legacy_bootstrap"
       ],
       "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
       "phase": "M4"
@@ -95,18 +94,6 @@
     },
     {
       "path": "install/phases/phase3_code.py",
-      "scope": "_sign_and_verify_legacy_contracts",
-      "role": "offline_authoring",
-      "capabilities": [
-        "authoring_read",
-        "authoring_verify",
-        "sign"
-      ],
-      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
-    },
-    {
-      "path": "install/phases/phase3_code.py",
       "scope": "_store_only_catalog",
       "role": "administrative_tool",
       "capabilities": [
@@ -133,8 +120,7 @@
       "capabilities": [
         "birth",
         "cutover_guard",
-        "legacy_bootstrap",
-        "sign"
+        "legacy_bootstrap"
       ],
       "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
       "phase": "M4"
@@ -255,7 +241,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/admin/manifest_refactor.py",
@@ -267,7 +254,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/admin/manifest_refactor.py",
@@ -279,11 +267,22 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/agent_runtime.py",
       "scope": "TurnLog.write",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/agent_runtime.py",
+      "scope": "_admitted_code_dependency_projection",
       "role": "live_reader",
       "capabilities": [
         "live_artifact_read"
@@ -412,7 +411,8 @@
         "retire"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "retirement_only"
     },
     {
       "path": "runtime/change_rollback.py",
@@ -473,7 +473,8 @@
         "retire"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "retirement_only"
     },
     {
       "path": "runtime/cli/skills_cli.py",
@@ -915,6 +916,16 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "acquire_current_reattestation_snapshot",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed acquisition of owned bytes for an authenticated exact-current reattestation",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "activate_store",
       "role": "store_owner",
       "capabilities": [
@@ -922,16 +933,6 @@
         "store_write"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/contract_store.py",
-      "scope": "acquire_current_reattestation_snapshot",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "sealed acquisition of owned bytes for an authenticated exact-current reattestation",
       "phase": "M4"
     },
     {
@@ -955,31 +956,6 @@
         "verified_store_read"
       ],
       "destination": "sealed exact-generation and admission-receipt authority for dispatch",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/contract_store.py",
-      "scope": "persist_current_reattestation_receipt",
-      "role": "store_owner",
-      "capabilities": [
-        "authoring_read",
-        "authoring_write",
-        "store_write",
-        "verified_store_read"
-      ],
-      "destination": "sole exact-current authority for atomic non-publishing reattestation receipt persistence",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/contract_store.py",
-      "scope": "read_current_birth_receipt",
-      "role": "store_owner",
-      "capabilities": [
-        "authoring_read",
-        "store_write",
-        "verified_store_read"
-      ],
-      "destination": "authenticated durable reread of the exact current generation receipt",
       "phase": "M4"
     },
     {
@@ -1051,6 +1027,19 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "persist_current_reattestation_receipt",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "sole exact-current authority for atomic non-publishing reattestation receipt persistence",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "prepare_technical_draft",
       "role": "store_owner",
       "capabilities": [
@@ -1116,6 +1105,18 @@
         "verified_store_read"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "read_current_birth_receipt",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "authenticated durable reread of the exact current generation receipt",
       "phase": "M4"
     },
     {
@@ -1227,12 +1228,22 @@
     },
     {
       "path": "runtime/executor_birth_bootstrap.py",
-      "scope": "_build",
+      "scope": "_build_sealed",
       "role": "store_owner",
       "capabilities": [
         "store_write"
       ],
-      "destination": "sealed bootstrap assembly that completes store recovery before workers",
+      "destination": "sealed bootstrap assembly bound to one explicit publication store",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "_initial_candidate_payloads_v1",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "quiescent capture of the exact initial authoring candidate",
       "phase": "M4"
     },
     {
@@ -1247,12 +1258,56 @@
     },
     {
       "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "_materialize_initial_candidate_v1",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write"
+      ],
+      "destination": "private temporary materialization of a closed initial Birth candidate",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "_verified_initial_receipt_v1",
+      "role": "live_reader",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "authenticated reread of the initial generation and Birth receipt",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "_verify_initial_catalog_v1",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "quiescent verification of initial authoring and immutable receipt bindings",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
       "scope": "bootstrap_birth_runtime",
       "role": "store_owner",
       "capabilities": [
         "store_write"
       ],
       "destination": "sealed startup owner that installs the recovered Birth runtime",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "prepare_initial_installer_catalog_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "store_write"
+      ],
+      "destination": "sealed owner of the private initial Birth publication store",
       "phase": "M4"
     },
     {
@@ -1273,6 +1328,96 @@
         "verified_store_read"
       ],
       "destination": "one-time F4 maintenance census of authenticated current generations",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_intent.py",
+      "scope": "submit_builtin_generation_birth",
+      "role": "administrative_tool",
+      "capabilities": [
+        "birth"
+      ],
+      "destination": "reviewed administrative authoring scope without live publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_intent.py",
+      "scope": "submit_change_extend_birth",
+      "role": "administrative_tool",
+      "capabilities": [
+        "birth"
+      ],
+      "destination": "reviewed administrative authoring scope without live publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_intent.py",
+      "scope": "submit_change_rollback_birth",
+      "role": "administrative_tool",
+      "capabilities": [
+        "birth"
+      ],
+      "destination": "reviewed administrative authoring scope without live publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_intent.py",
+      "scope": "submit_installer_birth",
+      "role": "administrative_tool",
+      "capabilities": [
+        "birth"
+      ],
+      "destination": "reviewed administrative authoring scope without live publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_intent.py",
+      "scope": "submit_promote_birth",
+      "role": "administrative_tool",
+      "capabilities": [
+        "birth"
+      ],
+      "destination": "reviewed administrative authoring scope without live publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_intent.py",
+      "scope": "submit_promoter_rollback_birth",
+      "role": "administrative_tool",
+      "capabilities": [
+        "birth"
+      ],
+      "destination": "reviewed administrative authoring scope without live publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_intent.py",
+      "scope": "submit_skills_birth",
+      "role": "administrative_tool",
+      "capabilities": [
+        "birth"
+      ],
+      "destination": "reviewed administrative authoring scope without live publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_intent.py",
+      "scope": "submit_stack_reconcile_birth",
+      "role": "administrative_tool",
+      "capabilities": [
+        "birth"
+      ],
+      "destination": "reviewed administrative authoring scope without live publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_operational.py",
+      "scope": "birth_executor",
+      "role": "birth_owner",
+      "capabilities": [
+        "birth"
+      ],
+      "destination": "single compiled owner of the productive Executor Birth boundary",
       "phase": "M4"
     },
     {
@@ -1363,96 +1508,6 @@
         "store_write"
       ],
       "destination": "root-owned one-time ownership-head coordinator",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_intent.py",
-      "scope": "submit_builtin_generation_birth",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed administrative authoring scope without live publication authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_intent.py",
-      "scope": "submit_change_extend_birth",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed administrative authoring scope without live publication authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_intent.py",
-      "scope": "submit_change_rollback_birth",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed administrative authoring scope without live publication authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_intent.py",
-      "scope": "submit_installer_birth",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed administrative authoring scope without live publication authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_intent.py",
-      "scope": "submit_promote_birth",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed administrative authoring scope without live publication authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_intent.py",
-      "scope": "submit_promoter_rollback_birth",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed administrative authoring scope without live publication authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_intent.py",
-      "scope": "submit_skills_birth",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed administrative authoring scope without live publication authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_intent.py",
-      "scope": "submit_stack_reconcile_birth",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed administrative authoring scope without live publication authority",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_operational.py",
-      "scope": "birth_executor",
-      "role": "administrative_tool",
-      "capabilities": [
-        "birth"
-      ],
-      "destination": "reviewed administrative authoring scope without live publication authority",
       "phase": "M4"
     },
     {
@@ -1579,7 +1634,8 @@
         "verified_store_read"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "localization_only"
     },
     {
       "path": "runtime/i18n_translator.py",
@@ -1590,7 +1646,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/i18n_translator.py",
@@ -1602,7 +1659,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/i18n_translator.py",
@@ -1614,7 +1672,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/importer_verb_verify.py",
@@ -1825,6 +1884,16 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/manifest_code_digest.py",
+      "scope": "compute_code_digest",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline derivation of a candidate code digest from authoring bytes",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/manifest_inventory.py",
       "scope": "_iter_source_paths",
       "role": "offline_authoring",
@@ -1904,7 +1973,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/manifest_normalize.py",
@@ -1937,7 +2007,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/manifest_normalize.py",
@@ -1958,7 +2029,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/metnos_http_server.py",
@@ -1979,7 +2051,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/migrate_manifest_descriptions.py",
@@ -1990,7 +2063,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/migrate_manifest_descriptions.py",
@@ -2002,7 +2076,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/migrate_manifest_descriptions.py",
@@ -2014,7 +2089,8 @@
         "sign"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
+      "phase": "M4",
+      "closed_exception": "offline_nonproductive_authoring"
     },
     {
       "path": "runtime/orchestration.py",
@@ -2138,16 +2214,6 @@
         "authoring_write"
       ],
       "destination": "offline authoring implementation reachable only through the global catalog exclusion",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/sign.py",
-      "scope": "compute_code_digest",
-      "role": "offline_authoring",
-      "capabilities": [
-        "authoring_read"
-      ],
-      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
       "phase": "M4"
     },
     {
@@ -2779,8 +2845,7 @@
       "role": "administrative_tool",
       "capabilities": [
         "authoring_write",
-        "birth",
-        "sign"
+        "birth"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
@@ -2792,8 +2857,7 @@
       "capabilities": [
         "authoring_read",
         "authoring_write",
-        "birth",
-        "sign"
+        "birth"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
@@ -2858,5 +2922,93 @@
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
       "phase": "M4"
     }
-  ]
+  ],
+  "birth_closed": {
+    "schema": "metnos.contract-boundary-birth-closed/1",
+    "guard_version": "metnos.contract-boundary-inventory/2+birth-closed/1",
+    "owner": "runtime/executor_birth_operational.py:birth_executor",
+    "coordinator_store_owners": [
+      "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
+      "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
+      "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",
+      "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_cutover",
+      "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_head",
+      "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.initialize",
+      "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.update_required_head",
+      "runtime/executor_birth_ownership_chain.py:_replace_required_pointer",
+      "runtime/executor_birth_ownership_chain.py:_required_head_lock"
+    ],
+    "sealed_modules": [
+      "runtime/contract_store.py",
+      "runtime/executor_birth.py",
+      "runtime/executor_birth_operational.py",
+      "runtime/sign.py"
+    ],
+    "exceptions": [
+      {
+        "scope": "runtime/admin/manifest_refactor.py:<module>",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/admin/manifest_refactor.py:main",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/admin/manifest_refactor.py:refactor_manifest",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/change_rollback.py:_rollback_create_executor",
+        "exception": "retirement_only"
+      },
+      {
+        "scope": "runtime/cli/skills_cli.py:_cmd_uninstall",
+        "exception": "retirement_only"
+      },
+      {
+        "scope": "runtime/i18n_pipeline.py:live_contract_context",
+        "exception": "localization_only"
+      },
+      {
+        "scope": "runtime/i18n_translator.py:<module>",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/i18n_translator.py:_align_one_manifest",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/i18n_translator.py:align_manifest_descriptions",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/manifest_normalize.py:<module>",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/manifest_normalize.py:apply_one",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/manifest_normalize.py:main",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/migrate_manifest_descriptions.py:<module>",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/migrate_manifest_descriptions.py:main",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/migrate_manifest_descriptions.py:migrate_dirs",
+        "exception": "offline_nonproductive_authoring"
+      },
+      {
+        "scope": "runtime/migrate_manifest_descriptions.py:migrate_one",
+        "exception": "offline_nonproductive_authoring"
+      }
+    ]
+  }
 }

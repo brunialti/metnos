@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from contract_boundary_guard import (
     BIRTH_CLOSED_GUARD_VERSION,
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
+    BIRTH_CLOSED_EXCEPTION_CAPABILITIES,
     BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_OWNER,
     BIRTH_CLOSED_SCHEMA,
@@ -851,8 +855,6 @@ def test_repository_birth_migration_debt_is_exact() -> None:
         "runtime/sign.py:publish_executor",
         "runtime/sign.py:reactivate_executor_contract",
         "runtime/sign.py:rollback_executor_contract",
-        "scripts/generate_builtin_executor_contracts.py:<module>",
-        "scripts/generate_builtin_executor_contracts.py:main",
     }
 
 
@@ -899,12 +901,8 @@ def _closed_facts(
         if key in present:
             continue
         path, scope = key.split(":", 1)
-        capability = {
-            "offline_nonproductive_authoring": "sign",
-            "localization_only": "publish_localization",
-            "retirement_only": "retire",
-        }[exception]
-        facts.append(ScopeFacts(path, scope, 1, (capability,), ()))
+        capabilities = tuple(sorted(BIRTH_CLOSED_EXCEPTION_CAPABILITIES[key]))
+        facts.append(ScopeFacts(path, scope, 1, capabilities, ()))
     return sorted(facts, key=lambda fact: (fact.path, fact.scope))
 
 
@@ -968,6 +966,15 @@ def test_birth_closed_offline_signing_requires_exact_exception(tmp_path: Path) -
         "def refactor_manifest(directory): return sign_executor(directory)\n",
         relative="runtime/admin/manifest_refactor.py",
     )
+    key = "runtime/admin/manifest_refactor.py:refactor_manifest"
+    facts = [
+        replace(
+            fact,
+            capabilities=tuple(sorted(BIRTH_CLOSED_EXCEPTION_CAPABILITIES[key])),
+        )
+        if fact.key == key else fact
+        for fact in facts
+    ]
     assert birth_closed_findings(facts, _closed_inventory(facts)) == []
 
     operational = _closed_facts(
@@ -1004,6 +1011,58 @@ def test_birth_closed_rejects_dormant_compiled_exception(tmp_path: Path) -> None
     missing = next(iter(BIRTH_CLOSED_EXCEPTION_SCOPES))
     facts = [fact for fact in facts if fact.key != missing]
     assert "birth_closed_exception_scope_missing" in _codes(
+        birth_closed_findings(facts, _closed_inventory(facts))
+    )
+
+
+@pytest.mark.parametrize(
+    ("target", "extra_capability", "expected_code"),
+    (
+        (None, "retire", "birth_closed_legacy_authority"),
+        (None, "publish_localization", "birth_closed_legacy_authority"),
+        (
+            "runtime/admin/manifest_refactor.py:refactor_manifest",
+            "birth",
+            "birth_closed_exception_invalid",
+        ),
+        (
+            "runtime/i18n_pipeline.py:live_contract_context",
+            "birth",
+            "birth_closed_exception_invalid",
+        ),
+        (
+            "runtime/change_rollback.py:_rollback_create_executor",
+            "live_artifact_read",
+            "birth_closed_exception_invalid",
+        ),
+        (
+            "runtime/cli/skills_cli.py:_cmd_uninstall",
+            "verified_store_read",
+            "birth_closed_exception_invalid",
+        ),
+    ),
+)
+def test_birth_closed_rejects_false_green_capability_mutants(
+    tmp_path: Path,
+    target: str | None,
+    extra_capability: str,
+    expected_code: str,
+) -> None:
+    facts = _closed_facts(tmp_path)
+    if target is None:
+        facts.append(ScopeFacts(
+            "runtime/sample.py", "mutate", 1, (extra_capability,), (),
+        ))
+    else:
+        facts = [
+            replace(
+                fact,
+                capabilities=tuple(sorted({*fact.capabilities, extra_capability})),
+            )
+            if fact.key == target else fact
+            for fact in facts
+        ]
+    assert expected_code in _codes(
         birth_closed_findings(facts, _closed_inventory(facts))
     )
 
