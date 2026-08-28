@@ -11,7 +11,10 @@ Il gruppo 4 e' chiuso con commit pubblico `a4d2dba` e ciclo GitHub
 
 G5-A e' chiuso nel repository sorgente dal commit `1791cec3`; G5-B dal commit
 `efc00c06`. I due incrementi sono stati pubblicati insieme nel commit pubblico
-`8a1f573`. Il piano completo e'
+`8a1f573`. Le correzioni Windows conclusive sono nei commit sorgente
+`75517d58` e `d0bae562` e nei commit pubblici `5703a53` e `a5bd396`. Il gruppo
+5 e' chiuso dal ciclo pubblico `33183713818`: nove lavori su nove verdi, errore
+zero su Linux e Windows. Il piano completo e'
 `internal/reports/rm0008-gruppo5-piano-ottimizzato.md`.
 
 ## Risultato dell'analisi e della revisione avversariale
@@ -190,16 +193,23 @@ Evidenze locali della seconda correzione: 103 prove pertinenti verdi e un
 salto Linux previsto; tre celle R1 verdi; guardia normale e chiusa a zero;
 rendering dell'inventario byte-identico. La revisione indipendente del diff
 preparato ha concluso `APPROVATO`, `P1=0`, `P2=0` e 49 prove mirate verdi.
-Resta, dopo il commit, un solo nuovo ciclo pubblico Linux/Windows.
+
+La correzione e' stata registrata nel commit sorgente `d0bae562` e pubblicata
+su `main` come `a5bd396`. Il ciclo `33183713818` ha concluso verdi entrambi i
+lavori portatili generali, le cinque celle specializzate manifesto,
+portabilita', concorrenza e ACL, e il riepilogo finale. Sono quindi verdi nove
+lavori su nove; gli avvisi sulla migrazione futura da Node.js 20 non sono
+errori del prodotto ne' prove saltate. Il gruppo 5 converge con errore zero.
 
 Questi conteggi descrivono esecuzioni mirate parzialmente sovrapposte e non
 vanno sommati. La suite finale portatile deve essere eseguita una sola volta.
 
 ## Prossimo passo unico
 
-Registrare la seconda correzione su `main`, eseguire una pubblicazione
-incrementale e richiedere tutti i lavori Linux/Windows verdi. Non avviare il
-gruppo 6.
+Il gruppo 5 e' chiuso. Prima di modificare codice del gruppo 6, delimitare e
+ottimizzare il suo insieme minimo di rischi e prove usando lo stesso criterio
+fra gruppi: nessuna duplicazione delle prove gia' certificate e una matrice
+pubblica unica alla chiusura.
 
 ## Regole operative
 
