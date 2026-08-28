@@ -14,6 +14,7 @@ import os
 import re
 import stat
 import sys
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
@@ -529,40 +530,326 @@ def _ensure_directory(directory: Path, *, root_owned: bool) -> None:
         )
 
 
+@dataclass(slots=True)
+class _DeploymentLockLeaseV1:
+    active: bool
+    process_id: int
+    root: Path
+    root_owned: bool
+    descriptor: int
+    identity: tuple[int, int]
+
+
+class _DeploymentLockSessionV1:
+    """Non-transferable proof that the fixed deployment lock is held."""
+
+    __slots__ = ("_token", "_seal")
+
+    def __init__(self, token: object, seal: object) -> None:
+        if seal is not _DEPLOYMENT_LOCK_SESSION_SEAL:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_deployment_lock_invalid",
+            )
+        self._token = token
+        self._seal = seal
+
+    def __copy__(self):
+        raise TypeError("deployment lock sessions cannot be copied")
+
+    def __deepcopy__(self, _memo):
+        raise TypeError("deployment lock sessions cannot be copied")
+
+    def __reduce__(self):
+        raise TypeError("deployment lock sessions cannot be serialized")
+
+    def __reduce_ex__(self, _protocol):
+        raise TypeError("deployment lock sessions cannot be serialized")
+
+
+class _DeploymentLockSessionForTestV1:
+    """Nominally separate session emitted only by the portable test seam."""
+
+    __slots__ = ("_token", "_seal")
+
+    def __init__(self, token: object, seal: object) -> None:
+        if seal is not _TEST_DEPLOYMENT_LOCK_SESSION_SEAL:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_deployment_lock_invalid",
+            )
+        self._token = token
+        self._seal = seal
+
+    def __copy__(self):
+        raise TypeError("deployment lock sessions cannot be copied")
+
+    def __deepcopy__(self, _memo):
+        raise TypeError("deployment lock sessions cannot be copied")
+
+    def __reduce__(self):
+        raise TypeError("deployment lock sessions cannot be serialized")
+
+    def __reduce_ex__(self, _protocol):
+        raise TypeError("deployment lock sessions cannot be serialized")
+
+
+_DEPLOYMENT_LOCK_SESSION_SEAL = object()
+_TEST_DEPLOYMENT_LOCK_SESSION_SEAL = object()
+_DEPLOYMENT_LOCK_FORK_GUARD = threading.Lock()
+_OPEN_DEPLOYMENT_LOCK_FDS_V1: set[int] = set()
+_ACTIVE_DEPLOYMENT_LOCK_LEASES_V1: dict[int, _DeploymentLockLeaseV1] = {}
+_ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1: dict[
+    object, tuple[object, _DeploymentLockLeaseV1]
+] = {}
+
+
+def _install_deployment_lock_fork_handlers_v1() -> None:
+    def before() -> None:
+        _DEPLOYMENT_LOCK_FORK_GUARD.acquire()
+
+    def after_parent() -> None:
+        _DEPLOYMENT_LOCK_FORK_GUARD.release()
+
+    def after_child() -> None:
+        for lease in _ACTIVE_DEPLOYMENT_LOCK_LEASES_V1.values():
+            lease.active = False
+        for descriptor in _OPEN_DEPLOYMENT_LOCK_FDS_V1:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        _ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1.clear()
+        _ACTIVE_DEPLOYMENT_LOCK_LEASES_V1.clear()
+        _OPEN_DEPLOYMENT_LOCK_FDS_V1.clear()
+        _DEPLOYMENT_LOCK_FORK_GUARD.release()
+
+    if hasattr(os, "register_at_fork"):
+        os.register_at_fork(
+            before=before,
+            after_in_parent=after_parent,
+            after_in_child=after_child,
+        )
+
+
+_install_deployment_lock_fork_handlers_v1()
+del _install_deployment_lock_fork_handlers_v1
+
+
+def _require_live_deployment_lock_session_v1(
+    session: object, *, expected_type: type, seal: object, root: Path,
+    root_owned: bool,
+) -> None:
+    try:
+        if type(session) is not expected_type:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_deployment_lock_invalid",
+            )
+        token = session._token
+        if session._seal is not seal or type(token) is not object:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_deployment_lock_invalid",
+            )
+        with _DEPLOYMENT_LOCK_FORK_GUARD:
+            registration = _ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1.get(
+                token,
+            )
+            if (
+                registration is None or registration[0] is not session
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_deployment_lock_invalid",
+                )
+            lease = registration[1]
+            if (
+                type(lease) is not _DeploymentLockLeaseV1
+                or not lease.active
+                or lease.process_id != os.getpid()
+                or lease.root != Path(root)
+                or lease.root_owned is not root_owned
+                or _ACTIVE_DEPLOYMENT_LOCK_LEASES_V1.get(
+                    lease.descriptor,
+                ) is not lease
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_deployment_lock_invalid",
+                )
+        _require_deployment_lock_root_v1(Path(root), root_owned=root_owned)
+        current = os.fstat(lease.descriptor)
+        lock_info = (
+            Path(root) / DEPLOYMENT_LOCK_BASENAME_V1
+        ).lstat()
+        expected_owner = (
+            (0, 0) if root_owned else (os.geteuid(), os.getegid())
+        )
+        if (
+            lease.identity != (current.st_dev, current.st_ino)
+            or (current.st_dev, current.st_ino)
+            != (lock_info.st_dev, lock_info.st_ino)
+            or not stat.S_ISREG(current.st_mode)
+            or current.st_nlink != 1
+            or stat.S_IMODE(current.st_mode) != 0o600
+            or (current.st_uid, current.st_gid) != expected_owner
+            or current.st_size != 1
+            or stat.S_ISLNK(lock_info.st_mode)
+            or bool(getattr(lock_info, "st_file_attributes", 0) & 0x400)
+            or os.pread(lease.descriptor, 1, 0) != b"\0"
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_deployment_lock_invalid",
+            )
+    except OwnershipCoordinatorError:
+        raise
+    except (AttributeError, OSError, TypeError, ValueError) as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_deployment_lock_invalid",
+        ) from exc
+
+
+def _require_deployment_lock_session_v1(session: object) -> None:
+    _require_live_deployment_lock_session_v1(
+        session, expected_type=_DeploymentLockSessionV1,
+        seal=_DEPLOYMENT_LOCK_SESSION_SEAL,
+        root=DEFAULT_OWNERSHIP_ROOT_V1,
+        root_owned=True,
+    )
+
+
+def _require_test_deployment_lock_session_v1(
+    session: object, root: Path,
+) -> None:
+    _require_live_deployment_lock_session_v1(
+        session, expected_type=_DeploymentLockSessionForTestV1,
+        seal=_TEST_DEPLOYMENT_LOCK_SESSION_SEAL, root=Path(root),
+        root_owned=False,
+    )
+
+
+def _require_deployment_lock_root_v1(root: Path, *, root_owned: bool) -> None:
+    absolute = Path(os.path.abspath(root))
+    for component in reversed((absolute, *absolute.parents)):
+        try:
+            info = component.lstat()
+        except OSError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_deployment_lock_invalid",
+            ) from exc
+        if (
+            not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+            or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+            or (root_owned and (
+                info.st_uid != 0 or info.st_gid != 0 or info.st_mode & 0o022
+            ))
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_deployment_lock_invalid",
+            )
+    root_info = absolute.lstat()
+    if stat.S_IMODE(root_info.st_mode) != 0o755:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_deployment_lock_invalid",
+        )
+
+
 @contextmanager
-def _deployment_lock_v1(
-    root: Path = DEFAULT_OWNERSHIP_ROOT_V1, *, root_owned: bool = True,
-) -> Iterator[None]:
-    """Outermost process lock; catalog and lifecycle locks are always nested."""
+def _deployment_lock_at_v1(
+    root: Path, *, root_owned: bool,
+) -> Iterator[_DeploymentLockLeaseV1]:
     if not sys.platform.startswith("linux"):
         raise OwnershipCoordinatorError("birth_ownership_platform_unsupported")
     root = Path(root)
-    _ensure_directory(root, root_owned=root_owned)
+    _require_deployment_lock_root_v1(root, root_owned=root_owned)
     path = root / DEPLOYMENT_LOCK_BASENAME_V1
-    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0)
-    flags |= getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDWR | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    fd = None
+    locked = False
+    lease = None
+    owner_process_id = os.getpid()
     try:
-        fd = os.open(path, flags, 0o600)
+        with _DEPLOYMENT_LOCK_FORK_GUARD:
+            try:
+                fd = os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
+                _OPEN_DEPLOYMENT_LOCK_FDS_V1.add(fd)
+                created = True
+                os.fchmod(fd, 0o600)
+            except FileExistsError:
+                fd = os.open(path, flags)
+                _OPEN_DEPLOYMENT_LOCK_FDS_V1.add(fd)
+                created = False
         info = os.fstat(fd)
+        path_info = path.lstat()
+        expected_owner = (0, 0) if root_owned else (os.geteuid(), os.getegid())
         if (
             not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-            or stat.S_IMODE(info.st_mode) != 0o600
-            or (root_owned and (info.st_uid != 0 or info.st_gid != 0))
+            or (info.st_uid, info.st_gid) != expected_owner
+            or stat.S_ISLNK(path_info.st_mode)
+            or (info.st_dev, info.st_ino) != (path_info.st_dev, path_info.st_ino)
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_deployment_lock_invalid",
+            )
+        mode = stat.S_IMODE(info.st_mode)
+        if mode != 0o600:
+            # A process can die after O_EXCL and before the first fchmod.  Only
+            # that unambiguous, owner-only empty residue is safe to repair.
+            if (
+                created or info.st_size != 0
+                or mode & ~0o600
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_deployment_lock_invalid",
+                )
+            os.fchmod(fd, 0o600)
+            info = os.fstat(fd)
+            if stat.S_IMODE(info.st_mode) != 0o600:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_deployment_lock_invalid",
+                )
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        locked = True
+        after_lock = os.fstat(fd)
+        path_info = path.lstat()
+        if (
+            (after_lock.st_dev, after_lock.st_ino, after_lock.st_mode,
+             after_lock.st_nlink, after_lock.st_uid, after_lock.st_gid)
+            != (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+                info.st_uid, info.st_gid)
+            or (after_lock.st_dev, after_lock.st_ino)
+            != (path_info.st_dev, path_info.st_ino)
         ):
             raise OwnershipCoordinatorError(
                 "birth_ownership_deployment_lock_invalid",
             )
         if info.st_size == 0:
-            os.write(fd, b"\0")
-            os.fsync(fd)
+            if os.write(fd, b"\0") != 1:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_deployment_lock_invalid",
+                )
         elif info.st_size != 1:
             raise OwnershipCoordinatorError(
                 "birth_ownership_deployment_lock_invalid",
             )
-        import fcntl
-
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
+        elif os.pread(fd, 1, 0) != b"\0":
+            raise OwnershipCoordinatorError(
+                "birth_ownership_deployment_lock_invalid",
+            )
+        final = os.fstat(fd)
+        if final.st_size != 1:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_deployment_lock_invalid",
+            )
+        os.fsync(fd)
+        _sync_directory(root)
+        lease = _DeploymentLockLeaseV1(
+            True, os.getpid(), root, root_owned, fd,
+            (final.st_dev, final.st_ino),
+        )
+        with _DEPLOYMENT_LOCK_FORK_GUARD:
+            _ACTIVE_DEPLOYMENT_LOCK_LEASES_V1[fd] = lease
+        yield lease
     except OwnershipCoordinatorError:
         raise
     except OSError as exc:
@@ -570,13 +857,83 @@ def _deployment_lock_v1(
             "birth_ownership_deployment_lock_invalid",
         ) from exc
     finally:
-        if "fd" in locals():
-            try:
-                import fcntl
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            except OSError:
-                pass
-            os.close(fd)
+        if fd is not None and owner_process_id == os.getpid():
+            with _DEPLOYMENT_LOCK_FORK_GUARD:
+                if lease is not None:
+                    lease.active = False
+                _ACTIVE_DEPLOYMENT_LOCK_LEASES_V1.pop(fd, None)
+                try:
+                    if locked:
+                        import fcntl
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                except OSError:
+                    pass
+                try:
+                    os.close(fd)
+                finally:
+                    _OPEN_DEPLOYMENT_LOCK_FDS_V1.discard(fd)
+
+
+@contextmanager
+def _deployment_lock_v1() -> Iterator[_DeploymentLockSessionV1]:
+    """Acquire the fixed outer lock and emit its non-transferable session."""
+    with _deployment_lock_at_v1(
+        DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True,
+    ) as lease:
+        token = object()
+        session = _DeploymentLockSessionV1(
+            token, _DEPLOYMENT_LOCK_SESSION_SEAL,
+        )
+        with _DEPLOYMENT_LOCK_FORK_GUARD:
+            if (
+                _ACTIVE_DEPLOYMENT_LOCK_LEASES_V1.get(
+                    lease.descriptor,
+                ) is not lease
+                or token in _ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_deployment_lock_invalid",
+                )
+            _ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1[token] = (session, lease)
+        try:
+            yield session
+        finally:
+            with _DEPLOYMENT_LOCK_FORK_GUARD:
+                registration = _ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1.get(token)
+                if registration is not None and registration[0] is session:
+                    _ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1.pop(token, None)
+
+
+@contextmanager
+def _deployment_lock_for_test_v1(
+    root: Path,
+) -> Iterator[_DeploymentLockSessionForTestV1]:
+    _ensure_directory(Path(root), root_owned=False)
+    with _deployment_lock_at_v1(
+        Path(root), root_owned=False,
+    ) as lease:
+        token = object()
+        session = _DeploymentLockSessionForTestV1(
+            token, _TEST_DEPLOYMENT_LOCK_SESSION_SEAL,
+        )
+        with _DEPLOYMENT_LOCK_FORK_GUARD:
+            if (
+                _ACTIVE_DEPLOYMENT_LOCK_LEASES_V1.get(
+                    lease.descriptor,
+                ) is not lease
+                or token in _ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_deployment_lock_invalid",
+                )
+            _ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1[token] = (session, lease)
+        try:
+            yield session
+        finally:
+            with _DEPLOYMENT_LOCK_FORK_GUARD:
+                registration = _ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1.get(token)
+                if registration is not None and registration[0] is session:
+                    _ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1.pop(token, None)
 
 
 def _request_id(

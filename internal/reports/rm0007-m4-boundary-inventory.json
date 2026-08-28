@@ -1703,6 +1703,36 @@
     },
     {
       "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_deployment_lock_at_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned deployment lock implementation",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_deployment_lock_for_test_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "private portable deployment-lock test seam",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_deployment_lock_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned deployment lock entry",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
       "scope": "_decode_record",
       "role": "store_owner",
       "capabilities": [
@@ -3196,6 +3226,9 @@
       "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",
       "runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1",
       "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete",
+      "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_at_v1",
+      "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_for_test_v1",
+      "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_v1",
       "runtime/executor_birth_ownership_coordinator.py:_decode_record",
       "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
       "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",

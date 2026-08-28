@@ -245,6 +245,46 @@ def test_private_store_mutator_cannot_hide_behind_generic_path(
     assert "store_write_outside_boundary" in _codes(findings)
 
 
+@pytest.mark.parametrize(
+    "api", ("_deployment_lock_at_v1", "_deployment_lock_for_test_v1"),
+)
+def test_private_deployment_lock_seams_are_store_boundaries(
+    tmp_path: Path, api: str,
+) -> None:
+    facts = _scan(
+        tmp_path,
+        "from executor_birth_ownership_coordinator import " + api + "\n"
+        "def mutate(root):\n"
+        "    return " + api + "(root, root_owned=False)\n",
+    )
+    inventory = _inventory(facts, {"mutate": "operational_producer"})
+
+    assert _fact(facts, "mutate").capabilities == ("store_write",)
+    assert "store_write_outside_boundary" in _codes(check(facts, inventory))
+
+
+@pytest.mark.parametrize("api", (
+    "_ACTIVE_DEPLOYMENT_LOCK_LEASES_V1",
+    "_ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1",
+    "_DEPLOYMENT_LOCK_FORK_GUARD",
+    "_DeploymentLockLeaseV1",
+    "_OPEN_DEPLOYMENT_LOCK_FDS_V1",
+))
+def test_private_deployment_lock_state_cannot_escape_boundary(
+    tmp_path: Path, api: str,
+) -> None:
+    facts = _scan(
+        tmp_path,
+        "from executor_birth_ownership_coordinator import " + api + "\n"
+        "def mutate():\n"
+        "    return " + api + "\n",
+    )
+    inventory = _inventory(facts, {"mutate": "operational_producer"})
+
+    assert _fact(facts, "mutate").capabilities == ("store_write",)
+    assert "store_write_outside_boundary" in _codes(check(facts, inventory))
+
+
 def test_operational_sign_is_found_through_a_local_helper(tmp_path: Path) -> None:
     facts = _scan(
         tmp_path,
@@ -910,6 +950,12 @@ def _closed_facts(
     )
     facts = discover(tmp_path)
     present = {fact.key for fact in facts}
+    for key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS:
+        if key in present:
+            continue
+        path, scope = key.split(":", 1)
+        facts.append(ScopeFacts(path, scope, 1, ("store_write",), ()))
+        present.add(key)
     for key, exception in BIRTH_CLOSED_EXCEPTION_SCOPES.items():
         if key in present:
             continue

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import multiprocessing
 import os
+import pickle
+import stat
 import sys
+from copy import copy, deepcopy
 from contextlib import contextmanager
 
 import pytest
@@ -29,8 +33,10 @@ from executor_birth_ownership_authorities import (
 from executor_birth_ownership_coordinator import (
     OwnershipCoordinatorError, OwnershipCoordinatorJournalV1,
     OwnershipCoordinatorStateV1, _prepare_under_maintenance_v1,
-    _deployment_lock_v1, _prepared_record,
+    _deployment_lock_for_test_v1, _deployment_lock_v1, _prepared_record,
     _publish_certificate_with_prerequisite_v1,
+    _require_deployment_lock_session_v1,
+    _require_test_deployment_lock_session_v1,
     _startup_prerequisite_for_test,
 )
 from executor_birth_ownership_preflight import (
@@ -454,7 +460,8 @@ def test_partial_certificate_temporary_is_rebuilt_before_publication(tmp_path):
 def _locked_prepare_worker(root, distribution_value, barrier, queue):
     try:
         barrier.wait()
-        with _deployment_lock_v1(root, root_owned=False):
+        with _deployment_lock_for_test_v1(root) as session:
+            _require_test_deployment_lock_session_v1(session, root)
             journal = OwnershipCoordinatorJournalV1(
                 root / "journal", root_owned=False,
             )
@@ -492,7 +499,8 @@ def test_deployment_lock_serializes_same_request_and_rejects_a_different_one(tmp
         "RECEIPTS_COMPLETE", "RECEIPTS_COMPLETE",
     ]
     other = _distribution(tmp_path, "other")
-    with _deployment_lock_v1(root, root_owned=False):
+    with _deployment_lock_for_test_v1(root) as session:
+        _require_test_deployment_lock_session_v1(session, root)
         with pytest.raises(OwnershipCoordinatorError, match="request_conflict"):
             _prepare_under_maintenance_v1(
                 other,
@@ -502,3 +510,223 @@ def test_deployment_lock_serializes_same_request_and_rejects_a_different_one(tmp
                 initial_maintenance=_maintenance(),
                 observe_maintenance=_maintenance, prepare_receipts=_proof,
             )
+
+
+def _inherited_session_worker(session, root, queue):
+    try:
+        _require_test_deployment_lock_session_v1(session, root)
+        queue.put("accepted")
+    except Exception as exc:
+        queue.put(getattr(exc, "code", type(exc).__name__))
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+def test_deployment_lock_session_is_live_local_and_nontransferable(tmp_path):
+    root = tmp_path / "deployment-session"
+    root.mkdir(mode=0o755)
+    assert tuple(inspect.signature(_deployment_lock_v1).parameters) == ()
+    with _deployment_lock_for_test_v1(root) as session:
+        _require_test_deployment_lock_session_v1(session, root)
+        assert set(type(session).__slots__) == {"_seal", "_token"}
+        assert not hasattr(session, "_lease")
+        assert not hasattr(session, "descriptor")
+        with pytest.raises(OwnershipCoordinatorError):
+            _require_test_deployment_lock_session_v1(session, root / "other")
+        with pytest.raises(OwnershipCoordinatorError):
+            _require_deployment_lock_session_v1(session)
+        for operation in (copy, deepcopy, pickle.dumps):
+            with pytest.raises(TypeError):
+                operation(session)
+        forged = object.__new__(type(session))
+        with pytest.raises(OwnershipCoordinatorError):
+            _require_test_deployment_lock_session_v1(forged, root)
+        clone = object.__new__(type(session))
+        clone._seal = session._seal
+        clone._token = session._token
+        with pytest.raises(OwnershipCoordinatorError):
+            _require_test_deployment_lock_session_v1(clone, root)
+        malformed = object.__new__(type(session))
+        malformed._seal = session._seal
+
+        class HostileToken:
+            def __hash__(self):
+                raise RuntimeError("hostile token hash")
+
+            def __eq__(self, _other):
+                raise RuntimeError("hostile token equality")
+
+        malformed._token = HostileToken()
+        with pytest.raises(OwnershipCoordinatorError) as failure:
+            _require_test_deployment_lock_session_v1(malformed, root)
+        assert failure.value.code == "birth_ownership_deployment_lock_invalid"
+
+        context = multiprocessing.get_context("fork")
+        queue = context.Queue()
+        child = context.Process(
+            target=_inherited_session_worker, args=(session, root, queue),
+        )
+        child.start()
+        child.join(timeout=10)
+        assert child.exitcode == 0
+        assert queue.get(timeout=2) == "birth_ownership_deployment_lock_invalid"
+    with pytest.raises(OwnershipCoordinatorError):
+        _require_test_deployment_lock_session_v1(session, root)
+
+
+def test_deployment_lock_rejects_unregistered_nominal_session(tmp_path):
+    root = tmp_path / "deployment-unregistered-session"
+    session = coordinator_module._DeploymentLockSessionForTestV1(
+        object(), coordinator_module._TEST_DEPLOYMENT_LOCK_SESSION_SEAL,
+    )
+    with pytest.raises(OwnershipCoordinatorError) as failure:
+        _require_test_deployment_lock_session_v1(session, root)
+    assert failure.value.code == "birth_ownership_deployment_lock_invalid"
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+def test_deployment_lock_session_rejects_replaced_nominal_file(tmp_path):
+    root = tmp_path / "deployment-replaced-lock"
+    root.mkdir(mode=0o755)
+    lock_path = root / coordinator_module.DEPLOYMENT_LOCK_BASENAME_V1
+    displaced = root / "displaced.lock"
+
+    with _deployment_lock_for_test_v1(root) as original_session:
+        lock_path.replace(displaced)
+        lock_path.write_bytes(b"\0")
+        lock_path.chmod(0o600)
+        with pytest.raises(OwnershipCoordinatorError):
+            _require_test_deployment_lock_session_v1(original_session, root)
+        with _deployment_lock_for_test_v1(root) as replacement_session:
+            _require_test_deployment_lock_session_v1(replacement_session, root)
+            with pytest.raises(OwnershipCoordinatorError):
+                _require_test_deployment_lock_session_v1(original_session, root)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+def test_fork_child_does_not_retain_deployment_lock(tmp_path):
+    import fcntl
+
+    root = tmp_path / "deployment-fork-release"
+    root.mkdir(mode=0o755)
+    status_read, status_write = os.pipe()
+    release_read, release_write = os.pipe()
+    holder = os.fork()
+    if holder == 0:
+        os.close(status_read)
+        os.close(release_write)
+        with _deployment_lock_for_test_v1(root):
+            child = os.fork()
+            if child == 0:
+                os.close(status_write)
+                os.read(release_read, 1)
+                os._exit(0)
+            os.close(release_read)
+            os.write(status_write, (str(child) + "\n").encode("ascii"))
+            os.close(status_write)
+            os._exit(0)
+
+    os.close(status_write)
+    os.close(release_read)
+    try:
+        child_report = os.read(status_read, 64)
+        os.close(status_read)
+        assert child_report.strip().isdigit()
+        waited, status_value = os.waitpid(holder, 0)
+        assert waited == holder and os.waitstatus_to_exitcode(status_value) == 0
+
+        lock_path = root / coordinator_module.DEPLOYMENT_LOCK_BASENAME_V1
+        descriptor = os.open(lock_path, os.O_RDWR)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+        with _deployment_lock_for_test_v1(root) as session:
+            _require_test_deployment_lock_session_v1(session, root)
+    finally:
+        try:
+            os.write(release_write, b"x")
+        except OSError:
+            pass
+        os.close(release_write)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+@pytest.mark.parametrize("failure_stage", ("target", "parent"))
+def test_deployment_lock_retries_each_durability_boundary(
+    tmp_path, monkeypatch, failure_stage,
+):
+    root = tmp_path / ("deployment-sync-" + failure_stage)
+    root.mkdir(mode=0o755)
+    calls = []
+    if failure_stage == "target":
+        real_fsync = os.fsync
+
+        def fail_target_once(fd):
+            lock_path = root / coordinator_module.DEPLOYMENT_LOCK_BASENAME_V1
+            lock_inode = lock_path.stat().st_ino if lock_path.exists() else None
+            if os.fstat(fd).st_ino == lock_inode:
+                calls.append("target")
+                if len(calls) == 1:
+                    raise OSError("injected target fsync failure")
+            real_fsync(fd)
+
+        monkeypatch.setattr(coordinator_module.os, "fsync", fail_target_once)
+    else:
+        real_sync = coordinator_module._sync_directory
+
+        def fail_parent_once(path):
+            calls.append("parent")
+            if len(calls) == 1:
+                raise OSError("injected parent fsync failure")
+            real_sync(path)
+
+        monkeypatch.setattr(coordinator_module, "_sync_directory", fail_parent_once)
+
+    with pytest.raises(OwnershipCoordinatorError) as failure:
+        with _deployment_lock_for_test_v1(root):
+            pass
+    assert failure.value.code == "birth_ownership_deployment_lock_invalid"
+    with _deployment_lock_for_test_v1(root) as session:
+        _require_test_deployment_lock_session_v1(session, root)
+    assert calls == [failure_stage, failure_stage]
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+def test_deployment_lock_repairs_safe_restrictive_empty_residue(
+    tmp_path, monkeypatch,
+):
+    root = tmp_path / "deployment-restrictive-residue"
+    root.mkdir(mode=0o755)
+    lock_path = root / coordinator_module.DEPLOYMENT_LOCK_BASENAME_V1
+    seed_descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    os.fchmod(seed_descriptor, 0o000)
+    real_open = os.open
+
+    def privileged_reopen(path, flags, mode=0o777):
+        if os.fspath(path) == os.fspath(lock_path) and not flags & os.O_CREAT:
+            return os.dup(seed_descriptor)
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(coordinator_module.os, "open", privileged_reopen)
+    try:
+        with _deployment_lock_for_test_v1(root) as session:
+            _require_test_deployment_lock_session_v1(session, root)
+    finally:
+        os.close(seed_descriptor)
+
+    assert stat.S_IMODE(lock_path.stat().st_mode) == 0o600
+    assert lock_path.read_bytes() == b"\0"
+
+
+def test_product_deployment_lock_fails_off_linux_before_io(monkeypatch):
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("deployment lock performed I/O")
+
+    monkeypatch.setattr(coordinator_module.sys, "platform", "win32")
+    monkeypatch.setattr(coordinator_module.os, "open", unexpected)
+    monkeypatch.setattr(coordinator_module.Path, "mkdir", unexpected)
+    with pytest.raises(OwnershipCoordinatorError) as failure:
+        with _deployment_lock_v1():
+            pass
+    assert failure.value.code == "birth_ownership_platform_unsupported"

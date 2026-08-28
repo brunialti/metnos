@@ -13,9 +13,10 @@ RM-0008 resta `active`; `closed_build_enforcement()` resta `False`.
 ### Incremento G6-A1 completato localmente
 
 E' completato il primo sottoincremento di G6-A: record storico autenticato e
-lettura produttiva a freddo della catena. Non sono ancora implementati il codec
-V2, `successor-claims-v1`, la disposizione del journal V1 e la sessione
-sigillata del blocco di deployment; pertanto G6-A e RM-0008 restano aperti.
+lettura produttiva a freddo della catena. E' completata anche la sessione
+sigillata del blocco di deployment. Non sono ancora implementati il codec V2,
+`successor-claims-v1`, la disposizione del journal V1 e il resolver per
+transazione; pertanto G6-A e RM-0008 restano aperti.
 
 Il codice ora:
 
@@ -44,6 +45,35 @@ La prova diretta su `192.168.1.137` non e' stata eseguita: la connessione SSH
 alla porta 22 e' scaduta. Il percorso Windows ha comunque superato la review
 dedicata; la matrice pubblica Linux/Windows resta unica e viene eseguita alla
 chiusura del gruppo 6, come stabilito dal piano.
+
+### Sottoincremento lock di G6-A completato localmente
+
+Il blocco di deployment restituisce ora una capability opaca e non
+trasferibile. La sessione contiene soltanto un token e un sigillo: lease e
+descrittore restano in registri privati, censiti dalla guardia come autorita' di
+scrittura. Il consumo richiede l'identita' esatta di sessione, token, lease,
+processo, radice, inode e file nominale; copia, serializzazione, clone,
+sessione scaduta o costruita a mano sono respinti.
+
+Il lock produttivo usa soltanto la radice fissa preesistente. Verifica
+proprietario, modo, link, marker e antenati, ripara esclusivamente il residuo
+vuoto e owner-only lasciato da una morte fra creazione e `fchmod`, e ripete
+sempre la sincronizzazione del file e della directory. Dopo `fork` il figlio
+invalida le lease ereditate e chiude i descrittori, percio' non puo' trattenere
+il lock dopo la morte del titolare. La seam di prova resta nominalmente
+separata e non produce una capability accettata dal prodotto.
+
+Le prove definitive hanno dato `139 passed, 1 skipped` sulla regressione
+mirata e `63 passed` sull'intera guardia dei confini. Due revisioni
+indipendenti hanno concluso `P1=0`, `P2=0`, dopo prove causali su `fork`,
+sostituzione del pathname, lease non registrata, clone popolato, sblocco
+diretto, token ostile, metadati e ripresa degli `fsync`. Il diff e' pulito.
+
+La prova SSH Windows e' stata ritentata usando direttamente l'IP
+`192.168.1.137` e l'utente configurato `rober`, senza risoluzione del nome. La
+porta 22 e' scaduta nuovamente: il PC puo' essere online per il trasporto
+Metnos/Codex senza esporre SSH. Questo non modifica la decisione di usare la
+sola matrice pubblica Windows alla chiusura del gruppo 6.
 
 ## Analisi del gruppo 6
 
@@ -176,11 +206,10 @@ incrementi successivi restano chiusi fino al criterio di uscita di G6-A.
 
 ## Prossimo passo unico
 
-Completare soltanto G6-A con codec/store di `successor-claims-v1`, codec V2,
-resolver del journal per transazione, disposizione esplicita del journal V1 e
-sessione sigillata restituita da `_deployment_lock_v1()`. Non esporre ancora il
-percorso che pubblica claim o `PREPARED` e non aprire in parallelo G6-B, G6-C o
-G6-D.
+Completare soltanto G6-A con codec e lettore di `successor-claims-v1`, codec V2,
+resolver del journal per transazione e disposizione esplicita del journal V1.
+Non esporre ancora il percorso che pubblica claim o `PREPARED` e non aprire in
+parallelo G6-B, G6-C o G6-D.
 
 ## Regole operative
 
