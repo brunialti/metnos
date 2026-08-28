@@ -62,6 +62,10 @@ if os.name == "nt":
         wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD,
     )
     _KERNEL32.GetFinalPathNameByHandleW.restype = wintypes.DWORD
+    _KERNEL32.GetLongPathNameW.argtypes = (
+        wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD,
+    )
+    _KERNEL32.GetLongPathNameW.restype = wintypes.DWORD
     _KERNEL32.ReadFile.argtypes = (
         wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
         ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p,
@@ -118,6 +122,14 @@ def _win_file_shape(handle: int) -> tuple[int, int, int, bool, bool]:
     )
 
 
+def _win_normalize_path(value: str) -> str:
+    if value.startswith("\\\\?\\UNC\\"):
+        value = "\\\\" + value[8:]
+    elif value.startswith("\\\\?\\"):
+        value = value[4:]
+    return os.path.normcase(os.path.abspath(value))
+
+
 def _win_final_path(handle: int) -> str:
     needed = _KERNEL32.GetFinalPathNameByHandleW(handle, None, 0, 0)
     if not needed:
@@ -126,12 +138,20 @@ def _win_final_path(handle: int) -> str:
     written = _KERNEL32.GetFinalPathNameByHandleW(handle, buffer, len(buffer), 0)
     if not written or written >= len(buffer):
         raise _win_error("GetFinalPathNameByHandleW")
-    value = buffer.value
-    if value.startswith("\\\\?\\UNC\\"):
-        value = "\\\\" + value[8:]
-    elif value.startswith("\\\\?\\"):
-        value = value[4:]
-    return os.path.normcase(os.path.abspath(value))
+    return _win_normalize_path(buffer.value)
+
+
+def _win_expected_path(path: Path) -> str:
+    """Return the existing path in the same long form as the handle oracle."""
+    absolute = os.path.abspath(path)
+    needed = _KERNEL32.GetLongPathNameW(absolute, None, 0)
+    if not needed:
+        raise _win_error("GetLongPathNameW")
+    buffer = ctypes.create_unicode_buffer(needed + 1)
+    written = _KERNEL32.GetLongPathNameW(absolute, buffer, len(buffer))
+    if not written or written >= len(buffer):
+        raise _win_error("GetLongPathNameW")
+    return _win_normalize_path(buffer.value)
 
 
 def _win_read(handle: int, maximum: int) -> bytes:
@@ -180,7 +200,7 @@ def read_immutable_regular_file(path: Path, *, maximum: int) -> bytes:
                 or links != 1 or size < 0 or size > maximum
             ):
                 raise ValueError("unsafe file")
-            if _win_final_path(handle) != os.path.normcase(os.path.abspath(path)):
+            if _win_final_path(handle) != _win_expected_path(path):
                 raise ValueError("unexpected final path")
             raw = _win_read(handle, maximum)
             if (
