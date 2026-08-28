@@ -11,12 +11,14 @@ I gruppi 2 e 3 sono chiusi. Il loro ultimo ciclo GitHub completamente verde e'
 Il gruppo 4 e' soltanto la chiusura statica F4 del §23.6.4. Il piano completo
 e' `internal/reports/rm0008-gruppo4-piano-ottimizzato.md`.
 
-Stato piu' recente: G4-B+C e' completo localmente fino al commit `44affb51`.
-Guardie e inventario hanno zero rilievi, le prove mirate sono 150 verdi e la
-suite portatile completa conta 326 prove verdi, 23 non applicabili e zero
-errori. Manca la sola pubblicazione e la conferma GitHub Linux/Windows; il
-gruppo 4 non e'
-ancora chiuso.
+Stato piu' recente: il primo candidato pubblico G4-B+C e' `cc8ff9d`, ciclo
+`33165352528`. Tutti i quattro lavori Windows e gli altri tre lavori sono
+verdi; la sola suite Linux generale e' rossa per un'importazione anticipata di
+`yaml`.
+La causa e' corretta localmente nel commit `d276d4c1`. La suite portatile
+completa, eseguita rendendo intenzionalmente indisponibile `yaml`, conta 326
+prove verdi, 23 non applicabili e zero errori. Manca la pubblicazione della
+correzione e la conferma GitHub; il gruppo 4 non e' ancora chiuso.
 
 G4-A e' implementato nel commit sorgente `3eeb4b1b` e documentato in
 `e45a192e`. Il primo commit pubblico e' `74c6997`, ciclo GitHub
@@ -274,6 +276,27 @@ Il candidato locale G4-B+C e' quindi completo. Manca soltanto la pubblicazione
 su `main` e la matrice GitHub Linux/Windows interamente verde; prima di tale
 risultato il gruppo 4 non e' dichiarato chiuso.
 
+## Primo ciclo pubblico G4-B+C
+
+Il candidato e' stato pubblicato come `cc8ff9d`; il ciclo GitHub e'
+`33165352528`. Tutti i quattro lavori Windows e i tre lavori indipendenti sono
+verdi. La suite Linux generale ha un solo errore, con 325 prove verdi e 23 non
+applicabili; il riepilogo finale e' rosso soltanto come conseguenza.
+
+Il log delimita la causa. La prova iniziale dell'installatore attraversa la
+vera attivazione, che importa `i18n_pipeline`. Quel modulo caricava `yaml`
+all'importazione, anche se l'attivazione usa soltanto le funzioni leggere di
+riconciliazione del registro. La suite portatile installa intenzionalmente un
+insieme minimo e quindi non contiene PyYAML. Windows salta correttamente questa
+prova perche' la fase 3 gestita e' Linux/systemd.
+
+La correzione `d276d4c1` carica `yaml` soltanto dentro `_translate_yaml()`, il
+solo percorso che lo usa. La prova di attivazione e' verde con l'importazione
+di `yaml` vietata; una prova reale della traduzione YAML resta verde quando la
+dipendenza e' presente. L'intera suite portatile nello stesso ambiente minimo
+e' verde con 326 prove superate, 23 non applicabili e zero errori. Guardia
+normale, guardia chiusa e inventario restano a zero.
+
 `PC-ROBERTO` e' visibile come host Codex locale, ma non espone un progetto
 Metnos salvato. Il trasporto remoto del prodotto accetta soltanto executor
 firmati e non permette di lanciare una suite arbitraria. Non verra' creato un
@@ -304,7 +327,7 @@ Il gruppo 5 non inizia prima della chiusura pubblica verde del gruppo 4.
 
 ## Prossimo passo unico corrente
 
-Pubblicare una sola volta il candidato G4-B+C su `main`, attendere tutti i
+Pubblicare una sola volta la correzione `d276d4c1` su `main`, attendere tutti i
 lavori GitHub e aggiornare questo file con commit pubblico e ciclo. Se un
 lavoro e' rosso, fermarsi e diagnosticare il primo errore reale prima di ogni
 nuova modifica.
