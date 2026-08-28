@@ -195,7 +195,7 @@ Il piano corretto e' stato riletto da entrambi i revisori con esito finale
 `P0=0`, `P1=0`, `P2=0`. Il primo passo di codice autorizzato e' soltanto
 G6-B1.
 
-### Sottoincremento G6-B1a del manifesto completato localmente
+### Sottoincremento G6-B1a del manifesto completato e certificato
 
 Il verificatore del manifesto ammette ora i ruoli `service_catalog` e
 `deployment_descriptor`, li lega ai due percorsi fissi sotto `deployment/` e
@@ -209,6 +209,10 @@ La regressione combinata di manifesto, catena e coordinatore ha dato
 nuovi materiali, pluralita' delle unita', spostamento del catalogo o del
 descrittore mantenendo ruolo e cardinalita', e `schema_version=true`. Due
 revisioni indipendenti finali hanno concluso `P0=0`, `P1=0`, `P2=0`.
+
+Il commit pubblico e' `5cc2b08`; il ciclo GitHub Actions `33207820031` ha
+concluso con successo tutti i nove lavori su Linux e Windows, compreso il
+riepilogo finale. G6-B1a ha quindi errore pubblico zero.
 
 Questo sottoincremento non implementa ancora catalogo, renderer o proiezione
 di manutenzione e non effettua scritture produttive. Il passo successivo resta
