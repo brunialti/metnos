@@ -25,6 +25,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey, Ed25519PublicKey,
 )
+from cryptography.hazmat.primitives import serialization
 
 from executor_birth_cutover import CurrentReceiptProof
 
@@ -45,6 +46,7 @@ _PAYLOAD_KEYS = frozenset({
     "boundary_guard_version", "closed_build_id",
 })
 _RECEIPT_KEYS = frozenset({"contract_id", "generation_id", "receipt_hash"})
+_OWNERSHIP_PURPOSES = frozenset({PURPOSE, "ownership_head_v1"})
 
 
 class OwnershipCutoverError(RuntimeError):
@@ -52,6 +54,16 @@ class OwnershipCutoverError(RuntimeError):
         self.code = code
         self.detail = detail
         super().__init__(f"{code}: {detail}" if detail else code)
+
+
+def ownership_key_id(public_key: Ed25519PublicKey) -> str:
+    """Derive the only admitted ownership key identifier from raw Ed25519."""
+    if not isinstance(public_key, Ed25519PublicKey):
+        raise OwnershipCutoverError("birth_ownership_proof_invalid", "key registry")
+    raw = public_key.public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw,
+    )
+    return "birth-ed25519-v1-sha256-" + hashlib.sha256(raw).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +76,10 @@ class OwnershipCutoverKey:
         if (
             not isinstance(self.key_id, str) or _KEY_ID_RE.fullmatch(self.key_id) is None
             or not isinstance(self.public_key, Ed25519PublicKey)
+            or self.key_id != ownership_key_id(self.public_key)
             or not isinstance(self.purposes, frozenset)
-            or any(not isinstance(item, str) or not item for item in self.purposes)
+            or len(self.purposes) != 1
+            or not self.purposes.issubset(_OWNERSHIP_PURPOSES)
         ):
             raise OwnershipCutoverError("birth_ownership_proof_invalid", "key registry")
 
@@ -379,6 +393,40 @@ def _write_temporary(path: Path, payload: bytes) -> None:
         os.close(fd)
 
 
+def _prepare_recoverable_temporary(
+    temporary: Path, destination: Path, expected: bytes,
+) -> bool:
+    """Prepare a pre-publication file; discard only an exact write prefix."""
+    if destination.exists():
+        if _safe_read(destination, len(expected)) != expected:
+            raise OwnershipCutoverError(
+                "birth_ownership_cutover_conflict", destination.name,
+            )
+        if temporary.exists():
+            observed = _safe_read(temporary, len(expected))
+            if observed != expected and not (
+                len(observed) < len(expected) and expected.startswith(observed)
+            ):
+                raise OwnershipCutoverError(
+                    "birth_ownership_cutover_conflict", temporary.name,
+                )
+            temporary.unlink()
+            _sync_directory(temporary.parent)
+        return False
+    if temporary.exists():
+        observed = _safe_read(temporary, len(expected))
+        if observed == expected:
+            return True
+        if len(observed) >= len(expected) or not expected.startswith(observed):
+            raise OwnershipCutoverError(
+                "birth_ownership_cutover_conflict", temporary.name,
+            )
+        temporary.unlink()
+        _sync_directory(temporary.parent)
+    _write_temporary(temporary, expected)
+    return True
+
+
 def _publish_no_replace(temporary: Path, destination: Path, expected: bytes) -> None:
     try:
         if os.name == "nt":
@@ -416,6 +464,7 @@ def _publish_no_replace(temporary: Path, destination: Path, expected: bytes) -> 
 def install_ownership_cutover_certificate(
     directory: Path, encoded: bytes, signature: bytes, *,
     registry: OwnershipCutoverRegistry, expected_proof: CurrentReceiptProof,
+    _crash_seam=None,
 ) -> OwnershipCutoverCertificate:
     """Install signature then payload without replacement; exact retries succeed."""
     directory = Path(directory)
@@ -431,16 +480,18 @@ def install_ownership_cutover_certificate(
     signature_tmp = directory / f".{SIGNATURE_BASENAME}.{suffix}.tmp"
     payload_tmp = directory / f".{PAYLOAD_BASENAME}.{suffix}.tmp"
     try:
-        if not signature_tmp.exists():
-            _write_temporary(signature_tmp, signature)
-        elif _safe_read(signature_tmp, 64) != signature:
-            raise OwnershipCutoverError("birth_ownership_cutover_conflict", signature_tmp.name)
-        _publish_no_replace(signature_tmp, signature_path, signature)
-        if not payload_tmp.exists():
-            _write_temporary(payload_tmp, encoded)
-        elif _safe_read(payload_tmp, len(encoded)) != encoded:
-            raise OwnershipCutoverError("birth_ownership_cutover_conflict", payload_tmp.name)
-        _publish_no_replace(payload_tmp, payload_path, encoded)
+        if _prepare_recoverable_temporary(
+            signature_tmp, signature_path, signature,
+        ):
+            _publish_no_replace(signature_tmp, signature_path, signature)
+        if _crash_seam:
+            _crash_seam("certificate_signature")
+        if _prepare_recoverable_temporary(
+            payload_tmp, payload_path, encoded,
+        ):
+            _publish_no_replace(payload_tmp, payload_path, encoded)
+        if _crash_seam:
+            _crash_seam("certificate_payload")
         return read_ownership_cutover_certificate(
             directory, registry=registry, expected_proof=expected_proof,
         )
@@ -475,5 +526,6 @@ __all__ = [
     "OwnershipCutoverCertificate", "OwnershipCutoverError", "OwnershipCutoverKey",
     "OwnershipCutoverRegistry", "OwnershipReceiptBinding", "PURPOSE",
     "install_ownership_cutover_certificate", "issue_ownership_cutover_certificate",
+    "ownership_key_id",
     "read_ownership_cutover_certificate", "verify_ownership_cutover_certificate",
 ]

@@ -112,7 +112,7 @@ def test_noncanonical_duplicate_json_tamper_and_wrong_purpose_fail(authority):
     with pytest.raises(OwnershipCutoverError, match="birth_ownership_proof_invalid"):
         verify_ownership_cutover_certificate(duplicate, signature, registry=authority[2])
     unauthorized = OwnershipCutoverRegistry({authority[1]: OwnershipCutoverKey(
-        authority[1], authority[0].public_key(), frozenset({"admission_receipt_v1"}),
+        authority[1], authority[0].public_key(), frozenset({"ownership_head_v1"}),
     )})
     with pytest.raises(OwnershipCutoverError, match="birth_ownership_key_unauthorized"):
         verify_ownership_cutover_certificate(encoded, signature, registry=unauthorized)

@@ -23,13 +23,10 @@ _QUIESCENT_STATES = frozenset({"inactive", "failed"})
 
 def prove_stack_stopped(reconciler) -> dict:
     """Prove that every catalog consumer/writer and browser ingress is idle."""
-    from stack_reconcile import CONTRACT_CUTOVER_UNITS
+    from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 
-    observations: dict[str, str] = {}
-    targets = tuple(("user", unit) for unit in CONTRACT_CUTOVER_UNITS) + (
-        ("system", "metnos-http.service"),
-    )
-    for scope, unit in targets:
+    observations: list[dict[str, object]] = []
+    for scope, unit in MAINTENANCE_TARGETS_V1:
         state = reconciler.systemctl.show(unit, scope)
         load_state = str(state.get("LoadState") or "")
         active_state = str(state.get("ActiveState") or "")
@@ -37,8 +34,7 @@ def prove_stack_stopped(reconciler) -> dict:
             main_pid = int(state.get("MainPID") or 0)
         except (TypeError, ValueError):
             main_pid = -1
-        observations[f"{scope}:{unit}"] = active_state or load_state
-        if load_state in {"", "error"} or state.get("ManagerError"):
+        if load_state != "loaded" or state.get("ManagerError"):
             raise ContractCutoverGuardError(
                 "quiescence_unknown", f"cannot inspect {scope} unit {unit}",
             )
@@ -47,6 +43,13 @@ def prove_stack_stopped(reconciler) -> dict:
                 "cutover_blocked",
                 f"{scope} unit {unit} is {active_state or load_state}",
             )
+        observations.append({
+            "scope": scope,
+            "unit": unit,
+            "load_state": load_state,
+            "active_state": active_state,
+            "main_pid": main_pid,
+        })
     try:
         browser = reconciler.require_quiescent()
     except Exception as exc:
@@ -61,6 +64,22 @@ def prove_stack_stopped(reconciler) -> dict:
             "HTTP ingress is reachable or browser work is not quiescent",
         )
     return {"source": browser["source"], "units": observations}
+
+
+class _MaintenanceProofV1:
+    """Preserve the legacy boolean guard and expose fresh canonical evidence."""
+
+    __slots__ = ("_reconciler",)
+
+    def __init__(self, reconciler) -> None:
+        self._reconciler = reconciler
+
+    def observe(self) -> dict:
+        return prove_stack_stopped(self._reconciler)
+
+    def __call__(self) -> bool:
+        self.observe()
+        return True
 
 
 @contextmanager
@@ -86,12 +105,8 @@ def contract_cutover_guard():
         ) from exc
     try:
         reconciler = StackReconciler(default_write_report=False)
-        evidence = prove_stack_stopped(reconciler)
-
-        def proof() -> bool:
-            prove_stack_stopped(reconciler)
-            return True
-
+        proof = _MaintenanceProofV1(reconciler)
+        evidence = proof.observe()
         yield proof, evidence
     finally:
         guard.__exit__(None, None, None)

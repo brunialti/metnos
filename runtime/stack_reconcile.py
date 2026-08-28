@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import config as _C
+from executor_birth_maintenance_units import CONTRACT_CUTOVER_UNITS
 
 
 SCHEMA_VERSION = 1
@@ -52,20 +53,10 @@ STACK_UNITS = (
     "metnos-i18n-translator.timer",
     "metnos-stack-watchdog.timer",
 )
-# Canonical maintenance boundary for immutable executor-contract cutover.
+# The canonical cutover inventory lives in the portable maintenance module.
 # Supporting services (LLM, search, geocoding and display) remain outside it;
-# Playwright is proved independently by ``require_quiescent()`` because the
-# broker may stay running while holding no browser work.
-CONTRACT_CUTOVER_UNITS = tuple(sorted({
-    TARGET_UNIT,
-    "metnos-http.service",
-    "metnos-durable-worker.service",
-    "metnos-telegram-daemon.service",
-    "metnos-i18n-translator.service",
-    "metnos-i18n-translator.timer",
-    *CONTROL_PLANE_UNITS,
-    "metnos-stack-watchdog.timer",
-}))
+# Playwright is proved independently because the broker may stay running while
+# holding no browser work.
 RUNTIME_COMPONENT_UNITS = (
     "metnos-durable-worker.service",
     "metnos-side-display.service",

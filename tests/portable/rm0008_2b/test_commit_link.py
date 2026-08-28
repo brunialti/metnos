@@ -214,3 +214,16 @@ def test_the_publisher_owns_the_ring_that_authenticates_a_predecessor():
     # caller-supplied option.
     assert "self._author_ring" in source and "self._store_root" in source
     assert "trusted_publics=" in source and "options" not in source
+
+
+def test_reattestation_uses_a_nominal_least_authority_port():
+    bundle = _bundle()
+    port = bundle.publisher.reattestation_port()
+    assert link._is_birth_reattestation_port(port)
+    assert all(callable(getattr(port, name)) for name in (
+        "capture", "persist", "read", "enumerate_current", "verify_receipt",
+    ))
+    assert not hasattr(port, "store_root")
+    assert not hasattr(bundle.publisher, "capture_current_reattestation")
+    assert not hasattr(bundle.publisher, "persist_current_reattestation")
+    assert not hasattr(bundle.publisher, "read_current_reattestation")

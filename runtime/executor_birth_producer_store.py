@@ -280,6 +280,129 @@ def get_or_issue_producer_receipt(
     finally:
         db.close()
 
+
+def get_or_issue_and_claim_producer_receipt(
+    *, request_id: str, issuer_id: str, capability_id: str, contract_id: str,
+    binding: ProducerReceiptBinding, registry: IssuerRegistry, now: datetime,
+    db_path: Path, issue: Callable[[], bytes], lease_seconds: int = 300,
+) -> bytes:
+    """Issue and claim the cutover receipt in one durable transaction.
+
+    A retry of the same fully-bound request renews its in-progress lease.  It
+    never creates a second receipt and never transfers a claim to a different
+    request.
+    """
+    instant = _utc(now)
+    request = _digest(request_id, "request_id")
+    if not isinstance(binding, ProducerReceiptBinding):
+        raise ReceiptError("producer_receipt_binding_invalid", "binding")
+    if not all(isinstance(item, str) and item and "\0" not in item for item in (
+        issuer_id, capability_id, contract_id,
+    )):
+        raise ReceiptError("producer_receipt_invalid", "issuance identity")
+    _digest(binding.objective_hash, "objective_hash")
+    _digest(binding.candidate_source_id, "candidate_source_id")
+    if (not callable(issue) or not isinstance(lease_seconds, int)
+            or isinstance(lease_seconds, bool) or lease_seconds < 1):
+        raise ReceiptError("producer_receipt_invalid", "issuer or lease")
+    issuance_binding = (
+        issuer_id, capability_id, contract_id,
+        binding.objective_hash, binding.candidate_source_id,
+    )
+    db = _open(db_path)
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT i.issuer_id AS issuance_issuer_id,"
+            "i.capability_id AS issuance_capability_id,"
+            "i.contract_id AS issuance_contract_id,"
+            "i.objective_hash AS issuance_objective_hash,"
+            "i.candidate_source_id AS issuance_candidate_source_id,"
+            "i.encoded AS issuance_encoded,r.* "
+            "FROM birth_producer_issuance i "
+            "JOIN birth_producer_receipts r ON r.receipt_id=i.receipt_id "
+            "WHERE i.request_id=?",
+            (request,),
+        ).fetchone()
+        lease = _iso(instant + timedelta(seconds=lease_seconds))
+        if row is not None:
+            actual_issuance = tuple(row[name] for name in (
+                "issuance_issuer_id", "issuance_capability_id",
+                "issuance_contract_id", "issuance_objective_hash",
+                "issuance_candidate_source_id",
+            ))
+            if actual_issuance != issuance_binding:
+                raise ReceiptError("producer_receipt_request_conflict")
+            encoded = bytes(row["issuance_encoded"])
+            try:
+                receipt = verify_producer_receipt(
+                    encoded, registry=registry, now=instant,
+                )
+            except ReceiptError as exc:
+                if exc.code != "producer_receipt_expired" or row["state"] == "available":
+                    raise
+                expiry = datetime.strptime(
+                    row["expires_at"], "%Y-%m-%dT%H:%M:%SZ",
+                ).replace(tzinfo=timezone.utc)
+                receipt = verify_producer_receipt(
+                    encoded, registry=registry, now=expiry - timedelta(seconds=1),
+                )
+            _require_binding(receipt, binding)
+            if row["state"] == "available":
+                db.execute(
+                    "UPDATE birth_producer_receipts SET state='in_progress',"
+                    "request_id=?,claimed_at=?,lease_expires_at=? "
+                    "WHERE receipt_id=? AND state='available'",
+                    (request, _iso(instant), lease, receipt.receipt_id),
+                )
+            else:
+                if row["request_id"] != request:
+                    raise ReceiptError(
+                        "producer_receipt_replay", "owned_by_other_request",
+                    )
+                if row["state"] == "in_progress":
+                    db.execute(
+                        "UPDATE birth_producer_receipts SET lease_expires_at=? "
+                        "WHERE receipt_id=? AND state='in_progress' AND request_id=?",
+                        (lease, receipt.receipt_id, request),
+                    )
+            db.commit()
+            return encoded
+
+        encoded = issue()
+        receipt = verify_producer_receipt(encoded, registry=registry, now=instant)
+        if receipt.issuer_id != issuer_id:
+            raise ReceiptError("producer_receipt_binding_invalid", "issuance")
+        _require_binding(receipt, binding)
+        db.execute(
+            "INSERT INTO birth_producer_receipts VALUES "
+            "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                receipt.receipt_id, producer_receipt_hash(encoded), encoded,
+                receipt.issuer_id, receipt.objective_hash,
+                receipt.candidate_source_id, receipt.executor_origin.value,
+                receipt.revision_authorship.value, receipt.expires_at,
+                "in_progress", _iso(instant), request, _iso(instant), lease,
+                None, None, None, None, None,
+            ),
+        )
+        db.execute(
+            "INSERT INTO birth_producer_issuance VALUES (?,?,?,?,?,?,?,?)",
+            (
+                request, issuer_id, capability_id, contract_id,
+                binding.objective_hash, binding.candidate_source_id,
+                receipt.receipt_id, encoded,
+            ),
+        )
+        db.commit()
+        return encoded
+    except Exception:
+        if db.in_transaction:
+            db.rollback()
+        raise
+    finally:
+        db.close()
+
 def claim_producer_receipt(encoded: bytes, *, registry: IssuerRegistry, binding: ProducerReceiptBinding,
                            request_id: str, now: datetime, db_path: Path,
                            lease_seconds: int = 300) -> ProducerReceiptClaim:
@@ -332,6 +455,49 @@ def recover_producer_receipt_claim(encoded: bytes, *, registry: IssuerRegistry,
         db.commit(); return ProducerReceiptClaim(receipt, request, "in_progress", lease, None, None)
     finally:
         if db.in_transaction: db.rollback()
+        db.close()
+
+
+def renew_producer_receipt_claim(
+    encoded: bytes, *, registry: IssuerRegistry,
+    binding: ProducerReceiptBinding, request_id: str,
+    now: datetime, db_path: Path, lease_seconds: int = 300,
+) -> ProducerReceiptClaim:
+    """Extend the lease owned by the same in-progress request, even if expired."""
+    instant = _utc(now)
+    request = _digest(request_id, "request_id")
+    if (not isinstance(lease_seconds, int) or isinstance(lease_seconds, bool)
+            or lease_seconds < 1):
+        raise ReceiptError("producer_receipt_invalid", "lease_seconds")
+    receipt = _verify_claimed(
+        encoded, registry=registry, now=instant, db_path=db_path,
+    )
+    _require_binding(receipt, binding)
+    db = _open(db_path)
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        row = _row(db, receipt, encoded)
+        if row["request_id"] != request:
+            raise ReceiptError("producer_receipt_replay", "owned_by_other_request")
+        if row["state"] != "in_progress":
+            raise ReceiptError("producer_receipt_recovery_invalid", str(row["state"]))
+        lease = _iso(instant + timedelta(seconds=lease_seconds))
+        db.execute(
+            "UPDATE birth_producer_receipts SET lease_expires_at=? "
+            "WHERE receipt_id=? AND state='in_progress' AND request_id=?",
+            (lease, receipt.receipt_id, request),
+        )
+        db.commit()
+        return ProducerReceiptClaim(
+            receipt, request, "in_progress", lease, None, None,
+            bytes(row["terminal_envelope"])
+            if row["terminal_envelope"] is not None else None,
+            bytes(row["terminal_auth"])
+            if row["terminal_auth"] is not None else None,
+        )
+    finally:
+        if db.in_transaction:
+            db.rollback()
         db.close()
 
 def record_producer_receipt_terminal_hint(

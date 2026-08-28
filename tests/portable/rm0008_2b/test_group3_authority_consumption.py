@@ -133,3 +133,30 @@ def test_a_registry_that_cannot_be_read_stops_the_gate(
 
     with pytest.raises((PreparedSetError, door.PreparedRootError)):
         door.load_sealed_authorities_v1()
+
+
+def test_deployment_keys_are_disjoint_from_the_authenticated_birth_set(
+    tmp_path: Path, monkeypatch,
+):
+    """G5-A derives its exclusion set from the real cold-loaded Birth door."""
+    import executor_birth_prepared_root as door
+    from executor_birth_ownership_authorities import (
+        OwnershipAuthorityError, _birth_public_keys_v1,
+    )
+
+    _prepared(tmp_path / "birth", monkeypatch)
+    sealed = door.load_sealed_authorities_v1()
+    stores = (sealed.author, sealed.admission, *sealed.producers.values())
+    expected = {
+        key.public_bytes_raw()
+        for store in stores
+        for key in store.verifier_keys.values()
+    }
+    assert _birth_public_keys_v1() == expected
+
+    monkeypatch.setattr(
+        door, "_birth_public_inventory_v1",
+        lambda: (_ for _ in ()).throw(door.PreparedRootError("untrusted")),
+    )
+    with pytest.raises(OwnershipAuthorityError, match="authority_untrusted"):
+        _birth_public_keys_v1()

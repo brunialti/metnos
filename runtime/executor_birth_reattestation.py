@@ -22,17 +22,19 @@ from executor_birth_identity import (
     CandidateIdentityInput, admission_context_id, compute_candidate_identities,
 )
 from executor_birth_operational import (
-    _BirthCore, _BorrowedObserved, _receipt_checks, candidate_source_id,
+    _BirthCore, _BorrowedObserved, _candidate_source_id_from_snapshot,
+    _receipt_checks,
 )
 from executor_birth_predecessor import AdmissionContextPin
 from executor_birth_producer_store import (
     ProducerReceiptBinding, claim_producer_receipt, finalize_producer_receipt,
-    producer_receipt_hash,
+    producer_receipt_hash, recover_producer_receipt_claim,
+    renew_producer_receipt_claim,
 )
 from executor_birth_receipts import (
     AdmissionCheck, AdmissionKind, AdmittedCheckStatus, ApprovedLifecycle,
     RevisionClass as ReceiptRevisionClass, issue_admission_receipt,
-    verify_admission_receipt, verify_producer_receipt,
+    ReceiptError, verify_admission_receipt,
 )
 from executor_birth_shadow import (
     BirthOutcome, CheckStatus, RevisionClass as ShadowRevisionClass,
@@ -49,6 +51,9 @@ class BirthReattestationError(RuntimeError):
         super().__init__(f"{code}: {detail}" if detail else code)
 
 
+_REQUEST_SEAL = object()
+
+
 @dataclass(frozen=True, slots=True)
 class ReattestationRequest:
     request_id: str
@@ -56,8 +61,12 @@ class ReattestationRequest:
     producer_receipt: bytes
     actor: str
     reason: str
+    producer_binding: ProducerReceiptBinding
+    _seal: object
 
     def __post_init__(self) -> None:
+        if self._seal is not _REQUEST_SEAL:
+            raise BirthReattestationError("birth_reattestation_request_untrusted")
         _digest(self.request_id, "request_id")
         if not isinstance(self.current, CurrentGeneration):
             raise BirthReattestationError("birth_reattestation_request_invalid", "current")
@@ -66,6 +75,10 @@ class ReattestationRequest:
         if any(not isinstance(value, str) or not value or "\x00" in value
                for value in (self.actor, self.reason)):
             raise BirthReattestationError("birth_reattestation_request_invalid", "text")
+        if not isinstance(self.producer_binding, ProducerReceiptBinding):
+            raise BirthReattestationError(
+                "birth_reattestation_request_invalid", "producer_binding",
+            )
 
     @property
     def manifest_ref(self):
@@ -74,6 +87,26 @@ class ReattestationRequest:
     @property
     def approval_refs(self) -> tuple[str, ...]:
         return ()
+
+
+def _sealed_reattestation_request(
+    request_id: str, current: CurrentGeneration, producer_receipt: bytes,
+    actor: str, reason: str, producer_binding: ProducerReceiptBinding,
+) -> ReattestationRequest:
+    return ReattestationRequest(
+        request_id, current, producer_receipt, actor, reason,
+        producer_binding, _REQUEST_SEAL,
+    )
+
+
+def _reattestation_request_for_test(
+    request_id: str, current: CurrentGeneration, producer_receipt: bytes,
+    actor: str, reason: str, producer_binding: ProducerReceiptBinding,
+) -> ReattestationRequest:
+    """Private test seam; productive callers cannot select these authorities."""
+    return _sealed_reattestation_request(
+        request_id, current, producer_receipt, actor, reason, producer_binding,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,44 +163,14 @@ def _sealed_reattestation_core_for_test(
 
 
 def _assemble_reattestation_core(birth: _BirthCore) -> _ReattestationCore:
-    """Assemble the productive store authority from sealed Birth options."""
-    from contract_store import (
-        acquire_current_reattestation_snapshot, persist_current_reattestation_receipt,
-        read_current_birth_receipt,
-    )
-    options = dict(birth.publisher_options)
-    trusted = options.get("trusted_publics")
-    if trusted is None:
+    """Use only the three restricted ports of the sealed Birth publisher."""
+    from executor_birth_commit_publisher import _is_birth_reattestation_port
+
+    factory = getattr(birth.commit_publisher, "reattestation_port", None)
+    port = factory() if callable(factory) else None
+    if not _is_birth_reattestation_port(port):
         raise BirthReattestationError("birth_reattestation_trust_missing")
-    trusted = tuple(trusted)
-    store_root = options.get("store_root")
-    lock_timeout = float(options.get("lock_timeout", 10.0))
-    replace_timeout = float(options.get("replace_timeout", 10.0))
-
-    def capture(item: CurrentGeneration):
-        return acquire_current_reattestation_snapshot(
-            item.ref, item.generation_id, trusted_publics=trusted,
-            store_root=store_root, lock_timeout=lock_timeout,
-        )
-
-    def persist(item: CurrentGeneration, encoded: bytes, expected: Mapping[str, object]):
-        return persist_current_reattestation_receipt(
-            item.ref, item.generation_id, encoded,
-            verifier=lambda wire: verify_admission_receipt(
-                wire, verifier_keys=birth.admission_verifier_keys,
-            ),
-            expected_bindings=expected, trusted_publics=trusted,
-            store_root=store_root, lock_timeout=lock_timeout,
-            replace_timeout=replace_timeout,
-        )
-
-    def read(item: CurrentGeneration):
-        return read_current_birth_receipt(
-            item.ref, item.generation_id, trusted_publics=trusted,
-            store_root=store_root, lock_timeout=lock_timeout,
-        )
-
-    return _ReattestationCore(birth, capture, persist, read, _SEAL)
+    return _ReattestationCore(birth, port.capture, port.persist, port.read, _SEAL)
 
 
 def _expected(request: ReattestationRequest, observed: ObservedCandidate,
@@ -208,22 +211,41 @@ def _verify_existing(encoded: bytes, request: ReattestationRequest,
 def _execute(request: ReattestationRequest, core: _ReattestationCore) -> ReattestationResult:
     if not isinstance(core, _ReattestationCore) or core._seal is not _SEAL:
         raise BirthReattestationError("birth_reattestation_core_untrusted")
+    if (not isinstance(request, ReattestationRequest)
+            or request._seal is not _REQUEST_SEAL):
+        raise BirthReattestationError("birth_reattestation_request_untrusted")
     birth = core.birth
-    instant = birth.now().astimezone(timezone.utc)
-    producer = verify_producer_receipt(
-        request.producer_receipt, registry=birth.producer_registry, now=instant,
-    )
+    instant = birth.now().astimezone(timezone.utc).replace(microsecond=0)
     snapshot = core.capture(request.current)
     observed: ObservedCandidate | None = None
     binding: ProducerReceiptBinding | None = None
     claimed = False
     persistence_started = False
     try:
+        if (_candidate_source_id_from_snapshot(snapshot)
+                != request.producer_binding.candidate_source_id):
+            raise BirthReattestationError("birth_reattestation_current_changed")
         context, context_pin = birth.context_resolver(request)  # type: ignore[arg-type]
         if (not isinstance(context_pin, AdmissionContextPin)
                 or context_pin.admission_context_id != admission_context_id(context)
                 or birth.context_epoch_resolver() != context_pin.context_epoch):
             raise BirthReattestationError("birth_context_pin_invalid")
+        try:
+            claim = claim_producer_receipt(
+                request.producer_receipt, registry=birth.producer_registry,
+                binding=request.producer_binding, request_id=request.request_id,
+                now=instant, db_path=birth.producer_db,
+            )
+        except ReceiptError as exc:
+            if exc.code != "producer_receipt_lease_expired":
+                raise
+            claim = recover_producer_receipt_claim(
+                request.producer_receipt, registry=birth.producer_registry,
+                binding=request.producer_binding, request_id=request.request_id,
+                now=instant, db_path=birth.producer_db,
+            )
+        producer = claim.receipt
+        claimed = True
         identities = compute_candidate_identities(CandidateIdentityInput(
             contract_id=request.current.ref.contract_id,
             manifest_bytes=snapshot.manifest_bytes,
@@ -238,16 +260,7 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             producer.executor_origin, producer.revision_authorship,
             producer.objective_hash,
         )
-        binding = ProducerReceiptBinding(
-            producer.objective_hash, candidate_source_id(observed),
-            producer.executor_origin, producer.revision_authorship,
-        )
-        claim = claim_producer_receipt(
-            request.producer_receipt, registry=birth.producer_registry,
-            binding=binding, request_id=request.request_id, now=instant,
-            db_path=birth.producer_db,
-        )
-        claimed = True
+        binding = request.producer_binding
         if claim.state == "rejected":
             raise BirthReattestationError(
                 claim.rejection_code or "birth_reattestation_previously_rejected",
@@ -273,9 +286,15 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             result_binding = _hash(
                 b"metnos.executor-birth.reattestation-result/v1\0", encoded,
             )
+            finish = birth.now().astimezone(timezone.utc).replace(microsecond=0)
+            renew_producer_receipt_claim(
+                request.producer_receipt, registry=birth.producer_registry,
+                binding=binding, request_id=request.request_id, now=finish,
+                db_path=birth.producer_db,
+            )
             finalize_producer_receipt(
                 request.producer_receipt, registry=birth.producer_registry,
-                binding=binding, request_id=request.request_id, now=instant,
+                binding=binding, request_id=request.request_id, now=finish,
                 db_path=birth.producer_db, result_binding=result_binding,
             )
             return ReattestationResult(
@@ -360,6 +379,12 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
         # crossed its durable replace point before reporting a failure.  Keep
         # the ProducerReceipt claim recoverable so an exact retry can trust
         # the authenticated store reread and finish the terminal binding.
+        renewal = birth.now().astimezone(timezone.utc).replace(microsecond=0)
+        renew_producer_receipt_claim(
+            request.producer_receipt, registry=birth.producer_registry,
+            binding=binding, request_id=request.request_id, now=renewal,
+            db_path=birth.producer_db,
+        )
         persistence_started = True
         durable = core.persist(request.current, encoded, expected)
         if durable != encoded:
@@ -367,9 +392,15 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
         result_binding = _hash(
             b"metnos.executor-birth.reattestation-result/v1\0", durable,
         )
+        finish = birth.now().astimezone(timezone.utc).replace(microsecond=0)
+        renew_producer_receipt_claim(
+            request.producer_receipt, registry=birth.producer_registry,
+            binding=binding, request_id=request.request_id, now=finish,
+            db_path=birth.producer_db,
+        )
         finalize_producer_receipt(
             request.producer_receipt, registry=birth.producer_registry,
-            binding=binding, request_id=request.request_id, now=instant,
+            binding=binding, request_id=request.request_id, now=finish,
             db_path=birth.producer_db, result_binding=result_binding,
         )
         reread = core.read_receipt(request.current)
@@ -384,9 +415,15 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
         code = getattr(exc, "code", "birth_reattestation_unavailable")
         if claimed and binding is not None and not persistence_started:
             try:
+                finish = birth.now().astimezone(timezone.utc).replace(microsecond=0)
+                renew_producer_receipt_claim(
+                    request.producer_receipt, registry=birth.producer_registry,
+                    binding=binding, request_id=request.request_id, now=finish,
+                    db_path=birth.producer_db,
+                )
                 finalize_producer_receipt(
                     request.producer_receipt, registry=birth.producer_registry,
-                    binding=binding, request_id=request.request_id, now=instant,
+                    binding=binding, request_id=request.request_id, now=finish,
                     db_path=birth.producer_db, rejection_code=str(code),
                 )
             except Exception:
@@ -403,12 +440,18 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
                 close()
 
 
-def reattest_current_generation(request: ReattestationRequest) -> ReattestationResult:
-    """Run productive reattestation using only the installed sealed runtime."""
+def reattest_current_generation(current: CurrentGeneration) -> ReattestationResult:
+    """Reattest one current; no productive caller supplies authority or receipt."""
     from executor_birth_operational import _runtime_bundle_snapshot
+    if not isinstance(current, CurrentGeneration):
+        raise BirthReattestationError("birth_reattestation_request_invalid", "current")
     bundle = _runtime_bundle_snapshot()
     if bundle is None:
         raise BirthReattestationError("birth_runtime_bundle_unavailable")
+    request = bundle.reattestation_factory(current)
+    if (not isinstance(request, ReattestationRequest)
+            or request._seal is not _REQUEST_SEAL or request.current != current):
+        raise BirthReattestationError("birth_reattestation_request_invalid")
     return _execute(request, _assemble_reattestation_core(bundle.core))
 
 
@@ -419,6 +462,5 @@ def _reattest_current_for_test(
 
 
 __all__ = [
-    "BirthReattestationError", "ReattestationRequest", "ReattestationResult",
-    "reattest_current_generation",
+    "BirthReattestationError", "ReattestationResult", "reattest_current_generation",
 ]

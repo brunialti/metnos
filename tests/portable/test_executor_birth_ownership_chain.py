@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import hashlib
+import inspect
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -18,11 +19,16 @@ from executor_birth_ownership_chain import (
 )
 from executor_birth_ownership_cutover import (
     OwnershipCutoverKey, OwnershipCutoverRegistry,
-    issue_ownership_cutover_certificate, verify_ownership_cutover_certificate,
+    issue_ownership_cutover_certificate,
+    ownership_key_id, verify_ownership_cutover_certificate,
+)
+from executor_birth_ownership_authorities import (
+    OwnershipPublicRegistriesV1, _ownership_public_registries_for_test,
 )
 from executor_birth_ownership_preflight import _sealed_build_identity_for_test
 from executor_birth_distribution_manifest import (
-    DistributionManifestError, _verified_distribution_for_test,
+    DistributionKey, DistributionManifestError, DistributionRegistry,
+    _verified_distribution_for_test, distribution_key_id,
 )
 
 
@@ -30,30 +36,78 @@ def D(char: str) -> str:
     return "sha256:" + char * 64
 
 
+@dataclass(frozen=True)
+class Authorities:
+    cutover_private: Ed25519PrivateKey
+    cutover_key_id: str
+    cutover_registry: OwnershipCutoverRegistry
+    head_private: Ed25519PrivateKey
+    head_key_id: str
+    head_registry: OwnershipCutoverRegistry
+    public: OwnershipPublicRegistriesV1
+
+    def __iter__(self):
+        # Most tests below exercise heads, so preserve their compact unpacking.
+        return iter((self.head_private, self.head_key_id, self.head_registry))
+
+
 @pytest.fixture
 def authority():
-    private = Ed25519PrivateKey.generate()
-    key_id = "birth-ed25519-v1-sha256-" + "a" * 64
-    registry = OwnershipCutoverRegistry({
-        key_id: OwnershipCutoverKey(
-            key_id, private.public_key(),
-            frozenset({"ownership_cutover_v1", HEAD_PURPOSE}),
+    distribution_private = Ed25519PrivateKey.generate()
+    cutover_private = Ed25519PrivateKey.generate()
+    head_private = Ed25519PrivateKey.generate()
+    distribution_key = DistributionKey(
+        distribution_key_id(distribution_private.public_key()),
+        distribution_private.public_key(), frozenset({"closed_distribution_v1"}),
+        1, None,
+    )
+    cutover_key_id = ownership_key_id(cutover_private.public_key())
+    head_key_id = ownership_key_id(head_private.public_key())
+    cutover_registry = OwnershipCutoverRegistry({
+        cutover_key_id: OwnershipCutoverKey(
+            cutover_key_id, cutover_private.public_key(),
+            frozenset({"ownership_cutover_v1"}),
         ),
     })
-    return private, key_id, registry
+    head_registry = OwnershipCutoverRegistry({
+        head_key_id: OwnershipCutoverKey(
+            head_key_id, head_private.public_key(), frozenset({HEAD_PURPOSE}),
+        ),
+    })
+    public = _ownership_public_registries_for_test(
+        DistributionRegistry({distribution_key.key_id: distribution_key}),
+        cutover_registry, head_registry,
+    )
+    return Authorities(
+        cutover_private, cutover_key_id, cutover_registry,
+        head_private, head_key_id, head_registry, public,
+    )
+
+
+def initialize_test_store(root, authority):
+    """Private portable seam; it is not evidence of root-owned cold loading."""
+    return OwnershipChainStore._initialize_with_authorities(
+        root, authority.public,
+    )
+
+
+def open_test_store(root, authority):
+    """Open an existing portable store through the same private test seam."""
+    result = OwnershipChainStore.__new__(OwnershipChainStore)
+    result._open_with_authorities(root, authority.public)
+    return result
 
 
 def cutover(authority, *, previous, build, request):
-    private, key_id, registry = authority
     encoded, signature = issue_ownership_cutover_certificate(
         proof=CurrentReceiptProof((), {}), previous_cutover_id=previous,
-        request_id=request, signing_key_id=key_id,
+        request_id=request, signing_key_id=authority.cutover_key_id,
         maintenance_evidence_hash=D("1"), boundary_inventory_hash=D("2"),
         boundary_guard_version="closed-v1", closed_build_id=build,
-        private_key=private,
+        private_key=authority.cutover_private,
     )
     return encoded, signature, verify_ownership_cutover_certificate(
-        encoded, signature, registry=registry,
+        encoded, signature, registry=authority.cutover_registry,
     )
 
 
@@ -193,7 +247,7 @@ def test_chain_requires_unique_contiguous_required_head(authority):
 def test_portable_store_is_no_replace_and_exact_retry(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     distribution = build_material()
     store.append_authenticated_build(distribution)
     store.append_authenticated_build(distribution)
@@ -223,7 +277,7 @@ def test_verified_distribution_binds_exact_authenticated_signature():
 def test_store_reads_only_required_contiguous_prefix(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     distribution = build_material()
     identity = distribution.identity
     store.append_authenticated_build(distribution)
@@ -249,7 +303,7 @@ def test_store_reads_only_required_contiguous_prefix(authority, tmp_path):
 def test_required_head_missing_never_falls_back_to_highest(authority, tmp_path):
     _private, _key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     with pytest.raises(OwnershipChainError, match="downgrade"):
         store.read_required_chain(anchor=object(), builds={})
 
@@ -257,7 +311,7 @@ def test_required_head_missing_never_falls_back_to_highest(authority, tmp_path):
 def test_store_rejects_fork_at_same_sequence(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     distribution = build_material()
     identity = distribution.identity
     store.append_authenticated_build(distribution)
@@ -293,7 +347,7 @@ def test_store_rejects_fork_at_same_sequence(authority, tmp_path):
 def test_incomplete_append_pair_requires_recovery(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     encoded, signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -323,7 +377,7 @@ def test_required_head_upgrade_recovers_exactly_across_atomic_point(
 ):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     first_bytes, first_signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -359,7 +413,7 @@ def test_required_head_upgrade_recovers_exactly_across_atomic_point(
 def test_required_head_upgrade_rejects_stale_cas(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     encoded, signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -381,7 +435,7 @@ def test_required_head_upgrade_rejects_stale_cas(authority, tmp_path):
 def test_required_head_cas_allows_only_one_competing_successor(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     first_bytes, first_signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -416,14 +470,21 @@ def test_read_only_open_never_creates_missing_store(authority, tmp_path):
     _private, _key_id, registry = authority
     tmp_path.chmod(0o755)
     with pytest.raises(OwnershipChainError, match="recovery_required"):
-        OwnershipChainStore(tmp_path, registry=registry)
-    assert tuple(tmp_path.iterdir()) == ()
+        open_test_store(tmp_path / "absent-store", authority)
+    assert not (tmp_path / "absent-store").exists()
+
+
+def test_product_store_constructors_do_not_accept_authority_injection():
+    assert tuple(inspect.signature(OwnershipChainStore).parameters) == ("root",)
+    assert tuple(inspect.signature(OwnershipChainStore.initialize).parameters) == (
+        "root",
+    )
 
 
 def test_exact_retry_completes_matching_orphan_signature(authority, tmp_path):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     encoded, signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -445,7 +506,7 @@ def test_windows_required_replace_retries_only_transient_conflict(
 ):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     first_bytes, first_signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,
@@ -483,7 +544,7 @@ def test_windows_persistent_replace_denial_is_bounded_failure(
 ):
     private, key_id, registry = authority
     tmp_path.chmod(0o755)
-    store = OwnershipChainStore.initialize(tmp_path, registry=registry)
+    store = initialize_test_store(tmp_path, authority)
     first_bytes, first_signature = issue_ownership_head(
         release_sequence=1, cutover_id=D("3"), closed_build_id=D("4"),
         previous_head_id=None, signing_key_id=key_id, private_key=private,

@@ -281,12 +281,12 @@ def _remove_private(root: Path) -> None:
     shutil.rmtree(root, ignore_errors=True)
 
 
-def acquire_candidate_snapshot(
+def _acquire_snapshot(
     source_root: Path | str,
-    *,
-    private_parent: Path | str | None = None,
-) -> CandidateSnapshot:
-    """Copy and return the exact closed candidate, or fail without a snapshot."""
+    *, private_parent: Path | str | None,
+    fixed_auxiliary_files: tuple[str, ...],
+) -> tuple[CandidateSnapshot, Mapping[str, bytes]]:
+    """Copy one fixed envelope; auxiliary bytes never enter the candidate."""
     source = Path(source_root)
     private = Path(tempfile.mkdtemp(prefix="metnos-birth-", dir=private_parent))
     try:
@@ -297,32 +297,66 @@ def acquire_candidate_snapshot(
         manifest_bytes = _read_regular(source, MANIFEST_FILE)
         code_paths = _declared_code_files(manifest_bytes)
         expected = _expected_entries(code_paths)
-        _check_closed_tree(initial, expected)
+        source_expected = dict(expected)
+        source_expected.update({name: "file" for name in fixed_auxiliary_files})
+        _check_closed_tree(initial, source_expected)
 
         payloads: dict[str, bytes] = {MANIFEST_FILE: manifest_bytes}
-        for relative in (LANGUAGE_STATE_FILE, *code_paths):
+        for relative in (LANGUAGE_STATE_FILE, *code_paths, *fixed_auxiliary_files):
             payloads[relative] = _read_regular(source, relative)
         final = _tree_state(source)
         if initial != final:
             raise CandidateSnapshotError("candidate_changed", str(source))
 
         for relative, payload in payloads.items():
+            if relative in fixed_auxiliary_files:
+                continue
             _write_private(private, relative, payload)
         copied = _tree_state(private)
         _check_closed_tree(copied, expected)
         for relative, payload in payloads.items():
+            if relative in fixed_auxiliary_files:
+                continue
             if _read_regular(private, relative) != payload:
                 raise CandidateSnapshotError("candidate_changed", relative)
 
         for entry in sorted(private.rglob("*"), reverse=True):
             entry.chmod(0o500 if entry.is_dir() else 0o400)
         private.chmod(0o500)
-        return CandidateSnapshot(
+        snapshot = CandidateSnapshot(
             private_root=private,
             manifest_bytes=manifest_bytes,
             language_state_bytes=payloads[LANGUAGE_STATE_FILE],
             code_files=MappingProxyType({path: payloads[path] for path in code_paths}),
         )
+        auxiliary = MappingProxyType({
+            name: payloads[name] for name in fixed_auxiliary_files
+        })
+        return snapshot, auxiliary
     except Exception:
         _remove_private(private)
         raise
+
+
+def acquire_candidate_snapshot(
+    source_root: Path | str,
+    *,
+    private_parent: Path | str | None = None,
+) -> CandidateSnapshot:
+    """Copy and return the exact closed candidate, or fail without a snapshot."""
+    snapshot, _auxiliary = _acquire_snapshot(
+        source_root, private_parent=private_parent, fixed_auxiliary_files=(),
+    )
+    return snapshot
+
+
+def _acquire_authenticated_current_snapshot(
+    source_root: Path | str,
+    *, private_parent: Path | str | None = None,
+) -> tuple[CandidateSnapshot, bytes]:
+    """Copy the fixed signed-source envelope used by a current generation."""
+    snapshot, auxiliary = _acquire_snapshot(
+        source_root, private_parent=private_parent,
+        fixed_auxiliary_files=("manifest.toml.sig",),
+    )
+    return snapshot, auxiliary["manifest.toml.sig"]
