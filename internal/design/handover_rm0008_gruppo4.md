@@ -166,11 +166,19 @@ ordinaria produce una prova verde e la sola non applicabilita' attesa sul
 confine Linux non delegato. L'intera suite portatile isolata e' verde con 325
 prove verdi, 23 non applicabili e zero errori.
 
+## Chiusura pubblica G4-A
+
+La correzione finale e' nel commit sorgente `51f55291` e nel commit pubblico
+`9ff7040`. Il ciclo GitHub `33160774194` e' interamente verde: sei lavori
+posseduti, suite generale Linux, suite generale Windows e riepilogo finale. La
+prova Linux delegata ha eseguito nello stesso servizio sia Birth sia la nuova
+porta autenticata. G4-A e' quindi chiuso con zero errori pubblici.
+
 ## Prossimo passo unico
 
-Salvare la correzione delle prove con il flusso GitHub congelato e invariato,
-pubblicare un incremento su `main` e attendere tutti i lavori verdi. Non
-iniziare G4-B+C prima di quel risultato.
+Iniziare G4-B+C: rimuovere le cinque autorita' di firma dirette, classificare
+una sola volta l'inventario risultante e portare la guardia chiusa a zero. Non
+iniziare F5 o F6.
 
 Non rigenerare ancora l'inventario. Non toccare
 `closed_build_enforcement()`: deve restare `False` per tutto il gruppo 4.
@@ -182,4 +190,7 @@ Non rigenerare ancora l'inventario. Non toccare
 - dopo ogni pubblicazione attendere matrice pubblica tutta verde;
 - nessuna seconda correzione se la prima fallisce: prima nuova diagnosi;
 - aggiornare questo file dopo nuova evidenza, correzione e risultato pubblico;
+- usare il minimo insieme probatorio: guardia specifica, prove mirate gia'
+  esistenti e una sola suite completa prima della pubblicazione; non creare
+  nuovi impianti di test se una prova esistente osserva gia' lo stesso rischio;
 - non iniziare F5 o F6.
