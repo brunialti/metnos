@@ -20,12 +20,18 @@ import executor_birth_ownership_chain as chain_module
 import executor_birth_distribution_manifest as distribution_module
 import executor_birth_ownership_authorities as authority_module
 from executor_birth_ownership_chain import (
-    HEAD_PURPOSE, OwnershipChainError, OwnershipChainStore,
+    HEAD_PURPOSE, REQUIRED_HEAD_BASENAME, REQUIRED_HEAD_LOCK_BASENAME,
+    OwnershipChainError,
+    OwnershipChainStore,
     _OwnershipChainCrashForTest, _OwnershipChainStoreForTest,
+    _InitialOwnershipChainStateForTestV1,
+    _inspect_ownership_chain_state_for_test_v1,
     decode_required_head, encode_required_head, issue_ownership_head,
-    verify_contiguous_chain, verify_ownership_head,
+    inspect_ownership_chain_state_v1, verify_contiguous_chain,
+    verify_ownership_head,
 )
 from executor_birth_ownership_cutover import (
+    PAYLOAD_BASENAME, SIGNATURE_BASENAME,
     OwnershipCutoverKey, OwnershipCutoverRegistry,
     issue_ownership_cutover_certificate,
     ownership_key_id, verify_ownership_cutover_certificate,
@@ -1097,3 +1103,260 @@ def test_windows_persistent_replace_denial_is_bounded_failure(
             replace_timeout=0,
         )
     assert store.read_required_head().head_id == first.head_id
+
+
+def test_chain_initial_inspection_is_empty_stable_and_nonmutating(
+    authority, tmp_path,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    before = tuple(sorted(
+        path.relative_to(tmp_path).as_posix()
+        for path in tmp_path.rglob("*")
+    ))
+
+    state = _inspect_ownership_chain_state_for_test_v1(store)
+
+    assert type(state) is _InitialOwnershipChainStateForTestV1
+    assert state.root == root
+    assert tuple(sorted(
+        path.relative_to(tmp_path).as_posix()
+        for path in tmp_path.rglob("*")
+    )) == before
+
+
+def test_chain_initial_inspection_rejects_inventory_change_before_mint(
+    authority, tmp_path, monkeypatch,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    real_snapshot = chain_module._chain_inventory_snapshot_v1
+    calls = []
+
+    def changing_snapshot(observed_root):
+        calls.append("snapshot")
+        if len(calls) == 2:
+            (root / REQUIRED_HEAD_BASENAME).write_bytes(b"appeared")
+        return real_snapshot(observed_root)
+
+    monkeypatch.setattr(
+        chain_module, "_chain_inventory_snapshot_v1", changing_snapshot,
+    )
+    with pytest.raises(OwnershipChainError) as failure:
+        _inspect_ownership_chain_state_for_test_v1(store)
+
+    assert calls == ["snapshot", "snapshot"]
+    assert failure.value.code == "birth_ownership_recovery_required"
+
+
+@pytest.mark.parametrize(
+    "partial",
+    (
+        "anchor-payload", "anchor-signature", "anchor-payload-temp",
+        "anchor-signature-temp", "anchor-malformed-temp", "required",
+        "required-lock", "head", "temporary",
+    ),
+)
+def test_chain_initial_inspection_rejects_every_partial_prefix(
+    authority, tmp_path, partial,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    target = {
+        "anchor-payload": tmp_path / PAYLOAD_BASENAME,
+        "anchor-signature": tmp_path / SIGNATURE_BASENAME,
+        "anchor-payload-temp": (
+            tmp_path / f".{PAYLOAD_BASENAME}.{'a' * 64}.tmp"
+        ),
+        "anchor-signature-temp": (
+            tmp_path / f".{SIGNATURE_BASENAME}.{'b' * 64}.tmp"
+        ),
+        "anchor-malformed-temp": (
+            tmp_path / f".{PAYLOAD_BASENAME}.bad.tmp"
+        ),
+        "required": root / REQUIRED_HEAD_BASENAME,
+        "required-lock": root / REQUIRED_HEAD_LOCK_BASENAME,
+        "head": root / "heads-v1" / ("0" * 64 + ".json"),
+        "temporary": root / ".partial.tmp",
+    }[partial]
+    target.write_bytes(b"partial")
+
+    with pytest.raises(OwnershipChainError) as failure:
+        _inspect_ownership_chain_state_for_test_v1(store)
+
+    assert failure.value.code == "birth_ownership_recovery_required"
+
+
+@pytest.mark.parametrize(
+    "mutation", ("mode", "owner", "hardlink", "marker", "size"),
+)
+def test_chain_inspection_rejects_unsafe_persistent_required_lock(
+    authority, tmp_path, mutation, monkeypatch,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    (tmp_path / PAYLOAD_BASENAME).write_bytes(b"payload")
+    (tmp_path / SIGNATURE_BASENAME).write_bytes(b"signature")
+    (root / REQUIRED_HEAD_BASENAME).write_bytes(b"required")
+    lock = root / REQUIRED_HEAD_LOCK_BASENAME
+    lock.write_bytes(b"\0")
+    if os.name != "nt":
+        lock.chmod(0o600)
+    if mutation == "mode":
+        if os.name == "nt":
+            pytest.skip("Windows has no exact POSIX lock mode")
+        lock.chmod(0o644)
+    elif mutation == "owner":
+        if os.name == "nt":
+            pytest.skip("Windows has no POSIX lock ownership")
+        real_lstat = Path.lstat
+
+        def wrong_lock_owner(path):
+            info = real_lstat(path)
+            if Path(path) != lock:
+                return info
+            return SimpleNamespace(
+                st_mode=info.st_mode, st_nlink=info.st_nlink,
+                st_size=info.st_size, st_uid=info.st_uid + 1,
+                st_gid=info.st_gid + 1, st_file_attributes=0,
+            )
+
+        monkeypatch.setattr(Path, "lstat", wrong_lock_owner)
+    elif mutation == "hardlink":
+        try:
+            os.link(lock, tmp_path / "required-lock-copy")
+        except OSError:
+            pytest.skip("hard links unavailable")
+    elif mutation == "marker":
+        lock.write_bytes(b"x")
+    else:
+        lock.write_bytes(b"\0x")
+
+    def unexpected_cold_read(_self):
+        raise AssertionError("unsafe lock reached the cold reader")
+
+    monkeypatch.setattr(
+        _OwnershipChainStoreForTest,
+        "_read_required_chain_cold_for_test",
+        unexpected_cold_read,
+    )
+
+    with pytest.raises(OwnershipChainError) as failure:
+        _inspect_ownership_chain_state_for_test_v1(store)
+
+    assert failure.value.code == "birth_ownership_recovery_required"
+    assert failure.value.detail == "required lock metadata"
+
+
+def test_chain_inspection_delegates_complete_prefix_with_known_lock(
+    authority, tmp_path, monkeypatch,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    (tmp_path / PAYLOAD_BASENAME).write_bytes(b"payload")
+    (tmp_path / SIGNATURE_BASENAME).write_bytes(b"signature")
+    (root / REQUIRED_HEAD_BASENAME).write_bytes(b"required")
+    (root / REQUIRED_HEAD_LOCK_BASENAME).write_bytes(b"\0")
+    if os.name != "nt":
+        (root / REQUIRED_HEAD_LOCK_BASENAME).chmod(0o600)
+    sentinel = object()
+    calls = []
+
+    def cold_success(_self):
+        calls.append("cold")
+        return sentinel
+
+    monkeypatch.setattr(
+        _OwnershipChainStoreForTest,
+        "_read_required_chain_cold_for_test",
+        cold_success,
+    )
+
+    assert _inspect_ownership_chain_state_for_test_v1(store) is sentinel
+    assert calls == ["cold"]
+
+
+def test_chain_inspection_never_falls_back_to_initial_after_cold_failure(
+    authority, tmp_path, monkeypatch,
+):
+    root = tmp_path / "chain-v1"
+    store = initialize_test_store(root, authority)
+    (tmp_path / PAYLOAD_BASENAME).write_bytes(b"payload")
+    (tmp_path / SIGNATURE_BASENAME).write_bytes(b"signature")
+    (root / REQUIRED_HEAD_BASENAME).write_bytes(b"required")
+    calls = []
+
+    def cold_failure(_self):
+        calls.append("cold")
+        raise OwnershipChainError("birth_ownership_distribution_chain_invalid")
+
+    monkeypatch.setattr(
+        _OwnershipChainStoreForTest,
+        "_read_required_chain_cold_for_test",
+        cold_failure,
+    )
+    with pytest.raises(OwnershipChainError) as failure:
+        _inspect_ownership_chain_state_for_test_v1(store)
+
+    assert calls == ["cold"]
+    assert failure.value.code == "birth_ownership_recovery_required"
+
+
+def test_product_initial_state_cannot_be_constructed_with_a_public_seal():
+    assert not hasattr(chain_module, "_INITIAL_CHAIN_STATE_SEAL_V1")
+    with pytest.raises(OwnershipChainError) as failure:
+        chain_module._InitialOwnershipChainStateV1(
+            chain_module.DEFAULT_OWNERSHIP_CHAIN_ROOT_V1, object(),
+        )
+
+    assert failure.value.code == "birth_ownership_recovery_required"
+
+
+def test_initial_state_core_rejects_a_forged_product_store():
+    forged = object.__new__(OwnershipChainStore)
+    forged.root = chain_module.DEFAULT_OWNERSHIP_CHAIN_ROOT_V1
+    fake_public = SimpleNamespace(
+        distribution=object(), cutover=object(), head=object(),
+    )
+    forged._fixed_authority_snapshot = SimpleNamespace(public=fake_public)
+    forged._authorities = fake_public
+    forged.distribution_registry = fake_public.distribution
+    forged.cutover_registry = fake_public.cutover
+    forged.head_registry = fake_public.head
+
+    with pytest.raises(OwnershipChainError) as failure:
+        chain_module._inspect_ownership_chain_state_core_v1(
+            forged, for_test=False,
+        )
+
+    assert failure.value.code == "birth_ownership_recovery_required"
+    assert failure.value.detail == "productive store"
+
+
+def test_initial_state_core_rejects_hostile_store_before_getters():
+    class HostileStore:
+        @property
+        def _fixed_authority_snapshot(self):
+            raise RuntimeError("hostile getter escaped")
+
+    with pytest.raises(OwnershipChainError) as failure:
+        chain_module._inspect_ownership_chain_state_core_v1(
+            HostileStore(), for_test=False,
+        )
+
+    assert failure.value.code == "birth_ownership_recovery_required"
+    assert failure.value.detail == "productive store"
+
+
+def test_product_chain_inspection_fails_off_linux_before_io(monkeypatch):
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("chain inspection performed I/O")
+
+    monkeypatch.setattr(chain_module.sys, "platform", "win32")
+    monkeypatch.setattr(chain_module, "OwnershipChainStore", unexpected)
+    monkeypatch.setattr(chain_module.Path, "lstat", unexpected)
+
+    with pytest.raises(OwnershipChainError) as failure:
+        inspect_ownership_chain_state_v1()
+
+    assert failure.value.code == "birth_ownership_platform_unsupported"
