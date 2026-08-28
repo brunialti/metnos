@@ -14,7 +14,7 @@ it = "SCOPO: Descrive immagini locali osservate senza modificarle. PATTERN: rich
 en = "SCOPO: Describes observed local images without modifying them. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["../../describe_images.py"]
+files = ["implementation.py.src"]
 digest = "sha256:bc77c86e650213176c5e154542e0b42ba24f1aa6779c1cf70689f252a9cfe984"
 
 [args]

@@ -14,7 +14,7 @@ it = "SCOPO: Abilita o disabilita una skill installata. PATTERN: richiesta natur
 en = "SCOPO: Enables or disables an installed skill. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["../../skill_admin.py"]
+files = ["implementation.py.src"]
 digest = "sha256:28b73b52027343ac1c0018e97b0c8ed5fb89c14317ee0b31c805b4a599a38023"
 
 [args]

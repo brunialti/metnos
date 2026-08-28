@@ -14,7 +14,7 @@ it = "SCOPO: Rimuove preferenze personali riportandole al valore predefinito. PA
 en = "SCOPO: Removes personal preferences, restoring their default value. PATTERN: delete_preferences(keys=[\"tone\"]) or delete_preferences(all=true). USE: remove or restore preferences. NON: users or tasks. OUT: results=[{key, removed, previous}]."
 
 [code]
-files = ["../../user_preferences.py"]
+files = ["implementation.py.src"]
 digest = "sha256:d5413ddb48d76b97f06130d3bf85ba03430b7c55b94589ad6b0f949698117c37"
 
 [args]

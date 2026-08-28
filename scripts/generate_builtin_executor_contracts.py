@@ -8,10 +8,8 @@ loader verifies their signature and code digest before catalog admission.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import argparse
-import shutil
 import tempfile
 import tomllib
 from pathlib import Path
@@ -367,7 +365,7 @@ def _all_specs():
     return specs
 
 
-def _render(name: str, tool_spec: dict, module_path: Path) -> str:
+def _render(name: str, tool_spec: dict) -> str:
     purpose_it, purpose_en, caps, output = _META[name]
     if "error_class" not in output:
         output = output[:-1] + ", error_class?: str, error_code?: str}"
@@ -375,8 +373,6 @@ def _render(name: str, tool_spec: dict, module_path: Path) -> str:
     args = fn.get("parameters") or {"type": "object", "properties": {}}
     required = list(args.get("required") or [])
     properties = args.get("properties") or {}
-    manifest_dir = OUT / name
-    code_rel = os.path.relpath(module_path.resolve(), manifest_dir.resolve())
     affinities = []
     for module_name in _SPEC_MODULES:
         module = sys.modules.get(module_name)
@@ -402,7 +398,7 @@ def _render(name: str, tool_spec: dict, module_path: Path) -> str:
         f'en = {_q(_description(name, purpose_it, purpose_en)[1])}',
         '',
         '[code]',
-        f'files = [{_q(code_rel)}]',
+        'files = ["implementation.py.src"]',
         'digest = "sha256:' + ('0' * 64) + '"',
         '',
         '[args]',
@@ -482,62 +478,58 @@ def main() -> None:
     extra = sorted(set(specs) - set(_META))
     if missing or extra:
         raise SystemExit(f"contract inventory mismatch missing={missing} extra={extra}")
-    from manifest_inventory import ManifestLayout, resolve_manifest_layout
-    store_only_birth = args.sign and resolve_manifest_layout() is ManifestLayout.STORE_ONLY
-    staging_context = tempfile.TemporaryDirectory(prefix="metnos-builtin-birth-") if store_only_birth else None
+    staging_context = (
+        tempfile.TemporaryDirectory(prefix="metnos-builtin-birth-")
+        if args.sign else None
+    )
     write_root = Path(staging_context.name) if staging_context is not None else OUT
     for name in sorted(specs):
         directory = write_root / name
-        if store_only_birth and (OUT / name).is_dir():
-            shutil.copytree(OUT / name, directory)
         directory.mkdir(parents=True, exist_ok=True)
         tool_spec, module_path = specs[name]
-        rendered = _render(name, tool_spec, module_path)
-        (directory / "manifest.toml").write_text(rendered, encoding="utf-8")
+        implementation = module_path.read_bytes()
+        rendered = _render(name, tool_spec).encode("utf-8")
+        from manifest_code_digest import prepare_manifest_digest_v1
+        rendered = prepare_manifest_digest_v1(
+            rendered, {"implementation.py.src": implementation},
+        )
+        (directory / "manifest.toml").write_bytes(rendered)
+        (directory / "implementation.py.src").write_bytes(implementation)
         from i18n_materializer import migrate_language_state_bytes
         state_path = directory / "manifest.lang_state.json"
         previous_state = state_path.read_bytes() if state_path.is_file() else b"{}"
         state_path.write_bytes(
             migrate_language_state_bytes(
-                previous_state, manifest=tomllib.loads(rendered),
+                previous_state, manifest=tomllib.loads(rendered.decode("utf-8")),
             ).state_bytes,
         )
     suffix = ""
     if args.sign:
-        published = 0
-        if store_only_birth:
-            from executor_birth_intent import (
-                BirthIntent, require_birth_intent_adapter,
-                submit_builtin_generation_birth,
-            )
-            from manifest_inventory import ContractId, ManifestOrigin
-            require_birth_intent_adapter()
-            try:
-                for name in sorted(specs):
-                    birth = submit_builtin_generation_birth(BirthIntent(
-                        candidate_source_root=write_root / name,
-                        contract_id=ContractId(
-                            ManifestOrigin.BUILTIN, f"{name}/manifest.toml",
-                        ),
-                        reason="regenerate shipped builtin executor contract",
-                    ))
-                    if birth.error_code or birth.publication is None:
-                        raise RuntimeError(
-                            f"builtin Birth rejected for {name}: "
-                            f"{birth.error_code or 'publication_missing'}"
-                        )
-                    published += 1
-            finally:
-                staging_context.cleanup()
-        else:
-            from sign import sign_executor
-            for name in sorted(specs):
-                sign_executor(OUT / name)
-        suffix = (
-            " and admitted them with the local author key"
-            if published == 0
-            else f" and published {published} immutable contract generations"
+        from executor_birth_intent import (
+            BirthIntent, require_birth_intent_adapter,
+            submit_builtin_generation_birth,
         )
+        from manifest_inventory import ContractId, ManifestOrigin
+        require_birth_intent_adapter()
+        published = 0
+        try:
+            for name in sorted(specs):
+                birth = submit_builtin_generation_birth(BirthIntent(
+                    candidate_source_root=write_root / name,
+                    contract_id=ContractId(
+                        ManifestOrigin.BUILTIN, f"{name}/manifest.toml",
+                    ),
+                    reason="regenerate shipped builtin executor contract",
+                ))
+                if birth.error_code or birth.publication is None:
+                    raise RuntimeError(
+                        f"builtin Birth rejected for {name}: "
+                        f"{birth.error_code or 'publication_missing'}"
+                    )
+                published += 1
+        finally:
+            staging_context.cleanup()
+        suffix = f" and published {published} immutable contract generations"
     print(f"generated {len(specs)} builtin contracts under {OUT}{suffix}")
 
 

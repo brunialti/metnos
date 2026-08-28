@@ -14,7 +14,7 @@ it = "SCOPO: Sintetizza entries in memoria entro budget dichiarati. PATTERN: ric
 en = "SCOPO: Summarizes in-memory entries within declared budgets. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["../../describe_entries.py"]
+files = ["implementation.py.src"]
 digest = "sha256:68ab06cf022afa33f6ce2881e9d5d925eba8a774c2c3cc6ab32ca6d391e99729"
 
 [args]

@@ -14,7 +14,7 @@ it = "SCOPO: Scrive o aggiorna record in uno store dichiarato. PATTERN: richiest
 en = "SCOPO: Writes or updates records in a declared store. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["../../store_entries.py"]
+files = ["implementation.py.src"]
 digest = "sha256:0502ad6dc5a70da4ac3c60f62571e4e81c02cf32711227981b8ced9123679fbf"
 
 [args]

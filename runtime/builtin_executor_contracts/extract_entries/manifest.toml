@@ -15,7 +15,7 @@ it = "SCOPO: Estrae record strutturati da entries gia' osservate. PATTERN: richi
 en = "SCOPO: Extracts structured records from already observed entries. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["../../extract_entries.py"]
+files = ["implementation.py.src"]
 digest = "sha256:49ec6098e48379b7a4366116b61fa50d563956b22ed070261914b0e3355b4dc1"
 
 [args]

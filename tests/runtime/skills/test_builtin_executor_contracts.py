@@ -4,6 +4,7 @@ import sys
 import subprocess
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -78,6 +79,64 @@ def test_loader_admits_builtins_only_from_their_signed_contracts() -> None:
         assert executor.capabilities
         assert executor.tests
         assert executor.manifest_path.parent.name == name
+
+
+def test_builtin_contract_rejects_a_runtime_module_that_differs_from_admitted_bytes(
+    tmp_path: Path,
+) -> None:
+    from loader import _load_builtin_contract
+
+    changed = tmp_path / "compare_entries.py"
+    changed.write_bytes((RUNTIME / "compare_entries.py").read_bytes() + b"\n# changed\n")
+
+    with pytest.raises(ValueError, match="differs from the admitted implementation"):
+        _load_builtin_contract("compare_entries", changed)
+
+
+def test_builtin_generator_sign_mode_submits_one_closed_birth_candidate(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    import executor_birth_intent
+    import scripts.generate_builtin_executor_contracts as generator
+
+    module = tmp_path / "module.py"
+    module.write_text("VALUE = 1\n", encoding="utf-8")
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "unchanged").write_text("kept", encoding="utf-8")
+    spec = {
+        "function": {
+            "name": "compare_entries",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    }
+    observed = []
+
+    def submit(intent):
+        files = sorted(path.name for path in intent.candidate_source_root.iterdir())
+        manifest = tomllib.loads(
+            (intent.candidate_source_root / "manifest.toml").read_text("utf-8")
+        )
+        assert files == [
+            "implementation.py.src", "manifest.lang_state.json", "manifest.toml",
+        ]
+        assert manifest["code"]["files"] == ["implementation.py.src"]
+        assert (intent.candidate_source_root / "implementation.py.src").read_bytes() == b"VALUE = 1\n"
+        observed.append(intent.contract_id.value)
+        return SimpleNamespace(error_code=None, publication=object())
+
+    monkeypatch.setattr(generator, "OUT", output)
+    monkeypatch.setattr(generator, "_all_specs", lambda: {"compare_entries": (spec, module)})
+    monkeypatch.setattr(generator, "_META", {"compare_entries": generator._META["compare_entries"]})
+    monkeypatch.setattr(executor_birth_intent, "require_birth_intent_adapter", lambda: None)
+    monkeypatch.setattr(executor_birth_intent, "submit_builtin_generation_birth", submit)
+    monkeypatch.setattr(sys, "argv", ["generate_builtin_executor_contracts.py", "--sign"])
+
+    generator.main()
+
+    assert observed == ["builtin:compare_entries/manifest.toml"]
+    assert sorted(path.name for path in output.iterdir()) == ["unchanged"]
+    assert "published 1 immutable contract generations" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("name", [
