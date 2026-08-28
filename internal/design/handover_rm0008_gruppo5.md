@@ -9,9 +9,9 @@ Il gruppo 4 e' chiuso con commit pubblico `a4d2dba` e ciclo GitHub
 `33165938001`, nove lavori su nove verdi. Il commit sorgente di partenza e'
 `9fd7edf4`. RM-0008 resta `active`; `closed_build_enforcement()` resta `False`.
 
-G5-A e' chiuso nel repository sorgente dal commit `1791cec3`; non e' ancora
-pubblicato separatamente. G5-B e' implementato nel worktree e si trova nella
-verifica locale conclusiva. Il piano completo e'
+G5-A e' chiuso nel repository sorgente dal commit `1791cec3`; G5-B dal commit
+`efc00c06`. I due incrementi sono stati pubblicati insieme nel commit pubblico
+`8a1f573`. Il piano completo e'
 `internal/reports/rm0008-gruppo5-piano-ottimizzato.md`.
 
 ## Risultato dell'analisi e della revisione avversariale
@@ -134,13 +134,46 @@ verdi e rendering dell'inventario byte-identico. I 24 salti sono le celle
 realmente specifiche di piattaforma o privilegio e verranno eseguite dalla
 matrice pubblica Linux/Windows; non sono errori ignorati.
 
+## Correzione causale della prima matrice pubblica
+
+Il ciclo pubblico `33180437885` sul commit `8a1f573` ha concluso verdi sette
+degli otto lavori primari. Il solo lavoro portatile Windows ha rilevato nove
+errori; il riepilogo e' rimasto rosso per conseguenza. Il log completo del
+lavoro `98880002519` ha permesso di separare due cause, senza eseguire
+correzioni per tentativi:
+
+- otto errori provenivano da `_ensure_directory()`, che applicava i bit di
+  modalita' e proprietario POSIX alle directory temporanee Windows;
+- un errore proveniva dalla fotografia privata del candidato, che confrontava
+  l'identita' restituita da `lstat()` con quella restituita dal descrittore CRT.
+  In Python 3.12 su Windows quei campi non costituiscono un'identita'
+  interoperabile fra le due API, anche quando il file non e' cambiato.
+
+La correzione non elimina i controlli. Il controllo di modo e proprietario e'
+ora eseguito soltanto sui sistemi POSIX. La lettura Windows usa invece un unico
+oracolo Win32 di basso livello, privo di dipendenze da firma o pubblicazione:
+apre senza condivisione di scrittura, cancellazione o rinomina, rifiuta reparse
+point, directory, cancellazione pendente e hard link, verifica percorso finale,
+dimensione e identita' due volte sullo stesso handle. Il modulo della fotografia
+continua inoltre a confrontare percorso e componenti prima e dopo la lettura.
+
+Evidenze locali dopo la correzione: 246 prove pertinenti verdi e due salti di
+piattaforma, tutte le sette prove manifesto/R1 verdi, guardia normale e guardia
+chiusa senza rilievi, inventario Python aggiornato a 1813 percorsi e rendering
+della guardia byte-identico. La revisione indipendente del candidato preparato
+ha inizialmente individuato e fatto correggere un collegamento incompleto degli
+helper condivisi; il secondo giro ha concluso `P1=0`, `P2=0` e 49 prove
+pertinenti verdi. La prova decisiva resta il nuovo lavoro Windows pubblico; il
+gruppo 6 non e' iniziato.
+
 Questi conteggi descrivono esecuzioni mirate parzialmente sovrapposte e non
 vanno sommati. La suite finale portatile deve essere eseguita una sola volta.
 
 ## Prossimo passo unico
 
-Registrare il commit G5-B su `main`, eseguire la pubblicazione incrementale
-unica e richiedere tutti i lavori Linux/Windows verdi. Non avviare il gruppo 6.
+Registrare su `main` la correzione causale Windows, eseguire una pubblicazione
+incrementale e richiedere tutti i lavori Linux/Windows verdi. Non avviare il
+gruppo 6.
 
 ## Regole operative
 
