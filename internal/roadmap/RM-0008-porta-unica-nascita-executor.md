@@ -574,9 +574,13 @@ upgrade coincide con la build dell'ultima testa accettata. `release_sequence` è
 un intero positivo, mai booleano, e cresce esattamente di uno. `product_version`
 è la SemVer della sorgente unica di versione. `platform` appartiene a
 `linux|windows`, `architecture` a `x86_64|aarch64`, e la coppia coincide con il
-processo verificatore. Linux V1 usa `/opt/metnos` e
-`/var/lib/metnos/executor-birth`; un percorso diverso richiede un nuovo
-artefatto firmato e un descriptor root-owned, mai una variabile del servizio.
+processo verificatore. Linux V1 usa come `installation_root` esattamente
+`/var/lib/metnos/executor-birth/releases-v1/{release_sequence:020d}` e come
+radice di autorita' `/var/lib/metnos/executor-birth`; `/opt/metnos` non e' una
+radice di distribuzione V1. Le copie amministrative esterne sono legate dal
+descrittore firmato alle sole radici `/usr/libexec/metnos/executor-birth-v1` e
+`/etc/systemd/system`, mai da ambiente o richiesta. Un diverso insieme di
+radici richiede un protocollo versionato nuovo.
 Windows accetta soltanto percorsi drive-absolute normalizzati e rifiuta UNC,
 device namespace, ADS e reparse point; certifica parser ed enforcement, non il
 cutover amministrato.
@@ -586,7 +590,7 @@ Ogni elemento contiene esattamente `path`, `size`, `content_hash` e `role`.
 `path` è relativo canonico NFC con `/`, senza segmenti vuoti, `.`, `..`,
 backslash o NUL. `size` è un intero non negativo, non booleano, e coincide con
 la lettura bounded dall'handle. `role` appartiene a
-`runtime_code|preflight|boundary_guard|boundary_inventory|service_unit|product_version|dependency_lock`.
+`runtime_code|preflight|boundary_guard|boundary_inventory|service_unit|service_catalog|deployment_descriptor|product_version|dependency_lock`.
 Il digest di ogni file è:
 
 ```text
@@ -608,6 +612,11 @@ chiusura transitiva dei moduli importabili dal proprietario Birth e dalle
 eccezioni chiuse, più ogni configurazione amministrativa che può cambiare
 interprete, root o avvio. Un import produttivo non risolto in un file firmato,
 nella libreria standard o nel lock delle dipendenze blocca la build.
+
+Il manifesto contiene una o più occorrenze `service_unit` ed esattamente una
+occorrenza per ciascuno dei ruoli `boundary_inventory`, `dependency_lock`,
+`service_catalog` e `deployment_descriptor`. Mancanza, duplicazione o ruolo
+sconosciuto rendono la distribuzione non valida.
 
 L'inventario chiuso è materializzato fuori da `internal/`, in un percorso
 installato firmato. Il suo hash è
@@ -709,9 +718,15 @@ handle, e rifiuta link, reparse point, hard link, cambi d'identità o metadati e
 riletture diverse. Windows certifica parser ed enforcement, mentre il cutover
 amministrato resta Linux/systemd.
 
-L'ordine dei blocchi è `catalog_admission_lock`, blocco di riconciliazione e
-manutenzione, writer lock dei contratti ordinati per `ContractId`, quindi blocco
-di deployment root-owned. La sequenza è:
+L'ordine dei blocchi e' il blocco di deployment posseduto da `root`, quindi il
+blocco esclusivo degli avvii, `catalog_admission_lock`, blocco di
+riconciliazione e manutenzione e infine gli eventuali writer lock dei contratti
+ordinati per `ContractId`. `check` e `launch` prendono il blocco degli avvii in
+modo condiviso; il coordinatore lo prende in modo esclusivo prima di stop e
+censimento e lo conserva fino al controllo preliminare finale. Il blocco di
+deployment viene acquisito una sola volta dall'orchestratore esterno; un nucleo
+privato sigillato riceve la sessione gia' detenuta e non tenta di riacquisirla.
+La sequenza e':
 
 1. installare un `ExecStartPre` root-owned che consente una build precedente
    soltanto finché il certificato non esiste e, quando esiste, consente
@@ -1344,10 +1359,15 @@ chiusura della fase:
 
 Il coordinatore F4 deve possedere un registro durevole con almeno gli stati
 `PREPARED`, `RECEIPTS_COMPLETE`, `CERTIFICATE_PUBLISHED`, `BUILD_VERIFIED`,
-`HEAD_REQUIRED` e `PREFLIGHT_VERIFIED`. `CERTIFICATE_PUBLISHED` è il punto di
-non ritorno: dopo tale stato il recupero non può cancellare il certificato,
-riaprire i proprietari precedenti o avviare un artefatto anteriore. Ogni
-passaggio deve rileggere il proprio risultato autenticato prima di avanzare.
+`HEAD_REQUIRED` e `PREFLIGHT_VERIFIED`. Nel primo passaggio,
+`CERTIFICATE_PUBLISHED` pubblica l'ancora fissa ed e' il punto di non ritorno
+dal regime precedente: dopo tale stato il recupero non puo' cancellare il
+certificato, riaprire i proprietari precedenti o avviare il predecessore. Negli
+aggiornamenti successivi il nuovo certificato viene aggiunto soltanto alla
+catena; la distribuzione chiusa corrente resta autorevole fino al
+confronto-e-scambio di `required-head-v1.bin`, che e' il punto di non ritorno
+dell'aggiornamento. Ogni passaggio deve rileggere il proprio risultato
+autenticato prima di avanzare.
 
 Il controllo preliminare transitorio deve essere installato prima del passaggio
 al nuovo regime. In assenza del certificato permette soltanto l'artefatto
@@ -1471,7 +1491,10 @@ parte soltanto dopo il criterio di uscita del precedente.
    e non possono riusare chiavi autore, Admission o Producer.
 6. **Distribuzione e avvio F4:** assemblaggio firmato, installazione atomica,
    catena completa, controllo preliminare transitorio e definitivo, copertura di
-   tutti i servizi e dell'installatore.
+   tutti i servizi e dell'installatore. Poiche' la politica compilata resta
+   falsa, questo gruppo non modifica il server gestito e l'entrata produttiva
+   nega prima di claim e journal; installazione e composizione complete sono
+   provate soltanto nella VM usa-e-getta.
 7. **Passaggio e artefatto chiuso F4:** prova generale isolata, passaggio reale
    controllato, artefatto separato con diniego compilato vero, caricamento a
    freddo, riavvio, ripetizione equivalente e due cicli di instradamento. Solo
