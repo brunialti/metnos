@@ -46,7 +46,7 @@ from manifest_inventory import (
     ManifestOrigin,
     ManifestRef,
     ManifestSource,
-    inventory_manifests,
+    inventory_authoring_manifests,
 )
 from sign import sign_manifest_bytes
 
@@ -154,7 +154,7 @@ def _make_source(
     (manifest_dir / "manifest.toml.sig").write_bytes(
         sign_manifest_bytes(manifest.read_bytes(), private_key=private)
     )
-    inventory = inventory_manifests((ManifestSource(
+    inventory = inventory_authoring_manifests((ManifestSource(
         ManifestOrigin.EXPLICIT,
         root,
         min_depth=1,

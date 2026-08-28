@@ -373,7 +373,7 @@ def create_contract_source(tmp_path: Path):
             manifest.read_bytes(), private_key=private,
         )
     )
-    inventory = inventory_module.inventory_manifests((
+    inventory = inventory_module.inventory_authoring_manifests((
         inventory_module.ManifestSource(
             inventory_module.ManifestOrigin.EXPLICIT, root,
             min_depth=1, max_depth=1, allowed_code_roots=(root,),

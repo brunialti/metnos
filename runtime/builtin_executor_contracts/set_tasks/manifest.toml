@@ -14,7 +14,7 @@ it = "SCOPO: Aggiorna stato o fire controllato di un task schedulato. PATTERN: r
 en = "SCOPO: Updates state or performs a controlled fire of a scheduled task. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["../../recurring_tasks.py"]
+files = ["implementation.py.src"]
 digest = "sha256:d8443b5d02ac8aa40cf4423ca2d1944841e4d83b0a4e4386b7ae3b2fad78aa78"
 
 [args]

@@ -353,14 +353,44 @@ def _load_builtin_contract(
     if findings:
         detail = "; ".join(f"{item.code}:{item.message}" for item in findings)
         raise ValueError(f"builtin contract nonconformant for {name!r}: {detail}")
-    code_paths = {
-        (directory / filename).resolve()
-        for filename in (manifest.get("code") or {}).get("files", [])
-    }
-    if module_path.resolve() not in code_paths:
+    code_files = (manifest.get("code") or {}).get("files", [])
+    if code_files != ["implementation.py.src"]:
         raise ValueError(
-            f"builtin contract code mismatch for {name!r}: "
-            f"{module_path.resolve()} is not signed"
+            f"builtin contract code envelope invalid for {name!r}"
+        )
+    implementation_path = directory / "implementation.py.src"
+    try:
+        implementation_status = implementation_path.lstat()
+        module_status = module_path.lstat()
+        def identity(status):
+            return (
+                status.st_dev, status.st_ino, status.st_mode, status.st_nlink,
+                status.st_size, status.st_mtime_ns, status.st_ctime_ns,
+            )
+        if (
+            implementation_path.is_symlink()
+            or module_path.is_symlink()
+            or not implementation_path.is_file()
+            or not module_path.is_file()
+            or implementation_status.st_nlink != 1
+            or module_status.st_nlink != 1
+        ):
+            raise OSError("non-regular or linked implementation")
+        implementation_bytes = implementation_path.read_bytes()
+        module_bytes = module_path.read_bytes()
+        if (
+            identity(implementation_path.lstat()) != identity(implementation_status)
+            or identity(module_path.lstat()) != identity(module_status)
+        ):
+            raise OSError("implementation changed during verification")
+    except OSError as exc:
+        raise ValueError(
+            f"builtin contract implementation unavailable for {name!r}: {exc}"
+        ) from exc
+    if implementation_bytes != module_bytes:
+        raise ValueError(
+            f"builtin contract code mismatch for {name!r}: runtime module "
+            "differs from the admitted implementation"
         )
     return manifest, path, signed_by, generation_id
 

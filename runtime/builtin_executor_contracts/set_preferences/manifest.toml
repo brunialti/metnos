@@ -14,7 +14,7 @@ it = "SCOPO: Imposta una preferenza personale su un valore ammesso. PATTERN: set
 en = "SCOPO: Sets one personal preference to an allowed value. PATTERN: set_preferences(key=\"reply_length\", value=\"breve\"). NON: use delete_preferences to remove or restore a default; it does not alter system or skill settings. OUT: results=[{key, value, applied}]."
 
 [code]
-files = ["../../user_preferences.py"]
+files = ["implementation.py.src"]
 digest = "sha256:d5413ddb48d76b97f06130d3bf85ba03430b7c55b94589ad6b0f949698117c37"
 
 [args]

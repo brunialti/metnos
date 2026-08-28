@@ -14,7 +14,7 @@ it = "SCOPO: Classifica entries in un insieme chiuso di classi. PATTERN: richies
 en = "SCOPO: Classifies entries into a closed set of classes. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["../../classify_entries.py"]
+files = ["implementation.py.src"]
 digest = "sha256:593e7d6f732fa5cfb89ae30ac2a6b56d0ecd031cd6fd78ff081b34cab963717b"
 
 [args]

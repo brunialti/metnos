@@ -14,7 +14,7 @@ it = "SCOPO: Esegue un comando shell di sistema privilegiato solo attraverso il 
 en = "SCOPO: Runs one privileged system shell command only through the approval gate. PATTERN: natural request typed by the planner. NON: enlarge authority or invent inputs. OUT: declared JSON result."
 
 [code]
-files = ["../../system/admin.py"]
+files = ["implementation.py.src"]
 digest = "sha256:b0aa6db701df3c492021be9708c329437e16d51fd4b9a1447691bbd18676d3ba"
 
 [args]

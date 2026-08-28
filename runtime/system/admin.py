@@ -58,7 +58,7 @@ VERB = "admin"
 # Equivalente in-code del manifest TOML degli executor handcrafted: il
 # loader lo importa per costruire l'`Executor` dataclass visibile al
 # PLANNER. Description ~1500 char, leggibile da LLM medium (modello locale
-# planner): pattern DEVI/NON DEVI/OK/ERRORE come da CLAUDE.md §6.
+# planner): pattern DEVI/NON DEVI/OK/ERRORE come da the design guide §6.
 MANIFEST_VIRTUAL = {
     "name": "admin",
     "version": "1.1.0",
@@ -1158,7 +1158,7 @@ def _format_credentials_required(domain: str, ctx: dict) -> str:
     riesce a invocare get_inputs (es. modulo dialog_pending mancante,
     storage non scrivibile). NON e' piu' il path UX principale.
 
-    Pattern dialog manager (CLAUDE.md §10.6, project_dialog_manager_authorization_ux):
+    Pattern dialog manager (the design guide §10.6, project_dialog_manager_authorization_ux):
     riga 1 = «cosa serve», riga 2-3 = parametri tecnici, riga 4 = come fornirle,
     riga 5 = alternative.
     """
@@ -1652,7 +1652,7 @@ def _format_card_summary(decision: AdminDecision, *, intent_text: str) -> str:
     """Genera una summary ~3 righe della carta vaglio per il PLANNER.
 
     Il PLANNER la ricicla nella final_answer del turno (cap-pending fase 1).
-    Pattern dialog manager (CLAUDE.md §10.6, project_dialog_manager_authorization_ux):
+    Pattern dialog manager (the design guide §10.6, project_dialog_manager_authorization_ux):
     riga 1 = «cosa», riga 2 = «come», riga 3 = «scelte».
     """
     argv_pretty = " ".join(decision.argv)
