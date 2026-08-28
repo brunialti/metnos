@@ -22,6 +22,14 @@ def _runner():
     return executor_birth_runner
 
 
+def _group4_support():
+    portable = Path(__file__).resolve().parent
+    if str(portable) not in sys.path:
+        sys.path.insert(0, str(portable))
+    from rm0008_2b import support
+    return support
+
+
 def _registered_backend(runner):
     """Register the real bwrap and the real interpreter, as an operator would.
 
@@ -97,6 +105,15 @@ print(json.dumps({
     )
     assert attestation.cgroup_path is not None
     assert not Path(attestation.cgroup_path).exists()
+
+
+def test_real_delegated_executor_dependency_sandbox(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The existing delegated job also certifies the G4-A runtime sandbox."""
+    if os.environ.get("METNOS_REQUIRE_REAL_BIRTH_LINUX") != "1":
+        pytest.skip("delegated Linux certification step only")
+    monkeypatch.setenv("METNOS_REQUIRE_REAL_EXECUTOR_SANDBOX", "1")
+    _group4_support().exercise_authenticated_dependency_subprocess(tmp_path)
 
 
 def test_real_linux_timeout_terminates_child_and_grandchild_cgroup() -> None:

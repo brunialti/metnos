@@ -2,11 +2,7 @@
 from __future__ import annotations
 
 import hashlib
-import json
-import os
 import shutil
-import subprocess
-import sys
 import tomllib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -212,103 +208,4 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
 def test_parent_projection_crosses_the_real_executor_subprocess(
         tmp_path: Path):
     """The verified record, read-only mount and child door work together."""
-    import sandbox
-    from admitted_module_v1 import (
-        ADMITTED_EXECUTORS_ENV_V1,
-        admitted_code_dependency_projection_v1,
-        code_digest_of_bytes_v1,
-    )
-
-    dependency_root = tmp_path / "dependency"
-    consumer_root = tmp_path / "consumer"
-    dependency_root.mkdir()
-    consumer_root.mkdir()
-    dependency_payload = (
-        b"def invoke(args):\n"
-        b"    return {'ok': True, 'dependency': 'authenticated'}\n"
-    )
-    consumer_payload = (
-        b"import os, sys\n"
-        b"sys.path.insert(0, os.environ['METNOS_RUNTIME'])\n"
-        b"from admitted_module_v1 import (load_admitted_module_v1, "
-        b"runtime_admitted_executor_v1)\n"
-        b"from executor_helpers import run_stdio\n"
-        b"def invoke(args):\n"
-        b"    record = runtime_admitted_executor_v1('read_dependency')\n"
-        b"    return load_admitted_module_v1(record).invoke(args)\n"
-        b"if __name__ == '__main__':\n"
-        b"    run_stdio(invoke)\n"
-    )
-    dependency_code = dependency_root / "read_dependency.py"
-    consumer_code = consumer_root / "read_consumer.py"
-    dependency_code.write_bytes(dependency_payload)
-    consumer_code.write_bytes(consumer_payload)
-
-    def executor(name: str, root: Path, code: Path, payload: bytes, **values):
-        fields = {
-            "name": name,
-            "capabilities": [],
-            "code_path": code,
-            "manifest_path": root / "manifest.toml",
-            "code_files": (code.name,),
-            "code_dependencies": (),
-            "digest": code_digest_of_bytes_v1([payload]),
-        }
-        fields.update(values)
-        return SimpleNamespace(**fields)
-
-    dependency = executor(
-        "read_dependency", dependency_root, dependency_code,
-        dependency_payload,
-    )
-    consumer = executor(
-        "read_consumer", consumer_root, consumer_code, consumer_payload,
-        code_dependencies=("read_dependency",),
-    )
-    catalog = SimpleNamespace(
-        get=lambda name: dependency if name == dependency.name else None,
-    )
-    encoded, roots = admitted_code_dependency_projection_v1(consumer, catalog)
-    command = sandbox.wrap_command(
-        consumer, [sys.executable, str(consumer_code)], extra_ro=roots,
-    )
-    environment = os.environ.copy()
-    environment[ADMITTED_EXECUTORS_ENV_V1] = encoded
-    environment["METNOS_RUNTIME"] = str(
-        Path(__file__).resolve().parents[3] / "runtime"
-    )
-    process = subprocess.run(
-        command, input="{}", capture_output=True, text=True, timeout=15,
-        env=environment, check=False,
-    )
-
-    sandbox_denied = (
-        sys.platform.startswith("linux")
-        and process.returncode != 0
-        and "bwrap:" in process.stderr
-        and any(message in process.stderr for message in (
-            "Operation not permitted", "Permission denied",
-        ))
-    )
-    if sandbox_denied:
-        if os.environ.get("METNOS_REQUIRE_REAL_EXECUTOR_SANDBOX") == "1":
-            pytest.fail(
-                "delegated Linux executor sandbox unavailable: "
-                + process.stderr.strip()
-            )
-        pytest.skip("non-delegated host denied Bubblewrap namespace creation")
-    if sys.platform.startswith("linux"):
-        assert sandbox.bwrap_available(), "Linux certification requires bubblewrap"
-        if not sandbox.sandbox_disabled():
-            assert command[0].endswith("bwrap")
-            mount = [
-                "--ro-bind", str(dependency_root), str(dependency_root),
-            ]
-            assert any(
-                command[index:index + len(mount)] == mount
-                for index in range(len(command) - len(mount) + 1)
-            )
-            assert "--unshare-net" in command
-    assert process.returncode == 0, process.stderr
-    result = json.loads(process.stdout)
-    assert result == {"ok": True, "dependency": "authenticated"}
+    support.exercise_authenticated_dependency_subprocess(tmp_path)
