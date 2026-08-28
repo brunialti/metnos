@@ -234,15 +234,37 @@ gruppo 2: registra soltanto cio' che la nuova misura ha deciso.
   `_SecureDirectoryHandle` consegnati al chiamante. Occorre una soluzione che
   conservi il confine autenticato e renda esplicita la validita' delle
   capacita' dopo lo spostamento.
-- La sonda e' temporanea e rende rosso intenzionalmente il ciclo quando il
-  predispositore rifiuta. Va rimossa nel primo commit successivo; `main`
-  pubblico non deve essere lasciato in quello stato.
+- La sonda temporanea e' stata rimossa dal cambiamento candidato. Al suo posto
+  c'e' una cella Windows di certificazione che pretende installazione completa,
+  documento sandbox autenticato e valore esplicito
+  `windows_backend_not_measured`; non stampa diagnostica e non trasforma un
+  rifiuto in verde.
 
-PROSSIMO PASSO: decidere e verificare localmente la semantica delle capacita'
-discendenti durante una rinomina di albero non vuoto; solo dopo applicare una
-correzione unica e misurarla sullo stesso ciclo Windows. Se quella semantica
-non e' dimostrabile senza ampliare il contratto 2A, il blocco resta dichiarato
-non provato e il gruppo 3 si chiude senza una toppa speculativa.
+**Correzione candidata, gia' verificata localmente.** Il checkpoint
+`verified` e' gia' il confine durevole dal quale il predispositore sa ripartire
+senza sorgente precedente e senza rileggere gli ingressi dell'operatore. La
+prima sessione si ferma li', rilascia in modo ordinato lucchetto e maniglie, e
+una seconda sessione riprende la stessa transazione e pubblica. Non vengono
+chiuse di nascosto capacita' consegnate al chiamante; non si allargano DACL o
+maschere; non esiste una politica di tentativi. Il passaggio e' limitato a due
+sessioni: una seconda richiesta di riapertura e' un'ambiguita' di recupero.
+
+Verifica locale del candidato:
+
+- gruppo 3: **227 passate, 1 salto Windows atteso**;
+- cella nuova sul confine: due sessioni esatte, distinte e chiuse, con la prima
+  gia' chiusa quando nasce la seconda;
+- manifesto e grafo produttivo 2A: **7 su 7**;
+- resto portatile 2A: **85 passate** e le solite cinque celle che richiedono
+  `sudo` rosse soltanto nell'ambiente locale;
+- inventario Python rigenerato meccanicamente per sostituire il file della
+  sonda con la cella di certificazione; nessuno schema o classificazione e'
+  cambiato.
+
+PROSSIMO PASSO: commit del candidato e una sola misura pubblica Windows. Se la
+cella Windows passa, aggiornare il criterio di uscita del gruppo 3 e riportare
+`main` pubblico interamente verde. Se fallisce, non applicare altri tentativi:
+registrare il fatto nuovo e lasciare il legame Windows dichiarato non provato.
 
 ## Fallimenti locali che NON sono del gruppo 3
 

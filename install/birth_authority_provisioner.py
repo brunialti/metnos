@@ -1360,6 +1360,20 @@ class AuthorProvisioningResultV1:
     transaction_id: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class _FreshPublicationPassV1:
+    """Durable handoff from staging to a new handle graph.
+
+    Windows refuses the atomic rename of a directory while files below that
+    directory are open.  Staging necessarily authenticates those descendants,
+    so publication must start in another session after the ``verified``
+    checkpoint is durable.  This private value crosses only the installer
+    entry; it is neither a public outcome nor a journal state.
+    """
+
+    transaction_id: str
+
+
 def _resolve_author_source_v1():
     """Open the previous author source from the one fixed name of section 4.2.
 
@@ -1384,7 +1398,7 @@ def _resolve_author_source_v1():
 
 def _provision_prepared_authorities_v1(
     layout, *, provisioner_build_id: str,
-) -> AuthorProvisioningResultV1:
+) -> AuthorProvisioningResultV1 | _FreshPublicationPassV1:
     """Inspect first, migrate only when there is nothing installed yet.
 
     The census happens by handle under the exclusive lock and before any
@@ -1465,7 +1479,7 @@ def _inspect_installed_v1(session, installed: bool) -> AuthorProvisioningResultV
 
 def _provision_from_nothing_v1(
     session, layout, *, provisioner_build_id: str,
-) -> AuthorProvisioningResultV1:
+) -> AuthorProvisioningResultV1 | _FreshPublicationPassV1:
     """Create the transaction and advance it as far as this increment goes."""
     source_session = _resolve_author_source_v1()
     if source_session is None:
@@ -1491,15 +1505,11 @@ def _provision_from_nothing_v1(
     last = _record_author_source_v1(journal, zero, source)
     last = _stage_and_record_v1(session, journal, last, source)
     last = _advance_to_authorities_v1(session, journal, layout, last)
-    last = _complete_provisioning_v1(
-        session, journal, last, provisioner_build_id=provisioner_build_id,
-    )
-    return AuthorProvisioningResultV1(
-        AuthorProvisioningOutcomeV1.installed,
-        source.active_key_id,
-        last.digests["author_store_public_inventory_sha256"],
-        transaction_id,
-    )
+    # Do not carry the staging handle graph into publication.  In particular,
+    # Windows FileRenameInformation refuses a non-empty directory while a
+    # descendant is open.  The verified checkpoint is the recovery boundary:
+    # the entry closes this session and resumes the same transaction once.
+    return _FreshPublicationPassV1(transaction_id)
 
 
 def _record_author_source_v1(
@@ -1664,7 +1674,7 @@ def _next_object_sequence_v1(checkpoint: CheckpointV1) -> int:
 def _resume_author_root_v1(
     session, layout, transaction_id: str, *, provisioner_build_id: str,
     installed: bool,
-) -> AuthorProvisioningResultV1:
+) -> AuthorProvisioningResultV1 | _FreshPublicationPassV1:
     """Continue the one recognised transaction from the bytes it already holds.
 
     From ``author_staged`` on, completion never consults the previous source
@@ -1703,6 +1713,9 @@ def _resume_author_root_v1(
         raise _reject("birth_provisioning_recovery_ambiguous")
     if state_rank_v1(last.state) < state_rank_v1(ProvisioningStateV1.verified):
         last = _advance_to_authorities_v1(session, journal, layout, last)
+        # The same rule as a new transaction: after this durable checkpoint,
+        # publication owns a fresh session and no staged descendant handle.
+        return _FreshPublicationPassV1(transaction_id)
     last = _complete_provisioning_v1(
         session, journal, last, provisioner_build_id=provisioner_build_id,
     )
@@ -2709,6 +2722,44 @@ def _open_installer_layout_v1():
         return open_birth_provisioning_layout_v1()
 
 
+def _run_provisioning_entry_v1(
+    *, preflight_operator_inputs: bool,
+) -> AuthorProvisioningResultV1:
+    """Run at most one staging pass and one fresh publication pass.
+
+    Reopening is bounded, not a retry policy.  The first pass can only request
+    it after recording ``verified``; a second request contradicts the durable
+    state machine and is therefore refused.
+    """
+    provisioner_build_id = _provisioner_build_id_v1()
+    boundary: _FreshPublicationPassV1 | None = None
+    for pass_index in range(2):
+        layout = _open_installer_layout_v1()
+        try:
+            if preflight_operator_inputs and pass_index == 0:
+                # Read-only preflight first: the administrator installs the
+                # two public registries before Phase 3, so their absence or
+                # invalidity is named before any transaction exists.
+                acquire_operator_inputs_v1(layout.operator_input)
+            result = _provision_prepared_authorities_v1(
+                layout, provisioner_build_id=provisioner_build_id,
+            )
+        finally:
+            layout.birth_session.close()
+        if isinstance(result, _FreshPublicationPassV1):
+            if pass_index != 0:
+                raise _reject("birth_provisioning_recovery_ambiguous")
+            boundary = result
+            continue
+        if (
+            boundary is not None
+            and result.transaction_id not in {None, boundary.transaction_id}
+        ):
+            raise _conflict()
+        return result
+    raise _reject("birth_provisioning_recovery_ambiguous")
+
+
 def prepare_or_defer_until_legacy_author_exists() -> AuthorProvisioningResultV1:
     """Inspect first; defer only from a completely empty installation.
 
@@ -2717,18 +2768,7 @@ def prepare_or_defer_until_legacy_author_exists() -> AuthorProvisioningResultV1:
     previous author identity yet, because on a fresh installation the author
     key is created later in the same phase (section 10.6).
     """
-    layout = _open_installer_layout_v1()
-    try:
-        # Read-only preflight first: the administrator installs the two public
-        # registries before Phase 3, so their absence or invalidity is named
-        # here, with the distinct codes of section 11 and before any
-        # transaction exists.
-        acquire_operator_inputs_v1(layout.operator_input)
-        return _provision_prepared_authorities_v1(
-            layout, provisioner_build_id=_provisioner_build_id_v1(),
-        )
-    finally:
-        layout.birth_session.close()
+    return _run_provisioning_entry_v1(preflight_operator_inputs=True)
 
 
 def ensure_executor_birth_authorities_prepared() -> AuthorProvisioningResultV1:
@@ -2738,13 +2778,7 @@ def ensure_executor_birth_authorities_prepared() -> AuthorProvisioningResultV1:
     layout of the installer and calls the same provisioner as the first entry.
     Deferring is no longer an admitted outcome here.
     """
-    layout = _open_installer_layout_v1()
-    try:
-        result = _provision_prepared_authorities_v1(
-            layout, provisioner_build_id=_provisioner_build_id_v1(),
-        )
-    finally:
-        layout.birth_session.close()
+    result = _run_provisioning_entry_v1(preflight_operator_inputs=False)
     if result.outcome is AuthorProvisioningOutcomeV1.author_not_yet_created:
         raise _reject("birth_author_identity_incomplete")
     return result
