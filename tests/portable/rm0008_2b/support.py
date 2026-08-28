@@ -511,8 +511,8 @@ def prepare_or_defer(monkeypatch, base: Path):
     return module.prepare_or_defer_until_legacy_author_exists()
 
 
-WINDOWS_BLOCKER_V1 = (
-    "on Windows the rename that publishes a final is denied by the DACL and "
-    "refused with birth_provisioning_acl_unsafe; the privilege is not the "
-    "cause and the taxonomy no longer says it is (section 17.81)"
+POSIX_SCENARIO_ONLY_V1 = (
+    "this broad scenario constructs POSIX-oriented intermediate states; "
+    "Windows publication and the group-3 handoff are certified end to end "
+    "by test_group3_windows_publication.py"
 )

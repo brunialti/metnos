@@ -397,7 +397,7 @@ che la possiede e il motivo; non resta vuota e non si colora di verde.
 | 3 · risoluzione chiusa di primitive | `executor_birth_primitive_table_v1`, `executor_birth_property_runner._resolve` | `test_executor_birth_property_runner.py`, quattro celle | verde | `74b6945f` |
 | 3 · risoluzione chiusa dei modelli | `executor_birth_template_table_v1.template_v1` | `test_executor_birth_template_table.py`, cinque celle | verde | `67822d48` |
 | 4 · fondo sandbox autenticato (Linux) | `LinuxSandboxRegistry`, `_checked_linux_backend_v1`, `executor_birth_sandbox_registry_v1` | `test_executor_birth_runner.py` (tre rifiuti nominati), `rm0008_2b/test_group3_sandbox_registry.py` (cinque celle) | verde su POSIX | `0838d560`, `57f4dc3e` |
-| 4 · legame Windows | `WindowsSandboxRegistry` | — | **NON PROVATO** — vedi sotto | — |
+| 4 · legame Windows | `WindowsSandboxRegistry`, `_run_provisioning_entry_v1` | `test_group3_windows_publication.py::test_windows_publishes_and_authenticates_its_sandbox_measurement` | verde su Windows 2022, ciclo pubblico `33153843377` | `8485ca23` |
 | 5 · registri di autorità consumati | `load_sealed_authorities_v1` | `rm0008_2b/test_group3_authority_consumption.py`, quattro celle | verde su POSIX | `f6ffeca2` |
 | 6 · politiche produttive, identità mossa | `CONTEXT_CATALOG_V1` | `rm0008_2b/test_context_material.py::test_a_catalogue_entry_that_moves_changes_the_identity` (retrocessione: identificativo **ed** epoca) | verde | `0a625147` |
 | 7 · caricamenti dinamici noti | `admitted_module_v1.load_admitted_module_v1`, `_PATH_CODE_LOADERS_V1` | `test_admitted_module.py`, nove celle | verde, con una eccezione dichiarata | `b111bafd`, `592aceca` |
@@ -409,24 +409,18 @@ che la possiede e il motivo; non resta vuota e non si colora di verde.
 
 **Requisiti non provati, elencati separatamente:**
 
-1. **Legame Windows del registro sandbox.** Il documento misurato dichiara
-   `unavailable` su `nt` e il predispositore non completa comunque su Windows
-   (blocco 2A del §13 del gruppo 2, causa non ancora provata). Finché quel
-   blocco resta, il fondo Windows non si può né misurare né esercitare: il
-   corridore continua a pretendere il suo registro e a rifiutare senza, come
-   prima di questo gruppo.
-2. **`undo_last_turn` sulla porta autenticata.** È l'unico dei 87 executor che
+1. **`undo_last_turn` sulla porta autenticata.** È l'unico dei 87 executor che
    carica codice da un percorso calcolato. La modifica è scritta
    (`internal/design/patch_undo_last_turn_porta_autenticata.diff`) e **non
    applicabile ora**: dopo il cutover un executor cambia soltanto tramite
    un'intenzione di Executor Birth, che è ciò che questo gruppo abilita.
    La cella `test_the_closure_cost_on_the_real_executors_is_known_and_named`
    nomina l'eccezione e diventa rossa quando sarà sanata.
-3. **Nascita reale di un executor attraverso il bundle attivato** (§3.3 b). Le
+2. **Nascita reale di un executor attraverso il bundle attivato** (§3.3 b). Le
    celle partono dall'insieme già predisposto e provano attivazione, consumo e
    identità; nessun executor è ancora nato attraverso il cancello, perché
    nessun chiamante è migrato. È lavoro del gruppo 4, non un rinvio di questo.
-4. **Cinque celle POSIX della base** (`g2` pubbliche di altro UID, `g8` binding
+3. **Cinque celle POSIX della base** (`g2` pubbliche di altro UID, `g8` binding
    UID) restano rosse in locale perché richiedono `sudo` senza password; sono
    verdi nel ciclo pubblico, che è l'oracolo.
 
@@ -446,10 +440,10 @@ cambiata in `acl_unsafe` insieme alle altre ed e' diventata **rossa**. Quel
 rosso e' la misura: se l'errore fosse stato un accesso negato dalla DACL, la
 cella sarebbe passata. Non lo era.
 
-Conseguenza per chi affrontera' il blocco Windows del predispositore: le due
-cose sono davvero diverse, e la rinomina non ha mai avuto un problema di
-privilegi. L'ipotesi «manca `DELETE` nella maschera» resta da misurare, ma ora
-il codice restituito non la contraddice piu' ne' la conferma per sbaglio.
+Conseguenza confermata dalla misura finale: le due cose sono davvero diverse e
+la rinomina non aveva un problema di privilegio o di diritto `DELETE`. Il
+rifiuto dipendeva dai discendenti dell'albero non vuoto ancora aperti nella
+sessione di preparazione; il §14 registra prova e correzione definitive.
 
 ## 13. `find_persons_indices`: deciso di NON ritirarlo (28/8, delega di Roberto)
 
@@ -487,14 +481,15 @@ ROSSA e dichiarata: in questa casa un caso e' verde oppure e' un rilievo, e
 `xfail` e' vietato dalla base 2A (`no-skip-xfail`). Nasconderlo sarebbe peggio
 del rosso.
 
-## 14. Blocco Windows: una causa candidata trovata leggendo, non indovinando (28/8)
+## 14. Blocco Windows: diagnosi conclusa e correzione provata (28/8)
 
 Il §17.81 del gruppo 2 lasciava la causa aperta con tre candidati
 («destinazione, condivisione dell'handle o handle ancora aperti sulla
 sorgente») e una tensione che non riusciva a sciogliere: se mancasse `DELETE`
 la **disposizione** non funzionerebbe, e invece funziona sullo stesso runner.
 
-C'e' un quarto candidato che il rapporto non elencava, e scioglie la tensione.
+C'era un quarto candidato che il rapporto non elencava: i discendenti aperti
+dell'albero non vuoto. E' la causa confermata.
 
 **Le maschere richieste, a confronto:**
 
@@ -505,23 +500,44 @@ C'e' un quarto candidato che il rapporto non elencava, e scioglie la tensione.
 | maschera di servizio di un oggetto Birth | `0x001200a9` | SYNCHRONIZE, READ_CONTROL, letture — **niente WRITE_DAC/WRITE_OWNER** |
 
 `STANDARD_RIGHTS_ALL` (`0x001f0000`) aggiunge i due diritti che **riscrivono il
-descrittore**. La disposizione non li chiede e passa; la rinomina li chiedeva e
-riceveva accesso negato. Non e' `DELETE` a mancare — la disposizione dimostra
-che c'e' — sono quei due.
+descrittore**. Togliere questi diritti e' stato corretto per minimo privilegio,
+ma non ha risolto il rifiuto.
 
-**Nessuno dei quattro punti d'uso di `mutating_open` li adopera.** Tre aprono
+Nessuno dei quattro punti d'uso di `mutating_open` li adopera. Tre aprono
 per OSSERVARE identita' e profilo (destinazione candidata, destinazione
 assestata, destinazione dopo la mossa); il quarto apre la sorgente della
-rinomina, che ha bisogno di `DELETE` e di nient'altro. Chiedere un diritto che
-non si usa e' il modo in cui un'apertura viene negata per un motivo che con
-l'operazione non c'entra.
+rinomina, che ha bisogno di `DELETE` e di nient'altro. La riduzione delle
+maschere resta quindi acquisita, ma la sonda pubblica ha mostrato che sia
+l'apertura sia il controllo del profilo riuscivano.
 
-**Correzione applicata**: `mutating_open` chiede ora `0x00130080` (file) e
+`mutating_open` chiede ora `0x00130080` (file) e
 `0x001300a0` (directory) — la stessa forma della disposizione, piu' il bit di
 attraversamento per i contenitori. E' anche la direzione giusta a prescindere
 dall'esito: si chiede meno, non di piu', e non si tocca alcuna maschera di
 servizio, cosa che il §17.81 vietava esplicitamente senza misura.
 
-**Falsificabile**: se la rinomina che pubblica un finale continua a ricevere
-accesso negato, l'ipotesi cade e restano i tre candidati originali. La
-riduzione resta comunque corretta per minimo privilegio.
+La sonda discriminante del commit `582032df`, eseguita una sola volta sul
+commit pubblico `32602fa` (ciclo `33152572168`), ha localizzato il rifiuto:
+66 spostamenti di file riusciti; il numero 67, prima directory finale, rifiutato
+da `NtSetInformationFile` con `ERROR_ACCESS_DENIED`. La sorgente era aperta e
+il profilo era valido. Il caso reale differiva dalla prova storica: la directory
+era non vuota e la sessione conservava maniglie autenticate sui discendenti.
+`MS-FSA 2.1.5.15.12` descrive esattamente quel rifiuto per una directory che
+contiene file aperti.
+
+**Correzione definitiva.** Il checkpoint `verified` e' gia' durevole e permette
+di riprendere senza la vecchia sorgente o gli ingressi dell'operatore. La prima
+sessione prepara e verifica, poi si chiude ordinatamente. Una seconda sessione
+riprende la stessa transazione e pubblica. Il passaggio e' limitato a due
+sessioni: non e' una politica di tentativi. Non chiude di nascosto capacita'
+del chiamante e non allarga DACL o diritti.
+
+**Prova finale.** Commit sorgente `8485ca23`, pubblico `a04267b`, ciclo
+`33153843377`: otto lavori su otto verdi al primo tentativo. Il lavoro completo
+Windows `98791864494` ha concluso con 11 prove dell'oracolo d'identita' e
+**186 prove portatili passate, zero errori**. La cella posseduta dal gruppo 3
+attraversa l'entrata produttiva, completa l'installazione, autentica il registro
+sandbox e verifica il valore esplicito `windows_backend_not_measured`.
+
+Il criterio di uscita del gruppo 3 e' soddisfatto. RM-0008 resta aperta per i
+gruppi 4-6.

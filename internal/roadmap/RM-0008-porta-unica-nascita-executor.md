@@ -1,10 +1,11 @@
 # RM-0008 — Porta unica di nascita e ciclo controllato degli executor
 
-> RM-0008 · stato `ready` · revisionata il 25 agosto 2026 · conservazione
+> RM-0008 · stato `active` · avanzamento verificato il 28 agosto 2026 · conservazione
 > persistente · 33 correzioni adversarial approvate da Roberto · rilievi sul
 > dossier risolti nel §21 · prove in
 > `internal/reports/rm0008-adversarial-evidence-20260825.md` · implementazione
-> autorizzata e iniziata: F0-F1 completate, F2 successiva
+> autorizzata e in corso: gruppi 1-3 della ripresa (§23.6) completati e verdi
+> su Linux/Windows; gruppo 4 successivo; F4-F6 non ancora completate
 
 ## 1. Obiettivo
 
@@ -1285,6 +1286,8 @@ sviluppo.
 | 2026-08-25 | `active` | Interruzione prudenziale e verifica completa del residuo: F4-F6 dispongono di primitive significative, ma non sono integrate né certificabili in produzione. Il §23 rende esplicite le lacune e l'ordine non permutabile della ripresa. |
 | 2026-08-25 | `active` | Ripristinata la matrice pubblica: la scrittura binaria conserva firme Ed25519 di 64 byte anche su Windows; l'esecuzione GitHub 32868770779 è verde su Windows 2022 e Ubuntu 24.04. |
 | 2026-08-25 | `active` | La verifica precedente alla chiusura statica ha trovato tre prerequisiti non aggirabili: chiave autore assente dal pubblicatore Birth produttivo, 21 executor incorporati con involucro incompatibile e bootstrap iniziale dell'installatore ancora affidato a firma precedente. I §§23.6 e 23.8 correggono l'ordine di sviluppo senza ridurre i criteri di F4-F6. |
+| 2026-08-28 | `active` | Gruppi 2 e 3 della ripresa completati: autorità predisposte, bootstrap sigillato attivo, registri consumati, controlli chiusi e politiche produttive. Il criterio di uscita dettagliato è in `internal/reports/rm0008-gruppo3-piano-ottimizzato.md` §11. |
+| 2026-08-28 | `active` | Chiuso il blocco Windows del predispositore: preparazione e pubblicazione sono separate dal checkpoint durevole `verified`; ciclo pubblico `33153843377`, commit `a04267b`, otto lavori su otto verdi. Il gruppo 4, chiusura statica F4, è il successivo. |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 

@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from . import support
 
 pytestmark = pytest.mark.skipif(
-    os.name == "nt", reason=support.WINDOWS_BLOCKER_V1
+    os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1
 )
 from install import birth_authority_provisioner as provisioning
 from install.birth_authority_provisioner import (

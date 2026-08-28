@@ -23,7 +23,7 @@ from executor_birth_sandbox_registry_v1 import (
 from . import support
 
 pytestmark = pytest.mark.skipif(
-    os.name == "nt", reason=support.WINDOWS_BLOCKER_V1
+    os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1
 )
 
 

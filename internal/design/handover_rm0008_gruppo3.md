@@ -7,10 +7,11 @@ lo stato descritto nella prima sezione.
 Continua RM-0008 nel worktree /tmp/metnos-rm0008-a-only (ramo main).
 NON toccare /opt/metnos, non creare rami.
 
-STATO: il gruppo 2 e' chiuso. L'installatore prepara un insieme di autorita'
-completo ma INERTE: il runtime Birth non e' attivo e nessun chiamante e'
-migrato. Il ciclo pubblico e' verde su tutti e nove i lavori. Tutto e'
-committato; non esiste lavoro in file temporanei.
+STATO: i gruppi 2 e 3 sono chiusi. L'insieme predisposto e' ora l'autorita'
+attiva del runtime Birth. Il gruppo 3 ha completato anche il legame Windows:
+otto lavori pubblici su otto sono verdi nel ciclo `33153843377`, commit
+pubblico `a04267b`. Tutto e' committato; non esiste lavoro diagnostico o in
+file temporanei. RM-0008 resta aperta: i gruppi 4-6 non sono ancora eseguiti.
 
 LEGGI PRIMA, IN QUEST'ORDINE:
 0. internal/reports/rm0008-regole-di-lavoro-fra-gruppi.md
@@ -30,10 +31,10 @@ LEGGI PRIMA, IN QUEST'ORDINE:
      deduzioni sbagliate corrette dalla misura. Leggile: impediscono di rifare
      lo stesso giro.
 
-COMPITO: il gruppo 3, seguendo il piano ottimizzato. Rende attivo cio' che il
-gruppo 2 ha predisposto. L'ordine del §4 del piano non e' negoziabile: portare
-gli `enforcement_state` a `productive` va fatto PER ULTIMO, perche' cambia
-identificativo ed epoca e obbliga a rifare tutti i vettori golden.
+COMPITO AL SUBENTRO: non rifare il gruppo 3. Leggere il suo criterio di uscita,
+poi preparare il piano ottimizzato del gruppo 4 usando lo stato reale appena
+consegnato e le regole comuni aggiornate dopo il gruppo 3. Il gruppo 4 e' la
+chiusura statica F4 del §23.6.4 della roadmap; non autorizza ancora F5 o F6.
 
 MODO DI LAVORARE:
 - commit piccoli e tematici solo su main, con il marcatore
@@ -71,13 +72,15 @@ eccezione dichiarata: `undo_last_turn`, la cui modifica e' gia' scritta in
 come PRIMA intenzione quando Birth e' attivo (dopo il cutover un executor
 cambia solo cosi': `sign.py publish` risponde «unavailable in STORE_ONLY»).
 
-APERTO E DA NON RISOLVERE A OCCHI CHIUSI: su Windows il predispositore arriva
-fino alla rinomina che pubblica il primo finale e riceve accesso negato. Il
-privilegio NON c'entra (misurato). L'ipotesi "manca DELETE nella maschera" e'
-in tensione con due celle verdi: non toccare la maschera prima di una misura.
+RISOLTO SU WINDOWS: il rifiuto non dipendeva dal privilegio o dalla DACL. La
+prima sessione manteneva aperti discendenti dell'albero non vuoto che stava per
+rinominare. Ora il checkpoint durevole `verified` separa la preparazione dalla
+pubblicazione: la prima sessione viene chiusa e una seconda pubblica la stessa
+transazione. Il passaggio e' limitato a due sessioni, non e' un tentativo
+ripetuto. Non riaprire questa decisione senza una nuova prova contraria.
 
-GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti e nove
-i lavori (sedicesima fotografia; ultimo pubblico verde `3a4840e`):
+GIA' FATTO DEL GRUPPO 3, tutto committato, pubblicato e VERDE su tutti gli otto
+lavori correnti (prova finale: `a04267b`, ciclo `33153843377`):
 - `runtime/executor_birth_prepared_set.py` rilegge l'insieme sotto la propria
   barriera e rifiuta se marcatore, insieme, archivi e materiale non concordano;
 - `runtime/executor_birth_prepared_root.py` e' la porta del runtime, in SOLA
@@ -185,8 +188,8 @@ fotografia ciascuno, invece di una per modifica.
   (obbligo 4, parte Linux): `runtime/executor_birth_sandbox_registry_v1.py`.
   Non e' un'opinione dell'amministratore, e' una misura della macchina. La
   grammatica chiusa della disposizione ha due voci nuove (`sandbox_container`,
-  `sandbox_registry`) e la base 2A e' emendata di conseguenza. Windows resta
-  DICHIARATO NON PROVATO: il predispositore non completa su Windows.
+  `sandbox_registry`) e la base 2A e' emendata di conseguenza. Il legame
+  Windows e' poi stato chiuso dalla prova finale descritta sotto.
 - OGNI componente del contesto e' ora `productive` (obbligo 6, l'ultimo).
   Identificativo ed epoca sono cambiati. La cella che lega politica e identita'
   ora lo prova con una RETROCESSIONE, perche' non resta altra mossa.
@@ -196,16 +199,14 @@ fotografia ciascuno, invece di una per modifica.
   nominava il registro della sandbox e ha fatto fallire il lavoro Ubuntu
   ordinario nello stato precedente la correzione.
 
-PROSSIMO PASSO: i dodici obblighi del §2 del piano sono CHIUSI, tranne il
-legame Windows del registro sandbox, dichiarato non provato. Restano: (a)
-compilare il criterio di uscita del gruppo 3 con cio' che e' provato e cio' che
-non lo e'; (b) la modifica di `undo_last_turn` come prima intenzione, quando il
-cancello e' attivo; (c) decidere con Roberto se ritirare `find_persons_indices`
-(misura: 0 invocazioni su 8716 passi reali) — da cui dipendono le due prove in
-sandbox ancora rosse.
+PROSSIMO PASSO: scrivere il piano del gruppo 4. La sua prima intenzione deve
+portare `undo_last_turn` sulla porta autenticata gia' predisposta e trattare
+`find_persons_indices` senza ritirarne il nome. Solo dopo si affrontano
+inventario `birth_closed`, vecchie autorita' e guardia statica F4. Non
+dichiarare RM-0008 chiusa: restano i gruppi 4-6.
 ```
 
-## Stato operativo del blocco Windows — 28/8/2026, misura discriminante
+## Stato finale del blocco Windows — 28/8/2026
 
 Questa sezione e' il punto di ripresa corrente. Non sostituisce lo storico del
 gruppo 2: registra soltanto cio' che la nuova misura ha deciso.
@@ -261,10 +262,19 @@ Verifica locale del candidato:
   sonda con la cella di certificazione; nessuno schema o classificazione e'
   cambiato.
 
-PROSSIMO PASSO: commit del candidato e una sola misura pubblica Windows. Se la
-cella Windows passa, aggiornare il criterio di uscita del gruppo 3 e riportare
-`main` pubblico interamente verde. Se fallisce, non applicare altri tentativi:
-registrare il fatto nuovo e lasciare il legame Windows dichiarato non provato.
+**Esito pubblico finale:** la correzione e' nel commit sorgente `8485ca23` e
+nel commit pubblico `a04267b`. Il ciclo GitHub Actions `33153843377` e' verde:
+otto lavori su otto, al primo tentativo. Il lavoro completo Windows
+`98791864494` ha eseguito 11 prove dell'oracolo d'identita' e la suite portatile
+con **186 prove passate, 159 salti dichiarati e zero errori**. La nuova cella
+Windows ha attraversato la pubblicazione reale, autenticato il documento della
+sandbox e verificato il rifiuto esplicito del fondo non ancora misurato.
+
+Il blocco Windows e il legame del registro sandbox sono quindi **CHIUSI**. Le
+suite ampie del gruppo 2B che costruiscono manualmente stati intermedi restano
+limitate a POSIX; non costituiscono la prova Windows. La prova Windows posseduta
+dal gruppo 3 e' `test_group3_windows_publication.py`, che attraversa l'entrata
+produttiva completa.
 
 ## Fallimenti locali che NON sono del gruppo 3
 

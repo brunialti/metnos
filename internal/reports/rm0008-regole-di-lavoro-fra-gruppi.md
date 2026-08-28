@@ -54,3 +54,31 @@ dichiarare **come** ha ottenuto la risposta.
 prova va scritto come non provato, con il motivo, nel criterio di uscita del
 gruppo. Una cella rinviata dice `N/A`, il gruppo che la possiede e la ragione
 normativa; non resta vuota e non diventa verde.
+
+## 6. Riesame dopo il gruppo 3: come accelerare i gruppi 4-6
+
+Il gruppo 3 ha confermato le cinque regole e aggiunge queste regole operative.
+Servono a ridurre i cicli senza ridurre le prove.
+
+1. **Prima la causa, poi il codice.** Prima di una correzione devono essere
+   scritti: punto esatto del fallimento, fatto osservato, ipotesi causale e
+   risultato previsto. Se una correzione progettata non risolve, non si applica
+   una seconda modifica finché una nuova prova non ha ristretto la causa.
+2. **Un solo esperimento discriminante.** Una sonda è ammessa soltanto se due
+   soluzioni diverse dipendono dalla sua risposta. Va rimossa nello stesso
+   incremento che introduce la cella di certificazione permanente.
+3. **Due cancelli, non una suite continua.** Durante lo sviluppo si eseguono le
+   prove possedute dal gruppo e R1. La matrice pubblica completa si esegue quando
+   l'incremento causale è completo o quando serve un sistema operativo non
+   disponibile localmente. Un rosso pubblico ferma il lavoro successivo.
+4. **Una fetta verticale per commit.** Ogni commit contiene simbolo produttivo,
+   prova diretta, prova del percorso reale e aggiornamento del criterio di
+   uscita. Non si aprono in parallelo più difetti causali dello stesso gruppo.
+5. **Subentro sempre aggiornato.** Dopo ogni nuova evidenza, correzione e
+   risultato pubblico si aggiornano stato, commit, ciclo, ciò che resta non
+   provato e prossimo passo. Un altro agente deve poter ripartire senza
+   ricostruire la cronologia.
+
+Per il gruppo 4 questo significa: prima si scrive il suo piano sullo stato
+chiuso del gruppo 3; poi si esegue la prima fetta verticale completa. Non si
+iniziano F5 o F6 e non si costruisce in anticipo il loro dettaglio.
