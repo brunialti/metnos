@@ -343,6 +343,7 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_for_test_v1",
     "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_v1",
     "runtime/executor_birth_ownership_coordinator.py:_decode_record",
+    "runtime/executor_birth_ownership_coordinator.py:_decode_record_v2",
     "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
     "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",
     "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1",

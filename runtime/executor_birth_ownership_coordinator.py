@@ -45,12 +45,22 @@ DEFAULT_COORDINATOR_DIRECTORY_V1 = (
 )
 DEPLOYMENT_LOCK_BASENAME_V1 = "ownership-deployment-v1.lock"
 MAX_RECORD_BYTES_V1 = 8 * 1024 * 1024
+MAX_COORDINATOR_CONTROL_BYTES_V2 = 16 * 1024
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _TEMPORARY_RECORD_RE = re.compile(
     r"\.record-([0-9]{3})-v1\.json\.([0-9a-f]{64})\.tmp\Z"
 )
 _RECORD_DOMAIN = b"metnos.executor-birth.ownership-coordinator-record/v1\0"
+_RECORD_DOMAIN_V2 = b"metnos.executor-birth.ownership-coordinator-record/v2\0"
 _REQUEST_DOMAIN = b"metnos.executor-birth.ownership-coordinator-request/v1\0"
+_SUCCESSOR_CLAIM_DOMAIN_V1 = b"metnos.executor-birth.successor-claim/v1\0"
+_LEGACY_JOURNAL_DOMAIN_V2 = b"metnos.executor-birth.legacy-journal/v2\0"
+_LEGACY_DISPOSITION_DOMAIN_V2 = (
+    b"metnos.executor-birth.legacy-disposition/v2\0"
+)
+_INSTALL_TRANSACTION_DOMAIN_V1 = (
+    b"metnos.executor-birth.install-transaction/v1\0"
+)
 _RECORD_KEYS = frozenset({
     "schema_version", "sequence", "state", "previous_record_sha256",
     "request_id", "previous_closed_build_id", "previous_cutover_id",
@@ -63,6 +73,29 @@ _RECORD_KEYS = frozenset({
     "certificate_payload_hash", "certificate_signature_hash",
 })
 _RECEIPT_KEYS = frozenset({"contract_id", "generation_id", "receipt_hash"})
+_SUCCESSOR_CLAIM_KEYS_V1 = frozenset({
+    "schema_version", "claim_id", "previous_head_id", "release_sequence",
+    "request_id", "source_id", "closed_build_id",
+})
+_LEGACY_DISPOSITION_KEYS_V2 = frozenset({
+    "schema_version", "disposition_id", "legacy_journal_hash",
+    "legacy_request_id", "legacy_state", "successor_request_id", "reason",
+})
+_INSTALL_TRANSACTION_KEYS_V1 = frozenset({
+    "schema_version", "request_id", "source_id", "closed_build_id",
+    "release_sequence", "previous_head_id", "successor_claim_id",
+    "deployment_descriptor_id", "service_coverage_hash",
+    "administrative_bundle_hash",
+})
+_RECORD_KEYS_V2 = _RECORD_KEYS | frozenset({
+    "source_id", "successor_claim_id", "deployment_descriptor_id",
+    "install_transaction_id", "installed_tree_hash", "release_sequence",
+    "previous_head_id", "head_id", "head_payload_hash",
+    "head_signature_hash", "required_head_frame_hash",
+    "verified_chain_head_id", "preflight_attestation_hash",
+    "service_coverage_hash", "administrative_bundle_hash",
+})
+_LEGACY_DISPOSITION_REASON_V2 = "superseded_before_certificate"
 
 
 class OwnershipCoordinatorError(RuntimeError):
@@ -118,6 +151,234 @@ def _pairs(items: list[tuple[str, object]]) -> dict[str, object]:
             )
         result[key] = value
     return result
+
+
+def _decode_control_document_v2(
+    encoded: bytes, *, keys: frozenset[str], schema_version: int,
+    label: str,
+) -> dict[str, object]:
+    if (
+        not isinstance(encoded, bytes)
+        or not encoded
+        or len(encoded) > MAX_COORDINATOR_CONTROL_BYTES_V2
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", label + " size",
+        )
+    try:
+        value = json.loads(encoded.decode("ascii"), object_pairs_hook=_pairs)
+    except OwnershipCoordinatorError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", label + " json",
+        ) from exc
+    if (
+        not isinstance(value, dict)
+        or set(value) != keys
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != schema_version
+        or _canonical(value) != encoded
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", label + " schema",
+        )
+    return value
+
+
+def _require_release_predecessor_v1(
+    release_sequence: object, previous_head_id: object,
+) -> tuple[int, str | None]:
+    if type(release_sequence) is not int or release_sequence <= 0:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "release_sequence",
+        )
+    predecessor = _require_digest(
+        previous_head_id, "previous_head_id", nullable=True,
+    )
+    if (release_sequence == 1) is not (predecessor is None):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "previous_head_id",
+        )
+    return release_sequence, predecessor
+
+
+@dataclass(frozen=True, slots=True)
+class SuccessorClaimV1:
+    claim_id: str
+    previous_head_id: str | None
+    release_sequence: int
+    request_id: str
+    source_id: str
+    closed_build_id: str
+
+    def __post_init__(self) -> None:
+        _require_release_predecessor_v1(
+            self.release_sequence, self.previous_head_id,
+        )
+        for field in ("request_id", "source_id", "closed_build_id"):
+            _require_digest(getattr(self, field), field)
+        _require_digest(self.claim_id, "claim_id")
+        if self.claim_id != _successor_claim_id_v1(self.as_value(include_id=False)):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "claim_id",
+            )
+
+    def as_value(self, *, include_id: bool = True) -> dict[str, object]:
+        value: dict[str, object] = {
+            "schema_version": 1,
+            "previous_head_id": self.previous_head_id,
+            "release_sequence": self.release_sequence,
+            "request_id": self.request_id,
+            "source_id": self.source_id,
+            "closed_build_id": self.closed_build_id,
+        }
+        if include_id:
+            value["claim_id"] = self.claim_id
+        return value
+
+    def encode(self) -> bytes:
+        return _canonical(self.as_value())
+
+
+def _successor_claim_id_v1(value_without_id: dict[str, object]) -> str:
+    if set(value_without_id) != _SUCCESSOR_CLAIM_KEYS_V1 - {"claim_id"}:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "successor claim identity",
+        )
+    return _digest(_SUCCESSOR_CLAIM_DOMAIN_V1 + _canonical(value_without_id))
+
+
+def _decode_successor_claim_v1(encoded: bytes) -> SuccessorClaimV1:
+    value = _decode_control_document_v2(
+        encoded, keys=_SUCCESSOR_CLAIM_KEYS_V1, schema_version=1,
+        label="successor claim",
+    )
+    return SuccessorClaimV1(
+        claim_id=value.get("claim_id"),
+        previous_head_id=value.get("previous_head_id"),
+        release_sequence=value.get("release_sequence"),
+        request_id=value.get("request_id"),
+        source_id=value.get("source_id"),
+        closed_build_id=value.get("closed_build_id"),
+    )
+
+
+def _successor_claim_basename_v1(
+    release_sequence: int, previous_head_id: str | None,
+) -> str:
+    _, predecessor = _require_release_predecessor_v1(
+        release_sequence, previous_head_id,
+    )
+    return "initial.json" if predecessor is None else predecessor[7:] + ".json"
+
+
+def _legacy_journal_hash_v2(record_bytes: tuple[bytes, ...]) -> str:
+    if (
+        type(record_bytes) is not tuple
+        or not 1 <= len(record_bytes) <= 2
+        or any(
+            type(encoded) is not bytes
+            or not encoded
+            or len(encoded) > MAX_RECORD_BYTES_V1
+            for encoded in record_bytes
+        )
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "legacy journal bytes",
+        )
+    framed = bytearray(_LEGACY_JOURNAL_DOMAIN_V2)
+    framed.extend(len(record_bytes).to_bytes(8, "big"))
+    for encoded in record_bytes:
+        framed.extend(len(encoded).to_bytes(8, "big"))
+        framed.extend(encoded)
+    return _digest(bytes(framed))
+
+
+@dataclass(frozen=True, slots=True)
+class LegacyDispositionV2:
+    disposition_id: str
+    legacy_journal_hash: str
+    legacy_request_id: str
+    legacy_state: OwnershipCoordinatorStateV1
+    successor_request_id: str
+    reason: str = _LEGACY_DISPOSITION_REASON_V2
+
+    def __post_init__(self) -> None:
+        for field in (
+            "disposition_id", "legacy_journal_hash", "legacy_request_id",
+            "successor_request_id",
+        ):
+            _require_digest(getattr(self, field), field)
+        if (
+            type(self.legacy_state) is not OwnershipCoordinatorStateV1
+            or self.legacy_state not in {
+                OwnershipCoordinatorStateV1.PREPARED,
+                OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE,
+            }
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "legacy_state",
+            )
+        if (
+            type(self.reason) is not str
+            or self.reason != _LEGACY_DISPOSITION_REASON_V2
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "legacy reason",
+            )
+        expected = _legacy_disposition_id_v2(self.as_value(include_id=False))
+        if self.disposition_id != expected:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "disposition_id",
+            )
+
+    def as_value(self, *, include_id: bool = True) -> dict[str, object]:
+        value: dict[str, object] = {
+            "schema_version": 2,
+            "legacy_journal_hash": self.legacy_journal_hash,
+            "legacy_request_id": self.legacy_request_id,
+            "legacy_state": self.legacy_state.value,
+            "successor_request_id": self.successor_request_id,
+            "reason": self.reason,
+        }
+        if include_id:
+            value["disposition_id"] = self.disposition_id
+        return value
+
+    def encode(self) -> bytes:
+        return _canonical(self.as_value())
+
+
+def _legacy_disposition_id_v2(value_without_id: dict[str, object]) -> str:
+    if set(value_without_id) != _LEGACY_DISPOSITION_KEYS_V2 - {"disposition_id"}:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "legacy disposition identity",
+        )
+    return _digest(
+        _LEGACY_DISPOSITION_DOMAIN_V2 + _canonical(value_without_id),
+    )
+
+
+def _decode_legacy_disposition_v2(encoded: bytes) -> LegacyDispositionV2:
+    value = _decode_control_document_v2(
+        encoded, keys=_LEGACY_DISPOSITION_KEYS_V2, schema_version=2,
+        label="legacy disposition",
+    )
+    try:
+        state = OwnershipCoordinatorStateV1(value.get("legacy_state"))
+    except (TypeError, ValueError) as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "legacy_state",
+        ) from exc
+    return LegacyDispositionV2(
+        disposition_id=value.get("disposition_id"),
+        legacy_journal_hash=value.get("legacy_journal_hash"),
+        legacy_request_id=value.get("legacy_request_id"),
+        legacy_state=state,
+        successor_request_id=value.get("successor_request_id"),
+        reason=value.get("reason"),
+    )
 
 
 def _proof_values(proof: CurrentReceiptProof | None) -> list[dict[str, str]]:
@@ -349,6 +610,336 @@ def _decode_record(encoded: bytes) -> OwnershipCoordinatorRecordV1:
         certificate_payload_hash=value.get("certificate_payload_hash"),
         certificate_signature_hash=value.get("certificate_signature_hash"),
     )
+
+
+def _install_transaction_id_v1(value: dict[str, object]) -> str:
+    if (
+        set(value) != _INSTALL_TRANSACTION_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "install transaction identity",
+        )
+    return _digest(_INSTALL_TRANSACTION_DOMAIN_V1 + _canonical(value))
+
+
+@dataclass(frozen=True, slots=True)
+class OwnershipCoordinatorRecordV2:
+    sequence: int
+    state: OwnershipCoordinatorStateV1
+    previous_record_sha256: str | None
+    request_id: str
+    previous_closed_build_id: str | None
+    previous_cutover_id: str | None
+    closed_build_id: str
+    distribution_payload_hash: str
+    distribution_signature_hash: str
+    boundary_inventory_hash: str
+    boundary_guard_version: str
+    source_id: str
+    successor_claim_id: str
+    deployment_descriptor_id: str
+    install_transaction_id: str
+    release_sequence: int
+    previous_head_id: str | None
+    service_coverage_hash: str
+    administrative_bundle_hash: str
+    current_proof: CurrentReceiptProof | None = None
+    maintenance_before_hash: str | None = None
+    maintenance_after_hash: str | None = None
+    maintenance_proof: bytes | None = None
+    startup_prerequisite_id: str | None = None
+    startup_prerequisite_digest: str | None = None
+    cutover_id: str | None = None
+    catalog_id: str | None = None
+    certificate_payload_hash: str | None = None
+    certificate_signature_hash: str | None = None
+    installed_tree_hash: str | None = None
+    head_id: str | None = None
+    head_payload_hash: str | None = None
+    head_signature_hash: str | None = None
+    required_head_frame_hash: str | None = None
+    verified_chain_head_id: str | None = None
+    preflight_attestation_hash: str | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.sequence) is not int
+            or self.sequence < 0 or self.sequence >= len(_STATES)
+            or self.state is not _STATES[self.sequence]
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "state sequence",
+            )
+        for field in (
+            "request_id", "closed_build_id", "distribution_payload_hash",
+            "distribution_signature_hash", "boundary_inventory_hash",
+            "source_id", "successor_claim_id", "deployment_descriptor_id",
+            "install_transaction_id", "service_coverage_hash",
+            "administrative_bundle_hash",
+        ):
+            _require_digest(getattr(self, field), field)
+        for field in (
+            "previous_record_sha256", "previous_closed_build_id",
+            "previous_cutover_id", "maintenance_before_hash",
+            "maintenance_after_hash", "startup_prerequisite_id",
+            "startup_prerequisite_digest", "cutover_id", "catalog_id",
+            "certificate_payload_hash", "certificate_signature_hash",
+            "installed_tree_hash", "head_id", "head_payload_hash",
+            "head_signature_hash", "required_head_frame_hash",
+            "verified_chain_head_id", "preflight_attestation_hash",
+        ):
+            _require_digest(getattr(self, field), field, nullable=True)
+        if (self.sequence == 0) is not (self.previous_record_sha256 is None):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "previous_record_sha256",
+            )
+        _require_release_predecessor_v1(
+            self.release_sequence, self.previous_head_id,
+        )
+        if (
+            not isinstance(self.boundary_guard_version, str)
+            or not self.boundary_guard_version
+            or "\0" in self.boundary_guard_version
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "boundary_guard_version",
+            )
+        if self.sequence == 0 and any(value is not None for value in (
+            self.current_proof, self.maintenance_before_hash,
+            self.maintenance_after_hash, self.maintenance_proof,
+            self.startup_prerequisite_id, self.startup_prerequisite_digest,
+            self.cutover_id, self.catalog_id, self.certificate_payload_hash,
+            self.certificate_signature_hash,
+        )):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "prepared fields",
+            )
+        if self.sequence >= 1:
+            if (
+                not isinstance(self.current_proof, CurrentReceiptProof)
+                or self.maintenance_before_hash is None
+                or self.maintenance_after_hash is None
+                or not isinstance(self.maintenance_proof, bytes)
+                or not self.maintenance_proof
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_journal_invalid", "receipt proof fields",
+                )
+            from executor_birth_ownership_preflight import maintenance_evidence_hash
+
+            observed_hash = maintenance_evidence_hash(self.maintenance_proof)
+            if (
+                self.maintenance_before_hash != observed_hash
+                or self.maintenance_after_hash != observed_hash
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_journal_invalid", "maintenance binding",
+                )
+        certificate_fields = (
+            self.startup_prerequisite_id, self.startup_prerequisite_digest,
+            self.cutover_id, self.catalog_id, self.certificate_payload_hash,
+            self.certificate_signature_hash,
+        )
+        if (
+            self.sequence >= 2 and any(value is None for value in certificate_fields)
+        ) or (
+            self.sequence < 2 and any(value is not None for value in certificate_fields)
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "certificate threshold",
+            )
+        if (self.sequence >= 4) is not (self.installed_tree_hash is not None):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "installed tree threshold",
+            )
+        head_fields = (
+            self.head_id, self.head_payload_hash, self.head_signature_hash,
+            self.required_head_frame_hash, self.verified_chain_head_id,
+        )
+        if (
+            self.sequence >= 5 and any(value is None for value in head_fields)
+        ) or (
+            self.sequence < 5 and any(value is not None for value in head_fields)
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "head threshold",
+            )
+        if self.sequence >= 5 and self.verified_chain_head_id != self.head_id:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "verified chain head",
+            )
+        if (self.sequence >= 6) is not (
+            self.preflight_attestation_hash is not None
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "preflight threshold",
+            )
+        expected_transaction = _install_transaction_id_v1(
+            self.install_transaction_value(),
+        )
+        if self.install_transaction_id != expected_transaction:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "install_transaction_id",
+            )
+
+    def install_transaction_value(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "request_id": self.request_id,
+            "source_id": self.source_id,
+            "closed_build_id": self.closed_build_id,
+            "release_sequence": self.release_sequence,
+            "previous_head_id": self.previous_head_id,
+            "successor_claim_id": self.successor_claim_id,
+            "deployment_descriptor_id": self.deployment_descriptor_id,
+            "service_coverage_hash": self.service_coverage_hash,
+            "administrative_bundle_hash": self.administrative_bundle_hash,
+        }
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "schema_version": 2,
+            "sequence": self.sequence,
+            "state": self.state.value,
+            "previous_record_sha256": self.previous_record_sha256,
+            "request_id": self.request_id,
+            "previous_closed_build_id": self.previous_closed_build_id,
+            "previous_cutover_id": self.previous_cutover_id,
+            "closed_build_id": self.closed_build_id,
+            "distribution_payload_hash": self.distribution_payload_hash,
+            "distribution_signature_hash": self.distribution_signature_hash,
+            "boundary_inventory_hash": self.boundary_inventory_hash,
+            "boundary_guard_version": self.boundary_guard_version,
+            "current_receipts": _proof_values(self.current_proof),
+            "maintenance_before_hash": self.maintenance_before_hash,
+            "maintenance_after_hash": self.maintenance_after_hash,
+            "maintenance_proof_b64": (
+                base64.b64encode(self.maintenance_proof).decode("ascii")
+                if self.maintenance_proof is not None else None
+            ),
+            "startup_prerequisite_id": self.startup_prerequisite_id,
+            "startup_prerequisite_digest": self.startup_prerequisite_digest,
+            "cutover_id": self.cutover_id,
+            "catalog_id": self.catalog_id,
+            "certificate_payload_hash": self.certificate_payload_hash,
+            "certificate_signature_hash": self.certificate_signature_hash,
+            "source_id": self.source_id,
+            "successor_claim_id": self.successor_claim_id,
+            "deployment_descriptor_id": self.deployment_descriptor_id,
+            "install_transaction_id": self.install_transaction_id,
+            "installed_tree_hash": self.installed_tree_hash,
+            "release_sequence": self.release_sequence,
+            "previous_head_id": self.previous_head_id,
+            "head_id": self.head_id,
+            "head_payload_hash": self.head_payload_hash,
+            "head_signature_hash": self.head_signature_hash,
+            "required_head_frame_hash": self.required_head_frame_hash,
+            "verified_chain_head_id": self.verified_chain_head_id,
+            "preflight_attestation_hash": self.preflight_attestation_hash,
+            "service_coverage_hash": self.service_coverage_hash,
+            "administrative_bundle_hash": self.administrative_bundle_hash,
+        }
+
+    def encode(self) -> bytes:
+        return _canonical(self.as_value())
+
+
+def _decode_record_v2(encoded: bytes) -> OwnershipCoordinatorRecordV2:
+    if not isinstance(encoded, bytes) or len(encoded) > MAX_RECORD_BYTES_V1:
+        raise OwnershipCoordinatorError("birth_ownership_journal_invalid", "size")
+    try:
+        value = json.loads(encoded.decode("ascii"), object_pairs_hook=_pairs)
+    except OwnershipCoordinatorError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "json",
+        ) from exc
+    if (
+        not isinstance(value, dict)
+        or set(value) != _RECORD_KEYS_V2
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 2
+        or _canonical(value) != encoded
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "schema",
+        )
+    raw_proof = value.get("maintenance_proof_b64")
+    try:
+        maintenance = (
+            None if raw_proof is None else base64.b64decode(raw_proof, validate=True)
+        )
+        if (
+            maintenance is not None
+            and base64.b64encode(maintenance).decode("ascii") != raw_proof
+        ):
+            raise ValueError("noncanonical base64")
+        state = OwnershipCoordinatorStateV1(value.get("state"))
+    except (TypeError, ValueError) as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "encoded field",
+        ) from exc
+    if state is OwnershipCoordinatorStateV1.PREPARED:
+        if value.get("current_receipts") != []:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "prepared receipts",
+            )
+        proof = None
+    else:
+        proof = _proof_from_values(value.get("current_receipts"))
+    return OwnershipCoordinatorRecordV2(
+        sequence=value.get("sequence"),
+        state=state,
+        previous_record_sha256=value.get("previous_record_sha256"),
+        request_id=value.get("request_id"),
+        previous_closed_build_id=value.get("previous_closed_build_id"),
+        previous_cutover_id=value.get("previous_cutover_id"),
+        closed_build_id=value.get("closed_build_id"),
+        distribution_payload_hash=value.get("distribution_payload_hash"),
+        distribution_signature_hash=value.get("distribution_signature_hash"),
+        boundary_inventory_hash=value.get("boundary_inventory_hash"),
+        boundary_guard_version=value.get("boundary_guard_version"),
+        source_id=value.get("source_id"),
+        successor_claim_id=value.get("successor_claim_id"),
+        deployment_descriptor_id=value.get("deployment_descriptor_id"),
+        install_transaction_id=value.get("install_transaction_id"),
+        release_sequence=value.get("release_sequence"),
+        previous_head_id=value.get("previous_head_id"),
+        service_coverage_hash=value.get("service_coverage_hash"),
+        administrative_bundle_hash=value.get("administrative_bundle_hash"),
+        current_proof=proof,
+        maintenance_before_hash=value.get("maintenance_before_hash"),
+        maintenance_after_hash=value.get("maintenance_after_hash"),
+        maintenance_proof=maintenance,
+        startup_prerequisite_id=value.get("startup_prerequisite_id"),
+        startup_prerequisite_digest=value.get("startup_prerequisite_digest"),
+        cutover_id=value.get("cutover_id"),
+        catalog_id=value.get("catalog_id"),
+        certificate_payload_hash=value.get("certificate_payload_hash"),
+        certificate_signature_hash=value.get("certificate_signature_hash"),
+        installed_tree_hash=value.get("installed_tree_hash"),
+        head_id=value.get("head_id"),
+        head_payload_hash=value.get("head_payload_hash"),
+        head_signature_hash=value.get("head_signature_hash"),
+        required_head_frame_hash=value.get("required_head_frame_hash"),
+        verified_chain_head_id=value.get("verified_chain_head_id"),
+        preflight_attestation_hash=value.get("preflight_attestation_hash"),
+    )
+
+
+def _record_hash_v2(encoded: bytes) -> str:
+    return _digest(_RECORD_DOMAIN_V2 + encoded)
+
+
+def _record_basename_v2(sequence: int) -> str:
+    if type(sequence) is not int or not 0 <= sequence < len(_STATES):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "state sequence",
+        )
+    return f"record-{sequence:03d}-v2.json"
 
 
 def _record_hash(encoded: bytes) -> str:
