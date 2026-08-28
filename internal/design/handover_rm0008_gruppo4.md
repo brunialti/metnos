@@ -204,8 +204,32 @@ di queste capacita' puo' quindi passare senza rilievi. Prima del congelamento
 occorre provare che le due capacita' esistano soltanto negli ambiti compilati e
 che gli ambiti dedicati non possano assorbire una seconda mutazione.
 
-Questi fatti sono cause delimitate, non errori di una modifica tentata. Non e'
-stato ancora cambiato codice G4-B+C.
+Questi fatti sono cause delimitate, non errori di una modifica tentata.
+
+## Stato G4-B+C durante lo sviluppo
+
+Il prerequisito dei contratti incorporati e' completato nel commit sorgente
+`dd2afda0`: ogni candidato contiene `implementation.py.src`, il manifesto
+attesta quel file chiuso e il caricatore rifiuta il contratto se i byte non
+coincidono con il modulo runtime eseguito. Il ramo di firma diretta del
+generatore e' stato eliminato.
+
+Il percorso iniziale dell'installatore e' ora implementato localmente, ma non
+ancora certificato ne' pubblicato. La fase 3 prepara le autorita' e invia ogni
+contratto iniziale a un bundle Birth privato, legato a una radice shadow
+esplicita. Prima dell'attivazione vengono riletti generazione, ricevuta Birth,
+identita' della richiesta e report durevole. Il bundle privato non viene
+installato come runtime produttivo; il bundle produttivo viene avviato soltanto
+dopo l'attivazione.
+
+Una prova end-to-end temporanea ha individuato una causa reale precedente:
+il clock del bundle conservava i microsecondi mentre le ricevute firmate hanno
+precisione al secondo. Il clock viene ora normalizzato una sola volta alla
+costruzione del bundle. Dopo la correzione sono verdi 39 prove mirate: 24 della
+fase 3, 14 del bootstrap e una prova completa di pubblicazione, verifica del
+report e attivazione iniziale. Restano da completare la guardia chiusa,
+l'inventario e la verifica finale; nessuna modifica di questo blocco e' ancora
+su GitHub.
 
 `PC-ROBERTO` e' visibile come host Codex locale, ma non espone un progetto
 Metnos salvato. Il trasporto remoto del prodotto accetta soltanto executor

@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import config
 import contract_cutover_guard
 import contract_store
+import executor_birth_bootstrap
 import manifest_inventory
 import sign
 from admin import i18n_migrate_manifests
@@ -143,6 +144,10 @@ def test_active_rerun_uses_only_layout_aware_publication(monkeypatch) -> None:
         ),
     )
     monkeypatch.setattr(
+        phase3_code, "_ensure_birth_authorities_prepared",
+        lambda: events.append("birth-authorities") or {"outcome": "existing"},
+    )
+    monkeypatch.setattr(
         phase3_code,
         "_publish_active_authoring_contracts",
         lambda: events.append("publish") or {
@@ -160,15 +165,11 @@ def test_active_rerun_uses_only_layout_aware_publication(monkeypatch) -> None:
             "bindings": 1, "loaded": 1, "retired": 0,
         },
     )
-    monkeypatch.setattr(
-        phase3_code,
-        "_sign_and_verify_legacy_contracts",
-        lambda: pytest.fail("active layout must never use legacy signing"),
-    )
-
     result = phase3_code._install_executor_contracts()
 
-    assert events == ["migrate", "key:False", "publish", "verify"]
+    assert events == [
+        "migrate", "key:False", "birth-authorities", "publish", "verify",
+    ]
     assert result["mode_before"] == "active"
     assert result["mode_after"] == "active"
 
@@ -254,14 +255,19 @@ def test_legacy_install_persists_report_before_guarded_activation(
         ),
     )
     monkeypatch.setattr(
-        phase3_code,
-        "_sign_and_verify_legacy_contracts",
-        lambda: events.append("sign-verify") or {"signed": 1, "verified": 1},
+        phase3_code, "_ensure_birth_authorities_prepared",
+        lambda: events.append("birth-authorities") or {"outcome": "prepared"},
     )
+    def prepare_initial(*, prove_quiescent):
+        events.append("proof")
+        prove_quiescent()
+        events.append("birth-prepare")
+        return report
+
     monkeypatch.setattr(
-        i18n_migrate_manifests,
-        "prepare_contract_store_shadow",
-        lambda: events.append("prepare") or report,
+        executor_birth_bootstrap,
+        "prepare_initial_installer_catalog_v1",
+        prepare_initial,
     )
     def persist(value):
         assert value is report
@@ -291,11 +297,11 @@ def test_legacy_install_persists_report_before_guarded_activation(
     result = phase3_code._install_executor_contracts()
 
     assert events == [
-        "guard-enter", "migrate", "key:True", "sign-verify", "prepare",
-        "persist", "activate", "guard-exit",
+        "key:True", "birth-authorities", "guard-enter", "migrate", "proof",
+        "birth-prepare", "persist", "activate", "guard-exit",
     ]
     assert result["mode_after"] == "active"
-    assert result["signing"]["verified"] == 1
+    assert result["birth_authorities"]["outcome"] == "prepared"
 
 
 def test_marker_only_recovery_resumes_only_from_saved_report(monkeypatch) -> None:
@@ -333,10 +339,14 @@ def test_marker_only_recovery_resumes_only_from_saved_report(monkeypatch) -> Non
         "_publish_active_authoring_contracts",
         lambda: pytest.fail("recovery must complete before publication"),
     )
+    monkeypatch.setattr(
+        phase3_code, "_ensure_birth_authorities_prepared",
+        lambda: events.append("birth-authorities") or {"outcome": "existing"},
+    )
 
     result = phase3_code._install_executor_contracts()
 
-    assert events == ["read-report", "resume"]
+    assert events == ["birth-authorities", "read-report", "resume"]
     assert result["resumed"] is True
     assert result["mode_before"] == "recovery_required"
     assert result["recovery_source"] == "saved_preparation_report"
@@ -363,6 +373,10 @@ def test_root_only_recovery_authenticates_store_without_old_report(
             "quiescence": {"source": "inactive_http_and_inactive_sidecar"},
             "verification": {"bindings": 1, "loaded": 1, "retired": 0},
         },
+    )
+    monkeypatch.setattr(
+        phase3_code, "_ensure_birth_authorities_prepared",
+        lambda: {"outcome": "existing"},
     )
 
     result = phase3_code._install_executor_contracts()
@@ -621,6 +635,10 @@ def test_installer_adapts_the_shared_authoring_staleness_check(
         "_verify_contract_store_for_installation",
         lambda: pytest.fail("stale preparation must not be verified"),
     )
+    monkeypatch.setattr(
+        executor_birth_bootstrap, "verify_initial_installer_report_v1",
+        lambda *_args, **_kwargs: {"contracts": 1, "receipts": 1},
+    )
 
     with pytest.raises(phase3_code.ContractCatalogInstallError) as caught:
         phase3_code._activate_prepared_report_locked(
@@ -669,6 +687,21 @@ def test_root_only_recovery_keeps_shared_guard_through_first_cold_load(
         events.append("activate")
 
     monkeypatch.setattr(contract_store, "activate_store", activate)
+    def verify_initial(*, prove_quiescent):
+        events.append("birth-proof")
+        prove_quiescent()
+        events.append("birth-receipts")
+        return {"contracts": 1, "receipts": 1}
+
+    monkeypatch.setattr(
+        executor_birth_bootstrap,
+        "verify_initial_installer_store_v1",
+        verify_initial,
+    )
+    monkeypatch.setattr(
+        executor_birth_bootstrap, "bootstrap_birth_runtime",
+        lambda: events.append("birth-runtime"),
+    )
     monkeypatch.setattr(
         phase3_code,
         "_verify_contract_store_for_installation",
@@ -680,8 +713,9 @@ def test_root_only_recovery_keeps_shared_guard_through_first_cold_load(
     result = phase3_code._recover_store_only()
 
     assert events == [
-        "guard-enter", "key:False", "catalog", "proof", "activate",
-        "cold-load", "guard-exit",
+        "guard-enter", "key:False", "birth-proof", "proof", "birth-receipts",
+        "catalog", "proof", "activate", "birth-runtime", "cold-load",
+        "guard-exit",
     ]
     assert result["verification"]["loaded"] == 1
 
@@ -722,33 +756,8 @@ def test_authoring_census_keeps_disabled_and_excludes_retired(
     assert phase3_code._clean_authoring_inventory() == (active, disabled)
 
 
-def test_legacy_cutover_signs_and_verifies_a_disabled_skill_contract(
-    monkeypatch, tmp_path,
-) -> None:
-    active = SimpleNamespace(manifest_dir=tmp_path / "active")
-    disabled = SimpleNamespace(manifest_dir=tmp_path / "disabled-skill")
-    refs = (active, disabled)
-    signed: list[object] = []
-    verified: list[object] = []
-    monkeypatch.setattr(phase3_code, "_clean_authoring_inventory", lambda: refs)
-    monkeypatch.setattr(sign, "sign_executor", signed.append)
-    monkeypatch.setattr(
-        sign, "list_trusted_publics", lambda: (("author", object()),),
-    )
-    monkeypatch.setattr(
-        contract_store,
-        "verify_manifest_source",
-        lambda ref, *, trusted_publics: verified.append(ref),
-    )
-
-    result = phase3_code._sign_and_verify_legacy_contracts()
-
-    assert signed == [active.manifest_dir, disabled.manifest_dir]
-    assert verified == [active, disabled]
-    assert result == {"signed": 2, "verified": 2}
-
-
 def test_phase3_has_no_legacy_mass_signing_invocation() -> None:
     source = phase3_code.Path(phase3_code.__file__).read_text(encoding="utf-8")
     assert '"sign-all"' not in source
     assert "subprocess.run([py, sign_py" not in source
+    assert "sign_executor" not in source

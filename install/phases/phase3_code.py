@@ -465,27 +465,6 @@ def _migrate_contract_language_states() -> dict[str, Any]:
     return migrate_contract_language_states(dry_run=False)
 
 
-def _sign_and_verify_legacy_contracts() -> dict[str, Any]:
-    """Sign only while authoring is still the live legacy authority."""
-
-    from contract_store import verify_manifest_source
-    from sign import list_trusted_publics, sign_executor
-
-    refs = _clean_authoring_inventory()
-    for ref in refs:
-        sign_executor(ref.manifest_dir)
-
-    # Signing updates the manifest digest, so verification must use a fresh
-    # inventory observation rather than the stale pre-sign hashes.
-    verified_refs = _clean_authoring_inventory()
-    trusted = tuple(list_trusted_publics())
-    if not trusted:
-        raise ContractCatalogInstallError("contract_trusted_keys_missing")
-    for ref in verified_refs:
-        verify_manifest_source(ref, trusted_publics=trusted)
-    return {"signed": len(refs), "verified": len(verified_refs)}
-
-
 def _publish_active_authoring_contracts() -> dict[str, Any]:
     """Submit every active-layout source through the operational Birth gate."""
 
@@ -541,9 +520,14 @@ def _activate_prepared_report_locked(
         activate_prepared_contract_store,
     )
     from contract_store import ContractStoreError
+    from executor_birth_bootstrap import (
+        bootstrap_birth_runtime, verify_initial_installer_report_v1,
+    )
 
     try:
+        verify_initial_installer_report_v1(report, prove_quiescent=proof)
         activate_prepared_contract_store(report, quiescence_guard=proof)
+        bootstrap_birth_runtime()
     except ContractStoreError as exc:
         raise _as_install_cutover_error(exc) from exc
     return _verify_contract_store_for_installation()
@@ -612,9 +596,15 @@ def _recover_store_only() -> dict[str, Any]:
 
     from contract_store import SHADOW_RELATIVE, activate_store
     from config import PATH_USER_STATE
+    from executor_birth_bootstrap import (
+        bootstrap_birth_runtime, verify_initial_installer_store_v1,
+    )
 
     with _phase3_cutover_boundary() as (proof, evidence):
         key = _ensure_author_keypair(allow_create=False)
+        birth_verification = verify_initial_installer_store_v1(
+            prove_quiescent=proof,
+        )
         expected, trusted = _store_only_catalog()
         # ``activate_store`` ignores the shadow in STORE_ONLY mode, but still
         # requires a canonical shadow-shaped locator at its API boundary.
@@ -627,10 +617,12 @@ def _recover_store_only() -> dict[str, Any]:
             trusted_publics=trusted,
             quiescence_guard=proof,
         )
+        bootstrap_birth_runtime()
         verification = _verify_contract_store_for_installation()
     return {
         "key": key,
         "quiescence": evidence,
+        "birth_verification": birth_verification,
         "verification": verification,
     }
 
@@ -642,6 +634,7 @@ def _install_executor_contracts() -> dict[str, Any]:
     if mode_before == "active":
         migration = _migrate_contract_language_states()
         key = _ensure_author_keypair(allow_create=False)
+        birth_authorities = _ensure_birth_authorities_prepared()
         publication = _publish_active_authoring_contracts()
         verification = _verify_contract_store_for_installation()
         ui.ok(
@@ -653,11 +646,13 @@ def _install_executor_contracts() -> dict[str, Any]:
             "mode_after": "active",
             "migration": migration,
             "key": key,
+            "birth_authorities": birth_authorities,
             "publication": publication,
             "verification": verification,
         }
 
     if mode_before == "store_only":
+        birth_authorities = _ensure_birth_authorities_prepared()
         activation = _recover_store_only()
         ui.ok("root-only executor contract store recovered and verified")
         return {
@@ -665,10 +660,12 @@ def _install_executor_contracts() -> dict[str, Any]:
             "mode_after": "active",
             "resumed": True,
             "recovery_source": "authenticated_store_root",
+            "birth_authorities": birth_authorities,
             **activation,
         }
 
     if mode_before == "recovery_required":
+        birth_authorities = _ensure_birth_authorities_prepared()
         report = _read_cutover_report()
         activation = _activate_prepared_report(report)
         ui.ok("interrupted executor contract cutover resumed and verified")
@@ -678,6 +675,7 @@ def _install_executor_contracts() -> dict[str, Any]:
             "resumed": True,
             "recovery_source": "saved_preparation_report",
             "report": str(_cutover_report_path()),
+            "birth_authorities": birth_authorities,
             **activation,
         }
 
@@ -686,16 +684,21 @@ def _install_executor_contracts() -> dict[str, Any]:
             "contract_store_mode_unknown", mode_before,
         )
 
-    from admin.i18n_migrate_manifests import prepare_contract_store_shadow
+    from executor_birth_bootstrap import prepare_initial_installer_catalog_v1
 
-    # The authoring tree is still live in LEGACY mode.  Keep the same stopped-
-    # stack barrier across migration, signing, shadow preparation, activation
-    # and the first store-only load so no reader can observe a partial corpus.
+    # Create the historic author identity first, then prepare the sealed Birth
+    # authority set.  Neither operation publishes an executor contract.
+    key = _ensure_author_keypair(allow_create=True)
+    birth_authorities = _ensure_birth_authorities_prepared()
+
+    # The authoring tree is still live in LEGACY mode. Keep one stopped-stack
+    # barrier across migration, private Birth preparation, durable reporting,
+    # activation and the first store-only load.
     with _phase3_cutover_boundary() as (proof, evidence):
         migration = _migrate_contract_language_states()
-        key = _ensure_author_keypair(allow_create=True)
-        signing = _sign_and_verify_legacy_contracts()
-        report = prepare_contract_store_shadow()
+        report = prepare_initial_installer_catalog_v1(
+            prove_quiescent=proof,
+        )
         report_path = _write_cutover_report(report)
         verification = _activate_prepared_report_locked(report, proof=proof)
     ui.ok(
@@ -707,7 +710,7 @@ def _install_executor_contracts() -> dict[str, Any]:
         "mode_after": "active",
         "migration": migration,
         "key": key,
-        "signing": signing,
+        "birth_authorities": birth_authorities,
         "report": str(report_path),
         "quiescence": evidence,
         "verification": verification,
@@ -862,18 +865,12 @@ def run(args: Any) -> dict[str, Any]:
     ui.step("Verifying the Birth authority inputs")
     notes["birth_inputs"] = _prepare_birth_authorities_or_defer()
 
-    # 5. Canonical, resumable publication boundary.  A legacy fresh install
-    # signs locally before the one-way cutover; an active installation uses
-    # only the generation publisher.  An interrupted cutover resumes only
-    # from its exact durable preparation report.
+    # 5. Canonical, resumable publication boundary. Every new generation,
+    # including the first installed catalog, crosses the sealed Birth gate.
+    # An interrupted cutover resumes only from authenticated durable evidence.
     ui.step("Publishing and verifying executor contracts")
     notes["contracts"] = _install_executor_contracts()
-
-    # The previous step creates the author key on a fresh installation, so the
-    # idempotent provisioner can complete now.  It prepares an inactive
-    # authority set: it does not activate Birth.
-    ui.step("Preparing the Birth authority set")
-    notes["birth_authorities"] = _ensure_birth_authorities_prepared()
+    notes["birth_authorities"] = notes["contracts"]["birth_authorities"]
 
     # The language selection predates the signing key. Materialize its signed,
     # atomic authority now; repeating phase 3 is byte-idempotent.

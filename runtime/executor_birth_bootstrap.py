@@ -8,10 +8,12 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
+import tempfile
 import threading
+import tomllib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Callable, Mapping
 
@@ -284,7 +286,9 @@ def _sealed_authorities(sealed):
     )
 
 
-def _build_sealed(*, now: Callable[[], datetime]) -> BirthRuntimeBundle:
+def _build_sealed(
+    *, now: Callable[[], datetime], store_root: Path | None = None,
+) -> BirthRuntimeBundle:
     """Assemble the runtime from the prepared authority set, and from nothing else.
 
     Every authority is read once under the barrier of
@@ -302,6 +306,16 @@ def _build_sealed(*, now: Callable[[], datetime]) -> BirthRuntimeBundle:
     from executor_birth_approval_store import resolve_request_approval
     import config as _config
 
+    def canonical_now() -> datetime:
+        instant = now()
+        if (
+            not isinstance(instant, datetime)
+            or instant.tzinfo is None
+            or instant.utcoffset() is None
+        ):
+            raise BirthBootstrapError("birth_clock_invalid")
+        return instant.astimezone(timezone.utc).replace(microsecond=0)
+
     sealed = load_sealed_authorities_v1()
     state_dir = _secure_state_dir(
         Path(_config.PATH_USER_STATE) / BIRTH_STATE_BASENAME_V1
@@ -316,7 +330,7 @@ def _build_sealed(*, now: Callable[[], datetime]) -> BirthRuntimeBundle:
         set_id=sealed.prepared.set_id,
         prepared_admission_context_id=sealed.prepared.prepared_admission_context_id,
         prepared_context_epoch=sealed.prepared.prepared_context_epoch,
-        store_root=None,
+        store_root=store_root,
     )
     context_builder = ProductionContextBuilder(
         BuiltAdmissionContext(sealed.material.context, sealed.material.pin, {})
@@ -325,6 +339,7 @@ def _build_sealed(*, now: Callable[[], datetime]) -> BirthRuntimeBundle:
     verifier = _PostconditionAdapter(
         trusted_publics=trusted_publics,
         verifier_keys=sealed.admission.verifier_keys,
+        store_root=store_root,
     )
     verifier.recover_authoring()
 
@@ -350,16 +365,366 @@ def _build_sealed(*, now: Callable[[], datetime]) -> BirthRuntimeBundle:
         admission_private_key=sealed.admission.active_private_key,
         admission_verifier_keys=sealed.admission.verifier_keys,
         admission_key_id=sealed.admission.active_key_id,
-        policy_version=BIRTH_POLICY_VERSION_V1, now=now,
+        policy_version=BIRTH_POLICY_VERSION_V1, now=canonical_now,
         commit_publisher=bundle.publisher,
         postcondition_verifier=verifier.verify,
     )
     ttl = birth_receipt_ttl_seconds_v1()
     factories = {
-        cap: _request_factory(auth, registry, producer_db, ttl, now, context_builder)
+        cap: _request_factory(
+            auth, registry, producer_db, ttl, canonical_now, context_builder,
+        )
         for cap, auth in authorities.items()
     }
     return _assemble_birth_runtime_bundle(core, factories)
+
+
+_INITIAL_INSTALL_REASON_V1 = "build the initial installed executor contract catalog"
+
+
+def _require_initial_install_quiescence_v1(prove_quiescent: object) -> None:
+    if not callable(prove_quiescent):
+        raise BirthBootstrapError("birth_initial_install_quiescence_required")
+    try:
+        stopped = prove_quiescent()
+    except Exception as exc:
+        raise BirthBootstrapError("birth_initial_install_quiescence_required") from exc
+    if stopped is not True:
+        raise BirthBootstrapError("birth_initial_install_quiescence_required")
+
+
+def _regular_source_bytes_v1(root: Path, relative: str) -> bytes:
+    """Read one candidate member twice without accepting a linked locator."""
+    from code_file_paths import validate_portable_code_path
+
+    validated = validate_portable_code_path(relative)
+    try:
+        if root.is_symlink():
+            raise OSError("linked candidate root")
+        root_resolved = root.resolve(strict=True)
+        path = root_resolved.joinpath(*PurePosixPath(validated).parts)
+        resolved = path.resolve(strict=True)
+        if resolved != root_resolved and root_resolved not in resolved.parents:
+            raise OSError("candidate member escapes its contract")
+        cursor = path
+        while cursor != root_resolved:
+            status = cursor.lstat()
+            if stat.S_ISLNK(status.st_mode):
+                raise OSError("linked candidate member")
+            cursor = cursor.parent
+        before = path.lstat()
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise OSError("candidate member is not a regular single-link file")
+        payload = path.read_bytes()
+        after = path.lstat()
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_nlink,
+            item.st_size, item.st_mtime_ns, item.st_ctime_ns,
+        )
+        if identity(before) != identity(after) or len(payload) != before.st_size:
+            raise OSError("candidate member changed during read")
+        return payload
+    except OSError as exc:
+        raise BirthBootstrapError("birth_initial_candidate_unavailable") from exc
+
+
+def _initial_candidate_payloads_v1(ref: ManifestRef) -> Mapping[str, bytes]:
+    """Capture one installed source and change only its derived code digest."""
+    from code_file_paths import validate_portable_code_files
+    from manifest_code_digest import prepare_manifest_digest_v1
+
+    root = ref.manifest_dir
+    manifest = _regular_source_bytes_v1(root, "manifest.toml")
+    language_state = _regular_source_bytes_v1(root, "manifest.lang_state.json")
+    try:
+        parsed = tomllib.loads(manifest.decode("utf-8"))
+        code = parsed.get("code")
+        files = validate_portable_code_files(
+            code.get("files") if isinstance(code, dict) else None,
+        )
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError, ValueError) as exc:
+        raise BirthBootstrapError("birth_initial_candidate_invalid") from exc
+    code_payloads = {
+        relative: _regular_source_bytes_v1(root, relative)
+        for relative in files
+    }
+    prepared = prepare_manifest_digest_v1(manifest, code_payloads)
+    # A non-cooperating source writer cannot mix the first manifest with a
+    # later code set without this final exact reread being noticed.
+    if _regular_source_bytes_v1(root, "manifest.toml") != manifest:
+        raise BirthBootstrapError("birth_initial_candidate_changed")
+    return MappingProxyType({
+        "manifest.toml": prepared,
+        "manifest.lang_state.json": language_state,
+        **code_payloads,
+    })
+
+
+def _materialize_initial_candidate_v1(
+    parent: Path, ref: ManifestRef, payloads: Mapping[str, bytes],
+) -> Path:
+    directory = parent / hashlib.sha256(
+        ref.contract_id.value.encode("utf-8")
+    ).hexdigest()
+    directory.mkdir(mode=0o700)
+    for relative, payload in payloads.items():
+        path = directory.joinpath(*PurePosixPath(relative).parts)
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        if path.read_bytes() != payload:
+            raise BirthBootstrapError("birth_initial_candidate_reread_mismatch")
+    return directory
+
+
+def _initial_shadow_root_v1(
+    prepared_set_id: str,
+    candidates: tuple[tuple[ManifestRef, Mapping[str, bytes]], ...],
+) -> Path:
+    import config as _config
+    from contract_store import SHADOW_RELATIVE
+
+    digest = hashlib.sha256(b"metnos.executor-birth.initial-shadow/v1\0")
+    for value in (prepared_set_id, *(ref.contract_id.value for ref, _ in candidates)):
+        encoded = value.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big")); digest.update(encoded)
+    for _ref, payloads in candidates:
+        for name in sorted(payloads, key=str.encode):
+            encoded_name = name.encode("utf-8")
+            payload = payloads[name]
+            digest.update(len(encoded_name).to_bytes(8, "big")); digest.update(encoded_name)
+            digest.update(len(payload).to_bytes(8, "big")); digest.update(payload)
+    return Path(_config.PATH_USER_STATE) / SHADOW_RELATIVE / digest.hexdigest() / "v1"
+
+
+def _initial_request_id_v1(
+    ref: ManifestRef, payloads: Mapping[str, bytes],
+) -> str:
+    """Rebuild the signed request binding without minting a producer receipt."""
+    from executor_birth_intent import _INSTALLER
+
+    framed = bytearray(b"metnos.executor-birth.candidate-source/v1\0")
+    for name, payload in sorted(payloads.items(), key=lambda item: item[0].encode()):
+        encoded = name.encode()
+        framed.extend(len(encoded).to_bytes(8, "big")); framed.extend(encoded)
+        framed.extend(len(payload).to_bytes(8, "big")); framed.extend(payload)
+    source_id = "sha256:" + hashlib.sha256(framed).hexdigest()
+    objective = _hash(
+        b"metnos.executor-birth.objective/v1\0", _INITIAL_INSTALL_REASON_V1,
+    )
+    return _hash(
+        b"metnos.executor-birth.request/v1\0",
+        _INSTALLER.producer_id,
+        _INSTALLER.operation,
+        ref.contract_id.value,
+        objective,
+        source_id,
+    )
+
+
+def _private_bundle_request_v1(
+    bundle: BirthRuntimeBundle, intent: BirthIntent, capability: _ProducerCapability,
+):
+    from executor_birth_operational import _execute
+
+    factory = bundle.producer_factories.get(capability)
+    if factory is None:
+        raise BirthBootstrapError("birth_initial_producer_unavailable")
+    request = factory(intent)
+    return request, _execute(request, bundle.core)
+
+
+def _verified_initial_receipt_v1(
+    ref: ManifestRef, generation_id: str, *, store_root: Path | None,
+    trusted_publics: tuple, admission_verifiers: Mapping[str, Ed25519PublicKey],
+    request_id: str | None = None,
+) -> bytes:
+    from contract_store import current_manifest, read_current_birth_receipt
+    from executor_birth_receipts import verify_admission_receipt
+
+    current = current_manifest(
+        ref, trusted_publics=trusted_publics, store_root=store_root,
+    )
+    if current.generation_id != generation_id:
+        raise BirthBootstrapError("birth_initial_generation_reread_mismatch")
+    encoded = read_current_birth_receipt(
+        ref, generation_id, trusted_publics=trusted_publics,
+        store_root=store_root,
+    )
+    if not isinstance(encoded, bytes):
+        raise BirthBootstrapError("birth_initial_receipt_missing")
+    try:
+        receipt = verify_admission_receipt(
+            encoded, verifier_keys=admission_verifiers,
+        )
+    except Exception as exc:
+        raise BirthBootstrapError("birth_initial_receipt_invalid") from exc
+    if (
+        receipt.contract_id != ref.contract_id.value
+        or receipt.generation_id != generation_id
+        or (request_id is not None and receipt.birth_request_id != request_id)
+    ):
+        raise BirthBootstrapError("birth_initial_receipt_binding_invalid")
+    return encoded
+
+
+def prepare_initial_installer_catalog_v1(*, prove_quiescent: object) -> dict:
+    """Build the initial shadow through a private, non-installed Birth bundle."""
+    from contract_bootstrap import ProductionStoreMode
+    from contract_store import production_store_mode
+    from executor_birth_intent import _INSTALLER
+    from executor_birth_legacy_gate import closed_build_enforcement
+    from executor_birth_prepared_root import load_sealed_authorities_v1
+    from manifest_inventory import inventory_authoring_manifests
+
+    _require_initial_install_quiescence_v1(prove_quiescent)
+    if production_store_mode() is not ProductionStoreMode.LEGACY:
+        raise BirthBootstrapError("birth_initial_install_state_invalid")
+    if closed_build_enforcement():
+        raise BirthBootstrapError("birth_initial_install_closed")
+    sealed = load_sealed_authorities_v1()
+    inventory = inventory_authoring_manifests()
+    refs = inventory.installed()
+    if inventory.problems or not refs:
+        raise BirthBootstrapError("birth_initial_inventory_invalid")
+    candidates = tuple(
+        (ref, _initial_candidate_payloads_v1(ref)) for ref in refs
+    )
+    shadow_root = _initial_shadow_root_v1(sealed.prepared.set_id, candidates)
+    trusted = tuple(sorted(sealed.author.verifier_keys.items()))
+    catalog: dict[str, str] = {}
+    receipts: dict[str, str] = {}
+    repeated = 0
+    with tempfile.TemporaryDirectory(prefix="metnos-birth-initial-") as temporary:
+        parent = Path(temporary)
+        staged = {
+            ref.contract_id: _materialize_initial_candidate_v1(parent, ref, payloads)
+            for ref, payloads in candidates
+        }
+        bundle = _build_sealed(
+            now=lambda: datetime.now(timezone.utc), store_root=shadow_root,
+        )
+        for ref in refs:
+            request, birth = _private_bundle_request_v1(
+                bundle,
+                BirthIntent(
+                    staged[ref.contract_id], ref.contract_id,
+                    _INITIAL_INSTALL_REASON_V1,
+                ),
+                _INSTALLER,
+            )
+            if birth.error_code or birth.publication is None:
+                raise BirthBootstrapError(
+                    birth.error_code or "birth_initial_publication_missing"
+                )
+            generation_id = birth.publication.current_generation_id
+            encoded = _verified_initial_receipt_v1(
+                ref, generation_id, store_root=shadow_root,
+                trusted_publics=trusted,
+                admission_verifiers=sealed.admission.verifier_keys,
+                request_id=request.request_id,
+            )
+            catalog[ref.contract_id.value] = generation_id
+            receipts[ref.contract_id.value] = "sha256:" + hashlib.sha256(encoded).hexdigest()
+            repeated += int(birth.publication.repeated)
+    _require_initial_install_quiescence_v1(prove_quiescent)
+    return {
+        "schema": "metnos.contract-store-cutover/1",
+        "shadow_root": str(shadow_root),
+        "contracts": len(catalog),
+        "repeated": repeated,
+        "catalog": dict(sorted(catalog.items())),
+        "birth_receipts": dict(sorted(receipts.items())),
+        "prepared_set_id": sealed.prepared.set_id,
+    }
+
+
+def _verify_initial_catalog_v1(
+    *, report: Mapping[str, object] | None, prove_quiescent: object,
+) -> dict[str, int]:
+    from contract_bootstrap import ProductionStoreMode
+    from contract_store import current_manifest, production_store_mode
+    from executor_birth_prepared_root import load_sealed_authorities_v1
+    from manifest_inventory import (
+        inventory_authoring_manifests, inventory_store_manifests,
+    )
+
+    _require_initial_install_quiescence_v1(prove_quiescent)
+    mode = production_store_mode()
+    sealed = load_sealed_authorities_v1()
+    trusted = tuple(sorted(sealed.author.verifier_keys.items()))
+    if mode is ProductionStoreMode.LEGACY:
+        if report is None:
+            raise BirthBootstrapError("birth_initial_report_required")
+        store_root = Path(str(report.get("shadow_root", "")))
+        inventory = inventory_authoring_manifests()
+    elif mode in {ProductionStoreMode.STORE_ONLY, ProductionStoreMode.ACTIVE}:
+        store_root = None
+        inventory = inventory_store_manifests()
+    else:
+        raise BirthBootstrapError("birth_initial_install_state_invalid")
+    if inventory.problems or not inventory.manifests:
+        raise BirthBootstrapError("birth_initial_inventory_invalid")
+    refs = {ref.contract_id.value: ref for ref in inventory.manifests}
+    expected_requests = (
+        {
+            key: _initial_request_id_v1(
+                ref, _initial_candidate_payloads_v1(ref),
+            )
+            for key, ref in refs.items()
+        }
+        if mode is ProductionStoreMode.LEGACY else {}
+    )
+    if report is None:
+        catalog = {
+            key: current_manifest(
+                ref, trusted_publics=trusted, store_root=store_root,
+            ).generation_id
+            for key, ref in refs.items()
+        }
+        receipt_hashes = None
+    else:
+        catalog = report.get("catalog")
+        receipt_hashes = report.get("birth_receipts")
+        if (
+            report.get("prepared_set_id") != sealed.prepared.set_id
+            or not isinstance(catalog, dict)
+            or set(catalog) != set(refs)
+            or not isinstance(receipt_hashes, dict)
+            or set(receipt_hashes) != set(refs)
+        ):
+            raise BirthBootstrapError("birth_initial_report_invalid")
+    for key in sorted(refs):
+        generation_id = catalog[key]
+        if not isinstance(generation_id, str):
+            raise BirthBootstrapError("birth_initial_report_invalid")
+        encoded = _verified_initial_receipt_v1(
+            refs[key], generation_id, store_root=store_root,
+            trusted_publics=trusted,
+            admission_verifiers=sealed.admission.verifier_keys,
+            request_id=expected_requests.get(key),
+        )
+        if receipt_hashes is not None and receipt_hashes[key] != (
+            "sha256:" + hashlib.sha256(encoded).hexdigest()
+        ):
+            raise BirthBootstrapError("birth_initial_report_invalid")
+    _require_initial_install_quiescence_v1(prove_quiescent)
+    return {"contracts": len(refs), "receipts": len(refs)}
+
+
+def verify_initial_installer_report_v1(
+    report: Mapping[str, object], *, prove_quiescent: object,
+) -> dict[str, int]:
+    """Authenticate a durable initial report before activation or replay."""
+    return _verify_initial_catalog_v1(
+        report=report, prove_quiescent=prove_quiescent,
+    )
+
+
+def verify_initial_installer_store_v1(*, prove_quiescent: object) -> dict[str, int]:
+    """Authenticate every Birth receipt in a root-only recovery store."""
+    return _verify_initial_catalog_v1(
+        report=None, prove_quiescent=prove_quiescent,
+    )
 
 
 def bootstrap_birth_runtime(
