@@ -197,6 +197,12 @@ def _cold_distribution(
 ):
     inventory = _cold_inventory_bytes()
     content_by_path = {
+        "deployment/executor-birth-deployment-v1.json": (
+            "deployment_descriptor", b'{"schema_version":1}\n',
+        ),
+        "deployment/executor-birth-service-catalog-v1.json": (
+            "service_catalog", b'{"schema_version":1}\n',
+        ),
         "requirements.lock": ("dependency_lock", b"cryptography==47.0.0\n"),
         "runtime/__version__.py": ("product_version", b'__version__ = "1.2.3"\n'),
         "runtime/contract_boundary_guard.py": ("boundary_guard", b"GUARD = 1\n"),
