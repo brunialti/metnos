@@ -516,8 +516,13 @@ def _ensure_directory(directory: Path, *, root_owned: bool) -> None:
         ) from exc
     if (
         not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
-        or info.st_mode & 0o022
-        or (root_owned and (info.st_uid != 0 or info.st_gid != 0))
+        or (
+            os.name != "nt"
+            and (
+                info.st_mode & 0o022
+                or (root_owned and (info.st_uid != 0 or info.st_gid != 0))
+            )
+        )
     ):
         raise OwnershipCoordinatorError(
             "birth_ownership_journal_invalid", "directory metadata",

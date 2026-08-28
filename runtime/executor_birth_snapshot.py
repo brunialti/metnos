@@ -16,6 +16,10 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Mapping
 
+from executor_birth_secure_file import (
+    SecureFileReadError, read_immutable_regular_file,
+)
+
 
 MANIFEST_FILE = "manifest.toml"
 LANGUAGE_STATE_FILE = "manifest.lang_state.json"
@@ -191,23 +195,24 @@ def _read_regular(root: Path, relative: str) -> bytes:
             before = path.lstat()
             if _link_like(path, before) or not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
                 raise CandidateSnapshotError("candidate_link_forbidden", relative)
-            with path.open("rb") as handle:
-                payload = handle.read()
-                after_handle = os.fstat(handle.fileno())
+            # Path-based stat fields and CRT fstat fields are not a portable
+            # cross-API identity on Windows.  The shared Win32 oracle pins the
+            # entry against write/rename/delete, verifies its final path and
+            # checks identity and shape twice on the same native handle.
+            payload = read_immutable_regular_file(path, maximum=before.st_size)
             after = path.lstat()
             after_components = tuple(
                 _identity(component.lstat()) for component in components
             )
             if (
-                _identity(before) != _identity(after_handle)
-                or _identity(before) != _identity(after)
+                _identity(before) != _identity(after)
                 or before_components != after_components
             ):
                 raise CandidateSnapshotError("candidate_changed", relative)
             return payload
         except CandidateSnapshotError:
             raise
-        except OSError as exc:
+        except (OSError, SecureFileReadError) as exc:
             raise CandidateSnapshotError("candidate_changed", relative) from exc
     descriptors: list[int] = []
     try:
