@@ -72,6 +72,9 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "reactivate_technical_update": ("reactivate",),
         "rollback": ("rollback",),
         "activate_store": ("legacy_bootstrap",),
+        "acquire_current_reattestation_snapshot": ("verified_store_read",),
+        "persist_current_reattestation_receipt": ("store_write",),
+        "read_current_birth_receipt": ("verified_store_read",),
     },
     "sign": {
         "sign_executor": ("sign",),
@@ -118,6 +121,18 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "initialize": ("store_write",),
         "update_required_head": ("store_write",),
     },
+    "executor_birth_ownership_cutover": {
+        "_publish_no_replace": ("store_write",),
+        "_sync_directory": ("store_write",),
+        "_write_temporary": ("store_write",),
+        "install_ownership_cutover_certificate": ("store_write",),
+    },
+    "executor_birth_ownership_coordinator": {
+        "_append_coordinator_record_v1": ("store_write",),
+        "_deployment_lock_v1": ("store_write",),
+        "_publish_certificate_with_prerequisite_v1": ("store_write",),
+        "prepare_ownership_cutover_v1": ("cutover_guard",),
+    },
     "birth_ownership_authority_provisioner": {
         "_discard_temporary": ("store_write",),
         "_load_or_create_pair": ("store_write",),
@@ -162,6 +177,14 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     }),
     "executor_birth_ownership_chain": frozenset({
         "executor_birth_ownership_chain", "runtime.executor_birth_ownership_chain",
+    }),
+    "executor_birth_ownership_cutover": frozenset({
+        "executor_birth_ownership_cutover",
+        "runtime.executor_birth_ownership_cutover",
+    }),
+    "executor_birth_ownership_coordinator": frozenset({
+        "executor_birth_ownership_coordinator",
+        "runtime.executor_birth_ownership_coordinator",
     }),
     "birth_ownership_authority_provisioner": frozenset({
         "install.birth_ownership_authority_provisioner",
@@ -274,7 +297,11 @@ FLOW_CAPABILITIES = PUBLISH_CAPABILITIES | frozenset({
 BIRTH_CLOSED_SEALED_MODULES = (
     "runtime/contract_store.py",
     "runtime/executor_birth.py",
+    "runtime/executor_birth_commit_publisher.py",
     "runtime/executor_birth_operational.py",
+    "runtime/executor_birth_ownership_coordinator.py",
+    "runtime/executor_birth_ownership_cutover.py",
+    "runtime/executor_birth_reattestation.py",
     "runtime/sign.py",
 )
 BIRTH_CLOSED_OWNER = "runtime/executor_birth_operational.py:birth_executor"
@@ -289,6 +316,7 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "install/birth_ownership_authority_provisioner.py:_write_exclusive",
     "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
+    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._initialize_with_authorities",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_cutover",
@@ -297,6 +325,15 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.update_required_head",
     "runtime/executor_birth_ownership_chain.py:_replace_required_pointer",
     "runtime/executor_birth_ownership_chain.py:_required_head_lock",
+    "runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher._persist_current_reattestation",
+    "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.append",
+    "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",
+    "runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1",
+    "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete",
+    "runtime/executor_birth_ownership_coordinator.py:_decode_record",
+    "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
+    "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",
+    "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1",
 })
 BIRTH_CLOSED_LEGACY_CAPABILITIES = frozenset({
     "publish_localization", "publish_technical", "reactivate", "retire",

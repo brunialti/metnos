@@ -6,6 +6,7 @@ import pytest
 
 from executor_birth_cutover import (
     BirthCutoverError, CurrentGeneration, cutover_current_generations,
+    prepare_current_receipt_proof,
 )
 from manifest_inventory import ContractId, ManifestOrigin, ManifestRef, ManifestStatus
 
@@ -87,6 +88,19 @@ def test_one_current_generation_is_reattested_durably_before_close():
     assert rig.reattested == [item.identity]
     assert result.proof.identities == (item.identity,)
     assert len(rig.closed) == 1
+
+
+def test_receipt_preparation_never_closes_legacy_owners():
+    item = _item("alpha")
+    rig = Rig([item])
+    result = prepare_current_receipt_proof(
+        prove_quiescent=lambda: True,
+        enumerate_current=rig.enumerate, read_receipt=rig.read,
+        reattest_via_birth=rig.reattest, verify_receipt=_verify,
+    )
+    assert result.proof.identities == (item.identity,)
+    assert result.legacy_owners_closed is False
+    assert rig.closed == []
 
 
 def test_many_current_generations_include_already_receipted_exactly_once():

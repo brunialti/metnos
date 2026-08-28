@@ -9,7 +9,9 @@ Il gruppo 4 e' chiuso con commit pubblico `a4d2dba` e ciclo GitHub
 `33165938001`, nove lavori su nove verdi. Il commit sorgente di partenza e'
 `9fd7edf4`. RM-0008 resta `active`; `closed_build_enforcement()` resta `False`.
 
-Il gruppo 5 e' in analisi esecutiva. Il piano completo e'
+G5-A e' chiuso nel repository sorgente dal commit `1791cec3`; non e' ancora
+pubblicato separatamente. G5-B e' implementato nel worktree e si trova nella
+verifica locale conclusiva. Il piano completo e'
 `internal/reports/rm0008-gruppo5-piano-ottimizzato.md`.
 
 ## Risultato dell'analisi e della revisione avversariale
@@ -38,9 +40,9 @@ ritorno sul sistema produttivo finche' il gruppo 6 non consegna una attestazione
 sigillata di quel prerequisito. Il gruppo 5 prova il recupero oltre il punto di
 non ritorno soltanto in un ambiente isolato e non dichiara un cutover installato.
 
-## Prossimo passo unico
+## Stato dell'incremento G5-A
 
-G5-A e' implementato nel worktree ma non e' ancora committato. Sono presenti:
+G5-A e' implementato e committato su `main` come `1791cec3`. Comprende:
 
 - codec e cold loader di tre registri a scopo singolo;
 - tre chiavi private separate e controllo sui byte pubblici contro autore,
@@ -59,13 +61,86 @@ il rendering e' byte-identico all'inventario. La matrice completa non viene
 ripetuta ora: verra' eseguita una volta sola dopo G5-B, alla chiusura del gruppo.
 
 La revisione avversariale del diff G5-A e' conclusa e non rileva blocchi
-residui. Il prossimo passo unico e' registrare il commit sorgente G5-A su
-`main`, quindi aprire G5-B senza ancora eseguire la matrice pubblica completa.
+residui. La matrice pubblica completa non e' stata eseguita: resta unica e
+appartiene alla chiusura congiunta di G5-A e G5-B.
 
 L'ultimo giro ha corretto due rilievi circoscritti: la fixture Windows non
 invoca piu' il provisioner Linux e il codec rifiuta tipi numerici JSON o Base64
 non canonici. I riproduttori del revisore sono ora tutti rifiutati; il verdetto
 finale e' `APPROVATO`.
+
+## Stato dell'incremento G5-B
+
+L'implementazione corrente comprende:
+
+- un solo elenco ordinato delle unita' di manutenzione e rifiuto esplicito di
+  `load_state` diverso da `loaded`;
+- una porta nominale sigillata del publisher e una fabbrica di riattestazione
+  il cui unico ingresso produttivo e' `CurrentGeneration`;
+- emissione e acquisizione atomiche della ricevuta Producer, rinnovo della
+  concessione e ripresa idempotente della stessa richiesta scaduta;
+- acquisizione autenticata della corrente con firma separata e confronto dei
+  byte esatti di manifest, lingua e codice;
+- preparazione della prova completa delle ricevute senza chiudere i proprietari
+  precedenti;
+- coordinatore durevole con blocco di deployment esterno, record immutabili e
+  stati `PREPARED`, `RECEIPTS_COMPLETE`, `CERTIFICATE_READY` e
+  `CERTIFICATE_PUBLISHED`;
+- arresto produttivo a `RECEIPTS_COMPLETE`; il passaggio successivo richiede un
+  prerequisito sigillato che il gruppo 5 non puo' costruire;
+- recupero in avanti da morte reale del processo dopo READY, firma, payload o
+  rilettura, senza cancellazione e senza ritorno alla build precedente.
+
+La revisione avversariale di G5-B ha inizialmente respinto l'incremento con
+cinque P1 e un P2 riprodotti. Le correzioni correnti sono causali:
+
+- un processo nuovo esegue il bootstrap Birth sotto il blocco di deployment;
+- un replay da `RECEIPTS_COMPLETE` ricostruisce prova corrente e manutenzione e
+  rifiuta qualsiasi variazione;
+- prima di `CERTIFICATE_READY` viene richiesta una nuova prova di manutenzione
+  identica, mentre il recupero successivo al READY non dipende da una nuova
+  fotografia storica;
+- il journal recupera deterministicamente un solo temporaneo nominale completo
+  o parziale e rifiuta gli altri stati;
+- i temporanei parziali del certificato vengono ricostruiti solo se sono un
+  prefisso esatto dei byte attesi e solo prima della pubblicazione finale;
+- il test di morte e ripresa usa un secondo interprete e ricarica da disco; la
+  distribuzione del test e' prodotta dal verificatore reale, non da un oggetto
+  costruito dalla giuntura privata.
+
+Il secondo giro avversariale ha rieseguito i sei riproduttori e ha approvato
+l'incremento con `P1=0` e `P2=0`. Ha inoltre confermato che, dopo
+`CERTIFICATE_READY`, non va richiesta una nuova decisione di manutenzione: il
+record ha gia' legato prerequisito e digest, quindi la ripresa deve soltanto
+verificare catena e artefatti e avanzare in avanti.
+
+Evidenze locali gia' verdi:
+
+- 113 prove mirate del publisher, ricevute, riattestazione, bootstrap,
+  manutenzione e integrazione, con una prova non applicabile;
+- 90 prove della base runtime e 19 prove delle fotografie autenticate;
+- 16 prove del cutover ownership, 9 del cutover runtime e 10 del coordinatore;
+- 21 prove verdi nell'ultimo controllo congiunto di coordinatore, concorrenza,
+  ripresa e mancata chiusura dei proprietari precedenti;
+- 15 prove del coordinatore verdi dopo le correzioni avversariali, incluse
+  deriva al replay, temporanei e ripresa in un secondo interprete;
+- 155 prove mirate congiunte verdi e una prova Linux privilegiata non
+  applicabile; il revisore ha rieseguito 41 prove di rischio senza salti;
+- guardia normale e guardia chiusa entrambe senza rilievi.
+
+Verifica finale locale congelata: suite portatile `391 passed, 24 skipped`,
+R1 verde, inventario Python di 1812 percorsi coerente, guardia normale e chiusa
+verdi e rendering dell'inventario byte-identico. I 24 salti sono le celle
+realmente specifiche di piattaforma o privilegio e verranno eseguite dalla
+matrice pubblica Linux/Windows; non sono errori ignorati.
+
+Questi conteggi descrivono esecuzioni mirate parzialmente sovrapposte e non
+vanno sommati. La suite finale portatile deve essere eseguita una sola volta.
+
+## Prossimo passo unico
+
+Registrare il commit G5-B su `main`, eseguire la pubblicazione incrementale
+unica e richiedere tutti i lavori Linux/Windows verdi. Non avviare il gruppo 6.
 
 ## Regole operative
 

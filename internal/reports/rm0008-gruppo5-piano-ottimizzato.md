@@ -204,6 +204,10 @@ ciascuna esattamente `scope`, `unit`, `load_state`, `active_state` e
 tutte le unita' di `CONTRACT_CUTOVER_UNITS` piu'
 `system:metnos-http.service`.
 
+Una prova valida richiede per ogni unita' `load_state == "loaded"`, stato non
+attivo e PID principale zero. In particolare `not-found` non equivale a unita'
+ferma: indica una configurazione incompleta e viene rifiutato.
+
 Il modulo della guardia passa questi stessi valori a
 `canonical_maintenance_proof()`. Non esiste un secondo elenco nel
 coordinatore. Il codec viene rafforzato con un controllo dell'insieme completo
@@ -223,34 +227,55 @@ almeno gli stati monotoni:
 ```text
 PREPARED
 RECEIPTS_COMPLETE
+CERTIFICATE_READY
 CERTIFICATE_PUBLISHED
 BUILD_VERIFIED
 HEAD_REQUIRED
 PREFLIGHT_VERIFIED
 ```
 
-Il gruppo 5 attraversa produttivamente soltanto i primi due stati. La
+Il gruppo 5 attraversa produttivamente soltanto `PREPARED` e
+`RECEIPTS_COMPLETE`. La
 pubblicazione del certificato e' abilitata soltanto da un'attestazione sigillata
 dei prerequisiti di avvio, che verra' prodotta dal gruppo 6. Il gruppo 5 prova
 in ambiente isolato la transizione e il recupero di
-`CERTIFICATE_PUBLISHED`, ma non la presenta come passaggio installato.
+`CERTIFICATE_READY` e `CERTIFICATE_PUBLISHED`, ma non le presenta come passaggio
+installato.
 `BUILD_VERIFIED`, `HEAD_REQUIRED` e `PREFLIGHT_VERIFIED` sono riconosciuti dal
 codec e dalla monotonia, ma restano non attraversati fino al gruppo 6.
+`BUILD_VERIFIED` significhera' che il gruppo 6 ha installato e riletto la catena
+della build; non e' una seconda verifica del solo manifest di distribuzione.
 
-Ogni record lega almeno `request_id`, build chiusa verificata, predecessore,
+Ogni record lega almeno `request_id`, build chiusa verificata, identificativo
+separato della build chiusa precedente, identificativo separato del cutover
+precedente,
 hash dell'inventario, versione della guardia, prova completa delle correnti,
 hash della manutenzione, identificativo del certificato e digest dei byte
 payload/firma quando disponibili. Ogni avanzamento viene scritto, sincronizzato
 e riletto prima del passo successivo.
 
+Una riapertura in `RECEIPTS_COMPLETE` non considera sufficiente il checkpoint:
+ricostruisce sotto manutenzione il censimento e tutte le ricevute, rilegge la
+prova corrente e richiede uguaglianza byte per byte con quanto registrato.
+Qualsiasi variazione arresta il recupero. Un solo temporaneo nominale del
+journal viene riconciliato prima della lettura: se e' completo e coerente viene
+pubblicato, se conserva il modo `0600` lasciato dalla scrittura interrotta viene
+scartato e sincronizzato; nomi, molteplicita' o byte discordanti restano errori.
+
 Il registro e gli artefatti non sono due verita' alternative. All'apertura il
 coordinatore confronta sempre lo stato dichiarato con i file autenticati:
 
-- prima del payload del certificato, una firma orfana concordante puo' essere
-  completata soltanto dalla stessa richiesta;
+- `CERTIFICATE_READY` registra e rilegge prerequisito, identita' e digest esatti
+  di payload e firma prima di scrivere uno dei due artefatti;
+- una firma orfana puo' essere completata soltanto se esiste il record
+  `CERTIFICATE_READY` concordante; senza tale record, firma o payload sono uno
+  stato ambiguo e impongono `birth_ownership_recovery_required`;
+- prima del punto di non ritorno, un temporaneo di firma o payload che e' un
+  prefisso esatto dei byte attesi puo' essere eliminato e ricostruito; un
+  temporaneo non prefisso non viene mai corretto o adottato;
 - il rename del payload `ownership-cutover-v1.json` e' il punto di non ritorno;
 - se il payload autenticato esiste ma il journal e' ancora
-  `RECEIPTS_COMPLETE`, il recupero riconosce il punto di non ritorno dai byte,
+  `CERTIFICATE_READY`, il recupero riconosce il punto di non ritorno dai byte,
   verifica tutti i legami e registra `CERTIFICATE_PUBLISHED`;
 - se il journal dichiara `CERTIFICATE_PUBLISHED` ma la coppia autenticata non
   esiste, il sistema resta fermo con
@@ -269,22 +294,29 @@ L'ordine non permutabile e' il seguente:
 1. caricare a freddo le tre autorita' e verificare la loro disgiunzione;
 2. verificare una `VerifiedDistribution` reale prodotta dal verificatore del
    manifest, mai da un costruttore di prova;
-3. acquisire `catalog_admission_lock`, blocco di riconciliazione e manutenzione,
-   writer lock ordinati e blocco di deployment;
-4. scrivere e rileggere `PREPARED`;
-5. acquisire la prima prova completa di manutenzione;
-6. censire le correnti, riattestare le mancanti tramite la fabbrica sigillata,
+3. acquisire per primo il blocco di deployment; al suo interno acquisire il
+   blocco di cutover del contratto, che ordina blocco Admission, riconciliazione
+   e manutenzione; non acquisire writer lock dello store;
+4. nello stesso blocco eseguire, se necessario, il bootstrap a freddo del
+   bundle Birth e conservare fabbrica e nucleo della stessa fotografia;
+5. scrivere e rileggere `PREPARED`;
+6. acquisire la prima prova completa di manutenzione;
+7. censire le correnti, riattestare le mancanti tramite la fabbrica sigillata,
    rileggere ogni ricevuta autenticata e ricensire;
-7. richiedere zero rilievi di migrazione, zero ambiti non classificati o stale
+8. richiedere zero rilievi di migrazione, zero ambiti non classificati o stale
    e lo stesso hash di inventario della build verificata;
-8. acquisire la seconda prova completa di manutenzione, scrivere e rileggere
+9. acquisire la seconda prova completa di manutenzione, scrivere e rileggere
    `RECEIPTS_COMPLETE`;
-9. verificare l'attestazione sigillata dei prerequisiti di avvio; in sua assenza
+10. a ogni riapertura precedente al punto di non ritorno ricostruire e
+    confrontare prova corrente e manutenzione;
+11. verificare l'attestazione sigillata dei prerequisiti di avvio; in sua assenza
    fermarsi prima di firmare;
-10. produrre e rileggere i byte esatti del certificato;
-11. pubblicare firma e poi payload senza sovrascrittura; il payload e' il punto
+12. acquisire una prova fresca di manutenzione identica a quella registrata,
+    produrre e verificare i byte esatti del certificato, scrivere e rileggere
+    `CERTIFICATE_READY` con i loro digest;
+13. pubblicare firma e poi payload senza sovrascrittura; il payload e' il punto
     di non ritorno;
-12. rileggere il certificato dal disco e soltanto allora registrare
+14. rileggere il certificato dal disco e soltanto allora registrare
     `CERTIFICATE_PUBLISHED`.
 
 ### 5.5 Prove minime G5-B
@@ -295,9 +327,10 @@ L'ordine non permutabile e' il seguente:
 - doppio censimento, doppia prova di manutenzione e rifiuto di variazione in
   unita', catalogo, ricevuta, inventario o build;
 - rifiuto di un sottoinsieme di unita' anche se canonicalmente valido;
-- arresto di processo prima e dopo ogni confine durevole, in particolare tra
-  pubblicazione del payload e checkpoint;
-- recupero in un processo nuovo usando soltanto disco e loader produttivi;
+- arresto reale del processo dopo `CERTIFICATE_READY`, dopo la firma, dopo il
+  payload e dopo la rilettura del certificato, seguito da recupero;
+- recupero in un processo nuovo usando soltanto disco e loader produttivi; la
+  distribuzione usata dalla prova deve essere realmente firmata e verificata;
 - prima del punto di non ritorno: certificato assente e proprietari precedenti
   non dichiarati chiusi;
 - dopo il punto di non ritorno: certificato byte-identico, nessuna riapertura e

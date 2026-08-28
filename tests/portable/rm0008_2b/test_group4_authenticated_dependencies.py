@@ -56,6 +56,9 @@ def _candidate(ref, destination: Path) -> Path:
 
 def test_installer_intent_publishes_the_bytes_the_door_later_executes(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import inspect
+
+    import executor_birth_bootstrap as bootstrap
     import executor_birth_operational as operational
     from contract_store import publish_signed_source
     from executor_birth import observe_candidate
@@ -72,6 +75,8 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
         _install_birth_runtime_bundle, candidate_source_id,
     )
     from executor_birth_predecessor import AdmissionContextPin
+    from executor_birth_cutover import CurrentGeneration
+    from executor_birth_reattestation import reattest_current_generation
     from executor_birth_producer_store import register_producer_receipt
     from executor_birth_receipts import (
         IssuerKey, IssuerRegistry, issue_producer_receipt,
@@ -178,10 +183,31 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
         now=lambda: now, commit_publisher=prepared.publisher,
         postcondition_verifier=postcondition,
     )
+    reattestation_factory = bootstrap._CutoverReattestationFactoryV1(
+        bootstrap._REATTESTATION_FACTORY_TOKEN,
+        port=prepared.publisher.reattestation_port(),
+        authority=bootstrap._ProducerAuthority(
+            _INSTALLER, "installer_phase3", "installer-g4a",
+            producer_private, RevisionAuthor.MAINTENANCE,
+        ),
+        registry=registry, db_path=producer_db,
+        ttl_seconds=3600, now=lambda: now,
+    )
     monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
     _install_birth_runtime_bundle(
-        _assemble_birth_runtime_bundle(core, {_INSTALLER: factory})
+        _assemble_birth_runtime_bundle(
+            core, {_INSTALLER: factory}, reattestation_factory,
+        )
     )
+
+    assert tuple(inspect.signature(reattest_current_generation).parameters) == (
+        "current",
+    )
+    legacy_current = CurrentGeneration(ref, initial.current_generation_id)
+    reattested = reattest_current_generation(legacy_current)
+    assert reattested.generation_id == initial.current_generation_id
+    assert reattested.repeated is False
+    assert reattest_current_generation(legacy_current).repeated is True
 
     result = submit_installer_birth(BirthIntent(
         candidate, ref.contract_id, "G4-A authenticated dependency proof",

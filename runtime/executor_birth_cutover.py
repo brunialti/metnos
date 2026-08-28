@@ -145,64 +145,86 @@ def cutover_current_generations(
         if not isinstance(guarded, tuple) or len(guarded) != 2 or not callable(guarded[0]):
             raise BirthCutoverError("birth_cutover_maintenance_invalid")
         prove_quiescent = guarded[0]
-        if prove_quiescent() is not True:
-            raise BirthCutoverError("birth_cutover_not_quiescent")
-        before = _census(enumerate_current())
-        receipt_map: dict[tuple[str, str], bytes] = {}
-        already = 0
-        reattested = 0
-        for item in before:
-            if prove_quiescent() is not True:
-                raise BirthCutoverError("birth_cutover_not_quiescent")
-            encoded = _verified_receipt(item, read_receipt(item), verify_receipt)
-            if encoded is None:
-                try:
-                    encoded = reattest_via_birth(item)
-                except Exception as exc:
-                    raise BirthCutoverError(
-                        "birth_cutover_reattestation_failed", item.identity[0],
-                    ) from exc
-                encoded = _verified_receipt(
-                    item, encoded, verify_receipt, require_reattestation=True,
-                )
-                if encoded is None:
-                    raise BirthCutoverError(
-                        "birth_cutover_reattestation_missing", item.identity[0],
-                    )
-                # Trust durable state, not merely the producer's return value.
-                durable = _verified_receipt(
-                    item, read_receipt(item), verify_receipt,
-                    require_reattestation=True,
-                )
-                if durable != encoded:
-                    raise BirthCutoverError(
-                        "birth_cutover_receipt_not_durable", item.identity[0],
-                    )
-                reattested += 1
-            else:
-                already += 1
-            receipt_map[item.identity] = encoded
-
-        if prove_quiescent() is not True:
-            raise BirthCutoverError("birth_cutover_not_quiescent")
-        after = _census(enumerate_current())
-        if tuple(item.identity for item in after) != tuple(item.identity for item in before):
-            raise BirthCutoverError("birth_cutover_inventory_changed")
-        # Re-read every receipt after the final census; no transient return
-        # value can establish the all-current durable postcondition.
-        hashes: dict[tuple[str, str], str] = {}
-        for item in after:
-            encoded = _verified_receipt(item, read_receipt(item), verify_receipt)
-            if encoded is None:
-                raise BirthCutoverError("birth_cutover_receipt_missing", item.identity[0])
-            hashes[item.identity] = _digest(encoded)
-        proof = CurrentReceiptProof(
-            tuple(item.identity for item in after),
-            MappingProxyType(dict(sorted(hashes.items()))),
+        prepared = prepare_current_receipt_proof(
+            prove_quiescent=prove_quiescent,
+            enumerate_current=enumerate_current,
+            read_receipt=read_receipt,
+            reattest_via_birth=reattest_via_birth,
+            verify_receipt=verify_receipt,
         )
+        proof = prepared.proof
         if close_legacy_owners(proof) is not True:
             raise BirthCutoverError("birth_cutover_legacy_close_failed")
-        return BirthCutoverReport(len(after), already, reattested, proof, True)
+        return BirthCutoverReport(
+            prepared.current_count, prepared.already_receipted,
+            prepared.reattested, proof, True,
+        )
+
+
+def prepare_current_receipt_proof(
+    *, prove_quiescent: Callable[[], bool],
+    enumerate_current: Callable[[], Iterable[CurrentGeneration]],
+    read_receipt: Callable[[CurrentGeneration], bytes | None],
+    reattest_via_birth: Callable[[CurrentGeneration], bytes],
+    verify_receipt: Callable[[bytes], object],
+) -> BirthCutoverReport:
+    """Prepare and reread complete current-receipt proof without closing owners."""
+    if any(not callable(value) for value in (
+        prove_quiescent, enumerate_current, read_receipt,
+        reattest_via_birth, verify_receipt,
+    )):
+        raise BirthCutoverError("birth_cutover_input_invalid")
+    if prove_quiescent() is not True:
+        raise BirthCutoverError("birth_cutover_not_quiescent")
+    before = _census(enumerate_current())
+    already = 0
+    reattested = 0
+    for item in before:
+        if prove_quiescent() is not True:
+            raise BirthCutoverError("birth_cutover_not_quiescent")
+        encoded = _verified_receipt(item, read_receipt(item), verify_receipt)
+        if encoded is None:
+            try:
+                encoded = reattest_via_birth(item)
+            except Exception as exc:
+                raise BirthCutoverError(
+                    "birth_cutover_reattestation_failed", item.identity[0],
+                ) from exc
+            encoded = _verified_receipt(
+                item, encoded, verify_receipt, require_reattestation=True,
+            )
+            if encoded is None:
+                raise BirthCutoverError(
+                    "birth_cutover_reattestation_missing", item.identity[0],
+                )
+            durable = _verified_receipt(
+                item, read_receipt(item), verify_receipt,
+                require_reattestation=True,
+            )
+            if durable != encoded:
+                raise BirthCutoverError(
+                    "birth_cutover_receipt_not_durable", item.identity[0],
+                )
+            reattested += 1
+        else:
+            already += 1
+
+    if prove_quiescent() is not True:
+        raise BirthCutoverError("birth_cutover_not_quiescent")
+    after = _census(enumerate_current())
+    if tuple(item.identity for item in after) != tuple(item.identity for item in before):
+        raise BirthCutoverError("birth_cutover_inventory_changed")
+    hashes: dict[tuple[str, str], str] = {}
+    for item in after:
+        encoded = _verified_receipt(item, read_receipt(item), verify_receipt)
+        if encoded is None:
+            raise BirthCutoverError("birth_cutover_receipt_missing", item.identity[0])
+        hashes[item.identity] = _digest(encoded)
+    proof = CurrentReceiptProof(
+        tuple(item.identity for item in after),
+        MappingProxyType(dict(sorted(hashes.items()))),
+    )
+    return BirthCutoverReport(len(after), already, reattested, proof, False)
 
 
 def enumerate_authenticated_current_generations(
@@ -231,5 +253,5 @@ def enumerate_authenticated_current_generations(
 __all__ = [
     "BirthCutoverError", "BirthCutoverReport", "CurrentGeneration",
     "CurrentReceiptProof", "cutover_current_generations",
-    "enumerate_authenticated_current_generations",
+    "enumerate_authenticated_current_generations", "prepare_current_receipt_proof",
 ]

@@ -3482,7 +3482,7 @@ def acquire_current_reattestation_snapshot(
     order, closing the (necessarily unlocked) check interval without ever
     publishing a generation or replacing the pointer.
     """
-    from executor_birth_snapshot import acquire_candidate_snapshot
+    from executor_birth_snapshot import _acquire_authenticated_current_snapshot
 
     generation_directory_name(generation_identifier)
     _validate_manifest_ref(ref)
@@ -3498,10 +3498,13 @@ def acquire_current_reattestation_snapshot(
             )
             if not isinstance(current, VerifiedManifest):
                 raise ContractStoreError("birth_reattestation_current_invalid")
-            snapshot = acquire_candidate_snapshot(ref.manifest_dir)
+            snapshot, source_signature = _acquire_authenticated_current_snapshot(
+                ref.manifest_dir,
+            )
             if (
                 snapshot.manifest_bytes != current.manifest_bytes
                 or snapshot.language_state_bytes != current.language_state_bytes
+                or source_signature != current.signature_bytes
             ):
                 snapshot.close()
                 raise ContractStoreError("birth_reattestation_source_changed")
@@ -3511,7 +3514,7 @@ def acquire_current_reattestation_snapshot(
             # other than those named by the signed generation.
             code = current.parsed.get("code")
             declared_files = code.get("files") if isinstance(code, Mapping) else None
-            if not isinstance(declared_files, list) or any(
+            if not isinstance(declared_files, (list, tuple)) or any(
                 not isinstance(name, str) or name not in snapshot.code_files
                 for name in declared_files
             ):

@@ -15,6 +15,7 @@ from executor_birth_producer_store import (
     claim_producer_receipt,
     consume_producer_receipt,
     finalize_producer_receipt,
+    get_or_issue_and_claim_producer_receipt,
     get_or_issue_producer_receipt,
     recover_producer_receipt_claim,
     register_producer_receipt,
@@ -66,6 +67,18 @@ def _issue_once(db, registry, encoded, *, request=REQUEST, capability=CAPABILITY
     )
 
 
+def _issue_and_claim_once(
+    db, registry, encoded, binding, *, now=ISSUED, lease_seconds=300,
+    callback=None,
+):
+    return get_or_issue_and_claim_producer_receipt(
+        request_id=REQUEST, issuer_id="synt", capability_id=CAPABILITY,
+        contract_id=CONTRACT, binding=binding, registry=registry, now=now,
+        db_path=db, lease_seconds=lease_seconds,
+        issue=callback or (lambda: encoded),
+    )
+
+
 def test_issuance_restarts_with_identical_bytes_without_reinvoking_issuer(tmp_path):
     _, registry, encoded, _ = _fixture()
     db = tmp_path / "producer.sqlite"
@@ -82,6 +95,61 @@ def test_issuance_restarts_with_identical_bytes_without_reinvoking_issuer(tmp_pa
         ).fetchone()
     assert row[:2] == (CAPABILITY, CONTRACT)
     assert bytes(row[2]) == encoded
+
+
+def test_atomic_issuance_and_claim_is_single_under_concurrency(tmp_path):
+    _, registry, encoded, binding = _fixture()
+    db = tmp_path / "producer.sqlite"
+    barrier = Barrier(8)
+    lock = Lock()
+    calls: list[int] = []
+    results: list[bytes] = []
+
+    def issue():
+        with lock:
+            calls.append(1)
+        return encoded
+
+    def run():
+        barrier.wait()
+        value = _issue_and_claim_once(db, registry, encoded, binding, callback=issue)
+        with lock:
+            results.append(value)
+
+    threads = [Thread(target=run) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert not any(thread.is_alive() for thread in threads)
+    assert calls == [1]
+    assert results == [encoded] * 8
+    with sqlite3.connect(db) as check:
+        assert check.execute(
+            "SELECT state,request_id FROM birth_producer_receipts",
+        ).fetchone() == ("in_progress", REQUEST)
+
+
+def test_atomic_factory_retry_renews_same_request_after_lease_expiry(tmp_path):
+    _, registry, encoded, binding = _fixture()
+    db = tmp_path / "producer.sqlite"
+    _issue_and_claim_once(
+        db, registry, encoded, binding, lease_seconds=1,
+    )
+    with sqlite3.connect(db) as check:
+        first = check.execute(
+            "SELECT lease_expires_at FROM birth_producer_receipts",
+        ).fetchone()[0]
+    assert _issue_and_claim_once(
+        db, registry, encoded, binding,
+        now=ISSUED + timedelta(seconds=2), lease_seconds=300,
+        callback=lambda: pytest.fail("issuer callback ran on retry"),
+    ) == encoded
+    with sqlite3.connect(db) as check:
+        second = check.execute(
+            "SELECT lease_expires_at FROM birth_producer_receipts",
+        ).fetchone()[0]
+    assert second > first
 
 
 @pytest.mark.parametrize("changed", ["capability", "contract", "objective", "source", "issuer"])

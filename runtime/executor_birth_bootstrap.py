@@ -30,7 +30,10 @@ from executor_birth_operational import (
     _assemble_birth_runtime_bundle, _install_birth_runtime_bundle,
     _runtime_bundle_snapshot, approval_scope, candidate_source_id,
 )
-from executor_birth_producer_store import get_or_issue_producer_receipt
+from executor_birth_producer_store import (
+    ProducerReceiptBinding, get_or_issue_and_claim_producer_receipt,
+    get_or_issue_producer_receipt,
+)
 from executor_birth_receipts import IssuerKey, IssuerRegistry, issue_producer_receipt
 from executor_birth_shadow import _assemble_production_dependencies
 from manifest_inventory import ManifestRef
@@ -169,6 +172,100 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
             intent.candidate_source_root,
         )
     return create
+
+
+_REATTESTATION_FACTORY_TOKEN = object()
+_REATTESTATION_REASON_V1 = "reattest the authenticated current generation for ownership cutover"
+_REATTESTATION_CAPABILITY_V1 = "installer_phase3:ownership_reattest_current"
+
+
+class _CutoverReattestationFactoryV1:
+    """Sealed factory: an exact current in, one bound claimed request out."""
+
+    __slots__ = (
+        "_port", "_authority", "_registry", "_db_path", "_ttl_seconds",
+        "_now", "_seal",
+    )
+
+    def __init__(
+        self, token: object, *, port: object, authority: _ProducerAuthority,
+        registry: IssuerRegistry, db_path: Path, ttl_seconds: int,
+        now: Callable[[], datetime],
+    ) -> None:
+        from executor_birth_commit_publisher import _is_birth_reattestation_port
+
+        if (token is not _REATTESTATION_FACTORY_TOKEN
+                or not _is_birth_reattestation_port(port)
+                or not isinstance(authority, _ProducerAuthority)
+                or not isinstance(registry, IssuerRegistry)
+                or not isinstance(db_path, Path)
+                or not isinstance(ttl_seconds, int) or ttl_seconds < 1
+                or not callable(now)):
+            raise BirthBootstrapError("birth_reattestation_factory_invalid")
+        self._port = port
+        self._authority = authority
+        self._registry = registry
+        self._db_path = db_path
+        self._ttl_seconds = ttl_seconds
+        self._now = now
+        self._seal = _REATTESTATION_FACTORY_TOKEN
+
+    def __call__(self, current: object):
+        from executor_birth_cutover import CurrentGeneration
+        from executor_birth_operational import _candidate_source_id_from_snapshot
+        from executor_birth_reattestation import _sealed_reattestation_request
+
+        if (self._seal is not _REATTESTATION_FACTORY_TOKEN
+                or not isinstance(current, CurrentGeneration)):
+            raise BirthBootstrapError("birth_reattestation_request_invalid")
+        snapshot = self._port.capture(current)
+        try:
+            source_id = _candidate_source_id_from_snapshot(snapshot)
+        finally:
+            close = getattr(snapshot, "close", None)
+            if callable(close):
+                close()
+        authority = self._authority
+        origin = executor_origin_v1(current.ref.contract_id.origin)
+        objective = _hash(
+            b"metnos.executor-birth.reattestation-objective/v1\0",
+            current.ref.contract_id.value, current.generation_id,
+            _REATTESTATION_REASON_V1,
+        )
+        request_id = _hash(
+            b"metnos.executor-birth.reattestation-request/v1\0",
+            authority.issuer_id, _REATTESTATION_CAPABILITY_V1,
+            current.ref.contract_id.value, current.generation_id,
+            objective, source_id,
+        )
+        binding = ProducerReceiptBinding(
+            objective, source_id, origin, authority.author,
+        )
+        instant = self._now().astimezone(timezone.utc).replace(microsecond=0)
+        expires = instant + timedelta(seconds=self._ttl_seconds)
+
+        def issue() -> bytes:
+            return issue_producer_receipt(
+                issuer_id=authority.issuer_id, executor_origin=origin,
+                revision_authorship=authority.author, objective_hash=objective,
+                candidate_source_id=source_id,
+                issued_at=instant.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                expires_at=expires.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                nonce=hashlib.sha256(request_id.encode("ascii")).hexdigest()[:32],
+                key_id=authority.key_id, private_key=authority.private_key,
+            )
+
+        receipt = get_or_issue_and_claim_producer_receipt(
+            request_id=request_id, issuer_id=authority.issuer_id,
+            capability_id=_REATTESTATION_CAPABILITY_V1,
+            contract_id=current.ref.contract_id.value, binding=binding,
+            registry=self._registry, now=instant, db_path=self._db_path,
+            issue=issue,
+        )
+        return _sealed_reattestation_request(
+            request_id, current, receipt, authority.issuer_id,
+            _REATTESTATION_REASON_V1, binding,
+        )
 
 
 class _PostconditionAdapter:
@@ -376,7 +473,17 @@ def _build_sealed(
         )
         for cap, auth in authorities.items()
     }
-    return _assemble_birth_runtime_bundle(core, factories)
+    from executor_birth_intent import _INSTALLER
+
+    reattestation_factory = _CutoverReattestationFactoryV1(
+        _REATTESTATION_FACTORY_TOKEN,
+        port=bundle.publisher.reattestation_port(),
+        authority=authorities[_INSTALLER], registry=registry,
+        db_path=producer_db, ttl_seconds=ttl, now=canonical_now,
+    )
+    return _assemble_birth_runtime_bundle(
+        core, factories, reattestation_factory,
+    )
 
 
 _INITIAL_INSTALL_REASON_V1 = "build the initial installed executor contract catalog"

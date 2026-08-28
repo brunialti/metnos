@@ -22,6 +22,7 @@ from install.phases import phase3_code
 
 def test_shared_cutover_guard_proves_the_complete_lifecycle_catalog() -> None:
     import stack_reconcile
+    from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 
     observations: list[tuple[str, str]] = []
 
@@ -56,14 +57,36 @@ def test_shared_cutover_guard_proves_the_complete_lifecycle_catalog() -> None:
     assert "metnos-searxng.service" not in expected_user
     assert "metnos-photon.service" not in expected_user
     assert "metnos-playwright.service" not in expected_user
-    assert observations == [
-        *(("user", unit) for unit in expected_user),
-        ("system", "metnos-http.service"),
-    ]
-    assert set(evidence["units"]) == {
-        *(f"user:{unit}" for unit in expected_user),
-        "system:metnos-http.service",
-    }
+    assert observations == list(MAINTENANCE_TARGETS_V1)
+    assert tuple(
+        (item["scope"], item["unit"]) for item in evidence["units"]
+    ) == MAINTENANCE_TARGETS_V1
+    assert all(set(item) == {
+        "scope", "unit", "load_state", "active_state", "main_pid",
+    } for item in evidence["units"])
+
+
+def test_shared_cutover_guard_rejects_a_required_unit_not_found() -> None:
+    class Systemctl:
+        @staticmethod
+        def show(unit: str, scope: str) -> dict:
+            return {
+                "LoadState": "not-found",
+                "ActiveState": "inactive",
+                "MainPID": "0",
+            }
+
+    reconciler = SimpleNamespace(
+        systemctl=Systemctl(),
+        require_quiescent=lambda: {
+            "source": "inactive_http_and_inactive_sidecar",
+        },
+    )
+    with pytest.raises(
+        contract_cutover_guard.ContractCutoverGuardError,
+        match="quiescence_unknown",
+    ):
+        contract_cutover_guard.prove_stack_stopped(reconciler)
 
 
 def test_managed_server_cutover_rejects_non_linux_platform_early(

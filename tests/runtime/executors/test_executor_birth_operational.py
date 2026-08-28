@@ -520,7 +520,9 @@ def test_concurrent_exact_retries_converge_on_one_committed_binding(tmp_path):
 def test_runtime_bundle_install_is_atomic_and_install_once(monkeypatch, tmp_path):
     request, core = _fixture(tmp_path, lambda *_args, **_kwargs: None)
     capability = intent_api._producer_capabilities_for_bootstrap()[0]
-    bundle = _assemble_birth_runtime_bundle(core, {capability: lambda _intent: request})
+    bundle = _assemble_birth_runtime_bundle(
+        core, {capability: lambda _intent: request}, lambda _current: object(),
+    )
     monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
     barrier = threading.Barrier(3)
     outcomes = []
@@ -552,7 +554,9 @@ def test_runtime_bundle_install_is_atomic_and_install_once(monkeypatch, tmp_path
 def test_racing_readers_never_observe_a_partial_runtime(monkeypatch, tmp_path):
     request, core = _fixture(tmp_path, lambda *_args, **_kwargs: None)
     capability = intent_api._producer_capabilities_for_bootstrap()[0]
-    bundle = _assemble_birth_runtime_bundle(core, {capability: lambda _intent: request})
+    bundle = _assemble_birth_runtime_bundle(
+        core, {capability: lambda _intent: request}, lambda _current: object(),
+    )
     monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
     barrier = threading.Barrier(9)
     observations = []

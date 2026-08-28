@@ -393,6 +393,40 @@ def _write_temporary(path: Path, payload: bytes) -> None:
         os.close(fd)
 
 
+def _prepare_recoverable_temporary(
+    temporary: Path, destination: Path, expected: bytes,
+) -> bool:
+    """Prepare a pre-publication file; discard only an exact write prefix."""
+    if destination.exists():
+        if _safe_read(destination, len(expected)) != expected:
+            raise OwnershipCutoverError(
+                "birth_ownership_cutover_conflict", destination.name,
+            )
+        if temporary.exists():
+            observed = _safe_read(temporary, len(expected))
+            if observed != expected and not (
+                len(observed) < len(expected) and expected.startswith(observed)
+            ):
+                raise OwnershipCutoverError(
+                    "birth_ownership_cutover_conflict", temporary.name,
+                )
+            temporary.unlink()
+            _sync_directory(temporary.parent)
+        return False
+    if temporary.exists():
+        observed = _safe_read(temporary, len(expected))
+        if observed == expected:
+            return True
+        if len(observed) >= len(expected) or not expected.startswith(observed):
+            raise OwnershipCutoverError(
+                "birth_ownership_cutover_conflict", temporary.name,
+            )
+        temporary.unlink()
+        _sync_directory(temporary.parent)
+    _write_temporary(temporary, expected)
+    return True
+
+
 def _publish_no_replace(temporary: Path, destination: Path, expected: bytes) -> None:
     try:
         if os.name == "nt":
@@ -430,6 +464,7 @@ def _publish_no_replace(temporary: Path, destination: Path, expected: bytes) -> 
 def install_ownership_cutover_certificate(
     directory: Path, encoded: bytes, signature: bytes, *,
     registry: OwnershipCutoverRegistry, expected_proof: CurrentReceiptProof,
+    _crash_seam=None,
 ) -> OwnershipCutoverCertificate:
     """Install signature then payload without replacement; exact retries succeed."""
     directory = Path(directory)
@@ -445,16 +480,18 @@ def install_ownership_cutover_certificate(
     signature_tmp = directory / f".{SIGNATURE_BASENAME}.{suffix}.tmp"
     payload_tmp = directory / f".{PAYLOAD_BASENAME}.{suffix}.tmp"
     try:
-        if not signature_tmp.exists():
-            _write_temporary(signature_tmp, signature)
-        elif _safe_read(signature_tmp, 64) != signature:
-            raise OwnershipCutoverError("birth_ownership_cutover_conflict", signature_tmp.name)
-        _publish_no_replace(signature_tmp, signature_path, signature)
-        if not payload_tmp.exists():
-            _write_temporary(payload_tmp, encoded)
-        elif _safe_read(payload_tmp, len(encoded)) != encoded:
-            raise OwnershipCutoverError("birth_ownership_cutover_conflict", payload_tmp.name)
-        _publish_no_replace(payload_tmp, payload_path, encoded)
+        if _prepare_recoverable_temporary(
+            signature_tmp, signature_path, signature,
+        ):
+            _publish_no_replace(signature_tmp, signature_path, signature)
+        if _crash_seam:
+            _crash_seam("certificate_signature")
+        if _prepare_recoverable_temporary(
+            payload_tmp, payload_path, encoded,
+        ):
+            _publish_no_replace(payload_tmp, payload_path, encoded)
+        if _crash_seam:
+            _crash_seam("certificate_payload")
         return read_ownership_cutover_certificate(
             directory, registry=registry, expected_proof=expected_proof,
         )

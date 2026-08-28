@@ -23,10 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 if TYPE_CHECKING:
     from executor_birth_intent import BirthIntent, _ProducerCapability
 
-from contract_store import (
-    BirthCommitAuthorization, ManifestRef, PublicationResult,
-    catalog_admission_lock,
-)
+from contract_store import BirthCommitAuthorization, ManifestRef, PublicationResult
 from executor_birth import ObservedCandidate, observe_candidate
 from executor_birth_approval import ApprovalEvidence, ApprovalSubject, approval_evidence_hash
 from executor_birth_identity import AdmissionContextV1, ExecutorOrigin, admission_context_id
@@ -62,10 +59,15 @@ def _digest(domain: bytes, fields: Mapping[str, bytes]) -> str:
 
 def candidate_source_id(observed: ObservedCandidate) -> str:
     """Identify the complete, closed source envelope copied by F1."""
+    return _candidate_source_id_from_snapshot(observed.snapshot)
+
+
+def _candidate_source_id_from_snapshot(snapshot: object) -> str:
+    """Identify an already-owned snapshot without reopening its source."""
     fields = {
-        "manifest.toml": observed.snapshot.manifest_bytes,
-        "manifest.lang_state.json": observed.snapshot.language_state_bytes,
-        **dict(observed.snapshot.code_files),
+        "manifest.toml": snapshot.manifest_bytes,
+        "manifest.lang_state.json": snapshot.language_state_bytes,
+        **dict(snapshot.code_files),
     }
     return _digest(b"metnos.executor-birth.candidate-source/v1\0", fields)
 
@@ -374,9 +376,8 @@ class _TestCommitPublisher:
             store_root=self._options.get("store_root"),
         )
 
-    @property
-    def store_root(self):
-        return self._options.get("store_root")
+    def admission_lock(self):
+        return self._inner.admission_lock()
 
     def resolve_predecessor(self, request):
         if self._predecessor is None:
@@ -385,6 +386,9 @@ class _TestCommitPublisher:
 
     def commit(self, facts):
         return self._inner.commit(facts)
+
+    def reattestation_port(self):
+        return self._inner.reattestation_port()
 
 
 def _assemble_birth_core(
@@ -404,7 +408,7 @@ def _assemble_birth_core(
     facts and nothing else, so no option and no caller can substitute an
     authority (section 5.3).
     """
-    for name in ("commit", "resolve_predecessor"):
+    for name in ("admission_lock", "commit", "resolve_predecessor", "reattestation_port"):
         if not callable(getattr(commit_publisher, name, None)):
             raise ValueError("birth_commit_publisher_invalid")
 
@@ -506,8 +510,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             raise BirthCommitLinkError("birth_context_pin_invalid")
         # The admission lock serializes receipt consumption and acquisition of
         # the only source snapshot.  All expensive checks run after release.
-        lock_root = core.commit_publisher.store_root
-        with catalog_admission_lock(store_root=lock_root):
+        with core.commit_publisher.admission_lock():
             producer_preview = _peek_receipt(core, request, instant)
             observed = observe_candidate(
                 request.candidate_source_root, contract_id=request.manifest_ref.contract_id,
@@ -702,13 +705,18 @@ class BirthRuntimeBundle:
 
     core: _BirthCore
     producer_factories: Mapping[object, Callable[["BirthIntent"], BirthRequest]]
+    reattestation_factory: Callable[[object], object]
     _seal: object
 
     def __post_init__(self) -> None:
         if self._seal is not _RUNTIME_SEAL or self.core._seal is not _CORE_SEAL:
             raise ValueError("birth_runtime_bundle_untrusted")
         factories = dict(self.producer_factories)
-        if not factories or any(not callable(value) for value in factories.values()):
+        if (
+            not factories
+            or any(not callable(value) for value in factories.values())
+            or not callable(self.reattestation_factory)
+        ):
             raise ValueError("birth_runtime_bundle_invalid")
         object.__setattr__(self, "producer_factories", MappingProxyType(factories))
 
@@ -721,6 +729,7 @@ _RUNTIME_BUNDLE: BirthRuntimeBundle | None = None
 def _assemble_birth_runtime_bundle(
     core: _BirthCore,
     producer_factories: Mapping["_ProducerCapability", Callable[["BirthIntent"], BirthRequest]],
+    reattestation_factory: Callable[[object], object],
 ) -> BirthRuntimeBundle:
     """Bootstrap primitive; its inputs must already be fully validated."""
     from executor_birth_intent import _is_producer_capability
@@ -728,7 +737,9 @@ def _assemble_birth_runtime_bundle(
         not _is_producer_capability(capability) for capability in producer_factories
     ):
         raise ValueError("birth_producer_capability_untrusted")
-    return BirthRuntimeBundle(core, producer_factories, _RUNTIME_SEAL)
+    return BirthRuntimeBundle(
+        core, producer_factories, reattestation_factory, _RUNTIME_SEAL,
+    )
 
 
 def _install_birth_runtime_bundle(bundle: BirthRuntimeBundle) -> None:

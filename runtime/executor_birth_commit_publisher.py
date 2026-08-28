@@ -21,6 +21,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 _PUBLISHER_TOKEN = object()
+_REATTESTATION_PORT_TOKEN = object()
 
 PREPARED_BUNDLE_STATE_V1 = "prepared_not_active"
 
@@ -129,7 +130,7 @@ class _BirthCommitPublisher:
     __slots__ = (
         "_author_private", "_author_ring", "_admission_private",
         "_admission_key_id", "_admission_verifiers", "_epoch",
-        "_primitive", "_store_root",
+        "_primitive", "_store_root", "_seal",
     )
 
     def __init__(
@@ -161,6 +162,7 @@ class _BirthCommitPublisher:
         self._epoch = prepared_context_epoch
         self._primitive = primitive
         self._store_root = store_root
+        self._seal = _PUBLISHER_TOKEN
 
     def commit(self, facts: BirthCommitFactsV1) -> "BirthCommitOutcomeV1":
         """Publish one admitted snapshot through the single owned primitive.
@@ -239,10 +241,11 @@ class _BirthCommitPublisher:
         )
         return BirthCommitOutcomeV1(publication, issued[-1] if issued else None)
 
-    @property
-    def store_root(self):
-        """Where the store lives, for the callers that must lock around it."""
-        return self._store_root
+    def admission_lock(self):
+        """Return the publisher-owned catalog lock without exposing its path."""
+        from contract_store import catalog_admission_lock
+
+        return catalog_admission_lock(store_root=self._store_root)
 
     def resolve_predecessor(self, request):
         """Authenticate the predecessor with the ring this publisher owns.
@@ -259,8 +262,99 @@ class _BirthCommitPublisher:
             store_root=self._store_root,
         )
 
+    def _capture_current_reattestation(self, current):
+        """Return owned bytes for one exact authenticated current generation."""
+        from contract_store import acquire_current_reattestation_snapshot
+
+        return acquire_current_reattestation_snapshot(
+            current.ref, current.generation_id,
+            trusted_publics=self._author_ring,
+            store_root=self._store_root,
+        )
+
+    def _persist_current_reattestation(
+        self, current, encoded: bytes, expected: Mapping[str, object],
+    ) -> bytes:
+        """Persist through the publisher-owned verifier and author ring."""
+        from contract_store import persist_current_reattestation_receipt
+        from executor_birth_receipts import verify_admission_receipt
+
+        return persist_current_reattestation_receipt(
+            current.ref, current.generation_id, encoded,
+            verifier=lambda wire: verify_admission_receipt(
+                wire, verifier_keys=self._admission_verifiers,
+            ),
+            expected_bindings=expected,
+            trusted_publics=self._author_ring,
+            store_root=self._store_root,
+        )
+
+    def _read_current_reattestation(self, current) -> bytes | None:
+        """Read only the receipt bound to the exact authenticated current."""
+        from contract_store import read_current_birth_receipt
+
+        return read_current_birth_receipt(
+            current.ref, current.generation_id,
+            trusted_publics=self._author_ring,
+            store_root=self._store_root,
+        )
+
+    def _enumerate_current_reattestation(self):
+        from executor_birth_cutover import enumerate_authenticated_current_generations
+
+        return enumerate_authenticated_current_generations(
+            trusted_publics=self._author_ring, store_root=self._store_root,
+        )
+
+    def _verify_reattestation_receipt(self, encoded: bytes):
+        from executor_birth_receipts import verify_admission_receipt
+
+        return verify_admission_receipt(
+            encoded, verifier_keys=self._admission_verifiers,
+        )
+
+    def reattestation_port(self):
+        """Return a nominal, least-authority port for exact-current reattestation."""
+        return _BirthReattestationPort(_REATTESTATION_PORT_TOKEN, self)
+
     def _resolve_epoch(self) -> str:
         return self._epoch
+
+
+class _BirthReattestationPort:
+    """Nominal port whose only authority is reattesting an exact current."""
+
+    __slots__ = ("_owner", "_seal")
+
+    def __init__(self, token: object, owner: _BirthCommitPublisher) -> None:
+        if (token is not _REATTESTATION_PORT_TOKEN
+                or not isinstance(owner, _BirthCommitPublisher)
+                or owner._seal is not _PUBLISHER_TOKEN):
+            raise BirthCommitLinkError("birth_reattestation_port_private")
+        self._owner = owner
+        self._seal = _REATTESTATION_PORT_TOKEN
+
+    def capture(self, current):
+        return self._owner._capture_current_reattestation(current)
+
+    def persist(self, current, encoded: bytes, expected: Mapping[str, object]) -> bytes:
+        return self._owner._persist_current_reattestation(current, encoded, expected)
+
+    def read(self, current) -> bytes | None:
+        return self._owner._read_current_reattestation(current)
+
+    def enumerate_current(self):
+        return self._owner._enumerate_current_reattestation()
+
+    def verify_receipt(self, encoded: bytes):
+        return self._owner._verify_reattestation_receipt(encoded)
+
+
+def _is_birth_reattestation_port(value: object) -> bool:
+    return (
+        isinstance(value, _BirthReattestationPort)
+        and value._seal is _REATTESTATION_PORT_TOKEN
+    )
 
 
 @dataclass(frozen=True, slots=True)

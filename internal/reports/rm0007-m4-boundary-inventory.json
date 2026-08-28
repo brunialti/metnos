@@ -25,7 +25,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned immutable deployment-authority provisioner",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -35,7 +35,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned immutable deployment-authority provisioner",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -45,7 +45,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned immutable deployment-authority provisioner",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -55,7 +55,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned immutable deployment-authority provisioner",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -65,7 +65,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned immutable deployment-authority provisioner",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -75,7 +75,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned immutable deployment-authority provisioner",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -85,7 +85,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned immutable deployment-authority provisioner",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -95,7 +95,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned immutable deployment-authority provisioner",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -105,7 +105,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned immutable deployment-authority provisioner",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -1009,7 +1009,8 @@
       "scope": "acquire_current_reattestation_snapshot",
       "role": "store_owner",
       "capabilities": [
-        "store_write"
+        "store_write",
+        "verified_store_read"
       ],
       "destination": "sealed acquisition of owned bytes for an authenticated exact-current reattestation",
       "phase": "M4"
@@ -1411,6 +1412,36 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/executor_birth_commit_publisher.py",
+      "scope": "_BirthCommitPublisher._capture_current_reattestation",
+      "role": "administrative_tool",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "sealed exact-current authenticated receipt reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_commit_publisher.py",
+      "scope": "_BirthCommitPublisher._persist_current_reattestation",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_commit_publisher.py",
+      "scope": "_BirthCommitPublisher._read_current_reattestation",
+      "role": "administrative_tool",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "sealed exact-current authenticated receipt reader",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/executor_birth_cutover.py",
       "scope": "enumerate_authenticated_current_generations",
       "role": "administrative_tool",
@@ -1517,7 +1548,17 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned one-time ownership-head coordinator",
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "OwnershipChainStore._initialize_with_authorities",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -1527,7 +1568,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned one-time ownership-head coordinator",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -1537,7 +1578,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned one-time ownership-head coordinator",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -1547,7 +1588,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned one-time ownership-head coordinator",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -1557,7 +1598,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned one-time ownership-head coordinator",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -1567,7 +1608,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned one-time ownership-head coordinator",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -1577,7 +1618,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned one-time ownership-head coordinator",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -1587,7 +1628,7 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned one-time ownership-head coordinator",
+      "destination": "sealed root-owned ownership cutover coordinator",
       "phase": "M4"
     },
     {
@@ -1597,7 +1638,98 @@
       "capabilities": [
         "store_write"
       ],
-      "destination": "root-owned one-time ownership-head coordinator",
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "OwnershipCoordinatorJournalV1.append",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "OwnershipCoordinatorJournalV1.load",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_append_coordinator_record_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_append_receipts_complete",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_decode_record",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_prepare_under_maintenance_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_proof_from_values",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_publish_certificate_with_prerequisite_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "prepare_ownership_cutover_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "cutover_guard",
+        "store_write"
+      ],
+      "destination": "root-owned maintenance cutover orchestrator",
       "phase": "M4"
     },
     {
@@ -3027,7 +3159,9 @@
       "install/birth_ownership_authority_provisioner.py:_sync_directory",
       "install/birth_ownership_authority_provisioner.py:_write_exclusive",
       "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
+      "runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher._persist_current_reattestation",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
+      "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._initialize_with_authorities",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_cutover",
@@ -3035,12 +3169,24 @@
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.initialize",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.update_required_head",
       "runtime/executor_birth_ownership_chain.py:_replace_required_pointer",
-      "runtime/executor_birth_ownership_chain.py:_required_head_lock"
+      "runtime/executor_birth_ownership_chain.py:_required_head_lock",
+      "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.append",
+      "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",
+      "runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1",
+      "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete",
+      "runtime/executor_birth_ownership_coordinator.py:_decode_record",
+      "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
+      "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",
+      "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1"
     ],
     "sealed_modules": [
       "runtime/contract_store.py",
       "runtime/executor_birth.py",
+      "runtime/executor_birth_commit_publisher.py",
       "runtime/executor_birth_operational.py",
+      "runtime/executor_birth_ownership_coordinator.py",
+      "runtime/executor_birth_ownership_cutover.py",
+      "runtime/executor_birth_reattestation.py",
       "runtime/sign.py"
     ],
     "exceptions": [

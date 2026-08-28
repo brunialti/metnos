@@ -7,11 +7,13 @@ import pytest
 from executor_birth_cutover import CurrentGeneration
 from executor_birth_reattestation import (
     BirthReattestationError, ReattestationRequest,
+    _reattestation_request_for_test,
     _reattest_current_for_test, _sealed_reattestation_core_for_test,
 )
+from executor_birth_producer_store import ProducerReceiptBinding
 from executor_birth_receipts import (
     AdmissionKind, RevisionClass, issue_admission_receipt,
-    verify_admission_receipt,
+    verify_admission_receipt, verify_producer_receipt,
 )
 from executor_birth_shadow import BirthOutcome, BirthReport, RevisionClass as ShadowRevisionClass
 from executor_birth_snapshot import acquire_candidate_snapshot
@@ -67,9 +69,17 @@ class Rig:
 def prepared(tmp_path):
     original, birth = _fixture(tmp_path, lambda *_args, **_kwargs: None)
     current = CurrentGeneration(original.manifest_ref, GENERATION)
-    request = ReattestationRequest(
+    producer = verify_producer_receipt(
+        original.producer_receipt, registry=birth.producer_registry,
+        now=birth.now(),
+    )
+    request = _reattestation_request_for_test(
         original.request_id, current, original.producer_receipt,
         "cutover", "reattest authenticated current",
+        ProducerReceiptBinding(
+            producer.objective_hash, producer.candidate_source_id,
+            producer.executor_origin, producer.revision_authorship,
+        ),
     )
     rig = Rig(birth, original.candidate_source_root)
     return request, rig
