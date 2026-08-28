@@ -79,6 +79,12 @@ def _inventory_bytes():
 def _files(root: Path):
     inventory = _inventory_bytes()
     values = {
+        "deployment/executor-birth-deployment-v1.json": (
+            "deployment_descriptor", b'{"schema_version":1}\n',
+        ),
+        "deployment/executor-birth-service-catalog-v1.json": (
+            "service_catalog", b'{"schema_version":1}\n',
+        ),
         "requirements.lock": ("dependency_lock", b"cryptography==47.0.0\n"),
         "runtime/__version__.py": ("product_version", b'__version__ = "1.2.3"\n'),
         "runtime/contract_boundary_guard.py": ("boundary_guard", b"GUARD = 1\n"),
@@ -106,11 +112,33 @@ def _files(root: Path):
     return sorted(result, key=lambda item: item["path"].encode("utf-8"))
 
 
+def _add_declared_file(files, root: Path, path: str, role: str, content: bytes):
+    destination = root.joinpath(*path.split("/"))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(content)
+    if os.name != "nt":
+        destination.chmod(0o644)
+    files.append({
+        "path": path,
+        "size": len(content),
+        "role": role,
+        "content_hash": distribution.file_content_hash(path, content),
+    })
+    files.sort(key=lambda item: item["path"].encode("utf-8"))
+
+
 def _replace_declared_file(files, root: Path, path: str, content: bytes):
     root.joinpath(*path.split("/")).write_bytes(content)
     item = next(value for value in files if value["path"] == path)
     item["size"] = len(content)
     item["content_hash"] = distribution.file_content_hash(path, content)
+
+
+def _relocate_declared_file(files, root: Path, source: str, destination: str):
+    item = next(value for value in files if value["path"] == source)
+    content = root.joinpath(*source.split("/")).read_bytes()
+    files.remove(item)
+    _add_declared_file(files, root, destination, item["role"], content)
 
 
 def _manifest(root: Path, private, key_id, *, target=None, architecture="x86_64",
@@ -177,6 +205,85 @@ def test_signed_manifest_produces_only_sealed_preflight_identity(tmp_path):
     assert result.signature == _signature
     with pytest.raises(FrozenInstanceError):
         result.encoded = b"replacement"
+
+
+def test_manifest_accepts_multiple_units_and_requires_single_new_materials(tmp_path):
+    private, key_id, registry = _authority(distribution.PURPOSE)
+
+    def add_second_unit(files, root):
+        _add_declared_file(
+            files, root, "systemd/metnos-worker-birth-closed.service",
+            "service_unit", b"[Unit]\nDescription=worker\n",
+        )
+
+    _value, encoded, signature = _manifest(
+        tmp_path, private, key_id, files_mutate=add_second_unit,
+    )
+    verified = distribution._verify_distribution_manifest_for_test(
+        encoded, signature, registry=registry,
+        _environment=_test_environment(tmp_path),
+    )
+    assert sum(item.role == "service_unit" for item in verified.files) == 2
+
+    mutations = (
+        lambda files, _root: files.__setitem__(
+            slice(None), [item for item in files if item["role"] != "service_unit"],
+        ),
+        lambda files, _root: files.__setitem__(
+            slice(None), [item for item in files if item["role"] != "service_catalog"],
+        ),
+        lambda files, root: _add_declared_file(
+            files, root, "deployment/duplicate-catalog.json",
+            "service_catalog", b"{}\n",
+        ),
+        lambda files, _root: files.__setitem__(
+            slice(None), [
+                item for item in files if item["role"] != "deployment_descriptor"
+            ],
+        ),
+        lambda files, root: _add_declared_file(
+            files, root, "deployment/duplicate-deployment.json",
+            "deployment_descriptor", b"{}\n",
+        ),
+    )
+    for mutate_files in mutations:
+        _value, malformed, proof = _manifest(
+            tmp_path, private, key_id, files_mutate=mutate_files,
+        )
+        with pytest.raises(distribution.DistributionManifestError):
+            distribution._verify_distribution_manifest_for_test(
+                malformed, proof, registry=registry,
+                _environment=_test_environment(tmp_path),
+            )
+
+
+@pytest.mark.parametrize(("source", "destination"), (
+    (
+        "deployment/executor-birth-service-catalog-v1.json",
+        "deployment/relocated-service-catalog.json",
+    ),
+    (
+        "deployment/executor-birth-deployment-v1.json",
+        "deployment/relocated-deployment.json",
+    ),
+))
+def test_new_material_roles_are_bound_to_their_fixed_paths(
+    tmp_path, source, destination,
+):
+    private, key_id, registry = _authority(distribution.PURPOSE)
+    _value, encoded, signature = _manifest(
+        tmp_path, private, key_id,
+        files_mutate=lambda files, root: _relocate_declared_file(
+            files, root, source, destination,
+        ),
+    )
+    with pytest.raises(
+        distribution.DistributionManifestError, match="required files",
+    ):
+        distribution._verify_distribution_manifest_for_test(
+            encoded, signature, registry=registry,
+            _environment=_test_environment(tmp_path),
+        )
 
 
 @pytest.mark.skipif(os.name == "nt", reason="productive release root is Linux-only")
@@ -470,6 +577,7 @@ def test_verified_identity_is_consumed_by_existing_startup_preflight(tmp_path, m
 
 @pytest.mark.parametrize("mutation", [
     lambda value: value.update(extra=True),
+    lambda value: value.update(schema_version=True),
     lambda value: value.update(release_sequence=True),
     lambda value: value.update(product_version="01.2.3"),
     lambda value: value["files"][0].update(extra=True),

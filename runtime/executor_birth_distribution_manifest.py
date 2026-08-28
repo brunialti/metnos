@@ -63,11 +63,14 @@ _PAYLOAD_KEYS = frozenset({
 _FILE_KEYS = frozenset({"path", "size", "content_hash", "role"})
 _ROLES = frozenset({
     "runtime_code", "preflight", "boundary_guard", "boundary_inventory",
-    "service_unit", "product_version", "dependency_lock",
+    "service_unit", "service_catalog", "deployment_descriptor",
+    "product_version", "dependency_lock",
 })
 _PLATFORMS = frozenset({"linux", "windows"})
 _ARCHITECTURES = frozenset({"x86_64", "aarch64"})
 _REQUIRED_PATH_ROLES = MappingProxyType({
+    "deployment/executor-birth-deployment-v1.json": "deployment_descriptor",
+    "deployment/executor-birth-service-catalog-v1.json": "service_catalog",
     "runtime/contract_store.py": "runtime_code",
     "runtime/sign.py": "runtime_code",
     "runtime/contract_boundary_guard.py": "boundary_guard",
@@ -483,7 +486,8 @@ def _parse(encoded: bytes) -> tuple[dict[str, object], tuple[DistributionFile, .
         raise DistributionManifestError("birth_ownership_distribution_invalid", "schema")
     sequence = value.get("release_sequence")
     if (
-        value.get("schema_version") != 1 or isinstance(sequence, bool)
+        type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1 or isinstance(sequence, bool)
         or not isinstance(sequence, int) or sequence < 1
         or not isinstance(value.get("product_version"), str)
         or _SEMVER_RE.fullmatch(str(value.get("product_version"))) is None
@@ -537,9 +541,16 @@ def _parse(encoded: bytes) -> tuple[dict[str, object], tuple[DistributionFile, .
     if any(by_path.get(path) is None or by_path[path].role != role
            for path, role in _REQUIRED_PATH_ROLES.items()):
         raise DistributionManifestError("birth_ownership_distribution_invalid", "required files")
-    for role in ("boundary_inventory", "service_unit", "dependency_lock"):
+    for role in (
+        "boundary_inventory", "dependency_lock", "service_catalog",
+        "deployment_descriptor",
+    ):
         if sum(item.role == role for item in files) != 1:
             raise DistributionManifestError("birth_ownership_distribution_invalid", role)
+    if not any(item.role == "service_unit" for item in files):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "service_unit",
+        )
     if inventory_path not in by_path or by_path[inventory_path].role != "boundary_inventory":
         raise DistributionManifestError("birth_ownership_distribution_invalid", "inventory binding")
     if entrypoint not in by_path or by_path[entrypoint].role != "preflight":

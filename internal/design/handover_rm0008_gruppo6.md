@@ -195,6 +195,25 @@ Il piano corretto e' stato riletto da entrambi i revisori con esito finale
 `P0=0`, `P1=0`, `P2=0`. Il primo passo di codice autorizzato e' soltanto
 G6-B1.
 
+### Sottoincremento G6-B1a del manifesto completato localmente
+
+Il verificatore del manifesto ammette ora i ruoli `service_catalog` e
+`deployment_descriptor`, li lega ai due percorsi fissi sotto `deployment/` e
+ne richiede esattamente una occorrenza. `service_unit` richiede invece una o
+piu' occorrenze. Anche `schema_version` richiede ora il tipo intero esatto e
+non accetta il booleano `true`.
+
+La regressione combinata di manifesto, catena e coordinatore ha dato
+`174 passed, 1 skipped`; la guardia reale `--birth-closed` e
+`git diff --check` sono verdi. I mutanti coprono assenza e duplicazione dei
+nuovi materiali, pluralita' delle unita', spostamento del catalogo o del
+descrittore mantenendo ruolo e cardinalita', e `schema_version=true`. Due
+revisioni indipendenti finali hanno concluso `P0=0`, `P1=0`, `P2=0`.
+
+Questo sottoincremento non implementa ancora catalogo, renderer o proiezione
+di manutenzione e non effettua scritture produttive. Il passo successivo resta
+G6-B1b, fonte dichiarativa unica e codec del catalogo.
+
 ## Analisi del gruppo 6
 
 Prima dell'avvio del codice, tre revisioni indipendenti hanno
