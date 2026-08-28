@@ -11,14 +11,11 @@ I gruppi 2 e 3 sono chiusi. Il loro ultimo ciclo GitHub completamente verde e'
 Il gruppo 4 e' soltanto la chiusura statica F4 del §23.6.4. Il piano completo
 e' `internal/reports/rm0008-gruppo4-piano-ottimizzato.md`.
 
-Stato piu' recente: il primo candidato pubblico G4-B+C e' `cc8ff9d`, ciclo
-`33165352528`. Tutti i quattro lavori Windows e gli altri tre lavori sono
-verdi; la sola suite Linux generale e' rossa per un'importazione anticipata di
-`yaml`.
-La causa e' corretta localmente nel commit `d276d4c1`. La suite portatile
-completa, eseguita rendendo intenzionalmente indisponibile `yaml`, conta 326
-prove verdi, 23 non applicabili e zero errori. Manca la pubblicazione della
-correzione e la conferma GitHub; il gruppo 4 non e' ancora chiuso.
+Stato piu' recente: G4-B+C e' chiuso. La correzione finale e' nel commit
+sorgente `d276d4c1` e nel commit pubblico `a4d2dba`. Il ciclo GitHub
+`33165938001` e' interamente verde su Linux e Windows, compresi Birth delegato,
+identita' ACL reali e riepilogo finale. Il gruppo 4 ha quindi zero errori
+aperti. F4 complessiva prosegue con i gruppi 5-7.
 
 G4-A e' implementato nel commit sorgente `3eeb4b1b` e documentato in
 `e45a192e`. Il primo commit pubblico e' `74c6997`, ciclo GitHub
@@ -297,6 +294,16 @@ dipendenza e' presente. L'intera suite portatile nello stesso ambiente minimo
 e' verde con 326 prove superate, 23 non applicabili e zero errori. Guardia
 normale, guardia chiusa e inventario restano a zero.
 
+## Chiusura pubblica G4-B+C
+
+La correzione finale e' stata pubblicata come `a4d2dba`. Il ciclo GitHub
+`33165938001` ha concluso verdi tutti i nove lavori: suite generali Linux e
+Windows, sei celle possedute e riepilogo finale. Linux ha attraversato anche il
+servizio Birth delegato; Windows ha attraversato NTFS e l'oracolo indipendente
+delle identita' ACL. G4-B+C, e quindi il gruppo 4, e' chiuso con zero errori.
+La politica `closed_build_enforcement()` resta correttamente `False`: il
+passaggio reale all'artefatto chiuso appartiene al gruppo 7.
+
 `PC-ROBERTO` e' visibile come host Codex locale, ma non espone un progetto
 Metnos salvato. Il trasporto remoto del prodotto accetta soltanto executor
 firmati e non permette di lanciare una suite arbitraria. Non verra' creato un
@@ -323,14 +330,15 @@ Le primitive crittografiche e di archivio gia' provate non saranno ricoperte
 con copie di test equivalenti. Restano obbligatorie una prova mirata per ogni
 nuovo confine, un solo attraversamento produttivo del coordinatore e una sola
 matrice pubblica finale. La stima prudente e' 3-5 ore, esclusa l'attesa GitHub.
-Il gruppo 5 non inizia prima della chiusura pubblica verde del gruppo 4.
+La condizione di ingresso, cioe' la chiusura pubblica verde del gruppo 4, e'
+ora soddisfatta.
 
 ## Prossimo passo unico corrente
 
-Pubblicare una sola volta la correzione `d276d4c1` su `main`, attendere tutti i
-lavori GitHub e aggiornare questo file con commit pubblico e ciclo. Se un
-lavoro e' rosso, fermarsi e diagnosticare il primo errore reale prima di ogni
-nuova modifica.
+Scrivere il piano esecutivo del gruppo 5 sullo stato pubblico verde
+`a4d2dba`/`33165938001`, verificando prima i punti di riuso reali e i due
+confini di arresto. Non iniziare il codice finche' requisiti, prove minime e
+criterio di uscita non sono espliciti.
 
 ## Regole operative
 
