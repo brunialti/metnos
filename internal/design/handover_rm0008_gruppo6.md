@@ -218,7 +218,7 @@ Questo sottoincremento non implementa ancora catalogo, renderer o proiezione
 di manutenzione e non effettua scritture produttive. Il passo successivo resta
 G6-B1b, fonte dichiarativa unica e codec del catalogo.
 
-### Sottoincremento G6-B1b completato localmente e approvato
+### Sottoincremento G6-B1b completato e certificato pubblicamente
 
 La fonte dichiarativa unica descrive ora tutte le sei classi previste: servizi,
 timer, arresto di quarantena, target, dipendenze esterne e ingressi
@@ -261,9 +261,7 @@ Windows 11, Python 3.14, tramite `192.168.1.137` ha dato
 `31 passed, 1 skipped`.
 
 Due revisioni indipendenti sullo snapshot esatto hanno concluso
-`P0=0`, `P1=0`, `P2=0`. La pubblicazione e la matrice GitHub restano l'ultimo
-criterio prima di dichiarare certificato G6-B1b; G6-B nel suo complesso resta
-aperto per B2, B3 e B4.
+`P0=0`, `P1=0`, `P2=0` prima della pubblicazione.
 
 Il primo commit pubblico di B1b e' `7fae026`; il ciclo GitHub Actions
 `33215057932` ha però rilevato lo stesso errore di prova su Linux e Windows.
@@ -279,8 +277,13 @@ gli otto elementi nominati dalla politica pubblica e rifiuta ogni omissione o
 presenza ulteriore. Il vero export generato localmente ha dato `32 passed` su
 Linux e `31 passed, 1 skipped` su Windows; la regressione completa resta
 `266 passed, 1 skipped`. Due revisioni indipendenti della sola correzione hanno
-nuovamente concluso `P0=0`, `P1=0`, `P2=0`. B1b attende ora il ciclo pubblico
-sostitutivo e non e' ancora dichiarato certificato.
+nuovamente concluso `P0=0`, `P1=0`, `P2=0`.
+
+La correzione pubblica e' il commit `2ce4b42`; il ciclo GitHub Actions
+`33215680165` ha concluso verdi tutti i nove lavori, compresi suite completa
+Ubuntu, suite completa Windows e riepilogo bloccante. G6-B1b e' quindi
+certificato con errore zero. G6-B nel suo complesso resta aperto per B2, B3 e
+B4.
 
 ## Analisi del gruppo 6
 
@@ -413,11 +416,14 @@ incrementi successivi restano chiusi fino al criterio di uscita di G6-A.
 
 ## Prossimo passo unico
 
-G6-A e' chiuso con errore zero. Prima di modificare il codice, riesaminare G6-B
-per eliminare prove duplicate senza ridurre i rischi coperti; poi implementare
-soltanto il ricevitore/assemblatore firmato e la relativa installazione della
-release. Non esporre ancora il percorso che pubblica claim, disposizione o
-`PREPARED` e non aprire in parallelo G6-C o G6-D.
+G6-A e G6-B1 sono chiusi con errore zero. Il prossimo incremento e'
+esclusivamente G6-B2: ricevitore root-only e transazione content-addressed da
+sorgente a `source_id`. Prima del codice ridurre la famiglia di prove B2 ai
+soli rischi non gia' coperti da manifesto e catalogo; poi usare un solo albero
+non banale e un solo harness di ripresa per account, link, hardlink,
+sostituzione, idempotenza e assenza di mutazioni sulle altre radici. Non
+anticipare preparatore B3, pubblicazione B4, G6-C o G6-D e non esporre claim,
+disposizione o `PREPARED`.
 
 ## Regole operative
 
