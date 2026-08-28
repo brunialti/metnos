@@ -89,6 +89,33 @@ def test_a_first_migration_installs_the_previous_identity(
     assert [item["status"] for item in config["keys"]].count("active") == 1
 
 
+def test_publication_reopens_once_after_the_verified_checkpoint(
+    tmp_path: Path, monkeypatch,
+):
+    """Staging handles are closed before a non-empty tree is published."""
+    base = _config(tmp_path, author=Ed25519PrivateKey.generate())
+    support.use_config(monkeypatch, base)
+    original = provisioning._open_installer_layout_v1
+    sessions = []
+
+    def tracked_layout():
+        if sessions:
+            assert sessions[-1]._closed is True
+        layout = original()
+        sessions.append(layout.birth_session)
+        return layout
+
+    monkeypatch.setattr(
+        provisioning, "_open_installer_layout_v1", tracked_layout,
+    )
+    result = provisioning.ensure_executor_birth_authorities_prepared()
+
+    assert result.outcome is AuthorProvisioningOutcomeV1.installed
+    assert len(sessions) == 2
+    assert sessions[0] is not sessions[1]
+    assert all(session._closed for session in sessions)
+
+
 def test_the_journal_records_every_step_in_order(tmp_path: Path, monkeypatch):
     base = _config(tmp_path, author=Ed25519PrivateKey.generate())
     source = _source(base, monkeypatch)
