@@ -12,6 +12,7 @@ import json
 import os
 import stat
 import sys
+import weakref
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -22,7 +23,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from executor_birth_distribution_manifest import (
+    MAX_PAYLOAD_BYTES as MAX_DISTRIBUTION_PAYLOAD_BYTES_V1,
     PURPOSE as DISTRIBUTION_PURPOSE,
+    SIGNATURE_DOMAIN as DISTRIBUTION_SIGNATURE_DOMAIN_V1,
     DistributionKey, DistributionRegistry, distribution_key_id,
 )
 from executor_birth_ownership_cutover import (
@@ -431,6 +434,56 @@ class _FixedOwnershipPublicSnapshotV1:
 _FIXED_PUBLIC_SNAPSHOT_SEAL = object()
 
 
+class _DistributionSigningAuthorityV1:
+    """Opaque access to the one fixed distribution signing authority."""
+
+    __slots__ = ("_token", "__weakref__")
+
+    def __init__(self, token: object, seal: object) -> None:
+        if seal is not _DISTRIBUTION_SIGNING_AUTHORITY_SEAL:
+            raise OwnershipAuthorityError("birth_ownership_authority_untrusted")
+        self._token = token
+
+    def __copy__(self):
+        raise TypeError("distribution signing authority is not copyable")
+
+    def __deepcopy__(self, _memo):
+        raise TypeError("distribution signing authority is not copyable")
+
+    def __reduce__(self):
+        raise TypeError("distribution signing authority is not serializable")
+
+    def __reduce_ex__(self, _protocol):
+        raise TypeError("distribution signing authority is not serializable")
+
+
+class _DistributionSigningAuthorityForTestV1:
+    """Nominally separate portable seam rejected by productive consumers."""
+
+    __slots__ = ("_token", "__weakref__")
+
+    def __init__(self, token: object, seal: object) -> None:
+        if seal is not _TEST_DISTRIBUTION_SIGNING_AUTHORITY_SEAL:
+            raise OwnershipAuthorityError("birth_ownership_authority_untrusted")
+        self._token = token
+
+    def __copy__(self):
+        raise TypeError("test distribution signing authority is not copyable")
+
+    def __deepcopy__(self, _memo):
+        raise TypeError("test distribution signing authority is not copyable")
+
+    def __reduce__(self):
+        raise TypeError("test distribution signing authority is not serializable")
+
+    def __reduce_ex__(self, _protocol):
+        raise TypeError("test distribution signing authority is not serializable")
+
+
+_DISTRIBUTION_SIGNING_AUTHORITY_SEAL = object()
+_TEST_DISTRIBUTION_SIGNING_AUTHORITY_SEAL = object()
+
+
 def _ownership_public_registries_for_test(
     distribution: DistributionRegistry,
     cutover: OwnershipCutoverRegistry,
@@ -552,6 +605,36 @@ def _load_private_at_v1(
     )
 
 
+def _load_distribution_signing_material_at_v1(
+    directory: Path, *, root_owned: bool,
+) -> tuple[Ed25519PrivateKey, OwnershipPublicRegistriesV1]:
+    """Cold-read all public registries but only the distribution secret."""
+    public = _load_public_at_v1(directory, root_owned=root_owned)
+    encoded = _read_regular(
+        Path(directory) / _PRIVATE_BASENAMES["distribution"],
+        maximum=PRIVATE_KEY_BYTES_V1, mode=0o600,
+        root_owned=root_owned,
+    )
+    if len(encoded) != PRIVATE_KEY_BYTES_V1:
+        raise OwnershipAuthorityError(
+            "birth_ownership_authority_invalid", "private key size",
+        )
+    try:
+        private = Ed25519PrivateKey.from_private_bytes(encoded)
+    except ValueError as exc:
+        raise OwnershipAuthorityError(
+            "birth_ownership_authority_invalid", "private key",
+        ) from exc
+    if (
+        _raw_public(private.public_key())
+        != _registry_public_bytes(public.distribution)
+    ):
+        raise OwnershipAuthorityError(
+            "birth_ownership_authority_invalid", "private binding",
+        )
+    return private, public
+
+
 def _require_public_keys_disjoint_v1(
     authorities: OwnershipPublicRegistriesV1,
     forbidden_public_keys: Iterable[bytes],
@@ -593,6 +676,145 @@ def _birth_public_keys_v1() -> frozenset[bytes]:
     if not result or any(len(item) != 32 for item in result):
         raise OwnershipAuthorityError("birth_ownership_authority_untrusted")
     return result
+
+
+def _build_distribution_signing_authority_surface_v1():
+    productive = weakref.WeakKeyDictionary()
+    portable = weakref.WeakKeyDictionary()
+
+    def key_id(registry: DistributionRegistry) -> str:
+        entries = tuple(registry.keys.values())
+        if len(entries) != 1:
+            raise OwnershipAuthorityError(
+                "birth_ownership_authority_invalid", "registry cardinality",
+            )
+        return entries[0].key_id
+
+    def require(
+        authority: object, *, expected_type: type, issued,
+    ) -> tuple[Ed25519PrivateKey, str]:
+        if type(authority) is not expected_type:
+            raise OwnershipAuthorityError("birth_ownership_authority_untrusted")
+        try:
+            registration = issued.get(authority)
+            token = authority._token
+        except (AttributeError, TypeError) as exc:
+            raise OwnershipAuthorityError(
+                "birth_ownership_authority_untrusted",
+            ) from exc
+        if (
+            registration is None
+            or token is not registration[0]
+        ):
+            raise OwnershipAuthorityError("birth_ownership_authority_untrusted")
+        return registration[1], registration[2]
+
+    def sign(
+        authority: object, payload: object, *, expected_type: type, issued,
+    ) -> bytes:
+        private, _key_id = require(
+            authority, expected_type=expected_type, issued=issued,
+        )
+        if (
+            type(payload) is not bytes
+            or not payload
+            or len(payload) > MAX_DISTRIBUTION_PAYLOAD_BYTES_V1
+        ):
+            raise OwnershipAuthorityError(
+                "birth_ownership_authority_invalid", "distribution payload",
+            )
+        return private.sign(DISTRIBUTION_SIGNATURE_DOMAIN_V1 + payload)
+
+    def load_product() -> _DistributionSigningAuthorityV1:
+        if not _managed_authority_platform_supported_v1():
+            raise OwnershipAuthorityError(
+                "birth_ownership_authority_platform_unsupported",
+            )
+        if not hasattr(os, "geteuid") or os.geteuid() != 0:
+            raise OwnershipAuthorityError(
+                "birth_ownership_authority_root_required",
+            )
+        _root_owned_chain(DEFAULT_AUTHORITY_DIRECTORY_V1)
+        private, public = _load_distribution_signing_material_at_v1(
+            DEFAULT_AUTHORITY_DIRECTORY_V1, root_owned=True,
+        )
+        _require_public_keys_disjoint_v1(public, _birth_public_keys_v1())
+        token = object()
+        authority = _DistributionSigningAuthorityV1(
+            token, _DISTRIBUTION_SIGNING_AUTHORITY_SEAL,
+        )
+        productive[authority] = (
+            token, private, key_id(public.distribution),
+        )
+        return authority
+
+    def product_key_id(authority: object) -> str:
+        return require(
+            authority,
+            expected_type=_DistributionSigningAuthorityV1,
+            issued=productive,
+        )[1]
+
+    def product_sign(authority: object, payload: object) -> bytes:
+        return sign(
+            authority, payload,
+            expected_type=_DistributionSigningAuthorityV1,
+            issued=productive,
+        )
+
+    def mint_test(
+        private: Ed25519PrivateKey,
+    ) -> _DistributionSigningAuthorityForTestV1:
+        if not isinstance(private, Ed25519PrivateKey):
+            raise OwnershipAuthorityError(
+                "birth_ownership_authority_invalid", "private key",
+            )
+        registry = decode_ownership_registry_v1(
+            encode_ownership_registry_v1(
+                "distribution", private.public_key(),
+            ),
+            expected_kind="distribution",
+        )
+        if not isinstance(registry, DistributionRegistry):
+            raise OwnershipAuthorityError(
+                "birth_ownership_authority_invalid", "distribution registry",
+            )
+        token = object()
+        authority = _DistributionSigningAuthorityForTestV1(
+            token, _TEST_DISTRIBUTION_SIGNING_AUTHORITY_SEAL,
+        )
+        portable[authority] = (token, private, key_id(registry))
+        return authority
+
+    def test_key_id(authority: object) -> str:
+        return require(
+            authority,
+            expected_type=_DistributionSigningAuthorityForTestV1,
+            issued=portable,
+        )[1]
+
+    def test_sign(authority: object, payload: object) -> bytes:
+        return sign(
+            authority, payload,
+            expected_type=_DistributionSigningAuthorityForTestV1,
+            issued=portable,
+        )
+
+    return (
+        load_product, product_key_id, product_sign,
+        mint_test, test_key_id, test_sign,
+    )
+
+
+(
+    _load_distribution_signing_authority_v1,
+    _distribution_signing_key_id_v1,
+    _sign_distribution_payload_v1,
+    _distribution_signing_authority_for_test_v1,
+    _distribution_signing_key_id_for_test_v1,
+    _sign_distribution_payload_for_test_v1,
+) = _build_distribution_signing_authority_surface_v1()
+del _build_distribution_signing_authority_surface_v1
 
 
 def load_ownership_public_registries_v1() -> OwnershipPublicRegistriesV1:
