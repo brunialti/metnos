@@ -340,19 +340,41 @@ def set_payload(concept: str, lang: str, payload, *,
                 source_lang: str | None = None) -> None:
     """INSERT/REPLACE payload per (concept, lang). Usato da daemon e admin."""
     conn = _open()
+    has_review_policy = _has_column(conn, "review_policy")
+    policy_expr = "review_policy" if has_review_policy else "'automatic'"
     meta = conn.execute(
-        "SELECT kind, match_mode FROM detection_lexicon WHERE concept=? "
-        "ORDER BY lang LIMIT 1", (concept,),
+        "SELECT kind, match_mode, " + policy_expr
+        + " FROM detection_lexicon WHERE concept=? "
+        "ORDER BY CASE WHEN lang=? THEN 0 ELSE 1 END, lang LIMIT 1",
+        (concept, lang),
     ).fetchone()
     kind = kind or (meta[0] if meta else "phrases")
     match_mode = match_mode or (meta[1] if meta else "substring")
-    js = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-    conn.execute(
-        "INSERT OR REPLACE INTO detection_lexicon(concept, lang, kind, "
-        "match_mode, payload, needs_translation, source_lang, version_hash, "
-        "updated_at) VALUES (?,?,?,?,?,0,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
-        (concept, lang, kind, match_mode, js, source_lang, _sha256(js)),
+    # The source declaration is authoritative. In particular, a human rewrite
+    # must be able to promote a legacy third-language row from ``automatic``
+    # to the newly declared ``manual`` policy; preserving the target row first
+    # would leave that language permanently unusable by the safety gate.
+    review_policy = _declared_review_policies.get(
+        concept, meta[2] if meta else "automatic",
     )
+    js = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    if has_review_policy:
+        conn.execute(
+            "INSERT OR REPLACE INTO detection_lexicon(concept, lang, kind, "
+            "match_mode, payload, needs_translation, source_lang, review_policy, "
+            "version_hash, updated_at) VALUES (?,?,?,?,?,0,?,?,?,"
+            "strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+            (concept, lang, kind, match_mode, js, source_lang, review_policy,
+             _sha256(js)),
+        )
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO detection_lexicon(concept, lang, kind, "
+            "match_mode, payload, needs_translation, source_lang, version_hash, "
+            "updated_at) VALUES (?,?,?,?,?,0,?,?,"
+            "strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+            (concept, lang, kind, match_mode, js, source_lang, _sha256(js)),
+        )
     conn.commit()
     _invalidate(concept)
 
@@ -396,10 +418,12 @@ def resource_for_language(concept: str, lang: str, *, fallback: bool = True,
             if candidate not in languages:
                 languages.append(candidate)
     conn = _open()
+    has_review_policy = _has_column(conn, "review_policy")
+    policy_expr = "review_policy" if has_review_policy else "'automatic'"
     for candidate in languages:
         row = conn.execute(
             "SELECT kind, match_mode, payload, needs_translation, "
-            "source_lang, version_hash, source_text_hash "
+            "source_lang, version_hash, source_text_hash, " + policy_expr + " "
             "FROM detection_lexicon WHERE concept=? AND lang=? "
             "AND payload IS NOT NULL",
             (concept, candidate),
@@ -421,6 +445,10 @@ def resource_for_language(concept: str, lang: str, *, fallback: bool = True,
             "source_lang": row[4],
             "version_hash": row[5],
             "source_text_hash": row[6],
+            "review_policy": (
+                row[7] if has_review_policy
+                else _declared_review_policies.get(concept, row[7])
+            ),
             "fallback": candidate != normalized,
         }
     return None
@@ -436,6 +464,24 @@ def mapping_for_language(concept: str, lang: str, *, fallback: bool = True,
         return {}
     payload = resource["payload"]
     return dict(payload) if isinstance(payload, dict) else {}
+
+
+def native_ready_forms(concept: str, *, require_manual: bool = False) -> list[str]:
+    """Validated native phrase forms admitted for the active language."""
+    resource = resource_for_language(
+        concept, current_lang(), fallback=False, ready_only=True,
+    )
+    if (not resource or resource.get("kind") != "phrases"
+            or not isinstance(resource.get("payload"), list)
+            or not resource["payload"]
+            or not all(
+                isinstance(form, str) and form.strip()
+                for form in resource["payload"]
+            )
+            or (require_manual
+                and resource.get("review_policy") != "manual")):
+        return []
+    return [form.strip() for form in resource["payload"]]
 
 
 def validate_mapping_payload(source: dict, candidate) -> dict:
@@ -635,6 +681,76 @@ def forms(concept: str) -> list[str]:
     return list(payload) if isinstance(payload, list) else []
 
 
+def phrase_before(concept: str, text: str, end: int) -> tuple[int, int] | None:
+    """Span of the longest localized phrase immediately before ``end``.
+
+    Only whitespace may separate the phrase from ``end``.  The matcher is
+    Unicode-aware and consumes the complete registry form, so translated
+    accents and multiword surfaces are data rather than Python branches.
+    """
+    if not isinstance(text, str) or not isinstance(end, int):
+        return None
+    boundary = max(0, min(end, len(text)))
+    prefix = text[:boundary]
+    found: list[tuple[int, int, str]] = []
+    for raw_form in forms(concept):
+        if not isinstance(raw_form, str):
+            continue
+        form = raw_form.strip()
+        if not form:
+            continue
+        pattern = re.compile(
+            r"(?<!\w)(?P<form>" + re.escape(form) + r")\s*\Z",
+            re.IGNORECASE | re.UNICODE,
+        )
+        match = pattern.search(prefix)
+        if match is not None:
+            found.append((
+                match.start("form"), match.end("form"), form.casefold(),
+            ))
+    if not found:
+        return None
+    start, stop, _form = min(
+        found, key=lambda item: (-(item[1] - item[0]), item[0], item[2]))
+    return start, stop
+
+
+def phrase_spans(concept: str, text: str, *, start: int = 0) -> list[tuple[int, int]]:
+    """Non-overlapping spans of complete localized forms in ``text``.
+
+    The longest form wins when registry entries overlap at the same offset.
+    This lets consumers reason about clause polarity without duplicating any
+    language-specific surface in their own module.
+    """
+    if not isinstance(text, str) or not isinstance(start, int):
+        return []
+    boundary = max(0, min(start, len(text)))
+    candidates: list[tuple[int, int, str]] = []
+    for raw_form in forms(concept):
+        if not isinstance(raw_form, str):
+            continue
+        form = raw_form.strip()
+        if not form:
+            continue
+        pattern = re.compile(
+            r"(?<!\w)(?P<form>" + re.escape(form) + r")(?!\w)",
+            re.IGNORECASE | re.UNICODE,
+        )
+        for match in pattern.finditer(text, boundary):
+            candidates.append((
+                match.start("form"), match.end("form"), form.casefold(),
+            ))
+    chosen: list[tuple[int, int]] = []
+    occupied_until = boundary
+    for begin, stop, _form in sorted(
+            candidates, key=lambda item: (item[0], -(item[1] - item[0]), item[2])):
+        if begin < occupied_until:
+            continue
+        chosen.append((begin, stop))
+        occupied_until = stop
+    return chosen
+
+
 def mapping(concept: str) -> dict:
     """Mapping {canonical: [forme]} per la lingua corrente (kind=mapping)."""
     res = _resolve(concept)
@@ -731,24 +847,197 @@ def _last_phrase_end(text: str, candidates: list[str]) -> int:
     return last
 
 
-def asserted_at(text: str, start: int) -> bool:
-    """Whether a surface match at ``start`` is asserted in its local clause.
+def polarity_state_at(
+        text: str, start: int, *, command_scope: bool = False,
+        target_scope: bool = False) -> str:
+    """Return ``asserted``, ``negated`` or ``unavailable`` for one match.
 
     The rule is domain-neutral: the clause begins after the last punctuation
     boundary or contrast conjunction.  A translatable syntax-level negation
     inside that clause makes the following match non-asserted.  Callers keep
     their domain markers; polarity and language data remain centralized here.
+    ``command_scope`` applies the stricter punctuation rule needed for shell
+    syntax. ``target_scope`` binds a reviewed sequence immediately before a
+    placement anchor. The explicit unavailable state lets safety consumers
+    distinguish a prohibition from missing native grammar.
     """
-    if not isinstance(text, str) or not isinstance(start, int):
-        return False
+    if (not isinstance(text, str) or not isinstance(start, int)
+            or (command_scope and target_scope)):
+        return "unavailable"
+    polarity_concepts = [
+        "syntax.negation", "syntax.inhibition", "syntax.contrast",
+        "syntax.negative_coordination", "syntax.sequence",
+    ]
+    if command_scope or target_scope:
+        polarity_concepts.append("syntax.command_invocation")
+    for concept in polarity_concepts:
+        if not native_ready_forms(concept, require_manual=True):
+            # Polarity is safety relevant. Baseline fallback is useful for
+            # ordinary recognition, but it cannot prove that a negation in a
+            # partially materialized active language was understood.
+            log.warning(
+                "detection_lexicon: native ready polarity unavailable for %r",
+                concept,
+            )
+            return "unavailable"
+    negation_forms = forms("syntax.negation")
+    inhibition_forms = forms("syntax.inhibition")
+    contrast_forms = forms("syntax.contrast")
     prefix = text[:max(0, min(start, len(text)))]
+    hard_boundaries = ".;!?"
     punctuation_end = max(
-        (prefix.rfind(character) + 1 for character in ",.;:!?"),
+        (prefix.rfind(character) + 1 for character in hard_boundaries),
         default=0,
     )
-    contrast_end = _last_phrase_end(prefix, forms("syntax.contrast"))
-    clause = prefix[max(punctuation_end, contrast_end):]
-    return not match_any(forms("syntax.negation"), clause, mode="word")
+    local_prefix = prefix[punctuation_end:]
+
+    if command_scope:
+        # Commas and colons may coordinate or introduce negative command
+        # targets. They reset polarity only when the marker being evaluated is
+        # itself immediately preceded by an invocation that begins just after
+        # the separator. An invocation for explanatory prose must not reopen a
+        # later marker and expose the guarded admin route.
+        separator_end = max(
+            local_prefix.rfind(",") + 1,
+            local_prefix.rfind(":") + 1,
+        )
+        if separator_end:
+            invocation = phrase_before(
+                "syntax.command_invocation", text, start,
+            )
+            invocation_start = (
+                invocation[0] - punctuation_end
+                if invocation is not None else -1
+            )
+            gap = (
+                local_prefix[separator_end:invocation_start]
+                if invocation_start >= separator_end else ""
+            )
+            sequence_spans = phrase_spans("syntax.sequence", gap)
+            gap_is_sequence = any(
+                not gap[:begin].strip() and not gap[stop:].strip()
+                for begin, stop in sequence_spans
+            )
+            if (invocation_start >= separator_end
+                    and (not gap.strip() or gap_is_sequence)):
+                punctuation_end += separator_end
+                local_prefix = local_prefix[separator_end:]
+    elif target_scope:
+        # A reviewed sequence immediately before this target anchor starts a
+        # new placement clause (``not on server, and on pc-roberto``). Other
+        # comma/colon forms retain polarity so coordinated negative target
+        # lists cannot become affirmative by punctuation alone.
+        separator_end = max(
+            local_prefix.rfind(",") + 1,
+            local_prefix.rfind(":") + 1,
+        )
+        if separator_end:
+            sequence = phrase_before("syntax.sequence", text, start)
+            sequence_start = (
+                sequence[0] - punctuation_end
+                if sequence is not None else -1
+            )
+            negative_coordination_forms = {
+                form.casefold()
+                for form in forms("syntax.negative_coordination")
+            }
+            sequence_surface = (
+                text[sequence[0]:sequence[1]].casefold()
+                if sequence is not None else ""
+            )
+            direct_sequence = (
+                sequence_start >= separator_end
+                and sequence_surface not in negative_coordination_forms
+                and not local_prefix[
+                    separator_end:sequence_start
+                ].strip()
+            )
+            invocation = phrase_before(
+                "syntax.command_invocation", text, start,
+            )
+            invocation_start = (
+                invocation[0] - punctuation_end
+                if invocation is not None else -1
+            )
+            invocation_gap = (
+                local_prefix[separator_end:invocation_start]
+                if invocation_start >= separator_end else ""
+            )
+            sequence_spans = phrase_spans(
+                "syntax.sequence", invocation_gap,
+            )
+            sequenced_invocation = (
+                invocation_start >= separator_end
+                and (
+                    not invocation_gap.strip()
+                    or any(
+                        not invocation_gap[:begin].strip()
+                        and not invocation_gap[stop:].strip()
+                        for begin, stop in sequence_spans
+                    )
+                )
+            )
+            if direct_sequence or sequenced_invocation:
+                punctuation_end += separator_end
+                local_prefix = local_prefix[separator_end:]
+    else:
+        # A comma normally resets domain-neutral polarity. A reviewed
+        # coordination at the start of its suffix is the exception: it keeps
+        # negative target lists such as ``not on the computer, or on the
+        # server`` negative without treating domain verbs as command syntax.
+        comma_end = local_prefix.rfind(",") + 1
+        colon_end = local_prefix.rfind(":") + 1
+        separator_end = max(comma_end, colon_end)
+        if separator_end:
+            suffix = local_prefix[separator_end:]
+            negative_coordination_forms = {
+                form.casefold()
+                for form in forms("syntax.negative_coordination")
+            }
+            sequence_reset = any(
+                not suffix[:begin].strip()
+                and suffix[begin:stop].casefold()
+                    not in negative_coordination_forms
+                for begin, stop in phrase_spans("syntax.sequence", suffix)
+            )
+            coordinated = any(
+                not suffix[:begin].strip()
+                for begin, _stop in phrase_spans(
+                    "syntax.negative_coordination", suffix,
+                )
+            )
+            # A colon commonly introduces a target list and therefore carries
+            # polarity unless an explicit sequence starts a new clause. A
+            # comma keeps its historical reset when it is not coordinating.
+            colon_is_latest = colon_end == separator_end
+            if sequence_reset or (not coordinated and not colon_is_latest):
+                punctuation_end += separator_end
+                local_prefix = suffix
+    inhibition_end = _last_phrase_end(local_prefix, inhibition_forms)
+    contrast_end = _last_phrase_end(local_prefix, contrast_forms)
+    if inhibition_end > contrast_end:
+        # Inhibitory phrases are polarity, not a new affirmative clause.
+        # Check them before ``syntax.contrast`` so ``invece di`` / ``instead
+        # of`` cannot be shortened to the contrast word and reset itself.  A
+        # later real contrast (``evita X ma esegui Y``) starts a new clause.
+        return "negated"
+    clause_start = punctuation_end
+    if contrast_end >= 0:
+        clause_start += contrast_end
+    clause = prefix[clause_start:]
+    return (
+        "negated" if match_any(negation_forms, clause, mode="word")
+        else "asserted"
+    )
+
+
+def asserted_at(
+        text: str, start: int, *, command_scope: bool = False,
+        target_scope: bool = False) -> bool:
+    """Whether a surface match is asserted under the selected syntax scope."""
+    return polarity_state_at(
+        text, start, command_scope=command_scope, target_scope=target_scope,
+    ) == "asserted"
 
 
 # --------------------------------------------------------------------------

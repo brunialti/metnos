@@ -7708,8 +7708,10 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
         _who = _dev_mod.owner_id_for_actor(actor)
         _dl = [d for d in _dev_mod.list_devices()
                if (getattr(d, "owner_user_id", "host") or "host") == _who]
-        if _dl:
-            _explicit_device_ref = _td_mod.references_device(user_query_for_run, _dl)
+        _explicit_device_ref = _td_mod.references_device(
+            user_query_for_run, _dl,
+        )
+        if _dl or _explicit_device_ref:
             _sid = f"{channel}:{actor}" if channel else (actor or "host")
             _target_scope = _cts_mod.scope_key(
                 owner_user_id=_who,
