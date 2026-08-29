@@ -2365,3 +2365,34 @@ vincolata a file e digest esatti.
 Il commit su `main` e la pubblicazione incrementale sono autorizzati. La loro
 evidenza e l'esito Linux/Windows vanno aggiunti dopo l'osservazione pubblica.
 Il nucleo preparatore B3 resta il passo successivo e RM-0008 resta `active`.
+
+## 15. Compatibilita' del sandbox col Python del runner pubblico
+
+La matrice pubblica `33258481590` ha confermato sette job su otto. Suite
+portabili, Windows, concorrenza, manifesto e ACL erano verdi. L'unico errore
+era deterministico nel test Birth delegato Linux: il runner GitHub usa un
+Python non-venv sotto `/opt/hostedtoolcache`, mentre il sandbox, dopo la
+rimozione necessaria del bind generale `/opt`, montava un prefisso soltanto
+nel caso venv. `bwrap` terminava quindi con `execvp .../bin/python: No such
+file or directory`.
+
+La correzione non ripristina `/opt`. Il sandbox deriva esclusivamente i quattro
+prefissi dell'interprete attivo, ne verifica risoluzione, ampiezza e copertura
+di eseguibile, `stdlib` e `platstdlib`, poi monta ciascuna radice esatta in sola
+lettura. Per i venv raggiunti tramite symlink conserva la destinazione
+lessicale ma usa come sorgente il target canonico verificato. Un prefisso
+generico o che contiene codice del prodotto fallisce chiuso.
+
+Il primo riesame ha trovato e bloccato la regressione dei venv tramite symlink;
+dopo la correzione il secondo riesame ha concluso `P0=0`, `P1=0`, `P2=0`.
+Le prove correnti sono: sandbox `68 passed`, gate mirati `199 passed`, prova
+Bubblewrap A/B privata e pubblica `1 passed` ciascuna, suite pubblica completa
+`749 passed, 25 skipped` e publisher `--check` verde. Le nuove radici sono
+`sha256:9097f35f635e88f52b360f9540fbfdb9b25b4567384a5d6264a74076d714b4c0`
+per 671 sorgenti private e
+`sha256:f66473c54d13f7dedb43b8f357f04b7da83f906d6e2e42c0296b44bd14e29a46`
+per 659 sorgenti pubbliche.
+
+Il solo elemento non ancora provato e' il wrapper root `systemd-run`, non
+eseguibile localmente senza password `sudo`. La nuova matrice GitHub e' la sua
+prova necessaria. Fino al successo di tutti i job non si passa al nucleo B3.

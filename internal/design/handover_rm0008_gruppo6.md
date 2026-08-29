@@ -1137,3 +1137,37 @@ pubblicazione B4, G6-C o G6-D e non esporre claim, disposizione o `PREPARED`.
 - nessuna correzione per tentativi: prima causa e misura discriminante;
 - nessuna attivazione reale della build chiusa, nessun avvio reale dello stack
   candidato e nessuna dichiarazione F4 prima del gruppo 7.
+
+## Correzione CI Linux della base B3 — stato di handover
+
+Il commit sorgente `0d57a887` e il commit pubblico `30b2fee4` hanno prodotto la
+matrice GitHub `33258481590`. Sette job su otto sono verdi, compresi l'intero
+Windows e la suite portabile Ubuntu (`749 passed, 25 skipped`). L'unico errore
+e' la prova Birth delegata Linux: dopo la rimozione corretta del bind generale
+`/opt`, Bubblewrap non trovava il Python non-venv installato da
+`actions/setup-python` sotto `/opt/hostedtoolcache/.../x64`.
+
+La causa e' stata corretta senza riaprire `/opt`. `runtime/sandbox.py` monta
+read-only soltanto `sys.prefix`, `sys.exec_prefix`, `sys.base_prefix` e
+`sys.base_exec_prefix`, deduplicati. Sorgente canonica e destinazione lessicale
+restano distinte per i venv raggiunti tramite symlink. Prefissi generici,
+prefissi che contengono runtime o executor, interprete e libreria standard non
+coperti producono `SandboxUnavailableError`.
+
+Evidenza locale del candidato corrente:
+
+- review avversariale finale: `P0=0`, `P1=0`, `P2=0`;
+- radice privata: `sha256:9097f35f635e88f52b360f9540fbfdb9b25b4567384a5d6264a74076d714b4c0`
+  su 671 sorgenti;
+- radice pubblica: `sha256:f66473c54d13f7dedb43b8f357f04b7da83f906d6e2e42c0296b44bd14e29a46`
+  su 659 sorgenti;
+- test sandbox `68 passed`; gate centrali mirati `199 passed`;
+- Bubblewrap A/B reale privato e pubblico: `1 passed` ciascuno;
+- suite pubblica completa: `749 passed, 25 skipped`;
+- publisher `--check`: root privato/pubblico coerenti e zero PII/segreti.
+
+La replica locale del wrapper root `systemd-run` non e' stata eseguita perche'
+`sudo` richiede una password interattiva. La stessa prova verra' eseguita dalla
+seconda matrice GitHub. Il prossimo passo unico e' commit su `main`,
+pubblicazione incrementale e osservazione di tutti i job a `success`; dopo si
+riprende il nucleo preparatore B3. RM-0008 resta `active`.

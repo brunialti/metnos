@@ -51,6 +51,81 @@ def test_system_python_user_site_is_bound_read_only():
         assert args[index + 1] == str(user_site)
 
 
+def _set_python_layout(monkeypatch, prefix, base_prefix):
+    executable = prefix / "bin" / "python"
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    executable.touch()
+    stdlib = base_prefix / "lib" / "python3.12"
+    platstdlib = prefix / "lib" / "python3.12"
+    stdlib.mkdir(parents=True, exist_ok=True)
+    platstdlib.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(sandbox.sys, "prefix", str(prefix))
+    monkeypatch.setattr(sandbox.sys, "exec_prefix", str(prefix))
+    monkeypatch.setattr(sandbox.sys, "base_prefix", str(base_prefix))
+    monkeypatch.setattr(sandbox.sys, "base_exec_prefix", str(base_prefix))
+    monkeypatch.setattr(sandbox.sys, "executable", str(executable))
+    paths = {"stdlib": str(stdlib), "platstdlib": str(platstdlib)}
+    monkeypatch.setattr(
+        sandbox.sysconfig, "get_path", lambda name: paths[name],
+    )
+
+
+def test_external_non_venv_python_binds_only_its_exact_prefix(
+        tmp_path, monkeypatch):
+    prefix = tmp_path / "opt" / "hostedtoolcache" / "Python" / "3.12" / "x64"
+    _set_python_layout(monkeypatch, prefix, prefix)
+
+    args = sandbox._build_bwrap_args(Path(__file__), capabilities=[])
+
+    exact = str(prefix.resolve())
+    assert ["--ro-bind", exact, exact] in [
+        args[index:index + 3] for index in range(len(args) - 2)
+    ]
+    assert str(prefix.parent) not in args
+
+
+def test_venv_with_external_base_binds_both_exact_prefixes(
+        tmp_path, monkeypatch):
+    prefix = tmp_path / "venv"
+    base_prefix = tmp_path / "python-base" / "3.12"
+    _set_python_layout(monkeypatch, prefix, base_prefix)
+
+    args = sandbox._build_bwrap_args(Path(__file__), capabilities=[])
+
+    for root in (prefix.resolve(), base_prefix.resolve()):
+        exact = str(root)
+        assert ["--ro-bind", exact, exact] in [
+            args[index:index + 3] for index in range(len(args) - 2)
+        ]
+
+
+def test_symlinked_python_prefix_preserves_the_command_path(
+        tmp_path, monkeypatch):
+    real_prefix = tmp_path / "real-python"
+    alias_prefix = tmp_path / "python-link"
+    real_prefix.mkdir()
+    alias_prefix.symlink_to(real_prefix, target_is_directory=True)
+    _set_python_layout(monkeypatch, alias_prefix, alias_prefix)
+
+    args = sandbox._build_bwrap_args(Path(__file__), capabilities=[])
+
+    assert [
+        "--ro-bind", str(real_prefix.resolve()), str(alias_prefix.absolute()),
+    ] in [args[index:index + 3] for index in range(len(args) - 2)]
+
+
+def test_broad_interpreter_prefix_fails_closed(monkeypatch):
+    monkeypatch.setattr(sandbox.sys, "prefix", "/opt")
+    monkeypatch.setattr(sandbox.sys, "exec_prefix", "/opt")
+    monkeypatch.setattr(sandbox.sys, "base_prefix", "/opt")
+    monkeypatch.setattr(sandbox.sys, "base_exec_prefix", "/opt")
+
+    with pytest.raises(
+        sandbox.SandboxUnavailableError, match="too broad to sandbox",
+    ):
+        sandbox._build_bwrap_args(Path(__file__), capabilities=[])
+
+
 def test_interpreter_dependency_root_survives_later_home_redirection(
         tmp_path, monkeypatch):
     original_site = tmp_path / "original-home" / "site-packages"
