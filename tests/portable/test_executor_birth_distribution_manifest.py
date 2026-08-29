@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 import stat
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -79,6 +79,9 @@ def _inventory_bytes():
 def _files(root: Path):
     inventory = _inventory_bytes()
     values = {
+        "deployment/admin/preflight.py": (
+            "preflight", b"#!/usr/bin/python3\n",
+        ),
         "deployment/executor-birth-deployment-v1.json": (
             "deployment_descriptor", b'{"schema_version":1}\n',
         ),
@@ -168,7 +171,7 @@ def _manifest(root: Path, private, key_id, *, target=None, architecture="x86_64"
             distribution.BOUNDARY_INVENTORY_DOMAIN + _inventory_bytes()
         ).hexdigest(),
         "boundary_guard_version": "metnos.contract-boundary-inventory/2+birth-closed/1",
-        "preflight_entrypoint": "runtime/executor_birth_distribution_manifest.py",
+        "preflight_entrypoint": "deployment/admin/preflight.py",
         "files": files,
     }
     if mutate:
@@ -284,6 +287,40 @@ def test_manifest_accepts_multiple_units_and_requires_single_new_materials(tmp_p
                 malformed, proof, registry=registry,
                 _environment=_test_environment(tmp_path),
             )
+
+
+def test_manifest_final_bounds_and_fixed_admin_preflight(tmp_path, monkeypatch):
+    assert distribution.MAX_MANIFEST_FILES_V1 == 20_000
+    assert distribution.MAX_MANIFEST_TOTAL_BYTES_V1 == 2 * 1024 * 1024 * 1024
+    private, key_id, _registry = _authority(distribution.PURPOSE)
+    _value, encoded, _signature = _manifest(tmp_path, private, key_id)
+    parsed = json.loads(encoded)
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            distribution, "MAX_MANIFEST_FILES_V1", len(parsed["files"]) - 1,
+        )
+        with pytest.raises(distribution.DistributionManifestError, match="files"):
+            distribution._parse(encoded)
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            distribution, "MAX_MANIFEST_TOTAL_BYTES_V1",
+            sum(item["size"] for item in parsed["files"]) - 1,
+        )
+        with pytest.raises(
+            distribution.DistributionManifestError, match="file total size",
+        ):
+            distribution._parse(encoded)
+
+    _value, wrong, _signature = _manifest(
+        tmp_path, private, key_id,
+        mutate=lambda value: value.update(
+            preflight_entrypoint="runtime/executor_birth_distribution_manifest.py",
+        ),
+    )
+    with pytest.raises(
+        distribution.DistributionManifestError, match="entrypoint binding",
+    ):
+        distribution._parse(wrong)
 
 
 @pytest.mark.parametrize(("source", "destination"), (
@@ -657,7 +694,7 @@ def test_wrong_purpose_and_key_epoch_are_unauthorized(tmp_path):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX link adversarial case")
-def test_file_tamper_missing_symlink_hardlink_and_extra_birth_module_fail(tmp_path):
+def test_file_tamper_missing_symlink_and_hardlink_fail(tmp_path):
     value, encoded, signature, registry, _result = _verify(tmp_path)
     environment = _test_environment(tmp_path)
     target = tmp_path / "runtime" / "sign.py"
@@ -677,7 +714,7 @@ def test_file_tamper_missing_symlink_hardlink_and_extra_birth_module_fail(tmp_pa
                                            value["signing_key_id"])
     # The preceding private key is deterministic, so it matches the registry.
     target = tmp_path / "runtime" / "sign.py"
-    backup = tmp_path / "sign-copy.py"
+    backup = tmp_path.parent / f"{tmp_path.name}-sign-copy.py"
     backup.write_bytes(target.read_bytes())
     target.unlink()
     target.symlink_to(backup)
@@ -687,17 +724,225 @@ def test_file_tamper_missing_symlink_hardlink_and_extra_birth_module_fail(tmp_pa
         )
     target.unlink()
     target.write_bytes(backup.read_bytes())
-    os.link(target, tmp_path / "sign-hardlink.py")
+    hardlink = tmp_path.parent / f"{tmp_path.name}-sign-hardlink.py"
+    os.link(target, hardlink)
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
         distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=environment,
         )
-    (tmp_path / "sign-hardlink.py").unlink()
-    (tmp_path / "runtime" / "executor_birth_shadow_authority.py").write_bytes(b"x")
+    hardlink.unlink()
+
+
+def test_exact_tree_rejects_arbitrary_hidden_file(tmp_path):
+    _value, encoded, signature, registry, _result = _verify(tmp_path)
+    (tmp_path / "runtime" / "hidden.py").write_bytes(b"x")
     with pytest.raises(distribution.DistributionManifestError, match="extra_file"):
         distribution._verify_distribution_manifest_for_test(
-            encoded, signature, registry=registry, _environment=environment,
+            encoded, signature, registry=registry,
+            _environment=_test_environment(tmp_path),
         )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX special-file adversarial case")
+def test_exact_tree_rejects_expected_special_file(tmp_path):
+    value, encoded, signature, registry, _result = _verify(tmp_path)
+    target = tmp_path / "runtime" / "sign.py"
+    target.unlink()
+    os.mkfifo(target)
+    with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
+        distribution._verify_distribution_manifest_for_test(
+            encoded, signature, registry=registry,
+            _environment=_test_environment(tmp_path),
+        )
+
+
+def test_exact_tree_rejects_empty_extra_directory_without_descending(
+    tmp_path, monkeypatch,
+):
+    _value, encoded, signature, registry, _result = _verify(tmp_path)
+    unexpected = tmp_path / "runtime" / "unexpected"
+    unexpected.mkdir()
+
+    import executor_birth_secure_fs as secure_fs
+
+    if os.name == "nt":
+        original = secure_fs._win_open_relative_v1
+
+        def refuse_unexpected_descent(parent_handle, name, **kwargs):
+            if name == "unexpected":
+                raise AssertionError("the verifier descended into an extra directory")
+            return original(parent_handle, name, **kwargs)
+
+        monkeypatch.setattr(
+            secure_fs, "_win_open_relative_v1", refuse_unexpected_descent,
+        )
+    else:
+        original = secure_fs._open_posix_child_directory
+
+        def refuse_unexpected_descent(directory, name):
+            if name == "unexpected":
+                raise AssertionError("the verifier descended into an extra directory")
+            return original(directory, name)
+
+        monkeypatch.setattr(
+            secure_fs, "_open_posix_child_directory", refuse_unexpected_descent,
+        )
+    with pytest.raises(distribution.DistributionManifestError, match="extra_file"):
+        distribution._verify_distribution_manifest_for_test(
+            encoded, signature, registry=registry,
+            _environment=_test_environment(tmp_path),
+        )
+
+
+def test_declared_bytecode_and_file_prefix_collision_are_invalid(tmp_path):
+    private, key_id, registry = _authority(distribution.PURPOSE)
+
+    def add_bytecode(files, root):
+        _add_declared_file(
+            files, root, "runtime/__pycache__/declared.pyc", "runtime_code", b"x",
+        )
+
+    def add_prefix_file(files, _root):
+        content = b"x"
+        files.append({
+            "path": "runtime", "size": len(content), "role": "runtime_code",
+            "content_hash": distribution.file_content_hash("runtime", content),
+        })
+        files.sort(key=lambda item: item["path"].encode("utf-8"))
+
+    for mutation in (add_bytecode, add_prefix_file):
+        _value, encoded, signature = _manifest(
+            tmp_path, private, key_id, files_mutate=mutation,
+        )
+        with pytest.raises(
+            distribution.DistributionManifestError, match="distribution_invalid",
+        ):
+            distribution._verify_distribution_manifest_for_test(
+                encoded, signature, registry=registry,
+                _environment=_test_environment(tmp_path),
+            )
+
+
+def test_snapshot_b_rejects_declared_file_mutation_after_verified_bytes(
+    tmp_path, monkeypatch,
+):
+    _value, encoded, signature, registry, _result = _verify(tmp_path)
+    original = distribution._verify_distribution_content_semantics_v1
+    original_result = distribution._verified_distribution_result_v1
+    produced = []
+
+    def mutate_after_verified_bytes(*args, **kwargs):
+        original(*args, **kwargs)
+        (tmp_path / "runtime" / "sign.py").write_bytes(b"SIGN = 22\n")
+
+    monkeypatch.setattr(
+        distribution, "_verify_distribution_content_semantics_v1",
+        mutate_after_verified_bytes,
+    )
+
+    def record_result(*args, **kwargs):
+        produced.append(True)
+        return original_result(*args, **kwargs)
+
+    monkeypatch.setattr(
+        distribution, "_verified_distribution_result_v1", record_result,
+    )
+    with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
+        distribution._verify_distribution_manifest_for_test(
+            encoded, signature, registry=registry,
+            _environment=_test_environment(tmp_path),
+        )
+    assert produced == []
+
+
+@pytest.mark.parametrize(("native", "root_domain", "same", "different"), (
+    ("linux", 7, ("file", 7), ("file", 8)),
+    (
+        "windows", "volume-a",
+        ("file", (SimpleNamespace(volume="volume-a"),)),
+        ("file", (SimpleNamespace(volume="volume-b"),)),
+    ),
+))
+def test_storage_domain_helper_rejects_cross_device_or_volume(
+    tmp_path, native, root_domain, same, different,
+):
+    anchor = distribution._DistributionTreeAnchorV1(
+        tmp_path, -1, native, False, root_domain,
+    )
+    distribution._require_same_distribution_storage_domain_v1(
+        anchor, same, path="runtime/sign.py",
+    )
+    with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
+        distribution._require_same_distribution_storage_domain_v1(
+            anchor, different, path="runtime/sign.py",
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX storage-domain injection")
+def test_exact_tree_binds_every_entry_to_root_device(tmp_path, monkeypatch):
+    _value, encoded, signature, registry, _result = _verify(tmp_path)
+    import executor_birth_secure_fs as secure_fs
+
+    foreign_device = tmp_path.stat().st_dev + 1
+    original_inventory = secure_fs._posix_inventory
+    original_facts = distribution._posix_distribution_facts_v1
+
+    def foreign_inventory(directory, resolve=None, budget=None, scope=()):
+        entries = original_inventory(
+            directory, resolve=resolve, budget=budget, scope=scope,
+        )
+        if scope:
+            return entries
+        return tuple(
+            replace(
+                entry,
+                identity=secure_fs._ObjectIdentity(
+                    f"{foreign_device:x}", entry.identity.object_id,
+                ),
+            ) if entry.name == "requirements.lock" else entry
+            for entry in entries
+        )
+
+    def foreign_facts(handle, kind, *, administrative, path):
+        facts = original_facts(
+            handle, kind, administrative=administrative, path=path,
+        )
+        if path == "requirements.lock":
+            facts = (facts[0], foreign_device, *facts[2:])
+        return facts
+
+    monkeypatch.setattr(secure_fs, "_posix_inventory", foreign_inventory)
+    monkeypatch.setattr(
+        distribution, "_posix_distribution_facts_v1", foreign_facts,
+    )
+    with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
+        distribution._verify_distribution_manifest_for_test(
+            encoded, signature, registry=registry,
+            _environment=_test_environment(tmp_path),
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX nonblocking open contract")
+def test_expected_files_are_reopened_nonblocking(tmp_path, monkeypatch):
+    _value, encoded, signature, registry, _result = _verify(tmp_path)
+    original_open = distribution.os.open
+    observed = []
+
+    def record_open(path, flags, *args, **kwargs):
+        if (
+            path == "sign.py"
+            and not flags & getattr(os, "O_PATH", 0)
+        ):
+            observed.append(flags)
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(distribution.os, "open", record_open)
+    distribution._verify_distribution_manifest_for_test(
+        encoded, signature, registry=registry,
+        _environment=_test_environment(tmp_path),
+    )
+    assert observed
+    assert all(flags & os.O_NONBLOCK for flags in observed)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX parent-link adversarial case")
@@ -714,7 +959,7 @@ def test_inventory_domain_binding_and_parent_symlink_fail(tmp_path):
     # A symlink in an ancestor is rejected even when the leaf itself is regular.
     _value, encoded, signature = _manifest(tmp_path, _authority(distribution.PURPOSE)[0],
                                            value["signing_key_id"])
-    real_share = tmp_path / "real-share"
+    real_share = tmp_path.parent / f"{tmp_path.name}-real-share"
     (tmp_path / "share").rename(real_share)
     (tmp_path / "share").symlink_to(real_share, target_is_directory=True)
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
@@ -770,7 +1015,7 @@ def test_windows_parser_accepts_normal_drive_absolute_paths(tmp_path):
     assert files
 
 
-def test_windows_verification_dispatches_to_certified_handle_reader(tmp_path, monkeypatch):
+def test_verification_dispatches_to_certified_handle_bound_reader(tmp_path, monkeypatch):
     private, key_id, registry = _authority(distribution.PURPOSE)
     claimed = r"C:\Metnos"
     _value, encoded, signature = _manifest(
@@ -779,11 +1024,14 @@ def test_windows_verification_dispatches_to_certified_handle_reader(tmp_path, mo
     )
     observed = []
 
-    def certified_read(root, item):
+    def certified_read(anchor, item, snapshot):
         observed.append(item.path)
-        return root.joinpath(*item.path.split("/")).read_bytes()
+        assert snapshot[item.path]
+        return anchor.root.joinpath(*item.path.split("/")).read_bytes()
 
-    monkeypatch.setattr(distribution, "_secure_read_windows", certified_read)
+    monkeypatch.setattr(
+        distribution, "_read_anchored_distribution_file_v1", certified_read,
+    )
     result = distribution._verify_distribution_manifest_for_test(
         encoded, signature, registry=registry,
         _environment=distribution._environment_for_test(
@@ -798,7 +1046,7 @@ def test_windows_verification_dispatches_to_certified_handle_reader(tmp_path, mo
 def test_windows_real_handle_reader_rejects_hardlinked_release_file(tmp_path):
     value, encoded, signature, registry, _result = _verify(tmp_path)
     target = tmp_path / "runtime" / "sign.py"
-    os.link(target, tmp_path / "sign-second-name.py")
+    os.link(target, tmp_path.parent / f"{tmp_path.name}-sign-second-name.py")
     with pytest.raises(distribution.DistributionManifestError, match="file_mismatch"):
         distribution._verify_distribution_manifest_for_test(
             encoded, signature, registry=registry, _environment=_test_environment(tmp_path),
