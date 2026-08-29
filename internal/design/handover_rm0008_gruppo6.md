@@ -626,14 +626,17 @@ incremento.
 Questa sezione prevale sulla descrizione storica del secondo incremento
 sospeso. Serve come passaggio di consegne immediatamente eseguibile se la
 sessione corrente termina. Il repository di lavoro resta
-`/tmp/metnos-rm0008-a-only`, sul solo ramo `main`; `HEAD` e' `8f25f402`. Non
-usare `/opt/metnos` per modificare RM-0008 e non creare rami. Il commit HEAD
+`/tmp/metnos-rm0008-a-only`, sul solo ramo `main`. Non usare `/opt/metnos` per
+modificare RM-0008 e non creare rami. L'ultimo commit di codice e' `a87f6515`,
+il secondo incremento meccanico B3, committato col footer
+`RM-0008-Status: candidate-not-certified`. Il commit precedente `8f25f402`
 corregge il binding del daemon Telegram al runtime Metnos gestito; la stessa
 correzione e' gia' sul `main` pubblico come `16f21a9`, con suite portabile
-pubblica verde (`645 passed, 25 skipped`). Il secondo incremento B3 non ha
-ancora un commit privato o pubblico.
+pubblica verde (`645 passed, 25 skipped`). Il nuovo incremento B3 e' pubblicato
+sul solo `main` come `e55252b`. Il ciclo GitHub `33244190518` ha concluso verdi
+tutti i nove lavori, compreso il riepilogo bloccante.
 
-Il worktree contiene otto file modificati:
+Il commit `a87f6515` contiene otto file:
 
 - `internal/design/handover_rm0008_gruppo6.md`;
 - `internal/reports/rm0008-gruppo6-piano-ottimizzato.md`;
@@ -722,16 +725,17 @@ riesame OpenSSL ha richiesto due prove mancanti, ora aggiunte: cleanup fallito
 come unico errore e timeout di teardown con chiusura di entrambe le pipe. Il
 verdetto finale di entrambi i domini e' `P0=0`, `P1=0`, `P2=0`.
 
-Non rimane un difetto noto in questo snapshot. Le condizioni locali sono
-concluse; restano il commit incrementale su `main` col footer esatto
-`RM-0008-Status: candidate-not-certified`, l'export incrementale pubblico sul
-solo `main` e la verifica di tutti i nove lavori GitHub. Un fallimento richiede
-diagnosi causale prima di modificare il codice.
+Non rimane un difetto noto in questo snapshot. Le condizioni locali, il commit
+privato `a87f6515`, il commit pubblico `e55252b` e il ciclo GitHub
+`33244190518` sono conclusi con errore zero. Il precedente rosso del commit
+Telegram `16f21a9` e' superato: nel nuovo export l'inventario pubblico e' stato
+rigenerato e tutti i lavori owned 2A, Linux e Windows sono verdi.
 
 Anche se questo snapshot raggiunge errore zero, G6-B3 non e' chiuso. E' il
-primo snapshot meccanico del programma autonomo: non e' collegato a `main` e
-non produce capability. Prima della chiusura B3 restano il clone statico
-stdlib indipendente di `discover()` e `birth_closed_findings()`, poi il nucleo
+primo snapshot meccanico del programma autonomo: non e' collegato al `main()`
+del programma e non produce capability. Prima della chiusura B3 restano il
+clone statico stdlib indipendente di `discover()` e `birth_closed_findings()`,
+poi il nucleo
 preparatore e la capability opaca. Questi passi vanno aggregati nel minimo
 numero di famiglie discriminanti, senza ripetere le prove gia' certificate.
 B4, G6-C e G6-D restano fuori perimetro.
