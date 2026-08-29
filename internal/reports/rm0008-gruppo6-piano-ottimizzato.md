@@ -2393,6 +2393,10 @@ per 671 sorgenti private e
 `sha256:f66473c54d13f7dedb43b8f357f04b7da83f906d6e2e42c0296b44bd14e29a46`
 per 659 sorgenti pubbliche.
 
-Il solo elemento non ancora provato e' il wrapper root `systemd-run`, non
-eseguibile localmente senza password `sudo`. La nuova matrice GitHub e' la sua
-prova necessaria. Fino al successo di tutti i job non si passa al nucleo B3.
+Il wrapper root `systemd-run`, non eseguibile localmente senza password `sudo`,
+e' stato provato dalla matrice pubblica. Il commit sorgente `afd53ebe` e il
+commit pubblico `86e69ec5b95b5c88af924db3bc027e774bd06ea7` hanno prodotto il
+run `33259624116`: tutti i job sono `success`, compresi Birth delegato Ubuntu,
+suite completa Windows e riepilogo di certificazione. La base architetturale
+B3 converge quindi a errore zero. Il passo successivo e' il nucleo preparatore
+B3; RM-0008 non e' chiuso.

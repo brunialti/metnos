@@ -1166,8 +1166,11 @@ Evidenza locale del candidato corrente:
 - suite pubblica completa: `749 passed, 25 skipped`;
 - publisher `--check`: root privato/pubblico coerenti e zero PII/segreti.
 
-La replica locale del wrapper root `systemd-run` non e' stata eseguita perche'
-`sudo` richiede una password interattiva. La stessa prova verra' eseguita dalla
-seconda matrice GitHub. Il prossimo passo unico e' commit su `main`,
-pubblicazione incrementale e osservazione di tutti i job a `success`; dopo si
-riprende il nucleo preparatore B3. RM-0008 resta `active`.
+La replica locale del wrapper root `systemd-run` non era eseguibile senza
+password `sudo`; e' stata quindi lasciata, correttamente, alla matrice pubblica.
+Il commit sorgente e' `afd53ebe`; l'export incrementale sul solo `main` pubblico
+e' `86e69ec5b95b5c88af924db3bc027e774bd06ea7`. Il run GitHub
+`33259624116` ha concluso con tutti i job a `success`, compresi Birth delegato
+Ubuntu, suite completa Windows e riepilogo finale. L'errore della base
+architetturale B3 e' quindi zero. Il prossimo passo unico e' il nucleo
+preparatore B3; RM-0008 resta `active`.

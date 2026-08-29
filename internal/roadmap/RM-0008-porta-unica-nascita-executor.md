@@ -6,12 +6,10 @@
 > `internal/reports/rm0008-adversarial-evidence-20260825.md` · implementazione
 > autorizzata e in corso: gruppi 1-5 della ripresa (§23.6) completati e verdi
 > su Linux/Windows; G6-A completato e certificato pubblicamente con errore
-> zero; G6-B1 e G6-B2 completati; base architetturale G6-B3 approvata e
-> pubblicata. La prima matrice ha chiuso 7 job su 8 e ha isolato un solo errore
-> Linux: il Python non-venv di GitHub non era visibile dentro Bubblewrap. La
-> correzione a prefisso esatto e' approvata con P0/P1/P2 a zero e verde
-> localmente; commit e seconda matrice pubblica sono il passo corrente;
-> nucleo G6-B3, G6-B4/G6-C/G6-D e F4-F6 non ancora completati
+> zero; G6-B1 e G6-B2 completati; base architetturale G6-B3 approvata,
+> pubblicata e certificata con errore zero su Linux/Windows nel run pubblico
+> `33259624116`; il prossimo incremento e' il nucleo preparatore G6-B3;
+> G6-B4/G6-C/G6-D e F4-F6 non ancora completati
 
 ## 1. Obiettivo
 
