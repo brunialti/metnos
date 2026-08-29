@@ -465,6 +465,42 @@ sulla futura dismissione di Node.js 20 nelle azioni di upload e download non
 sono errori e non cambiano il risultato. G6-B2 e' quindi chiuso con errore
 pubblico zero; RM-0008 resta `candidate-not-certified` per B3, B4, G6-C e G6-D.
 
+### Sottoincremento G6-B3 in corso
+
+Il perimetro B3 e' stato nuovamente delimitato prima del codice. B3 puo'
+preparare una distribuzione e restituire una capacita' opaca, ma non puo'
+pubblicare la release finale, installare unita', creare claim o produrre il
+record `PREPARED`. La nuova autorita' privata materializza soltanto la chiave
+`distribution` dalla radice fissa; non carica e non espone le chiavi `cutover`
+o `head`. E' nominale, non copiabile e non serializzabile. Le sue 50 prove
+iniziali, la compilazione e la guardia chiusa sono verdi. Il riesame separato
+ha chiesto di normalizzare anche una capability emessa ma alterata e di
+congelare i limiti del payload di firma. Le due correzioni sono provate con
+token sostituito o cancellato e payload vuoto, di tipo errato, al massimo
+esatto e al massimo piu' uno. Il verdetto finale dell'autorita' e'
+`APPROVATO`, con `P0=0`, `P1=0`, `P2=0`.
+
+I codec portabili dei descrittori di installazione, predecessore e prerequisito
+di avvio sono implementati con schema chiuso, JSON canonico, domini separati e
+controlli dei legami fra campi. Il primo riesame ha trovato e fatto correggere
+tre aperture: programma amministrativo arbitrario, nome di unita' fuori
+grammatica e una falsa dichiarazione di copertura nel nome di una prova. Il
+codec ora ammette l'unico `deployment/admin/preflight.py`, richiede almeno
+un'unita' valida e prova JSON non canonico e chiavi duplicate su tutti e tre i
+formati. Il riesame finale e' `APPROVATO`, con `P0=0`, `P1=0`, `P2=0`, e ha
+rieseguito `142 passed`.
+
+La regressione Windows allargata a codec, sorgente ricevuta e autorita' ha
+inizialmente individuato due prove che tentavano di sostituire `os.geteuid`
+senza predisporre l'attributo assente su Windows. La sola seam di prova e' stata
+corretta; la ripetizione finale, inclusi i riproduttori dei due riesami, ha dato
+`76 passed, 34 skipped`. La regressione Linux combinata di manifesto,
+catalogo, tre codec, sorgente ricevuta e autorita' ha dato
+`184 passed, 1 skipped`; guardia chiusa e `git diff --check` sono verdi. Questo
+autorizza il commit privato incrementale della base B3, non la chiusura di B3
+ne' un commit pubblico: il nucleo preparatore e la capacita' preparata mancano
+ancora.
+
 ## Decisioni gia' fissate
 
 - Il piano amministrativo vive fuori dalle release ed e' posseduto da `root`.

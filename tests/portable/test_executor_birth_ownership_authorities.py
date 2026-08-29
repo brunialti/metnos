@@ -1,18 +1,24 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
+import pickle
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 import pytest
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import executor_birth_ownership_authorities as authority_module
 import install.birth_ownership_authority_provisioner as provisioner_module
-from executor_birth_distribution_manifest import DistributionRegistry
+from executor_birth_distribution_manifest import (
+    SIGNATURE_DOMAIN as DISTRIBUTION_SIGNATURE_DOMAIN_V1,
+    DistributionRegistry,
+)
 from executor_birth_ownership_authorities import (
     OwnershipAuthorityError, OwnershipPublicRegistriesV1,
     _PRIVATE_BASENAMES, _REGISTRY_BASENAMES, _load_private_at_v1,
@@ -67,7 +73,210 @@ def test_product_authority_surface_is_explicitly_linux_only(monkeypatch):
     with pytest.raises(OwnershipAuthorityError, match="platform_unsupported"):
         authority_module.load_root_ownership_authorities_v1()
     with pytest.raises(OwnershipAuthorityError, match="platform_unsupported"):
+        authority_module._load_distribution_signing_authority_v1()
+    with pytest.raises(OwnershipAuthorityError, match="platform_unsupported"):
         provisioner_module.provision_root_ownership_authorities_v1()
+
+
+def test_distribution_signer_refuses_platform_and_uid_before_io(monkeypatch):
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("filesystem authority was reached")
+
+    monkeypatch.setattr(
+        authority_module, "_managed_authority_platform_supported_v1",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        authority_module.os, "geteuid", unexpected, raising=False,
+    )
+    monkeypatch.setattr(authority_module, "_root_owned_chain", unexpected)
+    monkeypatch.setattr(
+        authority_module, "_load_distribution_signing_material_at_v1",
+        unexpected,
+    )
+    with pytest.raises(OwnershipAuthorityError, match="platform_unsupported"):
+        authority_module._load_distribution_signing_authority_v1()
+
+    monkeypatch.setattr(
+        authority_module, "_managed_authority_platform_supported_v1",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        authority_module.os, "geteuid", lambda: 1000, raising=False,
+    )
+    with pytest.raises(OwnershipAuthorityError, match="root_required"):
+        authority_module._load_distribution_signing_authority_v1()
+
+
+def test_distribution_signer_capability_is_opaque_nominal_and_domain_bound(
+    monkeypatch,
+):
+    distribution = Ed25519PrivateKey.generate()
+    authorities = authority_module._root_ownership_authorities_for_test(
+        distribution, Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate(),
+    )
+    observed = []
+    monkeypatch.setattr(
+        authority_module, "_managed_authority_platform_supported_v1",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        authority_module.os, "geteuid", lambda: 0, raising=False,
+    )
+    monkeypatch.setattr(
+        authority_module, "_root_owned_chain",
+        lambda path: observed.append((Path(path), "chain")),
+    )
+
+    def load_material(path, *, root_owned):
+        observed.append((Path(path), root_owned))
+        return distribution, authorities.public
+
+    monkeypatch.setattr(
+        authority_module, "_load_distribution_signing_material_at_v1",
+        load_material,
+    )
+    monkeypatch.setattr(
+        authority_module, "_birth_public_keys_v1", lambda: frozenset(),
+    )
+    capability = authority_module._load_distribution_signing_authority_v1()
+    payload = b'{"closed":"distribution"}'
+    signature = authority_module._sign_distribution_payload_v1(
+        capability, payload,
+    )
+    distribution.public_key().verify(
+        signature, DISTRIBUTION_SIGNATURE_DOMAIN_V1 + payload,
+    )
+    with pytest.raises(InvalidSignature):
+        distribution.public_key().verify(
+            signature, b"metnos.executor-birth.ownership-head/v1\0" + payload,
+        )
+    expected_id = next(iter(authorities.public.distribution.keys))
+    assert authority_module._distribution_signing_key_id_v1(capability) == expected_id
+    assert observed == [
+        (authority_module.DEFAULT_AUTHORITY_DIRECTORY_V1, "chain"),
+        (authority_module.DEFAULT_AUTHORITY_DIRECTORY_V1, True),
+    ]
+    for exposed in (
+        "public", "distribution_private", "cutover_private", "head_private",
+    ):
+        assert not hasattr(capability, exposed)
+    for operation in (
+        copy.copy, copy.deepcopy, pickle.dumps,
+    ):
+        with pytest.raises(TypeError):
+            operation(capability)
+
+    capability_type = authority_module._DistributionSigningAuthorityV1
+    with pytest.raises(OwnershipAuthorityError, match="untrusted"):
+        capability_type(object(), object())
+    forged = object.__new__(capability_type)
+    with pytest.raises(OwnershipAuthorityError, match="untrusted"):
+        authority_module._sign_distribution_payload_v1(forged, payload)
+
+    portable = authority_module._distribution_signing_authority_for_test_v1(
+        distribution,
+    )
+    with pytest.raises(OwnershipAuthorityError, match="untrusted"):
+        authority_module._sign_distribution_payload_v1(portable, payload)
+    with pytest.raises(OwnershipAuthorityError, match="untrusted"):
+        authority_module._sign_distribution_payload_for_test_v1(
+            capability, payload,
+        )
+    portable_signature = (
+        authority_module._sign_distribution_payload_for_test_v1(
+            portable, payload,
+        )
+    )
+    distribution.public_key().verify(
+        portable_signature, DISTRIBUTION_SIGNATURE_DOMAIN_V1 + payload,
+    )
+
+    for operation in ("replace", "delete"):
+        altered = authority_module._distribution_signing_authority_for_test_v1(
+            distribution,
+        )
+        if operation == "replace":
+            altered._token = object()
+        else:
+            del altered._token
+        with pytest.raises(OwnershipAuthorityError, match="untrusted"):
+            authority_module._sign_distribution_payload_for_test_v1(
+                altered, payload,
+            )
+
+
+def test_distribution_signer_payload_limits_are_exact():
+    distribution = Ed25519PrivateKey.generate()
+    authority = authority_module._distribution_signing_authority_for_test_v1(
+        distribution,
+    )
+    maximum = authority_module.MAX_DISTRIBUTION_PAYLOAD_BYTES_V1
+    payload = b"a" * maximum
+    signature = authority_module._sign_distribution_payload_for_test_v1(
+        authority, payload,
+    )
+    distribution.public_key().verify(
+        signature, DISTRIBUTION_SIGNATURE_DOMAIN_V1 + payload,
+    )
+    for invalid in (b"", memoryview(b"a"), b"a" * (maximum + 1)):
+        with pytest.raises(OwnershipAuthorityError, match="invalid"):
+            authority_module._sign_distribution_payload_for_test_v1(
+                authority, invalid,
+            )
+
+
+@linux_managed
+def test_distribution_signer_materializes_only_distribution_private_key(
+    tmp_path, monkeypatch,
+):
+    root = _root(tmp_path)
+    provisioned = _provision_ownership_authorities_at_v1(
+        root, forbidden_public_keys=(), root_owned=False,
+    )
+    directory = root / "authorities-v1"
+    private_reads = []
+    original_read = authority_module._read_regular
+
+    def record_read(path, **kwargs):
+        if Path(path).name in _PRIVATE_BASENAMES.values():
+            private_reads.append(Path(path).name)
+        return original_read(path, **kwargs)
+
+    monkeypatch.setattr(authority_module, "_read_regular", record_read)
+    private, public = authority_module._load_distribution_signing_material_at_v1(
+        directory, root_owned=False,
+    )
+    assert private_reads == [_PRIVATE_BASENAMES["distribution"]]
+    assert (
+        private.public_key().public_bytes_raw()
+        == provisioned.distribution_private.public_key().public_bytes_raw()
+    )
+    assert public == provisioned.public
+
+
+@linux_managed
+def test_distribution_signer_rejects_private_registry_mismatch(tmp_path):
+    root = _root(tmp_path)
+    _provision_ownership_authorities_at_v1(
+        root, forbidden_public_keys=(), root_owned=False,
+    )
+    directory = root / "authorities-v1"
+    replacement = Ed25519PrivateKey.generate().private_bytes_raw()
+    (directory / _PRIVATE_BASENAMES["distribution"]).write_bytes(replacement)
+    with pytest.raises(OwnershipAuthorityError, match="private binding"):
+        authority_module._load_distribution_signing_material_at_v1(
+            directory, root_owned=False,
+        )
+
+
+def test_distribution_signing_surface_remains_private():
+    assert not {
+        "_DistributionSigningAuthorityV1",
+        "_load_distribution_signing_authority_v1",
+        "_distribution_signing_key_id_v1",
+        "_sign_distribution_payload_v1",
+    } & set(authority_module.__all__)
 
 
 @pytest.mark.parametrize("kind", ["distribution", "cutover", "head"])
