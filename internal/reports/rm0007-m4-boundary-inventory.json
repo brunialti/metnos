@@ -109,6 +109,196 @@
       "phase": "M4"
     },
     {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "<module>",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_copy_source_file_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_copy_source_file_v1.copied_chunks",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_create_private_directory_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_create_source_directories_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_ensure_child_directory_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_open_received_tree_at_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_receive_source_for_test_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_receive_source_locked_core_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_receive_source_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_receive_source_with_product_session_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_receive_source_with_test_session_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_remove_owned_tree_at_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_rename_no_replace_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_seal_temporary_directories_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_verify_received_tree_fd_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_write_all_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_write_descriptor_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "main",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
       "path": "install/phases/phase3_code.py",
       "scope": "_activate_prepared_report",
       "role": "migration_boundary",
@@ -3389,6 +3579,25 @@
       "install/birth_ownership_authority_provisioner.py:_sync_directory",
       "install/birth_ownership_authority_provisioner.py:_write_exclusive",
       "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
+      "install/executor_birth_source_receiver.py:<module>",
+      "install/executor_birth_source_receiver.py:_copy_source_file_v1",
+      "install/executor_birth_source_receiver.py:_copy_source_file_v1.copied_chunks",
+      "install/executor_birth_source_receiver.py:_create_private_directory_v1",
+      "install/executor_birth_source_receiver.py:_create_source_directories_v1",
+      "install/executor_birth_source_receiver.py:_ensure_child_directory_v1",
+      "install/executor_birth_source_receiver.py:_open_received_tree_at_v1",
+      "install/executor_birth_source_receiver.py:_receive_source_for_test_v1",
+      "install/executor_birth_source_receiver.py:_receive_source_locked_core_v1",
+      "install/executor_birth_source_receiver.py:_receive_source_v1",
+      "install/executor_birth_source_receiver.py:_receive_source_with_product_session_v1",
+      "install/executor_birth_source_receiver.py:_receive_source_with_test_session_v1",
+      "install/executor_birth_source_receiver.py:_remove_owned_tree_at_v1",
+      "install/executor_birth_source_receiver.py:_rename_no_replace_v1",
+      "install/executor_birth_source_receiver.py:_seal_temporary_directories_v1",
+      "install/executor_birth_source_receiver.py:_verify_received_tree_fd_v1",
+      "install/executor_birth_source_receiver.py:_write_all_v1",
+      "install/executor_birth_source_receiver.py:_write_descriptor_v1",
+      "install/executor_birth_source_receiver.py:main",
       "runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher._persist_current_reattestation",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",

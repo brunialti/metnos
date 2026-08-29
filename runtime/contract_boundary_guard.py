@@ -161,6 +161,27 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_write_exclusive": ("store_write",),
         "provision_root_ownership_authorities_v1": ("store_write",),
     },
+    "executor_birth_source_receiver": {
+        "<module>": ("store_write",),
+        "_copy_source_file_v1": ("store_write",),
+        "_create_private_directory_v1": ("store_write",),
+        "_create_source_directories_v1": ("store_write",),
+        "_ensure_child_directory_v1": ("store_write",),
+        "_open_received_tree_at_v1": ("store_write",),
+        "_receive_source_for_test_v1": ("store_write",),
+        "_receive_source_locked_core_v1": ("store_write",),
+        "_receive_source_v1": ("store_write",),
+        "_receive_source_with_product_session_v1": ("store_write",),
+        "_receive_source_with_test_session_v1": ("store_write",),
+        "_remove_owned_tree_at_v1": ("store_write",),
+        "_rename_no_replace_v1": ("store_write",),
+        "_seal_temporary_directories_v1": ("store_write",),
+        "_verify_received_tree_fd_v1": ("store_write",),
+        "_write_all_v1": ("store_write",),
+        "_write_descriptor_v1": ("store_write",),
+        "copied_chunks": ("store_write",),
+        "main": ("store_write",),
+    },
 }
 BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth": frozenset({"executor_birth", "runtime.executor_birth"}),
@@ -206,6 +227,9 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "birth_ownership_authority_provisioner": frozenset({
         "install.birth_ownership_authority_provisioner",
     }),
+    "executor_birth_source_receiver": frozenset({
+        "install.executor_birth_source_receiver",
+    }),
 }
 BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/executor_birth.py": "executor_birth",
@@ -225,6 +249,9 @@ BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     ),
     "install/birth_ownership_authority_provisioner.py": (
         "birth_ownership_authority_provisioner"
+    ),
+    "install/executor_birth_source_receiver.py": (
+        "executor_birth_source_receiver"
     ),
 }
 READ_OPERATIONS = frozenset({
@@ -335,6 +362,25 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "install/birth_ownership_authority_provisioner.py:_sync_directory",
     "install/birth_ownership_authority_provisioner.py:_write_exclusive",
     "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
+    "install/executor_birth_source_receiver.py:<module>",
+    "install/executor_birth_source_receiver.py:_copy_source_file_v1",
+    "install/executor_birth_source_receiver.py:_copy_source_file_v1.copied_chunks",
+    "install/executor_birth_source_receiver.py:_create_private_directory_v1",
+    "install/executor_birth_source_receiver.py:_create_source_directories_v1",
+    "install/executor_birth_source_receiver.py:_ensure_child_directory_v1",
+    "install/executor_birth_source_receiver.py:_open_received_tree_at_v1",
+    "install/executor_birth_source_receiver.py:_receive_source_for_test_v1",
+    "install/executor_birth_source_receiver.py:_receive_source_locked_core_v1",
+    "install/executor_birth_source_receiver.py:_receive_source_v1",
+    "install/executor_birth_source_receiver.py:_receive_source_with_product_session_v1",
+    "install/executor_birth_source_receiver.py:_receive_source_with_test_session_v1",
+    "install/executor_birth_source_receiver.py:_remove_owned_tree_at_v1",
+    "install/executor_birth_source_receiver.py:_rename_no_replace_v1",
+    "install/executor_birth_source_receiver.py:_seal_temporary_directories_v1",
+    "install/executor_birth_source_receiver.py:_verify_received_tree_fd_v1",
+    "install/executor_birth_source_receiver.py:_write_all_v1",
+    "install/executor_birth_source_receiver.py:_write_descriptor_v1",
+    "install/executor_birth_source_receiver.py:main",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
     "runtime/executor_birth_ownership_chain.py:_OwnershipChainStoreForTest._initialize_with_authorities",
     "runtime/executor_birth_ownership_chain.py:_ensure_exact_directory_v1",

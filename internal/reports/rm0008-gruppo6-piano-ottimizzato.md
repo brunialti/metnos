@@ -340,8 +340,12 @@ separatori senza spazi, nessun duplicato, nessun numero in virgola mobile,
 nessun valore non finito e nessun campo aggiuntivo. Gli interi non ammettono
 booleani. Ogni digest usa la forma `sha256:<64 cifre esadecimali minuscole>`.
 Percorsi relativi e assoluti usano le stesse regole chiuse gia' applicate dal
-manifesto della distribuzione. Ogni caricatore limita la dimensione prima di
-decodificare.
+manifesto della distribuzione. Ogni percorso relativo contiene al massimo 32
+componenti. Questo limite vale per ogni campo relativo dei formati nuovi:
+file, `boundary_inventory_path`, `preflight_entrypoint`, locator relativi del
+catalogo e percorsi relativi dei descrittori definiti nei §§3.5.2-3.5.4. Il
+manifesto applica la stessa soglia; 32 componenti sono ammessi e 33 sono
+rifiutati. Ogni caricatore limita la dimensione prima di decodificare.
 
 #### 3.5.0 Descrittore della sorgente ricevuta
 
@@ -357,7 +361,10 @@ descrittore di installazione. `files` contiene da uno a 20.000 elementi,
 ordinati per i byte UTF-8 del percorso, ciascuno con esattamente `path`, `size`,
 `content_hash`, `mode`. Il totale non supera 2 GiB. I percorsi sono relativi
 canonici; dimensione, digest e modo (`420` o `493`) coincidono con file regolari
-copiati senza seguire link. `content_hash` usa il dominio
+copiati senza seguire link. I percorsi dei file inducono al massimo 20.000
+distinti percorsi-antenato propri: la radice content-addressed e
+`received-source-v1.json` non sono contati. Ogni directory deve essere un
+antenato di almeno un file; le directory vuote sono rifiutate. `content_hash` usa il dominio
 `metnos.executor-birth.received-source-file/v1\0` con percorso e dimensione
 incorniciati prima dei byte. `source_id` usa il dominio
 `metnos.executor-birth.received-source/v1\0` sul documento senza quel campo.

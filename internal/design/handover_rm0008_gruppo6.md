@@ -390,6 +390,63 @@ Verdetto consolidato: `P1=0`, `P2=0`. L'aggiunta di questo paragrafo registra
 soltanto il verdetto e non modifica il piano approvato. G6-A puo' iniziare; gli
 incrementi successivi restano chiusi fino al criterio di uscita di G6-A.
 
+### Sottoincremento G6-B2 pronto per la certificazione pubblica
+
+Il codec portabile `received-source-v1` e il ricevitore Linux root-only sono
+implementati, ma G6-B2 non e' ancora dichiarato chiuso. Il codec applica JSON
+canonico, schema chiuso, modi ammessi e calcolo content-addressed in streaming.
+I limiti normativi sono ora condivisi dal codec e dal ricevitore: descrittore
+da 16 MiB, 20.000 file, 20.000 directory, profondita' massima di 32 componenti
+e 2 GiB complessivi. Costruzione e decodifica provano sia il massimo ammesso
+sia il primo valore rifiutato. Il ricevitore usa la radice produttiva unica
+definita dalle autorita' G6-A, acquisisce il blocco di deployment esistente e
+non accetta una radice o un blocco scelti dal chiamante produttivo.
+
+La transazione verifica due fotografie della sorgente, rifiuta link, hardlink,
+oggetti speciali, sostituzioni e sovrapposizioni con la radice amministrativa,
+quindi pubblica con due rename senza sovrascrittura e rilettura completa. I
+controlli dell'account comprendono linger, gestore utente, tutti i percorsi
+home e runtime caricabili da systemd e otto radici globali. Ogni directory o
+unita' gia' esistente e scrivibile dall'account viene rifiutata; ACL non
+valutabili in modo autonomo sono rifiutate. Un prefisso vuoto, owner-only e
+`0700`, lasciato da un arresto fra `mkdir` e `fchmod`, viene completato in modo
+handle-bound; stati diversi restano chiusi.
+
+Scansione, apertura dei file, verifica e pulizia sono iterative e chiudono i
+descrittori anche sui rami TOCTOU di errore. L'uso dei descrittori dipende dalla
+profondita' limitata e non dal numero di directory sorelle; una prova con
+ottanta directory sotto `RLIMIT_NOFILE=64` e la pulizia alla profondita'
+massima sono verdi. Una pulizia interrotta dopo il primo file puo' essere
+ripetuta in sicurezza. Tutti i diciannove scope che esercitano o propagano
+scritture sono classificati `store_write` dalla guardia e dall'inventario.
+
+Un solo harness multiprocesso attraversa l'entrata produttiva root e usa lo
+stesso albero non banale con file da 2 MiB, fratelli e sottodirectory. Il figlio
+viene realmente terminato con `SIGKILL` in otto punti: prima della prima
+scrittura, a meta' file, dopo un file, dopo il `fsync` della sottodirectory,
+prima del rename, subito dopo il rename, prima e dopo il `fsync` del parent. I
+cinque residui ancora privati danno soltanto
+`birth_ownership_recovery_required`; i tre stati strutturati convergono al
+retry e vengono riletti integralmente. La cella root isolata e' verde anche
+nel percorso normale e non modifica il server reale.
+
+La regressione mirata corrente ha dato `211 passed, 5 skipped`; la suite
+portabile completa ha dato `588 passed, 25 skipped`. Le guardie normale e
+`--birth-closed`, la cella Linux root isolata e `git diff --check` sono verdi.
+I due riesami avversariali indipendenti finali hanno approvato lo snapshot con
+`P0=0`, `P1=0`, `P2=0`; il riesame esterno ha ripetuto `130 passed, 2 skipped`
+e ha verificato in modo causale il punto di arresto dopo il vero `fsync` della
+sottodirectory.
+
+L'esportazione pubblica finale contiene 1.581 file e ha superato il controllo
+anti-PII e anti-segreti con zero rilievi. Sullo stesso export la selezione
+portabile B2 ha dato `130 passed, 2 skipped` su Linux. La prova diretta sul PC
+Windows raggiunto tramite `192.168.1.137`, con Python 3.14, ha dato
+`103 passed, 29 skipped`: gli skip sono esclusivamente prove che richiedono
+Linux o privilegi root. Resta soltanto la pubblicazione incrementale su
+`main` e il conseguente ciclo GitHub pubblico. Fino a quel ciclo lo stato
+resta `candidate-not-certified`.
+
 ## Decisioni gia' fissate
 
 - Il piano amministrativo vive fuori dalle release ed e' posseduto da `root`.
@@ -416,13 +473,11 @@ incrementi successivi restano chiusi fino al criterio di uscita di G6-A.
 
 ## Prossimo passo unico
 
-G6-A e G6-B1 sono chiusi con errore zero. Il prossimo incremento e'
-esclusivamente G6-B2: ricevitore root-only e transazione content-addressed da
-sorgente a `source_id`. Prima del codice ridurre la famiglia di prove B2 ai
-soli rischi non gia' coperti da manifesto e catalogo; poi usare un solo albero
-non banale e un solo harness di ripresa per account, link, hardlink,
-sostituzione, idempotenza e assenza di mutazioni sulle altre radici. Non
-anticipare preparatore B3, pubblicazione B4, G6-C o G6-D e non esporre claim,
+G6-A e G6-B1 sono chiusi con errore zero. G6-B2 ha superato i due riesami
+avversariali e le prove Linux e Windows sull'esportazione pubblica. Pubblicare
+un solo commit incrementale su `main`, attendere tutti i lavori GitHub e
+dichiarare B2 chiuso soltanto con errore pubblico zero. Non anticipare
+preparatore B3, pubblicazione B4, G6-C o G6-D e non esporre claim,
 disposizione o `PREPARED`.
 
 ## Regole operative
