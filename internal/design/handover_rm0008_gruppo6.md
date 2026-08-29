@@ -539,6 +539,22 @@ sono entrambi `APPROVATO`, con `P0=0`, `P1=0`, `P2=0`. Il blocco normativo e'
 quindi rimosso e l'implementazione B3 puo' iniziare dai byte definitivi del
 programma amministrativo.
 
+Il primo incremento del programma amministrativo e' ora presente ma non
+ancora committato: contiene soltanto i contratti puri per CLI, JSON canonico,
+identificativi e percorsi, argv/output `systemctl`, versione manager, parole e
+durate systemd, strutture `Exec*` e timer. Non collega ancora `main`, non legge
+le radici reali e non avvia processi. Prima delle prove sono stati corretti
+sette errori causali della bozza, fra cui flag vuoti `Exec*Ex`, forma reale di
+`TimersMonotonic`, valori `Install` gia' risolti, limiti UTF-8 e uso improprio
+del filesystem in un parser puro. Le due revisioni avversariali hanno poi
+fatto correggere processi `Exec` gia' terminati, campi dinamici iniettati,
+interi e profondita' JSON ostili, il massimo positivo di 20.000 file, percorsi
+non canonici, unita' residue `.socket`/`.mount` e apertura della lista di
+proprieta' ripetibili. La famiglia finale ha dato `23 passed` sia su Linux sia
+sul PC Windows 192.168.1.137 con Python 3.14. Entrambi i verdetti finali sono
+`APPROVATO`, con `P0=0`, `P1=0`, `P2=0`; questo primo incremento puro e'
+quindi committabile, ma non rende ancora eseguibili i tre comandi.
+
 Il PC Windows riavviato e' nuovamente raggiungibile in SSH diretto a
 `192.168.1.137`: risponde come `ROBERTO_PC_HP` con Python 3.14.0. Non e' stato
 ancora usato per nuovo codice B3, perche' il programma amministrativo resta
