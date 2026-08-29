@@ -390,7 +390,7 @@ Verdetto consolidato: `P1=0`, `P2=0`. L'aggiunta di questo paragrafo registra
 soltanto il verdetto e non modifica il piano approvato. G6-A puo' iniziare; gli
 incrementi successivi restano chiusi fino al criterio di uscita di G6-A.
 
-### Sottoincremento G6-B2 pronto per la certificazione pubblica
+### Sottoincremento G6-B2 completato e certificato pubblicamente
 
 Il codec portabile `received-source-v1` e il ricevitore Linux root-only sono
 implementati, ma G6-B2 non e' ancora dichiarato chiuso. Il codec applica JSON
@@ -456,9 +456,14 @@ l'implementazione per inseguire questi risultati. La correzione unica
 ripristina il workflow congelato al digest normativo
 `3e953be12480be9a4e6dfa19812a053492b5e26e155c9ecb7b749c29bde135e9`.
 Il test root B2 resta nella suite e verra' collegato al runner Linux isolato
-comune a B2-B4 previsto dal piano, senza duplicare la matrice. Resta da
-pubblicare questa correzione e ottenere errore pubblico zero; fino ad allora
-lo stato resta `candidate-not-certified`.
+comune a B2-B4 previsto dal piano, senza duplicare la matrice.
+
+La correzione privata e' `23a400ee` e il commit pubblico e' `19c6e63`. Il ciclo
+GitHub `33223120603` ha concluso con successo tutti i nove lavori: suite
+complete Linux e Windows, sei celle 2A e riepilogo finale bloccante. Gli avvisi
+sulla futura dismissione di Node.js 20 nelle azioni di upload e download non
+sono errori e non cambiano il risultato. G6-B2 e' quindi chiuso con errore
+pubblico zero; RM-0008 resta `candidate-not-certified` per B3, B4, G6-C e G6-D.
 
 ## Decisioni gia' fissate
 
@@ -486,11 +491,11 @@ lo stato resta `candidate-not-certified`.
 
 ## Prossimo passo unico
 
-G6-A e G6-B1 sono chiusi con errore zero. G6-B2 ha superato i due riesami
-avversariali e le prove Linux e Windows sull'esportazione pubblica. Revisionare
-la sola correzione che ripristina il workflow congelato, pubblicarla con un
-commit incrementale su `main`, attendere tutti i lavori GitHub e dichiarare B2
-chiuso soltanto con errore pubblico zero. Non anticipare preparatore B3,
+G6-A, G6-B1 e G6-B2 sono chiusi con errore zero. Il prossimo incremento e'
+soltanto G6-B3: nucleo preparatore bloccato, autorita' privata letta a freddo,
+artefatti riletti integralmente e capacita' nominale priva di percorsi. Prima
+del codice rileggere il piano approvato e delimitare la singola famiglia di
+prove B3, senza duplicare prove gia' certificate in B1 o B2. Non anticipare
 pubblicazione B4, G6-C o G6-D e non esporre claim, disposizione o `PREPARED`.
 
 ## Regole operative
