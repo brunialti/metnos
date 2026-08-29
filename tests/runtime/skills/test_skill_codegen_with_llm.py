@@ -179,6 +179,14 @@ class TestGenerateDescriptionOrFallback:
         assert result["description_en"] == "BOILER EN"
         assert result["affinity"] == ["b1", "b2"]
 
+    @pytest.mark.parametrize("override", ["other.fake", "__fake_llm__.missing"])
+    def test_unapproved_fake_never_falls_through_to_real_llm(
+            self, monkeypatch, override):
+        monkeypatch.setenv("METNOS_LLM_DESCRIPTION_FAKE", override)
+        from skill_description_llm import _call_llm
+
+        assert _call_llm("must not reach a provider", timeout_s=0.01) is None
+
     def test_llm_bare_affinity_uses_qualified_baseline(
             self, isolated_user_data, monkeypatch, fake_plan,
             fake_parsed_skill):

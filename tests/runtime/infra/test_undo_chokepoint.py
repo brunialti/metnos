@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
@@ -160,9 +161,9 @@ def test_undo_selects_local_spreadsheet_branch_just_in_time(
     assert not destination.exists()
 
 
-def test_unknown_manifest_pattern_falls_back_to_module_reverse(
+def test_unknown_manifest_pattern_cannot_extend_the_unsandboxed_broker(
         tmp_path, monkeypatch):
-    """Un pattern legacy ignoto non deve oscurare un reverse() funzionante."""
+    """Un pattern legacy ignoto non puo' eseguire codice nel broker undo."""
     sys.path.insert(0, str(_RUNTIME.parent / "executors" / "undo_last_turn"))
     try:
         import undo_last_turn as ult
@@ -174,6 +175,21 @@ def test_unknown_manifest_pattern_falls_back_to_module_reverse(
         "    return {'ok': True, 'ok_count': 1, 'fail_count': 0}\n",
         encoding="utf-8",
     )
+    digest = "sha256:" + __import__("hashlib").sha256(
+        code.read_bytes(),
+    ).hexdigest()
+    manifest = tmp_path / "manifest.toml"
+    manifest_bytes = (
+        b'name = "legacy_delete"\nrevertible = true\n'
+        b'reverse_pattern = "restore_legacy"\n\n'
+        b'[code]\nfiles = ["legacy_reverse.py"]\n'
+        + f'digest = "{digest}"\n'.encode("utf-8")
+    )
+    manifest.write_bytes(manifest_bytes)
+    private = Ed25519PrivateKey.generate()
+    manifest.with_name("manifest.toml.sig").write_bytes(
+        private.sign(manifest_bytes),
+    )
     log_path = tmp_path / "undo.jsonl"
     from undo import UndoLog
     log = UndoLog(log_path)
@@ -183,18 +199,69 @@ def test_unknown_manifest_pattern_falls_back_to_module_reverse(
     ex = SimpleNamespace(
         name="legacy_delete", revertible=True,
         reverse_pattern="restore_legacy", code_path=code,
-        manifest_path=tmp_path / "manifest.toml",
+        manifest_path=manifest,
         code_files=(code.name,),
-        digest=("sha256:" + __import__("hashlib").sha256(
-            code.read_bytes()).hexdigest()),
+        digest=digest,
+    )
+    catalog = SimpleNamespace(get=lambda name: ex)
+    monkeypatch.setattr(ult, "load_catalog", lambda: catalog)
+    monkeypatch.setattr(
+        "admitted_module_v1._invalidate_catalog_cache_at_start_v1", lambda: None,
     )
     monkeypatch.setattr(
-        ult, "load_catalog", lambda: SimpleNamespace(get=lambda name: ex))
+        "admitted_module_v1._load_catalog_at_start_v1", lambda: catalog,
+    )
+    monkeypatch.setattr(
+        "admitted_module_v1._trusted_public_keys_v1",
+        lambda: (private.public_key(),),
+    )
 
     out = ult.invoke({"log_path": str(log_path), "_actor": "host"})
 
-    assert out["ok"] is True
-    assert out["undone_count"] == 1
+    assert out["ok"] is False
+    assert out["undone_count"] == 0
+    assert out["skipped_count"] == 1
+
+
+def test_known_pattern_receives_the_same_catalog_snapshot(
+        tmp_path, monkeypatch):
+    sys.path.insert(0, str(_RUNTIME.parent / "executors" / "undo_last_turn"))
+    try:
+        import undo_last_turn as ult
+    finally:
+        sys.path.pop(0)
+    from undo import UndoLog
+
+    log_path = tmp_path / "undo.jsonl"
+    log = UndoLog(log_path)
+    log.append_pending(
+        "op-snapshot", "turn-snapshot", "delete_files", {},
+        plan={}, actor="host",
+    )
+    log.append_done("op-snapshot", {
+        "ok": True,
+        "results": [{"id": "file-1"}],
+    })
+    executor = SimpleNamespace(
+        name="delete_files", revertible=True,
+        reverse_pattern="delete_files_by_id",
+    )
+    catalog = SimpleNamespace(
+        get=lambda name: executor if name == "delete_files" else None,
+    )
+    observed = []
+    monkeypatch.setattr(ult, "load_catalog", lambda: catalog)
+    monkeypatch.setattr(
+        ult, "apply_patterns",
+        lambda *args, **kwargs: observed.append(kwargs.get("catalog")) or {
+            "ok": True, "ok_count": 1, "fail_count": 0,
+        },
+    )
+
+    result = ult.invoke({"log_path": str(log_path), "_actor": "host"})
+
+    assert result["ok"] is True
+    assert observed == [catalog]
 
 
 def test_changed_custom_reverse_is_refused_before_execution(tmp_path):

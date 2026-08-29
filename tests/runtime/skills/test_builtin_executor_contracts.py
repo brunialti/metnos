@@ -81,6 +81,19 @@ def test_loader_admits_builtins_only_from_their_signed_contracts() -> None:
         assert executor.manifest_path.parent.name == name
 
 
+def test_builtin_handler_source_registry_is_total_and_literal() -> None:
+    import agent_runtime
+
+    assert set(agent_runtime._BUILTIN_TOOL_MODULE_FILES) == set(
+        agent_runtime._BUILTIN_TOOL_HANDLERS
+    )
+    for name, module_file in agent_runtime._BUILTIN_TOOL_MODULE_FILES.items():
+        handler = agent_runtime._BUILTIN_TOOL_HANDLERS[name]
+        assert Path(module_file).stem == handler.__module__.rsplit(".", 1)[-1]
+        assert agent_runtime._builtin_tool_module_path(name) == RUNTIME / module_file
+        assert (RUNTIME / module_file).is_file()
+
+
 def test_builtin_contract_rejects_a_runtime_module_that_differs_from_admitted_bytes(
     tmp_path: Path,
 ) -> None:

@@ -14,12 +14,15 @@ from contract_boundary_guard import (
     BIRTH_CLOSED_OWNER,
     BIRTH_CLOSED_SCHEMA,
     BIRTH_CLOSED_SEALED_MODULES,
+    BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     SCAN_ROOTS,
     SCHEMA,
     ScopeFacts,
     birth_migration_findings,
     birth_closed_findings,
     check,
+    closed_python_source_review_sha256,
+    closed_python_sources_from_root,
     discover,
     render_birth_closed_inventory,
     render_inventory,
@@ -61,6 +64,7 @@ def _closed_inventory(
     exceptions: dict[str, str] | None = None,
 ) -> dict:
     payload = _inventory(facts)
+    payload["source_census"] = BIRTH_CLOSED_SOURCE_REVIEW_SHA256
     exceptions = exceptions or {}
     for entry in payload["entries"]:
         key = f"{entry['path']}:{entry['scope']}"
@@ -94,6 +98,25 @@ def _closed_inventory(
 
 def _codes(findings) -> set[str]:
     return {finding.code for finding in findings}
+
+
+def test_closed_python_source_review_pin_rejects_a_nominal_door_replacement():
+    root = Path(__file__).resolve().parents[3]
+    sources = closed_python_sources_from_root(root)
+
+    assert (
+        closed_python_source_review_sha256(sources)
+        == BIRTH_CLOSED_SOURCE_REVIEW_SHA256
+    )
+    altered = dict(sources)
+    altered["runtime/admitted_module_v1.py"] = (
+        b"def load_admitted_module_v1(executor):\n    exec(executor)\n"
+    )
+
+    assert (
+        closed_python_source_review_sha256(altered)
+        != BIRTH_CLOSED_SOURCE_REVIEW_SHA256
+    )
 
 
 def _fact(facts: list[ScopeFacts], scope: str) -> ScopeFacts:
@@ -552,7 +575,7 @@ def test_same_leaf_module_cannot_impersonate_the_publisher(tmp_path: Path) -> No
     assert "operational_write_without_publish" in _codes(check(facts, inventory))
 
 
-def test_rebound_boundary_symbol_loses_its_authority(tmp_path: Path) -> None:
+def test_rebound_boundary_symbol_is_ambiguous_and_fails_closed(tmp_path: Path) -> None:
     facts = _scan(
         tmp_path,
         "from pathlib import Path\n"
@@ -565,8 +588,29 @@ def test_rebound_boundary_symbol_loses_its_authority(tmp_path: Path) -> None:
     )
     inventory = _inventory(facts, {"install": "operational_producer"})
 
-    assert _fact(facts, "install").capabilities == ("authoring_write",)
-    assert "operational_write_without_publish" in _codes(check(facts, inventory))
+    assert _fact(facts, "install").capabilities == (
+        "ambiguous_local_authority", "authoring_write", "publish_technical",
+    )
+    assert "ambiguous_local_authority" in _codes(check(facts, inventory))
+
+
+@pytest.mark.parametrize("expression", [
+    "globals().get('__builtins__').get('__import__')('runtime.sign')",
+    "getattr(sys.modules.get('builtins'), '__import__')('runtime.sign')",
+])
+def test_nested_reflective_import_access_fails_closed(
+    tmp_path: Path, expression: str,
+) -> None:
+    facts = _scan(
+        tmp_path,
+        "import sys\n"
+        "def mutate():\n"
+        f"    return {expression}\n",
+    )
+    inventory = _inventory(facts, {"mutate": "administrative_tool"})
+
+    assert "dynamic_boundary_access" in _fact(facts, "mutate").capabilities
+    assert "dynamic_boundary_access" in _codes(check(facts, inventory))
 
 
 def test_reflective_boundary_access_fails_closed(tmp_path: Path) -> None:

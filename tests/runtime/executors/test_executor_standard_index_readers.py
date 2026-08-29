@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -25,6 +26,26 @@ import find_images_indices as image_reader  # noqa: E402
 import find_persons_indices as person_reader  # noqa: E402
 from loader import Catalog, _load_dir_into_catalog  # noqa: E402
 from prefilter import rank  # noqa: E402
+
+
+def _sign_projected_record(record, monkeypatch: pytest.MonkeyPatch) -> None:
+    import admitted_module_v1 as admitted
+
+    manifest = Path(record.manifest_path)
+    manifest_bytes = (
+        f'name = "{record.name}"\n\n[code]\n'
+        f'files = ["{record.code_files[0]}"]\n'
+        f'digest = "{record.digest}"\n'
+    ).encode("utf-8")
+    manifest.write_bytes(manifest_bytes)
+    private = Ed25519PrivateKey.generate()
+    manifest.with_name("manifest.toml.sig").write_bytes(
+        private.sign(manifest_bytes),
+    )
+    monkeypatch.setattr(
+        admitted, "_trusted_public_keys_v1",
+        lambda: (private.public_key(),),
+    )
 
 
 def _seed_private_index(base: Path, index_dir: Path) -> None:
@@ -249,6 +270,7 @@ def test_person_alias_uses_the_parent_authenticated_engine_record(
         code_path=code, code_files=(code.name,),
         digest=code_digest_of_bytes_v1([payload]),
     )
+    _sign_projected_record(record, monkeypatch)
     monkeypatch.setenv(
         ADMITTED_EXECUTORS_ENV_V1,
         encode_admitted_executor_records_v1([record]),
@@ -277,6 +299,7 @@ def test_person_alias_refuses_changed_engine_before_execution(
         code_path=code, code_files=(code.name,),
         digest=code_digest_of_bytes_v1([original]),
     )
+    _sign_projected_record(record, monkeypatch)
     monkeypatch.setenv(
         ADMITTED_EXECUTORS_ENV_V1,
         encode_admitted_executor_records_v1([record]),

@@ -2,10 +2,26 @@
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 import sandbox  # noqa: E402
+
+
+def _executor(**changes):
+    values = {
+        "name": "example",
+        "source": "handcrafted",
+        "membership": "builtin",
+        "code_dependencies": (),
+        "capabilities": [],
+        "code_path": Path(__file__),
+    }
+    values.update(changes)
+    return SimpleNamespace(**values)
 
 
 def test_runtime_is_bound_read_only_outside_system_roots(tmp_path, monkeypatch):
@@ -48,3 +64,58 @@ def test_interpreter_dependency_root_survives_later_home_redirection(
     index = args.index(resolved)
     assert args[index - 1] == "--ro-bind"
     assert args[index + 1] == resolved
+
+
+@pytest.mark.parametrize(
+    "executor",
+    (
+        _executor(),
+        _executor(source="synthesized"),
+        _executor(source="imported", membership="third-party"),
+        _executor(code_dependencies=("parent",)),
+    ),
+)
+def test_executor_code_has_no_naked_fallback(
+        executor, monkeypatch):
+    monkeypatch.setenv("METNOS_SANDBOX", "0")
+    monkeypatch.setattr(sandbox, "bwrap_available", lambda: False)
+
+    with pytest.raises(sandbox.SandboxUnavailableError):
+        sandbox.wrap_command(executor, ["python3", "executor.py"])
+
+
+def test_only_the_pinned_builtin_undo_broker_may_use_the_naked_broker_path(
+        monkeypatch):
+    monkeypatch.setenv("METNOS_SANDBOX", "0")
+    monkeypatch.setattr(sandbox, "bwrap_available", lambda: False)
+    trusted = _executor(
+        name="undo_last_turn",
+        capabilities=[{"name": "system:undo"}],
+        digest=sandbox._TRUSTED_UNDO_BROKER_DIGEST_V1,
+        code_files=("undo_last_turn.py",),
+    )
+    hostile = _executor(
+        name="undo_last_turn",
+        capabilities=[{"name": "system:undo"}],
+        digest="sha256:" + "0" * 64,
+        code_files=("undo_last_turn.py",),
+    )
+
+    assert sandbox.wrap_command(trusted, ["python3", "undo.py"]) == [
+        "python3", "undo.py",
+    ]
+    with pytest.raises(sandbox.SandboxUnavailableError):
+        sandbox.wrap_command(hostile, ["python3", "other.py"])
+
+
+def test_default_mounts_do_not_expose_birth_authorities_or_user_store():
+    args = sandbox._build_bwrap_args(Path(__file__), capabilities=[])
+    mounted = {
+        args[index + 1]
+        for index, token in enumerate(args[:-1])
+        if token in {"--bind", "--ro-bind"}
+    }
+
+    assert "/var/lib/metnos/executor-birth" not in mounted
+    assert "/opt" not in mounted
+    assert not any(path.startswith("/home/") for path in mounted)

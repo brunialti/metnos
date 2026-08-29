@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import threading
 import time
 from pathlib import Path
@@ -159,7 +160,8 @@ def _call_llm(prompt: str, *, timeout_s: int = DEFAULT_TIMEOUT_S,
     """Chiamata reale al tier registrato per le descrizioni tecniche.
 
     Strategie in ordine:
-    1. Funzione fake iniettata via env METNOS_LLM_DESCRIPTION_FAKE=mod.fn (test).
+    1. Funzione fake iniettata via env
+       METNOS_LLM_DESCRIPTION_FAKE=__fake_llm__.fn (solo test).
     2. LLMRouter() + workload registry — produzione.
     3. None (fallback boilerplate; logga WARN tramite logger se disponibile).
 
@@ -174,15 +176,19 @@ def _call_llm(prompt: str, *, timeout_s: int = DEFAULT_TIMEOUT_S,
     fake_fn = None
     if fake:
         mod_name, _, attr = fake.rpartition(".")
-        if mod_name and attr:
-            try:
-                mod = __import__(mod_name, fromlist=[attr])
-                fn = getattr(mod, attr, None)
-                if callable(fn):
-                    fake_fn = fn
-            except Exception as e:
-                _warn_no_llm(f"fake llm import error: {e}")
+        if mod_name != "__fake_llm__" or not attr:
+            _warn_no_llm("fake llm override non ammesso")
+            return None
+        try:
+            import __fake_llm__ as mod
+            fn = getattr(mod, attr, None)
+            if not callable(fn):
+                _warn_no_llm("fake llm callable non disponibile")
                 return None
+            fake_fn = fn
+        except Exception as e:
+            _warn_no_llm(f"fake llm import error: {e}")
+            return None
 
     def _request() -> Optional[str]:
         if fake_fn is not None:
@@ -261,7 +267,11 @@ def _warn_no_llm(reason: str) -> None:
         pass
     # Fallback hard: stderr SOLO se non in test silenzioso.
     if not os.environ.get("PYTEST_CURRENT_TEST"):
-        print(f"[skill_description_llm] WARN: LLM unavailable: {reason} — falling back to boilerplate", file=__import__("sys").stderr)
+        print(
+            f"[skill_description_llm] WARN: LLM unavailable: {reason} — "
+            "falling back to boilerplate",
+            file=sys.stderr,
+        )
 
 
 # ---------------------------------------------------------------------------

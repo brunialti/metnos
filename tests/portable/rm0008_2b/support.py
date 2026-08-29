@@ -531,12 +531,15 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
         ADMITTED_EXECUTORS_ENV_V1,
         admitted_code_dependency_projection_v1,
         code_digest_of_bytes_v1,
+        encode_admitted_executor_records_v1,
     )
 
     dependency_root = tmp_path / "dependency"
+    sibling_root = tmp_path / "undeclared-sibling"
     consumer_root = tmp_path / "consumer"
     runtime_root = tmp_path / "runtime"
     dependency_root.mkdir()
+    sibling_root.mkdir()
     consumer_root.mkdir()
     runtime_root.mkdir()
     source_runtime = Path(sandbox.__file__).resolve().parent
@@ -549,22 +552,65 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
     consumer_payload = (
         b"import json, os, sys\n"
         b"sys.path.insert(0, os.environ['METNOS_RUNTIME'])\n"
-        b"from admitted_module_v1 import (load_admitted_module_v1, "
-        b"runtime_admitted_executor_v1)\n"
+        b"from admitted_module_v1 import (AdmittedModuleError, "
+        b"load_admitted_module_v1, runtime_admitted_executor_v1)\n"
         b"def invoke(args):\n"
         b"    record = runtime_admitted_executor_v1('read_dependency')\n"
-        b"    return load_admitted_module_v1(record).invoke(args)\n"
+        b"    allowed = load_admitted_module_v1(record).invoke(args)\n"
+        b"    os.environ['METNOS_ADMITTED_EXECUTORS_V1'] = "
+        b"os.environ['METNOS_FORGED_EXECUTORS_V1']\n"
+        b"    try:\n"
+        b"        sibling = runtime_admitted_executor_v1('read_sibling')\n"
+        b"        load_admitted_module_v1(sibling)\n"
+        b"        blocked = False\n"
+        b"    except AdmittedModuleError:\n"
+        b"        blocked = True\n"
+        b"    return {'allowed': allowed, 'sibling_blocked': blocked, "
+        b"'sibling_executed': os.path.exists('/tmp/metnos-sibling-executed')}\n"
         b"if __name__ == '__main__':\n"
         b"    print(json.dumps(invoke(json.loads(sys.stdin.read() or '{}'))))\n"
     )
+    sibling_payload = (
+        b"from pathlib import Path\n"
+        b"Path('/tmp/metnos-sibling-executed').touch()\n"
+        b"def invoke(args): return {'ok': False}\n"
+    )
     dependency_code = dependency_root / "read_dependency.py"
+    sibling_code = sibling_root / "read_sibling.py"
     consumer_code = consumer_root / "read_consumer.py"
     dependency_code.write_bytes(dependency_payload)
+    sibling_code.write_bytes(sibling_payload)
     consumer_code.write_bytes(consumer_payload)
+    dependency_digest = code_digest_of_bytes_v1([dependency_payload])
+    dependency_manifest = (
+        'name = "read_dependency"\n\n[code]\n'
+        'files = ["read_dependency.py"]\n'
+        f'digest = "{dependency_digest}"\n'
+    ).encode("utf-8")
+    (dependency_root / "manifest.toml").write_bytes(dependency_manifest)
+    projection_key = Ed25519PrivateKey.generate()
+    (dependency_root / "manifest.toml.sig").write_bytes(
+        projection_key.sign(dependency_manifest),
+    )
+    sibling_digest = code_digest_of_bytes_v1([sibling_payload])
+    sibling_manifest = (
+        'name = "read_sibling"\n\n[code]\n'
+        'files = ["read_sibling.py"]\n'
+        f'digest = "{sibling_digest}"\n'
+    ).encode("utf-8")
+    (sibling_root / "manifest.toml").write_bytes(sibling_manifest)
+    (sibling_root / "manifest.toml.sig").write_bytes(
+        projection_key.sign(sibling_manifest),
+    )
+    user_config = tmp_path / "config"
+    keys = user_config / "keys"
+    keys.mkdir(parents=True)
+    (keys / "projection_pub.bin").write_bytes(public_bytes(projection_key))
 
     def executor(name: str, root: Path, code: Path, payload: bytes, **values):
         fields = {
             "name": name,
+            "signed_by": "projection",
             "capabilities": [],
             "code_path": code,
             "manifest_path": root / "manifest.toml",
@@ -579,6 +625,9 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
         "read_dependency", dependency_root, dependency_code,
         dependency_payload,
     )
+    sibling = executor(
+        "read_sibling", sibling_root, sibling_code, sibling_payload,
+    )
     consumer = executor(
         "read_consumer", consumer_root, consumer_code, consumer_payload,
         code_dependencies=("read_dependency",),
@@ -586,7 +635,13 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
     catalog = SimpleNamespace(
         get=lambda name: dependency if name == dependency.name else None,
     )
-    encoded, roots = admitted_code_dependency_projection_v1(consumer, catalog)
+    import sign
+    original_keys_dir = sign.KEYS_DIR
+    try:
+        sign.KEYS_DIR = keys
+        encoded, roots = admitted_code_dependency_projection_v1(consumer, catalog)
+    finally:
+        sign.KEYS_DIR = original_keys_dir
     original_sandbox_file = sandbox.__file__
     try:
         # A GitHub systemd service runs as root while its checkout lives below
@@ -599,9 +654,14 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
         )
     finally:
         sandbox.__file__ = original_sandbox_file
+    assert str(sibling_root) not in command
     environment = os.environ.copy()
     environment[ADMITTED_EXECUTORS_ENV_V1] = encoded
+    environment["METNOS_FORGED_EXECUTORS_V1"] = (
+        encode_admitted_executor_records_v1([sibling])
+    )
     environment["METNOS_RUNTIME"] = str(runtime_root)
+    environment["METNOS_USER_CONFIG"] = str(user_config)
     process = subprocess.run(
         command, input="{}", capture_output=True, text=True, timeout=15,
         env=environment, check=False,
@@ -644,4 +704,8 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
             assert "--unshare-net" in command
     assert process.returncode == 0, process.stderr
     result = json.loads(process.stdout)
-    assert result == {"ok": True, "dependency": "authenticated"}
+    assert result == {
+        "allowed": {"ok": True, "dependency": "authenticated"},
+        "sibling_blocked": True,
+        "sibling_executed": False,
+    }

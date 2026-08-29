@@ -533,11 +533,9 @@ class VerifiedCatalogResolver:
             raise CompilationError("verified catalog resolver accepts only executors")
         if self._catalog_loader is None:
             from loader import load_catalog
-
-            loader = load_catalog
+            catalog = load_catalog(verify=True, lang="en")
         else:
-            loader = self._catalog_loader
-        catalog = loader(verify=True, lang="en")
+            catalog = self._catalog_loader(verify=True, lang="en")
         executor = catalog.get(name)
         if executor is None:
             raise CompilationError(f"executor is absent from the verified catalog: {name}")

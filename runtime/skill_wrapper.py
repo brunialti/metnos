@@ -157,22 +157,29 @@ def _validate_skill_args(args, *, allowed: set[str] | frozenset[str],
 
 
 def _subprocess_runner() -> Optional[Callable]:
-    """Override hook per i test: METNOS_SUBPROCESS_FAKE=mod.fn dove
+    """Override hook per i test: METNOS_SUBPROCESS_FAKE=skill_test_fakes.fn dove
     fn(argv, env, timeout_s) -> (rc, stdout, stderr).
 
-    Ritorna None se l'env non e' settato o il modulo non risolve.
+    Ritorna None soltanto se l'env non e' settato. Un override presente ma non
+    ammesso restituisce un runner di diniego: non deve mai cadere sul processo
+    reale.
     """
     fake = os.environ.get("METNOS_SUBPROCESS_FAKE")
     if not fake:
         return None
     mod_name, _, attr = fake.rpartition(".")
-    if not mod_name or not attr:
-        return None
+    if mod_name != "skill_test_fakes" or not attr:
+        return _denied_subprocess_runner
     try:
-        mod = __import__(mod_name, fromlist=[attr])
-        return getattr(mod, attr, None)
+        import skill_test_fakes as mod
+        runner = getattr(mod, attr, None)
+        return runner if callable(runner) else _denied_subprocess_runner
     except Exception:
-        return None
+        return _denied_subprocess_runner
+
+
+def _denied_subprocess_runner(_argv, _env, _timeout_s):
+    return 126, "", "invalid METNOS_SUBPROCESS_FAKE override"
 
 
 def _run_api(

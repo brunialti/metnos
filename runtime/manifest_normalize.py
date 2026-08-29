@@ -84,14 +84,21 @@ def _builtin_tool_names() -> set:
     registrati + universal helpers §11 (doctrina stabile)."""
     names = {"classify_entries", "extract_entries", "describe_entries",
              "undo_last_turn", "get_inputs"}
-    for mod_name in ("recurring_tasks", "skill_admin"):
-        try:
-            mod = __import__(mod_name)
-            for entry in getattr(mod, "BUILTIN_INPROC_SPECS", None) or []:
-                if entry.get("name"):
-                    names.add(entry["name"])
-        except Exception:
-            pass
+    modules = []
+    try:
+        import recurring_tasks
+        modules.append(recurring_tasks)
+    except Exception:
+        pass
+    try:
+        import skill_admin
+        modules.append(skill_admin)
+    except Exception:
+        pass
+    for mod in modules:
+        for entry in getattr(mod, "BUILTIN_INPROC_SPECS", None) or []:
+            if entry.get("name"):
+                names.add(entry["name"])
     return names
 
 

@@ -1740,6 +1740,33 @@ sottoincrementi, eseguiti e revisionati in ordine.
    indipendente dei sorgenti deve dare lo stesso esito di
    `discover()+birth_closed_findings()` sul loader certificato. Importare o
    eseguire la guardia contenuta nella distribuzione non soddisfa questa prova.
+   Il porting deve applicare una grammatica chiusa ai sorgenti prima della
+   cattura: radice esatta in `runtime`, `install`, `scripts` o `executors`,
+   suffisso finale esattamente `.py`, nessun componente intermedio con
+   suffisso `.py` anche con casing alternativo e sola eccezione nominale
+   `deployment/admin/preflight.py`, che non appartiene al censimento ma e'
+   compreso nei budget Python e nel controllo AST. I limiti compilati sono
+   2.048 sorgenti, 1 MiB per sorgente, 32 MiB totali, 100.000 nodi AST per
+   file, quattro milioni totali, profondita' 64, 512 scope e 8.192 chiamate
+   per file. Byte, numero e totale sono negati dal manifesto prima della
+   cattura; nodi, profondita', scope e chiamate sono contati iterativamente
+   prima di qualunque visitor ricorsivo. Anche `MemoryError` deve diventare un
+   diniego stabile.
+
+   Ogni chiamata a `__import__` o `importlib.import_module` e' chiusa e deve
+   produrre diniego, anche quando il target e' una stringa letterale sicura.
+   Sono chiusi anche moduli relativi o discendenti di un boundary, alias di
+   prima classe e accessi riflessivi a `importlib`, `builtins` o `sys.modules`
+   che possono raggiungere il confine. Il prodotto deve quindi contenere zero
+   chiamate di importazione dinamica; registri finiti e hook di test usano
+   import letterali. La sola porta che esegue codice resta
+   `runtime/admitted_module_v1.py`, gia' autenticata e certificata nel gruppo
+   3: non viene sostituita o degradata da questo controllo.
+   Canonico e clone sono provati separatamente contro aspettative indipendenti
+   e poi confrontati campo per campo; non basta usare uno come oracolo
+   dell'altro. Le prove di grammatica, AST, import dinamici e isolamento
+   `-I -S` possono correre in parallelo. Restano seriali soltanto servizi reali,
+   PC Windows e test con LLM reale; B3 non richiede alcun LLM reale.
 4. **G6-B4, transazione di pubblicazione non autorizzante.** Implementare il
    solo nucleo filesystem di rename no-replace, sincronizzazione e rilettura,
    senza una funzione produttiva che lo renda raggiungibile o che accetti una
@@ -2179,3 +2206,162 @@ Per ogni incremento il passaggio di consegne deve riportare:
 
 Il documento va aggiornato dopo ogni nuova evidenza. Un altro agente deve poter
 riprendere senza ricostruire la cronologia dai log o dalla conversazione.
+
+## 10. Stato esecutivo B3 dopo il riesame avversariale
+
+Il minimo percorso di chiusura B3 e' ora:
+
+1. mantenere identici il guard canonico e il clone autonomo sui mutanti
+   adversariali e sull'intero albero;
+2. eseguire in parallelo le tre famiglie deterministiche centrali;
+3. provare una sola volta i moduli prodotto toccati e il percorso undo
+   autenticato;
+4. congelare lo snapshot e far eseguire in parallelo due riesami read-only,
+   uno di sicurezza e uno di regressione;
+5. committare soltanto con zero finding P0, P1 e P2.
+
+Lo stato misurato ai punti 1, 2 e 3 e' verde: 671 sorgenti, parita' completa
+339/339, zero accessi dinamici e zero finding; `83`, `52` e `68` prove passate
+con un solo skip di piattaforma previsto. Le regressioni prodotto indipendenti
+hanno dato `62`, `63`, `56` e `199` prove passate; quattro prove di embedding
+reale sono escluse per il modello BGE assente. Il caricamento per pathname di
+`reverse_patterns_patch` e' stato sostituito dal catalogo vivo verificato e da
+`load_admitted_module_v1`; `undo_last_turn` resta byte-identico al proprio
+digest firmato. Non e' ancora autorizzato il commit: mancano i due verdetti del
+punto 4.
+
+## 11. Correzioni richieste dal terzo riesame B3
+
+Il terzo riesame ha invalidato le ultime due frasi del paragrafo precedente:
+il catalogo veniva ricaricato nel dispatch e `undo_last_turn` non conservava
+una fotografia unica. La soluzione corrente applica invece queste condizioni
+congiunte.
+
+1. `undo_last_turn` apre una sola fotografia del catalogo e la passa fino al
+   pattern reverse. Il dispatch non possiede alcun fallback che possa aprirne
+   una seconda.
+2. La porta rilegge il catalogo soltanto per confrontare un record runtime
+   ordinario con l'autorita' corrente. Nel subprocess, dove il catalogo non e'
+   montato integralmente, rilegge manifesto e firma della sola dipendenza e
+   verifica la firma con le chiavi pubbliche trusted montate singolarmente.
+3. Un record d'ambiente, un percorso e un digest scelti dal subprocess non
+   costituiscono autorita'. Il test negativo in un processo nuovo altera la
+   proiezione dopo l'avvio e non esegue i byte contraffatti.
+4. I wrapper Synt dichiarano la dipendenza firmata e usano la stessa porta;
+   tutte le ricerche dirette per pathname sono rimosse.
+5. Guard e clone negano le forme equivalenti attraverso `sys.modules`,
+   `FunctionType`, `runpy`, `importlib.util`, `load_module` e alias. I controlli
+   negativi impediscono di trasformare omonimi locali e `re.compile` in falsi
+   confini.
+6. I due attraversamenti AST tardivi del parser produttivo convertono
+   `MemoryError` negli errori stabili gia' previsti dal protocollo.
+
+Le prove centrali sono state eseguite in tre processi paralleli indipendenti e
+hanno prodotto `68`, `92` e `54 passed` con un solo skip di piattaforma. Le
+prove reali non parallelizzabili hanno prodotto `23 passed` per l'undo e
+`1 passed` per la dipendenza Bubblewrap. La parita' completa resta 339/339 su
+671 sorgenti con zero finding. Il nuovo digest firmato di `undo_last_turn` e'
+`sha256:8f819a52ce9f242ace86de74822058baf609c863557f7cdc4482439983f4f895`.
+
+Il percorso minimo restante e' congelare questo diff e ottenere due revisioni
+indipendenti read-only. Solo con due verdetti `P0=0`, `P1=0`, `P2=0` si esegue
+il commit incrementale su `main` e si passa al nucleo preparatore B3. Nessun
+aggiornamento dello store vivo e' autorizzato in questo incremento.
+
+## 12. Correzioni richieste dal quarto riesame B3
+
+Il quarto riesame ha dimostrato che il confronto con un catalogo ricaricato non
+era sufficiente se le funzioni pubbliche di `loader` potevano essere sostituite
+nello stesso interprete. Ha inoltre trovato un fallback relativo per la trust
+root Windows, un mount che seguiva il link di una presunta chiave pubblica, due
+lookup riflessi di `eval`/`exec` non censiti e un falso positivo delle chiusure
+locali su un metodo omonimo a `runpy.run_module`.
+
+Il contratto implementato e' ora il seguente.
+
+1. Le funzioni del catalogo sono catturate all'import del runtime; una loro
+   successiva sostituzione sul modulo `loader` non modifica la porta. Dopo il
+   confronto col catalogo, la porta autentica direttamente manifesto, firma e
+   binding prima di leggere il codice.
+2. Il subprocess proiettato non richiede `loader`. Se il modulo non e' montato,
+   il ramo ordinario e' indisponibile e soltanto il record proiettato, sigillato
+   e firmato puo' proseguire.
+3. `METNOS_USER_CONFIG`, home e fallback Windows devono produrre una radice
+   assoluta. In caso contrario non esiste alcuna trust root; non si usa la
+   directory corrente.
+4. Il file `<signed_by>_pub.bin` deve essere un file regolare non-link,
+   non-reparse e di 32 byte. La directory delle chiavi e le chiavi estranee non
+   vengono montate.
+5. Guard e clone negano anche `eval` e `exec` recuperati dal dizionario di
+   `builtins`. Le chiusure locali usano il binding importato per distinguere
+   `runpy.run_module` da un metodo locale omonimo.
+
+Le prove discriminatorie sono verdi: porta `26`, guard `68`, clone `96`,
+manifesto `56 passed, 1 skipped`, undo e dispatch `18`, Synt/indici/contratti
+`60 passed, 3 skipped`, Bubblewrap reale `1 passed`. La parita' integrale resta
+339/339 su 671 sorgenti, con zero finding. `compileall`, `git diff --check` e la
+firma dell'executor undo sono verdi.
+
+I riesami precedenti non autorizzano il commit perche' fotografavano un diff
+diverso. Il prossimo e unico passo e' ottenere due verdetti indipendenti
+read-only sul contenuto corrente, entrambi `P0=0`, `P1=0`, `P2=0`.
+
+## 13. Candidato B3 congelato dopo il quinto riesame
+
+Il quinto riesame ha separato tre rischi che non potevano essere chiusi
+aggiungendo altri nomi a una denylist AST.
+
+1. La riflessione Python non e' enumerabile in modo completo. La garanzia
+   primaria diventa quindi il digest positivo dell'intero censimento Python,
+   confrontato col valore atteso compilato nel verifier della release
+   precedente gia' fidata. Il candidato non puo' auto-approvarsi modificando
+   sorgente e copie del pin. La copia amministrativa deve essere byte-identica
+   a quella runtime. Il guard AST resta un controllo indipendente di topologia.
+2. Il record di una dipendenza e' trasportato nell'ambiente e puo' essere
+   riscritto dal child. Firma e digest impediscono byte inventati, ma non il
+   replay di un fratello B realmente firmato. Il mount generale `/opt` e'
+   stato rimosso: il child vede soltanto A, dichiarata dal parent, insieme alla
+   runtime, all'interprete e alla chiave pubblica esatta. La sandbox OS e'
+   obbligatoria per ogni executor ordinario, anche builtin e handcrafted; il
+   solo percorso naked richiede nome, metadati, file e digest firmato esatti
+   del broker undo gia' revisionato.
+3. Il broker undo e' intenzionalmente fuori Bubblewrap. Un nuovo contratto
+   Birth con pattern ignoto poteva quindi far eseguire il proprio top-level nel
+   broker prima della chiamata a `reverse()`. La porta autenticata rifiuta ora
+   prima della compilazione ogni reverse non dichiarativo salvo nove
+   accoppiamenti nome-digest revisionati. Il broker resta identico alla firma
+   esistente; nessuna firma diretta o pubblicazione nello store vivo e' stata
+   eseguita.
+
+Sono stati chiusi anche il replay tramite hardlink della chiave pubblica e tre
+difetti del wrapper Synt: parent non subprocess, arita' della funzione
+`invoke` e valori JSON che in precedenza producevano letterali Python non
+validi.
+
+Il digest congelato dei 671 sorgenti e'
+`sha256:87f7d309555793642066f778013be58024421b2026d00a2769e15c3324e1f4b5`.
+Le due scoperte indipendenti producono 339 fatti identici e nessun finding. Le
+suite centrali terminano con `69`, `111` e `57 passed`, piu' un solo skip di
+piattaforma. Le regressioni mirate terminano con `55`, `84` e `45 passed`; i
+tre skip Synt/prodotto sono ambientali gia' dichiarati. La prova Bubblewrap
+reale A/B termina con `1 passed`. Il controllo `--birth-closed`, la firma di
+`undo_last_turn` e `git diff --check` sono verdi.
+
+Non e' ancora autorizzato il commit. Servono due review da zero sul candidato
+congelato e due esiti esatti `P0=0`, `P1=0`, `P2=0`. Solo dopo si committa su
+`main`, si pubblica incrementalmente, si richiede errore zero su Linux e
+Windows e si continua il nucleo preparatore B3.
+
+## 14. Autorizzazione del candidato architetturale B3
+
+Il 29 agosto 2026 le due review finali indipendenti hanno approvato il
+candidato con `P0=0`, `P1=0`, `P2=0`. La radice riesaminata e'
+`sha256:87f7d309555793642066f778013be58024421b2026d00a2769e15c3324e1f4b5`;
+il censimento contiene 671 sorgenti e le due scoperte producono 339 fatti
+identici senza finding. Le pagine italiane e inglesi descrivono ora il rifiuto
+fail-closed, la rimozione del mount generale `/opt` e l'eccezione undo
+vincolata a file e digest esatti.
+
+Il commit su `main` e la pubblicazione incrementale sono autorizzati. La loro
+evidenza e l'esito Linux/Windows vanno aggiunti dopo l'osservazione pubblica.
+Il nucleo preparatore B3 resta il passo successivo e RM-0008 resta `active`.

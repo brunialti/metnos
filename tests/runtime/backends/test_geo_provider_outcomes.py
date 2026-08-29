@@ -5,9 +5,19 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 import geo_provider
+
+
+def test_provider_loader_is_literal_complete_and_closed():
+    assert geo_provider._load("google").__name__ == "google_places_client"
+    assert geo_provider._load("photon").__name__ == "photon_client"
+    assert geo_provider._load("unreviewed") is None
+    with pytest.raises(TypeError):
+        geo_provider.PROVIDERS["unreviewed"] = "unreviewed_client"
 
 
 def test_forward_search_preserves_rate_limit_across_empty_fallback(monkeypatch):

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -99,7 +100,7 @@ def reembed(idx_dir: Path, lang: str, dry: bool) -> None:
     if dry:
         from collections import Counter
         cats = Counter(C._FOLDER_CTX_CACHE.get(
-            __import__("re").sub(r"\b(19|20)\d\d\b", "",
+            re.sub(r"\b(19|20)\d\d\b", "",
                                  Path(e["path"]).parent.name).replace("-", " ").strip(),
             ("?", ""))[0] for e in entries)
         print(f"[dry] categorie entries: {dict(cats)}")

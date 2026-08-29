@@ -12,6 +12,7 @@ dell'Executor Standard e non viene inferita dal solo esito della generazione.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 import time
@@ -109,10 +110,10 @@ def _install_synthesized(run, intent, user_query):
     require_synth_birth_service()
     if not run.name or not run.code_text:
         raise RuntimeError("run senza name o code_text, niente da installare")
-    # Validazione sintassi Python: compile() solleva SyntaxError se il
-    # codice e' malformato. Stop prima di toccare il filesystem.
+    # Validazione sintattica soltanto: non creare bytecode eseguibile fuori
+    # dalla porta autenticata.
     try:
-        compile(run.code_text, f"{run.name}.py", "exec")
+        ast.parse(run.code_text, filename=f"{run.name}.py")
     except SyntaxError as e:
         raise RuntimeError(
             f"synth code_text per '{run.name}' contiene SyntaxError "

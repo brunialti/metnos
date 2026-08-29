@@ -658,6 +658,40 @@ _INPROC_TOOL_MODULE_PATHS: tuple[str, ...] = (
 )
 
 
+def _inproc_tool_module(mod_name: str):
+    if mod_name == "recurring_tasks":
+        import recurring_tasks
+        return recurring_tasks
+    if mod_name == "skill_admin":
+        import skill_admin
+        return skill_admin
+    if mod_name == "store_entries":
+        import store_entries
+        return store_entries
+    if mod_name == "compare_entries":
+        import compare_entries
+        return compare_entries
+    if mod_name == "describe_images":
+        import describe_images
+        return describe_images
+    if mod_name == "describe_entries":
+        import describe_entries
+        return describe_entries
+    if mod_name == "classify_entries":
+        import classify_entries
+        return classify_entries
+    if mod_name == "extract_entries":
+        import extract_entries
+        return extract_entries
+    if mod_name == "user_preferences":
+        import user_preferences
+        return user_preferences
+    if mod_name == "lre_submission":
+        import lre_submission
+        return lre_submission
+    raise ImportError(f"unsupported in-process tool module: {mod_name}")
+
+
 def _inject_inproc_tool_specs(catalog: "Catalog", *, current_lang: str) -> None:
     """Scopre i `BUILTIN_INPROC_SPECS` dei moduli registrati e inietta i
     relativi `Executor` virtuali nel catalog.
@@ -672,7 +706,7 @@ def _inject_inproc_tool_specs(catalog: "Catalog", *, current_lang: str) -> None:
     """
     for mod_name in _INPROC_TOOL_MODULE_PATHS:
         try:
-            mod = __import__(mod_name)
+            mod = _inproc_tool_module(mod_name)
         except ImportError as e:
             log.debug("[loader] inproc-tool module %r not importable: %s",
                        mod_name, e)

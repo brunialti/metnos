@@ -30,6 +30,7 @@ Edge cases SKIPPED (non touched):
 from __future__ import annotations
 
 import argparse
+import ast
 import difflib
 import re
 import sys
@@ -195,9 +196,10 @@ def _process(path: Path, runtime_mods: set[str], *, apply: bool) -> tuple[bool, 
         lineterm="",
     ))
     if apply:
-        # Compile-check before writing to avoid landing a syntax error
+        # Parse-check before writing to avoid landing a syntax error without
+        # creating executable bytecode.
         try:
-            compile(new, str(path), "exec")
+            ast.parse(new, filename=str(path))
         except SyntaxError as e:
             return False, f"{path}: SYNTAX ERROR post-transform, skipping: {e}"
         path.write_text(new)

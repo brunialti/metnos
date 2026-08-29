@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import hashlib
+import os
 import secrets
 import time
 import uuid
@@ -137,7 +138,7 @@ def create_pending(*, sender_id: str, principal: TutorPrincipal,
         "conversation_id": principal.conversation_id,
         "sender_id": sender_id,
         "timeout_s": min(600, max(60, int(
-            __import__("os").environ.get("METNOS_TUTOR_HANDOFF_TTL_S", "300")))),
+            os.environ.get("METNOS_TUTOR_HANDOFF_TTL_S", "300")))),
         "completed": False,
         "cancelled": False,
         # Channel adapters may omit the generic var/value receipt: this

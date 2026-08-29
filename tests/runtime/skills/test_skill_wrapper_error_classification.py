@@ -8,6 +8,7 @@ from runtime.skill_wrapper import (
     _get_skill_oauth_config,
     _skill_code_home,
     _skill_home,
+    _run_api,
     _validate_skill_args,
 )
 
@@ -58,6 +59,24 @@ def test_skill_code_override_is_independent_from_user_state(tmp_path, monkeypatc
 
     assert _skill_home("example") == state
     assert _skill_code_home("example") == code
+
+
+def test_unapproved_subprocess_fake_never_falls_through_to_real_process(
+    tmp_path, monkeypatch,
+):
+    marker = tmp_path / "executed"
+    script = tmp_path / "would_run.py"
+    script.write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('bad')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("METNOS_SUBPROCESS_FAKE", "other.fake")
+
+    rc, stdout, stderr = _run_api(script, [], skill_name="example")
+
+    assert (rc, stdout) == (126, "")
+    assert stderr == "invalid METNOS_SUBPROCESS_FAKE override"
+    assert not marker.exists()
 
 
 def test_oauth_config_uses_verified_generation_after_cutover(

@@ -7,13 +7,17 @@ import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 import synth_request  # noqa: E402
 from executor_standard import STANDARD_ID, validate_for_lifecycle  # noqa: E402
 from loader import Catalog, Executor  # noqa: E402
-from synt import GeneratedProposal, Synt, _build_specialize_manifest  # noqa: E402
+from synt import (  # noqa: E402
+    GeneratedProposal, Synt, _build_specialize_manifest, _wrapper_code,
+)
 from synt_multistage import StageResult  # noqa: E402
 
 
@@ -386,6 +390,12 @@ def test_specialized_manifest_preserves_localized_parent_surfaces() -> None:
         "input": {"path": "x"},
         "expect": {"ok": True},
     }]
+    assert manifest["code"]["dependencies"] == ["find_files"]
+    wrapper = _wrapper_code("find_files", "extension", "pdf")
+    assert "load_admitted_module_v1" in wrapper
+    assert "runtime_admitted_executor_v1" in wrapper
+    assert "spec_from_file_location" not in wrapper
+    assert "exec_module" not in wrapper
     assert validate_for_lifecycle(manifest) == []
     from manifest_lint import lint_manifest
     for language in manifest["description"]:
@@ -393,3 +403,55 @@ def test_specialized_manifest_preserves_localized_parent_surfaces() -> None:
             finding for finding in lint_manifest(manifest, language=language)
             if finding.severity == "error"
         ]
+
+
+@pytest.mark.parametrize("fixed", ["pdf", True, False, None, {"enabled": True}])
+def test_specialized_wrapper_calls_the_standard_one_argument_parent(
+        monkeypatch, fixed) -> None:
+    parent_calls = []
+    parent_module = SimpleNamespace(
+        invoke=lambda args: parent_calls.append(args) or {"ok": True},
+    )
+    admitted = SimpleNamespace(
+        runtime_admitted_executor_v1=lambda name: ("record", name),
+        load_admitted_module_v1=lambda record: parent_module,
+    )
+    monkeypatch.setitem(sys.modules, "admitted_module_v1", admitted)
+    namespace = {"__name__": "generated_specialization"}
+
+    exec(_wrapper_code("find_files", "extension", fixed), namespace)
+    result = namespace["invoke"]({"path": "/tmp"}, {"ignored": True})
+
+    assert result == {"ok": True}
+    assert parent_calls == [{"path": "/tmp", "extension": fixed}]
+
+
+def test_specialize_rejects_an_in_process_parent_before_reading_its_manifest(
+        tmp_path: Path, monkeypatch) -> None:
+    import loader
+
+    parent = SimpleNamespace(
+        name="compare_entries",
+        manifest_path=tmp_path / "missing-manifest.toml",
+        transport="in-process",
+    )
+    monkeypatch.setattr(
+        loader, "load_catalog",
+        lambda **_kwargs: SimpleNamespace(get=lambda _name: parent),
+    )
+    instance = Synt(
+        proposals_dir=tmp_path / "proposals",
+        audit=SimpleNamespace(log=lambda _entry: None),
+        mnestoma=SimpleNamespace(), locks=SimpleNamespace(),
+    )
+
+    result = instance.specialize(
+        parent_name="compare_entries", arg_name="reference",
+        dominant_value="needle",
+    )
+
+    assert result.state == "rejected"
+    assert result.artefact == {}
+    assert result.rationale == (
+        "parent is not an authenticated file-backed executor: compare_entries"
+    )

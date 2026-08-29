@@ -1526,17 +1526,58 @@ ARG_TRANSFORM_PIPELINE: tuple = (
 )
 
 
+def _load_arg_transform_module(module_name: str):
+    """Load one compiled transform module without an open import capability."""
+
+    if module_name == "backend_resolver":
+        import backend_resolver
+        return backend_resolver
+    if module_name == "calendar_resolver":
+        import calendar_resolver
+        return calendar_resolver
+    if module_name == "filter_field_resolver":
+        import filter_field_resolver
+        return filter_field_resolver
+    if module_name == "from_contains_resolver":
+        import from_contains_resolver
+        return from_contains_resolver
+    if module_name == "install_direction_resolver":
+        import install_direction_resolver
+        return install_direction_resolver
+    if module_name == "junk_mail_resolver":
+        import junk_mail_resolver
+        return junk_mail_resolver
+    if module_name == "mail_account_resolver":
+        import mail_account_resolver
+        return mail_account_resolver
+    if module_name == "photo_fields_resolver":
+        import photo_fields_resolver
+        return photo_fields_resolver
+    if module_name == "read_format_resolver":
+        import read_format_resolver
+        return read_format_resolver
+    if module_name == "self_recipient_resolver":
+        import self_recipient_resolver
+        return self_recipient_resolver
+    if module_name == "time_window_resolver":
+        import time_window_resolver
+        return time_window_resolver
+    if module_name == "unique_rows_resolver":
+        import unique_rows_resolver
+        return unique_rows_resolver
+    raise ValueError("unsupported argument-transform module")
+
+
 def apply_arg_transforms(tool: str, args: dict, query: str, *, scope: str,
                          args_schema: Optional[dict] = None) -> dict:
     """Driver UNICO del registro ArgTransform (gemello del loop GUARD_PIPELINE):
     applica in ordine le entry del `scope` dato. Best-effort per entry (noop
     loggato, come il cablaggio precedente). Lazy import via (module, func)."""
-    import importlib
     for t in ARG_TRANSFORM_PIPELINE:
         if t.scope != scope:
             continue
         try:
-            fn = getattr(importlib.import_module(t.module), t.func)
+            fn = getattr(_load_arg_transform_module(t.module), t.func)
             args = (fn(tool, args, query, args_schema=args_schema)
                     if t.needs_schema else fn(tool, args, query))
         except Exception as _e:

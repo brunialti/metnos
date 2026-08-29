@@ -1,9 +1,10 @@
 """test_argtransform_pipeline — contratto del registro ArgTransform
 (gemello di test_guard_pipeline_contract). Il registro unifica la famiglia
 resolver deterministica pre-esecuzione (ADR 0177 T3 estensione, 7/7/2026)."""
-import importlib
 import sys
 from pathlib import Path
+
+import pytest
 
 
 import engine.executor as ex  # noqa: E402
@@ -20,9 +21,15 @@ def test_entry_contract():
         assert t.reads, f"{t.name}: reads non dichiarati"
         assert t.writes, f"{t.name}: writes non dichiarati"
         # module + func realmente risolvibili (niente entry-fantasma).
-        mod = importlib.import_module(t.module)
+        mod = ex._load_arg_transform_module(t.module)
+        assert mod.__name__ == t.module
         assert hasattr(mod, t.func), f"{t.name}: {t.module}.{t.func} assente"
         assert callable(getattr(mod, t.func))
+
+
+def test_literal_module_loader_rejects_names_outside_the_compiled_registry():
+    with pytest.raises(ValueError, match="unsupported argument-transform module"):
+        ex._load_arg_transform_module("unreviewed_transform")
 
 
 def test_due_scope_presenti():

@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "internal/reports/rm0007-m0-census-20260825.md",
+  "source_census": "sha256:87f7d309555793642066f778013be58024421b2026d00a2769e15c3324e1f4b5",
   "scan_roots": [
     "runtime",
     "install",
@@ -549,6 +549,16 @@
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
       "phase": "M4",
       "closed_exception": "offline_nonproductive_authoring"
+    },
+    {
+      "path": "runtime/admitted_module_v1.py",
+      "scope": "_current_verified_record_v1",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "fresh verified catalog binding before authenticated module admission",
+      "phase": "M4"
     },
     {
       "path": "runtime/agent_runtime.py",
@@ -3567,7 +3577,7 @@
   ],
   "birth_closed": {
     "schema": "metnos.contract-boundary-birth-closed/1",
-    "guard_version": "metnos.contract-boundary-inventory/2+birth-closed/1",
+    "guard_version": "metnos.contract-boundary-inventory/2+birth-closed/2",
     "owner": "runtime/executor_birth_operational.py:birth_executor",
     "coordinator_store_owners": [
       "install/birth_ownership_authority_provisioner.py:_discard_temporary",

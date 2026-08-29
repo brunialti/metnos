@@ -342,10 +342,35 @@ def _q(value) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _spec_module(module_name: str):
+    if module_name == "recurring_tasks":
+        import recurring_tasks
+        return recurring_tasks
+    if module_name == "skill_admin":
+        import skill_admin
+        return skill_admin
+    if module_name == "store_entries":
+        import store_entries
+        return store_entries
+    if module_name == "compare_entries":
+        import compare_entries
+        return compare_entries
+    if module_name == "describe_images":
+        import describe_images
+        return describe_images
+    if module_name == "user_preferences":
+        import user_preferences
+        return user_preferences
+    if module_name == "lre_submission":
+        import lre_submission
+        return lre_submission
+    raise ValueError("unsupported builtin specification module")
+
+
 def _all_specs():
     specs = {}
     for module_name in _SPEC_MODULES:
-        module = __import__(module_name)
+        module = _spec_module(module_name)
         for entry in module.BUILTIN_INPROC_SPECS:
             specs[entry["name"]] = (entry["tool_spec"], Path(module.__file__))
     import classify_entries
@@ -375,8 +400,8 @@ def _render(name: str, tool_spec: dict) -> str:
     properties = args.get("properties") or {}
     affinities = []
     for module_name in _SPEC_MODULES:
-        module = sys.modules.get(module_name)
-        for entry in getattr(module, "BUILTIN_INPROC_SPECS", []) if module else []:
+        module = _spec_module(module_name)
+        for entry in module.BUILTIN_INPROC_SPECS:
             if entry.get("name") == name:
                 affinities = list(entry.get("affinity") or [])
     lines = [

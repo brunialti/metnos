@@ -344,7 +344,9 @@ def test_runtime_deduplicates_manifest_declared_targets(
 
     source = tmp_path / "single-target.txt"
     source.write_text("one", encoding="utf-8")
-    monkeypatch.setenv("METNOS_SANDBOX", "0")
+    # Questa prova possiede la deduplicazione, non l'isolamento del processo;
+    # il round-trip Bubblewrap reale e' verificato dalla prova successiva.
+    monkeypatch.setattr("sandbox.wrap_command", lambda _ex, command, **_kw: command)
     monkeypatch.setenv("METNOS_HISTORY_DIR", str(tmp_path / "history"))
     monkeypatch.setattr(agent_runtime, "_undo_pending", lambda *_a, **_k: None)
     monkeypatch.setattr(agent_runtime, "_undo_done", lambda *_a, **_k: None)

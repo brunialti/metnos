@@ -1,12 +1,14 @@
 # RM-0008 — Porta unica di nascita e ciclo controllato degli executor
 
-> RM-0008 · stato `active` · avanzamento verificato il 28 agosto 2026 · conservazione
+> RM-0008 · stato `active` · avanzamento verificato il 29 agosto 2026 · conservazione
 > persistente · 33 correzioni adversarial approvate da Roberto · rilievi sul
 > dossier risolti nel §21 · prove in
 > `internal/reports/rm0008-adversarial-evidence-20260825.md` · implementazione
 > autorizzata e in corso: gruppi 1-5 della ripresa (§23.6) completati e verdi
 > su Linux/Windows; G6-A completato e certificato pubblicamente con errore
-> zero; G6-B/G6-C/G6-D e F4-F6 non ancora completati
+> zero; G6-B1 e G6-B2 completati; base architetturale G6-B3 approvata da due
+> review indipendenti con P0/P1/P2 a zero, commit e matrice pubblica in corso;
+> G6-B4/G6-C/G6-D e F4-F6 non ancora completati
 
 ## 1. Obiettivo
 

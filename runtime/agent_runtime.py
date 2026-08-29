@@ -3461,12 +3461,12 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                           turn_id=None, actor=None, channel=None,
                           target_device=None, owner_user_id=None,
                           execution_context=None):
-    """Invoca un executor, opzionalmente in sandbox bubblewrap.
+    """Invoca un executor nella sandbox OS obbligatoria.
 
-    Se `bwrap` e' installato e `METNOS_SANDBOX` non e' disabilitato,
-    il comando viene wrappato; altrimenti gira come subprocess Python
-    diretto (la pseudo-sandbox del runtime resta attiva: filtro path/host
-    + Vaglio).
+    Bubblewrap isola ogni executor ordinario. Se non e' disponibile oppure e'
+    disabilitato, l'invocazione fallisce chiusa prima del journal e del
+    subprocess. Il solo broker undo byte-esatto segue la propria eccezione
+    vincolata in :mod:`sandbox`.
 
     `actor` / `channel` (12/5/2026): propagati come `METNOS_ACTOR` /
     `METNOS_CHANNEL` nell'env del subprocess. Servono a `get_inputs` per
@@ -3658,9 +3658,6 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             "error_code": "executor_code_dependency_unavailable",
         }
 
-    _undo_op = _undo_pending(executor, args, turn_id=turn_id,
-                             actor=actor, channel=channel, device="")
-
     payload = json.dumps(args)
     base_cmd = [sys.executable, str(executor.code_path)]
     # Extras skill-backed (10/7, bug B2): senza, dal 9/7 (bubblewrap installato)
@@ -3687,9 +3684,21 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # che puo' contenere input sensibili altrui.
     _extra_rw.extend(_sandbox.dialog_extras(
         executor, actor=actor or "host", channel=channel or ""))
-    cmd = _sandbox.wrap_command(executor, base_cmd, autonomy=autonomy,
-                                extra_ro=_extra_ro, extra_rw=_extra_rw,
-                                force_net=_force_net)
+    try:
+        cmd = _sandbox.wrap_command(
+            executor, base_cmd, autonomy=autonomy,
+            extra_ro=_extra_ro, extra_rw=_extra_rw,
+            force_net=_force_net,
+        )
+    except _sandbox.SandboxUnavailableError:
+        return {
+            "ok": False,
+            "error": msg("ERR_DURABLE_DEPENDENCIES_UNAVAILABLE"),
+            "error_class": "sandbox_unavailable",
+            "error_code": "executor_os_sandbox_unavailable",
+        }
+    _undo_op = _undo_pending(executor, args, turn_id=turn_id,
+                             actor=actor, channel=channel, device="")
     # PYTHONPATH augmentato: gli executor (specie quelli sintetizzati) importano
     # moduli runtime (mail_client, messages, platform_policy, ...) per nome.
     # Senza questo, il subprocess vede solo stdlib e fallisce con
@@ -5845,6 +5854,40 @@ _BUILTIN_TOOL_HANDLERS: dict = {
     "start_lre": handle_start_lre,
 }
 
+# Source modules are a closed part of the builtin contract.  Keep the mapping
+# explicit instead of recovering a module through ``sys.modules`` from a
+# handler attribute chosen at run time.
+_BUILTIN_TOOL_MODULE_FILES: dict[str, str] = {
+    "describe_entries": "describe_entries.py",
+    "classify_entries": "classify_entries.py",
+    "extract_entries": "extract_entries.py",
+    "create_tasks": "recurring_tasks.py",
+    "list_tasks": "recurring_tasks.py",
+    "delete_tasks": "recurring_tasks.py",
+    "read_tasks": "recurring_tasks.py",
+    "set_tasks": "recurring_tasks.py",
+    "read_tasks_history": "recurring_tasks.py",
+    "list_skills": "skill_admin.py",
+    "set_skills": "skill_admin.py",
+    "find_entries": "store_entries.py",
+    "write_entries": "store_entries.py",
+    "delete_entries": "store_entries.py",
+    "compare_entries": "compare_entries.py",
+    "describe_images": "describe_images.py",
+    "get_preferences": "user_preferences.py",
+    "set_preferences": "user_preferences.py",
+    "delete_preferences": "user_preferences.py",
+    "start_lre": "lre_submission.py",
+}
+
+
+def _builtin_tool_module_path(tool_name: str) -> Path:
+    try:
+        module_file = _BUILTIN_TOOL_MODULE_FILES[tool_name]
+    except KeyError as exc:
+        raise ValueError(f"unknown builtin contract: {tool_name}") from exc
+    return Path(__file__).with_name(module_file)
+
 
 @functools.lru_cache(maxsize=None)
 def _builtin_execution_executor(tool_name: str, module_path: str):
@@ -5959,11 +6002,10 @@ def _engine_v2_catalog_with_builtins(catalog: list) -> list:
     for name in _BUILTIN_TOOL_HANDLERS:
         if name in present:
             continue
-        handler = _BUILTIN_TOOL_HANDLERS.get(name)
-        module = sys.modules.get(getattr(handler, "__module__", ""))
-        module_path = Path(getattr(module, "__file__", ""))
         try:
-            out.append(builtin_contract_executor(name, module_path))
+            out.append(
+                builtin_contract_executor(name, _builtin_tool_module_path(name))
+            )
         except (OSError, ValueError) as exc:
             log.error("builtin %s excluded: invalid signed contract: %s", name, exc)
     return out
@@ -6016,8 +6058,7 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
         # In-process builtins use the same signed execution policy, central
         # scheduler and assigned worker budget as subprocess/remote executors.
         # Context-local injection avoids process-wide environment races.
-        module = sys.modules.get(getattr(handler, "__module__", ""))
-        module_path = str(Path(getattr(module, "__file__", "")))
+        module_path = str(_builtin_tool_module_path(tool_name))
         executor = _builtin_execution_executor(tool_name, module_path)
         from executor_scheduler import assigned_worker_budget, invoke_scheduled
         from executor_workers import worker_budget

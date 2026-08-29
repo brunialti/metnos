@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import contract_boundary_guard as canonical_guard
 import executor_birth_admin_preflight as preflight
 from contract_boundary_guard import (
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
@@ -18,14 +19,44 @@ from contract_boundary_guard import (
     BIRTH_CLOSED_OWNER,
     BIRTH_CLOSED_SCHEMA,
     BIRTH_CLOSED_SEALED_MODULES,
+    BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     SCAN_ROOTS,
     SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
+    birth_closed_findings as canonical_birth_closed_findings,
+    discover as canonical_boundary_discover,
 )
 
 
 LINUX_ONLY = pytest.mark.skipif(
     sys.platform != "linux", reason="requires POSIX handle-bound filesystem proof",
 )
+
+
+def test_installed_preflight_rejects_candidate_self_attestation() -> None:
+    root = Path(__file__).resolve().parents[2]
+    sources = canonical_guard.closed_python_sources_from_root(root)
+    reviewed_admin = sources["runtime/executor_birth_admin_preflight.py"]
+    verified = {
+        **sources,
+        "deployment/admin/preflight.py": reviewed_admin,
+    }
+
+    preflight._require_compiled_source_review_v1(verified)
+
+    altered = dict(verified)
+    altered["runtime/admitted_module_v1.py"] = (
+        b"def load_admitted_module_v1(executor):\n    exec(executor)\n"
+    )
+    attacker_root = preflight._closed_python_source_review_sha256_v1(altered)
+    forged_admin = reviewed_admin.replace(
+        preflight._BIRTH_CLOSED_SOURCE_REVIEW_SHA256.encode("ascii"),
+        attacker_root.encode("ascii"),
+    )
+    altered["runtime/executor_birth_admin_preflight.py"] = forged_admin
+    altered["deployment/admin/preflight.py"] = forged_admin
+
+    with pytest.raises(preflight.PreflightError, match="source-review root"):
+        preflight._require_compiled_source_review_v1(altered)
 
 
 def _compiled_boundary_inventory_fixture():
@@ -71,7 +102,7 @@ def _compiled_boundary_inventory_fixture():
         "entries": [entries[key] for key in sorted(entries)],
         "scan_roots": list(SCAN_ROOTS),
         "schema": BOUNDARY_INVENTORY_SCHEMA,
-        "source_census": "public-compiled-policy-fixture",
+        "source_census": BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     }
 
 
@@ -190,10 +221,19 @@ def _recovery(callable_, *args, **kwargs) -> preflight.PreflightError:
 
 def test_script_loads_with_isolated_standard_library_only() -> None:
     script = str(Path(preflight.__file__).resolve())
+    inventory = json.dumps(_compiled_boundary_inventory_fixture(), sort_keys=True)
+    probe = (
+        f"import json,runpy; n=runpy.run_path({script!r},run_name='preflight_probe'); "
+        f"i=json.loads({inventory!r}); "
+        "s=b'import importlib as il\\nname=\"runtime.sign\"\\n"
+        "def probe():\\n return il.import_module(name)\\n'; "
+        "f=n['_birth_closed_finding_tuples_v1']({'runtime/probe.py':s},i); "
+        "assert any(x[0]=='birth_closed_dynamic_boundary' for x in f)"
+    )
     completed = subprocess.run(
         [
             sys.executable, "-I", "-S", "-c",
-            f"import runpy; runpy.run_path({script!r}, run_name='preflight_probe')",
+            probe,
         ],
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, timeout=10, check=False,
@@ -203,6 +243,575 @@ def test_script_loads_with_isolated_standard_library_only() -> None:
     )
     assert completed.stdout == b""
     assert completed.stderr == b""
+
+
+def test_boundary_ast_budgets_and_failures_are_closed(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    simple = b"value = 1\n"
+    with monkeypatch.context() as patcher:
+        patcher.setattr(preflight, "MAX_BOUNDARY_SOURCE_BYTES_V1", len(simple))
+        assert preflight._scan_boundary_source_v1("runtime/probe.py", simple)[1] > 0
+
+    parse_calls = []
+    real_parse = preflight.ast.parse
+    with monkeypatch.context() as patcher:
+        patcher.setattr(preflight, "MAX_BOUNDARY_SOURCE_BYTES_V1", len(simple) - 1)
+        patcher.setattr(
+            preflight.ast, "parse",
+            lambda *args, **kwargs: parse_calls.append(args) or real_parse(*args, **kwargs),
+        )
+        _invalid(preflight._scan_boundary_source_v1, "runtime/probe.py", simple)
+    assert parse_calls == []
+
+    cases = (
+        ("MAX_BOUNDARY_AST_NODES_V1", 1, b"value = 1\n"),
+        ("MAX_BOUNDARY_AST_DEPTH_V1", 2, b"value = 1 + 2 + 3\n"),
+        ("MAX_BOUNDARY_SCOPES_V1", 1, b"def probe():\n return 1\n"),
+        ("MAX_BOUNDARY_CALLS_V1", 0, b"probe()\n"),
+    )
+    for constant, limit, source in cases:
+        with monkeypatch.context() as patcher:
+            patcher.setattr(preflight, constant, limit)
+            _invalid(preflight._scan_boundary_source_v1, "runtime/probe.py", source)
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            preflight, "MAX_BOUNDARY_TOTAL_SOURCE_BYTES_V1", len(simple) * 2 - 1,
+        )
+        _invalid(
+            preflight._discover_boundary_from_verified_v1,
+            {"runtime/a.py": simple, "runtime/b.py": simple},
+        )
+
+    nodes_per_source = preflight._scan_boundary_source_v1(
+        "runtime/a.py", simple,
+    )[1]
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            preflight,
+            "MAX_BOUNDARY_TOTAL_AST_NODES_V1",
+            nodes_per_source * 2 - 1,
+        )
+        _invalid(
+            preflight._discover_boundary_from_verified_v1,
+            {"runtime/a.py": simple, "runtime/b.py": simple},
+        )
+
+    canonical_source = tmp_path / "runtime" / "probe.py"
+    canonical_source.parent.mkdir()
+    canonical_source.write_bytes(simple)
+    with monkeypatch.context() as patcher:
+        patcher.setattr(canonical_guard, "MAX_BOUNDARY_AST_NODES", 1)
+        with pytest.raises(ValueError):
+            canonical_guard.scan_file(canonical_source, repository_root=tmp_path)
+
+    for failure_type in (RecursionError, ValueError, OverflowError, MemoryError):
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                preflight.ast, "parse",
+                lambda *_args, _failure=failure_type, **_kwargs: (_ for _ in ()).throw(
+                    _failure("synthetic AST failure")
+                ),
+            )
+            _invalid(preflight._scan_boundary_source_v1, "runtime/probe.py", simple)
+
+
+def test_late_ast_walk_memory_failures_are_normalized(monkeypatch) -> None:
+    source = b"__version__ = '1.2.3'\n"
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            preflight.ast,
+            "walk",
+            lambda _tree: (_ for _ in ()).throw(MemoryError("synthetic")),
+        )
+        _invalid(preflight._product_version_from_source_v1, source)
+
+    path = "runtime/probe.py"
+    payload = b"value = 1\n"
+    files = (preflight.DistributionFileV1(
+        path,
+        len(payload),
+        preflight.distribution_file_hash_v1(path, payload),
+        "runtime_code",
+    ),)
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            preflight.ast,
+            "walk",
+            lambda _tree: (_ for _ in ()).throw(MemoryError("synthetic")),
+        )
+        _invalid(
+            preflight._verify_local_import_closure_v1,
+            Path("."),
+            files,
+            {path: payload},
+        )
+
+
+def test_local_import_closure_enforces_combined_ast_budget(monkeypatch) -> None:
+    payload = b"value = 1\n"
+    paths = ("runtime/a.py", "runtime/b.py")
+    files = tuple(
+        preflight.DistributionFileV1(
+            path,
+            len(payload),
+            preflight.distribution_file_hash_v1(path, payload),
+            "runtime_code",
+        )
+        for path in paths
+    )
+    per_file = preflight._bounded_ast_metrics_v1(
+        preflight.ast.parse(payload.decode("utf-8")),
+    )
+    monkeypatch.setattr(
+        preflight,
+        "MAX_BOUNDARY_TOTAL_AST_NODES_V1",
+        per_file * 2 - 1,
+    )
+
+    _invalid(
+        preflight._verify_local_import_closure_v1,
+        Path("."),
+        files,
+        {path: payload for path in paths},
+    )
+
+
+@pytest.mark.parametrize("source, rejected", [
+    (b"class Runner:\n def run_module(self, name): return name\n"
+     b"VALUE = Runner().run_module('safe')\n", False),
+    (b"import runpy\nVALUE = runpy.run_module('unsafe')\n", True),
+])
+def test_autonomous_import_closure_distinguishes_local_methods_from_loaders(
+        source: bytes, rejected: bool) -> None:
+    path = "runtime/sample.py"
+    item = preflight.DistributionFileV1(
+        path, len(source), preflight.distribution_file_hash_v1(path, source),
+        "runtime_code",
+    )
+    if rejected:
+        _invalid(
+            preflight._verify_local_import_closure_v1,
+            Path("."), (item,), {path: source},
+        )
+    else:
+        preflight._verify_local_import_closure_v1(
+            Path("."), (item,), {path: source},
+        )
+
+
+def test_autonomous_import_closure_limits_door_exception_to_exact_scope() -> None:
+    path = "runtime/admitted_module_v1.py"
+    source = (
+        b"def load_admitted_module_v1(payload):\n"
+        b" compiled = compile(payload, '<signed>', 'exec')\n"
+        b" exec(compiled, {})\n"
+        b"def rogue(payload):\n return eval(payload)\n"
+    )
+    item = preflight.DistributionFileV1(
+        path, len(source), preflight.distribution_file_hash_v1(path, source),
+        "runtime_code",
+    )
+    _invalid(
+        preflight._verify_local_import_closure_v1,
+        Path("."), (item,), {path: source},
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_dynamic"),
+    (
+        (
+            b"import importlib as il\nname = 'runtime.sign'\n"
+            b"def probe():\n return il.import_module(name)\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\n"
+            b"def probe(name):\n return import_module(name)\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\n"
+            b"def probe(name):\n name = 'json'\n return import_module(name)\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\n"
+            b"mods = ['json']\nmods.append('runtime.sign')\n"
+            b"for name in mods:\n import_module(name)\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\nmods = ('json',)\n"
+            b"def mutate():\n global mods\n mods = ('runtime.sign',)\n"
+            b"def probe():\n"
+            b" for name in mods:\n  import_module(name)\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\n"
+            b"import_module('runtime.sign.child')\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\n"
+            b"def probe(name):\n return import_module(f'runtime.sign.{name}')\n",
+            True,
+        ),
+        (
+            b"import importlib\nloader = importlib.import_module\n"
+            b"loader('runtime.sign')\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\n"
+            b"import_module('.sign', package='runtime')\n",
+            True,
+        ),
+        (
+            b"import importlib\n"
+            b"def probe(name):\n return getattr(importlib, name)('runtime.sign')\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\n"
+            b"probe = lambda name: import_module(name)\n",
+            True,
+        ),
+        (
+            b"def probe(name):\n"
+            b" return __builtins__['__import__'](name)\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\nname = 'json'\n"
+            b"with manager as name:\n import_module(name)\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\n"
+            b"values = [import_module(name) for name in ('runtime.sign',)]\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\nname = 'json'\n"
+            b"match payload:\n case {'module': name}: import_module(name)\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\n"
+            b"def outer():\n name = 'json'\n def inner():\n"
+            b"  nonlocal name\n  return import_module(name)\n return inner\n",
+            True,
+        ),
+        (
+            b"from dataclasses import dataclass\n"
+            b"from importlib import import_module\n@dataclass(frozen=True)\n"
+            b"class Row:\n module: str\nrows = (Row('json'),)\n"
+            b"for row in rows:\n import_module(row.module)\n",
+            True,
+        ),
+        (
+            b"from importlib import import_module\nmods = ('json',)\n"
+            b"globals()['mods'] = ('runtime.sign',)\n"
+            b"for name in mods:\n import_module(name)\n",
+            True,
+        ),
+        (
+            b"def probe(name):\n"
+            b" return globals().get('__builtins__').get('__import__')(name)\n",
+            True,
+        ),
+        (
+            b"import sys\ndef probe(name):\n"
+            b" return getattr(sys.modules.get('builtins'), '__import__')(name)\n",
+            True,
+        ),
+        (
+            b"import importlib\ngetter = getattr\n"
+            b"getter(importlib, 'import_module')('runtime.sign')\n",
+            True,
+        ),
+        (
+            b"import builtins\n"
+            b"builtins.__getattribute__('__import__')('runtime.sign')\n",
+            True,
+        ),
+        (b"import sys\nmods = sys.modules\nmods[name]\n", True),
+        (b"import sys\nlookup = sys.modules.get\nlookup(name)\n", True),
+        (
+            b"import importlib.util\n"
+            b"spec = importlib.util.spec_from_file_location('x', 'x.py')\n"
+            b"module = importlib.util.module_from_spec(spec)\n"
+            b"spec.loader.exec_module(module)\n",
+            True,
+        ),
+        (
+            b"import importlib\n"
+            b"spec = getattr(importlib.util, 'spec_from_file_location')"
+            b"('x', 'x.py')\n"
+            b"spec.loader.load_module()\n",
+            True,
+        ),
+        (
+            b"import sys\n"
+            b"sys.modules.__getitem__('builtins').__dict__."
+            b"__getitem__('__import__')('runtime.sign')\n",
+            True,
+        ),
+        (
+            b"import sys\n"
+            b"sys.modules['builtins'].__dict__['eval']("
+            b"\"__import__('runtime.sign')\")\n",
+            True,
+        ),
+        (
+            b"import sys\n"
+            b"sys.modules['builtins'].__dict__.__getitem__('exec')"
+            b"(\"__import__('runtime.sign')\")\n",
+            True,
+        ),
+        (
+            b"import sys\n"
+            b"[m.sign_executor(None) for m in sys.modules.values() "
+            b"if getattr(m, '__name__', '') == 'sign']\n",
+            True,
+        ),
+        (
+            b"import sys\n"
+            b"[(name, module) for name, module in sys.modules.items()]\n",
+            True,
+        ),
+        (b"import sys\nsys.modules.pop('sign').sign_executor(None)\n", True),
+        (
+            b"import sys\nsys.modules.setdefault('loader', fake).load_catalog()\n",
+            True,
+        ),
+        (b"import sys\nsys.modules['loader'] = fake\n", True),
+        (
+            b"import sys\nmods = sys.modules.__or__({})\n"
+            b"[m for m in mods.values()]\n",
+            True,
+        ),
+        (
+            b"import sys\nmods = vars(sys)['modules']\nmods.values()\n",
+            True,
+        ),
+        (
+            b"import sys\nmods = sys.__dict__['modules']\nmods.values()\n",
+            True,
+        ),
+        (
+            b"import sys\nmods = getattr(sys, 'modules')\nmods.values()\n",
+            True,
+        ),
+        (
+            b"import sys\nmods = object.__getattribute__(sys, 'modules')\n"
+            b"mods.values()\n",
+            True,
+        ),
+        (
+            b"module = __loader__.load_module('runtime.sign')\n"
+            b"module.sign_executor(None)\n",
+            True,
+        ),
+        (
+            b"module = globals()['__loader__'].load_module('runtime.sign')\n"
+            b"module.sign_executor(None)\n",
+            True,
+        ),
+        (
+            b"import sys\n"
+            b"sys.modules.copy()['builtins'].__dict__['__import__']"
+            b"('runtime.sign')\n",
+            True,
+        ),
+        (
+            b"from types import FunctionType\n"
+            b"FunctionType(compile(\"__import__('runtime.sign')\", "
+            b"'<probe>', 'exec'), {})()\n",
+            True,
+        ),
+        (
+            b"import sys\n"
+            b"sys.modules['types'].FunctionType(code, {})()\n",
+            True,
+        ),
+        (
+            b"import sys\n"
+            b"sys.modules['runpy'].run_path(name)\n",
+            True,
+        ),
+        (
+            b"import sys\n"
+            b"sys.modules['importlib.util'].spec_from_file_location"
+            b"('x', name)\n",
+            True,
+        ),
+        (
+            b"import importlib.util\n"
+            b"factory = importlib.util.spec_from_file_location\n"
+            b"factory('x', name)\n",
+            True,
+        ),
+        (
+            b"import runtime.sign as s\nm = (s,)[0]\n"
+            b"m.sign_executor(None)\n",
+            True,
+        ),
+        (
+            b"import runtime.sign as s\nm = [s][0]\n"
+            b"m.sign_executor(None)\n",
+            True,
+        ),
+        (
+            b"import runtime.sign as s\nm = s if flag else safe\n"
+            b"m.sign_executor(None)\n",
+            True,
+        ),
+        (
+            b"import runtime.sign as s\ndef identity(value): return value\n"
+            b"m = identity(s)\nm.sign_executor(None)\n",
+            True,
+        ),
+        (b"from importlib import import_module\nimport_module('json')\n", True),
+        (
+            b"from importlib import import_module\n"
+            b"for name in ('phase1_bootstrap', 'phase2_infra'):\n"
+            b" import_module(f'install.phases.{name}')\n",
+            True,
+        ),
+        (
+            b"def run_module(name): return name\n"
+            b"def main(): return run_module('safe')\n",
+            False,
+        ),
+        (
+            b"class Registry:\n def values(self): return ()\n"
+            b"VALUE = Registry().values()\n",
+            False,
+        ),
+        (
+            b"def render(value):\n sign = '-'\n return sign + value\n",
+            False,
+        ),
+        (b"import re\nVALUE = re.compile('safe')\n", False),
+    ),
+)
+def test_boundary_dynamic_imports_are_always_closed(
+    tmp_path: Path, source: bytes, expected_dynamic: bool,
+) -> None:
+    target = tmp_path / "runtime" / "probe.py"
+    target.parent.mkdir()
+    target.write_bytes(source)
+    canonical = canonical_guard.discover(tmp_path)
+    autonomous = preflight._discover_boundary_from_verified_v1({
+        "runtime/probe.py": source,
+    })
+    for facts in (canonical, autonomous):
+        assert any(
+            "dynamic_boundary_access" in fact.capabilities
+            for fact in facts
+        ) is expected_dynamic
+        assert any(fact.closed_dynamic_boundary for fact in facts) is expected_dynamic
+    assert [
+        (fact.path, fact.scope, fact.capabilities, fact.closed_dynamic_boundary)
+        for fact in autonomous
+    ] == [
+        (fact.path, fact.scope, fact.capabilities, fact.closed_dynamic_boundary)
+        for fact in canonical
+    ]
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        b"import runtime.sign\nruntime.sign.sign_executor(None)\n",
+        b"from runtime.sign import sign_executor as f\nf(None)\n"
+        b"f = lambda value: value\n",
+    ),
+)
+def test_boundary_static_import_authority_survives_aliasing_and_rebinding(
+    tmp_path: Path, source: bytes,
+) -> None:
+    target = tmp_path / "runtime" / "probe.py"
+    target.parent.mkdir()
+    target.write_bytes(source)
+    canonical = canonical_guard.discover(tmp_path)
+    autonomous = preflight._discover_boundary_from_verified_v1({
+        "runtime/probe.py": source,
+    })
+    for facts in (canonical, autonomous):
+        assert any("sign" in fact.capabilities for fact in facts)
+
+
+def test_direct_reviewed_boundary_api_is_not_misclassified_as_dynamic(
+    tmp_path: Path,
+) -> None:
+    source = b"import runtime.sign as signing\nsigning.sign_executor(None)\n"
+    target = tmp_path / "runtime" / "probe.py"
+    target.parent.mkdir()
+    target.write_bytes(source)
+
+    for facts in (
+        canonical_guard.discover(tmp_path),
+        preflight._discover_boundary_from_verified_v1({
+            "runtime/probe.py": source,
+        }),
+    ):
+        fact = next(item for item in facts if item.scope == "<module>")
+        assert fact.capabilities == ("sign",)
+        assert fact.closed_dynamic_boundary is False
+
+
+def test_autonomous_manifest_source_grammar_and_budget_are_closed(
+    tmp_path: Path,
+) -> None:
+    _release, encoded, _signature, _registry, _temporary = _distribution_fixture(
+        tmp_path,
+    )
+
+    def mutant(path: str, size: int = 1, *, replace: bool = False) -> bytes:
+        value = json.loads(encoded)
+        if replace:
+            item = next(entry for entry in value["files"] if entry["path"] == path)
+            item["size"] = size
+        else:
+            value["files"].append({
+                "content_hash": preflight.distribution_file_hash_v1(path, b"x"),
+                "path": path, "role": "runtime_code", "size": size,
+            })
+        value["files"].sort(key=lambda item: item["path"].encode("utf-8"))
+        value["closed_build_id"] = None
+        unsigned = dict(value)
+        unsigned.pop("closed_build_id")
+        value["closed_build_id"] = preflight._digest(
+            preflight.BUILD_ID_DOMAIN, preflight._canonical_json(unsigned),
+        )
+        return preflight._canonical_json(value)
+
+    for path in (
+        "other/evil.py", "Runtime/evil.py", "runtime/evil.PY",
+        "runtime/package.py/payload.dat",
+    ):
+        _invalid(preflight._parse_distribution_manifest_v1, mutant(path))
+    _invalid(
+        preflight._parse_distribution_manifest_v1,
+        mutant(
+            "runtime/oversize.py",
+            preflight.MAX_BOUNDARY_SOURCE_BYTES_V1 + 1,
+        ),
+    )
+    _invalid(
+        preflight._parse_distribution_manifest_v1,
+        mutant(
+            "deployment/admin/preflight.py",
+            preflight.MAX_BOUNDARY_SOURCE_BYTES_V1 + 1,
+            replace=True,
+        ),
+    )
 
 
 def test_cli_accepts_only_three_exact_forms() -> None:
@@ -305,7 +914,39 @@ def test_distribution_registry_manifest_openssl_and_tree_are_one_binding(
         openssl_executable=Path("/usr/bin/openssl"), temporary_root=temporary,
     )
     assert list(temporary.iterdir()) == []
+    boundary_calls = []
+    monkeypatch.setattr(
+        preflight, "_require_birth_closed_sources_v1",
+        lambda verified, inventory: boundary_calls.append((verified, inventory)),
+    )
     preflight._verify_installed_distribution_for_test_v1(record, release)
+    assert len(boundary_calls) == 1
+    manifest, files = preflight._parse_distribution_manifest_v1(encoded)
+    expected_capture = {
+        item.path for item in files if item.path.endswith(".py")
+    } | {manifest["boundary_inventory_path"]}
+    assert set(boundary_calls[0][0]) == expected_capture
+    assert boundary_calls[0][1]["schema"] == BOUNDARY_INVENTORY_SCHEMA
+
+    sentinel = preflight.PreflightError(
+        preflight.CODE_INVALID, preflight.EXIT_INVALID, "boundary sentinel",
+    )
+    with monkeypatch.context() as patcher:
+        def deny(_verified, _inventory):
+            raise sentinel
+
+        patcher.setattr(preflight, "_require_birth_closed_sources_v1", deny)
+        patcher.setattr(
+            preflight, "_product_version_from_source_v1",
+            lambda _source: (_ for _ in ()).throw(AssertionError("late version")),
+        )
+        patcher.setattr(
+            preflight, "_verify_local_import_closure_v1",
+            lambda *_args: (_ for _ in ()).throw(AssertionError("late imports")),
+        )
+        with pytest.raises(preflight.PreflightError) as failure:
+            preflight._verify_installed_distribution_for_test_v1(record, release)
+        assert failure.value is sentinel
     assert isinstance(record.facts, tuple) and isinstance(record.files, tuple)
     with pytest.raises(AttributeError):
         record.facts.release_sequence = 2
@@ -572,6 +1213,50 @@ def test_real_boundary_policy_snapshot_is_exact_and_entry_schema_is_closed() -> 
             preflight._validate_boundary_inventory_v1,
             preflight._canonical_json(mutant),
         )
+
+
+@pytest.mark.parametrize(
+    ("relative", "source", "expected_code"),
+    (
+        (
+            "runtime/dynamic_probe.py",
+            b"import importlib as il\ndef probe():\n return il.import_module('runtime.sign')\n",
+            "birth_closed_dynamic_boundary",
+        ),
+        (
+            "runtime/extra_probe.py",
+            b"from runtime.executor_birth_operational import birth_executor as be\n"
+            b"def extra():\n return be()\n",
+            "unclassified_boundary_scope",
+        ),
+        (
+            "runtime/admin/manifest_refactor.py",
+            b"from runtime.sign import sign_executor\n"
+            b"def refactor_manifest():\n return sign_executor(None)\n",
+            "birth_closed_exception_invalid",
+        ),
+    ),
+)
+def test_autonomous_boundary_clone_matches_certified_oracle(
+    tmp_path, relative, source, expected_code,
+) -> None:
+    release = tmp_path / "release"
+    target = release / relative
+    target.parent.mkdir(parents=True)
+    target.write_bytes(source)
+    inventory = _compiled_boundary_inventory_fixture()
+    canonical = tuple(
+        (finding.code, finding.scope, finding.message)
+        for finding in canonical_birth_closed_findings(
+            canonical_boundary_discover(release), inventory,
+        )
+    )
+    verified = {relative: source}
+    autonomous = preflight._birth_closed_finding_tuples_v1(
+        verified, inventory,
+    )
+    assert autonomous == canonical
+    assert expected_code in {finding[0] for finding in autonomous}
 
 
 @LINUX_ONLY
