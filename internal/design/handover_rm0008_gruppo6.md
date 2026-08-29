@@ -1477,6 +1477,15 @@ mount reale perché avrebbe introdotto un effetto non necessario. La suite
 finale conta `187 passed, 4 subtests passed` sul perimetro mirato e `594 passed,
 1.144 subtests passed` sulla regressione i18n e sui consumer collegati.
 
+Consolidamento concluso su `main`: commit privati `25769cbc` (runtime, test e
+documenti) e `bff1595e` (radici sorgente revisionate); commit pubblico
+incrementale `62c61b5cfc0c3aec144aac81bff9c59279c0390e`. Il run GitHub Actions
+`33271817356` è verde in tutti gli otto job bloccanti, compresi Ubuntu,
+Windows, identità ACL reali, concorrenza e riepilogo di certificazione. Sul
+repository pubblico esiste soltanto il ramo `main`. La documentazione è stata
+rigenerata e distribuita; l'avviso GitHub sulla futura dismissione del runtime
+Node 20 delle action artifact è non bloccante e non modifica il verdetto.
+
 Resta distinta una lacuna di identita': il registro del device non conserva un
 indirizzo IP autenticato. Per questo il nome `PC-ROBERTO` non puo' essere
 trasformato fiduciariamente in `192.168.1.137`; il valore raccolto dal dialogo

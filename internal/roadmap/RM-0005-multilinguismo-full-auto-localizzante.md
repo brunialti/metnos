@@ -386,6 +386,12 @@ avversariali indipendenti avevano concluso entrambe con `P0=0`, `P1=0`, `P2=0`;
 anche compilazione e `git diff --check` sono verdi. Il censimento residuo del
 lessico impedisce comunque il nuovo closeout. Lo stato resta `reopened`.
 
+La correzione è pubblicata nel commit pubblico `62c61b5cfc0c3aec144aac81bff9c59279c0390e`.
+Il run di certificazione GitHub Actions `33271817356` ha concluso con successo
+tutti gli otto job Linux e Windows. Il requisito di pubblicazione e prova live
+del difetto shell/ping è quindi soddisfatto; resta aperto esclusivamente il
+censimento lessicale descritto sopra.
+
 ## 7. Rischi e misure
 
 | Rischio | Misura |
