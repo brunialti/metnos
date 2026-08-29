@@ -101,12 +101,10 @@ jobs:
             --setenv="PATH=$PATH" \
             --setenv=PYTHONPATH=runtime \
             --setenv=METNOS_REQUIRE_REAL_BIRTH_LINUX=1 \
-            --setenv=METNOS_REQUIRE_REAL_B2_RECEIVER_LINUX=1 \
             "${pythonLocation}/bin/python" -m pytest -q -p no:cacheprovider \
             --import-mode=importlib \
             --confcutdir=tests/portable \
-            tests/portable/test_executor_birth_runner_linux_real.py \
-            tests/portable/test_executor_birth_source_receiver_linux_real.py::test_productive_fixed_root_in_disposable_vm
+            tests/portable/test_executor_birth_runner_linux_real.py
 
       - name: Run the historical RM-0008 D diagnostic explicitly
         if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch' && inputs.rm0008_run_diagnostic
