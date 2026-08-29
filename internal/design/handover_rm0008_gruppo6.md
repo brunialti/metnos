@@ -501,6 +501,49 @@ autorizza il commit privato incrementale della base B3, non la chiusura di B3
 ne' un commit pubblico: il nucleo preparatore e la capacita' preparata mancano
 ancora.
 
+Dopo il commit privato `0e68ede5` sono state svolte due analisi read-only
+indipendenti sul residuo B3. Entrambe confermano l'ordine obbligato: prima
+completare i byte definitivi del programma amministrativo autonomo
+`runtime/executor_birth_admin_preflight.py`, poi costruire staging, manifesto e
+capability. Il programma deve essere gia' completo in B3, perche' cambiarlo in
+G6-C cambierebbe firma e `administrative_bundle_hash`; G6-C installera' e
+provera' operativamente gli stessi byte. In B3, con prove G6-C assenti, i tre
+comandi chiusi devono negare come prova mancante e non mutare nulla.
+
+Soltanto dopo quel file il nucleo preparatore potra' validare la sessione e la
+fotografia opaca della stessa sessione, incrociare grafo e catena fredda,
+derivare sequenza e predecessori, rileggere la sorgente fissa, compilare
+catalogo, unita', descrittore, inventario e manifesto, firmare una sola volta e
+restituire una capability opaca legata allo staging. B3 non produce ancora
+descrittore del predecessore o prerequisito di avvio e non pubblica release,
+claim, disposizione o `PREPARED`. La pubblicazione resta B4; installazione e
+verifica systemd restano G6-C; composizione e journal restano G6-D.
+
+Il primo tentativo di iniziare il programma amministrativo si e' fermato prima
+di scrivere codice: il piano non fissava ancora target esatti dei link,
+proiezione completa direttiva-proprieta', normalizzazione dell'output manager e
+classificazione chiusa delle origini aggiunte da systemd. Due analisi
+indipendenti e osservazioni read-only sul manager Ubuntu 24.04 locale hanno ora
+prodotto il delta normativo §§3.5.4.1-3.5.4.4. Sono fissati gli undici link,
+la mappa completa, il controllo dei flag `Exec*Ex`, le grammatiche di durata e
+timer, i limiti degli archi e le sole unita' virtuali `-.slice|system.slice`;
+`-.mount` e' generata e `init.scope` e' transient.
+
+Le due revisioni avversariali del delta sono concluse. Hanno fatto correggere
+il comando esatto e la cardinalita' di `systemctl show`, il tipo V1 di
+`Documentation`, l'insieme chiuso dei valori `infinity`, la semantica di
+`SourcePath` e `UnitFileState` e il legame crittografico dei byte sorgente dei
+generatori. Un rilievo sulla ripetizione di `TimersMonotonic` e' stato ritirato
+dopo l'evidenza reale di due righe omonime su systemd 255.4. I verdetti finali
+sono entrambi `APPROVATO`, con `P0=0`, `P1=0`, `P2=0`. Il blocco normativo e'
+quindi rimosso e l'implementazione B3 puo' iniziare dai byte definitivi del
+programma amministrativo.
+
+Il PC Windows riavviato e' nuovamente raggiungibile in SSH diretto a
+`192.168.1.137`: risponde come `ROBERTO_PC_HP` con Python 3.14.0. Non e' stato
+ancora usato per nuovo codice B3, perche' il programma amministrativo resta
+da implementare e poi sottoporre alle sue prove portabili e Windows.
+
 ## Decisioni gia' fissate
 
 - Il piano amministrativo vive fuori dalle release ed e' posseduto da `root`.

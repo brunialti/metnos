@@ -795,9 +795,12 @@ unica, chiusa e versionata nel codec; una direttiva senza proprieta' osservabile
 rende il catalogo V1 non rappresentabile. `Install` viene provato separatamente
 dai link di abilitazione root-owned e byte-esatti.
 
-Frammento e link vengono aperti direttamente senza seguire link, devono essere
-`root:root`, regolari o link secondo il tipo, non scrivibili da gruppo o altri e
-coincidere coi byte firmati; non sono ammessi drop-in estranei.
+Frammento e link vengono aperti direttamente senza seguire link. Il frammento
+deve essere regolare `root:root`, non scrivibile da gruppo o altri e coincidere
+coi byte firmati. Il link deve essere un link simbolico `root:root` col target
+relativo esatto; il suo modo non costituisce una prova perche' Linux lo espone
+come `0777`. Tutti gli antenati di entrambi devono essere `root` e non
+scrivibili da gruppo o altri. Non sono ammessi drop-in estranei.
 `configured_directives_hash` e' ricalcolato col parser indipendente sui byte del
 frammento. `need_daemon_reload` deve essere `no`: insieme al `daemon-reload`
 causale della fabbrica prova che il gestore non usa una copia precedente.
@@ -811,7 +814,9 @@ dell'host e non vengono predetti da una allowlist.
 `manager_added_edges` e' invece la fotografia autenticata della differenza
 effettiva, ordinata per relazione e nome unita'. Ogni elemento contiene
 esattamente `relation`, `unit_name`, `origin_kind`, `fragment_path`,
-`size`, `content_hash`, `uid`, `gid`, `mode`, `load_state`. `relation`
+`source_path`, `source_size`, `source_content_hash`, `source_uid`,
+`source_gid`, `source_mode`, `size`, `content_hash`, `uid`, `gid`, `mode`,
+`load_state` e `unit_file_state`. `relation`
 appartiene all'insieme chiuso, versionato per il manager supportato,
 `Requires|Requisite|Wants|BindsTo|PartOf|Upholds|RequiredBy|RequisiteOf|
 WantedBy|BoundBy|ConsistsOf|UpheldBy|Conflicts|ConflictedBy|Before|After|
@@ -822,9 +827,11 @@ References|ReferencedBy`. Il verificatore richiede tutte queste proprieta' con
 catalogo. `origin_kind` appartiene a
 `root_fragment|root_generator|manager_virtual`. Per i primi due, percorso,
 dimensione, digest e metadati sono obbligatori e la sorgente viene aperta senza link sotto
-una radice root-owned non scrivibile; per `manager_virtual` quei cinque campi
-di file (`fragment_path`, `size`, `content_hash`, `uid`, `gid`, `mode`) sono
-nulli e il nome appartiene alla lista chiusa delle unita' intrinseche del
+una radice root-owned non scrivibile; per `manager_virtual` i sei campi
+di file (`fragment_path`, `size`, `content_hash`, `uid`, `gid`, `mode`), i sei
+campi di sorgente (`source_path`, `source_size`, `source_content_hash`,
+`source_uid`, `source_gid`, `source_mode`) e `unit_file_state` sono nulli e il
+nome appartiene alla lista chiusa delle unita' intrinseche del
 gestore supportato. Unita' transient o controllate dall'identita' di servizio
 sono vietate. `origin_kind` classifica l'origine del file dell'unita' bersaglio,
 non pretende di descrivere la provenienza dell'arco, che systemd non espone.
@@ -832,6 +839,8 @@ non pretende di descrivere la provenienza dell'arco, che systemd non espone.
 `metnos.executor-birth.systemd-origin-file/v1\0` seguito da
 `u64be(len(path_utf8)) || path_utf8 || u64be(size) || file_bytes`, sempre sul
 percorso finale canonico.
+`source_content_hash` usa lo stesso framing col dominio distinto
+`metnos.executor-birth.systemd-origin-source/v1\0`.
 
 `systemd_manager_version` proviene dalla proprieta' manager `Version`, con
 grammatica e lista supportata chiuse. La fabbrica G7 o della cella costruisce la
@@ -842,16 +851,225 @@ della fotografia, inclusi archi e origini. Qualunque proprieta' omessa, valore
 aggiunto o deriva nega. Cosi' la baseline reale dell'host evita falsi rossi
 senza poter nascondere una nuova dipendenza dopo l'attestazione.
 
-La mappa del codec usa il nome identico per proprieta' scalari, booleane,
-liste, capability, limiti e sandbox. Le sole conversioni ammesse sono chiuse:
-`RestartSec`, `TimeoutStartSec`, `TimeoutStopSec`, `WatchdogSec`,
-`StartLimitIntervalSec`, `OnBootSec`, `OnActiveSec`, `OnUnitActiveSec`,
-`RandomizedDelaySec` e `AccuracySec` diventano rispettivamente le proprieta'
-`*USec`; `ExecStartPre`, `ExecStart` ed `ExecStop` vengono decodificate dalle
-strutture argv del gestore senza confrontare il testo di visualizzazione;
-`WantedBy` e `RequiredBy` diventano esclusivamente link di abilitazione;
-`OnCalendar` viene confrontato con `TimersCalendar`. La compilazione fallisce se
-la versione supportata non espone una delle proprieta' richieste.
+##### 3.5.4.1 Link di abilitazione
+
+Ogni elemento di `enablement_links` contiene esattamente `path` e `target`.
+Per una direttiva firmata `[Install] WantedBy=T`, i due valori sono
+`/etc/systemd/system/T.wants/<unit-name>` e `../<unit-name>`; per
+`RequiredBy=T` sono `/etc/systemd/system/T.requires/<unit-name>` e
+`../<unit-name>`. `T` e' il `unit_name` o `external_unit_name` ottenuto dalla
+risoluzione dell'entry citata nel medesimo catalogo. In particolare,
+`external-default` diventa `default.target`, senza produrre un frammento per
+quell'unita' esterna.
+
+`path` e' assoluto, canonico e figlio stretto di `/etc/systemd/system`;
+`target` e' relativo e coincide byte per byte con `../<unit-name>`. La sua
+risoluzione lessicale dalla directory del link deve produrre esattamente
+`/etc/systemd/system/<unit-name>`. Componenti aggiuntivi `.` o `..`, target
+assoluti, collisioni di percorso, duplicati e target differenti negano. La
+lista e' ordinata per i byte UTF-8 di `path`. B3 compila e firma i link; G6-C
+li installa nella cella e G7 sul sistema reale, sempre rileggendo tipo,
+proprietario, modo e contenuto del link.
+
+La sorgente V1 corrente produce esattamente questi undici link:
+
+```text
+/etc/systemd/system/default.target.wants/metnos.target -> ../metnos.target
+/etc/systemd/system/metnos.target.requires/metnos-http.service -> ../metnos-http.service
+/etc/systemd/system/metnos.target.wants/metnos-durable-worker.service -> ../metnos-durable-worker.service
+/etc/systemd/system/metnos.target.wants/metnos-i18n-translator.timer -> ../metnos-i18n-translator.timer
+/etc/systemd/system/metnos.target.wants/metnos-llm.service -> ../metnos-llm.service
+/etc/systemd/system/metnos.target.wants/metnos-photon.service -> ../metnos-photon.service
+/etc/systemd/system/metnos.target.wants/metnos-playwright.service -> ../metnos-playwright.service
+/etc/systemd/system/metnos.target.wants/metnos-searxng.service -> ../metnos-searxng.service
+/etc/systemd/system/metnos.target.wants/metnos-side-display.service -> ../metnos-side-display.service
+/etc/systemd/system/metnos.target.wants/metnos-stack-watchdog.timer -> ../metnos-stack-watchdog.timer
+/etc/systemd/system/metnos.target.wants/metnos-telegram-daemon.service -> ../metnos-telegram-daemon.service
+```
+
+Qualunque variazione di numero, percorso o target richiede una modifica
+esplicita della sorgente V1, del vettore atteso e delle prove; non puo' essere
+appresa dall'host.
+
+##### 3.5.4.2 Protocollo chiuso `systemctl show`
+
+Il programma usa soltanto il `systemctl_executable` autenticato e l'argv
+esatto `--no-pager --plain --all show --property=<lista-ASCII-ordinata> --
+<unit>`,
+senza shell, con stdin nullo, ambiente contenente il solo `LC_ALL=C` e timeout
+di dieci secondi. Richiede uscita zero, standard error vuoto, standard output
+al massimo 4 MiB e standard error al massimo 4 KiB. L'output e' UTF-8, termina
+con un solo LF, non contiene CR o NUL e ha al massimo 4096 righe da 64 KiB.
+Ogni riga ha la forma `Nome=valore`; il nome appartiene alla lista richiesta.
+Duplicati sono vietati, salvo le proprieta' ripetibili
+`ExecStartPre`, `ExecStartPreEx`, `ExecStart`, `ExecStartEx`, `ExecStop`,
+`ExecStopEx`, `TimersMonotonic` e `TimersCalendar`, per le quali la
+cardinalita' e' comunque derivata dal catalogo.
+
+La versione manager viene letta con una chiamata separata, senza nome unita',
+e argv esatto `--no-pager --plain --all show --property=Version`; deve produrre
+la sola riga `Version=<valore>`. Systemd 255 omette una proprieta' sconosciuta
+pur restituendo uscita zero.
+Il verificatore non usa quindi la riuscita del processo come prova di
+supporto: pretende l'insieme e la cardinalita' esatti delle proprieta'
+obbligatorie per la classe. Nel build supportato, anche con `--all`, un array
+`Exec*` vuoto omette entrambe le proprieta' associate: questa e' la sola
+assenza ammessa per una proprieta' nota. Se il comando e' presente entrambe
+devono avere lo stesso numero di elementi. Proprieta', righe
+o cardinalita' ulteriori negano. La sola versione supportata da questo profilo
+e' `255.4-1ubuntu8.17`, letta dalla proprieta' manager `Version`; aggiungere
+una versione richiede le prove empiriche del §6.2.
+
+La normalizzazione non usa `float`. I booleani sono soltanto `yes|no`; gli
+interi sono decimali canonici, con segno ammesso soltanto per `Nice`; le liste
+vengono decodificate con il tokenizer C-quoted chiuso di systemd, rifiutano
+escape sconosciuti, duplicati ed elementi vuoti e sono ordinate per byte
+UTF-8. Le durate del gestore ammettono soltanto componenti
+`<intero>[.<da-uno-a-sei-decimali>](us|ms|s|min|h|d|w)`, separati da un solo
+spazio, e vengono convertite in microsecondi interi. `MemoryHigh` e
+`MemoryMax` normalizzano i suffissi firmati `K|M|G|T` in base 1024 e il valore
+del gestore in byte. `infinity` e' ammesso soltanto per `MemoryHigh`,
+`MemoryMax` e `TasksMax`; ogni altro campo deve avere un valore finito. Per
+`WatchdogUSec`, l'assenza firmata corrisponde al valore finito zero.
+I segnali numerici diventano il nome `SIG*` della tabella chiusa Linux; le
+capability diventano nomi `CAP_*` maiuscoli, unici e ordinati; `UMask` e'
+esattamente di quattro cifre ottali. La proiezione registra i valori gia'
+normalizzati, cosi' forme testuali equivalenti non cambiano l'hash.
+
+##### 3.5.4.3 Mappa direttiva-proprieta'
+
+La mappa V1 e' la seguente. Nella sezione `Unit`, `Description`,
+`Documentation`, `DefaultDependencies`, `Requires`, `Wants`, `BindsTo`,
+`After`, `Before`, `PartOf`, `OnFailure` e `StartLimitBurst` usano la
+proprieta' omonima. `StartLimitIntervalSec` usa
+`StartLimitIntervalUSec`. Le relazioni sono insiemi di nomi unita';
+`Documentation` conserva il tipo `scalar` del codec firmato. Poiche' non e'
+emessa dalla sorgente V1, nella proiezione corrente deve avere `values=[]`;
+un valore manager non vuoto nega. Descrizione, booleano e intero sono scalari.
+
+Nella sezione `Service`, usano la proprieta' omonima:
+
+```text
+Type, User, Group, SupplementaryGroups, Restart, WorkingDirectory,
+Environment, NoNewPrivileges, PrivateTmp, ProtectSystem, ProtectHome,
+ReadWritePaths, CapabilityBoundingSet, AmbientCapabilities, KillMode,
+KillSignal, SuccessExitStatus, RemainAfterExit, UMask, NotifyAccess,
+Delegate, DelegateSubgroup, ProtectKernelTunables, ProtectKernelModules,
+ProtectControlGroups, RestrictNamespaces, RestrictRealtime,
+RestrictAddressFamilies, LockPersonality, MemoryDenyWriteExecute,
+SystemCallArchitectures, MemoryAccounting, MemoryHigh, MemoryMax,
+TasksAccounting, TasksMax, Nice, StandardOutput, StandardError,
+SyslogIdentifier
+```
+
+Le conversioni residue sono:
+
+```text
+RestartSec -> RestartUSec
+TimeoutStartSec -> TimeoutStartUSec
+TimeoutStopSec -> TimeoutStopUSec
+WatchdogSec -> WatchdogUSec
+LimitNOFILE -> LimitNOFILE e LimitNOFILESoft
+```
+
+Per `LimitNOFILE` entrambi i valori del gestore devono coincidere con l'unico
+valore firmato. `SupplementaryGroups`, capability, architetture e famiglie di
+indirizzi vengono confrontati come insiemi chiusi dopo la normalizzazione;
+`Environment` come mappa ordinata nome-valore senza nomi duplicati;
+`SuccessExitStatus` come due insiemi separati di codici e segnali. La forma
+normalizzata viene poi resa nel campo `values` del tipo firmato, usando un
+solo spazio fra elementi ordinati quando quel tipo e' `scalar`.
+
+`ExecStartPre`, `ExecStart` ed `ExecStop` usano ciascuno sia la proprieta'
+storica omonima sia `ExecStartPreEx`, `ExecStartEx` o `ExecStopEx`. Il parser
+accetta soltanto la struttura chiusa che espone `path`, `argv[]`, flag statici,
+`start_time`, `stop_time`, `pid`, `code` e `status`. Verifica strettamente la
+grammatica ma esclude dalla fotografia soltanto gli ultimi cinque valori
+dinamici; numero dei comandi, percorso e argv devono coincidere nelle due
+proprieta'. Per ogni servizio `gated_service`, il singolo prefisso `!` deve
+apparire in `*Ex` come il solo flag `no-setuid`. `privileged`, `ambient`,
+`ignore-failure`, `no-env-expand` o qualunque altro flag negano. Il comando
+`stop_only`, che non ha prefisso, richiede flag vuoti. Gli argv V1 non
+contengono whitespace nei singoli argomenti; una futura estensione richiede un
+codec esplicito e nuovi vettori.
+
+Nella sezione `Timer`, `Persistent` e `Unit` usano la proprieta' omonima;
+`RandomizedDelaySec` e `AccuracySec` usano `RandomizedDelayUSec` e
+`AccuracyUSec`. `OnBootSec`, `OnActiveSec` e `OnUnitActiveSec` sono gli
+elementi `OnBootUSec`, `OnActiveUSec` e `OnUnitActiveUSec` delle righe
+ripetibili `TimersMonotonic`. `OnCalendar` e' l'elemento `OnCalendar` di
+`TimersCalendar`. Il parser ammette la struttura chiusa
+`{ base=valore ; next_elapse=valore-dinamico }`, con ordine e punteggiatura
+esatti; verifica ma scarta soltanto `next_elapse`. Base duplicata, inattesa o
+mancante nega. V1 consente una sola espressione calendario gia' nella forma
+canonica emessa da systemd 255.
+
+`WantedBy` e `RequiredBy` non hanno una proiezione manager sostitutiva: sono
+provati esclusivamente dai link del §3.5.4.1. Le undici direttive ammesse dal
+codec ma non emesse dalla sorgente corrente sono `Documentation`,
+`DefaultDependencies`, `ExecStop`, `Environment`, `ReadWritePaths`,
+`AmbientCapabilities`, `SuccessExitStatus`, `UMask`, `OnBootSec`,
+`OnCalendar` e `RandomizedDelaySec`. Restano non emettibili nel catalogo
+produttivo finche' ciascuna non possiede almeno un vettore positivo e un
+mutante negativo specifico. In particolare non si puo' introdurre una nuova
+espressione `OnCalendar` o forma `SuccessExitStatus` senza estendere prima il
+codec chiuso.
+
+Per ciascuna classe il verificatore interroga tutte le proprieta' applicabili
+della tabella, anche quando la direttiva non e' configurata; i valori
+predefiniti del gestore entrano cosi' in `manager_projection`. Una direttiva
+firmata deve coincidere con la propria forma normalizzata. Se una direttiva
+non ha una proprieta' osservabile, il catalogo V1 non e' rappresentabile e la
+compilazione nega; le sole eccezioni sono i due link `Install`. I campi
+`values` vuoti rappresentano una proprieta' ripetibile non configurata oppure
+la sola eccezione scalar V1 `Documentation`, non una proprieta' obbligatoria
+mancante.
+
+##### 3.5.4.4 Archi aggiunti e origine
+
+Il programma richiede sempre tutte le proprieta' di relazione gia' enumerate
+in questo paragrafo, anche vuote. Sottrae dagli archi osservati soltanto gli
+archi diretti presenti nelle direttive firmate della medesima unita'. Non
+predice ne' sottrae inversi: inversi automatici e archi prodotti dai link
+firmati restano intenzionalmente nella fotografia effettiva. Ogni altro arco
+diventa un elemento di `manager_added_edges`, inclusi dipendenze predefinite,
+relazioni automatiche dei timer, mount e generatori. L'ordine e'
+`(relation, unit_name)` per byte UTF-8; coppie duplicate negano. Il limite e'
+4096 residui per unita' candidata e 65536 nell'intera fotografia.
+
+Per ogni unita' bersaglio residua viene eseguita una seconda osservazione con
+l'insieme esatto `Id`, `LoadState`, `FragmentPath`, `SourcePath`, `Transient`
+e `UnitFileState`. `Id` coincide col nome richiesto, `LoadState` e' `loaded` e
+`Transient` e' `no`. `root_fragment` richiede un frammento regolare
+`root:root`, con un solo hard link, non scrivibile da gruppo o altri, al
+massimo 1 MiB e sotto una sola radice canonica tra
+`/etc/systemd/system`, `/run/systemd/system`,
+`/usr/local/lib/systemd/system` e `/usr/lib/systemd/system`, escluse le
+directory dei generatori. `SourcePath` deve essere vuoto e viene registrato
+come nullo; anche `source_size`, `source_content_hash`, `source_uid`,
+`source_gid` e `source_mode` sono nulli. `UnitFileState` viene registrato e appartiene a
+`enabled|enabled-runtime|linked|linked-runtime|alias|static|disabled|indirect`.
+`root_generator` applica gli stessi controlli sotto
+`/run/systemd/generator`, `/run/systemd/generator.early` o
+`/run/systemd/generator.late`, richiede `UnitFileState=generated` e registra
+quel valore. `SourcePath` e' obbligatorio, assoluto e canonico; deve essere un
+file regolare `root:root`, non scrivibile da gruppo o altri, sotto `/etc` o
+`/usr`, con tutti gli antenati ugualmente sicuri, un solo hard link e limite
+di 1 MiB. Percorso, dimensione, contenuto, uid, gid e modo della sorgente sono
+registrati nei sei campi `source_*`; i byte alimentano il dominio dedicato
+definito sopra. Percorso, byte e metadati del frammento vengono riletti senza
+seguire link e alimentano l'altro hash gia' definito.
+
+Per il solo manager esatto supportato, la lista chiusa `manager_virtual` e'
+`-.slice|system.slice`: `FragmentPath`, `SourcePath` e `UnitFileState` sono
+vuoti e diventano nulli nel record insieme ai metadati di file e sorgente.
+`-.mount` non e' virtuale,
+ma `root_generator`; `init.scope` e' vietata perche' transient. Qualunque
+device, scope, unita' transient o unita' senza frammento fuori dalla lista
+chiusa nega. La lista non viene estesa osservando l'host.
+
+La compilazione fallisce se la versione supportata non espone una proprieta'
+richiesta o se un valore non appartiene alla grammatica chiusa.
 
 La fabbrica della capacita' G7 e la cella eseguono prima il solo
 `<systemctl-canonico> daemon-reload`, ne richiedono uscita zero e poi costruiscono
