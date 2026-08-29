@@ -443,9 +443,22 @@ anti-PII e anti-segreti con zero rilievi. Sullo stesso export la selezione
 portabile B2 ha dato `130 passed, 2 skipped` su Linux. La prova diretta sul PC
 Windows raggiunto tramite `192.168.1.137`, con Python 3.14, ha dato
 `103 passed, 29 skipped`: gli skip sono esclusivamente prove che richiedono
-Linux o privilegi root. Resta soltanto la pubblicazione incrementale su
-`main` e il conseguente ciclo GitHub pubblico. Fino a quel ciclo lo stato
-resta `candidate-not-certified`.
+Linux o privilegi root.
+
+Il primo commit pubblico B2 e' `77f2665`. Il ciclo GitHub
+`33222690771` non certifica B2: la suite portabile completa e' verde sia su
+Windows sia su Linux (`588 passed, 25 skipped` su Linux), ma la modifica del
+workflow storico ha causato due fallimenti collegati. Le sei celle 2A hanno
+rifiutato correttamente la modifica della loro base congelata; la nuova cella
+root B2 e' stata inoltre avviata sul filesystem reale del runner invece che
+nella radice usa-e-getta richiesta dal suo contratto. Non e' stata modificata
+l'implementazione per inseguire questi risultati. La correzione unica
+ripristina il workflow congelato al digest normativo
+`3e953be12480be9a4e6dfa19812a053492b5e26e155c9ecb7b749c29bde135e9`.
+Il test root B2 resta nella suite e verra' collegato al runner Linux isolato
+comune a B2-B4 previsto dal piano, senza duplicare la matrice. Resta da
+pubblicare questa correzione e ottenere errore pubblico zero; fino ad allora
+lo stato resta `candidate-not-certified`.
 
 ## Decisioni gia' fissate
 
@@ -474,11 +487,11 @@ resta `candidate-not-certified`.
 ## Prossimo passo unico
 
 G6-A e G6-B1 sono chiusi con errore zero. G6-B2 ha superato i due riesami
-avversariali e le prove Linux e Windows sull'esportazione pubblica. Pubblicare
-un solo commit incrementale su `main`, attendere tutti i lavori GitHub e
-dichiarare B2 chiuso soltanto con errore pubblico zero. Non anticipare
-preparatore B3, pubblicazione B4, G6-C o G6-D e non esporre claim,
-disposizione o `PREPARED`.
+avversariali e le prove Linux e Windows sull'esportazione pubblica. Revisionare
+la sola correzione che ripristina il workflow congelato, pubblicarla con un
+commit incrementale su `main`, attendere tutti i lavori GitHub e dichiarare B2
+chiuso soltanto con errore pubblico zero. Non anticipare preparatore B3,
+pubblicazione B4, G6-C o G6-D e non esporre claim, disposizione o `PREPARED`.
 
 ## Regole operative
 
