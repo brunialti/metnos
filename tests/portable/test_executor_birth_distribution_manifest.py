@@ -207,6 +207,35 @@ def test_signed_manifest_produces_only_sealed_preflight_identity(tmp_path):
         result.encoded = b"replacement"
 
 
+def test_relative_path_depth_is_normative_and_existing_manifest_is_compatible(
+    tmp_path: Path,
+) -> None:
+    import executor_birth_distribution_assembler as received
+    import executor_birth_service_catalog as service_catalog
+
+    assert distribution.MAX_RELATIVE_PATH_COMPONENTS_V1 == 32
+    assert received.MAX_RECEIVED_SOURCE_PATH_DEPTH_V1 == 32
+    assert service_catalog.MAX_RELATIVE_PATH_COMPONENTS_V1 == 32
+    maximum = "/".join(["d"] * 31 + ["f"])
+    assert distribution._relative_path(maximum) == maximum
+    for field in ("path", "inventory path", "preflight entrypoint"):
+        assert distribution._relative_path(maximum, field) == maximum
+        with pytest.raises(distribution.DistributionManifestError):
+            distribution._relative_path("d/" + maximum, field)
+
+    value, encoded, signature, registry, result = _verify(tmp_path)
+    current_paths = [
+        value["boundary_inventory_path"], value["preflight_entrypoint"],
+        *(item["path"] for item in value["files"]),
+    ]
+    assert max(len(path.split("/")) for path in current_paths) <= 32
+    assert result.encoded == encoded
+    assert distribution._verify_distribution_manifest_for_test(
+        encoded, signature, registry=registry,
+        _environment=_test_environment(tmp_path),
+    ).identity == result.identity
+
+
 def test_manifest_accepts_multiple_units_and_requires_single_new_materials(tmp_path):
     private, key_id, registry = _authority(distribution.PURPOSE)
 

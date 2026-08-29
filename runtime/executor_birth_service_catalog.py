@@ -23,6 +23,7 @@ SYSTEMD_FRAGMENT_DOMAIN = b"metnos.executor-birth.systemd-fragment/v1\0"
 TARGET_EXECUTABLE_DOMAIN = b"metnos.executor-birth.target-executable/v1\0"
 MAX_CATALOG_BYTES = 256 * 1024
 MAX_UNIT_FRAGMENT_BYTES = 256 * 1024
+MAX_RELATIVE_PATH_COMPONENTS_V1 = 32
 ADMINISTRATIVE_ADAPTER_PATH_V1 = (
     "/usr/libexec/metnos/executor-birth-v1/preflight.py"
 )
@@ -1112,7 +1113,11 @@ def _relative_path(value: object, detail: str = "path") -> str:
     if not isinstance(value, str) or not value or "\x00" in value or "\\" in value:
         raise ServiceCatalogError("birth_ownership_service_catalog_invalid", detail)
     path = PurePosixPath(value)
-    if path.is_absolute() or value != path.as_posix() or any(part in {"", ".", ".."} for part in path.parts):
+    if (
+        path.is_absolute() or value != path.as_posix()
+        or any(part in {"", ".", ".."} for part in path.parts)
+        or len(path.parts) > MAX_RELATIVE_PATH_COMPONENTS_V1
+    ):
         raise ServiceCatalogError("birth_ownership_service_catalog_invalid", detail)
     return value
 

@@ -43,6 +43,7 @@ BOUNDARY_INVENTORY_DOMAIN = b"metnos.executor-birth.boundary-inventory/v1\0"
 PURPOSE = "closed_distribution_v1"
 MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 MAX_FILE_BYTES = 512 * 1024 * 1024
+MAX_RELATIVE_PATH_COMPONENTS_V1 = 32
 DEFAULT_RELEASE_DIRECTORY_V1 = Path(
     "/var/lib/metnos/executor-birth/releases-v1"
 )
@@ -373,7 +374,10 @@ def _relative_path(value: object, field: str = "path") -> str:
     if "\\" in value or "\x00" in value or value.startswith("/"):
         raise DistributionManifestError("birth_ownership_distribution_invalid", field)
     parts = value.split("/")
-    if any(part in {"", ".", ".."} for part in parts):
+    if (
+        any(part in {"", ".", ".."} for part in parts)
+        or len(parts) > MAX_RELATIVE_PATH_COMPONENTS_V1
+    ):
         raise DistributionManifestError("birth_ownership_distribution_invalid", field)
     if PurePosixPath(value).as_posix() != value:
         raise DistributionManifestError("birth_ownership_distribution_invalid", field)

@@ -19,6 +19,7 @@ if str(RUNTIME) not in sys.path:
 
 import executor_birth_service_catalog as catalog
 import executor_birth_admin_operations as admin_operations
+from contract_boundary_guard import BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
 
 
 _HASH_A = "sha256:" + "1" * 64
@@ -37,6 +38,14 @@ _PUBLIC_EXPORT_OMITTED_UNITS = {
     "metnos-prompts-translator.service",
     "metnos-prompts-translator.timer",
 }
+
+
+def test_relative_legacy_locator_depth_is_normative() -> None:
+    assert catalog.MAX_RELATIVE_PATH_COMPONENTS_V1 == 32
+    maximum = "/".join(["d"] * 31 + ["f"])
+    assert catalog._validate_legacy_locator("script", maximum) == maximum
+    with pytest.raises(catalog.ServiceCatalogError, match="legacy locator"):
+        catalog._validate_legacy_locator("script", "d/" + maximum)
 
 
 def _has_python_main_guard(path: Path) -> bool:
@@ -196,7 +205,15 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
         and (path.suffix == ".sh" or _has_python_main_guard(path))
     }
     complete_source_tree = (root / "scripts/export-public.sh").is_file()
-    assert discovered_entrypoints <= repository_bindings
+    store_entrypoints = {
+        item.rsplit(":", 1)[0]
+        for item in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
+        if item.endswith(":main")
+    }
+    assert discovered_entrypoints & store_entrypoints == {
+        "install/executor_birth_source_receiver.py",
+    }
+    assert discovered_entrypoints <= repository_bindings | store_entrypoints
     assert repository_bindings - discovered_entrypoints == (
         set() if complete_source_tree else _PUBLIC_EXPORT_OMITTED_ENTRYPOINTS
     )
