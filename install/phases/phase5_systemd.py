@@ -177,6 +177,36 @@ def _install_optional_unit(template_path: Path, dest_name: str,
     return _install_unit(template_path, dest_name, port, lang, http_host)
 
 
+def _install_telegram_runtime_dropin() -> bool:
+    """Bind an existing Telegram unit to the managed Metnos runtime.
+
+    Older installations used a shared Suprastructure interpreter and the
+    historical ``channels.daemon`` module name.  Preserving the unit body is
+    still useful for local timeout and environment tuning, but preserving
+    that executable line leaves new Metnos dependencies unavailable.  A
+    narrow drop-in upgrades only the runtime identity and working directory.
+    """
+    unit_name = "metnos-telegram-daemon.service"
+    unit = _systemd_user_dir() / unit_name
+    if not unit.exists():
+        return False
+    repo = _repo_dir()
+    python = _venv_dir() / "bin" / "python"
+    dropin_dir = _systemd_user_dir() / f"{unit_name}.d"
+    dropin_dir.mkdir(parents=True, exist_ok=True)
+    dropin = dropin_dir / "20-metnos-runtime.conf"
+    dropin.write_text(
+        "[Service]\n"
+        "ExecStart=\n"
+        f"ExecStart={python} -m runtime.channels.daemon\n"
+        f"WorkingDirectory={repo}\n"
+        f"Environment=PYTHONPATH={repo}\n"
+        f"Environment=METNOS_INSTALL_ROOT={repo}\n"
+    )
+    ui.ok(f"wrote {dropin}")
+    return True
+
+
 def _install_stack_ownership_dropin(unit_name: str) -> bool:
     """Attach an existing optional unit without replacing its local body."""
     unit = _systemd_user_dir() / unit_name
@@ -364,18 +394,23 @@ def run(args: Any) -> dict[str, Any]:
 
     # 2. Optionally install telegram daemon (only if importable)
     telegram_module_ok = False
+    telegram_runtime_bound = False
     if telegram_enabled:
         if _runtime_module_importable("runtime.channels.daemon"):
             ui.step("Installing metnos-telegram-daemon.service")
-            _install_optional_unit(
+            telegram_unit_installed = _install_optional_unit(
                 tmpl_dir / "metnos-telegram-daemon.service.tmpl",
                 "metnos-telegram-daemon.service", port, lang, http_host,
             )
-            telegram_module_ok = True
+            telegram_runtime_bound = (
+                telegram_unit_installed and _install_telegram_runtime_dropin()
+            )
+            telegram_module_ok = telegram_runtime_bound
         else:
             ui.warn("runtime.channels.daemon not importable — skipping Telegram unit. "
                     "Once the module ships, re-run `python -m install --force-phase 5`.")
     notes["telegram_unit_installed"] = telegram_module_ok
+    notes["telegram_runtime_bound"] = telegram_runtime_bound
 
     # Existing upgraded optional units may contain intentional local tuning.
     # Bind them to the new owner through a drop-in instead of overwriting the
