@@ -32,6 +32,20 @@ MSG="Metnos — public snapshot"
 MODE="snapshot"     # snapshot | incremental
 CHECK_ONLY=0
 
+# RM-0008 G6-B3: the private development tree and the scrubbed public
+# projection are two different reviewed source profiles.  Never derive either
+# expected value from the candidate being published: changing source bytes
+# requires an explicit review and an update of the corresponding fixed pin.
+PRIVATE_SOURCE_REVIEW_SHA256="sha256:87f7d309555793642066f778013be58024421b2026d00a2769e15c3324e1f4b5"
+PRIVATE_SOURCE_REVIEW_COUNT=671
+PUBLIC_SOURCE_REVIEW_SHA256="sha256:4477c27b4a77fc1180e1f7d4c0ace80556927f9f26b3899bc317f07850d81a77"
+PUBLIC_SOURCE_REVIEW_COUNT=659
+SOURCE_REVIEW_TOOL="$REPO_ROOT/internal/tools/rm0008_public_source_review.py"
+
+source_review_gate() {
+  "$PYTHON" "$SOURCE_REVIEW_TOOL" "$@"
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     -m|--message) MSG="$2"; shift 2;;
@@ -41,9 +55,20 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+echo "== 0. verifico radice sorgenti privata RM-0008 =="
+source_review_gate \
+  private-fs "$REPO_ROOT" \
+  "$PRIVATE_SOURCE_REVIEW_SHA256" "$PRIVATE_SOURCE_REVIEW_COUNT"
+echo "   radice privata: $PRIVATE_SOURCE_REVIEW_SHA256 ($PRIVATE_SOURCE_REVIEW_COUNT sorgenti)"
+
 echo "== 1. rigenero export =="
 bash scripts/export-public.sh "$DEST" >/dev/null
+source_review_gate \
+  public-fs-pin "$DEST" \
+  "$PUBLIC_SOURCE_REVIEW_SHA256" "$PUBLIC_SOURCE_REVIEW_COUNT" \
+  "$PRIVATE_SOURCE_REVIEW_SHA256"
 echo "   file: $(find "$DEST" -type f -not -path '*/.git/*' | wc -l)"
+echo "   radice pubblica: $PUBLIC_SOURCE_REVIEW_SHA256 ($PUBLIC_SOURCE_REVIEW_COUNT sorgenti)"
 
 echo "== 2. CANCELLO DURO anti-PII/secret =="
 fail=0
@@ -125,6 +150,9 @@ if [ "$MODE" = "snapshot" ]; then
   git -C "$DEST" config user.email "brunialti@users.noreply.github.com"
   git -C "$DEST" add -A
   refresh_rm0008_public_inventory "$DEST"
+  source_review_gate \
+    public-index "$DEST" \
+    "$PUBLIC_SOURCE_REVIEW_SHA256" "$PUBLIC_SOURCE_REVIEW_COUNT"
   git -C "$DEST" commit -q -m "$MSG"
   git -C "$DEST" remote add origin "https://github.com/$REPO.git"
   git -C "$DEST" "${GIT_AUTH[@]}" push --force -q origin main
@@ -142,6 +170,9 @@ else
   write_pub_gitignore "$WC"
   git -C "$WC" add -A
   refresh_rm0008_public_inventory "$WC"
+  source_review_gate \
+    public-index "$WC" \
+    "$PUBLIC_SOURCE_REVIEW_SHA256" "$PUBLIC_SOURCE_REVIEW_COUNT"
   if git -C "$WC" diff --cached --quiet; then
     # Un tentativo precedente può avere creato il commit locale ma fallito il
     # push (per esempio per un'interruzione di rete). In quel caso l'export è

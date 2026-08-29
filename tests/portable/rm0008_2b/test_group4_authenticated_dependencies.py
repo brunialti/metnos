@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import sys
 import tomllib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -242,6 +243,10 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
         load_admitted_module_v1(projected)
 
 
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires the Linux Bubblewrap executor sandbox",
+)
 def test_parent_projection_crosses_the_real_executor_subprocess(
         tmp_path: Path):
     """The verified record, read-only mount and child door work together."""
