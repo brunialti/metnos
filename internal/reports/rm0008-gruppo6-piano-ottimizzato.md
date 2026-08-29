@@ -203,6 +203,18 @@ eseguibile non Python deve essere dichiarato nel manifesto e puo' caricare
 soltanto dipendenze incluse nella distribuzione o librerie di sistema
 root-owned non scrivibili dall'identita' di servizio.
 
+La policy source-review ammette `runpy.run_module` soltanto per la singola
+chiamata autenticata nello scope
+`runtime/executor_birth_admin_preflight.py:_launch_python_target_v1`. La forma
+AST deve essere esattamente
+`runpy.run_module(plan.python_module, run_name="__main__", alter_sys=False)`,
+con import letterale `runpy`, nessun alias, nessun argomento espanso, nessuna
+keyword aggiuntiva e nessun rebinding di `runpy` o `plan`. L'eccezione riguarda
+la chiamata, non l'intero scope: `run_path`, alias, reflection, una seconda
+porta dinamica, un altro file o uno scope annidato restano negati. Guardia
+canonica, clone autonomo e le due chiusure degli import applicano la medesima
+regola e vengono provati in parita' con mutanti.
+
 La riga di comando chiusa contiene soltanto:
 
 - `check --entry-id <identificativo>` per il controllo preliminare del singolo
@@ -249,8 +261,10 @@ Le tre transazioni di directory usano lo stesso protocollo chiuso.
   nome finale `<source-id>`.
 - L'assemblatore usa
   `releases-v1/.staged-<release-sequence-020d>-<closed-build-hex>.tmp`, dove
-  l'identificativo e' privo del prefisso `sha256:`, e pubblica
-  nel solo nome finale della sequenza.
+  l'identificativo e' privo del prefisso `sha256:`. G6-B3 crea o adotta e
+  rilegge soltanto questo staging; il solo nucleo G6-B4, invocabile in futuro
+  con l'autorizzazione distinta composta da G6-D, pubblica nel nome finale
+  della sequenza con rename senza sovrascrittura.
 - L'installatore amministrativo usa il fratello
   `/usr/libexec/metnos/.executor-birth-v1-<administrative-bundle-hash>.tmp` e
   pubblica l'intera directory nel nome fisso `executor-birth-v1`; non installa
@@ -1790,9 +1804,11 @@ copertura del catalogo, autorita', binding degli artefatti, stabilita' fra
 release, arresto, gara no-replace e confine di gruppo — ma li esercita in sole
 quattro famiglie. Non ripete firma alterata, scopo/epoca delle chiavi, chiusura
 degli import, path Windows, lettura handle-bound, catena fredda, claim, journal
-V2 o deployment lock gia' certificati. `systemd` reale, startup gate, cgroup e
-controllo operativo appartengono a G6-C; claim, `PREPARED` e recupero del
-coordinatore appartengono a G6-D.
+V2 o deployment lock gia' certificati. B3 produce i byte definitivi e completi
+dei tre comandi del controllo operativo. A G6-C appartengono soltanto
+installazione byte-identica e prova reale di quei byte con `systemd`, startup
+gate e cgroup; G6-C non implementa, rigenera o modifica il programma firmato.
+Claim, `PREPARED` e recupero del coordinatore appartengono a G6-D.
 
 I criteri di piattaforma sono comuni ai quattro sottoincrementi. Su Windows si
 eseguono codec, parser, renderer, determinismo e inventario; ogni ingresso o
@@ -1987,7 +2003,8 @@ come controllo di sistema. In questo modo l'assemblatore G6-B firma byte reali
 e completi; non esistono placeholder dipendenti da G6-C.
 
 Il nuovo `runtime/executor_birth_distribution_assembler.py` possiede i codec
-dei §§3.5.0-3.5.4 e una capacita' sigillata `_StagedSourceV1`. L'entrata
+dei §§3.5.0-3.5.4. Non accetta una capability della sorgente o una sorgente
+scelta dal chiamante: l'unico riferimento d'ingresso e' `source_id`. L'entrata
 produttiva pubblica non viene ancora esposta. Il nucleo privato
 `_prepare_closed_distribution_locked_v1(session, graph_snapshot, source_id)`
 richiede la sessione esatta e viva di `_deployment_lock_v1()` e la fotografia
@@ -2041,11 +2058,14 @@ campo implicito dipende dalla piattaforma.
 
 ### 6.3 G6-C
 
-G6-C consuma senza rigenerarlo il sorgente unico
-`runtime/executor_birth_admin_preflight.py` di G6-B e lo copia come
-`deployment/admin/preflight.py`. Il programma non importa moduli Metnos o
-pacchetti esterni. Implementa i tre comandi chiusi del §3.1 per
-`entry_id`, acquisisce il blocco condiviso degli avvii per `check` e `launch`, usa
+G6-C consuma senza rigenerarlo l'artefatto gia' firmato da G6-B come
+`deployment/admin/preflight.py` e lo installa byte-identico nella radice
+amministrativa fissa. Non ricopia ne' modifica in C il sorgente
+`runtime/executor_birth_admin_preflight.py`: una modifica richiede di tornare
+a B3 e rigenerare staging, descrittore, manifesto, identificativo e firma. Il
+programma completo prodotto da B3 non importa moduli Metnos o pacchetti
+esterni e implementa i tre comandi chiusi del §3.1 per `entry_id`; in esercizio
+acquisisce il blocco condiviso degli avvii per `check` e `launch` e usa
 percorsi costanti e restituisce codici di uscita stabili: zero per ammissione,
 `20` per prova mancante, `21` per prova non valida, `22` per predecessore o
 testa non corrispondente, `23` per piattaforma non supportata e `24` per
@@ -2400,3 +2420,76 @@ run `33259624116`: tutti i job sono `success`, compresi Birth delegato Ubuntu,
 suite completa Windows e riepilogo di certificazione. La base architetturale
 B3 converge quindi a errore zero. Il passo successivo e' il nucleo preparatore
 B3; RM-0008 non e' chiuso.
+
+## 16. Confine I/O del preflight operativo
+
+La lettura operativa non concatena aperture assolute di singoli file. Un file
+puo' essere stabile mentre il suo genitore o un altro oggetto del grafo viene
+sostituito, producendo una fotografia composta da epoche diverse. Il preflight
+apre percio' una sola volta la radice ownership fissa, apre i discendenti in
+modo relativo con `dir_fd` e `O_NOFOLLOW`, mantiene vivi gli handle e confronta
+inventario e identita' prima e dopo la decodifica. Prima del ritorno confronta
+anche la radice nuovamente raggiunta per pathname con l'handle iniziale.
+
+L'implementazione procede in due incrementi soltanto. Il primo cattura una
+fotografia privata non autorizzante e prova sostituzioni e aggiunte fra le
+fotografie A e B. Il secondo autentica chiavi e archivi, completa il journal
+V2 fino a `PREFLIGHT_VERIFIED` e riconcilia claim, transazione, predecessore,
+build, cutover, testa e puntatore richiesto. `INITIAL` e' ammesso soltanto se
+ancora e puntatore sono assenti e i tre archivi della catena sono vuoti; la
+presenza di `predecessor-v1.json` non sceglie il regime. Questa divisione e'
+un confine di verifica, non un rinvio di funzionalita': staging e firma restano
+bloccati finche' entrambi gli incrementi non sono conclusi.
+
+Il primo incremento e' implementato: copre entrambi i regimi, rileva le
+mutazioni fra A e B e nega symlink/hardlink, modi errati, coppie incomplete e
+rebound della radice. Il primo riesame ha inoltre richiesto la riverifica degli
+antenati in B, il diniego del lock isolato nello stato iniziale e la chiusura
+dei temporanei dell'ancora: i tre rilievi sono corretti e coperti da mutanti.
+La suite mirata conta `138 passed, 1 deselected`; il solo
+deselezionato e' il pin source-review, che per contratto si aggiorna sul
+candidato operativo completo. Tre riesami finali del delta corretto hanno
+concluso `P0=0`, `P1=0`, `P2=0`. L'incremento e' approvato localmente; il passo
+successivo autentica firme e catena e riconcilia il grafo prima di qualunque
+commit o aggiornamento del pin.
+
+## 17. Difetti live osservati durante B3
+
+I turni `052f0f91` e `9119a307` sono difetti laterali, non criteri nuovi di
+RM-0008. Vengono comunque corretti prima del pin finale, perche' le sorgenti
+modificate devono essere incluse nella medesima distribuzione attestata.
+
+1. Il fallback amministrativo deriva i binari dalla grammatica di
+   canonicalizzazione. Invocazione e polarita' provengono dal registro
+   traducibile; le risorse sintattiche di sicurezza sono native, pronte e a
+   revisione manuale. Il vecchio elenco shell IT/EN e' migrato nel
+   concetto `admin.shell_intent`, con equivalenza editoriale congelata. Il
+   ramo shell applica lo stesso controllo di polarita'. Un nome futuro prova
+   la proprieta' generale; prosa, negazioni, inibizioni, revoche, punteggiatura
+   e traduzione parziale provano il diniego. Lo stato `unavailable` rende
+   esplicita una grammatica nativa incompleta; il daemon non chiama il modello
+   se il confine di revisione umana non e' caricabile. Il ping reale verso il
+   PC risponde.
+2. La risoluzione WinGet considera l'insieme delle identita' canoniche, non il
+   numero di righe. Duplicati equivalenti convergono; identita' distinte o
+   invalide restano fail-closed e producono soltanto diagnostica non
+   consumabile, deduplicata e limitata con conteggio esplicito.
+3. Le menzioni di destinazione sono risolte in ordine. Una correzione esplicita
+   successiva prevale; una revoca finale impedisce il riuso di sticky e default,
+   anche senza device registrati. Gli alias deboli non scavalcano riferimenti
+   espliciti. Alias device e indirizzo IP non vengono inventati: oggi il registro non
+   persiste un address autenticato. L'eventuale estensione del protocollo e'
+   separata e deve essere generale per ogni device.
+
+Le prove locali correnti sono `129 passed` per selezione, lessico, admin e
+destinazione; la regressione i18n con i consumer collegati e' `592 passed,
+1.144 subtests passed`. Due revisioni indipendenti finali concludono entrambe
+`P0=0`, `P1=0`, `P2=0`; `git diff --check` e' verde. RM-0005 e' stata riaperta
+perche' il closeout storico non aveva
+censito tutti i lessici del prefilter; la correzione shell/ping non autorizza
+una nuova chiusura finche' il residuo documentato non e' concluso.
+La review finale Dropbox conclude `P0=0`, `P1=0`, `P2=0`. La firma authoring modificata
+non viene aggiornata attraverso il percorso legacy: sara' prodotta dalla porta
+Birth completa insieme agli altri byte B3. Il lavoro principale riprende
+dall'autenticazione della fotografia fixed-root e dalla riconciliazione del
+grafo.

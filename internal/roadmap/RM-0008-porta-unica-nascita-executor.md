@@ -8,7 +8,23 @@
 > su Linux/Windows; G6-A completato e certificato pubblicamente con errore
 > zero; G6-B1 e G6-B2 completati; base architetturale G6-B3 approvata,
 > pubblicata e certificata con errore zero su Linux/Windows nel run pubblico
-> `33259624116`; il prossimo incremento e' il nucleo preparatore G6-B3;
+> `33259624116`; il riesame preliminare del nucleo G6-B3 ha rilevato che il
+> programma amministrativo autonomo non possiede ancora il dispatch
+> eseguibile dei tre comandi chiusi: invocato con `check-all` termina
+> erroneamente con codice zero senza eseguire controlli. Questo P0 viene
+> corretto prima di assemblare o firmare una distribuzione; la mappa causale ha
+> delimitato quattro incrementi operativi del preflight, seguiti dal nucleo
+> preparatore G6-B3. Punto d'ingresso e codec non autorizzanti di registri,
+> cutover, testa, claim e journal V2 fino a `HEAD_REQUIRED` sono completati
+> localmente; il vettore da 30.000 ricevute chiude la parita' del journal entro
+> 8 MiB. Anche il decoder autonomo `predecessor-v1` e' completato e approvato;
+> i 125 test mirati sono verdi. Il riesame dell'I/O ha isolato il prossimo
+> rischio: le prove ownership devono essere fotografate dalla radice fissa con
+> handle vivi e inventario A/B, per non mescolare epoche diverse. Questo core
+> non autorizzante e' implementato localmente; tre P1 del primo riesame sono
+> stati corretti, i 138 test mirati sono verdi e tre review finali concludono
+> `P0=0`, `P1=0`, `P2=0`; segue autenticazione e riconciliazione finale del
+> grafo;
 > G6-B4/G6-C/G6-D e F4-F6 non ancora completati
 
 ## 1. Obiettivo
@@ -1601,3 +1617,36 @@ Questi vincoli non ampliano né riducono RM-0008. Rendono espliciti i prerequisi
 necessari affinché la rimozione dei vecchi firmatari non lasci un sistema senza
 un percorso di installazione valido. Per questo i gruppi 2-4 del §23.6
 sostituiscono l'ordine precedente e sono non permutabili.
+
+### 23.9 Correzioni live incluse nel prossimo censimento
+
+Durante l'implementazione B3 sono stati riprodotti due difetti live. Il
+fallback `admin` per comandi nominati deriva ora dall'inventario della
+grammatica safety anziche' da eccezioni per singolo comando. Il lessico shell
+preesistente è stato rimosso dal consumer e registrato come risorsa
+traducibile; polarità e invocazione privilegiate richiedono dati nativi pronti
+e revisione manuale. Uno stato distinto segnala grammatica nativa non
+disponibile e mantiene chiuso il percorso; il daemon non interroga il modello
+se non riesce a caricare la politica di revisione umana. Le negazioni e le
+revoche successive restano chiuse anche durante una materializzazione
+linguistica parziale. Le destinazioni sono valutate in ordine: una correzione
+esplicita successiva prevale e una revoca finale vieta il riuso della
+destinazione ricordata o predefinita, anche senza device registrati. La
+correzione ha riaperto
+RM-0005, perché il suo rapporto storico conservava un'ondata di migrazione mai
+conclusa nonostante il closeout nominale. La risoluzione WinGet deduplica
+invece le identita' canoniche e continua a negare la
+proiezione mutante quando ne resta piu' di una o una non e' valida. Entrambe le
+correzioni sono generali e provate; non autorizzano una firma legacy.
+
+Le prove correnti del percorso lessicale, amministrativo e di destinazione
+terminano con `129 passed`; la regressione i18n e dei consumer collegati
+termina con `592 passed, 1.144 subtests passed`. Due revisioni avversariali
+indipendenti terminano entrambe con `P0=0`, `P1=0`, `P2=0`; anche `git diff
+--check` è verde.
+
+Il registro device non contiene ancora un indirizzo autenticato. Di
+conseguenza un alias non viene trasformato in IP usando memoria conversazionale
+o log storici. Questa lacuna resta separata dalla porta Birth e non ne modifica
+la sequenza, ma ogni sua futura correzione dovra' a sua volta passare dalla
+porta unica.

@@ -77,6 +77,116 @@ class TestShellIntentWordBoundary:
             actual = _detect_shell_intent(q.lower())
             assert actual is False, f"false-positive on: {q!r}"
 
+    def test_command_grammar_exposes_admin_without_per_command_hint(self):
+        from prefilter import _detect_command_grammar_intent
+
+        # A future command added to the canonical grammar must become
+        # discoverable without editing the prefilter's natural-language list.
+        assert _detect_command_grammar_intent(
+            "esegui futurectl status", command_names={"futurectl"}
+        ) is True
+        assert _detect_command_grammar_intent(
+            "esegui futurectl status", command_names={"otherctl"}
+        ) is False
+
+    def test_command_grammar_requires_structural_invocation_signal(self):
+        from prefilter import _detect_command_grammar_intent
+
+        names = {
+            "date", "file", "free", "head", "last", "sort", "top",
+            "true", "who", "yes", "ping", "traceroute", "futurectl",
+        }
+        for query in (
+            "date of the meeting",
+            "date of the meeting at 192.168.1.137",
+            "show file report",
+            "file report for https://example.net",
+            "free time tomorrow",
+            "host of example.net",
+            "head of the department",
+            "I use date format ISO",
+            "last 7 days",
+            "please use the attached file",
+            "sort these names",
+            "top ten films",
+            "Use it. Who is Roberto?",
+            "use the file",
+            "fammi un file PDF",
+            "is this true",
+            "who is Roberto",
+            "yes, send it",
+            "mandami un ping",
+            "non eseguire ping a pc-roberto",
+            "senza eseguire ping a pc-roberto",
+            "do not run ping example.net",
+            "never execute ping example.net",
+            "evita di eseguire ping example.net",
+            "avoid execute ping example.net",
+            "invece di eseguire ping example.net",
+            "instead of executing ping example.net",
+            "instead of execute ping example.net",
+            "instead of run ping example.net",
+            "rather than execute ping example.net, describe it",
+            "rather than run ping example.net, describe it",
+            "execute. ping example.net",
+            "fai; ping a pc-roberto",
+            "ping example.net, but do not execute it",
+            "ping example.net; non eseguirlo",
+            "ping example.net; non farlo",
+            "ping example.net, but avoid executing it",
+            "ping example.net, but avoid running it",
+            "ping example.net is not what I want",
+            "ping example.net; do not do it because date is slow",
+            "ping example.net; non farlo perché file è lento",
+            "ping example.net; do not do it because you can execute date",
+            "ping example.net; non farlo perché puoi eseguire date",
+            "don't execute ping example.net",
+            "don’t execute ping example.net",
+            "can't execute ping example.net",
+            "cannot execute ping example.net",
+            "ping example.net; don't do it",
+            "ping example.net; don’t do it",
+            "didn't run ping example.net",
+            "didn’t execute ping example.net",
+            "I didn't ask you to execute ping example.net",
+            "haven't run ping example.net",
+            "hasn't execute ping example.net",
+        ):
+            assert _detect_command_grammar_intent(
+                query, command_names=names,
+            ) is False, query
+
+        for query in (
+            "fai ping a pc-roberto",
+            "puoi eseguire ping example.net",
+            "esegui futurectl status",
+            "ping -c 1 192.168.1.137",
+            "futurectl --status",
+            "run ping example.net, but do not execute date",
+            "run ping example.net, but do not execute traceroute",
+            "do not execute mount, execute ping example.net",
+            "do not execute mount: execute ping example.net",
+            "do not execute mount, then execute ping example.net",
+            "non eseguire mount, poi esegui ping example.net",
+            "do not execute mount, and execute ping example.net",
+            "non eseguire mount, e esegui ping example.net",
+        ):
+            assert _detect_command_grammar_intent(
+                query, command_names=names,
+            ) is True, query
+
+    def test_command_assertion_guard_fails_closed(self, monkeypatch):
+        import detection_lexicon
+        from prefilter import _detect_command_grammar_intent
+
+        def unavailable(*_args, **_kwargs):
+            raise RuntimeError("lexicon unavailable")
+
+        monkeypatch.setattr(detection_lexicon, "asserted_at", unavailable)
+        assert _detect_command_grammar_intent(
+            "fai ping example.net", command_names={"ping"},
+        ) is False
+
     def test_time_intent_word_boundary(self):
         from prefilter import _detect_time_intent
         assert _detect_time_intent("che ora è") is True
@@ -84,6 +194,111 @@ class TestShellIntentWordBoundary:
         assert _detect_time_intent("ora corrente") is True
         # word "ora" come avverbio (now) non triggera se non nelle frasi note
         assert _detect_time_intent("ora ti spiego") is False
+
+    def test_shell_intent_comes_from_translatable_registry(
+            self, monkeypatch, tmp_path):
+        """RM-0005: no language table may remain in the prefilter."""
+        import sqlite3
+        import detection_lexicon as dl
+        import prefilter
+
+        conn = sqlite3.connect(str(tmp_path / "shell-intent.sqlite"))
+        conn.executescript(dl._SCHEMA)
+        conn.commit()
+        monkeypatch.setattr(dl, "_conn", conn)
+        monkeypatch.setattr(dl, "_seeded", True)
+        monkeypatch.setattr(dl, "current_lang", lambda: "fr")
+        dl._invalidate()
+        try:
+            for concept, it, en, fr in (
+                ("syntax.negation", ["non"], ["not"], ["ne pas"]),
+                ("syntax.inhibition", ["evita"], ["avoid"], ["évitez"]),
+                ("syntax.contrast", ["ma"], ["but"], ["mais"]),
+                ("syntax.command_invocation", ["esegui"], ["run"], ["exécutez"]),
+                ("syntax.negative_coordination", ["o"], ["or"], ["ou"]),
+                ("syntax.sequence", ["poi"], ["then"], ["puis"]),
+            ):
+                dl.register(
+                    concept, "phrases", it=it, en=en, match_mode="word",
+                    review_policy="manual",
+                )
+                dl.set_payload(
+                    concept, "fr", fr, kind="phrases", match_mode="word",
+                    source_lang="fr",
+                )
+            dl.register(
+                "admin.shell_intent", "phrases", match_mode="word",
+                it=["riavvia"], en=["restart"],
+            )
+            dl.set_payload(
+                "admin.shell_intent", "fr", ["redémarre"],
+                kind="phrases", match_mode="word", source_lang="fr",
+            )
+            assert prefilter._detect_shell_intent(
+                "redémarre le service metnos") is True
+            for query in (
+                "ne pas redémarre le service metnos",
+                "évitez redémarre le service metnos",
+            ):
+                assert prefilter._detect_shell_intent(query) is False
+            assert not hasattr(prefilter, "_SHELL_INTENT_HINTS")
+            assert not hasattr(prefilter, "_SHELL_INTENT_RE")
+        finally:
+            dl._invalidate()
+
+    def test_shell_intent_honors_later_revocation(self):
+        from prefilter import _detect_shell_intent
+
+        for query in (
+            "esegui ping example.net; non farlo",
+            "esegui ping example.net, ma non eseguirlo",
+            "restart the service, but do not execute it",
+            "riavvia il servizio, ma non farlo",
+            "restart service; do not do it because date is slow",
+            "riavvia il servizio; non farlo perché file è lento",
+            "restart service; do not do it because you can execute date",
+            "mount share, but do not execute mount",
+            "systemctl restart nginx, but do not execute systemctl",
+            "don't restart service",
+            "don’t restart service",
+            "restart service; don't do it",
+            "restart service; don’t do it",
+            "didn't restart service",
+            "didn’t restart service",
+            "hasn't restarted service",
+            "haven't restarted service",
+            "restart service; didn't do it",
+            "mount share and systemctl status, but do not execute mount or systemctl",
+            "mount share and systemctl status, but do not execute mount and systemctl",
+            "systemctl status and mount share, but do not execute systemctl or mount",
+            "esegui mount e systemctl, ma non eseguire mount o systemctl",
+            "mount share and systemctl status, but do not execute mount, or systemctl",
+            "mount share and systemctl status, but do not execute mount, systemctl",
+            "systemctl status and mount share, but do not execute systemctl, or mount",
+            "esegui mount e systemctl, ma non eseguire mount, o systemctl",
+            "mount share and systemctl status, but execute neither mount nor systemctl",
+            "mount share and systemctl status, but neither execute mount nor systemctl",
+            "mount share and systemctl status, but do not execute: mount or systemctl",
+            "mount share and systemctl status, but do not execute: mount, systemctl",
+            "esegui mount e systemctl, ma non eseguire: mount o systemctl",
+            "mount share and systemctl status, but execute neither: mount nor systemctl",
+            "mount share, but do not execute mount, although you can execute systemctl",
+            "mount share, but do not execute mount, since you can execute systemctl",
+            "do not execute systemctl, execute the sentence systemctl is forbidden",
+            "do not execute systemctl, execute a harmless example mentioning systemctl",
+            "non eseguire systemctl, esegui la frase systemctl è vietato",
+            "do not restart service, execute the report text that mentions systemctl",
+        ):
+            assert _detect_shell_intent(query) is False, query
+
+        assert _detect_shell_intent(
+            "mount share, but do not execute date") is True
+        assert _detect_shell_intent(
+            "mount share and systemctl status, but do not execute mount",
+        ) is True
+        assert _detect_shell_intent(
+            "mount share and systemctl status, but do not execute mount: execute systemctl",
+        ) is True
 
 
 class TestPrefilterIntegrationAppointment:
@@ -122,6 +337,24 @@ class TestPrefilterIntegrationAppointment:
         names = [e.name for e in top]
         assert "admin" not in names
         assert "create_events" in names
+
+    def test_negated_shell_request_does_not_inject_admin(self):
+        from prefilter import rank_adaptive
+        from loader import load_catalog
+
+        catalog = list(load_catalog(verify=False, include_synth=False))
+        for query in (
+            "non esegui ping",
+            "do not restart the service",
+            "non riavviare il servizio",
+            "avoid restart the service",
+            "restart the service, but do not execute it",
+            "riavvia il servizio, ma non farlo",
+        ):
+            top, _ = rank_adaptive(
+                query, catalog, k_min=5, k_max=8, llm_call=None,
+            )
+            assert "admin" not in [executor.name for executor in top[:3]], query
 
 
 # ── Layer 2: admin catalog-name guard ─────────────────────────────────

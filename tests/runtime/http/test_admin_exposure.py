@@ -112,6 +112,41 @@ class TestPrefilterShellIntent:
             f"admin non dovrebbe stare in top-3 di una query mail, top-3: {top3}"
         )
 
+    @pytest.mark.parametrize("command", ["ping", "traceroute", "dig", "whois"])
+    def test_safety_grammar_command_keeps_admin_as_generic_fallback(
+            self, seeded_db, command):
+        from loader import load_catalog
+        from prefilter import rank_adaptive
+
+        catalog = load_catalog(verify=False, include_synth=False)
+        selected, _ = rank_adaptive(
+            f"esegui {command} verso example.net",
+            catalog, k_min=3, k_max=8, llm_call=None,
+        )
+        assert "admin" in [executor.name for executor in selected]
+
+    def test_live_ping_wording_exposes_guarded_admin_fallback(self, seeded_db):
+        from loader import load_catalog
+        from prefilter import rank_adaptive
+
+        catalog = load_catalog(verify=False, include_synth=False)
+        selected, _ = rank_adaptive(
+            "fai ping a pc-roberto",
+            catalog, k_min=3, k_max=8, llm_call=None,
+        )
+        assert "admin" in [executor.name for executor in selected]
+
+    def test_message_ping_does_not_expose_admin(self, seeded_db):
+        from loader import load_catalog
+        from prefilter import rank_adaptive
+
+        catalog = load_catalog(verify=False, include_synth=False)
+        selected, _ = rank_adaptive(
+            "mandami un ping", catalog, k_min=3, k_max=8, llm_call=None,
+        )
+        names = [executor.name for executor in selected]
+        assert "admin" not in names
+
 
 # ── 3-4. admin invoke() flow ──────────────────────────────────────────
 

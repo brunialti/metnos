@@ -26,15 +26,18 @@
   identita' esatta/univoca. `open` resta solo sessione browser `sites`.
   Composizione e launcher gestito derivano da manifest/capability firmati,
   senza nomi di executor o applicazioni nel runtime.
-- **RM-0005 F0-F8 chiuso — localizzazione versionata** (23/8,
-  ADR 0219-0220): identità canoniche e seed editoriali restano dati; un
+- **RM-0005 F6 riaperto — localizzazione versionata** (29/8,
+  ADR 0219-0220): il closeout del 23/8 non aveva censito tutti i lessici
+  eseguibili del prefilter. Identità canoniche e seed editoriali restano dati; un
   registro SQLite versiona prompt, manifest, messaggi/UI, lessico, documenti,
   device e Tutor per qualunque tag BCP-47 strutturalmente valido. La pipeline
   materializza prima di tradurre, valida struttura e equivalenza, promuove
   atomicamente, rifirma i contratti e attiva la lingua solo dopo gate completo.
   Il job notturno è bounded, idempotente e non attiva autonomamente; device e
   Tutor ricevono solo risorse pubbliche ammesse. Fixture di terza lingua e
-  suite i18n certificano fallback bootstrap e ripresa.
+  suite i18n certificano fallback bootstrap e ripresa. Il percorso privilegiato
+  richiede sintassi nativa pronta e revisionata; il censimento lessicale residuo
+  e la prova reale devono concludersi prima di richiudere RM-0005.
 - **RM-0008 gruppo 2 chiuso — insieme di autorita' predisposto e inerte** (27/8,
   ADR 0224): l'installatore prepara identita' autore, Admission e un archivio
   per capacita' Producer dentro una transazione durevole; nessun nome

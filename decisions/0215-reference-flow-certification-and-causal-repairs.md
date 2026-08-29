@@ -43,10 +43,21 @@ deterministic fixtures. Real providers remain outside the repeatable matrix and
 are checked by at least four separate non-destructive probes.
 
 The three causal corrections are domain-neutral. Syntax polarity lives in the
-translatable detection lexicon as `syntax.negation` and `syntax.contrast` and
-is evaluated by one `detection_lexicon.asserted_at` clause rule. Domain
-recognizers keep only their surface markers and cannot introduce private lists
-of negators.
+translatable detection lexicon and is evaluated by one
+`detection_lexicon.polarity_state_at` clause rule. Negation, inhibition,
+contrast, negative coordination, sequence, and command invocation are native,
+human-reviewed safety resources. The result is tri-state: asserted, negated,
+or unavailable. Safety consumers fail closed when the active language lacks a
+ready native resource. Domain recognizers keep only their surface markers and
+cannot introduce private lists of negators.
+
+Target placement consumes an ordered stream of normalized mentions. A later
+explicit correction replaces an earlier target, while a final revocation
+prohibits remembered or default placement. Strong server, local, or named
+device mentions outrank weak aliases; overlapping surfaces of the same target
+prefer the strongest and longest form. The same check runs even when no device
+is registered, so a negated target constraint cannot fall into a target-blind
+path.
 
 When a framework explicitly schedules an inverse executor but omits its
 target, the execution boundary may derive arguments only from a preceding

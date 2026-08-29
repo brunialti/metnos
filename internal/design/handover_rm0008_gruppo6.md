@@ -1174,3 +1174,321 @@ e' `86e69ec5b95b5c88af924db3bc027e774bd06ea7`. Il run GitHub
 Ubuntu, suite completa Windows e riepilogo finale. L'errore della base
 architetturale B3 e' quindi zero. Il prossimo passo unico e' il nucleo
 preparatore B3; RM-0008 resta `active`.
+
+## Riesame preliminare del nucleo B3 — blocco P0 aperto
+
+Prima di iniziare il preparatore, tre analisi read-only hanno confrontato il
+contratto B3 con il codice corrente. Hanno rilevato un errore riproducibile nel
+programma che B3 dovrebbe copiare e firmare: `runtime/executor_birth_admin_preflight.py`
+contiene parser e verificatori, ma non possiede `main()` ne' il dispatch
+operativo di `check`, `launch` e `check-all`. L'esecuzione isolata reale
+
+```text
+python -I -S runtime/executor_birth_admin_preflight.py check-all
+```
+
+termina con codice `0`, stdout vuoto e stderr vuoto senza svolgere alcun
+controllo. Firmare questi byte renderebbe apparentemente valido un preflight
+non operativo.
+
+Il rilievo e' classificato P0 e precede il nucleo preparatore. Non viene
+risolto con un semplice dispatch che nega sempre e non viene spostato in G6-C:
+la decisione piu' restrittiva gia' registrata in questo handover richiede byte
+amministrativi definitivi in B3, perche' una modifica successiva cambierebbe
+manifesto, firma e `administrative_bundle_hash`. Sono in corso la delimitazione
+del percorso operativo mancante e la riconciliazione delle frasi meno recenti
+del piano che attribuiscono ancora a G6-C l'implementazione dei tre comandi.
+
+Restano inoltre da congelare prima del preparatore: consumo e rilettura fresca
+della fotografia del coordinatore, riconciliazione con la catena richiesta,
+separazione netta fra staging B3 e rename finale B4, consumo singolo della
+firma e tipo nominale distinto per la distribuzione verificata nello staging.
+Il worktree non contiene ancora codice del preparatore; l'ultimo punto
+certificato pubblico resta il run `33259624116` con errore zero.
+
+La mappa tecnica del P0 e' ora conclusa. Il file corrente, di 4.621 righe,
+termina con parser puri di systemd. Il delta non e' un semplice `main()`:
+mancano i codec autonomi e la riconciliazione della catena ownership, i decoder
+e i legami di catalogo/descrittore/prerequisito, le prove degli eseguibili e
+della TCB OpenSSL, la fotografia systemd effettiva, l'attestazione di
+`check-all` e il bootstrap chiuso di `launch`. Poiche' il programma deve
+funzionare con `python -I -S`, questi componenti non possono importare i codec
+Metnos omologhi e richiedono cloni stdlib provati per parita'. La dimensione
+stimata del delta e' 2.500-4.000 righe produttive; trattarlo come una piccola
+correzione sarebbe una falsa convergenza.
+
+Il completamento viene diviso nel minimo di quattro incrementi, senza
+pubblicare o firmare byte intermedi:
+
+1. punto d'ingresso, codici pubblici, blocco startup, stato ownership e codec;
+2. catalogo, descrittore, prerequisito, TCB ed effettiva configurazione systemd;
+3. `check`, `check-all` e attestazione no-replace;
+4. `launch`, riduzione dei privilegi, bootstrap Python/native e supervisione
+   dei discendenti.
+
+Il secondo P0 di contratto sul bootstrap e' risolto nel piano prima del codice.
+Il `runpy.run_module` normativo resta necessario sotto `-I -S`; la policy non
+introduce una whitelist di scope, ma una sola eccezione positiva per la forma
+AST esatta nello scope autenticato `_launch_python_target_v1`. Guardia,
+verificatore del manifesto e rispettivi cloni autonomi devono applicare la
+stessa regola; alias, reflection, keyword mutate, altro scope o una seconda
+porta dinamica restano negati e vengono provati con mutanti.
+
+Il primo incremento e' ora implementato localmente, ma non ancora committato.
+Il programma possiede `main()`, accetta soltanto le tre forme gia' fissate,
+nega piattaforme non Linux e identita' non root prima dell'I/O operativo,
+normalizza ogni errore nei soli codici pubblici 20-24 e non espone dettagli o
+traceback. Il nucleo operativo resta intenzionalmente un diniego `MISSING` e
+verra' sostituito dagli incrementi B3 successivi prima di staging e firma. Le
+12 prove mirate sono verdi. La suite completa del file mostra soltanto il
+fallimento statico previsto della vecchia radice source-review: il pin non
+viene aggiornato su un incremento intermedio e verra' ricalcolato dal
+verificatore precedente fidato soltanto sul candidato B3 completo.
+
+Il primo sottoincremento dei codec ownership autonomi e' anch'esso completato
+localmente e attende il riesame avversariale. Il programma decodifica i tre
+registri pubblici a scopo singolo, pretende chiavi distinte e ricostruisce
+certificato cutover, testa e frame `required-head` canonici. I risultati si
+chiamano esplicitamente `DecodedOwnership*`: la decodifica strutturale non
+autentica la firma e non produce autorita'. La prova di parita' usa i codec
+runtime omologhi, dimostra il legame `sequenza 1` se e soltanto se predecessore
+nullo, nega chiavi condivise e byte finali nel frame e mostra che una firma
+alterata resta soltanto un candidato decodificato mentre il verificatore
+canonico la rifiuta. La suite del preflight, escluso unicamente il vecchio pin
+source-review, termina con `121 passed, 1 deselected`; compilazione e
+`git diff --check` sono verdi. Claim, journal V2, descrittore del predecessore
+e osservazione handle-bound restano fuori da questo sottoincremento.
+
+Il primo riesame indipendente ha approvato questo sottoincremento con
+`P0=0`, `P1=0`, `P2=0`. Il secondo ha confermato `P0=0`, ma ha trovato due P1
+prima che il codice diventasse operativo. `main()` catturava anche
+`SystemExit`, quindi il futuro target Python avrebbe trasformato perfino
+`SystemExit(0)` in recupero 24; ora il normalizzatore cattura soltanto
+`Exception` e la prova propaga lo stato del target senza output del preflight.
+Inoltre il parser candidato classificava correttamente come invalido un frame
+`required-head` alterato, ma la futura lettura dalla radice durevole deve
+classificare lo stesso danno come recupero: un wrapper distinto applica ora
+questa semantica e il mutante con byte finali prova entrambi i risultati. I
+tipi strutturali sono stati resi privati `_Decoded*`; mutanti compatti coprono
+purpose e prima sequenza del registro e `catalog_id` del cutover. La suite
+aggiornata, sempre senza il solo vecchio pin, da' `122 passed, 1 deselected`.
+Serve un nuovo verdetto sul diff corretto prima del prossimo sottoincremento.
+
+Il riesame finale del diff corretto e' concluso con `P0=0`, `P1=0`, `P2=0`.
+Sono stati rimossi anche i simboli di firma non ancora usati e il limite del
+frame deriva ora dall'unica costante della magic. Questo chiude localmente il
+punto d'ingresso e i primi codec non autorizzanti; non chiude il preflight B3.
+Il sottoincremento successivo e' limitato a claim e prefisso journal V2 fino a
+`HEAD_REQUIRED`, senza I/O produttivo o collegamento al dispatch.
+
+Claim e prefisso journal V2 sono ora implementati localmente come sola
+decodifica non autorizzante. Il confronto con il coordinatore canonico copre
+identita' del claim, vincolo sequenza/predecessore, stati `000`-`005`, hash dei
+record, campi persistenti, soglie, prova di manutenzione e
+`install_transaction_id`. La prima review ha individuato una falsa negazione
+P1: il limite JSON generale di 120.000 nodi respingeva un record canonico da
+30.000 ricevute e circa 6 MiB che il runtime accetta entro il limite di 8 MiB.
+La causa e' stata rimossa derivando il tetto dei nodi dalla dimensione in byte
+gia' limitata del documento; resta il limite di profondita'. Il vettore ad alta
+cardinalita' prova ora l'accettazione sia col decoder canonico sia col clone.
+Mutanti diretti coprono inoltre transazione, base64 e legame della manutenzione,
+soglie del certificato e dell'albero, testa verificata e attestazione prematura.
+Valori JSON non stringa nei campi enumerati della manutenzione vengono
+normalizzati in `INVALID`, senza `TypeError` interno. Dopo le correzioni la
+suite del preflight, escluso soltanto il vecchio pin source-review
+intenzionalmente non aggiornato, termina con `124 passed, 1 deselected`;
+compilazione e `git diff --check` sono verdi. I riesami finali, compresi i
+delta sui tipi enumerati e sul legame della manutenzione, hanno concluso
+`P0=0`, `P1=0`, `P2=0`. Il sottoincremento claim/journal e' quindi approvato
+localmente. Nessun commit o pubblicazione e' stato eseguito; il prossimo
+sottoincremento minimo e' il decoder autonomo di `predecessor-v1`.
+
+Anche il decoder autonomo di `predecessor-v1` e' ora completato e approvato
+localmente con `P0=0`, `P1=0`, `P2=0`. Il clone e' privato, non autorizzante,
+stdlib-only e senza I/O. Replica il dominio dell'identificativo, i limiti e gli
+ordinamenti di file, comandi e ambiente e i legami dei quattro tipi di comando.
+Helper specifici evitano tre divergenze degli helper amministrativi generali:
+il test positivo ammette correttamente percorso e radice oltre 4096 byte e
+unita' oltre 191 caratteri; il basename `received-source-v1.json` resta invece
+vietato. Dieci mutanti ricalcolano l'identificativo quando necessario e
+isolano root, basename, ordini di file/comandi/ambiente, intero booleano,
+denylist ambiente, modulo Python, nome unita' e self-ID. La suite aggiornata,
+escluso il solo vecchio pin source-review, termina con
+`125 passed, 1 deselected`; i sette test canonici predecessor sono verdi,
+come compilazione e `git diff --check`. Questo e' un punto fermo senza commit o
+pubblicazione; prima del sottoincremento successivo vengono riesaminati i turni
+indicati dall'utente.
+
+Il riesame del percorso dei turni conferma la decisione che evita una chiusura
+apparente: B3 deve produrre i byte operativi completi prima di staging e firma;
+G6-C li installa e li prova, ma non li implementa o modifica. Una frase piu'
+vecchia del piano attribuiva ambiguamente a G6-C il "controllo operativo" ed e'
+stata corretta per distinguere implementazione B3 da installazione e prova C.
+Non emergono file fuori perimetro, rami aggiuntivi o commit intermedi: il solo
+ramo e' `main` e il diff locale e' limitato a preflight, relativa suite e tre
+documenti RM-0008. Il percorso minimo non cambia: il prossimo incremento e'
+l'osservazione fixed-root e handle-bound delle prove ownership gia'
+decodificate, con autenticazione delle firme e legami claim/journal; non si
+avvia ancora il preparatore, non si aggiorna il pin e non si pubblica.
+
+Il riesame indipendente dell'I/O ownership ha precisato il confine del prossimo
+incremento. Letture successive con `_read_bounded_regular_v1` stabilizzano il
+singolo file, ma non impediscono di comporre puntatore, archivi, claim, journal
+e predecessore appartenenti a epoche diverse. Il core nuovo deve quindi aprire
+una sola volta la radice fissa `/var/lib/metnos/executor-birth`, mantenere vivi
+gli handle delle sottoradici e leggere ogni discendente con `dir_fd` e
+`O_NOFOLLOW`. Inventario e identita' vengono fotografati prima e dopo la
+decodifica e la radice per pathname viene confrontata nuovamente con l'handle
+prima del ritorno. La mera presenza di `predecessor-v1.json` non seleziona lo
+stato iniziale, perche' il file resta no-replace dopo il primo passaggio:
+`INITIAL` richiede invece assenza simultanea di ancora e testa richiesta e tre
+archivi vuoti; ogni stato parziale richiede recupero.
+
+Per mantenere il rischio verificabile senza duplicazioni, il lavoro e' diviso
+in due soli incrementi verticali. Il primo realizza la fotografia fixed-root
+handle-bound e restituisce un candidato privato esplicitamente non
+autorizzante. Il secondo autentica registri, coppie archiviate, ancora e testa,
+completa il supporto del journal fino a `PREFLIGHT_VERIFIED` e riconcilia tutti
+i legami col coordinatore. La separazione evita che un tipo parziale sembri
+autorita' e consente test brevi che mutano fra le fotografie A e B puntatore,
+inventario o predecessore. Nessun commit, aggiornamento del pin o pubblicazione
+precede il completamento del preflight operativo.
+
+La fotografia fixed-root e' ora implementata localmente. Il risultato e' un
+tipo privato denominato esplicitamente `Candidate`, mentre la seam portabile
+restituisce un tipo nominalmente distinto. Il core non rilegge discendenti per
+pathname: conserva gli handle di radice, autorita', catena, archivi,
+coordinatore e transazioni; verifica inventari e identita' A/B e il rebound di
+ogni directory e file dal medesimo genitore. Le chiavi private vengono soltanto
+inventariate come file root-owned `0600`, hardlink singolo e 32 byte, senza
+leggerne il contenuto. Sono gia' decodificati i formati autonomi disponibili;
+record storico V1, disposizione legacy e record V2 numero 006 restano byte
+catturati e saranno completati nell'incremento di autenticazione, senza falsa
+negazione dello stato valido.
+
+Le tre famiglie probatorie brevi sono verdi: stato iniziale e stato con testa
+richiesta, sostituzione di puntatore/claim/predecessore fra A e B e mutanti di
+hardlink, modo, coppia incompleta e rebound della radice. Il totale mirato,
+escluso intenzionalmente il vecchio pin source-review, e' `134 passed,
+1 deselected` in meno di un secondo; compilazione e `git diff --check` sono
+verdi. Il diff resta non committato in attesa del riesame avversariale di
+questo incremento.
+
+Il primo riesame avversariale della fotografia ha riprodotto tre P1 interni al
+confine filesystem. La catena degli antenati era validata soltanto in A; uno
+dei genitori poteva quindi diventare scrivibile prima del ritorno. Inoltre un
+solo `.required-head-v1.lock` veniva scambiato per stato iniziale e un nome
+temporaneo con prefisso `ownership-cutover-v1.` restava fuori dal filtro della
+radice. Sono stati corretti fotografando e riverificando identita' e policy di
+tutti gli antenati, negando il lock nello stato completamente vuoto e chiudendo
+l'inventario dei nomi simili all'ancora sia in A sia in B. E' stata chiusa
+anche una perdita di descrittore quando la registrazione iniziale di una
+directory fallisce, compreso il ramo `MemoryError`. I mutanti nuovi riproducono
+esattamente i tre P1; un caso aggiuntivo conserva l'invariante che la presenza
+del predecessore non seleziona il regime iniziale. La suite ora termina con
+`138 passed, 1 deselected`; serve il verdetto finale sul delta.
+
+Le osservazioni della review su firme, catena autenticata e legami del grafo
+non sono difetti occultati del tipo corrente: il risultato resta denominato
+`Candidate`, non ha consumer produttivi e il piano li assegna esplicitamente al
+secondo e ultimo incremento di questa coppia. Quel lavoro resta obbligatorio
+prima del dispatch, dello staging o di qualunque commit.
+
+La riverifica finale del primo incremento filesystem e' conclusa con tre
+verdetti indipendenti `P0=0`, `P1=0`, `P2=0`. La seam `MemoryError` non lascia
+descrittori aperti; i tredici casi fixed-root e l'intera suite senza il pin
+intermedio producono rispettivamente `13 passed` e `138 passed,
+1 deselected`. Compilazione e `git diff --check` restano verdi. L'incremento e'
+quindi approvato localmente, ma non viene committato da solo: il passo unico e'
+ora autenticare la fotografia e riconciliare catena e coordinatore, compresi
+record V2 `006` e disposizione legacy.
+
+## Punto fermo del 29 agosto: turni `9119a307` e `052f0f91`
+
+I due turni sono stati analizzati sui record reali prima di modificare codice.
+Non costituiscono un nuovo requisito della porta Birth, ma ogni sorgente
+modificata entra nel censimento e dovra' attraversare B3 prima della
+pubblicazione finale.
+
+Il turno `052f0f91` non e' fallito per un divieto di Linux. Un ping reale e
+limitato dal server verso `192.168.1.137` ha ricevuto risposta. Il difetto e'
+nel selettore: `admin` e' il fallback protetto per i comandi, ma veniva
+iniettato mediante una lista manuale incompleta. La correzione locale non
+aggiunge il caso `ping`: `safety.canonicalize.command_grammar_binaries()`
+espone l'inventario unico delle famiglie comprese nella grammatica di
+canonicalizzazione. Il prefilter aggiunge `admin` in coda soltanto quando il
+nome e' accompagnato da un segnale strutturale generale: una forma di
+invocazione immediatamente precedente oppure, se il comando apre la richiesta,
+un primo argomento inequivocabilmente CLI. Forme e polarita' provengono dal
+registro traducibile; invocazione, negazione, inibizione e contrasto richiedono
+risorse native pronte e revisione manuale. Il vecchio elenco shell
+italiano/inglese e' migrato nel concetto `admin.shell_intent` conservando
+esattamente l'unione editoriale preesistente. Il ramo shell applica lo stesso
+controllo di polarita' e non puo' piu' aggirare il fallback sicuro.
+
+Il solo nome non basta, perche' la grammatica contiene anche parole comuni
+come `date`, `file`, `last` e `who`. Una revoca successiva senza nuovo target
+nega il comando; una negazione che nomina un binario diverso resta limitata a
+quel binario. Un test con `futurectl` prova che un comando nuovo non richiede
+modifiche al selettore. La forma live `fai ping a pc-roberto` e' positiva;
+prosa, negazioni, inibizioni, revoche successive, punteggiatura e lingua
+parzialmente materializzata sono negativi. Una terza lingua con forme Unicode
+e multi-parola segue lo stesso percorso dati. La polarita' restituisce anche
+lo stato distinto `unavailable`: una risorsa nativa o manuale mancante non
+viene confusa con una frase positiva. Il daemon interrompe il ciclo prima di
+elencare le traduzioni o chiamare il modello se non riesce a caricare la
+politica di revisione umana.
+
+La destinazione e' una sequenza ordinata di menzioni: una correzione esplicita
+successiva prevale, mentre una revoca finale vieta il riuso della destinazione
+ricordata o predefinita. Alias deboli non prevalgono su riferimenti espliciti e
+il controllo resta attivo anche quando non esistono device registrati. Le prove
+correnti terminano con `129 passed` sul perimetro mirato e `592 passed, 1.144
+subtests passed` sulla regressione i18n e sui consumer collegati. Due revisioni
+indipendenti finali concludono entrambe `P0=0`, `P1=0`, `P2=0`; compilazione e
+`git diff --check` sono verdi.
+
+L'analisi ha anche invalidato il closeout nominale di RM-0005: il rapporto
+storico del lessico dichiarava ancora una terza ondata da svolgere. RM-0005 e'
+ora `reopened`; il percorso shell/ping e' corretto, mentre il censimento
+residuo deve essere concluso prima di una nuova chiusura.
+
+Resta distinta una lacuna di identita': il registro del device non conserva un
+indirizzo IP autenticato. Per questo il nome `PC-ROBERTO` non puo' essere
+trasformato fiduciariamente in `192.168.1.137`; il valore raccolto dal dialogo
+non va dedotto da log o dal modello. Il fallback generale rende eseguibile la
+ripresa che contiene l'IP, ma l'eliminazione del dialogo iniziale richiedera'
+un campo address autenticato e aggiornato nel protocollo device, non una
+regola dedicata al nome di questo PC.
+
+Nel turno `9119a307`, `run_processes` ha negato correttamente un input privo di
+`resolved_id`. Il produttore `find_packages` confondeva pero' due righe WinGet
+con due identita': righe duplicate della stessa identita' erano marcate
+ambigue. Il fix locale canonicalizza tutte le identita', emette
+`resolved_id` soltanto se ogni riga e' valida e l'insieme case-insensitive ha
+cardinalita' uno e pubblica candidati diagnostici non consumabili quando le
+identita' sono realmente distinte. Nessun fallback verso il display name o
+verso `package_id` e' ammesso. I candidati sono deduplicati e ordinati prima
+del limite; conteggio e troncamento restano espliciti. Un test di proiezione
+prova che un `resolved_id` annidato nella diagnostica non puo' autorizzare
+`run_processes`. Duplicato equivalente, ordine provider invertito, due
+identita', coppia valida/invalida e limite sono coperti. Il riesame finale e'
+`P0=0`, `P1=0`, `P2=0`.
+
+Il manifesto authoring di `find_packages` contiene versione, schema e digest
+aggiornati, ma la firma precedente non viene riusata: la nuova firma e la
+pubblicazione restano bloccate fino al completamento della porta Birth. Non e'
+stato eseguito alcun commit, aggiornamento dello store vivo o push.
+
+## Nota operativa sul riavvio del servizio — 29 agosto
+
+Il riavvio live ha mostrato due unita' omonime ma appartenenti a manager
+diversi: la vera istanza in esercizio e' l'unita' utente
+`systemctl --user metnos-http.service`; la vecchia unita' di sistema tenta di
+usare la stessa porta e lo stesso lock. Il lock ha impedito il duplicato, ma
+l'unita' legacy e' entrata nel proprio ciclo di restart. E' stata fermata e la
+sola unita' utente e' stata riavviata con successo; la porta 8770 risponde.
+Un processo Unix nello stato zombie non puo' trattenere porta o lock: il
+rafforzamento generale del contratto del servizio riguarda processi residui
+vivi, `KillMode=control-group` e il diniego del restart loop sul codice stabile
+di istanza gia' attiva, non l'uccisione indiscriminata per nome o porta.

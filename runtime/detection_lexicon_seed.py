@@ -74,10 +74,65 @@ def register_all() -> None:
     # detection_lexicon.asserted_at; i domini non mantengono liste proprie.
     R("syntax.negation", "phrases", match_mode="word",
       it=["non", "mai", "senza", "nessun", "nessuna", "nessuno"],
-      en=["not", "never", "without", "no"])
+      en=[
+          "not", "never", "without", "no", "cannot", "neither", "nor",
+          "don't", "don’t", "doesn't", "doesn’t", "didn't", "didn’t",
+          "can't", "can’t", "couldn't", "couldn’t",
+          "won't", "won’t", "wouldn't", "wouldn’t",
+          "shouldn't", "shouldn’t", "mustn't", "mustn’t",
+          "haven't", "haven’t", "hasn't", "hasn’t",
+          "hadn't", "hadn’t", "needn't", "needn’t",
+          "mightn't", "mightn’t", "mayn't", "mayn’t",
+          "shan't", "shan’t", "oughtn't", "oughtn’t",
+          "daren't", "daren’t", "ain't", "ain’t",
+          "isn't", "isn’t", "aren't", "aren’t",
+          "wasn't", "wasn’t", "weren't", "weren’t",
+      ], review_policy="manual")
+    R("syntax.command_invocation", "phrases", match_mode="word",
+      it=["esegui", "eseguire", "eseguite", "eseguirlo", "eseguirla",
+          "eseguirli", "eseguirle", "fai", "fammi", "lancia",
+          "lanciare", "avvia", "avviare"],
+      en=["execute", "run", "launch"], review_policy="manual")
+    R("syntax.negative_coordination", "phrases", match_mode="word",
+      it=["e", "o", "né"], en=["and", "or", "nor"],
+      review_policy="manual")
+    R("syntax.sequence", "phrases", match_mode="word",
+      it=["poi", "e poi", "e"], en=["then", "and then", "and"],
+      review_policy="manual")
+    R("syntax.inhibition", "phrases", match_mode="word",
+      it=["evita", "evita di", "evitare", "evitare di", "invece di"],
+      en=["avoid", "instead of", "rather than", "refrain from"],
+      review_policy="manual")
     R("syntax.contrast", "phrases", match_mode="word",
       it=["ma", "bensì", "invece"],
-      en=["but", "instead", "rather"])
+      en=["but", "instead", "rather"], review_policy="manual")
+
+    # ── AMMINISTRAZIONE: indizi shell (RM-0005 F6) ───────────────────
+    # Migrazione completa della vecchia ``_SHELL_INTENT_HINTS`` del
+    # prefilter. I nomi di programmi/protocolli restano superfici tecniche;
+    # le espressioni naturali sono localizzate dal normale daemon. Il consumer
+    # espone soltanto l'executor admin: whitelist e consenso restano autorità
+    # separate e non vengono mai concessi da queste forme.
+    R("admin.shell_intent", "phrases", match_mode="word",
+      it=[
+          "monta", "monto", "montare", "smonta", "smontare",
+          "uccidi", "termina", "killa", "ammazza", "servizio",
+          "riavvia", "riavviare", "avvia", "avviare", "ferma",
+          "fermare", "fermo", "permessi", "rete", "pacchetto",
+          "installa", "installare", "log di sistema", "comando shell",
+          "esegui", "porta", "porte", "ascolta", "ascoltante",
+          "modulo kernel", "moduli kernel", "scheda video",
+      ],
+      en=[
+          "mount", "umount", "share", "nas", "cifs", "smb", "nfs",
+          "kill", "systemctl", "service", "restart", "start", "stop",
+          "chmod", "chown", "permission", "ifconfig", "ip route",
+          "iptables", "network", "apt", "apt-get", "package",
+          "journalctl", "syslog", "shell command", "port", "ports",
+          "socket", "sockets", "listening", "tcp", "udp",
+          "kernel module", "video card", "gpu", "lsof", "lsblk",
+          "lsmod", "lspci", "lsusb", "dmesg", "sensors", "sensor",
+      ])
 
     # ── FILESYSTEM: classi semantiche dei file ─────────────────────────
     # Le chiavi canoniche sono tecniche e risolte da file_kinds; qui vivono

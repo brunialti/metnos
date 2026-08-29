@@ -1,14 +1,15 @@
 # RM-0005 — Multilinguismo full e auto-localizzazione dell’istanza
 
-> `RM-0005` · status `closed` · defined `2026-08-21` · implemented `2026-08-23` · closed `2026-08-23` · decisione: una sola lingua firmata per istanza · documento interno, escluso da `docs/` e Tutor
+> `RM-0005` · status `reopened` · defined `2026-08-21` · historical closeout `2026-08-23` · reopened `2026-08-29` · decisione: una sola lingua firmata per istanza · documento interno, escluso da `docs/` e Tutor
 
 ## 1. Sintesi
 
 ### Stato del mandato
 
-Il mandato è concluso. Questo documento conserva il contratto implementato, le
-invarianti e le prove di chiusura; non contiene fasi ancora assegnabili. Una
-manutenzione successiva deve:
+Il contratto resta vincolante, ma il mandato è stato riaperto il 29 agosto 2026
+dopo avere trovato lessici operativi cablati che il closeout non aveva censito.
+Questo documento conserva le prove storiche e registra la nuova certificazione.
+Una manutenzione successiva deve:
 
 1. preservare il contratto e le invarianti qui dichiarati;
 2. non introdurre rami per dominio, lingua o provider;
@@ -232,7 +233,7 @@ lease con scadenza e tentativi bounded; nessun LLM dentro il registry.
 - Rifirmare il manifest dopo ogni modifica atomica.
 - Eseguire `manifest_lint`, test di nascita e verifica della firma.
 
-### F6 — Lessico di comprensione e proposer · `implemented`
+### F6 — Lessico di comprensione e proposer · `reopened`
 
 - Convertire il lessico hardcoded in registri `(concept, lang)`.
 - Tradurre forme naturali e mapping semplici; lasciare a revisione umana regex
@@ -241,11 +242,37 @@ lease con scadenza e tentativi bounded; nessun LLM dentro il registry.
 - Testare equivalenza semantica su fixture IT/EN e sulla nuova lingua; vietare
   che la traduzione alteri un identificatore canonico.
 
-**Stato 2026-08-23:** implementato per l’intero lessico censito. Il
+**Stato storico 2026-08-23:** dichiarato implementato per l’intero lessico
+censito. Il
 test `test_action_vocabulary_i18n.py` materializza una terza lingua sintetica,
 verifica detection, rendering, fallback e copertura; il daemon accetta un
 mapping tradotto soltanto se conserva esattamente tutte le chiavi canoniche e
 forme non vuote. Regex e consenso sono eccezioni tipizzate a revisione manuale.
+
+**Correzione 2026-08-29:** la dichiarazione precedente era incompleta. Il
+rapporto `internal/reports/detection_lexicon_progress.md` conservava una terza
+ondata ancora da svolgere e `runtime/prefilter.py` conteneva ancora lessici
+italiani e inglesi. Il primo difetto operativo corretto è la selezione
+amministrativa: la vecchia tabella shell è ora il concetto traducibile
+`admin.shell_intent`; l’insieme editoriale italiano/inglese resta identico e
+una prova usa una terza lingua. Negazione, inibizione, contrasto, coordinazione
+negativa, sequenza e invocazione di comandi richiedono risorse native pronte e
+revisione manuale. Il controllo restituisce uno stato distinto quando questa
+grammatica non è disponibile e i consumer di sicurezza negano l'operazione.
+Il daemon di traduzione non può neppure interrogare il modello se non riesce a
+caricare il confine delle risorse soggette a revisione umana.
+
+La destinazione di esecuzione viene risolta come una sequenza ordinata di
+menzioni. Una correzione esplicita successiva sostituisce quella precedente;
+una revoca finale vieta il riuso della destinazione ricordata o predefinita.
+Alias deboli non prevalgono su riferimenti espliciti a server, dispositivo o
+macchina locale. Questa regola evita che una negazione venga aggirata quando
+non risulta registrato alcun dispositivo.
+
+Il censimento residuo comprende almeno gli indizi di oggetto, le parole vuote,
+la morfologia dei clitici e i marcatori temporali e fotografici ancora presenti
+nel prefilter. Questi dati devono essere migrati o classificati esplicitamente
+come invarianti non linguistici prima del nuovo closeout.
 
 ### F7 — Runtime, dispositivi e Tutor · `implemented`
 
@@ -305,9 +332,10 @@ avvia l’istanza in inglese, completa la pipeline e dimostra dopo riavvio:
 dalla suite `tests/runtime/i18n/`, dal lint F1 e dalla verifica di tutte le
 firme dei manifest installabili.
 
-### 6.1 Closeout
+### 6.1 Closeout storico, non più vigente
 
-RM-0005 è `closed` dal 23 agosto 2026 perché non restano fasi o gate aperti:
+RM-0005 fu dichiarata `closed` il 23 agosto 2026 sulla base delle prove
+seguenti:
 
 - F0-F8 risultano implementate e referenziate nelle ADR 0219-0220;
 - la suite pertinente ha concluso con 579 test superati e 1.118 subtest;
@@ -316,6 +344,31 @@ RM-0005 è `closed` dal 23 agosto 2026 perché non restano fasi o gate aperti:
 - la documentazione bilingue è stata distribuita su Cloudflare Pages e
   verificata sul dominio canonico `https://metnos.com`;
 - il repository sorgente non presenta modifiche residue dopo la pubblicazione.
+
+Il 29 agosto 2026 la presenza di lessici operativi preesistenti ma non migrati
+ha invalidato la frase «non restano fasi o gate aperti». Commit e prove
+storiche restano autentici, ma non dimostrano la copertura completa dichiarata.
+
+### 6.2 Nuovo gate di chiusura
+
+RM-0005 può tornare `closed` soltanto quando:
+
+1. il censimento del lessico eseguibile non lascia tabelle linguistiche nei
+   consumer runtime;
+2. ogni eccezione non traducibile è tipizzata e motivata;
+3. la terza lingua e gli stati di materializzazione parziale sono provati;
+4. i percorsi di sicurezza usano soltanto risorse native pronte e, quando
+   richiesto, revisionate manualmente;
+5. suite i18n, regressioni di routing e revisione avversariale terminano senza
+   errori o rilievi aperti;
+6. la correzione viene pubblicata e verificata sull’installazione reale.
+
+La correzione candidata del percorso shell/ping ha concluso localmente con
+`129 test` mirati e con la regressione estesa di `592 test` e `1.144 subtest`
+superati. Due revisioni avversariali indipendenti hanno concluso entrambe con
+`P0=0`, `P1=0`, `P2=0`; anche `git diff --check` è verde. Pubblicazione e prova
+sull'installazione reale sono ancora da svolgere, mentre il censimento residuo
+del lessico impedisce comunque il nuovo closeout. Lo stato resta `reopened`.
 
 ## 7. Rischi e misure
 
