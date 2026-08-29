@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import html
-import importlib.util
 import sys
 import tomllib
 from pathlib import Path
@@ -14,8 +13,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "runtime"
+SCRIPTS = ROOT / "scripts"
 BUILTIN_CONTRACTS = RUNTIME / "builtin_executor_contracts"
-CATALOG_GENERATOR = ROOT / "scripts" / "generate_executor_catalog.py"
 OUTPUTS = {
     "it": ROOT / "docs" / "it" / "domains.html",
     "en": ROOT / "docs" / "en" / "domains.html",
@@ -23,7 +22,10 @@ OUTPUTS = {
 
 if str(RUNTIME) not in sys.path:
     sys.path.insert(0, str(RUNTIME))
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
 
+import generate_executor_catalog  # noqa: E402
 from naming_grammar import parse_name  # noqa: E402
 from vocab import OBJECTS  # noqa: E402
 
@@ -328,14 +330,7 @@ TEXT = {
 
 
 def _catalog_module():
-    spec = importlib.util.spec_from_file_location(
-        "domain_reference_executor_catalog", CATALOG_GENERATOR)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("cannot load executor catalog generator")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return generate_executor_catalog
 
 
 def load_operations() -> dict[str, tuple[str, ...]]:

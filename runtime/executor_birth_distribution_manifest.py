@@ -31,8 +31,10 @@ from contract_boundary_guard import (
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS, BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_GUARD_VERSION,
     BIRTH_CLOSED_OWNER, BIRTH_CLOSED_SCHEMA, BIRTH_CLOSED_SEALED_MODULES,
+    BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     SCAN_ROOTS, SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
-    birth_closed_findings, discover,
+    _bounded_ast_metrics, birth_closed_findings,
+    closed_python_source_review_sha256, discover,
 )
 
 
@@ -46,6 +48,10 @@ MAX_FILE_BYTES = 512 * 1024 * 1024
 MAX_MANIFEST_FILES_V1 = 20_000
 MAX_MANIFEST_TOTAL_BYTES_V1 = 2 * 1024 * 1024 * 1024
 MAX_RELATIVE_PATH_COMPONENTS_V1 = 32
+MAX_BOUNDARY_SOURCE_FILES_V1 = 2_048
+MAX_BOUNDARY_SOURCE_BYTES_V1 = 1 * 1024 * 1024
+MAX_BOUNDARY_TOTAL_SOURCE_BYTES_V1 = 32 * 1024 * 1024
+MAX_BOUNDARY_TOTAL_AST_NODES_V1 = 4_000_000
 DEFAULT_RELEASE_DIRECTORY_V1 = Path(
     "/var/lib/metnos/executor-birth/releases-v1"
 )
@@ -83,6 +89,7 @@ _REQUIRED_PATH_ROLES = MappingProxyType({
     "runtime/executor_birth_distribution_manifest.py": "preflight",
     "runtime/__version__.py": "product_version",
 })
+_BOUNDARY_PREFLIGHT_ENTRYPOINT_V1 = "deployment/admin/preflight.py"
 
 
 class DistributionManifestError(RuntimeError):
@@ -90,6 +97,27 @@ class DistributionManifestError(RuntimeError):
         self.code = code
         self.detail = detail
         super().__init__(f"{code}: {detail}" if detail else code)
+
+
+def _is_guarded_python_source_path_v1(path: str) -> bool:
+    """Validate the closed source grammar and identify guard-census files."""
+
+    parts = path.split("/")
+    if any(part.casefold().endswith(".py") for part in parts[:-1]):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "python source path",
+        )
+    python_like = parts[-1].casefold().endswith(".py")
+    if not python_like:
+        return False
+    if not parts[-1].endswith(".py") or (
+        path != _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1
+        and parts[0] not in SCAN_ROOTS
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "python source path",
+        )
+    return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -612,10 +640,13 @@ def _parse(encoded: bytes) -> tuple[dict[str, object], tuple[DistributionFile, .
         raise DistributionManifestError("birth_ownership_distribution_invalid", "files")
     files: list[DistributionFile] = []
     total_size = 0
+    boundary_source_files = 0
+    boundary_source_bytes = 0
     for raw in raw_files:
         if not isinstance(raw, dict) or set(raw) != _FILE_KEYS:
             raise DistributionManifestError("birth_ownership_distribution_invalid", "file schema")
         path = _relative_path(raw.get("path"))
+        guarded_python_source = _is_guarded_python_source_path_v1(path)
         folded_path = path.casefold()
         if (
             any(part.casefold() == "__pycache__" for part in path.split("/"))
@@ -632,6 +663,17 @@ def _parse(encoded: bytes) -> tuple[dict[str, object], tuple[DistributionFile, .
             or size < 0 or size > MAX_FILE_BYTES or role not in _ROLES
         ):
             raise DistributionManifestError("birth_ownership_distribution_invalid", "file")
+        if guarded_python_source:
+            boundary_source_files += 1
+            boundary_source_bytes += size
+            if (
+                boundary_source_files > MAX_BOUNDARY_SOURCE_FILES_V1
+                or size > MAX_BOUNDARY_SOURCE_BYTES_V1
+                or boundary_source_bytes > MAX_BOUNDARY_TOTAL_SOURCE_BYTES_V1
+            ):
+                raise DistributionManifestError(
+                    "birth_ownership_distribution_invalid", "python source budget",
+                )
         total_size += size
         if total_size > MAX_MANIFEST_TOTAL_BYTES_V1:
             raise DistributionManifestError(
@@ -1213,15 +1255,24 @@ def _read_anchored_distribution_file_v1(
 def _product_version_from_source(content: bytes) -> str:
     try:
         tree = ast.parse(content.decode("utf-8"), filename="runtime/__version__.py")
-    except (UnicodeDecodeError, SyntaxError) as exc:
+        _bounded_ast_metrics(tree)
+    except (
+        UnicodeDecodeError, SyntaxError, RecursionError, ValueError,
+        OverflowError, MemoryError,
+    ) as exc:
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", "product version",
         ) from exc
-    stores = [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Name) and node.id == "__version__"
-        and isinstance(node.ctx, (ast.Store, ast.Del))
-    ]
+    try:
+        stores = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and node.id == "__version__"
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+        ]
+    except MemoryError as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "product version",
+        ) from exc
     values: list[str] = []
     for statement in tree.body:
         if not isinstance(statement, ast.Assign):
@@ -1298,32 +1349,135 @@ def _verify_local_import_closure(
                 alternatives.extend((path + ".py", path + "/__init__.py"))
         return tuple(dict.fromkeys(alternatives))
 
+    total_ast_nodes = 0
     for item in files:
         if not item.path.endswith(".py"):
             continue
         try:
             tree = ast.parse(content[item.path].decode("utf-8"), filename=item.path)
-        except (UnicodeDecodeError, SyntaxError) as exc:
+            total_ast_nodes += _bounded_ast_metrics(tree)
+            if total_ast_nodes > MAX_BOUNDARY_TOTAL_AST_NODES_V1:
+                raise ValueError("boundary total AST node budget exceeded")
+        except (
+            UnicodeDecodeError, SyntaxError, RecursionError, ValueError,
+            OverflowError, MemoryError,
+        ) as exc:
             raise DistributionManifestError(
                 "birth_ownership_distribution_file_mismatch", "python source",
             ) from exc
         modules: list[tuple[str, int]] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                modules.extend((alias.name, 0) for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                modules.append((node.module or "", node.level))
-                modules.extend(
-                    (".".join(filter(None, (node.module or "", alias.name))), node.level)
-                    for alias in node.names if alias.name != "*"
+        try:
+            parents = {
+                id(child): parent
+                for parent in ast.walk(tree)
+                for child in ast.iter_child_nodes(parent)
+            }
+
+            def authenticated_door_eval(call: ast.Call) -> bool:
+                if (
+                    item.path != "runtime/admitted_module_v1.py"
+                    or not isinstance(call.func, ast.Name)
+                    or call.func.id not in {"compile", "exec"}
+                ):
+                    return False
+                current: ast.AST = call
+                while (parent := parents.get(id(current))) is not None:
+                    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        return parent.name == "load_admitted_module_v1"
+                    current = parent
+                return False
+
+            aliases: dict[str, str] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        bound = alias.asname or alias.name.split(".", 1)[0]
+                        aliases[bound] = alias.name if alias.asname else bound
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    for alias in node.names:
+                        if alias.name != "*":
+                            aliases[alias.asname or alias.name] = (
+                                f"{node.module}.{alias.name}"
+                            )
+
+            def resolved_callable(func: ast.AST) -> str | None:
+                parts: list[str] = []
+                current = func
+                while isinstance(current, ast.Attribute):
+                    parts.append(current.attr)
+                    current = current.value
+                if not isinstance(current, ast.Name):
+                    return None
+                root_name = aliases.get(current.id, current.id)
+                return ".".join((root_name, *reversed(parts)))
+
+            def dynamic_loader_call(call: ast.Call) -> bool:
+                canonical = resolved_callable(call.func)
+                if canonical is None:
+                    return False
+                leaf = canonical.rsplit(".", 1)[-1]
+                return bool(
+                    canonical in {
+                        "importlib.machinery.SourceFileLoader",
+                        "importlib.machinery.SourcelessFileLoader",
+                        "importlib.util.module_from_spec",
+                        "importlib.util.spec_from_file_location",
+                        "runpy.run_module", "runpy.run_path",
+                        "types.FunctionType",
+                    }
+                    or canonical.startswith("importlib.")
+                    and leaf in {
+                        "FunctionType", "SourceFileLoader",
+                        "SourcelessFileLoader", "exec_module", "load_module",
+                        "module_from_spec", "spec_from_file_location",
+                    }
+                    or leaf in {"exec_module", "load_module"}
+                    and f".loader.{leaf}" in canonical
                 )
-            elif isinstance(node, ast.Call) and (
-                isinstance(node.func, ast.Name) and node.func.id == "__import__"
-                or isinstance(node.func, ast.Attribute) and node.func.attr == "import_module"
-            ):
-                raise DistributionManifestError(
-                    "birth_ownership_distribution_extra_file", "dynamic import",
-                )
+
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    modules.extend((alias.name, 0) for alias in node.names)
+                elif isinstance(node, ast.ImportFrom):
+                    modules.append((node.module or "", node.level))
+                    modules.extend(
+                        (".".join(filter(None, (node.module or "", alias.name))), node.level)
+                        for alias in node.names if alias.name != "*"
+                    )
+                elif isinstance(node, ast.Call) and resolved_callable(node.func) in {
+                    "__import__", "builtins.__import__", "importlib.import_module",
+                }:
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_extra_file", "dynamic import",
+                    )
+                elif isinstance(node, ast.Call) and (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in {"compile", "eval", "exec", "FunctionType"}
+                    and not authenticated_door_eval(node)
+                    or dynamic_loader_call(node)
+                ):
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_extra_file", "dynamic code loader",
+                    )
+                elif (
+                    isinstance(node, ast.Subscript)
+                    and isinstance(node.slice, ast.Constant)
+                    and node.slice.value == "__import__"
+                    and any(
+                        isinstance(part, ast.Name) and part.id == "__builtins__"
+                        or isinstance(part, ast.Call)
+                        and isinstance(part.func, ast.Name)
+                        and part.func.id in {"globals", "locals", "vars"}
+                        for part in ast.walk(node.value)
+                    )
+                ):
+                    raise DistributionManifestError(
+                        "birth_ownership_distribution_extra_file", "dynamic import",
+                    )
+        except MemoryError as exc:
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "python source",
+            ) from exc
         for module, level in modules:
             candidates = local_candidates(module, item.path, level)
             existing = [candidate for candidate in candidates
@@ -1478,6 +1632,15 @@ def _verify_distribution_content_semantics_v1(
             "birth_ownership_distribution_file_mismatch", "boundary guard version",
         )
     if environment.verify_static_boundary:
+        if (
+            closed_python_source_review_sha256(verified_content)
+            != BIRTH_CLOSED_SOURCE_REVIEW_SHA256
+            or verified_content.get(_BOUNDARY_PREFLIGHT_ENTRYPOINT_V1)
+            != verified_content.get("runtime/executor_birth_admin_preflight.py")
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", "source review",
+            )
         try:
             findings = birth_closed_findings(
                 discover(environment.installation_root), inventory,

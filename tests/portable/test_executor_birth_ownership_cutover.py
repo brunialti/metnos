@@ -51,7 +51,7 @@ def _issue(authority, proof=None, previous=None):
         proof=proof or _proof("alpha"), previous_cutover_id=previous,
         request_id=D("1"), signing_key_id=key_id,
         maintenance_evidence_hash=D("2"), boundary_inventory_hash=D("3"),
-        boundary_guard_version="metnos.contract-boundary-inventory/2+birth-closed/1",
+        boundary_guard_version="metnos.contract-boundary-inventory/2+birth-closed/2",
         closed_build_id=D("4"), private_key=private,
     )
 

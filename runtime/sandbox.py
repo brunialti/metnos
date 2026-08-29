@@ -1,9 +1,9 @@
 """sandbox.py — sandbox bubblewrap per gli executor (Metnos v1.1).
 
 Sostituisce la pseudo-sandbox del POC (filtro path/host nel runtime) con un
-wrapping reale via bubblewrap quando disponibile. Fallback graceful: se
-`bwrap` non e' installato, il comando viene eseguito senza wrapping (la
-pseudo-sandbox di `agent_runtime` resta attiva come prima).
+isolamento reale tramite Bubblewrap. Se la sandbox OS e' disabilitata o non
+disponibile, ogni executor ordinario fallisce chiuso; la sola eccezione e' il
+broker undo vincolato a identita', metadati e digest esatti.
 
 Filosofia (cap. 6 Architettura, strato 3):
 - Niente <code>subprocess.run</code> diretto al codice dell'executor: si
@@ -27,6 +27,26 @@ import shutil
 import sys
 from pathlib import Path
 
+
+class SandboxUnavailableError(RuntimeError):
+    """Executor code cannot run without the required OS sandbox."""
+
+
+_TRUSTED_UNDO_BROKER_DIGEST_V1 = (
+    "sha256:8f819a52ce9f242ace86de74822058baf609c863557f7cdc4482439983f4f895"
+)
+
+
+def requires_os_sandbox(executor) -> bool:
+    """Every ordinary executor subprocess has no naked fallback.
+
+    ``wrap_command`` handles the one exact undo-broker exception before this
+    predicate. Provenance is not a confinement boundary: a later Birth
+    revision of a builtin must not become naked merely because its historical
+    membership remains ``builtin``.
+    """
+    return True
+
 # --- detection -------------------------------------------------------------
 
 def bwrap_available() -> bool:
@@ -37,7 +57,8 @@ def bwrap_available() -> bool:
 def sandbox_disabled() -> bool:
     """True se l'utente ha disabilitato esplicitamente la sandbox via env.
 
-    Utile per debug locale senza bwrap, o per CI.
+    E' un interruttore diagnostico fail-closed: non abilita l'esecuzione
+    diretta degli executor ordinari.
     """
     return os.environ.get("METNOS_SANDBOX", "").lower() in ("0", "off", "no", "false")
 
@@ -413,7 +434,7 @@ def _exec_tool_resources(hints: list[str]) -> list[Path]:
 # Bwrap fallisce se uno di questi manca; aggiungiamo solo quelli che esistono.
 _SYSTEM_RO_PATHS = (
     "/usr", "/bin", "/sbin", "/lib", "/lib64", "/lib32",
-    "/etc", "/opt", "/var/lib/python3",
+    "/etc", "/var/lib/python3",
     # /sys READ-ONLY (9/7): info descrittive hardware (GPU /sys/class/drm,
     # USB /sys/bus/usb, block /sys/block) per get_processes health. Info-only:
     # in RO non si scrive nulla; standard nelle sandbox info-gathering.
@@ -478,10 +499,9 @@ def _build_bwrap_args(
 
     # Gli executor importano gli helper condivisi (`messages`,
     # `executor_helpers`, client di dominio) dalla runtime canonica del daemon.
-    # `/opt` e' gia' visibile tra i path di sistema, ma una installazione
-    # relocabile puo' vivere in qualunque directory (per esempio sotto HOME):
-    # il bind esplicito mantiene identico il confine della sandbox senza
-    # esporre l'intera radice dell'installazione.
+    # Montare una radice di installazione comune (per esempio ``/opt``)
+    # renderebbe visibili anche executor fratelli non dichiarati come
+    # dipendenze. Il bind resta quindi limitato alla runtime esatta.
     runtime_dir = Path(__file__).resolve().parent
     if runtime_dir.exists():
         args += ["--ro-bind", str(runtime_dir), str(runtime_dir)]
@@ -653,15 +673,15 @@ def wrap_command(
     extra_rw: list | None = None,
     force_net: bool = False,
 ) -> list[str]:
-    """Wrappa un comando in bubblewrap se disponibile e non disabilitato.
+    """Costruisce il comando isolato o fallisce chiuso.
 
     `executor` deve avere `code_path` (Path) e `capabilities` (lista
     di dict o str, formato manifest). `force_net=True` NON isola la rete
     anche senza capability network (usato con `skill_extras`).
 
-    Ritorna la lista comando wrappata (es. ['bwrap', '--ro-bind', ..., '--',
-    'python3', 'read_files.py']) oppure il comando invariato se bwrap manca o
-    `METNOS_SANDBOX=0` e' settato.
+    Ritorna la lista Bubblewrap (per esempio ``['bwrap', '--ro-bind', ...]``).
+    Se Bubblewrap manca o e' disabilitato, ogni executor ordinario viene
+    rifiutato; soltanto il broker undo byte-esatto conserva il comando diretto.
     """
     # ``system:undo`` e' una capability di broker, non una normale authority
     # su un path statico. L'executor firmato deve leggere il journal runtime e
@@ -676,10 +696,24 @@ def wrap_command(
         cap.get("name") if isinstance(cap, dict) else str(cap or "")
         for cap in (getattr(executor, "capabilities", None) or [])
     }
-    if "system:undo" in capability_names:
+    trusted_undo_broker = (
+        "system:undo" in capability_names
+        and getattr(executor, "name", "") == "undo_last_turn"
+        and getattr(executor, "source", "") == "handcrafted"
+        and getattr(executor, "membership", "") == "builtin"
+        and getattr(executor, "digest", "") == _TRUSTED_UNDO_BROKER_DIGEST_V1
+        and tuple(getattr(executor, "code_files", ()) or ())
+        == ("undo_last_turn.py",)
+        and not tuple(getattr(executor, "code_dependencies", ()) or ())
+    )
+    if trusted_undo_broker:
         return list(command)
 
     if sandbox_disabled() or not bwrap_available():
+        if requires_os_sandbox(executor):
+            raise SandboxUnavailableError(
+                "executor OS sandbox is required but unavailable",
+            )
         return list(command)
 
     code_path = Path(getattr(executor, "code_path", "."))

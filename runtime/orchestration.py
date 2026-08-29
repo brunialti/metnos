@@ -44,6 +44,8 @@ che chiama admin la prima volta; il resume e' una chiamata diretta al verb.
 """
 from __future__ import annotations
 
+import os
+
 import json
 import hmac
 import sys
@@ -634,7 +636,7 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
                  (on_complete.get("device_name") or "?"))
         return _msg("MSG_DEFER_QUEUED",
                     device=on_complete.get("device_name") or "?",
-                    hours=int(float(__import__("os").environ.get(
+                    hours=int(float(os.environ.get(
                         "METNOS_DEFER_TTL_H", "24"))))
 
     # github_analyze / github_send_reply: RITIRATI (flusso watcher legacy →

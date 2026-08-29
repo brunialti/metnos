@@ -444,7 +444,7 @@ not replace those controls.
 <tr><td>Contract</td><td><code>capabilities</code>, placement, platforms, and execution policy come from the signed manifest.</td></tr>
 <tr><td>Application controls</td><td>Arguments may narrow a signed scope but never widen it; identity, consent, and destination are checked before the subprocess starts.</td></tr>
 <tr><td>Bubblewrap active</td><td>Code and runtime are read-only, <code>/tmp</code> is private, data resources are mounted with the required access, and the network is separated when no capability needs it.</td></tr>
-<tr><td>Bubblewrap absent or disabled</td><td>Application checks remain, but the command runs directly and must not be described as operating-system isolation.</td></tr>
+<tr><td>Bubblewrap absent or disabled</td><td>The server fails closed before journaling and before the subprocess. Only the exact byte-pinned undo broker has a direct path.</td></tr>
 </table>
 
 <p>Network access is currently binary: when required, the process inherits

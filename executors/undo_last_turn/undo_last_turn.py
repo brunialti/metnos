@@ -298,7 +298,12 @@ def invoke(args):
                     # (§2.9), mai sul filesystem del server.
                     rev_result = _reverse_on_device(reverse_pattern, rec)
                 else:
-                    rev_result = apply_patterns(reverse_pattern, rec.get("plan") or {}, rec.get("results") or {})
+                    rev_result = apply_patterns(
+                        reverse_pattern,
+                        rec.get("plan") or {},
+                        rec.get("results") or {},
+                        catalog=catalog,
+                    )
             except Exception as e:
                 details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "error", "reason": f"reverse_pattern exception: {e}"})
                 skipped += 1

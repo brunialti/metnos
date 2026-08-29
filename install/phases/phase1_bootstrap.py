@@ -144,12 +144,14 @@ def run(args: Any) -> dict[str, Any]:
     # 4. Sanity import
     ui.step("Verifying core imports")
     try:
-        import importlib
-        for mod in (
-            "aiohttp", "httpx", "jinja2", "pydantic", "tomlkit",
-            "onnxruntime", "PIL", "cryptography.fernet",
-        ):
-            importlib.import_module(mod)
+        import aiohttp  # noqa: F401
+        import cryptography.fernet  # noqa: F401
+        import httpx  # noqa: F401
+        import jinja2  # noqa: F401
+        import onnxruntime  # noqa: F401
+        import PIL  # noqa: F401
+        import pydantic  # noqa: F401
+        import tomlkit  # noqa: F401
         ui.ok("Core modules importable")
         notes["import_ok"] = True
     except ImportError as e:

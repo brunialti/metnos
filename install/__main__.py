@@ -20,7 +20,6 @@ Each phase runs at most once unless its sentinel is missing or
 from __future__ import annotations
 
 import argparse
-import importlib
 import os
 import sys
 import time
@@ -128,6 +127,28 @@ def _confirm_proceed(args: Args) -> bool:
     return ui.confirm(i18n.t("main_confirm_proceed"), default=True)
 
 
+def _phase_module(mod_name: str):
+    if mod_name == "phase1_bootstrap":
+        from .phases import phase1_bootstrap
+        return phase1_bootstrap
+    if mod_name == "phase2_infra":
+        from .phases import phase2_infra
+        return phase2_infra
+    if mod_name == "phase3_code":
+        from .phases import phase3_code
+        return phase3_code
+    if mod_name == "phase4_secrets":
+        from .phases import phase4_secrets
+        return phase4_secrets
+    if mod_name == "phase5_systemd":
+        from .phases import phase5_systemd
+        return phase5_systemd
+    if mod_name == "phase6_firstboot":
+        from .phases import phase6_firstboot
+        return phase6_firstboot
+    raise ImportError(f"unsupported install phase: {mod_name}")
+
+
 def _run_phase(num: int, mod_name: str, human_name: str, args: Args) -> bool:
     if state.is_done(num) and args.force_phase != num:
         ui.info(i18n.t("main_phase_already_done", num=num, human_name=human_name))
@@ -138,7 +159,7 @@ def _run_phase(num: int, mod_name: str, human_name: str, args: Args) -> bool:
 
     rec = state.start(num, human_name)
     try:
-        mod = importlib.import_module(f"install.phases.{mod_name}")
+        mod = _phase_module(mod_name)
     except ImportError as e:
         ui.warn(i18n.t("main_phase_not_implemented", num=num, mod_name=mod_name, err=e))
         return False  # Not fatal — we may be on an early dev cut

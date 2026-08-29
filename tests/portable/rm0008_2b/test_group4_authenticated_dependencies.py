@@ -83,7 +83,9 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
     )
     from executor_birth_shadow import _sealed_dependencies_for_test
     from admitted_module_v1 import (
-        AdmittedModuleError, load_admitted_module_v1,
+        ADMITTED_EXECUTORS_ENV_V1, AdmittedModuleError,
+        encode_admitted_executor_records_v1, load_admitted_module_v1,
+        runtime_admitted_executor_v1,
     )
 
     work = tmp_path / "work"
@@ -223,12 +225,21 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
         code_path=code_path, code_files=tuple(manifest["code"]["files"]),
         digest=manifest["code"]["digest"],
     )
-    module = load_admitted_module_v1(record)
+    monkeypatch.setenv(
+        ADMITTED_EXECUTORS_ENV_V1,
+        encode_admitted_executor_records_v1([record]),
+    )
+    monkeypatch.setattr(
+        "admitted_module_v1._trusted_public_keys_v1",
+        lambda: tuple(public for _name, public in trusted),
+    )
+    projected = runtime_admitted_executor_v1(record.name)
+    module = load_admitted_module_v1(projected)
     assert module.invoke({}) == {"results": []}
 
     code_path.write_bytes(b"raise RuntimeError('must not execute')\n")
     with pytest.raises(AdmittedModuleError, match="admitted_module_digest_mismatch"):
-        load_admitted_module_v1(record)
+        load_admitted_module_v1(projected)
 
 
 def test_parent_projection_crosses_the_real_executor_subprocess(

@@ -607,18 +607,20 @@ def build_remote_reverse_calls(names, plan: dict, results: dict, *,
     return {"calls": calls, "unsupported": unsupported}
 
 
-def apply_pattern(name: str, plan: dict, results: dict) -> dict:
+def apply_pattern(name: str, plan: dict, results: dict, *, catalog=None) -> dict:
     """Esegue un pattern singolo. Errore esplicito se nome non in catalog."""
     fn = PATTERNS.get(name)
     if fn is None:
         return {"ok": False, "error": f"unknown reverse_pattern: {name!r}; valid: {sorted(PATTERNS.keys())}"}
     try:
+        if getattr(fn, "_metnos_catalog_required", False):
+            return fn(plan or {}, results or {}, catalog=catalog)
         return fn(plan or {}, results or {})
     except Exception as e:
         return {"ok": False, "error": f"pattern {name!r} raised: {e}"}
 
 
-def apply_patterns(names, plan: dict, results: dict) -> dict:
+def apply_patterns(names, plan: dict, results: dict, *, catalog=None) -> dict:
     """Esegue uno o piu' pattern in ordine (multistage). Aggrega risultati."""
     if isinstance(names, str):
         names = [names]
@@ -629,7 +631,7 @@ def apply_patterns(names, plan: dict, results: dict) -> dict:
     total_ok = 0
     total_fail = 0
     for n in names:
-        r = apply_pattern(n, plan, results)
+        r = apply_pattern(n, plan, results, catalog=catalog)
         stages.append({"pattern": n, "result": r})
         if r.get("ok", True) is False:
             overall_ok = False

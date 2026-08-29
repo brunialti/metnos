@@ -50,6 +50,7 @@ from contract_boundary_guard import (
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS, BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_GUARD_VERSION, BIRTH_CLOSED_OWNER, BIRTH_CLOSED_SCHEMA,
     BIRTH_CLOSED_SEALED_MODULES, SCAN_ROOTS,
+    BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
 )
 
@@ -170,7 +171,7 @@ def _cold_canonical(value):
 def _cold_inventory_bytes():
     return _cold_canonical({
         "schema": BOUNDARY_INVENTORY_SCHEMA,
-        "source_census": "signed-release",
+        "source_census": BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
         "scan_roots": list(SCAN_ROOTS),
         "entries": [],
         "birth_closed": {

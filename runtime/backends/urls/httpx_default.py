@@ -57,14 +57,27 @@ def _sibling(name: str):
     each one asks for exactly that.
 
     There is no circularity: this never calls ``invoke``, only the historical
-    ``_invoke_default`` of the module it just imported.
+    ``_invoke_default`` of one of the four literal modules compiled below.
+    Arbitrary sibling names are deliberately not supported by a closed build.
     """
-    import importlib
-
+    if name not in {
+        "read_urls_html", "read_urls_pdf", "find_urls", "login_urls",
+    }:
+        raise ValueError("unsupported builtin URL executor")
     location = str(_EXECUTORS_DIR / name)
     if location not in sys.path:
         sys.path.insert(0, location)
-    return importlib.import_module(name)
+    if name == "read_urls_html":
+        import read_urls_html
+        return read_urls_html
+    if name == "read_urls_pdf":
+        import read_urls_pdf
+        return read_urls_pdf
+    if name == "find_urls":
+        import find_urls
+        return find_urls
+    import login_urls
+    return login_urls
 
 
 def read_html(args: dict) -> dict:

@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import ast
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -23,9 +24,27 @@ from typing import Iterable, Mapping, Sequence
 
 SCHEMA = "metnos.contract-boundary-inventory/2"
 BIRTH_CLOSED_SCHEMA = "metnos.contract-boundary-birth-closed/1"
-BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/1"
+BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/2"
+BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
+    b"metnos.executor-birth.closed-python-source-review/v1\0"
+)
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:87f7d309555793642066f778013be58024421b2026d00a2769e15c3324e1f4b5"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
+MAX_BOUNDARY_SOURCE_FILES = 2_048
+MAX_BOUNDARY_SOURCE_BYTES = 1 * 1024 * 1024
+MAX_BOUNDARY_TOTAL_SOURCE_BYTES = 32 * 1024 * 1024
+MAX_BOUNDARY_AST_NODES = 100_000
+MAX_BOUNDARY_TOTAL_AST_NODES = 4_000_000
+MAX_BOUNDARY_AST_DEPTH = 64
+MAX_BOUNDARY_SCOPES = 512
+MAX_BOUNDARY_CALLS = 8_192
+_SOURCE_REVIEW_PIN_LINE = re.compile(
+    rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
+)
+_SOURCE_REVIEW_PIN_PLACEHOLDER = (
+    b'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:' + b"0" * 64 + b'"'
+)
 AUTHORING_FILES = frozenset({
     "manifest.toml",
     "manifest.toml.sig",
@@ -304,6 +323,40 @@ WRITE_OPERATIONS = frozenset({
     "write_text",
 })
 PROCESS_CALLS = frozenset({"Popen", "call", "check_call", "check_output", "run", "system"})
+DYNAMIC_CODE_LOADER_APIS = frozenset({
+    "FunctionType", "SourceFileLoader", "SourcelessFileLoader",
+    "exec_module", "load_module", "module_from_spec", "run_module",
+    "run_path", "spec_from_file_location",
+})
+DYNAMIC_CODE_LOADER_CANONICALS = frozenset({
+    "importlib.machinery.SourceFileLoader",
+    "importlib.machinery.SourcelessFileLoader",
+    "importlib.util.module_from_spec",
+    "importlib.util.spec_from_file_location",
+    "runpy.run_module",
+    "runpy.run_path",
+    "types.FunctionType",
+})
+SENSITIVE_FIRST_CLASS_REFERENCES = frozenset({
+    "getattr", "builtins.getattr", "builtins.__getattribute__",
+    "importlib.__getattribute__", "sys.modules.get",
+})
+SENSITIVE_IMPORT_NAMESPACES = frozenset({
+    "__builtins__", "__loader__", "__spec__", "builtins",
+    "builtins.__dict__", "importlib",
+    "importlib.__dict__", "importlib.machinery", "importlib.util", "runpy",
+    "sys.modules", "types",
+})
+SYS_MODULES_EXPOSING_METHODS = frozenset({
+    "copy", "items", "pop", "popitem", "setdefault", "values",
+})
+SYS_MODULES_MUTATING_METHODS = frozenset({
+    "__delitem__", "__setitem__", "clear", "pop", "popitem", "setdefault",
+    "update",
+})
+AUTHENTICATED_EXECUTION_SCOPE = (
+    "runtime/admitted_module_v1.py", "load_admitted_module_v1",
+)
 LIVE_READER_FORBIDDEN = frozenset({
     "ambiguous_local_authority",
     "authoring_read",
@@ -623,13 +676,28 @@ def _boundary_owner(module: str) -> str | None:
     return None
 
 
+def _boundary_owner_or_descendant(module: str) -> str | None:
+    for owner, accepted in BOUNDARY_MODULES.items():
+        if any(module == value or module.startswith(value + ".") for value in accepted):
+            return owner
+    return None
+
+
 def _relative_boundary_import(node: ast.ImportFrom) -> bool:
     if node.level <= 0:
         return False
-    if node.module and _boundary_owner(node.module) is not None:
-        return True
-    return node.module is None and any(
-        alias.name in BOUNDARY_APIS for alias in node.names
+    candidates = [node.module] if node.module else []
+    candidates.extend(
+        ".".join(filter(None, (node.module or "", alias.name)))
+        for alias in node.names
+    )
+    return any(
+        candidate is not None
+        and (
+            _boundary_owner_or_descendant(candidate) is not None
+            or candidate in BOUNDARY_APIS
+        )
+        for candidate in candidates
     )
 
 
@@ -652,6 +720,71 @@ def _boundary_api_capabilities(canonical: str) -> tuple[str, ...]:
     if owner == "contract_store" and api.startswith("_"):
         return ("store_write",)
     return tuple(BOUNDARY_APIS.get(owner, {}).get(api, ()))
+
+
+def _normalized_source_review_bytes(content: bytes) -> bytes:
+    """Remove only the compiled pin value from its own reviewed material."""
+    return _SOURCE_REVIEW_PIN_LINE.sub(
+        _SOURCE_REVIEW_PIN_PLACEHOLDER, content,
+    )
+
+
+def closed_python_source_review_sha256(
+    sources: Mapping[str, bytes],
+) -> str:
+    """Bind the exact Python source set approved for one closed build."""
+    digest = hashlib.sha256(BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN)
+    selected = []
+    for relative, content in sources.items():
+        components = relative.split("/")
+        if (
+            not relative.endswith(".py")
+            or not components
+            or components[0] not in SCAN_ROOTS
+            or "__pycache__" in components
+            or type(content) is not bytes
+        ):
+            continue
+        selected.append((relative, _normalized_source_review_bytes(content)))
+    for relative, content in sorted(
+        selected, key=lambda item: item[0].encode("utf-8"),
+    ):
+        encoded_path = relative.encode("utf-8")
+        digest.update(len(encoded_path).to_bytes(8, "big"))
+        digest.update(encoded_path)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(hashlib.sha256(content).digest())
+    return f"sha256:{digest.hexdigest()}"
+
+
+def closed_python_sources_from_root(root: Path) -> dict[str, bytes]:
+    sources: dict[str, bytes] = {}
+    for base in SCAN_ROOTS:
+        directory = root / base
+        if not directory.exists():
+            continue
+        for path in directory.rglob("*.py"):
+            if path.is_file() and "__pycache__" not in path.parts:
+                sources[path.relative_to(root).as_posix()] = path.read_bytes()
+    return sources
+
+
+def closed_python_source_review_finding(root: Path) -> Finding | None:
+    try:
+        observed = closed_python_source_review_sha256(
+            closed_python_sources_from_root(root),
+        )
+    except (OSError, MemoryError) as exc:
+        return Finding(
+            "birth_closed_source_review_invalid", "<source-review>",
+            f"cannot read reviewed Python sources: {type(exc).__name__}",
+        )
+    if observed != BIRTH_CLOSED_SOURCE_REVIEW_SHA256:
+        return Finding(
+            "birth_closed_source_review_mismatch", "<source-review>",
+            "Python source root is not the compiled reviewed root",
+        )
+    return None
 
 
 def _defined_boundary_capabilities(path: str, scope: str) -> tuple[str, ...]:
@@ -705,6 +838,334 @@ def _static_strings(node: ast.AST) -> set[str]:
         for item in ast.walk(node)
         if (value := _static_string(item)) is not None
     }
+
+
+def _resolved_alias_name(
+    node: ast.AST, aliases: Mapping[str, str],
+) -> str | None:
+    dotted = _dotted_name(node)
+    if dotted is None:
+        return None
+    first, separator, remainder = dotted.partition(".")
+    return aliases.get(first, first) + (
+        separator + remainder if separator else ""
+    )
+
+
+def _has_bound_root(node: ast.AST, aliases: Mapping[str, str]) -> bool:
+    """Whether the first name is an observed import or propagated alias.
+
+    A bare local called ``sign`` is not the imported ``sign`` module merely
+    because both spellings coincide.  Imported modules and aliases are entered
+    in ``aliases`` before a scope is analysed; ordinary parameters and local
+    values are not.
+    """
+
+    current = node
+    while isinstance(current, ast.Attribute):
+        current = current.value
+    return isinstance(current, ast.Name) and current.id in aliases
+
+
+def _is_dynamic_code_loader_call(func: ast.AST, canonical: str) -> bool:
+    """Recognize actual stdlib code-loader doors, not same-named local APIs."""
+
+    if canonical in DYNAMIC_CODE_LOADER_CANONICALS:
+        return True
+    if canonical.startswith("importlib.") and canonical.rsplit(".", 1)[-1] in (
+        DYNAMIC_CODE_LOADER_APIS - {"run_module", "run_path"}
+    ):
+        return True
+    # ``spec`` is a runtime value, so it has no import alias to canonicalize.
+    # The loader protocol spelling is nevertheless structural and specific.
+    dotted = _dotted_name(func) or ""
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr in {"exec_module", "load_module"}
+        and (
+            f".loader.{func.attr}" in dotted
+            or dotted.startswith("__loader__.")
+            or canonical.startswith("importlib.")
+        )
+    )
+
+
+def _is_sys_modules_registry(
+    node: ast.AST, aliases: Mapping[str, str],
+) -> bool:
+    """Track the module registry through direct and reflective derivations."""
+
+    resolved = _resolved_alias_name(node, aliases)
+    if resolved == "sys.modules" and _has_bound_root(node, aliases):
+        return True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return (
+            _is_sys_modules_registry(node.left, aliases)
+            or _is_sys_modules_registry(node.right, aliases)
+        )
+    if isinstance(node, ast.Subscript):
+        key = _static_string(node.slice)
+        if key != "modules":
+            return False
+        owner = _resolved_alias_name(node.value, aliases)
+        if owner == "sys.__dict__" and _has_bound_root(node.value, aliases):
+            return True
+        if isinstance(node.value, ast.Call):
+            called = _resolved_alias_name(node.value.func, aliases)
+            return bool(
+                called in {"vars", "builtins.vars"}
+                and node.value.args
+                and _resolved_alias_name(node.value.args[0], aliases) == "sys"
+                and _has_bound_root(node.value.args[0], aliases)
+            )
+        return False
+    if isinstance(node, ast.Call):
+        called = _resolved_alias_name(node.func, aliases)
+        if called in {"dict", "builtins.dict"} and node.args:
+            return _is_sys_modules_registry(node.args[0], aliases)
+        if (
+            called in {"getattr", "builtins.getattr"}
+            and len(node.args) >= 2
+            and _resolved_alias_name(node.args[0], aliases) == "sys"
+            and _has_bound_root(node.args[0], aliases)
+            and _static_string(node.args[1]) == "modules"
+        ):
+            return True
+        if isinstance(node.func, ast.Attribute):
+            if (
+                node.func.attr in {"copy", "__or__", "__ior__"}
+                and _is_sys_modules_registry(node.func.value, aliases)
+            ):
+                return True
+            if (
+                called == "object.__getattribute__"
+                and len(node.args) >= 2
+                and _resolved_alias_name(node.args[0], aliases) == "sys"
+                and _has_bound_root(node.args[0], aliases)
+                and _static_string(node.args[1]) == "modules"
+            ):
+                return True
+            if (
+                node.func.attr == "__getattribute__"
+                and _resolved_alias_name(node.func.value, aliases) == "sys"
+                and _has_bound_root(node.func.value, aliases)
+                and node.args
+                and _static_string(node.args[0]) == "modules"
+            ):
+                return True
+    return False
+
+
+def _propagate_sys_modules_registry_aliases(
+    aliases: dict[str, str], nodes: Sequence[ast.AST],
+) -> None:
+    pairs = _assignment_pairs(nodes)
+    changed = True
+    while changed:
+        changed = False
+        for targets, value in pairs:
+            if not _is_sys_modules_registry(value, aliases):
+                continue
+            for target in targets:
+                if aliases.get(target) != "sys.modules":
+                    aliases[target] = "sys.modules"
+                    changed = True
+
+
+def _is_bounded_boundary_getattr(
+    node: ast.AST,
+    parent: ast.AST | None,
+    aliases: Mapping[str, str],
+) -> bool:
+    """Allow only literal lookup of an already reviewed boundary API."""
+
+    if (
+        not isinstance(parent, ast.Call)
+        or len(parent.args) < 2
+        or parent.args[0] is not node
+        or _resolved_alias_name(parent.func, aliases)
+        not in {"getattr", "builtins.getattr"}
+    ):
+        return False
+    module = _resolved_alias_name(node, aliases)
+    reflected = _static_string(parent.args[1])
+    return bool(
+        module is not None
+        and reflected is not None
+        and _boundary_api_capabilities(f"{module}.{reflected}")
+    )
+
+
+def _contains_builtin_namespace_source(node: ast.AST) -> bool:
+    return any(
+        isinstance(item, ast.Name) and item.id == "__builtins__"
+        or isinstance(item, ast.Call)
+        and _leaf_name(item.func) in {"globals", "locals", "vars"}
+        for item in ast.walk(node)
+    )
+
+
+def _static_module_reference_may_reach_boundary(
+    node: ast.AST, path: str,
+) -> bool:
+    value = _static_string(node)
+    if value is None and isinstance(node, ast.Name) and node.id == "__name__":
+        components = path.removesuffix(".py").split("/")
+        if components[-1:] == ["__init__"]:
+            components.pop()
+        candidates = {".".join(components)}
+        if components:
+            candidates.add(components[-1])
+        return any(
+            candidate.startswith(".")
+            or _boundary_owner_or_descendant(candidate) is not None
+            for candidate in candidates
+        )
+    return (
+        value is None
+        or value.startswith(".")
+        or _boundary_owner_or_descendant(value) is not None
+    )
+
+
+def _static_reflection_key_may_import(node: ast.AST) -> bool:
+    value = _static_string(node)
+    return value is None or value in {"__import__", "import_module", "importlib"}
+
+
+def _static_reflection_key_may_execute(node: ast.AST) -> bool:
+    value = _static_string(node)
+    return value is None or value in {"compile", "eval", "exec"}
+
+
+def _may_be_import_namespace(
+    node: ast.AST, aliases: Mapping[str, str],
+) -> bool:
+    resolved = _resolved_alias_name(node, aliases)
+    if resolved in {
+        "__builtins__", "__loader__", "__spec__", "builtins",
+        "builtins.__dict__", "importlib",
+        "importlib.__dict__", "importlib.machinery", "importlib.util", "runpy",
+        "sys.modules", "types",
+    } and (
+        resolved in {"__builtins__", "__loader__", "__spec__"}
+        or _has_bound_root(node, aliases)
+    ):
+        return True
+    if isinstance(node, ast.Call):
+        called = _resolved_alias_name(node.func, aliases)
+        if called in {"globals", "locals", "vars"}:
+            return True
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "copy":
+            return _may_be_import_namespace(node.func.value, aliases)
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"get", "__getitem__"}
+        ):
+            owner = _resolved_alias_name(node.func.value, aliases)
+            key = _static_string(node.args[0]) if node.args else None
+            if owner == "sys.modules":
+                return key is None or key in {
+                    "builtins", "importlib", "importlib.machinery",
+                    "importlib.util", "runpy", "types",
+                }
+            if _may_be_import_namespace(node.func.value, aliases):
+                return key is None or key in {
+                    "__builtins__", "__loader__", "__spec__", "builtins", "importlib",
+                    "importlib.machinery", "importlib.util", "runpy", "types",
+                }
+    if isinstance(node, ast.Attribute) and node.attr == "__dict__":
+        return _may_be_import_namespace(node.value, aliases)
+    if isinstance(node, ast.Subscript):
+        key = _static_string(node.slice)
+        return _may_be_import_namespace(node.value, aliases) and (
+            key is None or key in {
+                "__builtins__", "__loader__", "__spec__", "builtins", "importlib",
+                "importlib.machinery", "importlib.util", "runpy", "types",
+            }
+        )
+    return False
+
+
+def _may_resolve_import_callable(
+    node: ast.AST, aliases: Mapping[str, str],
+) -> bool:
+    resolved = _resolved_alias_name(node, aliases)
+    if resolved in {
+        "__import__", "builtins.__import__", "importlib.import_module",
+    }:
+        return True
+    if isinstance(node, ast.Subscript):
+        if not isinstance(node.ctx, ast.Load):
+            return False
+        if isinstance(node.slice, ast.Name) and node.slice.id == "__name__":
+            return False
+        return (
+            _may_be_import_namespace(node.value, aliases)
+            and _static_reflection_key_may_import(node.slice)
+        )
+    if isinstance(node, ast.Call):
+        called = _resolved_alias_name(node.func, aliases)
+        if called in {"getattr", "builtins.getattr"} and len(node.args) >= 2:
+            return (
+                _may_be_import_namespace(node.args[0], aliases)
+                and _static_reflection_key_may_import(node.args[1])
+            )
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"get", "__getitem__"}
+        ):
+            return (
+                _may_be_import_namespace(node.func.value, aliases)
+                and (not node.args or _static_reflection_key_may_import(node.args[0]))
+            )
+    return False
+
+
+def _may_resolve_dynamic_loader_callable(
+    node: ast.AST, aliases: Mapping[str, str],
+) -> bool:
+    canonical = _resolved_alias_name(node, aliases) or ""
+    if _is_dynamic_code_loader_call(node, canonical):
+        return True
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr in DYNAMIC_CODE_LOADER_APIS
+        and _may_be_import_namespace(node.value, aliases)
+    )
+
+
+def _may_resolve_dynamic_eval_callable(
+    node: ast.AST, aliases: Mapping[str, str],
+) -> bool:
+    """Recognize reflected access to eval/exec/compile in builtins."""
+
+    if isinstance(node, ast.Subscript):
+        return (
+            isinstance(node.ctx, ast.Load)
+            and _may_be_import_namespace(node.value, aliases)
+            and _static_reflection_key_may_execute(node.slice)
+        )
+    if isinstance(node, ast.Call):
+        called = _resolved_alias_name(node.func, aliases)
+        if called in {"getattr", "builtins.getattr"} and len(node.args) >= 2:
+            return (
+                _may_be_import_namespace(node.args[0], aliases)
+                and _static_reflection_key_may_execute(node.args[1])
+            )
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"get", "__getitem__"}
+        ):
+            return (
+                _may_be_import_namespace(node.func.value, aliases)
+                and (
+                    not node.args
+                    or _static_reflection_key_may_execute(node.args[0])
+                )
+            )
+    return False
+
 
 
 def _is_authoring_filename(value: object) -> bool:
@@ -902,7 +1363,7 @@ class _LocalVisitor(ast.NodeVisitor):
 
     def generic_visit(self, node: ast.AST) -> None:
         if node is not self.root and isinstance(
-            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef),
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
         ):
             return
         self.nodes.append(node)
@@ -1068,20 +1529,117 @@ def _analyse_scope(
         if isinstance(item, ast.ImportFrom) and item.module:
             if _relative_boundary_import(item):
                 dynamic_boundary_access = True
+                closed_dynamic_boundary = True
                 continue
+            if (
+                _boundary_owner(item.module) is None
+                and _boundary_owner_or_descendant(item.module) is not None
+            ):
+                dynamic_boundary_access = True
+                closed_dynamic_boundary = True
             if _boundary_owner(item.module) and any(
                 alias.name == "*" for alias in item.names
             ):
                 dynamic_boundary_access = True
             for alias in item.names:
-                aliases[alias.asname or alias.name] = f"{item.module}.{alias.name}"
+                canonical_import = f"{item.module}.{alias.name}"
+                _remember_alias(
+                    aliases, alias.asname or alias.name, canonical_import,
+                    local_callables,
+                )
         elif isinstance(item, ast.ImportFrom) and item.module is None:
             if _relative_boundary_import(item):
                 dynamic_boundary_access = True
+                closed_dynamic_boundary = True
         elif isinstance(item, ast.Import):
             for alias in item.names:
-                aliases[alias.asname or alias.name.split(".")[0]] = alias.name
-    _apply_callable_aliases(aliases, nodes, local_callables)
+                if (
+                    _boundary_owner(alias.name) is None
+                    and _boundary_owner_or_descendant(alias.name) is not None
+                ):
+                    dynamic_boundary_access = True
+                    closed_dynamic_boundary = True
+                bound = alias.asname or alias.name.split(".", 1)[0]
+                _remember_alias(
+                    aliases, bound, alias.name if alias.asname else bound,
+                    local_callables,
+                )
+    ambiguous_callable_authority = _apply_callable_aliases(
+        aliases, nodes, local_callables,
+    )
+    _propagate_sys_modules_registry_aliases(aliases, nodes)
+    parents = {
+        id(child): parent
+        for parent in nodes
+        for child in ast.iter_child_nodes(parent)
+    }
+    direct_call_targets = {id(item.func) for item in nodes if isinstance(item, ast.Call)}
+    for item in nodes:
+        if (
+            isinstance(item, (ast.Call, ast.BinOp, ast.Subscript))
+            and _is_sys_modules_registry(item, aliases)
+        ):
+            dynamic_boundary_access = True
+            closed_dynamic_boundary = True
+        if isinstance(item, ast.Subscript):
+            resolved = (
+                "sys.modules"
+                if _is_sys_modules_registry(item.value, aliases)
+                else _resolved_alias_name(item.value, aliases)
+            )
+            parent = parents.get(id(item))
+            authenticated_registration = (
+                (path, scope) == AUTHENTICATED_EXECUTION_SCOPE
+                and isinstance(item.ctx, ast.Store)
+                and isinstance(item.slice, ast.Name)
+                and item.slice.id == "module_name"
+                and isinstance(parent, ast.Assign)
+                and isinstance(parent.value, ast.Name)
+                and parent.value.id == "module"
+            )
+            if resolved == "sys.modules" and (
+                not isinstance(item.ctx, ast.Load)
+                and not authenticated_registration
+                or _static_module_reference_may_reach_boundary(item.slice, path)
+                and isinstance(item.ctx, ast.Load)
+            ):
+                dynamic_boundary_access = True
+                closed_dynamic_boundary = True
+            if (
+                resolved in {
+                    "__builtins__", "builtins.__dict__", "importlib.__dict__",
+                }
+                or _contains_builtin_namespace_source(item.value)
+            ) and _static_reflection_key_may_import(item.slice):
+                dynamic_boundary_access = True
+                closed_dynamic_boundary = True
+            continue
+        if (
+            isinstance(item, ast.Attribute)
+            and isinstance(item.ctx, (ast.Store, ast.Del))
+            and _resolved_alias_name(item, aliases) == "sys.modules"
+        ):
+            dynamic_boundary_access = True
+            closed_dynamic_boundary = True
+            continue
+        if (
+            not isinstance(item, (ast.Name, ast.Attribute))
+            or not isinstance(getattr(item, "ctx", None), ast.Load)
+            or id(item) in direct_call_targets
+        ):
+            continue
+        dotted = _dotted_name(item)
+        if dotted is None:
+            continue
+        first, separator, remainder = dotted.partition(".")
+        canonical = aliases.get(first, first) + (
+            separator + remainder if separator else ""
+        )
+        if canonical in {
+            "__import__", "builtins.__import__", "importlib.import_module",
+        }:
+            dynamic_boundary_access = True
+            closed_dynamic_boundary = True
     authoring_names, store_names = _tainted_names(
         node,
         nodes,
@@ -1090,6 +1648,11 @@ def _analyse_scope(
     capabilities: set[str] = set(
         _defined_boundary_capabilities(path, scope)
     )
+    if ambiguous_callable_authority:
+        capabilities.add("ambiguous_local_authority")
+    if any(_may_resolve_import_callable(item, aliases) for item in nodes):
+        capabilities.add("dynamic_boundary_access")
+        closed_dynamic_boundary = True
     manifest_dir_locator_used = any(
         isinstance(item, ast.Attribute)
         and item.attr == "manifest_dir"
@@ -1109,14 +1672,38 @@ def _analyse_scope(
             continue
         if not isinstance(getattr(item, "ctx", None), ast.Load):
             continue
-        dotted = _dotted_name(item)
-        if dotted is None:
+        parent = parents.get(id(item))
+        if isinstance(parent, ast.Attribute) and parent.value is item:
             continue
-        first, separator, remainder = dotted.partition(".")
-        canonical = aliases.get(first, first) + (
-            separator + remainder if separator else ""
-        )
-        capabilities.update(_boundary_api_capabilities(canonical))
+        canonical = _resolved_alias_name(item, aliases)
+        if canonical is None:
+            continue
+        known_capabilities = _boundary_api_capabilities(canonical)
+        capabilities.update(known_capabilities)
+        direct_call = isinstance(parent, ast.Call) and parent.func is item
+        direct_subscript = isinstance(parent, ast.Subscript) and parent.value is item
+        if (
+            not known_capabilities
+            and _boundary_owner(canonical) is not None
+            and canonical not in local_callables
+            and _has_bound_root(item, aliases)
+            and not _is_bounded_boundary_getattr(item, parent, aliases)
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
+        if (
+            canonical in SENSITIVE_IMPORT_NAMESPACES
+            and not direct_subscript
+            and (
+                canonical == "__builtins__"
+                or _has_bound_root(item, aliases)
+            )
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
+        if canonical in SENSITIVE_FIRST_CLASS_REFERENCES and not direct_call:
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
 
     for item in nodes:
         if (
@@ -1130,9 +1717,18 @@ def _analyse_scope(
             )
             if _boundary_owner(resolved_module) is not None:
                 closed_dynamic_boundary = True
+            if resolved_module in {"builtins", "importlib"}:
+                dynamic_boundary_access = True
+                closed_dynamic_boundary = True
     for item in nodes:
         if not isinstance(item, ast.Call):
             continue
+        reflected_dynamic_eval = _may_resolve_dynamic_eval_callable(
+            item.func, aliases,
+        )
+        if reflected_dynamic_eval:
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
         leaf = _leaf_name(item.func)
         if leaf is None:
             continue
@@ -1157,6 +1753,50 @@ def _analyse_scope(
             calls.add(api)
 
         capabilities.update(_boundary_api_capabilities(canonical))
+        if (
+            isinstance(item.func, ast.Attribute)
+            and _is_sys_modules_registry(item.func.value, aliases)
+            and api in (
+                SYS_MODULES_EXPOSING_METHODS | SYS_MODULES_MUTATING_METHODS
+            )
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
+        if (
+            _is_dynamic_code_loader_call(item.func, canonical)
+            or _may_resolve_dynamic_loader_callable(item.func, aliases)
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
+        if (
+            isinstance(item.func, ast.Attribute)
+            and _resolved_alias_name(item.func.value, aliases) == "sys.modules"
+            and api == "get"
+            and (
+                not item.args
+                or _static_module_reference_may_reach_boundary(item.args[0], path)
+            )
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
+        if api in {"getattr", "vars", "setattr", "delattr"} and item.args:
+            reflected_namespace = _resolved_alias_name(item.args[0], aliases)
+            if (
+                reflected_namespace in {"builtins", "importlib", "__builtins__"}
+                or reflected_namespace is not None
+                and reflected_namespace.startswith("importlib.")
+            ):
+                capabilities.add("dynamic_boundary_access")
+                closed_dynamic_boundary = True
+        if (
+            canonical in {
+                "builtins.__getattribute__", "importlib.__getattribute__",
+            }
+            and item.args
+            and _static_reflection_key_may_import(item.args[0])
+        ):
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
         if api == "getattr" and item.args:
             module_name = _dotted_name(item.args[0])
             if module_name is not None:
@@ -1167,16 +1807,16 @@ def _analyse_scope(
                     separator_module + remainder_module
                     if separator_module else ""
                 )
+                reflected = (
+                    item.args[1].value
+                    if len(item.args) > 1
+                    and isinstance(item.args[1], ast.Constant)
+                    and isinstance(item.args[1].value, str)
+                    else None
+                )
                 owner = _boundary_owner(resolved_module)
                 if owner is not None:
                     closed_dynamic_boundary = True
-                    reflected = (
-                        item.args[1].value
-                        if len(item.args) > 1
-                        and isinstance(item.args[1], ast.Constant)
-                        and isinstance(item.args[1].value, str)
-                        else None
-                    )
                     reflected_caps = (
                         _boundary_api_capabilities(
                             f"{resolved_module}.{reflected}",
@@ -1187,6 +1827,15 @@ def _analyse_scope(
                         capabilities.update(reflected_caps)
                     else:
                         capabilities.add("dynamic_boundary_access")
+                if (
+                    resolved_module in {"builtins", "importlib"}
+                    and (
+                        reflected is None
+                        or reflected in {"__import__", "import_module"}
+                    )
+                ):
+                    capabilities.add("dynamic_boundary_access")
+                    closed_dynamic_boundary = True
         if api == "vars" and item.args:
             module_name = _dotted_name(item.args[0])
             if module_name is not None:
@@ -1196,16 +1845,27 @@ def _analyse_scope(
                 )
                 if _boundary_owner(resolved_module) is not None:
                     closed_dynamic_boundary = True
-        if api in {"eval", "exec"} and scope_boundary_strings:
-            closed_dynamic_boundary = True
-        dynamic_import = api in {"__import__", "import_module"}
-        if dynamic_import:
-            imported = tuple(set(_string_values(item)) | _static_strings(item))
-            if any(
-                _boundary_owner(value) is not None for value in imported
-            ):
+                if resolved_module in {"builtins", "importlib"}:
+                    capabilities.add("dynamic_boundary_access")
+                    closed_dynamic_boundary = True
+        builtin_dynamic_eval = canonical in {
+            "builtins.compile", "builtins.eval", "builtins.exec",
+        } or (
+            isinstance(item.func, ast.Name)
+            and item.func.id in {"compile", "eval", "exec"}
+            and item.func.id not in aliases
+            and item.func.id not in local_callables
+        )
+        if builtin_dynamic_eval:
+            if (path, scope) != AUTHENTICATED_EXECUTION_SCOPE:
                 capabilities.add("dynamic_boundary_access")
                 closed_dynamic_boundary = True
+            elif scope_boundary_strings:
+                closed_dynamic_boundary = True
+        dynamic_import = api in {"__import__", "import_module"}
+        if dynamic_import:
+            capabilities.add("dynamic_boundary_access")
+            closed_dynamic_boundary = True
         command_parts = set(_string_values(item)) | _static_strings(item)
         sign_entrypoint = any(
             part.endswith("sign.py") or part == "runtime.sign"
@@ -1358,45 +2018,84 @@ def _apply_callable_aliases(
     aliases: dict[str, str],
     nodes: Sequence[ast.AST],
     local_callables: frozenset[str],
-) -> None:
-    """Resolve trusted aliases and invalidate every later untrusted rebind."""
+) -> bool:
+    """Resolve aliases and report any rebinding of existing authority."""
 
+    def trusted(value: str) -> bool:
+        return bool(
+            _boundary_owner(value) is not None
+            or _boundary_api_capabilities(value)
+            or value in local_callables
+            or value in SENSITIVE_FIRST_CLASS_REFERENCES
+            or value in SENSITIVE_IMPORT_NAMESPACES
+            or value in DYNAMIC_CODE_LOADER_CANONICALS
+            or value.startswith("importlib.")
+            and value.rsplit(".", 1)[-1] in DYNAMIC_CODE_LOADER_APIS
+        )
+
+    def boundary_authoritative(value: str) -> bool:
+        return bool(
+            _boundary_owner(value) is not None
+            or _boundary_api_capabilities(value)
+        )
+
+    ambiguous = False
     assignments = [
         item for item in nodes if isinstance(item, (ast.Assign, ast.AnnAssign))
     ]
-    for _iteration in range(len(assignments) + 1):
-        before = dict(aliases)
-        for item in assignments:
-            value = item.value
-            if value is None:
-                continue
-            dotted = _dotted_name(value)
-            canonical = ""
-            if dotted is not None:
-                first, separator, remainder = dotted.partition(".")
-                canonical = aliases.get(first, first) + (
-                    separator + remainder if separator else ""
-                )
-            trusted = bool(
-                canonical
-                and (
-                    _boundary_owner(canonical) is not None
-                    or _boundary_api_capabilities(canonical)
-                    or canonical in local_callables
-                )
+    for item in assignments:
+        value = item.value
+        if value is None:
+            continue
+        dotted = _dotted_name(value)
+        canonical = ""
+        if dotted is not None:
+            first, separator, remainder = dotted.partition(".")
+            canonical = aliases.get(first, first) + (
+                separator + remainder if separator else ""
             )
-            targets = (
-                set().union(*(_target_names(target) for target in item.targets))
-                if isinstance(item, ast.Assign)
-                else _target_names(item.target)
-            )
-            for target in targets:
-                if trusted:
-                    aliases[target] = canonical
-                else:
-                    aliases.pop(target, None)
-        if aliases == before:
-            break
+        targets = (
+            set().union(*(_target_names(target) for target in item.targets))
+            if isinstance(item, ast.Assign)
+            else _target_names(item.target)
+        )
+        trusted_alias = bool(canonical and trusted(canonical))
+        if not trusted_alias and _may_resolve_dynamic_loader_callable(
+            value, aliases,
+        ):
+            canonical = "importlib." + (_leaf_name(value) or "dynamic_loader")
+            trusted_alias = True
+        for target in targets:
+            previous = aliases.get(target)
+            if (
+                previous
+                and boundary_authoritative(previous)
+                and canonical != previous
+            ):
+                ambiguous = True
+            if trusted_alias:
+                _remember_alias(aliases, target, canonical, local_callables)
+    return ambiguous
+
+
+def _remember_alias(
+    aliases: dict[str, str], bound: str, canonical: str,
+    local_callables: frozenset[str],
+) -> None:
+    """Retain an earlier authority, or prefer a later authority over safety."""
+
+    def authoritative(value: str) -> bool:
+        return bool(
+            _boundary_owner(value) is not None
+            or _boundary_api_capabilities(value)
+            or value in local_callables
+            or value in SENSITIVE_FIRST_CLASS_REFERENCES
+            or value in SENSITIVE_IMPORT_NAMESPACES
+        )
+
+    previous = aliases.get(bound)
+    if previous is None or (authoritative(canonical) and not authoritative(previous)):
+        aliases[bound] = canonical
 
 
 def _import_aliases(
@@ -1412,10 +2111,17 @@ def _import_aliases(
             if _relative_boundary_import(node):
                 continue
             for alias in node.names:
-                aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+                _remember_alias(
+                    aliases, alias.asname or alias.name,
+                    f"{node.module}.{alias.name}", local_callables,
+                )
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                aliases[alias.asname or alias.name.split(".")[0]] = alias.name
+                bound = alias.asname or alias.name.split(".", 1)[0]
+                _remember_alias(
+                    aliases, bound, alias.name if alias.asname else bound,
+                    local_callables,
+                )
     _apply_callable_aliases(aliases, _scope_nodes(tree), local_callables)
     return aliases
 
@@ -1440,24 +2146,65 @@ def _aliases_in_lexical_scope(
                 if _relative_boundary_import(item):
                     continue
                 for alias in item.names:
-                    aliases[alias.asname or alias.name] = (
-                        f"{item.module}.{alias.name}"
+                    _remember_alias(
+                        aliases, alias.asname or alias.name,
+                        f"{item.module}.{alias.name}", local_callables,
                     )
             elif isinstance(item, ast.Import):
                 for alias in item.names:
-                    aliases[alias.asname or alias.name.split(".")[0]] = alias.name
+                    bound = alias.asname or alias.name.split(".", 1)[0]
+                    _remember_alias(
+                        aliases, bound, alias.name if alias.asname else bound,
+                        local_callables,
+                    )
         _apply_callable_aliases(aliases, _scope_nodes(parent), local_callables)
     return aliases
 
 
-def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
+def _bounded_ast_metrics(tree: ast.AST) -> int:
+    nodes = 0
+    scopes = 1
+    calls = 0
+    stack = [(tree, 1)]
+    while stack:
+        node, depth = stack.pop()
+        nodes += 1
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            scopes += 1
+        if isinstance(node, ast.Call):
+            calls += 1
+        if (
+            nodes > MAX_BOUNDARY_AST_NODES
+            or depth > MAX_BOUNDARY_AST_DEPTH
+            or scopes > MAX_BOUNDARY_SCOPES
+            or calls > MAX_BOUNDARY_CALLS
+        ):
+            raise ValueError("boundary AST budget exceeded")
+        stack.extend((child, depth + 1) for child in ast.iter_child_nodes(node))
+    return nodes
+
+
+def _scan_file_with_metrics_unchecked(
+    path: Path, *, repository_root: Path,
+) -> tuple[list[ScopeFacts], int, int]:
     relative = path.relative_to(repository_root).as_posix()
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
-    except (OSError, SyntaxError, UnicodeError) as exc:
+        with path.open("rb") as source:
+            content = source.read(MAX_BOUNDARY_SOURCE_BYTES + 1)
+        if len(content) > MAX_BOUNDARY_SOURCE_BYTES:
+            raise ValueError("boundary source byte budget exceeded")
+        tree = ast.parse(content.decode("utf-8"), filename=relative)
+        node_count = _bounded_ast_metrics(tree)
+    except (
+        OSError, SyntaxError, UnicodeError, RecursionError, ValueError,
+        OverflowError,
+    ) as exc:
         raise ValueError(f"cannot scan {relative}: {exc}") from exc
     collector = _ScopeCollector()
-    collector.visit(tree)
+    try:
+        collector.visit(tree)
+    except (RecursionError, ValueError, OverflowError) as exc:
+        raise ValueError(f"cannot scan {relative}: {exc}") from exc
     scopes: list[tuple[str, ast.AST]] = [("<module>", tree), *collector.scopes]
     local_callables = frozenset(
         name.rsplit(".", 1)[-1] for name, _node in collector.scopes
@@ -1500,7 +2247,7 @@ def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
                 before = len(effective[index])
                 effective[index].update(effective[matches[0]] & FLOW_CAPABILITIES)
                 changed |= len(effective[index]) != before
-    return [
+    result = [
         ScopeFacts(
             path=fact.path,
             scope=fact.scope,
@@ -1512,11 +2259,28 @@ def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
         )
         for index, fact in enumerate(direct)
     ]
+    return result, len(content), node_count
+
+
+def _scan_file_with_metrics(
+    path: Path, *, repository_root: Path,
+) -> tuple[list[ScopeFacts], int, int]:
+    try:
+        return _scan_file_with_metrics_unchecked(
+            path, repository_root=repository_root,
+        )
+    except MemoryError as exc:
+        raise ValueError("cannot scan boundary source: memory exhausted") from exc
+
+
+def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
+    return _scan_file_with_metrics(path, repository_root=repository_root)[0]
 
 
 def discover(repository_root: Path) -> list[ScopeFacts]:
     repository_root = repository_root.resolve()
     facts: list[ScopeFacts] = []
+    paths: list[Path] = []
     for root_name in SCAN_ROOTS:
         scan_root = repository_root / root_name
         if not scan_root.exists():
@@ -1524,7 +2288,31 @@ def discover(repository_root: Path) -> list[ScopeFacts]:
         for path in sorted(scan_root.rglob("*.py")):
             if "__pycache__" in path.parts:
                 continue
-            facts.extend(scan_file(path, repository_root=repository_root))
+            paths.append(path)
+    if len(paths) > MAX_BOUNDARY_SOURCE_FILES:
+        raise ValueError("boundary source file budget exceeded")
+    try:
+        declared_source_bytes = [path.stat().st_size for path in paths]
+    except OSError as exc:
+        raise ValueError(f"cannot stat boundary source: {exc}") from exc
+    if (
+        any(size > MAX_BOUNDARY_SOURCE_BYTES for size in declared_source_bytes)
+        or sum(declared_source_bytes) > MAX_BOUNDARY_TOTAL_SOURCE_BYTES
+    ):
+        raise ValueError("boundary source byte budget exceeded")
+    total_source_bytes = 0
+    total_ast_nodes = 0
+    for path in paths:
+        discovered, source_bytes, ast_nodes = _scan_file_with_metrics(
+            path, repository_root=repository_root,
+        )
+        total_source_bytes += source_bytes
+        total_ast_nodes += ast_nodes
+        if total_source_bytes > MAX_BOUNDARY_TOTAL_SOURCE_BYTES:
+            raise ValueError("boundary total source byte budget exceeded")
+        if total_ast_nodes > MAX_BOUNDARY_TOTAL_AST_NODES:
+            raise ValueError("boundary total AST node budget exceeded")
+        facts.extend(discovered)
     return sorted(
         (
             fact for fact in facts
@@ -1770,6 +2558,11 @@ def birth_closed_findings(
     """Enforce the irreversible RM-0008 F4 closed-build boundary."""
 
     findings = list(check(facts, inventory))
+    if inventory.get("source_census") != BIRTH_CLOSED_SOURCE_REVIEW_SHA256:
+        findings.append(Finding(
+            "birth_closed_source_review_invalid", "<inventory>",
+            "source_census must equal the compiled Python source-review root",
+        ))
     policy = inventory.get("birth_closed")
     expected_policy = {
         "schema": BIRTH_CLOSED_SCHEMA,
@@ -1902,7 +2695,7 @@ def render_inventory(
         })
     payload = {
         "schema": SCHEMA,
-        "source_census": "internal/reports/rm0007-m0-census-20260825.md",
+        "source_census": BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
         "scan_roots": list(SCAN_ROOTS),
         "entries": rendered,
     }
@@ -1975,6 +2768,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         birth_closed_findings(facts, inventory)
         if args.birth_closed else check(facts, inventory)
     )
+    if args.birth_closed:
+        source_finding = closed_python_source_review_finding(root)
+        if source_finding is not None:
+            findings.append(source_finding)
     for finding in findings:
         print(finding)
     return 1 if findings else 0

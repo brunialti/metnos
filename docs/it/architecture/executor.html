@@ -488,7 +488,7 @@ non sostituisce quei controlli.
 <tr><td>Contratto</td><td><code>capabilities</code>, collocazione, piattaforme e politica di esecuzione provengono dal manifest firmato.</td></tr>
 <tr><td>Controlli applicativi</td><td>Gli argomenti possono restringere un ambito firmato, mai ampliarlo; identit&agrave;, consenso e destinazione vengono verificati prima del sottoprocesso.</td></tr>
 <tr><td>Bubblewrap attivo</td><td>Codice e runtime sono in sola lettura, <code>/tmp</code> &egrave; privato, le risorse dati sono montate con l'accesso necessario e la rete viene separata quando nessuna capacit&agrave; la richiede.</td></tr>
-<tr><td>Bubblewrap assente o disabilitato</td><td>Restano i controlli applicativi, ma il comando gira direttamente: non va descritto come isolamento del sistema operativo.</td></tr>
+<tr><td>Bubblewrap assente o disabilitato</td><td>Il server fallisce chiuso prima del registro di annullamento e del sottoprocesso. Soltanto il broker undo vincolato ai byte esatti usa il percorso diretto.</td></tr>
 </table>
 
 <p>La rete &egrave; attualmente binaria: quando serve, il processo eredita la rete

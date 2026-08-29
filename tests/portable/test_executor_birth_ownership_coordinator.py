@@ -20,6 +20,7 @@ from contract_boundary_guard import (
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS, BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_GUARD_VERSION, BIRTH_CLOSED_OWNER, BIRTH_CLOSED_SCHEMA,
     BIRTH_CLOSED_SEALED_MODULES, SCAN_ROOTS,
+    BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
 )
 from install.birth_ownership_authority_provisioner import (
@@ -69,7 +70,8 @@ def _distribution(tmp_path, name="current"):
     })
     inventory = _canonical({
         "schema": BOUNDARY_INVENTORY_SCHEMA,
-        "source_census": "signed-release", "scan_roots": list(SCAN_ROOTS),
+        "source_census": BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
+        "scan_roots": list(SCAN_ROOTS),
         "entries": [],
         "birth_closed": {
             "schema": BIRTH_CLOSED_SCHEMA,

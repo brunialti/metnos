@@ -1156,6 +1156,18 @@ class Synt:
                 state="rejected", artefact={}, reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
                 rationale=f"parent manifest non trovato: {parent_name}",
             )
+        if getattr(parent, "transport", "") != "local-subprocess":
+            return SynthProposal(
+                request_id=rid, strategy="specialize",
+                state="rejected", artefact={},
+                reward=RewardBreakdown(
+                    0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0,
+                ),
+                rationale=(
+                    "parent is not an authenticated file-backed executor: "
+                    f"{parent_name}"
+                ),
+            )
 
         try:
             with open(parent_manifest_path, "rb") as f:
@@ -1717,12 +1729,14 @@ def _wrapper_code(parent_name: str, arg_name: str, dominant_value) -> str:
     """Genera il codice Python del wrapper specialize.
 
     Il wrapper:
-    - importa l'invoke() del parent dal pool;
+    - carica l'invoke() del parent attraverso la porta autenticata;
     - intercetta args, inserisce arg_name=dominant_value se non presente;
-    - chiama parent.invoke(args, ctx) e ritorna il risultato senza modifiche.
+    - chiama il contratto standard parent.invoke(args) e ritorna il risultato
+      senza modifiche.
     """
     import json as _json
     val_repr = _json.dumps(dominant_value)
+    val_json_literal = repr(val_repr)
     return f'''"""Wrapper specialize generato dal Synt il {time.strftime('%Y-%m-%d')}.
 Cabla `{arg_name}={val_repr}` come default del parent `{parent_name}`.
 Eredita 1:1 capabilities, sandbox, firma del parent (executor_aging gestisce
@@ -1730,32 +1744,26 @@ il decay automatico in caso di inutilizzo: 30g→deprecated, 14g→archived).
 """
 from __future__ import annotations
 
-import importlib.util
 import json as _json
 import sys
-from pathlib import Path
+
+from admitted_module_v1 import (
+    load_admitted_module_v1,
+    runtime_admitted_executor_v1,
+)
 
 _PARENT_NAME = "{parent_name}"
 _CABLED_ARG = "{arg_name}"
-_CABLED_VAL = {val_repr}
+_CABLED_VAL = _json.loads({val_json_literal})
 
 
 def _load_parent_invoke():
-    import os as _os
-    _user_data = Path(_os.environ.get("METNOS_USER_DATA",
-                                       str(Path.home() / ".local/share/metnos")))
-    candidates = [
-        Path(f"{_C.PATH_EXECUTORS}/{{_PARENT_NAME}}/{{_PARENT_NAME}}.py"),
-        _user_data / f"executors/{{_PARENT_NAME}}/{{_PARENT_NAME}}.py",
-    ]
-    for p in candidates:
-        if p.exists():
-            spec = importlib.util.spec_from_file_location(f"_parent_{{_PARENT_NAME}}", p)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            if hasattr(mod, "invoke"):
-                return mod.invoke
-    raise RuntimeError(f"Parent executor '{{_PARENT_NAME}}' not found in pool")
+    record = runtime_admitted_executor_v1(_PARENT_NAME)
+    module = load_admitted_module_v1(record)
+    parent_invoke = getattr(module, "invoke", None)
+    if not callable(parent_invoke):
+        raise RuntimeError(f"Parent executor '{{_PARENT_NAME}}' has no invoke")
+    return parent_invoke
 
 
 def invoke(args: dict, ctx: dict | None = None) -> dict:
@@ -1765,7 +1773,7 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
     args = dict(args)  # don't mutate caller's args
     args[_CABLED_ARG] = _CABLED_VAL
     parent_invoke = _load_parent_invoke()
-    return parent_invoke(args, ctx)
+    return parent_invoke(args)
 
 
 if __name__ == "__main__":  # pragma: no cover
@@ -1932,6 +1940,7 @@ def _build_specialize_manifest(
     )
     lines.extend([
         "", "[code]", f"files = [{toml_literal(target_name + '.py')}]",
+        f"dependencies = [{toml_literal(parent_name)}]",
         'digest = "sha256:' + "0" * 64 + '"',
         "", "[args]", 'type = "object"',
         f"required = {toml_literal(args_required)}",

@@ -19,6 +19,7 @@ from contract_boundary_guard import (
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS, BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_GUARD_VERSION,
     BIRTH_CLOSED_OWNER, BIRTH_CLOSED_SCHEMA, BIRTH_CLOSED_SEALED_MODULES,
+    BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     SCAN_ROOTS, SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
 )
 
@@ -59,7 +60,7 @@ def _test_environment(root: Path):
 def _inventory_bytes():
     return _canonical({
         "schema": BOUNDARY_INVENTORY_SCHEMA,
-        "source_census": "signed-release",
+        "source_census": BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
         "scan_roots": list(SCAN_ROOTS),
         "entries": [],
         "birth_closed": {
@@ -170,7 +171,7 @@ def _manifest(root: Path, private, key_id, *, target=None, architecture="x86_64"
         "boundary_inventory_hash": "sha256:" + hashlib.sha256(
             distribution.BOUNDARY_INVENTORY_DOMAIN + _inventory_bytes()
         ).hexdigest(),
-        "boundary_guard_version": "metnos.contract-boundary-inventory/2+birth-closed/1",
+        "boundary_guard_version": "metnos.contract-boundary-inventory/2+birth-closed/2",
         "preflight_entrypoint": "deployment/admin/preflight.py",
         "files": files,
     }
@@ -237,6 +238,85 @@ def test_relative_path_depth_is_normative_and_existing_manifest_is_compatible(
         encoded, signature, registry=registry,
         _environment=_test_environment(tmp_path),
     ).identity == result.identity
+
+
+def test_manifest_python_source_grammar_and_budgets_are_closed(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    private, key_id, _registry = _authority(distribution.PURPOSE)
+
+    def encoded_with(path: str, *, declared_size: int | None = None) -> bytes:
+        def add(files, _root):
+            files.append({
+                "path": path,
+                "size": 1 if declared_size is None else declared_size,
+                "role": "runtime_code",
+                "content_hash": distribution.file_content_hash(path, b"x"),
+            })
+            files.sort(key=lambda item: item["path"].encode("utf-8"))
+
+        _value, encoded, _signature = _manifest(
+            tmp_path / path.replace("/", "_"), private, key_id,
+            files_mutate=add,
+        )
+        return encoded
+
+    for path in (
+        "runtime/evil.PY",
+        "Runtime/evil.py",
+        "other/evil.py",
+        "runtime/package.py/payload.dat",
+        "runtime/package.PY/evil.py",
+    ):
+        with pytest.raises(distribution.DistributionManifestError):
+            distribution._parse(encoded_with(path))
+
+    assert any(
+        item.path == "runtime/package/evil.py"
+        for item in distribution._parse(encoded_with("runtime/package/evil.py"))[1]
+    )
+
+    with pytest.raises(distribution.DistributionManifestError):
+        distribution._parse(encoded_with(
+            "runtime/oversize.py",
+            declared_size=distribution.MAX_BOUNDARY_SOURCE_BYTES_V1 + 1,
+        ))
+
+    def oversize_preflight(files, _root):
+        item = next(
+            value for value in files
+            if value["path"] == "deployment/admin/preflight.py"
+        )
+        item["size"] = distribution.MAX_BOUNDARY_SOURCE_BYTES_V1 + 1
+
+    _value, oversized_entrypoint, _signature = _manifest(
+        tmp_path / "oversized_entrypoint", private, key_id,
+        files_mutate=oversize_preflight,
+    )
+    with pytest.raises(distribution.DistributionManifestError):
+        distribution._parse(oversized_entrypoint)
+
+    base = distribution._parse(encoded_with("runtime/within.py"))[1]
+    guarded = sum(
+        item.path.split("/")[0] in distribution.SCAN_ROOTS
+        and item.path.endswith(".py")
+        for item in base
+    )
+    guarded_bytes = sum(
+        item.size for item in base
+        if item.path.split("/")[0] in distribution.SCAN_ROOTS
+        and item.path.endswith(".py")
+    )
+    with monkeypatch.context() as patcher:
+        patcher.setattr(distribution, "MAX_BOUNDARY_SOURCE_FILES_V1", guarded - 1)
+        with pytest.raises(distribution.DistributionManifestError):
+            distribution._parse(encoded_with("runtime/count.py"))
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            distribution, "MAX_BOUNDARY_TOTAL_SOURCE_BYTES_V1", guarded_bytes - 1,
+        )
+        with pytest.raises(distribution.DistributionManifestError):
+            distribution._parse(encoded_with("runtime/total.py"))
 
 
 def test_manifest_accepts_multiple_units_and_requires_single_new_materials(tmp_path):
@@ -1065,3 +1145,96 @@ def test_previous_build_is_null_only_for_first_sequence(tmp_path):
                 encoded, signature, registry=registry,
                 _environment=_test_environment(tmp_path),
             )
+
+
+def test_late_product_version_ast_memory_error_is_stable(monkeypatch):
+    original = distribution.ast
+
+    class ExhaustedAst:
+        def __getattr__(self, name):
+            return getattr(original, name)
+
+        @staticmethod
+        def walk(_node):
+            raise MemoryError("bounded test")
+
+    monkeypatch.setattr(distribution, "ast", ExhaustedAst())
+    with pytest.raises(
+        distribution.DistributionManifestError, match="product version",
+    ):
+        distribution._product_version_from_source(b'__version__ = "1.2.3"\n')
+
+
+def test_late_local_import_ast_memory_error_is_stable(tmp_path, monkeypatch):
+    source = b"import json\n"
+    path = tmp_path / "runtime" / "sample.py"
+    path.parent.mkdir()
+    path.write_bytes(source)
+    item = distribution.DistributionFile(
+        path="runtime/sample.py", size=len(source),
+        content_hash="sha256:" + "0" * 64, role="runtime_code",
+    )
+    original = distribution.ast
+
+    class ExhaustedAst:
+        def __getattr__(self, name):
+            return getattr(original, name)
+
+        @staticmethod
+        def walk(_node):
+            raise MemoryError("bounded test")
+
+    monkeypatch.setattr(distribution, "ast", ExhaustedAst())
+    with pytest.raises(
+        distribution.DistributionManifestError, match="python source",
+    ):
+        distribution._verify_local_import_closure(
+            tmp_path, (item,), {item.path: source},
+        )
+
+
+@pytest.mark.parametrize("source, rejected", [
+    (b"class Runner:\n def run_module(self, name): return name\n"
+     b"VALUE = Runner().run_module('safe')\n", False),
+    (b"import runpy\nVALUE = runpy.run_module('unsafe')\n", True),
+])
+def test_local_import_closure_distinguishes_local_methods_from_stdlib_loaders(
+        tmp_path, source, rejected):
+    path = "runtime/sample.py"
+    item = distribution.DistributionFile(
+        path=path, size=len(source), content_hash="sha256:" + "0" * 64,
+        role="runtime_code",
+    )
+    if rejected:
+        with pytest.raises(
+            distribution.DistributionManifestError,
+            match="dynamic code loader",
+        ):
+            distribution._verify_local_import_closure(
+                tmp_path, (item,), {path: source},
+            )
+    else:
+        distribution._verify_local_import_closure(
+            tmp_path, (item,), {path: source},
+        )
+
+
+def test_local_import_closure_limits_the_door_exception_to_its_exact_scope(
+        tmp_path):
+    path = "runtime/admitted_module_v1.py"
+    source = (
+        b"def load_admitted_module_v1(payload):\n"
+        b" compiled = compile(payload, '<signed>', 'exec')\n"
+        b" exec(compiled, {})\n"
+        b"def rogue(payload):\n return eval(payload)\n"
+    )
+    item = distribution.DistributionFile(
+        path=path, size=len(source), content_hash="sha256:" + "0" * 64,
+        role="runtime_code",
+    )
+    with pytest.raises(
+        distribution.DistributionManifestError, match="dynamic code loader",
+    ):
+        distribution._verify_local_import_closure(
+            tmp_path, (item,), {path: source},
+        )

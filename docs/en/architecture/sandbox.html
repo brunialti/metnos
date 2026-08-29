@@ -96,7 +96,7 @@ to perform an action by itself.</p>
  <li><a href="#cap1">Scope</a></li>
  <li><a href="#cap2">Module interfaces</a></li>
  <li><a href="#cap3">Resources exposed on the server</a></li>
- <li><a href="#cap4">Execution without bubblewrap</a></li>
+ <li><a href="#cap4">Unavailable bubblewrap</a></li>
  <li><a href="#cap5">Runtime integration</a></li>
  <li><a href="#cap6">Autonomy and policy</a></li>
  <li><a href="#cap7">Verification</a></li>
@@ -109,7 +109,7 @@ to perform an action by itself.</p>
 <h1 id="cap1">1. Scope</h1>
 
 <p>When an executor runs on the Linux server, <code>runtime/sandbox.py</code>
-can prefix its Python command with <code>bwrap</code>. Bubblewrap builds a
+must prefix its Python command with <code>bwrap</code>. Bubblewrap builds a
 separate filesystem view, provides a private <code>/tmp</code>, separates
 selected namespaces, and adds <code>--unshare-net</code> when the executor
 does not require network access. There is no separate daemon: a profile is
@@ -125,7 +125,7 @@ returns the containment level it actually used.</p>
 <table>
 <tr><th>Function</th><th>Responsibility</th></tr>
 <tr><td><code>bwrap_available</code>, <code>sandbox_disabled</code></td><td>Detect whether <code>bwrap</code> is present and whether <code>METNOS_SANDBOX</code> explicitly disables it.</td></tr>
-<tr><td><code>wrap_command</code></td><td>Return a command wrapped by <code>bwrap</code>, or the original command when the wrapper is inactive.</td></tr>
+<tr><td><code>wrap_command</code></td><td>Return a command wrapped by <code>bwrap</code>, or fail closed before the subprocess. Only the byte-pinned undo broker has a direct path.</td></tr>
 <tr><td><code>filesystem_extras</code></td><td>Resolve only arguments named by a signed <code>fs:read</code> capability in the form <code>arg:&lt;name&gt;</code>. The argument may narrow the scope, never widen it.</td></tr>
 <tr><td><code>undo_history_extras</code></td><td>Make writable only the current turn's managed backup directory when the manifest declares the supported reverse pattern.</td></tr>
 <tr><td><code>invocation_skills</code>, <code>skill_extras</code></td><td>Identify provider bindings required by this invocation, expose only that integration's home, and enable network access. Declared executors use <code>provider:access</code>; older manifests retain a compatibility path.</td></tr>
@@ -141,7 +141,7 @@ returns the containment level it actually used.</p>
 
 <p>The profile mounts existing system paths read-only from among
 <code>/usr</code>, <code>/bin</code>, <code>/sbin</code>, the library
-directories, <code>/etc</code>, <code>/opt</code>,
+directories, <code>/etc</code>,
 <code>/var/lib/python3</code>, and <code>/sys</code>. It also adds:</p>
 
 <ul>
@@ -175,19 +175,18 @@ host network; bubblewrap does not restrict it to one host or provider.
 Application controls and narrowly scoped credentials must enforce that
 boundary.</p>
 
-<h1 id="cap4">4. Execution without bubblewrap</h1>
+<h1 id="cap4">4. Unavailable bubblewrap</h1>
 
 <p>If <code>bwrap</code> is not on <code>PATH</code>, or if
 <code>METNOS_SANDBOX</code> is <code>0</code>, <code>off</code>,
-<code>no</code>, or <code>false</code>, <code>wrap_command</code> returns the
-command unchanged. There is no third branch that automatically converts a
-detection exception into an unavailable result.</p>
+<code>no</code>, or <code>false</code>, <code>wrap_command</code> rejects every
+ordinary executor before journaling and before starting a subprocess. The
+stable result is <code>executor_os_sandbox_unavailable</code>.</p>
 
-<p>The signed invocation-scope preflight still runs before the subprocess, and
-Vaglio and executor-specific controls remain in force. They are not
-equivalent to operating-system containment. Local executor results do not
-automatically carry a field that reports the absence of <code>bwrap</code>;
-operators must inspect <code>status()</code> or service diagnostics.</p>
+<p>The sole direct exception is <code>undo_last_turn</code>, matched by exact
+name, source, membership, capability, code-file list, and signed digest. A
+later Birth revision does not inherit that exception. Operators can inspect
+<code>status()</code> and the stable refusal through service diagnostics.</p>
 
 <h1 id="cap5">5. Runtime integration</h1>
 
@@ -198,7 +197,7 @@ order is:</p>
 <li>derive actor, channel, and turn from the authenticated context;</li>
 <li>evaluate remote placement using only devices owned by that user;</li>
 <li>keep provider-backed invocations on the server that holds the integration;</li>
-<li>check signed path scope even when <code>bwrap</code> is unavailable;</li>
+<li>check signed path scope, then fail closed if <code>bwrap</code> is unavailable;</li>
 <li>prepare undo journaling and only the invocation-specific extra resources;</li>
 <li>run <code>sys.executable</code>—the interpreter of the current Metnos environment—through <code>wrap_command</code>.</li>
 </ol>
@@ -256,11 +255,11 @@ from an administrator's shell.</p>
 
 <ul>
 <li><strong>Visible does not mean authorised.</strong> A mount lets the process reach a resource; identity, consent, and purpose must already have been checked.</li>
-<li><strong>Some base mounts are broad.</strong> The server exposes <code>/etc</code>, <code>/opt</code>, and <code>/sys</code> read-only when they exist. Read-only prevents modification, but does not guarantee confidentiality for every file under those roots.</li>
+<li><strong>Some base mounts are broad.</strong> The server exposes <code>/etc</code> and <code>/sys</code> read-only when they exist. The shared <code>/opt</code> mount was removed so an executor cannot replay a signed but undeclared sibling dependency.</li>
 <li><strong>Network access is binary.</strong> When required, the process inherits the host network; bubblewrap does not enforce an allowlist of hosts.</li>
 <li><strong>The profile uses neither Landlock nor custom seccomp</strong> and does not separate the server's PID namespace.</li>
-<li><strong><code>system:undo</code> is an explicit exception.</strong> Undo must reconstruct resources known only from the runtime journal at execution time, so <code>wrap_command</code> passes the signed broker through directly. Vaglio and server-only placement remain necessary, but are not an operating-system sandbox.</li>
-<li><strong>Missing bubblewrap is a real downgrade.</strong> Remaining application controls must not be described as kernel isolation.</li>
+<li><strong><code>system:undo</code> is an explicit byte-pinned exception.</strong> Undo must reconstruct resources known only from the runtime journal at execution time. The direct path requires the reviewed digest and exact code-file list; any later revision fails closed.</li>
+<li><strong>Missing bubblewrap is a refusal on the server.</strong> Application controls are not treated as a substitute for kernel isolation.</li>
 </ul>
 
 <h1 id="cap10">10. Sandboxing on paired devices</h1>
@@ -272,7 +271,7 @@ explains why a weaker level was used.</p>
 
 <table>
 <tr><th>Platform</th><th>Current implementation</th><th>Downgrade behaviour</th></tr>
-<tr><td><strong>Linux</strong></td><td>Bubblewrap with mount and PID namespaces, network separation when not requested, a private temporary directory, and a dedicated process group. Custom Landlock and seccomp are not implemented.</td><td>If <code>bwrap</code> is missing or disabled, execution is direct and logged; the result reports <code>sandbox:"none"</code>. The process group still supports tree termination at the deadline.</td></tr>
+<tr><td><strong>Linux</strong></td><td>Bubblewrap with mount and PID namespaces, network separation when not requested, a private temporary directory, and a dedicated process group. Custom Landlock and seccomp are not implemented.</td><td>The server refuses ordinary execution when <code>bwrap</code> is missing or disabled. A paired client must report any platform-specific downgrade explicitly.</td></tr>
 <tr><td><strong>Windows</strong></td><td>AppContainer with capability-derived grants, itself placed inside a Job Object. AppContainer is attempted by default when supported.</td><td>System subprocesses, unanchored paths, scopes too broad for safe ACL changes, or an unavailable container cause an explicit downgrade to the Job Object. If the manifest requires AppContainer as its minimum, the invocation must not silently downgrade.</td></tr>
 <tr><td><strong>macOS</strong></td><td>There is currently no native <code>sandbox_macos.rs</code> module. The common Unix path has no operational bubblewrap equivalent on macOS.</td><td>The run must not be presented as isolated: its effective level is <code>none</code>, although process-group deadline handling remains.</td></tr>
 </table>
