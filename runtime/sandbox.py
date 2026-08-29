@@ -25,6 +25,7 @@ import os
 import re
 import shutil
 import sys
+import sysconfig
 from pathlib import Path
 
 
@@ -441,6 +442,125 @@ _SYSTEM_RO_PATHS = (
     "/sys",
 )
 
+# A Python installation rooted directly in one of these generic directories
+# is too broad to expose to an executor.  A narrow installation below one of
+# them (for example GitHub's /opt/hostedtoolcache/.../x64) remains admissible.
+_UNSAFE_INTERPRETER_PREFIXES = frozenset({
+    Path("/"), Path("/home"), Path("/opt"), Path("/srv"), Path("/tmp"),
+    Path("/var"),
+})
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    return path == root or path.is_relative_to(root)
+
+
+def python_runtime_bindings(
+    code_dir: Path, runtime_dir: Path,
+) -> tuple[tuple[Path, Path], ...]:
+    """Return exact source/destination binds for the active interpreter.
+
+    A non-venv Python may live outside the normal system mounts (notably
+    ``actions/setup-python`` below ``/opt/hostedtoolcache``).  Mounting only
+    ``site-packages`` does not expose its executable, standard library or
+    ``libpython``.  Conversely, mounting their common parent such as ``/opt``
+    would expose unrelated executors.  The interpreter's own prefixes are the
+    narrowest portable unit that contains all of those runtime files.
+    """
+    system_roots = tuple(
+        Path(raw).resolve()
+        for raw in _SYSTEM_RO_PATHS
+        if Path(raw).exists()
+    )
+    protected = tuple({
+        Path(os.path.abspath(path))
+        for path in (code_dir, runtime_dir)
+    } | {
+        path.resolve() for path in (code_dir, runtime_dir)
+    })
+    bindings: list[tuple[Path, Path]] = []
+    seen_destinations: set[Path] = set()
+    for attribute in (
+        "prefix", "exec_prefix", "base_prefix", "base_exec_prefix",
+    ):
+        raw = getattr(sys, attribute, None)
+        candidate = Path(raw) if isinstance(raw, str) and raw else None
+        if candidate is None or not candidate.is_absolute():
+            raise SandboxUnavailableError(
+                f"active Python {attribute} is not an absolute path",
+            )
+        lexical = Path(os.path.abspath(candidate))
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise SandboxUnavailableError(
+                f"active Python {attribute} cannot be resolved",
+            ) from exc
+        if not resolved.is_dir():
+            raise SandboxUnavailableError(
+                f"active Python {attribute} is not a directory",
+            )
+        if (
+            lexical in _UNSAFE_INTERPRETER_PREFIXES
+            or resolved in _UNSAFE_INTERPRETER_PREFIXES
+        ):
+            raise SandboxUnavailableError(
+                f"active Python {attribute} is too broad to sandbox",
+            )
+        if any(
+            _is_within(path, prefix)
+            for path in protected
+            for prefix in (lexical, resolved)
+        ):
+            raise SandboxUnavailableError(
+                f"active Python {attribute} contains executor product code",
+            )
+        destinations = (lexical, resolved)
+        for destination in destinations:
+            if any(_is_within(destination, root) for root in system_roots):
+                continue
+            if destination not in seen_destinations:
+                bindings.append((resolved, destination))
+                seen_destinations.add(destination)
+
+    visible_roots = (*system_roots, *seen_destinations)
+    required: list[tuple[str, Path]] = []
+    executable = Path(sys.executable)
+    if not executable.is_absolute():
+        raise SandboxUnavailableError(
+            "active Python executable is not an absolute path",
+        )
+    try:
+        required.extend((
+            ("executable", Path(os.path.abspath(executable))),
+            ("resolved executable", executable.resolve(strict=True)),
+        ))
+        for name in ("stdlib", "platstdlib"):
+            raw = sysconfig.get_path(name)
+            if not isinstance(raw, str) or not raw:
+                raise SandboxUnavailableError(
+                    f"active Python {name} path is unavailable",
+                )
+            path = Path(raw)
+            if not path.is_absolute():
+                raise SandboxUnavailableError(
+                    f"active Python {name} path is not absolute",
+                )
+            required.extend((
+                (name, Path(os.path.abspath(path))),
+                (f"resolved {name}", path.resolve(strict=True)),
+            ))
+    except (OSError, RuntimeError) as exc:
+        raise SandboxUnavailableError(
+            "active Python runtime layout cannot be resolved",
+        ) from exc
+    for name, path in required:
+        if not any(_is_within(path, root) for root in visible_roots):
+            raise SandboxUnavailableError(
+                f"active Python {name} is outside the sandbox prefixes",
+            )
+    return tuple(bindings)
+
 
 def python_package_roots() -> tuple[Path, ...]:
     """Exact third-party package roots visible to the running interpreter.
@@ -506,13 +626,18 @@ def _build_bwrap_args(
     if runtime_dir.exists():
         args += ["--ro-bind", str(runtime_dir), str(runtime_dir)]
 
-    # Gli executor devono vedere lo stesso ambiente Python del core. In una
-    # installazione standard ``sys.executable`` vive nella .venv Metnos e i
-    # pacchetti non sono presenti nel Python di sistema.
-    runtime_prefix = Path(sys.prefix)
-    if sys.prefix != sys.base_prefix and runtime_prefix.exists():
-        args += ["--ro-bind", str(runtime_prefix), str(runtime_prefix)]
-    else:
+    # Gli executor devono vedere l'installazione esatta dell'interprete del
+    # core.  Questo include Python non-venv collocati fuori da /usr, senza mai
+    # allargare il bind al loro genitore generico (per esempio /opt).
+    for interpreter_source, interpreter_destination in (
+        python_runtime_bindings(code_dir, runtime_dir)
+    ):
+        args += [
+            "--ro-bind", str(interpreter_source),
+            str(interpreter_destination),
+        ]
+
+    if sys.prefix == sys.base_prefix:
         # Developer/system-Python runs may resolve required wheels from the
         # standard per-user site directory (for example numpy). Bind that
         # package root read-only, never the surrounding HOME tree.
