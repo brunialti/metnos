@@ -381,10 +381,17 @@ def _detect_unfulfilled_mutating_intent(log) -> str:
     for s in getattr(log, "steps", []) or []:
         if not s.chosen_tool:
             continue
+        _obs = s.result if isinstance(s.result, dict) else None
+        # `admin` e' il varco unico per operazioni di sistema che non hanno un
+        # executor col verbo dell'intento nel nome. Un esito execute_silent
+        # riuscito prova l'effetto reale e soddisfa quindi l'azione richiesta.
+        if (s.chosen_tool == "admin" and isinstance(_obs, dict)
+                and _obs.get("ok") is True
+                and _obs.get("decision") == "execute_silent"):
+            return ""
         step_verb = s.chosen_tool.split("_", 1)[0]
         if step_verb not in DESTRUCTIVE_VERBS:
             continue
-        _obs = s.result if isinstance(s.result, dict) else None
         # §2.8 esito PARZIALE = azione AVVENUTA (bug live 8025922, 6/7:
         # delete di 456 con il solo desktop.ini rifiutato → ok=False ma
         # ok_count=455; dichiarare «non completata» era falso — la notice
@@ -6111,6 +6118,66 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
     if exec_obj is None:
         return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
                 "error_class": "tool_unknown"}
+
+    # I builtin a verbo unico esposti al pianificatore sono processi interni,
+    # non programmi eseguibili. Il loader e' la fonte unica del registro:
+    # qualunque nuovo builtin conforme attraversa questo stesso percorso.
+    from loader import (
+        VERB_UNIQUE_REGISTRY, boot_register_verb_unique_builtins,
+        invoke_verb_unique,
+    )
+    boot_register_verb_unique_builtins()
+    verb_entry = VERB_UNIQUE_REGISTRY.get(tool_name)
+    if verb_entry and verb_entry.get("expose_to_planner"):
+        call_args = {
+            key: value for key, value in dict(args or {}).items()
+            if not str(key).startswith("_")
+        }
+        call_args.setdefault("actor", actor or "host")
+
+        def _call_verb_unique():
+            return invoke_verb_unique(
+                tool_name, caller="agent_runtime", **call_args,
+            )
+
+        try:
+            from executor_scheduler import assigned_worker_budget, invoke_scheduled
+            from executor_workers import worker_budget
+            with worker_budget(assigned_worker_budget(exec_obj)):
+                result = invoke_scheduled(exec_obj, _call_verb_unique)
+        except (PermissionError, KeyError, RuntimeError, TypeError) as exc:
+            result = {
+                "ok": False,
+                "error": f"verb-unique call failed: {type(exc).__name__}: {exc}",
+                "error_class": "internal_error",
+            }
+        result = _normalize_builtin_result(tool_name, result)
+
+        # `admin` possiede un protocollo di consenso monouso gia' condiviso
+        # dai canali HTTP e Telegram. Costruiamo qui la proposta dalla risposta
+        # firmata del builtin; nessun comando o binario e' trattato a parte.
+        if (tool_name == "admin"
+                and result.get("decision") == "approval_required"
+                and result.get("approval_required") is True
+                and isinstance(result.get("consent_token"), str)
+                and result["consent_token"]):
+            original = {
+                key: value for key, value in call_args.items()
+                if key not in {"actor", "actor_consent_token"}
+            }
+            suggested = dict(original)
+            suggested["actor_consent_token"] = result["consent_token"]
+            result["expandable_caps"] = [{
+                "kind": "admin_approval",
+                "executor": "admin",
+                "cap_field": "actor_consent_token",
+                "cap_suggested": result["consent_token"],
+                "args_original": original,
+                "args_suggested": suggested,
+            }]
+            result["final_message_hint"] = str(result.get("summary") or "")
+        return result
+
     result = invoke_executor(
         exec_obj, args, timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
         actor=actor, channel=channel, owner_user_id=owner_user_id,
@@ -6745,6 +6812,26 @@ def _run_engine(
                 tool_name, args, actor=actor or "host", channel=channel or "",
                 owner_user_id=owner_user_id, turn_id=turn_id,
                 source_request_id=source_request_id)
+        # Il percorso principale non deve scavalcare il dispatcher condiviso
+        # dei builtin a verbo unico. Senza questo ramo il catalogo riconosceva
+        # correttamente `admin`, ma il callback tentava ancora di eseguire il
+        # suo modulo Python come un programma esterno.
+        from loader import VERB_UNIQUE_REGISTRY, boot_register_verb_unique_builtins
+        boot_register_verb_unique_builtins()
+        _verb_entry = VERB_UNIQUE_REGISTRY.get(tool_name)
+        if _verb_entry and _verb_entry.get("expose_to_planner"):
+            return _attach_presentation_contract(
+                tool_name,
+                invoke_tool_by_name(
+                    tool_name, args,
+                    catalog=list(_catalog_by_name.values()),
+                    actor=actor, channel=channel,
+                    owner_user_id=owner_user_id,
+                    target_device=_target_name,
+                    turn_id=turn_id,
+                    source_request_id=source_request_id,
+                ),
+            )
         exec_obj = _catalog_by_name.get(tool_name)
         if exec_obj is None:
             return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
@@ -7069,8 +7156,11 @@ def _run_engine(
             # al log → il channel daemon costruisce la inline keyboard
             # (Approva/Rifiuta/Annulla). Senza, il push e' solo-testo.
             if (isinstance(s.result, dict)
-                    and s.result.get("decision") == "input_required"
-                    and s.tool == "get_approval"):
+                    and (
+                        (s.result.get("decision") == "input_required"
+                         and s.tool == "get_approval")
+                        or s.result.get("decision") == "approval_required"
+                    )):
                 gate_obs = s.result
     # Tag di destinazione (ADR 0034): NON ottimistico. Il tag/campo del turno si
     # deriva dagli step che sono REALMENTE girati sul device (marker
@@ -7172,6 +7262,27 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
         return log
     log.final_kind = _engine_v2_res.get("final_kind") or "answer"
     log.final_message = _engine_v2_res.get("final_text") or ""
+    # Se il turno contiene soltanto operazioni `admin` realmente eseguite,
+    # la ricevuta deterministica del sudoer e' piu' autorevole della prosa
+    # preparata prima dell'esecuzione. Per piu' comandi conserva ogni esito in
+    # ordine; nei flussi misti lascia invece al compositore il riepilogo comune.
+    _operational_steps = [
+        step for step in log.steps
+        if not getattr(step, "seed_step", False)
+        and getattr(step, "chosen_tool", "") != "final_answer"
+    ]
+    if (_operational_steps
+            and all(step.chosen_tool == "admin" for step in _operational_steps)):
+        _admin_summaries = [
+            str(step.result.get("summary") or "").strip()
+            for step in _operational_steps
+            if isinstance(step.result, dict)
+            and step.result.get("ok") is True
+            and step.result.get("decision") == "execute_silent"
+            and str(step.result.get("summary") or "").strip()
+        ]
+        if len(_admin_summaries) == len(_operational_steps):
+            log.final_message = "\n\n".join(_admin_summaries)
     # Universal §7.3: se needs_inputs e nessun handler, ma c'e' un
     # final_message_hint nel result, usa quello (UX onestà).
     if not log.final_message and _ni and isinstance(_ni, dict):
