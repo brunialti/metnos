@@ -812,6 +812,35 @@ class TestExecutorPlaceholders(unittest.TestCase):
         self.assertEqual(run.final_kind, "answer")
         self.assertEqual(run.final_text, "Attività registrata.")
 
+    def test_approval_required_stops_later_planner_steps(self):
+        """Una proposta non esegue la coda prima della decisione umana."""
+
+        from engine.executor import Executor
+
+        called = []
+
+        def _fake_invoke(name, _args):
+            called.append(name)
+            if name == "privileged_builtin":
+                return {
+                    "ok": True,
+                    "decision": "approval_required",
+                    "approval_required": True,
+                    "final_message_hint": "Approvi questa operazione?",
+                    "expandable_caps": [{"kind": "admin_approval"}],
+                }
+            raise AssertionError("la coda non deve partire prima del consenso")
+
+        framework = Framework(steps=[
+            StepSpec(tool="privileged_builtin", args={}),
+            StepSpec(tool="unrelated_follow_up", args={}),
+        ])
+        run = Executor(invoke_executor=_fake_invoke).run(framework)
+
+        self.assertEqual(called, ["privileged_builtin"])
+        self.assertEqual(run.final_kind, "ask")
+        self.assertEqual(run.final_text, "Approvi questa operazione?")
+
     def test_malformed_accepted_receipt_does_not_hide_a_later_error(self):
         from engine.executor import Executor
 

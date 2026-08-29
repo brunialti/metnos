@@ -363,12 +363,28 @@ RM-0005 può tornare `closed` soltanto quando:
    errori o rilievi aperti;
 6. la correzione viene pubblicata e verificata sull’installazione reale.
 
-La correzione candidata del percorso shell/ping ha concluso localmente con
+La prima correzione del percorso shell/ping aveva concluso localmente con
 `129 test` mirati e con la regressione estesa di `592 test` e `1.144 subtest`
-superati. Due revisioni avversariali indipendenti hanno concluso entrambe con
-`P0=0`, `P1=0`, `P2=0`; anche `git diff --check` è verde. Pubblicazione e prova
-sull'installazione reale sono ancora da svolgere, mentre il censimento residuo
-del lessico impedisce comunque il nuovo closeout. Lo stato resta `reopened`.
+superati. La prova sull'installazione reale ha poi individuato tre passaggi
+generali che le sole prove di selezione non esercitavano: il secondo filtro del
+proposer eliminava `admin`; il motore tentava di avviare i builtin a verbo
+unico come subprocess; la risposta finale non riconosceva la ricevuta
+`execute_silent` del varco amministrativo. La correzione non contiene eccezioni
+per `ping`: `admin` sopravvive soltanto se già selezionato dalla grammatica, i
+builtin esposti al planner attraversano un unico dispatcher in-process, una
+richiesta di consenso ferma gli step successivi e una ricevuta amministrativa
+riuscita è autorevole per un turno composto soltanto da operazioni di sistema.
+
+Il perimetro finale conta `187 test` mirati e `594 test` con `1.144 subtest`
+nella regressione i18n e nei consumer collegati, tutti superati. Il turno reale
+`13f78d922e1c47b8` ha eseguito `ping -c 4 192.168.1.137`: quattro pacchetti
+trasmessi, quattro ricevuti e zero per cento di perdita, con stdout reale nella
+risposta. I 33 test CIFS/SMB/NFS confermano che `mount` e `umount` sono ammessi
+dal medesimo varco e restano soggetti al consenso previsto; non è stato creato
+un mount reale, perché sarebbe un effetto estraneo alla prova. Due revisioni
+avversariali indipendenti avevano concluso entrambe con `P0=0`, `P1=0`, `P2=0`;
+anche compilazione e `git diff --check` sono verdi. Il censimento residuo del
+lessico impedisce comunque il nuovo closeout. Lo stato resta `reopened`.
 
 ## 7. Rischi e misure
 

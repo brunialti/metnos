@@ -2481,10 +2481,22 @@ modificate devono essere incluse nella medesima distribuzione attestata.
    persiste un address autenticato. L'eventuale estensione del protocollo e'
    separata e deve essere generale per ogni device.
 
-Le prove locali correnti sono `129 passed` per selezione, lessico, admin e
-destinazione; la regressione i18n con i consumer collegati e' `592 passed,
+La verifica live ha aggiunto il tratto mancante fra selezione ed esecuzione:
+il secondo filtro del proposer conserva il nome runtime `admin` soltanto quando
+la grammatica lo ha già selezionato; tutti i builtin a verbo unico esposti al
+planner attraversano il registro e il dispatcher in-process; un esito
+`approval_required` arresta gli step successivi; una ricevuta
+`execute_silent` riuscita soddisfa l'azione di sistema e diventa la risposta
+autorevole nei turni composti soltanto da operazioni amministrative. Il turno
+reale `13f78d922e1c47b8` ha eseguito `ping -c 4 192.168.1.137` con quattro
+pacchetti trasmessi, quattro ricevuti e zero per cento di perdita. `mount` e
+`umount` sono ammessi dal medesimo inventario; i 33 test CIFS/SMB/NFS ne provano
+il percorso approval-controlled senza introdurre un mount reale.
+
+Le prove locali correnti sono `187 passed, 4 subtests passed` sul perimetro
+mirato; la regressione i18n con i consumer collegati e' `594 passed,
 1.144 subtests passed`. Due revisioni indipendenti finali concludono entrambe
-`P0=0`, `P1=0`, `P2=0`; `git diff --check` e' verde. RM-0005 e' stata riaperta
+`P0=0`, `P1=0`, `P2=0`; compilazione e `git diff --check` sono verdi. RM-0005 e' stata riaperta
 perche' il closeout storico non aveva
 censito tutti i lessici del prefilter; la correzione shell/ping non autorizza
 una nuova chiusura finche' il residuo documentato non e' concluso.

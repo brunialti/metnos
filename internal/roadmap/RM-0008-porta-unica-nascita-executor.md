@@ -24,7 +24,10 @@
 > non autorizzante e' implementato localmente; tre P1 del primo riesame sono
 > stati corretti, i 138 test mirati sono verdi e tre review finali concludono
 > `P0=0`, `P1=0`, `P2=0`; segue autenticazione e riconciliazione finale del
-> grafo;
+> grafo. Il difetto laterale RM-0005 osservato durante B3 è consolidato: il
+> dispatcher planner-visible di `admin` è generale, il ping live termina 4/4
+> con perdita zero e la regressione collegata conta 594 test e 1.144 subtest
+> verdi; RM-0005 resta riaperta per il censimento lessicale residuo;
 > G6-B4/G6-C/G6-D e F4-F6 non ancora completati
 
 ## 1. Obiettivo

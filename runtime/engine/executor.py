@@ -2863,6 +2863,17 @@ class Executor:
                 result.final_text = ""
                 break
 
+            # Un consenso ancora aperto non e' un errore e non autorizza gli
+            # step successivi. Il canale persiste la proposta strutturata e
+            # riprende soltanto dopo una decisione tipizzata dell'utente.
+            if (r.get("decision") == "approval_required"
+                    and r.get("approval_required") is True):
+                result.final_kind = "ask"
+                result.final_text = (
+                    r.get("final_message_hint") or r.get("summary") or ""
+                )
+                break
+
             # §7.9 gate-resume: qualunque executor puo' produrre un dialogo di
             # approvazione (sites lo costruisce solo DOPO avere risolto il
             # target DOM). La pipeline deve fermarsi sul contratto strutturato,

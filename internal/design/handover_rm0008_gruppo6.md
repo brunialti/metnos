@@ -1453,6 +1453,30 @@ storico del lessico dichiarava ancora una terza ondata da svolgere. RM-0005 e'
 ora `reopened`; il percorso shell/ping e' corretto, mentre il censimento
 residuo deve essere concluso prima di una nuova chiusura.
 
+La verifica live successiva ha chiuso anche il percorso fra selezione ed
+esecuzione. Il secondo filtro del proposer rimuoveva `admin` perché il registro
+dei nomi runtime non lo classificava come nome di sistema; dopo la selezione il
+callback principale bypassava il dispatcher condiviso e tentava di avviare il
+builtin a verbo unico come subprocess. Infine la guardia di onestà cercava il
+verbo dell'intento nel nome dell'executor e non riconosceva la ricevuta del
+varco amministrativo. Le correzioni sono tutte per contratto, non per comando:
+`admin` viene conservato soltanto quando il prefilter lo ha già scelto; ogni
+builtin esposto al planner usa `VERB_UNIQUE_REGISTRY` e il dispatcher
+in-process; `approval_required` ferma la coda; `execute_silent` riuscito
+soddisfa l'azione e il suo riepilogo deterministico prevale nei turni composti
+soltanto da operazioni amministrative. Il bootstrap del registro precede ogni
+lettura, così cache e fixture non possono produrre un fallback d'ordine verso
+il subprocess.
+
+La prova reale conclusiva è il turno `13f78d922e1c47b8`: lo step `admin` ha
+eseguito `ping -c 4 192.168.1.137`, con quattro pacchetti trasmessi, quattro
+ricevuti e zero per cento di perdita; la risposta finale contiene lo stdout
+reale. `mount` e `umount` derivano dallo stesso inventario canonico e sono
+ammessi; CIFS/SMB/NFS restano approval-controlled. Non è stato eseguito un
+mount reale perché avrebbe introdotto un effetto non necessario. La suite
+finale conta `187 passed, 4 subtests passed` sul perimetro mirato e `594 passed,
+1.144 subtests passed` sulla regressione i18n e sui consumer collegati.
+
 Resta distinta una lacuna di identita': il registro del device non conserva un
 indirizzo IP autenticato. Per questo il nome `PC-ROBERTO` non puo' essere
 trasformato fiduciariamente in `192.168.1.137`; il valore raccolto dal dialogo
