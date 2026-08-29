@@ -553,12 +553,188 @@ non canonici, unita' residue `.socket`/`.mount` e apertura della lista di
 proprieta' ripetibili. La famiglia finale ha dato `23 passed` sia su Linux sia
 sul PC Windows 192.168.1.137 con Python 3.14. Entrambi i verdetti finali sono
 `APPROVATO`, con `P0=0`, `P1=0`, `P2=0`; questo primo incremento puro e'
-quindi committabile, ma non rende ancora eseguibili i tre comandi.
+quindi committabile, ma non rende ancora eseguibili i tre comandi. Il commit
+privato e' `a2458f7c`; l'export incrementale sul solo `main` pubblico e'
+`2fad2c5`. Il ciclo GitHub `33227587849` e' concluso con successo: tutti i
+nove lavori, incluse le suite complete Ubuntu e Windows e il riepilogo
+bloccante, sono verdi.
 
 Il PC Windows riavviato e' nuovamente raggiungibile in SSH diretto a
 `192.168.1.137`: risponde come `ROBERTO_PC_HP` con Python 3.14.0. Non e' stato
 ancora usato per nuovo codice B3, perche' il programma amministrativo resta
 da implementare e poi sottoporre alle sue prove portabili e Windows.
+
+### G6-B3, secondo incremento sospeso per analisi causale
+
+Il secondo incremento candidato del programma amministrativo ha aggiunto le
+radici fisse, il lettore bounded/no-follow, il registro pubblico di
+distribuzione, il codec del manifesto, la verifica Ed25519 tramite OpenSSL e
+la rilettura dei file, dell'inventario boundary e della chiusura locale degli
+import. Prima della revisione ha dato `27 passed` su Linux e compilazione
+`python -I -S` verde. Questo risultato non certifica l'incremento.
+
+Una prova reale ha mostrato che OpenSSL 3.0.13, con l'argv normativo e
+`-config /dev/null`, restituisce `0`, stdout
+`Signature Verified Successfully\n` e stderr
+`Using configuration from /dev/null\n`. Il piano e' stato aggiornato per
+accettare esclusivamente questi byte nel profilo `ed25519-pkeyutl-v1`; quattro
+mutanti di uscita o codice sono negati. Questo delta resta da includere nella
+nuova review complessiva.
+
+Le due revisioni avversariali hanno bloccato l'incremento. Il rilievo comune e'
+che il verificatore censiva soltanto alcuni nomi `executor_birth*.py`: un file
+non dichiarato come `runtime/hidden.py` restava accettato e una forma alias di
+import dinamico poteva caricarlo. Lo stesso difetto e' presente nel loader
+esistente, quindi la correzione deve essere unica e coerente in entrambi i
+verificatori. Sono inoltre aperti: policy boundary amministrativa piu' debole
+di quella compilata, record autenticato fabbricabile o mutabile in profondita',
+percorso fisso `deployment/admin/preflight.py` non ancora vincolato, limite
+20.000 non applicato dal codec del manifesto, prove POSIX non separate su
+Windows e cleanup/output OpenSSL da rendere completamente limitati. I verdetti
+correnti sono rispettivamente `P0=1, P1=2, P2=2` e
+`P0=0, P1=5, P2=1`: non esiste approvazione.
+
+Su richiesta dell'utente lo sviluppo e' stato fermato prima di altre
+correzioni. Le tre analisi read-only sono ora concluse. Hanno concordato:
+trie chiuso dei percorsi firmati; fotografie handle-bound A e B con byte letti
+fra le due; diniego immediato degli extra senza attraversarli; adapter POSIX
+nel programma autonomo e riuso dell'oracolo nativo certificato nel loader
+Windows; record composto soltanto da scalari e tuple con riverifica corrente
+della firma; output OpenSSL limitato e cleanup che tenta tutte le risorse;
+test POSIX separati dai codec e dal diniego Windows.
+
+Il piano chiarisce inoltre che 20.000 file e 2 GiB sono limiti della
+distribuzione finale: una sorgente valida al proprio massimo puo' essere
+negata dal preparatore se gli artefatti generati fanno superare il limite.
+`deployment/admin/preflight.py` e' ora il solo entrypoint firmato. La parita'
+boundary viene divisa in un snapshot successivo ma resta obbligatoria prima
+della chiusura B3: il primo snapshot non viene collegato a `main` e non produce
+autorita'.
+
+La bozza pathname-based introdotta dal root nel loader e' stata rimossa
+integralmente dopo che l'analisi ha mostrato 23 regressioni e TOCTOU residuo;
+`runtime/executor_birth_distribution_manifest.py` e' tornato byte-identico
+all'ultimo commit. Il worktree conserva soltanto il candidato iniziale e
+l'inizio interrotto delle costanti boundary in
+`runtime/executor_birth_admin_preflight.py`, i suoi test e i due documenti.
+Questi byte non sono approvati e non devono essere committati prima del nuovo
+incremento isolato. Nessun commit privato o pubblico contiene il secondo
+incremento.
+
+### Aggiornamento operativo prioritario — 29/8/2026
+
+Questa sezione prevale sulla descrizione storica del secondo incremento
+sospeso. Serve come passaggio di consegne immediatamente eseguibile se la
+sessione corrente termina. Il repository di lavoro resta
+`/tmp/metnos-rm0008-a-only`, sul solo ramo `main`; `HEAD` e' `8f25f402`. Non
+usare `/opt/metnos` per modificare RM-0008 e non creare rami. Il commit HEAD
+corregge il binding del daemon Telegram al runtime Metnos gestito; la stessa
+correzione e' gia' sul `main` pubblico come `16f21a9`, con suite portabile
+pubblica verde (`645 passed, 25 skipped`). Il secondo incremento B3 non ha
+ancora un commit privato o pubblico.
+
+Il worktree contiene otto file modificati:
+
+- `internal/design/handover_rm0008_gruppo6.md`;
+- `internal/reports/rm0008-gruppo6-piano-ottimizzato.md`;
+- `runtime/executor_birth_admin_preflight.py`;
+- `runtime/executor_birth_distribution_manifest.py`;
+- `tests/portable/test_executor_birth_admin_preflight.py`;
+- `tests/portable/test_executor_birth_distribution_manifest.py`;
+- `tests/portable/test_executor_birth_ownership_chain.py`;
+- `tests/portable/test_executor_birth_ownership_coordinator.py`.
+
+Dopo lo stop richiesto dall'utente sono state svolte tre analisi indipendenti
+prima di riprendere il codice: albero esatto handle-bound su Linux e Windows;
+autorita' del record, OpenSSL e separazione delle prove Windows; confini,
+percorsi e limiti normativi. La correzione pathname-based che aveva prodotto
+23 regressioni e lasciato TOCTOU e' stata eliminata completamente. Le due
+implementazioni correnti derivano invece dal disegno consolidato.
+
+Nel loader esistente `runtime/executor_birth_distribution_manifest.py` sono
+ora presenti trie esatto del manifesto, fotografia handle-bound A, rilettura
+dei byte e dei significati, fotografia B e costruzione di
+`VerifiedDistribution` soltanto dopo l'uguaglianza A/B. Gli extra vengono
+negati al parent senza attraversarli; sono negati directory vuote, link,
+hardlink, oggetti speciali e bytecode anche se dichiarato. L'adapter POSIX usa
+descrittori relativi no-follow; quello Windows riusa le primitive native gia'
+certificate di `executor_birth_secure_fs`. Il manifesto applica inoltre i
+limiti finali di 20.000 file e 2 GiB e richiede l'unico entrypoint
+`deployment/admin/preflight.py`. Ogni oggetto e' ora vincolato anche allo
+stesso device POSIX o volume Windows della radice. Le aperture POSIX dei file
+attesi includono `O_NONBLOCK`, cosi' la sostituzione concorrente con una FIFO
+non puo' bloccare il verificatore.
+
+Nel programma autonomo `runtime/executor_birth_admin_preflight.py` sono ora
+presenti record composti soltanto da scalari e tuple, binding dell'artefatto e
+riverifica della firma con la trust root produttiva prima di leggere l'albero.
+La verifica POSIX usa trie esatto e sequenza fotografia A, byte e semantica,
+fotografia B. OpenSSL usa processo senza shell, ambiente chiuso, output e
+errore limitati separatamente a 4 KiB, timeout, kill e wait; il solo profilo
+ammesso e' quello esatto di OpenSSL 3.0.13 documentato nel piano. La pulizia
+tenta chiave, payload, firma e directory anche dopo un errore. Un residuo
+`.verify-*` viene classificato come stato di recupero prima di un nuovo
+tentativo. Kill, attesa e chiusura delle pipe hanno limiti temporali propri;
+un errore di teardown o pulizia non maschera l'errore causale attivo, ma resta
+fatale se e' l'unico errore. Le prove POSIX sono marcate Linux-only; Windows
+conserva codec portabili e diniego prima di I/O.
+
+La prova del programma amministrativo non dipende piu' dal file privato
+`internal/reports/rm0007-m4-boundary-inventory.json`, escluso dall'export
+pubblico. La fixture costruisce un inventario indipendente usando le costanti
+pubbliche compilate di `contract_boundary_guard`; questo evita un fallimento
+certo della matrice GitHub sull'export.
+
+Le correzioni note sono ora finalizzate localmente. Le prove discriminanti
+coprono device/volume diversi dalla radice, sostituzione FIFO e presenza di
+`O_NONBLOCK`, limite OpenSSL esatto di 4096 byte, superamento separato su
+stdout e stderr, timeout con processo reap, teardown limitato e pulizia
+fallita con conservazione della causa e successivo diniego del residuo. Le
+evidenze aggiornate sono:
+
+- loader: `51 passed, 1 skipped`;
+- programma amministrativo: `40 passed`;
+- regressione combinata unica di programma amministrativo, manifesto,
+  catalogo, catena e coordinatore: `204 passed, 1 skipped` in 7,29 secondi;
+- compilazione dei moduli e `git diff --check`: verdi;
+- export pubblico: 1.585 file, cancello duro con zero PII, zero segreti e zero
+  file sensibili; la stessa regressione nell'export ha dato
+  `204 passed, 1 skipped`.
+
+La prova diretta dell'export su `rober@192.168.1.137`, host
+`ROBERTO_PC_HP`, Python 3.14.0, ha inizialmente scoperto un solo difetto nella
+prova Windows: il wrapper di `_win_open_relative_v1` chiamava `directory` sia
+il primo parametro sia il parametro keyword nativo. Il conflitto fermava il
+test prima dell'asserzione e non coinvolgeva il codice prodotto. Il parametro
+del wrapper e' stato rinominato `parent_handle`; la prova discriminante ha
+dato `1 passed` e la regressione Windows completa dell'export ha dato
+`155 passed, 48 skipped` in 12,82 secondi. Gli skip sono le prove esplicitamente
+Linux-only.
+
+Le due revisioni read-only finali sono concluse. Il riesame del loader ha
+confermato chiusi i rilievi same-device/volume e `O_NONBLOCK`. Un rilievo
+iniziale sulla DACL Windows e' stato ritirato dopo l'analisi di raggiungibilita':
+`verify_installed_distribution_record_v1` nega subito non-Linux, mentre
+`verify_current_installation_distribution_v1` viene fermato dal cold loader
+Linux-only delle autorita' prima dell'I/O della distribuzione; il percorso
+Windows osservato resta soltanto una seam di prova nominalmente distinta. Il
+riesame OpenSSL ha richiesto due prove mancanti, ora aggiunte: cleanup fallito
+come unico errore e timeout di teardown con chiusura di entrambe le pipe. Il
+verdetto finale di entrambi i domini e' `P0=0`, `P1=0`, `P2=0`.
+
+Non rimane un difetto noto in questo snapshot. Le condizioni locali sono
+concluse; restano il commit incrementale su `main` col footer esatto
+`RM-0008-Status: candidate-not-certified`, l'export incrementale pubblico sul
+solo `main` e la verifica di tutti i nove lavori GitHub. Un fallimento richiede
+diagnosi causale prima di modificare il codice.
+
+Anche se questo snapshot raggiunge errore zero, G6-B3 non e' chiuso. E' il
+primo snapshot meccanico del programma autonomo: non e' collegato a `main` e
+non produce capability. Prima della chiusura B3 restano il clone statico
+stdlib indipendente di `discover()` e `birth_closed_findings()`, poi il nucleo
+preparatore e la capability opaca. Questi passi vanno aggregati nel minimo
+numero di famiglie discriminanti, senza ripetere le prove gia' certificate.
+B4, G6-C e G6-D restano fuori perimetro.
 
 ## Decisioni gia' fissate
 
@@ -597,6 +773,10 @@ pubblicazione B4, G6-C o G6-D e non esporre claim, disposizione o `PREPARED`.
 
 - commit piccoli soltanto su `main`, con footer
   `RM-0008-Status: candidate-not-certified`;
+- eseguire prove e strumenti Python con `/opt/metnos/.venv/bin/python`; per
+  l'export impostare `METNOS_VENV=/opt/metnos/.venv`. Il Python di sistema e
+  `/opt/suprastructure/.venv` non contengono tutte le dipendenze Metnos (in
+  particolare `tomlkit==0.15.0`) e non sono ambienti validi per RM-0008;
 - aggiornare questo file dopo ogni evidenza, correzione, revisione e risultato
   pubblico;
 - una sola famiglia di prove per rischio distinto;

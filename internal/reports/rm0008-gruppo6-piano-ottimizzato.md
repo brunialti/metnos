@@ -157,6 +157,25 @@ secondi e ambiente esattamente `LC_ALL=C`, senza `PATH`, `HOME`, `OPENSSL_*`,
 timeout o segnale diversi dal successo chiuso sono un diniego; i temporanei
 sono rimossi in `finally`.
 
+Il profilo `ed25519-pkeyutl-v1` definisce il successo chiuso byte per byte:
+codice di uscita `0`, `stdout` esattamente
+`Signature Verified Successfully\n` e `stderr` esattamente
+`Using configuration from /dev/null\n`. Quest'ultima riga e' l'uscita
+informativa prodotta da OpenSSL 3.0.13 quando riceve l'opzione normativa
+`-config /dev/null`; non viene scartata ne' interpretata liberamente. Ogni
+byte mancante o aggiuntivo, ogni altra riga e ogni differenza nel codice di
+uscita negano la verifica. Una futura versione di OpenSSL con un protocollo
+di uscita differente richiede un nuovo profilo esplicito e certificato.
+
+`stdout` e `stderr` sono drenati contemporaneamente da pipe non bloccanti e
+limitati separatamente a 4 KiB; il superamento del limite equivale a un
+diniego, seguito da terminazione e attesa obbligatoria del processo. La stessa
+sequenza vale al timeout. Il cleanup tenta sempre, uno per uno, tutti e tre i
+file conosciuti e la directory anche se una rimozione precedente fallisce; un
+residuo impedisce il successo e viene trattato come recupero necessario al
+successivo avvio. Un errore di cleanup non trasforma mai in successo l'errore
+originario e non interrompe i tentativi sulle risorse successive.
+
 `<payload>` non e' il JSON nudo: per il manifesto e' esattamente
 `metnos.executor-birth.closed-build/v1\0 || manifest_bytes`, per il certificato
 e' `metnos.executor-birth.ownership-cutover/v1\0 || certificate_bytes` e per la
@@ -259,6 +278,34 @@ percorso puo' scegliere la precedente.
 La distribuzione pubblicata e' posseduta da `root`, non e' scrivibile dal gruppo o
 dall'identita' di servizio e non contiene link, reparse point, hard link
 inaspettati, bytecode o file non dichiarati.
+
+La verifica dell'albero usa un trie costruito esclusivamente dai percorsi del
+manifesto autenticato. Le foglie sono tutti e soli i file dichiarati; le sole
+directory ammesse sono i loro prefissi propri. Un file che e' anche prefisso
+di un altro percorso, un componente `__pycache__` o un file con suffisso
+`.pyc` o `.pyo` rendono invalido il manifesto, anche se firmato. Durante
+l'enumerazione ogni nome deve essere un figlio atteso del nodo corrente: un
+nome extra viene negato nel genitore senza aprirlo o attraversarlo.
+
+Il verificatore mantiene aperto l'handle della radice e produce una fotografia
+A completa di nomi, tipi, identita' e metadati prima di leggere i byte. Ogni
+figlio viene aperto relativamente al parent con no-follow e tipizzato
+dall'handle; i file richiedono un solo link. La lettura e l'hash usano la
+stessa catena di handle e confrontano l'identita' prima e dopo. Dopo le
+verifiche semantiche viene prodotta, dallo stesso handle di radice, una
+fotografia B: A e B devono coincidere integralmente e il nome produttivo della
+radice deve ancora identificare l'handle mantenuto aperto. Su POSIX si usano
+descriptor relativi e `O_NOFOLLOW`; su Windows il loader usa l'oracolo nativo
+handle-bound gia' certificato, con enumerazione per file ID e apertura relativa
+che nega reparse point e oggetti delete-pending. Il programma amministrativo
+produttivo resta Linux-only; su Windows ne vengono provati soltanto codec e
+diniego prima di I/O.
+
+Il limite esplicito del modello e' un attore `root` che muti e ripristini
+l'intero albero fra tutte le osservazioni; viene escluso dal blocco di
+deployment e dalla catena di proprieta'. Un successo garantisce invece che la
+fotografia A, i byte letti e la fotografia B descrivano la stessa release e
+che nessuna mutazione persistente o osservata durante la lettura sia ammessa.
 
 ### 3.3 Descrittore del predecessore transitorio
 
@@ -1262,6 +1309,22 @@ programmi e i documenti installabili sono copie firmate sotto la sola radice
 della distribuzione; ciascun artefatto viene confrontato byte per byte con la
 destinazione esterna soltanto nella fase autorizzata dal descrittore.
 
+La lista finale del manifesto contiene da uno a 20.000 file e la somma delle
+dimensioni dichiarate non supera 2 GiB. Questi sono limiti della distribuzione
+assemblata, non una promessa che ogni sorgente ricevuta al proprio massimo sia
+assemblabile: il preparatore nega prima della firma se sorgente e artefatti
+generati superano uno dei due limiti. Il percorso
+`deployment/admin/preflight.py` e' obbligatorio col ruolo `preflight` e
+`preflight_entrypoint` coincide esattamente con quel percorso.
+
+Il record amministrativo autenticato contiene soltanto scalari immutabili,
+tuple di file frozen, manifesto canonico e firma. Un seal o il tipo Python non
+sono mai autorita' sufficiente. Ogni consumo produttivo riparsa il manifesto,
+confronta tutti i campi materializzati, ricarica il registro dalla radice fissa
+e riverifica la firma prima di derivare il percorso della release e leggere
+l'albero. La seam di prova produce un tipo distinto che il percorso produttivo
+nega prima di consultare radici o registri di prova.
+
 ### 3.7 Catena a freddo e transazioni multiple
 
 `OwnershipChainStore` produttivo apre soltanto la radice fissa, verifica la
@@ -1667,6 +1730,16 @@ sottoincrementi, eseguiti e revisionati in ordine.
    alterato, link e sostituzione durante la lettura. La stessa famiglia esegue
    il vero `admin_preflight.py` con `-I -S`, prova che importa soltanto libreria
    standard e rifiuta ogni placeholder o dipendenza G6-C non ancora definita.
+   L'implementazione interna procede in due snapshot revisionabili: prima
+   autenticazione, record immutabile e albero esatto; poi porting autonomo
+   standard-library della scoperta e della guardia boundary. Il primo snapshot
+   non viene collegato a `main`, non produce una capacita' autorizzante e non
+   puo' essere dichiarato verifica completa della distribuzione. Prima di
+   chiudere B3, la policy deve coincidere esattamente con owner, 62 scope di
+   scrittura coordinata, 16 eccezioni e moduli sealed compilati, e la scansione
+   indipendente dei sorgenti deve dare lo stesso esito di
+   `discover()+birth_closed_findings()` sul loader certificato. Importare o
+   eseguire la guardia contenuta nella distribuzione non soddisfa questa prova.
 4. **G6-B4, transazione di pubblicazione non autorizzante.** Implementare il
    solo nucleo filesystem di rename no-replace, sincronizzazione e rilettura,
    senza una funzione produttiva che lo renda raggiungibile o che accetti una

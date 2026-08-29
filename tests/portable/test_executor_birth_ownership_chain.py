@@ -197,6 +197,9 @@ def _cold_distribution(
 ):
     inventory = _cold_inventory_bytes()
     content_by_path = {
+        "deployment/admin/preflight.py": (
+            "preflight", b"#!/usr/bin/python3\n",
+        ),
         "deployment/executor-birth-deployment-v1.json": (
             "deployment_descriptor", b'{"schema_version":1}\n',
         ),
@@ -244,9 +247,7 @@ def _cold_distribution(
             distribution_module.BOUNDARY_INVENTORY_DOMAIN + inventory
         ).hexdigest(),
         "boundary_guard_version": BIRTH_CLOSED_GUARD_VERSION,
-        "preflight_entrypoint": (
-            "runtime/executor_birth_distribution_manifest.py"
-        ),
+        "preflight_entrypoint": "deployment/admin/preflight.py",
         "files": files,
     }
     value["closed_build_id"] = "sha256:" + hashlib.sha256(
