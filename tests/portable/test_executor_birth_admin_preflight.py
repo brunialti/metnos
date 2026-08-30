@@ -3867,3 +3867,35 @@ def test_property_denials_name_the_difference() -> None:
             plan, {"ExecStart": ("x", "x2"), "FragmentPath": ("y",)},
         )
     assert "ExecStart expected=1 observed=2" in cardinality.value.detail
+
+
+def test_observed_durations_accept_what_systemd_actually_renders() -> None:
+    """A signed directive and a live property are not the same input.
+
+    Measured on systemd 255.4: a zero duration renders without a suffix
+    (`RandomizedDelayUSec=0`, `WatchdogUSec=0`) and an unbounded one renders as
+    `infinity` (`JobTimeoutUSec`), on properties no unit ever set. Refusing
+    those on the observed side denied every real unit. What a catalog may
+    DECLARE stays narrow: `infinity` is still refused there.
+    """
+    assert preflight.normalize_systemd_duration_usec_v1("0") == "0"
+    assert preflight.normalize_systemd_duration_usec_v1(
+        "0", observed=True,
+    ) == "0"
+    assert preflight.normalize_systemd_duration_usec_v1(
+        "infinity", observed=True,
+    ) == "infinity"
+    _invalid(preflight.normalize_systemd_duration_usec_v1, "infinity")
+
+    # Malformed stays malformed on both sides.
+    for raw in ("1.0000001s", "0.1us", "1s  2s", "1 s", "-1s", "00", "0s0"):
+        _invalid(preflight.normalize_systemd_duration_usec_v1, raw)
+        _invalid(
+            preflight.normalize_systemd_duration_usec_v1, raw, observed=True,
+        )
+
+
+def test_duration_denial_names_the_component() -> None:
+    assert "'1 s'" in _invalid(
+        preflight.normalize_systemd_duration_usec_v1, "1 s",
+    ).detail

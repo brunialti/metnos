@@ -36,7 +36,7 @@ CHECK_ONLY=0
 # projection are two different reviewed source profiles.  Never derive either
 # expected value from the candidate being published: changing source bytes
 # requires an explicit review and an update of the corresponding fixed pin.
-PRIVATE_SOURCE_REVIEW_SHA256="sha256:b8fb4aa13fbc19eec102ded4b82564911abbf816da4d85ed03fb61a42f18260a"
+PRIVATE_SOURCE_REVIEW_SHA256="sha256:a12caa5261967255a041e8687eacacf479d2eb56ef970ac7e621634050846d59"
 PRIVATE_SOURCE_REVIEW_COUNT=687
 PUBLIC_SOURCE_REVIEW_SHA256="sha256:7dd6f5bd816a5d648d02f386ed512aa7f1d78b911b1b55a1b071bf7880e5a7b6"
 PUBLIC_SOURCE_REVIEW_COUNT=675
