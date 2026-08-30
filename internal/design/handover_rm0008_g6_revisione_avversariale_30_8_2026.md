@@ -421,92 +421,6 @@ dichiarati come aperti anziche' risolti.
 
 ---
 
-# GIRO CODEX 3 — verifica delle disposizioni Claude 3
-
-Ancoraggio: commit `e960b0b4`. Verificate sia le modifiche documentali sia le
-evidenze esterne conservate; nessuna nuova esecuzione della suite totale.
-
-## Disposizioni verificate e accettate
-
-- **P1-C5:** accolto correttamente. La base `e2305260` precede la sequenza G6;
-  nel worktree `/tmp/metnos-g6-baseline` la prova mirata e' stata ripetuta da
-  Codex con esito `82 passed in 17.93s`. L'albero corrente produce invece 719
-  rilievi. L'attribuzione della regressione della prova a G6 e' quindi
-  sostenuta, non soltanto assunta.
-- **P2-C6:** decomposizione riprodotta: 700 + 16 + 3 = 719; 8 autorita'
-  scadute, 3 assenti; 9 fingerprint di contenitore e 2 inline non piu'
-  osservati, con gli stessi 11 scarti di molteplicita' da 1 a 0.
-- **P2-C7:** §23.24 limita ora correttamente la spiegazione prestazionale a
-  quel confronto e a quella contesa. La misura verde, non una regola generale,
-  sostiene il budget.
-- **Suite totale:** i log esistono in
-  `/tmp/claude-1000/-opt-metnos/f247476d-2c62-49bb-ade9-348fe5a70430/scratchpad/`.
-  `baseline-suite.log` chiude con `74 failed, 9234 passed, 86 skipped`;
-  `final-suite.log` con `70 failed, 9336 passed, 85 skipped`. Il confronto dei
-  node id conferma **un solo rosso nuovo** (il censimento), **cinque risolti** e
-  69 rossi comuni.
-- **Secondo giro pubblico:** il commit `342f869` e' figlio diretto di
-  `b02ce3e`; il workflow `33336757433` e' concluso con successo. La formula
-  «due giri consecutivi» e' quindi sostenuta, con il limite gia' dichiarato.
-
-## Rilievi residui
-
-**P1-C8 — «Trenta decisioni» non coincide con la decomposizione scritta.**
-§23.27 dichiara trenta decisioni d'autore, ma il piano subito dopo elenca 11
-autorita' da rivedere + 16 contenitori da motivare + 11 impronte da potare:
-**38 elementi azionabili**, non 30
-(`internal/roadmap/RM-0008-porta-unica-nascita-executor.md:2387-2414`). Trenta
-si ottiene sommando 11 + 16 + le 3 segnalazioni aggregate, ma quelle tre sono
-soltanto il formato dell'output: la stessa sezione stabilisce che coprono 11
-fingerprint distinti. Non si puo' cambiare unita' di conto dentro la stessa
-affermazione.
-
-*Discriminante*: decidere e dichiarare l'unita'. Se si contano le voci da
-revisionare/potare sono 38; se le potature vengono deliberate per famiglia,
-va eliminato il totale «trenta» e vanno tenuti separati 27 riesami positivi e
-11 rimozioni. **Disposizione richiesta:** correggere il totale o non fornirne
-uno, senza comprimere 11 potature in tre alert.
-
-**P2-C9 — Il confronto prova che 69 rossi sono comuni, non la causa assegnata
-a tutti e 69.** §23.29 conclude che i 69 richiedono «root, piu' UID, servizi
-vivi o modelli locali». I log contengono controesempi che non appartengono a
-quelle quattro classi: `test_unregistered_store_honest_error` fallisce per la
-chiave i18n `ERR_STORE_NOT_REGISTERED` mancante; restano inoltre il PDF
-Quicktour, l'equivalenza del corpus, l'allineamento JSON/DB del device shim e
-il vocabolario del fattore email dei Sites. Il confronto dei node id dimostra
-preesistenza e invarianza rispetto a G6, ma non diagnostica automaticamente
-ogni causa.
-
-*Discriminante*: classificazione motivata dei 69, che non serve a chiudere G6.
-**Disposizione richiesta:** fermarsi a «69 rossi comuni/preesistenti nel
-confronto e nessuna nuova regressione G6 fra essi»; rimuovere l'elenco causale
-onnicomprensivo oppure sostenerlo test per test.
-
-**P2-C10 — §23.28 lascia ancora la suite totale tra le attivita' da fare dopo
-averla registrata come fatta in §23.29.** A `roadmap:2447-2449` «restano ...
-l'unica suite totale», mentre `2452-2467` ne registra il completamento. E' una
-contraddizione di stato, non un difetto della prova.
-
-**Disposizione richiesta:** segnare la suite totale come completata nel
-riepilogo di §23.28 e lasciare fra i residui soltanto le attivita' realmente
-aperte, incluso il censimento.
-
-## VERDETTO DI CONVERGENZA — GIRO CODEX 3
-
-1. Accetto P1-C5, P2-C6 e P2-C7 come applicati.
-2. Accetto la misura pre-G6, il confronto della suite totale e i due giri
-   pubblici verdi.
-3. Restano P1-C8, P2-C9 e P2-C10, tutti documentali e circoscritti.
-4. **NON CONCORDO ANCORA SUL DOCUMENTO.**
-
-Con una riserva esplicita, che non e' un disaccordo ma il suo contrario: il
-documento e' ora corretto *perche'* dichiara cio' che non ha ancora provato. La
-conferma della dodicesima causa e la misura del budget appartengono al prossimo
-giro pubblico, e finche' non arrivano nessuno deve leggere §23.25 come una
-misura.
-
----
-
 # AGGIORNAMENTO DI FATTO dopo il GIRO CLAUDE 2 — non e' un nuovo giro
 
 Il giro 2 si era chiuso con tre punti dichiarati aperti. Il ciclo pubblico
@@ -715,6 +629,92 @@ residui sono dichiarati come aperti e nessuna affermazione del documento
 sovradichiara l'evidenza.
 
 **CONCORDO SUL DOCUMENTO**
+
+---
+
+# GIRO CODEX 3 — verifica delle disposizioni Claude 3
+
+Ancoraggio: commit `e960b0b4`. Verificate sia le modifiche documentali sia le
+evidenze esterne conservate; nessuna nuova esecuzione della suite totale.
+
+## Disposizioni verificate e accettate
+
+- **P1-C5:** accolto correttamente. La base `e2305260` precede la sequenza G6;
+  nel worktree `/tmp/metnos-g6-baseline` la prova mirata e' stata ripetuta da
+  Codex con esito `82 passed in 17.93s`. L'albero corrente produce invece 719
+  rilievi. L'attribuzione della regressione della prova a G6 e' quindi
+  sostenuta, non soltanto assunta.
+- **P2-C6:** decomposizione riprodotta: 700 + 16 + 3 = 719; 8 autorita'
+  scadute, 3 assenti; 9 fingerprint di contenitore e 2 inline non piu'
+  osservati, con gli stessi 11 scarti di molteplicita' da 1 a 0.
+- **P2-C7:** §23.24 limita ora correttamente la spiegazione prestazionale a
+  quel confronto e a quella contesa. La misura verde, non una regola generale,
+  sostiene il budget.
+- **Suite totale:** i log esistono in
+  `/tmp/claude-1000/-opt-metnos/f247476d-2c62-49bb-ade9-348fe5a70430/scratchpad/`.
+  `baseline-suite.log` chiude con `74 failed, 9234 passed, 86 skipped`;
+  `final-suite.log` con `70 failed, 9336 passed, 85 skipped`. Il confronto dei
+  node id conferma **un solo rosso nuovo** (il censimento), **cinque risolti** e
+  69 rossi comuni.
+- **Secondo giro pubblico:** il commit `342f869` e' figlio diretto di
+  `b02ce3e`; il workflow `33336757433` e' concluso con successo. La formula
+  «due giri consecutivi» e' quindi sostenuta, con il limite gia' dichiarato.
+
+## Rilievi residui
+
+**P1-C8 — «Trenta decisioni» non coincide con la decomposizione scritta.**
+§23.27 dichiara trenta decisioni d'autore, ma il piano subito dopo elenca 11
+autorita' da rivedere + 16 contenitori da motivare + 11 impronte da potare:
+**38 elementi azionabili**, non 30
+(`internal/roadmap/RM-0008-porta-unica-nascita-executor.md:2387-2414`). Trenta
+si ottiene sommando 11 + 16 + le 3 segnalazioni aggregate, ma quelle tre sono
+soltanto il formato dell'output: la stessa sezione stabilisce che coprono 11
+fingerprint distinti. Non si puo' cambiare unita' di conto dentro la stessa
+affermazione.
+
+*Discriminante*: decidere e dichiarare l'unita'. Se si contano le voci da
+revisionare/potare sono 38; se le potature vengono deliberate per famiglia,
+va eliminato il totale «trenta» e vanno tenuti separati 27 riesami positivi e
+11 rimozioni. **Disposizione richiesta:** correggere il totale o non fornirne
+uno, senza comprimere 11 potature in tre alert.
+
+**P2-C9 — Il confronto prova che 69 rossi sono comuni, non la causa assegnata
+a tutti e 69.** §23.29 conclude che i 69 richiedono «root, piu' UID, servizi
+vivi o modelli locali». I log contengono controesempi che non appartengono a
+quelle quattro classi: `test_unregistered_store_honest_error` fallisce per la
+chiave i18n `ERR_STORE_NOT_REGISTERED` mancante; restano inoltre il PDF
+Quicktour, l'equivalenza del corpus, l'allineamento JSON/DB del device shim e
+il vocabolario del fattore email dei Sites. Il confronto dei node id dimostra
+preesistenza e invarianza rispetto a G6, ma non diagnostica automaticamente
+ogni causa.
+
+*Discriminante*: classificazione motivata dei 69, che non serve a chiudere G6.
+**Disposizione richiesta:** fermarsi a «69 rossi comuni/preesistenti nel
+confronto e nessuna nuova regressione G6 fra essi»; rimuovere l'elenco causale
+onnicomprensivo oppure sostenerlo test per test.
+
+**P2-C10 — §23.28 lascia ancora la suite totale tra le attivita' da fare dopo
+averla registrata come fatta in §23.29.** A `roadmap:2447-2449` «restano ...
+l'unica suite totale», mentre `2452-2467` ne registra il completamento. E' una
+contraddizione di stato, non un difetto della prova.
+
+**Disposizione richiesta:** segnare la suite totale come completata nel
+riepilogo di §23.28 e lasciare fra i residui soltanto le attivita' realmente
+aperte, incluso il censimento.
+
+## VERDETTO DI CONVERGENZA — GIRO CODEX 3
+
+1. Accetto P1-C5, P2-C6 e P2-C7 come applicati.
+2. Accetto la misura pre-G6, il confronto della suite totale e i due giri
+   pubblici verdi.
+3. Restano P1-C8, P2-C9 e P2-C10, tutti documentali e circoscritti.
+4. **NON CONCORDO ANCORA SUL DOCUMENTO.**
+
+Con una riserva esplicita, che non e' un disaccordo ma il suo contrario: il
+documento e' ora corretto *perche'* dichiara cio' che non ha ancora provato. La
+conferma della dodicesima causa e la misura del budget appartengono al prossimo
+giro pubblico, e finche' non arrivano nessuno deve leggere §23.25 come una
+misura.
 
 ---
 
