@@ -2056,3 +2056,38 @@ la correzione non introduce una corsa.
 
 Alternativa scartata: togliere l'arco dalla fotografia. Il mandato di C4 chiede
 esplicitamente che i due archi causali vi siano, in entrambe le direzioni.
+
+### 23.20 Il programma amministrativo parte privilegiato
+
+La nona causa di C3 non e' una resa dell'interfaccia ne' un inquadramento: e'
+una contraddizione fra due requisiti che il prodotto pone entrambi, e che la
+fixture non poteva soddisfare insieme.
+
+Il cancello di avvio e' un file root-owned `0600` aperto in lettura-scrittura.
+Un processo demoted non puo' aprirlo, quindi il diniego dall'identita'
+applicativa e' **permanente per costruzione** — e infatti la cella lo dimostra
+altrove, pretendendo che `check` e `launch` invocati da quell'identita' siano
+negati. Ma `_require_gated_service_shape_v1` **richiede** `Service/User` per un
+servizio gated, quindi l'unita' deve dichiarare l'account.
+
+Le due cose stanno insieme grazie al marcatore `!` di systemd: il comando gira
+con piena autorita' anche quando l'unita' dichiara `User=`. E' il meccanismo
+che il prodotto gia' prevede su entrambi i lati — il normalizzatore firmato
+spoglia il prefisso, e la proiezione attende il flag `no-setuid` in
+`ExecStartEx` — ed e' l'unico modo in cui il programma amministrativo puo'
+acquisire il cancello e poi scendere alle credenziali firmate da solo, come fa
+`_drop_service_privileges_v1` con `setgroups`, `setgid`, `setuid`, `umask`,
+directory di lavoro e ambiente.
+
+Senza il prefisso systemd demoteva l'intero `ExecStart`: il cancello non si
+apriva e il lancio rifiutava a ogni giro.
+
+**Come e' stata isolata.** La diagnosi ha messo le due viste affiancate nello
+stesso messaggio di fallimento: `in-process attestation: accepted` da `root` e
+`demoted check-all: exit=21` dall'identita' che l'unita' usa davvero. La
+differenza fra le due viste era l'intera causa, e leggerla e' costato un solo
+giro invece di una serie di ipotesi.
+
+Alternativa scartata: togliere `Service/User` dalla specifica firmata. La forma
+gated lo richiede, e toglierlo avrebbe fatto rifiutare il catalogo prima ancora
+di arrivare al lancio.
