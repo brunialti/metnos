@@ -2280,14 +2280,21 @@ JOB contro un tetto di 15 che NON si puo' alzare.
 La soglia prudenziale si misura sul **job**, non sulla cella, perche' e' il job
 ad avere il tetto.
 
-**Misura finale, che smentisce la stima al ribasso.** Il giro `33336452969` ha
+**Misura finale, che smentisce al ribasso una stima pessimistica.** Il giro `33336452969` ha
 eseguito la cella INTERA — C3 e C4 — in **373 s** (6 min 13 s), con il job a
 circa 7 min 15 s contro il tetto di 15. La stima di ~12:07 era pessimista, e la
 ragione e' istruttiva: i 461 s del giro precedente comprendevano un timer che
 riavviava senza sosta un servizio che falliva, e ogni censimento pagava quella
-contesa. Una cella che PASSA costa meno di una che fallisce. Il rischio di
-budget e' quindi risolto per misura, non per argomento, e i limiti a 300 s
-restano dove sono: non vengono mai raggiunti quando la cella e' verde.
+contesa.
+
+**Limite dell'inferenza** (correzione del giro avversariale 3). Vale per QUESTO
+confronto e per QUELLA contesa: non e' vero in generale che un giro rosso costi
+piu' di un giro verde, perche' un fallimento che cade prima del censimento
+puo' essere molto piu' rapido di un giro completo. Stabilire una regola
+generale richiederebbe misure su classi diverse di fallimento, che qui non
+servono. Il rischio di budget e' risolto per misura diretta del giro verde, non
+per questa spiegazione, e i limiti a 300 s restano dove sono: non vengono mai
+raggiunti quando la cella e' verde.
 
 **Perdita dichiarata nella riduzione a due fotografie.** Le cinque catture
 separate esercitavano implicitamente il determinismo del censimento — due
@@ -2347,14 +2354,24 @@ sono la risposta a quel verdetto, non la sua chiusura: il giro successivo deve
 verificarle, non fidarsene.
 
 
-### 23.27 Il censimento del lessico e' rosso, e non per colpa di G6
+### 23.27 Il censimento del lessico e' rosso, ed e' G6 ad averlo fatto diventare rosso
 
-`tests/runtime/i18n/test_executable_lexicon_census.py` fallisce sull'albero
-corrente. Attribuzione misurata, non supposta: i conteggi di
-`executor_birth_admin_preflight.py` erano gia' `(comparison 323, helper-argument
-20, iteration 1, membership 3, prefix-suffix 4, regex 1)` al commit `f5b8845f`,
-e i quattro commit di questa sessione (`b6e56a3d`, `18528cb4`, `3a712936`,
-`686acd1f`) non ne hanno spostato NESSUNO. Il puntamento era gia' scaduto.
+**Correzione del giro avversariale 3, contro me stesso.** La prima stesura di
+questa sezione si intitolava «e non per colpa di G6» e usava come base il
+commit `f5b8845f`. Era sbagliata due volte. `f5b8845f` NON e' una base
+pre-G6: e' esso stesso l'incremento «execute signed G6-C activation cell», che
+aggiunge `runtime/executor_birth_activation_probe.py`. E soprattutto, misurato
+direttamente: alla base pre-G6 reale `e2305260` il censimento passa,
+**82 prove verdi**, mentre sull'albero corrente produce 719 rilievi.
+
+Il debito quindi non preesisteva a G6 in questo test: **e' G6 ad averlo aperto**.
+Il contributo e' distribuito, non concentrato negli ultimi commit — il
+sondatore di attivazione (`f5b8845f`, G6-C) e il nucleo di pubblicazione
+(`545a4ecf`, G6-B4) portano file interi mai censiti, e le correzioni systemd
+successive aggiungono un saldo di sei siti nel preflight — ma la proprieta'
+della chiusura e' di G6, non di altri. Resta vero, e verificato, che i quattro
+commit dell'ultima tornata (`b6e56a3d`, `18528cb4`, `3a712936`, `686acd1f`) non
+spostano NESSUN conteggio: sono l'unica parte che si puo' dire innocente.
 
 **Perche' non l'ho ripuntato in questo incremento.** Il ripuntamento meccanico
 del registro `LEGACY_LITERAL_GATE_FILE_AUTHORITIES` fa passare da 296 a 325 i
@@ -2369,27 +2386,39 @@ gioco e il ripuntamento sarebbe legittimo.
 
 Ma il ripuntamento non basta, e la misura completa e' piu' grande di quanto
 sembrasse a prima vista. Strumentando il censimento al suo stesso punto di
-calcolo, l'albero corrente produce **719 rilievi**, non una manciata, e di tre
-famiglie distinte:
+calcolo, l'albero corrente produce **719 rilievi**. Il numero da solo
+sovrastima pero' il lavoro: le decisioni d'autore sono trenta, non
+settecentodiciannove. Decomposizione riprodotta:
 
-1. letterali in linea nei file il cui puntamento e' scaduto (il registro
-   `LEGACY_LITERAL_GATE_FILE_AUTHORITIES`);
-2. contenitori esecutivi senza impronta in
-   `VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS` /
-   `VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS`, che pretendono un'impronta NUOVA
-   con una motivazione scritta — fra questi `_PROJECTIONS` e `_MODES` di
-   `paired_device_arg_resolver.py`, modulo nato dal commit `cac6d7e4` che NON
-   appartiene a G6;
-3. `LEXICON_STALE_INVARIANT` sui registri stessi del censimento: contengono
-   impronte che nell'albero non esistono piu' e vanno RIMOSSE, non aggiunte.
+1. **700** `LEXICON_INLINE_LITERAL` su **11 file**, e i file si dividono in due
+   categorie che vanno tenute distinte:
+   - **8 autorita' SCADUTE** — un puntamento esiste e non e' piu' valido:
+     `agent_runtime`, `contract_boundary_guard`, `contract_store`,
+     `executor_birth_admin_preflight`, `executor_birth_distribution_manifest`,
+     `executor_birth_identity`, `executor_birth_ownership_coordinator`,
+     `executor_standard`;
+   - **3 autorita' ASSENTI** — file che un puntamento non l'hanno mai avuto:
+     `executor_birth_activation_probe` (G6-C), `executor_birth_distribution_installer`
+     (G6-B4) e `paired_device_arg_resolver` (commit `cac6d7e4`, fuori da G6).
+2. **16** contenitori/regex non riconosciuti: 9 `LEXICON_NEUTRAL_COLLECTION`,
+   6 `LEXICON_NEUTRAL_TABLE`, 1 `LEXICON_LITERAL`. Ognuno pretende un'impronta
+   NUOVA con una motivazione scritta.
+3. **3** segnalazioni aggregate `LEXICON_STALE_INVARIANT`, che si chiudono
+   RIMUOVENDO gli stessi **11 fingerprint** non piu' posseduti dal sorgente
+   (9 di contenitore, 2 in linea) — potatura, non aggiunta.
 
-Sono motivazioni d'autore e potature, non un ricalcolo, e attraversano il
-lavoro di piu' di un agente. Mescolarle alla convergenza della cella avrebbe
-reso non atomico quel passo.
+Il piano richiede quindi: revisione di 11 autorita' di modulo, 16 contenitori
+nuovi con motivazione, potatura di 11 impronte. Sono decisioni d'autore, non un
+ricalcolo, e vanno in un incremento atomico proprio: mescolarle alla
+convergenza della cella l'avrebbe resa non atomica, e un riallineamento in
+blocco dei registri farebbe passare la prova smontando la guardia.
 
-**Stato: aperto, con la strada battuta e la misura corretta.** Ricalcolo,
-attribuzione e strumentazione sono riproducibili. Correzione di questa stessa
-sezione: la prima stesura parlava di «sette contenitori», e sottodichiarava.
+**Stato: aperto, di proprieta' di G6, con la strada battuta e la misura
+corretta.** Ricalcolo, attribuzione e strumentazione sono riproducibili.
+Questa sezione e' stata corretta due volte contro il suo autore: la prima
+stesura parlava di «sette contenitori» e sottodichiarava il volume; la seconda
+diceva «non per colpa di G6» e sbagliava l'attribuzione nella direzione a me
+piu' comoda.
 
 
 ### 23.28 C3 e C4 CHIUSE — nove job su nove
@@ -2418,3 +2447,33 @@ punto di rottura in avanti senza mai tornare indietro.
 **Ordine del §10: passi 1 e 2 chiusi.** B4 e D erano gia' provati; restano la
 barriera di pubblicazione (integrata, con una prova i18n adattata), la matrice
 connessa, l'unica suite totale e il checkpoint documentale.
+
+
+### 23.29 Unica suite totale — un solo rosso nuovo, ed e' il censimento
+
+Eseguita una sola volta, alla fine, come prevede il budget delle prove del §8
+del piano. Confronto contro la base pre-G6 `e2305260` misurata con lo STESSO
+comando e le stesse condizioni, perche' un confronto fra ambienti diversi non
+sarebbe una misura.
+
+| | rossi |
+|---|---|
+| base pre-G6 `e2305260` | 74 |
+| albero corrente | **70** |
+| nuovi | **1** |
+| risolti | **5** |
+
+Totale corrente: `70 failed, 9336 passed, 85 skipped, 1192 subtests passed` in
+11 min 18 s.
+
+**L'unico rosso nuovo** e' `test_rm0005_executable_lexicon_census_is_clean`, cioe'
+esattamente il debito di §23.27. Questa misura, ottenuta per altra via, conferma
+in modo indipendente la correzione dell'attribuzione: il censimento e' l'unica
+regressione che G6 introduce nell'intera suite, e G6 ne e' il proprietario.
+
+**I cinque risolti** sono perni delle sorgenti, inventario di confine,
+accettazione del manifesto 2A e inventario pubblico del Tutor: erano rossi alla
+base e sono verdi ora.
+
+I 69 rossi restanti sono preesistenti e invariati: richiedono root, piu' UID,
+servizi vivi o modelli locali, e non appartengono a G6.
