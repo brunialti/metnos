@@ -96,14 +96,26 @@ def _raw_digest(content: bytes) -> str:
 
 
 def _framed_digest(domain: bytes, content: bytes) -> str:
+    """Identity framing for values the product only checks the SHAPE of.
+
+    `boundary_inventory_hash` and `closed_build_id` are identifiers the
+    distribution manifest validates and binds; changing how the fixture
+    derives them changes the manifest it signed, so this helper must stay as
+    it was.
+    """
+    return "sha256:" + hashlib.sha256(domain + content).hexdigest()
+
+
+def _framed_digest_v1(domain: bytes, content: bytes) -> str:
     """Frame exactly as the product does, length included.
 
     The product frames `domain || u64be(len) || payload` precisely so one
-    field cannot slide into its neighbour. This helper omitted the length, so
-    every head hash the fixture built disagreed with the three the preflight
+    field cannot slide into its neighbour. The fixture omitted the length, so
+    every head hash it built disagreed with the three the preflight
     recomputes — `head_payload_hash`, `head_signature_hash` and
     `required_head_frame_hash` — and the transaction head binding refused a
-    fixture that was otherwise correct.
+    fixture that was otherwise correct. Only those three move to this
+    framing: the other two identifiers feed a different contract.
     """
     return "sha256:" + hashlib.sha256(
         domain + len(content).to_bytes(8, "big") + content,
@@ -740,16 +752,16 @@ def _build_prerequisite_and_graph(
             installed_tree_hash=installed_tree_hash if sequence >= 4 else None,
             head_id=head.head_id if sequence >= 5 else None,
             head_payload_hash=(
-                _framed_digest(preflight.HEAD_PAYLOAD_HASH_DOMAIN_V2, head_encoded)
+                _framed_digest_v1(preflight.HEAD_PAYLOAD_HASH_DOMAIN_V2, head_encoded)
                 if sequence >= 5 else None
             ),
             head_signature_hash=(
-                _framed_digest(
+                _framed_digest_v1(
                     preflight.HEAD_SIGNATURE_HASH_DOMAIN_V2, head_signature,
                 ) if sequence >= 5 else None
             ),
             required_head_frame_hash=(
-                _framed_digest(
+                _framed_digest_v1(
                     preflight.REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, required_frame,
                 ) if sequence >= 5 else None
             ),
