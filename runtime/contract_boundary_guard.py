@@ -28,7 +28,7 @@ BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/2"
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:c0aa838eae3d375e8f3acf532b56c784c65f4793e83ec8c341288412d8e2648d"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:711bc4d92f123dd331685064594742c56e926530fbced0446caa5aaea2affa30"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
 MAX_BOUNDARY_SOURCE_FILES = 2_048
@@ -210,6 +210,12 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_publish_isolated_units_for_test_v1": ("store_write",),
         "install_group6_administrative_v1": ("store_write",),
     },
+    "executor_birth_admin_preflight": {
+        "_publish_preflight_attestation_core_v1": ("store_write",),
+        "_publish_preflight_attestation_for_test_v1": ("store_write",),
+        "_publish_preflight_attestation_v1": ("store_write",),
+        "_write_all_exact_v1": ("store_write",),
+    },
 }
 BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth": frozenset({"executor_birth", "runtime.executor_birth"}),
@@ -261,6 +267,10 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth_systemd": frozenset({
         "install.executor_birth_systemd",
     }),
+    "executor_birth_admin_preflight": frozenset({
+        "executor_birth_admin_preflight",
+        "runtime.executor_birth_admin_preflight",
+    }),
 }
 BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/executor_birth.py": "executor_birth",
@@ -285,6 +295,9 @@ BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
         "executor_birth_source_receiver"
     ),
     "install/executor_birth_systemd.py": "executor_birth_systemd",
+    "runtime/executor_birth_admin_preflight.py": (
+        "executor_birth_admin_preflight"
+    ),
 }
 READ_OPERATIONS = frozenset({
     "exists",
@@ -454,6 +467,13 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "install/executor_birth_systemd.py:_publish_administrative_tree_v1",
     "install/executor_birth_systemd.py:_publish_isolated_units_for_test_v1",
     "install/executor_birth_systemd.py:install_group6_administrative_v1",
+    "runtime/executor_birth_admin_preflight.py:<module>",
+    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_core_v1",
+    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_for_test_v1",
+    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_v1",
+    "runtime/executor_birth_admin_preflight.py:_run_operational_command_v1",
+    "runtime/executor_birth_admin_preflight.py:_write_all_exact_v1",
+    "runtime/executor_birth_admin_preflight.py:main",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
     "runtime/executor_birth_ownership_chain.py:_OwnershipChainStoreForTest._initialize_with_authorities",
     "runtime/executor_birth_ownership_chain.py:_ensure_exact_directory_v1",

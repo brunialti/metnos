@@ -27,6 +27,11 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Callable, Iterable, Mapping, NamedTuple, Sequence
 
+try:  # Windows imports the codec surface but is denied before operational I/O.
+    import fcntl
+except ImportError:  # pragma: no cover - exercised by the Windows CI lane
+    fcntl = None  # type: ignore[assignment]
+
 
 SUPPORTED_SYSTEMD_VERSIONS = ("255.4-1ubuntu8.17",)
 OWNERSHIP_ROOT = Path("/var/lib/metnos/executor-birth")
@@ -35,6 +40,8 @@ CHAIN_ROOT = OWNERSHIP_ROOT / "chain-v1"
 COORDINATOR_ROOT = OWNERSHIP_ROOT / "coordinator-v1"
 RELEASE_ROOT = OWNERSHIP_ROOT / "releases-v1"
 RUNTIME_ROOT = Path("/run/metnos-executor-birth-v1")
+STARTUP_GATE_PATH_V1 = Path("/run/lock/metnos/executor-birth-startup-v1.lock")
+PREFLIGHT_ATTESTATION_ROOT_V1 = OWNERSHIP_ROOT / "preflight-attestations-v1"
 OPENSSL_LINK = Path("/usr/bin/openssl")
 PYTHON_LINK = Path("/usr/bin/python3")
 SYSTEMCTL_LINK = Path("/usr/bin/systemctl")
@@ -142,6 +149,12 @@ SYSTEMD_CONFIGURED_DIRECTIVES_DOMAIN_V1 = (
     b"metnos.executor-birth.systemd-configured-directives/v1\0"
 )
 EFFECTIVE_UNITS_DOMAIN_V1 = b"metnos.executor-birth.effective-units/v1\0"
+PREFLIGHT_ATTESTATION_DOMAIN_V1 = (
+    b"metnos.executor-birth.preflight-attestation/v1\0"
+)
+PREFLIGHT_ATTESTATION_RECORD_DOMAIN_V1 = (
+    b"metnos.executor-birth.preflight-attestation-record/v1\0"
+)
 SYSTEMD_ORIGIN_FILE_DOMAIN_V1 = (
     b"metnos.executor-birth.systemd-origin-file/v1\0"
 )
@@ -177,6 +190,7 @@ MAX_OPENSSL_MODULE_BYTES_V1 = 256 * 1024 * 1024
 MAX_SYSTEMD_ORIGIN_BYTES_V1 = 1024 * 1024
 MAX_SYSTEMD_ADDED_EDGES_PER_UNIT_V1 = 4096
 MAX_SYSTEMD_ADDED_EDGES_TOTAL_V1 = 65536
+MAX_PREFLIGHT_ATTESTATION_BYTES_V1 = 256 * 1024
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
     "sha256:cd747ed58214a415a0cc112fc1aa5024dbea5539a736d46eab56b6e5df2c799a"
 )
@@ -710,7 +724,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:c0aa838eae3d375e8f3acf532b56c784c65f4793e83ec8c341288412d8e2648d"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:711bc4d92f123dd331685064594742c56e926530fbced0446caa5aaea2affa30"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -766,6 +780,13 @@ _BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
     "install/executor_birth_systemd.py:_publish_administrative_tree_v1",
     "install/executor_birth_systemd.py:_publish_isolated_units_for_test_v1",
     "install/executor_birth_systemd.py:install_group6_administrative_v1",
+    "runtime/executor_birth_admin_preflight.py:<module>",
+    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_core_v1",
+    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_for_test_v1",
+    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_v1",
+    "runtime/executor_birth_admin_preflight.py:_run_operational_command_v1",
+    "runtime/executor_birth_admin_preflight.py:_write_all_exact_v1",
+    "runtime/executor_birth_admin_preflight.py:main",
     "runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher._persist_current_reattestation",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
@@ -1657,6 +1678,21 @@ class _ObservedEffectiveSystemdProductV1(NamedTuple):
 
 class _ObservedEffectiveSystemdForTestV1(NamedTuple):
     observation: _ObservedEffectiveSystemdV1
+
+
+class _OperationalPreflightV1(NamedTuple):
+    """Complete product proof held while the shared startup gate is live."""
+
+    authenticated: _AuthenticatedFixedOwnershipSnapshotV1
+    selected: _SelectedOwnershipEpochV1
+    observation: _ObservedEffectiveSystemdProductV1
+
+
+class _OperationalPreflightForTestV1(NamedTuple):
+    """Nominal test seam; it cannot enter productive dispatch."""
+
+    selected: _SelectedOwnershipEpochV1
+    observation: _ObservedEffectiveSystemdForTestV1
 
 
 class _BoundPreflightMaterialsV1(NamedTuple):
@@ -7556,15 +7592,11 @@ def _bind_administrative_tcb_core_v1(
     )
 
 
-def _require_materials_selected_by_snapshot_v1(
+def _select_ownership_epoch_v1(
     snapshot: _ReconciledFixedOwnershipSnapshotV1,
-    materials: _BoundPreflightMaterialsV1,
 ) -> _SelectedOwnershipEpochV1:
-    """Require the one authoritative epoch while ignoring pending successors."""
-    if (
-        type(snapshot) is not _ReconciledFixedOwnershipSnapshotV1
-        or type(materials) is not _BoundPreflightMaterialsV1
-    ):
+    """Select the one authoritative durable epoch, ignoring pending successors."""
+    if type(snapshot) is not _ReconciledFixedOwnershipSnapshotV1:
         raise _invalid("administrative TCB ownership selection")
     required_head = snapshot.required_head
     predecessor = snapshot.predecessor
@@ -7585,15 +7617,30 @@ def _require_materials_selected_by_snapshot_v1(
     )
     if (
         len(builds) != 1 or len(transactions) != 1
-        or materials.distribution != builds[0]
-        or materials.transaction != transactions[0].prefix.records[-1]
-        or materials.prerequisite.predecessor_id != predecessor.predecessor_id
     ):
         raise _invalid("administrative TCB ownership selection")
     return _SelectedOwnershipEpochV1(
         snapshot.registries, snapshot.anchor, required_head, builds[0],
         transactions[0], predecessor,
     )
+
+
+def _require_materials_selected_by_snapshot_v1(
+    snapshot: _ReconciledFixedOwnershipSnapshotV1,
+    materials: _BoundPreflightMaterialsV1,
+) -> _SelectedOwnershipEpochV1:
+    """Cross-bind materials to the one authoritative durable epoch."""
+    if type(materials) is not _BoundPreflightMaterialsV1:
+        raise _invalid("administrative TCB ownership selection")
+    selected = _select_ownership_epoch_v1(snapshot)
+    if (
+        materials.distribution != selected.build
+        or materials.transaction != selected.transaction.prefix.records[-1]
+        or materials.prerequisite.predecessor_id
+        != selected.predecessor.predecessor_id
+    ):
+        raise _invalid("administrative TCB ownership selection")
+    return selected
 
 
 def _bind_administrative_tcb_v1(
@@ -8090,6 +8137,12 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_publish_isolated_units_for_test_v1": ("store_write",),
         "install_group6_administrative_v1": ("store_write",),
     },
+    "executor_birth_admin_preflight": {
+        "_publish_preflight_attestation_core_v1": ("store_write",),
+        "_publish_preflight_attestation_for_test_v1": ("store_write",),
+        "_publish_preflight_attestation_v1": ("store_write",),
+        "_write_all_exact_v1": ("store_write",),
+    },
 }
 BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth": frozenset({"executor_birth", "runtime.executor_birth"}),
@@ -8141,6 +8194,10 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth_systemd": frozenset({
         "install.executor_birth_systemd",
     }),
+    "executor_birth_admin_preflight": frozenset({
+        "executor_birth_admin_preflight",
+        "runtime.executor_birth_admin_preflight",
+    }),
 }
 BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/executor_birth.py": "executor_birth",
@@ -8165,6 +8222,9 @@ BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
         "executor_birth_source_receiver"
     ),
     "install/executor_birth_systemd.py": "executor_birth_systemd",
+    "runtime/executor_birth_admin_preflight.py": (
+        "executor_birth_admin_preflight"
+    ),
 }
 READ_OPERATIONS = frozenset({
     "exists",
@@ -10704,11 +10764,51 @@ def _verify_installed_distribution_core_v1(
         )
     ):
         raise _invalid("authenticated distribution binding")
-    inventory_path = value["boundary_inventory_path"]
+    _capture_verified_distribution_tree_v1(
+        record.facts, record.files, root, expected_type=expected_type,
+        uid=uid, gid=gid, chain_stop=chain_stop,
+        extra_capture_paths=frozenset(), require_compiled_review=(
+            expected_type is AuthenticatedDistributionV1
+        ),
+    )
+
+
+def _capture_verified_distribution_tree_v1(
+    facts: DistributionFactsV1,
+    files: tuple[DistributionFileV1, ...],
+    root: Path, *, expected_type: type,
+    uid: int, gid: int, chain_stop: Path | None,
+    extra_capture_paths: frozenset[str], require_compiled_review: bool,
+) -> dict[str, bytes]:
+    """Verify one exact tree and retain only explicitly required live bytes."""
+    if (
+        type(facts) is not DistributionFactsV1
+        or not isinstance(files, tuple)
+        or any(type(item) is not DistributionFileV1 for item in files)
+        or expected_type not in {
+            AuthenticatedDistributionV1,
+            _AuthenticatedDistributionForTestV1,
+            _AuthenticatedDistributionObjectV1,
+        }
+        or type(extra_capture_paths) is not frozenset
+        or any(type(item) is not str for item in extra_capture_paths)
+        or type(require_compiled_review) is not bool
+    ):
+        raise _invalid("verified distribution capture")
+    value = {
+        "boundary_inventory_path": facts.boundary_inventory_path,
+        "boundary_inventory_hash": facts.boundary_inventory_hash,
+        "boundary_guard_version": facts.boundary_guard_version,
+        "product_version": facts.product_version,
+    }
+    inventory_path = facts.boundary_inventory_path
+    available_paths = frozenset(item.path for item in files)
+    if not extra_capture_paths.issubset(available_paths):
+        raise _invalid("distribution capture path")
     capture_paths = frozenset(
         item.path for item in files
         if item.path.endswith(".py") or item.path == inventory_path
-    )
+    ) | extra_capture_paths
 
     def verify_semantics(verified: dict[str, bytes]) -> None:
         inventory = verified[inventory_path]
@@ -10719,7 +10819,7 @@ def _verify_installed_distribution_core_v1(
             raise _invalid("boundary inventory hash")
         inventory_value = _validate_boundary_inventory_v1(inventory)
         _require_birth_closed_sources_v1(verified, inventory_value)
-        if expected_type is AuthenticatedDistributionV1:
+        if require_compiled_review:
             _require_compiled_source_review_v1(verified)
         if value["boundary_guard_version"] != _BIRTH_CLOSED_GUARD_VERSION:
             raise _invalid("boundary guard version")
@@ -10729,7 +10829,7 @@ def _verify_installed_distribution_core_v1(
             raise _invalid("product version")
         _verify_local_import_closure_v1(root, files, verified)
 
-    _snapshot_exact_distribution_tree_v1(
+    return _snapshot_exact_distribution_tree_v1(
         root, files, uid=uid, gid=gid, chain_stop=chain_stop,
         capture_paths=capture_paths, semantic_check=verify_semantics,
     )
@@ -10772,6 +10872,67 @@ def _verify_installed_distribution_for_test_v1(
     )
 
 
+def _load_bound_preflight_materials_v1(
+    authenticated: _AuthenticatedFixedOwnershipSnapshotV1,
+) -> tuple[_SelectedOwnershipEpochV1, _BoundPreflightMaterialsV1]:
+    """Read and bind the installed tree selected only by fixed ownership state."""
+    if type(authenticated) is not _AuthenticatedFixedOwnershipSnapshotV1:
+        raise _invalid("product preflight materials")
+    selected = _select_ownership_epoch_v1(authenticated.snapshot)
+    build = selected.build
+    root = RELEASE_ROOT / f"{build.facts.release_sequence:020d}"
+    architecture = _local_g6_architecture_v1()
+    if (
+        build.facts.installation_root != root.as_posix()
+        or build.facts.platform != "linux"
+        or build.facts.architecture != architecture
+    ):
+        raise _invalid("product preflight distribution")
+
+    probe_paths = frozenset({
+        SERVICE_CATALOG_PATH_V1, DEPLOYMENT_DESCRIPTOR_PATH_V1,
+    })
+    probe = _snapshot_exact_distribution_tree_v1(
+        root, build.files, uid=0, gid=0, chain_stop=None,
+        capture_paths=probe_paths,
+    )
+    catalog = _decode_service_catalog_v1(probe[SERVICE_CATALOG_PATH_V1])
+    descriptor = _decode_deployment_descriptor_v1(
+        probe[DEPLOYMENT_DESCRIPTOR_PATH_V1],
+    )
+    capture_paths = (
+        _required_material_capture_paths_v1(build, catalog)
+        | frozenset(item.source_path for item in descriptor.artifacts)
+    )
+    captured = _capture_verified_distribution_tree_v1(
+        build.facts, build.files, root,
+        expected_type=_AuthenticatedDistributionObjectV1,
+        uid=0, gid=0, chain_stop=None,
+        extra_capture_paths=capture_paths, require_compiled_review=True,
+    )
+    latest = selected.transaction.prefix.records[-1]
+    prerequisite_path = (
+        OWNERSHIP_ROOT / "startup-prerequisites-v1"
+        / f"{latest.request_id}.json"
+    )
+    prerequisite = _capture_trusted_file_v1(
+        prerequisite_path, executable=False, uid=0, gid=0,
+        chain_stop=None, maximum=MAX_STARTUP_PREREQUISITE_BYTES_V1,
+        require_single_link=True,
+    )
+    if stat.S_IMODE(prerequisite.identity[2]) != 0o644:
+        raise _invalid("startup prerequisite mode")
+    materials = _bind_preflight_materials_core_v1(
+        build, latest, selected.predecessor, captured, prerequisite.content,
+    )
+    repeated = _require_materials_selected_by_snapshot_v1(
+        authenticated.snapshot, materials,
+    )
+    if repeated != selected:
+        raise _invalid("product preflight ownership selection")
+    return selected, materials
+
+
 def parse_cli_v1(argv: list[str]) -> CliCommandV1:
     """Parse only the three byte-for-byte command forms from the contract."""
     if not isinstance(argv, list) or any(not isinstance(item, str) for item in argv):
@@ -10796,18 +10957,26 @@ _PUBLIC_FAILURE_EXIT_V1 = {
 
 
 def _run_operational_command_v1(command: CliCommandV1) -> None:
-    """Fail closed until the remaining B3 operational flow is implemented.
-
-    RM-0008 G6-B3 residual: the closed CLI shell exists before the preparer
-    signs and copies it, but no command may become operational merely because
-    that shell exists. The later B3 increments replace this denial with the
-    complete fixed-root proof flow before any staging or signature. The
-    function accepts no path, callback, environment, registry, key or
-    caller-provided authority.
-    """
+    """Run only fixed-root checks; launch remains closed until its bootstrap."""
     if type(command) is not CliCommandV1:
         raise _invalid("operational command")
-    raise _missing("B3 operational proof flow is incomplete")
+    if command.command == "check-all":
+        if command.entry_id is not None:
+            raise _invalid("operational command")
+        _publish_preflight_attestation_v1(
+            _attest_operational_preflight_v1(),
+        )
+        return
+    if command.command not in {"check", "launch"} or command.entry_id is None:
+        raise _invalid("operational command")
+    gate = _acquire_startup_gate_shared_v1()
+    try:
+        operational = _attest_operational_preflight_v1()
+        _require_preflight_entry_v1(operational, command.entry_id)
+        if command.command == "launch":
+            raise _missing("B3 target bootstrap is incomplete")
+    finally:
+        _release_startup_gate_v1(gate)
 
 
 def _public_failure_v1(error: BaseException) -> tuple[str, int]:
@@ -12658,6 +12827,320 @@ def _observe_effective_systemd_for_test_v1(
         between_for_test=between_for_test,
     )
     return _ObservedEffectiveSystemdForTestV1(result)
+
+
+def _preflight_attestation_bytes_v1(
+    selected: _SelectedOwnershipEpochV1,
+    observation: _ObservedEffectiveSystemdV1,
+) -> bytes:
+    """Encode the complete, exact check-all result without publishing it."""
+    if (
+        type(selected) is not _SelectedOwnershipEpochV1
+        or type(observation) is not _ObservedEffectiveSystemdV1
+    ):
+        raise _invalid("preflight attestation arguments")
+    materials = observation.administrative_tcb.materials
+    if (
+        materials.distribution != selected.build
+        or materials.transaction != selected.transaction.prefix.records[-1]
+        or materials.prerequisite.predecessor_id
+        != selected.predecessor.predecessor_id
+    ):
+        raise _invalid("preflight attestation ownership")
+    latest = selected.transaction.prefix.records[-1]
+    prerequisite = materials.prerequisite
+    checked_entry_ids = tuple(sorted(
+        (
+            entry.entry_id for entry in materials.catalog.entries
+            if entry.requires_preflight or entry.unit_spec is not None
+        ),
+        key=lambda item: item.encode("utf-8"),
+    ))
+    if not checked_entry_ids or len(checked_entry_ids) != len(set(checked_entry_ids)):
+        raise _invalid("preflight attestation coverage")
+    value: dict[str, object] = {
+        "schema_version": 1,
+        "attestation_id": None,
+        "request_id": latest.request_id,
+        "closed_build_id": selected.required_head.closed_build_id,
+        "release_sequence": selected.required_head.release_sequence,
+        "head_id": selected.required_head.head_id,
+        "required_head_frame_hash": latest.required_head_frame_hash,
+        "deployment_descriptor_id": materials.descriptor.descriptor_id,
+        "service_catalog_id": materials.catalog.catalog_id,
+        "service_coverage_hash": materials.catalog.service_coverage_hash,
+        "candidate_units_hash": materials.candidate_units.candidate_units_hash,
+        "administrative_bundle_hash": materials.administrative_bundle_hash,
+        "python_binary_hash": prerequisite.python_binary_hash,
+        "openssl_binary_hash": prerequisite.openssl_binary_hash,
+        "openssl_tcb_hash": prerequisite.openssl_tcb_hash,
+        "systemctl_binary_hash": prerequisite.systemctl_binary_hash,
+        "systemd_analyze_binary_hash": prerequisite.systemd_analyze_binary_hash,
+        "effective_units_hash": (
+            observation.effective_systemd.snapshot.effective_units_hash
+        ),
+        "checked_entry_ids": list(checked_entry_ids),
+    }
+    value["attestation_id"] = _deployment_document_id_v1(
+        PREFLIGHT_ATTESTATION_DOMAIN_V1, value, "attestation_id",
+    )
+    encoded = _canonical_json(value)
+    if len(encoded) > MAX_PREFLIGHT_ATTESTATION_BYTES_V1:
+        raise _invalid("preflight attestation size")
+    return encoded
+
+
+def _write_all_exact_v1(descriptor: int, content: bytes) -> None:
+    if type(descriptor) is not int or descriptor < 0 or type(content) is not bytes:
+        raise _invalid("preflight attestation write")
+    offset = 0
+    while offset < len(content):
+        try:
+            written = os.write(descriptor, content[offset:])
+        except OSError as exc:
+            raise _recovery("preflight attestation write") from exc
+        if written <= 0:
+            raise _recovery("preflight attestation write")
+        offset += written
+
+
+def _publish_preflight_attestation_core_v1(
+    encoded: bytes, request_id: str, *, root: Path,
+    uid: int, gid: int, chain_stop: Path | None,
+) -> None:
+    """Publish one attestation by no-replace link under a locked directory."""
+    if (
+        type(encoded) is not bytes
+        or len(encoded) > MAX_PREFLIGHT_ATTESTATION_BYTES_V1
+        or _require_digest(request_id, "preflight request") != request_id
+        or not isinstance(root, Path) or not root.is_absolute()
+    ):
+        raise _invalid("preflight attestation publication")
+    value = decode_canonical_json_v1(encoded, MAX_PREFLIGHT_ATTESTATION_BYTES_V1)
+    if not isinstance(value, dict) or value.get("request_id") != request_id:
+        raise _invalid("preflight attestation publication")
+    _require_safe_directory_chain_v1(root, uid=uid, gid=gid, stop=chain_stop)
+    try:
+        before = root.lstat()
+        if (
+            not stat.S_ISDIR(before.st_mode) or stat.S_ISLNK(before.st_mode)
+            or before.st_uid != uid or before.st_gid != gid
+            or stat.S_IMODE(before.st_mode) != 0o755
+        ):
+            raise _invalid("preflight attestation directory")
+        directory = os.open(
+            root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except PreflightError:
+        raise
+    except OSError as exc:
+        raise _missing("preflight attestation directory") from exc
+    temporary_created = False
+    basename = request_id + ".json"
+    temporary = "." + request_id.removeprefix("sha256:") + ".tmp"
+    try:
+        opened = os.fstat(directory)
+        if _metadata_identity_v1(before) != _metadata_identity_v1(opened):
+            raise _recovery("preflight attestation directory replaced")
+        fcntl.flock(directory, fcntl.LOCK_EX)
+        names = tuple(sorted(os.listdir(directory), key=lambda item: item.encode("utf-8")))
+        if temporary in names:
+            raise _recovery("preflight attestation partial state")
+        if basename in names:
+            try:
+                existing = _read_bounded_regular_v1(
+                    root / basename, MAX_PREFLIGHT_ATTESTATION_BYTES_V1,
+                    uid=uid, gid=gid, mode=0o644, chain_stop=chain_stop,
+                )
+            except PreflightError as exc:
+                raise _recovery("preflight attestation existing state") from exc
+            if existing != encoded:
+                raise _recovery("preflight attestation conflict")
+            return
+        flags = (
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        )
+        try:
+            output = os.open(temporary, flags, 0o600, dir_fd=directory)
+            temporary_created = True
+        except OSError as exc:
+            raise _recovery("preflight attestation staging") from exc
+        try:
+            os.fchown(output, uid, gid)
+            os.fchmod(output, 0o644)
+            _write_all_exact_v1(output, encoded)
+            os.fsync(output)
+        except PreflightError:
+            raise
+        except OSError as exc:
+            raise _recovery("preflight attestation staging") from exc
+        finally:
+            os.close(output)
+        try:
+            os.link(
+                temporary, basename, src_dir_fd=directory,
+                dst_dir_fd=directory, follow_symlinks=False,
+            )
+            os.fsync(directory)
+            os.unlink(temporary, dir_fd=directory)
+            temporary_created = False
+            os.fsync(directory)
+        except FileExistsError:
+            raise _recovery("preflight attestation conflict")
+        except OSError as exc:
+            raise _recovery("preflight attestation publication") from exc
+        observed = _read_bounded_regular_v1(
+            root / basename, MAX_PREFLIGHT_ATTESTATION_BYTES_V1,
+            uid=uid, gid=gid, mode=0o644, chain_stop=chain_stop,
+        )
+        if observed != encoded:
+            raise _recovery("preflight attestation reread")
+        after = root.lstat()
+        if (
+            before.st_dev, before.st_ino, before.st_mode,
+            before.st_uid, before.st_gid, before.st_nlink,
+        ) != (
+            after.st_dev, after.st_ino, after.st_mode,
+            after.st_uid, after.st_gid, after.st_nlink,
+        ):
+            raise _recovery("preflight attestation directory changed")
+    finally:
+        # A failed durable transition is evidence for recovery; never erase it.
+        if temporary_created:
+            pass
+        try:
+            fcntl.flock(directory, fcntl.LOCK_UN)
+        finally:
+            os.close(directory)
+
+
+def _publish_preflight_attestation_v1(
+    operational: _OperationalPreflightV1,
+) -> bytes:
+    if type(operational) is not _OperationalPreflightV1:
+        raise _invalid("product preflight attestation")
+    encoded = _preflight_attestation_bytes_v1(
+        operational.selected, operational.observation.observation,
+    )
+    _publish_preflight_attestation_core_v1(
+        encoded, operational.selected.transaction.prefix.records[-1].request_id,
+        root=PREFLIGHT_ATTESTATION_ROOT_V1, uid=0, gid=0, chain_stop=None,
+    )
+    return encoded
+
+
+def _publish_preflight_attestation_for_test_v1(
+    operational: _OperationalPreflightForTestV1, root: Path,
+) -> bytes:
+    if type(operational) is not _OperationalPreflightForTestV1:
+        raise _invalid("test preflight attestation")
+    encoded = _preflight_attestation_bytes_v1(
+        operational.selected, operational.observation.observation,
+    )
+    _publish_preflight_attestation_core_v1(
+        encoded, operational.selected.transaction.prefix.records[-1].request_id,
+        root=root, uid=os.getuid(), gid=os.getgid(), chain_stop=root.parent,
+    )
+    return encoded
+
+
+def _attest_operational_preflight_v1() -> _OperationalPreflightV1:
+    """Compose every fixed-root proof; callers cannot inject any authority."""
+    authenticated = _authenticate_fixed_ownership_snapshot_v1()
+    selected, materials = _load_bound_preflight_materials_v1(authenticated)
+    administrative = _bind_administrative_tcb_v1(authenticated, materials)
+    observation = _observe_effective_systemd_v1(
+        authenticated, administrative,
+    )
+    final_selected, final_materials = _load_bound_preflight_materials_v1(
+        authenticated,
+    )
+    if (
+        observation.observation.administrative_tcb.materials != materials
+        or final_selected != selected or final_materials != materials
+    ):
+        raise _invalid("product operational preflight")
+    return _OperationalPreflightV1(authenticated, selected, observation)
+
+
+def _require_preflight_entry_v1(
+    operational: _OperationalPreflightV1, entry_id: str,
+) -> _ServiceCatalogEntryV1:
+    if type(operational) is not _OperationalPreflightV1:
+        raise _invalid("product preflight entry")
+    identifier = validate_entry_id_v1(entry_id)
+    entries = tuple(
+        item for item in operational.observation.observation.administrative_tcb
+        .materials.catalog.entries
+        if item.entry_id == identifier
+    )
+    if len(entries) != 1 or not entries[0].requires_preflight:
+        raise _invalid("product preflight entry")
+    return entries[0]
+
+
+def _acquire_startup_gate_shared_v1() -> int:
+    """Acquire the fixed root-owned startup gate without creating it."""
+    _require_safe_directory_chain_v1(
+        STARTUP_GATE_PATH_V1.parent, uid=0, gid=0, stop=None,
+    )
+    try:
+        before = STARTUP_GATE_PATH_V1.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode)
+            or before.st_uid != 0 or before.st_gid != 0
+            or before.st_nlink != 1 or stat.S_IMODE(before.st_mode) != 0o600
+        ):
+            raise _invalid("startup gate")
+        descriptor = os.open(
+            STARTUP_GATE_PATH_V1,
+            os.O_RDWR | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except PreflightError:
+        raise
+    except FileNotFoundError as exc:
+        raise _missing("startup gate") from exc
+    except OSError as exc:
+        raise _invalid("startup gate") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if _metadata_identity_v1(before) != _metadata_identity_v1(opened):
+            raise _invalid("startup gate replaced")
+        deadline = time.monotonic() + 30.0
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise _recovery("startup gate timeout")
+                time.sleep(0.01)
+        after = STARTUP_GATE_PATH_V1.lstat()
+        if _metadata_identity_v1(before) != _metadata_identity_v1(after):
+            raise _invalid("startup gate changed")
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _release_startup_gate_v1(descriptor: int) -> None:
+    if type(descriptor) is not int or descriptor < 0:
+        raise _invalid("startup gate descriptor")
+    failed = False
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+    except OSError:
+        failed = True
+    try:
+        os.close(descriptor)
+    except OSError:
+        failed = True
+    if failed:
+        raise _recovery("startup gate release")
 
 
 if __name__ == "__main__":

@@ -67,8 +67,12 @@ def _target_materials(
     )
     materials = preflight._BoundPreflightMaterialsV1(
         SimpleNamespace(), SimpleNamespace(),
-        SimpleNamespace(entries=(entry,)),
-        SimpleNamespace(systemctl_executable=systemctl_executable),
+        SimpleNamespace(
+            entries=(entry,), catalog_id=D("a"), service_coverage_hash=D("b"),
+        ),
+        SimpleNamespace(
+            systemctl_executable=systemctl_executable, descriptor_id=D("3"),
+        ),
         SimpleNamespace(), candidate_snapshot, ((unit_name, fragment),),
         D("b"), D("c"),
     )
@@ -114,14 +118,120 @@ def _with_effective_prerequisite(
     encoded = assembler.encode_startup_prerequisite_v1(record)
     decoded = preflight._decode_startup_prerequisite_v1(encoded)
     transaction = SimpleNamespace(
+        request_id=decoded.request_id,
         startup_prerequisite_id=decoded.prerequisite_id,
         startup_prerequisite_digest=preflight._startup_prerequisite_digest_v1(
             encoded,
         ),
+        required_head_frame_hash=D("c"),
     )
     return materials._replace(
         prerequisite=decoded, transaction=transaction,
     ), encoded
+
+
+def _operational_attestation_fixture(
+    materials: preflight._BoundPreflightMaterialsV1,
+) -> preflight._OperationalPreflightForTestV1:
+    latest = materials.transaction
+    selected = preflight._SelectedOwnershipEpochV1(
+        (SimpleNamespace(), SimpleNamespace(), SimpleNamespace()), None,
+        SimpleNamespace(
+            closed_build_id=materials.prerequisite.closed_build_id,
+            release_sequence=materials.prerequisite.release_sequence,
+            head_id=D("d"),
+        ),
+        materials.distribution,
+        SimpleNamespace(prefix=SimpleNamespace(records=(latest,))),
+        SimpleNamespace(
+            predecessor_id=materials.prerequisite.predecessor_id,
+        ),
+    )
+    administrative = preflight._ObservedAdministrativeTcbV1(
+        materials, SimpleNamespace(), (),
+    )
+    observed = preflight._ObservedEffectiveSystemdV1(
+        administrative, SimpleNamespace(),
+        SimpleNamespace(snapshot=SimpleNamespace(
+            effective_units_hash=materials.prerequisite.effective_units_hash,
+        )),
+    )
+    return preflight._OperationalPreflightForTestV1(
+        selected, preflight._ObservedEffectiveSystemdForTestV1(observed),
+    )
+
+
+@LINUX_ONLY
+def test_check_all_attestation_is_exact_idempotent_and_no_replace(
+    tmp_path: Path,
+) -> None:
+    materials, _fragment = _target_materials()
+    materials, _encoded = _with_effective_prerequisite(materials, D("e"))
+    operational = _operational_attestation_fixture(materials)
+    root = tmp_path / "attestations"
+    root.mkdir(mode=0o755)
+
+    encoded = preflight._publish_preflight_attestation_for_test_v1(
+        operational, root,
+    )
+    value = preflight.decode_canonical_json_v1(
+        encoded, preflight.MAX_PREFLIGHT_ATTESTATION_BYTES_V1,
+    )
+    assert set(value) == {
+        "schema_version", "attestation_id", "request_id",
+        "closed_build_id", "release_sequence", "head_id",
+        "required_head_frame_hash", "deployment_descriptor_id",
+        "service_catalog_id", "service_coverage_hash",
+        "candidate_units_hash", "administrative_bundle_hash",
+        "python_binary_hash", "openssl_binary_hash", "openssl_tcb_hash",
+        "systemctl_binary_hash", "systemd_analyze_binary_hash",
+        "effective_units_hash", "checked_entry_ids",
+    }
+    assert value["checked_entry_ids"] == ["probe-target"]
+    unsigned = dict(value)
+    unsigned.pop("attestation_id")
+    assert value["attestation_id"] == preflight._digest(
+        preflight.PREFLIGHT_ATTESTATION_DOMAIN_V1,
+        preflight._canonical_json(unsigned),
+    )
+    destination = root / f"{materials.prerequisite.request_id}.json"
+    assert destination.read_bytes() == encoded
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o644
+    assert destination.stat().st_nlink == 1
+    assert preflight._publish_preflight_attestation_for_test_v1(
+        operational, root,
+    ) == encoded
+
+    destination.write_bytes(encoded + b" ")
+    with pytest.raises(preflight.PreflightError) as conflict:
+        preflight._publish_preflight_attestation_for_test_v1(
+            operational, root,
+        )
+    assert conflict.value.code == preflight.CODE_RECOVERY
+
+
+@LINUX_ONLY
+def test_check_all_attestation_retains_partial_state_for_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materials, _fragment = _target_materials()
+    materials, _encoded = _with_effective_prerequisite(materials, D("e"))
+    operational = _operational_attestation_fixture(materials)
+    root = tmp_path / "attestations"
+    root.mkdir(mode=0o755)
+    monkeypatch.setattr(
+        preflight.os, "link",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("killpoint")),
+    )
+
+    with pytest.raises(preflight.PreflightError) as failure:
+        preflight._publish_preflight_attestation_for_test_v1(
+            operational, root,
+        )
+    assert failure.value.code == preflight.CODE_RECOVERY
+    assert tuple(path.name for path in root.iterdir()) == (
+        "." + materials.prerequisite.request_id.removeprefix("sha256:") + ".tmp",
+    )
 
 
 def _install_prerequisite(
