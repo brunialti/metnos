@@ -504,7 +504,7 @@ pubblica gli altri attraverso Birth. L'esecuzione conclusiva ha pubblicato sei
 generazioni e riconosciuto quindici generazioni già correnti. Tutti i 21
 contratti incorporati possiedono una firma valida.
 
-Le prove finali sono tutte verdi: il censimento termina con `82 passed` e con
+Le prove finali sono tutte verdi: il censimento termina con `83 passed` e con
 esecuzione diretta priva di rilievi; la matrice firmata termina con
 `302 passed, 1.162 subtests passed`; le prove mirate del verificatore, del
 commit e dell'insieme preparato terminano con `51 passed, 1 skipped`, dove il
@@ -513,6 +513,17 @@ anche la precedente esecuzione completa della suite i18n, pari a
 `590 passed, 1.162 subtests passed`, perché le modifiche successive riguardano
 soltanto il protocollo Birth e le associazioni statiche puntuali del
 censimento.
+
+Il controllo della distribuzione ha censito esattamente i tredici nuovi
+sorgenti produttivi del consolidamento lessicale. Il profilo privato comprende
+684 sorgenti e ha radice
+`sha256:3089ab571fa2e8a2dbf09bd591492e628697c54d6dcfb507c674d52d17ded316`;
+quello pubblico comprende 672 sorgenti e ha radice
+`sha256:057be58564833e198b491211bfbb222f8d0cde77bb3d4595e578b07719a1caf3`.
+Entrambi superano il controllo di esportazione e la scansione per dati
+personali e segreti. La rotazione di queste impronte è normalizzata soltanto
+nei due campi-pin esatti del censimento statico; ogni altra modifica continua a
+invalidare l'autorità del modulo.
 
 Il candidato locale non ha più errori né prerequisiti tecnici aperti. Lo stato
 passa a `closed` dopo il commit su `main` e la verifica della relativa

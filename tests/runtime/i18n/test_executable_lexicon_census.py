@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from executable_lexicon_census import scan_file, scan_runtime
+from executable_lexicon_census import (
+    _module_ast_sha256, scan_file, scan_runtime,
+)
 
 
 def _scan_mutant(tmp_path: Path, relative: str, source_text: str):
@@ -763,3 +765,26 @@ def test_rm0005_executable_lexicon_census_is_clean() -> None:
         f"{issue.path}:{issue.line} {issue.code} {issue.symbol}"
         for issue in issues
     )
+
+
+def test_module_authority_digest_normalizes_only_closed_source_review_pin(
+) -> None:
+    import ast
+
+    old_pin = "sha256:" + "1" * 64
+    new_pin = "sha256:" + "2" * 64
+    first = ast.parse(
+        f'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "{old_pin}"\n'
+        'OTHER_SHA256 = "sha256:' + '3' * 64 + '"\n'
+    )
+    rotated = ast.parse(
+        f'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "{new_pin}"\n'
+        'OTHER_SHA256 = "sha256:' + '3' * 64 + '"\n'
+    )
+    unrelated_change = ast.parse(
+        f'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "{new_pin}"\n'
+        'OTHER_SHA256 = "sha256:' + '4' * 64 + '"\n'
+    )
+
+    assert _module_ast_sha256(first) == _module_ast_sha256(rotated)
+    assert _module_ast_sha256(rotated) != _module_ast_sha256(unrelated_change)

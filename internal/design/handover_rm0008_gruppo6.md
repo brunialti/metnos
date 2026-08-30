@@ -1856,11 +1856,19 @@ La pubblicazione riprendibile ha prodotto sei nuove generazioni e ha
 riconosciuto quindici generazioni già identiche. I 21 contratti incorporati
 sono firmati e validi. Le prove conclusive registrate prima del commit sono:
 
-- censimento statico: `82 passed` ed esecuzione diretta senza rilievi;
+- censimento statico: `83 passed` ed esecuzione diretta senza rilievi;
 - matrice firmata: `302 passed, 1.162 subtests passed`;
 - verificatore, commit e insieme preparato: `51 passed, 1 skipped`, con il
   solo salto dichiarato non applicabile alla piattaforma;
 - caricamento sigillato dell'insieme preparato: riuscito e coerente.
+
+Il controllo di esportazione è verde con il profilo privato
+`684 / sha256:3089ab571fa2e8a2dbf09bd591492e628697c54d6dcfb507c674d52d17ded316`
+e con il profilo pubblico
+`672 / sha256:057be58564833e198b491211bfbb222f8d0cde77bb3d4595e578b07719a1caf3`.
+I tredici nuovi sorgenti sono le dodici partizioni del seme lessicale e
+`runtime/executable_lexicon_census.py`. La scansione dell'esportazione non ha
+rilevato dati personali, segreti o file sensibili.
 
 Se occorre un nuovo handover, non bisogna ripetere la firma né ricostruire la
 radice. Il solo ordine residuo è: verificare commit e certificazione pubblica,

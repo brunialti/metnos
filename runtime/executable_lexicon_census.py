@@ -9,6 +9,7 @@ below as a typed technical invariant with a concrete reason.
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import json
 from collections import Counter
@@ -173,7 +174,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'compare_entries.py': ('ffc00edddb2c8ac4f9cc9227a90b824db0aec4a0af6e290eda791a2891414cbb', (('comparison', 1),)),
     'compound_decomposer.py': ('256070a1b292e58eb3ba1d63283a77bb11f9c20c836c4c574aeeefb60a88a178', (('comparison', 4),)),
     'config.py': ('257caa81f45083ad220824046694021f44f75a2f60e718374cbe80ebc9dee8ee', (('comparison', 13), ('helper-argument', 1))),
-    'contract_boundary_guard.py': ('aab21c584d48a5b3732883359b9789d7ce3dd1de411e42168d0525a7fa6937bf', (('comparison', 79),)),
+    'contract_boundary_guard.py': ('f6f3bc9abec2273c2f324e68083de19e2e3331724ce2103153086ce1c0e62815', (('comparison', 79),)),
     'contract_cutover_guard.py': ('39849f02e7854d0843edc10d20c528fffffce6d100276de81d069932d72e1759', (('comparison', 2),)),
     'contract_store.py': ('c250b901c348b94c8183339f82d2d12626d5cf4fd72efac58edc1f7232a00a37', (('comparison', 32), ('helper-argument', 3))),
     'credential_mandates.py': ('6f52143c2c23ef03146e16bb988c49b32745aee2e82ace13c7d2ff3f27be02a7', (('comparison', 5),)),
@@ -218,7 +219,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/validator.py': ('b695db516e444544a7a620315f51d2c2682b85134076a3d4c7d76a2d23198b6a', (('comparison', 12),)),
     'executor_aging.py': ('a23b3323659557c5e7eaf77fa6fc9a14637582a3ed69d86160605840048ad959', (('comparison', 5),)),
     'executor_birth_admin_operations.py': ('75fedbf55e79076fdbbbd2e87025e73971c10214696d3651f9be6a11a9cd77e9', (('comparison', 1),)),
-    'executor_birth_admin_preflight.py': ('6d59ba6d59294f693b860a1ce43f94b6f1dab717c0f24afac539ab6cd44c53be', (('comparison', 287), ('helper-argument', 13))),
+    'executor_birth_admin_preflight.py': ('ff2705a25bd16a107f1e6ef6281c133bd73af2b0c9cd3f8679e9928e1204e345', (('comparison', 287), ('helper-argument', 13))),
     'executor_birth_approval_authority.py': ('64fdddee16f9ae109ff75b33d98008710d963b7cee4ad2e883598b27575e17d4', (('comparison', 3), ('helper-argument', 1))),
     'executor_birth_approval_store.py': ('49c7f9e7d9f6a4912b4f11e351fa6820aa6ffd635134ec364b1f877f52badce8', (('comparison', 2),)),
     'executor_birth_authoring.py': ('fa7d739a561fe9014fa80ca50d086ec55ae91d038fb3971332be208d38284ecf', (('comparison', 6), ('helper-argument', 1))),
@@ -2401,9 +2402,47 @@ def _inline_literal_fingerprint(
     return hashlib.sha256(canonical).hexdigest()
 
 
+_CLOSED_SOURCE_REVIEW_PIN_NAMES = frozenset({
+    "BIRTH_CLOSED_SOURCE_REVIEW_SHA256",
+    "_BIRTH_CLOSED_SOURCE_REVIEW_SHA256",
+})
+
+
 def _module_ast_sha256(tree: ast.AST) -> str:
+    """Hash a reviewed module while treating the closed-source pin as data.
+
+    The pin is deliberately rotated whenever the reviewed source set changes.
+    It must not invalidate every unrelated, structurally reviewed technical
+    literal in the two gate modules.  Only the value of the two exact pin
+    assignments is normalized; names, assignment shape and all other SHA-256
+    values remain part of the module authority.
+    """
+    canonical_tree = copy.deepcopy(tree)
+    for node in ast.walk(canonical_tree):
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            targets = (node.target,)
+        else:
+            continue
+        if not any(
+            isinstance(target, ast.Name)
+            and target.id in _CLOSED_SOURCE_REVIEW_PIN_NAMES
+            for target in targets
+        ):
+            continue
+        value = node.value
+        if not (
+            isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+            and value.value.startswith("sha256:")
+            and len(value.value) == 71
+            and all(char in "0123456789abcdef" for char in value.value[7:])
+        ):
+            continue
+        value.value = "sha256:" + "0" * 64
     return hashlib.sha256(ast.dump(
-        tree, annotate_fields=True, include_attributes=False,
+        canonical_tree, annotate_fields=True, include_attributes=False,
     ).encode("utf-8")).hexdigest()
 
 

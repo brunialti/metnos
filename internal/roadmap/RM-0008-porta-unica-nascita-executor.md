@@ -1708,9 +1708,16 @@ un'interruzione e non emette nuove ricevute per una generazione autenticata già
 identica. L'esecuzione conclusiva ha pubblicato sei contratti e ne ha saltati
 quindici già correnti; tutte le 21 firme sono valide.
 
-Il gate laterale è verde: censimento `82 passed`, matrice firmata
+Il gate laterale è verde: censimento `83 passed`, matrice firmata
 `302 passed, 1.162 subtests passed` e perimetro Birth mirato
 `51 passed, 1 skipped` per un caso non applicabile alla piattaforma. RM-0008
 resta `active`, ma non è più fermo sul prerequisito RM-0005. Dopo la
 certificazione del commit pubblico, il percorso minimo riprende dalla
 fotografia systemd effettiva di G6-B3 descritta nell'handover.
+
+Il gate della distribuzione riconosce 684 sorgenti privati con radice
+`sha256:3089ab571fa2e8a2dbf09bd591492e628697c54d6dcfb507c674d52d17ded316`
+e 672 sorgenti pubblici con radice
+`sha256:057be58564833e198b491211bfbb222f8d0cde77bb3d4595e578b07719a1caf3`.
+I tredici ingressi aggiunti sono esattamente le dodici partizioni del seme
+lessicale e il censimento eseguibile; non sono state ammesse aggiunte implicite.
