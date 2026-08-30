@@ -2201,11 +2201,19 @@ della sorgente di servizio del prodotto dichiarano `ProtectSystem=strict` e
 NESSUN percorso scrivibile. Ognuna esegue lo stesso `check --entry-id` come
 `ExecStartPre`, quindi ognuna morirebbe allo stesso modo appena la nascita
 venisse imposta. Oggi non morde — `closed_build_enforcement()` e' falso e
-nessun servizio reale e' commutato sulla distribuzione candidata — ma la fase
-che completa la sorgente di servizio DEVE aggiungere la radice di esecuzione ai
-percorsi scrivibili di ogni unita' `gated`, preferibilmente nella ricetta
+nessun servizio reale e' commutato sulla distribuzione candidata.
+
+**La fase e' il GRUPPO 7**, che per il piano ottimizzato (§ «Restano
+esclusivamente nel gruppo 7») possiede l'attivazione sul sistema reale con
+`closed_build_enforcement()=True`, l'installazione dei nomi reali, la
+commutazione dei servizi correnti e la dichiarazione di completamento di F4.
+Prima di quella commutazione il gruppo 7 DEVE aggiungere la radice di
+esecuzione ai percorsi scrivibili di ogni unita' `gated`, nella ricetta
 condivisa `_service_unit_recipe`, che e' il punto unico dove il cancello viene
-imposto.
+imposto e quindi l'unico dove la sua necessita' non puo' essere dimenticata per
+una unita'. Nello stesso passaggio va sciolta la voce del registro delle
+disposizioni su `metnos-telegram-daemon.service`, che oggi tiene traccia dei
+permessi sui dati ancora irrisolti.
 
 Provato e poi ritirato per confine di mandato: imporre la dichiarazione in
 `_require_gated_service_shape_v1` e aggiungerla alla ricetta condivisa fa
@@ -2214,3 +2222,29 @@ che tiene traccia dei permessi sui dati di `metnos-telegram-daemon.service`,
 ancora irrisolti. Quel registro appartiene al completamento della sorgente di
 servizio, non a G6, e cancellarne una riga di passaggio avrebbe perso un
 requisito vero.
+
+
+### 23.24 I limiti di tempo della cella appartengono alla macchina, non al prodotto
+
+Con la radice scrivibile concessa, il punto di rottura si e' spostato ancora:
+non piu' un rifiuto, ma un'attesa. `systemctl start` sul servizio, chiamato di
+proposito per vedere il diniego senza prerequisito, e' rimasto appeso trenta
+secondi ed e' stato ucciso.
+
+**Perche' e' un progresso e non un guasto.** Il servizio e' `oneshot`, quindi
+`start` non torna finche' il cancello non ha finito. Finche' il cancello moriva
+al primo passo, tornava subito; ora fa davvero tutto il lavoro — e il lavoro
+comprende un censimento che esegue `systemctl show` UNA VOLTA PER UNITA' della
+macchina. Trenta secondi bastavano solo a un cancello che falliva.
+
+**Cosa e' stato cambiato.** I limiti di attesa della cella (`_systemctl`,
+`_wait_for`, le due chiamate che censiscono) passano a 300 secondi, e il
+budget del job Linux da 15 a 30 minuti. Non e' un allentamento di una prova: la
+cella deve fallire sul verdetto del gestore, mai su un cronometro, e la durata
+appartiene al numero di unita' della macchina di collaudo.
+
+**Osservazione da non perdere.** Che il cancello costi decine di secondi per
+ogni avvio e' un fatto di prestazioni del prodotto, non solo della prova: a
+regime ogni servizio pagherebbe quel censimento a ogni avvio. Non appartiene a
+G6, che dimostra correttezza e non costo, ma va misurato prima di imporre la
+nascita su una macchina con molte unita'.
