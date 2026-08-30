@@ -2131,10 +2131,18 @@ una condivisa il cui modo appartiene al sistema. La seconda e' il differenziale
 che nomina la causa: `/run` passa dal validatore e `/run/lock` no, attraverso
 lo STESSO validatore — e' la regola a parlare, non un caso speciale.
 
-**Filo aperto, non regressione.** Nessuno crea ancora il cancello in
-produzione: `_acquire_startup_gate_shared_v1` lo apre e non lo crea, e oggi lo
-prepara soltanto la cella. La creazione appartiene all'installazione (B4/D);
-va fatta nella nuova posizione.
+**Filo aperto, non regressione — e non e' solo il cancello.** Nessuno crea in
+produzione ne' il cancello (`_acquire_startup_gate_shared_v1` lo apre e non lo
+crea) ne' la radice delle attestazioni `PREFLIGHT_ATTESTATION_ROOT_V1`, che
+`_publish_preflight_attestation_core_v1` pretende esistente, `0o755` e di root.
+Oggi entrambe le prepara soltanto la cella. Sono UNA lacuna d'installazione,
+non due, e vanno chiuse insieme.
+
+**Correzione del giro avversariale 1.** La prima stesura di questa sezione
+prometteva «minimo privilegio». Va detto anche il resto: nessun titolare
+ESCLUSIVO del cancello esiste nel prodotto — l'unico `LOCK_EX` su quel file sta
+nel test, per provare che il lancio ha rilasciato il descrittore. Il blocco
+condiviso oggi non serializza nulla; il meccanismo e' a meta'.
 
 
 ### 23.22 La decima causa: chiedere scrittura su un cancello che si legge soltanto
@@ -2257,3 +2265,48 @@ ogni avvio e' un fatto di prestazioni del prodotto, non solo della prova: a
 regime ogni servizio pagherebbe quel censimento a ogni avvio. Non appartiene a
 G6, che dimostra correttezza e non costo, ma va misurato prima di imporre la
 nascita su una macchina con molte unita'.
+
+**Correzione del giro avversariale 1 — il budget non e' risolto, e' rinviato.**
+Misura del giro `33335689166`: cella 461 s, job 8 min 52 s, fermatasi al PRIMO
+passo di C4. Restano circa quattro censimenti (baseline, ausiliaria, drifted,
+`check-all` negato) a ~65 s l'uno, cioe' una stima di ~13,3 min contro un
+tetto di 15 che NON si puo' alzare. Alzare i limiti di attesa non crea budget:
+se il prossimo giro supera gli 11 minuti va ridotto il numero di censimenti.
+
+**Perdita dichiarata nella riduzione a due fotografie.** Le cinque catture
+separate esercitavano implicitamente il determinismo del censimento — due
+osservazioni indipendenti che concordavano. Con una sola cattura per momento
+quella verifica implicita non c'e' piu'. Il guadagno (i due archi provati nella
+STESSA osservazione, piu' il costo) resta superiore, ma la perdita va detta.
+
+
+### 23.25 C3 verde, e la dodicesima causa dentro C4
+
+Il giro `33335689166` ha superato **tutta la parte C3** della cella: marcatore
+scritto dal carico, credenziali e gruppi supplementari verificati, descrittori
+`[0,1,2]`, directory di lavoro, ambiente, `argv`, spazio dei nomi di mount,
+maschere di capacita' tutte a zero, modo del marcatore `0640` e proprieta'
+corretta. Il cancello e' stato preso, rilasciato e riacquisito in esclusiva dal
+test. C3 e' verde in attesa della conferma nel giro successivo.
+
+Il fallimento e' dentro C4, al primo `check-all`, con uscita 20
+`birth_ownership_preflight_missing`. La causa e' della stessa famiglia della
+decima: `_publish_preflight_attestation_core_v1` chiama
+`_require_safe_directory_chain_v1` su `PREFLIGHT_ATTESTATION_ROOT_V1` e
+pretende una directory esistente, `0o755` e di root; la cella quella directory
+la leggeva soltanto. Ora la crea accanto al cancello, e la lacuna
+d'installazione e' registrata come una sola (§23.21).
+
+**Come e' stata trovata.** Non da una previsione: dalla misura. E' il quarto
+inceppamento consecutivo in cui il rifiuto nomina il passo esatto, e il punto
+di rottura si e' spostato in avanti ogni volta.
+
+### 23.26 Revisione avversariale, giro 1
+
+Verdetto e rilievi completi in
+`internal/design/handover_rm0008_g6_revisione_avversariale_30_8_2026.md`.
+Cinque rilievi aperti (P1-1, P1-2, P1-3, P2-7, P2-8), tutti con disposizione
+applicata in questo incremento; cinque tesi verificate e accettate. Il verdetto
+del giro 1 e' **NON CONCORDO ANCORA SUL DOCUMENTO**, e le correzioni qui sopra
+sono la risposta a quel verdetto, non la sua chiusura: il giro successivo deve
+verificarle, non fidarsene.
