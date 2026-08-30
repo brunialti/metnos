@@ -2135,3 +2135,38 @@ lo STESSO validatore — e' la regola a parlare, non un caso speciale.
 produzione: `_acquire_startup_gate_shared_v1` lo apre e non lo crea, e oggi lo
 prepara soltanto la cella. La creazione appartiene all'installazione (B4/D);
 va fatta nella nuova posizione.
+
+
+### 23.22 La decima causa: chiedere scrittura su un cancello che si legge soltanto
+
+Il giro dopo la correzione del §23.21 ha separato due difetti che finora si
+presentavano come uno. La sonda privilegiata, eseguita FUORI dall'unita', non
+riporta piu' `exit=21` immediato: ora `check` supera la porta e prosegue fino
+al censimento, dove finisce nello stesso timeout di `check-all`. Dentro
+l'unita', invece, il rifiuto resta e arriva in un secondo.
+
+**Cosa distingue i due ambienti.** Solo l'unita' ha `ProtectSystem=strict`, che
+monta l'intera gerarchia in sola lettura. Il cancello veniva aperto `O_RDWR`:
+fuori dall'unita' il montaggio e' scrivibile e l'apertura riesce, dentro
+ritorna EROFS e il lancio nega. La velocita' del rifiuto lo conferma: e' un
+errore del kernel all'apertura, non una verifica lunga.
+
+**La correzione.** Chi tiene il blocco CONDIVISO non scrive mai: `flock` posa
+il blocco consultivo sul descrittore qualunque sia il modo d'accesso — non e'
+un blocco POSIX di record — quindi `O_RDONLY` basta e funziona su un montaggio
+in sola lettura. L'alternativa sarebbe stata dichiarare `ReadWritePaths` sulla
+radice di esecuzione, cioe' dare al carico gia' demoted accesso in scrittura
+alla directory privata del prodotto: chiedere di meno e' la correzione, non
+concedere di piu'.
+
+**Perche' non si ripeta.** Una prova portabile in due meta', ciascuna che
+misura cio' che dichiara: la prima legge l'UNICO punto di chiamata del
+cancello e pretende `O_RDONLY` senza `O_RDWR`; la seconda misura la risposta
+del kernel su un file vero — `LOCK_SH` concesso su un descrittore in sola
+lettura, `write` rifiutata. Verificata contro il mutante: rimettendo `O_RDWR`
+la prova fallisce.
+
+**Nota sui tempi.** Il censimento di tutte le unita' della macchina ha superato
+i 60 secondi sul runner mentre il timer riavviava il servizio fallito. Il
+limite di quelle chiamate passa a 300 secondi: la cella deve fallire sul
+verdetto del prodotto, mai su un cronometro.
