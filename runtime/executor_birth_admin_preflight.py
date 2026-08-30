@@ -736,7 +736,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:5f3da30d19cefa019aa9d546d0b5120265d8d632cde52167c000f62dc9367b84"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:87d24750912c2b51cc50424ace7637885fa64719104b55989d7589a770d35864"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -6689,23 +6689,35 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
                     + len(head.encoded).to_bytes(4, "big")
                     + head.encoded + head.signature
                 )
-                if (
-                    head.head_id != latest.head_id
-                    or head.cutover_id != latest.cutover_id
-                    or head.closed_build_id != first.closed_build_id
-                    or head.previous_head_id != first.previous_head_id
-                    or latest.head_payload_hash != _framed_sha256_v1(
-                        HEAD_PAYLOAD_HASH_DOMAIN_V2, head.encoded,
+                # A conjunction that refuses without saying which of its
+                # seven bindings disagreed costs one round per hypothesis, and
+                # this path runs only under a real manager. The names are
+                # structural; the values they compare stay out.
+                disagreed = [
+                    name for name, matches in (
+                        ("head_id", head.head_id == latest.head_id),
+                        ("cutover_id", head.cutover_id == latest.cutover_id),
+                        ("closed_build_id",
+                         head.closed_build_id == first.closed_build_id),
+                        ("previous_head_id",
+                         head.previous_head_id == first.previous_head_id),
+                        ("head_payload_hash",
+                         latest.head_payload_hash == _framed_sha256_v1(
+                             HEAD_PAYLOAD_HASH_DOMAIN_V2, head.encoded)),
+                        ("head_signature_hash",
+                         latest.head_signature_hash == _framed_sha256_v1(
+                             HEAD_SIGNATURE_HASH_DOMAIN_V2, head.signature)),
+                        ("required_head_frame_hash",
+                         latest.required_head_frame_hash == _framed_sha256_v1(
+                             REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, framed_head)),
+                        ("verified_chain_head_id",
+                         latest.verified_chain_head_id == head.head_id),
+                    ) if not matches
+                ]
+                if disagreed:
+                    raise _recovery(
+                        "transaction head binding " + ",".join(disagreed)
                     )
-                    or latest.head_signature_hash != _framed_sha256_v1(
-                        HEAD_SIGNATURE_HASH_DOMAIN_V2, head.signature,
-                    )
-                    or latest.required_head_frame_hash != _framed_sha256_v1(
-                        REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, framed_head,
-                    )
-                    or latest.verified_chain_head_id != head.head_id
-                ):
-                    raise _recovery("transaction head binding")
                 completed_by_sequence[first.release_sequence] = transaction
 
         transactions_by_build = {
