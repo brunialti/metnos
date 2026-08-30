@@ -816,6 +816,33 @@ def _unit_diagnosis(unit_name: str) -> str:
     return "\n".join(item for item in lines if item)
 
 
+def _installed_check_as(account, entry_id: str, python: str) -> str:
+    """Run the installed check from the identity the unit actually uses.
+
+    The in-process attestation runs as root, in the test's own context; the
+    unit runs demoted and inside its sandbox. When the two disagree the cause
+    lives in that difference, and only the demoted run can show it.
+    """
+    program = (ADMINISTRATIVE_ROOT / "preflight.py").as_posix()
+    for command in ("check-all", "check"):
+        argv = [python, "-I", "-S", program, command]
+        if command == "check":
+            argv += ["--entry-id", entry_id]
+        try:
+            run = subprocess.run(
+                argv, capture_output=True, text=True, timeout=60,
+                preexec_fn=_demote(account),
+            )
+        except Exception as failure:
+            return f"demoted {command}: raised {type(failure).__name__}"
+        if run.returncode != 0:
+            return (
+                f"demoted {command}: exit={run.returncode} "
+                f"stderr={run.stderr.strip()!r}"
+            )
+    return "demoted check-all and check: accepted"
+
+
 def _wait_for(predicate, timeout: float = 15.0, *, diagnose=None) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -931,7 +958,10 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         _systemctl("start", fixture.timer_name)
         _wait_for(
             fixture.marker_path.exists,
-            diagnose=lambda: _unit_diagnosis(fixture.service_name),
+            diagnose=lambda: _unit_diagnosis(fixture.service_name) + "\n"
+            + _installed_check_as(
+                fixture.account, fixture.service_entry_id, python,
+            ),
         )
         gate_descriptor = os.open(STARTUP_GATE, os.O_RDWR)
         try:
