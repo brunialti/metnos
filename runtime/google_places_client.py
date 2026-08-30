@@ -49,62 +49,79 @@ def _load_api_key() -> str | None:
     return None
 
 
-# Mapping IT/EN → Google Places type ufficiale (subset comune).
-# Lista canonica: https://developers.google.com/maps/documentation/places/web-service/place-types
-_AUTO_GOOGLE_TYPE = {
-    # IT
-    "farmacia": "pharmacy", "farmacie": "pharmacy",
-    "ristorante": "restaurant", "ristoranti": "restaurant",
-    "bar": "bar", "pub": "bar",
-    "pizzeria": "pizza_restaurant", "pizzerie": "pizza_restaurant",
-    "gelateria": "ice_cream_shop", "gelaterie": "ice_cream_shop",
-    "banca": "bank", "banche": "bank",
-    "atm": "atm", "bancomat": "atm",
-    "ospedale": "hospital", "ospedali": "hospital",
-    "distributore": "gas_station", "benzinaio": "gas_station",
-    "parcheggio": "parking", "parcheggi": "parking",
-    "supermercato": "supermarket", "supermercati": "supermarket",
-    "panetteria": "bakery", "panetterie": "bakery",
-    "posta": "post_office", "poste": "post_office",
-    "fermata": "bus_stop", "bus": "bus_stop",
-    "stazione": "train_station",
-    "hotel": "lodging", "albergo": "lodging", "alberghi": "lodging",
-    "museo": "museum", "musei": "museum",
-    "cinema": "movie_theater",
-    "teatro": "performing_arts_theater", "teatri": "performing_arts_theater",
-    "palestra": "gym", "palestre": "gym",
-    "parrucchiere": "hair_care",
-    "ottico": "store",
-    "libreria": "book_store", "librerie": "book_store",
-    "scuola": "school", "scuole": "school",
-    "biblioteca": "library", "biblioteche": "library",
-    "parco": "park", "parchi": "park",
-    "chiesa": "church", "chiese": "church",
-    "comune": "city_hall", "municipio": "city_hall",
-    # EN
-    "pharmacy": "pharmacy", "pharmacies": "pharmacy", "drugstore": "pharmacy",
-    "restaurant": "restaurant", "restaurants": "restaurant",
-    "bank": "bank", "banks": "bank",
-    "hospital": "hospital", "hospitals": "hospital",
-    "gas": "gas_station", "fuel": "gas_station", "petrol": "gas_station",
-    "parking": "parking",
-    "supermarket": "supermarket", "supermarkets": "supermarket",
-    "bakery": "bakery",
-    "post": "post_office",
-    "museum": "museum", "museums": "museum",
-    "library": "library",
-    "school": "school",
-    "park": "park", "parks": "park",
-    "church": "church",
+# Pure protocol projection: canonical OSM identity -> Google Places type.
+# Natural-language surfaces live only in detection concept ``geo.osm_tag``.
+# Lista Google canonica:
+# https://developers.google.com/maps/documentation/places/web-service/place-types
+_OSM_TO_GOOGLE_TYPE = {
+    "amenity:pharmacy": "pharmacy",
+    "amenity:restaurant": "restaurant",
+    "amenity:bar": "bar",
+    "amenity:pub": "bar",
+    "amenity:fast_food": "pizza_restaurant",
+    "amenity:ice_cream": "ice_cream_shop",
+    "amenity:bank": "bank",
+    "amenity:atm": "atm",
+    "amenity:hospital": "hospital",
+    "amenity:fuel": "gas_station",
+    "amenity:parking": "parking",
+    "shop:supermarket": "supermarket",
+    "shop:bakery": "bakery",
+    "amenity:post_office": "post_office",
+    "highway:bus_stop": "bus_stop",
+    "railway:station": "train_station",
+    "tourism:hotel": "lodging",
+    "tourism:museum": "museum",
+    "amenity:cinema": "movie_theater",
+    "amenity:theatre": "performing_arts_theater",
+    "leisure:fitness_centre": "gym",
+    "shop:hairdresser": "hair_care",
+    "shop:optician": "store",
+    "shop:books": "book_store",
+    "amenity:school": "school",
+    "amenity:library": "library",
+    "leisure:park": "park",
+    "amenity:place_of_worship": "church",
+    "amenity:townhall": "city_hall",
 }
+
+
+def _google_surface_types() -> dict[str, str]:
+    """Ready localized surface -> Google type, with no language fallback.
+
+    Reviewed baselines are additive only after the active native resource has
+    passed readiness. Thus IT/EN compatibility remains available for a ready
+    installation, while a missing, pending or stale active language yields no
+    positive type signal.
+    """
+    import detection_lexicon as _detlex
+
+    localized = _detlex.native_ready_mapping(
+        "geo.osm_tag", include_reviewed_baselines=True,
+    )
+    out: dict[str, str] = {}
+    for osm_tag, forms in localized.items():
+        google_type = _OSM_TO_GOOGLE_TYPE.get(str(osm_tag))
+        if not google_type or not isinstance(forms, list):
+            continue
+        for form in forms:
+            surface = str(form).strip().casefold()
+            if not surface:
+                continue
+            previous = out.get(surface)
+            if previous is not None and previous != google_type:
+                return {}
+            out[surface] = google_type
+    return out
 
 
 def _autotype_for_query(query: str) -> str | None:
     if not query:
         return None
-    tokens = query.lower().replace(",", " ").replace(".", " ").split()
+    tokens = query.casefold().replace(",", " ").replace(".", " ").split()
+    surface_types = _google_surface_types()
     for t in tokens:
-        v = _AUTO_GOOGLE_TYPE.get(t)
+        v = surface_types.get(t)
         if v:
             return v
     return None

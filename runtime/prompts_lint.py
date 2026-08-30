@@ -74,19 +74,6 @@ _LANG_RE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
 
 _STYLE_VALID = ("prescriptive", "definitional", "few_shot")
 
-# Hedge blacklist (case-insensitive). Solo `style: prescriptive`.
-_HEDGE_PATTERNS = (
-    "preferibilmente",
-    "se possibile",
-    "cerca di",
-    "prova a",
-    "preferably",
-    "if possible",
-    "try to",
-    "perhaps",
-    "maybe",
-)
-
 # Soglie LOC: avviso/error.
 _LOC_WARN = 800
 _LOC_ERROR = 1200
@@ -180,12 +167,25 @@ def _check_l2_hedge_blacklist(path: Path, content: str) -> list[LintIssue]:
     fields, _ = _parse_frontmatter(content)
     if not fields or fields.get("style") != "prescriptive":
         return []
+    from detection_lexicon_seed_residual_nz import (
+        PROMPTS_LINT_HEDGES,
+        forms_for_language,
+    )
+    language = fields.get("lang", "")
+    hedge_patterns = forms_for_language(PROMPTS_LINT_HEDGES, language)
+    if hedge_patterns is None:
+        return [LintIssue(
+            file=str(path), line=0, level="error",
+            code="L2_LEXICON_UNAVAILABLE",
+            message=(f"lexicon_unavailable: concept={PROMPTS_LINT_HEDGES} "
+                     f"lang={language}"),
+        )]
     body = _content_after_frontmatter(content)
     issues: list[LintIssue] = []
     body_lines = body.splitlines()
     for idx, line in enumerate(body_lines, start=1):
         low = line.lower()
-        for pat in _HEDGE_PATTERNS:
+        for pat in hedge_patterns:
             # Confine di parola: a sottostringa nuda «entry to» conteneva
             # «try to» e un prompt corretto risultava in violazione.
             if re.search(rf"\b{re.escape(pat)}\b", low):

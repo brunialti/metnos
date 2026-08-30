@@ -23,17 +23,30 @@ visibile al PLANNER e `invoke()` per l'entrypoint dal runtime.
 from __future__ import annotations
 
 import json
+import hashlib
+import os
 import re
+import sqlite3
+import stat
 import sys
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
+from string import Formatter
 from typing import Callable, Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from logging_setup import get_logger
+from messages import get as _msg
+import i18n as _i18n
 
-from safety.canonicalize import compute_signature, has_sudo_wrapper
+from safety.canonicalize import (
+    ArgvValidationError,
+    ValidatedArgv,
+    render_argv_for_display,
+    validate_argv,
+)
 from safety.storage import SafetyStore
 
 log = get_logger(__name__)
@@ -291,23 +304,14 @@ def _default_llm_call(prompt: str) -> str:
         return str(getattr(result, "text", "") or "")
     except Exception as e:  # pragma: no cover (dev fallback)
         log.warning("admin LLM bridge unavailable, returning unknown (%s)", e)
-        return '{"kind": "unknown", "reason": "LLM router unavailable"}'
+        return '{"kind": "unknown"}'
 
 
 # ── Wait-prompt emitter ───────────────────────────────────────────────
 
-WAIT_LOW = (
-    "Sto valutando se posso fare quello che mi chiedi senza forzare i "
-    "vincoli di sicurezza, mi prendo qualche secondo."
-)
-WAIT_MEDIUM = (
-    "Il comando che mi stai chiedendo richiede un'analisi piu' attenta "
-    "del solito, ti aggiorno appena ho una proposta concreta."
-)
-WAIT_HIGH = (
-    "Non riconosco il comando che dovrei eseguire. Ti chiedo come "
-    "trattarlo, una volta sola se vuoi."
-)
+WAIT_LOW = "MSG_SYSTEM_ADMIN_WAIT_LOW"
+WAIT_MEDIUM = "MSG_SYSTEM_ADMIN_WAIT_MEDIUM"
+WAIT_HIGH = "MSG_SYSTEM_ADMIN_WAIT_HIGH"
 
 
 # ── Decision dataclasses ──────────────────────────────────────────────
@@ -341,13 +345,14 @@ class AdminDecision:
     card_payload: Optional[dict] = None
     needs_inputs_payload: Optional[dict] = None
     audit: dict = field(default_factory=dict)
+    validated_argv: Optional[ValidatedArgv] = field(default=None, repr=False)
 
 
 # ── Reversibility classifier (kept private to avoid duplicating
 #    compute_signatures; tiny static map is enough for the decision flow) ─
 
 _IRREVERSIBLE_BINARIES = {
-    "rm", "dd", "shred", "wipefs",
+    "rm", "dd", "shred", "wipefs", "mkswap", "blkdiscard",
     "mkfs", "mkfs.ext4", "mkfs.ext3", "mkfs.ext2",
     "mkfs.xfs", "mkfs.btrfs", "mkfs.fat", "mkfs.vfat",
     "fdisk", "parted", "sgdisk",
@@ -369,12 +374,19 @@ _REVERSIBLE_HINTS: dict[tuple[str, str], str] = {
 
 
 def _classify_reversibility(sig) -> tuple[str, Optional[str]]:
-    if sig.binary in _IRREVERSIBLE_BINARIES:
+    if sig.binary in _IRREVERSIBLE_BINARIES or sig.binary.startswith("mkfs."):
         return "irreversible", None
     hint = _REVERSIBLE_HINTS.get((sig.binary, sig.subcommand_or_flag))
     if hint:
         return "reversible", hint
     return "unknown", None
+
+
+def _severity_for_reversibility(reversibility: str) -> str:
+    """Map classifier output to the closed SafetyStore severity domain."""
+    if reversibility in {"irreversible", "reversible"}:
+        return reversibility
+    return "dangerous"
 
 
 # ── Forbidden check (raw argv, complementary to canonical blacklist) ──
@@ -383,44 +395,101 @@ _FORBIDDEN_DESTRUCTIVE_BINS = frozenset({
     "rm", "mv", "cp", "dd", "mkfs", "shred", "wipefs",
     "mkfs.ext4", "mkfs.ext3", "mkfs.ext2",
     "mkfs.xfs", "mkfs.btrfs", "mkfs.fat", "mkfs.vfat",
+    "mkfs.exfat", "mkfs.ntfs", "mkswap", "blkdiscard",
+    "fdisk", "parted", "sgdisk",
 })
 _FORBIDDEN_PATHS = frozenset({
     "/", "/etc", "/boot", "/proc", "/sys", "/usr", "/lib", "/lib64",
 })
-_BLOCK_DEVICE_RE = re.compile(
-    r"^/dev/(sd[a-z]\d*|nvme\d+n\d+(p\d+)?|disk\d+|loop\d+|mmcblk\d+(p\d+)?)$"
-)
+_BLOCK_DEVICE_RE = re.compile(r"^/dev(?:/|$)")
+_RAW_DISK_PRIMITIVES = frozenset({
+    "dd", "mkfs", "wipefs", "mkswap", "blkdiscard",
+    "fdisk", "parted", "sgdisk",
+})
 
 
-def _check_forbidden_argv(argv: list[str]) -> tuple[bool, Optional[str]]:
-    """Returns (negate, reason). Operates on the raw argv to catch path-level
-    bombs that the canonical signature might abstract away.
-    """
-    if not argv:
-        return False, None
-    binary = Path(argv[0]).name
-    rest = argv[1:]
-    if binary in {"sudo", "doas", "pkexec"} and rest:
-        for i, t in enumerate(rest):
-            if not t.startswith("-"):
-                binary = Path(t).name
-                rest = rest[i + 1:]
-                break
-    if binary not in _FORBIDDEN_DESTRUCTIVE_BINS:
-        return False, None
-    for tok in rest:
-        value = (
-            tok.split("=", 1)[-1]
-            if "=" in tok and not tok.startswith("-")
-            else tok
-        )
+def _validated(argv: ValidatedArgv | list[str] | tuple[str, ...]) -> ValidatedArgv:
+    return argv if isinstance(argv, ValidatedArgv) else validate_argv(argv)
+
+
+def _forbidden_argv_target(
+    argv: ValidatedArgv | list[str] | tuple[str, ...],
+) -> tuple[str, str, str] | None:
+    try:
+        validated = _validated(argv)
+    except ArgvValidationError as exc:
+        return "wrapper", exc.detail, "invalid_argv"
+    binary = validated.binary
+    if binary in _RAW_DISK_PRIMITIVES or binary.startswith("mkfs."):
+        # These programs open raw storage after the generic approval boundary.
+        # No path snapshot can make that operation TOCTOU-safe; a dedicated,
+        # handle-bound executor is required instead.
+        return binary, binary, "raw_disk_primitive"
+    if (binary not in _FORBIDDEN_DESTRUCTIVE_BINS
+            and not binary.startswith("mkfs.")):
+        return None
+    for tok in validated.command_argv[1:]:
+        value = tok.partition("=")[2] if "=" in tok else tok
+        if not value.startswith("/"):
+            continue
         if value in _FORBIDDEN_PATHS:
-            return True, f"destructive '{binary}' on '{value}' (Law 1)"
+            return binary, value, "destructive_path"
         if _BLOCK_DEVICE_RE.match(value):
-            return True, (
-                f"destructive '{binary}' on block device '{value}' (Law 1)"
-            )
-    return False, None
+            return binary, value, "block_device"
+        current = Path("/")
+        for component in Path(value).parts[1:]:
+            current /= component
+            try:
+                mode = os.lstat(current).st_mode
+            except (FileNotFoundError, NotADirectoryError):
+                break
+            except OSError:
+                # An uninspectable path component is ambiguous; destructive
+                # commands fail closed at both plan and fire time.
+                return binary, value, "ambiguous_target"
+            if stat.S_ISLNK(mode):
+                return binary, value, "ambiguous_target"
+            if current == Path(value) and stat.S_ISBLK(mode):
+                return binary, value, "block_device"
+    return None
+
+
+def _check_forbidden_argv(
+    argv: ValidatedArgv | list[str] | tuple[str, ...],
+) -> tuple[bool, Optional[str]]:
+    """Returns (negate, stable audit reason) for raw path-level bombs."""
+    target = _forbidden_argv_target(argv)
+    if target is None:
+        return False, None
+    binary, value, kind = target
+    if kind == "invalid_argv":
+        return True, f"invalid privilege argv: {value}"
+    if kind == "raw_disk_primitive":
+        return True, f"raw-disk primitive '{binary}' is forbidden (Law 1)"
+    if kind == "block_device":
+        return True, f"destructive '{binary}' on block device '{value}' (Law 1)"
+    if kind == "ambiguous_target":
+        return True, f"destructive '{binary}' on ambiguous target '{value}' (Law 1)"
+    return True, f"destructive '{binary}' on '{value}' (Law 1)"
+
+
+def _localized_forbidden_reason(
+    argv: ValidatedArgv | list[str] | tuple[str, ...],
+) -> str:
+    target = _forbidden_argv_target(argv)
+    if target is None:
+        return _msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED")
+    binary, value, kind = target
+    if kind == "invalid_argv":
+        return _msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED")
+    if kind == "raw_disk_primitive":
+        return _msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED")
+    return _msg(
+        "MSG_SYSTEM_ADMIN_FORBIDDEN_BLOCK_DEVICE" if kind == "block_device"
+        else "MSG_SYSTEM_ADMIN_FORBIDDEN_DESTRUCTIVE_PATH",
+        binary=render_argv_for_display([binary]),
+        target=render_argv_for_display([value]),
+    )
 
 
 # ── Approval card UX (22/5/2026): role-aware + danger summary ────────
@@ -449,94 +518,283 @@ def _is_admin_actor(actor: str) -> bool:
     return actor == "host"
 
 
-def _explain_command_dangers(argv: list[str], severity: str | None) -> str:
-    """Spiegazione testuale dei rischi del comando (1-2 frasi). Deterministica,
-    basata sul binario + flags + severity dalla policy. Niente LLM.
-    """
-    if not argv:
-        return "Comando vuoto."
-    binary = argv[0].split("/")[-1]
-    flags = [t for t in argv[1:] if t.startswith("-")]
+_DANGER_MESSAGE_KEY_BY_BINARY = {
+    "rm": "MSG_SYSTEM_ADMIN_DANGER_RM",
+    "dd": "MSG_SYSTEM_ADMIN_DANGER_DD",
+    "mkfs": "MSG_SYSTEM_ADMIN_DANGER_MKFS",
+    "mkfs.ext4": "MSG_SYSTEM_ADMIN_DANGER_MKFS",
+    "mkfs.ext3": "MSG_SYSTEM_ADMIN_DANGER_MKFS",
+    "mkfs.ext2": "MSG_SYSTEM_ADMIN_DANGER_MKFS",
+    "mkfs.xfs": "MSG_SYSTEM_ADMIN_DANGER_MKFS",
+    "mkfs.btrfs": "MSG_SYSTEM_ADMIN_DANGER_MKFS",
+    "mkfs.fat": "MSG_SYSTEM_ADMIN_DANGER_MKFS",
+    "mkfs.vfat": "MSG_SYSTEM_ADMIN_DANGER_MKFS",
+    "mkfs.exfat": "MSG_SYSTEM_ADMIN_DANGER_MKFS",
+    "mkfs.ntfs": "MSG_SYSTEM_ADMIN_DANGER_MKFS",
+    "mkswap": "MSG_SYSTEM_ADMIN_DANGER_MKFS",
+    "blkdiscard": "MSG_SYSTEM_ADMIN_DANGER_WIPEFS",
+    "shred": "MSG_SYSTEM_ADMIN_DANGER_SHRED",
+    "wipefs": "MSG_SYSTEM_ADMIN_DANGER_WIPEFS",
+    "fdisk": "MSG_SYSTEM_ADMIN_DANGER_PARTITIONS",
+    "parted": "MSG_SYSTEM_ADMIN_DANGER_PARTITIONS",
+    "sgdisk": "MSG_SYSTEM_ADMIN_DANGER_PARTITIONS",
+    "iptables": "MSG_SYSTEM_ADMIN_DANGER_IPTABLES",
+    "ip": "MSG_SYSTEM_ADMIN_DANGER_IP",
+    "modprobe": "MSG_SYSTEM_ADMIN_DANGER_MODPROBE",
+    "sysctl": "MSG_SYSTEM_ADMIN_DANGER_SYSCTL",
+    "mount": "MSG_SYSTEM_ADMIN_DANGER_MOUNT",
+    "umount": "MSG_SYSTEM_ADMIN_DANGER_UMOUNT",
+    "systemctl": "MSG_SYSTEM_ADMIN_DANGER_SYSTEMCTL",
+    "kill": "MSG_SYSTEM_ADMIN_DANGER_KILL",
+    "killall": "MSG_SYSTEM_ADMIN_DANGER_KILLALL",
+    "chmod": "MSG_SYSTEM_ADMIN_DANGER_CHMOD",
+    "chown": "MSG_SYSTEM_ADMIN_DANGER_CHOWN",
+    "apt": "MSG_SYSTEM_ADMIN_DANGER_PACKAGES",
+    "apt-get": "MSG_SYSTEM_ADMIN_DANGER_PACKAGES",
+    "dpkg": "MSG_SYSTEM_ADMIN_DANGER_DPKG",
+    "useradd": "MSG_SYSTEM_ADMIN_DANGER_USERADD",
+    "userdel": "MSG_SYSTEM_ADMIN_DANGER_USERDEL",
+}
 
-    danger_by_binary = {
-        "rm": "Cancella file/directory in modo IRREVERSIBILE.",
-        "dd": "Scrittura raw su block device. Puo' distruggere dati.",
-        "mkfs": "Formatta un filesystem cancellando tutto sul device.",
-        "shred": "Sovrascrive file per rendere il recupero impossibile.",
-        "wipefs": "Cancella signature filesystem da un device.",
-        "fdisk": "Modifica tabella partizioni — cambio struttura disco.",
-        "parted": "Modifica tabella partizioni — cambio struttura disco.",
-        "iptables": "Modifica firewall del kernel — puo' bloccare la rete.",
-        "ip": "Modifica configurazione di rete (route/addr/link).",
-        "modprobe": "Carica/scarica moduli kernel.",
-        "sysctl": "Modifica parametri kernel runtime.",
-        "mount": "Monta filesystem — cambia visibilita' dati.",
-        "umount": "Smonta filesystem — interrompe accesso a dati.",
-        "systemctl": "Gestione servizi systemd (start/stop/restart/enable).",
-        "kill": "Termina processi forzatamente.",
-        "killall": "Termina TUTTI i processi con nome dato.",
-        "chmod": "Modifica permessi file/directory.",
-        "chown": "Modifica proprietario file/directory.",
-        "apt": "Installa/rimuove pacchetti dal sistema.",
-        "apt-get": "Installa/rimuove pacchetti dal sistema.",
-        "dpkg": "Manipola pacchetti Debian.",
-        "useradd": "Aggiunge utenti al sistema.",
-        "userdel": "Rimuove utenti dal sistema (e i loro file).",
-    }
-    base = danger_by_binary.get(binary,
-        f"`{binary}` non e' nella whitelist conosciuta. Esecuzione non automaticamente sicura.")
 
-    notes = []
-    # Force flags: -f, --force, oppure 'f' all'interno di un short-flag cluster
-    # tipo `-rf`/`-fr`/`-Rf` (POSIX getopt: short flags concatenati).
+_APPROVAL_TEMPLATE_FIELDS: dict[str, frozenset[str]] = {
+    **{
+        key: frozenset()
+        for key in set(_DANGER_MESSAGE_KEY_BY_BINARY.values())
+    },
+    "MSG_SYSTEM_ADMIN_DANGER_EMPTY": frozenset(),
+    "MSG_SYSTEM_ADMIN_DANGER_UNKNOWN_BINARY": frozenset({"binary"}),
+    "MSG_SYSTEM_ADMIN_DANGER_NOTE_FORCE": frozenset(),
+    "MSG_SYSTEM_ADMIN_DANGER_NOTE_RECURSIVE": frozenset(),
+    "MSG_SYSTEM_ADMIN_DANGER_NOTE_ROOT": frozenset(),
+    "MSG_SYSTEM_ADMIN_DANGER_NOTE_IRREVERSIBLE": frozenset(),
+    "MSG_SYSTEM_ADMIN_DANGER_NOTE_DANGEROUS": frozenset(),
+    "MSG_SYSTEM_ADMIN_APPROVAL_WARNING_HOST": frozenset({"danger_summary"}),
+    "MSG_SYSTEM_ADMIN_APPROVAL_WARNING_GUEST": frozenset(
+        {"command", "danger_summary"}
+    ),
+}
+_APPROVAL_I18N_ERROR = "ERR_SYSTEM_ADMIN_APPROVAL_CATALOG_UNAVAILABLE"
+_APPROVAL_CARD_ERROR = "ERR_ADMIN_APPROVAL_CARD_MISMATCH"
+_CONSENT_STORE_ERROR = "ERR_ADMIN_CONSENT_STORE_UNAVAILABLE"
+_ADMIN_APPROVAL_OPTIONS = (
+    "approve_once", "approve_and_whitelist", "reject_once", "block_forever",
+)
+_GUEST_APPROVAL_OPTIONS = (
+    "run_externally", "request_admin_whitelist", "reject_once",
+)
+
+
+class _ApprovalCatalogError(RuntimeError):
+    """The complete approval-card locale is not ready and coherent."""
+
+
+class _ConsentStoreUnavailable(RuntimeError):
+    """The exact-argv capability store could not be read atomically."""
+
+
+def _approval_options_for_actor(actor: str) -> tuple[str, ...]:
+    """Return the closed choice set derived only from server-side identity."""
+
+    return _ADMIN_APPROVAL_OPTIONS if _is_admin_actor(actor) else _GUEST_APPROVAL_OPTIONS
+
+
+def _canonical_target_binary(
+    argv: ValidatedArgv | list[str] | tuple[str, ...],
+) -> str:
+    """Use the safety canonicalizer as the privilege-wrapper boundary."""
+    try:
+        return _validated(argv).binary
+    except ArgvValidationError:
+        return ""
+
+
+def _danger_message_keys(
+    argv: ValidatedArgv | list[str] | tuple[str, ...], severity: str | None,
+) -> list[str]:
+    try:
+        validated = _validated(argv)
+    except ArgvValidationError:
+        return ["MSG_SYSTEM_ADMIN_DANGER_EMPTY"]
+    binary = validated.binary
+    danger_key = _DANGER_MESSAGE_KEY_BY_BINARY.get(binary)
+    if danger_key is None and binary.startswith("mkfs."):
+        danger_key = "MSG_SYSTEM_ADMIN_DANGER_MKFS"
+    keys = [danger_key or "MSG_SYSTEM_ADMIN_DANGER_UNKNOWN_BINARY"]
+    flags = [token for token in validated.command_argv[1:]
+             if token.startswith("-")]
+
     def _has_short(letter: str, flag: str) -> bool:
         return (flag.startswith("-") and not flag.startswith("--")
                 and letter in flag[1:])
-    has_force = any(f == "--force" or _has_short("f", f) for f in flags)
-    has_recursive = any(f in ("--recursive",) or _has_short("r", f)
-                         or _has_short("R", f) for f in flags)
-    if has_force:
-        notes.append("Include flag forzanti (`-f`/`--force`) che saltano conferme.")
-    if has_recursive:
-        notes.append("Operazione RICORSIVA su tutta la sottostruttura.")
-    sudo_required = any(t == "sudo" for t in argv)
-    if sudo_required:
-        notes.append("Richiede privilegi root (`sudo`).")
+
+    if any(flag == "--force" or _has_short("f", flag) for flag in flags):
+        keys.append("MSG_SYSTEM_ADMIN_DANGER_NOTE_FORCE")
+    if any(flag == "--recursive" or _has_short("r", flag)
+           or _has_short("R", flag) for flag in flags):
+        keys.append("MSG_SYSTEM_ADMIN_DANGER_NOTE_RECURSIVE")
+    if validated.requires_privilege:
+        keys.append("MSG_SYSTEM_ADMIN_DANGER_NOTE_ROOT")
     if severity == "irreversible":
-        notes.append("Classificato IRREVERSIBILE dalla policy di sicurezza.")
+        keys.append("MSG_SYSTEM_ADMIN_DANGER_NOTE_IRREVERSIBLE")
     elif severity == "dangerous":
-        notes.append("Classificato PERICOLOSO dalla policy di sicurezza.")
-
-    if notes:
-        return base + " " + " ".join(notes)
-    return base
+        keys.append("MSG_SYSTEM_ADMIN_DANGER_NOTE_DANGEROUS")
+    return keys
 
 
-def _build_approval_card(argv: list[str], sig, requires_sudo: bool,
+def _template_fields(template: str) -> frozenset[str]:
+    try:
+        fields = set()
+        for _, field, format_spec, conversion in Formatter().parse(template):
+            if field is None:
+                continue
+            root = str(field).split(".", 1)[0].split("[", 1)[0]
+            if field != root or format_spec or conversion:
+                raise _ApprovalCatalogError("unsafe approval placeholder")
+            fields.add(root)
+    except ValueError as exc:
+        raise _ApprovalCatalogError("malformed approval template") from exc
+    return frozenset(fields)
+
+
+def _approval_catalog_snapshot(keys: list[str]) -> dict[str, str]:
+    """Read and validate one complete, ready-only locale in one SQL snapshot.
+
+    An entirely unmaterialized instance locale may use the signed bootstrap
+    English family.  A partially materialized, pending, stale or malformed
+    locale must not create a hybrid authorization card.
+    """
+    wanted = tuple(dict.fromkeys(keys))
+    active = _i18n.current_lang()
+    bootstrap = _i18n.normalize_language(_i18n._C.BOOTSTRAP_LANGUAGE) or "en"
+    languages = (active,) if active == bootstrap else (active, bootstrap)
+    placeholders = ",".join("?" for _ in wanted)
+    lang_placeholders = ",".join("?" for _ in languages)
+    rows = _i18n._open().execute(
+        "SELECT key,lang,text,needs_translation,source_lang,version_hash,"
+        "source_text_hash FROM i18n WHERE key IN (" + placeholders + ") "
+        "AND lang IN (" + lang_placeholders + ")",
+        (*wanted, *languages),
+    ).fetchall()
+    by_lang = {
+        lang: {row[0]: row for row in rows if row[1] == lang}
+        for lang in languages
+    }
+    active_rows = by_lang[active]
+    selected = active
+    if active != bootstrap and not active_rows:
+        selected = bootstrap
+    elif len(active_rows) != len(wanted):
+        raise _ApprovalCatalogError("partial approval locale")
+    selected_rows = by_lang[selected]
+    if len(selected_rows) != len(wanted):
+        raise _ApprovalCatalogError("missing approval resources")
+
+    bootstrap_rows = by_lang.get(bootstrap, {})
+    if len(bootstrap_rows) != len(wanted):
+        raise _ApprovalCatalogError("missing approval source resources")
+    source_versions: dict[str, str] = {}
+    for key in wanted:
+        source_row = bootstrap_rows[key]
+        source_text = source_row[2]
+        source_version = (
+            "sha256:" + hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+            if isinstance(source_text, str) else ""
+        )
+        if (not isinstance(source_text, str) or not source_text.strip()
+                or int(source_row[3] or 0) != 0
+                or source_row[4] not in (None, "")
+                or source_row[6] not in (None, "")
+                or source_row[5] != source_version):
+            raise _ApprovalCatalogError("approval source is not ready")
+        source_versions[key] = source_version
+    snapshot: dict[str, str] = {}
+    for key in wanted:
+        row = selected_rows[key]
+        text = row[2]
+        if (not isinstance(text, str) or not text.strip()
+                or int(row[3] or 0) != 0):
+            raise _ApprovalCatalogError("approval resource is not ready")
+        version = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if row[5] != version:
+            raise _ApprovalCatalogError("approval resource hash mismatch")
+        if selected != bootstrap:
+            if row[4] != bootstrap or row[6] != source_versions.get(key):
+                raise _ApprovalCatalogError("approval source provenance mismatch")
+        if _template_fields(text) != _APPROVAL_TEMPLATE_FIELDS[key]:
+            raise _ApprovalCatalogError("approval placeholder mismatch")
+        snapshot[key] = text
+    return snapshot
+
+
+def _render_danger_summary(argv: ValidatedArgv | list[str] | tuple[str, ...], severity: str | None,
+                           snapshot: dict[str, str]) -> str:
+    keys = _danger_message_keys(argv, severity)
+    binary = _canonical_target_binary(argv) if argv else ""
+    binary = render_argv_for_display([binary])
+    base = snapshot[keys[0]].format(binary=binary)
+    notes = [snapshot[key] for key in keys[1:]]
+    return " ".join([base, *notes])
+
+
+def _explain_command_dangers(argv: ValidatedArgv | list[str] | tuple[str, ...], severity: str | None) -> str:
+    """Spiegazione testuale dei rischi del comando (1-2 frasi). Deterministica,
+    basata sul binario + flags + severity dalla policy. Niente LLM.
+    """
+    keys = _danger_message_keys(argv, severity)
+    snapshot = _approval_catalog_snapshot(keys)
+    return _render_danger_summary(argv, severity, snapshot)
+
+
+def _build_approval_card(argv: ValidatedArgv | list[str] | tuple[str, ...], sig, requires_sudo: bool,
                           rev_class: str, undo_hint: str | None,
                           intent_text: str, actor: str,
                           severity: str | None = None) -> dict:
     """Carta vaglio role-aware. Vedi modulo header per spec opzioni."""
     is_admin = _is_admin_actor(actor)
-    danger_summary = _explain_command_dangers(argv, severity)
+    try:
+        validated = _validated(argv)
+        rendered_argv = list(validated.argv)
+    except ArgvValidationError:
+        validated = None
+        rendered_argv = list(argv) if not isinstance(argv, ValidatedArgv) else list(argv.argv)
+    argv_display = render_argv_for_display(validated or rendered_argv)
+    warning_key = (
+        "MSG_SYSTEM_ADMIN_APPROVAL_WARNING_HOST" if is_admin
+        else "MSG_SYSTEM_ADMIN_APPROVAL_WARNING_GUEST"
+    )
+    keys = [*_danger_message_keys(validated or rendered_argv, severity), warning_key]
+    try:
+        snapshot = _approval_catalog_snapshot(keys)
+        danger_summary = _render_danger_summary(validated or rendered_argv, severity, snapshot)
+    except (_ApprovalCatalogError, sqlite3.Error, OSError) as exc:
+        log.error("approval card i18n denied: %s", exc)
+        return {
+            "type": "approval_card",
+            "argv_rendered": argv_display,
+            "signature": str(sig),
+            "requires_sudo": requires_sudo,
+            "reversibility": rev_class,
+            "undo_hint": undo_hint,
+            "intent_text": intent_text,
+            "actor_role": "admin" if is_admin else "guest",
+            "danger_summary": "",
+            "warning": "",
+            "options": [],
+            "error_class": "dependency_unavailable",
+            "error_code": _APPROVAL_I18N_ERROR,
+        }
     if is_admin:
-        options = ["approve_once", "approve_and_whitelist",
-                   "reject_once", "block_forever"]
-        warning = (
-            f"⚠ Stai per autorizzare un comando NON in whitelist. "
-            f"{danger_summary}"
-        )
+        options = list(_approval_options_for_actor(actor))
+        warning = snapshot[warning_key].format(danger_summary=danger_summary)
     else:
-        options = ["run_externally", "request_admin_whitelist", "reject_once"]
-        warning = (
-            f"Il comando `{' '.join(argv)}` non e' autorizzato per il tuo "
-            f"ruolo. Puoi (a) eseguirlo personalmente fuori da Metnos, "
-            f"oppure (b) chiedere all'amministratore di aggiungerlo alla "
-            f"whitelist. {danger_summary}"
+        options = list(_approval_options_for_actor(actor))
+        warning = snapshot[warning_key].format(
+            command=argv_display, danger_summary=danger_summary,
         )
     return {
         "type": "approval_card",
-        "argv_rendered": " ".join(argv),
+        "argv_rendered": argv_display,
         "signature": str(sig),
         "requires_sudo": requires_sudo,
         "reversibility": rev_class,
@@ -573,6 +831,104 @@ def _enqueue_whitelist_request(*, signature: str, argv: list[str],
 
 # ── Main flow ─────────────────────────────────────────────────────────
 
+def _evaluate_validated_argv(
+    validated: ValidatedArgv,
+    *,
+    audit: dict,
+    intent_text: str,
+    actor: str,
+    emit_wait: Optional[Callable[[str], None]] = None,
+) -> AdminDecision:
+    """Run every authorization decision against one immutable argv view."""
+    argv = list(validated.argv)
+    sig = validated.signature
+    audit["argv"] = argv
+    audit["argv_json"] = validated.argv_json
+    audit["signature"] = str(sig)
+    audit["requires_sudo"] = validated.requires_privilege
+
+    forbidden, forbidden_reason = _check_forbidden_argv(validated)
+    if forbidden:
+        audit["safety"] = "forbidden_hit"
+        audit["safety_reason"] = forbidden_reason
+        audit["error_code"] = "ERR_PERMISSION_DENIED"
+        return AdminDecision(
+            kind="reject", argv=argv, signature=str(sig),
+            reason=_msg(
+                "MSG_SYSTEM_ADMIN_FORBIDDEN",
+                reason=_localized_forbidden_reason(validated),
+            ),
+            audit=audit, validated_argv=validated,
+        )
+
+    store = SafetyStore()
+    try:
+        from safety.canonicalize import signature_matches
+        for kind_tag in ("blacklist", "forbidden"):
+            for row in store.find_by_kind(kind_tag):
+                if signature_matches(sig, row.signature):
+                    audit["safety"] = "blacklist_hit"
+                    audit["matched_pattern"] = row.signature
+                    audit["safety_reason"] = row.reason
+                    audit["error_code"] = "ERR_PERMISSION_DENIED"
+                    return AdminDecision(
+                        kind="reject", argv=argv, signature=str(sig),
+                        reason=_msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED"),
+                        severity=row.severity, audit=audit,
+                        validated_argv=validated,
+                    )
+
+        whitelisted_row = None
+        whitelisted_kind = None
+        for kind_tag in ("whitelist", "graylist"):
+            for row in store.find_by_kind(kind_tag):
+                if signature_matches(sig, row.signature):
+                    whitelisted_row = row
+                    whitelisted_kind = kind_tag
+                    break
+            if whitelisted_row:
+                break
+
+        rev_class, undo_hint = _classify_reversibility(sig)
+        if whitelisted_row is not None and _is_admin_actor(actor):
+            new_uses = store.record_use(whitelisted_row.signature)
+            age_class = (
+                "permanent" if whitelisted_kind == "whitelist" else "graylist"
+            )
+            audit["safety"] = "whitelist_hit"
+            audit["age_class"] = age_class
+            audit["matched_pattern"] = whitelisted_row.signature
+            audit["uses"] = new_uses
+            return AdminDecision(
+                kind="execute_silent", argv=argv, signature=str(sig),
+                age_class=age_class, severity=whitelisted_row.severity,
+                requires_sudo=validated.requires_privilege,
+                reversibility=rev_class, undo_hint=undo_hint, audit=audit,
+                validated_argv=validated,
+            )
+
+        if whitelisted_row is not None:
+            audit["guest_policy"] = "card_required_no_execution"
+
+        if emit_wait is not None:
+            emit_wait(_msg(WAIT_HIGH))
+        audit["safety"] = "unknown"
+        severity = _severity_for_reversibility(rev_class)
+        card = _build_approval_card(
+            argv=validated, sig=sig,
+            requires_sudo=validated.requires_privilege,
+            rev_class=rev_class, undo_hint=undo_hint,
+            intent_text=intent_text, actor=actor, severity=severity,
+        )
+        return AdminDecision(
+            kind="ask_user", argv=argv, signature=str(sig), severity=severity,
+            requires_sudo=validated.requires_privilege,
+            reversibility=rev_class, undo_hint=undo_hint,
+            card_payload=card, audit=audit, validated_argv=validated,
+        )
+    finally:
+        store.close()
+
 def decide(
     user_text: str,
     *,
@@ -607,15 +963,11 @@ def decide(
         audit["gate_reason"] = literal_reason
         return AdminDecision(
             kind="reject",
-            reason=(
-                "Mi spiace, non accetto comandi diretti. Dimmi cosa "
-                "intendi fare e vedo se posso farlo io senza infrangere "
-                "vincoli di sicurezza."
-            ),
+            reason=_msg("MSG_SYSTEM_ADMIN_REJECT_LITERAL"),
             audit=audit,
         )
 
-    emit_wait(WAIT_LOW)
+    emit_wait(_msg(WAIT_LOW))
 
     # Act [1+2+3]: single LLM call (intent → argv translation)
     try:
@@ -625,7 +977,7 @@ def decide(
         audit["llm_error"] = str(e)
         return AdminDecision(
             kind="reject",
-            reason="Non ho capito la tua richiesta. Puoi riformularla?",
+            reason=_msg("MSG_SYSTEM_ADMIN_REFORMULATE"),
             audit=audit,
         )
 
@@ -635,21 +987,17 @@ def decide(
         audit["llm_reason"] = data.get("reason")
         return AdminDecision(
             kind="reject",
-            reason=(
-                "Mi spiace, non accetto comandi diretti. Dimmi cosa "
-                "intendi fare e vedo se posso farlo io senza infrangere "
-                "vincoli di sicurezza."
-            ),
+            reason=_msg("MSG_SYSTEM_ADMIN_REJECT_LITERAL"),
             audit=audit,
         )
     if kind in ("unknown", "impossible"):
         audit["llm_kind"] = kind
+        audit["llm_reason"] = data.get("reason")
         return AdminDecision(
             kind="reject",
-            reason=data.get("reason") or (
-                "Non so come fare quello che mi chiedi."
-                if kind == "unknown"
-                else "Quello che mi chiedi non si puo' fare via shell."
+            reason=_msg(
+                "MSG_SYSTEM_ADMIN_UNKNOWN" if kind == "unknown"
+                else "MSG_SYSTEM_ADMIN_IMPOSSIBLE"
             ),
             audit=audit,
         )
@@ -657,7 +1005,7 @@ def decide(
         audit["llm_kind"] = "malformed"
         return AdminDecision(
             kind="reject",
-            reason="Non ho capito la tua richiesta. Puoi riformularla?",
+            reason=_msg("MSG_SYSTEM_ADMIN_REFORMULATE"),
             audit=audit,
         )
 
@@ -668,104 +1016,25 @@ def decide(
         audit["llm_kind"] = "malformed_argv"
         return AdminDecision(
             kind="reject",
-            reason="La traduzione del comando non e' valida.",
+            reason=_msg("MSG_SYSTEM_ADMIN_INVALID_TRANSLATION"),
             audit=audit,
         )
 
-    audit["argv"] = argv
-
-    # Act [4]: deterministic safety tools
-    sig = compute_signature(argv)
-    requires_sudo = has_sudo_wrapper(argv)
-    audit["signature"] = str(sig)
-    audit["requires_sudo"] = requires_sudo
-
-    forbidden, forbidden_reason = _check_forbidden_argv(argv)
-    if forbidden:
-        audit["safety"] = "forbidden_hit"
-        audit["safety_reason"] = forbidden_reason
-        return AdminDecision(
-            kind="reject",
-            argv=argv, signature=str(sig),
-            reason=f"Vietato: {forbidden_reason}",
-            audit=audit,
-        )
-
-    store = SafetyStore()
     try:
-        # Blacklist
-        from safety.canonicalize import signature_matches
-        for kind_tag in ("blacklist", "forbidden"):
-            for row in store.find_by_kind(kind_tag):
-                if signature_matches(sig, row.signature):
-                    audit["safety"] = "blacklist_hit"
-                    audit["matched_pattern"] = row.signature
-                    audit["safety_reason"] = row.reason
-                    return AdminDecision(
-                        kind="reject",
-                        argv=argv, signature=str(sig),
-                        reason=(
-                            f"Comando bloccato dalle politiche: {row.reason}"
-                            if row.reason else "Comando bloccato dalle politiche."
-                        ),
-                        severity=row.severity,
-                        audit=audit,
-                    )
-
-        # Whitelist / graylist
-        whitelisted_row = None
-        whitelisted_kind = None
-        for kind_tag in ("whitelist", "graylist"):
-            for row in store.find_by_kind(kind_tag):
-                if signature_matches(sig, row.signature):
-                    whitelisted_row = row
-                    whitelisted_kind = kind_tag
-                    break
-            if whitelisted_row:
-                break
-
-        rev_class, undo_hint = _classify_reversibility(sig)
-
-        if whitelisted_row is not None:
-            # Silent execute. Record the use (graylist usage counter).
-            new_uses = store.record_use(whitelisted_row.signature)
-            age_class = (
-                "permanent" if whitelisted_kind == "whitelist" else "graylist"
-            )
-            audit["safety"] = "whitelist_hit"
-            audit["age_class"] = age_class
-            audit["matched_pattern"] = whitelisted_row.signature
-            audit["uses"] = new_uses
-            return AdminDecision(
-                kind="execute_silent",
-                argv=argv, signature=str(sig),
-                age_class=age_class,
-                severity=whitelisted_row.severity,
-                requires_sudo=requires_sudo,
-                reversibility=rev_class,
-                undo_hint=undo_hint,
-                audit=audit,
-            )
-
-        # Unknown: ask the user.
-        emit_wait(WAIT_HIGH)
-        audit["safety"] = "unknown"
-        card = _build_approval_card(
-            argv=argv, sig=sig, requires_sudo=requires_sudo,
-            rev_class=rev_class, undo_hint=undo_hint,
-            intent_text=user_text, actor=actor,
-        )
+        validated = validate_argv(argv)
+    except ArgvValidationError as exc:
+        audit.update({
+            "argv": argv, "gate": "argv_validation_rejected",
+            "error_code": exc.code, "gate_reason": exc.detail,
+        })
         return AdminDecision(
-            kind="ask_user",
-            argv=argv, signature=str(sig),
-            requires_sudo=requires_sudo,
-            reversibility=rev_class,
-            undo_hint=undo_hint,
-            card_payload=card,
-            audit=audit,
+            kind="reject", argv=argv,
+            reason=_msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED"), audit=audit,
         )
-    finally:
-        store.close()
+    return _evaluate_validated_argv(
+        validated, audit=audit, intent_text=user_text, actor=actor,
+        emit_wait=emit_wait,
+    )
 
 
 def apply_user_decision(
@@ -777,7 +1046,7 @@ def apply_user_decision(
     """Apply the user's reply to an `ask_user` decision.
 
     Opzioni admin (actor=='host'):
-      - approve_once / approve: insert/update graylist (uses+=1), execute.
+      - approve_once / approve: execute this exact argv once; no broad rule.
       - approve_and_whitelist:  insert in whitelist permanente, execute.
       - reject_once:            reject senza side effect.
       - block_forever:          insert in blacklist, reject.
@@ -796,13 +1065,48 @@ def apply_user_decision(
     audit["user_choice"] = user_choice
     audit["actor_decided"] = actor
 
+    # A caller cannot bypass a failed localization snapshot by replaying or
+    # fabricating an approval choice.  No safety-store write is reachable.
+    if (decision.card_payload or {}).get("error_code"):
+        audit["approval_denied"] = "catalog_unavailable"
+        audit["error_code"] = _APPROVAL_I18N_ERROR
+        return AdminDecision(
+            kind="reject", argv=decision.argv, signature=sig,
+            reason="", severity=decision.severity, audit=audit,
+            validated_argv=decision.validated_argv,
+        )
+
+    is_admin = _is_admin_actor(actor)
+    card = decision.card_payload or {}
+    expected_role = "admin" if is_admin else "guest"
+    expected_options = list(_approval_options_for_actor(actor))
+    if (card.get("actor_role") != expected_role
+            or card.get("options") != expected_options):
+        audit.update({
+            "approval_denied": "card_identity_mismatch",
+            "error_code": _APPROVAL_CARD_ERROR,
+        })
+        return AdminDecision(
+            kind="reject", argv=decision.argv, signature=sig,
+            reason=_msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED"),
+            severity=decision.severity, audit=audit,
+            validated_argv=decision.validated_argv,
+        )
+    normalized_choice = {
+        "approve": "approve_once", "reject": "reject_once",
+    }.get(user_choice, user_choice)
+    allowed = set(expected_options)
+    if normalized_choice not in allowed:
+        raise ValueError(f"choice {user_choice!r} is not allowed for {expected_role}")
+    user_choice = normalized_choice
+
     # Opzioni indipendenti da ruolo: reject senza side effect.
     if user_choice in ("reject_once", "reject"):
         return AdminDecision(
             kind="reject",
             argv=decision.argv, signature=sig,
-            reason="Richiesta rifiutata per questa volta.",
-            audit=audit,
+            reason=_msg("MSG_SYSTEM_ADMIN_REJECT_ONCE"),
+            audit=audit, validated_argv=decision.validated_argv,
         )
 
     # Opzioni guest-only (niente safety store mutation).
@@ -810,11 +1114,8 @@ def apply_user_decision(
         return AdminDecision(
             kind="reject",
             argv=decision.argv, signature=sig,
-            reason=(
-                "Esegui il comando manualmente fuori da Metnos. "
-                "Niente azione automatica."
-            ),
-            audit=audit,
+            reason=_msg("MSG_SYSTEM_ADMIN_RUN_EXTERNALLY"),
+            audit=audit, validated_argv=decision.validated_argv,
         )
     if user_choice == "request_admin_whitelist":
         _enqueue_whitelist_request(
@@ -825,11 +1126,50 @@ def apply_user_decision(
         return AdminDecision(
             kind="reject",
             argv=decision.argv, signature=sig,
-            reason=(
-                "Richiesta inviata all'amministratore. Il comando verra' "
-                "rivisto manualmente e, se approvato, aggiunto in whitelist."
-            ),
-            audit=audit,
+            reason=_msg("MSG_SYSTEM_ADMIN_WHITELIST_REQUESTED"),
+            audit=audit, validated_argv=decision.validated_argv,
+        )
+
+    validated_for_execution: ValidatedArgv | None = None
+    if user_choice in {"approve_once", "approve_and_whitelist"}:
+        try:
+            validated_for_execution = (
+                decision.validated_argv or validate_argv(decision.argv)
+            )
+        except ArgvValidationError as exc:
+            audit.update({"gate": "argv_validation_rejected", "error_code": exc.code})
+            return AdminDecision(
+                kind="reject", argv=decision.argv, signature=sig,
+                reason=_msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED"), audit=audit,
+            )
+        if (str(validated_for_execution.signature) != sig
+                or list(validated_for_execution.argv) != decision.argv):
+            audit.update({"gate": "approval_snapshot_mismatch",
+                          "error_code": "ERR_ADMIN_APPROVAL_SNAPSHOT_MISMATCH"})
+            return AdminDecision(
+                kind="reject", argv=decision.argv, signature=sig,
+                reason=_msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED"), audit=audit,
+            )
+        forbidden, forbidden_reason = _check_forbidden_argv(validated_for_execution)
+        if forbidden:
+            audit.update({
+                "safety": "forbidden_hit", "safety_reason": forbidden_reason,
+                "error_code": "ERR_PERMISSION_DENIED",
+            })
+            return AdminDecision(
+                kind="reject", argv=decision.argv, signature=sig,
+                reason=_msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED"), audit=audit,
+                validated_argv=validated_for_execution,
+            )
+
+    if user_choice == "approve_once":
+        audit["approved_once"] = True
+        return AdminDecision(
+            kind="execute_silent", argv=list(validated_for_execution.argv), signature=sig,
+            age_class="one_shot", severity=decision.severity,
+            requires_sudo=decision.requires_sudo,
+            reversibility=decision.reversibility, undo_hint=decision.undo_hint,
+            audit=audit, validated_argv=validated_for_execution,
         )
 
     store = SafetyStore()
@@ -844,14 +1184,10 @@ def apply_user_decision(
             return AdminDecision(
                 kind="reject",
                 argv=decision.argv, signature=sig,
-                reason="Comando bloccato per sempre.",
-                audit=audit,
+                reason=_msg("MSG_SYSTEM_ADMIN_BLOCKED_FOREVER"),
+                audit=audit, validated_argv=decision.validated_argv,
             )
         if user_choice == "approve_and_whitelist":
-            if not _is_admin_actor(actor):
-                raise ValueError(
-                    "approve_and_whitelist requires admin role (actor='host')"
-                )
             store.upsert_user(
                 sig, "whitelist",
                 severity=decision.severity or "reversible",
@@ -869,28 +1205,7 @@ def apply_user_decision(
                 requires_sudo=decision.requires_sudo,
                 reversibility=decision.reversibility,
                 undo_hint=decision.undo_hint,
-                audit=audit,
-            )
-        if user_choice in ("approve", "approve_once"):
-            existing = store.find_by_signature(sig)
-            if existing is None or existing.kind != "graylist":
-                store.upsert_user(
-                    sig, "graylist",
-                    severity=decision.severity or "reversible",
-                    reason="user approved from approval card",
-                    created_by=actor,
-                )
-            new_uses = store.record_use(sig)
-            audit["graylist_uses"] = new_uses
-            return AdminDecision(
-                kind="execute_silent",
-                argv=decision.argv, signature=sig,
-                age_class="graylist",
-                severity=decision.severity,
-                requires_sudo=decision.requires_sudo,
-                reversibility=decision.reversibility,
-                undo_hint=decision.undo_hint,
-                audit=audit,
+                audit=audit, validated_argv=validated_for_execution,
             )
         raise ValueError(f"unknown user_choice: {user_choice}")
     finally:
@@ -910,8 +1225,9 @@ def apply_user_decision(
 #      `decision`, `summary` per la final_answer.
 
 import hmac
-import hashlib
 import time as _time
+
+_CONSENT_LOCK = threading.Lock()
 
 # Chiave HMAC per actor_consent_token. Persistente fra restart: scritta
 # in `~/.local/share/metnos/.admin_consent_key` la prima volta, riusata
@@ -920,54 +1236,174 @@ def _consent_key() -> bytes:
     import config as _C  # §7.11
     key_path = _C.PATH_USER_DATA / ".admin_consent_key"
     key_path.parent.mkdir(parents=True, exist_ok=True)
-    if key_path.exists():
-        return key_path.read_bytes()
-    import secrets
-    k = secrets.token_bytes(32)
-    key_path.write_bytes(k)
+
+    def _read_existing() -> bytes:
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(key_path, flags)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise RuntimeError("admin consent key path is not a regular file")
+            os.fchmod(fd, 0o600)
+            key = os.read(fd, 33)
+        finally:
+            os.close(fd)
+        if len(key) != 32:
+            raise RuntimeError("invalid admin consent key")
+        return key
+
+    with _CONSENT_LOCK:
+        if key_path.exists():
+            return _read_existing()
+        import secrets
+        key = secrets.token_bytes(32)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(key_path, flags, 0o600)
+        except FileExistsError:
+            return _read_existing()
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(key)
+            stream.flush()
+            os.fsync(stream.fileno())
+        return key
+
+
+def _consent_db_path() -> Path:
+    return _C.PATH_USER_DATA / ".admin_consent.sqlite3"
+
+
+def _open_consent_db() -> sqlite3.Connection:
+    path = _consent_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        mode = os.lstat(path).st_mode
+        if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
+            raise RuntimeError("admin consent database path is not a regular file")
+    conn = sqlite3.connect(path, timeout=5, isolation_level=None)
     try:
-        key_path.chmod(0o600)
+        path.chmod(0o600)
     except OSError:
-        pass
-    return k
+        conn.close()
+        raise
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS consent_nonce("
+        "nonce TEXT PRIMARY KEY, actor TEXT NOT NULL, argv_json TEXT NOT NULL,"
+        "expires INTEGER NOT NULL, consumed_at INTEGER)"
+    )
+    return conn
 
 
-def _sign_consent_token(signature: str, actor: str, ttl_s: int = 600) -> str:
-    """Emette un token consent firmato HMAC-SHA256.
-
-    Forma: `<exp_epoch>.<sig_b64>` dove sig_b64 = HMAC(signature || actor || exp).
-    TTL default 10 minuti — coerente con CAP_PENDING_TTL_S del daemon.
-    """
+def _sign_consent_token(
+    argv: ValidatedArgv | list[str] | tuple[str, ...],
+    actor: str,
+    ttl_s: int = 600,
+) -> str:
+    """Issue a persistent, one-shot capability for one exact normalized argv."""
     import base64
+    import secrets
+    if not _is_admin_actor(actor):
+        raise PermissionError("guest actors cannot receive admin consent tokens")
+    validated = _validated(argv)
+    if not isinstance(ttl_s, int) or ttl_s < 1 or ttl_s > 600:
+        raise ValueError("consent ttl must be between 1 and 600 seconds")
     exp = int(_time.time()) + ttl_s
-    payload = f"{signature}|{actor}|{exp}".encode("utf-8")
+    nonce = secrets.token_urlsafe(24)
+    payload_obj = {
+        "actor": actor, "argv": list(validated.argv),
+        "exp": exp, "nonce": nonce,
+    }
+    payload = json.dumps(
+        payload_obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")
     mac = hmac.new(_consent_key(), payload, hashlib.sha256).digest()
-    return f"{exp}.{base64.urlsafe_b64encode(mac).decode('ascii')}"
+    conn = _open_consent_db()
+    try:
+        conn.execute(
+            "INSERT INTO consent_nonce(nonce,actor,argv_json,expires,consumed_at) "
+            "VALUES(?,?,?,?,NULL)",
+            (nonce, actor, validated.argv_json, exp),
+        )
+        conn.execute(
+            "DELETE FROM consent_nonce WHERE expires < ?", (int(_time.time()) - 60,)
+        )
+    finally:
+        conn.close()
+    payload_b64 = base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+    mac_b64 = base64.urlsafe_b64encode(mac).decode("ascii").rstrip("=")
+    return payload_b64 + "." + mac_b64
 
 
-def _verify_consent_token(token: str, signature: str, actor: str) -> bool:
-    """Verifica un token consent. Constant-time, no logging del token."""
+def _verify_consent_token(
+    token: str,
+    argv: ValidatedArgv | list[str] | tuple[str, ...],
+    actor: str,
+) -> bool:
+    """Verify and atomically consume a one-shot exact-argv capability."""
     import base64
-    if not token or "." not in token:
+    if not _is_admin_actor(actor) or not token or token.count(".") != 1:
         return False
     try:
-        exp_str, mac_b64 = token.split(".", 1)
-        exp = int(exp_str)
-    except (ValueError, AttributeError):
+        validated = _validated(argv)
+        payload_b64, mac_b64 = token.split(".", 1)
+        payload = base64.urlsafe_b64decode(
+            payload_b64 + "=" * (-len(payload_b64) % 4)
+        )
+        provided = base64.urlsafe_b64decode(
+            mac_b64 + "=" * (-len(mac_b64) % 4)
+        )
+        data = json.loads(payload.decode("utf-8"))
+        exp = int(data["exp"])
+        nonce = data["nonce"]
+    except (ValueError, TypeError, KeyError, UnicodeError, json.JSONDecodeError,
+            ArgvValidationError):
         return False
-    if exp < int(_time.time()):
+    if (set(data) != {"actor", "argv", "exp", "nonce"}
+            or data["actor"] != actor
+            or data["argv"] != list(validated.argv)
+            or not isinstance(nonce, str) or not nonce
+            or exp < int(_time.time())):
         return False
-    payload = f"{signature}|{actor}|{exp}".encode("utf-8")
-    expected = hmac.new(_consent_key(), payload, hashlib.sha256).digest()
+    conn: sqlite3.Connection | None = None
     try:
-        provided = base64.urlsafe_b64decode(mac_b64.encode("ascii"))
-    except (ValueError, TypeError):
-        return False
-    return hmac.compare_digest(expected, provided)
+        expected = hmac.new(_consent_key(), payload, hashlib.sha256).digest()
+        if not hmac.compare_digest(expected, provided):
+            return False
+        conn = _open_consent_db()
+        conn.execute("BEGIN IMMEDIATE")
+        cursor = conn.execute(
+            "UPDATE consent_nonce SET consumed_at=? WHERE nonce=? AND actor=? "
+            "AND argv_json=? AND expires=? AND consumed_at IS NULL AND expires>=?",
+            (int(_time.time()), nonce, actor, validated.argv_json, exp,
+             int(_time.time())),
+        )
+        accepted = cursor.rowcount == 1
+        conn.execute("COMMIT")
+        return accepted
+    except (sqlite3.Error, OSError, RuntimeError) as exc:
+        if conn is not None:
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
+        raise _ConsentStoreUnavailable("admin consent store unavailable") from exc
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error as exc:
+                raise _ConsentStoreUnavailable(
+                    "admin consent store unavailable"
+                ) from exc
 
 
 def _decide_for_argv(argv: list[str], *, intent_text: str,
-                     actor: str = "host") -> AdminDecision:
+                     actor: str = "host",
+                     _validated_snapshot: ValidatedArgv | None = None) -> AdminDecision:
     """Variante di decide() che salta lo stage LLM: l'argv arriva GIA'
     concreto dal PLANNER (campo `command_proposed`). Esegue solo gate +
     safety lookup + (eventuale) approval card.
@@ -995,10 +1431,8 @@ def _decide_for_argv(argv: list[str], *, intent_text: str,
         audit["gate_reason"] = literal_reason
         return AdminDecision(
             kind="reject",
-            reason=(
-                "Il command_proposed contiene shell-meta vietati "
-                f"(pipe/redirect/substitution/separator). Riformula come "
-                f"argv lineare. Causa: {literal_reason}."
+            reason=_msg(
+                "MSG_SYSTEM_ADMIN_INVALID_SHELL_META",
             ),
             audit=audit,
         )
@@ -1007,95 +1441,23 @@ def _decide_for_argv(argv: list[str], *, intent_text: str,
     if not argv or not all(isinstance(a, str) and a for a in argv):
         return AdminDecision(
             kind="reject",
-            reason="command_proposed vuoto o non-string.",
+            reason=_msg("MSG_SYSTEM_ADMIN_EMPTY_COMMAND"),
             audit=audit,
         )
-    audit["argv"] = argv
-
-    # safety classification (forbidden raw + blacklist + whitelist/graylist)
-    sig = compute_signature(argv)
-    requires_sudo = has_sudo_wrapper(argv)
-    audit["signature"] = str(sig)
-    audit["requires_sudo"] = requires_sudo
-
-    forbidden, forbidden_reason = _check_forbidden_argv(argv)
-    if forbidden:
-        audit["safety"] = "forbidden_hit"
-        audit["safety_reason"] = forbidden_reason
-        return AdminDecision(
-            kind="reject", argv=argv, signature=str(sig),
-            reason=f"Vietato: {forbidden_reason}",
-            audit=audit,
-        )
-
-    store = SafetyStore()
     try:
-        from safety.canonicalize import signature_matches
-        for kind_tag in ("blacklist", "forbidden"):
-            for row in store.find_by_kind(kind_tag):
-                if signature_matches(sig, row.signature):
-                    audit["safety"] = "blacklist_hit"
-                    audit["matched_pattern"] = row.signature
-                    audit["safety_reason"] = row.reason
-                    return AdminDecision(
-                        kind="reject", argv=argv, signature=str(sig),
-                        reason=(
-                            f"Comando bloccato dalle politiche: "
-                            f"{row.reason or row.signature}"
-                        ),
-                        severity=row.severity,
-                        audit=audit,
-                    )
-
-        whitelisted_row = None
-        whitelisted_kind = None
-        for kind_tag in ("whitelist", "graylist"):
-            for row in store.find_by_kind(kind_tag):
-                if signature_matches(sig, row.signature):
-                    whitelisted_row = row
-                    whitelisted_kind = kind_tag
-                    break
-            if whitelisted_row:
-                break
-
-        rev_class, undo_hint = _classify_reversibility(sig)
-
-        if whitelisted_row is not None:
-            new_uses = store.record_use(whitelisted_row.signature)
-            age_class = (
-                "permanent" if whitelisted_kind == "whitelist" else "graylist"
-            )
-            audit["safety"] = "whitelist_hit"
-            audit["age_class"] = age_class
-            audit["matched_pattern"] = whitelisted_row.signature
-            audit["uses"] = new_uses
-            return AdminDecision(
-                kind="execute_silent",
-                argv=argv, signature=str(sig),
-                age_class=age_class,
-                severity=whitelisted_row.severity,
-                requires_sudo=requires_sudo,
-                reversibility=rev_class, undo_hint=undo_hint,
-                audit=audit,
-            )
-
-        # signature sconosciuta → carta vaglio role-aware
-        audit["safety"] = "unknown"
-        card = _build_approval_card(
-            argv=argv, sig=sig, requires_sudo=requires_sudo,
-            rev_class=rev_class, undo_hint=undo_hint,
-            intent_text=intent_text, actor=actor,
-        )
+        validated = _validated_snapshot or validate_argv(argv)
+    except ArgvValidationError as exc:
+        audit.update({
+            "argv": list(argv), "gate": "argv_validation_rejected",
+            "gate_reason": exc.detail, "error_code": exc.code,
+        })
         return AdminDecision(
-            kind="ask_user",
-            argv=argv, signature=str(sig),
-            requires_sudo=requires_sudo,
-            reversibility=rev_class, undo_hint=undo_hint,
-            card_payload=card,
-            audit=audit,
+            kind="reject", argv=list(argv),
+            reason=_msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED"), audit=audit,
         )
-    finally:
-        store.close()
+    return _evaluate_validated_argv(
+        validated, audit=audit, intent_text=intent_text, actor=actor,
+    )
 
 
 def _detect_credentials_placeholder(argv: list[str]) -> tuple[str | None, dict]:
@@ -1165,22 +1527,11 @@ def _format_credentials_required(domain: str, ctx: dict) -> str:
     binding = ctx.get("binding", "?")
     host = ctx.get("host", "?")
     share = ctx.get("share", "")
-    lines = [
-        f"Servono credenziali per {domain}",
-        f"  binding: {binding}",
-        f"  host:    {host}",
-    ]
-    if share:
-        lines.append(f"  share:   {share}")
-    lines += [
-        "",
-        "Inviamele nel prossimo messaggio:",
-        "  user XXXXX pwd YYYYY",
-        "",
-        "[oppure] rispondi `cli` per istruzioni terminale.",
-        "[oppure] rispondi `annulla` per abortire.",
-    ]
-    return "\n".join(lines)
+    share_line = f"\n  share:   {share}" if share else ""
+    return _msg(
+        "MSG_SYSTEM_ADMIN_CREDENTIALS_REQUIRED",
+        domain=domain, binding=binding, host=host, share_line=share_line,
+    )
 
 
 def _format_cli_instructions(domain: str, ctx: dict) -> str:
@@ -1199,13 +1550,8 @@ def _format_cli_instructions(domain: str, ctx: dict) -> str:
         extra += f" --binding {binding}"
     if host:
         extra += f" --host {host}"
-    return (
-        "Per inserire le credenziali via terminale:\n\n"
-        "  ssh user@192.0.2.10   # se accedi da un altro host\n"
-        f"  metnos-cli credentials add {domain}{extra}\n"
-        "    > username: ...\n"
-        "    > password: ...\n\n"
-        "Quando hai finito, ripeti la richiesta originale e procedero'."
+    return _msg(
+        "MSG_SYSTEM_ADMIN_CREDENTIALS_CLI", domain=domain, extra=extra,
     )
 
 
@@ -1219,11 +1565,9 @@ def _format_cli_instructions(domain: str, ctx: dict) -> str:
 # errato del PLANNER, non un comando shell. Rejection chirurgica con
 # messaggio che indica il fix all'LLM (la carta vaglio sarebbe inutile).
 
-# Wrapper di privilegi: skip al fine di guardare il vero argv[0].
-_PRIV_WRAPPERS = frozenset({"sudo", "doas", "pkexec"})
-
-
-def _executor_name_in_argv(argv: list[str]) -> Optional[str]:
+def _executor_name_in_argv(
+    argv: ValidatedArgv | list[str] | tuple[str, ...],
+) -> Optional[str]:
     """Ritorna il nome dell'executor se argv[0] (saltando sudo/doas/pkexec)
     matcha un executor presente nel catalogo runtime, altrimenti None.
 
@@ -1231,23 +1575,11 @@ def _executor_name_in_argv(argv: list[str]) -> Optional[str]:
     rejected (synth scartati per affinity overlap / signature drift / GC).
     Caching minimo per evitare reflection ripetuta nello stesso processo.
     """
-    if not argv:
+    try:
+        command = _validated(argv).command_argv
+    except ArgvValidationError:
         return None
-    # Salta wrapper sudo/doas/pkexec e i loro flag (-S, -u user, -E, ...)
-    i = 0
-    while i < len(argv) and argv[i] in _PRIV_WRAPPERS:
-        i += 1
-        # Skip flag dopo il wrapper
-        while i < len(argv) and argv[i].startswith("-"):
-            tok = argv[i]
-            i += 1
-            # -u <user>, -p <prompt> richiedono argomento successivo
-            if tok in ("-u", "-p", "-g", "-h", "-r", "-t", "-C", "-D"):
-                if i < len(argv):
-                    i += 1
-    if i >= len(argv):
-        return None
-    candidate = Path(argv[i]).name
+    candidate = Path(command[0]).name
     if not candidate or "/" in candidate:
         return None
     # Lookup catalog via loader (lazy import + cache interna ADR 0099)
@@ -1328,11 +1660,9 @@ def _invoke_impl(*, intent: str, command_proposed: str,
             "argv": argv,
             "approval_required": False,
             "approval_card": None,
-            "summary": (
-                f"Il comando contiene segnaposto non risolti: {_ph_list}. "
-                f"Per procedere ho bisogno dei valori reali (es. indirizzo "
-                f"IP del server, path della cartella). Riformula la "
-                f"richiesta sostituendo i segnaposto."
+            "summary": _msg(
+                "MSG_SYSTEM_ADMIN_UNRESOLVED_PLACEHOLDERS",
+                placeholders=_ph_list,
             ),
             "error_class": "unresolved_placeholders",
             "audit": {
@@ -1346,6 +1676,38 @@ def _invoke_impl(*, intent: str, command_proposed: str,
             },
         }
 
+    try:
+        validated = validate_argv(argv)
+    except ArgvValidationError as exc:
+        return {
+            "ok": False, "decision": "reject", "signature": "",
+            "argv": argv, "approval_required": False, "approval_card": None,
+            "summary": _msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED"),
+            "error_class": "invalid_args", "error_code": exc.code,
+            "audit": {
+                "actor": audit_actor, "user_text": intent or "",
+                "source": "planner_argv", "argv": argv,
+                "gate": "argv_validation_rejected",
+                "gate_reason": exc.detail, "error_code": exc.code,
+            },
+        }
+    argv = list(validated.argv)
+
+    if actor_consent_token and not _is_admin_actor(audit_actor):
+        return {
+            "ok": False, "decision": "reject", "signature": str(validated.signature),
+            "argv": argv, "approval_required": False, "approval_card": None,
+            "summary": _msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED"),
+            "error_class": "permission_denied",
+            "error_code": "ERR_ADMIN_GUEST_CONSENT_DENIED",
+            "audit": {
+                "actor": audit_actor, "user_text": intent or "",
+                "source": "planner_argv", "argv": argv,
+                "gate": "guest_consent_rejected",
+                "error_code": "ERR_ADMIN_GUEST_CONSENT_DENIED",
+            },
+        }
+
     # ── Catalog-name guard (12/5/2026): se `argv[0]` (saltando i wrapper
     # sudo/doas/pkexec) coincide con il nome di un executor del catalog,
     # il PLANNER ha sbagliato strada: admin e' per UN comando shell
@@ -1355,7 +1717,7 @@ def _invoke_impl(*, intent: str, command_proposed: str,
     # nel PATH. Rifiutiamo qui con messaggio chiaro, evitando di emettere
     # una carta vaglio inutile (l'utente non puo' "approvare" qualcosa che
     # non puo' funzionare). Determinismo §7.9.
-    catalog_hit = _executor_name_in_argv(argv)
+    catalog_hit = _executor_name_in_argv(validated)
     if catalog_hit is not None:
         return {
             "ok": False,
@@ -1364,12 +1726,8 @@ def _invoke_impl(*, intent: str, command_proposed: str,
             "argv": argv,
             "approval_required": False,
             "approval_card": None,
-            "summary": (
-                f"`{catalog_hit}` e' un executor del catalogo, non un comando "
-                f"shell. Invocalo direttamente come tool (es. "
-                f"`{catalog_hit}(...)`) invece di passarlo come "
-                f"`command_proposed` ad admin. admin serve solo per comandi "
-                f"di sistema (mount, kill, systemctl, apt, ...)."
+            "summary": _msg(
+                "MSG_SYSTEM_ADMIN_EXECUTOR_AS_COMMAND", executor=catalog_hit,
             ),
             "audit": {
                 "actor": audit_actor,
@@ -1409,14 +1767,11 @@ def _invoke_impl(*, intent: str, command_proposed: str,
                 "argv": argv,
                 "approval_required": False,
                 "approval_card": None,
-                "summary": (
-                    f"Pacchetto `{_pkg}` non e' nella whitelist Metnos. "
-                    f"Per installarlo aggiungilo a "
-                    f"`~/.config/metnos/installable_packages.json` (lista "
-                    f"JSON di string), oppure registra il binary di cui ha "
-                    f"bisogno in `runtime/system_binaries._BINARY_TO_PACKAGE`. "
-                    f"Whitelist attuale: {', '.join(_allowed[:8])}"
-                    f"{' ...' if len(_allowed) > 8 else ''}."
+                "summary": _msg(
+                    "MSG_SYSTEM_ADMIN_PACKAGE_NOT_ALLOWED",
+                    package=_pkg,
+                    allowed=(", ".join(_allowed[:8])
+                             + (" ..." if len(_allowed) > 8 else "")),
                 ),
                 "audit": {
                     "actor": audit_actor,
@@ -1456,17 +1811,21 @@ def _invoke_impl(*, intent: str, command_proposed: str,
             binding = derived_ctx.get("binding", "?")
             host = derived_ctx.get("host", "?")
             share = derived_ctx.get("share", "")
-            descr_parts = [f"binding {binding}", f"host {host}"]
-            if share:
-                descr_parts.append(f"share {share}")
-            descr_parts.append("le credenziali saranno cifrate (Fernet+HKDF).")
             payload = {
-                "title": f"Credenziali per {target_domain}",
-                "description": " · ".join(descr_parts),
+                "title": _msg(
+                    "MSG_SYSTEM_ADMIN_CREDENTIALS_TITLE", domain=target_domain,
+                ),
+                "description": _msg(
+                    "MSG_SYSTEM_ADMIN_CREDENTIALS_DESCRIPTION",
+                    binding=binding, host=host,
+                    share=(f" · share {share}" if share else ""),
+                ),
                 "dialog": [
-                    {"var": "username", "prompt": "Username:",
+                    {"var": "username", "prompt": _msg(
+                        "MSG_SYSTEM_ADMIN_CREDENTIALS_USERNAME_PROMPT"),
                      "schema": {"kind": "text"}},
-                    {"var": "password", "prompt": "Password:",
+                    {"var": "password", "prompt": _msg(
+                        "MSG_SYSTEM_ADMIN_CREDENTIALS_PASSWORD_PROMPT"),
                      "schema": {"kind": "credentials", "secret": True}},
                 ],
                 "fmt": "auto",
@@ -1514,6 +1873,7 @@ def _invoke_impl(*, intent: str, command_proposed: str,
     # Valuta argv (gate + safety) — niente LLM, l'argv arriva gia' concreto.
     decision = _decide_for_argv(
         argv, intent_text=intent or "", actor=audit_actor,
+        _validated_snapshot=validated,
     )
 
     # Caso A: signature gia' whitelisted/graylisted → execute via sudoer
@@ -1540,13 +1900,55 @@ def _invoke_impl(*, intent: str, command_proposed: str,
     # Caso C: ask_user. Se l'utente ha gia' approvato al turno precedente
     # e il runtime ha rinjettato il consent_token, validiamo e procediamo.
     if decision.kind == "ask_user":
-        if actor_consent_token and _verify_consent_token(
-            actor_consent_token, decision.signature, audit_actor,
-        ):
-            # Promote a graylist + execute (riusa apply_user_decision per
-            # il bookkeeping, NON manda nuova carta).
+        card_error = (decision.card_payload or {}).get("error_code")
+        if card_error:
+            return {
+                "ok": False,
+                "decision": "reject",
+                "signature": decision.signature,
+                "argv": decision.argv,
+                "approval_required": False,
+                "approval_card": decision.card_payload,
+                "consent_token": None,
+                "summary": "",
+                "error_class": "dependency_unavailable",
+                "error_code": card_error,
+                "audit": decision.audit,
+            }
+
+        def _consent_store_failure(exc: BaseException) -> dict:
+            log.error("admin consent store denied approval: %s", exc)
+            return {
+                "ok": False,
+                "decision": "reject",
+                "signature": decision.signature,
+                "argv": decision.argv,
+                "approval_required": False,
+                "approval_card": decision.card_payload,
+                "consent_token": None,
+                "summary": "",
+                "error_class": "dependency_unavailable",
+                "error_code": _CONSENT_STORE_ERROR,
+                "audit": {
+                    **decision.audit,
+                    "gate": "consent_store_unavailable",
+                    "error_code": _CONSENT_STORE_ERROR,
+                },
+            }
+
+        try:
+            consent_accepted = bool(
+                actor_consent_token
+                and _verify_consent_token(
+                    actor_consent_token, validated, audit_actor,
+                )
+            )
+        except _ConsentStoreUnavailable as exc:
+            return _consent_store_failure(exc)
+
+        if consent_accepted:
             promoted = apply_user_decision(
-                decision=decision, user_choice="approve", actor=audit_actor,
+                decision=decision, user_choice="approve_once", actor=audit_actor,
             )
             if promoted.kind == "execute_silent":
                 return _spawn_via_sudoer(
@@ -1558,14 +1960,20 @@ def _invoke_impl(*, intent: str, command_proposed: str,
                 "ok": False, "decision": "reject",
                 "signature": promoted.signature, "argv": promoted.argv,
                 "approval_required": False, "approval_card": None,
-                "summary": "Token consent valido ma promozione fallita.",
+                "summary": _msg("MSG_SYSTEM_ADMIN_CONSENT_PROMOTION_FAILED"),
                 "audit": promoted.audit,
             }
 
         # Niente token valido → esponi carta + emetti consent_token nel campo
         # response. Il runtime lo metterà in cap_pending; l'utente non lo
         # vede direttamente.
-        token = _sign_consent_token(decision.signature, audit_actor)
+        try:
+            token = (
+                _sign_consent_token(validated, audit_actor)
+                if _is_admin_actor(audit_actor) else None
+            )
+        except (OSError, sqlite3.Error, RuntimeError) as exc:
+            return _consent_store_failure(exc)
         return {
             "ok": True,
             "decision": "approval_required",
@@ -1585,7 +1993,9 @@ def _invoke_impl(*, intent: str, command_proposed: str,
         "ok": False, "decision": "reject",
         "signature": decision.signature, "argv": decision.argv,
         "approval_required": False, "approval_card": None,
-        "summary": f"Stato admin imprevisto: {decision.kind}",
+        "summary": _msg(
+            "MSG_SYSTEM_ADMIN_UNEXPECTED_STATE", kind=decision.kind,
+        ),
         "audit": decision.audit,
     }
 
@@ -1597,7 +2007,7 @@ def _standardize_result(result: object) -> dict:
             "ok": False,
             "decision": "reject",
             "approval_required": False,
-            "summary": "admin ha prodotto un risultato interno non valido.",
+            "summary": _msg("MSG_SYSTEM_ADMIN_INVALID_INTERNAL_RESULT"),
             "error_class": "internal_error",
             "error_code": "ERR_BUILTIN_INVALID_RESULT",
         }
@@ -1607,27 +2017,27 @@ def _standardize_result(result: object) -> dict:
     audit = out.get("audit") if isinstance(out.get("audit"), dict) else {}
     gate = str(audit.get("gate") or "")
     safety = str(audit.get("safety") or "")
-    summary = str(out.get("summary") or "").lower()
     error_class = str(out.get("error_class") or "").strip()
-    if error_class == "unresolved_placeholders":
+    explicit_code = str(out.get("error_code") or audit.get("error_code") or "").strip()
+    if error_class == "unresolved_placeholders" or gate == "placeholder_rejected":
         error_class = "invalid_args"
         error_code = "ERR_ARG_UNRESOLVED_PLACEHOLDER"
     elif gate == "catalog_name_rejected":
         error_class = "invalid_args"
         error_code = "ERR_ARG_EXECUTOR_AS_COMMAND"
+    elif gate == "argv_validation_rejected":
+        error_class = "invalid_args"
+        error_code = explicit_code or "ERR_ARG_INVALID"
+    elif gate == "guest_consent_rejected":
+        error_class = "permission_denied"
+        error_code = explicit_code or "ERR_ADMIN_GUEST_CONSENT_DENIED"
     elif gate == "pkg_not_whitelisted" or safety in {
             "forbidden_hit", "blacklist_hit"}:
         error_class = "permission_denied"
         error_code = "ERR_PERMISSION_DENIED"
-    elif "non disponibile" in summary or "unavailable" in summary:
-        error_class = "dependency_unavailable"
-        error_code = "ERR_EXT_SVC_UNAVAILABLE"
-    elif "esecuzione fallita" in summary:
-        error_class = "operation_failed"
-        error_code = "ERR_ADMIN_EXECUTION_FAILED"
     else:
         error_class = error_class or "invalid_args"
-        error_code = "ERR_ARG_INVALID"
+        error_code = explicit_code or "ERR_ARG_INVALID"
     out["error_class"] = error_class
     out.setdefault("error_code", error_code)
     return out
@@ -1655,17 +2065,19 @@ def _format_card_summary(decision: AdminDecision, *, intent_text: str) -> str:
     Pattern dialog manager (the design guide §10.6, project_dialog_manager_authorization_ux):
     riga 1 = «cosa», riga 2 = «come», riga 3 = «scelte».
     """
-    argv_pretty = " ".join(decision.argv)
+    argv_pretty = render_argv_for_display(
+        decision.validated_argv or decision.argv,
+    )
     sig = decision.signature
-    rev = decision.reversibility or "ignota"
-    sudo_marker = " (richiede sudo)" if decision.requires_sudo else ""
-    return (
-        f"Per «{intent_text}» propongo:\n"
-        f"  `{argv_pretty}`{sudo_marker}\n"
-        f"  signature: {sig} · reversibilita': {rev}\n"
-        f"Rispondi **sì** per approvare ed eseguire una volta, "
-        f"**no** per annullare. (Auto-promozione a whitelist dopo "
-        f"5 conferme della stessa signature.)"
+    rev = decision.reversibility or _msg("MSG_SYSTEM_ADMIN_UNKNOWN_VALUE")
+    sudo_marker = (
+        _msg("MSG_SYSTEM_ADMIN_SUDO_MARKER")
+        if decision.requires_sudo else ""
+    )
+    return _msg(
+        "MSG_SYSTEM_ADMIN_CARD_SUMMARY",
+        intent=intent_text, command=argv_pretty, sudo_marker=sudo_marker,
+        signature=sig, reversibility=rev,
     )
 
 
@@ -1675,10 +2087,34 @@ def _spawn_via_sudoer(*, decision: AdminDecision, intent_text: str,
     from loader import invoke_verb_unique
 
     try:
+        validated = decision.validated_argv or validate_argv(decision.argv)
+    except ArgvValidationError as exc:
+        return {
+            "ok": False, "decision": "reject", "signature": decision.signature,
+            "argv": decision.argv, "approval_required": False,
+            "approval_card": None, "summary": _msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED"),
+            "error_class": "invalid_args", "error_code": exc.code,
+            "audit": {**decision.audit, "gate": "argv_validation_rejected",
+                      "error_code": exc.code},
+        }
+    if (str(validated.signature) != decision.signature
+            or list(validated.argv) != decision.argv):
+        return {
+            "ok": False, "decision": "reject", "signature": decision.signature,
+            "argv": decision.argv, "approval_required": False,
+            "approval_card": None, "summary": _msg("MSG_SYSTEM_ADMIN_POLICY_BLOCKED"),
+            "error_class": "permission_denied",
+            "error_code": "ERR_ADMIN_APPROVAL_SNAPSHOT_MISMATCH",
+            "audit": {**decision.audit, "gate": "approval_snapshot_mismatch",
+                      "error_code": "ERR_ADMIN_APPROVAL_SNAPSHOT_MISMATCH"},
+        }
+    execution_argv = list(validated.argv)
+
+    try:
         exec_res = invoke_verb_unique(
             "sudoer",
             caller="builtins.admin",
-            argv=decision.argv,
+            validated_argv=validated,
             intent_text=intent_text,
             scheduler_delay_minutes=0,
             reversibility=decision.reversibility or "unknown",
@@ -1687,9 +2123,11 @@ def _spawn_via_sudoer(*, decision: AdminDecision, intent_text: str,
     except (PermissionError, KeyError, RuntimeError) as e:
         return {
             "ok": False, "decision": "reject",
-            "signature": decision.signature, "argv": decision.argv,
+            "signature": decision.signature, "argv": execution_argv,
             "approval_required": False, "approval_card": None,
-            "summary": f"sudoer non disponibile: {e}",
+            "summary": _msg("MSG_SYSTEM_ADMIN_SUDOER_UNAVAILABLE", error=e),
+            "error_class": "dependency_unavailable",
+            "error_code": "ERR_ADMIN_SUDOER_UNAVAILABLE",
             "audit": decision.audit,
         }
 
@@ -1697,24 +2135,31 @@ def _spawn_via_sudoer(*, decision: AdminDecision, intent_text: str,
     snippet_out = (exec_res.stdout or "").strip()[:600]
     snippet_err = (exec_res.stderr or "").strip()[:600]
     if exec_res.ok:
-        summary = f"Eseguito: `{' '.join(decision.argv)}` (exit {exec_res.exit_code})."
+        summary = _msg(
+            "MSG_SYSTEM_ADMIN_EXECUTED",
+            command=render_argv_for_display(validated),
+            exit_code=exec_res.exit_code,
+        )
         if snippet_out:
-            summary += f"\nOutput: {snippet_out}"
+            summary += _msg("MSG_SYSTEM_ADMIN_OUTPUT", output=snippet_out)
     else:
-        summary = (
-            f"Esecuzione fallita: `{' '.join(decision.argv)}` "
-            f"(status {exec_res.status}"
-            + (f", exit {exec_res.exit_code}" if exec_res.exit_code is not None else "")
-            + ")."
+        exit_suffix = (
+            _msg("MSG_SYSTEM_ADMIN_EXIT_SUFFIX", exit_code=exec_res.exit_code)
+            if exec_res.exit_code is not None else ""
+        )
+        summary = _msg(
+            "MSG_SYSTEM_ADMIN_EXECUTION_FAILED",
+            command=render_argv_for_display(validated), status=exec_res.status,
+            exit_suffix=exit_suffix,
         )
         if snippet_err:
-            summary += f"\nstderr: {snippet_err}"
+            summary += _msg("MSG_SYSTEM_ADMIN_STDERR", stderr=snippet_err)
 
     return {
         "ok": exec_res.ok,
         "decision": "execute_silent",
         "signature": decision.signature,
-        "argv": decision.argv,
+        "argv": execution_argv,
         "approval_required": False,
         "approval_card": None,
         "exit_code": exec_res.exit_code,
@@ -1722,5 +2167,9 @@ def _spawn_via_sudoer(*, decision: AdminDecision, intent_text: str,
         "stderr": snippet_err,
         "duration_ms": exec_res.duration_ms,
         "summary": summary,
+        **({} if exec_res.ok else {
+            "error_class": "operation_failed",
+            "error_code": "ERR_ADMIN_EXECUTION_FAILED",
+        }),
         "audit": decision.audit,
     }

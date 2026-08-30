@@ -567,17 +567,8 @@ PROMPTS_BUNDLED_PATH = Path(__file__).parent / "prompts.toml"
 PROMPTS_USER_PATH = _C.PATH_USER_CONFIG / "prompts.toml"
 
 
-# Fallback in-code se entrambi i file mancano (test, container minimali).
-_PROMPTS_FALLBACK = [
-    {"provider": "anthropic", "model_pattern": "claude-*", "use_case": "code_gen",
-     "text": "\n\nVincoli: codice fedele alla spec. Regex semplice. Niente lookbehind/lookahead."},
-    {"provider": "ollama",    "model_pattern": "qwen*",    "use_case": "code_gen",
-     "text": "\n\nVincoli: compila python_code per intero (def invoke + def main). Mai vuoto."},
-]
-
-
 def _load_prompts_repertoire() -> list[dict]:
-    """Carica gli hint da file. Se nessun file esiste, ritorna fallback."""
+    """Load provider hints from governed files; absence means no addendum."""
     out: list[dict] = []
     for p in (PROMPTS_BUNDLED_PATH, PROMPTS_USER_PATH):
         if not p.exists() or tomllib is None:
@@ -589,8 +580,6 @@ def _load_prompts_repertoire() -> list[dict]:
         for entry in data.get("hint") or []:
             if all(k in entry for k in ("provider", "model_pattern", "use_case", "text")):
                 out.append(dict(entry))
-    if not out:
-        out = list(_PROMPTS_FALLBACK)
     return out
 
 

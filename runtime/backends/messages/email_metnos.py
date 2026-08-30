@@ -36,6 +36,7 @@ if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
 
 from messages import get as _msg  # noqa: E402
+import detection_lexicon_seed_residual_am as _residual_lexicon  # noqa: E402
 
 
 # --- helpers ---------------------------------------------------------------
@@ -418,6 +419,93 @@ def send(args: dict) -> dict:
 
 # --- read / find -----------------------------------------------------------
 
+_MAIL_WINDOW_UNIT_KEYS = (
+    "day_unit", "hour_unit", "week_unit", "month_unit", "year_unit",
+)
+
+
+def _mail_window_mapping() -> dict[str, list[str]]:
+    return _residual_lexicon.ready_mapping(
+        _residual_lexicon.MAIL_TIME_WINDOW,
+    )
+
+
+def _mail_window_canonical(
+        value: str, mapping: dict[str, list[str]], keys) -> str | None:
+    folded = value.casefold()
+    for canonical in keys:
+        if any(
+                folded == str(form).strip().casefold()
+                for form in mapping.get(canonical, ())):
+            return canonical
+    return None
+
+
+def _rolling_window_parts(
+        value: str, mapping: dict[str, list[str]],
+) -> tuple[int, str, str] | None:
+    """Return ``(count, canonical unit, observed unit)`` when admitted."""
+    if not mapping:
+        return None
+    norm = value.replace("now_minus_", "").replace("now-minus-", "")
+    forms = sorted(
+        {
+            str(form).strip().casefold()
+            for key in _MAIL_WINDOW_UNIT_KEYS
+            for form in mapping.get(key, ())
+            if str(form).strip()
+        },
+        key=lambda form: (-len(form), form),
+    )
+    if not forms:
+        return None
+    match = re.search(
+        r"(\d+)\s*[-_ ]?\s*(" + "|".join(map(re.escape, forms)) + r")\b",
+        norm,
+    )
+    relative_markers = tuple(
+        str(form).strip().casefold()
+        for form in mapping.get("relative_marker", ())
+        if str(form).strip()
+    )
+    if not match or not (
+            any(marker in value for marker in relative_markers)
+            or value[0:1].isdigit()):
+        return None
+    count = int(match.group(1))
+    observed_unit = match.group(2)
+    canonical = _mail_window_canonical(
+        observed_unit, mapping, _MAIL_WINDOW_UNIT_KEYS,
+    )
+    if count < 1 or canonical is None:
+        return None
+    return count, canonical, observed_unit
+
+
+def _rolling_delta(count: int, canonical_unit: str) -> datetime.timedelta:
+    if canonical_unit == "day_unit":
+        return datetime.timedelta(days=count)
+    if canonical_unit == "hour_unit":
+        return datetime.timedelta(hours=count)
+    if canonical_unit == "week_unit":
+        return datetime.timedelta(weeks=count)
+    if canonical_unit == "month_unit":
+        return datetime.timedelta(days=30 * count)
+    if canonical_unit == "year_unit":
+        return datetime.timedelta(days=365 * count)
+    raise ValueError("unsupported mail time-window unit")
+
+
+def _preset_window_days(value: str, mapping: dict[str, list[str]]) -> int | None:
+    canonical = _mail_window_canonical(
+        value, mapping, ("preset_week", "preset_month", "preset_year"),
+    )
+    return {
+        "preset_week": 7,
+        "preset_month": 30,
+        "preset_year": 365,
+    }.get(canonical)
+
 def _rolling_window_delta(tw):
     """Return the rolling duration represented by a mail time-window preset.
 
@@ -428,38 +516,15 @@ def _rolling_window_delta(tw):
     if not tw or isinstance(tw, dict):
         return None
     s = str(tw).strip().lower()
-    word_days = {
-        "last-week": 7, "last-month": 30, "last-year": 365,
-        "last-settimana": 7, "last-mese": 30, "last-anno": 365,
-    }
-    if s in word_days:
-        return datetime.timedelta(days=word_days[s])
-    norm = s.replace("now_minus_", "").replace("now-minus-", "")
-    match = re.search(
-        r"(\d+)\s*[-_ ]?\s*"
-        r"(d|day|days|giorn[oi]|h|hour|hours|or[ae]|"
-        r"w|week|weeks|settiman[ae]|mo|month|months|mes[ei]|m|min|"
-        r"y|year|years|ann[oi])\b",
-        norm,
-    )
-    if not match or not (
-            any(key in s for key in ("last", "past", "minus", "ago"))
-            or s[0:1].isdigit()):
+    mapping = _mail_window_mapping()
+    preset_days = _preset_window_days(s, mapping)
+    if preset_days is not None:
+        return datetime.timedelta(days=preset_days)
+    parts = _rolling_window_parts(s, mapping)
+    if parts is None:
         return None
-    n, unit = int(match.group(1)), match.group(2)
-    if n < 1:
-        return None
-    if unit in ("d", "day", "days", "giorno", "giorni"):
-        return datetime.timedelta(days=n)
-    if unit in ("h", "hour", "hours", "ora", "ore"):
-        return datetime.timedelta(hours=n)
-    if unit in ("w", "week", "weeks", "settimana", "settimane"):
-        return datetime.timedelta(weeks=n)
-    if unit in ("mo", "month", "months", "mese", "mesi", "m", "min"):
-        return datetime.timedelta(days=30 * n)
-    if unit in ("y", "year", "years", "anno", "anni"):
-        return datetime.timedelta(days=365 * n)
-    return None
+    count, canonical_unit, _observed_unit = parts
+    return _rolling_delta(count, canonical_unit)
 
 
 def _rolling_window_cutoff(tw, *, now=None):
@@ -492,18 +557,21 @@ def _resolve_window(tw, *, now=None):
     if isinstance(tw, dict):
         return tw.get("since"), tw.get("before"), f"custom:{tw}"
     s = str(tw).strip().lower()
-    if s == "today":
+    mapping = _mail_window_mapping()
+    day_preset = _mail_window_canonical(
+        s, mapping, ("today", "yesterday"),
+    )
+    if day_preset == "today":
         d = now.date()
         return _imap_date(d), None, "today"
-    if s == "yesterday":
+    if day_preset == "yesterday":
         d = now.date() - datetime.timedelta(days=1)
         before = now.date()
         return _imap_date(d), _imap_date(before), "yesterday"
     # Preset-parola senza N: last-week/month/year.
-    _WORD = {"last-week": 7, "last-month": 30, "last-year": 365,
-             "last-settimana": 7, "last-mese": 30, "last-anno": 365}
-    if s in _WORD:
-        d = (now - _rolling_window_delta(s)).date()
+    preset_days = _preset_window_days(s, mapping)
+    if preset_days is not None:
+        d = (now - datetime.timedelta(days=preset_days)).date()
         return _imap_date(d), None, s
     # §2.4 robustezza NL→determinismo: "N unita' fa". Tollera i prefissi che
     # l'LLM inventa (last-/past-/now_minus_/-ago) e separatori liberi. Per IMAP
@@ -511,20 +579,12 @@ def _resolve_window(tw, *, now=None):
     # scrive "12m" per 12 mesi); mesi~30d, anni~365d (approssimazione adeguata
     # al filtro SINCE). Differisce di proposito dal time_window_parser generale
     # (dove 'm'=minuti), perche' qui il dominio e' date-only.
-    import re as _re
-    norm = s.replace("now_minus_", "").replace("now-minus-", "")
-    m = _re.search(r"(\d+)\s*[-_ ]?\s*"
-                   r"(d|day|days|giorn[oi]|h|hour|hours|or[ae]|"
-                   r"w|week|weeks|settiman[ae]|mo|month|months|mes[ei]|m|min|"
-                   r"y|year|years|ann[oi])\b", norm)
-    if m and any(k in s for k in ("last", "past", "minus", "ago")) or (m and s[0:1].isdigit()):
-        n = int(m.group(1)); u = m.group(2)
-        if n >= 1:
-            delta = _rolling_window_delta(s)
-            if delta is None:
-                return None, None, f"unknown_preset:{s}"
-            d = (now - delta).date()
-            return _imap_date(d), None, f"last-{n}{u}"
+    parts = _rolling_window_parts(s, mapping)
+    if parts is not None:
+        count, canonical_unit, observed_unit = parts
+        delta = _rolling_delta(count, canonical_unit)
+        d = (now - delta).date()
+        return _imap_date(d), None, f"last-{count}{observed_unit}"
     return None, None, f"unknown_preset:{s}"
 
 
@@ -1042,14 +1102,13 @@ def delete(args: dict) -> dict:
     return out
 
 
-# Termini user-facing -> special-use IMAP flag (§5: «Spam»/«Posta indesiderata»
-# = la cartella \Junk reale del server, non hardcodare INBOX.Junk).
-_FOLDER_SPECIAL = {
-    "junk": "\\Junk", "spam": "\\Junk", "indesiderata": "\\Junk",
-    "spazzatura": "\\Junk",
-    "trash": "\\Trash", "cestino": "\\Trash", "eliminata": "\\Trash",
-    "sent": "\\Sent", "inviata": "\\Sent", "inviate": "\\Sent",
-    "draft": "\\Drafts", "drafts": "\\Drafts", "bozze": "\\Drafts",
+# Identificatori canonici -> special-use IMAP flag. I flag sono invarianti del
+# protocollo; gli alias user-facing arrivano dal lessico native-ready.
+_FOLDER_SPECIAL_FLAGS = {
+    "junk": "\\Junk",
+    "trash": "\\Trash",
+    "sent": "\\Sent",
+    "drafts": "\\Drafts",
 }
 
 
@@ -1077,7 +1136,16 @@ def _resolve_dst_folder(conn, dst_folder: str) -> str:
             continue
         folders.append((m.group("name").strip().strip('"'), m.group("flags")))
     tl = target.lower()
-    want = next((f for k, f in _FOLDER_SPECIAL.items() if k in tl), None)
+    aliases = _residual_lexicon.ready_mapping(
+        _residual_lexicon.MAIL_FOLDER_SPECIAL,
+    )
+    canonical = next(
+        (category for category in _FOLDER_SPECIAL_FLAGS
+         for forms in (aliases.get(category, ()),)
+         if any(str(form).casefold() in tl for form in forms)),
+        None,
+    )
+    want = _FOLDER_SPECIAL_FLAGS.get(canonical)
     if want:                                   # 1) special-use flag
         for name, flags in folders:
             if want.lower() in flags.lower():

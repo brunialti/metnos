@@ -48,18 +48,12 @@ if TYPE_CHECKING:
 
 # ── Keyword extraction ────────────────────────────────────────────────
 
+# Identifier tokenizer: observation keys and values are machine-facing data,
+# and preserving underscores/digits is part of the reranker protocol.  This is
+# structural grammar, not a natural-language vocabulary.
 _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]+")
 _MAX_VALUE_LEN = 200          # taglio lunghezza per ogni valore string
 _MAX_KEYWORDS_FROM_OBS = 12   # cap su keywords estratte per observation
-_STOPWORDS = {
-    "the", "and", "for", "from", "with", "this", "that", "these", "those",
-    "have", "has", "had", "will", "would", "could", "should", "are", "was",
-    "were", "been", "being", "ok", "true", "false", "null", "none",
-    "json", "dict", "list", "str", "int", "float", "bool",
-    "che", "del", "della", "dei", "delle", "con", "per", "non", "una",
-    "uno", "gli", "questo", "questa", "quello", "quella", "essere",
-    "avere", "stato", "stata", "molto", "poco", "tanto",
-}
 
 _SKIP_FIELDS = frozenset({
     "ts", "ts_start", "ts_end", "duration_ms", "elapsed_ms",
@@ -94,10 +88,14 @@ def extract_keywords(observation: dict, *, max_keywords: int = _MAX_KEYWORDS_FRO
     """Estrae fino a `max_keywords` token significativi dall'observation."""
     if not isinstance(observation, dict):
         return []
+    from detection_lexicon_seed_routing import forms
+
+    stopwords = frozenset(
+        form.casefold() for form in forms("routing.adaptive.stopword"))
     counts: dict[str, int] = {}
     for s in _walk_strings(observation):
         for tok in _TOKEN_RE.findall(s.lower()):
-            if len(tok) < 3 or tok in _STOPWORDS or tok.isdigit():
+            if len(tok) < 3 or tok in stopwords or tok.isdigit():
                 continue
             counts[tok] = counts.get(tok, 0) + 1
     if not counts:

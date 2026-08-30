@@ -80,19 +80,6 @@ def context_block(ctx) -> str:
             f"Executor disponibili (campione vivo):\n{execs}")
 
 
-# Regex anti-paternalismo: pattern di proposte che giudicano l'utente.
-# Conservativo, deterministico, multilingua IT+EN.
-_PATERNALISM_RE = re.compile(
-    r"\b("
-    r"dire\s+all['']?\s*utente|impedire\s+all['']?\s*utente|"
-    r"correggere\s+l['']?\s*utente|consigliare\s+all['']?\s*utente\s+di\s+(?:non\s+)?|"
-    r"tell\s+the\s+user|prevent\s+the\s+user|warn\s+the\s+user\s+about|"
-    r"advise\s+the\s+user\s+to"
-    r")\b",
-    re.IGNORECASE,
-)
-
-
 @dataclass
 class LensCtx:
     """Contesto passato alle lenti per costruire il prompt."""
@@ -123,8 +110,19 @@ class LensProposal:
 
 
 def paternalism_check(text: str) -> bool:
-    """True se il testo suggerisce paternalismo (giudica utente)."""
-    return bool(_PATERNALISM_RE.search(text))
+    """True for a reviewed native marker; missing grammar rejects safely."""
+    import detection_lexicon as _detlex
+
+    forms = _detlex.native_ready_forms(
+        "safety.paternalism_marker", require_manual=True,
+        include_reviewed_baselines=True,
+    )
+    if not forms:
+        return True
+    return any(re.search(
+        r"(?<!\w)" + re.escape(form) + r"(?!\w)", str(text or ""),
+        flags=re.IGNORECASE | re.UNICODE,
+    ) for form in forms)
 
 
 def parse_llm_array(raw: str) -> list[dict]:

@@ -1198,85 +1198,6 @@ def imported_bindings_index() -> dict[tuple[str, str], list[str]]:
     return index
 
 
-# Sinonimi cross-language verb -> object atomico, deterministico (no LLM).
-# Espanso solo quando un termine nel synth `expected_name` o `intent` deve
-# essere ricondotto a un OBJECT canonico ufficiale per il match con
-# imported_bindings_index. Lista CHIUSA, esoticismi escalation a Roberto.
-_OBJECT_SYNONYMS_IT: dict[str, str] = {
-    # IT singolare/plurale → OBJECT canonico
-    "appuntamento": "events", "appuntamenti": "events",
-    "agenda": "events", "calendario": "events",
-    "evento": "events", "eventi": "events",
-    "riunione": "events", "riunioni": "events",
-    "incontro": "events", "incontri": "events",
-    "scadenza": "events", "scadenze": "events",
-    "messaggio": "messages", "messaggi": "messages",
-    "mail": "messages", "email": "messages", "posta": "messages",
-    "contatto": "contacts", "contatti": "contacts",
-    "rubrica": "contacts",
-    "file": "files", "documento": "files", "documenti": "files",
-    "cartella": "dirs", "cartelle": "dirs", "directory": "dirs",
-    "pacchetto": "packages", "pacchetti": "packages",
-    "processo": "processes", "processi": "processes",
-    "luogo": "places", "luoghi": "places", "posto": "places",
-    "task": "tasks", "promemoria": "tasks", "timer": "tasks",
-    "ricorrente": "tasks", "ricorrenti": "tasks",
-    "schedulato": "tasks", "schedulati": "tasks",
-    "persona": "persons", "persone": "persons",
-    "enrollato": "persons", "enrollati": "persons",
-    "enrollata": "persons", "enrollate": "persons",
-    "enrolled": "persons", "registrata": "persons", "registrate": "persons",
-    "registrato": "persons", "registrati": "persons",
-    "volto": "persons", "volti": "persons",
-    "viso": "persons", "visi": "persons",
-    # GitHub (ADR 0141). NB: "issue"/"pr" sono anche nei marker provider
-    # `_github` di tool_grammar; qui mappano l'OBJECT canonico.
-    "issue": "issues", "issues": "issues",
-    "segnalazione": "issues", "segnalazioni": "issues", "ticket": "issues",
-    "pr": "pulls", "pull request": "pulls", "pull": "pulls",
-    "merge request": "pulls",
-    # approval (gate consenso): solo termini DISTINTIVI; "conferma" resta fuori
-    # (troppo generico) — l'intent LLM lo gestisce dal few-shot.
-    "approvazione": "approval", "approva": "approval", "approvare": "approval",
-    "consenso": "approval", "autorizzazione": "approval", "autorizza": "approval",
-    # preferences: il sostantivo con cui l'utente nomina le proprie preferenze.
-    "preferenza": "preferences", "preferenze": "preferences",
-    "impostazione": "preferences", "impostazioni": "preferences",
-}
-_OBJECT_SYNONYMS_EN: dict[str, str] = {
-    "appointment": "events", "appointments": "events",
-    "calendar": "events", "schedule": "events",
-    "event": "events", "events": "events",
-    "meeting": "events", "meetings": "events",
-    "deadline": "events", "deadlines": "events",
-    "message": "messages", "messages": "messages",
-    "mail": "messages", "email": "messages",
-    "contact": "contacts", "contacts": "contacts",
-    "file": "files", "document": "files", "documents": "files",
-    "folder": "dirs", "directory": "dirs",
-    "package": "packages", "packages": "packages",
-    "process": "processes", "processes": "processes",
-    "place": "places", "places": "places",
-    "task": "tasks", "tasks": "tasks", "reminder": "tasks", "timer": "tasks",
-    "scheduled": "tasks", "recurring": "tasks",
-    "person": "persons", "persons": "persons", "people": "persons",
-    "enrolled": "persons", "registered": "persons",
-    "face": "persons", "faces": "persons",
-    # GitHub (ADR 0141)
-    "issue": "issues", "issues": "issues", "ticket": "issues",
-    "pull": "pulls", "pulls": "pulls", "pull request": "pulls",
-    "pr": "pulls", "merge request": "pulls",
-    # approval (consent gate): distinctive terms only; "confirm" stays out
-    # (too generic) — the intent LLM handles it from the few-shot.
-    "approval": "approval", "approve": "approval", "consent": "approval",
-    "authorization": "approval", "authorize": "approval",
-    # preferences: gemello EN dei termini con cui l'utente nomina le proprie
-    # preferenze.
-    "preference": "preferences", "preferences": "preferences",
-    "setting": "preferences", "settings": "preferences",
-}
-
-
 def canonical_object(token: str | None) -> str | None:
     """Risolve un token (singolare/plurale IT/EN o OBJECT diretto) all'OBJECT
     canonico §2.2. Ritorna None se non riconosciuto.
@@ -1297,10 +1218,20 @@ def canonical_object(token: str | None) -> str | None:
     t = str(token).lower().strip()
     if t in OBJECTS:
         return t
-    if t in _OBJECT_SYNONYMS_IT:
-        return _OBJECT_SYNONYMS_IT[t]
-    if t in _OBJECT_SYNONYMS_EN:
-        return _OBJECT_SYNONYMS_EN[t]
+    try:
+        from detection_lexicon_seed_routing import native_manual_mapping
+        aliases = native_manual_mapping("routing.object_synonym")
+    except Exception:
+        return None
+    owners = {
+        str(form).casefold(): canonical
+        for canonical, forms in aliases.items()
+        for form in forms
+    }
+    if len(owners) != sum(len(forms) for forms in aliases.values()):
+        return None
+    if t in owners:
+        return owners[t]
     return None
 
 
@@ -1366,21 +1297,12 @@ def detect_implicit_actions(query: str,
     # piu' spesso come nomi. Qui rilevamo i bigrammi tipici dove la
     # parola SI riferisce a un'azione (verbo + pronome 1a persona o
     # complemento esplicito). §7.3 generale: lookup tabellare bilingue.
-    _BIGRAM_VERB_HINTS = {
-        "send": (
-            # EN: verbo+pronome 1a pers
-            "email me", "mail me", "message me", "text me", "tell me",
-            "let me know", "ping me", "shoot me",
-            # IT: forme idiomatiche di notifica
-            "mandami una email", "mandami una mail", "mandami un messaggio",
-            "mandami un'email", "mandami un'e-mail",
-            "fammi sapere", "tienimi al corrente", "tienimi informato",
-        ),
-    }
-    q_low = query.lower()
-    for verb_canon, patterns in _BIGRAM_VERB_HINTS.items():
-        if any(p in q_low for p in patterns):
-            detected_verbs_set.add(verb_canon)
+    try:
+        from detection_lexicon_seed_residual_nz import implicit_send_request
+        if implicit_send_request(query):
+            detected_verbs_set.add("send")
+    except Exception:  # noqa: BLE001 - il segnale mutante resta fail-closed
+        pass
 
     # Mappa OBJECT → verbi mutating canonici gia' presenti nella query
     # (per fare il check "covered" per ogni object trovato).

@@ -18,32 +18,23 @@ try:
 except ImportError:  # pragma: no cover - sidecar install incompleto
     _detlex = None
 
-_VERBS_FALLBACK = {
-    "goto": ("vai", "naviga", "apri", "visita", "go", "navigate", "open", "visit"),
-    "click": ("clicca", "premi", "seleziona", "scegli", "click", "press", "select", "choose"),
-    "fill": ("compila", "scrivi", "inserisci", "digita", "fill", "write", "enter", "type"),
-    "submit": ("invia", "conferma", "salva", "pubblica", "submit", "confirm", "save", "publish"),
-    "wait": ("attendi", "aspetta", "wait", "pause"),
-}
-
-_OVERLAY_DISMISS_FALLBACK = (
-    "close", "close dialog", "close modal", "dismiss", "dismiss dialog",
-    "not now", "maybe later", "later", "got it", "understood", "okay",
-    "ok", "cancel", "chiudi", "chiudi dialogo", "chiudi finestra", "ignora",
-    "non ora", "non adesso", "forse dopo", "piu tardi", "ho capito",
-    "capito", "va bene", "annulla",
-)
+_ACTION_KINDS = ("goto", "click", "fill", "submit", "wait")
 
 
 def _verbs() -> dict[str, tuple[str, ...]]:
-    if _detlex is not None:
-        try:
-            mapped = _detlex.mapping("sites.action_verb")
-            if all(mapped.get(k) for k in _VERBS_FALLBACK):
-                return {k: tuple(mapped[k]) for k in _VERBS_FALLBACK}
-        except Exception:
-            pass
-    return _VERBS_FALLBACK
+    if _detlex is None:
+        return {}
+    try:
+        mapped = _detlex.native_ready_mapping(
+            "sites.action_verb", require_manual=True,
+            include_reviewed_baselines=True,
+        )
+        if set(mapped) == set(_ACTION_KINDS) and all(
+                mapped.get(kind) for kind in _ACTION_KINDS):
+            return {kind: tuple(mapped[kind]) for kind in _ACTION_KINDS}
+    except Exception:
+        pass
+    return {}
 
 
 def normalize(text: str) -> str:
@@ -53,23 +44,15 @@ def normalize(text: str) -> str:
 
 
 def _target_noise() -> tuple[str, ...]:
-    if _detlex is not None:
-        try:
-            forms = tuple(normalize(x) for x in _detlex.forms(
-                "sites.action_target_noise") if normalize(x))
-            if forms:
-                return forms
-        except Exception:
-            pass
-    return ("il", "lo", "la", "un", "una", "sul", "sulla", "pulsante",
-            "bottone", "the", "a", "an", "on", "button", "link")
+    return _concept_forms("sites.action_target_noise")
 
 
 def _concept_forms(concept: str) -> tuple[str, ...]:
     if _detlex is None:
         return ()
     try:
-        return tuple(normalize(x) for x in _detlex.forms(concept)
+        return tuple(normalize(x) for x in _detlex.native_ready_forms(
+                         concept, include_reviewed_baselines=True)
                      if normalize(x))
     except Exception:
         return ()
@@ -79,7 +62,7 @@ def overlay_dismiss_forms() -> tuple[str, ...]:
     """Safe, non-committing exits for obstructing transient overlays."""
     forms = (_concept_forms("sites.overlay_dismiss_target")
              + _concept_forms("sites.overlay_acknowledge_target"))
-    return forms or _OVERLAY_DISMISS_FALLBACK
+    return forms
 
 
 def privacy_reject_forms() -> tuple[str, ...]:
@@ -103,7 +86,11 @@ def is_collection_search_request(text: str) -> bool:
     if _detlex is None:
         return False
     try:
-        return bool(_detlex.match("sites.collection_search_request", text or ""))
+        return any(pattern.search(text or "") for pattern in
+                   _detlex.native_ready_patterns(
+                       "sites.collection_search_request",
+                       include_reviewed_baselines=True,
+                   ))
     except Exception:
         return False
 
@@ -141,7 +128,9 @@ def _grammatical_verb_patterns():
     patterns = []
     for concept in ("text.request_verb", "text.auxiliary_verb"):
         try:
-            patterns.extend(_detlex.regexes(concept))
+            patterns.extend(_detlex.native_ready_patterns(
+                concept, include_reviewed_baselines=True,
+            ))
         except Exception:
             continue
     return tuple(patterns)
@@ -230,14 +219,16 @@ def is_goal_navigation_request(action: str) -> bool:
         return True
 
     verbs = _verbs()
+    if not verbs:
+        return False
     # Match parse_action's precedence: an explicit atomic verb wins even if a
     # later word also happens to be a navigation verb.
     for kind in ("submit", "wait", "fill", "click"):
         if any(re.search(rf"\b{re.escape(normalize(form))}\b", normalized)
-               for form in verbs[kind]):
+               for form in verbs.get(kind, ())):
             return False
     if any(re.search(rf"\b{re.escape(normalize(form))}\b", normalized)
-           for form in verbs["goto"]):
+           for form in verbs.get("goto", ())):
         return True
     return _names_something(clause)
 
@@ -253,6 +244,8 @@ def parse_action(action: str) -> dict:
     if not norm:
         return {"ok": False, "error_class": "invalid_args"}
     verbs = _verbs()
+    if not verbs:
+        return {"ok": False, "error_class": "lexicon_unavailable"}
     url_match = re.search(r"https?://[^\s'\"<>]+", action or "", re.I)
     primitive = None
     search_verbs = _concept_forms("sites.search_action_verb")
@@ -262,7 +255,7 @@ def parse_action(action: str) -> dict:
     order = ("submit", "wait", "fill", "click", "goto")
     for kind in order if primitive is None else ():
         if any(re.search(rf"\b{re.escape(normalize(v))}\b", norm)
-               for v in verbs[kind]):
+               for v in verbs.get(kind, ())):
             primitive = kind
             break
     # Un URL esplicito rende la destinazione non ambigua. Vale anche per
@@ -535,7 +528,9 @@ def _canonical_goal_text(text: str) -> str:
         return normalized
     for concept in ("sites.goal_term_alias", "sites.goal_state_alias"):
         try:
-            aliases = _detlex.mapping(concept)
+            aliases = _detlex.native_ready_mapping(
+                concept, include_reviewed_baselines=True,
+            )
         except Exception:
             continue
         for canonical, forms in aliases.items():
@@ -595,7 +590,10 @@ def _goal_facet_tokens() -> frozenset[str]:
         return frozenset()
     try:
         return frozenset(x for x in (normalize(canonical) for canonical
-                                     in _detlex.mapping("sites.goal_state_alias"))
+                                     in _detlex.native_ready_mapping(
+                                         "sites.goal_state_alias",
+                                         include_reviewed_baselines=True,
+                                     ))
                          if x)
     except Exception:
         return frozenset()
@@ -1511,14 +1509,7 @@ def is_reveal_control(candidate: dict) -> bool:
     name = normalize(str(candidate.get("name") or candidate.get("label") or ""))
     if not name:
         return False
-    forms = []
-    if _detlex is not None:
-        try:
-            forms = _detlex.forms("sites.reveal_control")
-        except Exception:
-            forms = []
-    if not forms:
-        forms = ["apri menu", "mostra menu", "open menu", "show menu"]
+    forms = _concept_forms("sites.reveal_control")
     return any(name == normalize(form) for form in forms if normalize(form))
 
 

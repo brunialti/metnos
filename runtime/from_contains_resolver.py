@@ -25,45 +25,49 @@ rende il segnale sicuro.
 from __future__ import annotations
 import re
 
-# Nomi-commerciali che introducono un vendor/mittente (IT+EN, prefisso-match).
-_VENDOR_NOUN = (r"fattur\w+|pagament\w+|ordin\w+|ricevut\w+|bollett\w+|"
-                r"abbonament\w+|addebit\w+|invoices?|receipts?|payments?|"
-                r"orders?|bills?|subscriptions?|statements?|charges?")
+import detection_lexicon as _detlex
+import detection_lexicon_seed_resolvers as _resolver_seed
+
 # NomeProprio candidato: inizia con lettera, >=3 char (lettere/cifre/&.+-). La
 # CAPITALIZZAZIONE si verifica in codice (le regex usano IGNORECASE per i
 # nomi-comuni → [A-Z] non basterebbe).
 _TOKEN = r"([A-Za-z][\w&.+-]{2,})"
-_PAT_FROM = re.compile(r"\b(?:da|dal|dalla|dall'|dai|dagli|from)\s+" + _TOKEN,
-                       re.IGNORECASE)
-_PAT_VENDOR = re.compile(
-    r"\b(?:" + _VENDOR_NOUN + r")\b(?:\s+\S+){0,2}?\s+"
-    r"(?:(?:da|di|dell['ae]?|from|of)\s+)?" + _TOKEN, re.IGNORECASE)
 
-# Capitalizzati che NON sono mittenti: giorni, mesi, parole-mail/tempo, articoli/
-# pronomi capitalizzabili a inizio frase. Confronto in minuscolo.
-_STOP = {
-    # giorni IT/EN
-    "lunedì", "lunedi", "martedì", "martedi", "mercoledì", "mercoledi",
-    "giovedì", "giovedi", "venerdì", "venerdi", "sabato", "domenica",
-    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
-    # mesi IT/EN
-    "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio",
-    "agosto", "settembre", "ottobre", "novembre", "dicembre",
-    "january", "february", "march", "april", "june", "july", "august",
-    "september", "october", "november", "december",
-    # parole-mail / tempo / canale
-    "email", "e-mail", "mail", "posta", "casella", "caselle", "messaggi",
-    "messaggio", "inbox", "outbox", "today", "yesterday", "tomorrow", "week",
-    "month", "year", "oggi", "ieri", "domani", "settimana", "mese", "anno",
-    "telegram", "imap", "gmail",
-    # articoli/pronomi/quantificatori capitalizzabili a inizio frase
-    "il", "lo", "la", "le", "gli", "una", "uno", "questa", "questo", "queste",
-    "questi", "tutte", "tutti", "tutta", "mie", "miei", "mia", "mio",
-    "the", "all", "my", "this", "these", "some", "any",
-    # verbi/azioni comuni dopo «da» (es. «da fare/leggere») → minuscoli, ma
-    # difensivo se capitalizzati
-    "fare", "leggere", "inviare", "spostare", "cancellare", "scaricare",
-}
+
+def _alternation(forms, *, suffix: str = "") -> str:
+    return "|".join(
+        re.escape(str(form)) + suffix
+        for form in sorted(forms or (), key=lambda item: -len(str(item)))
+        if str(form).strip()
+    )
+
+
+def _patterns_and_stopwords():
+    """Compone la grammatica stabile usando solo superfici catalogate."""
+    _resolver_seed.ensure_registered()
+    lexicon = _detlex.mapping("resolver.from_contains")
+    vendor = _alternation(lexicon.get("vendor_root"), suffix=r"\w*")
+    direct = _alternation(lexicon.get("direct_preposition"))
+    vendor_prep = _alternation(lexicon.get("vendor_preposition"))
+    if not vendor or not direct or not vendor_prep:
+        return (), set(), None
+    patterns = (
+        re.compile(
+            r"(?<!\w)(?:" + direct + r")\s+" + _TOKEN,
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"(?<!\w)(?:" + vendor + r")(?!\w)"
+            r"(?:\s+\S+){0,2}?\s+"
+            r"(?:(?:" + vendor_prep + r")\s+)?" + _TOKEN,
+            re.IGNORECASE,
+        ),
+    )
+    stop = {
+        str(form).casefold() for form in lexicon.get("stopword", ())
+    }
+    vendor_full = re.compile(r"(?:" + vendor + r")", re.IGNORECASE)
+    return patterns, stop, vendor_full
 
 
 def _candidates(query: str, *, require_capital: bool = True) -> list[str]:
@@ -74,17 +78,18 @@ def _candidates(query: str, *, require_capital: bool = True) -> list[str]:
     il segnale-maiuscola SOLO quando gia' sappiamo che il valore attuale e'
     provatamente sbagliato (vedi `resolve_from_contains`) — la STOP-list resta
     l'unico guard, come prima."""
+    patterns, stopwords, vendor_full = _patterns_and_stopwords()
     found: list[str] = []
-    for pat in (_PAT_FROM, _PAT_VENDOR):
+    for pat in patterns:
         for m in pat.finditer(query):
             tok = m.group(1)
             if require_capital and not tok[:1].isupper():
                 continue  # NomeProprio richiede maiuscola iniziale
-            if tok.lower() in _STOP:
+            if tok.casefold() in stopwords:
                 continue
             # Mai il nome-commerciale stesso come candidato: e' la parola che
             # INTRODUCE il vendor ("bollette"), non il vendor ("plenitude").
-            if re.fullmatch(_VENDOR_NOUN, tok, re.IGNORECASE):
+            if vendor_full is not None and vendor_full.fullmatch(tok):
                 continue
             found.append(tok)
     # dedup preservando l'ordine (case-insensitive)
@@ -113,8 +118,9 @@ def resolve_from_contains(tool: str, args: dict, query: str) -> dict:
     if tool != "read_messages" or not isinstance(args, dict) or not query:
         return args
     existing_from = str(args.get("from_contains") or "").strip()
+    _patterns, _stops, vendor_full = _patterns_and_stopwords()
     self_referential = bool(existing_from) and bool(
-        re.fullmatch(_VENDOR_NOUN, existing_from, re.IGNORECASE))
+        vendor_full is not None and vendor_full.fullmatch(existing_from))
     if args.get("subject_contains"):
         return args  # filtro testuale già presente: l'LLM/utente vince
     if args.get("from_contains") and not self_referential:

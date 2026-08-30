@@ -35,153 +35,156 @@ def tokenize(text):
     return set(_WORD_RE.findall((text or "").lower()))
 
 
-# Mappa verbi IT/EN (forme coniugate) → verbo canonico del vocabolario chiuso.
-# Usato per identificare l'intent della query e dare un boost forte agli
-# executor il cui nome inizia con quel verbo.
-_VERB_TO_CANONICAL = {
-    # move
-    "sposta": "move", "sposto": "move", "spostare": "move", "sposti": "move",
-    "muovi": "move", "muovo": "move", "muovere": "move", "muove": "move",
-    "trasferisci": "move", "trasferisco": "move", "trasferire": "move",
-    "rinomina": "move", "rinomino": "move", "rinominare": "move",
-    "move": "move", "moves": "move", "rename": "move", "rn": "move", "mv": "move",
-    "transfer": "move",
-    # delete
-    "cancella": "delete", "cancello": "delete", "cancellare": "delete",
-    "elimina": "delete", "elimino": "delete", "eliminare": "delete",
-    "rimuovi": "delete", "rimuovo": "delete", "rimuovere": "delete",
-    "delete": "delete", "remove": "delete", "rm": "delete",
-    "drop": "delete",
-    # NB: niente `del` (preposizione articolata IT in "del sistema/del server"
-    # confondeva il verb-boost). Bug live 15/5/2026: "mostrami il quadro
-    # del sistema" → boost +10 a tutti i delete_*. Falso positivo.
-    # read
-    "leggi": "read", "leggo": "read", "leggere": "read", "letto": "read",
-    "mostra": "read", "mostro": "read", "mostrami": "read", "mostrare": "read",
-    "controlla": "read", "controllo": "read", "controllare": "read",
-    "apri": "read", "apro": "read", "aprire": "read",
-    "read": "read", "open": "read", "show": "read", "view": "read", "cat": "read",
-    "check": "read",
-    # write
-    "scrivi": "write", "scrivo": "write", "scrivere": "write",
-    "salva": "write", "salvo": "write", "salvare": "write",
-    "metti": "write", "metto": "write", "mettere": "write",
-    "put": "write", "place": "write",
-    "write": "write", "save": "write",
-    # find
-    "trova": "find", "trovo": "find", "trovare": "find",
-    "cerca": "find", "cerco": "find", "cercare": "find",
-    "find": "find", "search": "find", "locate": "find", "where": "find",
-    # list
-    "elenca": "list", "elenco": "list", "elencare": "list",
-    "lista": "list", "list": "list", "ls": "list",
-    # create
-    "crea": "create", "creo": "create", "creare": "create",
-    "create": "create", "mkdir": "create", "make": "create", "new": "create",
-    # send (canonici + enclitici IT + sinonimi EN)
-    "invia": "send", "invio": "send", "inviare": "send",
-    "inviami": "send", "inviagli": "send",  # enclitico IT (oggetto indiretto)
-    "manda": "send", "mando": "send", "mandare": "send",
-    "mandami": "send", "mandagli": "send",
-    "spedisci": "send", "spedisco": "send", "spedire": "send",
-    "spediscimi": "send",
-    "scrivimi": "send", "scrivigli": "send",  # write+to_me semantica = send
-    "notifica": "send", "notificami": "send", "notificagli": "send",
-    "avvisa": "send", "avvisami": "send", "avvisagli": "send",
-    "send": "send", "notify": "send", "alert": "send", "ping": "send",
-    # NB: `email`/`mail`/`text`/`message` esclusi qui — sono piu' spesso
-    # nomi che verbi nelle query naturali IT+EN (es. «email e telefono di X»).
-    # Quando l'utente vuole l'azione, usa send/invia/manda/notify esplicito.
-    # set (update events labels, contacts, signatures, persons, credentials).
-    # "fissa"/"prenota" sono i verbi idiomatici per booking di un evento
-    # del calendario in IT; "book"/"schedule" in EN. Post ADR 0128 (12/5/2026):
-    # l'executor canonico Google Workspace per la creazione e' `create_events`
-    # (NON piu' `set_events`). Quindi il verbo semantico e' `create` (terminal
-    # resource creation), distinto da `set` (idempotent state upsert).
-    "fissa": "create", "fisso": "create", "fissare": "create",
-    "prenota": "create", "prenoto": "create", "prenotare": "create",
-    "book": "create", "schedule": "create", "schedules": "create",
-    # http get (verbo `fetch` rimosso 3/5/2026: HTTP GET = `get_urls`)
-    "scarica": "get", "scarico": "get", "scaricare": "get",
-    "fetch": "get", "download": "get", "wget": "get", "curl": "get",
-    # compress
-    "comprimi": "compress", "comprimo": "compress", "comprimere": "compress",
-    "zippa": "compress", "compress": "compress", "zip": "compress", "tar": "compress",
-    # extract
-    "estrai": "extract", "estraggo": "extract", "estrarre": "extract",
-    "extract": "extract", "unzip": "extract", "untar": "extract",
-    # change — forma/parametri (resize/convert/rotate/crop, vocab §2.2).
-    # Senza queste entry, _all_query_verbs_satisfied non riconosce «converti
-    # X in formato Y» come mutating, auto-final transformative non triggera
-    # e il PLANNER ri-emette la stessa call (loop fino al duplicate-detect).
-    "cambia": "change", "cambio": "change", "cambiare": "change",
-    "modifica": "change", "modifico": "change", "modificare": "change",
-    "trasforma": "change", "trasformo": "change", "trasformare": "change",
-    "converti": "change", "converto": "change", "convertire": "change",
-    "ridimensiona": "change", "ridimensiono": "change", "ridimensionare": "change",
-    "ruota": "change", "ruoto": "change", "ruotare": "change",
-    "ritaglia": "change", "ritaglio": "change", "ritagliare": "change",
-    "normalizza": "change", "normalizzo": "change", "normalizzare": "change",
-    "ricodifica": "change", "ricodifico": "change", "ricodificare": "change",
-    "change": "change", "modify": "change", "transform": "change",
-    "convert": "change", "resize": "change", "rotate": "change",
-    "crop": "change", "normalize": "change", "reformat": "change",
-    "transcode": "change", "encode": "change",
-    # filter
-    "filtra": "filter", "filtro": "filter", "filtrare": "filter",
-    "filter": "filter",
-    # NB: «where» riservato a `find` (linea 63): «where is X?» = trova X
-    # in EN naturale. Mai SQL-context nelle query utente.
-    # describe
-    "descrivi": "describe", "descrivo": "describe", "descrivere": "describe",
-    "riassumi": "describe", "riassumo": "describe", "riassumere": "describe",
-    "describe": "describe", "summarize": "describe", "summary": "describe",
-    # describe — suggestion semantics (P5, 12/5/2026): «proponi/suggerisci/
-    # raccomanda» chiedono di presentare informazione strutturata (N opzioni,
-    # alternative, slot, orari). Sono READ-ONLY: NON creano/modificano niente.
-    # Mappati a `describe` perche' presentano dati aggregati gia' disponibili
-    # (es. slot liberi computati da read_events). Enclitici IT consistent
-    # con `send` (mandami/inviami): proponimi/suggeriscimi/raccomandami.
-    "proponi": "describe", "propongo": "describe", "proporre": "describe",
-    "proponimi": "describe", "proponici": "describe",
-    "suggerisci": "describe", "suggerisco": "describe", "suggerire": "describe",
-    "suggeriscimi": "describe", "suggeriscici": "describe",
-    "raccomanda": "describe", "raccomando": "describe", "raccomandare": "describe",
-    "raccomandami": "describe", "raccomandaci": "describe",
-    "propose": "describe", "proposes": "describe", "proposing": "describe",
-    "suggest": "describe", "suggests": "describe", "suggesting": "describe",
-    "recommend": "describe", "recommends": "describe", "recommending": "describe",
-    # get (enrichment)
-    "arricchisci": "get", "arricchisco": "get", "arricchire": "get",
-    "ottieni": "get", "ottengo": "get", "ottenere": "get",
-    "get": "get", "give": "get", "tell": "get",
-    "dimmi": "get", "dammi": "get",  # spesso enrichment-like
-    # compute
-    "calcola": "compute", "calcolo": "compute", "calcolare": "compute",
-    "compute": "compute", "calculate": "compute", "hash": "compute",
-    # Forme volutamente polisemiche. Il prefilter sceglie qui il significato
-    # più utile per il richiamo del catalogo; vocab.ACTION_MAPPING conserva
-    # tutti i significati disponibili al planner. Le divergenze sono censite
-    # e verificate da test_verb_canonical_sot.py.
-    "visualizza": "read",
-    "discard": "delete",
-    "classifica": "sort",
-    "etichetta": "classify", "label": "classify",
-    "indicizza": "create", "index": "create",
-    "order": "sort",
-}
+# Concept identifiers are protocol, not linguistic data.  Their payloads
+# live exclusively in detection_lexicon_seed and remain dynamic at call time.
+_PREFILTER_VERB_CONCEPT = "prefilter.verb_canonical"
+_PREFILTER_OBJECT_CONCEPT = "prefilter.object_hint"
+_PREFILTER_STOPWORD_CONCEPT = "prefilter.stopword"
+_PREFILTER_CLITIC_CONCEPT = "prefilter.italian_clitic_suffix"
+_PREFILTER_LOCATION_RELATIVE_CONCEPT = "prefilter.location_relative"
+_PREFILTER_EXIF_CONCEPT = "prefilter.exif_marker"
+_PREFILTER_TIME_CONCEPT = "prefilter.time_intent"
+_PREFILTER_GENERIC_AFFINITY_CONCEPT = "prefilter.generic_affinity_verb"
+
+# Canonical protocol order is significant only for the historical score
+# tie-break. It contains no natural-language surface and therefore remains in
+# the algorithmic consumer rather than in the translatable payload.
+_PREFILTER_OBJECT_ORDER = (
+    "messages", "files", "images", "dirs", "location", "places", "now",
+    "urls", "numbers", "texts", "packages", "events", "calendars",
+    "contacts", "processes", "signatures", "proposals",
+)
+
+
+def _detection_mapping(concept: str) -> dict[str, list[str]]:
+    import detection_lexicon as _detlex
+
+    mapping = _detlex.mapping(concept)
+    return {
+        str(canonical): [str(form) for form in forms if str(form)]
+        for canonical, forms in mapping.items()
+        if isinstance(forms, list)
+    }
+
+
+def verb_to_canonical_mapping() -> dict[str, str]:
+    """Localized surface -> canonical action, omitting ambiguous surfaces."""
+    owners: dict[str, set[str]] = {}
+    for canonical, surfaces in _detection_mapping(
+            _PREFILTER_VERB_CONCEPT).items():
+        for surface in surfaces:
+            token = surface.strip().casefold()
+            if _WORD_RE.fullmatch(token):
+                owners.setdefault(token, set()).add(canonical)
+    return {
+        token: next(iter(canonicals))
+        for token, canonicals in owners.items()
+        if len(canonicals) == 1
+    }
+
+
+def object_hint_mapping() -> dict[str, list[str]]:
+    """Localized object hints with one exact compatibility baseline.
+
+    The historical list contains one intentional duplicate that contributes
+    to hit cardinality.  ``detection_lexicon.mapping`` correctly de-duplicates
+    ordinary forms, so this scoring consumer reads the versioned resources and
+    merges a partially materialized active language over exactly one baseline.
+    """
+    import detection_lexicon as _detlex
+
+    current = _detlex.current_lang()
+    native = _detlex.resource_for_language(
+        _PREFILTER_OBJECT_CONCEPT, current, fallback=False, ready_only=True,
+    )
+    baselines = _detlex.baseline_languages(_PREFILTER_OBJECT_CONCEPT)
+    candidates = [
+        _detlex.resource_for_language(
+            _PREFILTER_OBJECT_CONCEPT, lang, fallback=False, ready_only=True,
+        )
+        for lang in baselines
+        if lang != current
+    ]
+
+    def _resource_size(resource) -> int:
+        payload = resource.get("payload") if resource else None
+        return sum(
+            len(forms) for forms in payload.values()
+            if isinstance(forms, list)
+        ) if isinstance(payload, dict) else -1
+
+    baseline = max(candidates, key=_resource_size, default=None)
+    if native is None:
+        native = baseline
+        baseline = None
+
+    def _payload(resource) -> dict[str, list[str]]:
+        if (not resource or resource.get("kind") != "mapping"
+                or not isinstance(resource.get("payload"), dict)):
+            return {}
+        return {
+            str(canonical): [str(form) for form in forms if str(form)]
+            for canonical, forms in resource["payload"].items()
+            if isinstance(forms, list)
+        }
+
+    primary = _payload(native)
+    fallback = _payload(baseline)
+    merged = {canonical: list(forms) for canonical, forms in primary.items()}
+    if fallback:
+        for canonical, forms in fallback.items():
+            if canonical not in merged:
+                merged[canonical] = list(forms)
+                continue
+            for form in forms:
+                if form not in merged[canonical]:
+                    merged[canonical].append(form)
+    ordered = {
+        canonical: merged[canonical]
+        for canonical in _PREFILTER_OBJECT_ORDER if canonical in merged
+    }
+    ordered.update({
+        canonical: merged[canonical]
+        for canonical in sorted(set(merged) - set(ordered))
+    })
+    return ordered
+
+
+def stopwords() -> frozenset[str]:
+    """Localized stopwords plus the IT/EN compatibility baselines."""
+    import detection_lexicon as _detlex
+
+    return frozenset(str(form).casefold() for form in
+                     _detlex.forms(_PREFILTER_STOPWORD_CONCEPT) if form)
+
+
+def italian_clitic_suffixes() -> tuple[str, ...]:
+    """Localized suffix forms, longest first for deterministic stripping."""
+    import detection_lexicon as _detlex
+
+    forms = [str(form).casefold() for form in
+             _detlex.forms(_PREFILTER_CLITIC_CONCEPT) if form]
+    return tuple(sorted(dict.fromkeys(forms), key=lambda form: -len(form)))
+
+
+def generic_affinity_verbs() -> frozenset[str]:
+    """Localized action tokens excluded from distinctive affinity scoring."""
+    import detection_lexicon as _detlex
+
+    return frozenset(str(form).casefold() for form in
+                     _detlex.forms(_PREFILTER_GENERIC_AFFINITY_CONCEPT) if form)
 
 
 def _localized_verb_table() -> dict[str, str]:
-    """Tabella operativa: compatibilita' storica + risorsa RM-0005 attiva.
+    """Tabella operativa: risorse RM-0005 specifica + action vocabulary.
 
     Il detection lexicon unisce la lingua del turno alle lingue seed e si
     invalida quando una traduzione viene materializzata. Le forme non ambigue
     entrano automaticamente; una polisemia non viene mai risolta scegliendo
-    un'azione per ordine di dizionario. Le preferenze storiche esplicite sopra
-    restano soltanto per le collisioni gia' deliberate e misurate.
+    un'azione per ordine di dizionario. Le preferenze storiche deliberate sono
+    parte del payload versionato del concept specifico.
     """
-    table = dict(_VERB_TO_CANONICAL)
+    table = verb_to_canonical_mapping()
     try:
         from vocab import action_recognition_mapping
     except Exception:  # pragma: no cover - bootstrap minimale
@@ -290,22 +293,9 @@ def detect_canonical_verb(qtokens, query: str | None = None):
     return None
 
 
-# Italian clitic suffixes per pronominal forms (universal §7.9):
-# "mettili" = "metti" + "li", "inviamelo" = "invia" + "melo", ecc.
-# Ordine matter: prima i più lunghi.
-_IT_CLITIC_SUFFIXES = (
-    "celo", "cela", "celi", "cele", "cene", "cisi",
-    "melo", "mela", "meli", "mele", "mene",
-    "telo", "tela", "teli", "tele", "tene",
-    "selo", "sela", "seli", "sele", "sene",
-    "gli", "mi", "ti", "si", "ci", "vi", "ne",
-    "lo", "la", "li", "le",
-)
-
-
 def _strip_italian_clitic(tok: str) -> str | None:
     """Universal §7.9: rimuovi clitico pronome IT. Ritorna stem o None."""
-    for suf in _IT_CLITIC_SUFFIXES:
+    for suf in italian_clitic_suffixes():
         if tok.endswith(suf) and len(tok) > len(suf) + 2:
             return tok[:-len(suf)]
     return None
@@ -318,8 +308,8 @@ def detect_canonical_verbs_all(qtokens) -> list[str]:
     ricostruibile qui). Usato per detection multi-step (es. «fissa
     appuntamento e mandami email» -> ['create', 'send']). Lista vuota se
     nessun verbo.
-    Generale: deriva dai sinonimi vocab IT+EN gia' presenti in
-    `_VERB_TO_CANONICAL`, non hardcoded a un caso d'uso specifico.
+    Generale: deriva dai sinonimi presenti nel detection lexicon, non da un
+    caso d'uso hardcoded.
 
     Italian clitic stripping (§7.9 universal): "mettili"→"metti", "inviamelo"
     →"invia". Cattura clitici pronominali standard IT.
@@ -336,78 +326,6 @@ def detect_canonical_verbs_all(qtokens) -> list[str]:
         if v and v not in seen:
             seen.append(v)
     return seen
-
-
-# Mappa parole IT/EN -> oggetto canonico (suffisso di executor name).
-# Permette di disambiguare fra `move_files` e `move_messages` quando il verbo
-# si applica a entrambi.
-_OBJECT_HINTS = {
-    "messages": ["mail", "email", "posta", "messaggio", "messaggi", "imap",
-                 "inbox", "indesiderata", "junk", "spam", "trash", "cestino",
-                 "archivio", "archive", "mittente", "oggetto",
-                 "destinatario", "subject", "from"],
-    "files":    ["file", "files",
-                 "pdf", "csv", "xlsx", "txt", "documento", "documenti"],
-    # Termini semantici + estensioni image (vocabolario chiuso e stabile
-    # da ~30 anni: jpg/png/heic/webp sono universalmente "image", non
-    # hardcoding anti-pattern — decisione Roberto 5/5/2026).
-    "images":   ["foto", "photo", "photos", "image", "images", "immagine",
-                 "immagini", "picture", "pictures",
-                 "jpg", "jpeg", "png", "heic", "webp"],
-    "dirs":     ["directory", "directories", "cartella", "cartelle", "folder",
-                 "folders", "dir", "subdir", "subfolder"],
-    "location": ["location", "posizione", "dove", "luogo", "geolocation",
-                 "coordinate", "lat", "lon", "longitudine", "latitudine"],
-    "places":   ["place", "luogo", "luoghi", "geo", "city", "country",
-                 "citta", "comune", "indirizzo"],
-    "now":      ["adesso", "now", "ora", "orario", "tempo"],
-    # Solo identificatori tecnici stabili e linguisticamente neutri.
-    # I domini web (es. `scuola.edu.it`, `metnos.com`) sono identificati
-    # strutturalmente via regex in `_detect_domain_in_query` — generale per
-    # qualsiasi TLD presente o futuro. Termini come `notizie/news/articolo/
-    # blog/post/pagina/feed/rss` rimossi: sostantivi specifici, language-
-    # bound, misleading su sostantivi simili (es. "pagina 5 del PDF" non
-    # implica object=urls). Decisione Roberto 5/5/2026.
-    "urls":     ["url", "urls", "uri", "link", "https", "http"],
-    "numbers":  ["numero", "numeri", "number", "numbers", "media", "stddev",
-                 "minimo", "massimo", "statistica"],
-    # `lines` non e' piu' un oggetto separato (3/5/2026): e' qualifier
-    # di granularita' su `texts`. Sinonimi mappati su `texts`.
-    "texts":    ["testo", "testi", "text", "texts", "riga", "righe",
-                  "line", "lines", "log"],
-    "packages": ["package", "pacchetto", "pip", "apt", "package"],
-    "events":   ["evento", "eventi", "event", "calendar", "calendario",
-                  "appuntamento", "appuntamenti", "appointment", "appointments",
-                  "riunione", "riunioni", "meeting", "meetings",
-                  "agenda", "incontro", "incontri",
-                  "scadenza", "scadenze", "deadline",
-                  "fissa", "prenota", "book", "schedule",
-                  # P5 (12/5/2026): hint per query suggestion-style come
-                  # «proponi 3 orari per appuntamento» o «slot liberi mattina».
-                  # Mantieni allineato con vocab classes; "orari/fasce/slot"
-                  # sono universali per il dominio calendar.
-                  "orari", "orario", "fascia", "fasce", "slot", "slots",
-                  "mattina", "pomeriggio", "morning", "afternoon"],
-    # Calendars (3/6): il CONTENITORE-calendario. "calendario/calendar" restano
-    # anche hint di `events` (ambiguo: "leggi il calendario"=eventi) — la
-    # disambiguazione create-container vs evento la fa il SCOPO del manifest +
-    # entrambi i producer nel pool.
-    "calendars": ["calendario", "calendari", "calendar", "calendars"],
-    "contacts": ["contatto", "contatti", "contact", "rubrica"],
-    "processes": ["processo", "processi", "process", "processes", "ps",
-                   "task", "pid", "cpu", "ram", "memoria", "memory",
-                   "istanza", "istanze", "instance", "instances",
-                   "running", "esecuzione", "daemon", "demone",
-                   "kill", "uccidi", "termina", "stop"],
-    "signatures": ["signature", "signatures", "policy", "policies",
-                    "blacklist", "whitelist", "graylist", "forbidden",
-                    "safety"],
-    "proposals": ["proposta", "proposte", "proposal", "proposals",
-                   "introvertiva", "introvertive", "introvertivo",
-                   "review", "candidato", "candidati", "candidate",
-                   "candidates", "dedupe", "generalize", "specialize",
-                   "pending"],
-}
 
 
 ## Domain (web) detector: regex strutturale (non hardcoded TLD list).
@@ -490,10 +408,10 @@ def detect_canonical_object(qtokens, query: str | None = None):
 
     Layer 2 (5/5/2026): se la query contiene un dominio web (`scuola.edu.it`,
     `metnos.com`), object='urls' viene OVERRIDE. Generale per qualsiasi TLD,
-    sostituisce la vecchia lista hardcoded di TLD in `_OBJECT_HINTS["urls"]`.
+    sostituisce la vecchia lista hardcoded di TLD negli object hint.
     """
     scores = {}
-    for obj, hints in _OBJECT_HINTS.items():
+    for obj, hints in object_hint_mapping().items():
         hit = sum(1 for h in hints if h in qtokens)
         if hit:
             scores[obj] = hit
@@ -507,27 +425,6 @@ def detect_canonical_object(qtokens, query: str | None = None):
         return None
     # Tie-break: il primo nel dict order (Python 3.7+ preserva ordine).
     return max(scores.keys(), key=lambda o: scores[o])
-
-
-_STOPWORDS_IT = {
-    "il","lo","la","i","gli","le","un","uno","una",
-    "di","a","da","in","con","su","per","tra","fra",
-    "e","o","ma","se","che","non","ne","ci","si","mi","ti","vi",
-    "del","della","dei","delle","dello","degli","al","alla","ai","alle",
-    "dal","dalla","dai","dalle","nel","nella","nei","nelle","sul","sulla","sui","sulle",
-    "sono","è","ho","ha","hanno","essere","avere",
-    "questo","quella","questi","quelle","quello",
-    "miei","tuoi","suoi","mia","tua","sua",
-    "oggi","ieri","domani",
-    "anche","poi","cosi","cosi'","molto","piu","piu'","pero","pero'",
-}
-_STOPWORDS_EN = {
-    "the","a","an","of","in","on","at","to","for","with","by","from",
-    "and","or","but","if","not","is","are","was","were","be","been",
-    "this","that","these","those","my","your","their","our",
-    "today","yesterday","tomorrow",
-}
-_STOPWORDS = _STOPWORDS_IT | _STOPWORDS_EN
 
 
 def affinity_score(query_tokens, executor, *,
@@ -563,7 +460,7 @@ def affinity_score(query_tokens, executor, *,
     desc_tokens = tokenize(executor.description)
     hard_matches = query_tokens & aff_tokens
     hard = len(hard_matches) * 4
-    soft_pool = (query_tokens & desc_tokens) - hard_matches - _STOPWORDS
+    soft_pool = (query_tokens & desc_tokens) - hard_matches - stopwords()
     soft = min(len(soft_pool), 3)
     verb_boost = 0
     canonical_verbs = tuple(query_canonical_verbs or (
@@ -742,22 +639,8 @@ _OBJECT_PRIMARY_TOOLS = {
     "inputs":    ("get_inputs",),
 }
 
-_QUERY_DEPENDENT_PRECURSORS = (
-    ("find_places", "get_location", (
-        # IT: marker location-relative — TUTTE le forme di genere/numero
-        # ("vicino" maschile non matcha "vicina/vicini/vicine" col substring
-        # match: la lista deve enumerarle esplicitamente).
-        "vicino a me", "vicino", "vicina", "vicini", "vicine",
-        "piu vicino", "piu vicina", "piu vicini", "piu vicine",
-        "piu' vicino", "piu' vicina",  # con apostrofo
-        "qui", "qua", "intorno", "intorno a me", "intorno a noi",
-        "nelle vicinanze", "nei dintorni", "in zona", "in giro",
-        "vicinissimo", "vicinissima",
-        # EN
-        "near me", "around me", "around here", "around us",
-        "nearby", "nearest", "closest", "close by", "close-by",
-        "in the area", "in proximity",
-    )),
+_QUERY_DEPENDENT_PRECURSOR_CONCEPTS = (
+    ("find_places", "get_location", _PREFILTER_LOCATION_RELATIVE_CONCEPT),
 )
 
 
@@ -767,21 +650,6 @@ _QUERY_DEPENDENT_PRECURSORS = (
 # (es. "elenca i file con la dimensione" → get_files NON serve, find_files ha
 # gia' size → evita il misroute get_files(fields=["size"]) che e' enum-invalid).
 # Deterministico §7.9: substring match. Vedi core-rule §5 EXIF→get_files.
-_EXIF_MARKERS = (
-    # IT
-    "exif", "scattat", "metadati foto", "metadati della foto", "geotag",
-    "luogo di scatto", "dove e' stata fatta", "dove è stata fatta",
-    "dove e' stata scattata", "dove è stata scattata",
-    "quando e' stata scattata", "quando è stata scattata",
-    "con che camera", "con quale camera", "con che fotocamera",
-    "che fotocamera", "modello di fotocamera", "coordinate gps",
-    # EN
-    "with what camera", "which camera", "where was it taken",
-    "when was it taken", "where was this photo", "when was this photo",
-    "capture date", "gps coordinates",
-)
-
-
 # Shell-intent hints (ADR 0088): query con questi marker triggerano
 # l'iniezione automatica di `admin` nel pool top-K. Il pianificatore
 # vede admin come tool ordinario, lo seleziona, il vaglio always-on
@@ -794,25 +662,11 @@ _EXIF_MARKERS = (
 # Gli hint multi-word (ip route, comando shell, log di sistema) restano
 # match come frase intera grazie a `\b` alle estremita'. Determinismo
 # §7.9: regex compilata, niente LLM.
-_TIME_INTENT_HINTS = (
-    # Italiano
-    "che ora", "che ore", "ora corrente", "data corrente", "che giorno",
-    "che data", "adesso", "in questo momento",
-    # Inglese
-    "what time", "what date", "current time", "current date",
-    "what day", "today is", "what's the time", "right now",
-)
-
-
-_TIME_INTENT_RE = re.compile(
-    r"\b(?:" + "|".join(re.escape(h) for h in _TIME_INTENT_HINTS) + r")\b",
-    re.IGNORECASE,
-)
-
-
 def _detect_time_intent(qlow: str) -> bool:
     """True se la query chiede ora/data corrente. Match word-boundary."""
-    return bool(_TIME_INTENT_RE.search(qlow or ""))
+    import detection_lexicon as _detlex
+
+    return _detlex.match(_PREFILTER_TIME_CONCEPT, qlow or "")
 
 
 def _detect_shell_intent(qlow: str) -> bool:
@@ -1053,27 +907,6 @@ def _detect_command_grammar_intent(query: str, *, command_names=None) -> bool:
     return False
 
 
-def _query_has_marker(qlow, markers):
-    """True se la query (lowercase) contiene almeno uno dei marker.
-    Match per substring (i marker sono frasi corte, sufficiente per IT/EN)."""
-    return any(m in qlow for m in markers)
-
-
-# Token-verbo generici dell'affinity: presenti in quasi ogni tool della stessa
-# famiglia → NON discriminano nel boost affinity-match (rank_with_intent).
-_GENERIC_AFFINITY_VERBS = frozenset({
-    "find", "cerca", "search", "ricerca", "trova", "cercare", "get", "ottieni",
-    "ottenere", "read", "leggi", "leggere", "list", "elenca", "lista", "delete",
-    "cancella", "rimuovi", "elimina", "move", "sposta", "write", "scrivi",
-    "salva", "create", "crea", "set", "imposta", "send", "invia", "filter",
-    "filtra", "sort", "ordina", "group", "raggruppa", "compute", "calcola",
-    # send-synonyms IT (10/6/2026): generici quanto "invia" — senza di loro
-    # il tag "manda mail" diventava phrase-match distintivo (over-recall di
-    # send_messages_github nelle query move-mail, vedi affinity_phrase_recall).
-    "manda", "mandare", "spedisci", "spedire",
-})
-
-
 def affinity_phrase_score(query, executor) -> int:
     """Return the strongest distinctive multi-token affinity match.
 
@@ -1087,7 +920,7 @@ def affinity_phrase_score(query, executor) -> int:
         return 0
     best = 0
     for tag in (getattr(executor, "affinity", None) or []):
-        distinctive = tokenize(tag) - _STOPWORDS - _GENERIC_AFFINITY_VERBS
+        distinctive = tokenize(tag) - stopwords() - generic_affinity_verbs()
         if len(distinctive) >= 2 and distinctive <= qtokens:
             best = max(best, len(distinctive))
     return best
@@ -1210,7 +1043,7 @@ def rank_with_intent(query, catalog, intent, *, k=3):
             aff_tokens = set()
             for a in (getattr(e, "affinity", None) or []):
                 aff_tokens.update(tokenize(a))
-            aff_tokens -= _GENERIC_AFFINITY_VERBS
+            aff_tokens -= generic_affinity_verbs()
             s += min(len(qtokens & aff_tokens), 3)
         if _rule_fn is not None:
             try:
@@ -1271,16 +1104,19 @@ def rank_with_intent(query, catalog, intent, *, k=3):
                 primary.append((8, primary_exec))  # score sopra precursor generici (5) sotto match diretto (10+)
                 seen_for_obj.add(primary_name)
 
-    # Cross-tool query-driven precursors (vedi _QUERY_DEPENDENT_PRECURSORS).
+    # Cross-tool query-driven precursors: relazione tecnica locale, marker NL
+    # nel detection lexicon centrale.
     # Aggiunge un provider quando il consumer e' nei candidati E la query
     # contiene un marker semantico che lo rende necessario. Es. find_places
     # + "vicino a me" → inietta get_location.
     qlow = (query or "").lower()
     seen_names = {e.name for _, e in primary}
-    for cons_name, prov_name, markers in _QUERY_DEPENDENT_PRECURSORS:
+    import detection_lexicon as _detlex_prefilter
+    for cons_name, prov_name, marker_concept \
+            in _QUERY_DEPENDENT_PRECURSOR_CONCEPTS:
         if cons_name not in seen_names:
             continue
-        if not _query_has_marker(qlow, markers):
+        if not _detlex_prefilter.match(marker_concept, qlow):
             continue
         if prov_name in seen_names:
             continue
@@ -1295,7 +1131,7 @@ def rank_with_intent(query, catalog, intent, *, k=3):
     # su file ("dimensione/elenco") NON sono tentate da get_files (che e' EXIF-only
     # → get_files(fields=["size"]) = enum-invalid, misroute 4/6). Deterministico §7.9.
     if obj in ("files", "images") and "get_files" not in seen_names \
-            and _query_has_marker(qlow, _EXIF_MARKERS):
+            and _detlex_prefilter.match(_PREFILTER_EXIF_CONCEPT, qlow):
         gf = next((e for e in catalog if e.name == "get_files"), None)
         if gf is not None:
             primary.append((9, gf))  # alta priorita': intento EXIF esplicito

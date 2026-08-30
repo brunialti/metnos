@@ -22,9 +22,11 @@ from __future__ import annotations
 
 import functools
 import re
+from collections.abc import Iterator, Mapping
 from typing import Optional
 
 import detection_lexicon as _dl  # lessici NL traducibili (gemello i18n input)
+import detection_lexicon_seed_parsers as _parser_lex
 
 # Connettori sequenziali: i SIMBOLI (,;&&) e i terminatori interrogativi o
 # esclamativi sono lingua-invarianti e restano qui; le PAROLE connettore
@@ -50,7 +52,11 @@ _SENTENCE_BOUNDARY = re.compile(r"(?<=[.?!。！？؟])\s+(?=\S)")
 @functools.lru_cache(maxsize=8)
 def _connector_pattern(_lang: str) -> "re.Pattern":
     words = _dl.forms("compound.connector_word")
-    alt = "|".join(words) if words else "e|and"
+    # If the resource is unavailable, symbols still split but no linguistic
+    # connector is guessed from a built-in fallback.
+    alt = "|".join(
+        re.escape(str(word)).replace(r"\ ", r"\s+") for word in words
+    ) if words else r"(?!x)x"
     # Boundary del connettore: NON deve essere adiacente a un apostrofo su NESSUN
     # lato (lookbehind + lookahead). Generale §7.9, nessuna parola/lingua cablata:
     # è la definizione «apostrofo = word-char» applicata al confine, non un caso
@@ -74,28 +80,48 @@ MUTATING_VERBS = {"write", "create", "set", "move", "delete", "send",
 # variante-qualifier query-aware). Universal §7.9, lessico curato (no special-
 # case). NB: «foglio (di calcolo/elettronico)» = lo spreadsheet in IT (mancava
 # → «crea un foglio» derivava create_files_doc invece di _spreadsheet).
-_FORMAT_HINTS = {
-    "foglio di calcolo": ("files", "spreadsheet"),
-    "foglio elettronico": ("files", "spreadsheet"),
-    "foglio": ("files", "spreadsheet"),
-    "fogli": ("files", "spreadsheet"),
-    "spreadsheet": ("files", "spreadsheet"),
-    "excel": ("files", "spreadsheet"),
-    "xlsx": ("files", "xlsx"),
-    "xls": ("files", "xlsx"),
-    "csv": ("files", "csv"),
-    "pdf": ("files", "pdf"),
-    "doc": ("files", "doc"),
-    "document": ("files", "doc"),
-    "documento": ("files", "doc"),
-    "json": ("files", "json"),
-    "xml": ("files", "xml"),
-    "html": ("files", "html"),
-    "markdown": ("files", "md"),
-    "md": ("files", "md"),
-    "txt": ("files", "txt"),
-    "text": ("files", "txt"),
-}
+def _compound_lexicon() -> dict[str, object] | None:
+    return _parser_lex.load_family("compound")
+
+
+def _format_hint_mapping(
+        lexicon: dict[str, object] | None = None,
+) -> dict[str, tuple[str, str]]:
+    lexicon = lexicon or _compound_lexicon()
+    raw = (lexicon or {}).get("parser.compound.format_hint", {})
+    result: dict[str, tuple[str, str]] = {}
+    for canonical, forms in raw.items():
+        parts = str(canonical).split(":", 1)
+        if len(parts) != 2 or not all(parts):
+            continue
+        for form in forms:
+            surface = str(form).strip().casefold()
+            if surface:
+                result[surface] = (parts[0], parts[1])
+    return result
+
+
+class _FormatHintsView(Mapping[str, tuple[str, str]]):
+    """Compatibility view for the existing dispatch consumer.
+
+    It intentionally resolves on every operation: translations may become
+    ready after module import, while a partial family must remain invisible.
+    """
+
+    def __getitem__(self, key: str) -> tuple[str, str]:
+        return _format_hint_mapping()[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(_format_hint_mapping())
+
+    def __len__(self) -> int:
+        return len(_format_hint_mapping())
+
+    def items(self):
+        return _format_hint_mapping().items()
+
+
+_FORMAT_HINTS: Mapping[str, tuple[str, str]] = _FormatHintsView()
 TRANSFORM_VERBS = {"filter", "sort", "group", "classify", "describe",
                     "render", "compute", "compare"}
 
@@ -141,31 +167,25 @@ def split_query_chunks(query: str) -> list[str]:
         return raw
 
 
-# Nomi-campo: articoli/preposizioni-composto da scartare (IT+EN), lessico curato.
-# `di/of/d` sono STOP (scartati) ma NON tagliano («numero d'ordine»→«numero ordine»).
-_FIELD_STOP = {"il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "dei",
-               "degli", "delle", "del", "dello", "della", "di", "da", "d", "l",
-               "a", "ad", "ogni", "the", "an", "of", "each", "every", "its",
-               "their"}
-# Preposizioni che introducono una FRASE-sorgente/scope → TAGLIANO il campo
-# («title from this week's events»→«title»; «dati dalle fatture»→«dati»).
-_FIELD_CUT_PREP = {"from", "in", "into", "da", "dal", "dalla", "dallo", "dai",
-                   "dagli", "dalle", "nel", "nella", "nello", "nei", "negli",
-                   "su", "sul", "sulla", "sui", "sulle", "about", "regarding",
-                   "for", "per", "con", "tra", "fra", "presso"}
-
-
-def _clean_field_name(text: str) -> str:
+def _clean_field_name(text: str,
+                      lexicon: dict[str, object] | None = None) -> str:
     """Normalizza un frammento NL in un nome-campo: taglia alla prima prep-frase,
     scarta articoli/preposizioni-composto, max 3 parole. Deterministico §7.9."""
-    text = text.replace("'", " ").replace("’", " ").lower()
+    lexicon = lexicon or _compound_lexicon()
+    if lexicon is None:
+        return ""
+    field_stop = {str(item).casefold() for item in
+                  lexicon["parser.compound.field_stop"]}
+    field_cut = {str(item).casefold() for item in
+                 lexicon["parser.compound.field_cut"]}
+    text = text.replace("'", " ").replace("’", " ").casefold()
     words = re.findall(r"[\w]+", text)
     kept: list[str] = []
     for w in words:
-        if w in _FIELD_CUT_PREP and kept:
+        if w in field_cut and kept:
             break
         kept.append(w)
-    kept = [w for w in kept if w not in _FIELD_STOP]
+    kept = [w for w in kept if w not in field_stop]
     return " ".join(kept[:3]).strip()
 
 
@@ -173,40 +193,51 @@ def _clean_field_name(text: str) -> str:
 # clausola create/write: «crea un foglio con (tutti i)? <marker>[:] X, Y, Z».
 # Lessico curato IT+EN. `dati/data` (plurale IT / EN) = marker; NON confondere
 # con il campo «data» (=date IT), distinto lessicalmente da «dati».
-_SCHEMA_MARKER_RE = re.compile(
-    r"\b(?:colonne|campi|intestazioni|voci|columns|fields|headers|dati|data)\b"
-    r"(\s*:)?\s*(.+)$", re.IGNORECASE)
+def _phrase_alt(forms) -> str:
+    return "|".join(
+        re.escape(str(form)).replace(r"\ ", r"\s+")
+        for form in sorted(set(forms or ()), key=lambda item: (-len(item), item))
+        if str(form).strip()
+    )
 
 
-def _fields_from_schema_marker(query: str) -> list[str]:
+def _fields_from_schema_marker(
+        query: str, lexicon: dict[str, object] | None = None) -> list[str]:
     """Campi dallo SCHEMA D'USCITA dichiarato nella clausola create/write
     («…con (tutti i)? colonne/campi/dati: X, Y, Z»). Il field-list è lo schema
     del sink (arg `columns`), spesso frainteso come spec d'estrazione: qui lo
     ricaviamo deterministicamente (§7.9) quando NON c'è una clausola «estrai».
     Anti over-capture: senza «:» esplicito richiedi una LISTA (≥2 elementi)."""
-    m = _SCHEMA_MARKER_RE.search(query or "")
+    lexicon = lexicon or _compound_lexicon()
+    if lexicon is None:
+        return []
+    markers = _phrase_alt(lexicon["parser.compound.schema_marker"])
+    connectors = _phrase_alt(lexicon["parser.compound.list_connector"])
+    if not markers or not connectors:
+        return []
+    marker_rx = re.compile(
+        rf"(?<!\w)(?:{markers})(?!\w)(\s*:)?\s*(.+)$",
+        re.IGNORECASE | re.UNICODE,
+    )
+    m = marker_rx.search(query or "")
     if not m:
         return []
     has_colon = bool(m.group(1))
     tail = m.group(2) or ""
-    parts = [p for p in re.split(r"\s*,\s*|\s+e\s+|\s+and\s+", tail) if p.strip()]
+    parts = [p for p in re.split(
+        rf"\s*,\s*|\s+(?:{connectors})\s+", tail,
+        flags=re.IGNORECASE | re.UNICODE,
+    ) if p.strip()]
     if not has_colon and len(parts) < 2:
         return []
     out: list[str] = []
     seen: set = set()
     for p in parts:
-        f = _clean_field_name(p)
+        f = _clean_field_name(p, lexicon)
         if f and f not in seen and len(f) <= 40:
             seen.add(f)
             out.append(f)
     return out
-
-
-_TABULAR_WITH_FIELDS_RE = re.compile(
-    r"\b(?:foglio(?:\s+di\s+calcolo|\s+elettronico)?|spreadsheet|sheet|tabella|table)\b"
-    r"[^.;:\n]{0,100}?\b(?:con|with)\b\s*([^.;\n]+)",
-    re.IGNORECASE,
-)
 
 
 def derive_sink_fields(query: str) -> list[str]:
@@ -224,57 +255,94 @@ def derive_sink_fields(query: str) -> list[str]:
     # (live: "valore" at EOL dropped "originale, origine, ..." on the next).
     normalized_query = re.sub(r"(?:^|\n)\s*>\s?", " ", query or "")
     normalized_query = re.sub(r"\s+", " ", normalized_query).strip()
-    match = _TABULAR_WITH_FIELDS_RE.search(normalized_query)
+    lexicon = _compound_lexicon()
+    if lexicon is None:
+        return []
+    tabular = _phrase_alt(lexicon["parser.compound.tabular_noun"])
+    with_forms = _phrase_alt(lexicon["parser.compound.with_connector"])
+    if not tabular or not with_forms:
+        return []
+    tabular_rx = re.compile(
+        rf"(?<!\w)(?:{tabular})(?!\w)[^.;:\n]{{0,100}}?"
+        rf"(?<!\w)(?:{with_forms})(?!\w)\s*([^.;\n]+)",
+        re.IGNORECASE | re.UNICODE,
+    )
+    match = tabular_rx.search(normalized_query)
     if match:
         field_clause = match.group(1) or ""
+        list_connectors = _phrase_alt(
+            lexicon["parser.compound.list_connector"])
+        articles = _phrase_alt(lexicon["parser.compound.article"])
+        artifacts = _phrase_alt(
+            lexicon["parser.compound.artifact_boundary"])
+        row_nouns = _phrase_alt(lexicon["parser.compound.row_noun"])
+        schema_markers = _phrase_alt(
+            lexicon["parser.compound.schema_marker"])
+        total_quantifiers = _phrase_alt(
+            lexicon["parser.compound.total_quantifier"])
         # A following output artifact belongs to the next sink, not to the
         # spreadsheet schema: "..., conflitto, e un archivio ZIP ...".  Stop
         # at that explicit noun boundary while still allowing ordinary `e`
         # inside the list of fields.
-        field_clause = re.split(
-            r"\s*,?\s+(?:e|ed|and)\s+(?:(?:un|uno|una|an|a|the)\s+)?"
-            r"(?:archivio|archive|zip|rapporto|report|cartella|folder|directory)\b",
-            field_clause, maxsplit=1, flags=re.IGNORECASE)[0]
+        if list_connectors and artifacts:
+            article_prefix = rf"(?:(?:{articles})(?!\w)\s+)?" \
+                if articles else ""
+            field_clause = re.split(
+                rf"\s*,?\s+(?:{list_connectors})(?!\w)\s+"
+                rf"{article_prefix}(?:{artifacts})(?!\w)",
+                field_clause, maxsplit=1,
+                flags=re.IGNORECASE | re.UNICODE,
+            )[0]
         # Il payload tabellare può seguire nella STESSA frase: «con le colonne
         # voce, stato e importo e due righe di dati: alpha, ...». Le righe non
         # sono nuove intestazioni. Taglia sul confine coordinato che introduce
         # rows/records, indipendentemente dalla quantità espressa prima.
-        field_clause = re.split(
-            r"\s*,?\s+(?:e|ed|and)\s+(?:(?:\d+|[A-Za-zÀ-ÖØ-öø-ÿ]+)\s+)?"
-            r"(?:righe|rows|records)\b",
-            field_clause, maxsplit=1, flags=re.IGNORECASE)[0]
+        if list_connectors and row_nouns:
+            field_clause = re.split(
+                rf"\s*,?\s+(?:{list_connectors})(?!\w)\s+"
+                rf"(?:(?:\d+|[^\W_]+)\s+)?(?:{row_nouns})(?!\w)",
+                field_clause, maxsplit=1,
+                flags=re.IGNORECASE | re.UNICODE,
+            )[0]
         # La forma tabellare puo' includere un marker di schema prima della
         # lista: «spreadsheet con tutti i dati: data, descrizione, importo».
         # Quel prefisso descrive la completezza, non e' il primo campo. Questa
         # normalizzazione preserva la forma diretta Atlas («foglio con origine,
         # data, ...») e il comportamento storico del parser a marker.
-        field_clause = re.sub(
-            r"^\s*(?:(?:le|i|gli|the)\s+)?"
-            r"(?:colonne|campi|intestazioni|voci|columns|fields|headers)"
-            r"\s*:?\s*",
-            "", field_clause, flags=re.IGNORECASE)
-        field_clause = re.sub(
-            r"^\s*(?:(?:tutti\s+i|tutte\s+le|all(?:\s+the)?)\s+)?"
-            r"(?:colonne|campi|intestazioni|voci|columns|fields|headers|"
-            r"dati|data)\s*:\s*",
-            "", field_clause, flags=re.IGNORECASE)
+        if schema_markers:
+            article_prefix = rf"(?:(?:{articles})(?!\w)\s+)?" \
+                if articles else ""
+            field_clause = re.sub(
+                rf"^\s*{article_prefix}(?:{schema_markers})(?!\w)\s*:?\s*",
+                "", field_clause, flags=re.IGNORECASE | re.UNICODE,
+            )
+            quantifier_prefix = (
+                rf"(?:(?:{total_quantifiers})(?!\w)\s+)?"
+                if total_quantifiers else ""
+            )
+            field_clause = re.sub(
+                rf"^\s*{quantifier_prefix}(?:{schema_markers})(?!\w)\s*:\s*",
+                "", field_clause, flags=re.IGNORECASE | re.UNICODE,
+            )
         parts = [p for p in re.split(
-            r"\s*,\s*|\s+e\s+|\s+ed\s+|\s+and\s+", field_clause)
+            rf"\s*,\s*|\s+(?:{list_connectors})\s+", field_clause,
+            flags=re.IGNORECASE | re.UNICODE)
                  if p.strip()]
         out: list[str] = []
         seen: set[str] = set()
         for part in parts:
-            field = _clean_field_name(part)
+            field = _clean_field_name(part, lexicon)
             if field and field not in seen and len(field) <= 40:
                 seen.add(field)
                 out.append(field)
         if len(out) >= 2:
             return out
-    return (_fields_from_schema_marker(normalized_query)
-            or _fields_from_sink_assignment(normalized_query))
+    return (_fields_from_schema_marker(normalized_query, lexicon)
+            or _fields_from_sink_assignment(normalized_query, lexicon))
 
 
-def _fields_from_sink_assignment(query: str) -> list[str]:
+def _fields_from_sink_assignment(
+        query: str, lexicon: dict[str, object] | None = None) -> list[str]:
     """Campi da una frase naturale di popolamento del sink.
 
     Copre forme come «crea uno spreadsheet e metti data e importo» / «create
@@ -284,11 +352,14 @@ def _fields_from_sink_assignment(query: str) -> list[str]:
     tabellare esplicito, evitando di interpretare come schema un normale
     «metti il file in /tmp».
     """
+    lexicon = lexicon or _compound_lexicon()
+    if lexicon is None:
+        return []
     q = query or ""
-    ql = q.lower()
+    ql = q.casefold()
     tabular = any(
         hint in ql and qualifier in {"spreadsheet", "xlsx", "csv"}
-        for hint, (_obj, qualifier) in _FORMAT_HINTS.items()
+        for hint, (_obj, qualifier) in _format_hint_mapping(lexicon).items()
     )
     if not tabular:
         return []
@@ -310,12 +381,12 @@ def _fields_from_sink_assignment(query: str) -> list[str]:
                          if "write" in (_verbs(_tok(word)) or [])), None)
         if verb_idx is None or verb_idx + 1 >= len(words):
             continue
-        first = _clean_field_name(" ".join(words[verb_idx + 1:]))
+        first = _clean_field_name(" ".join(words[verb_idx + 1:]), lexicon)
         if first:
             fields.append(first)
         j = i + 1
         while j < len(annotated) and not annotated[j][1]:
-            field = _clean_field_name(annotated[j][0])
+            field = _clean_field_name(annotated[j][0], lexicon)
             if field:
                 fields.append(field)
             j += 1
@@ -340,6 +411,9 @@ def derive_extract_fields(query: str) -> list[str]:
     dai connettori (anche «e» DENTRO la lista campi) → i chunk SENZA verbo sono
     continuazioni della clausola-extract. Ritorna [] se non c'e' clausola extract
     (il caller mantiene il comportamento attuale). Niente LLM."""
+    lexicon = _compound_lexicon()
+    if lexicon is None:
+        return []
     try:
         from prefilter import (tokenize as _tok,
                                detect_canonical_verbs_all as _verbs)
@@ -358,13 +432,14 @@ def derive_extract_fields(query: str) -> list[str]:
         if v != "extract":
             continue
         # primo chunk: scarta la PAROLA-verbo iniziale (es. «estrai»/«extract»).
-        first = _clean_field_name(" ".join(re.findall(r"[\w']+", ch)[1:]))
+        first = _clean_field_name(
+            " ".join(re.findall(r"[\w']+", ch)[1:]), lexicon)
         if first:
             fields.append(first)
         # continuazioni: chunk seguenti SENZA verbo (resto della lista campi).
         j = i + 1
         while j < n and ann[j][1] is None:
-            f2 = _clean_field_name(ann[j][0])
+            f2 = _clean_field_name(ann[j][0], lexicon)
             if f2:
                 fields.append(f2)
             j += 1
@@ -389,7 +464,7 @@ def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
         from prefilter import (
             tokenize,
             detect_canonical_verbs_all,
-            _OBJECT_HINTS,
+            object_hint_mapping,
         )
         from vocab import canonical_object as _canon_obj
     except ImportError:
@@ -417,9 +492,9 @@ def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
         return (verb, "entries")
 
     # 2. Detect object canonico
-    # Try _OBJECT_HINTS first (più ricco)
+    # Try the localized object-hint mapping first (più ricco)
     detected_obj = None
-    for obj, hints in _OBJECT_HINTS.items():
+    for obj, hints in object_hint_mapping().items():
         for h in hints:
             h_tokens = set(h.lower().split())
             # Token-subset (preciso) per ogni hint; il fallback substring SOLO
@@ -540,8 +615,18 @@ def _send_has_explicit_recipient(chunk: str) -> bool:
     import re as _re
     if _re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", chunk):
         return True
-    # 'a'/'ad'/'to' + nome proprio CAPITALIZZATO (es. "manda a Roberto").
+    lexicon = _compound_lexicon()
+    if lexicon is None:
+        return False
+    prepositions = _phrase_alt(
+        lexicon["parser.compound.recipient_preposition"])
+    if not prepositions:
+        return False
+    # Preposizione registrata + nome proprio CAPITALIZZATO.
     # Minuscolo ("a casa", "a quella pagina") NON è un destinatario.
-    if _re.search(r"\b(?:a|ad|to)\s+[A-ZÀ-Þ][\wÀ-ÿ'.\-]+", chunk):
-        return True
-    return False
+    match = _re.search(
+        rf"(?<!\w)(?:{prepositions})(?!\w)\s+"
+        rf"(?P<name>[^\W\d_][\w'.\-]+)",
+        chunk, flags=_re.UNICODE,
+    )
+    return bool(match and match.group("name")[0].isupper())

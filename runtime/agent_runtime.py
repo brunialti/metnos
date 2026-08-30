@@ -41,10 +41,11 @@ from scratchpad import Scratchpad
 from synt import Synt, make_request as synt_make_request
 import prompt_loader  # ADR 0092: prompt LLM in runtime/prompts/<lang>/
 import detection_lexicon as _detlex  # lessici NL traducibili (gemello i18n)
+import detection_lexicon_seed_runtime_safety as _runtime_safety_lexicon
+import detection_lexicon_seed_residual_am as _residual_am_lexicon
 from config import DEFAULT_TIMEZONE
 from credential_intake import (
-    credential_pair_matches,
-    is_password_label,
+    credential_pairs_for_storage,
     scrub_sensitive_text as _scrub_credentials,
 )
 from executor_birth_feedback import (
@@ -209,86 +210,14 @@ DEFAULT_CAP_MAX_PER_TURN = int(os.environ.get("METNOS_CAP_MAX_PER_TURN", "3") or
 SCRATCHPAD_THRESHOLD_BYTES = 4096  # observation oltre questa dimensione vanno in scratchpad
 
 
-# Anti thinking-leak (ADR 0102, 7/5/2026). Il modello locale con think=true a volte
-# emette il proprio reasoning interno nel canale `text` invece che nel
-# canale `thinking` separato — il final_message dell'utente si riempie di
-# righe tipo "Wait, I'll check...", "Actually, I should...", "Let me think".
-# Lo scrubber e' deterministico (regex su righe standalone, §7.9):
-# rimuove SOLO righe il cui inizio e' un trigger di reasoning, preservando
-# substring legittime in mezzo a paragrafi reali (§2.8 no silent failure).
-_THINKING_LEAK_RE = re.compile(
-    r"^\s*(?:"
-    r"Wait\b|Actually\b|Let me\b|I'll\b|I will\b|Hmm\b|"
-    r"Looking at\b|One detail:|Final Answer(?:\s+construction)?:|"
-    r"Wait,?\s+I(?:'|)ll\b|Wait,?\s+I should\b|"
-    r"Now I'll\b|Actually,?\s+I'll\b|So,?\s+the answer\b|Let me think\b|"
-    r"I should\b|Rule:\s|Given\b"
-    r").*$",
-    re.IGNORECASE,
-)
-
-# Pattern italiani — meta-permission e self-talk del modello locale con think=true.
-# Caso live federvolley (7/5/2026): "(posso provare a cercarli se mi dai il
-# via libera)" e "ti suggerisco queste alternative" come list intro.
-# Politica chirurgica (the design guide §2.8 / §7.9): rimuoviamo SOLO righe in
-# parentesi che chiedono permesso, oppure righe standalone che aprono con
-# meta-permission ("se vuoi", "se mi dai il via libera", ...). Mantieni
-# substring legittime in mezzo a contenuto reale.
-
-# (a) Riga interamente fra parentesi che chiede permesso.
-_LEAK_IT_PAREN_PERMISSION_RE = re.compile(
-    r"^\s*\(\s*(?:"
-    r"posso provare|posso cercare|posso aiutarti|posso suggerirti|"
-    r"posso farlo|posso fare|posso recuperare|posso scaricare|"
-    r"se mi dai il via libera|se vuoi|se preferisci|fammi sapere|"
-    r"dimmi se|vuoi che (?:lo )?faccia|se ti serve|se hai bisogno"
-    r")[^)]*\)\s*\.?\s*$",
-    re.IGNORECASE,
-)
-
-# (b) Riga standalone che APRE con meta-permission/meta-discourse e
-# termina nello stesso periodo (no continuazione su altre frasi).
-# Pattern: la riga inizia con uno dei trigger e finisce con `.`/`?`/`!`
-# o EOL — l'intera riga e' una richiesta di permesso unica. Se prosegue
-# con altri contenuti (es. "se vuoi posso aiutarti, ma prima ..."), NON
-# scattare per evitare di mutilare contenuto utile.
-_LEAK_IT_STANDALONE_RE = re.compile(
-    r"^\s*(?:"
-    r"se mi dai il via libera|se vuoi posso|fammi sapere se|"
-    r"dimmi se vuoi|vuoi che (?:lo )?faccia|"
-    r"posso provare a|posso cercare|posso aiutarti|posso suggerirti"
-    r")\b[^.?!,;]*[.?!]?\s*$",
-    re.IGNORECASE,
-)
-
-
-# Pattern di leak runtime-internal (§2.8 guard): messaggi destinati al
-# PLANNER LLM (system messages del runtime) che il LLM a volte copia
-# nel final_answer.message. Detection deterministica §7.9.
-_RUNTIME_INTERNAL_LEAK_RE = re.compile(
-    r"(DUPLICATE_CALL:|FORMULA LA FINAL_ANSWER|"
-    r"FORMULATE (?:THE )?FINAL_ANSWER|"
-    r"^validation failed:|^vaglio rifiuta:|"
-    r"consecutive_blocked|auto_final_on_duplicate|"
-    r"cap_same_executor|VECTORIAL_VIOLATION|"
-    r"synth_request_blocked_by|requires one of \[|"
-    # Synth rejection messages (turn live 25/5/2026 bk93uc961):
-    # «request_new_executor rejected: candidate '...' copre la query
-    # (jaccard 1.00). Riusalo invece di sintetizzare.» — system msg
-    # destinato al PLANNER, non all'utente.
-    r"request_new_executor rejected|jaccard \d|"
-    r"Riusalo invece di sintetiz|"
-    r"Reuse it instead of synthesiz|"
-    r"candidate '[^']+' copre la query|"
-    r"candidate '[^']+' covers the query)",
-    re.IGNORECASE | re.MULTILINE,
-)
-
-
 def _has_runtime_internal_leak(text: str) -> bool:
     if not text or not isinstance(text, str):
         return False
-    return bool(_RUNTIME_INTERNAL_LEAK_RE.search(text))
+    return _runtime_safety_lexicon.matches(
+        _runtime_safety_lexicon.RUNTIME_INTERNAL_LEAK,
+        text,
+        fail_closed=True,
+    )
 
 
 # Set di `step.error` "meta" del runtime: indicano che il step e' stato
@@ -504,13 +433,24 @@ def _scrub_thinking_leak(text):
     """
     if not text or not isinstance(text, str):
         return text
+    concepts = (
+        _runtime_safety_lexicon.THINKING_LEAK_EN,
+        _runtime_safety_lexicon.META_PERMISSION_PAREN,
+        _runtime_safety_lexicon.META_PERMISSION_LINE,
+    )
+    patterns = tuple(
+        pattern
+        for concept in concepts
+        for pattern in _runtime_safety_lexicon.patterns(concept)
+    )
+    if not patterns:
+        try:
+            return msg("MSG_FINAL_FALLBACK_GENERIC")
+        except Exception:
+            return ""
     cleaned = []
     for line in text.split("\n"):
-        if _THINKING_LEAK_RE.match(line):
-            continue
-        if _LEAK_IT_PAREN_PERMISSION_RE.match(line):
-            continue
-        if _LEAK_IT_STANDALONE_RE.match(line):
+        if any(pattern.search(line) for pattern in patterns):
             continue
         cleaned.append(line)
     out = "\n".join(cleaned).strip()
@@ -630,14 +570,6 @@ _BINDING_STRONG = (
     ("web",  (r"https?://",)),
     ("cifs", (r"//\S+/", r"\\\\\S+",)),
 )
-_BINDING_WEAK = (
-    ("cifs", ("share", "smb", "cifs", "nas", "monta", "mount", "samba")),
-    ("ssh",  ("ssh", "scp", "sftp")),
-    ("web",  ("login", "sito", "portale", "registro", "banca",
-              "browser", "webmail")),
-)
-
-
 def detect_binding(query: str) -> str:
     """Ritorna 'cifs' | 'ssh' | 'web' | 'generic' in base ad hint linguistici.
 
@@ -650,7 +582,11 @@ def detect_binding(query: str) -> str:
         for p in patterns:
             if re.search(p, qlc):
                 return binding
-    for binding, kws in _BINDING_WEAK:
+    weak_bindings = _residual_am_lexicon.ready_mapping(
+        _residual_am_lexicon.AGENT_BINDING_WEAK,
+    )
+    for binding in ("cifs", "ssh", "web"):
+        kws = weak_bindings.get(binding, ())
         if any(k in qlc for k in kws):
             return binding
     return "generic"
@@ -705,8 +641,8 @@ def extract_credentials(query: str) -> list[dict]:
     """
     if not isinstance(query, str) or not query.strip():
         return []
-    pair_matches = credential_pair_matches(query, for_storage=True)
-    if not pair_matches:
+    pair_evidence = credential_pairs_for_storage(query)
+    if not pair_evidence:
         return []
 
     binding = detect_binding(query)
@@ -746,9 +682,9 @@ def extract_credentials(query: str) -> list[dict]:
             "scrub_spans": list(spans),
         })
 
-    for m in pair_matches:
-        first_label = m.group(1).casefold()
-        first_is_password = is_password_label(first_label)
+    for evidence in pair_evidence:
+        m = evidence.match
+        first_is_password = evidence.first_is_password
         if first_is_password:
             pwd_val = _clean_credential_value(m.group(2))
             user_val = _clean_credential_value(m.group(4))
@@ -1067,12 +1003,15 @@ def _check_top_k_affinity_jaccard(
     import re as _re
     if not query or not candidates:
         return None
-    _stop = {"il","la","i","gli","le","un","una","di","da","del","della","dei",
-             "delle","a","al","alla","ai","alle","in","con","su","per","tra",
-             "fra","e","o","ma","che","mi","ci","ti","si","ho","ha","hai",
-             "the","a","an","of","to","in","is","it","for","on","with","and",
-             "or","but","this","that"}
-    q_tokens = {t for t in _re.split(r"[^\w]+", query.lower()) if t and t not in _stop and len(t) >= 3}
+    stopwords = {
+        str(form).casefold() for form in _residual_am_lexicon.ready_forms(
+            _residual_am_lexicon.AGENT_AFFINITY_STOPWORD,
+        )
+    }
+    q_tokens = {
+        t for t in _re.split(r"[^\w]+", query.lower())
+        if t and t not in stopwords and len(t) >= 3
+    }
     if not q_tokens:
         return None
     # B.5 STRONG MATCH (19/5/2026 v4): se la query contiene un verbo che
@@ -1107,7 +1046,7 @@ def _check_top_k_affinity_jaccard(
         for term in aff_terms:
             if isinstance(term, str):
                 tool_tokens.update(t for t in _re.split(r"[^\w]+", term.lower())
-                                    if t and len(t) >= 3 and t not in _stop)
+                                    if t and len(t) >= 3 and t not in stopwords)
         if not tool_tokens:
             continue
         inter = q_tokens & tool_tokens
@@ -1569,7 +1508,10 @@ def _query_has_continuation(query: str) -> bool:
     try:
         from prefilter import tokenize, detect_canonical_verbs_all
         import re as _re
-        for conjunction in ("e", "and"):
+        conjunctions = _residual_am_lexicon.ready_forms(
+            _residual_am_lexicon.AGENT_SIMPLE_CONJUNCTION,
+        )
+        for conjunction in conjunctions:
             for match in _re.finditer(
                     rf"(?<!\w){_re.escape(conjunction)}(?!\w)",
                     query, flags=_re.IGNORECASE):
@@ -1660,49 +1602,6 @@ def _all_query_verbs_satisfied(query: str, executed_tools: list[str]) -> bool:
 # La regex e' DISTINTA da `_MULTISTEP_CONJUNCTIONS_RE`: qui catturiamo
 # il VERBO di notifica esplicito + il MEZZO (email/notifica/messaggio/
 # telegram/conferma), non solo la congiunzione strutturale.
-_NOTIFY_CONTINUATION_RE = re.compile(
-    r"("
-    # IT verbi notify con enclitici tipici mi/ci/gli — token interi via \b.
-    r"\b(?:mandami|inviami|spediscimi|notificami|avvisami|scrivimi)\b|"
-    r"\bfammi\s+sapere\b|"
-    # Forma "e/poi + verbo + (article)? + (mezzo)": multi-step strutturale
-    # con marker esplicito del mezzo. NB: \b iniziale prima della cong.
-    r"\b(?:e|and|poi)\s+(?:mi\s+)?(?:mandi|invii|spedisci|notifichi|avvisi|"
-    r"invia|manda|notifica|avvisa)\s+(?:una\s+|un\s+|la\s+)?"
-    r"(?:email|mail|messaggio|notifica|conferma|sms|telegram|whatsapp)\b|"
-    # EN verbi notify
-    r"\b(?:email|notify|alert|message|text|ping)\s+me\b|"
-    r"\bsend\s+me\s+(?:a\s+|an\s+)?(?:email|message|text|notification|notify)\b|"
-    r"\blet\s+me\s+know\b|"
-    # Marker del MEZZO di notifica esplicito: «via email», «via telegram».
-    r"\bvia\s+(?:email|mail|telegram|sms|whatsapp|notifica|notification|message)\b|"
-    # Coda «+ invia conferma», «and send confirmation»: cong NON-word (+/,)
-    # OPPURE word (e/and/poi). Senza \b sul prefix per ammettere `+`/`,`.
-    # Lookbehind senza fixed-width: usiamo char-class al posto di alternation.
-    r"(?:[\s\+,]|\b)(?:e|and|poi|\+|,)\s+(?:invia|manda|notifica|send|notify)\s+"
-    r"(?:una\s+|un\s+|la\s+|a\s+|an\s+|the\s+)?"
-    r"(?:conferma|confirmation|notifica|notification|messaggio|email|mail)\b|"
-    # Verbo notify standalone dopo cong NON-word/word (end-of-clause):
-    # «+ notifica», «and notify» a fine richiesta. Implica «notify the user».
-    r"(?:[\s\+,]|\b)(?:e|and|poi|\+|,)\s+(?:notifica|notify)(?=\s*[.!?]|\s*$)|"
-    # Cong NON-word + <noun_medium> [<noun_conferma>]: «+ email conferma»,
-    # «, email confirmation», «+ telegram avviso». Forma ellittica del
-    # verbo notify (verbo sottinteso, mezzo+oggetto espliciti). Solo per
-    # congiunzioni NON-word (+/,) che marcano gia' lo step separato; un
-    # verbo coniugato «e/and/poi» da solo NON triggera questa branch per
-    # evitare falsi positivi (es. «cerca email» — congiunzione word senza
-    # ellissi verbale).
-    r"(?:\s*[\+,])\s+"
-    r"(?:una\s+|un\s+|la\s+|a\s+|an\s+|the\s+)?"
-    r"(?:email|mail|telegram|sms|whatsapp|notifica|notification|messaggio|message)\s*"
-    r"(?:di\s+|of\s+)?"
-    r"(?:conferma|confirmation|riassunto|summary|notifica|notification|"
-    r"avviso|alert|update|aggiornamento)?\b"
-    r")",
-    re.IGNORECASE,
-)
-
-
 def _query_has_notify_continuation(query: str) -> bool:
     """True se la query contiene una continuation di notifica esplicita
     diretta all'utente.
@@ -1721,7 +1620,12 @@ def _query_has_notify_continuation(query: str) -> bool:
     """
     if not query or not isinstance(query, str):
         return False
-    return bool(_NOTIFY_CONTINUATION_RE.search(query))
+    return any(
+        pattern.search(query)
+        for pattern in _residual_am_lexicon.ready_patterns(
+            _residual_am_lexicon.NOTIFY_CONTINUATION,
+        )
+    )
 
 
 # P4 (12/5/2026) — Availability marker detection per check_availability.
@@ -1731,24 +1635,8 @@ def _query_has_notify_continuation(query: str) -> bool:
 # Defense in depth: il runtime intercetta set_events quando la query ha
 # un availability marker e read_events NON e' nei step precedenti.
 # Soluzione (c): post-hoc reject + hint, lascia che il planner ri-pianifichi.
-# Determinismo §7.9: regex deterministico, niente LLM.
-_AVAILABILITY_MARKERS_RE = re.compile(
-    r"\b("
-    # IT
-    r"se\s+c['’]?[eè]\s+(un\s+)?(posto|buco|slot|spazio|tempo)|"
-    r"se\s+(la\s+finestra|lo\s+slot)\s+[eè]['\s]*libera|"
-    r"se\s+sono\s+libero|se\s+sei\s+libero|"
-    r"se\s+non\s+ho\s+(altro|impegni|gi[aà])|"
-    r"verifica\s+(la\s+)?disponibilit[aà]|controlla\s+(la\s+)?disponibilit[aà]|"
-    r"se\s+disponibile|"
-    # EN
-    r"if\s+(it['’]?s\s+)?available|if\s+(i\s+am|i['’]?m)\s+free|"
-    r"if\s+there['’]?s\s+(a\s+)?(slot|opening|space|time)|"
-    r"if\s+free|check\s+availability|"
-    r"if\s+(the\s+)?(slot|window)\s+is\s+free"
-    r")\b",
-    re.IGNORECASE,
-)
+# Determinismo §7.9: il corpus manuale vive nel detection lexicon; se la
+# lingua attiva non e' pronta il gate e' conservativamente attivo.
 
 
 # Tool che CREANO eventi calendar: derivati dal catalog al call-time
@@ -1802,7 +1690,9 @@ def _query_requires_availability_check(query: str) -> bool:
     """
     if not query or not isinstance(query, str):
         return False
-    return bool(_AVAILABILITY_MARKERS_RE.search(query))
+    return _runtime_safety_lexicon.matches(
+        _runtime_safety_lexicon.AVAILABILITY, query, fail_closed=True,
+    )
 
 
 # P5 (12/5/2026) — Propose-intent detection per gate suggestion vs destructive.
@@ -1812,77 +1702,9 @@ def _query_requires_availability_check(query: str) -> bool:
 # lunedi-sabato (whole-week blob destructive). Atteso: read_events + final
 # testuale con N slot computati. NESSUN set_events.
 #
-# Regex SEMANTICA UNIVERSALE: cattura verbi di suggerimento IT+EN con
-# eventuali enclitici (mi/ti/ci/gli) tramite quantifier, NON enumerazione
-# enclitica esaustiva. Cattura anche le formulazioni interrogative tipiche
-# («che ne dici», «what about», «quali sono N ... liberi»). Determinismo
-# §7.9: regex compilata, niente LLM nel runtime gate.
-#
-# Pattern espliciti per «quali sono N X liberi/disponibili» perche' la
-# costruzione «quali sono i miei impegni» (read events) NON deve triggerare
-# il gate (la query e' read, non suggerimento di nuovo slot).
-_PROPOSE_INTENT_RE = re.compile(
-    r"(?:\b|^)("
-    # IT — verbi suggestion con eventuali enclitici (mi/ti/ci/gli/mela/...)
-    # Forma generale: stem + opzionale enclitico. Compatto via quantifier.
-    # Stem + opzionale enclitico (mi/ti/ci/gli/cela/...) — quantifier-based,
-    # NON enumerazione esaustiva. La forma `\w{1,5}?` cattura enclitici e
-    # desinenze di coniugazione (-armi -arci -ami -ate -ano -ebbe ...).
-    r"propon[a-z]{1,5}|propor[a-z]{2,7}|"
-    r"suggeris[a-z]{1,5}|sugger[a-z]{2,7}|"
-    r"raccomand[a-z]{1,6}|"
-    # IT — formulazioni interrogative tipiche di richiesta suggerimento.
-    # Pattern «che [ne] dici», «cosa [ne] pensi», «che dici», «consigliami N»
-    r"che(?:\s+ne)?\s+dici|cosa(?:\s+ne)?\s+(?:dici|pensi)|"
-    r"consigli[a-z]{1,5}|"
-    # IT — «quali (sono|fasce|orari|slot|...) ... liber[ie]/disponibil[ie]/...»
-    # Pattern semantico: parola interrogativa «quali» seguita entro la frase
-    # da un marker di disponibilita'/vacuita'. La distanza max 0-6 tokens.
-    # NB 22/5/2026: rimosso `aperte?` dal pattern — falso positivo su query
-    # sysinfo «quali porte TCP aperte» (network info, NON calendar). I marker
-    # canonici disponibilita' calendar sono `liber[ie]|disponibil[ie]|vuot[ei]`.
-    r"quali\s+(?:\w+\s+){0,6}(?:liber[ie]|disponibil[ie]|vuoti?|vuote)|"
-    # IT — «N alternative/opzioni/slot/orari/fasce/mattine/proposte».
-    # Forma con numero (3/2/...) + sostantivo proposta-like. Cattura
-    # «dammi 3 alternative», «cerca 3 slot 9-11», «alcune proposte»,
-    # «2 mercoledi liberi», «qualche slot». Indipendente dal verbo
-    # principale (cerca/dammi/voglio/etc.: il SOSTANTIVO + il NUMERO
-    # bastano a inferire "richiesta di N opzioni" semanticamente).
-    # Lista sostantivi: alternative/opzioni/proposte sono universali
-    # proposal-noun; slot/orari/fasce/mattine/pomeriggi/giorni-settimana
-    # sono dominio calendar (parte di `_OBJECT_HINTS["events"]`).
-    r"(?:\d+|alcun[ie]|qualche|alcune|alcuni|some)\s+"
-    r"(?:opzion[ie]|alternativ[ae]|propost[ae]|slot|slots|orari[oi]?|"
-    r"fasce?|mattine?|pomeriggi|finestre?|"
-    r"mercoled[ìi]|luned[ìi]|marted[ìi]|"
-    r"gioved[ìi]|venerd[ìi]|sabat[oi]|domenic[ah]e?)|"
-    # EN — verbs (gerund/3rd, infinitive)
-    r"propose|proposes|proposing|"
-    r"suggest|suggests|suggesting|"
-    r"recommend|recommends|recommending|"
-    # EN — interrogative
-    r"what\s+about|how\s+about|"
-    # EN — «what slots/times/X (are) free/available/open»: marker dispon-
-    # bilita' su sostantivo plurale. Stessa logica di «quali» IT.
-    r"what\s+(?:\w+\s+){0,4}(?:are\s+|is\s+)?(?:free|available|open)|"
-    r"which\s+(?:\w+\s+){0,4}(?:are\s+|is\s+)?(?:free|available|open)|"
-    # EN — «any free X», «any open X» — domanda «c'e' / ce ne sono?»
-    # Restringo al dominio calendar via lista nomi temporal: slot/time/window.
-    r"any\s+(?:free|available|open)\s+(?:slots?|times?|windows?|mornings?|afternoons?|days?|appointments?|meetings?)|"
-    # EN — «N options/alternatives/slots/morning times/...» (with optional
-    # preceding politeness verb: give me / I'd like / I want / can you).
-    # Lista nomi RISTRETTA al dominio proposal/calendar:
-    # options/alternatives/proposals = universal proposal-noun;
-    # slots/times/mornings/afternoons/openings = calendar dominio.
-    # Esclude generici (emails/files/messages) per evitare falsi positivi.
-    r"(?:\d+|some|a\s+few|several|any)\s+"
-    r"(?:morning\s+|afternoon\s+|free\s+|available\s+|open\s+|"
-    r"alternative\s+|proposed?\s+)?"
-    r"(?:options?|alternatives?|proposals?|slots?|times?|"
-    r"mornings?|afternoons?|openings?|windows?)"
-    r")(?:\b|$)",
-    re.IGNORECASE,
-)
+# The exact IT/EN proposal grammar is a manually reviewed detection resource.
+# A missing/pending active-language row must block destructive creation rather
+# than silently reclassify a proposal as an imperative.
 
 
 def _query_is_propose_intent(query: str) -> bool:
@@ -1908,7 +1730,9 @@ def _query_is_propose_intent(query: str) -> bool:
     """
     if not query or not isinstance(query, str):
         return False
-    return bool(_PROPOSE_INTENT_RE.search(query))
+    return _runtime_safety_lexicon.matches(
+        _runtime_safety_lexicon.PROPOSE_INTENT, query, fail_closed=True,
+    )
 
 
 def _has_prior_read_events_ok(steps) -> bool:
@@ -2896,19 +2720,8 @@ def extract_step_refs(args) -> set[int]:
 # contiene verbi di promessa futura E nessuno step ok ha registrato un'azione,
 # prepende notice "azione NON registrata". Notice additiva, non sostitutiva.
 
-_HALLUCINATION_RE = re.compile(
-    r"\b("
-    # Forme "ti X-ò" (futuro semplice 1pps), con e senza accento finale
-    r"ti (informer[oò'`]|aggiorner[oò'`]|far[oò'`] sapere|dir[oò'`]|"
-    r"segnaler[oò'`]|comunicher[oò'`]|contatter[oò'`]|risponder[oò'`])"
-    # Forme "sto X-ndo" (gerundio progressivo) tranne quando seguite da
-    # una conferma esplicita di azione registrata.
-    r"|sto (cercando|effettuando|controllando|monitorando|verificando|raccogliendo)"
-    # Forme "appena X" (futuro condizionato a evento)
-    r"|appena (avr[oò'`]|trovo|trovato|trovi|disponibili|disponibile|ricever[oò'`])"
-    r")",
-    re.IGNORECASE,
-)
+# The natural-language promise grammar is manually reviewed in the runtime
+# safety lexicon.  Registered tool names below are closed protocol IDs.
 
 # Tool che REGISTRANO un'azione futura concreta. Se il PLANNER promette
 # follow-up e ne ha chiamato uno con ok=true, la promessa e' supportata.
@@ -2936,12 +2749,6 @@ _REGISTERED_FUTURE_TOOLS = frozenset({
 # silent failure §2.8. Anche se fix #1 (`_resolve_from_step` SAFETY) previene
 # il bug a monte, questo check resta come safety net per altre forme di
 # divergenza tra obs ok/n_done e claim del LLM nel final.
-_FALSE_NOT_FOUND_RE = re.compile(
-    r"(non (?:e'|è) stato trovat[oai]|non trovat[oai]|"
-    r"non (?:esiste|esistono|risulta|risultano)|"
-    r"not found|does not exist|n[oa]t (?:been )?found)",
-    re.IGNORECASE,
-)
 # SoT in pipeline_effects.py (condiviso con engine/dispatch, 12/6/2026).
 from pipeline_effects import (  # noqa: E402
     MUTATING_TOOL_PREFIXES as _MUTATING_TOOL_PREFIXES,
@@ -2958,8 +2765,7 @@ def _detect_false_not_found(final_message: str | None, steps: list) -> dict | No
     """
     if not final_message:
         return None
-    if not _FALSE_NOT_FOUND_RE.search(final_message):
-        return None
+    contradicted = None
     for s in steps or []:
         tool = getattr(s, "chosen_tool", None) or (
             s.get("chosen_tool") if isinstance(s, dict) else None
@@ -2986,8 +2792,16 @@ def _detect_false_not_found(final_message: str | None, steps: list) -> dict | No
         except (TypeError, ValueError):
             ok_count = 0
         if ok_count >= 1:
-            return {"tool": tool, "ok_count": ok_count}
-    return None
+            contradicted = {"tool": tool, "ok_count": ok_count}
+            break
+    if contradicted is None:
+        return None
+    if not _runtime_safety_lexicon.matches(
+            _runtime_safety_lexicon.FALSE_NOT_FOUND,
+            final_message,
+            fail_closed=True):
+        return None
+    return contradicted
 
 
 def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
@@ -2997,8 +2811,6 @@ def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
     Determinismo §7.9: regex + lookup, niente LLM nel critical path.
     """
     if not final_message:
-        return False
-    if not _HALLUCINATION_RE.search(final_message):
         return False
     for s in steps or []:
         tool = getattr(s, "chosen_tool", None) or (
@@ -3010,7 +2822,11 @@ def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
         if (tool in _REGISTERED_FUTURE_TOOLS
                 and isinstance(result, dict) and result.get("ok")):
             return False
-    return True
+    return _runtime_safety_lexicon.matches(
+        _runtime_safety_lexicon.UNBACKED_PROMISE,
+        final_message,
+        fail_closed=True,
+    )
 
 
 # --- Anti-falso-successo su pipeline vuota (§2.8, 12/6/2026) ----------------
@@ -3028,21 +2844,8 @@ def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
 from pipeline_effects import pipeline_effect_counts  # noqa: E402
 
 
-# Claim di esito POSITIVO nel final (IT+EN). Negazioni escluse via
-# lookbehind («non ho trovato» non matcha). Pattern conservativo: meglio
-# un falso-negativo (nessuna notice) che marcare un final onesto.
-_FALSE_SUCCESS_RE = re.compile(
-    r"(?<!non )(?<!not )\b(?:"
-    r"ho\s+(?:analizzat|trovat|salvat|inviat|creat|classificat|preparat|"
-    r"scritt|spostat|cancellat|aggiornat|notificat|registrat)\w*"
-    r"|(?:bozz\w+|rispost\w+|notific\w+)\s+(?:salvat|pront|inviat|creat)\w*"
-    r"|(?:e'|è|sono)\s+stat[oaie]\s+(?:salvat|inviat|creat|notificat|"
-    r"preparat|analizzat|classificat)\w*"
-    r"|i\s+have\s+(?:analyz|found|saved|sent|creat|classifi|prepar|notifi)\w*"
-    r"|(?:drafts?|replies|notifications?)\s+(?:saved|sent|ready|created)"
-    r")",
-    re.IGNORECASE,
-)
+# Positive-result language is manually reviewed; the structural counters
+# below remain the sole authority for whether an effect actually happened.
 
 
 def _detect_false_success(final_message: str | None, counts: dict | None) -> bool:
@@ -3055,38 +2858,15 @@ def _detect_false_success(final_message: str | None, counts: dict | None) -> boo
         return False
     if counts.get("items", 0) > 0 or counts.get("mutations", 0) > 0:
         return False
-    return bool(_FALSE_SUCCESS_RE.search(final_message))
+    return _runtime_safety_lexicon.matches(
+        _runtime_safety_lexicon.FALSE_SUCCESS,
+        final_message,
+        fail_closed=True,
+    )
 
 
-# Claim di MUTAZIONE su un oggetto REALE (file/foglio/documento/evento/mail/...):
-# distinto dal claim di lettura/sintesi. «ho creato il foglio» richiede una
-# mutazione vera; «ho creato un riepilogo/elenco» (testo) NON e' una mutazione e
-# NON deve matchare → object list stretta per evitare falsi positivi.
-# NB (23/6): fra articolo e oggetto sono ammesse 0-2 parole (aggettivi):
-# «creato un NUOVO foglio», «creato il MIO file di calcolo». Il bound {0,2}
-# evita falsi match che scavalcano clausole. Bug live turno eventi: il synth
-# diceva «Ho creato un nuovo foglio» su 0 mutazioni reali e il regex (che
-# pretendeva il sostantivo subito dopo l'articolo) lo mancava -> §2.8 bucato.
-_MUT_GAP = r"(?:\w+\s+){0,2}"  # 0-2 parole opzionali (aggettivi) fra art. e oggetto
-_MUTATION_CLAIM_RE = re.compile(
-    r"(?<!non )(?<!not )\b(?:"
-    r"(?:creat|generat|salvat|scritt|prepar)\w*\s+(?:(?:il|lo|la|un|uno|una|"
-    r"the|a|an)\s+)?" + _MUT_GAP + r"(?:foglio|file|document\w*|spreadsheet|"
-    r"sheet|calendari\w*|event\w*|cartell\w*|folder|tabell\w*|csv|xlsx)"
-    r"|(?:inviat|spedit|mandat|sent)\w*\s+(?:(?:il|la|un|the|a|an)\s+)?"
-    + _MUT_GAP + r"(?:mail|email|messaggi\w*|message)"
-    r"|(?:spostat|cancellat|eliminat|delet|mov)\w*\s+(?:(?:il|la|i|le|the)\s+)?"
-    + _MUT_GAP + r"(?:file|mail|email|messaggi\w*|event\w*)"
-    r"|(?:created|saved|wrote|generated|prepared)\s+(?:(?:the|a|an)\s+)?"
-    + _MUT_GAP + r"(?:file|spreadsheet|sheet|document|calendar|event|folder|"
-    r"table|csv)"
-    r")", re.IGNORECASE)
-
-
-_DEGENERATE_FINAL_RE = re.compile(
-    r"\A[\(\[\s]*\d+(?:[.,]\d+)?\s*"
-    r"(?:elementi|entries|elements|voci|risultati|results|item|items)?\s*[\)\]\s]*\Z",
-    re.IGNORECASE)
+# Mutation claims, their explicit negations and degenerate-final language are
+# manually reviewed resources.  Canonical effect counters remain technical.
 
 
 def _is_degenerate_final(final_message: str | None) -> bool:
@@ -3100,7 +2880,9 @@ def _is_degenerate_final(final_message: str | None) -> bool:
     s = final_message.strip()
     if not s:
         return True
-    return bool(_DEGENERATE_FINAL_RE.match(s))
+    return _runtime_safety_lexicon.matches(
+        _runtime_safety_lexicon.DEGENERATE_FINAL, s, fail_closed=True,
+    )
 
 
 def _detect_false_mutation(final_message: str | None, counts: dict | None) -> bool:
@@ -3115,29 +2897,19 @@ def _detect_false_mutation(final_message: str | None, counts: dict | None) -> bo
         return False
     # Negazione esplicita dell'azione («non ho creato», «non sono riuscito a
     # inviare», «couldn't create») → il final e' gia' onesto, non toccarlo.
-    if re.search(r"non\s+(?:ho|sono\s+riuscit\w+\s+a|sono\s+stat\w+\s+in\s+grado"
-                 r"\s+di)\s*\w*\s*(?:creat|inviat|spedit|salvat|generat|scritt|"
-                 r"spostat|cancellat|prepar)"
-                 r"|(?:couldn'?t|could\s+not|was\s+not\s+able\s+to|did\s*n'?t)"
-                 r"\s+\w*\s*(?:creat|sen[dt]|sav|writ|generat|mov|delet|prepar)",
-                 final_message, re.IGNORECASE):
+    if _runtime_safety_lexicon.matches(
+            _runtime_safety_lexicon.MUTATION_NEGATION,
+            final_message,
+            fail_closed=False):
         return False
-    return bool(_MUTATION_CLAIM_RE.search(final_message))
+    return _runtime_safety_lexicon.matches(
+        _runtime_safety_lexicon.MUTATION_CLAIM,
+        final_message,
+        fail_closed=True,
+    )
 
 
-_ARTIFACT_COMPLETION_RE = re.compile(
-    r"\b(?:salvat|creat|generat|scritt|prodott|preparat|saved|created|"
-    r"generated|written|produced|prepared)\w*\b", re.IGNORECASE)
-_ARTIFACT_CLAIM_PATTERNS = {
-    "spreadsheet": re.compile(
-        r"\b(?:fogli\w*(?:\s+di\s+calcolo)?|spreadsheet|xlsx|csv|sheet)\b",
-        re.IGNORECASE),
-    "document": re.compile(
-        r"\b(?:rapport\w*|report\w*|riepilog\w*|document\w*)\b",
-        re.IGNORECASE),
-    "archive": re.compile(
-        r"\b(?:archivi\w*|zip|compressed\s+archive)\b", re.IGNORECASE),
-}
+# Closed tool IDs and durable artifact-class IDs, not natural-language data.
 _ARTIFACT_SINK_CATEGORIES = {
     "write_files": frozenset({"document"}),
     "write_files_doc": frozenset({"document"}),
@@ -3216,17 +2988,28 @@ def _detect_unbacked_artifact_claim(
     a directory cannot substantiate a claim that a report or spreadsheet was
     saved.  The rule is domain-neutral and uses only durable artifact classes.
     """
-    if not final_message or not _ARTIFACT_COMPLETION_RE.search(final_message):
+    if not final_message or not _runtime_safety_lexicon.matches(
+            _runtime_safety_lexicon.ARTIFACT_COMPLETION,
+            final_message,
+            fail_closed=True):
         return set()
     # Explicitly negative receipts are already honest.
-    if re.search(
-            r"\b(?:non|not|nessun\w*|no)\b.{0,40}\b(?:salvat|creat|generat|"
-            r"scritt|prodott|saved|created|generated|written|produced)\w*\b",
-            final_message, re.IGNORECASE | re.DOTALL):
+    if _runtime_safety_lexicon.matches(
+            _runtime_safety_lexicon.ARTIFACT_NEGATION,
+            final_message,
+            fail_closed=False):
         return set()
-    claimed = {category for category, pattern in
-               _ARTIFACT_CLAIM_PATTERNS.items()
-               if pattern.search(final_message)}
+    category_concepts = (
+        ("spreadsheet", _runtime_safety_lexicon.ARTIFACT_SPREADSHEET),
+        ("document", _runtime_safety_lexicon.ARTIFACT_DOCUMENT),
+        ("archive", _runtime_safety_lexicon.ARTIFACT_ARCHIVE),
+    )
+    claimed = {
+        category for category, concept in category_concepts
+        if _runtime_safety_lexicon.matches(
+            concept, final_message, fail_closed=True,
+        )
+    }
     return claimed - _artifact_sink_effects(steps)
 
 

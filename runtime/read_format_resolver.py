@@ -7,22 +7,16 @@ astratti, i formati espliciti della query. Nessun I/O e nessun LLM.
 """
 from __future__ import annotations
 
-import re
 from pathlib import PurePath
+
+import detection_lexicon as _detlex
+import detection_lexicon_seed_resolvers as _resolver_seed
 
 
 _AUTO_SUFFIXES = frozenset({
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".md",
     ".html", ".htm", ".xml",
 })
-_FORMAT_RE = re.compile(
-    r"\b(?:pdf|docx?|document[oi]?|documents?|xlsx?|excel|csv|"
-    r"fogli?\s+di\s+calcolo|spreadsheets?)\b", re.IGNORECASE)
-_DEDUP_RE = re.compile(
-    r"\b(?:duplicat[oi]|duplicat(?:e|es)|deduplic\w*|doppioni?)\b",
-    re.IGNORECASE)
-
-
 def _paths(args: dict) -> list[str]:
     values = args.get("paths")
     if isinstance(values, list):
@@ -52,12 +46,15 @@ def resolve_read_format(tool: str, args: dict, query: str, *,
         PurePath(path.replace("\\", "/")).suffix.casefold() in _AUTO_SUFFIXES
         and PurePath(path.replace("\\", "/")).suffix.casefold() != ".json"
         for path in paths)
-    explicit_document_formats = bool(_FORMAT_RE.search(query or ""))
+    _resolver_seed.ensure_registered()
+    explicit_document_formats = _detlex.match(
+        "resolver.read_document_format", query or "",
+    )
     if not (materialized_mixed or explicit_document_formats):
         return args
 
     out = dict(args)
     out["parse"] = "auto"
-    if _DEDUP_RE.search(query or ""):
+    if _detlex.match("resolver.read_deduplicate", query or ""):
         out["deduplicate_content"] = True
     return out if out != args else args

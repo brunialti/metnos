@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import errno
 import hashlib
 import json
 import os
@@ -16,6 +17,7 @@ import platform
 import re
 import selectors
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -29,9 +31,14 @@ from typing import Callable, Iterable, Mapping, NamedTuple, Sequence
 SUPPORTED_SYSTEMD_VERSIONS = ("255.4-1ubuntu8.17",)
 OWNERSHIP_ROOT = Path("/var/lib/metnos/executor-birth")
 AUTHORITY_ROOT = OWNERSHIP_ROOT / "authorities-v1"
+CHAIN_ROOT = OWNERSHIP_ROOT / "chain-v1"
+COORDINATOR_ROOT = OWNERSHIP_ROOT / "coordinator-v1"
 RELEASE_ROOT = OWNERSHIP_ROOT / "releases-v1"
 RUNTIME_ROOT = Path("/run/metnos-executor-birth-v1")
 OPENSSL_LINK = Path("/usr/bin/openssl")
+PYTHON_LINK = Path("/usr/bin/python3")
+SYSTEMCTL_LINK = Path("/usr/bin/systemctl")
+SYSTEMD_ANALYZE_LINK = Path("/usr/bin/systemd-analyze")
 
 MAX_REGISTRY_BYTES = 64 * 1024
 MAX_MANIFEST_BYTES = 16 * 1024 * 1024
@@ -46,6 +53,20 @@ MAX_BOUNDARY_TOTAL_AST_NODES_V1 = 4_000_000
 MAX_BOUNDARY_AST_DEPTH_V1 = 64
 MAX_BOUNDARY_SCOPES_V1 = 512
 MAX_BOUNDARY_CALLS_V1 = 8_192
+REQUIRED_HEAD_MAGIC_V1 = b"metnos-ownership-required-head-v1\0"
+MAX_CUTOVER_BYTES_V1 = 4 * 1024 * 1024
+MAX_HEAD_BYTES_V1 = 16 * 1024
+MAX_REQUIRED_HEAD_BYTES_V1 = (
+    len(REQUIRED_HEAD_MAGIC_V1) + 4 + MAX_HEAD_BYTES_V1 + 64
+)
+MAX_COORDINATOR_CONTROL_BYTES_V2 = 16 * 1024
+MAX_COORDINATOR_RECORD_BYTES_V2 = 8 * 1024 * 1024
+MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1 = 16 * 1024 * 1024
+MAX_PREDECESSOR_FILES_V1 = 20_000
+MAX_PREDECESSOR_SERVICE_COMMANDS_V1 = 20_000
+MAX_PREDECESSOR_PATH_DEPTH_V1 = 32
+MAX_AUTHORITY_CHECKPOINT_BYTES_V1 = 4096
+RECEIVED_SOURCE_DESCRIPTOR_BASENAME_V1 = "received-source-v1.json"
 MAX_OPENSSL_STREAM_BYTES = 4096
 OPENSSL_TIMEOUT_SECONDS = 5.0
 OPENSSL_TEARDOWN_TIMEOUT_SECONDS = 1.0
@@ -54,6 +75,154 @@ SIGNATURE_DOMAIN = b"metnos.executor-birth.closed-build/v1\0"
 BUILD_ID_DOMAIN = b"metnos.executor-birth.closed-build-id/v1\0"
 FILE_HASH_DOMAIN = b"metnos.executor-birth.closed-build-file/v1\0"
 BOUNDARY_INVENTORY_DOMAIN = b"metnos.executor-birth.boundary-inventory/v1\0"
+CUTOVER_ID_DOMAIN_V1 = b"metnos.executor-birth.ownership-cutover-id/v1\0"
+CUTOVER_CATALOG_ID_DOMAIN_V1 = b"metnos.executor-birth.current-catalog/v1\0"
+CUTOVER_SIGNATURE_DOMAIN_V1 = b"metnos.executor-birth.ownership-cutover/v1\0"
+HEAD_ID_DOMAIN_V1 = b"metnos.executor-birth.ownership-head-id/v1\0"
+HEAD_SIGNATURE_DOMAIN_V1 = b"metnos.executor-birth.ownership-head/v1\0"
+HEAD_PAYLOAD_HASH_DOMAIN_V2 = b"metnos.executor-birth.head-payload-hash/v2\0"
+HEAD_SIGNATURE_HASH_DOMAIN_V2 = (
+    b"metnos.executor-birth.head-signature-hash/v2\0"
+)
+REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2 = (
+    b"metnos.executor-birth.required-head-frame-hash/v2\0"
+)
+SUCCESSOR_CLAIM_ID_DOMAIN_V1 = b"metnos.executor-birth.successor-claim/v1\0"
+COORDINATOR_REQUEST_DOMAIN_V1 = (
+    b"metnos.executor-birth.ownership-coordinator-request/v1\0"
+)
+LEGACY_COORDINATOR_RECORD_DOMAIN_V1 = (
+    b"metnos.executor-birth.ownership-coordinator-record/v1\0"
+)
+COORDINATOR_RECORD_DOMAIN_V2 = (
+    b"metnos.executor-birth.ownership-coordinator-record/v2\0"
+)
+LEGACY_JOURNAL_DOMAIN_V2 = b"metnos.executor-birth.legacy-journal/v2\0"
+LEGACY_DISPOSITION_DOMAIN_V2 = b"metnos.executor-birth.legacy-disposition/v2\0"
+INSTALL_TRANSACTION_ID_DOMAIN_V1 = (
+    b"metnos.executor-birth.install-transaction/v1\0"
+)
+MAINTENANCE_PROOF_DOMAIN_V1 = b"metnos.executor-birth.maintenance-proof/v1\0"
+PREDECESSOR_DESCRIPTOR_ID_DOMAIN_V1 = (
+    b"metnos.executor-birth.predecessor-descriptor/v1\0"
+)
+SERVICE_CATALOG_ID_DOMAIN_V1 = (
+    b"metnos.executor-birth.service-catalog/v1\0"
+)
+SERVICE_COVERAGE_DOMAIN_V1 = (
+    b"metnos.executor-birth.service-coverage/v1\0"
+)
+SYSTEMD_FRAGMENT_DOMAIN_V1 = (
+    b"metnos.executor-birth.systemd-fragment/v1\0"
+)
+TARGET_EXECUTABLE_DOMAIN_V1 = (
+    b"metnos.executor-birth.target-executable/v1\0"
+)
+DEPLOYMENT_DESCRIPTOR_ID_DOMAIN_V1 = (
+    b"metnos.executor-birth.deployment-descriptor/v1\0"
+)
+STARTUP_PREREQUISITE_ID_DOMAIN_V1 = (
+    b"metnos.executor-birth.startup-prerequisite/v1\0"
+)
+ADMINISTRATIVE_BUNDLE_DOMAIN_V1 = (
+    b"metnos.executor-birth.administrative-bundle/v1\0"
+)
+CANDIDATE_UNITS_DOMAIN_V1 = b"metnos.executor-birth.candidate-units/v1\0"
+INSTALLED_TREE_DOMAIN_V1 = b"metnos.executor-birth.installed-tree/v1\0"
+ADMINISTRATIVE_EXECUTABLE_DOMAIN_V1 = (
+    b"metnos.executor-birth.administrative-executable/v1\0"
+)
+OPENSSL_TCB_DOMAIN_V1 = b"metnos.executor-birth.openssl-tcb/v1\0"
+OPENSSL_TCB_FILE_DOMAIN_V1 = b"metnos.executor-birth.openssl-tcb-file/v1\0"
+SYSTEMD_CONFIGURED_DIRECTIVES_DOMAIN_V1 = (
+    b"metnos.executor-birth.systemd-configured-directives/v1\0"
+)
+EFFECTIVE_UNITS_DOMAIN_V1 = b"metnos.executor-birth.effective-units/v1\0"
+SYSTEMD_ORIGIN_FILE_DOMAIN_V1 = (
+    b"metnos.executor-birth.systemd-origin-file/v1\0"
+)
+SYSTEMD_ORIGIN_SOURCE_DOMAIN_V1 = (
+    b"metnos.executor-birth.systemd-origin-source/v1\0"
+)
+SERVICE_SOURCE_IDENTITY_DOMAIN_V1 = (
+    b"metnos.executor-birth.service-source-identity/v1\0"
+)
+
+SERVICE_CATALOG_PATH_V1 = (
+    "deployment/executor-birth-service-catalog-v1.json"
+)
+DEPLOYMENT_DESCRIPTOR_PATH_V1 = (
+    "deployment/executor-birth-deployment-v1.json"
+)
+ADMINISTRATIVE_ADAPTER_PATH_V1 = (
+    "/usr/libexec/metnos/executor-birth-v1/preflight.py"
+)
+ADMINISTRATIVE_ROOT_TEXT_V1 = "/usr/libexec/metnos/executor-birth-v1"
+SYSTEM_UNIT_ROOT_TEXT_V1 = "/etc/systemd/system"
+MAX_SERVICE_CATALOG_BYTES_V1 = 256 * 1024
+MAX_UNIT_FRAGMENT_BYTES_V1 = 256 * 1024
+MAX_DEPLOYMENT_DESCRIPTOR_BYTES_V1 = 1024 * 1024
+MAX_STARTUP_PREREQUISITE_BYTES_V1 = 256 * 1024
+MAX_DEPLOYMENT_ARTIFACTS_V1 = 20_000
+MAX_TCB_SUBPROCESS_STREAM_BYTES_V1 = 64 * 1024
+MAX_ELF_PROGRAM_HEADERS_V1 = 4_096
+MAX_ELF_INTERPRETER_BYTES_V1 = 4_096
+MAX_OPENSSL_LOADER_ENTRIES_V1 = 512
+MAX_OPENSSL_MODULE_FILES_V1 = 256
+MAX_OPENSSL_MODULE_BYTES_V1 = 256 * 1024 * 1024
+MAX_SYSTEMD_ORIGIN_BYTES_V1 = 1024 * 1024
+MAX_SYSTEMD_ADDED_EDGES_PER_UNIT_V1 = 4096
+MAX_SYSTEMD_ADDED_EDGES_TOTAL_V1 = 65536
+_EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
+    "sha256:cd747ed58214a415a0cc112fc1aa5024dbea5539a736d46eab56b6e5df2c799a"
+)
+
+_EXPECTED_PRODUCT_ENABLEMENT_LINKS_V1 = (
+    (
+        "/etc/systemd/system/default.target.wants/metnos.target",
+        "../metnos.target",
+    ),
+    (
+        "/etc/systemd/system/metnos.target.requires/metnos-http.service",
+        "../metnos-http.service",
+    ),
+    (
+        "/etc/systemd/system/metnos.target.wants/metnos-durable-worker.service",
+        "../metnos-durable-worker.service",
+    ),
+    (
+        "/etc/systemd/system/metnos.target.wants/metnos-i18n-translator.timer",
+        "../metnos-i18n-translator.timer",
+    ),
+    (
+        "/etc/systemd/system/metnos.target.wants/metnos-llm.service",
+        "../metnos-llm.service",
+    ),
+    (
+        "/etc/systemd/system/metnos.target.wants/metnos-photon.service",
+        "../metnos-photon.service",
+    ),
+    (
+        "/etc/systemd/system/metnos.target.wants/metnos-playwright.service",
+        "../metnos-playwright.service",
+    ),
+    (
+        "/etc/systemd/system/metnos.target.wants/metnos-searxng.service",
+        "../metnos-searxng.service",
+    ),
+    (
+        "/etc/systemd/system/metnos.target.wants/metnos-side-display.service",
+        "../metnos-side-display.service",
+    ),
+    (
+        "/etc/systemd/system/metnos.target.wants/metnos-stack-watchdog.timer",
+        "../metnos-stack-watchdog.timer",
+    ),
+    (
+        "/etc/systemd/system/metnos.target.wants/metnos-telegram-daemon.service",
+        "../metnos-telegram-daemon.service",
+    ),
+)
 
 EXIT_MISSING = 20
 EXIT_INVALID = 21
@@ -84,14 +253,420 @@ _PROPERTY_RE = re.compile(r"[A-Za-z][A-Za-z0-9]*\Z")
 _DISTRIBUTION_KEY_RE = re.compile(
     r"distribution-ed25519-v1-sha256-[0-9a-f]{64}\Z"
 )
+_OWNERSHIP_KEY_RE = re.compile(
+    r"birth-ed25519-v1-sha256-[0-9a-f]{64}\Z"
+)
 _SEMVER_RE = re.compile(
     r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
     r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\Z"
+)
+_PREDECESSOR_MODULE_RE_V1 = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){0,31}\Z"
+)
+_PREDECESSOR_ENVIRONMENT_RE_V1 = re.compile(
+    r"[A-Z_][A-Z0-9_]{0,127}\Z"
+)
+# Deliberately mirrors the assembler's unbounded unit regex.  The general
+# preflight _UNIT_RE above has a stricter length policy and is not equivalent.
+_PREDECESSOR_UNIT_RE_V1 = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9_.@-]*\.(?:service|timer|target)\Z"
+)
+_CATALOG_MODULE_RE_V1 = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){0,31}\Z"
+)
+_CATALOG_ENVIRONMENT_RE_V1 = re.compile(r"[A-Z_][A-Z0-9_]{0,127}\Z")
+_SERVICE_ACCOUNT_RE_V1 = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
+_CATALOG_DURATION_RE_V1 = re.compile(
+    r"(?:0|[1-9][0-9]*)(?:us|ms|s|min|h|d|w)\Z"
+)
+_CATALOG_SAFE_TOKEN_RE_V1 = re.compile(r"!?[A-Za-z0-9_./:@+=,-]+\Z")
+_SYSTEMD_VERSION_RE_V1 = re.compile(
+    r"(?P<major>[0-9]{3})(?:\.[0-9]+)*(?:[-+~.][A-Za-z0-9]+)*\Z"
+)
+_ARCHIVED_DIGEST_STEM_RE_V1 = re.compile(r"[0-9a-f]{64}\Z")
+_ARCHIVED_HEAD_STEM_RE_V1 = re.compile(r"[0-9]{20}-[0-9a-f]{64}\Z")
+_SUCCESSOR_CLAIM_BASENAME_RE_V1 = re.compile(
+    r"(?:initial|[0-9a-f]{64})\.json\Z"
+)
+_TRANSACTION_DIRECTORY_RE_V2 = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_TRANSACTION_RECORD_RE_V2 = re.compile(r"record-([0-9]{3})-v2\.json\Z")
+_LEGACY_RECORD_RE_V1 = re.compile(r"record-([0-9]{3})-v1\.json\Z")
+
+_AUTHORITY_KINDS_V1 = ("distribution", "cutover", "head")
+_AUTHORITY_REGISTRY_BASENAMES_V1 = tuple(
+    f"{kind}-registry-v1.json" for kind in _AUTHORITY_KINDS_V1
+)
+_AUTHORITY_PRIVATE_BASENAMES_V1 = tuple(
+    f"{kind}-private-v1.bin" for kind in _AUTHORITY_KINDS_V1
+)
+_AUTHORITY_CHECKPOINT_BASENAMES_V1 = tuple(
+    f"checkpoint-{index:03d}-v1.json" for index in range(5)
 )
 
 _REGISTRY_KEYS = frozenset({
     "schema_version", "authority", "key_id", "public_key", "purposes",
     "first_release_sequence", "last_release_sequence",
+})
+_CUTOVER_KEYS_V1 = frozenset({
+    "schema_version", "cutover_id", "previous_cutover_id", "request_id",
+    "signing_key_id", "catalog_id", "current_count", "current_receipts",
+    "maintenance_evidence_hash", "boundary_inventory_hash",
+    "boundary_guard_version", "closed_build_id",
+})
+_CUTOVER_RECEIPT_KEYS_V1 = frozenset({
+    "contract_id", "generation_id", "receipt_hash",
+})
+_HEAD_KEYS_V1 = frozenset({
+    "schema_version", "release_sequence", "cutover_id", "closed_build_id",
+    "previous_head_id", "head_id", "signing_key_id",
+})
+_SUCCESSOR_CLAIM_KEYS_V1 = frozenset({
+    "schema_version", "claim_id", "previous_head_id", "release_sequence",
+    "request_id", "source_id", "closed_build_id",
+})
+_COORDINATOR_RECORD_KEYS_V2 = frozenset({
+    "schema_version", "sequence", "state", "previous_record_sha256",
+    "request_id", "previous_closed_build_id", "previous_cutover_id",
+    "closed_build_id", "distribution_payload_hash",
+    "distribution_signature_hash", "boundary_inventory_hash",
+    "boundary_guard_version", "current_receipts",
+    "maintenance_before_hash", "maintenance_after_hash",
+    "maintenance_proof_b64", "startup_prerequisite_id",
+    "startup_prerequisite_digest", "cutover_id", "catalog_id",
+    "certificate_payload_hash", "certificate_signature_hash", "source_id",
+    "successor_claim_id", "deployment_descriptor_id",
+    "install_transaction_id", "installed_tree_hash", "release_sequence",
+    "previous_head_id", "head_id", "head_payload_hash",
+    "head_signature_hash", "required_head_frame_hash",
+    "verified_chain_head_id", "preflight_attestation_hash",
+    "service_coverage_hash", "administrative_bundle_hash",
+})
+_LEGACY_COORDINATOR_RECORD_KEYS_V1 = frozenset({
+    "schema_version", "sequence", "state", "previous_record_sha256",
+    "request_id", "previous_closed_build_id", "previous_cutover_id",
+    "closed_build_id", "distribution_payload_hash",
+    "distribution_signature_hash", "boundary_inventory_hash",
+    "boundary_guard_version", "current_receipts",
+    "maintenance_before_hash", "maintenance_after_hash",
+    "maintenance_proof_b64", "startup_prerequisite_id",
+    "startup_prerequisite_digest", "cutover_id", "catalog_id",
+    "certificate_payload_hash", "certificate_signature_hash",
+})
+_LEGACY_DISPOSITION_KEYS_V2 = frozenset({
+    "schema_version", "disposition_id", "legacy_journal_hash",
+    "legacy_request_id", "legacy_state", "successor_request_id", "reason",
+})
+_INSTALL_TRANSACTION_KEYS_V1 = frozenset({
+    "schema_version", "request_id", "source_id", "closed_build_id",
+    "release_sequence", "previous_head_id", "successor_claim_id",
+    "deployment_descriptor_id", "service_coverage_hash",
+    "administrative_bundle_hash",
+})
+_MAINTENANCE_PROOF_KEYS_V1 = frozenset({"schema_version", "source", "units"})
+_MAINTENANCE_UNIT_KEYS_V1 = frozenset({
+    "scope", "unit", "load_state", "active_state", "main_pid",
+})
+_MAINTENANCE_SOURCES_V1 = frozenset({
+    "inactive_http_and_inactive_sidecar",
+    "inactive_http_and_sidecar_broker",
+})
+_MAINTENANCE_TARGETS_V1 = (
+    ("system", "metnos-backup.service"),
+    ("system", "metnos-backup.timer"),
+    ("system", "metnos-http.service"),
+    ("system", "metnos-prompts-translator.service"),
+    ("system", "metnos-prompts-translator.timer"),
+    ("user", "metnos-durable-worker.service"),
+    ("user", "metnos-http.service"),
+    ("user", "metnos-i18n-translator.service"),
+    ("user", "metnos-i18n-translator.timer"),
+    ("user", "metnos-llm.service"),
+    ("user", "metnos-photon.service"),
+    ("user", "metnos-playwright.service"),
+    ("user", "metnos-searxng.service"),
+    ("user", "metnos-side-display.service"),
+    ("user", "metnos-stack-quarantine.service"),
+    ("user", "metnos-stack-ready.service"),
+    ("user", "metnos-stack-watchdog.service"),
+    ("user", "metnos-stack-watchdog.timer"),
+    ("user", "metnos-telegram-daemon.service"),
+    ("user", "metnos.target"),
+)
+_COORDINATOR_STATES_V1 = (
+    "PREPARED", "RECEIPTS_COMPLETE", "CERTIFICATE_READY",
+    "CERTIFICATE_PUBLISHED", "BUILD_VERIFIED", "HEAD_REQUIRED",
+    "PREFLIGHT_VERIFIED",
+)
+_LEGACY_DISPOSITION_REASON_V2 = "superseded_before_certificate"
+_COORDINATOR_CARRY_KEYS_V2 = frozenset({
+    "request_id", "previous_closed_build_id", "previous_cutover_id",
+    "closed_build_id", "distribution_payload_hash",
+    "distribution_signature_hash", "boundary_inventory_hash",
+    "boundary_guard_version", "source_id", "successor_claim_id",
+    "deployment_descriptor_id", "install_transaction_id", "release_sequence",
+    "previous_head_id", "service_coverage_hash", "administrative_bundle_hash",
+})
+_LEGACY_COORDINATOR_CARRY_KEYS_V1 = frozenset({
+    "request_id", "previous_closed_build_id", "previous_cutover_id",
+    "closed_build_id", "distribution_payload_hash",
+    "distribution_signature_hash", "boundary_inventory_hash",
+    "boundary_guard_version",
+})
+_COORDINATOR_THRESHOLD_KEYS_V2 = (
+    (1, frozenset({
+        "current_receipts", "maintenance_before_hash",
+        "maintenance_after_hash", "maintenance_proof_b64",
+    })),
+    (2, frozenset({
+        "startup_prerequisite_id", "startup_prerequisite_digest",
+        "cutover_id", "catalog_id", "certificate_payload_hash",
+        "certificate_signature_hash",
+    })),
+    (4, frozenset({"installed_tree_hash"})),
+    (5, frozenset({
+        "head_id", "head_payload_hash", "head_signature_hash",
+        "required_head_frame_hash", "verified_chain_head_id",
+    })),
+    (6, frozenset({"preflight_attestation_hash"})),
+)
+_PREDECESSOR_KEYS_V1 = frozenset({
+    "schema_version", "predecessor_id", "transaction_id",
+    "installation_root", "files", "service_commands",
+    "administrative_bundle_hash", "service_catalog_id",
+    "service_coverage_hash",
+})
+_PREDECESSOR_FILE_KEYS_V1 = frozenset({"path", "size", "content_hash"})
+_PREDECESSOR_SERVICE_COMMAND_KEYS_V1 = frozenset({
+    "entry_id", "execution_kind", "target_executable",
+    "target_executable_hash", "python_module", "target_args",
+    "target_working_directory", "target_environment",
+})
+_PREDECESSOR_ENVIRONMENT_KEYS_V1 = frozenset({"name", "value"})
+_PREDECESSOR_EXECUTION_KINDS_V1 = frozenset({
+    "none", "python_module", "native_executable", "systemctl_stop",
+})
+_PREDECESSOR_FORBIDDEN_ENVIRONMENT_NAMES_V1 = frozenset({
+    "PATH", "HOME", "SHELL", "VIRTUAL_ENV", "METNOS_INSTALL_ROOT",
+    "METNOS_VENV", "METNOS_CONFIG", "METNOS_OWNERSHIP_ROOT",
+    "METNOS_EXECUTOR_BIRTH_ROOT",
+})
+_SERVICE_CATALOG_KEYS_V1 = frozenset({
+    "schema_version", "catalog_id", "entries", "legacy_bindings",
+})
+_SERVICE_CATALOG_ENTRY_KEYS_V1 = frozenset({
+    "entry_id", "unit_name", "external_unit_name", "adapter_path", "class",
+    "scope", "execution_kind", "target_executable", "target_executable_hash",
+    "python_module", "target_args", "target_working_directory",
+    "target_environment", "timer_target", "unit_spec", "requires_preflight",
+    "readiness_owner",
+})
+_SERVICE_CATALOG_LEGACY_KEYS_V1 = frozenset({
+    "legacy_id", "entry_id", "kind", "scope", "locator", "disposition",
+})
+_SERVICE_CATALOG_ENVIRONMENT_KEYS_V1 = frozenset({"name", "value"})
+_SERVICE_CATALOG_UNIT_SPEC_KEYS_V1 = frozenset({
+    "fragment_hash", "directives",
+})
+_SERVICE_CATALOG_DIRECTIVE_KEYS_V1 = frozenset({
+    "section", "name", "value_type", "values",
+})
+_SERVICE_CATALOG_CLASSES_V1 = frozenset({
+    "gated_service", "gated_timer", "stop_only", "target",
+    "external_dependency", "gated_entrypoint",
+})
+_SERVICE_CATALOG_EXECUTION_KINDS_V1 = frozenset({
+    "none", "python_module", "native_executable", "systemctl_stop",
+})
+_SERVICE_CATALOG_LEGACY_KINDS_V1 = frozenset({
+    "user_unit", "system_unit", "script", "python_module", "powershell",
+})
+_SERVICE_CATALOG_LEGACY_SCOPES_V1 = frozenset({
+    "user", "system", "repository", "installed",
+})
+_SERVICE_CATALOG_SECTION_ORDER_V1 = {
+    "Unit": 0, "Service": 1, "Timer": 2, "Install": 3,
+}
+_SERVICE_CATALOG_DIRECTIVE_TYPES_V1 = {
+    ("Unit", "Description"): "scalar",
+    ("Unit", "Documentation"): "scalar",
+    ("Unit", "DefaultDependencies"): "boolean",
+    ("Unit", "Requires"): "unit_list",
+    ("Unit", "Wants"): "unit_list",
+    ("Unit", "BindsTo"): "unit_list",
+    ("Unit", "After"): "unit_list",
+    ("Unit", "Before"): "unit_list",
+    ("Unit", "PartOf"): "unit_list",
+    ("Unit", "OnFailure"): "unit_list",
+    ("Unit", "StartLimitIntervalSec"): "duration",
+    ("Unit", "StartLimitBurst"): "integer",
+    ("Service", "Type"): "scalar",
+    ("Service", "User"): "scalar",
+    ("Service", "Group"): "scalar",
+    ("Service", "SupplementaryGroups"): "scalar",
+    ("Service", "ExecStartPre"): "argv",
+    ("Service", "ExecStart"): "argv",
+    ("Service", "ExecStop"): "argv",
+    ("Service", "Restart"): "scalar",
+    ("Service", "RestartSec"): "duration",
+    ("Service", "TimeoutStartSec"): "duration",
+    ("Service", "TimeoutStopSec"): "duration",
+    ("Service", "WorkingDirectory"): "path_list",
+    ("Service", "Environment"): "environment",
+    ("Service", "NoNewPrivileges"): "boolean",
+    ("Service", "PrivateTmp"): "boolean",
+    ("Service", "ProtectSystem"): "scalar",
+    ("Service", "ProtectHome"): "scalar",
+    ("Service", "ReadWritePaths"): "path_list",
+    ("Service", "CapabilityBoundingSet"): "scalar",
+    ("Service", "AmbientCapabilities"): "scalar",
+    ("Service", "KillMode"): "scalar",
+    ("Service", "KillSignal"): "scalar",
+    ("Service", "SuccessExitStatus"): "scalar",
+    ("Service", "RemainAfterExit"): "boolean",
+    ("Service", "UMask"): "scalar",
+    ("Service", "NotifyAccess"): "scalar",
+    ("Service", "WatchdogSec"): "duration",
+    ("Service", "Delegate"): "boolean",
+    ("Service", "DelegateSubgroup"): "scalar",
+    ("Service", "ProtectKernelTunables"): "boolean",
+    ("Service", "ProtectKernelModules"): "boolean",
+    ("Service", "ProtectControlGroups"): "boolean",
+    ("Service", "RestrictNamespaces"): "boolean",
+    ("Service", "RestrictRealtime"): "boolean",
+    ("Service", "RestrictAddressFamilies"): "scalar",
+    ("Service", "LockPersonality"): "boolean",
+    ("Service", "MemoryDenyWriteExecute"): "boolean",
+    ("Service", "SystemCallArchitectures"): "scalar",
+    ("Service", "MemoryAccounting"): "boolean",
+    ("Service", "MemoryHigh"): "scalar",
+    ("Service", "MemoryMax"): "scalar",
+    ("Service", "TasksAccounting"): "boolean",
+    ("Service", "TasksMax"): "integer",
+    ("Service", "Nice"): "integer",
+    ("Service", "LimitNOFILE"): "integer",
+    ("Service", "StandardOutput"): "scalar",
+    ("Service", "StandardError"): "scalar",
+    ("Service", "SyslogIdentifier"): "scalar",
+    ("Timer", "OnBootSec"): "duration",
+    ("Timer", "OnActiveSec"): "duration",
+    ("Timer", "OnUnitActiveSec"): "duration",
+    ("Timer", "OnCalendar"): "scalar",
+    ("Timer", "RandomizedDelaySec"): "duration",
+    ("Timer", "Persistent"): "boolean",
+    ("Timer", "AccuracySec"): "duration",
+    ("Timer", "Unit"): "unit_list",
+    ("Install", "WantedBy"): "unit_list",
+    ("Install", "RequiredBy"): "unit_list",
+}
+_SYSTEMD_BASE_PROPERTIES_V1 = frozenset({
+    "DropInPaths", "FragmentPath", "LoadState", "NeedDaemonReload",
+    "UnitFileState",
+})
+_SYSTEMD_ADDED_EDGE_RELATIONS_V1 = frozenset({
+    "Requires", "Requisite", "Wants", "BindsTo", "PartOf", "Upholds",
+    "RequiredBy", "RequisiteOf", "WantedBy", "BoundBy", "ConsistsOf",
+    "UpheldBy", "Conflicts", "ConflictedBy", "Before", "After",
+    "OnFailure", "OnSuccess", "Triggers", "TriggeredBy",
+    "PropagatesReloadTo", "ReloadPropagatedFrom", "PropagatesStopTo",
+    "StopPropagatedFrom", "JoinsNamespaceOf", "References", "ReferencedBy",
+})
+_SYSTEMD_DIRECT_RELATIONS_V1 = frozenset({
+    "Requires", "Wants", "BindsTo", "After", "Before", "PartOf",
+    "OnFailure",
+})
+_SYSTEMD_REPEATABLE_PROPERTIES_V1 = frozenset({
+    "ExecStartPre", "ExecStartPreEx", "ExecStart", "ExecStartEx",
+    "ExecStop", "ExecStopEx", "TimersMonotonic", "TimersCalendar",
+})
+_SYSTEMD_EXEC_PROPERTY_PAIRS_V1 = {
+    "ExecStartPre": ("ExecStartPre", "ExecStartPreEx"),
+    "ExecStart": ("ExecStart", "ExecStartEx"),
+    "ExecStop": ("ExecStop", "ExecStopEx"),
+}
+_SYSTEMD_TIMER_BASE_PROPERTIES_V1 = {
+    "OnBootSec": ("TimersMonotonic", "OnBootUSec"),
+    "OnActiveSec": ("TimersMonotonic", "OnActiveUSec"),
+    "OnUnitActiveSec": ("TimersMonotonic", "OnUnitActiveUSec"),
+    "OnCalendar": ("TimersCalendar", "OnCalendar"),
+}
+_SYSTEMD_DIRECTIVE_PROPERTY_REMAP_V1 = {
+    ("Unit", "StartLimitIntervalSec"): ("StartLimitIntervalUSec",),
+    ("Service", "RestartSec"): ("RestartUSec",),
+    ("Service", "TimeoutStartSec"): ("TimeoutStartUSec",),
+    ("Service", "TimeoutStopSec"): ("TimeoutStopUSec",),
+    ("Service", "WatchdogSec"): ("WatchdogUSec",),
+    ("Service", "LimitNOFILE"): ("LimitNOFILE", "LimitNOFILESoft"),
+    ("Service", "ExecStartPre"): ("ExecStartPre", "ExecStartPreEx"),
+    ("Service", "ExecStart"): ("ExecStart", "ExecStartEx"),
+    ("Service", "ExecStop"): ("ExecStop", "ExecStopEx"),
+    ("Timer", "OnBootSec"): ("TimersMonotonic",),
+    ("Timer", "OnActiveSec"): ("TimersMonotonic",),
+    ("Timer", "OnUnitActiveSec"): ("TimersMonotonic",),
+    ("Timer", "OnCalendar"): ("TimersCalendar",),
+    ("Timer", "RandomizedDelaySec"): ("RandomizedDelayUSec",),
+    ("Timer", "AccuracySec"): ("AccuracyUSec",),
+}
+_SYSTEMD_SIGNAL_NAMES_V1 = {
+    1: "SIGHUP", 2: "SIGINT", 3: "SIGQUIT", 4: "SIGILL", 5: "SIGTRAP",
+    6: "SIGABRT", 7: "SIGBUS", 8: "SIGFPE", 9: "SIGKILL",
+    10: "SIGUSR1", 11: "SIGSEGV", 12: "SIGUSR2", 13: "SIGPIPE",
+    14: "SIGALRM", 15: "SIGTERM", 16: "SIGSTKFLT", 17: "SIGCHLD",
+    18: "SIGCONT", 19: "SIGSTOP", 20: "SIGTSTP", 21: "SIGTTIN",
+    22: "SIGTTOU", 23: "SIGURG", 24: "SIGXCPU", 25: "SIGXFSZ",
+    26: "SIGVTALRM", 27: "SIGPROF", 28: "SIGWINCH", 29: "SIGIO",
+    30: "SIGPWR", 31: "SIGSYS",
+}
+_SYSTEMD_CAPABILITY_NAMES_V1 = frozenset({
+    "CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_DAC_READ_SEARCH", "CAP_FOWNER",
+    "CAP_FSETID", "CAP_KILL", "CAP_SETGID", "CAP_SETUID", "CAP_SETPCAP",
+    "CAP_LINUX_IMMUTABLE", "CAP_NET_BIND_SERVICE", "CAP_NET_BROADCAST",
+    "CAP_NET_ADMIN", "CAP_NET_RAW", "CAP_IPC_LOCK", "CAP_IPC_OWNER",
+    "CAP_SYS_MODULE", "CAP_SYS_RAWIO", "CAP_SYS_CHROOT", "CAP_SYS_PTRACE",
+    "CAP_SYS_PACCT", "CAP_SYS_ADMIN", "CAP_SYS_BOOT", "CAP_SYS_NICE",
+    "CAP_SYS_RESOURCE", "CAP_SYS_TIME", "CAP_SYS_TTY_CONFIG", "CAP_MKNOD",
+    "CAP_LEASE", "CAP_AUDIT_WRITE", "CAP_AUDIT_CONTROL", "CAP_SETFCAP",
+    "CAP_MAC_OVERRIDE", "CAP_MAC_ADMIN", "CAP_SYSLOG", "CAP_WAKE_ALARM",
+    "CAP_BLOCK_SUSPEND", "CAP_AUDIT_READ", "CAP_PERFMON", "CAP_BPF",
+    "CAP_CHECKPOINT_RESTORE",
+})
+_SYSTEMD_ROOT_FRAGMENT_ROOTS_V1 = (
+    "/etc/systemd/system", "/run/systemd/system",
+    "/usr/local/lib/systemd/system", "/usr/lib/systemd/system",
+)
+_SYSTEMD_ROOT_GENERATOR_ROOTS_V1 = (
+    "/run/systemd/generator", "/run/systemd/generator.early",
+    "/run/systemd/generator.late",
+)
+_SYSTEMD_ROOT_FRAGMENT_STATES_V1 = frozenset({
+    "enabled", "enabled-runtime", "linked", "linked-runtime", "alias",
+    "static", "disabled", "indirect",
+})
+_SYSTEMD_MANAGER_VIRTUAL_UNITS_V1 = frozenset({"-.slice", "system.slice"})
+_DEPLOYMENT_DESCRIPTOR_KEYS_V1 = frozenset({
+    "schema_version", "descriptor_id", "release_sequence",
+    "installation_root", "service_user", "service_uid", "service_gid",
+    "service_supplementary_gids", "service_home", "service_shell",
+    "administrative_root", "system_unit_root", "artifacts",
+    "service_catalog_id", "service_coverage_hash", "python_executable",
+    "openssl_executable", "systemctl_executable",
+    "systemd_analyze_executable",
+})
+_DEPLOYMENT_ARTIFACT_KEYS_V1 = frozenset({
+    "source_path", "destination_path", "kind", "install_phase", "size",
+    "content_hash", "mode", "uid", "gid",
+})
+_DEPLOYMENT_ARTIFACT_KINDS_V1 = frozenset({
+    "administrative_program", "service_unit", "timer_unit", "target_unit",
+    "stop_only_unit",
+})
+_STARTUP_PREREQUISITE_KEYS_V1 = frozenset({
+    "schema_version", "prerequisite_id", "request_id", "closed_build_id",
+    "release_sequence", "deployment_descriptor_id", "predecessor_id",
+    "administrative_bundle_hash", "python_binary_hash",
+    "openssl_binary_hash", "openssl_tcb_hash", "systemctl_binary_hash",
+    "systemd_analyze_binary_hash", "service_catalog_id",
+    "service_coverage_hash", "systemd_manager_version",
+    "candidate_units_hash", "effective_units_hash",
 })
 _MANIFEST_KEYS = frozenset({
     "schema_version", "closed_build_id", "previous_closed_build_id",
@@ -127,7 +702,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:bf521fc0a0a07a6ed9cadaa5355133232b812aea716111d22c0c9e804d556b54"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:057be58564833e198b491211bfbb222f8d0cde77bb3d4595e578b07719a1caf3"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -238,10 +813,7 @@ _BOUNDARY_ROLES = frozenset({
     "store_owner",
 })
 
-REPEATABLE_PROPERTIES = frozenset({
-    "ExecStartPre", "ExecStartPreEx", "ExecStart", "ExecStartEx", "ExecStop",
-    "ExecStopEx", "TimersMonotonic", "TimersCalendar",
-})
+REPEATABLE_PROPERTIES = _SYSTEMD_REPEATABLE_PROPERTIES_V1
 _DURATION_FACTORS = {
     "us": 1, "ms": 1_000, "s": 1_000_000, "min": 60_000_000,
     "h": 3_600_000_000, "d": 86_400_000_000, "w": 604_800_000_000,
@@ -345,6 +917,776 @@ class DistributionPublicKeyV1(NamedTuple):
     raw_public_key: bytes
 
 
+class OwnershipPublicKeyFactsV1(NamedTuple):
+    authority: str
+    key_id: str
+    raw_public_key: bytes
+    purpose: str
+
+
+class OwnershipReceiptFactsV1(NamedTuple):
+    contract_id: str
+    generation_id: str
+    receipt_hash: str
+
+
+class _DecodedOwnershipCutoverV1(NamedTuple):
+    cutover_id: str
+    previous_cutover_id: str | None
+    request_id: str
+    signing_key_id: str
+    catalog_id: str
+    current_receipts: tuple[OwnershipReceiptFactsV1, ...]
+    maintenance_evidence_hash: str
+    boundary_inventory_hash: str
+    boundary_guard_version: str
+    closed_build_id: str
+    encoded: bytes
+    signature: bytes
+
+
+class _DecodedOwnershipHeadV1(NamedTuple):
+    release_sequence: int
+    cutover_id: str
+    closed_build_id: str
+    previous_head_id: str | None
+    head_id: str
+    signing_key_id: str
+    encoded: bytes
+    signature: bytes
+
+
+class _DecodedSuccessorClaimV1(NamedTuple):
+    claim_id: str
+    previous_head_id: str | None
+    release_sequence: int
+    request_id: str
+    source_id: str
+    closed_build_id: str
+
+
+class _DecodedCoordinatorRecordV2(NamedTuple):
+    sequence: int
+    state: str
+    previous_record_sha256: str | None
+    request_id: str
+    previous_closed_build_id: str | None
+    previous_cutover_id: str | None
+    closed_build_id: str
+    distribution_payload_hash: str
+    distribution_signature_hash: str
+    boundary_inventory_hash: str
+    boundary_guard_version: str
+    current_receipts: tuple[OwnershipReceiptFactsV1, ...]
+    maintenance_before_hash: str | None
+    maintenance_after_hash: str | None
+    maintenance_proof: bytes | None
+    startup_prerequisite_id: str | None
+    startup_prerequisite_digest: str | None
+    cutover_id: str | None
+    catalog_id: str | None
+    certificate_payload_hash: str | None
+    certificate_signature_hash: str | None
+    source_id: str
+    successor_claim_id: str
+    deployment_descriptor_id: str
+    install_transaction_id: str
+    installed_tree_hash: str | None
+    release_sequence: int
+    previous_head_id: str | None
+    head_id: str | None
+    head_payload_hash: str | None
+    head_signature_hash: str | None
+    required_head_frame_hash: str | None
+    verified_chain_head_id: str | None
+    preflight_attestation_hash: str | None
+    service_coverage_hash: str
+    administrative_bundle_hash: str
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "schema_version": 2, "sequence": self.sequence,
+            "state": self.state,
+            "previous_record_sha256": self.previous_record_sha256,
+            "request_id": self.request_id,
+            "previous_closed_build_id": self.previous_closed_build_id,
+            "previous_cutover_id": self.previous_cutover_id,
+            "closed_build_id": self.closed_build_id,
+            "distribution_payload_hash": self.distribution_payload_hash,
+            "distribution_signature_hash": self.distribution_signature_hash,
+            "boundary_inventory_hash": self.boundary_inventory_hash,
+            "boundary_guard_version": self.boundary_guard_version,
+            "current_receipts": [{
+                "contract_id": item.contract_id,
+                "generation_id": item.generation_id,
+                "receipt_hash": item.receipt_hash,
+            } for item in self.current_receipts],
+            "maintenance_before_hash": self.maintenance_before_hash,
+            "maintenance_after_hash": self.maintenance_after_hash,
+            "maintenance_proof_b64": (
+                base64.b64encode(self.maintenance_proof).decode("ascii")
+                if self.maintenance_proof is not None else None
+            ),
+            "startup_prerequisite_id": self.startup_prerequisite_id,
+            "startup_prerequisite_digest": self.startup_prerequisite_digest,
+            "cutover_id": self.cutover_id,
+            "catalog_id": self.catalog_id,
+            "certificate_payload_hash": self.certificate_payload_hash,
+            "certificate_signature_hash": self.certificate_signature_hash,
+            "source_id": self.source_id,
+            "successor_claim_id": self.successor_claim_id,
+            "deployment_descriptor_id": self.deployment_descriptor_id,
+            "install_transaction_id": self.install_transaction_id,
+            "installed_tree_hash": self.installed_tree_hash,
+            "release_sequence": self.release_sequence,
+            "previous_head_id": self.previous_head_id,
+            "head_id": self.head_id,
+            "head_payload_hash": self.head_payload_hash,
+            "head_signature_hash": self.head_signature_hash,
+            "required_head_frame_hash": self.required_head_frame_hash,
+            "verified_chain_head_id": self.verified_chain_head_id,
+            "preflight_attestation_hash": self.preflight_attestation_hash,
+            "service_coverage_hash": self.service_coverage_hash,
+            "administrative_bundle_hash": self.administrative_bundle_hash,
+        }
+
+
+class _DecodedCoordinatorPrefixV2(NamedTuple):
+    records: tuple[_DecodedCoordinatorRecordV2, ...]
+    encoded_records: tuple[bytes, ...]
+
+
+class _DecodedLegacyCoordinatorRecordV1(NamedTuple):
+    sequence: int
+    state: str
+    previous_record_sha256: str | None
+    request_id: str
+    previous_closed_build_id: str | None
+    previous_cutover_id: str | None
+    closed_build_id: str
+    distribution_payload_hash: str
+    distribution_signature_hash: str
+    boundary_inventory_hash: str
+    boundary_guard_version: str
+    current_receipts: tuple[OwnershipReceiptFactsV1, ...]
+    maintenance_before_hash: str | None
+    maintenance_after_hash: str | None
+    maintenance_proof: bytes | None
+    startup_prerequisite_id: str | None
+    startup_prerequisite_digest: str | None
+    cutover_id: str | None
+    catalog_id: str | None
+    certificate_payload_hash: str | None
+    certificate_signature_hash: str | None
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "schema_version": 1, "sequence": self.sequence,
+            "state": self.state,
+            "previous_record_sha256": self.previous_record_sha256,
+            "request_id": self.request_id,
+            "previous_closed_build_id": self.previous_closed_build_id,
+            "previous_cutover_id": self.previous_cutover_id,
+            "closed_build_id": self.closed_build_id,
+            "distribution_payload_hash": self.distribution_payload_hash,
+            "distribution_signature_hash": self.distribution_signature_hash,
+            "boundary_inventory_hash": self.boundary_inventory_hash,
+            "boundary_guard_version": self.boundary_guard_version,
+            "current_receipts": [{
+                "contract_id": item.contract_id,
+                "generation_id": item.generation_id,
+                "receipt_hash": item.receipt_hash,
+            } for item in self.current_receipts],
+            "maintenance_before_hash": self.maintenance_before_hash,
+            "maintenance_after_hash": self.maintenance_after_hash,
+            "maintenance_proof_b64": (
+                base64.b64encode(self.maintenance_proof).decode("ascii")
+                if self.maintenance_proof is not None else None
+            ),
+            "startup_prerequisite_id": self.startup_prerequisite_id,
+            "startup_prerequisite_digest": self.startup_prerequisite_digest,
+            "cutover_id": self.cutover_id,
+            "catalog_id": self.catalog_id,
+            "certificate_payload_hash": self.certificate_payload_hash,
+            "certificate_signature_hash": self.certificate_signature_hash,
+        }
+
+
+class _DecodedLegacyDispositionV2(NamedTuple):
+    disposition_id: str
+    legacy_journal_hash: str
+    legacy_request_id: str
+    legacy_state: str
+    successor_request_id: str
+    reason: str
+
+
+class _DecodedLegacyCoordinatorPrefixV1(NamedTuple):
+    records: tuple[_DecodedLegacyCoordinatorRecordV1, ...]
+    encoded_records: tuple[bytes, ...]
+
+
+class _DecodedPredecessorFileV1(NamedTuple):
+    path: str
+    size: int
+    content_hash: str
+
+
+class _DecodedPredecessorEnvironmentV1(NamedTuple):
+    name: str
+    value: str
+
+
+class _DecodedPredecessorServiceCommandV1(NamedTuple):
+    entry_id: str
+    execution_kind: str
+    target_executable: str | None
+    target_executable_hash: str | None
+    python_module: str | None
+    target_args: tuple[str, ...]
+    target_working_directory: str | None
+    target_environment: tuple[_DecodedPredecessorEnvironmentV1, ...]
+
+
+class _DecodedPredecessorDescriptorV1(NamedTuple):
+    predecessor_id: str
+    transaction_id: str
+    installation_root: str
+    files: tuple[_DecodedPredecessorFileV1, ...]
+    service_commands: tuple[_DecodedPredecessorServiceCommandV1, ...]
+    administrative_bundle_hash: str
+    service_catalog_id: str
+    service_coverage_hash: str
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "predecessor_id": self.predecessor_id,
+            "transaction_id": self.transaction_id,
+            "installation_root": self.installation_root,
+            "files": [{
+                "path": item.path,
+                "size": item.size,
+                "content_hash": item.content_hash,
+            } for item in self.files],
+            "service_commands": [{
+                "entry_id": item.entry_id,
+                "execution_kind": item.execution_kind,
+                "target_executable": item.target_executable,
+                "target_executable_hash": item.target_executable_hash,
+                "python_module": item.python_module,
+                "target_args": list(item.target_args),
+                "target_working_directory": item.target_working_directory,
+                "target_environment": [{
+                    "name": variable.name,
+                    "value": variable.value,
+                } for variable in item.target_environment],
+            } for item in self.service_commands],
+            "administrative_bundle_hash": self.administrative_bundle_hash,
+            "service_catalog_id": self.service_catalog_id,
+            "service_coverage_hash": self.service_coverage_hash,
+        }
+
+
+class _CapturedSignedObjectCandidateV1(NamedTuple):
+    stem: str
+    encoded: bytes
+    signature: bytes
+
+
+class _CapturedClaimCandidateV1(NamedTuple):
+    basename: str
+    encoded: bytes
+    decoded: _DecodedSuccessorClaimV1
+
+
+class _CapturedTransactionCandidateV2(NamedTuple):
+    request_id: str
+    encoded_records: tuple[bytes, ...]
+    decoded_prefix: _DecodedCoordinatorPrefixV2 | None
+
+
+class _CapturedFixedOwnershipStateCandidateV1(NamedTuple):
+    """One coherent fixed-store observation; it grants no authority."""
+
+    registries: tuple[
+        OwnershipPublicKeyFactsV1,
+        OwnershipPublicKeyFactsV1,
+        OwnershipPublicKeyFactsV1,
+    ]
+    anchor: _DecodedOwnershipCutoverV1 | None
+    required_head: _DecodedOwnershipHeadV1 | None
+    builds: tuple[_CapturedSignedObjectCandidateV1, ...]
+    cutovers: tuple[_CapturedSignedObjectCandidateV1, ...]
+    heads: tuple[_CapturedSignedObjectCandidateV1, ...]
+    claims: tuple[_CapturedClaimCandidateV1, ...]
+    transactions: tuple[_CapturedTransactionCandidateV2, ...]
+    legacy_records: tuple[tuple[str, bytes], ...]
+    legacy_disposition: bytes | None
+    predecessor: _DecodedPredecessorDescriptorV1 | None
+
+
+class _CapturedFixedOwnershipStateForTestV1(NamedTuple):
+    candidate: _CapturedFixedOwnershipStateCandidateV1
+
+
+class _AuthenticatedDistributionObjectV1(NamedTuple):
+    facts: DistributionFactsV1
+    files: tuple[DistributionFileV1, ...]
+    encoded: bytes
+    signature: bytes
+
+
+class _AuthenticatedTransactionSnapshotV2(NamedTuple):
+    claim: _DecodedSuccessorClaimV1
+    prefix: _DecodedCoordinatorPrefixV2
+
+
+class _ReconciledFixedOwnershipSnapshotV1(NamedTuple):
+    """Authenticated durable bytes; not a live operational attestation."""
+
+    registries: tuple[
+        OwnershipPublicKeyFactsV1,
+        OwnershipPublicKeyFactsV1,
+        OwnershipPublicKeyFactsV1,
+    ]
+    anchor: _DecodedOwnershipCutoverV1 | None
+    required_head: _DecodedOwnershipHeadV1 | None
+    builds: tuple[_AuthenticatedDistributionObjectV1, ...]
+    cutovers: tuple[_DecodedOwnershipCutoverV1, ...]
+    heads: tuple[_DecodedOwnershipHeadV1, ...]
+    claims: tuple[_DecodedSuccessorClaimV1, ...]
+    transactions: tuple[_AuthenticatedTransactionSnapshotV2, ...]
+    pending_claims: tuple[_DecodedSuccessorClaimV1, ...]
+    legacy_prefix: _DecodedLegacyCoordinatorPrefixV1 | None
+    legacy_disposition: _DecodedLegacyDispositionV2 | None
+    predecessor: _DecodedPredecessorDescriptorV1 | None
+
+
+class _AuthenticatedFixedOwnershipSnapshotV1(NamedTuple):
+    """Product fixed-root result, deliberately not accepted by dispatch yet."""
+
+    snapshot: _ReconciledFixedOwnershipSnapshotV1
+    administrative_tcb: _CapturedAdministrativeTcbProductV1
+
+
+class _AuthenticatedFixedOwnershipSnapshotForTestV1(NamedTuple):
+    """Portable seam nominally incompatible with the product result."""
+
+    snapshot: _ReconciledFixedOwnershipSnapshotV1
+
+
+class _ServiceDirectiveV1(NamedTuple):
+    section: str
+    name: str
+    value_type: str
+    values: tuple[str, ...]
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "section": self.section,
+            "name": self.name,
+            "value_type": self.value_type,
+            "values": list(self.values),
+        }
+
+
+class _ServiceUnitSpecV1(NamedTuple):
+    fragment_hash: str
+    directives: tuple[_ServiceDirectiveV1, ...]
+
+
+class _ServiceEnvironmentV1(NamedTuple):
+    name: str
+    value: str
+
+
+class _ServiceCatalogEntryV1(NamedTuple):
+    entry_id: str
+    unit_name: str | None
+    external_unit_name: str | None
+    adapter_path: str | None
+    class_name: str
+    scope: str
+    execution_kind: str
+    target_executable: str | None
+    target_executable_hash: str | None
+    python_module: str | None
+    target_args: tuple[str, ...]
+    target_working_directory: str | None
+    target_environment: tuple[_ServiceEnvironmentV1, ...]
+    timer_target: str | None
+    unit_spec: _ServiceUnitSpecV1 | None
+    requires_preflight: bool
+    readiness_owner: bool
+
+
+class _ServiceLegacyBindingV1(NamedTuple):
+    legacy_id: str
+    entry_id: str
+    kind: str
+    scope: str
+    locator: str
+    disposition: str
+
+
+class _DecodedServiceCatalogV1(NamedTuple):
+    """Canonical catalog facts; by themselves they grant no authority."""
+
+    catalog_id: str
+    entries: tuple[_ServiceCatalogEntryV1, ...]
+    legacy_bindings: tuple[_ServiceLegacyBindingV1, ...]
+    encoded: bytes
+    service_coverage_hash: str
+
+
+class _DeploymentArtifactV1(NamedTuple):
+    source_path: str
+    destination_path: str
+    kind: str
+    install_phase: str
+    size: int
+    content_hash: str
+    mode: int
+    uid: int
+    gid: int
+
+
+class _DecodedDeploymentDescriptorV1(NamedTuple):
+    """Canonical deployment claims; they are not a live installation proof."""
+
+    descriptor_id: str
+    release_sequence: int
+    installation_root: str
+    service_user: str
+    service_uid: int
+    service_gid: int
+    service_supplementary_gids: tuple[int, ...]
+    service_home: str
+    service_shell: str
+    administrative_root: str
+    system_unit_root: str
+    artifacts: tuple[_DeploymentArtifactV1, ...]
+    service_catalog_id: str
+    service_coverage_hash: str
+    python_executable: str
+    openssl_executable: str
+    systemctl_executable: str
+    systemd_analyze_executable: str
+
+
+class _DecodedStartupPrerequisiteV1(NamedTuple):
+    """Structural prerequisite claim, deliberately not a sealed live proof."""
+
+    prerequisite_id: str
+    request_id: str
+    closed_build_id: str
+    release_sequence: int
+    deployment_descriptor_id: str
+    predecessor_id: str
+    administrative_bundle_hash: str
+    python_binary_hash: str
+    openssl_binary_hash: str
+    openssl_tcb_hash: str
+    systemctl_binary_hash: str
+    systemd_analyze_binary_hash: str
+    service_catalog_id: str
+    service_coverage_hash: str
+    systemd_manager_version: str
+    candidate_units_hash: str
+    effective_units_hash: str
+
+
+class _EnablementLinkV1(NamedTuple):
+    path: str
+    target: str
+
+    def as_value(self) -> dict[str, str]:
+        return {"path": self.path, "target": self.target}
+
+
+class _CandidateUnitV1(NamedTuple):
+    entry_id: str
+    unit_name: str
+    fragment_hash: str
+    directives: tuple[_ServiceDirectiveV1, ...]
+    enablement_links: tuple[_EnablementLinkV1, ...]
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "entry_id": self.entry_id,
+            "unit_name": self.unit_name,
+            "fragment_hash": self.fragment_hash,
+            "directives": [{
+                "section": item.section,
+                "name": item.name,
+                "value_type": item.value_type,
+                "values": list(item.values),
+            } for item in self.directives],
+            "enablement_links": [
+                item.as_value() for item in self.enablement_links
+            ],
+        }
+
+
+class _CandidateUnitsSnapshotV1(NamedTuple):
+    entries: tuple[_CandidateUnitV1, ...]
+    encoded: bytes
+    candidate_units_hash: str
+
+
+class _SystemdManagerPropertyV1(NamedTuple):
+    name: str
+    value_type: str
+    values: tuple[str, ...]
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "value_type": self.value_type,
+            "values": list(self.values),
+        }
+
+
+class _SystemdManagerProjectionV1(NamedTuple):
+    properties: tuple[_SystemdManagerPropertyV1, ...]
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "properties": [item.as_value() for item in self.properties],
+        }
+
+
+class _SystemdPropertyPlanV1(NamedTuple):
+    class_name: str
+    requested_properties: tuple[str, ...]
+    cardinalities: tuple[tuple[str, int], ...]
+
+
+class _EffectiveSystemdDropinV1(NamedTuple):
+    path: str
+    content_hash: str
+    uid: int
+    gid: int
+    mode: int
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "content_hash": self.content_hash,
+            "uid": self.uid,
+            "gid": self.gid,
+            "mode": self.mode,
+        }
+
+
+class _SystemdManagerAddedEdgeV1(NamedTuple):
+    relation: str
+    unit_name: str
+    origin_kind: str
+    fragment_path: str | None
+    source_path: str | None
+    source_size: int | None
+    source_content_hash: str | None
+    source_uid: int | None
+    source_gid: int | None
+    source_mode: int | None
+    size: int | None
+    content_hash: str | None
+    uid: int | None
+    gid: int | None
+    mode: int | None
+    load_state: str
+    unit_file_state: str | None
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "relation": self.relation,
+            "unit_name": self.unit_name,
+            "origin_kind": self.origin_kind,
+            "fragment_path": self.fragment_path,
+            "source_path": self.source_path,
+            "source_size": self.source_size,
+            "source_content_hash": self.source_content_hash,
+            "source_uid": self.source_uid,
+            "source_gid": self.source_gid,
+            "source_mode": self.source_mode,
+            "size": self.size,
+            "content_hash": self.content_hash,
+            "uid": self.uid,
+            "gid": self.gid,
+            "mode": self.mode,
+            "load_state": self.load_state,
+            "unit_file_state": self.unit_file_state,
+        }
+
+
+class _EffectiveSystemdUnitV1(NamedTuple):
+    entry_id: str
+    unit_name: str
+    fragment_path: str
+    fragment_hash: str
+    fragment_uid: int
+    fragment_gid: int
+    fragment_mode: int
+    dropins: tuple[_EffectiveSystemdDropinV1, ...]
+    enablement_links: tuple[_EnablementLinkV1, ...]
+    load_state: str
+    unit_file_state: str
+    need_daemon_reload: str
+    configured_directives_hash: str
+    manager_projection: _SystemdManagerProjectionV1
+    manager_added_edges: tuple[_SystemdManagerAddedEdgeV1, ...]
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "entry_id": self.entry_id,
+            "unit_name": self.unit_name,
+            "fragment_path": self.fragment_path,
+            "fragment_hash": self.fragment_hash,
+            "fragment_uid": self.fragment_uid,
+            "fragment_gid": self.fragment_gid,
+            "fragment_mode": self.fragment_mode,
+            "dropins": [item.as_value() for item in self.dropins],
+            "enablement_links": [
+                item.as_value() for item in self.enablement_links
+            ],
+            "load_state": self.load_state,
+            "unit_file_state": self.unit_file_state,
+            "need_daemon_reload": self.need_daemon_reload,
+            "configured_directives_hash": self.configured_directives_hash,
+            "manager_projection": self.manager_projection.as_value(),
+            "manager_added_edges": [
+                item.as_value() for item in self.manager_added_edges
+            ],
+        }
+
+
+class _EffectiveSystemdUnitsSnapshotV1(NamedTuple):
+    entries: tuple[_EffectiveSystemdUnitV1, ...]
+    encoded: bytes
+    effective_units_hash: str
+
+
+class _BoundPreflightMaterialsV1(NamedTuple):
+    """Cross-bound signed claims; still not a live operational attestation."""
+
+    distribution: _AuthenticatedDistributionObjectV1
+    transaction: _DecodedCoordinatorRecordV2
+    catalog: _DecodedServiceCatalogV1
+    descriptor: _DecodedDeploymentDescriptorV1
+    prerequisite: _DecodedStartupPrerequisiteV1
+    candidate_units: _CandidateUnitsSnapshotV1
+    unit_fragments: tuple[tuple[str, bytes], ...]
+    administrative_bundle_hash: str
+    installed_tree_hash: str
+
+
+class _BoundPreflightMaterialsForTestV1(NamedTuple):
+    """Portable seam result, nominally incompatible with product authority."""
+
+    materials: _BoundPreflightMaterialsV1
+
+
+class _TrustedPathComponentV1(NamedTuple):
+    path: str
+    identity: tuple[int, ...]
+    link_target: str | None
+
+
+class _TrustedResolvedPathV1(NamedTuple):
+    requested_path: str
+    canonical_path: str
+    kind: str
+    components: tuple[_TrustedPathComponentV1, ...]
+
+
+class _CapturedTrustedFileV1(NamedTuple):
+    resolved: _TrustedResolvedPathV1
+    identity: tuple[int, ...]
+    content: bytes
+
+
+class _AdministrativeExecutableSnapshotV1(NamedTuple):
+    python: _CapturedTrustedFileV1
+    openssl: _CapturedTrustedFileV1
+    systemctl: _CapturedTrustedFileV1
+    systemd_analyze: _CapturedTrustedFileV1
+    python_binary_hash: str
+    openssl_binary_hash: str
+    systemctl_binary_hash: str
+    systemd_analyze_binary_hash: str
+
+
+class _OpenSslTcbFileV1(NamedTuple):
+    path: str
+    size: int
+    content_hash: str
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "size": self.size,
+            "content_hash": self.content_hash,
+        }
+
+
+class _LoaderDependencyV1(NamedTuple):
+    name: str | None
+    path: str | None
+
+
+class _OpenSslTcbSnapshotV1(NamedTuple):
+    architecture: str
+    openssl_executable: str
+    elf_loader: str
+    module_directory: str
+    files: tuple[_OpenSslTcbFileV1, ...]
+    encoded: bytes
+    openssl_tcb_hash: str
+    captures: tuple[_CapturedTrustedFileV1, ...]
+    module_captures: tuple[_CapturedTrustedFileV1, ...]
+    module_directory_resolution: _TrustedResolvedPathV1
+
+
+class _CapturedAdministrativeTcbV1(NamedTuple):
+    """Live bytes and identities; by themselves they authorize nothing."""
+
+    executables: _AdministrativeExecutableSnapshotV1
+    openssl_tcb: _OpenSslTcbSnapshotV1
+
+
+class _CapturedAdministrativeTcbProductV1(NamedTuple):
+    capture: _CapturedAdministrativeTcbV1
+
+
+class _CapturedAdministrativeTcbForTestV1(NamedTuple):
+    capture: _CapturedAdministrativeTcbV1
+
+
+class _ExternalTargetMeasurementV1(NamedTuple):
+    declared_path: str
+    target_hash: str
+    captured: _CapturedTrustedFileV1
+
+
+class _ObservedAdministrativeTcbV1(NamedTuple):
+    """Signed/live cross-binding that remains non-operational."""
+
+    materials: _BoundPreflightMaterialsV1
+    capture: _CapturedAdministrativeTcbV1
+    external_targets: tuple[_ExternalTargetMeasurementV1, ...]
+
+
+class _ObservedAdministrativeTcbProductV1(NamedTuple):
+    observation: _ObservedAdministrativeTcbV1
+
+
+class _ObservedAdministrativeTcbForTestV1(NamedTuple):
+    observation: _ObservedAdministrativeTcbV1
+
+
 class _DistributionSnapshotEntryV1(NamedTuple):
     path: str
     kind: str
@@ -383,15 +1725,17 @@ def _parse_integer(raw: str) -> int:
         raise _invalid("JSON integer") from exc
 
 
-def _require_json_depth_v1(value: object) -> None:
+def _require_json_depth_v1(value: object, maximum_nodes: int) -> None:
     stack = [(value, 0)]
     nodes = 0
     while stack:
         item, depth = stack.pop()
         nodes += 1
-        # One maximum manifest has 20,000 file objects and about 100,000
-        # value nodes.  Keep a closed margin for its top-level metadata.
-        if depth > 64 or nodes > 120_000:
+        # Every JSON value consumes at least one input byte.  Deriving the
+        # node budget from the already-enforced byte bound preserves the
+        # canonical runtime's accepted V2 journal surface without creating
+        # an independent, lower cardinality limit.
+        if depth > 64 or nodes > maximum_nodes:
             raise _invalid("JSON structural bound")
         if isinstance(item, dict):
             stack.extend((child, depth + 1) for child in item.values())
@@ -418,7 +1762,7 @@ def decode_canonical_json_v1(encoded: bytes, maximum: int) -> object:
         UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError,
     ) as exc:
         raise _invalid("JSON encoding") from exc
-    _require_json_depth_v1(value)
+    _require_json_depth_v1(value, len(encoded) + 1)
     if _canonical_json(value) != encoded:
         raise _invalid("JSON canonicality")
     return value
@@ -449,36 +1793,2778 @@ def _distribution_facts_v1(value: dict[str, object]) -> DistributionFactsV1:
     )
 
 
-def _decode_distribution_registry_v1(encoded: bytes) -> DistributionPublicKeyV1:
+def _decode_ownership_registry_v1(
+    encoded: bytes, expected_authority: str,
+) -> OwnershipPublicKeyFactsV1:
+    registry_contracts = {
+        "distribution": (
+            "closed_distribution_v1", 1, _DISTRIBUTION_KEY_RE,
+            "distribution-ed25519-v1-sha256-",
+        ),
+        "cutover": (
+            "ownership_cutover_v1", None, _OWNERSHIP_KEY_RE,
+            "birth-ed25519-v1-sha256-",
+        ),
+        "head": (
+            "ownership_head_v1", None, _OWNERSHIP_KEY_RE,
+            "birth-ed25519-v1-sha256-",
+        ),
+    }
+    contract = registry_contracts.get(expected_authority)
+    if contract is None:
+        raise _invalid("ownership registry authority")
+    purpose, first_sequence, key_pattern, key_prefix = contract
     value = decode_canonical_json_v1(encoded, MAX_REGISTRY_BYTES)
     if (
         not isinstance(value, dict) or set(value) != _REGISTRY_KEYS
         or type(value.get("schema_version")) is not int
         or value.get("schema_version") != 1
-        or value.get("authority") != "distribution"
-        or value.get("purposes") != ["closed_distribution_v1"]
-        or type(value.get("first_release_sequence")) is not int
-        or value.get("first_release_sequence") != 1
+        or value.get("authority") != expected_authority
+        or value.get("purposes") != [purpose]
+        or value.get("first_release_sequence") != first_sequence
+        or (
+            expected_authority == "distribution"
+            and type(value.get("first_release_sequence")) is not int
+        )
         or value.get("last_release_sequence") is not None
     ):
-        raise _invalid("distribution registry schema")
+        raise _invalid("ownership registry schema")
     key_id = value.get("key_id")
     public_key = value.get("public_key")
     if (
-        not isinstance(key_id, str) or _DISTRIBUTION_KEY_RE.fullmatch(key_id) is None
+        not isinstance(key_id, str) or key_pattern.fullmatch(key_id) is None
         or not isinstance(public_key, str)
     ):
-        raise _invalid("distribution registry key")
+        raise _invalid("ownership registry key")
     try:
         raw = base64.b64decode(public_key, validate=True)
     except (ValueError, TypeError) as exc:
-        raise _invalid("distribution public key") from exc
+        raise _invalid("ownership public key") from exc
     if (
         len(raw) != 32 or base64.b64encode(raw).decode("ascii") != public_key
-        or key_id != "distribution-ed25519-v1-sha256-" + hashlib.sha256(raw).hexdigest()
+        or key_id != key_prefix + hashlib.sha256(raw).hexdigest()
     ):
-        raise _invalid("distribution public key")
-    return DistributionPublicKeyV1(key_id, raw)
+        raise _invalid("ownership public key")
+    return OwnershipPublicKeyFactsV1(
+        expected_authority, key_id, raw, purpose,
+    )
+
+
+def _decode_ownership_registry_set_v1(
+    distribution_encoded: bytes, cutover_encoded: bytes, head_encoded: bytes,
+) -> tuple[
+    OwnershipPublicKeyFactsV1,
+    OwnershipPublicKeyFactsV1,
+    OwnershipPublicKeyFactsV1,
+]:
+    registries = (
+        _decode_ownership_registry_v1(distribution_encoded, "distribution"),
+        _decode_ownership_registry_v1(cutover_encoded, "cutover"),
+        _decode_ownership_registry_v1(head_encoded, "head"),
+    )
+    if len({item.raw_public_key for item in registries}) != len(registries):
+        raise _invalid("shared ownership registry key")
+    return registries
+
+
+def _decode_distribution_registry_v1(encoded: bytes) -> DistributionPublicKeyV1:
+    facts = _decode_ownership_registry_v1(encoded, "distribution")
+    return DistributionPublicKeyV1(facts.key_id, facts.raw_public_key)
+
+
+def _nullable_digest_v1(value: object, field: str) -> str | None:
+    if value is None:
+        return None
+    return _require_digest(value, field)
+
+
+def _cutover_catalog_id_v1(receipts: Sequence[dict[str, object]]) -> str:
+    material = bytearray()
+    for receipt in receipts:
+        encoded = _canonical_json(receipt)
+        material.extend(len(encoded).to_bytes(8, "big"))
+        material.extend(encoded)
+    return _digest(CUTOVER_CATALOG_ID_DOMAIN_V1, bytes(material))
+
+
+def _u64be_v1(value: int) -> bytes:
+    if type(value) is not int or not 0 <= value <= (1 << 64) - 1:
+        raise _invalid("u64")
+    return value.to_bytes(8, "big", signed=False)
+
+
+def _service_coverage_hash_v1(encoded: bytes) -> str:
+    if type(encoded) is not bytes:
+        raise _invalid("service catalog bytes")
+    return _digest(SERVICE_COVERAGE_DOMAIN_V1, encoded)
+
+
+def _target_executable_hash_v1(path: str, content: bytes) -> str:
+    canonical = _catalog_absolute_path_v1(path, "target executable")
+    if type(content) is not bytes:
+        raise _invalid("target executable bytes")
+    encoded_path = canonical.encode("utf-8")
+    return _digest(
+        TARGET_EXECUTABLE_DOMAIN_V1,
+        _u64be_v1(len(encoded_path)) + encoded_path
+        + _u64be_v1(len(content)) + content,
+    )
+
+
+def _framed_system_file_hash_v1(
+    domain: bytes, path: str, content: bytes, detail: str,
+) -> str:
+    canonical = _catalog_absolute_path_v1(path, detail)
+    if type(domain) is not bytes or not domain or type(content) is not bytes:
+        raise _invalid(detail)
+    encoded_path = canonical.encode("utf-8")
+    return _digest(
+        domain,
+        _u64be_v1(len(encoded_path)) + encoded_path
+        + _u64be_v1(len(content)) + content,
+    )
+
+
+def _administrative_executable_hash_v1(path: str, content: bytes) -> str:
+    return _framed_system_file_hash_v1(
+        ADMINISTRATIVE_EXECUTABLE_DOMAIN_V1, path, content,
+        "administrative executable",
+    )
+
+
+def _openssl_tcb_file_hash_v1(path: str, content: bytes) -> str:
+    return _framed_system_file_hash_v1(
+        OPENSSL_TCB_FILE_DOMAIN_V1, path, content, "OpenSSL TCB file",
+    )
+
+
+def _service_fragment_hash_v1(unit_name: str, fragment: bytes) -> str:
+    if (
+        not isinstance(unit_name, str)
+        or _PREDECESSOR_UNIT_RE_V1.fullmatch(unit_name) is None
+        or type(fragment) is not bytes
+    ):
+        raise _invalid("unit fragment")
+    encoded_name = unit_name.encode("utf-8")
+    return _digest(
+        SYSTEMD_FRAGMENT_DOMAIN_V1,
+        _u64be_v1(len(encoded_name)) + encoded_name
+        + _u64be_v1(len(fragment)) + fragment,
+    )
+
+
+def _catalog_relative_path_v1(value: object, detail: str) -> str:
+    if (
+        not isinstance(value, str) or not value or "\0" in value
+        or "\\" in value
+    ):
+        raise _invalid(detail)
+    path = PurePosixPath(value)
+    if (
+        path.is_absolute() or value != path.as_posix()
+        or any(part in {"", ".", ".."} for part in path.parts)
+        or len(path.parts) > 32
+    ):
+        raise _invalid(detail)
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise _invalid(detail) from exc
+    return value
+
+
+def _catalog_absolute_path_v1(value: object, detail: str) -> str:
+    if (
+        not isinstance(value, str) or not value or "\0" in value
+        or "\\" in value
+    ):
+        raise _invalid(detail)
+    path = PurePosixPath(value)
+    if (
+        not path.is_absolute() or value != path.as_posix()
+        or any(part in {".", ".."} for part in path.parts)
+    ):
+        raise _invalid(detail)
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise _invalid(detail) from exc
+    return value
+
+
+def _service_safe_scalar_v1(value: object, detail: str) -> str:
+    if (
+        not isinstance(value, str) or not value or value != value.strip()
+        or "\0" in value or "\n" in value or "\r" in value or "%" in value
+        or '"' in value or "'" in value or value.startswith(("#", ";"))
+        or "\\" in value or len(value.encode("utf-8")) > 4096
+    ):
+        raise _invalid(detail)
+    return value
+
+
+def _validate_catalog_environment_name_v1(
+    name: object, *, target: bool,
+) -> str:
+    if (
+        not isinstance(name, str)
+        or _CATALOG_ENVIRONMENT_RE_V1.fullmatch(name) is None
+    ):
+        raise _invalid("environment name")
+    if target and (
+        name in {"PATH", "HOME", "SHELL", "VIRTUAL_ENV"}
+        or name.startswith(("PYTHON", "LD_", "DYLD_", "OPENSSL_"))
+        or name in _PREDECESSOR_FORBIDDEN_ENVIRONMENT_NAMES_V1
+    ):
+        raise _invalid("forbidden environment")
+    return name
+
+
+def _validate_service_directive_v1(
+    section: object, name: object, value_type: object, values: object,
+) -> _ServiceDirectiveV1:
+    if not isinstance(section, str) or not isinstance(name, str):
+        raise _invalid("service directive")
+    expected_type = _SERVICE_CATALOG_DIRECTIVE_TYPES_V1.get((section, name))
+    if expected_type is None or value_type != expected_type:
+        raise _invalid("service directive type")
+    if not isinstance(values, list) or not values or len(values) > 128:
+        raise _invalid("service directive values")
+    parsed = tuple(values)
+    if any(not isinstance(value, str) for value in parsed):
+        raise _invalid("service directive value")
+    if expected_type == "scalar":
+        if len(parsed) != 1:
+            raise _invalid("service scalar cardinality")
+        _service_safe_scalar_v1(parsed[0], "service scalar")
+    elif expected_type == "boolean":
+        if len(parsed) != 1 or parsed[0] not in {"yes", "no"}:
+            raise _invalid("service boolean")
+    elif expected_type == "duration":
+        if (
+            len(parsed) != 1
+            or _CATALOG_DURATION_RE_V1.fullmatch(parsed[0]) is None
+        ):
+            raise _invalid("service duration")
+    elif expected_type == "integer":
+        if (
+            len(parsed) != 1
+            or re.fullmatch(r"(?:0|-?[1-9][0-9]*)", parsed[0]) is None
+        ):
+            raise _invalid("service integer")
+    elif expected_type == "argv":
+        if len(parsed) > 32 or any(
+            _CATALOG_SAFE_TOKEN_RE_V1.fullmatch(value) is None
+            or "%" in value or len(value.encode("utf-8")) > 4096
+            for value in parsed
+        ) or any(value.startswith("!") for value in parsed[1:]):
+            raise _invalid("service argv")
+    elif expected_type == "environment":
+        names: list[str] = []
+        for value in parsed:
+            _service_safe_scalar_v1(value, "service environment")
+            if "=" not in value or any(character.isspace() for character in value):
+                raise _invalid("service environment")
+            variable, _raw = value.split("=", 1)
+            names.append(_validate_catalog_environment_name_v1(
+                variable, target=False,
+            ))
+        if (
+            names != sorted(names, key=lambda item: item.encode("utf-8"))
+            or len(names) != len(set(names))
+        ):
+            raise _invalid("service environment order")
+    elif expected_type == "unit_list":
+        if any(
+            _PREDECESSOR_UNIT_RE_V1.fullmatch(value) is None
+            for value in parsed
+        ) or parsed != tuple(sorted(
+            set(parsed), key=lambda item: item.encode("utf-8"),
+        )):
+            raise _invalid("service unit list")
+    elif expected_type == "path_list":
+        for value in parsed:
+            _catalog_absolute_path_v1(value, "service path list")
+            if (
+                "%" in value or '"' in value or "'" in value
+                or any(character.isspace() for character in value)
+            ):
+                raise _invalid("service path specifier")
+        if parsed != tuple(sorted(
+            set(parsed), key=lambda item: item.encode("utf-8"),
+        )):
+            raise _invalid("service path list order")
+    return _ServiceDirectiveV1(section, name, str(value_type), parsed)
+
+
+def _service_directive_sort_key_v1(
+    directive: _ServiceDirectiveV1,
+) -> tuple[int, bytes]:
+    return (
+        _SERVICE_CATALOG_SECTION_ORDER_V1[directive.section],
+        directive.name.encode("utf-8"),
+    )
+
+
+def _render_service_directives_v1(
+    directives: tuple[_ServiceDirectiveV1, ...],
+) -> bytes:
+    lines: list[str] = []
+    current_section: str | None = None
+    for directive in directives:
+        if directive.section != current_section:
+            if current_section is not None:
+                lines.append("")
+            current_section = directive.section
+            lines.append(f"[{current_section}]")
+        rendered = (
+            " ".join(directive.values)
+            if directive.value_type in {
+                "argv", "environment", "unit_list", "path_list",
+            }
+            else directive.values[0]
+        )
+        lines.append(f"{directive.name}={rendered}")
+    if not lines:
+        raise _invalid("empty service unit")
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _make_service_unit_spec_v1(
+    unit_name: str, directives: object,
+) -> _ServiceUnitSpecV1:
+    if (
+        not isinstance(unit_name, str)
+        or _PREDECESSOR_UNIT_RE_V1.fullmatch(unit_name) is None
+        or not isinstance(directives, list)
+    ):
+        raise _invalid("service unit specification")
+    parsed: list[_ServiceDirectiveV1] = []
+    for raw in directives:
+        if (
+            not isinstance(raw, dict)
+            or set(raw) != _SERVICE_CATALOG_DIRECTIVE_KEYS_V1
+        ):
+            raise _invalid("service directive schema")
+        parsed.append(_validate_service_directive_v1(
+            raw.get("section"), raw.get("name"), raw.get("value_type"),
+            raw.get("values"),
+        ))
+    expected = sorted(parsed, key=_service_directive_sort_key_v1)
+    keys = tuple((item.section, item.name) for item in parsed)
+    if parsed != expected or len(keys) != len(set(keys)):
+        raise _invalid("service directive order")
+    fragment = _render_service_directives_v1(tuple(parsed))
+    if len(fragment) > MAX_UNIT_FRAGMENT_BYTES_V1:
+        raise _invalid("service unit size")
+    return _ServiceUnitSpecV1(
+        _service_fragment_hash_v1(unit_name, fragment), tuple(parsed),
+    )
+
+
+def _parse_service_unit_fragment_v1(
+    unit_name: str, fragment: bytes,
+) -> _ServiceUnitSpecV1:
+    """Independently parse the exact closed renderer output."""
+    if (
+        type(fragment) is not bytes or not fragment
+        or len(fragment) > MAX_UNIT_FRAGMENT_BYTES_V1
+    ):
+        raise _invalid("service unit size")
+    try:
+        text = fragment.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _invalid("service unit encoding") from exc
+    if (
+        not text.endswith("\n") or text.endswith("\n\n")
+        or "\r" in text or "\\\n" in text
+    ):
+        raise _invalid("service unit framing")
+    section: str | None = None
+    seen_sections: set[str] = set()
+    last_order = -1
+    documents: list[dict[str, object]] = []
+    for line in text[:-1].split("\n"):
+        if not line:
+            section = None
+            continue
+        if line.startswith(("#", ";")) or "%" in line or line != line.strip():
+            raise _invalid("service unit line")
+        if line.startswith("["):
+            if (
+                not line.endswith("]")
+                or line[1:-1] not in _SERVICE_CATALOG_SECTION_ORDER_V1
+            ):
+                raise _invalid("service unit section")
+            candidate = line[1:-1]
+            order = _SERVICE_CATALOG_SECTION_ORDER_V1[candidate]
+            if candidate in seen_sections or order <= last_order:
+                raise _invalid("service section order")
+            seen_sections.add(candidate)
+            last_order = order
+            section = candidate
+            continue
+        if section is None or "=" not in line:
+            raise _invalid("service unit syntax")
+        name, raw_value = line.split("=", 1)
+        value_type = _SERVICE_CATALOG_DIRECTIVE_TYPES_V1.get((section, name))
+        if value_type is None or not raw_value:
+            raise _invalid("service unit directive")
+        values = (
+            raw_value.split(" ")
+            if value_type in {"argv", "environment", "unit_list", "path_list"}
+            else [raw_value]
+        )
+        if any(not value for value in values):
+            raise _invalid("service unit spacing")
+        documents.append({
+            "section": section, "name": name,
+            "value_type": value_type, "values": values,
+        })
+    parsed = _make_service_unit_spec_v1(unit_name, documents)
+    if _render_service_directives_v1(parsed.directives) != fragment:
+        raise _invalid("service unit canonicality")
+    return parsed
+
+
+def _service_entry_scope_v1(class_name: str) -> str:
+    if class_name in {"gated_service", "gated_timer", "stop_only", "target"}:
+        return "system"
+    if class_name == "external_dependency":
+        return "external"
+    return "administrative"
+
+
+def _service_unit_suffix_v1(class_name: str) -> str | None:
+    return {
+        "gated_service": ".service",
+        "gated_timer": ".timer",
+        "stop_only": ".service",
+        "target": ".target",
+    }.get(class_name)
+
+
+def _parse_service_target_environment_v1(
+    value: object,
+) -> tuple[_ServiceEnvironmentV1, ...]:
+    if not isinstance(value, list) or len(value) > 256:
+        raise _invalid("service target environment")
+    result: list[_ServiceEnvironmentV1] = []
+    for raw in value:
+        if (
+            not isinstance(raw, dict)
+            or set(raw) != _SERVICE_CATALOG_ENVIRONMENT_KEYS_V1
+        ):
+            raise _invalid("service target environment schema")
+        name = _validate_catalog_environment_name_v1(
+            raw.get("name"), target=True,
+        )
+        environment_value = raw.get("value")
+        if (
+            not isinstance(environment_value, str) or "\0" in environment_value
+            or len(environment_value.encode("utf-8")) > 16 * 1024
+        ):
+            raise _invalid("service target environment value")
+        result.append(_ServiceEnvironmentV1(name, environment_value))
+    names = tuple(item.name for item in result)
+    if (
+        names != tuple(sorted(names, key=lambda item: item.encode("utf-8")))
+        or len(names) != len(set(names))
+    ):
+        raise _invalid("service target environment order")
+    return tuple(result)
+
+
+def _service_directive_index_v1(
+    unit_spec: _ServiceUnitSpecV1 | None,
+) -> dict[tuple[str, str], _ServiceDirectiveV1]:
+    return {
+        (item.section, item.name): item
+        for item in (() if unit_spec is None else unit_spec.directives)
+    }
+
+
+def _require_gated_service_shape_v1(entry: _ServiceCatalogEntryV1) -> None:
+    directives = _service_directive_index_v1(entry.unit_spec)
+    required = {
+        ("Service", "User"), ("Service", "Group"),
+        ("Service", "ExecStartPre"), ("Service", "ExecStart"),
+        ("Service", "WorkingDirectory"), ("Service", "KillMode"),
+        ("Service", "CapabilityBoundingSet"),
+        ("Service", "NoNewPrivileges"),
+    }
+    if (
+        not required.issubset(directives)
+        or ("Service", "Environment") in directives
+        or ("Service", "ExecStop") in directives
+    ):
+        raise _invalid("gated service directives")
+    if directives[("Service", "WorkingDirectory")].values != ("/",):
+        raise _invalid("gated service working directory")
+    if directives[("Service", "KillMode")].values != ("control-group",):
+        raise _invalid("gated service kill mode")
+    if (
+        directives[("Service", "CapabilityBoundingSet")].values
+        != ("CAP_SETGID CAP_SETPCAP CAP_SETUID",)
+        or directives[("Service", "NoNewPrivileges")].values != ("yes",)
+    ):
+        raise _invalid("gated service launcher capabilities")
+    group = directives[("Service", "Group")].values[0]
+    if _INTEGER_RE.fullmatch(group) is None or group == "0":
+        raise _invalid("gated service gid")
+    supplementary = directives.get(("Service", "SupplementaryGroups"))
+    if supplementary is not None:
+        groups = supplementary.values[0].split(" ")
+        if (
+            any(_INTEGER_RE.fullmatch(item) is None or item == "0" for item in groups)
+            or groups != sorted(set(groups), key=int)
+        ):
+            raise _invalid("gated service supplementary groups")
+    check = directives[("Service", "ExecStartPre")].values
+    launch = directives[("Service", "ExecStart")].values
+    expected_tail = ("-I", "-S", ADMINISTRATIVE_ADAPTER_PATH_V1)
+    if (
+        len(check) != 7 or len(launch) != 7
+        or not check[0].startswith("!/") or launch[0] != check[0]
+        or check[1:4] != expected_tail or launch[1:4] != expected_tail
+        or check[4:] != ("check", "--entry-id", entry.entry_id)
+        or launch[4:] != ("launch", "--entry-id", entry.entry_id)
+    ):
+        raise _invalid("gated service administrative command")
+
+
+def _parse_service_catalog_entry_v1(value: object) -> _ServiceCatalogEntryV1:
+    if (
+        not isinstance(value, dict)
+        or set(value) != _SERVICE_CATALOG_ENTRY_KEYS_V1
+    ):
+        raise _invalid("service entry schema")
+    entry_id = value.get("entry_id")
+    class_name = value.get("class")
+    if (
+        not isinstance(entry_id, str) or _ENTRY_ID_RE.fullmatch(entry_id) is None
+        or not isinstance(class_name, str)
+        or class_name not in _SERVICE_CATALOG_CLASSES_V1
+        or value.get("scope") != _service_entry_scope_v1(class_name)
+    ):
+        raise _invalid("service entry identity")
+    suffix = _service_unit_suffix_v1(class_name)
+    unit_name = value.get("unit_name")
+    if suffix is None:
+        if unit_name is not None:
+            raise _invalid("service unit nullability")
+    elif (
+        not isinstance(unit_name, str)
+        or _PREDECESSOR_UNIT_RE_V1.fullmatch(unit_name) is None
+        or not unit_name.endswith(suffix)
+        or len(unit_name.encode("utf-8")) > 192
+    ):
+        raise _invalid("service unit name")
+    external_unit_name = value.get("external_unit_name")
+    if class_name == "external_dependency":
+        if (
+            not isinstance(external_unit_name, str)
+            or _PREDECESSOR_UNIT_RE_V1.fullmatch(external_unit_name) is None
+        ):
+            raise _invalid("service external unit")
+    elif external_unit_name is not None:
+        raise _invalid("service external unit nullability")
+    adapter_path = value.get("adapter_path")
+    if class_name == "gated_entrypoint":
+        if adapter_path != ADMINISTRATIVE_ADAPTER_PATH_V1:
+            raise _invalid("service adapter path")
+    elif adapter_path is not None:
+        raise _invalid("service adapter nullability")
+    execution_kind = value.get("execution_kind")
+    if (
+        not isinstance(execution_kind, str)
+        or execution_kind not in _SERVICE_CATALOG_EXECUTION_KINDS_V1
+    ):
+        raise _invalid("service execution kind")
+    if class_name in {"gated_service", "gated_entrypoint"}:
+        if execution_kind not in {"python_module", "native_executable"}:
+            raise _invalid("service executable class")
+    elif class_name == "stop_only":
+        if execution_kind != "systemctl_stop":
+            raise _invalid("service stop execution")
+    elif execution_kind != "none":
+        raise _invalid("service non-executable class")
+    target_executable = value.get("target_executable")
+    target_hash = value.get("target_executable_hash")
+    if execution_kind == "none":
+        if target_executable is not None or target_hash is not None:
+            raise _invalid("service target nullability")
+    else:
+        target_executable = _catalog_absolute_path_v1(
+            target_executable, "service target executable",
+        )
+        target_hash = _require_digest(target_hash, "service target hash")
+    python_module = value.get("python_module")
+    if execution_kind == "python_module":
+        if (
+            not isinstance(python_module, str)
+            or _CATALOG_MODULE_RE_V1.fullmatch(python_module) is None
+            or len(python_module.encode("utf-8")) > 255
+        ):
+            raise _invalid("service Python module")
+    elif python_module is not None:
+        raise _invalid("service Python module nullability")
+    target_args = value.get("target_args")
+    if not isinstance(target_args, list) or len(target_args) > 28 or any(
+        not isinstance(item, str) or "\0" in item
+        or len(item.encode("utf-8")) > 4096
+        for item in target_args
+    ):
+        raise _invalid("service target arguments")
+    target_environment = _parse_service_target_environment_v1(
+        value.get("target_environment"),
+    )
+    working_directory = value.get("target_working_directory")
+    if execution_kind == "none":
+        if target_args or target_environment or working_directory is not None:
+            raise _invalid("service none target fields")
+    else:
+        working_directory = _catalog_absolute_path_v1(
+            working_directory, "service target working directory",
+        )
+    if execution_kind == "systemctl_stop":
+        if (
+            working_directory != "/" or len(target_args) < 2
+            or target_args[0] != "stop"
+        ):
+            raise _invalid("service stop command")
+        stop_units = target_args[1:]
+        if (
+            any(
+                _PREDECESSOR_UNIT_RE_V1.fullmatch(item) is None
+                for item in stop_units
+            )
+            or stop_units != sorted(
+                set(stop_units), key=lambda item: item.encode("utf-8"),
+            )
+            or target_environment
+        ):
+            raise _invalid("service stop units")
+    timer_target = value.get("timer_target")
+    if class_name == "gated_timer":
+        if (
+            not isinstance(timer_target, str)
+            or _ENTRY_ID_RE.fullmatch(timer_target) is None
+        ):
+            raise _invalid("service timer target")
+    elif timer_target is not None:
+        raise _invalid("service timer nullability")
+    raw_spec = value.get("unit_spec")
+    if class_name in {"gated_entrypoint", "external_dependency"}:
+        if raw_spec is not None:
+            raise _invalid("service unit specification nullability")
+        unit_spec = None
+    else:
+        if (
+            not isinstance(raw_spec, dict)
+            or set(raw_spec) != _SERVICE_CATALOG_UNIT_SPEC_KEYS_V1
+        ):
+            raise _invalid("service unit specification schema")
+        unit_spec = _make_service_unit_spec_v1(
+            str(unit_name), raw_spec.get("directives"),
+        )
+        if _require_digest(
+            raw_spec.get("fragment_hash"), "service fragment hash",
+        ) != unit_spec.fragment_hash:
+            raise _invalid("service fragment hash")
+    requires_preflight = value.get("requires_preflight")
+    readiness_owner = value.get("readiness_owner")
+    if (
+        type(requires_preflight) is not bool
+        or requires_preflight
+        != (class_name in {"gated_service", "gated_entrypoint"})
+        or type(readiness_owner) is not bool
+        or (readiness_owner and class_name != "gated_service")
+    ):
+        raise _invalid("service preflight/readiness flags")
+    entry = _ServiceCatalogEntryV1(
+        entry_id, unit_name, external_unit_name, adapter_path, class_name,
+        str(value["scope"]), execution_kind, target_executable, target_hash,
+        python_module, tuple(target_args), working_directory,
+        target_environment, timer_target, unit_spec, requires_preflight,
+        readiness_owner,
+    )
+    directives = _service_directive_index_v1(unit_spec)
+    if class_name == "gated_service":
+        _require_gated_service_shape_v1(entry)
+    elif ("Service", "ExecStartPre") in directives:
+        raise _invalid("unexpected service preflight command")
+    if class_name == "stop_only":
+        start = directives.get(("Service", "ExecStart"))
+        allowed = {
+            ("Unit", "Description"), ("Service", "ExecStart"),
+            ("Service", "SyslogIdentifier"),
+            ("Service", "TimeoutStartSec"), ("Service", "Type"),
+        }
+        if (
+            start is None
+            or start.values != (str(target_executable), *tuple(target_args))
+            or ("Service", "ExecStop") in directives
+            or not set(directives).issubset(allowed)
+        ):
+            raise _invalid("service stop unit command")
+    elif class_name in {"gated_timer", "target"} and any(
+        name in {"ExecStart", "ExecStop"} for _section, name in directives
+    ):
+        raise _invalid("unexpected service command")
+    return entry
+
+
+def _validate_legacy_locator_v1(kind: str, value: object) -> str:
+    if not isinstance(value, str) or not value or "\0" in value:
+        raise _invalid("service legacy locator")
+    if kind in {"user_unit", "system_unit"}:
+        if _PREDECESSOR_UNIT_RE_V1.fullmatch(value) is None:
+            raise _invalid("service legacy unit")
+        return value
+    if value.startswith("/"):
+        return _catalog_absolute_path_v1(value, "service legacy locator")
+    return _catalog_relative_path_v1(value, "service legacy locator")
+
+
+def _parse_service_legacy_binding_v1(
+    value: object, entry_ids: frozenset[str],
+) -> _ServiceLegacyBindingV1:
+    if (
+        not isinstance(value, dict)
+        or set(value) != _SERVICE_CATALOG_LEGACY_KEYS_V1
+    ):
+        raise _invalid("service legacy schema")
+    legacy_id = value.get("legacy_id")
+    entry_id = value.get("entry_id")
+    kind = value.get("kind")
+    scope = value.get("scope")
+    if (
+        not isinstance(legacy_id, str)
+        or _ENTRY_ID_RE.fullmatch(legacy_id) is None
+        or not isinstance(entry_id, str) or entry_id not in entry_ids
+        or not isinstance(kind, str)
+        or kind not in _SERVICE_CATALOG_LEGACY_KINDS_V1
+        or not isinstance(scope, str)
+        or scope not in _SERVICE_CATALOG_LEGACY_SCOPES_V1
+        or value.get("disposition") != "retire_in_group7"
+        or (kind == "user_unit" and scope != "user")
+        or (kind == "system_unit" and scope != "system")
+    ):
+        raise _invalid("service legacy binding")
+    return _ServiceLegacyBindingV1(
+        legacy_id, entry_id, kind, scope,
+        _validate_legacy_locator_v1(kind, value.get("locator")),
+        "retire_in_group7",
+    )
+
+
+def _decode_service_catalog_v1(encoded: bytes) -> _DecodedServiceCatalogV1:
+    value = decode_canonical_json_v1(encoded, MAX_SERVICE_CATALOG_BYTES_V1)
+    if (
+        not isinstance(value, dict) or set(value) != _SERVICE_CATALOG_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("service catalog schema")
+    declared_id = _require_digest(value.get("catalog_id"), "service catalog id")
+    unsigned = dict(value)
+    unsigned.pop("catalog_id")
+    if declared_id != _digest(
+        SERVICE_CATALOG_ID_DOMAIN_V1, _canonical_json(unsigned),
+    ):
+        raise _invalid("service catalog id")
+    raw_entries = value.get("entries")
+    if not isinstance(raw_entries, list) or not raw_entries:
+        raise _invalid("service catalog entries")
+    entries = tuple(_parse_service_catalog_entry_v1(item) for item in raw_entries)
+    entry_ids = tuple(item.entry_id for item in entries)
+    if (
+        entry_ids != tuple(sorted(
+            entry_ids, key=lambda item: item.encode("utf-8"),
+        ))
+        or len(entry_ids) != len(set(entry_ids))
+    ):
+        raise _invalid("service entry order")
+    unit_names = tuple(
+        item.unit_name for item in entries if item.unit_name is not None
+    ) + tuple(
+        item.external_unit_name
+        for item in entries if item.external_unit_name is not None
+    )
+    if len(unit_names) != len(set(unit_names)):
+        raise _invalid("service unit duplicate")
+    by_id = {item.entry_id: item for item in entries}
+    for item in entries:
+        if item.class_name != "gated_timer":
+            continue
+        target = by_id.get(item.timer_target or "")
+        directive = _service_directive_index_v1(item.unit_spec).get(
+            ("Timer", "Unit"),
+        )
+        if (
+            target is None or target.class_name != "gated_service"
+            or directive is None or directive.values != (target.unit_name,)
+        ):
+            raise _invalid("service timer relation")
+    if sum(item.readiness_owner for item in entries) != 1:
+        raise _invalid("service readiness owner")
+    raw_legacy = value.get("legacy_bindings")
+    if not isinstance(raw_legacy, list):
+        raise _invalid("service legacy bindings")
+    legacy = tuple(
+        _parse_service_legacy_binding_v1(item, frozenset(entry_ids))
+        for item in raw_legacy
+    )
+    legacy_ids = tuple(item.legacy_id for item in legacy)
+    if (
+        legacy_ids != tuple(sorted(
+            legacy_ids, key=lambda item: item.encode("utf-8"),
+        ))
+        or len(legacy_ids) != len(set(legacy_ids))
+    ):
+        raise _invalid("service legacy order")
+    return _DecodedServiceCatalogV1(
+        declared_id, entries, legacy, encoded, _service_coverage_hash_v1(encoded),
+    )
+
+
+def _bound_path_projection_v1(
+    value: str, root: str, marker: str, detail: str,
+) -> dict[str, str]:
+    """Project one already-canonical path onto its signed context root."""
+    if value == root:
+        suffix = ""
+    elif value.startswith(root + "/"):
+        suffix = value[len(root):]
+    else:
+        raise _invalid(detail)
+    # A typed projection cannot collide with any catalog field involved here:
+    # the validated source schema admits strings only at those positions.
+    return {"binding": marker, "suffix": suffix}
+
+
+def _service_source_identity_v1(
+    catalog: _DecodedServiceCatalogV1,
+    descriptor: _DecodedDeploymentDescriptorV1,
+) -> str:
+    """Freeze the complete V1 recipe while abstracting signed host context.
+
+    This autonomous fingerprint is the stdlib-only equivalent of the
+    canonical catalog compiler's ``_source_identity`` check.  Dynamic values
+    are first required to equal the deployment descriptor and then replaced
+    by unambiguous markers; every remaining byte is fixed V1 topology.
+    """
+    if (
+        type(catalog) is not _DecodedServiceCatalogV1
+        or type(descriptor) is not _DecodedDeploymentDescriptorV1
+    ):
+        raise _invalid("service source identity arguments")
+    if (
+        descriptor.service_home == descriptor.installation_root
+        or descriptor.service_home.startswith(descriptor.installation_root + "/")
+    ):
+        # Release bytes are root-owned and immutable; the account home and
+        # writable data/cache hierarchy cannot live inside that tree.
+        raise _invalid("service home inside installation root")
+    try:
+        document = json.loads(catalog.encoded.decode("ascii"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise _invalid("service source identity encoding") from exc
+    if not isinstance(document, dict):
+        raise _invalid("service source identity document")
+    document.pop("catalog_id", None)
+    raw_entries = document.get("entries")
+    if not isinstance(raw_entries, list) or len(raw_entries) != len(catalog.entries):
+        raise _invalid("service source identity entries")
+
+    target_hashes: dict[str, str] = {}
+    supplementary = " ".join(
+        str(value) for value in descriptor.service_supplementary_gids
+    )
+    for raw_entry, entry in zip(raw_entries, catalog.entries, strict=True):
+        if not isinstance(raw_entry, dict):
+            raise _invalid("service source identity entry")
+        executable = entry.target_executable
+        if executable is not None:
+            if entry.target_executable_hash is None:
+                raise _invalid("service target executable hash")
+            previous = target_hashes.setdefault(
+                executable, entry.target_executable_hash,
+            )
+            if previous != entry.target_executable_hash:
+                raise _invalid("service target hash alias")
+            raw_entry["target_executable_hash"] = {
+                "binding": "target-executable-hash",
+            }
+            if entry.execution_kind == "python_module":
+                if executable != descriptor.python_executable:
+                    raise _invalid("service Python executable binding")
+                raw_entry["target_executable"] = {
+                    "binding": "python-executable",
+                }
+            elif entry.execution_kind == "systemctl_stop":
+                if executable != descriptor.systemctl_executable:
+                    raise _invalid("service systemctl executable binding")
+                raw_entry["target_executable"] = {
+                    "binding": "systemctl-executable",
+                }
+            elif executable == descriptor.python_executable:
+                raise _invalid("service native Python alias")
+            elif executable == descriptor.systemctl_executable:
+                raise _invalid("service native systemctl alias")
+            elif executable == descriptor.installation_root or executable.startswith(
+                descriptor.installation_root + "/"
+            ):
+                raw_entry["target_executable"] = _bound_path_projection_v1(
+                    executable, descriptor.installation_root,
+                    "installation-root", "service target executable root",
+                )
+
+        working_directory = entry.target_working_directory
+        if (
+            working_directory is not None
+            and entry.execution_kind in {"python_module", "native_executable"}
+        ):
+            raw_entry["target_working_directory"] = _bound_path_projection_v1(
+                working_directory, descriptor.installation_root,
+                "installation-root", "service target working directory",
+            )
+
+        raw_arguments = raw_entry.get("target_args")
+        if not isinstance(raw_arguments, list):
+            raise _invalid("service source target arguments")
+        for index, argument in enumerate(entry.target_args):
+            if argument == descriptor.installation_root or argument.startswith(
+                descriptor.installation_root + "/"
+            ):
+                raw_arguments[index] = _bound_path_projection_v1(
+                    argument, descriptor.installation_root,
+                    "installation-root", "service target argument root",
+                )
+            elif argument == descriptor.service_home or argument.startswith(
+                descriptor.service_home + "/"
+            ):
+                raw_arguments[index] = _bound_path_projection_v1(
+                    argument, descriptor.service_home, "service-home",
+                    "service target argument home",
+                )
+
+        raw_environment = raw_entry.get("target_environment")
+        if not isinstance(raw_environment, list):
+            raise _invalid("service source environment")
+        for raw_variable, variable in zip(
+            raw_environment, entry.target_environment, strict=True,
+        ):
+            if not isinstance(raw_variable, dict):
+                raise _invalid("service source environment")
+            value = variable.value
+            if value == descriptor.service_home or value.startswith(
+                descriptor.service_home + "/"
+            ):
+                raw_variable["value"] = _bound_path_projection_v1(
+                    value, descriptor.service_home, "service-home",
+                    "service home binding",
+                )
+
+        if entry.unit_spec is None:
+            continue
+        raw_spec = raw_entry.get("unit_spec")
+        if not isinstance(raw_spec, dict):
+            raise _invalid("service source unit specification")
+        raw_spec["fragment_hash"] = {"binding": "fragment-hash"}
+        raw_directives = raw_spec.get("directives")
+        if not isinstance(raw_directives, list):
+            raise _invalid("service source directives")
+        if entry.class_name == "gated_service":
+            filtered: list[object] = []
+            seen_supplementary = False
+            for raw_directive in raw_directives:
+                if not isinstance(raw_directive, dict):
+                    raise _invalid("service source directive")
+                key = (raw_directive.get("section"), raw_directive.get("name"))
+                values = raw_directive.get("values")
+                if not isinstance(values, list):
+                    raise _invalid("service source directive values")
+                if key == ("Service", "User"):
+                    if values != [descriptor.service_user]:
+                        raise _invalid("service user binding")
+                    raw_directive["values"] = [{"binding": "service-user"}]
+                elif key == ("Service", "Group"):
+                    if values != [str(descriptor.service_gid)]:
+                        raise _invalid("service group binding")
+                    raw_directive["values"] = [{"binding": "service-gid"}]
+                elif key == ("Service", "SupplementaryGroups"):
+                    seen_supplementary = True
+                    if not supplementary or values != [supplementary]:
+                        raise _invalid("service supplementary groups binding")
+                    # The canonical compiler omits this source placeholder when
+                    # the signed supplementary set is empty.  Removing it from
+                    # both projections preserves one source identity.
+                    continue
+                elif key in {
+                    ("Service", "ExecStartPre"),
+                    ("Service", "ExecStart"),
+                }:
+                    expected = "!" + descriptor.python_executable
+                    if not values or values[0] != expected:
+                        raise _invalid("service administrative Python binding")
+                    raw_directive["values"] = [
+                        {"binding": "administrative-python"}, *values[1:],
+                    ]
+                filtered.append(raw_directive)
+            if seen_supplementary is not bool(supplementary):
+                raise _invalid("service supplementary groups coverage")
+            raw_spec["directives"] = filtered
+        elif entry.class_name == "stop_only":
+            for raw_directive in raw_directives:
+                if (
+                    isinstance(raw_directive, dict)
+                    and raw_directive.get("section") == "Service"
+                    and raw_directive.get("name") == "ExecStart"
+                ):
+                    values = raw_directive.get("values")
+                    if (
+                        not isinstance(values, list) or not values
+                        or values[0] != descriptor.systemctl_executable
+                    ):
+                        raise _invalid("service stop systemctl binding")
+                    raw_directive["values"] = [
+                        {"binding": "systemctl-executable"}, *values[1:],
+                    ]
+
+    identity = _digest(
+        SERVICE_SOURCE_IDENTITY_DOMAIN_V1, _canonical_json(document),
+    )
+    if identity != _EXPECTED_SERVICE_SOURCE_IDENTITY_V1:
+        raise _invalid("service source recipe")
+    return identity
+
+
+def _deployment_relative_path_v1(value: object) -> str:
+    path = _catalog_relative_path_v1(value, "deployment relative path")
+    if (
+        unicodedata.normalize("NFC", path) != path
+        or path.split("/", 1)[0] == RECEIVED_SOURCE_DESCRIPTOR_BASENAME_V1
+    ):
+        raise _invalid("deployment relative path")
+    return path
+
+
+def _deployment_absolute_path_v1(
+    value: object, detail: str, *, allow_root: bool = False,
+) -> str:
+    path = _catalog_absolute_path_v1(value, detail)
+    if path == "/" and not allow_root:
+        raise _invalid(detail)
+    if path.startswith("//") or unicodedata.normalize("NFC", path) != path:
+        raise _invalid(detail)
+    return path
+
+
+def _positive_identity_v1(value: object, detail: str) -> int:
+    if type(value) is not int or not 0 < value < 2 ** 31:
+        raise _invalid(detail)
+    return value
+
+
+def _positive_release_sequence_v1(value: object) -> int:
+    if type(value) is not int or not 0 < value <= 2 ** 63 - 1:
+        raise _invalid("release sequence")
+    return value
+
+
+def _bounded_file_size_v1(value: object, detail: str) -> int:
+    if type(value) is not int or not 0 <= value <= 2 ** 63 - 1:
+        raise _invalid(detail)
+    return value
+
+
+def _deployment_document_id_v1(
+    domain: bytes, value: Mapping[str, object], field: str,
+) -> str:
+    return _digest(
+        domain,
+        _canonical_json({
+            key: item for key, item in value.items() if key != field
+        }),
+    )
+
+
+def _parse_deployment_artifact_v1(value: object) -> _DeploymentArtifactV1:
+    if (
+        not isinstance(value, dict)
+        or set(value) != _DEPLOYMENT_ARTIFACT_KEYS_V1
+    ):
+        raise _invalid("deployment artifact schema")
+    source = _deployment_relative_path_v1(value.get("source_path"))
+    destination = _deployment_absolute_path_v1(
+        value.get("destination_path"), "deployment artifact destination",
+    )
+    kind = value.get("kind")
+    if source == DEPLOYMENT_DESCRIPTOR_PATH_V1:
+        raise _invalid("deployment descriptor self reference")
+    if not isinstance(kind, str) or kind not in _DEPLOYMENT_ARTIFACT_KINDS_V1:
+        raise _invalid("deployment artifact kind")
+    if kind == "administrative_program":
+        phase = "group6_admin"
+        mode = 0o755
+        relative = destination.removeprefix(ADMINISTRATIVE_ROOT_TEXT_V1 + "/")
+        if (
+            relative != "preflight.py"
+            or source != "deployment/admin/preflight.py"
+        ):
+            raise _invalid("deployment administrative artifact binding")
+    else:
+        phase = "group7_cutover"
+        mode = 0o644
+        relative = destination.removeprefix(SYSTEM_UNIT_ROOT_TEXT_V1 + "/")
+        if (
+            relative == destination or "/" in relative
+            or source != f"deployment/systemd/{relative}"
+            or len(relative.encode("utf-8")) > 192
+            or _PREDECESSOR_UNIT_RE_V1.fullmatch(relative) is None
+        ):
+            raise _invalid("deployment unit artifact binding")
+        expected_suffix = {
+            "service_unit": ".service",
+            "timer_unit": ".timer",
+            "target_unit": ".target",
+            "stop_only_unit": ".service",
+        }[kind]
+        if not relative.endswith(expected_suffix):
+            raise _invalid("deployment unit artifact kind")
+    if value.get("install_phase") != phase:
+        raise _invalid("deployment artifact phase")
+    size = _bounded_file_size_v1(value.get("size"), "deployment artifact size")
+    if size > MAX_DISTRIBUTION_FILE_BYTES:
+        raise _invalid("deployment artifact size")
+    content_hash = _require_digest(
+        value.get("content_hash"), "deployment artifact hash",
+    )
+    if (
+        type(value.get("mode")) is not int or value.get("mode") != mode
+        or type(value.get("uid")) is not int or value.get("uid") != 0
+        or type(value.get("gid")) is not int or value.get("gid") != 0
+    ):
+        raise _invalid("deployment artifact metadata")
+    return _DeploymentArtifactV1(
+        source, destination, kind, phase, size, content_hash, mode, 0, 0,
+    )
+
+
+def _decode_deployment_descriptor_v1(
+    encoded: bytes,
+) -> _DecodedDeploymentDescriptorV1:
+    value = decode_canonical_json_v1(
+        encoded, MAX_DEPLOYMENT_DESCRIPTOR_BYTES_V1,
+    )
+    if (
+        not isinstance(value, dict)
+        or set(value) != _DEPLOYMENT_DESCRIPTOR_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("deployment descriptor schema")
+    sequence = _positive_release_sequence_v1(value.get("release_sequence"))
+    expected_installation_root = (
+        RELEASE_ROOT / f"{sequence:020d}"
+    ).as_posix()
+    if value.get("installation_root") != expected_installation_root:
+        raise _invalid("deployment installation root")
+    service_user = value.get("service_user")
+    if (
+        not isinstance(service_user, str)
+        or _SERVICE_ACCOUNT_RE_V1.fullmatch(service_user) is None
+    ):
+        raise _invalid("deployment service user")
+    service_uid = _positive_identity_v1(
+        value.get("service_uid"), "deployment service uid",
+    )
+    service_gid = _positive_identity_v1(
+        value.get("service_gid"), "deployment service gid",
+    )
+    raw_supplementary = value.get("service_supplementary_gids")
+    if not isinstance(raw_supplementary, list):
+        raise _invalid("deployment supplementary gids")
+    supplementary = tuple(
+        _positive_identity_v1(item, "deployment supplementary gid")
+        for item in raw_supplementary
+    )
+    if (
+        supplementary != tuple(sorted(set(supplementary)))
+        or service_gid not in supplementary
+    ):
+        raise _invalid("deployment supplementary gids")
+    service_home = _deployment_absolute_path_v1(
+        value.get("service_home"), "deployment service home",
+    )
+    service_shell = _deployment_absolute_path_v1(
+        value.get("service_shell"), "deployment service shell",
+    )
+    if PurePosixPath(service_shell).name not in {"nologin", "false"}:
+        raise _invalid("deployment service shell")
+    if (
+        value.get("administrative_root") != ADMINISTRATIVE_ROOT_TEXT_V1
+        or value.get("system_unit_root") != SYSTEM_UNIT_ROOT_TEXT_V1
+    ):
+        raise _invalid("deployment fixed roots")
+    raw_artifacts = value.get("artifacts")
+    if not isinstance(raw_artifacts, list):
+        raise _invalid("deployment artifacts")
+    artifacts = tuple(_parse_deployment_artifact_v1(item) for item in raw_artifacts)
+    if (
+        not artifacts or len(artifacts) > MAX_DEPLOYMENT_ARTIFACTS_V1
+        or sum(item.kind == "administrative_program" for item in artifacts) != 1
+        or not any(item.kind != "administrative_program" for item in artifacts)
+    ):
+        raise _invalid("deployment artifact coverage")
+    destinations = tuple(item.destination_path for item in artifacts)
+    sources = tuple(item.source_path for item in artifacts)
+    if (
+        destinations != tuple(sorted(
+            destinations, key=lambda item: item.encode("utf-8"),
+        ))
+        or len(destinations) != len(set(destinations))
+        or len(sources) != len(set(sources))
+    ):
+        raise _invalid("deployment artifact order")
+    catalog_id = _require_digest(
+        value.get("service_catalog_id"), "deployment catalog id",
+    )
+    coverage_hash = _require_digest(
+        value.get("service_coverage_hash"), "deployment coverage hash",
+    )
+    executables = tuple(
+        _deployment_absolute_path_v1(value.get(field), detail)
+        for field, detail in (
+            ("python_executable", "deployment Python executable"),
+            ("openssl_executable", "deployment OpenSSL executable"),
+            ("systemctl_executable", "deployment systemctl executable"),
+            (
+                "systemd_analyze_executable",
+                "deployment systemd-analyze executable",
+            ),
+        )
+    )
+    descriptor_id = _require_digest(
+        value.get("descriptor_id"), "deployment descriptor id",
+    )
+    if descriptor_id != _deployment_document_id_v1(
+        DEPLOYMENT_DESCRIPTOR_ID_DOMAIN_V1, value, "descriptor_id",
+    ):
+        raise _invalid("deployment descriptor id")
+    return _DecodedDeploymentDescriptorV1(
+        descriptor_id, sequence, expected_installation_root, service_user,
+        service_uid, service_gid, supplementary, service_home, service_shell,
+        ADMINISTRATIVE_ROOT_TEXT_V1, SYSTEM_UNIT_ROOT_TEXT_V1, artifacts,
+        catalog_id, coverage_hash, executables[0], executables[1],
+        executables[2], executables[3],
+    )
+
+
+def _decode_startup_prerequisite_v1(
+    encoded: bytes,
+) -> _DecodedStartupPrerequisiteV1:
+    value = decode_canonical_json_v1(
+        encoded, MAX_STARTUP_PREREQUISITE_BYTES_V1,
+    )
+    if (
+        not isinstance(value, dict)
+        or set(value) != _STARTUP_PREREQUISITE_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("startup prerequisite schema")
+    version = value.get("systemd_manager_version")
+    if (
+        not isinstance(version, str) or not version
+        or len(version.encode("utf-8")) > 128
+        or (version_match := _SYSTEMD_VERSION_RE_V1.fullmatch(version)) is None
+        or version_match.group("major") != "255"
+    ):
+        raise _invalid("startup prerequisite systemd version")
+    sequence = _positive_release_sequence_v1(value.get("release_sequence"))
+    digest_fields = (
+        "prerequisite_id", "request_id", "closed_build_id",
+        "deployment_descriptor_id", "predecessor_id",
+        "administrative_bundle_hash", "python_binary_hash",
+        "openssl_binary_hash", "openssl_tcb_hash", "systemctl_binary_hash",
+        "systemd_analyze_binary_hash", "service_catalog_id",
+        "service_coverage_hash", "candidate_units_hash",
+        "effective_units_hash",
+    )
+    digests = {
+        field: _require_digest(value.get(field), "startup " + field)
+        for field in digest_fields
+    }
+    if digests["prerequisite_id"] != _deployment_document_id_v1(
+        STARTUP_PREREQUISITE_ID_DOMAIN_V1, value, "prerequisite_id",
+    ):
+        raise _invalid("startup prerequisite id")
+    return _DecodedStartupPrerequisiteV1(
+        digests["prerequisite_id"], digests["request_id"],
+        digests["closed_build_id"], sequence,
+        digests["deployment_descriptor_id"], digests["predecessor_id"],
+        digests["administrative_bundle_hash"],
+        digests["python_binary_hash"], digests["openssl_binary_hash"],
+        digests["openssl_tcb_hash"], digests["systemctl_binary_hash"],
+        digests["systemd_analyze_binary_hash"],
+        digests["service_catalog_id"], digests["service_coverage_hash"],
+        version, digests["candidate_units_hash"],
+        digests["effective_units_hash"],
+    )
+
+
+def _startup_prerequisite_digest_v1(encoded: bytes) -> str:
+    """Journal evidence digest of the complete canonical prerequisite bytes."""
+    _decode_startup_prerequisite_v1(encoded)
+    return _raw_sha256_v1(encoded)
+
+
+def _administrative_bundle_hash_v1(
+    descriptor: _DecodedDeploymentDescriptorV1,
+) -> str:
+    if type(descriptor) is not _DecodedDeploymentDescriptorV1:
+        raise _invalid("administrative bundle descriptor")
+    material = bytearray(_u64be_v1(len(descriptor.artifacts)))
+    for artifact in descriptor.artifacts:
+        destination = artifact.destination_path.encode("utf-8")
+        kind = artifact.kind.encode("ascii")
+        phase = artifact.install_phase.encode("ascii")
+        material.extend(_u64be_v1(len(destination)))
+        material.extend(destination)
+        material.extend(_u64be_v1(len(kind)))
+        material.extend(kind)
+        material.extend(_u64be_v1(len(phase)))
+        material.extend(phase)
+        material.extend(artifact.mode.to_bytes(4, "big", signed=False))
+        material.extend(_u64be_v1(artifact.size))
+        material.extend(bytes.fromhex(artifact.content_hash.removeprefix("sha256:")))
+    return _digest(ADMINISTRATIVE_BUNDLE_DOMAIN_V1, bytes(material))
+
+
+def _candidate_enablement_links_v1(
+    unit_name: str, directives: tuple[_ServiceDirectiveV1, ...],
+) -> tuple[_EnablementLinkV1, ...]:
+    validate_unit_name_v1(unit_name)
+    links: list[_EnablementLinkV1] = []
+    for directive in directives:
+        if directive.section != "Install" or directive.name not in {
+            "WantedBy", "RequiredBy",
+        }:
+            continue
+        relation = "wants" if directive.name == "WantedBy" else "requires"
+        for target_unit in directive.values:
+            validate_unit_name_v1(target_unit)
+            path = (
+                f"{SYSTEM_UNIT_ROOT_TEXT_V1}/{target_unit}.{relation}/"
+                f"{unit_name}"
+            )
+            target = "../" + unit_name
+            parent = PurePosixPath(path).parent
+            resolved = parent.parent / unit_name
+            if (
+                not path.startswith(SYSTEM_UNIT_ROOT_TEXT_V1 + "/")
+                or resolved.as_posix()
+                != f"{SYSTEM_UNIT_ROOT_TEXT_V1}/{unit_name}"
+                or target != "../" + unit_name
+            ):
+                raise _invalid("candidate enablement link")
+            links.append(_EnablementLinkV1(path, target))
+    links.sort(key=lambda item: item.path.encode("utf-8"))
+    paths = tuple(item.path for item in links)
+    if len(paths) != len(set(paths)):
+        raise _invalid("candidate enablement link collision")
+    return tuple(links)
+
+
+def _compile_candidate_units_v1(
+    catalog: _DecodedServiceCatalogV1,
+) -> _CandidateUnitsSnapshotV1:
+    """Compile the signed candidate graph without observing live systemd."""
+    if type(catalog) is not _DecodedServiceCatalogV1:
+        raise _invalid("candidate catalog")
+    entries: list[_CandidateUnitV1] = []
+    all_link_paths: set[str] = set()
+    catalog_unit_names = {
+        name for item in catalog.entries
+        for name in (item.unit_name, item.external_unit_name)
+        if name is not None
+    }
+    for entry in catalog.entries:
+        if entry.unit_spec is None:
+            continue
+        assert entry.unit_name is not None
+        if any(
+            value not in catalog_unit_names
+            for directive in entry.unit_spec.directives
+            if directive.section == "Install"
+            and directive.name in {"WantedBy", "RequiredBy"}
+            for value in directive.values
+        ):
+            raise _invalid("candidate enablement target")
+        rendered = _render_service_directives_v1(entry.unit_spec.directives)
+        reparsed = _parse_service_unit_fragment_v1(entry.unit_name, rendered)
+        if reparsed != entry.unit_spec:
+            raise _invalid("candidate unit round trip")
+        links = _candidate_enablement_links_v1(
+            entry.unit_name, entry.unit_spec.directives,
+        )
+        for link in links:
+            if link.path in all_link_paths:
+                raise _invalid("candidate global link collision")
+            all_link_paths.add(link.path)
+        entries.append(_CandidateUnitV1(
+            entry.entry_id, entry.unit_name, entry.unit_spec.fragment_hash,
+            entry.unit_spec.directives, links,
+        ))
+    entry_ids = tuple(item.entry_id for item in entries)
+    if entry_ids != tuple(sorted(
+        entry_ids, key=lambda item: item.encode("utf-8"),
+    )):
+        raise _invalid("candidate entry order")
+    observed_links = tuple(sorted(
+        (
+            (link.path, link.target)
+            for item in entries for link in item.enablement_links
+        ),
+        key=lambda item: item[0].encode("utf-8"),
+    ))
+    if observed_links != _EXPECTED_PRODUCT_ENABLEMENT_LINKS_V1:
+        raise _invalid("candidate enablement topology")
+    document = {
+        "schema_version": 1,
+        "entries": [item.as_value() for item in entries],
+    }
+    encoded = _canonical_json(document)
+    return _CandidateUnitsSnapshotV1(
+        tuple(entries), encoded, _digest(CANDIDATE_UNITS_DOMAIN_V1, encoded),
+    )
+
+
+def _installed_tree_hash_v1(files: tuple[DistributionFileV1, ...]) -> str:
+    if (
+        not isinstance(files, tuple) or not files
+        or any(type(item) is not DistributionFileV1 for item in files)
+    ):
+        raise _invalid("installed tree files")
+    paths = tuple(item.path for item in files)
+    if (
+        paths != tuple(sorted(paths, key=lambda item: item.encode("utf-8")))
+        or len(paths) != len(set(paths))
+    ):
+        raise _invalid("installed tree file order")
+    material = bytearray(_u64be_v1(len(files)))
+    for item in files:
+        encoded_path = item.path.encode("utf-8")
+        material.extend(_u64be_v1(len(encoded_path)))
+        material.extend(encoded_path)
+        material.extend(_u64be_v1(item.size))
+        material.extend(bytes.fromhex(item.content_hash.removeprefix("sha256:")))
+    return _digest(INSTALLED_TREE_DOMAIN_V1, bytes(material))
+
+
+def _required_material_capture_paths_v1(
+    distribution: _AuthenticatedDistributionObjectV1,
+    catalog: _DecodedServiceCatalogV1,
+) -> frozenset[str]:
+    paths = {
+        SERVICE_CATALOG_PATH_V1,
+        DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        *(
+            f"deployment/systemd/{item.unit_name}"
+            for item in catalog.entries if item.unit_spec is not None
+        ),
+    }
+    installation_root = PurePosixPath(distribution.facts.installation_root)
+    for entry in catalog.entries:
+        if entry.target_executable is None:
+            continue
+        try:
+            relative = PurePosixPath(entry.target_executable).relative_to(
+                installation_root,
+            ).as_posix()
+        except ValueError:
+            continue
+        paths.add(relative)
+    return frozenset(paths)
+
+
+def _bind_preflight_materials_core_v1(
+    distribution: _AuthenticatedDistributionObjectV1,
+    transaction: _DecodedCoordinatorRecordV2,
+    predecessor: _DecodedPredecessorDescriptorV1,
+    captured: Mapping[str, bytes], prerequisite_encoded: bytes,
+) -> _BoundPreflightMaterialsV1:
+    """Cross-bind captured signed claims without granting live authority."""
+    if (
+        type(distribution) is not _AuthenticatedDistributionObjectV1
+        or type(transaction) is not _DecodedCoordinatorRecordV2
+        or type(predecessor) is not _DecodedPredecessorDescriptorV1
+        or not isinstance(captured, Mapping)
+        or any(
+            type(key) is not str or type(value) is not bytes
+            for key, value in captured.items()
+        )
+        or type(prerequisite_encoded) is not bytes
+        or transaction.sequence < 2
+    ):
+        raise _invalid("preflight material arguments")
+    manifest_value, manifest_files = _parse_distribution_manifest_v1(
+        distribution.encoded,
+    )
+    if (
+        _distribution_facts_v1(manifest_value) != distribution.facts
+        or manifest_files != distribution.files
+        or type(distribution.signature) is not bytes
+        or len(distribution.signature) != 64
+        or transaction.closed_build_id != distribution.facts.closed_build_id
+        or transaction.release_sequence != distribution.facts.release_sequence
+    ):
+        raise _invalid("preflight distribution binding")
+    catalog_encoded = captured.get(SERVICE_CATALOG_PATH_V1)
+    descriptor_encoded = captured.get(DEPLOYMENT_DESCRIPTOR_PATH_V1)
+    if type(catalog_encoded) is not bytes or type(descriptor_encoded) is not bytes:
+        raise _invalid("preflight material capture")
+    catalog = _decode_service_catalog_v1(catalog_encoded)
+    descriptor = _decode_deployment_descriptor_v1(descriptor_encoded)
+    prerequisite = _decode_startup_prerequisite_v1(prerequisite_encoded)
+    candidate = _compile_candidate_units_v1(catalog)
+    _service_source_identity_v1(catalog, descriptor)
+    bundle_hash = _administrative_bundle_hash_v1(descriptor)
+    installed_tree_hash = _installed_tree_hash_v1(manifest_files)
+    files_by_path = {item.path: item for item in manifest_files}
+    for path, role, content in (
+        (SERVICE_CATALOG_PATH_V1, "service_catalog", catalog_encoded),
+        (DEPLOYMENT_DESCRIPTOR_PATH_V1, "deployment_descriptor", descriptor_encoded),
+    ):
+        manifest_file = files_by_path.get(path)
+        if (
+            manifest_file is None or manifest_file.role != role
+            or manifest_file.size != len(content)
+            or distribution_file_hash_v1(path, content)
+            != manifest_file.content_hash
+        ):
+            raise _invalid("preflight signed material binding")
+    if (
+        descriptor.release_sequence != distribution.facts.release_sequence
+        or descriptor.installation_root != distribution.facts.installation_root
+        or descriptor.descriptor_id != transaction.deployment_descriptor_id
+        or descriptor.service_catalog_id != catalog.catalog_id
+        or descriptor.service_coverage_hash != catalog.service_coverage_hash
+        or transaction.service_coverage_hash != catalog.service_coverage_hash
+        or transaction.administrative_bundle_hash != bundle_hash
+        or prerequisite.request_id != transaction.request_id
+        or prerequisite.closed_build_id != transaction.closed_build_id
+        or prerequisite.release_sequence != transaction.release_sequence
+        or prerequisite.deployment_descriptor_id != descriptor.descriptor_id
+        or prerequisite.predecessor_id != predecessor.predecessor_id
+        or predecessor.administrative_bundle_hash != bundle_hash
+        or (
+            transaction.release_sequence == 1
+            and (
+                predecessor.service_catalog_id != catalog.catalog_id
+                or predecessor.service_coverage_hash
+                != catalog.service_coverage_hash
+            )
+        )
+        or prerequisite.administrative_bundle_hash != bundle_hash
+        or prerequisite.service_catalog_id != catalog.catalog_id
+        or prerequisite.service_coverage_hash != catalog.service_coverage_hash
+        or prerequisite.candidate_units_hash != candidate.candidate_units_hash
+        or prerequisite.systemd_manager_version not in SUPPORTED_SYSTEMD_VERSIONS
+        or transaction.startup_prerequisite_id != prerequisite.prerequisite_id
+        or transaction.startup_prerequisite_digest
+        != _startup_prerequisite_digest_v1(prerequisite_encoded)
+        or (
+            transaction.sequence >= 4
+            and transaction.installed_tree_hash != installed_tree_hash
+        )
+    ):
+        raise _invalid("preflight material cross binding")
+
+    service_files = tuple(
+        item for item in manifest_files if item.role == "service_unit"
+    )
+    expected_unit_paths = {
+        f"deployment/systemd/{item.unit_name}"
+        for item in catalog.entries if item.unit_spec is not None
+    }
+    if {item.path for item in service_files} != expected_unit_paths:
+        raise _invalid("preflight service unit coverage")
+    expected_artifact_sources = {
+        "deployment/admin/preflight.py", *expected_unit_paths,
+    }
+    if (
+        {item.source_path for item in descriptor.artifacts}
+        != expected_artifact_sources
+    ):
+        raise _invalid("preflight deployment artifact coverage")
+    entries_by_unit = {
+        str(item.unit_name): item
+        for item in catalog.entries if item.unit_spec is not None
+    }
+    expected_kinds = {
+        "gated_service": "service_unit",
+        "gated_timer": "timer_unit",
+        "stop_only": "stop_only_unit",
+        "target": "target_unit",
+    }
+    for artifact in descriptor.artifacts:
+        manifest_file = files_by_path.get(artifact.source_path)
+        artifact_bytes = captured.get(artifact.source_path)
+        if (
+            manifest_file is None or type(artifact_bytes) is not bytes
+            or len(artifact_bytes) != artifact.size
+            or manifest_file.size != artifact.size
+            or manifest_file.content_hash != artifact.content_hash
+            or distribution_file_hash_v1(
+                artifact.source_path, artifact_bytes,
+            ) != artifact.content_hash
+        ):
+            raise _invalid("preflight deployment artifact file binding")
+        if artifact.kind == "administrative_program":
+            if manifest_file.role != "preflight":
+                raise _invalid("preflight administrative artifact role")
+            continue
+        entry = entries_by_unit.get(PurePosixPath(artifact.source_path).name)
+        if (
+            manifest_file.role != "service_unit" or entry is None
+            or expected_kinds.get(entry.class_name) != artifact.kind
+        ):
+            raise _invalid("preflight unit artifact kind")
+
+    fragments: list[tuple[str, bytes]] = []
+    for unit_name, entry in entries_by_unit.items():
+        path = f"deployment/systemd/{unit_name}"
+        fragment = captured.get(path)
+        manifest_file = files_by_path[path]
+        if (
+            type(fragment) is not bytes
+            or distribution_file_hash_v1(path, fragment)
+            != manifest_file.content_hash
+        ):
+            raise _invalid("preflight unit fragment manifest binding")
+        parsed = _parse_service_unit_fragment_v1(unit_name, fragment)
+        if (
+            parsed != entry.unit_spec
+            or _render_service_directives_v1(parsed.directives) != fragment
+        ):
+            raise _invalid("preflight unit fragment catalog binding")
+        fragments.append((unit_name, fragment))
+
+    installation_root = PurePosixPath(descriptor.installation_root)
+    for entry in catalog.entries:
+        if (
+            entry.execution_kind == "python_module"
+            and entry.target_executable != descriptor.python_executable
+        ):
+            raise _invalid("preflight Python executable binding")
+        if (
+            entry.execution_kind == "systemctl_stop"
+            and entry.target_executable != descriptor.systemctl_executable
+        ):
+            raise _invalid("preflight systemctl executable binding")
+        if entry.execution_kind in {"python_module", "native_executable"}:
+            assert entry.target_working_directory is not None
+            try:
+                PurePosixPath(entry.target_working_directory).relative_to(
+                    installation_root,
+                )
+            except ValueError as exc:
+                raise _invalid("preflight target working directory") from exc
+        if entry.target_executable is None:
+            continue
+        try:
+            relative = PurePosixPath(entry.target_executable).relative_to(
+                installation_root,
+            ).as_posix()
+        except ValueError:
+            continue
+        executable = captured.get(relative)
+        manifest_file = files_by_path.get(relative)
+        if (
+            type(executable) is not bytes or manifest_file is None
+            or manifest_file.size != len(executable)
+            or distribution_file_hash_v1(relative, executable)
+            != manifest_file.content_hash
+            or _target_executable_hash_v1(entry.target_executable, executable)
+            != entry.target_executable_hash
+        ):
+            raise _invalid("preflight distribution target executable")
+
+    required_paths = _required_material_capture_paths_v1(
+        distribution, catalog,
+    ) | frozenset(item.source_path for item in descriptor.artifacts)
+    if any(path not in captured for path in required_paths):
+        raise _invalid("preflight captured material coverage")
+    return _BoundPreflightMaterialsV1(
+        distribution, transaction, catalog, descriptor, prerequisite,
+        candidate, tuple(sorted(fragments)), bundle_hash, installed_tree_hash,
+    )
+
+
+def _bind_preflight_materials_for_test_v1(
+    distribution: _AuthenticatedDistributionObjectV1,
+    transaction: _DecodedCoordinatorRecordV2,
+    predecessor: _DecodedPredecessorDescriptorV1,
+    captured: Mapping[str, bytes], prerequisite_encoded: bytes,
+) -> _BoundPreflightMaterialsForTestV1:
+    """Nominal test seam; its result cannot enter productive dispatch."""
+    return _BoundPreflightMaterialsForTestV1(
+        _bind_preflight_materials_core_v1(
+            distribution, transaction, predecessor, captured,
+            prerequisite_encoded,
+        )
+    )
+
+
+def _decode_ownership_cutover_v1(
+    encoded: bytes, signature: bytes,
+) -> _DecodedOwnershipCutoverV1:
+    """Decode structural facts only; this does not authenticate the signature."""
+    if type(signature) is not bytes or len(signature) != 64:
+        raise _invalid("ownership cutover signature")
+    value = decode_canonical_json_v1(encoded, MAX_CUTOVER_BYTES_V1)
+    if (
+        not isinstance(value, dict) or set(value) != _CUTOVER_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("ownership cutover schema")
+    key_id = value.get("signing_key_id")
+    count = value.get("current_count")
+    raw_receipts = value.get("current_receipts")
+    if (
+        not isinstance(key_id, str)
+        or _OWNERSHIP_KEY_RE.fullmatch(key_id) is None
+        or type(count) is not int or count < 0
+        or not isinstance(raw_receipts, list) or count != len(raw_receipts)
+    ):
+        raise _invalid("ownership cutover header")
+    receipts: list[OwnershipReceiptFactsV1] = []
+    identities: list[tuple[str, str]] = []
+    for raw in raw_receipts:
+        if not isinstance(raw, dict) or set(raw) != _CUTOVER_RECEIPT_KEYS_V1:
+            raise _invalid("ownership cutover receipt")
+        contract_id = raw.get("contract_id")
+        if (
+            not isinstance(contract_id, str) or not contract_id
+            or "\0" in contract_id
+        ):
+            raise _invalid("ownership cutover contract")
+        generation_id = _require_digest(
+            raw.get("generation_id"), "ownership cutover generation",
+        )
+        receipt_hash = _require_digest(
+            raw.get("receipt_hash"), "ownership cutover receipt hash",
+        )
+        identities.append((contract_id, generation_id))
+        receipts.append(OwnershipReceiptFactsV1(
+            contract_id, generation_id, receipt_hash,
+        ))
+    if identities != sorted(identities) or len(identities) != len(set(identities)):
+        raise _invalid("ownership cutover receipt order")
+    cutover_id = _require_digest(value.get("cutover_id"), "cutover_id")
+    previous_cutover_id = _nullable_digest_v1(
+        value.get("previous_cutover_id"), "previous_cutover_id",
+    )
+    request_id = _require_digest(value.get("request_id"), "request_id")
+    catalog_id = _require_digest(value.get("catalog_id"), "catalog_id")
+    maintenance_evidence_hash = _require_digest(
+        value.get("maintenance_evidence_hash"), "maintenance_evidence_hash",
+    )
+    boundary_inventory_hash = _require_digest(
+        value.get("boundary_inventory_hash"), "boundary_inventory_hash",
+    )
+    closed_build_id = _require_digest(
+        value.get("closed_build_id"), "closed_build_id",
+    )
+    guard_version = value.get("boundary_guard_version")
+    if (
+        not isinstance(guard_version, str) or not guard_version
+        or "\0" in guard_version
+        or len(guard_version.encode("utf-8")) > 128
+    ):
+        raise _invalid("boundary_guard_version")
+    receipt_values = [
+        {
+            "contract_id": item.contract_id,
+            "generation_id": item.generation_id,
+            "receipt_hash": item.receipt_hash,
+        }
+        for item in receipts
+    ]
+    if catalog_id != _cutover_catalog_id_v1(receipt_values):
+        raise _invalid("cutover catalog_id")
+    unsigned = {key: item for key, item in value.items() if key != "cutover_id"}
+    if cutover_id != _digest(CUTOVER_ID_DOMAIN_V1, _canonical_json(unsigned)):
+        raise _invalid("cutover_id")
+    return _DecodedOwnershipCutoverV1(
+        cutover_id, previous_cutover_id, request_id, key_id, catalog_id,
+        tuple(receipts), maintenance_evidence_hash, boundary_inventory_hash,
+        guard_version, closed_build_id, bytes(encoded), bytes(signature),
+    )
+
+
+def _decode_ownership_head_v1(
+    encoded: bytes, signature: bytes,
+) -> _DecodedOwnershipHeadV1:
+    """Decode structural facts only; this does not authenticate the signature."""
+    if type(signature) is not bytes or len(signature) != 64:
+        raise _invalid("ownership head signature")
+    value = decode_canonical_json_v1(encoded, MAX_HEAD_BYTES_V1)
+    if not isinstance(value, dict) or set(value) != _HEAD_KEYS_V1:
+        raise _invalid("ownership head schema")
+    sequence = value.get("release_sequence")
+    key_id = value.get("signing_key_id")
+    if (
+        type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+        or type(sequence) is not int or sequence <= 0
+        or not isinstance(key_id, str)
+        or _OWNERSHIP_KEY_RE.fullmatch(key_id) is None
+    ):
+        raise _invalid("ownership head header")
+    cutover_id = _require_digest(value.get("cutover_id"), "cutover_id")
+    closed_build_id = _require_digest(
+        value.get("closed_build_id"), "closed_build_id",
+    )
+    previous_head_id = _nullable_digest_v1(
+        value.get("previous_head_id"), "previous_head_id",
+    )
+    if (sequence == 1) != (previous_head_id is None):
+        raise _invalid("previous_head_id")
+    head_id = _require_digest(value.get("head_id"), "head_id")
+    unsigned = {key: item for key, item in value.items() if key != "head_id"}
+    if head_id != _digest(HEAD_ID_DOMAIN_V1, _canonical_json(unsigned)):
+        raise _invalid("head_id")
+    return _DecodedOwnershipHeadV1(
+        sequence, cutover_id, closed_build_id, previous_head_id, head_id,
+        key_id, bytes(encoded), bytes(signature),
+    )
+
+
+def _required_head_frame_parts_v1(framed: bytes) -> tuple[bytes, bytes]:
+    """Split exact framing; callers choose candidate or fixed-root semantics."""
+    if type(framed) is not bytes or len(framed) > MAX_REQUIRED_HEAD_BYTES_V1:
+        raise _invalid("required head size")
+    prefix = len(REQUIRED_HEAD_MAGIC_V1)
+    if (
+        len(framed) < prefix + 4 + 64
+        or framed[:prefix] != REQUIRED_HEAD_MAGIC_V1
+    ):
+        raise _invalid("required head magic")
+    payload_length = int.from_bytes(framed[prefix:prefix + 4], "big")
+    expected_length = prefix + 4 + payload_length + 64
+    if payload_length > MAX_HEAD_BYTES_V1 or len(framed) != expected_length:
+        raise _invalid("required head framing")
+    payload_start = prefix + 4
+    encoded = framed[payload_start:payload_start + payload_length]
+    signature = framed[payload_start + payload_length:]
+    return encoded, signature
+
+
+def _decode_required_head_frame_v1(framed: bytes) -> _DecodedOwnershipHeadV1:
+    """Decode an unauthenticated required-head candidate with exact framing."""
+    encoded, signature = _required_head_frame_parts_v1(framed)
+    return _decode_ownership_head_v1(encoded, signature)
+
+
+def _decode_fixed_required_head_frame_v1(
+    framed: bytes,
+) -> _DecodedOwnershipHeadV1:
+    """Decode the durable pointer, classifying damaged framing as recovery."""
+    try:
+        encoded, signature = _required_head_frame_parts_v1(framed)
+    except PreflightError as exc:
+        raise _recovery("required head framing") from exc
+    return _decode_ownership_head_v1(encoded, signature)
+
+
+def _decode_successor_claim_v1(encoded: bytes) -> _DecodedSuccessorClaimV1:
+    """Decode claim facts only; fixed-root ownership is established elsewhere."""
+    value = decode_canonical_json_v1(
+        encoded, MAX_COORDINATOR_CONTROL_BYTES_V2,
+    )
+    if (
+        not isinstance(value, dict) or set(value) != _SUCCESSOR_CLAIM_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("successor claim schema")
+    sequence = value.get("release_sequence")
+    if type(sequence) is not int or sequence <= 0:
+        raise _invalid("successor claim release_sequence")
+    previous_head_id = _nullable_digest_v1(
+        value.get("previous_head_id"), "successor claim previous_head_id",
+    )
+    if (sequence == 1) != (previous_head_id is None):
+        raise _invalid("successor claim previous_head_id")
+    claim_id = _require_digest(value.get("claim_id"), "successor claim id")
+    request_id = _require_digest(
+        value.get("request_id"), "successor claim request_id",
+    )
+    source_id = _require_digest(
+        value.get("source_id"), "successor claim source_id",
+    )
+    closed_build_id = _require_digest(
+        value.get("closed_build_id"), "successor claim closed_build_id",
+    )
+    unsigned = {key: item for key, item in value.items() if key != "claim_id"}
+    if claim_id != _digest(
+        SUCCESSOR_CLAIM_ID_DOMAIN_V1, _canonical_json(unsigned),
+    ):
+        raise _invalid("successor claim id")
+    return _DecodedSuccessorClaimV1(
+        claim_id, previous_head_id, sequence, request_id, source_id,
+        closed_build_id,
+    )
+
+
+def _decode_current_receipts_v1(
+    raw_receipts: object,
+) -> tuple[OwnershipReceiptFactsV1, ...]:
+    if not isinstance(raw_receipts, list):
+        raise _invalid("coordinator current_receipts")
+    receipts: list[OwnershipReceiptFactsV1] = []
+    identities: list[tuple[str, str]] = []
+    for raw in raw_receipts:
+        if not isinstance(raw, dict) or set(raw) != _CUTOVER_RECEIPT_KEYS_V1:
+            raise _invalid("coordinator receipt schema")
+        contract_id = raw.get("contract_id")
+        if (
+            not isinstance(contract_id, str) or not contract_id
+            or "\0" in contract_id
+        ):
+            raise _invalid("coordinator contract_id")
+        generation_id = _require_digest(
+            raw.get("generation_id"), "coordinator generation_id",
+        )
+        receipt_hash = _require_digest(
+            raw.get("receipt_hash"), "coordinator receipt_hash",
+        )
+        identities.append((contract_id, generation_id))
+        receipts.append(OwnershipReceiptFactsV1(
+            contract_id, generation_id, receipt_hash,
+        ))
+    if identities != sorted(identities) or len(identities) != len(set(identities)):
+        raise _invalid("coordinator receipt order")
+    return tuple(receipts)
+
+
+def _maintenance_evidence_hash_v1(encoded: bytes) -> str:
+    value = decode_canonical_json_v1(encoded, MAX_CUTOVER_BYTES_V1)
+    source = value.get("source") if isinstance(value, dict) else None
+    if (
+        not isinstance(value, dict)
+        or set(value) != _MAINTENANCE_PROOF_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+        or not isinstance(source, str)
+        or source not in _MAINTENANCE_SOURCES_V1
+        or not isinstance(value.get("units"), list)
+    ):
+        raise _invalid("maintenance proof schema")
+    identities: list[tuple[str, str]] = []
+    for raw in value["units"]:
+        if not isinstance(raw, dict) or set(raw) != _MAINTENANCE_UNIT_KEYS_V1:
+            raise _invalid("maintenance unit schema")
+        scope = raw.get("scope")
+        unit = raw.get("unit")
+        try:
+            unit_size = len(unit.encode("utf-8")) if isinstance(unit, str) else -1
+        except UnicodeEncodeError as exc:
+            raise _invalid("maintenance unit name") from exc
+        if (
+            not isinstance(scope, str) or scope not in {"system", "user"}
+            or not isinstance(unit, str) or not unit or "\0" in unit
+            or unit_size > 256
+            or raw.get("load_state") != "loaded"
+            or not isinstance(raw.get("active_state"), str)
+            or raw.get("active_state") not in {"inactive", "failed"}
+            or type(raw.get("main_pid")) is not int
+            or raw.get("main_pid") != 0
+        ):
+            raise _invalid("maintenance unit state")
+        identities.append((scope, unit))
+    if tuple(identities) != _MAINTENANCE_TARGETS_V1:
+        raise _invalid("maintenance unit order")
+    return _digest(MAINTENANCE_PROOF_DOMAIN_V1, encoded)
+
+
+def _install_transaction_id_v1(value: dict[str, object]) -> str:
+    if (
+        type(value) is not dict or set(value) != _INSTALL_TRANSACTION_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("install transaction schema")
+    return _digest(INSTALL_TRANSACTION_ID_DOMAIN_V1, _canonical_json(value))
+
+
+def _decode_coordinator_record_v2(
+    encoded: bytes,
+) -> _DecodedCoordinatorRecordV2:
+    """Decode one non-authorizing V2 journal record through HEAD_REQUIRED."""
+    value = decode_canonical_json_v1(encoded, MAX_COORDINATOR_RECORD_BYTES_V2)
+    if (
+        not isinstance(value, dict)
+        or set(value) != _COORDINATOR_RECORD_KEYS_V2
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 2
+    ):
+        raise _invalid("coordinator record schema")
+    sequence = value.get("sequence")
+    if (
+        type(sequence) is not int or not 0 <= sequence < len(_COORDINATOR_STATES_V1)
+        or value.get("state") != _COORDINATOR_STATES_V1[sequence]
+    ):
+        raise _invalid("coordinator state sequence")
+
+    required_digests = {}
+    for field in (
+        "request_id", "closed_build_id", "distribution_payload_hash",
+        "distribution_signature_hash", "boundary_inventory_hash", "source_id",
+        "successor_claim_id", "deployment_descriptor_id",
+        "install_transaction_id", "service_coverage_hash",
+        "administrative_bundle_hash",
+    ):
+        required_digests[field] = _require_digest(
+            value.get(field), "coordinator " + field,
+        )
+    nullable_digests = {}
+    for field in (
+        "previous_record_sha256", "previous_closed_build_id",
+        "previous_cutover_id", "maintenance_before_hash",
+        "maintenance_after_hash", "startup_prerequisite_id",
+        "startup_prerequisite_digest", "cutover_id", "catalog_id",
+        "certificate_payload_hash", "certificate_signature_hash",
+        "installed_tree_hash", "previous_head_id", "head_id", "head_payload_hash",
+        "head_signature_hash", "required_head_frame_hash",
+        "verified_chain_head_id", "preflight_attestation_hash",
+    ):
+        nullable_digests[field] = _nullable_digest_v1(
+            value.get(field), "coordinator " + field,
+        )
+    if (sequence == 0) != (
+        nullable_digests["previous_record_sha256"] is None
+    ):
+        raise _invalid("coordinator previous_record_sha256")
+    release_sequence = value.get("release_sequence")
+    if type(release_sequence) is not int or release_sequence <= 0:
+        raise _invalid("coordinator release_sequence")
+    previous_head_id = nullable_digests["previous_head_id"]
+    if (release_sequence == 1) != (previous_head_id is None):
+        raise _invalid("coordinator previous_head_id")
+    guard_version = value.get("boundary_guard_version")
+    if (
+        not isinstance(guard_version, str) or not guard_version
+        or "\0" in guard_version
+    ):
+        raise _invalid("coordinator boundary_guard_version")
+
+    raw_proof = value.get("maintenance_proof_b64")
+    if sequence == 0:
+        if (
+            value.get("current_receipts") != [] or raw_proof is not None
+            or nullable_digests["maintenance_before_hash"] is not None
+            or nullable_digests["maintenance_after_hash"] is not None
+        ):
+            raise _invalid("coordinator prepared fields")
+        receipts: tuple[OwnershipReceiptFactsV1, ...] = ()
+        maintenance_proof = None
+    else:
+        receipts = _decode_current_receipts_v1(value.get("current_receipts"))
+        if (
+            not isinstance(raw_proof, str)
+            or nullable_digests["maintenance_before_hash"] is None
+            or nullable_digests["maintenance_after_hash"] is None
+        ):
+            raise _invalid("coordinator maintenance fields")
+        try:
+            maintenance_proof = base64.b64decode(raw_proof, validate=True)
+        except (TypeError, ValueError) as exc:
+            raise _invalid("coordinator maintenance base64") from exc
+        if (
+            not maintenance_proof
+            or base64.b64encode(maintenance_proof).decode("ascii") != raw_proof
+        ):
+            raise _invalid("coordinator maintenance base64")
+        observed_hash = _maintenance_evidence_hash_v1(maintenance_proof)
+        if (
+            nullable_digests["maintenance_before_hash"] != observed_hash
+            or nullable_digests["maintenance_after_hash"] != observed_hash
+        ):
+            raise _invalid("coordinator maintenance binding")
+
+    certificate_fields = (
+        "startup_prerequisite_id", "startup_prerequisite_digest",
+        "cutover_id", "catalog_id", "certificate_payload_hash",
+        "certificate_signature_hash",
+    )
+    if (
+        sequence >= 2
+        and any(nullable_digests[field] is None for field in certificate_fields)
+    ) or (
+        sequence < 2
+        and any(nullable_digests[field] is not None for field in certificate_fields)
+    ):
+        raise _invalid("coordinator certificate threshold")
+    if (sequence >= 4) != (
+        nullable_digests["installed_tree_hash"] is not None
+    ):
+        raise _invalid("coordinator installed tree threshold")
+    head_fields = (
+        "head_id", "head_payload_hash", "head_signature_hash",
+        "required_head_frame_hash", "verified_chain_head_id",
+    )
+    if (
+        sequence >= 5
+        and any(nullable_digests[field] is None for field in head_fields)
+    ) or (
+        sequence < 5
+        and any(nullable_digests[field] is not None for field in head_fields)
+    ):
+        raise _invalid("coordinator head threshold")
+    if (
+        sequence >= 5
+        and nullable_digests["verified_chain_head_id"]
+        != nullable_digests["head_id"]
+    ):
+        raise _invalid("coordinator verified chain head")
+    if (sequence >= 6) != (
+        nullable_digests["preflight_attestation_hash"] is not None
+    ):
+        raise _invalid("coordinator preflight threshold")
+
+    install_value = {
+        "schema_version": 1,
+        "request_id": required_digests["request_id"],
+        "source_id": required_digests["source_id"],
+        "closed_build_id": required_digests["closed_build_id"],
+        "release_sequence": release_sequence,
+        "previous_head_id": previous_head_id,
+        "successor_claim_id": required_digests["successor_claim_id"],
+        "deployment_descriptor_id": required_digests["deployment_descriptor_id"],
+        "service_coverage_hash": required_digests["service_coverage_hash"],
+        "administrative_bundle_hash": required_digests[
+            "administrative_bundle_hash"
+        ],
+    }
+    if required_digests["install_transaction_id"] != _install_transaction_id_v1(
+        install_value,
+    ):
+        raise _invalid("coordinator install_transaction_id")
+
+    decoded = _DecodedCoordinatorRecordV2(
+        sequence, value["state"], nullable_digests["previous_record_sha256"],
+        required_digests["request_id"],
+        nullable_digests["previous_closed_build_id"],
+        nullable_digests["previous_cutover_id"],
+        required_digests["closed_build_id"],
+        required_digests["distribution_payload_hash"],
+        required_digests["distribution_signature_hash"],
+        required_digests["boundary_inventory_hash"], guard_version, receipts,
+        nullable_digests["maintenance_before_hash"],
+        nullable_digests["maintenance_after_hash"], maintenance_proof,
+        nullable_digests["startup_prerequisite_id"],
+        nullable_digests["startup_prerequisite_digest"],
+        nullable_digests["cutover_id"], nullable_digests["catalog_id"],
+        nullable_digests["certificate_payload_hash"],
+        nullable_digests["certificate_signature_hash"],
+        required_digests["source_id"], required_digests["successor_claim_id"],
+        required_digests["deployment_descriptor_id"],
+        required_digests["install_transaction_id"],
+        nullable_digests["installed_tree_hash"], release_sequence,
+        previous_head_id, nullable_digests["head_id"],
+        nullable_digests["head_payload_hash"],
+        nullable_digests["head_signature_hash"],
+        nullable_digests["required_head_frame_hash"],
+        nullable_digests["verified_chain_head_id"],
+        nullable_digests["preflight_attestation_hash"],
+        required_digests["service_coverage_hash"],
+        required_digests["administrative_bundle_hash"],
+    )
+    if decoded.as_value() != value:
+        raise _invalid("coordinator record binding")
+    return decoded
+
+
+def _coordinator_record_hash_v2(encoded: bytes) -> str:
+    if type(encoded) is not bytes:
+        raise _invalid("coordinator record hash")
+    return _digest(COORDINATOR_RECORD_DOMAIN_V2, encoded)
+
+
+def _decode_coordinator_prefix_v2(
+    encoded_records: tuple[bytes, ...],
+) -> _DecodedCoordinatorPrefixV2:
+    """Decode a contiguous non-authorizing record prefix from 000 through 006."""
+    if (
+        type(encoded_records) is not tuple
+        or not 1 <= len(encoded_records) <= len(_COORDINATOR_STATES_V1)
+        or any(type(encoded) is not bytes for encoded in encoded_records)
+    ):
+        raise _invalid("coordinator prefix")
+    records: list[_DecodedCoordinatorRecordV2] = []
+    accepted_bytes: list[bytes] = []
+    previous_hash = None
+    for sequence, encoded in enumerate(encoded_records):
+        record = _decode_coordinator_record_v2(encoded)
+        if (
+            record.sequence != sequence
+            or record.previous_record_sha256 != previous_hash
+        ):
+            raise _invalid("coordinator prefix chain")
+        if records:
+            first_value = records[0].as_value()
+            current_value = record.as_value()
+            if any(
+                current_value[key] != first_value[key]
+                for key in _COORDINATOR_CARRY_KEYS_V2
+            ):
+                raise _invalid("coordinator prefix carry")
+            for threshold, keys in _COORDINATOR_THRESHOLD_KEYS_V2:
+                if sequence > threshold:
+                    threshold_value = records[threshold].as_value()
+                    if any(
+                        current_value[key] != threshold_value[key]
+                        for key in keys
+                    ):
+                        raise _invalid("coordinator prefix threshold carry")
+        records.append(record)
+        accepted_bytes.append(encoded)
+        previous_hash = _coordinator_record_hash_v2(encoded)
+    return _DecodedCoordinatorPrefixV2(
+        tuple(records), tuple(accepted_bytes),
+    )
+
+
+def _raw_sha256_v1(payload: bytes) -> str:
+    if type(payload) is not bytes:
+        raise _invalid("raw digest")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _framed_sha256_v1(domain: bytes, payload: bytes) -> str:
+    if type(domain) is not bytes or not domain or type(payload) is not bytes:
+        raise _invalid("framed digest")
+    return _raw_sha256_v1(
+        domain + len(payload).to_bytes(8, "big") + payload,
+    )
+
+
+def _coordinator_request_id_v1(
+    closed_build_id: object, previous_closed_build_id: object,
+    previous_cutover_id: object,
+) -> str:
+    closed = _require_digest(closed_build_id, "coordinator closed_build_id")
+    previous_build = _nullable_digest_v1(
+        previous_closed_build_id, "coordinator previous_closed_build_id",
+    )
+    previous_cutover = _nullable_digest_v1(
+        previous_cutover_id, "coordinator previous_cutover_id",
+    )
+    framed = bytearray(COORDINATOR_REQUEST_DOMAIN_V1)
+    for value in (closed, previous_build or "none", previous_cutover or "none"):
+        encoded = value.encode("ascii")
+        framed.extend(len(encoded).to_bytes(8, "big"))
+        framed.extend(encoded)
+    return _raw_sha256_v1(bytes(framed))
+
+
+def _decode_legacy_coordinator_record_v1(
+    encoded: bytes,
+) -> _DecodedLegacyCoordinatorRecordV1:
+    """Decode the immutable V1 bridge without continuing it as V2."""
+    value = decode_canonical_json_v1(encoded, MAX_COORDINATOR_RECORD_BYTES_V2)
+    if (
+        not isinstance(value, dict)
+        or set(value) != _LEGACY_COORDINATOR_RECORD_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("legacy coordinator record schema")
+    sequence = value.get("sequence")
+    if (
+        type(sequence) is not int or sequence not in {0, 1}
+        or value.get("state") != _COORDINATOR_STATES_V1[sequence]
+    ):
+        raise _invalid("legacy coordinator state")
+
+    required = {}
+    for field in (
+        "request_id", "closed_build_id", "distribution_payload_hash",
+        "distribution_signature_hash", "boundary_inventory_hash",
+    ):
+        required[field] = _require_digest(
+            value.get(field), "legacy coordinator " + field,
+        )
+    nullable = {}
+    for field in (
+        "previous_record_sha256", "previous_closed_build_id",
+        "previous_cutover_id", "maintenance_before_hash",
+        "maintenance_after_hash", "startup_prerequisite_id",
+        "startup_prerequisite_digest", "cutover_id", "catalog_id",
+        "certificate_payload_hash", "certificate_signature_hash",
+    ):
+        nullable[field] = _nullable_digest_v1(
+            value.get(field), "legacy coordinator " + field,
+        )
+    if (sequence == 0) != (nullable["previous_record_sha256"] is None):
+        raise _invalid("legacy previous_record_sha256")
+    guard_version = value.get("boundary_guard_version")
+    if (
+        not isinstance(guard_version, str) or not guard_version
+        or "\0" in guard_version
+    ):
+        raise _invalid("legacy boundary_guard_version")
+
+    raw_proof = value.get("maintenance_proof_b64")
+    if sequence == 0:
+        if (
+            value.get("current_receipts") != [] or raw_proof is not None
+            or nullable["maintenance_before_hash"] is not None
+            or nullable["maintenance_after_hash"] is not None
+        ):
+            raise _invalid("legacy prepared fields")
+        receipts: tuple[OwnershipReceiptFactsV1, ...] = ()
+        maintenance_proof = None
+    else:
+        receipts = _decode_current_receipts_v1(value.get("current_receipts"))
+        if (
+            not isinstance(raw_proof, str)
+            or nullable["maintenance_before_hash"] is None
+            or nullable["maintenance_after_hash"] is None
+        ):
+            raise _invalid("legacy maintenance fields")
+        try:
+            maintenance_proof = base64.b64decode(raw_proof, validate=True)
+        except (TypeError, ValueError) as exc:
+            raise _invalid("legacy maintenance base64") from exc
+        if (
+            not maintenance_proof
+            or base64.b64encode(maintenance_proof).decode("ascii") != raw_proof
+        ):
+            raise _invalid("legacy maintenance base64")
+        observed_hash = _maintenance_evidence_hash_v1(maintenance_proof)
+        if (
+            nullable["maintenance_before_hash"] != observed_hash
+            or nullable["maintenance_after_hash"] != observed_hash
+        ):
+            raise _invalid("legacy maintenance binding")
+    if any(nullable[field] is not None for field in (
+        "startup_prerequisite_id", "startup_prerequisite_digest",
+        "cutover_id", "catalog_id", "certificate_payload_hash",
+        "certificate_signature_hash",
+    )):
+        raise _invalid("legacy premature certificate fields")
+
+    decoded = _DecodedLegacyCoordinatorRecordV1(
+        sequence, value["state"], nullable["previous_record_sha256"],
+        required["request_id"], nullable["previous_closed_build_id"],
+        nullable["previous_cutover_id"], required["closed_build_id"],
+        required["distribution_payload_hash"],
+        required["distribution_signature_hash"],
+        required["boundary_inventory_hash"], guard_version, receipts,
+        nullable["maintenance_before_hash"],
+        nullable["maintenance_after_hash"], maintenance_proof,
+        nullable["startup_prerequisite_id"],
+        nullable["startup_prerequisite_digest"], nullable["cutover_id"],
+        nullable["catalog_id"], nullable["certificate_payload_hash"],
+        nullable["certificate_signature_hash"],
+    )
+    if decoded.as_value() != value:
+        raise _invalid("legacy coordinator record binding")
+    return decoded
+
+
+def _legacy_coordinator_record_hash_v1(encoded: bytes) -> str:
+    if type(encoded) is not bytes:
+        raise _invalid("legacy coordinator record hash")
+    return _digest(LEGACY_COORDINATOR_RECORD_DOMAIN_V1, encoded)
+
+
+def _decode_legacy_coordinator_prefix_v1(
+    encoded_records: tuple[bytes, ...],
+) -> _DecodedLegacyCoordinatorPrefixV1:
+    if (
+        type(encoded_records) is not tuple
+        or not 1 <= len(encoded_records) <= 2
+        or any(type(encoded) is not bytes for encoded in encoded_records)
+    ):
+        raise _invalid("legacy coordinator prefix")
+    records: list[_DecodedLegacyCoordinatorRecordV1] = []
+    previous_hash = None
+    for sequence, encoded in enumerate(encoded_records):
+        record = _decode_legacy_coordinator_record_v1(encoded)
+        if (
+            record.sequence != sequence
+            or record.previous_record_sha256 != previous_hash
+        ):
+            raise _invalid("legacy coordinator chain")
+        if records:
+            first = records[0].as_value()
+            current = record.as_value()
+            if any(
+                current[key] != first[key]
+                for key in _LEGACY_COORDINATOR_CARRY_KEYS_V1
+            ):
+                raise _invalid("legacy coordinator carry")
+        records.append(record)
+        previous_hash = _legacy_coordinator_record_hash_v1(encoded)
+    if records[0].request_id != _coordinator_request_id_v1(
+        records[0].closed_build_id,
+        records[0].previous_closed_build_id,
+        records[0].previous_cutover_id,
+    ):
+        raise _invalid("legacy coordinator request")
+    return _DecodedLegacyCoordinatorPrefixV1(records=tuple(records), encoded_records=encoded_records)
+
+
+def _legacy_journal_hash_v2(encoded_records: tuple[bytes, ...]) -> str:
+    if (
+        type(encoded_records) is not tuple
+        or not 1 <= len(encoded_records) <= 2
+        or any(
+            type(encoded) is not bytes or not encoded
+            or len(encoded) > MAX_COORDINATOR_RECORD_BYTES_V2
+            for encoded in encoded_records
+        )
+    ):
+        raise _invalid("legacy journal bytes")
+    framed = bytearray(LEGACY_JOURNAL_DOMAIN_V2)
+    framed.extend(len(encoded_records).to_bytes(8, "big"))
+    for encoded in encoded_records:
+        framed.extend(len(encoded).to_bytes(8, "big"))
+        framed.extend(encoded)
+    return _raw_sha256_v1(bytes(framed))
+
+
+def _decode_legacy_disposition_v2(encoded: bytes) -> _DecodedLegacyDispositionV2:
+    value = decode_canonical_json_v1(
+        encoded, MAX_COORDINATOR_CONTROL_BYTES_V2,
+    )
+    if (
+        not isinstance(value, dict) or set(value) != _LEGACY_DISPOSITION_KEYS_V2
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 2
+    ):
+        raise _invalid("legacy disposition schema")
+    disposition_id = _require_digest(
+        value.get("disposition_id"), "legacy disposition_id",
+    )
+    legacy_journal_hash = _require_digest(
+        value.get("legacy_journal_hash"), "legacy journal hash",
+    )
+    legacy_request_id = _require_digest(
+        value.get("legacy_request_id"), "legacy request_id",
+    )
+    successor_request_id = _require_digest(
+        value.get("successor_request_id"), "successor request_id",
+    )
+    state = value.get("legacy_state")
+    reason = value.get("reason")
+    if (
+        not isinstance(state, str)
+        or state not in {"PREPARED", "RECEIPTS_COMPLETE"}
+        or reason != _LEGACY_DISPOSITION_REASON_V2
+    ):
+        raise _invalid("legacy disposition fields")
+    unsigned = {key: item for key, item in value.items() if key != "disposition_id"}
+    if disposition_id != _digest(
+        LEGACY_DISPOSITION_DOMAIN_V2, _canonical_json(unsigned),
+    ):
+        raise _invalid("legacy disposition_id")
+    return _DecodedLegacyDispositionV2(
+        disposition_id, legacy_journal_hash, legacy_request_id, state,
+        successor_request_id, reason,
+    )
+
+
+def _predecessor_digest_v1(value: object, field: str) -> str:
+    if type(value) is not str or _DIGEST_RE.fullmatch(value) is None:
+        raise _invalid(field)
+    return value
+
+
+def _predecessor_relative_path_v1(value: object) -> str:
+    """Mirror the assembler predecessor path contract without extra policy."""
+    if (
+        type(value) is not str or not value
+        or unicodedata.normalize("NFC", value) != value
+        or "\\" in value or "\0" in value or value.startswith("/")
+    ):
+        raise _invalid("predecessor file path")
+    parts = value.split("/")
+    if (
+        any(part in {"", ".", ".."} for part in parts)
+        or len(parts) > MAX_PREDECESSOR_PATH_DEPTH_V1
+        or PurePosixPath(value).as_posix() != value
+        or parts[0] == RECEIVED_SOURCE_DESCRIPTOR_BASENAME_V1
+    ):
+        raise _invalid("predecessor file path")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise _invalid("predecessor file path") from exc
+    return value
+
+
+def _predecessor_absolute_path_v1(
+    value: object, field: str, *, allow_root: bool = False,
+) -> str:
+    """Mirror the assembler absolute-path contract without the admin cap."""
+    if (
+        type(value) is not str or not value.startswith("/")
+        or value.startswith("//") or "\\" in value or "\0" in value
+        or unicodedata.normalize("NFC", value) != value
+    ):
+        raise _invalid(field)
+    if value == "/":
+        if allow_root:
+            return value
+        raise _invalid(field)
+    parts = value.split("/")[1:]
+    if (
+        not parts or any(part in {"", ".", ".."} for part in parts)
+        or PurePosixPath(value).as_posix() != value
+    ):
+        raise _invalid(field)
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise _invalid(field) from exc
+    return value
+
+
+def _predecessor_text_v1(
+    value: object, field: str, *, maximum: int, allow_empty: bool = False,
+) -> str:
+    if type(value) is not str or "\0" in value:
+        raise _invalid(field)
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise _invalid(field) from exc
+    if (not allow_empty and not encoded) or len(encoded) > maximum:
+        raise _invalid(field)
+    return value
+
+
+def _decode_predecessor_environment_v1(
+    raw_environment: object,
+) -> tuple[_DecodedPredecessorEnvironmentV1, ...]:
+    if type(raw_environment) is not list or len(raw_environment) > 256:
+        raise _invalid("predecessor service command environment")
+    environment: list[_DecodedPredecessorEnvironmentV1] = []
+    for raw in raw_environment:
+        if (
+            type(raw) is not dict
+            or frozenset(raw) != _PREDECESSOR_ENVIRONMENT_KEYS_V1
+        ):
+            raise _invalid("predecessor service command environment keys")
+        name = raw.get("name")
+        if (
+            type(name) is not str
+            or _PREDECESSOR_ENVIRONMENT_RE_V1.fullmatch(name) is None
+            or name in _PREDECESSOR_FORBIDDEN_ENVIRONMENT_NAMES_V1
+            or name.startswith(("PYTHON", "LD_", "DYLD_", "OPENSSL_"))
+        ):
+            raise _invalid("predecessor service command environment name")
+        environment.append(_DecodedPredecessorEnvironmentV1(
+            name,
+            _predecessor_text_v1(
+                raw.get("value"),
+                "predecessor service command environment value",
+                maximum=16 * 1024, allow_empty=True,
+            ),
+        ))
+    names = [item.name for item in environment]
+    if names != sorted(names) or len(names) != len(set(names)):
+        raise _invalid("predecessor service command environment order")
+    return tuple(environment)
+
+
+def _decode_predecessor_service_command_v1(
+    raw: object,
+) -> _DecodedPredecessorServiceCommandV1:
+    if (
+        type(raw) is not dict
+        or frozenset(raw) != _PREDECESSOR_SERVICE_COMMAND_KEYS_V1
+    ):
+        raise _invalid("predecessor service command keys")
+    entry_id = raw.get("entry_id")
+    if type(entry_id) is not str or _ENTRY_ID_RE.fullmatch(entry_id) is None:
+        raise _invalid("predecessor service command entry id")
+    kind = raw.get("execution_kind")
+    if type(kind) is not str or kind not in _PREDECESSOR_EXECUTION_KINDS_V1:
+        raise _invalid("predecessor service command execution kind")
+    raw_arguments = raw.get("target_args")
+    if type(raw_arguments) is not list or len(raw_arguments) > 28:
+        raise _invalid("predecessor service command target arguments")
+    arguments = tuple(
+        _predecessor_text_v1(
+            item, "predecessor service command target argument",
+            maximum=4096, allow_empty=True,
+        )
+        for item in raw_arguments
+    )
+    environment = _decode_predecessor_environment_v1(
+        raw.get("target_environment"),
+    )
+    if kind == "none":
+        if (
+            any(raw.get(field) is not None for field in (
+                "target_executable", "target_executable_hash",
+                "python_module", "target_working_directory",
+            ))
+            or arguments or environment
+        ):
+            raise _invalid("predecessor empty service command binding")
+        executable = executable_hash = module = working_directory = None
+    else:
+        executable = _predecessor_absolute_path_v1(
+            raw.get("target_executable"),
+            "predecessor service command executable",
+        )
+        executable_hash = _predecessor_digest_v1(
+            raw.get("target_executable_hash"),
+            "predecessor service command executable hash",
+        )
+        working_directory = _predecessor_absolute_path_v1(
+            raw.get("target_working_directory"),
+            "predecessor service command working directory", allow_root=True,
+        )
+        if kind == "python_module":
+            module_value = raw.get("python_module")
+            try:
+                module_size = (
+                    len(module_value.encode("utf-8"))
+                    if type(module_value) is str else -1
+                )
+            except UnicodeEncodeError as exc:
+                raise _invalid("predecessor service command python module") from exc
+            if (
+                type(module_value) is not str or module_size > 255
+                or _PREDECESSOR_MODULE_RE_V1.fullmatch(module_value) is None
+            ):
+                raise _invalid("predecessor service command python module")
+            module = module_value
+        else:
+            if raw.get("python_module") is not None:
+                raise _invalid("predecessor service command python module")
+            module = None
+        if kind == "systemctl_stop" and (
+            working_directory != "/" or len(arguments) < 2
+            or arguments[0] != "stop"
+            or any(
+                _PREDECESSOR_UNIT_RE_V1.fullmatch(item) is None
+                for item in arguments[1:]
+            )
+            or arguments[1:] != tuple(sorted(set(arguments[1:])))
+            or environment
+        ):
+            raise _invalid("predecessor service command systemctl stop")
+    return _DecodedPredecessorServiceCommandV1(
+        entry_id, kind, executable, executable_hash, module, arguments,
+        working_directory, environment,
+    )
+
+
+def _decode_predecessor_descriptor_v1(
+    encoded: bytes,
+) -> _DecodedPredecessorDescriptorV1:
+    """Decode structural predecessor facts; this does not establish authority."""
+    value = decode_canonical_json_v1(
+        encoded, MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1,
+    )
+    if (
+        type(value) is not dict or frozenset(value) != _PREDECESSOR_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("predecessor descriptor schema")
+
+    raw_files = value.get("files")
+    if (
+        type(raw_files) is not list
+        or not 1 <= len(raw_files) <= MAX_PREDECESSOR_FILES_V1
+    ):
+        raise _invalid("predecessor file count")
+    files: list[_DecodedPredecessorFileV1] = []
+    for raw in raw_files:
+        if type(raw) is not dict or frozenset(raw) != _PREDECESSOR_FILE_KEYS_V1:
+            raise _invalid("predecessor file keys")
+        size = raw.get("size")
+        if type(size) is not int or not 0 <= size <= 2 ** 63 - 1:
+            raise _invalid("predecessor file size")
+        files.append(_DecodedPredecessorFileV1(
+            _predecessor_relative_path_v1(raw.get("path")), size,
+            _predecessor_digest_v1(
+                raw.get("content_hash"), "predecessor file hash",
+            ),
+        ))
+    paths = [item.path for item in files]
+    if (
+        paths != sorted(paths, key=lambda item: item.encode("utf-8"))
+        or len(paths) != len(set(paths))
+    ):
+        raise _invalid("predecessor file order")
+
+    raw_commands = value.get("service_commands")
+    if (
+        type(raw_commands) is not list
+        or not 1 <= len(raw_commands) <= MAX_PREDECESSOR_SERVICE_COMMANDS_V1
+    ):
+        raise _invalid("predecessor service command count")
+    commands = tuple(
+        _decode_predecessor_service_command_v1(raw) for raw in raw_commands
+    )
+    entry_ids = [item.entry_id for item in commands]
+    if (
+        entry_ids != sorted(entry_ids)
+        or len(entry_ids) != len(set(entry_ids))
+    ):
+        raise _invalid("predecessor service command order")
+
+    predecessor_id = _predecessor_digest_v1(
+        value.get("predecessor_id"), "predecessor descriptor id",
+    )
+    unsigned = {
+        key: item for key, item in value.items() if key != "predecessor_id"
+    }
+    if predecessor_id != _digest(
+        PREDECESSOR_DESCRIPTOR_ID_DOMAIN_V1, _canonical_json(unsigned),
+    ):
+        raise _invalid("predecessor descriptor id")
+    decoded = _DecodedPredecessorDescriptorV1(
+        predecessor_id,
+        _predecessor_digest_v1(
+            value.get("transaction_id"), "predecessor transaction id",
+        ),
+        _predecessor_absolute_path_v1(
+            value.get("installation_root"), "predecessor installation root",
+        ),
+        tuple(files), commands,
+        _predecessor_digest_v1(
+            value.get("administrative_bundle_hash"),
+            "predecessor administrative bundle hash",
+        ),
+        _predecessor_digest_v1(
+            value.get("service_catalog_id"),
+            "predecessor service catalog id",
+        ),
+        _predecessor_digest_v1(
+            value.get("service_coverage_hash"),
+            "predecessor service coverage hash",
+        ),
+    )
+    if decoded.as_value() != value:
+        raise _invalid("predecessor descriptor binding")
+    return decoded
 
 
 def distribution_file_hash_v1(path: str, content: bytes) -> str:
@@ -759,6 +4845,7 @@ def _require_safe_directory_chain_v1(
 def _read_bounded_regular_v1(
     path: Path, maximum: int, *, uid: int, gid: int,
     mode: int | None = None, chain_stop: Path | None = None,
+    require_single_link: bool = True,
 ) -> bytes:
     """Read one immutable regular file through a no-follow stable handle."""
     if (
@@ -766,6 +4853,7 @@ def _read_bounded_regular_v1(
         or type(maximum) is not int or maximum < 0
         or type(uid) is not int or type(gid) is not int
         or (mode is not None and type(mode) is not int)
+        or type(require_single_link) is not bool
         or (
             chain_stop is not None and (
                 not isinstance(chain_stop, Path) or not chain_stop.is_absolute()
@@ -783,7 +4871,8 @@ def _read_bounded_regular_v1(
         raise _invalid("required file") from exc
     if (
         not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode)
-        or before.st_uid != uid or before.st_gid != gid or before.st_nlink != 1
+        or before.st_uid != uid or before.st_gid != gid or before.st_nlink < 1
+        or (require_single_link and before.st_nlink != 1)
         or before.st_mode & 0o022 or before.st_size > maximum
         or (mode is not None and stat.S_IMODE(before.st_mode) != mode)
     ):
@@ -1151,42 +5240,2295 @@ def _snapshot_exact_distribution_tree_v1(
     return captured
 
 
-def _resolve_root_executable_v1(path: Path) -> Path:
-    """Resolve at most eight root-owned links without PATH lookup."""
-    if not isinstance(path, Path) or not path.is_absolute():
-        raise _invalid("executable path")
-    current = path
-    for _index in range(9):
-        _require_safe_directory_chain_v1(current.parent, uid=0, gid=0, stop=None)
+class _OpenControlDirectoryV1(NamedTuple):
+    key: str
+    descriptor: int
+    parent_descriptor: int | None
+    basename: str | None
+    identity: tuple[int, ...]
+    tracked_names: tuple[str, ...]
+    strict_inventory: bool
+
+
+class _ControlFileV1(NamedTuple):
+    key: str
+    parent_descriptor: int
+    basename: str
+    identity: tuple[int, ...]
+    maximum: int
+    mode: int
+    exact_size: int | None
+
+
+def _control_names_v1(descriptor: int) -> tuple[str, ...]:
+    try:
+        names = os.listdir(descriptor)
+    except OSError as exc:
+        raise _recovery("control directory inventory") from exc
+    if len(names) != len(set(names)):
+        raise _recovery("duplicate control name")
+    for name in names:
+        try:
+            valid = (
+                isinstance(name, str) and name not in {"", ".", ".."}
+                and "/" not in name and "\0" not in name
+                and unicodedata.normalize("NFC", name) == name
+                and bool(name.encode("utf-8"))
+            )
+        except UnicodeEncodeError as exc:
+            raise _recovery("control name") from exc
+        if not valid:
+            raise _recovery("control name")
+    return tuple(sorted(names, key=lambda value: value.encode("utf-8")))
+
+
+def _control_directory_chain_snapshot_v1(
+    directory: Path, *, uid: int, gid: int, stop: Path | None,
+) -> tuple[tuple[Path, tuple[int, ...]], ...]:
+    """Snapshot every trusted ancestor so policy still holds at return."""
+    current = directory
+    stop_value = stop.as_posix() if stop is not None else None
+    checked_stop = stop is None
+    observed: list[tuple[Path, tuple[int, ...]]] = []
+    while True:
         try:
             info = current.lstat()
-        except FileNotFoundError as exc:
-            raise _missing("executable") from exc
         except OSError as exc:
-            raise _invalid("executable") from exc
-        if stat.S_ISLNK(info.st_mode):
-            if info.st_uid != 0 or info.st_gid != 0 or _index == 8:
-                raise _invalid("executable link")
+            raise _recovery("control directory chain") from exc
+        if (
+            not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+            or info.st_uid != uid or info.st_gid != gid or info.st_mode & 0o022
+        ):
+            raise _recovery("unsafe control directory chain")
+        observed.append((current, _metadata_identity_v1(info)))
+        if stop_value is not None and current.as_posix() == stop_value:
+            checked_stop = True
+            break
+        if current.parent == current:
+            break
+        current = current.parent
+    if not checked_stop:
+        raise _recovery("control directory outside trusted root")
+    return tuple(observed)
+
+
+def _require_unchanged_control_directory_chain_v1(
+    snapshot: tuple[tuple[Path, tuple[int, ...]], ...], *, uid: int, gid: int,
+) -> None:
+    for path, identity in snapshot:
+        try:
+            info = path.lstat()
+        except OSError as exc:
+            raise _recovery("control directory chain changed") from exc
+        if (
+            not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+            or info.st_uid != uid or info.st_gid != gid or info.st_mode & 0o022
+            or _metadata_identity_v1(info) != identity
+        ):
+            raise _recovery("control directory chain changed")
+
+
+def _require_control_directory_v1(
+    info: os.stat_result, *, uid: int, gid: int,
+) -> None:
+    if (
+        not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+        or info.st_uid != uid or info.st_gid != gid
+        or stat.S_IMODE(info.st_mode) != 0o755
+    ):
+        raise _recovery("control directory metadata")
+
+
+def _open_control_child_directory_v1(
+    parent_descriptor: int, basename: str, key: str, *, uid: int, gid: int,
+) -> tuple[int, tuple[int, ...]]:
+    try:
+        before = os.stat(
+            basename, dir_fd=parent_descriptor, follow_symlinks=False,
+        )
+        _require_control_directory_v1(before, uid=uid, gid=gid)
+        descriptor = os.open(
+            basename, _snapshot_open_flags_v1(True), dir_fd=parent_descriptor,
+        )
+    except PreflightError:
+        raise
+    except OSError as exc:
+        raise _recovery("control directory open: " + key) from exc
+    try:
+        opened = os.fstat(descriptor)
+        if _metadata_identity_v1(opened) != _metadata_identity_v1(before):
+            raise _recovery("control directory replaced: " + key)
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor, _metadata_identity_v1(opened)
+
+
+def _register_control_file_v1(
+    parent_descriptor: int, basename: str, key: str, *,
+    uid: int, gid: int, maximum: int, mode: int,
+    exact_size: int | None = None,
+) -> _ControlFileV1:
+    try:
+        info = os.stat(
+            basename, dir_fd=parent_descriptor, follow_symlinks=False,
+        )
+    except OSError as exc:
+        raise _recovery("control file metadata: " + key) from exc
+    if (
+        not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)
+        or info.st_uid != uid or info.st_gid != gid or info.st_nlink != 1
+        or stat.S_IMODE(info.st_mode) != mode or info.st_size > maximum
+        or (exact_size is not None and info.st_size != exact_size)
+    ):
+        raise _recovery("control file metadata: " + key)
+    return _ControlFileV1(
+        key, parent_descriptor, basename, _metadata_identity_v1(info),
+        maximum, mode, exact_size,
+    )
+
+
+def _read_control_file_v1(file: _ControlFileV1) -> bytes:
+    try:
+        descriptor = os.open(
+            file.basename, _snapshot_open_flags_v1(False),
+            dir_fd=file.parent_descriptor,
+        )
+    except OSError as exc:
+        raise _recovery("control file open: " + file.key) from exc
+    try:
+        before = os.fstat(descriptor)
+        if _metadata_identity_v1(before) != file.identity:
+            raise _recovery("control file replaced: " + file.key)
+        chunks: list[bytes] = []
+        size = 0
+        while True:
+            chunk = os.read(
+                descriptor, min(1024 * 1024, file.maximum + 1 - size),
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            if size > file.maximum:
+                raise _recovery("control file size: " + file.key)
+        after = os.fstat(descriptor)
+        try:
+            live = os.stat(
+                file.basename, dir_fd=file.parent_descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise _recovery("control file rebound: " + file.key) from exc
+        if (
+            size != before.st_size
+            or _metadata_identity_v1(after) != file.identity
+            or _metadata_identity_v1(live) != file.identity
+        ):
+            raise _recovery("control file changed: " + file.key)
+        return b"".join(chunks)
+    except PreflightError:
+        raise
+    except OSError as exc:
+        raise _recovery("control file read: " + file.key) from exc
+    finally:
+        os.close(descriptor)
+
+
+def _authority_checkpoint_v1(index: int) -> bytes:
+    completed = list(_AUTHORITY_KINDS_V1[:min(index, 3)])
+    state = "verified" if index == 4 else "preparing"
+    if index == 3:
+        state = "complete"
+    return _canonical_json({
+        "schema_version": 1, "checkpoint_sequence": index,
+        "state": state, "completed": completed,
+    })
+
+
+def _paired_control_stems_v1(
+    names: tuple[str, ...], *, pattern: re.Pattern[str], label: str,
+) -> tuple[str, ...]:
+    if any(
+        name.startswith(".")
+        or re.fullmatch(r".+\.(?:json|sig)", name) is None
+        for name in names
+    ):
+        raise _recovery("unexpected " + label + " object")
+    stems = tuple(sorted(
+        {name.rsplit(".", 1)[0] for name in names},
+        key=lambda value: value.encode("utf-8"),
+    ))
+    if (
+        any(pattern.fullmatch(stem) is None for stem in stems)
+        or len(names) != len(stems) * 2
+        or any(
+            f"{stem}.json" not in names or f"{stem}.sig" not in names
+            for stem in stems
+        )
+    ):
+        raise _recovery("incomplete " + label + " pair")
+    return stems
+
+
+def _capture_fixed_ownership_state_core_v1(
+    ownership_root: Path, *, uid: int, gid: int,
+    chain_stop: Path | None,
+    between_for_test: Callable[[], None] | None = None,
+) -> _CapturedFixedOwnershipStateCandidateV1:
+    """Capture one handle-bound fixed-store candidate without authorizing it."""
+    if (
+        not isinstance(ownership_root, Path) or not ownership_root.is_absolute()
+        or type(uid) is not int or type(gid) is not int
+        or (
+            chain_stop is not None and (
+                not isinstance(chain_stop, Path) or not chain_stop.is_absolute()
+                or not ownership_root.is_relative_to(chain_stop)
+            )
+        )
+        or (between_for_test is not None and not callable(between_for_test))
+    ):
+        raise _invalid("ownership capture arguments")
+
+    directories: list[_OpenControlDirectoryV1] = []
+    files: dict[str, _ControlFileV1] = {}
+    root_descriptor = -1
+
+    def add_file(
+        parent: int, name: str, key: str, *, maximum: int,
+        mode: int = 0o644, exact_size: int | None = None,
+    ) -> _ControlFileV1:
+        if key in files:
+            raise _recovery("duplicate control path")
+        item = _register_control_file_v1(
+            parent, name, key, uid=uid, gid=gid, maximum=maximum,
+            mode=mode, exact_size=exact_size,
+        )
+        files[key] = item
+        return item
+
+    def add_directory(
+        parent: int, name: str, key: str, *, strict: bool = True,
+    ) -> tuple[int, tuple[str, ...]]:
+        descriptor, identity = _open_control_child_directory_v1(
+            parent, name, key, uid=uid, gid=gid,
+        )
+        registered = False
+        try:
+            names = _control_names_v1(descriptor)
+            directories.append(_OpenControlDirectoryV1(
+                key, descriptor, parent, name, identity, names, strict,
+            ))
+            registered = True
+        except BaseException:
+            if not registered:
+                os.close(descriptor)
+            raise
+        return descriptor, names
+
+    def decode_durable(callable_, *arguments):
+        try:
+            return callable_(*arguments)
+        except PreflightError as exc:
+            raise _recovery("durable ownership object") from exc
+
+    try:
+        directory_chain_snapshot = _control_directory_chain_snapshot_v1(
+            ownership_root.parent, uid=uid, gid=gid, stop=chain_stop,
+        )
+        try:
+            path_before = ownership_root.lstat()
+            _require_control_directory_v1(path_before, uid=uid, gid=gid)
+            root_descriptor = os.open(
+                ownership_root, _snapshot_open_flags_v1(True),
+            )
+            root_opened = os.fstat(root_descriptor)
+        except PreflightError:
+            raise
+        except OSError as exc:
+            raise _recovery("ownership root open") from exc
+        if _metadata_identity_v1(path_before) != _metadata_identity_v1(root_opened):
+            raise _recovery("ownership root replaced")
+        root_names = _control_names_v1(root_descriptor)
+        relevant_root_names = frozenset({
+            "authorities-v1", "chain-v1", "coordinator-v1",
+            "ownership-cutover-v1.json", "ownership-cutover-v1.sig",
+            "predecessor-v1.json",
+        })
+        anchor_like_names = tuple(
+            name for name in root_names
+            if name.lstrip(".").startswith("ownership-cutover-v1.")
+        )
+        if any(name not in relevant_root_names for name in anchor_like_names):
+            raise _recovery("unexpected anchor object")
+        tracked_root_names = tuple(
+            name for name in root_names if name in relevant_root_names
+        )
+        if not {"authorities-v1", "chain-v1", "coordinator-v1"}.issubset(
+            tracked_root_names
+        ):
+            raise _recovery("ownership root inventory")
+        directories.append(_OpenControlDirectoryV1(
+            ".", root_descriptor, None, None,
+            _metadata_identity_v1(root_opened), tracked_root_names, False,
+        ))
+
+        authority_fd, authority_names = add_directory(
+            root_descriptor, "authorities-v1", "authorities-v1",
+        )
+        expected_authority_names = frozenset({
+            *_AUTHORITY_REGISTRY_BASENAMES_V1,
+            *_AUTHORITY_PRIVATE_BASENAMES_V1,
+            *_AUTHORITY_CHECKPOINT_BASENAMES_V1,
+        })
+        if frozenset(authority_names) != expected_authority_names:
+            raise _recovery("authority inventory")
+        for name in _AUTHORITY_REGISTRY_BASENAMES_V1:
+            add_file(
+                authority_fd, name, "authorities-v1/" + name,
+                maximum=MAX_REGISTRY_BYTES,
+            )
+        for name in _AUTHORITY_PRIVATE_BASENAMES_V1:
+            add_file(
+                authority_fd, name, "authorities-v1/" + name,
+                maximum=32, mode=0o600, exact_size=32,
+            )
+        for name in _AUTHORITY_CHECKPOINT_BASENAMES_V1:
+            add_file(
+                authority_fd, name, "authorities-v1/" + name,
+                maximum=MAX_AUTHORITY_CHECKPOINT_BYTES_V1,
+            )
+
+        chain_fd, chain_names = add_directory(
+            root_descriptor, "chain-v1", "chain-v1",
+        )
+        allowed_chain_names = frozenset({
+            "builds-v1", "cutovers-v1", "heads-v1",
+            "required-head-v1.bin", ".required-head-v1.lock",
+        })
+        if (
+            not {"builds-v1", "cutovers-v1", "heads-v1"}.issubset(chain_names)
+            or any(name not in allowed_chain_names for name in chain_names)
+        ):
+            raise _recovery("chain inventory")
+        build_fd, build_names = add_directory(
+            chain_fd, "builds-v1", "chain-v1/builds-v1",
+        )
+        cutover_fd, cutover_names = add_directory(
+            chain_fd, "cutovers-v1", "chain-v1/cutovers-v1",
+        )
+        head_fd, head_names = add_directory(
+            chain_fd, "heads-v1", "chain-v1/heads-v1",
+        )
+        build_stems = _paired_control_stems_v1(
+            build_names, pattern=_ARCHIVED_DIGEST_STEM_RE_V1, label="build",
+        )
+        cutover_stems = _paired_control_stems_v1(
+            cutover_names, pattern=_ARCHIVED_DIGEST_STEM_RE_V1,
+            label="cutover",
+        )
+        head_stems = _paired_control_stems_v1(
+            head_names, pattern=_ARCHIVED_HEAD_STEM_RE_V1, label="head",
+        )
+        for descriptor, prefix, stems, maximum in (
+            (build_fd, "chain-v1/builds-v1", build_stems, MAX_MANIFEST_BYTES),
+            (cutover_fd, "chain-v1/cutovers-v1", cutover_stems,
+             MAX_CUTOVER_BYTES_V1),
+            (head_fd, "chain-v1/heads-v1", head_stems, MAX_HEAD_BYTES_V1),
+        ):
+            for stem in stems:
+                add_file(
+                    descriptor, stem + ".json", f"{prefix}/{stem}.json",
+                    maximum=maximum,
+                )
+                add_file(
+                    descriptor, stem + ".sig", f"{prefix}/{stem}.sig",
+                    maximum=64, exact_size=64,
+                )
+        if "required-head-v1.bin" in chain_names:
+            add_file(
+                chain_fd, "required-head-v1.bin",
+                "chain-v1/required-head-v1.bin",
+                maximum=MAX_REQUIRED_HEAD_BYTES_V1,
+            )
+        if ".required-head-v1.lock" in chain_names:
+            add_file(
+                chain_fd, ".required-head-v1.lock",
+                "chain-v1/.required-head-v1.lock", maximum=1,
+                mode=0o600, exact_size=1,
+            )
+
+        anchor_names = {
+            "ownership-cutover-v1.json", "ownership-cutover-v1.sig",
+        } & set(tracked_root_names)
+        if anchor_names not in (set(), {
+            "ownership-cutover-v1.json", "ownership-cutover-v1.sig",
+        }):
+            raise _recovery("anchor pair")
+        if anchor_names:
+            add_file(
+                root_descriptor, "ownership-cutover-v1.json",
+                "ownership-cutover-v1.json", maximum=MAX_CUTOVER_BYTES_V1,
+            )
+            add_file(
+                root_descriptor, "ownership-cutover-v1.sig",
+                "ownership-cutover-v1.sig", maximum=64, exact_size=64,
+            )
+        if "predecessor-v1.json" in tracked_root_names:
+            add_file(
+                root_descriptor, "predecessor-v1.json", "predecessor-v1.json",
+                maximum=MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1,
+            )
+
+        coordinator_fd, coordinator_names = add_directory(
+            root_descriptor, "coordinator-v1", "coordinator-v1",
+        )
+        legacy_names = tuple(
+            name for name in coordinator_names
+            if _LEGACY_RECORD_RE_V1.fullmatch(name) is not None
+        )
+        allowed_coordinator = {
+            *legacy_names, "successor-claims-v1", "transactions-v2",
+            "legacy-disposition-v2.json",
+        }
+        if any(name not in allowed_coordinator for name in coordinator_names):
+            raise _recovery("coordinator inventory")
+        legacy_indices = tuple(
+            int(_LEGACY_RECORD_RE_V1.fullmatch(name).group(1))
+            for name in legacy_names
+        )
+        if legacy_indices != tuple(range(len(legacy_indices))) or len(legacy_indices) > 2:
+            raise _recovery("legacy journal inventory")
+        for name in legacy_names:
+            add_file(
+                coordinator_fd, name, "coordinator-v1/" + name,
+                maximum=MAX_COORDINATOR_RECORD_BYTES_V2,
+            )
+        if "legacy-disposition-v2.json" in coordinator_names:
+            add_file(
+                coordinator_fd, "legacy-disposition-v2.json",
+                "coordinator-v1/legacy-disposition-v2.json",
+                maximum=MAX_COORDINATOR_CONTROL_BYTES_V2,
+            )
+
+        claim_names: tuple[str, ...] = ()
+        claim_fd = -1
+        if "successor-claims-v1" in coordinator_names:
+            claim_fd, claim_names = add_directory(
+                coordinator_fd, "successor-claims-v1",
+                "coordinator-v1/successor-claims-v1",
+            )
+            if any(
+                _SUCCESSOR_CLAIM_BASENAME_RE_V1.fullmatch(name) is None
+                for name in claim_names
+            ):
+                raise _recovery("claim inventory")
+            for name in claim_names:
+                add_file(
+                    claim_fd, name,
+                    "coordinator-v1/successor-claims-v1/" + name,
+                    maximum=MAX_COORDINATOR_CONTROL_BYTES_V2,
+                )
+
+        transaction_names: tuple[str, ...] = ()
+        transaction_root_fd = -1
+        transaction_record_names: dict[str, tuple[str, ...]] = {}
+        if "transactions-v2" in coordinator_names:
+            transaction_root_fd, transaction_names = add_directory(
+                coordinator_fd, "transactions-v2",
+                "coordinator-v1/transactions-v2",
+            )
+            if any(
+                _TRANSACTION_DIRECTORY_RE_V2.fullmatch(name) is None
+                for name in transaction_names
+            ):
+                raise _recovery("transaction inventory")
+            for request_id in transaction_names:
+                transaction_fd, record_names = add_directory(
+                    transaction_root_fd, request_id,
+                    "coordinator-v1/transactions-v2/" + request_id,
+                )
+                indices = []
+                for name in record_names:
+                    matched = _TRANSACTION_RECORD_RE_V2.fullmatch(name)
+                    if matched is None:
+                        raise _recovery("transaction record inventory")
+                    indices.append(int(matched.group(1)))
+                if (
+                    not 1 <= len(indices) <= 7
+                    or tuple(indices) != tuple(range(len(indices)))
+                ):
+                    raise _recovery("transaction record sequence")
+                transaction_record_names[request_id] = record_names
+                for name in record_names:
+                    add_file(
+                        transaction_fd, name,
+                        f"coordinator-v1/transactions-v2/{request_id}/{name}",
+                        maximum=MAX_COORDINATOR_RECORD_BYTES_V2,
+                    )
+
+        registry_bytes = tuple(
+            _read_control_file_v1(files["authorities-v1/" + name])
+            for name in _AUTHORITY_REGISTRY_BASENAMES_V1
+        )
+        registries = decode_durable(
+            _decode_ownership_registry_set_v1, *registry_bytes,
+        )
+        for index, name in enumerate(_AUTHORITY_CHECKPOINT_BASENAMES_V1):
+            observed = _read_control_file_v1(files["authorities-v1/" + name])
+            if observed != _authority_checkpoint_v1(index):
+                raise _recovery("authority checkpoint")
+
+        builds: list[_CapturedSignedObjectCandidateV1] = []
+        cutovers: list[_CapturedSignedObjectCandidateV1] = []
+        heads: list[_CapturedSignedObjectCandidateV1] = []
+        for stem in build_stems:
+            encoded = _read_control_file_v1(
+                files[f"chain-v1/builds-v1/{stem}.json"],
+            )
+            signature = _read_control_file_v1(
+                files[f"chain-v1/builds-v1/{stem}.sig"],
+            )
+            value, _manifest_files = decode_durable(
+                _parse_distribution_manifest_v1, encoded,
+            )
+            if value["closed_build_id"].removeprefix("sha256:") != stem:
+                raise _recovery("build name binding")
+            builds.append(_CapturedSignedObjectCandidateV1(
+                stem, encoded, signature,
+            ))
+        for stem in cutover_stems:
+            encoded = _read_control_file_v1(
+                files[f"chain-v1/cutovers-v1/{stem}.json"],
+            )
+            signature = _read_control_file_v1(
+                files[f"chain-v1/cutovers-v1/{stem}.sig"],
+            )
+            decoded = decode_durable(
+                _decode_ownership_cutover_v1, encoded, signature,
+            )
+            if decoded.cutover_id.removeprefix("sha256:") != stem:
+                raise _recovery("cutover name binding")
+            cutovers.append(_CapturedSignedObjectCandidateV1(
+                stem, encoded, signature,
+            ))
+        for stem in head_stems:
+            encoded = _read_control_file_v1(
+                files[f"chain-v1/heads-v1/{stem}.json"],
+            )
+            signature = _read_control_file_v1(
+                files[f"chain-v1/heads-v1/{stem}.sig"],
+            )
+            decoded = decode_durable(
+                _decode_ownership_head_v1, encoded, signature,
+            )
+            expected_stem = (
+                f"{decoded.release_sequence:020d}-"
+                f"{decoded.cutover_id.removeprefix('sha256:')}"
+            )
+            if expected_stem != stem:
+                raise _recovery("head name binding")
+            heads.append(_CapturedSignedObjectCandidateV1(
+                stem, encoded, signature,
+            ))
+
+        anchor = None
+        if anchor_names:
+            anchor = decode_durable(
+                _decode_ownership_cutover_v1,
+                _read_control_file_v1(files["ownership-cutover-v1.json"]),
+                _read_control_file_v1(files["ownership-cutover-v1.sig"]),
+            )
+        required_head = None
+        if "required-head-v1.bin" in chain_names:
+            required_head = decode_durable(
+                _decode_fixed_required_head_frame_v1,
+                _read_control_file_v1(
+                    files["chain-v1/required-head-v1.bin"],
+                ),
+            )
+        empty_chain = (
+            anchor is None and required_head is None
+            and not builds and not cutovers and not heads
+        )
+        if empty_chain and "chain-v1/.required-head-v1.lock" in files:
+            raise _recovery("partial ownership chain")
+        if anchor is None and (
+            required_head is not None or builds or cutovers or heads
+        ):
+            raise _recovery("partial ownership chain")
+        if required_head is not None and (
+            anchor is None or not builds or not cutovers or not heads
+        ):
+            raise _recovery("partial ownership chain")
+        if "chain-v1/.required-head-v1.lock" in files and _read_control_file_v1(
+            files["chain-v1/.required-head-v1.lock"],
+        ) != b"\0":
+            raise _recovery("required head lock")
+
+        claims: list[_CapturedClaimCandidateV1] = []
+        seen_claim_ids: set[str] = set()
+        seen_request_ids: set[str] = set()
+        for name in claim_names:
+            encoded = _read_control_file_v1(files[
+                "coordinator-v1/successor-claims-v1/" + name
+            ])
+            decoded = decode_durable(_decode_successor_claim_v1, encoded)
+            expected_name = (
+                "initial.json" if decoded.release_sequence == 1
+                else decoded.previous_head_id.removeprefix("sha256:") + ".json"
+            )
+            if (
+                name != expected_name or decoded.claim_id in seen_claim_ids
+                or decoded.request_id in seen_request_ids
+            ):
+                raise _recovery("claim binding")
+            seen_claim_ids.add(decoded.claim_id)
+            seen_request_ids.add(decoded.request_id)
+            claims.append(_CapturedClaimCandidateV1(name, encoded, decoded))
+        claims.sort(key=lambda item: item.decoded.release_sequence)
+        if tuple(item.decoded.release_sequence for item in claims) != tuple(
+            range(1, len(claims) + 1)
+        ):
+            raise _recovery("claim sequence")
+
+        transactions: list[_CapturedTransactionCandidateV2] = []
+        for request_id in transaction_names:
+            encoded_records = tuple(
+                _read_control_file_v1(files[
+                    f"coordinator-v1/transactions-v2/{request_id}/{name}"
+                ])
+                for name in transaction_record_names[request_id]
+            )
+            decoded_prefix = None
+            if len(encoded_records) <= len(_COORDINATOR_STATES_V1):
+                decoded_prefix = decode_durable(
+                    _decode_coordinator_prefix_v2, encoded_records,
+                )
+                if decoded_prefix.records[0].request_id != request_id:
+                    raise _recovery("transaction request binding")
+            transactions.append(_CapturedTransactionCandidateV2(
+                request_id, encoded_records, decoded_prefix,
+            ))
+
+        legacy_records = tuple(
+            (name, _read_control_file_v1(files["coordinator-v1/" + name]))
+            for name in legacy_names
+        )
+        legacy_disposition = (
+            _read_control_file_v1(
+                files["coordinator-v1/legacy-disposition-v2.json"],
+            )
+            if "coordinator-v1/legacy-disposition-v2.json" in files else None
+        )
+        predecessor = (
+            decode_durable(
+                _decode_predecessor_descriptor_v1,
+                _read_control_file_v1(files["predecessor-v1.json"]),
+            )
+            if "predecessor-v1.json" in files else None
+        )
+
+        if between_for_test is not None:
+            between_for_test()
+
+        current_root_names = _control_names_v1(root_descriptor)
+        relevant_root_now = tuple(
+            name for name in current_root_names if name in relevant_root_names
+        )
+        if any(
+            name not in relevant_root_names
+            for name in current_root_names
+            if name.lstrip(".").startswith("ownership-cutover-v1.")
+        ):
+            raise _recovery("unexpected anchor object")
+        if relevant_root_now != tracked_root_names:
+            raise _recovery("ownership root inventory changed")
+        for directory in directories:
+            if _metadata_identity_v1(os.fstat(directory.descriptor)) != directory.identity:
+                raise _recovery("control directory changed: " + directory.key)
+            current_names = _control_names_v1(directory.descriptor)
+            if directory.strict_inventory and current_names != directory.tracked_names:
+                raise _recovery("control inventory changed: " + directory.key)
+            if directory.parent_descriptor is not None:
+                try:
+                    live = os.stat(
+                        directory.basename, dir_fd=directory.parent_descriptor,
+                        follow_symlinks=False,
+                    )
+                except OSError as exc:
+                    raise _recovery(
+                        "control directory rebound: " + directory.key,
+                    ) from exc
+                if _metadata_identity_v1(live) != directory.identity:
+                    raise _recovery("control directory rebound: " + directory.key)
+        for file in files.values():
             try:
-                target = os.readlink(current)
+                live = os.stat(
+                    file.basename, dir_fd=file.parent_descriptor,
+                    follow_symlinks=False,
+                )
             except OSError as exc:
-                raise _invalid("executable link") from exc
-            candidate = Path(target)
-            if not candidate.is_absolute():
-                candidate = current.parent / candidate
-            candidate = Path(os.path.normpath(candidate))
-            if not candidate.is_absolute():
-                raise _invalid("executable link target")
-            current = candidate
+                raise _recovery("control file rebound: " + file.key) from exc
+            if _metadata_identity_v1(live) != file.identity:
+                raise _recovery("control file changed: " + file.key)
+        try:
+            path_after = ownership_root.lstat()
+        except OSError as exc:
+            raise _recovery("ownership root rebound") from exc
+        if _metadata_identity_v1(path_after) != directories[0].identity:
+            raise _recovery("ownership root rebound")
+        _require_unchanged_control_directory_chain_v1(
+            directory_chain_snapshot, uid=uid, gid=gid,
+        )
+
+        return _CapturedFixedOwnershipStateCandidateV1(
+            registries, anchor, required_head, tuple(builds), tuple(cutovers),
+            tuple(heads), tuple(claims), tuple(transactions), legacy_records,
+            legacy_disposition, predecessor,
+        )
+    except PreflightError as exc:
+        if exc.code == CODE_RECOVERY:
+            raise
+        raise _recovery("fixed ownership capture") from exc
+    except (OSError, ValueError, TypeError, MemoryError) as exc:
+        raise _recovery("fixed ownership capture") from exc
+    finally:
+        closed: set[int] = set()
+        for directory in reversed(directories):
+            if directory.descriptor not in closed:
+                os.close(directory.descriptor)
+                closed.add(directory.descriptor)
+        if root_descriptor >= 0 and root_descriptor not in closed:
+            os.close(root_descriptor)
+
+
+def _capture_fixed_ownership_state_v1() -> _CapturedFixedOwnershipStateCandidateV1:
+    """Observe only the fixed root-owned productive store."""
+    require_linux_before_io_v1()
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        raise _invalid("effective identity")
+    return _capture_fixed_ownership_state_core_v1(
+        OWNERSHIP_ROOT, uid=0, gid=0, chain_stop=None,
+    )
+
+
+def _capture_fixed_ownership_state_for_test_v1(
+    ownership_root: Path, *, between_for_test: Callable[[], None] | None = None,
+) -> _CapturedFixedOwnershipStateForTestV1:
+    """Portable nominal seam; its result cannot enter productive authority."""
+    candidate = _capture_fixed_ownership_state_core_v1(
+        Path(ownership_root), uid=os.getuid(), gid=os.getgid(),
+        chain_stop=Path(ownership_root).parent,
+        between_for_test=between_for_test,
+    )
+    return _CapturedFixedOwnershipStateForTestV1(candidate)
+
+
+def _authenticate_fixed_ownership_snapshot_core_v1(
+    candidate: _CapturedFixedOwnershipStateCandidateV1, *,
+    openssl_executable: Path, temporary_root: Path,
+    temporary_uid: int, temporary_gid: int, chain_stop: Path | None,
+) -> _ReconciledFixedOwnershipSnapshotV1:
+    """Authenticate one coherent snapshot without asserting live effects.
+
+    The candidate bytes are the only authority input.  In particular this
+    function never reopens a registry or ownership object by pathname.  The
+    result intentionally does not attest installed-tree, systemd or the
+    preflight-attestation document referenced by record 006.
+    """
+    if type(candidate) is not _CapturedFixedOwnershipStateCandidateV1:
+        raise _invalid("fixed ownership candidate type")
+    registries = {item.authority: item for item in candidate.registries}
+    if set(registries) != set(_AUTHORITY_KINDS_V1):
+        raise _invalid("fixed ownership registry set")
+
+    def durable(callable_, *arguments, **keywords):
+        try:
+            return callable_(*arguments, **keywords)
+        except PreflightError as exc:
+            if exc.code == CODE_RECOVERY:
+                raise
+            raise _recovery("fixed ownership authentication") from exc
+
+    def verify_signature(
+        registry: OwnershipPublicKeyFactsV1, *, signing_key_id: str,
+        domain: bytes, encoded: bytes, signature: bytes,
+    ) -> None:
+        if signing_key_id != registry.key_id:
+            raise _recovery("fixed ownership signing key")
+        durable(
+            _verify_ed25519_openssl_core_v1,
+            registry.raw_public_key, domain + encoded, signature,
+            openssl_executable=openssl_executable,
+            temporary_root=temporary_root,
+            temporary_uid=temporary_uid, temporary_gid=temporary_gid,
+            chain_stop=chain_stop,
+        )
+
+    try:
+        builds: list[_AuthenticatedDistributionObjectV1] = []
+        builds_by_id: dict[str, _AuthenticatedDistributionObjectV1] = {}
+        build_sequences: set[int] = set()
+        for captured in candidate.builds:
+            value, files = durable(
+                _parse_distribution_manifest_v1, captured.encoded,
+            )
+            if value["signing_key_id"] != registries["distribution"].key_id:
+                raise _recovery("distribution signing key")
+            durable(
+                _verify_ed25519_openssl_core_v1,
+                registries["distribution"].raw_public_key,
+                SIGNATURE_DOMAIN + captured.encoded, captured.signature,
+                openssl_executable=openssl_executable,
+                temporary_root=temporary_root,
+                temporary_uid=temporary_uid, temporary_gid=temporary_gid,
+                chain_stop=chain_stop,
+            )
+            facts = _distribution_facts_v1(value)
+            if (
+                facts.closed_build_id.removeprefix("sha256:") != captured.stem
+                or facts.closed_build_id in builds_by_id
+                or facts.release_sequence in build_sequences
+            ):
+                raise _recovery("distribution archive fork")
+            authenticated = _AuthenticatedDistributionObjectV1(
+                facts, files, captured.encoded, captured.signature,
+            )
+            builds.append(authenticated)
+            builds_by_id[facts.closed_build_id] = authenticated
+            build_sequences.add(facts.release_sequence)
+
+        cutovers: list[_DecodedOwnershipCutoverV1] = []
+        cutovers_by_id: dict[str, _DecodedOwnershipCutoverV1] = {}
+        for captured in candidate.cutovers:
+            decoded = durable(
+                _decode_ownership_cutover_v1,
+                captured.encoded, captured.signature,
+            )
+            verify_signature(
+                registries["cutover"], signing_key_id=decoded.signing_key_id,
+                domain=CUTOVER_SIGNATURE_DOMAIN_V1,
+                encoded=decoded.encoded, signature=decoded.signature,
+            )
+            if (
+                decoded.cutover_id.removeprefix("sha256:") != captured.stem
+                or decoded.cutover_id in cutovers_by_id
+            ):
+                raise _recovery("cutover archive fork")
+            cutovers.append(decoded)
+            cutovers_by_id[decoded.cutover_id] = decoded
+
+        heads: list[_DecodedOwnershipHeadV1] = []
+        heads_by_sequence: dict[int, _DecodedOwnershipHeadV1] = {}
+        for captured in candidate.heads:
+            decoded = durable(
+                _decode_ownership_head_v1,
+                captured.encoded, captured.signature,
+            )
+            verify_signature(
+                registries["head"], signing_key_id=decoded.signing_key_id,
+                domain=HEAD_SIGNATURE_DOMAIN_V1,
+                encoded=decoded.encoded, signature=decoded.signature,
+            )
+            expected_stem = (
+                f"{decoded.release_sequence:020d}-"
+                f"{decoded.cutover_id.removeprefix('sha256:')}"
+            )
+            if (
+                expected_stem != captured.stem
+                or decoded.release_sequence in heads_by_sequence
+            ):
+                raise _recovery("head archive fork")
+            heads.append(decoded)
+            heads_by_sequence[decoded.release_sequence] = decoded
+
+        anchor = candidate.anchor
+        required_head = candidate.required_head
+        empty_chain = anchor is None and required_head is None and not heads
+        if empty_chain:
+            if builds or cutovers:
+                raise _recovery("partial authenticated ownership chain")
+        else:
+            if anchor is None:
+                raise _recovery("partial authenticated ownership chain")
+            verify_signature(
+                registries["cutover"], signing_key_id=anchor.signing_key_id,
+                domain=CUTOVER_SIGNATURE_DOMAIN_V1,
+                encoded=anchor.encoded, signature=anchor.signature,
+            )
+            archived_anchor = cutovers_by_id.get(anchor.cutover_id)
+            if (
+                archived_anchor is not None
+                and (
+                    archived_anchor.encoded != anchor.encoded
+                    or archived_anchor.signature != anchor.signature
+                )
+            ):
+                raise _recovery("anchor archive copy")
+            if required_head is not None:
+                verify_signature(
+                    registries["head"],
+                    signing_key_id=required_head.signing_key_id,
+                    domain=HEAD_SIGNATURE_DOMAIN_V1,
+                    encoded=required_head.encoded,
+                    signature=required_head.signature,
+                )
+                archived_required = heads_by_sequence.get(
+                    required_head.release_sequence,
+                )
+                if (
+                    archived_required is None
+                    or archived_required.encoded != required_head.encoded
+                    or archived_required.signature != required_head.signature
+                    or archived_required.head_id != required_head.head_id
+                ):
+                    raise _recovery("required head archive copy")
+            if not heads:
+                maximum_sequence = 0
+            else:
+                maximum_sequence = max(heads_by_sequence)
+            if set(heads_by_sequence) != set(range(1, maximum_sequence + 1)):
+                raise _recovery("ownership head gap")
+
+            previous_head = None
+            previous_build = None
+            for sequence in range(1, maximum_sequence + 1):
+                head = heads_by_sequence[sequence]
+                build = builds_by_id.get(head.closed_build_id)
+                cutover = cutovers_by_id.get(head.cutover_id)
+                if build is None or cutover is None:
+                    raise _recovery("ownership chain missing object")
+                if (
+                    build.facts.release_sequence != sequence
+                    or cutover.closed_build_id != head.closed_build_id
+                ):
+                    raise _recovery("ownership chain object binding")
+                if previous_head is None:
+                    if (
+                        head.previous_head_id is not None
+                        or head.cutover_id != anchor.cutover_id
+                        or head.closed_build_id != anchor.closed_build_id
+                        or build.facts.previous_closed_build_id is not None
+                    ):
+                        raise _recovery("ownership anchor link")
+                elif (
+                    head.previous_head_id != previous_head.head_id
+                    or cutover.previous_cutover_id != previous_head.cutover_id
+                    or build.facts.previous_closed_build_id
+                    != previous_build.facts.closed_build_id
+                ):
+                    raise _recovery("ownership predecessor link")
+                previous_head = head
+                previous_build = build
+            # A successor build or certificate may already be durably appended
+            # while the older required head remains authoritative.  All such
+            # objects are authenticated above, but only a head may select them.
+
+        legacy_prefix = None
+        if candidate.legacy_records:
+            legacy_prefix = durable(
+                _decode_legacy_coordinator_prefix_v1,
+                tuple(encoded for _name, encoded in candidate.legacy_records),
+            )
+        legacy_disposition = (
+            durable(_decode_legacy_disposition_v2, candidate.legacy_disposition)
+            if candidate.legacy_disposition is not None else None
+        )
+
+        claims = tuple(item.decoded for item in candidate.claims)
+        claims_by_id = {claim.claim_id: claim for claim in claims}
+        if len(claims_by_id) != len(claims):
+            raise _recovery("duplicate successor claim")
+        transaction_by_claim: dict[str, _AuthenticatedTransactionSnapshotV2] = {}
+        transactions: list[_AuthenticatedTransactionSnapshotV2] = []
+        for captured in candidate.transactions:
+            prefix = captured.decoded_prefix
+            if prefix is None or not prefix.records:
+                raise _recovery("transaction prefix unavailable")
+            first = prefix.records[0]
+            claim = claims_by_id.get(first.successor_claim_id)
+            if (
+                claim is None or claim.claim_id in transaction_by_claim
+                or captured.request_id != first.request_id
+                or claim.request_id != first.request_id
+                or claim.source_id != first.source_id
+                or claim.closed_build_id != first.closed_build_id
+                or claim.release_sequence != first.release_sequence
+                or claim.previous_head_id != first.previous_head_id
+                or first.request_id != _coordinator_request_id_v1(
+                    first.closed_build_id, first.previous_closed_build_id,
+                    first.previous_cutover_id,
+                )
+            ):
+                raise _recovery("claim transaction binding")
+            resolved = _AuthenticatedTransactionSnapshotV2(claim, prefix)
+            transaction_by_claim[claim.claim_id] = resolved
+            transactions.append(resolved)
+        transactions.sort(key=lambda item: item.claim.release_sequence)
+
+        pending_claims: list[_DecodedSuccessorClaimV1] = []
+        previous_transaction = None
+        for index, claim in enumerate(claims):
+            transaction = transaction_by_claim.get(claim.claim_id)
+            if claim.release_sequence == 1:
+                expected_request_id = _coordinator_request_id_v1(
+                    claim.closed_build_id, None, None,
+                )
+            else:
+                if (
+                    previous_transaction is None
+                    or previous_transaction.prefix.records[-1].sequence != 6
+                    or claim.previous_head_id
+                    != previous_transaction.prefix.records[-1].head_id
+                ):
+                    raise _recovery("claim predecessor")
+                previous_first = previous_transaction.prefix.records[0]
+                previous_latest = previous_transaction.prefix.records[-1]
+                expected_request_id = _coordinator_request_id_v1(
+                    claim.closed_build_id, previous_first.closed_build_id,
+                    previous_latest.cutover_id,
+                )
+            if claim.request_id != expected_request_id:
+                raise _recovery("claim request")
+            if transaction is None:
+                if index != len(claims) - 1:
+                    raise _recovery("nonterminal pending claim")
+                pending_claims.append(claim)
+                continue
+            first = transaction.prefix.records[0]
+            if claim.release_sequence == 1:
+                if (
+                    first.previous_closed_build_id is not None
+                    or first.previous_cutover_id is not None
+                ):
+                    raise _recovery("initial transaction predecessor")
+            else:
+                previous_first = previous_transaction.prefix.records[0]
+                previous_latest = previous_transaction.prefix.records[-1]
+                if (
+                    first.previous_closed_build_id != previous_first.closed_build_id
+                    or first.previous_cutover_id != previous_latest.cutover_id
+                    or first.previous_head_id != previous_latest.head_id
+                ):
+                    raise _recovery("successor transaction predecessor")
+            previous_transaction = transaction
+
+        if legacy_prefix is not None:
+            latest_legacy = legacy_prefix.records[-1]
+            if legacy_disposition is None:
+                if transactions or len(claims) > 1:
+                    raise _recovery("legacy prefix order")
+            else:
+                successor = tuple(
+                    claim for claim in claims
+                    if claim.request_id == legacy_disposition.successor_request_id
+                )
+                if (
+                    len(successor) != 1
+                    or successor[0].release_sequence != 1
+                    or legacy_disposition.legacy_journal_hash
+                    != _legacy_journal_hash_v2(legacy_prefix.encoded_records)
+                    or legacy_disposition.legacy_request_id
+                    != latest_legacy.request_id
+                    or legacy_disposition.legacy_state != latest_legacy.state
+                ):
+                    raise _recovery("legacy disposition binding")
+        elif legacy_disposition is not None:
+            raise _recovery("orphan legacy disposition")
+
+        completed_by_sequence: dict[int, _AuthenticatedTransactionSnapshotV2] = {}
+        for transaction in transactions:
+            first = transaction.prefix.records[0]
+            latest = transaction.prefix.records[-1]
+            build = builds_by_id.get(first.closed_build_id)
+            if latest.sequence >= 5 and build is None:
+                raise _recovery("transaction build missing")
+            if build is not None and (
+                first.distribution_payload_hash != _raw_sha256_v1(build.encoded)
+                or first.distribution_signature_hash
+                != _raw_sha256_v1(build.signature)
+                or first.boundary_inventory_hash
+                != build.facts.boundary_inventory_hash
+                or first.boundary_guard_version
+                != build.facts.boundary_guard_version
+                or first.previous_closed_build_id
+                != build.facts.previous_closed_build_id
+                or first.release_sequence != build.facts.release_sequence
+            ):
+                raise _recovery("transaction distribution binding")
+            if latest.sequence >= 2:
+                cutover = cutovers_by_id.get(latest.cutover_id)
+                if (
+                    cutover is None and anchor is not None
+                    and anchor.cutover_id == latest.cutover_id
+                ):
+                    cutover = anchor
+                if latest.sequence >= 3 and cutover is None:
+                    raise _recovery("transaction cutover missing")
+                if cutover is not None and (
+                    cutover.request_id != first.request_id
+                    or cutover.previous_cutover_id != first.previous_cutover_id
+                    or cutover.closed_build_id != first.closed_build_id
+                    or cutover.catalog_id != latest.catalog_id
+                    or cutover.current_receipts != latest.current_receipts
+                    or cutover.maintenance_evidence_hash
+                    != latest.maintenance_after_hash
+                    or cutover.boundary_inventory_hash
+                    != first.boundary_inventory_hash
+                    or cutover.boundary_guard_version
+                    != first.boundary_guard_version
+                    or latest.certificate_payload_hash
+                    != _raw_sha256_v1(cutover.encoded)
+                    or latest.certificate_signature_hash
+                    != _raw_sha256_v1(cutover.signature)
+                ):
+                    raise _recovery("transaction cutover binding")
+            if latest.sequence >= 5:
+                head = heads_by_sequence.get(first.release_sequence)
+                if head is None:
+                    raise _recovery("transaction head missing")
+                framed_head = (
+                    REQUIRED_HEAD_MAGIC_V1
+                    + len(head.encoded).to_bytes(4, "big")
+                    + head.encoded + head.signature
+                )
+                if (
+                    head.head_id != latest.head_id
+                    or head.cutover_id != latest.cutover_id
+                    or head.closed_build_id != first.closed_build_id
+                    or head.previous_head_id != first.previous_head_id
+                    or latest.head_payload_hash != _framed_sha256_v1(
+                        HEAD_PAYLOAD_HASH_DOMAIN_V2, head.encoded,
+                    )
+                    or latest.head_signature_hash != _framed_sha256_v1(
+                        HEAD_SIGNATURE_HASH_DOMAIN_V2, head.signature,
+                    )
+                    or latest.required_head_frame_hash != _framed_sha256_v1(
+                        REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, framed_head,
+                    )
+                    or latest.verified_chain_head_id != head.head_id
+                ):
+                    raise _recovery("transaction head binding")
+                completed_by_sequence[first.release_sequence] = transaction
+
+        transactions_by_build = {
+            transaction.prefix.records[0].closed_build_id: transaction
+            for transaction in transactions
+        }
+        if len(transactions_by_build) != len(transactions):
+            raise _recovery("transaction build fork")
+        if anchor is not None:
+            anchor_transaction = transactions_by_build.get(
+                anchor.closed_build_id,
+            )
+            if (
+                anchor_transaction is None
+                or anchor_transaction.prefix.records[-1].sequence < 2
+                or anchor_transaction.prefix.records[-1].cutover_id
+                != anchor.cutover_id
+            ):
+                raise _recovery("orphan ownership anchor")
+        for build in builds:
+            transaction = transactions_by_build.get(build.facts.closed_build_id)
+            if (
+                transaction is None
+                or transaction.prefix.records[-1].sequence < 4
+            ):
+                raise _recovery("orphan build archive")
+        for cutover in cutovers:
+            transaction = transactions_by_build.get(cutover.closed_build_id)
+            if (
+                transaction is None
+                or transaction.prefix.records[-1].sequence < 2
+                or transaction.prefix.records[-1].cutover_id != cutover.cutover_id
+            ):
+                raise _recovery("orphan cutover archive")
+        for head in heads:
+            transaction = transactions_by_build.get(head.closed_build_id)
+            if (
+                transaction is None
+                or transaction.claim.release_sequence != head.release_sequence
+                or transaction.prefix.records[-1].sequence < 4
+            ):
+                raise _recovery("orphan head archive")
+
+        if required_head is not None:
+            required_sequence = required_head.release_sequence
+            completed_sequences = set(completed_by_sequence)
+            stable_sequences = set(range(1, required_sequence + 1))
+            cas_predecessor_sequences = set(range(1, required_sequence))
+            required_prefix = next((
+                transaction for transaction in transactions
+                if transaction.claim.release_sequence == required_sequence
+            ), None)
+            stable = completed_sequences == stable_sequences
+            cas_before_record = (
+                completed_sequences == cas_predecessor_sequences
+                and required_prefix is not None
+                and required_prefix.prefix.records[-1].sequence == 4
+            )
+            if not stable and not cas_before_record:
+                raise _recovery("coordinator required chain coverage")
+        elif completed_by_sequence:
+            raise _recovery("head record without required pointer")
+
+        initial_transaction = next((
+            transaction for transaction in transactions
+            if transaction.claim.release_sequence == 1
+        ), None)
+        if initial_transaction is not None:
+            initial_record = initial_transaction.prefix.records[0]
+            initial_latest = initial_transaction.prefix.records[-1]
+            predecessor = candidate.predecessor
+            if predecessor is None:
+                if initial_latest.sequence >= 1:
+                    raise _recovery("predecessor transaction missing")
+            elif (
+                predecessor.transaction_id != initial_record.install_transaction_id
+                or predecessor.administrative_bundle_hash
+                != initial_record.administrative_bundle_hash
+                or predecessor.service_coverage_hash
+                != initial_record.service_coverage_hash
+            ):
+                raise _recovery("predecessor transaction binding")
+            if any(
+                transaction.prefix.records[0].administrative_bundle_hash
+                != initial_record.administrative_bundle_hash
+                for transaction in transactions
+            ):
+                raise _recovery("administrative bundle changed")
+        elif candidate.predecessor is not None:
+            raise _recovery("orphan predecessor")
+
+        return _ReconciledFixedOwnershipSnapshotV1(
+            candidate.registries, anchor, required_head,
+            tuple(sorted(builds, key=lambda item: item.facts.release_sequence)),
+            tuple(sorted(cutovers, key=lambda item: item.cutover_id)),
+            tuple(heads_by_sequence[index] for index in sorted(heads_by_sequence)),
+            claims, tuple(transactions), tuple(pending_claims), legacy_prefix,
+            legacy_disposition, candidate.predecessor,
+        )
+    except PreflightError as exc:
+        if exc.code == CODE_RECOVERY:
+            raise
+        raise _recovery("fixed ownership authentication") from exc
+    except (OSError, ValueError, TypeError, MemoryError) as exc:
+        raise _recovery("fixed ownership authentication") from exc
+
+
+def _authenticate_fixed_ownership_snapshot_v1(
+) -> _AuthenticatedFixedOwnershipSnapshotV1:
+    """Authenticate only the fixed productive snapshot captured internally."""
+    administrative_tcb = _capture_administrative_tcb_v1()
+    candidate = _capture_fixed_ownership_state_v1()
+    snapshot = _authenticate_fixed_ownership_snapshot_core_v1(
+        candidate, openssl_executable=Path(
+            administrative_tcb.capture.executables.openssl.resolved.canonical_path
+        ),
+        temporary_root=RUNTIME_ROOT, temporary_uid=0, temporary_gid=0,
+        chain_stop=None,
+    )
+    _revalidate_captured_administrative_tcb_v1(
+        administrative_tcb.capture, _administrative_links_v1(),
+        uid=0, gid=0, chain_stop=None,
+    )
+    return _AuthenticatedFixedOwnershipSnapshotV1(snapshot, administrative_tcb)
+
+
+def _authenticate_fixed_ownership_snapshot_for_test_v1(
+    ownership_root: Path, *, openssl_executable: Path, temporary_root: Path,
+) -> _AuthenticatedFixedOwnershipSnapshotForTestV1:
+    """Portable seam whose result cannot enter the productive wrapper."""
+    captured = _capture_fixed_ownership_state_for_test_v1(ownership_root)
+    uid, gid = os.getuid(), os.getgid()
+    snapshot = _authenticate_fixed_ownership_snapshot_core_v1(
+        captured.candidate, openssl_executable=openssl_executable,
+        temporary_root=temporary_root, temporary_uid=uid, temporary_gid=gid,
+        chain_stop=temporary_root,
+    )
+    return _AuthenticatedFixedOwnershipSnapshotForTestV1(snapshot)
+
+
+def _require_no_posix_access_acl_v1(path: Path) -> None:
+    """Fail closed on ACLs that mode bits alone cannot evaluate."""
+    try:
+        os.getxattr(path, "system.posix_acl_access", follow_symlinks=False)
+    except OSError as exc:
+        if exc.errno not in {
+            errno.ENODATA, getattr(errno, "ENOATTR", errno.ENODATA),
+            errno.ENOTSUP, errno.EOPNOTSUPP,
+        }:
+            raise _invalid("trusted path ACL") from exc
+    else:
+        raise _invalid("trusted path ACL")
+
+
+def _trusted_path_start_v1(
+    path: Path, chain_stop: Path | None,
+) -> tuple[Path, list[str]]:
+    if not isinstance(path, Path) or not path.is_absolute():
+        raise _invalid("trusted path")
+    if chain_stop is None:
+        start = Path("/")
+    elif (
+        not isinstance(chain_stop, Path) or not chain_stop.is_absolute()
+        or not path.is_relative_to(chain_stop)
+    ):
+        raise _invalid("trusted path root")
+    else:
+        start = chain_stop
+    try:
+        relative = path.relative_to(start)
+    except ValueError as exc:
+        raise _invalid("trusted path root") from exc
+    parts = list(relative.parts)
+    if len(parts) > 512 or any(part in {"", ".", ".."} for part in parts):
+        raise _invalid("trusted path components")
+    return start, parts
+
+
+def _require_trusted_directory_info_v1(
+    path: Path, info: os.stat_result, *, uid: int, gid: int,
+) -> None:
+    if (
+        not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+        or info.st_uid != uid or info.st_gid != gid or info.st_mode & 0o022
+    ):
+        raise _invalid("unsafe trusted directory")
+    _require_no_posix_access_acl_v1(path)
+
+
+def _resolve_trusted_path_core_v1(
+    path: Path, *, kind: str, executable: bool, uid: int, gid: int,
+    chain_stop: Path | None, require_single_link: bool,
+) -> _TrustedResolvedPathV1:
+    """Resolve all path-component links with a bounded authenticated trace."""
+    if (
+        kind not in {"file", "directory"} or type(executable) is not bool
+        or type(uid) is not int or type(gid) is not int
+        or type(require_single_link) is not bool
+        or (kind == "directory" and executable)
+    ):
+        raise _invalid("trusted path arguments")
+    start, pending = _trusted_path_start_v1(path, chain_stop)
+    try:
+        start_info = start.lstat()
+    except FileNotFoundError as exc:
+        raise _missing("trusted path root") from exc
+    except OSError as exc:
+        raise _invalid("trusted path root") from exc
+    _require_trusted_directory_info_v1(
+        start, start_info, uid=uid, gid=gid,
+    )
+    trace: list[_TrustedPathComponentV1] = [
+        _TrustedPathComponentV1(
+            start.as_posix(), _metadata_identity_v1(start_info), None,
+        )
+    ]
+    current = start
+    link_count = 0
+    observations = 0
+    while pending:
+        component = pending.pop(0)
+        candidate = current / component
+        observations += 1
+        if observations > 1024:
+            raise _invalid("trusted path traversal bound")
+        try:
+            info = candidate.lstat()
+        except FileNotFoundError as exc:
+            raise _missing("trusted path") from exc
+        except OSError as exc:
+            raise _invalid("trusted path") from exc
+        if stat.S_ISLNK(info.st_mode):
+            if info.st_uid != uid or info.st_gid != gid or link_count == 8:
+                raise _invalid("trusted path link")
+            _require_no_posix_access_acl_v1(candidate)
+            try:
+                target_text = os.readlink(candidate)
+                target_size = len(target_text.encode("utf-8"))
+            except (OSError, UnicodeEncodeError) as exc:
+                raise _invalid("trusted path link") from exc
+            if not target_text or "\0" in target_text or target_size > 4096:
+                raise _invalid("trusted path link target")
+            trace.append(_TrustedPathComponentV1(
+                candidate.as_posix(), _metadata_identity_v1(info), target_text,
+            ))
+            target = Path(target_text)
+            if not target.is_absolute():
+                target = current / target
+            target = Path(os.path.normpath(target.as_posix()))
+            if not target.is_absolute():
+                raise _invalid("trusted path link target")
+            target_start, target_parts = _trusted_path_start_v1(
+                target, chain_stop,
+            )
+            if target_start != start:
+                raise _invalid("trusted path link root")
+            pending = target_parts + pending
+            current = start
+            link_count += 1
+            continue
+        final = not pending
+        if not final:
+            _require_trusted_directory_info_v1(
+                candidate, info, uid=uid, gid=gid,
+            )
+        elif kind == "directory":
+            _require_trusted_directory_info_v1(
+                candidate, info, uid=uid, gid=gid,
+            )
+        else:
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != uid or info.st_gid != gid
+                or info.st_nlink < 1
+                or (require_single_link and info.st_nlink != 1)
+                or info.st_mode & 0o022
+                or (executable and not info.st_mode & 0o111)
+            ):
+                raise _invalid("unsafe trusted file")
+            _require_no_posix_access_acl_v1(candidate)
+        trace.append(_TrustedPathComponentV1(
+            candidate.as_posix(), _metadata_identity_v1(info), None,
+        ))
+        current = candidate
+    if kind != "directory" and current == start:
+        raise _invalid("trusted file root")
+    return _TrustedResolvedPathV1(
+        path.as_posix(), current.as_posix(), kind, tuple(trace),
+    )
+
+
+def _capture_trusted_file_v1(
+    requested_path: Path, *, executable: bool, uid: int, gid: int,
+    chain_stop: Path | None, maximum: int,
+    require_single_link: bool,
+) -> _CapturedTrustedFileV1:
+    resolved = _resolve_trusted_path_core_v1(
+        requested_path, kind="file", executable=executable, uid=uid, gid=gid,
+        chain_stop=chain_stop, require_single_link=require_single_link,
+    )
+    canonical = Path(resolved.canonical_path)
+    try:
+        before = canonical.lstat()
+    except OSError as exc:
+        raise _invalid("trusted file capture") from exc
+    content = _read_bounded_regular_v1(
+        canonical, maximum, uid=uid, gid=gid, chain_stop=chain_stop,
+        require_single_link=require_single_link,
+    )
+    try:
+        after = canonical.lstat()
+    except OSError as exc:
+        raise _invalid("trusted file capture") from exc
+    repeated = _resolve_trusted_path_core_v1(
+        requested_path, kind="file", executable=executable, uid=uid, gid=gid,
+        chain_stop=chain_stop, require_single_link=require_single_link,
+    )
+    identity = _metadata_identity_v1(before)
+    if (
+        identity != _metadata_identity_v1(after)
+        or repeated != resolved
+        or identity != resolved.components[-1].identity
+        or len(content) != before.st_size
+    ):
+        raise _invalid("trusted file changed")
+    return _CapturedTrustedFileV1(resolved, identity, content)
+
+
+def _revalidate_captured_file_v1(
+    captured: _CapturedTrustedFileV1, *, executable: bool, uid: int, gid: int,
+    chain_stop: Path | None, maximum: int, require_single_link: bool,
+) -> None:
+    if type(captured) is not _CapturedTrustedFileV1:
+        raise _invalid("trusted file revalidation")
+    repeated = _capture_trusted_file_v1(
+        Path(captured.resolved.requested_path), executable=executable,
+        uid=uid, gid=gid, chain_stop=chain_stop, maximum=maximum,
+        require_single_link=require_single_link,
+    )
+    if repeated != captured:
+        raise _invalid("trusted file revalidation")
+
+
+def _resolve_root_executable_v1(path: Path) -> Path:
+    """Resolve at most eight root-owned component links without PATH lookup."""
+    return Path(_resolve_trusted_path_core_v1(
+        path, kind="file", executable=True, uid=0, gid=0,
+        chain_stop=None, require_single_link=True,
+    ).canonical_path)
+
+
+_ELF64_HEADER_V1 = struct.Struct("<16sHHIQQQIHHHHHH")
+_ELF64_PROGRAM_HEADER_V1 = struct.Struct("<IIQQQQQQ")
+_LOADER_NAMED_LINE_RE_V1 = re.compile(
+    r"(?P<name>(?:[A-Za-z0-9][A-Za-z0-9_.+:-]{0,255}|"
+    r"/[^\s()]{1,4095})) => "
+    r"(?P<path>/[^\s()]{1,4095}) \((?P<address>0x[0-9A-Fa-f]+)\)\Z"
+)
+_LOADER_DIRECT_LINE_RE_V1 = re.compile(
+    r"(?P<value>(?:/[^\s()]{1,4095}|linux-vdso\.so\.1)) "
+    r"\((?P<address>0x[0-9A-Fa-f]+)\)\Z"
+)
+_OPENSSL_MODULE_DIRECTORY_RE_V1 = re.compile(
+    r'MODULESDIR: "(?P<path>/[^"\s]{1,4095})"\n\Z'
+)
+
+
+def _parse_elf64_interpreter_v1(content: bytes, architecture: str) -> str:
+    """Extract the sole PT_INTERP from one bounded G6 OpenSSL ELF."""
+    machine = {"x86_64": 62, "aarch64": 183}.get(architecture)
+    if type(content) is not bytes or machine is None or len(content) < 64:
+        raise _invalid("OpenSSL ELF")
+    try:
+        (
+            ident, elf_type, observed_machine, version, _entry, phoff,
+            _shoff, _flags, ehsize, phentsize, phnum, _shentsize, _shnum,
+            _shstrndx,
+        ) = _ELF64_HEADER_V1.unpack_from(content)
+    except struct.error as exc:
+        raise _invalid("OpenSSL ELF header") from exc
+    if (
+        ident[:4] != b"\x7fELF" or ident[4] != 2 or ident[5] != 1
+        or ident[6] != 1 or elf_type not in {2, 3}
+        or observed_machine != machine or version != 1 or ehsize != 64
+        or phentsize != _ELF64_PROGRAM_HEADER_V1.size
+        or not 0 < phnum <= MAX_ELF_PROGRAM_HEADERS_V1
+        or phoff < ehsize or phoff > len(content)
+        or phnum > (len(content) - phoff) // phentsize
+    ):
+        raise _invalid("OpenSSL ELF header")
+    interpreters: list[str] = []
+    for index in range(phnum):
+        offset = phoff + index * phentsize
+        try:
+            (
+                program_type, _program_flags, file_offset, _virtual_address,
+                _physical_address, file_size, memory_size, _alignment,
+            ) = _ELF64_PROGRAM_HEADER_V1.unpack_from(content, offset)
+        except struct.error as exc:
+            raise _invalid("OpenSSL ELF program header") from exc
+        if program_type != 3:
             continue
         if (
-            not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_gid != 0
-            or info.st_nlink != 1 or info.st_mode & 0o022
-            or not info.st_mode & 0o111
+            not 2 <= file_size <= MAX_ELF_INTERPRETER_BYTES_V1
+            or memory_size < file_size or file_offset > len(content)
+            or file_size > len(content) - file_offset
         ):
-            raise _invalid("unsafe executable")
-        return current
-    raise _invalid("executable link depth")
+            raise _invalid("OpenSSL ELF interpreter")
+        payload = content[file_offset:file_offset + file_size]
+        if not payload.endswith(b"\0") or b"\0" in payload[:-1]:
+            raise _invalid("OpenSSL ELF interpreter")
+        try:
+            interpreter = payload[:-1].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise _invalid("OpenSSL ELF interpreter") from exc
+        interpreter = _catalog_absolute_path_v1(
+            interpreter, "OpenSSL ELF interpreter",
+        )
+        if interpreter == "/":
+            raise _invalid("OpenSSL ELF interpreter")
+        interpreters.append(interpreter)
+    if len(interpreters) != 1:
+        raise _invalid("OpenSSL ELF interpreter coverage")
+    return interpreters[0]
+
+
+def _parse_loader_list_v1(
+    stdout: bytes, architecture: str,
+) -> tuple[_LoaderDependencyV1, ...]:
+    if (
+        type(stdout) is not bytes or architecture not in {"x86_64", "aarch64"}
+        or not stdout or len(stdout) > MAX_TCB_SUBPROCESS_STREAM_BYTES_V1
+        or not stdout.endswith(b"\n") or b"\r" in stdout or b"\0" in stdout
+    ):
+        raise _invalid("OpenSSL loader output")
+    try:
+        lines = stdout[:-1].decode("utf-8").split("\n")
+    except UnicodeDecodeError as exc:
+        raise _invalid("OpenSSL loader output") from exc
+    if (
+        not lines or len(lines) > MAX_OPENSSL_LOADER_ENTRIES_V1
+        or any(not line for line in lines)
+    ):
+        raise _invalid("OpenSSL loader output")
+    result: list[_LoaderDependencyV1] = []
+    for raw_line in lines:
+        line = raw_line.lstrip(" \t")
+        if not line or line != line.rstrip(" \t"):
+            raise _invalid("OpenSSL loader line")
+        named = _LOADER_NAMED_LINE_RE_V1.fullmatch(line)
+        if named is not None:
+            name = named.group("name")
+            if name.startswith("/"):
+                name = _catalog_absolute_path_v1(
+                    name, "OpenSSL loader name path",
+                )
+            path = _catalog_absolute_path_v1(
+                named.group("path"), "OpenSSL loader path",
+            )
+            result.append(_LoaderDependencyV1(name, path))
+            continue
+        direct = _LOADER_DIRECT_LINE_RE_V1.fullmatch(line)
+        if direct is None:
+            raise _invalid("OpenSSL loader line")
+        value = direct.group("value")
+        if value == "linux-vdso.so.1":
+            result.append(_LoaderDependencyV1(value, None))
+        else:
+            result.append(_LoaderDependencyV1(
+                None, _catalog_absolute_path_v1(value, "OpenSSL loader path"),
+            ))
+    return tuple(result)
+
+
+def _parse_openssl_module_directory_v1(stdout: bytes) -> str:
+    if type(stdout) is not bytes or len(stdout) > MAX_TCB_SUBPROCESS_STREAM_BYTES_V1:
+        raise _invalid("OpenSSL module directory output")
+    try:
+        text = stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _invalid("OpenSSL module directory output") from exc
+    match = _OPENSSL_MODULE_DIRECTORY_RE_V1.fullmatch(text)
+    if match is None:
+        raise _invalid("OpenSSL module directory output")
+    path = _catalog_absolute_path_v1(
+        match.group("path"), "OpenSSL module directory",
+    )
+    if path == "/":
+        raise _invalid("OpenSSL module directory")
+    return path
+
+
+def _administrative_links_v1() -> tuple[Path, Path, Path, Path]:
+    return PYTHON_LINK, OPENSSL_LINK, SYSTEMCTL_LINK, SYSTEMD_ANALYZE_LINK
+
+
+def _capture_administrative_executables_core_v1(
+    links: tuple[Path, Path, Path, Path], *, uid: int, gid: int,
+    chain_stop: Path | None,
+) -> _AdministrativeExecutableSnapshotV1:
+    if (
+        type(links) is not tuple or len(links) != 4
+        or any(not isinstance(item, Path) for item in links)
+    ):
+        raise _invalid("administrative executable links")
+    captured = tuple(
+        _capture_trusted_file_v1(
+            link, executable=True, uid=uid, gid=gid, chain_stop=chain_stop,
+            maximum=MAX_DISTRIBUTION_FILE_BYTES, require_single_link=True,
+        )
+        for link in links
+    )
+    hashes = tuple(
+        _administrative_executable_hash_v1(
+            item.resolved.canonical_path, item.content,
+        )
+        for item in captured
+    )
+    return _AdministrativeExecutableSnapshotV1(
+        *captured, *hashes,
+    )
+
+
+def _revalidate_administrative_executables_v1(
+    snapshot: _AdministrativeExecutableSnapshotV1,
+    links: tuple[Path, Path, Path, Path], *, uid: int, gid: int,
+    chain_stop: Path | None,
+) -> None:
+    if type(snapshot) is not _AdministrativeExecutableSnapshotV1:
+        raise _invalid("administrative executable snapshot")
+    repeated = _capture_administrative_executables_core_v1(
+        links, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    if repeated != snapshot:
+        raise _invalid("administrative executable changed")
+
+
+def _run_checked_tcb_command_v1(argv: tuple[str, ...]) -> bytes:
+    returncode, stdout, stderr = _run_openssl_bounded_v1(
+        argv, maximum=MAX_TCB_SUBPROCESS_STREAM_BYTES_V1,
+    )
+    if returncode != 0 or stderr:
+        raise _invalid("OpenSSL TCB command")
+    return stdout
+
+
+def _capture_loader_closure_v1(
+    dependencies: tuple[_LoaderDependencyV1, ...], *, uid: int, gid: int,
+    chain_stop: Path | None,
+) -> tuple[
+    tuple[_CapturedTrustedFileV1, ...], tuple[tuple[str, str], ...],
+]:
+    name_paths: dict[str, str] = {}
+    captures: dict[str, _CapturedTrustedFileV1] = {}
+    identities: list[tuple[str, str]] = []
+    for dependency in dependencies:
+        if dependency.path is None:
+            if dependency.name != "linux-vdso.so.1":
+                raise _invalid("OpenSSL loader virtual dependency")
+            identities.append((dependency.name, ""))
+            continue
+        captured = _capture_trusted_file_v1(
+            Path(dependency.path), executable=False, uid=uid, gid=gid,
+            chain_stop=chain_stop, maximum=MAX_DISTRIBUTION_FILE_BYTES,
+            require_single_link=False,
+        )
+        canonical = captured.resolved.canonical_path
+        if dependency.name is not None:
+            previous = name_paths.setdefault(dependency.name, canonical)
+            if previous != canonical:
+                raise _invalid("OpenSSL loader name collision")
+            name = dependency.name
+        else:
+            name = ""
+        identities.append((name, canonical))
+        present = captures.setdefault(canonical, captured)
+        if (
+            present.identity != captured.identity
+            or present.content != captured.content
+        ):
+            raise _invalid("OpenSSL loader alias divergence")
+    signature = tuple(sorted(set(identities), key=lambda item: (
+        item[0].encode("utf-8"), item[1].encode("utf-8"),
+    )))
+    return tuple(captures[path] for path in sorted(
+        captures, key=lambda item: item.encode("utf-8"),
+    )), signature
+
+
+def _require_same_canonical_captures_v1(
+    before: tuple[_CapturedTrustedFileV1, ...],
+    after: tuple[_CapturedTrustedFileV1, ...], detail: str,
+) -> None:
+    before_by_path = {
+        item.resolved.canonical_path: (item.identity, item.content)
+        for item in before
+    }
+    after_by_path = {
+        item.resolved.canonical_path: (item.identity, item.content)
+        for item in after
+    }
+    if before_by_path != after_by_path:
+        raise _invalid(detail)
+
+
+def _capture_module_inventory_v1(
+    directory_resolution: _TrustedResolvedPathV1, *, uid: int, gid: int,
+    chain_stop: Path | None,
+) -> tuple[_CapturedTrustedFileV1, ...]:
+    if (
+        type(directory_resolution) is not _TrustedResolvedPathV1
+        or directory_resolution.kind != "directory"
+    ):
+        raise _invalid("OpenSSL module directory snapshot")
+    directory = Path(directory_resolution.canonical_path)
+    flags = (
+        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = -1
+    try:
+        descriptor = os.open(directory, flags)
+        before = os.fstat(descriptor)
+        if _metadata_identity_v1(before) != directory_resolution.components[-1].identity:
+            raise _invalid("OpenSSL module directory rebound")
+        raw_entries: list[tuple[str, tuple[int, ...], int]] = []
+        total_size = 0
+        with os.scandir(descriptor) as entries:
+            for entry in entries:
+                try:
+                    encoded_name = entry.name.encode("utf-8")
+                    info = entry.stat(follow_symlinks=False)
+                except (OSError, UnicodeEncodeError) as exc:
+                    raise _invalid("OpenSSL module inventory") from exc
+                if (
+                    not encoded_name or b"/" in encoded_name or b"\0" in encoded_name
+                    or entry.name in {".", ".."}
+                    or not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)
+                    or info.st_uid != uid or info.st_gid != gid
+                    or info.st_nlink < 1 or info.st_mode & 0o022
+                ):
+                    raise _invalid("OpenSSL module entry")
+                total_size += info.st_size
+                raw_entries.append((
+                    entry.name, _metadata_identity_v1(info), info.st_size,
+                ))
+                if (
+                    len(raw_entries) > MAX_OPENSSL_MODULE_FILES_V1
+                    or total_size > MAX_OPENSSL_MODULE_BYTES_V1
+                ):
+                    raise _invalid("OpenSSL module inventory bound")
+        after = os.fstat(descriptor)
+    except PreflightError:
+        raise
+    except OSError as exc:
+        raise _invalid("OpenSSL module inventory") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if _metadata_identity_v1(after) != _metadata_identity_v1(before):
+        raise _invalid("OpenSSL module directory changed")
+    repeated_directory = _resolve_trusted_path_core_v1(
+        Path(directory_resolution.requested_path), kind="directory",
+        executable=False, uid=uid, gid=gid, chain_stop=chain_stop,
+        require_single_link=False,
+    )
+    if repeated_directory != directory_resolution:
+        raise _invalid("OpenSSL module directory changed")
+    captures: list[_CapturedTrustedFileV1] = []
+    for name, identity, size in sorted(
+        raw_entries, key=lambda item: item[0].encode("utf-8"),
+    ):
+        captured = _capture_trusted_file_v1(
+            directory / name, executable=False, uid=uid, gid=gid,
+            chain_stop=chain_stop, maximum=size, require_single_link=False,
+        )
+        if captured.identity != identity or len(captured.content) != size:
+            raise _invalid("OpenSSL module entry changed")
+        captures.append(captured)
+    return tuple(captures)
+
+
+def _openssl_tcb_document_v1(
+    elf_loader: str, module_directory: str,
+    files: tuple[_OpenSslTcbFileV1, ...],
+) -> tuple[bytes, str]:
+    loader = _catalog_absolute_path_v1(elf_loader, "OpenSSL TCB loader")
+    modules = _catalog_absolute_path_v1(
+        module_directory, "OpenSSL TCB module directory",
+    )
+    if (
+        type(files) is not tuple or not files
+        or any(type(item) is not _OpenSslTcbFileV1 for item in files)
+    ):
+        raise _invalid("OpenSSL TCB files")
+    paths = tuple(item.path for item in files)
+    if (
+        paths != tuple(sorted(paths, key=lambda item: item.encode("utf-8")))
+        or len(paths) != len(set(paths))
+    ):
+        raise _invalid("OpenSSL TCB file order")
+    document = {
+        "schema_version": 1,
+        "command_profile": "ed25519-pkeyutl-v1",
+        "config_path": "/dev/null",
+        "provider": "default",
+        "elf_loader": loader,
+        "module_directory": modules,
+        "files": [item.as_value() for item in files],
+    }
+    encoded = _canonical_json(document)
+    return encoded, _digest(OPENSSL_TCB_DOMAIN_V1, encoded)
+
+
+def _capture_openssl_tcb_core_v1(
+    executables: _AdministrativeExecutableSnapshotV1,
+    links: tuple[Path, Path, Path, Path], *, architecture: str,
+    uid: int, gid: int, chain_stop: Path | None,
+) -> _OpenSslTcbSnapshotV1:
+    if (
+        type(executables) is not _AdministrativeExecutableSnapshotV1
+        or architecture not in {"x86_64", "aarch64"}
+    ):
+        raise _invalid("OpenSSL TCB arguments")
+    interpreter = _parse_elf64_interpreter_v1(
+        executables.openssl.content, architecture,
+    )
+    loader = _capture_trusted_file_v1(
+        Path(interpreter), executable=True, uid=uid, gid=gid,
+        chain_stop=chain_stop, maximum=MAX_DISTRIBUTION_FILE_BYTES,
+        require_single_link=False,
+    )
+    loader_argv = (
+        loader.resolved.canonical_path, "--list",
+        executables.openssl.resolved.canonical_path,
+    )
+
+    first_output = _run_checked_tcb_command_v1(loader_argv)
+    _revalidate_administrative_executables_v1(
+        executables, links, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    _revalidate_captured_file_v1(
+        loader, executable=True, uid=uid, gid=gid, chain_stop=chain_stop,
+        maximum=MAX_DISTRIBUTION_FILE_BYTES, require_single_link=False,
+    )
+    first_dependencies = _parse_loader_list_v1(first_output, architecture)
+    first_closure, first_signature = _capture_loader_closure_v1(
+        first_dependencies, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    for item in first_closure:
+        _revalidate_captured_file_v1(
+            item, executable=False, uid=uid, gid=gid, chain_stop=chain_stop,
+            maximum=MAX_DISTRIBUTION_FILE_BYTES, require_single_link=False,
+        )
+
+    second_output = _run_checked_tcb_command_v1(loader_argv)
+    _revalidate_administrative_executables_v1(
+        executables, links, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    _revalidate_captured_file_v1(
+        loader, executable=True, uid=uid, gid=gid, chain_stop=chain_stop,
+        maximum=MAX_DISTRIBUTION_FILE_BYTES, require_single_link=False,
+    )
+    second_dependencies = _parse_loader_list_v1(second_output, architecture)
+    second_closure, second_signature = _capture_loader_closure_v1(
+        second_dependencies, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    if first_signature != second_signature:
+        raise _invalid("OpenSSL loader closure changed")
+    _require_same_canonical_captures_v1(
+        first_closure, second_closure, "OpenSSL loader files changed",
+    )
+
+    for item in second_closure:
+        _revalidate_captured_file_v1(
+            item, executable=False, uid=uid, gid=gid, chain_stop=chain_stop,
+            maximum=MAX_DISTRIBUTION_FILE_BYTES, require_single_link=False,
+        )
+    module_output = _run_checked_tcb_command_v1((
+        executables.openssl.resolved.canonical_path, "version", "-m",
+    ))
+    _revalidate_administrative_executables_v1(
+        executables, links, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    _revalidate_captured_file_v1(
+        loader, executable=True, uid=uid, gid=gid, chain_stop=chain_stop,
+        maximum=MAX_DISTRIBUTION_FILE_BYTES, require_single_link=False,
+    )
+    for item in second_closure:
+        _revalidate_captured_file_v1(
+            item, executable=False, uid=uid, gid=gid, chain_stop=chain_stop,
+            maximum=MAX_DISTRIBUTION_FILE_BYTES, require_single_link=False,
+        )
+    module_directory_text = _parse_openssl_module_directory_v1(module_output)
+    module_directory = _resolve_trusted_path_core_v1(
+        Path(module_directory_text), kind="directory", executable=False,
+        uid=uid, gid=gid, chain_stop=chain_stop, require_single_link=False,
+    )
+    first_modules = _capture_module_inventory_v1(
+        module_directory, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    second_modules = _capture_module_inventory_v1(
+        module_directory, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    if first_modules != second_modules:
+        raise _invalid("OpenSSL module inventory changed")
+
+    captures_by_path: dict[str, _CapturedTrustedFileV1] = {}
+    for item in (
+        executables.openssl, loader, *second_closure, *second_modules,
+    ):
+        canonical = item.resolved.canonical_path
+        previous = captures_by_path.setdefault(canonical, item)
+        if previous.identity != item.identity or previous.content != item.content:
+            raise _invalid("OpenSSL TCB alias divergence")
+    captures = tuple(captures_by_path[path] for path in sorted(
+        captures_by_path, key=lambda item: item.encode("utf-8"),
+    ))
+    files = tuple(
+        _OpenSslTcbFileV1(
+            item.resolved.canonical_path, len(item.content),
+            _openssl_tcb_file_hash_v1(
+                item.resolved.canonical_path, item.content,
+            ),
+        )
+        for item in captures
+    )
+    encoded, tcb_hash = _openssl_tcb_document_v1(
+        loader.resolved.canonical_path,
+        module_directory.canonical_path, files,
+    )
+    snapshot = _OpenSslTcbSnapshotV1(
+        architecture, executables.openssl.resolved.canonical_path,
+        loader.resolved.canonical_path,
+        module_directory.canonical_path, files, encoded, tcb_hash,
+        captures, second_modules, module_directory,
+    )
+    _revalidate_openssl_tcb_v1(
+        snapshot, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    return snapshot
+
+
+def _revalidate_openssl_tcb_v1(
+    snapshot: _OpenSslTcbSnapshotV1, *, uid: int, gid: int,
+    chain_stop: Path | None,
+) -> None:
+    if type(snapshot) is not _OpenSslTcbSnapshotV1:
+        raise _invalid("OpenSSL TCB snapshot")
+    for item in snapshot.captures:
+        _revalidate_captured_file_v1(
+            item,
+            executable=(item.resolved.canonical_path in {
+                snapshot.openssl_executable, snapshot.elf_loader,
+            }),
+            uid=uid, gid=gid, chain_stop=chain_stop,
+            maximum=MAX_DISTRIBUTION_FILE_BYTES, require_single_link=False,
+        )
+    repeated_directory = _resolve_trusted_path_core_v1(
+        Path(snapshot.module_directory_resolution.requested_path),
+        kind="directory", executable=False, uid=uid, gid=gid,
+        chain_stop=chain_stop, require_single_link=False,
+    )
+    if repeated_directory != snapshot.module_directory_resolution:
+        raise _invalid("OpenSSL module directory revalidation")
+    repeated_modules = _capture_module_inventory_v1(
+        repeated_directory, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    if repeated_modules != snapshot.module_captures:
+        raise _invalid("OpenSSL module inventory revalidation")
+
+
+def _capture_administrative_tcb_core_v1(
+    links: tuple[Path, Path, Path, Path], *, architecture: str,
+    uid: int, gid: int, chain_stop: Path | None,
+) -> _CapturedAdministrativeTcbV1:
+    executables = _capture_administrative_executables_core_v1(
+        links, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    openssl_tcb = _capture_openssl_tcb_core_v1(
+        executables, links, architecture=architecture,
+        uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    _revalidate_administrative_executables_v1(
+        executables, links, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    return _CapturedAdministrativeTcbV1(executables, openssl_tcb)
+
+
+def _local_g6_architecture_v1() -> str:
+    architecture = {
+        "x86_64": "x86_64", "amd64": "x86_64",
+        "aarch64": "aarch64", "arm64": "aarch64",
+    }.get(platform.machine().lower())
+    if architecture is None:
+        raise _invalid("G6 architecture")
+    return architecture
+
+
+def _capture_administrative_tcb_v1() -> _CapturedAdministrativeTcbProductV1:
+    """Measure the fixed product TCB before it authenticates any snapshot."""
+    require_linux_before_io_v1()
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        raise _invalid("effective identity")
+    return _CapturedAdministrativeTcbProductV1(
+        _capture_administrative_tcb_core_v1(
+            _administrative_links_v1(),
+            architecture=_local_g6_architecture_v1(),
+            uid=0, gid=0, chain_stop=None,
+        )
+    )
+
+
+def _capture_administrative_tcb_for_test_v1(
+    links: tuple[Path, Path, Path, Path], *, architecture: str,
+    trusted_root: Path,
+) -> _CapturedAdministrativeTcbForTestV1:
+    """Portable filesystem seam whose result cannot enter product auth."""
+    if (
+        not isinstance(trusted_root, Path) or not trusted_root.is_absolute()
+        or type(links) is not tuple or len(links) != 4
+        or any(
+            not isinstance(item, Path) or not item.is_absolute()
+            or not item.is_relative_to(trusted_root)
+            for item in links
+        )
+    ):
+        raise _invalid("test administrative TCB root")
+    return _CapturedAdministrativeTcbForTestV1(
+        _capture_administrative_tcb_core_v1(
+            links, architecture=architecture, uid=os.getuid(), gid=os.getgid(),
+            chain_stop=trusted_root,
+        )
+    )
+
+
+def _revalidate_captured_administrative_tcb_v1(
+    capture: _CapturedAdministrativeTcbV1,
+    links: tuple[Path, Path, Path, Path], *, uid: int, gid: int,
+    chain_stop: Path | None,
+) -> None:
+    if type(capture) is not _CapturedAdministrativeTcbV1:
+        raise _invalid("administrative TCB capture")
+    _revalidate_administrative_executables_v1(
+        capture.executables, links, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    _revalidate_openssl_tcb_v1(
+        capture.openssl_tcb, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+
+
+def _bind_administrative_tcb_core_v1(
+    materials: _BoundPreflightMaterialsV1,
+    capture: _CapturedAdministrativeTcbV1,
+    links: tuple[Path, Path, Path, Path], *, uid: int, gid: int,
+    chain_stop: Path | None,
+) -> _ObservedAdministrativeTcbV1:
+    if (
+        type(materials) is not _BoundPreflightMaterialsV1
+        or type(capture) is not _CapturedAdministrativeTcbV1
+    ):
+        raise _invalid("administrative TCB binding arguments")
+    descriptor = materials.descriptor
+    prerequisite = materials.prerequisite
+    executables = capture.executables
+    observed_paths = (
+        executables.python.resolved.canonical_path,
+        executables.openssl.resolved.canonical_path,
+        executables.systemctl.resolved.canonical_path,
+        executables.systemd_analyze.resolved.canonical_path,
+    )
+    expected_paths = (
+        descriptor.python_executable, descriptor.openssl_executable,
+        descriptor.systemctl_executable, descriptor.systemd_analyze_executable,
+    )
+    if (
+        observed_paths != expected_paths
+        or materials.distribution.facts.architecture
+        != capture.openssl_tcb.architecture
+        or capture.openssl_tcb.openssl_executable
+        != descriptor.openssl_executable
+        or prerequisite.python_binary_hash != executables.python_binary_hash
+        or prerequisite.openssl_binary_hash != executables.openssl_binary_hash
+        or prerequisite.systemctl_binary_hash != executables.systemctl_binary_hash
+        or prerequisite.systemd_analyze_binary_hash
+        != executables.systemd_analyze_binary_hash
+        or prerequisite.openssl_tcb_hash
+        != capture.openssl_tcb.openssl_tcb_hash
+    ):
+        raise _invalid("administrative TCB signed binding")
+    _revalidate_captured_administrative_tcb_v1(
+        capture, links, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+
+    admin_by_path = {
+        item.resolved.canonical_path: item
+        for item in (
+            executables.python, executables.openssl, executables.systemctl,
+            executables.systemd_analyze,
+        )
+    }
+    expected_target_hashes: dict[str, str] = {}
+    for entry in materials.catalog.entries:
+        if entry.target_executable is None:
+            continue
+        try:
+            PurePosixPath(entry.target_executable).relative_to(
+                PurePosixPath(descriptor.installation_root),
+            )
+        except ValueError:
+            pass
+        else:
+            continue
+        if entry.target_executable_hash is None:
+            raise _invalid("external target executable hash")
+        previous = expected_target_hashes.setdefault(
+            entry.target_executable, entry.target_executable_hash,
+        )
+        if previous != entry.target_executable_hash:
+            raise _invalid("external target hash alias")
+
+    external: list[_ExternalTargetMeasurementV1] = []
+    for declared_path in sorted(
+        expected_target_hashes, key=lambda item: item.encode("utf-8"),
+    ):
+        captured = admin_by_path.get(declared_path)
+        if captured is None:
+            captured = _capture_trusted_file_v1(
+                Path(declared_path), executable=True, uid=uid, gid=gid,
+                chain_stop=chain_stop, maximum=MAX_DISTRIBUTION_FILE_BYTES,
+                require_single_link=False,
+            )
+        target_hash = _target_executable_hash_v1(
+            declared_path, captured.content,
+        )
+        if target_hash != expected_target_hashes[declared_path]:
+            raise _invalid("external target executable binding")
+        external.append(_ExternalTargetMeasurementV1(
+            declared_path, target_hash, captured,
+        ))
+    for item in external:
+        _revalidate_captured_file_v1(
+            item.captured, executable=True, uid=uid, gid=gid,
+            chain_stop=chain_stop, maximum=MAX_DISTRIBUTION_FILE_BYTES,
+            require_single_link=(
+                item.captured.resolved.canonical_path in admin_by_path
+            ),
+        )
+    _revalidate_captured_administrative_tcb_v1(
+        capture, links, uid=uid, gid=gid, chain_stop=chain_stop,
+    )
+    return _ObservedAdministrativeTcbV1(
+        materials, capture, tuple(external),
+    )
+
+
+def _bind_administrative_tcb_v1(
+    authenticated: _AuthenticatedFixedOwnershipSnapshotV1,
+    materials: _BoundPreflightMaterialsV1,
+) -> _ObservedAdministrativeTcbProductV1:
+    """Bind only the graph selected by the same product authentication."""
+    if (
+        type(authenticated) is not _AuthenticatedFixedOwnershipSnapshotV1
+        or type(materials) is not _BoundPreflightMaterialsV1
+    ):
+        raise _invalid("product administrative TCB")
+    snapshot = authenticated.snapshot
+    required_head = snapshot.required_head
+    predecessor = snapshot.predecessor
+    if required_head is None or predecessor is None:
+        raise _invalid("administrative TCB ownership selection")
+    builds = tuple(
+        item for item in snapshot.builds
+        if item.facts.closed_build_id == required_head.closed_build_id
+        and item.facts.release_sequence == required_head.release_sequence
+    )
+    transactions = tuple(
+        item for item in snapshot.transactions
+        if item.claim.release_sequence == required_head.release_sequence
+        and item.prefix.records[0].closed_build_id
+        == required_head.closed_build_id
+        and item.prefix.records[-1].head_id == required_head.head_id
+        and item.prefix.records[-1].sequence >= 5
+    )
+    if (
+        len(builds) != 1 or len(transactions) != 1
+        or materials.distribution != builds[0]
+        or materials.transaction != transactions[0].prefix.records[-1]
+        or materials.prerequisite.predecessor_id != predecessor.predecessor_id
+    ):
+        raise _invalid("administrative TCB ownership selection")
+    captured = authenticated.administrative_tcb
+    if type(captured) is not _CapturedAdministrativeTcbProductV1:
+        raise _invalid("product administrative TCB")
+    return _ObservedAdministrativeTcbProductV1(
+        _bind_administrative_tcb_core_v1(
+            materials, captured.capture, _administrative_links_v1(),
+            uid=0, gid=0, chain_stop=None,
+        )
+    )
+
+
+def _bind_administrative_tcb_for_test_v1(
+    materials: _BoundPreflightMaterialsForTestV1,
+    captured: _CapturedAdministrativeTcbForTestV1,
+    links: tuple[Path, Path, Path, Path], *, trusted_root: Path,
+) -> _ObservedAdministrativeTcbForTestV1:
+    if (
+        type(materials) is not _BoundPreflightMaterialsForTestV1
+        or type(captured) is not _CapturedAdministrativeTcbForTestV1
+        or not isinstance(trusted_root, Path) or not trusted_root.is_absolute()
+    ):
+        raise _invalid("test administrative TCB binding")
+    return _ObservedAdministrativeTcbForTestV1(
+        _bind_administrative_tcb_core_v1(
+            materials.materials, captured.capture, links,
+            uid=os.getuid(), gid=os.getgid(), chain_stop=trusted_root,
+        )
+    )
 
 
 def _ed25519_public_pem_v1(raw: bytes) -> bytes:
@@ -1265,7 +7607,17 @@ def _teardown_openssl_process_v1(process: subprocess.Popen[bytes]) -> None:
         raise _recovery("OpenSSL process teardown")
 
 
-def _run_openssl_bounded_v1(argv: tuple[str, ...]) -> tuple[int, bytes, bytes]:
+def _run_openssl_bounded_v1(
+    argv: tuple[str, ...], *, maximum: int = MAX_OPENSSL_STREAM_BYTES,
+) -> tuple[int, bytes, bytes]:
+    if (
+        type(argv) is not tuple or not argv
+        or any(type(item) is not str or not item or "\0" in item for item in argv)
+        or not Path(argv[0]).is_absolute()
+        or type(maximum) is not int
+        or not 0 < maximum <= MAX_TCB_SUBPROCESS_STREAM_BYTES_V1
+    ):
+        raise _invalid("OpenSSL command")
     process: subprocess.Popen[bytes] | None = None
     output = bytearray()
     error = bytearray()
@@ -1292,7 +7644,7 @@ def _run_openssl_bounded_v1(argv: tuple[str, ...]) -> tuple[int, bytes, bytes]:
             for key, _mask in events:
                 try:
                     chunk = os.read(
-                        key.fileobj.fileno(), MAX_OPENSSL_STREAM_BYTES + 1,
+                        key.fileobj.fileno(), maximum + 1,
                     )
                 except BlockingIOError:
                     continue
@@ -1301,7 +7653,7 @@ def _run_openssl_bounded_v1(argv: tuple[str, ...]) -> tuple[int, bytes, bytes]:
                     continue
                 target = output if key.data == "stdout" else error
                 target.extend(chunk)
-                if len(target) > MAX_OPENSSL_STREAM_BYTES:
+                if len(target) > maximum:
                     raise _invalid("OpenSSL output bound")
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -4313,6 +10665,61 @@ def parse_cli_v1(argv: list[str]) -> CliCommandV1:
     raise _invalid("CLI arguments")
 
 
+_PUBLIC_FAILURE_EXIT_V1 = {
+    CODE_MISSING: EXIT_MISSING,
+    CODE_INVALID: EXIT_INVALID,
+    CODE_HEAD_MISMATCH: EXIT_HEAD_MISMATCH,
+    CODE_PLATFORM: EXIT_PLATFORM,
+    CODE_RECOVERY: EXIT_RECOVERY,
+}
+
+
+def _run_operational_command_v1(command: CliCommandV1) -> None:
+    """Fail closed until the remaining B3 operational flow is implemented.
+
+    RM-0008 G6-B3 residual: the closed CLI shell exists before the preparer
+    signs and copies it, but no command may become operational merely because
+    that shell exists. The later B3 increments replace this denial with the
+    complete fixed-root proof flow before any staging or signature. The
+    function accepts no path, callback, environment, registry, key or
+    caller-provided authority.
+    """
+    if type(command) is not CliCommandV1:
+        raise _invalid("operational command")
+    raise _missing("B3 operational proof flow is incomplete")
+
+
+def _public_failure_v1(error: BaseException) -> tuple[str, int]:
+    """Reduce every internal failure to one closed public code/exit pair."""
+    if isinstance(error, PreflightError):
+        expected = _PUBLIC_FAILURE_EXIT_V1.get(error.code)
+        if expected is not None and error.exit_status == expected:
+            return error.code, expected
+    return CODE_RECOVERY, EXIT_RECOVERY
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Dispatch the closed administrative CLI without exposing diagnostics."""
+    try:
+        raw_argv = list(sys.argv[1:] if argv is None else argv)
+        command = parse_cli_v1(raw_argv)
+        # These checks precede every operational read, lock or subprocess.
+        require_linux_before_io_v1()
+        if not hasattr(os, "geteuid") or os.geteuid() != 0:
+            raise _invalid("effective identity")
+        _run_operational_command_v1(command)
+        # The current residual always denies. Retain the success shape for the
+        # complete B3 implementation without adding a caller-controlled switch.
+        return 0
+    except Exception as error:  # fail closed; target SystemExit stays authoritative
+        code, exit_status = _public_failure_v1(error)
+        try:
+            sys.stderr.write(code + "\n")
+        except BaseException:
+            return EXIT_RECOVERY
+        return exit_status
+
+
 def _validate_property_request_v1(properties: object) -> tuple[str, ...]:
     if (
         type(properties) is not tuple or not properties
@@ -4619,3 +11026,825 @@ def validate_exec_property_pair_v1(
             "path": new["path"], "argv": new["argv"], "flags": new["flags"],
         })
     return tuple(result)
+
+
+def _validate_configured_directives_v1(
+    directives: object,
+) -> tuple[_ServiceDirectiveV1, ...]:
+    if (
+        type(directives) is not tuple or not directives
+        or any(type(item) is not _ServiceDirectiveV1 for item in directives)
+    ):
+        raise _invalid("configured directives")
+    rebuilt = tuple(
+        _validate_service_directive_v1(
+            item.section, item.name, item.value_type, list(item.values),
+        )
+        for item in directives
+    )
+    keys = tuple((item.section, item.name) for item in rebuilt)
+    if (
+        rebuilt != directives
+        or rebuilt != tuple(sorted(rebuilt, key=_service_directive_sort_key_v1))
+        or len(keys) != len(set(keys))
+    ):
+        raise _invalid("configured directives")
+    return rebuilt
+
+
+def _configured_directives_hash_v1(
+    directives: tuple[_ServiceDirectiveV1, ...],
+) -> str:
+    """Hash the independently parsed, complete configured directive list."""
+    validated = _validate_configured_directives_v1(directives)
+    encoded = _canonical_json({
+        "schema_version": 1,
+        "directives": [item.as_value() for item in validated],
+    })
+    return _digest(SYSTEMD_CONFIGURED_DIRECTIVES_DOMAIN_V1, encoded)
+
+
+def _configured_directives_hash_from_fragment_v1(
+    unit_name: str, fragment: bytes,
+) -> str:
+    parsed = _parse_service_unit_fragment_v1(unit_name, fragment)
+    return _configured_directives_hash_v1(parsed.directives)
+
+
+def _systemd_applicable_directives_v1(
+    class_name: str,
+) -> tuple[tuple[str, str, str], ...]:
+    section = {
+        "gated_service": "Service",
+        "stop_only": "Service",
+        "gated_timer": "Timer",
+        "target": None,
+    }.get(class_name)
+    if class_name not in {"gated_service", "stop_only", "gated_timer", "target"}:
+        raise _invalid("systemd property class")
+    result = tuple(
+        (candidate_section, name, value_type)
+        for (candidate_section, name), value_type
+        in _SERVICE_CATALOG_DIRECTIVE_TYPES_V1.items()
+        if candidate_section == "Unit" or candidate_section == section
+    )
+    names = tuple(item[1] for item in result)
+    if len(names) != len(set(names)):
+        raise _invalid("systemd projection property collision")
+    return result
+
+
+def _systemd_manager_properties_for_directive_v1(
+    section: str, name: str,
+) -> tuple[str, ...]:
+    if (section, name) not in _SERVICE_CATALOG_DIRECTIVE_TYPES_V1:
+        raise _invalid("systemd directive property")
+    if section == "Install":
+        raise _invalid("systemd Install projection")
+    return _SYSTEMD_DIRECTIVE_PROPERTY_REMAP_V1.get(
+        (section, name), (name,),
+    )
+
+
+def _systemd_property_plan_v1(
+    entry: _ServiceCatalogEntryV1,
+) -> _SystemdPropertyPlanV1:
+    """Compile the exact property request and output cardinalities for a unit."""
+    if (
+        type(entry) is not _ServiceCatalogEntryV1 or entry.unit_spec is None
+        or entry.unit_name is None
+    ):
+        raise _invalid("systemd property entry")
+    directives = _validate_configured_directives_v1(entry.unit_spec.directives)
+    if _service_fragment_hash_v1(
+        entry.unit_name, _render_service_directives_v1(directives),
+    ) != entry.unit_spec.fragment_hash:
+        raise _invalid("systemd property unit specification")
+    applicable = _systemd_applicable_directives_v1(entry.class_name)
+    applicable_keys = frozenset((section, name) for section, name, _ in applicable)
+    configured = _service_directive_index_v1(entry.unit_spec)
+    configured_projected = frozenset(
+        key for key in configured if key[0] != "Install"
+    )
+    if not configured_projected.issubset(applicable_keys):
+        raise _invalid("systemd unrepresentable directive")
+
+    requested = set(_SYSTEMD_BASE_PROPERTIES_V1)
+    requested.update(_SYSTEMD_ADDED_EDGE_RELATIONS_V1)
+    for section, name, _value_type in applicable:
+        requested.update(_systemd_manager_properties_for_directive_v1(
+            section, name,
+        ))
+    requested_properties = tuple(sorted(requested))
+    _validate_property_request_v1(requested_properties)
+
+    cardinalities = {name: 1 for name in requested_properties}
+    for directive_name, pair in _SYSTEMD_EXEC_PROPERTY_PAIRS_V1.items():
+        if entry.class_name not in {"gated_service", "stop_only"}:
+            continue
+        count = int(("Service", directive_name) in configured)
+        cardinalities[pair[0]] = count
+        cardinalities[pair[1]] = count
+    if entry.class_name == "gated_timer":
+        monotonic_count = sum(
+            ("Timer", name) in configured
+            for name in ("OnBootSec", "OnActiveSec", "OnUnitActiveSec")
+        )
+        calendar_count = int(("Timer", "OnCalendar") in configured)
+        # systemd 255 emits one empty line for an unset timer collection.
+        cardinalities["TimersMonotonic"] = max(1, monotonic_count)
+        cardinalities["TimersCalendar"] = max(1, calendar_count)
+    return _SystemdPropertyPlanV1(
+        entry.class_name, requested_properties,
+        tuple(sorted(cardinalities.items())),
+    )
+
+
+def _validate_systemd_property_cardinality_v1(
+    plan: _SystemdPropertyPlanV1,
+    observed: Mapping[str, tuple[str, ...]],
+) -> None:
+    if (
+        type(plan) is not _SystemdPropertyPlanV1
+        or not isinstance(observed, Mapping)
+        or any(
+            type(name) is not str or type(values) is not tuple
+            or any(type(value) is not str for value in values)
+            for name, values in observed.items()
+        )
+    ):
+        raise _invalid("systemd property cardinality")
+    cardinalities = dict(plan.cardinalities)
+    expected_names = {
+        name for name, count in cardinalities.items() if count != 0
+    }
+    if set(observed) != expected_names:
+        raise _invalid("systemd property set")
+    for name, count in cardinalities.items():
+        if len(observed.get(name, ())) != count:
+            raise _invalid("systemd property cardinality")
+
+
+def _systemd_single_property_v1(
+    observed: Mapping[str, tuple[str, ...]], name: str,
+) -> str:
+    values = observed.get(name)
+    if type(values) is not tuple or len(values) != 1:
+        raise _invalid("systemd single property")
+    return values[0]
+
+
+def _normalize_systemd_boolean_v1(value: str) -> str:
+    if value not in {"yes", "no"}:
+        raise _invalid("systemd boolean")
+    return value
+
+
+def _normalize_systemd_integer_v1(
+    value: str, *, signed: bool = False, infinity: bool = False,
+) -> str:
+    if infinity and value == "infinity":
+        return value
+    pattern = r"(?:0|-?[1-9][0-9]*)\Z" if signed else r"(?:0|[1-9][0-9]*)\Z"
+    if type(value) is not str or re.fullmatch(pattern, value) is None:
+        raise _invalid("systemd integer")
+    number = int(value)
+    if abs(number) > (1 << 63) - 1:
+        raise _invalid("systemd integer overflow")
+    return str(number)
+
+
+def _normalize_systemd_signal_v1(value: str) -> str:
+    if type(value) is not str:
+        raise _invalid("systemd signal")
+    if _INTEGER_RE.fullmatch(value) is not None:
+        name = _SYSTEMD_SIGNAL_NAMES_V1.get(int(value))
+    else:
+        name = value if value in _SYSTEMD_SIGNAL_NAMES_V1.values() else None
+    if name is None:
+        raise _invalid("systemd signal")
+    return name
+
+
+def _normalize_systemd_word_set_v1(
+    values: Iterable[str], *, detail: str,
+    validator: Callable[[str], bool], numeric: bool = False,
+) -> tuple[str, ...]:
+    if not isinstance(values, Iterable):
+        raise _invalid(detail)
+    items = tuple(values)
+    if any(type(item) is not str or not item or not validator(item) for item in items):
+        raise _invalid(detail)
+    key = (lambda item: int(item)) if numeric else (lambda item: item.encode("utf-8"))
+    ordered = tuple(sorted(items, key=key))
+    if len(ordered) != len(set(ordered)):
+        raise _invalid(detail)
+    return ordered
+
+
+def _systemd_scalar_set_v1(values: tuple[str, ...]) -> tuple[str, ...]:
+    return () if not values else (" ".join(values),)
+
+
+def _normalize_systemd_capabilities_v1(value: str) -> tuple[str, ...]:
+    words = tokenize_systemd_words_v1(value)
+    normalized = _normalize_systemd_word_set_v1(
+        (item.upper() for item in words), detail="systemd capabilities",
+        validator=lambda item: item in _SYSTEMD_CAPABILITY_NAMES_V1,
+    )
+    return _systemd_scalar_set_v1(normalized)
+
+
+def _normalize_systemd_supplementary_groups_v1(value: str) -> tuple[str, ...]:
+    normalized = _normalize_systemd_word_set_v1(
+        tokenize_systemd_words_v1(value), detail="systemd supplementary groups",
+        validator=lambda item: _INTEGER_RE.fullmatch(item) is not None,
+        numeric=True,
+    )
+    return _systemd_scalar_set_v1(normalized)
+
+
+def _normalize_systemd_named_set_v1(
+    value: str, *, pattern: str, detail: str,
+) -> tuple[str, ...]:
+    normalized = _normalize_systemd_word_set_v1(
+        tokenize_systemd_words_v1(value), detail=detail,
+        validator=lambda item: re.fullmatch(pattern, item) is not None,
+    )
+    return _systemd_scalar_set_v1(normalized)
+
+
+def _normalize_systemd_unit_list_v1(value: str) -> tuple[str, ...]:
+    return _normalize_systemd_word_set_v1(
+        tokenize_systemd_words_v1(value), detail="systemd unit list",
+        validator=lambda item: (
+            _OBSERVED_UNIT_RE.fullmatch(item) is not None
+            and len(item.encode("utf-8")) <= 255
+        ),
+    )
+
+
+def _normalize_systemd_path_list_v1(value: str) -> tuple[str, ...]:
+    return _normalize_systemd_word_set_v1(
+        tokenize_systemd_words_v1(value), detail="systemd path list",
+        validator=lambda item: (
+            _catalog_absolute_path_v1(item, "systemd path list") == item
+        ),
+    )
+
+
+def _normalize_systemd_environment_v1(value: str) -> tuple[str, ...]:
+    items = tokenize_systemd_words_v1(value)
+    by_name: dict[str, str] = {}
+    for item in items:
+        name, separator, _raw = item.partition("=")
+        if separator != "=" or not name:
+            raise _invalid("systemd environment")
+        _validate_catalog_environment_name_v1(name, target=False)
+        if name in by_name:
+            raise _invalid("systemd environment duplicate")
+        by_name[name] = item
+    return tuple(
+        by_name[name]
+        for name in sorted(by_name, key=lambda item: item.encode("utf-8"))
+    )
+
+
+def _normalize_systemd_memory_v1(value: str) -> str:
+    if type(value) is not str:
+        raise _invalid("systemd memory")
+    if value == "infinity":
+        return value
+    match = re.fullmatch(r"(0|[1-9][0-9]*)([KMGT]?)", value)
+    if match is None:
+        raise _invalid("systemd memory")
+    number = int(match.group(1))
+    suffix = match.group(2)
+    if suffix:
+        number *= 1024 ** ("KMGT".index(suffix) + 1)
+    if number > (1 << 64) - 1:
+        raise _invalid("systemd memory overflow")
+    return str(number)
+
+
+def _normalize_systemd_umask_v1(value: str) -> str:
+    if type(value) is not str or re.fullmatch(r"[0-7]{4}", value) is None:
+        raise _invalid("systemd UMask")
+    return value
+
+
+def _normalize_systemd_success_status_v1(value: str) -> tuple[str, ...]:
+    codes: list[str] = []
+    signals: list[str] = []
+    for item in tokenize_systemd_words_v1(value):
+        if _INTEGER_RE.fullmatch(item) is not None:
+            number = int(item)
+            if number > 255:
+                raise _invalid("systemd success status")
+            codes.append(str(number))
+        else:
+            signals.append(_normalize_systemd_signal_v1(item))
+    if len(codes) != len(set(codes)) or len(signals) != len(set(signals)):
+        raise _invalid("systemd success status duplicate")
+    normalized = tuple(sorted(codes, key=int)) + tuple(
+        sorted(signals, key=lambda item: item.encode("utf-8"))
+    )
+    return _systemd_scalar_set_v1(normalized)
+
+
+def _normalize_systemd_scalar_v1(value: str) -> tuple[str, ...]:
+    if (
+        type(value) is not str or "\0" in value or "\n" in value or "\r" in value
+        or len(value.encode("utf-8")) > 64 * 1024
+    ):
+        raise _invalid("systemd scalar")
+    return () if value == "" else (value,)
+
+
+def _normalize_signed_systemd_directive_v1(
+    directive: _ServiceDirectiveV1,
+) -> tuple[str, ...]:
+    section, name, value_type = (
+        directive.section, directive.name, directive.value_type,
+    )
+    values = directive.values
+    if value_type == "boolean":
+        return (_normalize_systemd_boolean_v1(values[0]),)
+    if value_type == "duration":
+        return (normalize_systemd_duration_usec_v1(values[0]),)
+    if value_type == "integer":
+        return (_normalize_systemd_integer_v1(
+            values[0], signed=(name == "Nice"), infinity=(name == "TasksMax"),
+        ),)
+    if value_type == "unit_list":
+        return _normalize_systemd_word_set_v1(
+            values, detail="signed systemd unit list",
+            validator=lambda item: _PREDECESSOR_UNIT_RE_V1.fullmatch(item) is not None,
+        )
+    if value_type == "path_list":
+        return _normalize_systemd_word_set_v1(
+            values, detail="signed systemd path list",
+            validator=lambda item: (
+                _catalog_absolute_path_v1(item, "signed systemd path") == item
+            ),
+        )
+    if value_type == "environment":
+        return _normalize_systemd_environment_v1(" ".join(values))
+    if value_type == "argv":
+        first = values[0]
+        return ((first[1:] if first.startswith("!") else first), *values[1:])
+    if section == "Service" and name == "SupplementaryGroups":
+        return _normalize_systemd_supplementary_groups_v1(values[0])
+    if section == "Service" and name in {
+        "CapabilityBoundingSet", "AmbientCapabilities",
+    }:
+        return _normalize_systemd_capabilities_v1(values[0])
+    if section == "Service" and name == "KillSignal":
+        return (_normalize_systemd_signal_v1(values[0]),)
+    if section == "Service" and name == "SuccessExitStatus":
+        return _normalize_systemd_success_status_v1(values[0])
+    if section == "Service" and name == "UMask":
+        return (_normalize_systemd_umask_v1(values[0]),)
+    if section == "Service" and name in {"MemoryHigh", "MemoryMax"}:
+        return (_normalize_systemd_memory_v1(values[0]),)
+    if section == "Service" and name == "RestrictAddressFamilies":
+        return _normalize_systemd_named_set_v1(
+            values[0], pattern=r"AF_[A-Z0-9_]+", detail="address families",
+        )
+    if section == "Service" and name == "SystemCallArchitectures":
+        return _normalize_systemd_named_set_v1(
+            values[0], pattern=r"[A-Za-z0-9_-]+", detail="architectures",
+        )
+    return values
+
+
+def _normalize_manager_directive_v1(
+    section: str, name: str, value_type: str,
+    observed: Mapping[str, tuple[str, ...]],
+) -> tuple[str, ...]:
+    manager_properties = _systemd_manager_properties_for_directive_v1(
+        section, name,
+    )
+    if name in _SYSTEMD_EXEC_PROPERTY_PAIRS_V1:
+        historical_name, extended_name = _SYSTEMD_EXEC_PROPERTY_PAIRS_V1[name]
+        historical = observed.get(historical_name, ())
+        extended = observed.get(extended_name, ())
+        if not historical and not extended:
+            return ()
+        raise _invalid("systemd Exec requires signed context")
+    if name in _SYSTEMD_TIMER_BASE_PROPERTIES_V1:
+        raise _invalid("systemd timer requires grouped context")
+    raw = _systemd_single_property_v1(observed, manager_properties[0])
+    if name == "LimitNOFILE":
+        soft = _systemd_single_property_v1(observed, manager_properties[1])
+        normalized = _normalize_systemd_integer_v1(raw)
+        if _normalize_systemd_integer_v1(soft) != normalized:
+            raise _invalid("systemd LimitNOFILE pair")
+        return (normalized,)
+    if value_type == "boolean":
+        return (_normalize_systemd_boolean_v1(raw),)
+    if value_type == "duration":
+        if name == "WatchdogSec" and raw == "0":
+            return ("0",)
+        return (normalize_systemd_duration_usec_v1(raw),)
+    if value_type == "integer":
+        return (_normalize_systemd_integer_v1(
+            raw, signed=(name == "Nice"), infinity=(name == "TasksMax"),
+        ),)
+    if value_type == "unit_list":
+        return _normalize_systemd_unit_list_v1(raw)
+    if value_type == "path_list":
+        if name == "WorkingDirectory":
+            if raw == "":
+                return ()
+            _catalog_absolute_path_v1(raw, "systemd working directory")
+            return (raw,)
+        return _normalize_systemd_path_list_v1(raw)
+    if value_type == "environment":
+        return _normalize_systemd_environment_v1(raw)
+    if section == "Service" and name == "SupplementaryGroups":
+        return _normalize_systemd_supplementary_groups_v1(raw)
+    if section == "Service" and name in {
+        "CapabilityBoundingSet", "AmbientCapabilities",
+    }:
+        return _normalize_systemd_capabilities_v1(raw)
+    if section == "Service" and name == "KillSignal":
+        return (_normalize_systemd_signal_v1(raw),)
+    if section == "Service" and name == "SuccessExitStatus":
+        return _normalize_systemd_success_status_v1(raw)
+    if section == "Service" and name == "UMask":
+        return (_normalize_systemd_umask_v1(raw),)
+    if section == "Service" and name in {"MemoryHigh", "MemoryMax"}:
+        return (_normalize_systemd_memory_v1(raw),)
+    if section == "Service" and name == "RestrictAddressFamilies":
+        return _normalize_systemd_named_set_v1(
+            raw, pattern=r"AF_[A-Z0-9_]+", detail="address families",
+        )
+    if section == "Service" and name == "SystemCallArchitectures":
+        return _normalize_systemd_named_set_v1(
+            raw, pattern=r"[A-Za-z0-9_-]+", detail="architectures",
+        )
+    return _normalize_systemd_scalar_v1(raw)
+
+
+def _compile_systemd_manager_projection_v1(
+    entry: _ServiceCatalogEntryV1,
+    observed: Mapping[str, tuple[str, ...]],
+) -> _SystemdManagerProjectionV1:
+    """Validate one closed show result and project it onto signed names."""
+    plan = _systemd_property_plan_v1(entry)
+    _validate_systemd_property_cardinality_v1(plan, observed)
+    assert entry.unit_spec is not None
+    configured = _service_directive_index_v1(entry.unit_spec)
+    applicable = _systemd_applicable_directives_v1(entry.class_name)
+
+    exec_values: dict[str, tuple[str, ...]] = {}
+    for name, pair in _SYSTEMD_EXEC_PROPERTY_PAIRS_V1.items():
+        key = ("Service", name)
+        if key not in {(section, item_name) for section, item_name, _ in applicable}:
+            continue
+        directive = configured.get(key)
+        if directive is None:
+            exec_values[name] = ()
+            continue
+        expected_flags = (
+            ("no-setuid",) if directive.values[0].startswith("!") else ()
+        )
+        parsed = validate_exec_property_pair_v1(
+            observed[pair[0]], observed[pair[1]], expected_flags,
+        )
+        if len(parsed) != 1:
+            raise _invalid("systemd Exec cardinality")
+        exec_values[name] = tuple(parsed[0]["argv"])
+
+    timer_values: dict[str, tuple[str, ...]] = {}
+    if entry.class_name == "gated_timer":
+        monotonic_raw = observed["TimersMonotonic"]
+        calendar_raw = observed["TimersCalendar"]
+        monotonic = () if monotonic_raw == ("",) else monotonic_raw
+        calendar = () if calendar_raw == ("",) else calendar_raw
+        parsed_timers = parse_systemd_timer_properties_v1(monotonic, calendar)
+        expected_bases = {
+            base
+            for name, (_manager_name, base) in _SYSTEMD_TIMER_BASE_PROPERTIES_V1.items()
+            if ("Timer", name) in configured
+        }
+        if set(parsed_timers) != expected_bases:
+            raise _invalid("systemd timer base set")
+        for name, (_manager_name, base) in _SYSTEMD_TIMER_BASE_PROPERTIES_V1.items():
+            value = parsed_timers.get(base)
+            timer_values[name] = () if value is None else (value,)
+
+    properties: list[_SystemdManagerPropertyV1] = []
+    for section, name, value_type in applicable:
+        if name in exec_values:
+            normalized = exec_values[name]
+        elif name in timer_values:
+            normalized = timer_values[name]
+        else:
+            normalized = _normalize_manager_directive_v1(
+                section, name, value_type, observed,
+            )
+        directive = configured.get((section, name))
+        if directive is not None:
+            signed = _normalize_signed_systemd_directive_v1(directive)
+            if name in _SYSTEMD_DIRECT_RELATIONS_V1:
+                if not set(signed).issubset(normalized):
+                    raise _invalid("systemd direct relation")
+            elif signed != normalized:
+                raise _invalid("systemd configured directive")
+        elif section == "Unit" and name == "Documentation" and normalized:
+            raise _invalid("systemd Documentation default")
+        elif section == "Service" and name == "WatchdogSec" and normalized != ("0",):
+            raise _invalid("systemd Watchdog default")
+        properties.append(_SystemdManagerPropertyV1(
+            name, value_type, normalized,
+        ))
+    properties.sort(key=lambda item: item.name.encode("utf-8"))
+    names = tuple(item.name for item in properties)
+    if len(names) != len(set(names)):
+        raise _invalid("systemd projection property collision")
+    return _SystemdManagerProjectionV1(tuple(properties))
+
+
+def _compile_systemd_added_edge_pairs_v1(
+    entry: _ServiceCatalogEntryV1,
+    observed: Mapping[str, tuple[str, ...]],
+) -> tuple[tuple[str, str], ...]:
+    plan = _systemd_property_plan_v1(entry)
+    _validate_systemd_property_cardinality_v1(plan, observed)
+    assert entry.unit_spec is not None
+    configured = _service_directive_index_v1(entry.unit_spec)
+    residual: list[tuple[str, str]] = []
+    for relation in sorted(_SYSTEMD_ADDED_EDGE_RELATIONS_V1):
+        values = _normalize_systemd_unit_list_v1(
+            _systemd_single_property_v1(observed, relation),
+        )
+        direct = configured.get(("Unit", relation))
+        explicit = set(() if direct is None else direct.values)
+        if not explicit.issubset(values):
+            raise _invalid("systemd direct relation")
+        residual.extend(
+            (relation, unit_name) for unit_name in values
+            if unit_name not in explicit
+        )
+    residual.sort(key=lambda item: (
+        item[0].encode("utf-8"), item[1].encode("utf-8"),
+    ))
+    if (
+        len(residual) > MAX_SYSTEMD_ADDED_EDGES_PER_UNIT_V1
+        or len(residual) != len(set(residual))
+    ):
+        raise _invalid("systemd added edge bound")
+    return tuple(residual)
+
+
+def _systemd_origin_file_hash_v1(path: str, content: bytes) -> str:
+    return _framed_system_file_hash_v1(
+        SYSTEMD_ORIGIN_FILE_DOMAIN_V1, path, content, "systemd origin file",
+    )
+
+
+def _systemd_origin_source_hash_v1(path: str, content: bytes) -> str:
+    return _framed_system_file_hash_v1(
+        SYSTEMD_ORIGIN_SOURCE_DOMAIN_V1, path, content,
+        "systemd origin source",
+    )
+
+
+def _strict_systemd_child_v1(path: str, roots: tuple[str, ...]) -> bool:
+    try:
+        candidate = PurePosixPath(_catalog_absolute_path_v1(
+            path, "systemd origin path",
+        ))
+    except PreflightError:
+        return False
+    for root_text in roots:
+        root = PurePosixPath(root_text)
+        try:
+            relative = candidate.relative_to(root)
+        except ValueError:
+            continue
+        if relative.parts:
+            return True
+    return False
+
+
+def _validate_systemd_file_claim_v1(
+    *, path: object, size: object, content_hash: object,
+    uid: object, gid: object, mode: object, roots: tuple[str, ...],
+    detail: str,
+) -> None:
+    if (
+        not isinstance(path, str) or not _strict_systemd_child_v1(path, roots)
+        or type(size) is not int or not 0 <= size <= MAX_SYSTEMD_ORIGIN_BYTES_V1
+        or not isinstance(content_hash, str) or _DIGEST_RE.fullmatch(content_hash) is None
+        or type(uid) is not int or uid != 0
+        or type(gid) is not int or gid != 0
+        or type(mode) is not int or not 0 <= mode <= 0o7777 or mode & 0o022
+    ):
+        raise _invalid(detail)
+
+
+def _validate_systemd_manager_added_edge_v1(
+    edge: _SystemdManagerAddedEdgeV1,
+) -> None:
+    if (
+        type(edge) is not _SystemdManagerAddedEdgeV1
+        or edge.relation not in _SYSTEMD_ADDED_EDGE_RELATIONS_V1
+        or not isinstance(edge.unit_name, str)
+        or _OBSERVED_UNIT_RE.fullmatch(edge.unit_name) is None
+        or len(edge.unit_name.encode("utf-8")) > 255
+        or edge.origin_kind not in {
+            "root_fragment", "root_generator", "manager_virtual",
+        }
+        or edge.load_state != "loaded"
+    ):
+        raise _invalid("systemd added edge")
+    file_fields = (
+        edge.fragment_path, edge.size, edge.content_hash,
+        edge.uid, edge.gid, edge.mode,
+    )
+    source_fields = (
+        edge.source_path, edge.source_size, edge.source_content_hash,
+        edge.source_uid, edge.source_gid, edge.source_mode,
+    )
+    if edge.origin_kind == "manager_virtual":
+        if (
+            edge.unit_name not in _SYSTEMD_MANAGER_VIRTUAL_UNITS_V1
+            or any(value is not None for value in (*file_fields, *source_fields))
+            or edge.unit_file_state is not None
+        ):
+            raise _invalid("systemd manager virtual origin")
+        return
+
+    roots = (
+        _SYSTEMD_ROOT_FRAGMENT_ROOTS_V1
+        if edge.origin_kind == "root_fragment"
+        else _SYSTEMD_ROOT_GENERATOR_ROOTS_V1
+    )
+    _validate_systemd_file_claim_v1(
+        path=edge.fragment_path, size=edge.size,
+        content_hash=edge.content_hash, uid=edge.uid, gid=edge.gid,
+        mode=edge.mode, roots=roots, detail="systemd origin fragment",
+    )
+    if edge.origin_kind == "root_fragment":
+        if (
+            any(value is not None for value in source_fields)
+            or edge.unit_file_state not in _SYSTEMD_ROOT_FRAGMENT_STATES_V1
+        ):
+            raise _invalid("systemd root fragment origin")
+        return
+    if edge.unit_file_state != "generated":
+        raise _invalid("systemd generator state")
+    _validate_systemd_file_claim_v1(
+        path=edge.source_path, size=edge.source_size,
+        content_hash=edge.source_content_hash, uid=edge.source_uid,
+        gid=edge.source_gid, mode=edge.source_mode,
+        roots=("/etc", "/usr"), detail="systemd generator source",
+    )
+
+
+def _validate_systemd_manager_projection_v1(
+    projection: _SystemdManagerProjectionV1,
+) -> None:
+    if (
+        type(projection) is not _SystemdManagerProjectionV1
+        or type(projection.properties) is not tuple
+        or any(
+            type(item) is not _SystemdManagerPropertyV1
+            or ("Unit", item.name) not in _SERVICE_CATALOG_DIRECTIVE_TYPES_V1
+            and ("Service", item.name) not in _SERVICE_CATALOG_DIRECTIVE_TYPES_V1
+            and ("Timer", item.name) not in _SERVICE_CATALOG_DIRECTIVE_TYPES_V1
+            or item.value_type not in {
+                "scalar", "boolean", "duration", "integer", "argv",
+                "environment", "unit_list", "path_list",
+            }
+            or type(item.values) is not tuple
+            or any(
+                type(value) is not str or "\0" in value or "\n" in value
+                or "\r" in value or len(value.encode("utf-8")) > 64 * 1024
+                for value in item.values
+            )
+            for item in projection.properties
+        )
+    ):
+        raise _invalid("systemd manager projection")
+    names = tuple(item.name for item in projection.properties)
+    if (
+        names != tuple(sorted(names, key=lambda item: item.encode("utf-8")))
+        or len(names) != len(set(names))
+    ):
+        raise _invalid("systemd manager projection order")
+
+
+def _validate_enablement_link_claim_v1(link: _EnablementLinkV1) -> None:
+    if type(link) is not _EnablementLinkV1:
+        raise _invalid("effective enablement link")
+    path = _catalog_absolute_path_v1(link.path, "effective enablement path")
+    target = link.target
+    if (
+        not path.startswith(SYSTEM_UNIT_ROOT_TEXT_V1 + "/")
+        or not isinstance(target, str) or not target.startswith("../")
+        or target.count("/") != 1 or target in {"../", ".."}
+    ):
+        raise _invalid("effective enablement link")
+    unit_name = target[3:]
+    validate_unit_name_v1(unit_name)
+    if (
+        PurePosixPath(path).parent.parent / unit_name
+        != PurePosixPath(SYSTEM_UNIT_ROOT_TEXT_V1) / unit_name
+    ):
+        raise _invalid("effective enablement target")
+
+
+def _validate_effective_systemd_unit_v1(
+    unit: _EffectiveSystemdUnitV1,
+) -> None:
+    if (
+        type(unit) is not _EffectiveSystemdUnitV1
+        or validate_entry_id_v1(unit.entry_id) != unit.entry_id
+        or validate_unit_name_v1(unit.unit_name) != unit.unit_name
+        or unit.fragment_path
+        != f"{SYSTEM_UNIT_ROOT_TEXT_V1}/{unit.unit_name}"
+        or not isinstance(unit.fragment_hash, str)
+        or _DIGEST_RE.fullmatch(unit.fragment_hash) is None
+        or type(unit.fragment_uid) is not int or unit.fragment_uid != 0
+        or type(unit.fragment_gid) is not int or unit.fragment_gid != 0
+        or type(unit.fragment_mode) is not int
+        or not 0 <= unit.fragment_mode <= 0o7777
+        or unit.fragment_mode & 0o022
+        or type(unit.dropins) is not tuple or unit.dropins
+        or type(unit.enablement_links) is not tuple
+        or unit.load_state != "loaded"
+        or unit.unit_file_state not in _SYSTEMD_ROOT_FRAGMENT_STATES_V1
+        or unit.need_daemon_reload != "no"
+        or not isinstance(unit.configured_directives_hash, str)
+        or _DIGEST_RE.fullmatch(unit.configured_directives_hash) is None
+        or type(unit.manager_added_edges) is not tuple
+        or len(unit.manager_added_edges) > MAX_SYSTEMD_ADDED_EDGES_PER_UNIT_V1
+    ):
+        raise _invalid("effective systemd unit")
+    for link in unit.enablement_links:
+        _validate_enablement_link_claim_v1(link)
+    link_paths = tuple(link.path for link in unit.enablement_links)
+    if (
+        link_paths != tuple(sorted(
+            link_paths, key=lambda item: item.encode("utf-8"),
+        ))
+        or len(link_paths) != len(set(link_paths))
+    ):
+        raise _invalid("effective enablement link order")
+    _validate_systemd_manager_projection_v1(unit.manager_projection)
+    for edge in unit.manager_added_edges:
+        _validate_systemd_manager_added_edge_v1(edge)
+    edge_keys = tuple(
+        (edge.relation, edge.unit_name) for edge in unit.manager_added_edges
+    )
+    if (
+        edge_keys != tuple(sorted(edge_keys, key=lambda item: (
+            item[0].encode("utf-8"), item[1].encode("utf-8"),
+        )))
+        or len(edge_keys) != len(set(edge_keys))
+    ):
+        raise _invalid("systemd added edge order")
+
+
+def _make_effective_systemd_units_snapshot_v1(
+    entries: tuple[_EffectiveSystemdUnitV1, ...],
+) -> _EffectiveSystemdUnitsSnapshotV1:
+    """Encode and hash a complete pure effective-systemd observation."""
+    if (
+        type(entries) is not tuple or not entries
+        or any(type(item) is not _EffectiveSystemdUnitV1 for item in entries)
+    ):
+        raise _invalid("effective systemd entries")
+    for item in entries:
+        _validate_effective_systemd_unit_v1(item)
+    entry_ids = tuple(item.entry_id for item in entries)
+    unit_names = tuple(item.unit_name for item in entries)
+    all_link_paths = tuple(
+        link.path for item in entries for link in item.enablement_links
+    )
+    edge_count = sum(len(item.manager_added_edges) for item in entries)
+    if (
+        entry_ids != tuple(sorted(
+            entry_ids, key=lambda item: item.encode("utf-8"),
+        ))
+        or len(entry_ids) != len(set(entry_ids))
+        or len(unit_names) != len(set(unit_names))
+        or len(all_link_paths) != len(set(all_link_paths))
+        or edge_count > MAX_SYSTEMD_ADDED_EDGES_TOTAL_V1
+    ):
+        raise _invalid("effective systemd coverage")
+    encoded = _canonical_json({
+        "schema_version": 1,
+        "entries": [item.as_value() for item in entries],
+    })
+    return _EffectiveSystemdUnitsSnapshotV1(
+        entries, encoded, _digest(EFFECTIVE_UNITS_DOMAIN_V1, encoded),
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

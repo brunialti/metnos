@@ -18,6 +18,8 @@ import os
 import struct
 from typing import Optional
 
+import detection_lexicon_seed_residual_am as _residual_lexicon
+
 log = logging.getLogger(__name__)
 
 # Soglie cosine canoniche (env tunable)
@@ -88,19 +90,12 @@ def normalize_query(q: str) -> str:
     # Strip trailing punctuation + collapse whitespace
     s = re.sub(r"[.?!,;:'\"]+$", "", s)
     s = re.sub(r"\s+", " ", s)
-    # Stopword fissa (chiusa, mai espansa con LLM)
-    stop = {
-        # IT
-        "il", "lo", "la", "i", "gli", "le", "un", "una", "uno",
-        "di", "del", "della", "dei", "dello", "delle", "degli",
-        "dimmi", "dimi", "mostrami", "mostra", "fammi", "fai",
-        "quali", "sono", "che", "cosa", "cos", "c'e", "ce",
-        # EN
-        "the", "a", "an", "of", "for", "to", "in", "on",
-        "show", "tell", "give", "list", "what", "which", "is", "are",
-        "do", "does",
+    stopwords = {
+        str(form).casefold() for form in _residual_lexicon.ready_forms(
+            _residual_lexicon.CLUSTER_STOPWORD,
+        )
     }
-    tokens = [t for t in s.split() if t not in stop]
+    tokens = [t for t in s.split() if t not in stopwords]
     return " ".join(tokens)
 
 

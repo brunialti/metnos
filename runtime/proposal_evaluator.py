@@ -38,8 +38,8 @@ VERDICT:
     -2<score<4 e nessun killer → GRAY (review umana)
     score<=-2 o killer triggerato → REJECT
 
-Determinismo §7.9: niente LLM-as-judge nell'evaluator. La decidability
-usa l'`intent_extractor` BoW + `prefilter.rank_with_intent` (gia' presenti).
+Determinismo §7.9: niente LLM-as-judge nell'evaluator. La decidability usa i
+detector canonici pubblici del prefilter e valuta soltanto la query osservata.
 """
 from __future__ import annotations
 
@@ -67,26 +67,18 @@ AFFINITY_OVERLAP_THRESHOLD_EVALUATOR = 0.4
 SCORE_ACCEPT = 4
 SCORE_REJECT = -2
 
-# Reformulations templates per la decidability heuristic. Per ogni
-# query originale, il PLANNER simulato deve scegliere il nuovo executor
-# come #1 candidato in almeno 5/N riformulazioni.
-_REFORMULATION_TEMPLATES_IT: tuple[str, ...] = (
-    "{q}",
-    "puoi {q}?",
-    "vorrei {q}",
-    "ho bisogno di {q}",
-    "fai questo: {q}",
-    "{q}, per favore",
-    "esegui: {q}",
-)
-_REFORMULATION_TEMPLATES_EN: tuple[str, ...] = (
-    "{q}",
-    "can you {q}?",
-    "I need to {q}",
-    "please {q}",
-    "do this: {q}",
-)
-DECIDABILITY_MIN_PASS = 5  # almeno 5 riformulazioni vincenti
+# Risorse effettivamente consumate dai detector pubblici del prefilter. Il
+# gate e' intenzionalmente piu' stretto del comportamento best-effort del
+# routing ordinario: una proposta non puo' ottenere credito di ammissione da
+# baseline fallback mentre la lingua dell'istanza e' assente o pending.
+_PREFILTER_DETECTOR_RESOURCES = {
+    "prefilter.verb_canonical": "mapping",
+    "vocab.action_surfaces": "mapping",
+    "prefilter.object_hint": "mapping",
+}
+# Backward-compatible export: the only admissible sample is now the observed
+# query itself, never a generated reformulation.
+DECIDABILITY_MIN_PASS = 1
 
 
 # Audit log JSONL.
@@ -681,104 +673,129 @@ def _call_frequency(proposal: dict) -> tuple[int, dict]:
 # ─── Signal: decidability heuristic ───────────────────────────────────
 
 
-def _bow_intent_simple(query: str) -> dict:
-    """BoW intent leggero per simulare il PLANNER offline.
+def _canonical_prefilter_intent(query: str) -> tuple[dict, dict]:
+    """Resolve one observed query through native-ready public detectors.
 
-    Riusa lo stesso pattern di `smoke._bow_intent_for_smoke` ma in
-    forma indipendente per non importare `smoke.py` (che ha import
-    pesanti del catalog). Determinismo §7.9.
+    The public prefilter intentionally has a fallback mode for ordinary
+    routing.  Admission is stricter: first prove that every linguistic input
+    used by those detectors is native, current and complete, then invoke the
+    public APIs.  No private surface table or language branch lives here.
     """
-    q = (query or "").lower()
-    verb = None
-    if any(t in q for t in ("trova", "cerca", "find", "search")):
-        verb = "find"
-    elif any(t in q for t in ("elenca", "lista", "list")):
-        verb = "list"
-    elif any(t in q for t in ("leggi", "read")):
-        verb = "read"
-    elif any(t in q for t in ("scrivi", "write", "salva")):
-        verb = "write"
-    elif any(t in q for t in ("sposta", "move", "rinomina")):
-        verb = "move"
-    elif any(t in q for t in ("cancella", "delete", "rimuovi")):
-        verb = "delete"
-    elif any(t in q for t in ("invia", "send", "manda")):
-        verb = "send"
-    elif any(t in q for t in ("riassumi", "describe", "summarize")):
-        verb = "describe"
-    elif any(t in q for t in ("scarica", "download", "url", "https://", "http://")):
-        verb = "get"
-    elif any(t in q for t in ("comprimi", "compress", "zippa")):
-        verb = "compress"
-    obj = None
-    if any(t in q for t in ("file", "files")):
-        obj = "files"
-    elif any(t in q for t in ("foto", "immagin", "photo", "image")):
-        obj = "images"
-    elif any(t in q for t in ("mail", "email", "messaggi", "message")):
-        obj = "messages"
-    elif any(t in q for t in ("url", "web", "internet", "online", "https://", "http://")):
-        obj = "urls"
-    elif any(t in q for t in ("processi", "stato", "sistema", "system", "service")):
-        obj = "processes"
-    elif any(t in q for t in ("cartella", "directory", "dir ", "dirs")):
-        obj = "dirs"
-    if not verb and not obj:
-        return {}
-    return {"verb": verb, "object": obj}
+    info: dict[str, Any] = {
+        "lexicon_ready": False,
+        "intent_evaluable": False,
+        "intent_status": "lexicon_unavailable",
+    }
+    try:
+        import detection_lexicon as _detlex
+
+        snapshot = _detlex.native_ready_family_resources(
+            _PREFILTER_DETECTOR_RESOURCES,
+            require_manual=False,
+            include_reviewed_baselines=False,
+        )
+    except Exception as ex:
+        info["intent_error"] = f"native lexicon gate failed: {ex}"
+        return {}, info
+    if snapshot is None:
+        return {}, info
+
+    info["lexicon_ready"] = True
+    try:
+        from prefilter import (
+            detect_canonical_object,
+            detect_canonical_verb,
+            tokenize,
+        )
+
+        tokens = tokenize(query)
+        verb = detect_canonical_verb(tokens, query)
+        obj = detect_canonical_object(tokens, query)
+    except Exception as ex:
+        info["intent_status"] = "detector_error"
+        info["intent_error"] = f"prefilter detector failed: {ex}"
+        return {}, info
+
+    intent = {}
+    if verb:
+        intent["verb"] = verb
+    if obj:
+        intent["object"] = obj
+    if not intent:
+        info["intent_status"] = "intent_unresolved"
+        return {}, info
+    info.update({
+        "intent_evaluable": True,
+        "intent_status": "ready",
+        "canonical_verb": verb,
+        "canonical_object": obj,
+    })
+    return intent, info
 
 
 def _decidability(
     proposal: dict, *, catalog,
 ) -> tuple[float, dict]:
-    """Heuristic: il PLANNER (intent_extractor BoW + prefilter) seleziona
-    il nuovo executor su 5+ riformulazioni della query originale.
+    """Whether canonical prefilter ranking selects the proposal for its query.
 
-    Ritorna (pct_pass, info). pct_pass = riformulazioni in cui
-    `ranked[0].name == proposal.name` / totale.
+    Only the observed query is evidence. Synthetic natural-language
+    reformulations would themselves require a manual, native-ready resource;
+    none are generated by the evaluator.
     """
     name = proposal.get("name") or ""
-    user_query = (proposal.get("user_query") or proposal.get("intent") or "").strip()
+    # Only the observed query is evidence. ``intent`` is a synthesized natural
+    # summary and must not silently become an unreviewed reformulation.
+    user_query = (proposal.get("user_query") or "").strip()
     info: dict[str, Any] = {
         "user_query": user_query[:120],
         "name": name,
-        "reformulations_total": 0,
-        "reformulations_pass": 0,
-        "min_pass_required": DECIDABILITY_MIN_PASS,
+        "decidability_queries_total": 0,
+        "decidability_queries_pass": 0,
+        "decidability_evaluable": False,
+        "decidability_status": "input_unavailable",
+        "decidability_pct": 0.0,
     }
     if not name or not user_query:
         return 0.0, info
     if catalog is None:
-        info["skip"] = "catalog unavailable"
+        info["decidability_status"] = "catalog_unavailable"
         return 0.0, info
     try:
-        from prefilter import rank_with_intent, rank as _rank_plain
+        from prefilter import rank_with_intent
     except Exception as ex:
+        info["decidability_status"] = "ranker_unavailable"
         info["skip"] = f"prefilter import failed: {ex}"
         return 0.0, info
 
-    templates = list(_REFORMULATION_TEMPLATES_IT) + list(_REFORMULATION_TEMPLATES_EN)
-    n_pass = 0
-    for tpl in templates:
-        q = tpl.format(q=user_query)
-        intent = _bow_intent_simple(q)
-        ranked = []
-        try:
-            if intent:
-                ranked = rank_with_intent(q, catalog, intent, k=5) or []
-            if not ranked:
-                ranked = _rank_plain(q, catalog, k=5) or []
-        except Exception:
-            ranked = []
-        if not ranked:
-            continue
-        first = ranked[0]
-        first_name = getattr(first, "name", None) or (first.get("name") if isinstance(first, dict) else None)
-        if first_name == name:
-            n_pass += 1
-    info["reformulations_total"] = len(templates)
-    info["reformulations_pass"] = n_pass
-    pct = n_pass / max(1, len(templates))
+    intent, intent_info = _canonical_prefilter_intent(user_query)
+    info.update({
+        "decidability_lexicon_ready": intent_info["lexicon_ready"],
+        "decidability_status": intent_info["intent_status"],
+        "canonical_verb": intent_info.get("canonical_verb"),
+        "canonical_object": intent_info.get("canonical_object"),
+    })
+    if not intent_info["intent_evaluable"]:
+        if intent_info.get("intent_error"):
+            info["skip"] = intent_info["intent_error"]
+        return 0.0, info
+    try:
+        ranked = rank_with_intent(user_query, catalog, intent, k=5) or []
+    except Exception as ex:
+        info["decidability_status"] = "ranker_error"
+        info["skip"] = f"prefilter rank failed: {ex}"
+        return 0.0, info
+
+    info["decidability_queries_total"] = 1
+    info["decidability_evaluable"] = True
+    info["decidability_status"] = "ranked"
+    first = ranked[0] if ranked else None
+    first_name = (
+        getattr(first, "name", None)
+        or (first.get("name") if isinstance(first, dict) else None)
+    )
+    passed = int(first_name == name)
+    info["decidability_queries_pass"] = passed
+    pct = float(passed)
     info["decidability_pct"] = round(pct, 3)
     return pct, info
 
@@ -807,19 +824,23 @@ def _noising_top10(
     if not samples:
         return 0.0, info
     try:
-        from prefilter import rank_with_intent, rank as _rank_plain
+        from prefilter import rank_with_intent
     except Exception as ex:
         info["skip"] = f"prefilter import failed: {ex}"
         return 0.0, info
     n_top10 = 0
+    evaluable = 0
     for q in samples:
-        intent = _bow_intent_simple(q)
+        intent, intent_info = _canonical_prefilter_intent(q)
+        if not intent_info["intent_evaluable"]:
+            if not intent_info["lexicon_ready"]:
+                info["noising_status"] = "lexicon_unavailable"
+            continue
         try:
             ranked = rank_with_intent(q, catalog, intent, k=10) or []
-            if not ranked:
-                ranked = _rank_plain(q, catalog, k=10) or []
         except Exception:
-            ranked = []
+            continue
+        evaluable += 1
         names = [
             (getattr(r, "name", None) or (r.get("name") if isinstance(r, dict) else None))
             for r in ranked
@@ -827,6 +848,7 @@ def _noising_top10(
         if name in names:
             n_top10 += 1
     info["samples"] = len(samples)
+    info["evaluable_samples"] = evaluable
     info["top10"] = n_top10
     pct = n_top10 / max(1, len(samples))
     info["noising_top10_pct"] = round(pct, 3)
@@ -1068,6 +1090,22 @@ def evaluate_proposal(
     if killers:
         verdict: Literal["accept", "gray", "reject"] = "reject"
         rationale = "REJECT (killer): " + "; ".join(rationale_parts)
+    elif not signals.get("decidability_evaluable"):
+        # An unavailable/pending linguistic authority is absence of evidence,
+        # never a positive admission signal. Preserve an already-negative
+        # score as reject; otherwise require human review.
+        if score <= SCORE_REJECT:
+            verdict = "reject"
+            rationale = (
+                f"REJECT (score={score}<= {SCORE_REJECT}): canonical "
+                f"decidability unavailable ({signals.get('decidability_status')})"
+            )
+        else:
+            verdict = "gray"
+            rationale = (
+                "GRAY: canonical decidability unavailable "
+                f"({signals.get('decidability_status')}); review umana necessaria"
+            )
     elif score >= SCORE_ACCEPT:
         verdict = "accept"
         rationale = (

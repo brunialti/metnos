@@ -6,7 +6,7 @@ Quando la query attiva ≥2 OGGETTI-produttori distinti senza un vincitore netto
 indovinare: emette un form get_inputs con le interpretazioni candidate. La
 scelta dell'utente ri-esegue la query con l'oggetto FISSATO.
 
-Il lessico curato (`prefilter._OBJECT_HINTS`) produce soltanto un inventario
+Il lessico curato (`prefilter.object_hint_mapping`) produce soltanto un inventario
 chiuso di possibili oggetti. Quando più oggetti restano plausibili, una
 classificazione semantica separata decide se sono più bersagli legittimi, un
 bersaglio con argomenti nominali, oppure una vera alternativa ambigua. Soltanto
@@ -47,10 +47,10 @@ def object_hint_scores(query: str) -> dict[str, int]:
     """{oggetto: n_hint distinti nella query}, solo oggetti-produttori. §7.9."""
     if not query or not isinstance(query, str):
         return {}
-    from prefilter import _WORD_RE, _OBJECT_HINTS
-    toks = set(_WORD_RE.findall(query.lower()))
+    from prefilter import object_hint_mapping, tokenize
+    toks = tokenize(query)
     out: dict[str, int] = {}
-    for obj, hints in _OBJECT_HINTS.items():
+    for obj, hints in object_hint_mapping().items():
         if obj not in _PRODUCER_OBJECTS:
             continue
         n = len(toks & set(hints))

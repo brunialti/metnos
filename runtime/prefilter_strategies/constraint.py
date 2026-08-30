@@ -14,6 +14,46 @@ from __future__ import annotations
 
 from typing import Callable
 
+import detection_lexicon as _detlex
+
+
+def _provider_from_query(query: str) -> str | None:
+    """Return one provider identity from the central ready marker mapping.
+
+    The active native row is mandatory. Reviewed baselines remain additive for
+    stable brand names only after that readiness gate. Longest matching surface
+    wins (``google photos`` over ``google``); an equal-strength ambiguity emits
+    no provider constraint rather than selecting by table order.
+    """
+    if not query:
+        return None
+    mapping = _detlex.native_ready_mapping(
+        "provider.markers", include_reviewed_baselines=True,
+    )
+    strengths: dict[str, int] = {}
+    for suffix, forms in mapping.items():
+        if not isinstance(forms, list):
+            continue
+        provider = str(suffix).removeprefix("_")
+        if not provider:
+            continue
+        matched = [
+            len(form.strip())
+            for form in forms
+            if isinstance(form, str) and form.strip()
+            and _detlex.match_any((form,), query, "word")
+        ]
+        if matched:
+            strengths[provider] = max(matched)
+    if not strengths:
+        return None
+    strongest = max(strengths.values())
+    winners = sorted(
+        provider for provider, strength in strengths.items()
+        if strength == strongest
+    )
+    return winners[0] if len(winners) == 1 else None
+
 
 def _extract_constraints(query: str, llm_call=None,
                           prefer_intent=True) -> dict:
@@ -41,15 +81,7 @@ def _extract_constraints(query: str, llm_call=None,
             verb = detect_canonical_verb(qtokens, query)
         if not obj:
             obj = detect_canonical_object(qtokens, query)
-    # Provider qualifier: check marker
-    provider = None
-    qlow = (query or "").lower()
-    if any(m in qlow for m in ("google", "gmail", "drive", "workspace", "gcal", "gdrive")):
-        provider = "google_workspace"
-    elif "outlook" in qlow or "microsoft" in qlow:
-        provider = "outlook"
-    elif "telegram" in qlow:
-        provider = "telegram"
+    provider = _provider_from_query(query)
     return {"verb": verb, "object": obj, "qualifier": qualifier,
             "provider": provider}
 

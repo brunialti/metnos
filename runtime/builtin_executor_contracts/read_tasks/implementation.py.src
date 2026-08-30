@@ -39,6 +39,7 @@ log = get_logger(__name__)
 sys.path.insert(0, str(Path(__file__).parent))
 
 import config as _C  # §7.11 — rispetta METNOS_USER_STATE
+import detection_lexicon_seed_parsers as _parser_lex
 DB_PATH = _C.DB_RECURRING_TASKS
 
 _TASK_TABLE_SQL = """
@@ -378,67 +379,58 @@ def _parse_when(when: str) -> str:
 # «Every 30 min: read the new open issues…» finiva nel decomposer/engine
 # che eseguivano il CORPO subito → «Pipeline malformata».
 
-# Domande analitiche che CITANO una ricorrenza senza chiedere scheduling
-# («quante mail ricevo ogni giorno?») → mai auto-registrare.
-_RE_INTERROGATIVE = re.compile(
-    r"^\s*(?:quant[ieoa]|qual[ie]?|chi|che|cosa|come|perch[eé]|quando|dove|"
-    r"how|what|which|who|why|when|where|do|does|did|is|are|can|could)\b",
-    re.IGNORECASE,
-)
-
-# Clausola di ricorrenza: ogni/every [N] unita' [alle/at HH[:MM]].
-_RE_RECURRENCE_CLAUSE = re.compile(
-    r"\b(?:ogni|every)\s+(?:(\d+)\s*)?"
-    r"(mezz'?\s?ora|half\s+(?:an\s+)?hour|"
-    r"minut[oi]|minutes?|mins?\b|or[ae]\b|hours?\b|hrs?\b|"
-    r"giorn[oi]|days?\b|d[ìi]\b)"
-    r"(?:\s+(?:alle?|at)\s+(\d{1,2})(?:[:.](\d{2}))?)?",
-    re.IGNORECASE,
-)
-# «daily [alle/at HH[:MM]]» / «hourly» standalone.
-_RE_DAILY_CLAUSE = re.compile(
-    r"\bdaily\b(?:\s+(?:alle?|at)\s+(\d{1,2})(?:[:.](\d{2}))?)?",
-    re.IGNORECASE,
-)
-_RE_HOURLY_CLAUSE = re.compile(r"\bhourly\b", re.IGNORECASE)
-
-# ── Inquadramento «crea un task che <AZIONE>» (universale, §7.9) ──────────
-# Una richiesta di creazione-task ha forma GRAMMATICALE fissa:
-#   <verbo> <articolo> [agg]* <sostantivo-schedulazione> [agg]* <relativo> <AZIONE>
-# La query ricorrente da memorizzare e' SOLO l'AZIONE (complemento del relativo):
-# il verbo di creazione e' assorbito da `\w+` (NIENTE lista di verbi ad-hoc).
-# Ancore deterministiche, non di dominio:
-#   - sostantivo-schedulazione = object canonico `tasks` (§2.2 vocab) + sinonimi IT+EN;
-#   - relativo = insieme grammaticale chiuso (che/that/which/to/per).
-# Vincolo anti-overstrip: il sostantivo dev'essere il PRIMO nominale (subito dopo
-# verbo+articolo) → «leggi le issue del task che…» NON matcha (object = issue).
-_RE_TASK_NOUN = r"task|attivit[àa]|lavoro|job|promemoria|reminder|cron|routine"
-_RE_CREATE_FRAMING = re.compile(
-    r"^\s*\w+\s+"                                  # verbo qualsiasi (assorbito)
-    r"(?:un|uno|una|un'|a|an|il|lo|la|the)\s+"      # articolo
-    r"(?:\w+\s+){0,2}?"                             # 0-2 aggettivi opzionali
-    rf"(?:{_RE_TASK_NOUN})\b"                       # sostantivo-schedulazione
-    r"(?:\s+\w+){0,2}?"                             # 0-2 aggettivi opzionali
-    r"\s+(?:che|that|which|to|per)\s+",            # relativo
-    re.IGNORECASE | re.DOTALL,
-)
+def _phrase_alt(forms) -> str:
+    return "|".join(
+        re.escape(str(form)).replace(r"\ ", r"\s+")
+        for form in sorted(set(forms or ()), key=lambda item: (-len(item), item))
+        if str(form).strip()
+    )
 
 
-def _strip_create_framing(body: str) -> str:
+def _surface_to_canonical(mapping: dict) -> dict[str, str]:
+    return {
+        str(surface).casefold(): str(canonical)
+        for canonical, forms in mapping.items()
+        for surface in forms
+    }
+
+
+def _strip_create_framing(body: str, lexicon: dict[str, object]) -> str:
     """Toglie l'inquadramento di creazione-task lasciando SOLO l'azione.
     Universale e deterministico: nessuna lista di verbi, ancora sul sostantivo
     canonico `tasks` + relativo. No-op se il corpo e' gia' un'azione."""
-    return _RE_CREATE_FRAMING.sub("", body, count=1).strip()
+    articles = _phrase_alt(lexicon["parser.recurrence.article"])
+    nouns = _phrase_alt(lexicon["parser.recurrence.task_noun"])
+    relatives = _phrase_alt(lexicon["parser.recurrence.relative"])
+    if not articles or not nouns or not relatives:
+        return body.strip()
+    word = r"\w+"
+    framing = re.compile(
+        rf"^\s*{word}\s+(?:{articles})(?!\w)\s+"
+        rf"(?:{word}\s+){{0,2}}?(?:{nouns})(?!\w)"
+        rf"(?:\s+{word}){{0,2}}?\s+(?:{relatives})(?!\w)\s+",
+        re.IGNORECASE | re.DOTALL | re.UNICODE,
+    )
+    return framing.sub("", body, count=1).strip()
 
 
-def _strip_clause(query: str, span: tuple[int, int]) -> str:
+def _strip_clause(query: str, span: tuple[int, int],
+                  lexicon: dict[str, object]) -> str:
     """Rimuove la clausola di schedule dalla query e pulisce i connettori
     residui ai bordi (':', ',', 'e', 'and', 'poi', 'then')."""
     body = (query[: span[0]] + " " + query[span[1]:]).strip()
-    body = re.sub(r"^(?:[:;,\-]\s*|(?:e|ed|and|poi|then)\s+)+", "", body,
-                  flags=re.IGNORECASE)
-    body = re.sub(r"(?:\s+(?:e|ed|and|poi|then)|[:;,\-])+\s*$", "", body,
-                  flags=re.IGNORECASE)
+    connectors = _phrase_alt(lexicon["parser.recurrence.edge_connector"])
+    if connectors:
+        body = re.sub(
+            rf"^(?:[:;,\-]\s*|(?:{connectors})(?!\w)\s+)+", "", body,
+            flags=re.IGNORECASE | re.UNICODE,
+        )
+        body = re.sub(
+            rf"(?:\s+(?:{connectors})(?!\w)|[:;,\-])+\s*$", "", body,
+            flags=re.IGNORECASE | re.UNICODE,
+        )
+    else:
+        body = re.sub(r"^(?:[:;,\-]\s*)+|(?:[:;,\-])+\s*$", "", body)
     return re.sub(r"\s{2,}", " ", body).strip()
 
 
@@ -452,24 +444,44 @@ def parse_recurrence_query(query: str) -> dict | None:
     """
     if not query or not isinstance(query, str):
         return None
-    if query.rstrip().endswith("?") or _RE_INTERROGATIVE.match(query):
+    lexicon = _parser_lex.load_family("recurrence")
+    if lexicon is None:
+        return None
+    interrogatives = _phrase_alt(lexicon["parser.recurrence.interrogative"])
+    if query.rstrip().endswith("?") or (interrogatives and re.match(
+            rf"^\s*(?:{interrogatives})(?!\w)", query,
+            re.IGNORECASE | re.UNICODE)):
         return None
     when: str | None = None
     span: tuple[int, int] | None = None
-    m = _RE_RECURRENCE_CLAUSE.search(query)
+    quantifiers = _phrase_alt(lexicon["parser.recurrence.quantifier"])
+    reverse_units = _surface_to_canonical(
+        lexicon["parser.recurrence.unit"])
+    units = _phrase_alt(reverse_units)
+    at_forms = _phrase_alt(lexicon["parser.recurrence.at"])
+    if not quantifiers or not units or not at_forms:
+        return None
+    recurrence_rx = re.compile(
+        rf"(?<!\w)(?:{quantifiers})(?!\w)\s+(?:(?P<n>\d+)\s*)?"
+        rf"(?P<unit>{units})(?!\w)"
+        rf"(?:\s+(?:{at_forms})(?!\w)\s+(?P<hh>\d{{1,2}})"
+        rf"(?:[:.](?P<mm>\d{{2}}))?)?",
+        re.IGNORECASE | re.UNICODE,
+    )
+    m = recurrence_rx.search(query)
     if m:
-        n = int(m.group(1)) if m.group(1) else 1
-        unit = m.group(2).lower()
-        hh, mm = m.group(3), m.group(4)
+        n = int(m.group("n")) if m.group("n") else 1
+        unit = reverse_units.get(m.group("unit").casefold())
+        hh, mm = m.group("hh"), m.group("mm")
         if n <= 0:
             return None
-        if unit.startswith("mezz") or unit.startswith("half"):
+        if unit == "half_hour":
             when = "every_30m"
-        elif unit.startswith(("minut", "min")):
+        elif unit == "minute":
             when = f"every_{n}m"
-        elif unit.startswith(("or", "hour", "hr")):
+        elif unit == "hour":
             when = f"every_{n * 60}m"
-        elif unit.startswith(("giorn", "day", "dì", "di")):
+        elif unit == "day":
             # daily richiede l'orario: senza, il parse NON e' pulito.
             if hh is None or int(hh) > 23 or (mm and int(mm) > 59):
                 return None
@@ -478,15 +490,25 @@ def parse_recurrence_query(query: str) -> dict | None:
             return None
         span = m.span()
     else:
-        m = _RE_DAILY_CLAUSE.search(query)
+        daily = _phrase_alt(lexicon["parser.recurrence.daily"])
+        daily_rx = re.compile(
+            rf"(?<!\w)(?:{daily})(?!\w)(?:\s+(?:{at_forms})(?!\w)\s+"
+            rf"(?P<hh>\d{{1,2}})(?:[:.](?P<mm>\d{{2}}))?)?",
+            re.IGNORECASE | re.UNICODE,
+        )
+        m = daily_rx.search(query) if daily else None
         if m:
-            hh, mm = m.group(1), m.group(2)
+            hh, mm = m.group("hh"), m.group("mm")
             if hh is None or int(hh) > 23 or (mm and int(mm) > 59):
                 return None
             when = f"daily@{int(hh):02d}:{int(mm) if mm else 0:02d}"
             span = m.span()
         else:
-            m = _RE_HOURLY_CLAUSE.search(query)
+            hourly = _phrase_alt(lexicon["parser.recurrence.hourly"])
+            m = re.search(
+                rf"(?<!\w)(?:{hourly})(?!\w)", query,
+                re.IGNORECASE | re.UNICODE,
+            ) if hourly else None
             if m:
                 when = "every_60m"
                 span = m.span()
@@ -494,11 +516,11 @@ def parse_recurrence_query(query: str) -> dict | None:
         return None
     if not _SCHEDULE_RE.match(when):
         return None
-    body = _strip_clause(query, span)
+    body = _strip_clause(query, span, lexicon)
     # «crea un task che <azione>» → memorizza SOLO <azione> (§7.9 universale).
-    body = _strip_create_framing(body)
+    body = _strip_create_framing(body, lexicon)
     # Corpo vuoto o senza sostanza ("ogni 30 minuti" e basta) → ambiguo.
-    if len(re.sub(r"[^a-zA-Zàèéìòù]", "", body)) < 3:
+    if len(re.sub(r"[^\w]", "", body, flags=re.UNICODE).replace("_", "")) < 3:
         return None
     label = body if len(body) <= 60 else body[:60].rsplit(" ", 1)[0]
     return {"when": when, "query": body, "label": label}

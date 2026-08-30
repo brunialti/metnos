@@ -15,7 +15,7 @@ en = "SCOPO: Updates state or performs a controlled fire of a scheduled task. PA
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:d8443b5d02ac8aa40cf4423ca2d1944841e4d83b0a4e4386b7ae3b2fad78aa78"
+digest = "sha256:adb2daa5d236237981dc126a08e7c788a1834f60e35bec278d3361a961a2ad43"
 
 [args]
 type = "object"

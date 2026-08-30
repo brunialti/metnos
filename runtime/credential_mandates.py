@@ -72,10 +72,9 @@ def site_mode_for_query(query: str) -> str:
         import detection_lexicon
         disabled = detection_lexicon.match("sites.no_credentials", query)
     except Exception:
-        normalized = " ".join(str(query or "").casefold().split())
-        disabled = bool(re.search(
-            r"\b(senza credenziali|senza login|without credentials|"
-            r"without login)\b", normalized))
+        # Failure must not invent a natural-language policy or risk violating
+        # an unparsed no-credentials clause: deny credential use fail-closed.
+        disabled = True
     return SITE_MODE_NONE if disabled else SITE_MODE_DEFAULT
 
 

@@ -52,6 +52,230 @@ _PROVIDER_MARKERS_EN = {
 }
 
 
+def _invert_surface_mapping(source: dict[str, str]) -> dict[str, list[str]]:
+    """Convert the historical surface->canonical table to registry shape."""
+    out: dict[str, list[str]] = {}
+    for surface, canonical in source.items():
+        out.setdefault(canonical, []).append(surface)
+    return out
+
+
+def _partition_surface_mapping(
+    source: dict[str, str],
+    english: frozenset[str],
+    shared: frozenset[str] = frozenset(),
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Split a mixed compatibility table without changing its union/order."""
+    italian_source = {
+        surface: canonical for surface, canonical in source.items()
+        if surface not in english or surface in shared
+    }
+    english_source = {
+        surface: canonical for surface, canonical in source.items()
+        if surface in english
+    }
+    return (
+        _invert_surface_mapping(italian_source),
+        _invert_surface_mapping(english_source),
+    )
+
+
+def _partition_canonical_mapping(
+    source: dict[str, list[str]],
+    english: frozenset[str],
+    shared: frozenset[str] = frozenset(),
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Split canonical->forms while preserving duplicates and key order."""
+    return (
+        {
+            canonical: [
+                form for form in forms
+                if form not in english or form in shared
+            ]
+            for canonical, forms in source.items()
+        },
+        {
+            canonical: [form for form in forms if form in english]
+            for canonical, forms in source.items()
+        },
+    )
+
+
+# The prefilter compatibility corpus was deliberately bilingual: both Italian
+# and English instances recognized the complete union.  The full historical
+# order is retained in the Italian baseline while the English baseline is a
+# clean translation source; the registry union preserves the runtime contract.
+_PREFILTER_VERB_COMPAT = {
+    "sposta": "move", "sposto": "move", "spostare": "move", "sposti": "move",
+    "muovi": "move", "muovo": "move", "muovere": "move", "muove": "move",
+    "trasferisci": "move", "trasferisco": "move", "trasferire": "move",
+    "rinomina": "move", "rinomino": "move", "rinominare": "move",
+    "move": "move", "moves": "move", "rename": "move", "rn": "move",
+    "mv": "move", "transfer": "move",
+    "cancella": "delete", "cancello": "delete", "cancellare": "delete",
+    "elimina": "delete", "elimino": "delete", "eliminare": "delete",
+    "rimuovi": "delete", "rimuovo": "delete", "rimuovere": "delete",
+    "delete": "delete", "remove": "delete", "rm": "delete", "drop": "delete",
+    "leggi": "read", "leggo": "read", "leggere": "read", "letto": "read",
+    "mostra": "read", "mostro": "read", "mostrami": "read",
+    "mostrare": "read", "controlla": "read", "controllo": "read",
+    "controllare": "read", "apri": "read", "apro": "read",
+    "aprire": "read", "read": "read", "open": "read", "show": "read",
+    "view": "read", "cat": "read", "check": "read",
+    "scrivi": "write", "scrivo": "write", "scrivere": "write",
+    "salva": "write", "salvo": "write", "salvare": "write",
+    "metti": "write", "metto": "write", "mettere": "write",
+    "put": "write", "place": "write", "write": "write", "save": "write",
+    "trova": "find", "trovo": "find", "trovare": "find",
+    "cerca": "find", "cerco": "find", "cercare": "find",
+    "find": "find", "search": "find", "locate": "find", "where": "find",
+    "elenca": "list", "elenco": "list", "elencare": "list",
+    "lista": "list", "list": "list", "ls": "list",
+    "crea": "create", "creo": "create", "creare": "create",
+    "create": "create", "mkdir": "create", "make": "create", "new": "create",
+    "invia": "send", "invio": "send", "inviare": "send",
+    "inviami": "send", "inviagli": "send", "manda": "send",
+    "mando": "send", "mandare": "send", "mandami": "send",
+    "mandagli": "send", "spedisci": "send", "spedisco": "send",
+    "spedire": "send", "spediscimi": "send", "scrivimi": "send",
+    "scrivigli": "send", "notifica": "send", "notificami": "send",
+    "notificagli": "send", "avvisa": "send", "avvisami": "send",
+    "avvisagli": "send", "send": "send", "notify": "send",
+    "alert": "send", "ping": "send",
+    "fissa": "create", "fisso": "create", "fissare": "create",
+    "prenota": "create", "prenoto": "create", "prenotare": "create",
+    "book": "create", "schedule": "create", "schedules": "create",
+    "scarica": "get", "scarico": "get", "scaricare": "get",
+    "fetch": "get", "download": "get", "wget": "get", "curl": "get",
+    "comprimi": "compress", "comprimo": "compress",
+    "comprimere": "compress", "zippa": "compress",
+    "compress": "compress", "zip": "compress", "tar": "compress",
+    "estrai": "extract", "estraggo": "extract", "estrarre": "extract",
+    "extract": "extract", "unzip": "extract", "untar": "extract",
+    "cambia": "change", "cambio": "change", "cambiare": "change",
+    "modifica": "change", "modifico": "change", "modificare": "change",
+    "trasforma": "change", "trasformo": "change", "trasformare": "change",
+    "converti": "change", "converto": "change", "convertire": "change",
+    "ridimensiona": "change", "ridimensiono": "change",
+    "ridimensionare": "change", "ruota": "change", "ruoto": "change",
+    "ruotare": "change", "ritaglia": "change", "ritaglio": "change",
+    "ritagliare": "change", "normalizza": "change",
+    "normalizzo": "change", "normalizzare": "change",
+    "ricodifica": "change", "ricodifico": "change",
+    "ricodificare": "change", "change": "change", "modify": "change",
+    "transform": "change", "convert": "change", "resize": "change",
+    "rotate": "change", "crop": "change", "normalize": "change",
+    "reformat": "change", "transcode": "change", "encode": "change",
+    "filtra": "filter", "filtro": "filter", "filtrare": "filter",
+    "filter": "filter", "descrivi": "describe", "descrivo": "describe",
+    "descrivere": "describe", "riassumi": "describe",
+    "riassumo": "describe", "riassumere": "describe",
+    "describe": "describe", "summarize": "describe", "summary": "describe",
+    "proponi": "describe", "propongo": "describe", "proporre": "describe",
+    "proponimi": "describe", "proponici": "describe",
+    "suggerisci": "describe", "suggerisco": "describe",
+    "suggerire": "describe", "suggeriscimi": "describe",
+    "suggeriscici": "describe", "raccomanda": "describe",
+    "raccomando": "describe", "raccomandare": "describe",
+    "raccomandami": "describe", "raccomandaci": "describe",
+    "propose": "describe", "proposes": "describe", "proposing": "describe",
+    "suggest": "describe", "suggests": "describe", "suggesting": "describe",
+    "recommend": "describe", "recommends": "describe",
+    "recommending": "describe", "arricchisci": "get",
+    "arricchisco": "get", "arricchire": "get", "ottieni": "get",
+    "ottengo": "get", "ottenere": "get", "get": "get", "give": "get",
+    "tell": "get", "dimmi": "get", "dammi": "get",
+    "calcola": "compute", "calcolo": "compute", "calcolare": "compute",
+    "compute": "compute", "calculate": "compute", "hash": "compute",
+    "visualizza": "read", "discard": "delete", "classifica": "sort",
+    "etichetta": "classify", "label": "classify",
+    "indicizza": "create", "index": "create", "order": "sort",
+}
+
+_PREFILTER_VERB_EN = frozenset({
+    "move", "moves", "rename", "rn", "mv", "transfer",
+    "delete", "remove", "rm", "drop",
+    "read", "open", "show", "view", "cat", "check",
+    "put", "place", "write", "save",
+    "find", "search", "locate", "where", "list", "ls",
+    "create", "mkdir", "make", "new", "book", "schedule", "schedules",
+    "send", "notify", "alert", "ping",
+    "fetch", "download", "wget", "curl", "compress", "zip", "tar",
+    "extract", "unzip", "untar", "change", "modify", "transform",
+    "convert", "resize", "rotate", "crop", "normalize", "reformat",
+    "transcode", "encode", "filter", "describe", "summarize", "summary",
+    "propose", "proposes", "proposing", "suggest", "suggests", "suggesting",
+    "recommend", "recommends", "recommending", "get", "give", "tell",
+    "compute", "calculate", "hash", "discard", "label", "index", "order",
+})
+
+_PREFILTER_OBJECT_HINTS = {
+    "messages": ["mail", "email", "posta", "messaggio", "messaggi", "imap",
+                 "inbox", "indesiderata", "junk", "spam", "trash", "cestino",
+                 "archivio", "archive", "mittente", "oggetto",
+                 "destinatario", "subject", "from"],
+    "files": ["file", "files", "pdf", "csv", "xlsx", "txt",
+              "documento", "documenti"],
+    "images": ["foto", "photo", "photos", "image", "images", "immagine",
+               "immagini", "picture", "pictures", "jpg", "jpeg", "png",
+               "heic", "webp"],
+    "dirs": ["directory", "directories", "cartella", "cartelle", "folder",
+             "folders", "dir", "subdir", "subfolder"],
+    "location": ["location", "posizione", "dove", "luogo", "geolocation",
+                 "coordinate", "lat", "lon", "longitudine", "latitudine"],
+    "places": ["place", "luogo", "luoghi", "geo", "city", "country",
+               "citta", "comune", "indirizzo"],
+    "now": ["adesso", "now", "ora", "orario", "tempo"],
+    "urls": ["url", "urls", "uri", "link", "https", "http"],
+    "numbers": ["numero", "numeri", "number", "numbers", "media", "stddev",
+                "minimo", "massimo", "statistica"],
+    "texts": ["testo", "testi", "text", "texts", "riga", "righe",
+              "line", "lines", "log"],
+    # The duplicate historical "package" affected hit counts and therefore
+    # remains in the seed payload even though the registry merge de-duplicates
+    # forms from distinct languages.
+    "packages": ["package", "pacchetto", "pip", "apt", "package"],
+    "events": ["evento", "eventi", "event", "calendar", "calendario",
+               "appuntamento", "appuntamenti", "appointment", "appointments",
+               "riunione", "riunioni", "meeting", "meetings", "agenda",
+               "incontro", "incontri", "scadenza", "scadenze", "deadline",
+               "fissa", "prenota", "book", "schedule", "orari", "orario",
+               "fascia", "fasce", "slot", "slots", "mattina", "pomeriggio",
+               "morning", "afternoon"],
+    "calendars": ["calendario", "calendari", "calendar", "calendars"],
+    "contacts": ["contatto", "contatti", "contact", "rubrica"],
+    "processes": ["processo", "processi", "process", "processes", "ps",
+                  "task", "pid", "cpu", "ram", "memoria", "memory",
+                  "istanza", "istanze", "instance", "instances", "running",
+                  "esecuzione", "daemon", "demone", "kill", "uccidi",
+                  "termina", "stop"],
+    "signatures": ["signature", "signatures", "policy", "policies",
+                   "blacklist", "whitelist", "graylist", "forbidden", "safety"],
+    "proposals": ["proposta", "proposte", "proposal", "proposals",
+                  "introvertiva", "introvertive", "introvertivo", "review",
+                  "candidato", "candidati", "candidate", "candidates",
+                  "dedupe", "generalize", "specialize", "pending"],
+}
+
+_PREFILTER_OBJECT_EN = frozenset({
+    "mail", "email", "imap", "inbox", "junk", "spam", "trash", "archive",
+    "subject", "from", "file", "files", "pdf", "csv", "xlsx", "txt",
+    "photo", "photos", "image", "images", "picture", "pictures", "jpg",
+    "jpeg", "png", "heic", "webp", "directory", "directories", "folder",
+    "folders", "dir", "subdir", "subfolder", "location", "geolocation",
+    "coordinate", "lat", "lon", "place", "geo", "city", "country", "now",
+    "url", "urls", "uri", "link", "https", "http", "number", "numbers",
+    "media", "stddev", "text", "texts", "line", "lines", "log", "package",
+    "pip", "apt", "event", "calendar", "appointment", "appointments",
+    "meeting", "meetings", "agenda", "deadline", "book", "schedule", "slot",
+    "slots", "morning", "afternoon", "calendars", "contact", "process",
+    "processes", "ps", "task", "pid", "cpu", "ram", "memory", "instance",
+    "instances", "running", "daemon", "kill", "stop", "signature",
+    "signatures", "policy", "policies", "blacklist", "whitelist", "graylist",
+    "forbidden", "safety", "proposal", "proposals", "introvertive", "review",
+    "candidate", "candidates", "dedupe", "generalize", "specialize", "pending",
+})
+
 def register_all() -> None:
     R = _dl.register
 
@@ -67,6 +291,101 @@ def register_all() -> None:
         it={action: list(ACTION_MAPPING[action]["it"]) for action in ACTIONS},
         en={action: list(ACTION_MAPPING[action]["en"]) for action in ACTIONS},
     )
+
+    # ── PREFILTER: residuo lessicale RM-0005 F6 ───────────────────────
+    # I nomi canonici (azioni, oggetti e coppie consumer/provider) restano
+    # protocollo tecnico. Soltanto le superfici riconosciute sono traducibili.
+    # Le due vecchie tabelle miste erano, per contratto, riconosciute sia in IT
+    # sia in EN. La baseline completa conserva ordine e compatibilità; la slice
+    # EN pulita alimenta il daemon senza presentargli forme italiane come inglesi.
+    verb_forms_en = _partition_surface_mapping(
+        _PREFILTER_VERB_COMPAT, _PREFILTER_VERB_EN,
+    )[1]
+    R("prefilter.verb_canonical", "mapping", match_mode="word",
+      it=_invert_surface_mapping(_PREFILTER_VERB_COMPAT), en=verb_forms_en)
+    object_hints_en = _partition_canonical_mapping(
+        _PREFILTER_OBJECT_HINTS,
+        _PREFILTER_OBJECT_EN,
+    )[1]
+    R("prefilter.object_hint", "mapping", match_mode="word",
+      it=_PREFILTER_OBJECT_HINTS, en=object_hints_en)
+    R("prefilter.stopword", "phrases", match_mode="word",
+      it=[
+          "il", "lo", "la", "i", "gli", "le", "un", "uno", "una",
+          "di", "a", "da", "in", "con", "su", "per", "tra", "fra",
+          "e", "o", "ma", "se", "che", "non", "ne", "ci", "si", "mi",
+          "ti", "vi", "del", "della", "dei", "delle", "dello", "degli",
+          "al", "alla", "ai", "alle", "dal", "dalla", "dai", "dalle",
+          "nel", "nella", "nei", "nelle", "sul", "sulla", "sui", "sulle",
+          "sono", "è", "ho", "ha", "hanno", "essere", "avere", "questo",
+          "quella", "questi", "quelle", "quello", "miei", "tuoi", "suoi",
+          "mia", "tua", "sua", "oggi", "ieri", "domani", "anche", "poi",
+          "cosi", "cosi'", "molto", "piu", "piu'", "pero", "pero'",
+      ],
+      en=[
+          "the", "a", "an", "of", "in", "on", "at", "to", "for", "with",
+          "by", "from", "and", "or", "but", "if", "not", "is", "are",
+          "was", "were", "be", "been", "this", "that", "these", "those",
+          "my", "your", "their", "our", "today", "yesterday", "tomorrow",
+      ])
+    R("prefilter.italian_clitic_suffix", "phrases", match_mode="substring",
+      it=[
+          "celo", "cela", "celi", "cele", "cene", "cisi",
+          "melo", "mela", "meli", "mele", "mene",
+          "telo", "tela", "teli", "tele", "tene",
+          "selo", "sela", "seli", "sele", "sene",
+          "gli", "mi", "ti", "si", "ci", "vi", "ne",
+          "lo", "la", "li", "le",
+      ], en=[])
+    R("prefilter.location_relative", "phrases", match_mode="substring",
+      it=[
+          "vicino a me", "vicino", "vicina", "vicini", "vicine",
+          "piu vicino", "piu vicina", "piu vicini", "piu vicine",
+          "piu' vicino", "piu' vicina", "qui", "qua", "intorno",
+          "intorno a me", "intorno a noi", "nelle vicinanze", "nei dintorni",
+          "in zona", "in giro", "vicinissimo", "vicinissima",
+      ],
+      en=[
+          "near me", "around me", "around here", "around us", "nearby",
+          "nearest", "closest", "close by", "close-by", "in the area",
+          "in proximity",
+      ])
+    R("prefilter.exif_marker", "phrases", match_mode="substring",
+      it=[
+          "exif", "scattat", "metadati foto", "metadati della foto", "geotag",
+          "luogo di scatto", "dove e' stata fatta", "dove è stata fatta",
+          "dove e' stata scattata", "dove è stata scattata",
+          "quando e' stata scattata", "quando è stata scattata",
+          "con che camera", "con quale camera", "con che fotocamera",
+          "che fotocamera", "modello di fotocamera", "coordinate gps",
+      ],
+      en=[
+          "with what camera", "which camera", "where was it taken",
+          "when was it taken", "where was this photo", "when was this photo",
+          "capture date", "gps coordinates",
+      ])
+    R("prefilter.time_intent", "phrases", match_mode="word",
+      it=[
+          "che ora", "che ore", "ora corrente", "data corrente", "che giorno",
+          "che data", "adesso", "in questo momento",
+      ],
+      en=[
+          "what time", "what date", "current time", "current date", "what day",
+          "today is", "what's the time", "right now",
+      ])
+    R("prefilter.generic_affinity_verb", "phrases", match_mode="word",
+      it=[
+          "cerca", "ricerca", "trova", "cercare", "ottieni", "ottenere",
+          "leggi", "leggere", "elenca", "lista", "cancella", "rimuovi",
+          "elimina", "sposta", "scrivi", "salva", "crea", "imposta",
+          "invia", "filtra", "ordina", "raggruppa", "calcola", "manda",
+          "mandare", "spedisci", "spedire",
+      ],
+      en=[
+          "find", "search", "get", "read", "list", "delete", "move",
+          "write", "create", "set", "send", "filter", "sort", "group",
+          "compute",
+      ])
 
     # ── SINTASSI: polarità e cambio di clausola ───────────────────────
     # Dati linguistici generali, consumabili da ogni riconoscitore che debba
@@ -481,9 +800,10 @@ def register_all() -> None:
                        "pass"]},
       en={"username": ["user", "username", "user id", "userid", "usr",
                        "email", "e-mail", "login"],
-          "password": ["password", "passwd", "passphrase", "pwd", "pass"]})
+          "password": ["password", "passwd", "passphrase", "pwd", "pass"]},
+      review_policy="manual")
     R("credentials.pair_connector", "phrases", match_mode="word",
-      it=["e", "con"], en=["and", "with"])
+      it=["e", "con"], en=["and", "with"], review_policy="manual")
     # Superficie canonica usata da TUTTI i boundary prima di Tutor/planner e
     # dallo scrub dei log. E' separata dal riconoscimento delle coppie perché
     # deve coprire anche un singolo OTP/token/secret. Una nuova lingua viene
@@ -496,7 +816,8 @@ def register_all() -> None:
       en=["password", "passwd", "passphrase", "pwd", "pass",
           "username", "user", "user id", "userid", "usr", "uname",
           "otp", "2fa", "one-time code", "verification code",
-          "secret", "token", "api key", "api-key"])
+          "secret", "token", "api key", "api-key"],
+      review_policy="manual")
     # Prefisso chiuso per una coppia senza ':'/'='. Deve coincidere con
     # l'intero testo prima della coppia: parole generiche come
     # "autenticazione" in una domanda non attestano mai un segreto.
@@ -504,7 +825,7 @@ def register_all() -> None:
     # localized forms are loaded; the lexicon supports only substring/word.
     R("credentials.intake_prefix", "phrases", match_mode="substring",
       it=["credenziali", "dati di accesso"],
-      en=["credentials", "access credentials"])
+      en=["credentials", "access credentials"], review_policy="manual")
 
     # ── SITES: azioni browser in linguaggio naturale ──────────────────
     # Chiavi tecniche chiuse; le superfici sono traducibili e non vivono nel
@@ -519,7 +840,8 @@ def register_all() -> None:
           "click": ["click", "press", "select", "choose", "tap", "open"],
           "fill": ["fill", "write", "enter", "type"],
           "submit": ["submit", "confirm", "save", "publish"],
-          "wait": ["wait", "pause"]})
+          "wait": ["wait", "pause"]},
+      review_policy="manual")
     # Target che porta dalla landing page al form di autenticazione. Serve al
     # guard sites per distinguere un click PRE-login dalle azioni richieste
     # dopo l'accesso, senza imporre una sintassi alla frase dell'utente.
@@ -875,3 +1197,30 @@ def register_all() -> None:
     # i regex intrecciati in testa al file (il merge deduplica).
     R("tutor_gate.pull_request", "regex",
       it=[r"\bpull request\w*"], en=[r"\bpull request\w*"])
+
+    # Extensions keep large domain inventories reviewable without turning this
+    # authoritative entry point into a second runtime consumer.
+    from detection_lexicon_seed_args import register_all as _register_args
+    from detection_lexicon_seed_codegen import register_detection as _register_codegen
+    from detection_lexicon_seed_dialog import register_all as _register_dialog
+    from detection_lexicon_seed_geo import register_all as _register_geo
+    from detection_lexicon_seed_parsers import register_all as _register_parsers
+    from detection_lexicon_seed_reconciliation import register_all as _register_reconciliation
+    from detection_lexicon_seed_residual_am import register_all as _register_residual_am
+    from detection_lexicon_seed_residual_nz import register_all as _register_residual_nz
+    from detection_lexicon_seed_resolvers import register_detection as _register_resolvers
+    from detection_lexicon_seed_routing import register_all as _register_routing
+    from detection_lexicon_seed_runtime_safety import register_all as _register_runtime_safety
+    from detection_lexicon_seed_security import register_all as _register_security
+    _register_args()
+    _register_codegen()
+    _register_dialog()
+    _register_geo()
+    _register_parsers()
+    _register_reconciliation()
+    _register_residual_am()
+    _register_residual_nz()
+    _register_resolvers()
+    _register_routing()
+    _register_runtime_safety()
+    _register_security()

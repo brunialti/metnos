@@ -130,7 +130,7 @@ class _BirthCommitPublisher:
     __slots__ = (
         "_author_private", "_author_ring", "_admission_private",
         "_admission_key_id", "_admission_verifiers", "_epoch",
-        "_primitive", "_store_root", "_seal",
+        "_primitive", "_registry_reconciler", "_store_root", "_seal",
     )
 
     def __init__(
@@ -145,6 +145,7 @@ class _BirthCommitPublisher:
         prepared_context_epoch: str,
         primitive,
         store_root,
+        registry_reconciler=None,
     ) -> None:
         if token is not _PUBLISHER_TOKEN:
             raise BirthCommitLinkError("birth_commit_publisher_private")
@@ -152,7 +153,11 @@ class _BirthCommitPublisher:
             admission_private, Ed25519PrivateKey
         ):
             raise BirthCommitLinkError("birth_commit_publisher_invalid")
-        if not admission_verifiers or not isinstance(prepared_context_epoch, str):
+        if (
+            not admission_verifiers
+            or not isinstance(prepared_context_epoch, str)
+            or not callable(registry_reconciler)
+        ):
             raise BirthCommitLinkError("birth_commit_publisher_invalid")
         self._author_private = author_private
         self._author_ring = tuple(author_ring)
@@ -161,6 +166,7 @@ class _BirthCommitPublisher:
         self._admission_verifiers = MappingProxyType(dict(admission_verifiers))
         self._epoch = prepared_context_epoch
         self._primitive = primitive
+        self._registry_reconciler = registry_reconciler
         self._store_root = store_root
         self._seal = _PUBLISHER_TOKEN
 
@@ -238,6 +244,7 @@ class _BirthCommitPublisher:
             trusted_publics=self._author_ring,
             birth_authorization=authorization,
             store_root=self._store_root,
+            registry_reconciler=self._registry_reconciler,
         )
         return BirthCommitOutcomeV1(publication, issued[-1] if issued else None)
 
@@ -394,6 +401,7 @@ def _build_prepared_bundle_v1(
     loader, so this function never opens a path and never chooses an identity.
     """
     from contract_store import commit_birth_snapshot
+    from i18n_pipeline import reconcile_published_contract_registry
 
     # ``TrustedPublic`` is an alias for the pair, so the ring is built as the
     # pairs themselves and stays a value.
@@ -408,6 +416,7 @@ def _build_prepared_bundle_v1(
         prepared_context_epoch=prepared_context_epoch,
         primitive=commit_birth_snapshot,
         store_root=store_root,
+        registry_reconciler=reconcile_published_contract_registry,
     )
     view = PreparedBundleViewV1(
         version=1,

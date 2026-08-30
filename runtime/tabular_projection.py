@@ -34,73 +34,28 @@ from typing import Any, Iterable
 
 _TRANSFORMS = frozenset({"identity", "basename", "dirname"})
 
-# Closed semantic vocabulary for legacy/free-form headers.  This is not tied
-# to any workflow or query: concepts describe reusable tabular field families.
-_CONCEPT_ALIASES: dict[str, frozenset[str]] = {
-    "path": frozenset({
-        "path", "paths", "percorso", "percorsi", "filepath", "filepaths",
-        "file_path", "file_paths", "image_path", "local_path",
-    }),
-    "directory": frozenset({
-        "directory", "directories", "folder", "folders", "cartella",
-        "cartelle", "directorio", "directorios", "carpeta", "carpetas",
-        "ordner",
-    }),
-    "name": frozenset({
-        "name", "names", "nome", "nomi", "filename", "filenames",
-        "file_name", "file_names", "basename", "title", "titles",
-        "titolo", "titoli",
-    }),
-    "description": frozenset({
-        "description", "descriptions", "descrizione", "descrizioni",
-        "desc", "caption", "captions",
-    }),
-    "size": frozenset({
-        "size", "sizes", "size_bytes", "bytes", "dimensione", "dimensioni",
-    }),
-    "hash": frozenset({
-        "hash", "hashes", "sha", "sha256", "checksum", "checksums",
-        "digest", "digests", "impronta", "impronte",
-    }),
-    "score": frozenset({
-        "score", "scores", "punteggio", "punteggi", "relevance",
-        "rilevanza", "confidence", "confidenza",
-    }),
-    "keywords": frozenset({
-        "keywords", "keyword", "parole_chiave", "tags", "tag",
-    }),
-    "date": frozenset({
-        "date", "dates", "data", "datetime", "timestamp", "created_at",
-        "updated_at", "modified_at", "mtime",
-    }),
-    "domain": frozenset({
-        "domain", "domains", "dominio", "domini",
-    }),
-    "origin": frozenset({
-        "origin", "origins", "original", "originals", "origine", "origini",
-        "originale", "originali", "source", "sources", "sorgente",
-        "sorgenti",
-    }),
-    "duplicate": frozenset({
-        "duplicate", "duplicates", "duplicato", "duplicati", "copia",
-        "copie", "copy", "copies", "duplicado", "duplicados", "duplikat",
-        "duplikate",
-    }),
-    "url": frozenset({
-        "url", "urls", "link", "links", "web_url", "web_view_url",
-    }),
-    "count": frozenset({
-        "count", "counts", "conteggio", "numero", "total", "totale",
-    }),
-}
+# I nomi canonici sono il contratto tecnico di ``field_roles``. Le loro
+# superfici e gli ordinali localizzati sono posseduti dal detection lexicon.
+_TABULAR_CONCEPTS = frozenset({
+    "path", "directory", "name", "description", "size", "hash", "score",
+    "keywords", "date", "domain", "origin", "duplicate", "url", "count",
+})
 
-_ORDINAL_WORDS = {
-    "first": 1, "one": 1, "primo": 1, "prima": 1,
-    "second": 2, "two": 2, "secondo": 2, "seconda": 2,
-    "third": 3, "three": 3, "terzo": 3, "terza": 3,
-    "fourth": 4, "four": 4, "quarto": 4, "quarta": 4,
-    "fifth": 5, "five": 5, "quinto": 5, "quinta": 5,
-}
+
+def _concept_aliases() -> dict[str, list[str]]:
+    try:
+        from detection_lexicon_seed_residual_nz import tabular_concept_aliases
+        return tabular_concept_aliases()
+    except Exception:  # noqa: BLE001 - un lessico incerto non deve indovinare
+        return {}
+
+
+def _ordinal_aliases() -> dict[str, list[str]]:
+    try:
+        from detection_lexicon_seed_residual_nz import tabular_ordinals
+        return tabular_ordinals()
+    except Exception:  # noqa: BLE001 - un lessico incerto non deve indovinare
+        return {}
 
 
 class TabularProjectionError(ValueError):
@@ -139,7 +94,7 @@ def _concepts(value: Any) -> set[str]:
     normalized = _normalize(value)
     token_set = set(_tokens(value))
     found: set[str] = set()
-    for concept, aliases in _CONCEPT_ALIASES.items():
+    for concept, aliases in _concept_aliases().items():
         normalized_aliases = {_normalize(alias) for alias in aliases}
         if normalized in normalized_aliases or token_set & normalized_aliases:
             found.add(concept)
@@ -147,11 +102,17 @@ def _concepts(value: Any) -> set[str]:
 
 
 def _ordinal(value: Any) -> int | None:
+    ordinal_words = {
+        _normalize(form): int(canonical)
+        for canonical, forms in _ordinal_aliases().items()
+        if str(canonical).isdigit()
+        for form in forms
+    }
     for token in _tokens(value):
         if token.isdigit() and int(token) > 0:
             return int(token)
-        if token in _ORDINAL_WORDS:
-            return _ORDINAL_WORDS[token]
+        if token in ordinal_words:
+            return ordinal_words[token]
     return None
 
 
@@ -200,7 +161,7 @@ def _declared_field_roles(field_roles: Iterable[dict] | None
             continue
         normalized = {
             _normalize(role) for role in roles
-            if isinstance(role, str) and _normalize(role) in _CONCEPT_ALIASES
+            if isinstance(role, str) and _normalize(role) in _TABULAR_CONCEPTS
         }
         if normalized:
             out.setdefault(field, set()).update(normalized)

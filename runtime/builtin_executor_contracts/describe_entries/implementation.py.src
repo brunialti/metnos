@@ -20,15 +20,22 @@ completo (lo style viene ignorato).
 """
 from __future__ import annotations
 
+import copy
+from dataclasses import dataclass
+import hashlib
 import json
 import os
 import re
+from string import Formatter
+from typing import Mapping
+import unicodedata
 
 from llm_helpers import call_llm
 from llm_workloads import tier_for
 import i18n as _i18n
 import prompt_loader
 from messages import get as _msg
+import detection_lexicon_seed_reconciliation as _reconciliation_lex
 
 # Lista degli style preset disponibili. I prompt sono persistiti in
 # `runtime/prompts/<lang>/describe_entries_<style>.j2` (ADR 0092 Phase 2)
@@ -729,31 +736,144 @@ DESCRIBE_ENTRIES_TOOL = {
 }
 
 
+_LEGACY_HEADER_KEYS = frozenset({
+    "_meta", "kind", "data_kind", "style", "context", "max_tokens",
+    "prompt_override", "group_by", "format", "health_context",
+})
+
+
 def _extract_header(entries):
-    """Se entries[0] e' un descriptor `{_meta: True, ...}` lo estrai e
-    ritorna (header_dict, rest_entries). Altrimenti (None, entries)."""
+    """Extract only the closed legacy ``{_meta: True, ...}`` descriptor.
+
+    Truthy non-booleans and descriptors with unknown keys are ordinary input
+    records.  Treating them as headers would silently remove caller evidence.
+    """
     if not entries:
         return None, entries
     head = entries[0]
-    if isinstance(head, dict) and head.get("_meta"):
+    if (isinstance(head, dict) and head.get("_meta") is True
+            and set(head).issubset(_LEGACY_HEADER_KEYS)):
         return head, entries[1:]
     return None, entries
 
 
-_DOC_AUDIT_VARIANT_TOKENS = frozenset({
-    "approvato", "approvata", "approved", "final", "finale",
-    "revisione", "revision", "revised", "bozza", "draft", "proposta",
-    "proposto", "proposed", "copia", "copy", "duplicate", "duplicato",
-})
+_AUDIT_MAX_VALUE_CHARS = 8192
+_AUDIT_DISPLAY_CHARS = 240
+_AUDIT_MAX_COLLECTION = 256
+_AUDIT_MAX_ENTRIES = 10_000
 
 
-def _source_name(entry: dict) -> str:
-    value = (entry.get("_source_name") or entry.get("origine")
-             or entry.get("origin") or entry.get("source") or "")
-    return re.split(r"[\\/]", str(value))[-1]
+class _AuditEvidenceError(ValueError):
+    """Malformed or contradictory caller evidence; never partially audit it."""
 
 
-def _document_family(name: str) -> tuple[tuple[str, ...], bool]:
+def _present(value) -> bool:
+    return value is not None and value != "" and value != [] and value != {}
+
+
+def _single_line(value, *, display: bool = False) -> str:
+    text = unicodedata.normalize("NFKC", str(value))
+    if len(text) > _AUDIT_MAX_VALUE_CHARS:
+        raise _AuditEvidenceError("audit value too large")
+    text = "".join(
+        " " if unicodedata.category(character).startswith("C") else character
+        for character in text
+    )
+    text = " ".join(text.split())
+    if display and len(text) > _AUDIT_DISPLAY_CHARS:
+        text = text[:_AUDIT_DISPLAY_CHARS - 1].rstrip() + "…"
+    return text
+
+
+def _value_parts(value) -> tuple[str, ...]:
+    if isinstance(value, Mapping):
+        raise _AuditEvidenceError("audit mapping value is ambiguous")
+    if isinstance(value, (list, tuple, set, frozenset)):
+        if len(value) > _AUDIT_MAX_COLLECTION:
+            raise _AuditEvidenceError("audit collection too large")
+        if any(isinstance(item, (Mapping, list, tuple, set, frozenset))
+               for item in value):
+            raise _AuditEvidenceError("nested audit collection")
+        values = tuple(_single_line(item) for item in value if _present(item))
+        return tuple(sorted(values, key=lambda item: (item.casefold(), item)))
+    return (_single_line(value),)
+
+
+def _canonical_owners(lexicon, surface: str) -> frozenset[str]:
+    owners = set()
+    for resolver_name in ("canonical_field", "canonical_audit"):
+        resolver = getattr(lexicon, resolver_name, None)
+        if resolver is None:
+            continue
+        owner = resolver(surface)
+        if owner is not None:
+            owners.add(str(owner))
+    return frozenset(owners)
+
+
+def _entry_value(entry: dict, canonical: str, lexicon):
+    """Resolve a canonical value without dict-order or alias precedence.
+
+    Producer metadata has an explicit protocol precedence.  In particular a
+    complete source path is an identity, while ``_source_name`` is only its
+    fallback label.  Natural-language aliases form a separate equivalence
+    class: every populated alias must agree or the audit fails closed.
+    """
+
+    primary_key = {
+        "origin": "_source_path",
+        "readable": "_source_readable",
+        "duplicates": "_duplicate_paths",
+    }.get(canonical)
+    primary = entry.get(primary_key) if primary_key is not None else None
+
+    candidates = []
+    for key, value in entry.items():
+        if not _present(value):
+            continue
+        if canonical in _canonical_owners(lexicon, str(key)):
+            candidates.append(value)
+    if _present(primary):
+        candidates.append(primary)
+    if not candidates:
+        if canonical == "origin" and _present(entry.get("_source_name")):
+            return entry["_source_name"]
+        return None
+
+    normalized = [_value_parts(value) for value in candidates]
+    collection_shape = [
+        isinstance(value, (list, tuple, set, frozenset))
+        for value in candidates
+    ]
+    comparable = {
+        (is_collection, tuple(part.casefold() for part in parts))
+        for is_collection, parts in zip(collection_shape, normalized)
+    }
+    if len(comparable) != 1:
+        raise _AuditEvidenceError(f"conflicting aliases for {canonical}")
+    if _present(primary):
+        return primary
+    # Deterministic even when equivalent aliases differ only by casing.
+    selected_idx = min(range(len(candidates)), key=lambda index: (
+        tuple((part.casefold(), part) for part in normalized[index]),
+        type(candidates[index]).__name__,
+    ))
+    if collection_shape[selected_idx]:
+        return normalized[selected_idx]
+    return candidates[selected_idx]
+
+
+def _source_parts(entry: dict, lexicon) -> tuple[str, str]:
+    value = _entry_value(entry, "origin", lexicon)
+    if value in (None, ""):
+        return "", ""
+    identity = _single_line(value).strip().replace("\\", "/")
+    return identity, identity.rsplit("/", 1)[-1]
+
+
+def _document_family(
+    name: str, lexicon,
+) -> tuple[tuple[str, ...], bool]:
     """Chiave di famiglia per varianti dello stesso documento.
 
     Rimuove SOLO marcatori espliciti di versione/stato. Questo evita di
@@ -761,145 +881,590 @@ def _document_family(name: str) -> tuple[tuple[str, ...], bool]:
     ma associa ad esempio ``Budget_Atlas_approvato`` e
     ``Budget_Atlas_revisione``.
     """
-    stem = re.sub(r"\.[A-Za-z0-9]{1,8}$", "", name.casefold())
-    tokens = re.findall(r"[a-z0-9à-öø-ÿ]+", stem)
-    kept = [token for token in tokens if token not in _DOC_AUDIT_VARIANT_TOKENS]
+    stem = re.sub(
+        r"\.[A-Za-z0-9]{1,8}$", "",
+        unicodedata.normalize("NFKC", name).casefold(),
+    )
+    tokens = [
+        token for token in re.split(r"[\W_]+", stem, flags=re.UNICODE)
+        if token
+    ]
+    kept = [
+        token for token in tokens
+        if not lexicon.is_variant_token(token)
+    ]
     return tuple(kept), len(kept) != len(tokens)
 
 
-def _first_semantic_value(entry: dict, keys: tuple[str, ...]):
-    folded = {str(key).casefold().replace("_", " "): value
-              for key, value in entry.items()}
-    for key in keys:
-        value = folded.get(key)
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    return ""
+def _meaningful_family(family: tuple[str, ...], *, variant: bool, lexicon) -> bool:
+    if len(family) >= 2:
+        return True
+    if len(family) != 1:
+        return False
+    token = family[0]
+    normalized = unicodedata.normalize("NFKD", token.casefold())
+    normalized = "".join(
+        character for character in normalized
+        if not unicodedata.combining(character)
+    )
+    folded = re.sub(
+        r"_+", "_", "".join(
+            character if character.isalnum() else "_"
+            for character in normalized
+        ),
+    ).strip("_")
+    significant_length = (
+        len(folded) >= 4
+        or any(ord(character) > 127 and character.isalnum()
+               for character in folded)
+    )
+    return (
+        significant_length
+        and folded not in lexicon.relevance_generic_tokens
+        and (variant or not folded.isdigit())
+    )
 
 
-def _document_contradictions(entries: list[dict]) -> list[dict]:
-    """Conflitti deterministici fra varianti nominate dello stesso documento."""
-    families: dict[tuple[str, ...], list[tuple[str, dict, bool]]] = {}
-    seen_sources = set()
+def _semantic_value(entry: dict, canonical: str, lexicon) -> str:
+    value = _entry_value(entry, canonical, lexicon)
+    if value is None:
+        return ""
+    if isinstance(value, tuple):
+        return ", ".join(_single_line(item, display=True) for item in value)
+    return _single_line(value, display=True)
+
+
+def _document_contradictions(entries: list[dict], *, lexicon) -> list[dict]:
+    """Compare named variants and path-distinct copies deterministically."""
+
+    candidates: list[tuple[str, str, dict, tuple[str, ...], bool]] = []
+    identity_counts: dict[str, int] = {}
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        name = _source_name(entry)
-        if not name or name in seen_sources:
+        identity, name = _source_parts(entry, lexicon)
+        if not identity:
             continue
-        seen_sources.add(name)
-        family, variant = _document_family(name)
-        if len(family) >= 2:
-            families.setdefault(family, []).append((name, entry, variant))
+        family, variant = _document_family(name, lexicon)
+        candidates.append((identity, name, entry, family, variant))
+        identity_counts[identity] = identity_counts.get(identity, 0) + 1
 
-    conflicts = []
-    fields = (
-        (("importo", "amount", "total", "importi", "amounts"), "importo"),
-        (("scadenza", "scadenze", "deadline", "deadlines", "due date"),
-         "scadenza"),
-        (("fornitore", "supplier", "vendor"), "fornitore"),
-        (("stato", "status", "state", "approval status", "decision status"),
-         "stato"),
-    )
+    families: dict[
+        tuple[str, ...], list[tuple[str, str, dict, bool]]
+    ] = {}
+    for identity, name, entry, family, variant in candidates:
+        # A repeated complete source identity is itself strong evidence that
+        # the records must be reconciled, even when its basename is generic.
+        if (identity_counts[identity] > 1
+                or _meaningful_family(
+                    family, variant=variant, lexicon=lexicon,
+                )):
+            families.setdefault(family, []).append(
+                (identity, name, entry, variant),
+            )
+
+    conflicts: list[dict] = []
+    fields = ("amount", "deadline", "supplier", "status")
     for records in families.values():
-        if len(records) < 2 or not any(record[2] for record in records):
+        if len(records) < 2:
+            continue
+        name_counts: dict[str, int] = {}
+        for _identity, name, _entry, _variant in records:
+            name_counts[name] = name_counts.get(name, 0) + 1
+        if (not any(count > 1 for count in name_counts.values())
+                and not any(record[3] for record in records)):
             continue
         for left_idx in range(len(records)):
             for right_idx in range(left_idx + 1, len(records)):
-                left_name, left, _ = records[left_idx]
-                right_name, right, _ = records[right_idx]
+                left_id, left_name, left, _ = records[left_idx]
+                right_id, right_name, right, _ = records[right_idx]
                 details = []
-                for keys, fallback_label in fields:
-                    lv = _first_semantic_value(left, keys)
-                    rv = _first_semantic_value(right, keys)
+                for canonical in fields:
+                    lv = _semantic_value(left, canonical, lexicon)
+                    rv = _semantic_value(right, canonical, lexicon)
                     if lv and rv and lv.casefold() != rv.casefold():
-                        # Usa il nome campo realmente presente quando possibile;
-                        # il fallback resta comprensibile anche su record misti.
-                        label = next((key for key in keys
-                                      if key in {str(k).casefold().replace('_', ' ')
-                                                 for k in left}), fallback_label)
-                        details.append(f"{label}: {lv} ↔ {rv}")
+                        label = (
+                            lexicon.surface(canonical)
+                            if canonical in lexicon.fields
+                            else lexicon.audit[canonical][0]
+                        )
+                        details.append(
+                            f"{_single_line(label, display=True)}: {lv} ↔ {rv}"
+                        )
                 if details:
                     conflicts.append({
-                        "left": left_name, "right": right_name,
-                        "details": "; ".join(details),
+                        "left": _single_line(
+                            left_id if name_counts[left_name] > 1 else left_name,
+                            display=True,
+                        ),
+                        "right": _single_line(
+                            right_id if name_counts[right_name] > 1 else right_name,
+                            display=True,
+                        ),
+                        "details": _single_line(
+                            "; ".join(details), display=True,
+                        ),
                     })
     return conflicts
 
 
-def _append_document_audit(text: str, entries: list[dict], context: str,
-                           fmt: str) -> str:
-    """Audit documentale deterministico richiesto esplicitamente dall'utente."""
-    if fmt not in ("markdown", "plain", "bullet_list"):
-        return text
-    q = (context or "").casefold()
-    wants_conflicts = bool(re.search(
-        r"contradditt|contradict|inconsisten|conflict", q))
-    wants_unreadable = bool(re.search(r"illeggibil|unreadable|corrupt", q))
-    wants_duplicates = bool(re.search(r"duplicat|deduplic", q))
-    if not (wants_conflicts or wants_unreadable or wants_duplicates):
+_AUDIT_TEMPLATE_FIELDS: Mapping[str, frozenset[str]] = {
+    "ERR_EXT_SVC_UNAVAILABLE": frozenset(),
+    "MSG_DOCUMENT_AUDIT_HEADER": frozenset(),
+    "MSG_DOCUMENT_AUDIT_CONTRADICTION": frozenset({"left", "right", "details"}),
+    "MSG_DOCUMENT_AUDIT_UNREADABLE": frozenset({"files"}),
+    "MSG_DOCUMENT_AUDIT_DUPLICATES": frozenset({"details"}),
+}
+_AUDIT_TEXT_FORMATS = frozenset({"markdown", "plain", "bullet_list"})
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentAuditRequest:
+    conflicts: bool = False
+    unreadable: bool = False
+    duplicates: bool = False
+
+    @property
+    def requested(self) -> bool:
+        return self.conflicts or self.unreadable or self.duplicates
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentAuditConflict:
+    left: str
+    right: str
+    details: str
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentAuditOutcome:
+    state: str
+    request: DocumentAuditRequest
+    conflicts: tuple[DocumentAuditConflict, ...] = ()
+    unreadable: tuple[str, ...] = ()
+    duplicates: tuple[str, ...] = ()
+    error_code: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _DocumentAuditSnapshot:
+    lexicon: object
+    patterns: Mapping[str, tuple[re.Pattern, ...]]
+    templates: Mapping[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class _DocumentAuditPlan:
+    snapshot: _DocumentAuditSnapshot | None
+    outcome: DocumentAuditOutcome
+    fmt: str
+
+
+def _template_fields(template: str) -> frozenset[str] | None:
+    try:
+        parsed = tuple(Formatter().parse(template))
+    except ValueError:
+        return None
+    fields: set[str] = set()
+    for _literal, name, spec, conversion in parsed:
+        if name is None:
+            continue
+        # Audit templates are deliberately data-only.  Attribute/index access,
+        # conversions and format mini-languages would widen the rendering seam.
+        if not name.isidentifier() or spec or conversion:
+            return None
+        fields.add(name)
+    return frozenset(fields)
+
+
+def _ready_audit_templates() -> dict[str, str] | None:
+    """Freeze one complete, ready language family in one SQLite statement.
+
+    A partially materialized preferred language is not permission to mix its
+    rows with fallback rows.  Translation provenance is checked recursively
+    against ready, self-hashed source rows from the same frozen query, never
+    against mutable per-key fallback reads.
+    """
+
+    try:
+        chain = _i18n.language_chain(_i18n.current_lang())
+        connection = _i18n._open()
+        keys = tuple(_AUDIT_TEMPLATE_FIELDS)
+        placeholders = ",".join("?" for _ in keys)
+        rows = connection.execute(
+            "SELECT key,lang,text,needs_translation,source_lang,"
+            "version_hash,source_text_hash FROM i18n WHERE key IN ("
+            + placeholders + ")",
+            keys,
+        ).fetchall()
+    except Exception:
+        return None
+    by_identity = {(str(row[0]), str(row[1])): row for row in rows}
+
+    def digest(text: str) -> str:
+        return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    validated_rows: set[tuple[str, str]] = set()
+
+    def validate_row(key: str, language: str,
+                     trail: frozenset[tuple[str, str]]) -> str | None:
+        identity = (key, language)
+        if identity in validated_rows:
+            row = by_identity.get(identity)
+            return str(row[2]) if row is not None else None
+        if identity in trail:
+            return None
+        row = by_identity.get(identity)
+        if row is None or row[2] is None:
+            return None
+        try:
+            pending = int(row[3] or 0)
+        except (TypeError, ValueError):
+            return None
+        text = str(row[2])
+        if pending or row[5] != digest(text):
+            return None
+        if _template_fields(text) != _AUDIT_TEMPLATE_FIELDS[key]:
+            return None
+        source_lang = str(row[4] or "")
+        source_hash = str(row[6] or "")
+        if not source_lang:
+            if source_hash:
+                return None
+        else:
+            if (_i18n.normalize_language(source_lang) != source_lang
+                    or source_lang == language):
+                return None
+            source_text = validate_row(
+                key, source_lang, trail | frozenset({identity}),
+            )
+            source = by_identity.get((key, source_lang))
+            if (source_text is None or source is None
+                    or source_hash != str(source[5] or "")
+                    or source_hash != digest(source_text)):
+                return None
+        validated_rows.add(identity)
         return text
 
-    conflicts = _document_contradictions(entries) if wants_conflicts else []
-    unreadable = sorted({
-        _source_name(entry) for entry in entries
-        if isinstance(entry, dict)
-        and (entry.get("readable") is False
-             or entry.get("_source_readable") is False)
-        and _source_name(entry)
-    }) if wants_unreadable else []
-    duplicates = []
-    if wants_duplicates:
-        for entry in entries:
-            if not isinstance(entry, dict):
+    def validated_family(language: str) -> dict[str, str] | None:
+        family: dict[str, str] = {}
+        for key in _AUDIT_TEMPLATE_FIELDS:
+            text = validate_row(key, language, frozenset())
+            if text is None:
+                return None
+            family[key] = text
+        return family
+
+    for candidate in chain:
+        present = any((key, candidate) in by_identity for key in keys)
+        if not present:
+            continue
+        # The first present language in the configured chain owns the whole
+        # family.  Partial, pending or malformed data is a fail-closed state.
+        return validated_family(candidate)
+    return None
+
+
+def _patterns_from_family(resources, concepts) -> dict[str, tuple[re.Pattern, ...]] | None:
+    compiled: dict[str, tuple[re.Pattern, ...]] = {}
+    for concept in concepts:
+        patterns: list[re.Pattern] = []
+        seen: set[str] = set()
+        for resource in resources.get(concept, ()):
+            payload = resource.get("payload")
+            if not isinstance(payload, list) or not payload:
+                return None
+            for source in payload:
+                if not isinstance(source, str) or not source.strip():
+                    return None
+                if source in seen:
+                    continue
+                try:
+                    patterns.append(re.compile(source, re.IGNORECASE))
+                except re.error:
+                    return None
+                seen.add(source)
+        if not patterns:
+            return None
+        compiled[concept] = tuple(patterns)
+    return compiled
+
+
+def _capture_document_audit_snapshot() -> _DocumentAuditSnapshot | None:
+    """Capture all audit authority before inspecting intent or entries."""
+
+    import detection_lexicon as detection_lexicon
+    import detection_lexicon_seed_runtime_safety as safety
+
+    concepts = (
+        safety.DOCUMENT_AUDIT_CONFLICT_INTENT,
+        safety.DOCUMENT_AUDIT_UNREADABLE_INTENT,
+        safety.DOCUMENT_AUDIT_DUPLICATE_INTENT,
+        safety.DOCUMENT_NO_CONTRADICTION_CLAIM,
+    )
+    try:
+        _reconciliation_lex._ensure_registered()
+        safety._ensure_registered()
+        kinds = _reconciliation_lex.family_kinds()
+        kinds.update({concept: "regex" for concept in concepts})
+        resources = detection_lexicon.native_ready_family_resources(
+            kinds,
+            require_manual=True,
+            include_reviewed_baselines=True,
+        )
+    except Exception:
+        return None
+    if resources is None:
+        return None
+    lexicon = _reconciliation_lex.from_resources(resources)
+    patterns = _patterns_from_family(resources, concepts)
+    templates = _ready_audit_templates()
+    if lexicon is None or patterns is None or templates is None:
+        return None
+    return _DocumentAuditSnapshot(
+        lexicon=lexicon, patterns=patterns, templates=templates,
+    )
+
+
+def _matches_any(patterns: tuple[re.Pattern, ...], text: str) -> bool:
+    return any(pattern.search(text or "") for pattern in patterns)
+
+
+def _audit_request(snapshot: _DocumentAuditSnapshot,
+                   context: str) -> DocumentAuditRequest:
+    import detection_lexicon_seed_runtime_safety as safety
+
+    return DocumentAuditRequest(
+        conflicts=_matches_any(
+            snapshot.patterns[safety.DOCUMENT_AUDIT_CONFLICT_INTENT], context,
+        ),
+        unreadable=_matches_any(
+            snapshot.patterns[safety.DOCUMENT_AUDIT_UNREADABLE_INTENT], context,
+        ),
+        duplicates=_matches_any(
+            snapshot.patterns[safety.DOCUMENT_AUDIT_DUPLICATE_INTENT], context,
+        ),
+    )
+
+
+def _prepare_document_audit(entries: list, context: str,
+                            fmt: str) -> _DocumentAuditPlan:
+    """Capture authority and audit the original, uncapped input exactly once."""
+
+    snapshot = _capture_document_audit_snapshot()
+    if snapshot is None:
+        return _DocumentAuditPlan(
+            snapshot=None,
+            outcome=DocumentAuditOutcome(
+                state="unavailable", request=DocumentAuditRequest(),
+                error_code="ERR_EXT_SVC_UNAVAILABLE",
+            ),
+            fmt=fmt,
+        )
+    try:
+        request = _audit_request(snapshot, _single_line(context))
+    except _AuditEvidenceError:
+        return _DocumentAuditPlan(
+            snapshot=snapshot,
+            outcome=DocumentAuditOutcome(
+                state="invalid_evidence", request=DocumentAuditRequest(),
+                error_code="ERR_ARG_INVALID",
+            ),
+            fmt=fmt,
+        )
+    if not request.requested:
+        return _DocumentAuditPlan(
+            snapshot=snapshot,
+            outcome=DocumentAuditOutcome(
+                state="not_requested", request=request,
+            ),
+            fmt=fmt,
+        )
+    if fmt not in _AUDIT_TEXT_FORMATS:
+        return _DocumentAuditPlan(
+            snapshot=snapshot,
+            outcome=DocumentAuditOutcome(
+                state="unsupported_format", request=request,
+                error_code="ERR_EXT_SVC_UNAVAILABLE",
+            ),
+            fmt=fmt,
+        )
+
+    dictionaries = [entry for entry in entries if isinstance(entry, dict)]
+    try:
+        if len(dictionaries) > _AUDIT_MAX_ENTRIES:
+            raise _AuditEvidenceError("too many audit entries")
+        conflicts = (
+            _document_contradictions(dictionaries, lexicon=snapshot.lexicon)
+            if request.conflicts else []
+        )
+        unreadable: set[str] = set()
+        duplicates: set[str] = set()
+        for entry in dictionaries:
+            identity, retained = _source_parts(entry, snapshot.lexicon)
+            retained = _single_line(retained, display=True) if retained else ""
+            readable = _entry_value(entry, "readable", snapshot.lexicon)
+            if (request.unreadable and retained and readable is False):
+                unreadable.add(retained)
+            if not request.duplicates or not identity:
                 continue
-            retained = _source_name(entry)
-            paths = entry.get("_duplicate_paths") or entry.get("duplicate_paths")
-            for path in paths if isinstance(paths, list) else []:
-                duplicate = re.split(r"[\\/]", str(path))[-1]
-                if retained and duplicate:
-                    duplicates.append(f"{retained} ← {duplicate}")
+            paths = _entry_value(entry, "duplicates", snapshot.lexicon)
+            if not isinstance(paths, (list, tuple, set, frozenset)):
+                continue
+            for path in paths:
+                duplicate = _single_line(path).strip().replace("\\", "/")
+                if duplicate:
+                    duplicates.add(_single_line(
+                        f"{identity} ← {duplicate}", display=True,
+                    ))
+    except _AuditEvidenceError:
+        return _DocumentAuditPlan(
+            snapshot=snapshot,
+            outcome=DocumentAuditOutcome(
+                state="invalid_evidence", request=request,
+                error_code="ERR_ARG_INVALID",
+            ),
+            fmt=fmt,
+        )
+    return _DocumentAuditPlan(
+        snapshot=snapshot,
+        outcome=DocumentAuditOutcome(
+            state="completed", request=request,
+            conflicts=tuple(DocumentAuditConflict(**item) for item in conflicts),
+            unreadable=tuple(sorted(unreadable)),
+            duplicates=tuple(sorted(duplicates)),
+        ),
+        fmt=fmt,
+    )
 
-    lines = []
-    if conflicts:
-        # Elimina affermazioni LLM opposte ai fatti appena calcolati. Il testo
-        # generativo resta per il resto intatto; l'audit e' autoritativo.
-        text = re.sub(
-            r"(?im)^.*(?:tutti\s+i\s+dati.*coerent|nessun\w*\s+contraddizion|"
-            r"all\s+(?:the\s+)?data.*consistent|no\s+contradictions?).*(?:\n|$)",
-            "", text).rstrip()
-        # La negazione puo' essere una sola frase dentro una bullet altrimenti
-        # utile (live Atlas: "Errori: ... Nessun dato contraddittorio...").
-        # Rimuovi la sola clausola incompatibile, preservando il resto della
-        # riga e lasciando l'audit deterministico come fonte autoritativa.
-        text = re.sub(
-            r"(?i)(?:nessun\w*|no)(?:\s+\w+){0,4}\s+"
-            r"(?:contraddittor|contradiction|inconsisten|conflict)\w*"
-            r"[^.\n]*(?:\.|$)",
-            "", text).rstrip()
-        for item in conflicts:
-            lines.append(_msg(
-                "MSG_DOCUMENT_AUDIT_CONTRADICTION",
-                left=item["left"], right=item["right"],
-                details=item["details"]))
-    if unreadable:
-        lines.append(_msg("MSG_DOCUMENT_AUDIT_UNREADABLE",
-                          files=", ".join(unreadable)))
-    if duplicates:
-        lines.append(_msg("MSG_DOCUMENT_AUDIT_DUPLICATES",
-                          details="; ".join(sorted(set(duplicates)))))
+
+def _audit_metadata(outcome: DocumentAuditOutcome) -> dict:
+    return {
+        "state": outcome.state,
+        "request": {
+            "conflicts": outcome.request.conflicts,
+            "unreadable": outcome.request.unreadable,
+            "duplicates": outcome.request.duplicates,
+        },
+        "conflicts": [
+            {"left": item.left, "right": item.right, "details": item.details}
+            for item in outcome.conflicts
+        ],
+        "unreadable": list(outcome.unreadable),
+        "duplicates": list(outcome.duplicates),
+        "error_code": outcome.error_code,
+    }
+
+
+def _audit_error(plan: _DocumentAuditPlan) -> dict:
+    code = plan.outcome.error_code or "ERR_EXT_SVC_UNAVAILABLE"
+    template = (
+        plan.snapshot.templates.get(code)
+        if plan.snapshot is not None else None
+    )
+    return {
+        "ok": False,
+        "error_code": code,
+        "error": template or code,
+        "document_audit": _audit_metadata(plan.outcome),
+    }
+
+
+_AUDIT_MARKDOWN_ESCAPE = re.compile(r"([\\`*_{}\[\]()<>#+.!|~-])")
+
+
+def _escape_audit_value(value: str, fmt: str) -> str:
+    value = _single_line(value, display=True)
+    if fmt in {"markdown", "bullet_list"}:
+        return _AUDIT_MARKDOWN_ESCAPE.sub(r"\\\1", value)
+    return value
+
+
+def _render_document_audit(text: str, plan: _DocumentAuditPlan) -> str:
+    outcome = plan.outcome
+    snapshot = plan.snapshot
+    if outcome.state != "completed" or snapshot is None:
+        return text
+    lines: list[str] = []
+    if outcome.conflicts:
+        import detection_lexicon_seed_runtime_safety as safety
+        for pattern in snapshot.patterns[safety.DOCUMENT_NO_CONTRADICTION_CLAIM]:
+            text = pattern.sub("", text).rstrip()
+        for item in outcome.conflicts:
+            lines.append(snapshot.templates[
+                "MSG_DOCUMENT_AUDIT_CONTRADICTION"
+            ].format(
+                left=_escape_audit_value(item.left, plan.fmt),
+                right=_escape_audit_value(item.right, plan.fmt),
+                details=_escape_audit_value(item.details, plan.fmt),
+            ))
+    if outcome.unreadable:
+        lines.append(snapshot.templates[
+            "MSG_DOCUMENT_AUDIT_UNREADABLE"
+        ].format(files=", ".join(
+            _escape_audit_value(item, plan.fmt) for item in outcome.unreadable
+        )))
+    if outcome.duplicates:
+        lines.append(snapshot.templates[
+            "MSG_DOCUMENT_AUDIT_DUPLICATES"
+        ].format(details="; ".join(
+            _escape_audit_value(item, plan.fmt) for item in outcome.duplicates
+        )))
     if not lines:
         return text
-    audit = _msg("MSG_DOCUMENT_AUDIT_HEADER") + "\n" + "\n".join(lines)
+    audit = snapshot.templates["MSG_DOCUMENT_AUDIT_HEADER"] + "\n" + "\n".join(lines)
     return (text.rstrip() + "\n\n" + audit).strip() if text.strip() else audit
+
+
+def _finalize_document_audit(result: dict,
+                             plan: _DocumentAuditPlan | None) -> dict:
+    if plan is None:
+        return result
+    if plan.outcome.error_code:
+        return _audit_error(plan)
+    finalized = dict(result)
+    if finalized.get("ok") and isinstance(finalized.get("summary"), str):
+        finalized["summary"] = _render_document_audit(
+            finalized["summary"], plan,
+        )
+    finalized["document_audit"] = _audit_metadata(plan.outcome)
+    return finalized
 
 
 def handle_describe_entries(args, *, verbose: bool = False,
                              _mr_depth: int = 0,
                              _deterministic: bool | None = None) -> dict:
-    entries = (args or {}).get("entries")
+    if not isinstance(args, Mapping):
+        return {
+            "ok": False,
+            "error_code": "ERR_ARG_INVALID",
+            "error": _msg(
+                "ERR_ARG_INVALID", arg="args", reason="must_be_object",
+            ),
+        }
+    entries = args.get("entries")
     if not isinstance(entries, list):
-        return {"ok": False, "error": "missing or invalid 'entries' (must be a list)"}
+        return {
+            "ok": False,
+            "error_code": "ERR_ARG_INVALID",
+            "error": _msg(
+                "ERR_ARG_INVALID", arg="entries", reason="must_be_list",
+            ),
+        }
+    try:
+        # Freeze both audit evidence and the later summarization input.  A
+        # producer retaining references to nested rows cannot move either side
+        # of the comparison after authority has been captured.
+        entries = copy.deepcopy(entries)
+    except Exception:
+        return {
+            "ok": False,
+            "error_code": "ERR_ARG_INVALID",
+            "error": _msg(
+                "ERR_ARG_INVALID", arg="entries", reason="not_snapshotable",
+            ),
+        }
+    original_entries = list(entries)
 
     # Header opzionale come primo elemento: {_meta: True, kind, style,
     # context, max_tokens, prompt_override}. I valori dell'header NON
@@ -907,8 +1472,19 @@ def handle_describe_entries(args, *, verbose: bool = False,
     header, entries = _extract_header(entries)
     h = header or {}
 
-    style = (args or {}).get("style") or h.get("style") or "by_importance"
-    context = (args or {}).get("context") or h.get("context") or ""
+    style = args.get("style") or h.get("style") or "by_importance"
+    context = args.get("context")
+    if context is None:
+        context = h.get("context") or ""
+    if not isinstance(style, str) or not isinstance(context, str):
+        return {
+            "ok": False,
+            "error_code": "ERR_ARG_INVALID",
+            "error": _msg(
+                "ERR_ARG_INVALID", arg="style|context",
+                reason="must_be_string",
+            ),
+        }
     # Safety net (20/5 v6): style=by_relevance richiede `context` con la
     # query utente per fare un riassunto mirato. Se il PLANNER l'ha
     # dimenticato, ricadiamo deterministicamente a by_importance (segnale
@@ -916,14 +1492,48 @@ def handle_describe_entries(args, *, verbose: bool = False,
     # dell'utente vuota '', non posso rispondere".
     if style == "by_relevance" and not (context and context.strip()):
         style = "by_importance"
-    data_kind = (args or {}).get("data_kind") or h.get("kind") or h.get("data_kind")
+    data_kind = args.get("data_kind") or h.get("kind") or h.get("data_kind")
+    if data_kind is not None and not isinstance(data_kind, str):
+        return {
+            "ok": False,
+            "error_code": "ERR_ARG_INVALID",
+            "error": _msg(
+                "ERR_ARG_INVALID", arg="data_kind", reason="must_be_string",
+            ),
+        }
     # max_tokens adattivo per dimensione bundle (era 600 fisso → 400 → scala):
     # N=1-3 → 200, N=4-10 → 300, N>10 → 400. Riduce KV-cache allocation
     # llama-server proporzionalmente al target output reale (3-5 righe). Caller
     # puo' override esplicito.
-    _explicit_max = (args or {}).get("max_tokens") or h.get("max_tokens")
+    _explicit_max = args.get("max_tokens")
+    if _explicit_max is None:
+        _explicit_max = h.get("max_tokens")
     if _explicit_max is not None:
-        max_tokens = int(_explicit_max)
+        try:
+            if isinstance(_explicit_max, bool):
+                raise ValueError("boolean is not an integer budget")
+            if (isinstance(_explicit_max, float)
+                    and not _explicit_max.is_integer()):
+                raise ValueError("fractional budget")
+            max_tokens = int(_explicit_max)
+        except (TypeError, ValueError, OverflowError):
+            return {
+                "ok": False,
+                "error_code": "ERR_ARG_INVALID",
+                "error": _msg(
+                    "ERR_ARG_INVALID", arg="max_tokens",
+                    reason="must_be_integer",
+                ),
+            }
+        if max_tokens <= 0:
+            return {
+                "ok": False,
+                "error_code": "ERR_ARG_INVALID",
+                "error": _msg(
+                    "ERR_ARG_INVALID", arg="max_tokens",
+                    reason="must_be_positive",
+                ),
+            }
     else:
         _n_ent = len(entries) if isinstance(entries, list) else 0
         if _n_ent <= 3:
@@ -938,9 +1548,29 @@ def handle_describe_entries(args, *, verbose: bool = False,
             # terminale TABELLA deterministico (output_policy L-mode) per le liste.
             max_tokens = min(_DESCRIBE_MAX_TOKENS_CAP,
                              max(400, _n_ent * _DESCRIBE_TOKENS_PER_ENTRY))
-    prompt_override = (args or {}).get("prompt_override") or h.get("prompt_override")
-    group_by = (args or {}).get("group_by") or h.get("group_by") or ""
-    fmt = (args or {}).get("format") or h.get("format") or "markdown"
+    prompt_override = args.get("prompt_override") or h.get("prompt_override")
+    group_by = args.get("group_by") or h.get("group_by") or ""
+    fmt = args.get("format")
+    if fmt is None:
+        fmt = h.get("format") or "markdown"
+    if (prompt_override is not None and not isinstance(prompt_override, str)):
+        return {
+            "ok": False,
+            "error_code": "ERR_ARG_INVALID",
+            "error": _msg(
+                "ERR_ARG_INVALID", arg="prompt_override",
+                reason="must_be_string",
+            ),
+        }
+    if not isinstance(group_by, str) or not isinstance(fmt, str):
+        return {
+            "ok": False,
+            "error_code": "ERR_ARG_INVALID",
+            "error": _msg(
+                "ERR_ARG_INVALID", arg="group_by|format",
+                reason="must_be_string",
+            ),
+        }
     tier = "auto"
     # ADR 0111 (7/5/2026): Level 2 — describe_entries deve sapere se la
     # sorgente (`from_step`) aveva un blocco `health` (load/memoria/dischi/
@@ -959,16 +1589,36 @@ def handle_describe_entries(args, *, verbose: bool = False,
     # rigettava 'bullet_list' e l'errore diventava la risposta). Degrade
     # deterministico: (1) se è un format valido messo nel posto sbagliato,
     # spostalo in `fmt`; (2) ricadi sempre sullo style di default. Mai hard-fail.
-    _FORMATS = ("markdown", "html", "plain", "bullet_list", "json")
     if style not in STYLES and not prompt_override:
         if style in _FORMATS:
             fmt = style           # era un format messo nel posto sbagliato
         style = "by_importance"   # default robusto, mai crash
 
+    if fmt not in _FORMATS:
+        return {
+            "ok": False,
+            "error_code": "ERR_FMT_INVALID",
+            "error": _msg("ERR_FMT_INVALID", value=fmt),
+        }
+
+    # Only the root call owns audit authority.  Map/reduce children operate on
+    # derived digests and must neither reacquire grammar nor audit a subset.
+    audit_plan = (
+        _prepare_document_audit(original_entries, str(context or ""), fmt)
+        if _mr_depth == 0 else None
+    )
+    if audit_plan is not None and audit_plan.outcome.error_code:
+        return _audit_error(audit_plan)
+
+    def finish(result: dict) -> dict:
+        return _finalize_document_audit(result, audit_plan)
+
     if not entries:
-        return {"ok": True, "summary": "", "item_count": 0, "style": style,
-                "data_kind": data_kind or "generic",
-                "in_tokens": 0, "out_tokens": 0, "latency_ms": 0}
+        return finish({
+            "ok": True, "summary": "", "item_count": 0, "style": style,
+            "data_kind": data_kind or "generic",
+            "in_tokens": 0, "out_tokens": 0, "latency_ms": 0,
+        })
 
     # Le collezioni prodotte da extract_entries hanno gia' un piccolo schema.
     # Una seconda LLM call di sintesi puo' soltanto perdere righe/campi: il
@@ -977,7 +1627,7 @@ def handle_describe_entries(args, *, verbose: bool = False,
             and all(isinstance(entry, dict) for entry in entries):
         text = _format_structured_entries(entries, fmt, str(group_by or ""))
         text = _maybe_append_link_section(text, entries, fmt, data_kind)
-        return {
+        return finish({
             "ok": True,
             "summary": text,
             "item_count": len(entries),
@@ -988,7 +1638,7 @@ def handle_describe_entries(args, *, verbose: bool = False,
             "in_tokens": 0,
             "out_tokens": 0,
             "latency_ms": 0,
-        }
+        })
 
     # ADR 0153 (19/5/2026 v6): content fetch on-demand. Se le entries
     # hanno SOLO url+title+snippet (tipicamente output di find_urls) e
@@ -1037,17 +1687,13 @@ def handle_describe_entries(args, *, verbose: bool = False,
             and e["url"].startswith(("http://", "https://"))
         ][:5]
         if _urls_for_fetch:
-            return {
+            return finish({
                 "ok": False,
+                "error_code": "ERR_ARG_MISSING",
                 "error_class": "needs_content_fetch",
                 "needs_urls_html": _urls_for_fetch,
-                "error": (
-                    "describe_entries: le entries hanno solo metadata "
-                    "(url/title/snippet), nessun contenuto testuale. "
-                    "Il runtime interpone read_urls_html sui top URL "
-                    "e ri-prova."
-                ),
-            }
+                "error": _msg("ERR_ARG_MISSING", arg="entries.content"),
+            })
 
     # Cap dinamico a budget di caratteri (§2.7, §7.3): mandiamo al prompt
     # solo le prime N entries che stanno nel budget e dichiariamo truncated
@@ -1061,10 +1707,10 @@ def handle_describe_entries(args, *, verbose: bool = False,
     # ricorsione. Sotto budget (truncated_describe=False): path invariato.
     if (truncated_describe and _DESCRIBE_MAPREDUCE
             and _mr_depth < _MR_MAX_DEPTH):
-        return _describe_map_reduce(
+        return finish(_describe_map_reduce(
             entries, style=style, context=context, data_kind=data_kind,
             fmt=fmt, group_by=group_by, max_tokens=max_tokens,
-            health_context=health_context, mr_depth=_mr_depth)
+            health_context=health_context, mr_depth=_mr_depth))
 
     if tier == "auto":
         tier = _auto_tier(visible_entries)
@@ -1118,8 +1764,10 @@ def handle_describe_entries(args, *, verbose: bool = False,
                               deterministic=_det,
                               max_query_chars=_DESCRIBE_MAX_CHARS + 2048)
     except Exception as e:
-        return {"ok": False, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
-                "error": f"LLM call failed: {type(e).__name__}: {e}"}
+        return finish({
+            "ok": False, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
+            "error": f"LLM call failed: {type(e).__name__}: {e}",
+        })
 
     # ADR 0119 (9/5/2026): post-process append "Link diretti" se le entries
     # hanno `url` o `path` E il LLM non li ha gia' citati nel summary.
@@ -1127,7 +1775,6 @@ def handle_describe_entries(args, *, verbose: bool = False,
     # rispetta le regole di prompt che vietano elenco letterale (il LLM
     # produce sintesi pulita, il post-process aggiunge i link sotto).
     text = _maybe_append_link_section(text, visible_entries, fmt, kind)
-    text = _append_document_audit(text, visible_entries, context, fmt)
 
     # Patch 3 (8/5/2026): se truncated, append nota localizzata al summary
     # cosi' l'utente vede subito il cap (UX onesto §2.8) e il PLANNER
@@ -1165,7 +1812,7 @@ def handle_describe_entries(args, *, verbose: bool = False,
             "cap_field": "describe_cap",
             "cap_value": len(visible_entries),
         })
-    return out
+    return finish(out)
 
 
 # --- API per chiamate da altri executor (Python diretto, no tool_call) -------

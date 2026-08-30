@@ -203,6 +203,16 @@ def test_the_primitive_is_the_single_owned_one():
     assert bundle.publisher._primitive is contract_store.commit_birth_snapshot
 
 
+def test_the_publisher_owns_the_productive_registry_reconciler():
+    import i18n_pipeline
+
+    bundle = _bundle()
+    assert (
+        bundle.publisher._registry_reconciler
+        is i18n_pipeline.reconcile_published_contract_registry
+    )
+
+
 def test_the_publisher_owns_the_ring_that_authenticates_a_predecessor():
     """One place knows which keys authenticate a generation, and it is sealed."""
     import inspect

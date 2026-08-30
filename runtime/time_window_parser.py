@@ -43,6 +43,8 @@ import re
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+import detection_lexicon_seed_parsers as _parser_lex
+
 ROME = ZoneInfo("Europe/Rome")
 
 # ---------------------------------------------------------------------------
@@ -67,13 +69,8 @@ _RE_ISO_YEAR_MONTH = re.compile(r"^(\d{4})-(\d{2})$")
 _RE_ISO_RANGE = re.compile(
     r"^(\d{4})-(\d{2})-(\d{2})/(\d{4})-(\d{2})-(\d{2})$"
 )
-_RE_IT_DAY = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})$")
-_RE_IT_RANGE_DAL_AL = re.compile(
-    r"^dal\s+(\d{1,2})/(\d{1,2})(?:/(\d{2}|\d{4}))?"
-    r"\s+al\s+(\d{1,2})/(\d{1,2})(?:/(\d{2}|\d{4}))?$",
-    re.IGNORECASE,
-)
-_RE_IT_RANGE_DASH = re.compile(
+_RE_DMY_DAY = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})$")
+_RE_DMY_RANGE_DASH = re.compile(
     r"^(\d{1,2})/(\d{1,2})(?:/(\d{2}|\d{4}))?"
     r"-(\d{1,2})/(\d{1,2})(?:/(\d{2}|\d{4}))?$"
 )
@@ -303,19 +300,43 @@ def _resolve_iso(spec):
     return None
 
 
-def _resolve_italian(spec, now):
-    m = _RE_IT_DAY.match(spec)
+def _phrase_alt(forms) -> str:
+    return "|".join(
+        re.escape(str(form)).replace(r"\ ", r"\s+")
+        for form in sorted(set(forms or ()), key=lambda item: (-len(item), item))
+        if str(form).strip()
+    )
+
+
+def _resolve_localized_dmy(spec, now):
+    # DMY is a numeric input convention, but it is enabled only with a fully
+    # materialized parser family.  A partial locale cannot borrow connectors
+    # from a fallback language and silently authorize a different parse.
+    lexicon = _parser_lex.load_family("time_parser")
+    if lexicon is None:
+        return None
+    m = _RE_DMY_DAY.match(spec)
     if m:
         dd, mm, yy = m.groups()
         y = _parse_it_year(yy, now.year)
         return _full_day(_safe_date(y, int(mm), int(dd)))
 
-    m = _RE_IT_RANGE_DAL_AL.match(spec)
-    if m:
-        d1, mo1, y1, d2, mo2, y2 = m.groups()
-        return _build_it_range(d1, mo1, y1, d2, mo2, y2, now)
+    connectors = lexicon["parser.time.range_connector"]
+    from_alt = _phrase_alt(connectors.get("from", ()))
+    to_alt = _phrase_alt(connectors.get("to", ()))
+    if from_alt and to_alt:
+        range_rx = re.compile(
+            rf"^(?:{from_alt})\s+(\d{{1,2}})/(\d{{1,2}})"
+            rf"(?:/(\d{{2}}|\d{{4}}))?\s+(?:{to_alt})\s+"
+            rf"(\d{{1,2}})/(\d{{1,2}})(?:/(\d{{2}}|\d{{4}}))?$",
+            re.IGNORECASE | re.UNICODE,
+        )
+        m = range_rx.match(spec)
+        if m:
+            d1, mo1, y1, d2, mo2, y2 = m.groups()
+            return _build_it_range(d1, mo1, y1, d2, mo2, y2, now)
 
-    m = _RE_IT_RANGE_DASH.match(spec)
+    m = _RE_DMY_RANGE_DASH.match(spec)
     if m:
         d1, mo1, y1, d2, mo2, y2 = m.groups()
         return _build_it_range(d1, mo1, y1, d2, mo2, y2, now)
@@ -350,17 +371,53 @@ def _normalize_llm_spec(s: str) -> str:
     ogni executor che usa parse_time_window. Non-match → invariato."""
     t = s.strip().lower()
     m = (re.match(r"^now[\s_+]*plus[\s_]*(\d+)[\s_]*d(?:ays?)?$", t)
-         or re.match(r"^now\s*\+\s*(\d+)\s*d(?:ays?)?$", t)
-         or re.match(r"^(?:in|fra|tra)[\s_]+(\d+)[\s_]+(?:days?|giorni)$", t)
-         or re.match(r"^prossim[ie][\s_]+(\d+)[\s_]+giorni$", t))
+         or re.match(r"^now\s*\+\s*(\d+)\s*d(?:ays?)?$", t))
     if m:
         return f"next-{m.group(1)}d"
     m = (re.match(r"^now[\s_]*minus[\s_]*(\d+)[\s_]*d(?:ays?)?$", t)
-         or re.match(r"^now\s*-\s*(\d+)\s*d(?:ays?)?$", t)
-         or re.match(r"^(\d+)[\s_]+(?:days?[\s_]+ago|giorni[\s_]+fa)$", t)
-         or re.match(r"^ultim[ie][\s_]+(\d+)[\s_]+giorni$", t))
+         or re.match(r"^now\s*-\s*(\d+)\s*d(?:ays?)?$", t))
     if m:
         return f"last-{m.group(1)}d"
+    lexicon = _parser_lex.load_family("time_parser")
+    if lexicon is None:
+        return s
+    days = _phrase_alt(lexicon["parser.time.day_word"])
+    future_offset = _phrase_alt(
+        lexicon["parser.time.future_offset_prefix"])
+    future_determiner = _phrase_alt(
+        lexicon["parser.time.future_determiner"])
+    past_determiner = _phrase_alt(
+        lexicon["parser.time.normalizer_past_determiner"])
+    past_suffix = _phrase_alt(
+        lexicon["parser.time.past_offset_suffix"])
+    if days and future_offset:
+        m = re.match(
+            rf"^(?:{future_offset})[\s_]+(\d+)[\s_]+(?:{days})$", t,
+            re.IGNORECASE | re.UNICODE,
+        )
+        if m:
+            return f"next-{m.group(1)}d"
+    if days and future_determiner:
+        m = re.match(
+            rf"^(?:{future_determiner})[\s_]+(\d+)[\s_]+(?:{days})$", t,
+            re.IGNORECASE | re.UNICODE,
+        )
+        if m:
+            return f"next-{m.group(1)}d"
+    if days and past_suffix:
+        m = re.match(
+            rf"^(\d+)[\s_]+(?:{days})[\s_]+(?:{past_suffix})$", t,
+            re.IGNORECASE | re.UNICODE,
+        )
+        if m:
+            return f"last-{m.group(1)}d"
+    if days and past_determiner:
+        m = re.match(
+            rf"^(?:{past_determiner})[\s_]+(\d+)[\s_]+(?:{days})$", t,
+            re.IGNORECASE | re.UNICODE,
+        )
+        if m:
+            return f"last-{m.group(1)}d"
     return s
 
 
@@ -383,7 +440,7 @@ def parse_time_window(spec, now=None):
     if out is None:
         out = _resolve_iso(s)
     if out is None:
-        out = _resolve_italian(s, now)
+        out = _resolve_localized_dmy(s, now)
     if out is None:
         raise ValueError(f"unknown time_window: {spec!r}")
 

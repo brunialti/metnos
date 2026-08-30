@@ -13,6 +13,19 @@ verbi generici → «trova le foto» non li tocca mai.
 from __future__ import annotations
 
 import store as _store
+import detection_lexicon as _detlex
+import detection_lexicon_seed_codegen as _codegen_seed
+import i18n as _i18n
+
+
+def _msg(key: str, **kwargs) -> str:
+    _codegen_seed.ensure_registered()
+    return _i18n.get(key, **kwargs)
+
+
+def _store_affinity() -> list[str]:
+    _codegen_seed.ensure_registered()
+    return _detlex.forms("codegen.store_entries_affinity")
 
 
 def _resolve(name):
@@ -21,10 +34,12 @@ def _resolve(name):
     try:
         return _store.get_store(name), None
     except KeyError:
+        available = _store.registered() or _msg("MSG_STORE_NONE")
         return None, {
             "ok": False, "error_class": "missing_input",
-            "error": (f"store «{name}» non registrato. Store disponibili: "
-                      f"{_store.registered() or '(nessuno)'}."),
+            "error": _msg(
+                "ERR_STORE_NOT_REGISTERED", name=name, available=available,
+            ),
         }
 
 
@@ -33,7 +48,7 @@ def handle_find_entries(args, *, verbose: bool = False) -> dict:
     name = (a.get("store") or "").strip()
     if not name:
         return {"ok": False, "error_class": "invalid_args",
-                "error": "manca 'store' (nome dello store da interrogare)",
+                "error": _msg("ERR_STORE_REQUIRED_FIND"),
                 "entries": []}
     st, err = _resolve(name)
     if err:
@@ -52,13 +67,12 @@ def handle_write_entries(args, *, verbose: bool = False) -> dict:
     name = (a.get("store") or "").strip()
     if not name:
         return {"ok": False, "error_class": "invalid_args",
-                "error": "manca 'store' (nome dello store su cui scrivere)",
+                "error": _msg("ERR_STORE_REQUIRED_WRITE"),
                 "results": []}
     entries = a.get("entries")
     if not isinstance(entries, list):
         return {"ok": False, "error_class": "invalid_args",
-                "error": ("manca 'entries' (lista record): passa from_step=N "
-                          "del producer da persistere"),
+                "error": _msg("ERR_STORE_ENTRIES_REQUIRED"),
                 "results": []}
     # set_fields (P3 redesign 18/6): override DETERMINISTICO di campi su OGNI
     # entry prima dell'upsert — es. FASE 3 "aggiorna lo store a posted":
@@ -112,8 +126,11 @@ def handle_write_entries(args, *, verbose: bool = False) -> dict:
         was_new = st.check_new(entries, key=key)
     except Exception as ex:  # §2.8: errore SQL onesto, con le colonne valide
         return {"ok": False, "error_class": "wrong_args",
-                "error": (f"{ex} — colonne dello store «{name}»: "
-                          f"{', '.join(getattr(st.schema, 'columns', {}) or [])}"),
+                "error": _msg(
+                    "ERR_STORE_WRONG_COLUMNS", error=ex, name=name,
+                    columns=", ".join(
+                        getattr(st.schema, "columns", {}) or []),
+                ),
                 "results": []}
     if set_fields:
         # VALORE-INIZIALE non regredisce (§7.9, bug live task github 6/7):
@@ -136,8 +153,11 @@ def handle_write_entries(args, *, verbose: bool = False) -> dict:
         n = st.write(entries, key=key)
     except Exception as ex:  # §2.8: errore SQL onesto, con le colonne valide
         return {"ok": False, "error_class": "wrong_args",
-                "error": (f"{ex} — colonne dello store «{name}»: "
-                          f"{', '.join(getattr(st.schema, 'columns', {}) or [])}"),
+                "error": _msg(
+                    "ERR_STORE_WRONG_COLUMNS", error=ex, name=name,
+                    columns=", ".join(
+                        getattr(st.schema, "columns", {}) or []),
+                ),
                 "results": []}
     n_new = sum(1 for w in was_new if w)
     return {"ok": True, "n_written": n, "n_new": n_new, "n_updated": n - n_new,
@@ -150,7 +170,7 @@ def handle_delete_entries(args, *, verbose: bool = False) -> dict:
     name = (a.get("store") or "").strip()
     if not name:
         return {"ok": False, "error_class": "invalid_args",
-                "error": "manca 'store' (nome dello store da cui eliminare)",
+                "error": _msg("ERR_STORE_REQUIRED_DELETE"),
                 "results": []}
     st, err = _resolve(name)
     if err:
@@ -168,28 +188,19 @@ FIND_ENTRIES_TOOL = {
     "type": "function",
     "function": {
         "name": "find_entries",
-        "description": (
-            "SCOPO: legge record da uno STORE generico NOMINATO (archivio/"
-            "raccolta dati interna, non file/mail/eventi). PATTERN: "
-            "find_entries(store=\"spese\", where={\"mese\":\"06\"}, "
-            "max_results=50). NON: file su disco -> find_files; mail -> "
-            "read_messages; filtrare una lista GIÀ in memoria -> filter_entries. "
-            "OUT: entries=[{...}]."),
+        "description": _msg("MSG_STORE_FIND_DESCRIPTION"),
         "parameters": {
             "type": "object",
             "required": ["store"],
             "properties": {
                 "store": {"type": "string",
-                          "description": "Nome dello store (archivio) da "
-                                         "interrogare, es. \"spese\"."},
+                          "description": _msg("MSG_STORE_ARG_NAME_FIND")},
                 "where": {"type": "object",
-                          "description": "Filtro di uguaglianza {campo: valore}; "
-                                         "valore lista = IN. Es. {\"stato\":"
-                                         "\"aperto\"}."},
+                          "description": _msg("MSG_STORE_ARG_WHERE_FIND")},
                 "order": {"type": "array", "items": {"type": "string"},
-                          "description": "Campi di ordinamento, es. [\"data\"]."},
+                          "description": _msg("MSG_STORE_ARG_ORDER")},
                 "max_results": {"type": "integer",
-                                "description": "Cap risultati (§2.1)."},
+                                "description": _msg("MSG_STORE_ARG_MAX")},
             },
         },
     },
@@ -199,35 +210,19 @@ WRITE_ENTRIES_TOOL = {
     "type": "function",
     "function": {
         "name": "write_entries",
-        "description": (
-            "SCOPO: salva/aggiorna (UPSERT, crea-se-manca) record in uno STORE "
-            "generico NOMINATO; aggiorna campi coi set_fields. PATTERN: producer "
-            "allo step N poi write_entries(store=\"spese\", from_step=N, "
-            "key=[\"id\"], set_fields={\"status\":\"posted\"}). NON: scrivere "
-            "file -> write_files; inviare -> send_messages; per rispondere "
-            "'quanti NUOVI ho inserito' NON contare n_written/results (un "
-            "upsert su un record GIA' presente conta comunque) -> usa SEMPRE "
-            "n_new (record assenti prima di questa call, quindi creati ora). "
-            "Crea lo store e i record se mancano. OUT: results=[{written,"
-            "was_new}], n_written, n_new, n_updated."),
+        "description": _msg("MSG_STORE_WRITE_DESCRIPTION"),
         "parameters": {
             "type": "object",
             "required": ["store", "from_step"],
             "properties": {
                 "store": {"type": "string",
-                          "description": "Nome dello store su cui scrivere."},
+                          "description": _msg("MSG_STORE_ARG_NAME_WRITE")},
                 "from_step": {"type": "integer", "minimum": 1,
-                              "description": "Step che ha prodotto i record da "
-                                             "persistere (il runtime espande in "
-                                             "entries)."},
+                              "description": _msg("MSG_STORE_ARG_FROM_STEP")},
                 "key": {"type": "array", "items": {"type": "string"},
-                        "description": "Campi-chiave per l'upsert (conflitto). "
-                                       "Es. [\"id\"]. Assente -> insert puro."},
+                        "description": _msg("MSG_STORE_ARG_KEY")},
                 "set_fields": {"type": "object",
-                               "description": "Override {campo: valore} applicato "
-                                              "a OGNI record prima dell'upsert "
-                                              "(aggiorna lo stato). Es. "
-                                              "{\"status\":\"posted\"}."},
+                               "description": _msg("MSG_STORE_ARG_SET_FIELDS")},
             },
         },
     },
@@ -237,20 +232,15 @@ DELETE_ENTRIES_TOOL = {
     "type": "function",
     "function": {
         "name": "delete_entries",
-        "description": (
-            "SCOPO: elimina record da uno STORE generico NOMINATO. PATTERN: "
-            "delete_entries(store=\"spese\", where={\"id\":\"x\"}). NON: file -> "
-            "delete_files; mail -> move_messages(dst_folder=\"Trash\"). where "
-            "assente/vuoto = svuota lo store. OUT: results, n_deleted."),
+        "description": _msg("MSG_STORE_DELETE_DESCRIPTION"),
         "parameters": {
             "type": "object",
             "required": ["store"],
             "properties": {
                 "store": {"type": "string",
-                          "description": "Nome dello store da cui eliminare."},
+                          "description": _msg("MSG_STORE_ARG_NAME_DELETE")},
                 "where": {"type": "object",
-                          "description": "Filtro {campo: valore} dei record da "
-                                         "eliminare; assente = svuota."},
+                          "description": _msg("MSG_STORE_ARG_WHERE_DELETE")},
             },
         },
     },
@@ -258,9 +248,7 @@ DELETE_ENTRIES_TOOL = {
 
 # Affinità RISTRETTA store-specifica (IT+EN): solo query che nominano un
 # archivio/raccolta generico arrivano qui — niente verbi generici.
-_AFFINITY = ["store", "archivio", "archivi", "raccolta", "collezione",
-             "registro dati", "database interno", "collection", "datastore",
-             "memorizza nello store", "salva nell'archivio"]
+_AFFINITY = _store_affinity()
 
 BUILTIN_INPROC_SPECS = [
     {"name": "find_entries", "tool_spec": FIND_ENTRIES_TOOL,

@@ -27,6 +27,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+import detection_lexicon as _detlex
+import detection_lexicon_seed_resolvers as _resolver_seed
+import i18n as _i18n
+
 
 # Sostituzioni curly apostrophes → ASCII apostrophe (resilienza UI mobile).
 _CURLY_APO = {"’": "'", "‘": "'", "ʼ": "'"}
@@ -81,9 +85,10 @@ class FastPattern:
     patterns: tuple              # set chiuso di stringhe normalizzate
     executor: str                # nome canonico in catalog
     args: dict                   # args literal (NIENTE placeholder NL)
-    template_it: str             # final_message IT con placeholder {iso}/{tz}/...
-    template_en: str             # final_message EN
+    template_it: str = ""        # compat API; i nuovi output vivono in i18n
+    template_en: str = ""        # compat API; i nuovi output vivono in i18n
     requires_capability: bool = False  # se True passa per vaglio (default no)
+    message_key: str = ""        # output nel catalogo i18n
 
 
 # ── Tabella patterns ───────────────────────────────────────────────────
@@ -93,78 +98,48 @@ class FastPattern:
 # get_now ritorna {ok, content (iso str), metadata: {timezone, iso8601, epoch}}.
 # Template renderizza via `_render_get_now_message()` sotto.
 
-_TIME_PATTERNS = (
-    # IT — ora
-    "che ora e",
-    "che ore sono",
-    "che ora",
-    "che ore",
-    "dimmi l'ora",
-    "dimmi che ore sono",
-    "ora attuale",
-    # EN — time
-    "what time is it",
-    "what's the time",
-    "whats the time",
-    "what time",
-    "current time",
-    "tell me the time",
-)
+def _is_ready_language(concept: str, lang: str | None) -> bool:
+    requested = _i18n.normalize_language(lang or _detlex.current_lang())
+    active = _i18n.normalize_language(_detlex.current_lang())
+    if not requested or not active:
+        return False
+    # IT/EN sono baseline editoriali native e restano selezionabili per la
+    # compat API ``lang=``. Una lingua terza e' valida solo quando coincide
+    # con quella attiva, che le API native-ready sottopongono al gate.
+    return requested == active or requested in set(
+        _detlex.baseline_languages(concept)
+    )
 
-_CONFIGURED_TIMEZONE_PATTERNS = (
-    "che ora e nel fuso configurato",
-    "che ore sono nel fuso configurato",
-    "what time is it in the configured time zone",
-    "what time is it in the configured timezone",
-)
 
-_DATE_PATTERNS = (
-    # IT — data/giorno
-    "che giorno e oggi",
-    "che data e oggi",
-    "che data e",
-    "che data",
-    "che giorno",
-    "data odierna",
-    "oggi che giorno e",
-    # EN — date/day
-    "what date is it",
-    "what's the date",
-    "what date",
-    "today's date",
-    "current date",
-    "what day is it",
-)
+def _intent_mapping(lang: str | None = None) -> dict[str, list[str]]:
+    _resolver_seed.ensure_registered()
+    if not _is_ready_language("fast_path.intent_exact", lang):
+        return {}
+    return _detlex.native_ready_mapping(
+        "fast_path.intent_exact",
+        require_manual=True,
+        include_reviewed_baselines=True,
+    )
 
-_UNDO_PATTERNS = (
-    "annulla", "annulla ultima azione", "annulla l'ultima azione",
-    "annullare", "annullo", "annulla turn", "annulla l'ultimo turno",
-    "annulla ultimo evento", "annulla ultimo messaggio",
-    "undo", "undo last", "undo last action", "undo last turn",
-    "revert", "revert last", "rollback", "rollback last",
-    "ripristina", "ripristina turno precedente",
-)
 
-# get_location: query ovvie sulla propria posizione. Pattern stretti
-# (esatti, no fuzzy) per evitare false positive su query con verbi
-# d'azione tipo "sposta i file dove sono ora" (NB: queste hanno verbo
-# `sposta` PRIMA di "dove sono", quindi NON matchano per _normalize +
-# lookup esatto).
-_LOCATION_PATTERNS = (
-    # IT
-    "dove sono",
-    "dove mi trovo",
-    "posizione attuale",
-    "mia posizione",
-    "qual'e' la mia posizione",
-    "qual e la mia posizione",
-    # EN
-    "where am i",
-    "current location",
-    "my location",
-    "my current location",
-    "what is my location",
-)
+def _native_forms(concept: str, lang: str | None = None) -> tuple[str, ...]:
+    _resolver_seed.ensure_registered()
+    if not _is_ready_language(concept, lang):
+        return ()
+    return tuple(_detlex.native_ready_forms(
+        concept,
+        require_manual=True,
+        include_reviewed_baselines=True,
+    ))
+
+
+_BOOTSTRAP_INTENTS = _intent_mapping()
+_TIME_PATTERNS = tuple(_BOOTSTRAP_INTENTS.get("time", ()))
+_CONFIGURED_TIMEZONE_PATTERNS = tuple(
+    _BOOTSTRAP_INTENTS.get("configured_timezone", ()))
+_DATE_PATTERNS = tuple(_BOOTSTRAP_INTENTS.get("date", ()))
+_UNDO_PATTERNS = tuple(_BOOTSTRAP_INTENTS.get("undo", ()))
+_LOCATION_PATTERNS = tuple(_BOOTSTRAP_INTENTS.get("location", ()))
 
 
 _FAST_PATTERNS: list[FastPattern] = [
@@ -172,22 +147,19 @@ _FAST_PATTERNS: list[FastPattern] = [
         patterns=_CONFIGURED_TIMEZONE_PATTERNS,
         executor="get_now",
         args={},
-        template_it="Sono le {hhmm} nel fuso {tz}.",
-        template_en="It's {hhmm} in the {tz} time zone.",
+        message_key="MSG_FAST_TIME_TZ",
     ),
     FastPattern(
         patterns=_TIME_PATTERNS,
         executor="get_now",
         args={},  # timezone arriva da config.DEFAULT_TIMEZONE in try_fast_path
-        template_it="Sono le {hhmm}.",
-        template_en="It's {hhmm}.",
+        message_key="MSG_FAST_TIME",
     ),
     FastPattern(
         patterns=_DATE_PATTERNS,
         executor="get_now",
         args={},
-        template_it="Oggi e' {weekday_it} {day} {month_it} {year}.",
-        template_en="Today is {weekday_en}, {month_en} {day}, {year}.",
+        message_key="MSG_FAST_DATE",
     ),
     # Safety-critical: query «annulla ...» bypassa il PLANNER LLM e va dritta
     # a undo_last_turn (Metnos-action perspective). Bug live turn 6c6a0076
@@ -200,8 +172,7 @@ _FAST_PATTERNS: list[FastPattern] = [
         patterns=_UNDO_PATTERNS,
         executor="undo_last_turn",
         args={},
-        template_it="",  # output formattato dall'executor stesso
-        template_en="",
+        message_key="MSG_FAST_UNDO",
     ),
     # get_location: query trivialemente single-step (#H0 19/5/2026 sera).
     # L'executor restituisce {lat, lon, ts, accuracy, channel}. Rendering
@@ -211,10 +182,14 @@ _FAST_PATTERNS: list[FastPattern] = [
         patterns=_LOCATION_PATTERNS,
         executor="get_location",
         args={},
-        template_it="",  # render speciale in _render via observation
-        template_en="",
+        message_key="MSG_FAST_LOCATION",
     ),
 ]
+
+_FAST_PATTERN_BY_INTENT = dict(zip(
+    ("configured_timezone", "time", "date", "undo", "location"),
+    _FAST_PATTERNS,
+))
 
 
 # Pre-build di un dict pattern→FastPattern per lookup O(1).
@@ -222,6 +197,16 @@ _PATTERN_INDEX: dict[str, FastPattern] = {}
 for fp in _FAST_PATTERNS:
     for p in fp.patterns:
         _PATTERN_INDEX[p] = fp
+
+
+def _pattern_index(lang: str) -> dict[str, FastPattern]:
+    mapping = _intent_mapping(lang)
+    return {
+        _normalize(form): fp
+        for intent, fp in _FAST_PATTERN_BY_INTENT.items()
+        for form in mapping.get(intent, ())
+        if isinstance(form, str) and _normalize(form)
+    }
 
 
 # Prefissi UNDO safety-critical: query che INIZIANO con uno di questi
@@ -237,25 +222,18 @@ for fp in _FAST_PATTERNS:
 # [delete_events, read_events, set_events, undo_last_turn, admin] -> per
 # fortuna PLANNER scelse undo_last_turn, ma in turn precedenti aveva
 # scelto delete_events su evento legittimo dell'utente. §7.9 deterministico.
-_UNDO_PREFIX_TOKENS = (
-    "annulla",  # IT: copre "annulla", "annulla X", "annulla l'ultimo X"
-    "annullare",
-    "annullo",
-    "undo",     # EN: copre "undo", "undo X", "undo last action"
-    "rollback",
-    "ripristina",
-    "revert",
-)
+_UNDO_PREFIX_TOKENS = _native_forms("fast_path.undo_prefix")
 
 
-def _undo_prefix_match(norm: str) -> bool:
+def _undo_prefix_match(norm: str, lang: str | None = None) -> bool:
     """Ritorna True se `norm` inizia con uno dei prefissi UNDO seguito da
     fine stringa o spazio. NON matcha sottostringhe casuali (es. "annulla"
     dentro a "annullamento" o "undoubted"). Match esatto su token-boundary.
     """
     if not norm:
         return False
-    for tok in _UNDO_PREFIX_TOKENS:
+    for tok in _native_forms("fast_path.undo_prefix", lang):
+        tok = _normalize(tok)
         if norm == tok or norm.startswith(tok + " "):
             return True
     return False
@@ -269,17 +247,8 @@ for _fp in _FAST_PATTERNS:
         break
 
 
-_WEEKDAY_IT = ["lunedi'", "martedi'", "mercoledi'", "giovedi'",
-                "venerdi'", "sabato", "domenica"]
-_WEEKDAY_EN = ["Monday", "Tuesday", "Wednesday", "Thursday",
-                "Friday", "Saturday", "Sunday"]
-_MONTH_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
-              "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
-_MONTH_EN = ["January", "February", "March", "April", "May", "June",
-              "July", "August", "September", "October", "November", "December"]
-
-
-def _render_template(tpl: str, observation: dict, default_tz: str) -> str:
+def _render_template(message_key: str, observation: dict, default_tz: str,
+                     lang: str) -> str:
     """Rendering deterministico delle variabili dal result di get_now.
 
     Estrae iso8601 dalla `metadata` e parsa per ottenere componenti
@@ -292,20 +261,19 @@ def _render_template(tpl: str, observation: dict, default_tz: str) -> str:
         dt = datetime.fromisoformat(iso)
     except (ValueError, TypeError):
         # Fallback degenere: ritorna il template con iso letterale.
-        return tpl.format(
+        return _i18n.get_for_language(
+            message_key, lang,
             hhmm=iso[:5] if iso else "?",
-            tz=tz, weekday_it="?", weekday_en="?",
-            day="?", month_it="?", month_en="?", year="?",
+            tz=tz, weekday="?", day="?", month="?", year="?",
         )
     wd = dt.weekday()
-    return tpl.format(
+    return _i18n.get_for_language(
+        message_key, lang,
         hhmm=dt.strftime("%H:%M"),
         tz=tz,
-        weekday_it=_WEEKDAY_IT[wd],
-        weekday_en=_WEEKDAY_EN[wd],
+        weekday=_i18n.get_for_language(f"MSG_FAST_WEEKDAY_{wd}", lang),
         day=dt.day,
-        month_it=_MONTH_IT[dt.month - 1],
-        month_en=_MONTH_EN[dt.month - 1],
+        month=_i18n.get_for_language(f"MSG_FAST_MONTH_{dt.month}", lang),
         year=dt.year,
     )
 
@@ -371,33 +339,21 @@ def try_seed_step(query: str) -> Optional[dict]:
 # "chi sei" ≠ "chi sono io": la prima è l'identità dell'assistente, la seconda
 # il profilo dell'utente. Senza questo, il cache Praxis instrada entrambe a
 # read_persons(actor) → dump del profilo+email dell'utente (bug live 5/6/2026).
-_IDENTITY_EXACT = frozenset({
-    "chi sei", "chi sei tu", "tu chi sei", "ma chi sei", "e tu chi sei",
-    "chi sei esattamente", "cosa sei", "che cosa sei", "sei un assistente",
-    "sei un ai", "sei un'ai", "sei metnos", "presentati", "chi e metnos",
-    "who are you", "who are you?", "what are you", "what are you?",
-    "are you an assistant", "are you an ai", "are you metnos",
-    "introduce yourself", "tell me who you are",
-})
-_IDENTITY_ANSWER_IT = (
-    "Sono Metnos, un assistente personale self-hosted che gira sulla tua "
-    "macchina (via Telegram e interfaccia web). Ti aiuto con file, posta, "
-    "foto, calendario, web e altro — solo le funzioni che attivi tu. Come "
-    "posso aiutarti?"
-)
-_IDENTITY_ANSWER_EN = (
-    "I am Metnos, a self-hosted personal assistant running on your own machine "
-    "(via Telegram and a web UI). I help with files, mail, photos, calendar, "
-    "the web and more — only the capabilities you switch on. How can I help?"
-)
+_IDENTITY_EXACT = frozenset(_BOOTSTRAP_INTENTS.get("identity", ()))
 
 
-def _identity_match(norm: str) -> bool:
-    if norm in _IDENTITY_EXACT:
+def _identity_match(norm: str, lang: str | None = None) -> bool:
+    identities = {
+        _normalize(form) for form in _intent_mapping(lang).get("identity", ())
+    }
+    if norm in identities:
         return True
     # Suffisso: «…tu chi sei», «no roberto sono io tu chi sei» → identità.
-    return norm.endswith(" chi sei") or norm.endswith(" tu chi sei") \
-        or norm.endswith(" who are you")
+    return any(
+        norm.endswith(" " + _normalize(suffix))
+        for suffix in _native_forms("fast_path.identity_suffix", lang)
+        if _normalize(suffix)
+    )
 
 
 def try_fast_path(query: str, lang: str = "it",
@@ -422,30 +378,33 @@ def try_fast_path(query: str, lang: str = "it",
     if not norm:
         return None
     # Identità assistente: risposta diretta, nessun executor (no read_persons).
-    if _identity_match(norm):
+    if _identity_match(norm, lang):
+        _resolver_seed.ensure_output_registered()
         return {
-            "direct_answer": _IDENTITY_ANSWER_IT if lang == "it" else _IDENTITY_ANSWER_EN,
+            "direct_answer": _i18n.get_for_language("MSG_FAST_IDENTITY", lang),
             "pattern": "identity:" + norm,
             "executor": None,
             "args": {},
         }
-    fp = _PATTERN_INDEX.get(norm)
+    fp = _pattern_index(lang).get(norm)
     if fp is None:
         # Fallback safety-critical: prefisso UNDO (annulla/undo/...) cattura
         # tutte le varianti non elencate in _UNDO_PATTERNS senza esplodere
         # la tabella. Solo per il caso UNDO (semantica chiusa, non distruttiva).
-        if _UNDO_FALLBACK_FP is not None and _undo_prefix_match(norm):
+        if _UNDO_FALLBACK_FP is not None and _undo_prefix_match(norm, lang):
             fp = _UNDO_FALLBACK_FP
         else:
             return None
+
+    # Il provisioning degli output e' deliberatamente successivo al match:
+    # un catalogo output indisponibile non autorizza mai un route fast-path.
+    _resolver_seed.ensure_output_registered()
 
     args = dict(fp.args)
     # get_now accetta `timezone` con default UTC. Iniettiamo il default
     # progetto (Europe/Rome) cosi' la final_answer ha timezone locale.
     if fp.executor == "get_now" and "timezone" not in args:
         args["timezone"] = default_timezone
-
-    tpl = fp.template_it if lang == "it" else fp.template_en
 
     def _render(observation: dict) -> str:
         if not observation.get("ok"):
@@ -454,50 +413,55 @@ def try_fast_path(query: str, lang: str = "it",
             if fp.executor == "undo_last_turn":
                 undone = observation.get("undone_count") or 0
                 if undone == 0:
-                    return ("Niente da annullare: nessuna azione reversibile nel turno precedente."
-                            if lang == "it"
-                            else "Nothing to undo: no reversible action in the previous turn.")
+                    return _i18n.get_for_language(
+                        "MSG_FAST_NOTHING_UNDO", lang,
+                    )
             # get_location ok=False: posizione non condivisa / non disponibile.
             if fp.executor == "get_location":
-                return ("Posizione non disponibile (nessuna condivisione recente)."
-                        if lang == "it"
-                        else "Location not available (no recent share).")
-            err = observation.get("error", "sconosciuto")
-            return (f"Errore in {fp.executor}: {err}" if lang == "it"
-                     else f"Error in {fp.executor}: {err}")
+                return _i18n.get_for_language(
+                    "MSG_FAST_LOCATION_RECENT_MISSING", lang,
+                )
+            return _i18n.get_for_language(
+                "ERR_FAST_EXECUTOR", lang, executor=fp.executor,
+                error=observation.get("error", "unknown"),
+            )
         # undo_last_turn ok=True: render dai details + undone_count.
         if fp.executor == "undo_last_turn":
             undone = observation.get("undone_count") or 0
             details = observation.get("details") or []
             d0 = details[0] if details else {}
-            target_executor = d0.get("executor", "azione")
+            target_executor = d0.get("executor", "action")
             target_count = d0.get("ok_count", undone)
-            if lang == "it":
-                return f"Annullato: {target_executor} ({target_count} elementi)."
-            return f"Undone: {target_executor} ({target_count} items)."
+            return _i18n.get_for_language(
+                "MSG_FAST_UNDO", lang, executor=target_executor,
+                count=target_count,
+            )
         if fp.executor == "get_location":
             loc = observation.get("location") or {}
             lat = loc.get("lat")
             lon = loc.get("lon")
             age = observation.get("age_seconds")
             if lat is None or lon is None:
-                return ("Posizione non disponibile."
-                        if lang == "it" else "Location not available.")
+                return _i18n.get_for_language(
+                    "MSG_FAST_LOCATION_MISSING", lang,
+                )
             age_str = ""
             if isinstance(age, (int, float)):
                 if age < 60:
-                    age_str = (f" (aggiornata {int(age)}s fa)" if lang == "it"
-                                else f" (updated {int(age)}s ago)")
+                    age_key, age_value = "MSG_FAST_AGE_SECONDS", int(age)
                 elif age < 3600:
-                    age_str = (f" (aggiornata {int(age/60)}min fa)" if lang == "it"
-                                else f" (updated {int(age/60)}min ago)")
+                    age_key, age_value = "MSG_FAST_AGE_MINUTES", int(age / 60)
                 else:
-                    age_str = (f" (aggiornata {int(age/3600)}h fa)" if lang == "it"
-                                else f" (updated {int(age/3600)}h ago)")
-            if lang == "it":
-                return f"Posizione: {lat:.4f}, {lon:.4f}{age_str}."
-            return f"Location: {lat:.4f}, {lon:.4f}{age_str}."
-        return _render_template(tpl, observation, default_timezone)
+                    age_key, age_value = "MSG_FAST_AGE_HOURS", int(age / 3600)
+                age_str = _i18n.get_for_language(
+                    age_key, lang, value=age_value,
+                )
+            return _i18n.get_for_language(
+                "MSG_FAST_LOCATION", lang, lat=lat, lon=lon, age=age_str,
+            )
+        return _render_template(
+            fp.message_key, observation, default_timezone, lang,
+        )
 
     return {
         "executor": fp.executor,
