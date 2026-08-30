@@ -3933,9 +3933,16 @@ def test_fixture_and_product_agree_on_the_head_framing() -> None:
     manager; this one needs neither, so a divergence is caught before it
     reaches the only channel that could show it.
     """
-    from test_executor_birth_systemd_activation import (
-        _framed_digest, _framed_digest_v1,
-    )
+    # The sibling cell is loaded by path, not by bare name: a bare import
+    # resolves only when the collection layout happens to put this directory
+    # on the path, which is true locally and false in CI.
+    portable = Path(__file__).resolve().parent
+    if str(portable) not in sys.path:
+        sys.path.insert(0, str(portable))
+    import test_executor_birth_systemd_activation as activation
+
+    _framed_digest = activation._framed_digest
+    _framed_digest_v1 = activation._framed_digest_v1
 
     for domain in (
         preflight.HEAD_PAYLOAD_HASH_DOMAIN_V2,
