@@ -779,6 +779,17 @@ def _unit_diagnosis(unit_name: str) -> str:
         capture_output=True, text=True, timeout=30,
     )
     lines.append(logged.stdout.strip()[-1500:])
+    # The launched process may only print the public denial CLASS: the detail
+    # is kept off an operator stream by design. Repeating the same attestation
+    # in-process, against the same root-owned state, names the check that
+    # actually refused — without weakening the boundary the product keeps.
+    try:
+        preflight._attest_operational_preflight_v1()
+        lines.append("in-process attestation: accepted")
+    except preflight.PreflightError as denial:
+        lines.append(f"in-process attestation: {denial.code} :: {denial.detail}")
+    except Exception as failure:
+        lines.append(f"in-process attestation raised {type(failure).__name__}")
     return "\n".join(item for item in lines if item)
 
 
