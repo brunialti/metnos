@@ -736,7 +736,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:a12caa5261967255a041e8687eacacf479d2eb56ef970ac7e621634050846d59"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:aa733759e5dfb2e19c60041e27068c4c010fcf11f88177865bb25db9d66d6131"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -12260,8 +12260,16 @@ def _compile_systemd_manager_projection_v1(
                 raise _invalid("systemd configured directive")
         elif section == "Unit" and name == "Documentation" and normalized:
             raise _invalid("systemd Documentation default")
-        elif section == "Service" and name == "WatchdogSec" and normalized != ("0",):
-            raise _invalid("systemd Watchdog default")
+        elif (
+            section == "Service" and name == "WatchdogSec"
+            and normalized not in (("0",), ("infinity",))
+        ):
+            # A watchdog that was never configured is reported as disabled in
+            # two equivalent ways. Measured on systemd 255.4: most units render
+            # `WatchdogUSec=0`, others render `infinity` (observed on
+            # `launchpadlib-cache-clean.service`). Both mean "no watchdog";
+            # pinning only the first denied a unit that configured nothing.
+            raise _invalid(f"systemd Watchdog default {normalized!r}")
         properties.append(_SystemdManagerPropertyV1(
             name, value_type, normalized,
         ))
