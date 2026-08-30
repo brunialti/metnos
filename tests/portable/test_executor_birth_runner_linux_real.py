@@ -32,6 +32,14 @@ def _group4_support():
     return support
 
 
+def _group6c_systemd_test_module():
+    portable = Path(__file__).resolve().parent
+    if str(portable) not in sys.path:
+        sys.path.insert(0, str(portable))
+    import test_executor_birth_systemd
+    return test_executor_birth_systemd
+
+
 def _registered_backend(runner):
     """Register the real bwrap and the real interpreter, as an operator would.
 
@@ -206,6 +214,17 @@ print(json.dumps(result, sort_keys=True))
         os.chown(private, service.pw_uid, service.pw_gid)
         with pytest.raises(OwnershipAuthorityError, match="authority_unsafe"):
             _load_private_at_v1(directory, root_owned=True)
+
+
+def test_signed_isolated_systemd_cell_daemon_reload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """G6-C: reuse the frozen workflow's disposable root systemd runner."""
+    if os.environ.get("METNOS_REQUIRE_REAL_BIRTH_LINUX") != "1":
+        pytest.skip("delegated Linux certification step only")
+    monkeypatch.setenv("METNOS_REQUIRE_REAL_G6C_SYSTEMD", "1")
+    module = _group6c_systemd_test_module()
+    module.test_signed_isolated_cell_daemon_reload_on_disposable_vm(tmp_path)
 
 
 def test_real_linux_timeout_terminates_child_and_grandchild_cgroup() -> None:
