@@ -1,5 +1,32 @@
 # RM-0008 — handover indipendente per la chiusura di G6
 
+> **MANDATO ESAURITO — G6 e' chiuso il 31 agosto 2026.** Questo documento
+> descrive uno stato SUPERATO e va letto come storia, non come consegna: chi lo
+> apre per iniziare un lavoro sta partendo dal punto sbagliato.
+>
+> Esito, con le misure in roadmap §23.32: sette condizioni su sette della
+> Definition of Done del §9; suite a copertura totale con **zero regressioni**
+> (74 rossi alla base pre-G6, 69 all'albero finale, 5 risolti, 9337 verdi);
+> **quattro cicli pubblici verdi consecutivi** su quattro teste diverse
+> (`b02ce3e`, `342f869`, `00224c3`, `e492d51`), nove lavori su nove ciascuno;
+> cella dal vivo 6 prove su 6 in 373 s.
+>
+> Il §4 di questo documento dice che C3 e' aperto e il §10 propone un ordine di
+> lavoro: entrambi sono stati eseguiti. La catena di dodici cause che ha portato
+> C3 al verde e' in roadmap §23.20-§23.29, e comprende una diagnosi mia
+> sbagliata (§23.20), conservata perche' l'errore e' istruttivo. Il ciclo
+> avversariale che ha certificato il verbale — quattro giri Codex e quattro
+> Claude, convergenti — sta in
+> `handover_rm0008_g6_revisione_avversariale_30_8_2026.md`.
+>
+> **Dove si riprende, invece che da qui**: RM-0008 resta aperto per F4-F6, e il
+> gruppo 7 ha fatto il solo primo passo (roadmap §23.31). Il resto del gruppo 7
+> — attivazione reale con `closed_build_enforcement()=True`, installazione dei
+> nomi definitivi, commutazione dei servizi correnti — non e' iniziato, e
+> comprende il residuo dichiarato dei percorsi di scrittura dei dati di
+> `metnos-telegram-daemon.service`.
+
+
 > Consegna del 30 agosto 2026. Questo documento e' autosufficiente e destina
 > la chiusura del gruppo 6 a un agente esterno indipendente. Lo stato descritto
 > e' quello del worktree `/tmp/metnos-rm0008-a-only`, ramo `main`.
