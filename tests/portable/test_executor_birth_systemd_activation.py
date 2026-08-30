@@ -843,7 +843,12 @@ def _installed_commands_as_unit(entry_id: str, python: str) -> str:
         try:
             run = subprocess.run(
                 [python, "-I", "-S", program, command, *arguments],
-                capture_output=True, text=True, timeout=60,
+                # A census of every unit on the machine, taken while a timer
+                # may still be restarting a failing service: measured above
+                # 60s on the CI runner under exactly that contention. The
+                # cell must fail on the product's verdict, never on a
+                # stopwatch, so the bound is generous on purpose.
+                capture_output=True, text=True, timeout=300,
             )
         except Exception as failure:
             report.append(f"{command}: raised {type(failure).__name__}")
@@ -1029,7 +1034,8 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         def _check_all() -> subprocess.CompletedProcess[str]:
             return subprocess.run(
                 [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
-                capture_output=True, text=True, timeout=60,
+                # Same census, same reason as the diagnosis probe above.
+                capture_output=True, text=True, timeout=300,
             )
 
         def _edges(unit_name: str) -> set[tuple[str, str]]:

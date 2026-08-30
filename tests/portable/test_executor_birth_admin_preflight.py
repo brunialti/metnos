@@ -3995,3 +3995,50 @@ def test_a_shared_lock_directory_is_refused_by_the_chain_rule() -> None:
     with pytest.raises(preflight.PreflightError) as refused:
         preflight._require_safe_directory_chain_v1(shared, uid=0, gid=0, stop=None)
     assert refused.value.code == preflight.CODE_INVALID
+
+
+@LINUX_ONLY
+def test_the_shared_gate_is_acquired_without_asking_for_write_access(
+    tmp_path: Path,
+) -> None:
+    """A shared holder locks a read-only descriptor, and asks for no more.
+
+    The gate must be acquirable inside a `ProtectSystem=strict` unit, where the
+    whole hierarchy is read-only: any request for write access returns EROFS
+    there and the launch refuses. Two halves, each measuring what it claims —
+    what the product ASKS the kernel for, read from its only gate call site,
+    and what the kernel GRANTS on such a descriptor, measured on a real file.
+    """
+    import ast
+    import fcntl
+    import inspect
+    import textwrap
+
+    source = textwrap.dedent(
+        inspect.getsource(preflight._acquire_startup_gate_shared_v1),
+    )
+    opens = [
+        node for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute) and node.func.attr == "open"
+    ]
+    assert len(opens) == 1, "the gate must have exactly one call site"
+    flags = {
+        node.attr for node in ast.walk(opens[0].args[1])
+        if isinstance(node, ast.Attribute)
+    }
+    assert "O_RDONLY" in flags and "O_RDWR" not in flags
+
+    # The kernel's half: a read-only descriptor takes the shared advisory lock
+    # and refuses the write. `flock` is not a POSIX record lock, and that is
+    # what lets the gate work on a read-only mount.
+    gate = tmp_path / "startup-v1.lock"
+    gate.touch(mode=0o600)
+    descriptor = os.open(gate, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        with pytest.raises(OSError):
+            os.write(descriptor, b"x")
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(descriptor)

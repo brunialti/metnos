@@ -742,7 +742,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:10eb56921f7eeea916a872584746a9e70fa7f958f207b3259a84b9c9a19ce72b"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:d1e48a75c23ee0eaecdaa42ea00953da25b8830b79da14b03b5a9e6c284567ae"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -13802,9 +13802,17 @@ def _acquire_startup_gate_shared_v1() -> int:
             or before.st_nlink != 1 or stat.S_IMODE(before.st_mode) != 0o600
         ):
             raise _invalid("startup gate")
+        # Read-only, because a SHARED holder never writes: `flock` places its
+        # advisory lock on the descriptor whatever the access mode, unlike a
+        # POSIX record lock. Asking for write access would make the gate
+        # unopenable exactly where it must work — a `ProtectSystem=strict`
+        # unit sees the whole hierarchy read-only, so `O_RDWR` returns EROFS
+        # and the launch refuses. Granting the unit `ReadWritePaths` on this
+        # root instead would hand the demoted payload write access to the
+        # product's own runtime directory; asking for less is the fix.
         descriptor = os.open(
             STARTUP_GATE_PATH_V1,
-            os.O_RDWR | getattr(os, "O_CLOEXEC", 0)
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
             | getattr(os, "O_NOFOLLOW", 0),
         )
     except PreflightError:
