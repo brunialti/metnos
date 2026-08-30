@@ -794,9 +794,14 @@ def _build_prerequisite_and_graph(
 
 
 def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    # Starting a gated `oneshot` blocks until the gate has finished, and the
+    # gate censuses every unit on the machine before it decides. Thirty
+    # seconds was enough only while the gate died on its first step: the
+    # bound belongs to the machine's size, and the cell must fail on the
+    # manager's verdict rather than on a stopwatch.
     return subprocess.run(
         ["/usr/bin/systemctl", *arguments], check=check,
-        capture_output=True, text=True, timeout=30,
+        capture_output=True, text=True, timeout=300,
     )
 
 
@@ -865,7 +870,14 @@ def _installed_commands_as_unit(entry_id: str, python: str) -> str:
     return "privileged " + "; ".join(report)
 
 
-def _wait_for(predicate, timeout: float = 15.0, *, diagnose=None) -> None:
+def _wait_for(predicate, timeout: float = 300.0, *, diagnose=None) -> None:
+    """Wait for a live condition produced by a gated unit.
+
+    Every condition in this cell is downstream of the gate, which censuses the
+    whole machine before deciding, so the bound is the machine's size and not
+    a guess about the product. The diagnosis below is what makes a genuine
+    stall legible without spending a CI round per hypothesis.
+    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():

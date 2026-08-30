@@ -26,7 +26,10 @@ jobs:
   portable-contract-store:
     name: Python 3.12 / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # The Linux job also runs the real systemd cell, whose gate censuses every
+    # unit on the machine on each start; fifteen minutes was chosen before
+    # that cell existed and would kill it mid-verdict.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
