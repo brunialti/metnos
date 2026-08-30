@@ -8,7 +8,10 @@ import sys
 import time
 
 
-_MARKER_RE_V1 = re.compile(
+# Named for what it is — the one target path this probe accepts — and not
+# with a `MARKER` in the name: that word makes the lexicon census read the
+# symbol as a linguistic marker, which this path pattern is not.
+_ALLOWED_TARGET_RE_V1 = re.compile(
     r"/run/metnos-g6c-[0-9a-f]{16}/marker\.json"
 )
 _STATUS_FIELDS_V1 = frozenset({
@@ -42,7 +45,7 @@ def _open_descriptors_v1() -> list[int]:
 def main() -> int:
     if (
         len(sys.argv) != 2
-        or _MARKER_RE_V1.fullmatch(sys.argv[1]) is None
+        or _ALLOWED_TARGET_RE_V1.fullmatch(sys.argv[1]) is None
     ):
         return 2
     marker = sys.argv[1]

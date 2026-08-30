@@ -118,7 +118,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'admin_chat_commands.py': ('23fcdf64527453538b5c030e36c2966c665e96abf4d35437f487a426318bbb65', (('comparison', 11),)),
     'admitted_module_v1.py': ('e2544f6735f95ee4d7074b37d0d9cffa9073f555ee296e4db99abf30edb7d2c0', (('comparison', 2), ('helper-argument', 1))),
     'agent_mirror.py': ('870f4556a8cd0bcc06eeda1d834549ecfb560fdd5eb3dee87b0170f9d63fe875', (('helper-argument', 4),)),
-    'agent_runtime.py': ('0d8609848d479011c5a76fea53f9f68af2e5c45896fcc16b73bc2d854a45ec7e', (('comparison', 121), ('helper-argument', 1))),
+    'agent_runtime.py': ('a8fe05852d5baa068429d626c325b779781583d8b9ddc81f1adb3c9bddbc5f9c', (('comparison', 121), ('helper-argument', 1))),
     'agent_server.py': ('8dfbea0437a6c294887ddf0c29efba0319b94852a6fe512be89eab22006c9077', (('comparison', 11), ('helper-argument', 5))),
     'agentic_executor.py': ('8320cd919ebc831aba7deade7477217ce278367974f4d65bb1cc0b7fe8a826f3', (('comparison', 3),)),
     'alignment_engine.py': ('ae8b5551fc8590e1a6bfeda9436b312c8e854d1728921d46fd699175a0484bb7', (('comparison', 6),)),
@@ -174,9 +174,9 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'compare_entries.py': ('ffc00edddb2c8ac4f9cc9227a90b824db0aec4a0af6e290eda791a2891414cbb', (('comparison', 1),)),
     'compound_decomposer.py': ('256070a1b292e58eb3ba1d63283a77bb11f9c20c836c4c574aeeefb60a88a178', (('comparison', 4),)),
     'config.py': ('257caa81f45083ad220824046694021f44f75a2f60e718374cbe80ebc9dee8ee', (('comparison', 13), ('helper-argument', 1))),
-    'contract_boundary_guard.py': ('f6f3bc9abec2273c2f324e68083de19e2e3331724ce2103153086ce1c0e62815', (('comparison', 79),)),
+    'contract_boundary_guard.py': ('1f6381b23b8ffb3184e0a9212adbdd716941b48e3978864c26ad3dffd7b1fcb5', (('comparison', 86),)),
     'contract_cutover_guard.py': ('39849f02e7854d0843edc10d20c528fffffce6d100276de81d069932d72e1759', (('comparison', 2),)),
-    'contract_store.py': ('c250b901c348b94c8183339f82d2d12626d5cf4fd72efac58edc1f7232a00a37', (('comparison', 32), ('helper-argument', 3))),
+    'contract_store.py': ('cb092abbc1c9d3f283183185b6a5b1e80199c98956313b9c15e7273f94428d57', (('comparison', 32), ('helper-argument', 3))),
     'credential_mandates.py': ('6f52143c2c23ef03146e16bb988c49b32745aee2e82ace13c7d2ff3f27be02a7', (('comparison', 5),)),
     'credentials.py': ('52f921e330c808c66bfcf39c72b50f0d4c5f795607520cd268d43f56dd760673', (('comparison', 1),)),
     'credentials_migrate.py': ('e0dbf9d6693b9b6559e9eb988607e76f6bbb74621a368915537c3393958238e4', (('comparison', 2), ('helper-argument', 1))),
@@ -218,8 +218,9 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/terminator.py': ('149e82f8b1b0ab17f54a6c7eed63aed86a4b3b521e963459962b7f4f97207aaa', (('comparison', 1),)),
     'engine/validator.py': ('b695db516e444544a7a620315f51d2c2682b85134076a3d4c7d76a2d23198b6a', (('comparison', 12),)),
     'executor_aging.py': ('a23b3323659557c5e7eaf77fa6fc9a14637582a3ed69d86160605840048ad959', (('comparison', 5),)),
+    'executor_birth_activation_probe.py': ('4f4dee67e65a43ea550f7e14894f407fde8509c531b66e7ada5233201c7c0d89', (('comparison', 1), ('helper-argument', 1), ('regex', 1))),
     'executor_birth_admin_operations.py': ('75fedbf55e79076fdbbbd2e87025e73971c10214696d3651f9be6a11a9cd77e9', (('comparison', 1),)),
-    'executor_birth_admin_preflight.py': ('4422e4b618734145f809d95c47d6526d7137b179c70a952ab90c77bcff244c45', (('comparison', 296), ('helper-argument', 16))),
+    'executor_birth_admin_preflight.py': ('ea2d5a16418301201461454e34409e476c7e5a8bd72f44fcfa96b22438ae037b', (('comparison', 325), ('helper-argument', 20), ('iteration', 1), ('membership', 6), ('prefix-suffix', 5), ('regex', 1))),
     'executor_birth_approval_authority.py': ('64fdddee16f9ae109ff75b33d98008710d963b7cee4ad2e883598b27575e17d4', (('comparison', 3), ('helper-argument', 1))),
     'executor_birth_approval_store.py': ('49c7f9e7d9f6a4912b4f11e351fa6820aa6ffd635134ec364b1f877f52badce8', (('comparison', 2),)),
     'executor_birth_authoring.py': ('fa7d739a561fe9014fa80ca50d086ec55ae91d038fb3971332be208d38284ecf', (('comparison', 6), ('helper-argument', 1))),
@@ -228,17 +229,18 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_context_v1.py': ('0c0b1183113cfe831bdc40cc79d8768b75c4b5ed17a742dee0896dc33558bf33', (('comparison', 1), ('helper-argument', 1))),
     'executor_birth_cutover.py': ('1708eb13c16a64927dc023edf702bee3da340cb031d7fd4604c6cacb05c425ac', (('comparison', 3),)),
     'executor_birth_distribution_assembler.py': ('b236cdd040fe101b6950c920b14015fed10f71a67ea5e87601b8ce62292e843f', (('comparison', 11), ('helper-argument', 2))),
-    'executor_birth_distribution_manifest.py': ('1d3dee8877ee16012e02df339f46e7118ff46289d1b890f33667ed27fbccc5ce', (('comparison', 46), ('helper-argument', 4))),
+    'executor_birth_distribution_installer.py': ('3b8e2ea7272fecd3a52e45c12c1e69e8289c9e3651493500fa1be93a01af0cfb', (('prefix-suffix', 2),)),
+    'executor_birth_distribution_manifest.py': ('d4f424c2e65d7a78973387d16f21b69b2daafc7ca4a3e91130fe59320f291b47', (('comparison', 54), ('helper-argument', 4), ('membership', 1))),
     'executor_birth_epoch_store.py': ('daf0dc1090d62503a65e1f9a9cd1d98cea28f4b0108170df853d0623fb09c271', (('comparison', 2), ('helper-argument', 7))),
     'executor_birth_failure_review.py': ('939fd468b73460af22db7f348ebacf6146c7e1bb7a7153a3afe34ab78681d511', (('comparison', 3), ('helper-argument', 1))),
     'executor_birth_feedback.py': ('c514fa16f605ae333a0267e3e15503f26c3855c5c77b1144b5ce8c85e41431e9', (('helper-argument', 1),)),
-    'executor_birth_identity.py': ('67e3ec753a409831e24d80bc3215a835aadf58980b29902eca2f787824c75621', (('comparison', 2),)),
+    'executor_birth_identity.py': ('b5b868288dbdf732e8788e65790e6961bd962509e3927d76e52ee644b031baac', (('comparison', 2),)),
     'executor_birth_keystore.py': ('6504cb895bf4d73a7b8d3948ae9b36b1fd557b0212c90b59db7693df1bd23636', (('comparison', 8), ('helper-argument', 1))),
     'executor_birth_lifecycle.py': ('6e3b395c663f5e21df6bc88140993520b4831fae128b5ba1aa543471613ec6d4', (('comparison', 2), ('helper-argument', 1))),
     'executor_birth_operational.py': ('2cfcfb505b28f27e05fea659d734a25dab31f9ae18067b0b41e37ec926a68cf7', (('comparison', 9), ('helper-argument', 2))),
     'executor_birth_ownership_authorities.py': ('f10d7e61d1814547e9d0e834b1b4a2376df0c3f908af824bed014276aeb6135b', (('comparison', 5), ('helper-argument', 1))),
     'executor_birth_ownership_chain.py': ('4078192d823041fef0a90dbbe8d7ed5f2b534e5c514ca879dee4455f4071df70', (('comparison', 10), ('helper-argument', 2))),
-    'executor_birth_ownership_coordinator.py': ('29252d9cdd47522caa391c72a71ca23390e9c53d79c0ddc0eab4ccb4ca1fdc41', (('comparison', 11), ('helper-argument', 1))),
+    'executor_birth_ownership_coordinator.py': ('0895e0eb4b9c2673a801df162df8c450bf9c3ad15ee0592993ed39023e67eeb7', (('comparison', 11), ('helper-argument', 1))),
     'executor_birth_ownership_cutover.py': ('ea44fec10358acc6b6e221e222a0293047d60a5532a36ba5b757b26f6b4891a8', (('comparison', 8), ('helper-argument', 1))),
     'executor_birth_ownership_preflight.py': ('b83755c189489215c0ec3778a00852c850830c24f3889f588a5182969f5bd2d2', (('comparison', 1), ('helper-argument', 1))),
     'executor_birth_postcondition.py': ('bf51bc292082ab283b96151a28229d002f0c0342b332c0240fba5f6832c19c89', (('comparison', 1),)),
@@ -267,7 +269,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_helpers.py': ('e4769f2120c8c1f6b17bb35dffd1dac841dd90c74b608317f9b61fd77c2df0f0', (('comparison', 4),)),
     'executor_metadata.py': ('dcc9073dd1f5b9dc9b5b2fba191595a6063d19165c82357ccb1e054a183321be', (('comparison', 5),)),
     'executor_scheduler.py': ('efc6336e737378b19db8312f2258e76c7cf0c9cd690dc3e0e174e8558200f712', (('comparison', 17),)),
-    'executor_standard.py': ('2e6b7c5f7688a44287c940da18cdab3135719634d39bb97bf0ecbf231e4611f5', (('comparison', 15),)),
+    'executor_standard.py': ('e12bfb80f0c5b6a35981cc71229c520a9fd4b4d156f6c5c9f9444d1686702ae3', (('comparison', 15), ('membership', 3))),
     'executor_typing.py': ('64d8579ea136a5cf9e4c3e8ce6165fc79d967cdb04c7692b5d5454d3e004a893', (('comparison', 2),)),
     'extract_entries.py': ('aed149cde7277a9083350e5956ebc47b53aec49ae33225af2a5efceddf9bdd61', (('comparison', 44), ('helper-argument', 5))),
     'face_embedding.py': ('98a04bc01d0a2a1233d0749be23b269af435b5d4bdaf0a48fafe7afc5f241755', (('helper-argument', 2),)),
@@ -348,6 +350,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'ordering_clause.py': ('079e02f456c85755ed00a1b3bd09e77abc4636bd14031f1fbe6a80e38d319bf2', (('comparison', 11),)),
     'output_format.py': ('26890c3121f27cf156e8c5b36af86c828f7833cbf94cdba5b713b6b19798bcf1', (('comparison', 2),)),
     'output_policy.py': ('b444f642af62260833bbaea6bfb09d34db417323e88bb3a6fc0d0ac881ff1a50', (('comparison', 23),)),
+    'paired_device_arg_resolver.py': ('cd4703ea17ef7756b1b31dd403937bfd442dd81b40522bc9fd48d286bb6d3ce2', (('comparison', 2), ('regex', 1))),
     'pairing.py': ('f946cd1296455f11d183c09e3d89282f65280b92029eaeba683ed046629fc961', (('comparison', 12), ('helper-argument', 1))),
     'parallel_walk.py': ('242fc2bc9168b8be43330bd613060debaa4cc28d88cddeaa60ad45f63ae51ab9', (('comparison', 1),)),
     'path_alias.py': ('707ea8dd01406aba8feb330eb5676cba5400b91897c69fbc4afd4a5376970247', (('comparison', 1),)),
@@ -798,8 +801,8 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
     "1da0a991271da254a297f9bbb688fbd117c79cefba4f3b7f7bb597f84392fb0a", "1dc82eb1a13ae0509df5ff1816050af07cebcf05aaac57e7049dcccfb34d9f54", "1e6dfef7e288c4572d1a6b013b6cbe856eb7e8dacf84f31dbc46601cb96e93c3",
     "1fc04f7242f9829deaf9899a85a1fb1220d3e3f83f6bd6366188e6bc9a8d7a88", "1fe892d1315467e7e9b7396c39ba64310b610c039dbbb08c7510b5451044b4a9", "1ff778f05fa491ed14db802207583a5d23247754f5447d5651298671f7392dda", "20f6e3e5e235e28bee20112bf56fc09894d8b2976a8fdbd871471ea34c016b83",
     "215d5178fc1252f4e3837277d8cbee14135c7e3c283eb619002dc945d62a061d", "217696fb3eca53f8b12244fd6edb98934edb71b7eb75b3ce3e6bfc0c02c51e8b", "21976e702a92196101035620ae3d685a1b105860aaff3ed4b9a046c52dba63d2", "21cd0290f434bc0f03bacb2ec5b7622b39a07b98f7a2167de7e14c0d9ea842fc",
-    "22a18ad1099c1c01e78ed0ba963de57daff6b070a1ab5138dfd3f5e7ac513f1c", "22a5045bd5d6033d1f318caef72b56194108c86c9a3ac0e2ae32ba1421a2836e", "22b13952fce4872b9c50746b9a1ce8af0dc2f0d1d20d3412b9b177fa1b1f1cb3", "22d33e4967c07836931f066c0de2cb0ddbd4a5f4273545635b4dad204beaeee2",
-    "22d3a984aa81f9021a3d0eb6e652aa1c8c1aa14c0685e9bad3c762d758d0fe6a", "22e95cd2f9ea0f59cd89993529659c13239eb2a5a22a0e71da4b3587e2cfe905", "23543c7cc41c001f6f444a2a57b7ca3ea01c0a211e0cca6bc30b2e2de84a7651", "235bd219c7655b73a7ddeec367e56c8c83b2e1cf52661713c25010b1c18f8531",
+    "22a18ad1099c1c01e78ed0ba963de57daff6b070a1ab5138dfd3f5e7ac513f1c", "22b13952fce4872b9c50746b9a1ce8af0dc2f0d1d20d3412b9b177fa1b1f1cb3", "22d33e4967c07836931f066c0de2cb0ddbd4a5f4273545635b4dad204beaeee2",
+    "22d3a984aa81f9021a3d0eb6e652aa1c8c1aa14c0685e9bad3c762d758d0fe6a", "23543c7cc41c001f6f444a2a57b7ca3ea01c0a211e0cca6bc30b2e2de84a7651", "235bd219c7655b73a7ddeec367e56c8c83b2e1cf52661713c25010b1c18f8531",
     "236ae258e7758a7294ebb05c72dc2334311c80d868dae1abe47675c5cfd408dd", "23a727c5f020fbcc1fc0acc8271a50b02626d165ce88443e7e7cf6203c8051d9", "23f9b1c42507623b779a4960286862ac6784e28b38ef87a1cb66f9ea5db04cf7", "2463b53d9515529cc585533938408beaa18121231d8c74c7ccc8f5829e84a9cb",
     "24b108b0b6ce9cd174580250ce9e24fd71bf85abf6d334de22a026eddf7de103", "24cf188ae031be1f85e580a2ff9455df05f1fbfc8febcd1540e89b7f2a261332", "24f3bbe5e1e92ab142c74e507b902b6d8d1e68b11a63957957d148c2c64f42a4", "255463a8ac7c8c0d6bbb8ef0bfafddf075a07c14fcb4ea5f56e50ed96360b5a9",
     "2564436a1a794e1190ad2e1d72de9bd7c7f75edc74ad4292d98d897b57ec3649", "25d13dc94d16a76ce6ad7827facf5df5b9e398f39f7c2a9f7a40c920eb956ca8", "25dfcf02085a7f5de3d2d1e60c5eab7cdabefab38f1c1750376ef0e25df431e4", "25f09e9d462754cd020f8d109e142fcf9256e5b7767522494ab6243ccb4a4b9d",
@@ -867,7 +870,7 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
     "7a1f405766485dd9f76fb8626733f70d66649ff6945d5db2dcd3e917e50cf872", "7a467038a55860596bf5dd4211c1194899d22f487e3ff84ca24edf40260b5ad1", "7a7cfed187c3a7ae17adabe1bd7b1c4279128b62a9e45cb7ba87695f86105955", "7a7dfbfac2011f407e8e2e5fe7176439d8643c8bbd7cc0695c83a34d7243b783",
     "7a98aaf66247c6328bb78d7243d8ab9eac6cc11ca154de3fa5713acc39828450", "7aa62ab6c18dd51e33f25ea0850799f0ada06bd0ea256f30900e5107e9a7d2df", "7b54a5df2508478d4eb26cbc4f600e498ca6e8995193be8406efb580ce91ac13", "7bd5f3f81efbe2fadbc0814da9c3c09d024031408f9aae6dcb5ff773adcbf56b",
     "7be4907e0c54daf741ed609bc6024a8682361389b17e2f78605db68056cf29fb", "7c3123e3909ed8ec0780b737e6556e152e454c0fffc73032631562c8b5dfb108", "7c6bb5cf5b448493a0832621f75d9d636628ceb648dcbdabf3178428121c716f", "7ca17ea1a542c0d5e73deadb78cdc9365f33cac0b937c78b8110b1d68425bb3f",
-    "7cfe5e44088b0eafe160caab2bbfa12eaacb4253150d4038c69ff82887e4c7c6", "7d258725b2efc509878da19e076cfda83ca9d081ac7cda857a43bea96cbb2d82", "7d2ec01e99efcc142488e9e4544ac3112f7dfa326fb63adfa621a8cffbc2c1d8", "7d3beb9a7aa9bebc7f9c47dc4708686eabdd7175ef4d46457383126782ddee9d",
+    "7d258725b2efc509878da19e076cfda83ca9d081ac7cda857a43bea96cbb2d82", "7d2ec01e99efcc142488e9e4544ac3112f7dfa326fb63adfa621a8cffbc2c1d8", 
     "7d6018ce0082920fc52ce6e2d73e96d8b9d7accd812e51cad2151d68fa1b047d", "7dc1a1a5310680721813962e55c66b1e93adc5327f4d1b34ab71723802bc126f", "7e752970841f4008ef5b4ee7af91b977d00d9f872cc5f10f72a28f634d965ccf", "7e8cca5a27c4a545a4c7c168411f5c82da43dc37b585e0fc6c86e7c8f1260cf9",
     "7f1174944a8eb79f4be794f9d1feaa87652c528133a21c14da1e72fa48a2539a", "7f1cac39db37f2324215019930ae7765cfc27c1acc666f74672234cc26477fe0", "7f8654ef3b77a9afd3364d2f9bd341028fdae60f4992730fa9dad701eaec180d", "7f981db36e8828ade1ff95353c909c7e39bbc3cade9dc62b0fb3f38bfd0c116e",
     "7fa79031687d1ad27674fd5ad0bfcfd8880445456ac4494d3b0ecbf349594bd2", "7ff671ae9115ba285e2e9abb0e4987328a47a0b319eb292b4fe15ce7c9a468ab", "800b879208fb9bbccb571a93763e73580e0cccc7c6066dd400a37168c3adf891", "80a2d86daa9978b72cee04c1188593ed85d1baf131e80e3528e5fd5176113647",
@@ -879,7 +882,7 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
     "8726fc3f80119850aff7e22365600014e048c247ed0b39604fbcf22db41c2781", "8781a8f08431325878ef9d54950f0fc7e6c9d974f47eb201dcbdf87e28c129b1", "87b8b1a8c51521040c088ab09641653e4e7823ab057d37644531d238a6dc5b31", "87c489366e27d7d63ebefb5840788bd2fa219ac8212bd0cc93ea88ccbced46a7",
     "88b6820c86c0865469c44ee94adfd5c709cafd46e798c734690ba3db4cc9c146", "897098b0a8ce496479f7c511266b8a007bb0da2c972309ec6c438568c308c755", "8a3fc607df008d087171c235d73c1dc788c075b6c997c47fc86da3246ee05e91", "8a5b6dce13941ecfe605067857441f082ef58f40d442636c61cf135824d21e5e",
     "8aa91843ebcc5c114e9d379cfe6cf3f9ab191f8c0696fdd659a1710b2d278755", "8aca6911e502d81b4c9a2f56013a2e9f1505a1e46997a849f81b7c7e3ccc1933", "8aeaa5699ca37dd1d7fb7c7e475d172a3b6a31cbc5357c4161a731001da60d30", "8b0157a82a97a56377f00e1699d0691272bfacd2fa9f75c92c2bf714b4d841e6",
-    "8bfba7efd00ec23caaa964bbe7675ac26b79b12d0fa07ab2b087b04211547334", "8c0689c78a6280be079f860eff5ee155e99cd675bea23e408ecd60a62b54989c", "8c0f039875e23031a929718aa44d8cac5772a13ef3566e5c35f65cf203ed878b", "8c13f8c694ad8a4b4ddd9cde6bda6b285e412acdd25b95eb1afcfc14e2e30e0a",
+    "8bfba7efd00ec23caaa964bbe7675ac26b79b12d0fa07ab2b087b04211547334", "8c0689c78a6280be079f860eff5ee155e99cd675bea23e408ecd60a62b54989c", "8c13f8c694ad8a4b4ddd9cde6bda6b285e412acdd25b95eb1afcfc14e2e30e0a",
     "8c5d83ae6a77b7b32449c283826f5f66728469c8bc53001ed62f21371ed754a6", "8c8601ef6069a888d360adccb23d2192bec157414e5b3d17a0cccb7380d6eee4", "8c92d3011aae114b101a66976b6041822ef3a7d394e2cc96a2a19f3e77c44fea", "8cbc94ea3a9883e86a1d00322a97995d675544868ef9594f93e30da31b426fbf",
     "8cc004b1a07b1b2ea8c3a2465917fac1c3c17c70216e5ed80b8ec472eddce414", "8cc24508ab1b99df48b889f83d272af96c98fc01179b65ff3d54f00980c0df14", "8cfddb60b76367da8be8e875b3d11e405892171c6fff94e2895451ae62b2b859", "8d2c03f1d2cc891c90de5edd2ad4fdd4d07d60bbe98440658439c9f837c9c61f",
     "8d34db2a4108da5f0cff5a82a01eee0f7ca15c930d58c056385c966c4c1376a5", "8e01283f207713f8dc9c47bc978d3e33aaa4961d4a83b7389ed21b60a47d9d5a", "8e8410a20f46209288e48726cc57538bd6a8e0a45991b4ccae95ebf0f7fc739a", "8ec5fd80ce08f35646ea5c46c08ea4b84df5c2c7e0ad807bdf3466c52db22fe2",
@@ -911,7 +914,7 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
     "b0cd1e729f6cf798ee1ec187e3a596996ce491a6568291248707879e03af0628", "b1b2c3bea69359b1a59e0a073de8d84fb02edd42bfa3c0abf4a7b12db0858c1a", "b2109dfd1ad72bfd6deb9eea0b1806815cd41ab3a021f1c9ff31c05042f899a2", "b220392d4570a7122a49eebc9a000152ddf936c7121d8d268d885f79a7205ee4",
     "b22fb3da575680194f2ac08de42a2dee145707982d11b1e91d6cac11ad4b860f", "b2c9a3a2e22f2b7419e7caff8fd77e0cdad56e3fe9c62d0ff8a23d7ad6c7ad07", "b4371e5e2e65944bee08a7bba8826dd9692d1842090d14f151027b22398cd22f", "b49182bd6611ce1f59f59e72a8125d82a42cc991aece819e1498af12a3b07813",
     "b4b21b700360ae9584200645b11a1ea35edf5882f8c90027daa254b520e4a35b", "b4b55aa164d58cddf30af2893b112ca70ee0033b8e09c2cbe947642d3262f2c9", "b4f53ac486c792a5b48010013442c9e4729b37f271b3172192455c01c94978ea", "b5e0435b7a13b81ec82ea29fcc829c16dc9df4b6493e4c4cb4d5c29d84b7823f",
-    "b612d00a66a703b576203619882d638d7171365c71041c2c670f61598344f679", "b633d40e3f442e089b70f7a2e64b2e637175d8324cbb6d472e592cd387607d86", "b6a73790b9a1cb728670dbee5c9b54262aa822d2a7077bb4072089f0e3ca8ab2", "b7291cfaae5bec3672032a3baeb979362356d0114c76eec8c0e288c15004614a",
+    "b633d40e3f442e089b70f7a2e64b2e637175d8324cbb6d472e592cd387607d86", "b6a73790b9a1cb728670dbee5c9b54262aa822d2a7077bb4072089f0e3ca8ab2", "b7291cfaae5bec3672032a3baeb979362356d0114c76eec8c0e288c15004614a",
     "b77e2c95667c753af9a3336c2b3264c62493c01127d86e0d90e6312cff1ad3fa", "b7d655d0a119ef525547e116eef95529418fa07c9ccf9442d5f9cefbf24a8135", "b809727ff28bbe04a0d87060f339d6d435ced18c6f43ddd33a53cd202426cdb0", "b8c6b76fb0cedb9c391ac8b73bea9ca46fd55e7e46cff686a85aa49554e1b3ee",
     "b92f19abd99e9b6b1dfdef503e14994ac19d94a7f22615645695b71ff57adc3f", "b9a7c396f8dbedd255221219aa651fe94e54ca2ca2742bd73860d49d7e784a5c", "b9be5cdbdede47df2ab3c967ec8136d4342d2c45a428078e9f7a57b9a09786fd", "b9c92e7d14b4fc3f43ed520a07448cf4dd97dfaa83ec2f4ae46b7ae099973242",
     "b9ff8f844e40adb06e9979740111a9d73ce39be527aa158b991e6f1f557ec503", "ba14adca2057f361fb76fe0490b799164f5a8fcd0673f1faa472519116c87943", "ba331d5ce99e60a58ebee8ff6200639ab5c18b687af955485722de98186e9c9e", "ba8f29b8b3198f984f5a6d0c9776b052149475ce81c0d3a74593b8edec3d986c",
@@ -939,7 +942,7 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
     "d6dfef38590f7527dfa2a13445b3345011737ccb6972713694ce2a0c0f4515f6", "d8172e76ddc708dd6d62ef3eb8420c791e5b169866d3b2bc6eb545b8970c01a9", "d88b25a0bf7c80fb52ec38b5517388a26f71bfaf153d03df3f7d5adf3e0b40f4", "d8a488cd7439ebbf60e278206a75b435e409978c81a2a72028d042a26edf6bcd",
     "d8a809acffa5fdcec3ff03eaa4eeea2c69f9a6314d328aa0e0dd6e4aa39b950d", "d9e884466eef89052b3b6345a2c4863580c0af53878290ea6b8991b664663c6d", "da0dc91d37a97a67e64d7cdd3fead88b554360e461d83f5eafd7b55f2dcd35fc", "da77024c2ccf953652c98384625847c9e506dabf4a9d820e9001ef7786e2de09",
     "daa9f0c994ae056e7a8ae218beb02bd4d339bc71b429510ca83878fdb6e4dc74", "daae5f3e0fa65e7c66dd3487e9d2645a9433c3d175515a505c53834b1ce825e0", "daf27c335fe1cb0408ae2ec33d80370adf5273fc417a977b4a25199db0226e14", "dbc3612409027391c50b740387e8ffcbbf3284c47e1c688752d301450f4aa02c",
-    "dcad340ac858105c03ac5845291569d4aec446a0851fc9cefb9ee430138c3cec", "dcbc9ff438b1d712ec08e3015f6c6ecfb6c5716490f24ac7bb4042a13fcd6fd1", "dd083983783c2da99968ed6e026cd8f42fc12b3678699cffd6bc6c0e0b40a7b6", "de1182c287c583eddb7a28bf9476efdc79194ae54abdb04f015882e0546b33ba",
+    "dcbc9ff438b1d712ec08e3015f6c6ecfb6c5716490f24ac7bb4042a13fcd6fd1", "dd083983783c2da99968ed6e026cd8f42fc12b3678699cffd6bc6c0e0b40a7b6", "de1182c287c583eddb7a28bf9476efdc79194ae54abdb04f015882e0546b33ba",
     "de329df554f0d5cee3d9e6e7735f501028b53bb88f45dabfcc033e44ad919f21", "de77e047e00c1551dcc6c0eea0155554af5b89f28d7c3281ac59a27dea4308e6", "df73caf870acd62e7ef60af06cec3b0dd335bfcf47fb6f66fd6448d1a5140310", "df880f85e589e3e3c537565ed21ac028cac64b5de6a44dec4aadb6ed3b06a7df",
     "df923d204f95f5258da6504ccbd713a44a14d1c4320dcfef44d28fbb5ae44324", "dfcb18b7e80949c3d27cd398d9cb09098c806ce08467d2c070e03a2710ed6220", "e00bc39be8067662a59ae9c94b7b9992c23bc8877c48aedde12486935514115e", "e01e4639f71e4e2ed4b3de5f3f5e6406f59c94e5b5159c47fb33fe0108d8724d",
     "e02e08b2e31bc63c08c3ae12b0a15d18eb6e138058da4b9a053b4c6b3532344a", "e02fe6a4a6d056fc142d13b0ef58462e1df743e82c3f4d995d7e97d1e93d4665", "e04b47d51a5dd38e372251304853f5b16bbd80e79f386b1ec1630eebe49ab3cb", "e066d0448d0d97e5242857eb7dc3ca87c8f4c4d50119723eb844c944cb756d6b",
@@ -975,6 +978,36 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
 # relative path, lexical owner, symbol, container kind and complete payload;
 # the adjacent reason records why the value is not input-language authority.
 VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
+    "0e98a95a3c159358e36866a9e7219eee5a2701a2ceae92727ae5cadbec6166a9":
+        "closed boundary API registry mirrored inside the signed preflight",
+    "1723360c898511beb5fe3d17010b9470470fb684d6807600f723b4c385279aba":
+        "closed boundary module registry: import names owned by each boundary",
+    "18d0f95550d215cb86ae67daacb35e638c9444b05cdc5b35991da45dbe7be64a":
+        "closed boundary source-owner map: repository paths to owning boundary",
+    "2b1befd1bf1ebfbc2d732e86a323f02f538d56f8fe0671da65ae6e29d1e0f4bf":
+        "closed paired-device identity projections declared by the manifest",
+    "48a7f1b6265f07d93c17c77313ee726ac77de45f523eafc77e4388e53500aec6":
+        "closed boundary API registry: module names and their exported symbols",
+    "4bf749f996ba74ec59487843dc8aefeef4e000c3cd001375e121934374459933":
+        "exact source path and symbol of the sole authenticated launch scope",
+    "6976d22f44f73fb145454339b9f7e469aab90082238dc8b269cca51f5e9caac0":
+        "kernel process status field names read from /proc/self/status",
+    "8311b9536da68fe413acd9b5f1f805d5e9bd0234d2c128d015bee9da8c9aade3":
+        "closed paired-device match modes declared by the manifest",
+    "877b14a01cf40c7f6cc54299a7c6e6b4301fc0b2f0898e3494e63bbad5259079":
+        "closed boundary source-owner map mirrored inside the signed preflight",
+    "952f0c82ea63fbe78fa6b1b99a9acf7a1df52d92cc35b50e0673a546c887b676":
+        "closed set of systemd unit relation names added by the manager",
+    "a67585e0d3fcd9216f6bf120de4ef638d5b0768eecf2792aa1612de4ba6c39f1":
+        "closed contract-store failure codes for an absent code payload",
+    "c4b3e524038d791de8b5e724cdf0f03d42babb3d1c21184f4773e7b6e622e9a2":
+        "closed coordinator store owners, addressed as file and function",
+    "dd841db9c1e52aea3a221382c420196f53f973d7d131d3e7433af473626f6b92":
+        "authenticated launch scope mirrored inside the signed preflight",
+    "e247f4933aff9080b927dffd83ddd1a00e8141c55c29533f84ba0f92f507a336":
+        "closed boundary module registry mirrored inside the signed preflight",
+    "feab9cf3c4d89cf4b407b1c463450a4e6f76ebc3e8a62a72484c2e14c6f83f98":
+        "closed coordinator store owners mirrored inside the signed preflight",
     "5b8160bd736d40166b6ae4443dd2ebb99fafdef5aa0dfd2c7b01703a0f4f9c29":
         "closed systemd origin-property protocol requested from the manager",
     "d36dd62ba735b02f3dd085ca60f631efa9ec31c3a5915ea6ba2d7dac10ec6891":
@@ -983,12 +1016,8 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "provider email category-hint tuples projected to canonical classes",
     "054a3450261ae5e44d92704ed001d9d5133d07af6759932d2bdbc68be7da1215":
         "provider email category-hint tuples projected to canonical classes",
-    "96df0daabb3647ace3ed639b5cc6858ddbc40bffc4c96320739728f43d750b10":
-        "authenticated module identities at the contract boundary",
     "ab5591b1cfaa38fa0c97ae957ce923fd31ce62380af5c3eae257306eba707d69":
         "closed authoring capability identities at the Birth boundary",
-    "83afafaa88d0726d0d38c34b10289b7ac5fcf5bdc14052841ac641643d15bc43":
-        "preflight clone of authenticated boundary module identities",
     "a82348c2a927794924a4fd89347d9e59abb60b00a807312db085047dfc7c6fa2":
         "preflight clone of closed Birth capability identities",
     "eed858715eda06f1ca3fdae97dbec2b4d8d642a322300058e99d0b6a66edfcb5":
@@ -1160,7 +1189,7 @@ VALUE_BOUND_INLINE_LITERAL_FINGERPRINTS = frozenset({
     "2c3b694b85c4e589f441ba9a2e30a24333b2eba7a2387e08c2f80b55095bec17", "2cc3661f5201181a87327294d8ddf2be78f49b5032c3d9b965163fadc7f4af45", "2cd2c8caa2e0514195d52f5f32308a8ae52781738b3eee918954a49fe96621de", "2cd2f4844e2afebeea8760bf94ce81b94ccbbd330fbe0db78bee260d023efc22",
     "2cdf94dd2a6a3d8671e769940024f06c4a822fabe87a4e4c9678de968dbe45e0", "2ce702835bd972ebe4ca5a6c4a50e82adfc9073d76d0e0b4055230b1979196e5", "2d061471a4b36c26c4bc93886867c5f17b124f7d8b8672a2dc2f456636eb5d00", "2d21da7ac94ec023f32dc81b99250fbf7cf464ec89a25fc7d2140b5252cfeefe",
     "2d2b2e84255b9d6afe9ed78499eaf58fbee82caba8b35458bfaf846a8ab3c586", "2d35f20448dde181d606cb876f884bebd73501e4f887ef58b5a17e5237129d20", "2d5584d3e43b034c4fedd1bc49a85e27bd22f1d1d25a4a3fd58c358e5422351c", "2db185a2c565ee12d1f9bbbe7701b64c99f244275875c558f56c845abddcf6e4",
-    "2dc6289af50c1ad3203c9df9918279b0197aa9689476db98f672abae54d0b5d6", "2dc63d49da937dac422a194d8583b00e11b5cd8b84595c5ed9d1b72204bf284a", "2dde8dba2806fee62870177112ec4f3e61689de0e08c273cbd9d87ebcc1aef65", "2e144a5e94fbfe9ad7fa0246051c75233aabd67401123a31577aca4120cddefc",
+    "2dc6289af50c1ad3203c9df9918279b0197aa9689476db98f672abae54d0b5d6", "2dc63d49da937dac422a194d8583b00e11b5cd8b84595c5ed9d1b72204bf284a", "2e144a5e94fbfe9ad7fa0246051c75233aabd67401123a31577aca4120cddefc",
     "2e15b67934740d1f2196802f53a4cc5f4e5ecff0b74a732e5c70a322ad6616fc", "2e1cdccb5ac3fa51804b65f5db2ecfa77e25531f67791067dcf88f0b135266a7", "2e22a862efeb92855be6a86b174635a344ce1408da092cd3787bea8c6e27e84e", "2e3fc4a537ac71217b99dd86668750de90d8181e70232537601449f3db9478e4",
     "2e480959f8f205c487980252ab14770f9144ab7dcda258fae2dad85fe0e64021", "2e99a1bb53ae5d1a721bba772b742faad9b982c1e3f2ec80de28bb65a8666de8", "2f00040830f8fcfc0391dc33a01f02cc3a019979170c985b61f6e075d2cad9d7", "2f13dd08c25e862a8eee4a8b23446511b14eaa5d16a374801ea6e8d5afbebfc1",
     "2f29712af08ed85fb8cddc17d1c14526451043d1523e25f41242b57da94447d6", "2f2d74fb9c8e38c6b0b93d758e30bcc0c6d93cbb8c4287697583e789a7d9453f", "2f34bb31912560aa404fd36d847c1ba7c2abf4682d3b1cdd6aeeb184f5ae021f", "2f386a90b0624aa993e157de249039f3c9e2c227d825e212afdc98ed59d83487",
@@ -1250,7 +1279,7 @@ VALUE_BOUND_INLINE_LITERAL_FINGERPRINTS = frozenset({
     "55b94d7ce57cd48061468c113b731ffe85280e48a6ba2b55cd2a144a98face53", "55bcb951c864704bc5370a00e0fbafb38c3c27e21b98a41c78be583d7beef1d3", "55dece5cc51b2846f3de6a676cd89313199d6824c09c172fe8205772d86a2010", "55eff26ebb949e56ef5456c8c46fef3d7211b3ece3cfa98c10de408bca685702",
     "564ff4861e9b342040cca63a00911fbd3eff6226666de9f5d4ff96002805b01f", "568c3ffd4f0a2c1328fa82965bfcdc8891e200b25539f6af9591e3ebd92bc40f", "5692d01c8ba7aa3f1f95927e72a052a857a462e38363327d2e835647be87157b", "56cc90a787970b4aa8d5b36a87346979cb424e2340847ebf9e5eac7101e67179",
     "5716d12643ac8daf2386bd99b4eab67e7cee2712b0dbf429dabffec3184caabb", "571cc406e91ea3e9ad633b41671c9ab1d480f75b814f3ae978009d5e847d2cdd", "573649cc405df64f4cec334ecc71fff16a96ca6cfd1a7d58d2894e1de474bba7", "573abfca4014c11442f8f6ac5f69fb32c4e95a637cb93ec7044176986279aa89",
-    "575d7515f5d45ab233f2836ca8c1ab64c77facc9e2fea939d8bd7c4aba951879", "5774ba19a7cf2b8f25534a6779df7eaa07b2259aec5773f155ecc574412d8720", "57db0dbd1037b6b8567d50e4c2f023ea9a2eb2a468b55ac5383a100c0e9f11d7", "581e5f99806b71d3c6276c2308eb5fd7ea4477dd71605ed5508644ab50d4feb7",
+    "5774ba19a7cf2b8f25534a6779df7eaa07b2259aec5773f155ecc574412d8720", "57db0dbd1037b6b8567d50e4c2f023ea9a2eb2a468b55ac5383a100c0e9f11d7", "581e5f99806b71d3c6276c2308eb5fd7ea4477dd71605ed5508644ab50d4feb7",
     "58443c6a3799acea0e4e8c8ec1c7202a34133fbe387e27ae1041755885eeee45", "58f87b0796b691b1429deae616793314cf4d4efa051cdc64b7da70b900cfd577", "591ad015ae77b55b5ada0b7ec7a204feb72c7067a724e38cae16146e3b58933b", "59349eb91128586c3377e03def764dfa190b681b8aa264e5849eb801f857a78e",
     "59887580163de6a7f1eaf25bb7105efc83e01488653e406c0e60b5262e9e59ea", "59bd900b9ac73a81c65a7ff9ed6a868e342f7a9153ea4376b5c70a44807cfa5e", "59c8af112c708884388db74cfaeeae176cef57e7ac30ab2ba44590d2b0908e95", "5a0d162185101fee5fec714969308fa190b507a356f4bd98b626d6759cac75e7",
     "5a2d34b25f2f0e831b53ee84a5f8abc0b4ccb476422e6ba1d44a3cc50697fb0e", "5a31158e7d9c9c7417a583246cab56327aa8d53234f74612fbefd0b07f2c9443", "5a428aea598a3b4006aebd2f4bcb848c41f3bcdc1d81fb324b933d93b7660468", "5a50a2f01622c84ff191d47c3e7f6f29640d682d0c12d2eda334f2261935edfa",
