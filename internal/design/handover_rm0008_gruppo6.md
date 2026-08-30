@@ -1886,3 +1886,17 @@ fixture ora usano `raising=False`; la selezione esatta dei dieci casi termina
 con `10 passed`. La logica produttiva non è stata modificata. Occorre
 pubblicare questo incremento e richiedere un nuovo run completamente verde
 prima di chiudere RM-0005.
+
+### Chiusura effettiva di RM-0005
+
+La correzione della fixture è pubblicata nel commit pubblico
+`97f38d9d46aa2bfaf6ab15a3a8ea1b93b9a44456`. Il secondo run GitHub Actions
+`33309759454` è completamente verde: sono riusciti i job principali Ubuntu e
+Windows, i sei job di evidenza RM-0008 e il riepilogo finale. RM-0005 è quindi
+`closed` dal 30 agosto 2026.
+
+Il prossimo agente non deve riaprire il censimento, rigenerare firme o
+ricostruire Birth in assenza di nuovi rilievi concreti. RM-0008 resta `active`;
+il prossimo passo minimo è riprendere G6-B3 dalla fotografia systemd viva. Una
+review avversariale di RM-0005 può ora essere eseguita sul commit pubblico
+certificato indicato sopra.

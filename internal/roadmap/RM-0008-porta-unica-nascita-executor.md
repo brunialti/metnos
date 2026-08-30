@@ -1711,9 +1711,10 @@ quindici già correnti; tutte le 21 firme sono valide.
 Il gate laterale è verde: censimento `83 passed`, matrice firmata
 `302 passed, 1.162 subtests passed` e perimetro Birth mirato
 `51 passed, 1 skipped` per un caso non applicabile alla piattaforma. RM-0008
-resta `active`, ma non è più fermo sul prerequisito RM-0005. Dopo la
-certificazione del commit pubblico, il percorso minimo riprende dalla
-fotografia systemd effettiva di G6-B3 descritta nell'handover.
+resta `active`, ma non è più fermo sul prerequisito RM-0005. Il commit pubblico
+`97f38d9d46aa2bfaf6ab15a3a8ea1b93b9a44456` e il run GitHub Actions
+`33309759454` sono verdi su Linux e Windows. Il percorso minimo riprende quindi
+dalla fotografia systemd effettiva di G6-B3 descritta nell'handover.
 
 Il gate della distribuzione riconosce 684 sorgenti privati con radice
 `sha256:3089ab571fa2e8a2dbf09bd591492e628697c54d6dcfb507c674d52d17ded316`

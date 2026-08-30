@@ -525,10 +525,12 @@ personali e segreti. La rotazione di queste impronte è normalizzata soltanto
 nei due campi-pin esatti del censimento statico; ogni altra modifica continua a
 invalidare l'autorità del modulo.
 
-Il candidato locale non ha più errori né prerequisiti tecnici aperti. Lo stato
-passa a `closed` dopo il commit su `main` e la verifica della relativa
-certificazione pubblica; l'esito e gli identificatori saranno registrati qui
-senza riaprire l'implementazione già convergente.
+Il candidato locale non ha più errori né prerequisiti tecnici aperti. La
+correzione portabile finale è pubblicata su `main` nel commit
+`97f38d9d46aa2bfaf6ab15a3a8ea1b93b9a44456`. Il run GitHub Actions
+`33309759454` ha concluso con successo tutti i job Linux, Windows, manifest,
+concorrenza, ACL e il riepilogo di certificazione. Non restano errori o gate
+pendenti: RM-0005 torna formalmente `closed` il 30 agosto 2026.
 
 ## 7. Rischi e misure
 
