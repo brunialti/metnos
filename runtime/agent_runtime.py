@@ -3271,6 +3271,11 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # anche per fast-path, resume ed esecuzione remota: gli args del chiamante
     # non possono impersonare un altro attore o canale.
     args = dict(args or {})
+    from paired_device_arg_resolver import resolve_paired_device_args
+    args = resolve_paired_device_args(
+        args, getattr(executor, "args_schema", None),
+        actor=actor or "host",
+    )
     # JSON Schema `uniqueItems` dichiara quali liste sono insiemi. Normalizzare
     # qui copre in un solo punto piani diretti, piping, resume e device remoti;
     # ogni lista non annotata resta intatta perché i duplicati possono avere
@@ -5912,6 +5917,11 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
     boot_register_verb_unique_builtins()
     verb_entry = VERB_UNIQUE_REGISTRY.get(tool_name)
     if verb_entry and verb_entry.get("expose_to_planner"):
+        from paired_device_arg_resolver import resolve_paired_device_args
+        args = resolve_paired_device_args(
+            dict(args or {}), getattr(exec_obj, "args_schema", None),
+            actor=actor or "host",
+        )
         call_args = {
             key: value for key, value in dict(args or {}).items()
             if not str(key).startswith("_")

@@ -736,7 +736,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:36a1d941fc9cbe3cd918fe6d104857eae4c1bb822d3f6b0f900c9412ca53a835"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:7dd6f5bd816a5d648d02f386ed512aa7f1d78b911b1b55a1b071bf7880e5a7b6"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -12342,8 +12342,11 @@ def _validate_systemd_manager_added_edge_v1(
         or len(edge.unit_name.encode("utf-8")) > 255
         or edge.origin_kind not in {
             "root_fragment", "root_generator", "manager_virtual",
+            "absent_unit",
         }
-        or edge.load_state != "loaded"
+        or edge.load_state != (
+            "not-found" if edge.origin_kind == "absent_unit" else "loaded"
+        )
     ):
         raise _invalid("systemd added edge")
     file_fields = (
@@ -12361,6 +12364,20 @@ def _validate_systemd_manager_added_edge_v1(
             or edge.unit_file_state is not None
         ):
             raise _invalid("systemd manager virtual origin")
+        return
+
+    if edge.origin_kind == "absent_unit":
+        # A relation may name a unit that does not exist: systemd keeps the
+        # edge and reports the target as not-found. That is an ordinary,
+        # observable fact on any real system, not tampering, and denying it
+        # made the canonical graph impossible to build. The node is recorded
+        # as absent and carries no file, no owner and no state, so its later
+        # appearance changes the effective photograph instead of hiding in it.
+        if (
+            any(value is not None for value in (*file_fields, *source_fields))
+            or edge.unit_file_state is not None
+        ):
+            raise _invalid("systemd absent origin")
         return
 
     roots = (
@@ -12658,15 +12675,34 @@ def _capture_systemd_origin_v1(
         len(observed[name]) != 1 for name in _SYSTEMD_ORIGIN_PROPERTIES_V1
     ):
         raise _invalid("systemd origin property set")
+    observed_id = _systemd_single_property_v1(observed, "Id")
+    observed_load = _systemd_single_property_v1(observed, "LoadState")
+    observed_transient = _systemd_single_property_v1(observed, "Transient")
     if (
-        _systemd_single_property_v1(observed, "Id") != unit_name
-        or _systemd_single_property_v1(observed, "LoadState") != "loaded"
-        or _systemd_single_property_v1(observed, "Transient") != "no"
+        observed_id != unit_name
+        or observed_load not in {"loaded", "not-found"}
+        or observed_transient != "no"
     ):
-        raise _invalid("systemd origin identity")
+        # Name the unit and the three observations. Unit names and load state
+        # are not payload, and a mute denial here costs a CI round trip per
+        # hypothesis: the same blindness already cost two on this cell.
+        raise _invalid(
+            f"systemd origin identity requested={unit_name} "
+            f"id={observed_id} load={observed_load} "
+            f"transient={observed_transient}"
+        )
     fragment_path = _systemd_single_property_v1(observed, "FragmentPath")
     source_path = _systemd_single_property_v1(observed, "SourcePath")
     unit_file_state = _systemd_single_property_v1(observed, "UnitFileState")
+
+    if observed_load == "not-found":
+        if fragment_path or source_path or unit_file_state:
+            raise _invalid("systemd absent observation")
+        return _SystemdOriginObservationV1(
+            unit_name, "absent_unit", None, None,
+            None, None, None, None, None, None, None, None, None, None,
+            "not-found", None,
+        )
 
     if unit_name in _SYSTEMD_MANAGER_VIRTUAL_UNITS_V1:
         if fragment_path or source_path or unit_file_state:

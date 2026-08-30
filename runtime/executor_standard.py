@@ -153,6 +153,29 @@ def _validate_args(findings: list[StandardFinding], manifest: dict,
         if spec.get("runtime_resolved"):
             if name in required:
                 _add(findings, "runtime_arg_required", f"runtime arg {name!r} cannot be required")
+        paired_identity = spec.get("paired_device_identity")
+        paired_mode = spec.get("paired_device_identity_mode")
+        if paired_identity is not None:
+            if paired_identity not in {"id", "name"}:
+                _add(
+                    findings, "paired_device_identity",
+                    f"args.properties.{name}.paired_device_identity must be "
+                    "'id' or 'name'",
+                )
+            if (not isinstance(declared_type, str)
+                    or declared_type not in {"string", "array"}):
+                _add(
+                    findings, "paired_device_identity_type",
+                    f"args.properties.{name} with paired_device_identity "
+                    "must have type 'string' or 'array'",
+                )
+        if paired_mode is not None:
+            if paired_identity is None or paired_mode not in {"exact", "token"}:
+                _add(
+                    findings, "paired_device_identity_mode",
+                    f"args.properties.{name}.paired_device_identity_mode "
+                    "requires paired_device_identity and must be 'exact' or 'token'",
+                )
         descriptions = _language_map(spec.get("description"))
         if active:
             for lang in ("it", "en"):

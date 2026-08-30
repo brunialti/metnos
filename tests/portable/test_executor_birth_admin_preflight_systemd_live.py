@@ -512,7 +512,7 @@ def test_origin_denies_transient_or_unclassified_units(
         preflight._capture_systemd_origin_v1,
         "init.scope", systemctl_executable="/usr/bin/systemctl",
         capture_file=lambda *_args: pytest.fail("must not read files"),
-    ).detail == "systemd origin identity"
+    ).detail.startswith("systemd origin identity")
 
 
 @LINUX_ONLY
