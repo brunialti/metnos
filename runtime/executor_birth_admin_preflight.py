@@ -70,6 +70,10 @@ RECEIVED_SOURCE_DESCRIPTOR_BASENAME_V1 = "received-source-v1.json"
 MAX_OPENSSL_STREAM_BYTES = 4096
 OPENSSL_TIMEOUT_SECONDS = 5.0
 OPENSSL_TEARDOWN_TIMEOUT_SECONDS = 1.0
+SYSTEMCTL_TIMEOUT_SECONDS_V1 = 10.0
+SYSTEMCTL_TEARDOWN_TIMEOUT_SECONDS_V1 = 1.0
+MAX_SYSTEMCTL_STDOUT_BYTES_V1 = 4 * 1024 * 1024
+MAX_SYSTEMCTL_STDERR_BYTES_V1 = 4 * 1024
 OPENSSL_TEMPORARY_PREFIX = ".verify-"
 SIGNATURE_DOMAIN = b"metnos.executor-birth.closed-build/v1\0"
 BUILD_ID_DOMAIN = b"metnos.executor-birth.closed-build-id/v1\0"
@@ -642,6 +646,10 @@ _SYSTEMD_ROOT_FRAGMENT_STATES_V1 = frozenset({
     "static", "disabled", "indirect",
 })
 _SYSTEMD_MANAGER_VIRTUAL_UNITS_V1 = frozenset({"-.slice", "system.slice"})
+_SYSTEMD_ORIGIN_PROPERTIES_V1 = (
+    "FragmentPath", "Id", "LoadState", "SourcePath", "Transient",
+    "UnitFileState",
+)
 _DEPLOYMENT_DESCRIPTOR_KEYS_V1 = frozenset({
     "schema_version", "descriptor_id", "release_sequence",
     "installation_root", "service_user", "service_uid", "service_gid",
@@ -702,7 +710,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:057be58564833e198b491211bfbb222f8d0cde77bb3d4595e578b07719a1caf3"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:f662023198530f549d1977932a37cf4bd901b9fd524fd801ccb0a21ed1d57797"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -1263,6 +1271,19 @@ class _ReconciledFixedOwnershipSnapshotV1(NamedTuple):
     predecessor: _DecodedPredecessorDescriptorV1 | None
 
 
+class _SelectedOwnershipEpochV1(NamedTuple):
+    registries: tuple[
+        OwnershipPublicKeyFactsV1,
+        OwnershipPublicKeyFactsV1,
+        OwnershipPublicKeyFactsV1,
+    ]
+    anchor: _DecodedOwnershipCutoverV1 | None
+    required_head: _DecodedOwnershipHeadV1
+    build: _AuthenticatedDistributionObjectV1
+    transaction: _AuthenticatedTransactionSnapshotV2
+    predecessor: _DecodedPredecessorDescriptorV1
+
+
 class _AuthenticatedFixedOwnershipSnapshotV1(NamedTuple):
     """Product fixed-root result, deliberately not accepted by dispatch yet."""
 
@@ -1567,6 +1588,68 @@ class _EffectiveSystemdUnitsSnapshotV1(NamedTuple):
     entries: tuple[_EffectiveSystemdUnitV1, ...]
     encoded: bytes
     effective_units_hash: str
+
+
+class _CapturedSystemdFileV1(NamedTuple):
+    """One exact no-follow systemd file and its logical manager path."""
+
+    logical_path: str
+    maximum: int
+    captured: _CapturedTrustedFileV1
+
+
+class _CapturedSystemdLinkV1(NamedTuple):
+    """One exact enablement symlink plus its authenticated parent chain."""
+
+    logical_path: str
+    actual_path: str
+    parent: _TrustedResolvedPathV1
+    identity: tuple[int, ...]
+    target: str
+
+
+class _CapturedEffectiveSystemdUnitsV1(NamedTuple):
+    """Complete live observation; it grants no operational authority."""
+
+    manager_version: str
+    snapshot: _EffectiveSystemdUnitsSnapshotV1
+    files: tuple[_CapturedSystemdFileV1, ...]
+    links: tuple[_CapturedSystemdLinkV1, ...]
+
+
+class _SystemdOriginObservationV1(NamedTuple):
+    unit_name: str
+    origin_kind: str
+    fragment_path: str | None
+    source_path: str | None
+    source_size: int | None
+    source_content_hash: str | None
+    source_uid: int | None
+    source_gid: int | None
+    source_mode: int | None
+    size: int | None
+    content_hash: str | None
+    uid: int | None
+    gid: int | None
+    mode: int | None
+    load_state: str
+    unit_file_state: str | None
+
+
+class _ObservedEffectiveSystemdV1(NamedTuple):
+    """Signed/live cross-binding that still cannot enter dispatch."""
+
+    administrative_tcb: _ObservedAdministrativeTcbV1
+    prerequisite: _CapturedTrustedFileV1
+    effective_systemd: _CapturedEffectiveSystemdUnitsV1
+
+
+class _ObservedEffectiveSystemdProductV1(NamedTuple):
+    observation: _ObservedEffectiveSystemdV1
+
+
+class _ObservedEffectiveSystemdForTestV1(NamedTuple):
+    observation: _ObservedEffectiveSystemdV1
 
 
 class _BoundPreflightMaterialsV1(NamedTuple):
@@ -7466,17 +7549,16 @@ def _bind_administrative_tcb_core_v1(
     )
 
 
-def _bind_administrative_tcb_v1(
-    authenticated: _AuthenticatedFixedOwnershipSnapshotV1,
+def _require_materials_selected_by_snapshot_v1(
+    snapshot: _ReconciledFixedOwnershipSnapshotV1,
     materials: _BoundPreflightMaterialsV1,
-) -> _ObservedAdministrativeTcbProductV1:
-    """Bind only the graph selected by the same product authentication."""
+) -> _SelectedOwnershipEpochV1:
+    """Require the one authoritative epoch while ignoring pending successors."""
     if (
-        type(authenticated) is not _AuthenticatedFixedOwnershipSnapshotV1
+        type(snapshot) is not _ReconciledFixedOwnershipSnapshotV1
         or type(materials) is not _BoundPreflightMaterialsV1
     ):
-        raise _invalid("product administrative TCB")
-    snapshot = authenticated.snapshot
+        raise _invalid("administrative TCB ownership selection")
     required_head = snapshot.required_head
     predecessor = snapshot.predecessor
     if required_head is None or predecessor is None:
@@ -7501,6 +7583,25 @@ def _bind_administrative_tcb_v1(
         or materials.prerequisite.predecessor_id != predecessor.predecessor_id
     ):
         raise _invalid("administrative TCB ownership selection")
+    return _SelectedOwnershipEpochV1(
+        snapshot.registries, snapshot.anchor, required_head, builds[0],
+        transactions[0], predecessor,
+    )
+
+
+def _bind_administrative_tcb_v1(
+    authenticated: _AuthenticatedFixedOwnershipSnapshotV1,
+    materials: _BoundPreflightMaterialsV1,
+) -> _ObservedAdministrativeTcbProductV1:
+    """Bind only the graph selected by the same product authentication."""
+    if (
+        type(authenticated) is not _AuthenticatedFixedOwnershipSnapshotV1
+        or type(materials) is not _BoundPreflightMaterialsV1
+    ):
+        raise _invalid("product administrative TCB")
+    _require_materials_selected_by_snapshot_v1(
+        authenticated.snapshot, materials,
+    )
     captured = authenticated.administrative_tcb
     if type(captured) is not _CapturedAdministrativeTcbProductV1:
         raise _invalid("product administrative TCB")
@@ -10796,6 +10897,131 @@ def systemctl_show_argv_v1(
     return argv + ("--", unit_name)
 
 
+def _teardown_systemctl_process_v1(process: subprocess.Popen[bytes]) -> None:
+    failed = False
+    try:
+        if process.poll() is None:
+            process.kill()
+    except OSError:
+        failed = True
+    try:
+        process.wait(timeout=SYSTEMCTL_TEARDOWN_TIMEOUT_SECONDS_V1)
+    except (OSError, subprocess.TimeoutExpired):
+        failed = True
+    for stream in (process.stdout, process.stderr):
+        if stream is None:
+            continue
+        try:
+            stream.close()
+        except OSError:
+            failed = True
+    try:
+        if process.poll() is None:
+            failed = True
+    except OSError:
+        failed = True
+    if failed:
+        raise _recovery("systemctl process teardown")
+
+
+def _run_systemctl_bounded_v1(
+    argv: tuple[str, ...],
+) -> tuple[int, bytes, bytes]:
+    """Run the sole closed systemctl protocol with asymmetric stream caps."""
+    if (
+        type(argv) is not tuple or not argv
+        or any(type(item) is not str or not item or "\0" in item for item in argv)
+        or not Path(argv[0]).is_absolute()
+    ):
+        raise _invalid("systemctl command")
+    process: subprocess.Popen[bytes] | None = None
+    output = bytearray()
+    error = bytearray()
+    selector = selectors.DefaultSelector()
+    try:
+        process = subprocess.Popen(
+            argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, env={"LC_ALL": "C"}, shell=False,
+            close_fds=True,
+        )
+        if process.stdout is None or process.stderr is None:
+            raise _invalid("systemctl pipes")
+        for stream, label in (
+            (process.stdout, "stdout"), (process.stderr, "stderr"),
+        ):
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, label)
+        deadline = time.monotonic() + SYSTEMCTL_TIMEOUT_SECONDS_V1
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(
+                    argv, SYSTEMCTL_TIMEOUT_SECONDS_V1,
+                )
+            events = selector.select(remaining)
+            if not events:
+                raise subprocess.TimeoutExpired(
+                    argv, SYSTEMCTL_TIMEOUT_SECONDS_V1,
+                )
+            for key, _mask in events:
+                target = output if key.data == "stdout" else error
+                maximum = (
+                    MAX_SYSTEMCTL_STDOUT_BYTES_V1
+                    if key.data == "stdout"
+                    else MAX_SYSTEMCTL_STDERR_BYTES_V1
+                )
+                try:
+                    chunk = os.read(
+                        key.fileobj.fileno(), maximum + 1 - len(target),
+                    )
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                target.extend(chunk)
+                if len(target) > maximum:
+                    raise _invalid("systemctl output bound")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(
+                argv, SYSTEMCTL_TIMEOUT_SECONDS_V1,
+            )
+        returncode = process.wait(timeout=remaining)
+        return returncode, bytes(output), bytes(error)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise _invalid("systemctl execution") from exc
+    finally:
+        active_failure = sys.exception()
+        teardown_failure: PreflightError | None = None
+        try:
+            selector.close()
+        except OSError:
+            teardown_failure = _recovery("systemctl selector teardown")
+        if process is not None:
+            try:
+                _teardown_systemctl_process_v1(process)
+            except PreflightError as exc:
+                teardown_failure = exc
+        if teardown_failure is not None:
+            if active_failure is not None:
+                raise teardown_failure from active_failure
+            raise teardown_failure
+
+
+def _run_systemctl_show_v1(
+    systemctl_executable: str, unit_name: str | None,
+    properties: tuple[str, ...],
+) -> dict[str, tuple[str, ...]]:
+    argv = systemctl_show_argv_v1(
+        systemctl_executable, unit_name, properties,
+    )
+    returncode, stdout, stderr = _run_systemctl_bounded_v1(argv)
+    if returncode != 0 or stderr:
+        raise _invalid("systemctl show command")
+    return parse_systemctl_show_v1(stdout, properties)
+
+
 def parse_systemd_manager_version_v1(stdout: bytes) -> str:
     parsed = parse_systemctl_show_v1(stdout, ("Version",))
     if set(parsed) != {"Version"} or len(parsed["Version"]) != 1:
@@ -11844,6 +12070,574 @@ def _make_effective_systemd_units_snapshot_v1(
     return _EffectiveSystemdUnitsSnapshotV1(
         entries, encoded, _digest(EFFECTIVE_UNITS_DOMAIN_V1, encoded),
     )
+
+
+def _systemd_live_path_v1(logical_path: str, live_root: Path) -> Path:
+    logical = _catalog_absolute_path_v1(logical_path, "systemd live path")
+    if (
+        not isinstance(live_root, Path) or not live_root.is_absolute()
+        or str(live_root) != live_root.as_posix()
+        or Path(os.path.normpath(live_root.as_posix())) != live_root
+    ):
+        raise _invalid("systemd live root")
+    if live_root == Path("/"):
+        return Path(logical)
+    return live_root.joinpath(*PurePosixPath(logical).parts[1:])
+
+
+def _capture_exact_systemd_file_v1(
+    logical_path: str, *, live_root: Path, uid: int, gid: int,
+    maximum: int,
+) -> _CapturedSystemdFileV1:
+    actual = _systemd_live_path_v1(logical_path, live_root)
+    captured = _capture_trusted_file_v1(
+        actual, executable=False, uid=uid, gid=gid,
+        chain_stop=None if live_root == Path("/") else live_root,
+        maximum=maximum, require_single_link=True,
+    )
+    if (
+        captured.resolved.requested_path != actual.as_posix()
+        or captured.resolved.canonical_path != actual.as_posix()
+        or any(
+            component.link_target is not None
+            for component in captured.resolved.components
+        )
+    ):
+        raise _invalid("systemd exact file path")
+    return _CapturedSystemdFileV1(logical_path, maximum, captured)
+
+
+def _capture_systemd_enablement_link_v1(
+    link: _EnablementLinkV1, *, live_root: Path, uid: int, gid: int,
+) -> _CapturedSystemdLinkV1:
+    _validate_enablement_link_claim_v1(link)
+    actual = _systemd_live_path_v1(link.path, live_root)
+    chain_stop = None if live_root == Path("/") else live_root
+    parent = _resolve_trusted_path_core_v1(
+        actual.parent, kind="directory", executable=False, uid=uid, gid=gid,
+        chain_stop=chain_stop, require_single_link=False,
+    )
+    if (
+        parent.requested_path != actual.parent.as_posix()
+        or parent.canonical_path != actual.parent.as_posix()
+        or any(item.link_target is not None for item in parent.components)
+    ):
+        raise _invalid("systemd enablement parent")
+    try:
+        before = actual.lstat()
+        target = os.readlink(actual)
+        target_size = len(target.encode("utf-8"))
+    except FileNotFoundError as exc:
+        raise _missing("systemd enablement link") from exc
+    except (OSError, UnicodeError) as exc:
+        raise _invalid("systemd enablement link") from exc
+    if (
+        not stat.S_ISLNK(before.st_mode) or before.st_uid != uid
+        or before.st_gid != gid or before.st_nlink != 1
+        or not target or "\0" in target
+        or target_size > 4096 or target != link.target
+    ):
+        raise _invalid("systemd enablement link")
+    _require_no_posix_access_acl_v1(actual)
+    try:
+        after = actual.lstat()
+        repeated_target = os.readlink(actual)
+    except (OSError, UnicodeError) as exc:
+        raise _invalid("systemd enablement link") from exc
+    repeated_parent = _resolve_trusted_path_core_v1(
+        actual.parent, kind="directory", executable=False, uid=uid, gid=gid,
+        chain_stop=chain_stop, require_single_link=False,
+    )
+    identity = _metadata_identity_v1(before)
+    if (
+        _metadata_identity_v1(after) != identity
+        or repeated_target != target or repeated_parent != parent
+    ):
+        raise _invalid("systemd enablement link changed")
+    return _CapturedSystemdLinkV1(
+        link.path, actual.as_posix(), parent, identity, target,
+    )
+
+
+def _systemd_file_facts_v1(
+    captured: _CapturedSystemdFileV1,
+) -> tuple[int, str, int, int, int]:
+    if type(captured) is not _CapturedSystemdFileV1:
+        raise _invalid("systemd file facts")
+    identity = captured.captured.identity
+    content = captured.captured.content
+    if len(identity) != 9 or identity[6] != len(content):
+        raise _invalid("systemd file facts")
+    return (
+        len(content), captured.logical_path, identity[3], identity[4],
+        stat.S_IMODE(identity[2]),
+    )
+
+
+def _systemd_origin_edge_v1(
+    relation: str, origin: _SystemdOriginObservationV1,
+) -> _SystemdManagerAddedEdgeV1:
+    edge = _SystemdManagerAddedEdgeV1(
+        relation, origin.unit_name, origin.origin_kind,
+        origin.fragment_path, origin.source_path, origin.source_size,
+        origin.source_content_hash, origin.source_uid, origin.source_gid,
+        origin.source_mode, origin.size, origin.content_hash, origin.uid,
+        origin.gid, origin.mode, origin.load_state, origin.unit_file_state,
+    )
+    _validate_systemd_manager_added_edge_v1(edge)
+    return edge
+
+
+def _capture_systemd_origin_v1(
+    unit_name: str, *, systemctl_executable: str,
+    capture_file: Callable[[str, int], _CapturedSystemdFileV1],
+) -> _SystemdOriginObservationV1:
+    observed = _run_systemctl_show_v1(
+        systemctl_executable, unit_name, _SYSTEMD_ORIGIN_PROPERTIES_V1,
+    )
+    if set(observed) != set(_SYSTEMD_ORIGIN_PROPERTIES_V1) or any(
+        len(observed[name]) != 1 for name in _SYSTEMD_ORIGIN_PROPERTIES_V1
+    ):
+        raise _invalid("systemd origin property set")
+    if (
+        _systemd_single_property_v1(observed, "Id") != unit_name
+        or _systemd_single_property_v1(observed, "LoadState") != "loaded"
+        or _systemd_single_property_v1(observed, "Transient") != "no"
+    ):
+        raise _invalid("systemd origin identity")
+    fragment_path = _systemd_single_property_v1(observed, "FragmentPath")
+    source_path = _systemd_single_property_v1(observed, "SourcePath")
+    unit_file_state = _systemd_single_property_v1(observed, "UnitFileState")
+
+    if unit_name in _SYSTEMD_MANAGER_VIRTUAL_UNITS_V1:
+        if fragment_path or source_path or unit_file_state:
+            raise _invalid("systemd manager virtual observation")
+        return _SystemdOriginObservationV1(
+            unit_name, "manager_virtual", None, None,
+            None, None, None, None, None, None, None, None, None, None,
+            "loaded", None,
+        )
+
+    if _strict_systemd_child_v1(
+        fragment_path, _SYSTEMD_ROOT_GENERATOR_ROOTS_V1,
+    ):
+        origin_kind = "root_generator"
+        if unit_file_state != "generated":
+            raise _invalid("systemd origin unit file state")
+    elif _strict_systemd_child_v1(
+        fragment_path, _SYSTEMD_ROOT_FRAGMENT_ROOTS_V1,
+    ):
+        origin_kind = "root_fragment"
+        if unit_file_state not in _SYSTEMD_ROOT_FRAGMENT_STATES_V1:
+            raise _invalid("systemd origin unit file state")
+    else:
+        raise _invalid("systemd origin fragment path")
+    fragment = capture_file(fragment_path, MAX_SYSTEMD_ORIGIN_BYTES_V1)
+    size, logical_fragment, _fragment_uid, _fragment_gid, fragment_mode = (
+        _systemd_file_facts_v1(fragment)
+    )
+    fragment_hash = _systemd_origin_file_hash_v1(
+        logical_fragment, fragment.captured.content,
+    )
+    if origin_kind == "root_fragment":
+        if source_path:
+            raise _invalid("systemd root fragment source")
+        source_facts: tuple[object, ...] = (None,) * 6
+    else:
+        if not _strict_systemd_child_v1(source_path, ("/etc", "/usr")):
+            raise _invalid("systemd generator source path")
+        source = capture_file(source_path, MAX_SYSTEMD_ORIGIN_BYTES_V1)
+        (
+            source_size, logical_source, _source_uid, _source_gid, source_mode,
+        ) = _systemd_file_facts_v1(source)
+        source_facts = (
+            logical_source, source_size,
+            _systemd_origin_source_hash_v1(
+                logical_source, source.captured.content,
+            ),
+            0, 0, source_mode,
+        )
+    return _SystemdOriginObservationV1(
+        unit_name, origin_kind, logical_fragment, source_facts[0],
+        source_facts[1], source_facts[2], source_facts[3], source_facts[4],
+        source_facts[5], size, fragment_hash, 0, 0,
+        fragment_mode, "loaded", unit_file_state,
+    )
+
+
+def _capture_effective_systemd_units_core_v1(
+    materials: _BoundPreflightMaterialsV1, *, systemctl_executable: str,
+    live_root: Path, uid: int, gid: int,
+) -> _CapturedEffectiveSystemdUnitsV1:
+    """Build one complete, non-authorizing effective-systemd observation."""
+    if (
+        type(materials) is not _BoundPreflightMaterialsV1
+        or type(uid) is not int or type(gid) is not int
+        or systemctl_executable != materials.descriptor.systemctl_executable
+    ):
+        raise _invalid("effective systemd arguments")
+    version_observed = _run_systemctl_show_v1(
+        systemctl_executable, None, ("Version",),
+    )
+    if set(version_observed) != {"Version"} or len(
+        version_observed["Version"]
+    ) != 1:
+        raise _invalid("manager Version")
+    manager_version = version_observed["Version"][0]
+    if manager_version not in SUPPORTED_SYSTEMD_VERSIONS:
+        raise _invalid("unsupported manager Version")
+
+    candidates_by_id = {
+        item.entry_id: item for item in materials.candidate_units.entries
+    }
+    fragments_by_unit = dict(materials.unit_fragments)
+    catalog_entries = tuple(
+        item for item in materials.catalog.entries if item.unit_spec is not None
+    )
+    if (
+        tuple(item.entry_id for item in catalog_entries)
+        != tuple(item.entry_id for item in materials.candidate_units.entries)
+        or len(fragments_by_unit) != len(materials.unit_fragments)
+    ):
+        raise _invalid("effective systemd candidate coverage")
+
+    file_captures: dict[str, _CapturedSystemdFileV1] = {}
+    link_captures: dict[str, _CapturedSystemdLinkV1] = {}
+
+    def capture_file(
+        logical_path: str, maximum: int,
+    ) -> _CapturedSystemdFileV1:
+        present = file_captures.get(logical_path)
+        if present is not None:
+            if present.maximum > maximum or len(
+                present.captured.content
+            ) > maximum:
+                raise _invalid("systemd file bound disagreement")
+            return present
+        captured = _capture_exact_systemd_file_v1(
+            logical_path, live_root=live_root, uid=uid, gid=gid,
+            maximum=maximum,
+        )
+        file_captures[logical_path] = captured
+        return captured
+
+    unit_observations: list[tuple[
+        _ServiceCatalogEntryV1, _CandidateUnitV1,
+        dict[str, tuple[str, ...]], tuple[tuple[str, str], ...],
+    ]] = []
+    origin_names: set[str] = set()
+    total_edges = 0
+    for entry in catalog_entries:
+        candidate = candidates_by_id.get(entry.entry_id)
+        if candidate is None or entry.unit_name != candidate.unit_name:
+            raise _invalid("effective systemd candidate binding")
+        plan = _systemd_property_plan_v1(entry)
+        observed = _run_systemctl_show_v1(
+            systemctl_executable, candidate.unit_name,
+            plan.requested_properties,
+        )
+        _validate_systemd_property_cardinality_v1(plan, observed)
+        edge_pairs = _compile_systemd_added_edge_pairs_v1(entry, observed)
+        total_edges += len(edge_pairs)
+        if total_edges > MAX_SYSTEMD_ADDED_EDGES_TOTAL_V1:
+            raise _invalid("systemd added edge total")
+        origin_names.update(name for _relation, name in edge_pairs)
+        unit_observations.append((entry, candidate, observed, edge_pairs))
+
+        logical_fragment = f"{SYSTEM_UNIT_ROOT_TEXT_V1}/{candidate.unit_name}"
+        signed_fragment = fragments_by_unit.get(candidate.unit_name)
+        if type(signed_fragment) is not bytes:
+            raise _invalid("effective systemd fragment binding")
+        fragment = capture_file(logical_fragment, MAX_UNIT_FRAGMENT_BYTES_V1)
+        if (
+            fragment.captured.content != signed_fragment
+            or _service_fragment_hash_v1(
+                candidate.unit_name, fragment.captured.content,
+            ) != candidate.fragment_hash
+        ):
+            raise _invalid("effective systemd fragment binding")
+        for link in candidate.enablement_links:
+            captured_link = _capture_systemd_enablement_link_v1(
+                link, live_root=live_root, uid=uid, gid=gid,
+            )
+            if link.path in link_captures:
+                raise _invalid("effective systemd link collision")
+            link_captures[link.path] = captured_link
+
+    origins = {
+        unit_name: _capture_systemd_origin_v1(
+            unit_name, systemctl_executable=systemctl_executable,
+            capture_file=capture_file,
+        )
+        for unit_name in sorted(origin_names, key=lambda item: item.encode("utf-8"))
+    }
+    effective_entries: list[_EffectiveSystemdUnitV1] = []
+    for entry, candidate, observed, edge_pairs in unit_observations:
+        fragment = file_captures[
+            f"{SYSTEM_UNIT_ROOT_TEXT_V1}/{candidate.unit_name}"
+        ]
+        _size, logical_path, _fragment_uid, _fragment_gid, fragment_mode = (
+            _systemd_file_facts_v1(fragment)
+        )
+        if (
+            _systemd_single_property_v1(observed, "FragmentPath")
+            != logical_path
+            or _systemd_single_property_v1(observed, "DropInPaths") != ""
+            or _systemd_single_property_v1(observed, "LoadState") != "loaded"
+            or _systemd_single_property_v1(
+                observed, "UnitFileState",
+            ) not in _SYSTEMD_ROOT_FRAGMENT_STATES_V1
+            or _systemd_single_property_v1(
+                observed, "NeedDaemonReload",
+            ) != "no"
+        ):
+            raise _invalid("effective systemd base properties")
+        unit_file_state = _systemd_single_property_v1(
+            observed, "UnitFileState",
+        )
+        manager_edges = tuple(
+            _systemd_origin_edge_v1(relation, origins[unit_name])
+            for relation, unit_name in edge_pairs
+        )
+        effective_entries.append(_EffectiveSystemdUnitV1(
+            entry.entry_id, candidate.unit_name, logical_path,
+            candidate.fragment_hash, 0, 0,
+            fragment_mode, (), candidate.enablement_links, "loaded",
+            unit_file_state, "no",
+            _configured_directives_hash_from_fragment_v1(
+                candidate.unit_name, fragment.captured.content,
+            ),
+            _compile_systemd_manager_projection_v1(entry, observed),
+            manager_edges,
+        ))
+    snapshot = _make_effective_systemd_units_snapshot_v1(
+        tuple(effective_entries),
+    )
+    return _CapturedEffectiveSystemdUnitsV1(
+        manager_version, snapshot,
+        tuple(file_captures[path] for path in sorted(
+            file_captures, key=lambda item: item.encode("utf-8"),
+        )),
+        tuple(link_captures[path] for path in sorted(
+            link_captures, key=lambda item: item.encode("utf-8"),
+        )),
+    )
+
+
+def _revalidate_captured_effective_systemd_v1(
+    captured: _CapturedEffectiveSystemdUnitsV1, *, live_root: Path,
+    uid: int, gid: int,
+) -> None:
+    if type(captured) is not _CapturedEffectiveSystemdUnitsV1:
+        raise _invalid("effective systemd revalidation")
+    for item in captured.files:
+        repeated = _capture_exact_systemd_file_v1(
+            item.logical_path, live_root=live_root, uid=uid, gid=gid,
+            maximum=item.maximum,
+        )
+        if repeated != item:
+            raise _invalid("effective systemd file changed")
+    for item in captured.links:
+        repeated = _capture_systemd_enablement_link_v1(
+            _EnablementLinkV1(item.logical_path, item.target),
+            live_root=live_root, uid=uid, gid=gid,
+        )
+        if repeated != item:
+            raise _invalid("effective systemd link changed")
+
+
+def _capture_startup_prerequisite_file_v1(
+    materials: _BoundPreflightMaterialsV1, *, ownership_root: Path,
+    uid: int, gid: int, chain_stop: Path | None,
+) -> _CapturedTrustedFileV1:
+    if (
+        type(materials) is not _BoundPreflightMaterialsV1
+        or not isinstance(ownership_root, Path) or not ownership_root.is_absolute()
+    ):
+        raise _invalid("startup prerequisite capture")
+    request_id = _require_digest(
+        materials.prerequisite.request_id, "startup prerequisite request",
+    )
+    path = (
+        ownership_root / "startup-prerequisites-v1"
+        / f"{request_id}.json"
+    )
+    captured = _capture_trusted_file_v1(
+        path, executable=False, uid=uid, gid=gid, chain_stop=chain_stop,
+        maximum=MAX_STARTUP_PREREQUISITE_BYTES_V1,
+        require_single_link=True,
+    )
+    try:
+        decoded = _decode_startup_prerequisite_v1(captured.content)
+        evidence_digest = _startup_prerequisite_digest_v1(captured.content)
+    except PreflightError as exc:
+        raise _invalid("startup prerequisite capture") from exc
+    if (
+        captured.resolved.requested_path != path.as_posix()
+        or captured.resolved.canonical_path != path.as_posix()
+        or any(
+            component.link_target is not None
+            for component in captured.resolved.components
+        )
+        or stat.S_IMODE(captured.identity[2]) != 0o644
+        or decoded != materials.prerequisite
+        or evidence_digest
+        != materials.transaction.startup_prerequisite_digest
+        or materials.transaction.startup_prerequisite_id
+        != materials.prerequisite.prerequisite_id
+    ):
+        raise _invalid("startup prerequisite capture")
+    return captured
+
+
+def _observe_effective_systemd_core_v1(
+    administrative_tcb: _ObservedAdministrativeTcbV1, *,
+    ownership_root: Path, ownership_chain_stop: Path | None,
+    live_root: Path, uid: int, gid: int,
+    administrative_links: tuple[Path, Path, Path, Path],
+    administrative_chain_stop: Path | None,
+    between_for_test: Callable[[], None] | None = None,
+) -> _ObservedEffectiveSystemdV1:
+    """Perform P0/S0/P1/S1/P2 without creating an operational capability."""
+    if (
+        type(administrative_tcb) is not _ObservedAdministrativeTcbV1
+        or type(administrative_links) is not tuple
+        or len(administrative_links) != 4
+        or any(not isinstance(item, Path) for item in administrative_links)
+        or between_for_test is not None and not callable(between_for_test)
+    ):
+        raise _invalid("effective systemd observation arguments")
+    materials = administrative_tcb.materials
+    systemctl_executable = (
+        administrative_tcb.capture.executables.systemctl.resolved.canonical_path
+    )
+    if systemctl_executable != materials.descriptor.systemctl_executable:
+        raise _invalid("effective systemd executable binding")
+
+    prerequisite_0 = _capture_startup_prerequisite_file_v1(
+        materials, ownership_root=ownership_root, uid=uid, gid=gid,
+        chain_stop=ownership_chain_stop,
+    )
+    snapshot_0 = _capture_effective_systemd_units_core_v1(
+        materials, systemctl_executable=systemctl_executable,
+        live_root=live_root, uid=uid, gid=gid,
+    )
+    if between_for_test is not None:
+        between_for_test()
+    prerequisite_1 = _capture_startup_prerequisite_file_v1(
+        materials, ownership_root=ownership_root, uid=uid, gid=gid,
+        chain_stop=ownership_chain_stop,
+    )
+    snapshot_1 = _capture_effective_systemd_units_core_v1(
+        materials, systemctl_executable=systemctl_executable,
+        live_root=live_root, uid=uid, gid=gid,
+    )
+    prerequisite_2 = _capture_startup_prerequisite_file_v1(
+        materials, ownership_root=ownership_root, uid=uid, gid=gid,
+        chain_stop=ownership_chain_stop,
+    )
+    if not prerequisite_0 == prerequisite_1 == prerequisite_2:
+        raise _invalid("startup prerequisite changed")
+    if snapshot_0 != snapshot_1:
+        raise _invalid("effective systemd A/B mismatch")
+    prerequisite = materials.prerequisite
+    if (
+        snapshot_1.manager_version != prerequisite.systemd_manager_version
+        or snapshot_1.snapshot.effective_units_hash
+        != prerequisite.effective_units_hash
+    ):
+        raise _invalid("effective systemd signed binding")
+    _revalidate_captured_effective_systemd_v1(
+        snapshot_1, live_root=live_root, uid=uid, gid=gid,
+    )
+    _revalidate_captured_administrative_tcb_v1(
+        administrative_tcb.capture, administrative_links,
+        uid=uid, gid=gid, chain_stop=administrative_chain_stop,
+    )
+    prerequisite_final = _capture_startup_prerequisite_file_v1(
+        materials, ownership_root=ownership_root, uid=uid, gid=gid,
+        chain_stop=ownership_chain_stop,
+    )
+    if prerequisite_final != prerequisite_2:
+        raise _invalid("startup prerequisite changed")
+    return _ObservedEffectiveSystemdV1(
+        administrative_tcb, prerequisite_2, snapshot_1,
+    )
+
+
+def _observe_effective_systemd_v1(
+    authenticated: _AuthenticatedFixedOwnershipSnapshotV1,
+    administrative_tcb: _ObservedAdministrativeTcbProductV1,
+) -> _ObservedEffectiveSystemdProductV1:
+    """Product observation with a final independent ownership reread."""
+    require_linux_before_io_v1()
+    if (
+        not hasattr(os, "geteuid") or os.geteuid() != 0
+        or type(authenticated) is not _AuthenticatedFixedOwnershipSnapshotV1
+        or type(administrative_tcb) is not _ObservedAdministrativeTcbProductV1
+        or administrative_tcb.observation.capture
+        != authenticated.administrative_tcb.capture
+    ):
+        raise _invalid("product effective systemd observation")
+    observation = administrative_tcb.observation
+    selected_epoch = _require_materials_selected_by_snapshot_v1(
+        authenticated.snapshot, observation.materials,
+    )
+    result = _observe_effective_systemd_core_v1(
+        observation, ownership_root=OWNERSHIP_ROOT,
+        ownership_chain_stop=None, live_root=Path("/"), uid=0, gid=0,
+        administrative_links=_administrative_links_v1(),
+        administrative_chain_stop=None,
+    )
+    repeated_ownership = _authenticate_fixed_ownership_snapshot_v1()
+    repeated_epoch = _require_materials_selected_by_snapshot_v1(
+        repeated_ownership.snapshot, observation.materials,
+    )
+    if repeated_epoch != selected_epoch:
+        raise _invalid("selected ownership epoch changed")
+    _revalidate_captured_effective_systemd_v1(
+        result.effective_systemd, live_root=Path("/"), uid=0, gid=0,
+    )
+    _revalidate_captured_administrative_tcb_v1(
+        observation.capture, _administrative_links_v1(),
+        uid=0, gid=0, chain_stop=None,
+    )
+    repeated_prerequisite = _capture_startup_prerequisite_file_v1(
+        observation.materials, ownership_root=OWNERSHIP_ROOT,
+        uid=0, gid=0, chain_stop=None,
+    )
+    if repeated_prerequisite != result.prerequisite:
+        raise _invalid("startup prerequisite changed")
+    return _ObservedEffectiveSystemdProductV1(result)
+
+
+def _observe_effective_systemd_for_test_v1(
+    administrative_tcb: _ObservedAdministrativeTcbForTestV1, *,
+    ownership_root: Path, live_root: Path,
+    administrative_links: tuple[Path, Path, Path, Path],
+    administrative_root: Path,
+    between_for_test: Callable[[], None] | None = None,
+) -> _ObservedEffectiveSystemdForTestV1:
+    """Portable nominal seam; its result cannot enter productive dispatch."""
+    if (
+        type(administrative_tcb) is not _ObservedAdministrativeTcbForTestV1
+        or not isinstance(ownership_root, Path)
+        or not ownership_root.is_absolute()
+        or not isinstance(live_root, Path) or not live_root.is_absolute()
+        or not isinstance(administrative_root, Path)
+        or not administrative_root.is_absolute()
+    ):
+        raise _invalid("test effective systemd observation")
+    result = _observe_effective_systemd_core_v1(
+        administrative_tcb.observation,
+        ownership_root=ownership_root,
+        ownership_chain_stop=ownership_root.parent,
+        live_root=live_root, uid=os.getuid(), gid=os.getgid(),
+        administrative_links=administrative_links,
+        administrative_chain_stop=administrative_root,
+        between_for_test=between_for_test,
+    )
+    return _ObservedEffectiveSystemdForTestV1(result)
 
 
 if __name__ == "__main__":
