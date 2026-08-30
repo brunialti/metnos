@@ -742,7 +742,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:29e15fa8807826d64c9ee208ddbf4882b8f62b20654e928fdf1f1128dde6c2f9"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:209959f077990230c40e4fb670a75eb9e09ff547ac2ac574f0e0354fa06be7b1"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -13817,9 +13817,13 @@ def _acquire_startup_gate_shared_v1() -> int:
         # POSIX record lock. Asking for write access would make the gate
         # unopenable exactly where it must work — a `ProtectSystem=strict`
         # unit sees the whole hierarchy read-only, so `O_RDWR` returns EROFS
-        # and the launch refuses. Granting the unit `ReadWritePaths` on this
-        # root instead would hand the demoted payload write access to the
-        # product's own runtime directory; asking for less is the fix.
+        # and the launch refuses.
+        #
+        # NOTE, so the next reader is not misled: no exclusive holder of this
+        # gate exists anywhere in the product yet. Today the shared lock
+        # serializes nothing; the writer that will hold it during a birth
+        # transition is still to be written. This open mode is correct for a
+        # reader either way, but it is not, on its own, a protection.
         descriptor = os.open(
             STARTUP_GATE_PATH_V1,
             os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)

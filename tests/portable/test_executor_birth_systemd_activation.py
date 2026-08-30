@@ -79,6 +79,7 @@ ADMINISTRATIVE_ROOT = Path("/usr/libexec/metnos/executor-birth-v1")
 UNIT_ROOT = Path("/etc/systemd/system")
 RUNTIME_ROOT = Path("/run/metnos-executor-birth-v1")
 STARTUP_GATE = RUNTIME_ROOT / "startup-v1.lock"
+ATTESTATION_ROOT = OWNERSHIP_ROOT / "preflight-attestations-v1"
 BOUNDARY_INVENTORY_PATH = (
     "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json"
 )
@@ -919,6 +920,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
     assert all(not path.exists() for path in unit_paths)
     assert not fixture.marker_root.exists()
     assert not STARTUP_GATE.exists()
+    assert not ATTESTATION_ROOT.exists()
 
     installed = False
     try:
@@ -928,6 +930,11 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         RUNTIME_ROOT.mkdir(mode=0o700)
         gate = os.open(STARTUP_GATE, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(gate)
+        # The attestation root, like the gate, is opened and never created by
+        # the product: `_publish_preflight_attestation_core_v1` requires it to
+        # exist as `0o755` root-owned and refuses `missing` otherwise. Both
+        # belong to installation, which does not create either yet.
+        ATTESTATION_ROOT.mkdir(mode=0o755, parents=True)
         fixture.marker_root.mkdir(mode=0o700)
         os.chown(fixture.marker_root, fixture.account.uid, fixture.account.gid)
         _systemctl("daemon-reload")
@@ -1042,12 +1049,8 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         # `oneshot` ordinaria: systemd carica pigramente e scarica subito una
         # oneshot inattiva senza riferimenti, e con essa spariscono i suoi
         # archi. L'unita' ausiliaria deve quindi restare residente.
-        attestation_root = OWNERSHIP_ROOT / "preflight-attestations-v1"
-
         def _attestations() -> set[str]:
-            if not attestation_root.is_dir():
-                return set()
-            return {item.name for item in attestation_root.iterdir()}
+            return {item.name for item in ATTESTATION_ROOT.iterdir()}
 
         def _check_all() -> subprocess.CompletedProcess[str]:
             return subprocess.run(

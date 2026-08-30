@@ -3983,6 +3983,10 @@ def test_a_shared_lock_directory_is_refused_by_the_chain_rule() -> None:
     `/run` is `0755` and passes; `/run/lock` is world-writable and fails. The
     two run through the SAME validator, so the refusal is the rule speaking,
     not a special case written for one directory.
+
+    What this does NOT prove: it does not tie the rule to the gate. It would
+    still pass if the gate moved back under `/run/lock`; the test above is
+    what binds the location. Its value here is documentary.
     """
     shared = Path("/run/lock")
     if not shared.is_dir():
@@ -4008,6 +4012,10 @@ def test_the_shared_gate_is_acquired_without_asking_for_write_access(
     there and the launch refuses. Two halves, each measuring what it claims —
     what the product ASKS the kernel for, read from its only gate call site,
     and what the kernel GRANTS on such a descriptor, measured on a real file.
+
+    What this does NOT prove: neither half observes the product acquiring the
+    gate. Acquisition needs root, a real `0600` root-owned file and the whole
+    installed tree, and it is exercised by the live cell, not here.
     """
     import ast
     import fcntl
