@@ -2774,3 +2774,37 @@ Dodici prove portabili. Perni 690/678; portable 1144 verdi; censimento 83
 verdi con il contenitore nuovo motivato; guardie verdi. L'inventario di
 produzione e' stato rigenerato: due moduli nuovi lo spostano, ed e' la prova R1
 ad averlo detto.
+
+
+### 23.36 Gruppo 7-C: il bit di imposizione e' una LETTURA, non una parola
+
+Punto 3 dell'involucro: ricalcolare dai byte correnti con
+`closed_build_enforcement()` vero. `runtime/executor_birth_enforcement_evidence.py`
+possiede l'evidenza di quel bit, e la possiede in un modo preciso: la costruisce
+leggendo i byte del modulo che lo contiene, mai dalla parola del chiamante.
+
+**Perche' e' la distinzione che conta.** Un booleano passato come argomento
+registra cio' che qualcuno CREDEVA; l'impronta dei byte che definiscono la
+funzione registra cio' che l'artefatto CONTIENE. Solo la seconda sopravvive al
+tentativo di rigiocarla su una build diversa — che e' esattamente l'attacco che
+un bit di politica invita: ribaltarlo in un rapporto mentre l'artefatto conserva
+il valore vecchio.
+
+**Perche' non si importa il modulo che si misura.** Importarlo e chiamarlo
+riporterebbe il bit del PROCESSO che sta chiedendo, non quello dell'artefatto in
+certificazione. Su una build candidata i due differiscono, e quella differenza e'
+l'unica cosa che valga la pena certificare. Il letterale viene quindi letto dal
+sorgente, e una prova verifica che il modulo non importi mai il cancello.
+
+**Due definizioni non sono evidenza.** Se la funzione compare piu' di una volta,
+il valore dipende dall'ordine di importazione, e un'evidenza che dipende
+dall'ordine di importazione non e' un'evidenza: viene rifiutata, come viene
+rifiutata l'assenza.
+
+Misurato sul prodotto: il cancello legge `False`, 2566 byte, e
+`require_enforced_v1` nega con `enforcement_not_closed`. E' il comportamento
+atteso oggi, ed e' il primo punto in cui il gruppo 7 tocca davvero il bit senza
+ancora ribaltarlo.
+
+Nove prove portabili; perni 691/679; portable 1070 verdi; guardie e censimento
+verdi; inventario di produzione rigenerato.
