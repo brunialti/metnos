@@ -55,6 +55,16 @@ _PROVIDER_MARKERS_EN = {
 def register_all() -> None:
     R = _dl.register
 
+    # The inventory must not depend on which consumer modules a process has
+    # imported: a language queued before a resolver is loaded would silently
+    # skip that resolver's surfaces, and the coverage gate would still read
+    # 100% (RM-0005 §3.3, §7 "falsa sicurezza da copertura nominale"). Seed
+    # the modular lexicons here so `ensure_seeded()` is the single authority
+    # on what exists. `register_all` and not `ensure_registered`: the latter
+    # enqueues, and enqueueing re-enters `ensure_seeded()`.
+    import detection_lexicon_seed_resolvers as _resolvers
+    _resolvers.register_all()
+
     # ── VOCABOLARIO AZIONI (RM-0005 F2/F3/F6) ────────────────────────
     # ACTIONS e le chiavi del mapping restano canoniche/non traducibili; solo
     # le superfici naturali sono risorse linguistiche.  Questo seed distribuisce

@@ -246,6 +246,8 @@ test `test_action_vocabulary_i18n.py` materializza una terza lingua sintetica,
 verifica detection, rendering, fallback e copertura; il daemon accetta un
 mapping tradotto soltanto se conserva esattamente tutte le chiavi canoniche e
 forme non vuote. Regex e consenso sono eccezioni tipizzate a revisione manuale.
+Estensione ai lessici dei resolver deterministici e vincolo di inventario:
+§6.2.
 
 ### F7 — Runtime, dispositivi e Tutor · `implemented`
 
@@ -316,6 +318,36 @@ RM-0005 è `closed` dal 23 agosto 2026 perché non restano fasi o gate aperti:
 - la documentazione bilingue è stata distribuita su Cloudflare Pages e
   verificata sul dominio canonico `https://metnos.com`;
 - il repository sorgente non presenta modifiche residue dopo la pubblicazione.
+
+### 6.2 Manutenzione 2026-08-30 — inventario deterministico del lessico
+
+Verifica richiesta su RM-0005 chiusa; nessuna fase riaperta. Il codice
+committato risultava verde (398 test i18n, i quattro gate nominati in F0/F6/F8
+e la verifica dei contratti builtin). La verifica ha però trovato, nel lavoro
+in corso che porta i lessici dei resolver deterministici nel registro
+(`runtime/detection_lexicon_seed_resolvers.py`), una violazione di §3.3
+«inventario deterministico».
+
+**Difetto.** Gli undici concetti `resolver.*` / `fast_path.*` entravano nel
+registro soltanto quando un modulo consumatore veniva importato, non tramite
+`ensure_seeded()`. Conseguenza misurata su registro pulito: `enqueue_language`
+accodava 91 concetti su 102 e **zero** degli undici lessici dei resolver, dei
+quali nove sono automaticamente traducibili. Il gate di copertura poteva quindi
+leggere una lingua come completa mentre `fast_path` e i resolver restavano
+nella lingua di bootstrap — esattamente il rischio «falsa sicurezza da
+copertura nominale» del §7. La proprietà «un concetto esiste se e solo se
+`ensure_seeded()` lo registra» non era nuova al lavoro in corso, ma le sue due
+prove rosse l'hanno resa visibile: `manual_review_concepts()` dichiarava dieci
+concetti a revisione umana mentre il registro appena creato ne conosceva otto.
+
+**Correzione.** `detection_lexicon_seed.register_all()` registra ora anche i
+lessici modulari, così `ensure_seeded()` torna autorità unica dell'inventario.
+Si richiama `register_all()` e non `ensure_registered()`: il secondo accoda, e
+l'accodamento rientra in `ensure_seeded()`.
+
+**Prove.** Inventario 102/102 registrati e 102/102 accodati per una lingua
+nuova, undici resolver compresi; `tests/runtime/i18n/` 413 test superati e
+1.136 subtest, senza modificare alcuna prova.
 
 ## 7. Rischi e misure
 
