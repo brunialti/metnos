@@ -96,7 +96,18 @@ def _raw_digest(content: bytes) -> str:
 
 
 def _framed_digest(domain: bytes, content: bytes) -> str:
-    return "sha256:" + hashlib.sha256(domain + content).hexdigest()
+    """Frame exactly as the product does, length included.
+
+    The product frames `domain || u64be(len) || payload` precisely so one
+    field cannot slide into its neighbour. This helper omitted the length, so
+    every head hash the fixture built disagreed with the three the preflight
+    recomputes — `head_payload_hash`, `head_signature_hash` and
+    `required_head_frame_hash` — and the transaction head binding refused a
+    fixture that was otherwise correct.
+    """
+    return "sha256:" + hashlib.sha256(
+        domain + len(content).to_bytes(8, "big") + content,
+    ).hexdigest()
 
 
 def _write_control(path: Path, content: bytes, mode: int = 0o644) -> None:
