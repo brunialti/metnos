@@ -2058,3 +2058,42 @@ Il commit privato è `df5841c3`; la proiezione pubblica incrementale è
 riepilogo bloccante. Le annotazioni sulla versione Node delle action non sono
 errori di prodotto. G6-C1 è quindi certificato; G6-C resta aperto e riprende
 dalla cella systemd firmata nella VM GitHub-hosted usa-e-getta.
+
+## G6-C2 — cella systemd privata già firmata
+
+Il secondo incremento deriva una capability nominalmente privata soltanto da
+record di prova autenticato, ambiente sigillato, account del descrittore,
+deployment lock vivo, radice unità fisica vincolata e namespace casuale
+esadecimale scelto prima della firma. Catalogo, descrittore, copertura,
+manifesto e tutti i frammenti vengono incrociati; entry, unità, timer target e
+ogni riferimento `.service|.timer|.target` devono usare quel namespace. La
+cella contiene almeno un servizio e un timer e le destinazioni firmate sono
+già i nomi finali sotto `/etc/systemd/system`: non è permesso ribassare o
+rinominare dopo la firma.
+
+Prima della prima mutazione l'installer ripete la verifica completa, ricattura
+i byte e richiede assenti sia finali sia staging. Scrive tutti gli staging
+byte-identici, applica proprietario e modo, sincronizza, quindi usa rename
+no-replace. Radice non ancorata, collisione, sorgente cambiata, hard link,
+metadato inatteso o transazione parziale producono recupero esplicito senza
+pulizia automatica. Il percorso prodotto resta quello di C1 e continua a non
+installare unità.
+
+La prova portabile diretta termina con `11 passed, 1 skipped`; guardia e nucleo
+mirato con `82 passed, 1 skipped`; la matrice con preflight autonomo, catalogo
+e systemd precedente con `292 passed, 1 skipped`. La guardia classifica due
+soli writer nuovi come `store_write`. Il profilo privato è
+`685 / sha256:5f8f775d828a2a0030c7f438dc40c27a51c4dcdd67d8cab337e08a76b8c13971`;
+quello pubblico è
+`673 / sha256:c0aa838eae3d375e8f3acf532b56c784c65f4793e83ec8c341288412d8e2648d`.
+L'export contiene 1.604 file e zero PII, segreti o file sensibili.
+
+Il workflow 2A è rimasto byte-identico al baseline congelato. La sua cella
+Linux root già esistente esegue ora anche la prova G6-C2: installazione delle
+unità casuali firmate, `daemon-reload`, riscontro dei `FragmentPath`, confronto
+dei byte e rimozione circoscritta ai soli oggetti del descrittore. Il server
+gestito non è stato toccato. I commit privati sono `2b835d48` e `43961cf7`;
+il pubblico finale è `bdd58a5765ae9965e8fa5d56ed79cec932ef7211`. Il run
+`33318421582` è verde su tutti i nove job e sul riepilogo bloccante. G6-C2 è
+certificato; il prossimo incremento è C3, diniego e ammissione con avvio reale
+nella stessa VM usa-e-getta.

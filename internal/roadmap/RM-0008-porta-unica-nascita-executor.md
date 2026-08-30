@@ -2,14 +2,16 @@
 
 > RM-0008 · stato `active` · avanzamento verificato il 30 agosto 2026 ·
 > conservazione persistente · gruppi 1-5 della ripresa (§23.6), G6-A, G6-B1,
-> G6-B2 e G6-B3 completati; G6-C1, installazione amministrativa byte-identica,
-> è certificato nel commit pubblico `5884f8c` dal run GitHub Actions
-> `33316187520`, verde su tutti i nove job. La fotografia systemd viva di G6-B3 resta
+> G6-B2 e G6-B3 completati; G6-C1 e G6-C2 sono certificati. La cella C2
+> installa le sole unità private già ribassate e firmate ed esegue
+> `daemon-reload` nella VM root usa-e-getta; il commit pubblico `bdd58a5` è
+> verde su tutti i nove job nel run GitHub Actions `33318421582`. La fotografia
+> systemd viva di G6-B3 resta
 > non autorizzante ed è pubblicata nel commit `5b2b3e6`, certificato con tutti
 > gli otto job Linux/Windows verdi nel run GitHub Actions `33314651224`.
 > RM-0005 è chiuso; `closed_build_enforcement()` resta `False`. Il prossimo
-> incremento minimo è la cella firmata G6-C nella VM usa-e-getta. G6-B4, il
-> resto di G6-C, G6-D e F4-F6 non sono ancora completati.
+> incremento minimo è G6-C3, diniego e ammissione reali nella stessa cella.
+> G6-B4, G6-C3/C4, G6-D e F4-F6 non sono ancora completati.
 
 ## 1. Obiettivo
 
@@ -1768,3 +1770,44 @@ La pubblicazione incrementale di G6-C1 è conclusa nel commit privato
 soli avvisi riguardano la migrazione Node delle action. G6-C1 è certificato,
 mentre G6-C resta `active` per la cella systemd reale e gli incrementi
 successivi.
+
+### 23.14 Secondo incremento G6-C: cella systemd firmata isolata
+
+La capability privata G6-C2 nasce esclusivamente da record e ambiente di prova
+autenticati, account firmato, sessione viva del deployment lock e namespace
+casuale di 16 cifre esadecimali scelto prima della firma. Descrittore, catalogo,
+copertura, manifesto e frammenti vengono verificati due volte; ogni entry, nome
+e riferimento systemd deve appartenere allo stesso namespace. La copertura
+firmata contiene almeno un servizio e un timer e coincide esattamente con gli
+artefatti `group7_cutover`; non esiste rinomina post-firma.
+
+L'installazione di prova rilegge integralmente la distribuzione prima di
+osservare la radice unità, richiede una radice fisica ancorata `0755` con
+proprietario esatto e un namespace completamente assente. Tutti i frammenti
+sono scritti byte-identici in staging deterministici legati al descrittore,
+sincronizzati e pubblicati con rename no-replace nei nomi già firmati.
+Collisioni, sorgenti mutate e stati parziali richiedono recupero esplicito e
+non attivano pulizia automatica. L'API produttiva continua a installare soltanto
+il programma amministrativo C1 e non accetta la capability privata.
+
+La prova reale riusa il certificatore Linux root già presente nel workflow
+2A congelato: su una VM GitHub-hosted usa-e-getta installa il programma
+amministrativo e le unità casuali in `/etc/systemd/system`, esegue
+`systemctl daemon-reload`, verifica `FragmentPath` e byte, poi rimuove soltanto
+gli oggetti elencati dal descrittore e ricarica il manager. Il server gestito
+non è stato modificato. La matrice locale connessa termina con
+`292 passed, 1 skipped`; il nucleo mirato finale con `82 passed, 1 skipped`.
+Il profilo rimane di 685 sorgenti private con radice
+`sha256:5f8f775d828a2a0030c7f438dc40c27a51c4dcdd67d8cab337e08a76b8c13971`
+e 673 pubbliche con radice
+`sha256:c0aa838eae3d375e8f3acf532b56c784c65f4793e83ec8c341288412d8e2648d`;
+il gate sui 1.604 file esportati rileva zero PII, segreti o file sensibili.
+
+I commit privati sono `2b835d48` e `43961cf7`; la proiezione pubblica finale è
+`bdd58a5765ae9965e8fa5d56ed79cec932ef7211`. Il primo tentativo pubblico
+`88d2d05` ha dimostrato il diniego del workflow 2A congelato ed è stato
+superato riusando, senza modificarla, la cella root già certificata. Il run
+GitHub Actions finale `33318421582` ha concluso verdi tutti i nove job,
+compreso il riepilogo bloccante; le sole annotazioni sono gli avvisi Node delle
+action. G6-C resta `active`: il passo successivo è C3, con avvio reale,
+diniego senza prerequisito e ammissione con il gate firmato.
