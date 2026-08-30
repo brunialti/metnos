@@ -461,7 +461,13 @@ def _isolated_g6c_records(
             "Service", "ProtectSystem", "scalar", ("strict",),
         ),
         catalog.ServiceDirectiveV1(
-            "Service", "ReadWritePaths", "path_list", (marker_root,),
+            # The runtime root too: the administrative program writes
+            # openssl's temporaries there, and the shape check requires it.
+            "Service", "ReadWritePaths", "path_list",
+            tuple(sorted(
+                (marker_root, preflight.RUNTIME_ROOT.as_posix()),
+                key=lambda item: item.encode("utf-8"),
+            )),
         ),
         catalog.ServiceDirectiveV1(
             "Service", "SupplementaryGroups", "scalar", ("44 991",),
