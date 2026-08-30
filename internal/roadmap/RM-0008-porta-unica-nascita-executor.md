@@ -1922,3 +1922,40 @@ Dal quinto incremento il lavoro G6 procede in un worktree separato
 agenti sullo stesso albero si invalidano a vicenda il perno della revisione
 sorgenti, e l'export legge il filesystem, quindi chi pubblica mentre l'altro
 edita si porta dietro lavoro a metà. È costato tre rinvii di pubblicazione.
+
+### 23.16 Vincoli misurati prima di scrivere C4
+
+Le quattro cause di C3 erano tutte assunzioni mai misurate su come systemd
+rende la propria interfaccia, e ognuna è costata un giro di CI da otto minuti
+perché la cella che le avrebbe scoperte richiede `root`. Le celle di
+riproduzione esistono già e girano senza privilegi, ma le osservazioni che
+riproducono sono **scritte a mano**: contengono le stesse assunzioni del
+codice, quindi concordano sempre col difetto. Solo systemd vero dissente.
+
+Prima di scrivere C4 le tre relazioni che la prova deve asserire sono state
+misurate su systemd 255.4, la stessa versione maggiore del runner, con unità
+d'utente usa-e-getta. Due risultati invalidano la procedura come descritta
+nel passaggio di consegne:
+
+1. **`TriggeredBy` non compare dopo `daemon-reload`.** Il servizio resta con
+   `TriggeredBy=` vuoto finché il timer non viene **avviato**; solo allora
+   l'arco inverso si materializza. La baseline positiva di C4 va quindi
+   asserita dopo l'ammissione, non subito dopo l'installazione.
+2. **`ConflictedBy` non compare né dopo `daemon-reload` né avviando
+   un'ausiliaria `oneshot` ordinaria.** systemd carica le unità pigramente e
+   scarica subito una `oneshot` inattiva senza riferimenti, e con essa
+   spariscono i suoi archi. L'arco inverso appare **solo finché l'ausiliaria
+   resta caricata**: con `RemainAfterExit=yes` il candidato mostra
+   `ConflictedBy=<ausiliaria>`. Il caso differenziale di C4 deve quindi
+   mantenere residente l'unità ausiliaria, e il `finally` deve fermarla prima
+   di rimuoverla.
+3. `Triggers` sul timer è invece presente già dopo `daemon-reload`.
+
+Costo della misura: cinque minuti in locale. Costo che avrebbe avuto in CI:
+due giri, entrambi sulla cella root-only.
+
+**Ottimizzazione adottata, senza toccare il progetto**: le osservazioni di
+riferimento vanno catturate da systemd vero e riprodotte, non inventate. Ciò
+non allenta nessuna prova — la cella reale resta l'autorità — ma sposta la
+scoperta della classe di difetto dominante dal canale da otto minuti a quello
+da due.
