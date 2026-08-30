@@ -1874,3 +1874,15 @@ Se occorre un nuovo handover, non bisogna ripetere la firma né ricostruire la
 radice. Il solo ordine residuo è: verificare commit e certificazione pubblica,
 registrare la chiusura formale di RM-0005 e riprendere G6-B3 dalla fotografia
 systemd viva. RM-0008 resta `active`.
+
+### Prima esecuzione della certificazione pubblica
+
+Il commit pubblico `97b821e662106d88857c056beb01fbd43c87fe2c` è stato
+pubblicato su `main`. Il run GitHub Actions `33309538776` ha concluso sette job
+verdi e un solo job rosso. I dieci errori del job Windows hanno una causa
+unica nella fixture: i test simulavano Linux sostituendo `os.geteuid`, ma
+Pytest richiedeva che l'attributo esistesse già su Windows. I tre punti della
+fixture ora usano `raising=False`; la selezione esatta dei dieci casi termina
+con `10 passed`. La logica produttiva non è stata modificata. Occorre
+pubblicare questo incremento e richiedere un nuovo run completamente verde
+prima di chiudere RM-0005.

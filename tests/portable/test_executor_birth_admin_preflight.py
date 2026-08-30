@@ -2756,7 +2756,7 @@ def test_operational_entrypoint_root_denies_missing_without_mutation(
     argv, tmp_path, monkeypatch, capsys,
 ) -> None:
     monkeypatch.setattr(preflight.sys, "platform", "linux")
-    monkeypatch.setattr(preflight.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(preflight.os, "geteuid", lambda: 0, raising=False)
     before = tuple(tmp_path.iterdir())
 
     assert preflight.main(argv) == preflight.EXIT_MISSING
@@ -2794,7 +2794,7 @@ def test_operational_entrypoint_maps_failures_without_traceback(
     failure, expected_code, expected_exit, tmp_path, monkeypatch, capsys,
 ) -> None:
     monkeypatch.setattr(preflight.sys, "platform", "linux")
-    monkeypatch.setattr(preflight.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(preflight.os, "geteuid", lambda: 0, raising=False)
 
     def deny(_command):
         raise failure
@@ -2813,7 +2813,7 @@ def test_operational_entrypoint_preserves_target_system_exit(
     monkeypatch, capsys,
 ) -> None:
     monkeypatch.setattr(preflight.sys, "platform", "linux")
-    monkeypatch.setattr(preflight.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(preflight.os, "geteuid", lambda: 0, raising=False)
 
     def target_exit(_command):
         raise SystemExit(7)
