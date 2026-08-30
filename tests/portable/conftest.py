@@ -19,6 +19,19 @@ sys.path.insert(0, str(RUNTIME_ROOT))
 # runtime.  Most store tests also inject ``store_root`` explicitly; this
 # session boundary keeps future omissions away from an installed instance.
 _PORTABLE_SESSION_ROOT = Path(tempfile.mkdtemp(prefix="metnos-portable-tests-"))
+# External toolchains locate their own installation through the home the
+# redirect is about to move: rustup keeps its default toolchain under
+# ``%USERPROFILE%\.rustup`` and cargo under ``~/.cargo``. Moving the home
+# without pinning them makes a cell that builds a real sandbox binary fail
+# with "rustup could not choose a version of cargo to run", which is a broken
+# environment, not a denial under test. Pin them to where they actually are,
+# and only when the caller has not already chosen.
+for _tool_var, _tool_relative in (("RUSTUP_HOME", ".rustup"),
+                                  ("CARGO_HOME", ".cargo")):
+    if not os.environ.get(_tool_var):
+        _tool_home = os.environ.get("USERPROFILE") or os.environ.get("HOME")
+        if _tool_home:
+            os.environ[_tool_var] = str(Path(_tool_home) / _tool_relative)
 for _name, _relative in {
     "HOME": "home",
     "USERPROFILE": "home",
