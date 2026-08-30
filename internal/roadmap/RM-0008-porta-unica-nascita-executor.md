@@ -2238,10 +2238,19 @@ comprende un censimento che esegue `systemctl show` UNA VOLTA PER UNITA' della
 macchina. Trenta secondi bastavano solo a un cancello che falliva.
 
 **Cosa e' stato cambiato.** I limiti di attesa della cella (`_systemctl`,
-`_wait_for`, le due chiamate che censiscono) passano a 300 secondi, e il
-budget del job Linux da 15 a 30 minuti. Non e' un allentamento di una prova: la
-cella deve fallire sul verdetto del gestore, mai su un cronometro, e la durata
-appartiene al numero di unita' della macchina di collaudo.
+`_wait_for`, le due chiamate che censiscono) passano a 300 secondi. Non e' un
+allentamento di una prova: la cella deve fallire sul verdetto del gestore, mai
+su un cronometro, e la durata appartiene al numero di unita' della macchina di
+collaudo.
+
+**Errore commesso e ritirato nello stesso passaggio.** Avevo alzato anche il
+budget del job Linux da 15 a 30 minuti. Il file del workflow e' DENTRO la base
+di accettazione 2A congelata, e le sei attivita' 2A hanno negato in blocco:
+`frozen acceptance baseline differs from the pre-fix commit; changed=
+['.github/workflows/portable-contract-store.yml']`. Il budget e' quindi un
+vincolo, non un parametro: la cella deve stare dentro i quindici minuti. Il
+sigillo ha fatto esattamente il suo mestiere, e la lezione e' che un file di
+infrastruttura puo' appartenere a una base congelata quanto un file di prova.
 
 **Osservazione da non perdere.** Che il cancello costi decine di secondi per
 ogni avvio e' un fatto di prestazioni del prodotto, non solo della prova: a
