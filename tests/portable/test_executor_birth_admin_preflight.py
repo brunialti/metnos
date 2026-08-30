@@ -2757,6 +2757,15 @@ def test_operational_entrypoint_root_denies_missing_without_mutation(
 ) -> None:
     monkeypatch.setattr(preflight.sys, "platform", "linux")
     monkeypatch.setattr(preflight.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(
+        preflight, "_run_operational_command_v1",
+        lambda _command: (_ for _ in ()).throw(
+            preflight.PreflightError(
+                preflight.CODE_MISSING, preflight.EXIT_MISSING,
+                "fixed graph absent",
+            )
+        ),
+    )
     before = tuple(tmp_path.iterdir())
 
     assert preflight.main(argv) == preflight.EXIT_MISSING
@@ -2765,6 +2774,63 @@ def test_operational_entrypoint_root_denies_missing_without_mutation(
         "", preflight.CODE_MISSING + "\n",
     )
     assert tuple(tmp_path.iterdir()) == before
+
+
+def test_operational_dispatch_keeps_check_all_outside_shared_gate(
+    monkeypatch,
+) -> None:
+    events = []
+    operational = object()
+
+    monkeypatch.setattr(
+        preflight, "_acquire_startup_gate_shared_v1",
+        lambda: events.append("gate") or 41,
+    )
+    monkeypatch.setattr(
+        preflight, "_release_startup_gate_v1",
+        lambda descriptor: events.append(("release", descriptor)),
+    )
+    monkeypatch.setattr(
+        preflight, "_attest_operational_preflight_v1",
+        lambda: events.append("attest") or operational,
+    )
+    monkeypatch.setattr(
+        preflight, "_require_preflight_entry_v1",
+        lambda authority, entry_id: events.append(
+            ("entry", authority, entry_id),
+        ),
+    )
+    monkeypatch.setattr(
+        preflight, "_publish_preflight_attestation_v1",
+        lambda authority: events.append(("publish", authority)),
+    )
+
+    preflight._run_operational_command_v1(
+        preflight.CliCommandV1("check-all", None),
+    )
+    assert events == ["attest", ("publish", operational)]
+
+    events.clear()
+    preflight._run_operational_command_v1(
+        preflight.CliCommandV1("check", "service-http"),
+    )
+    assert events == [
+        "gate", "attest", ("entry", operational, "service-http"),
+        ("release", 41),
+    ]
+
+    events.clear()
+    with pytest.raises(preflight.PreflightError) as caught:
+        preflight._run_operational_command_v1(
+            preflight.CliCommandV1("launch", "service-http"),
+        )
+    failure = caught.value
+    assert failure.code == preflight.CODE_MISSING
+    assert failure.detail == "B3 target bootstrap is incomplete"
+    assert events == [
+        "gate", "attest", ("entry", operational, "service-http"),
+        ("release", 41),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -3194,7 +3260,7 @@ def test_real_boundary_policy_snapshot_is_exact_and_entry_schema_is_closed() -> 
     raw = _compiled_boundary_inventory_fixture()
     encoded = preflight._canonical_json(raw)
     parsed = preflight._validate_boundary_inventory_v1(encoded)
-    assert len(parsed["birth_closed"]["coordinator_store_owners"]) == 69
+    assert len(parsed["birth_closed"]["coordinator_store_owners"]) == 76
     assert len(parsed["birth_closed"]["exceptions"]) == 16
     for mutate in ("owners", "exceptions", "entry"):
         mutant = json.loads(encoded)
