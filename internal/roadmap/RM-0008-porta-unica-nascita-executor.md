@@ -2021,3 +2021,38 @@ nominano la differenza osservata, le cause si isolano in locale in due minuti,
 e il sweep delle direttive ne ha trovate due in blocco prima che la CI le
 incontrasse. Lo stesso è stato fatto per il timeout dal vivo, che ora riporta
 stato e giornale dell'unità.
+
+### 23.19 La causa strutturale del legame firmato
+
+Le prime sei cause di C3 erano assunzioni sulla resa dell'interfaccia. La
+settima e l'ottava sono di natura diversa e vale la pena registrarle.
+
+**Inquadramento delle impronte.** Il prodotto inquadra
+`dominio || u64be(lunghezza) || carico` proprio perche' un campo non possa
+scivolare nel vicino; l'aiutante della cella ometteva la lunghezza, quindi le
+tre impronte della testa che il preflight ricalcola disagreevano tutte. Il
+primo tentativo di correzione ha esteso troppo — cambiando l'unico aiutante ha
+mosso anche `boundary_inventory_hash` e `closed_build_id`, che non sono valori
+di sola forma ma identificatori legati dal manifesto della distribuzione — e ha
+fatto morire il giro prima, su `closed_build_id`. Restano quindi **due**
+aiutanti, perche' sono due contratti distinti. Una guardia economica, che non
+richiede `root`, ora fissa l'accordo fra i due inquadramenti; vive nel file che
+gira sempre, non accanto alla cella distruttiva, che e' opt-in.
+
+**Lo stato di attivazione.** Misurato su systemd 255.4: l'arco causale inverso
+`TriggeredBy` esiste **solo finche' il trigger e' attivo** — assente dopo
+`daemon-reload`, presente appena il timer parte, di nuovo assente dopo lo stop,
+presente di nuovo al riavvio. Lo stesso vale per la voce corrispondente in
+`After`. Il prerequisito veniva firmato con il timer fermo, ma il lancio che
+autorizza avviene per definizione mentre il timer gira: la fotografia firmata
+descriveva quindi una topologia che il lancio **non poteva mai presentare**, e
+il legame firmato rifiutava a ogni giro. Non era una svista della fixture ma
+una contraddizione fra il momento della firma e il momento della verifica.
+
+La cattura si prende ora nello stato di attivazione che il lancio osservera'.
+Misurato inoltre che l'insieme degli archi e' stabile una volta attivo il
+timer: non cambia mentre il servizio gira ne' dopo che si e' concluso, quindi
+la correzione non introduce una corsa.
+
+Alternativa scartata: togliere l'arco dalla fotografia. Il mandato di C4 chiede
+esplicitamente che i due archi causali vi siano, in entrambe le direzioni.
