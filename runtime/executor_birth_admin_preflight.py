@@ -736,7 +736,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:87d24750912c2b51cc50424ace7637885fa64719104b55989d7589a770d35864"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:ba762f35be3eba20c834541f2e8f50548c959d5588c957350699ceed23826e5d"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -13121,7 +13121,23 @@ def _observe_effective_systemd_core_v1(
         or snapshot_1.snapshot.effective_units_hash
         != prerequisite.effective_units_hash
     ):
-        raise _invalid("effective systemd signed binding")
+        # Two very different faults share this refusal: a manager that is not
+        # the one the prerequisite was signed against, and a topology that
+        # moved since. Saying which — and, for the topology, both digests —
+        # is the difference between one round and several under a real
+        # manager. Digests and a version string are not payload.
+        raise _invalid(
+            "effective systemd signed binding "
+            + (
+                f"version observed={snapshot_1.manager_version} "
+                f"signed={prerequisite.systemd_manager_version}"
+                if snapshot_1.manager_version
+                != prerequisite.systemd_manager_version
+                else
+                f"units observed={snapshot_1.snapshot.effective_units_hash} "
+                f"signed={prerequisite.effective_units_hash}"
+            )
+        )
     _revalidate_captured_effective_systemd_v1(
         snapshot_1, live_root=live_root, uid=uid, gid=gid,
     )

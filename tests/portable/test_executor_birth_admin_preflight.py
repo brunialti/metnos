@@ -3921,3 +3921,35 @@ def test_named_sets_keep_the_systemd_negation_marker() -> None:
     # The grammar still holds for everything that is not the marker.
     _invalid(named, "AF_INET nonsense")
     _invalid(named, "~nonsense")
+
+
+def test_fixture_and_product_agree_on_the_head_framing() -> None:
+    """The framing the fixture builds must be the framing the product checks.
+
+    This is the cheap guard for the defect class that cost this cell two
+    rounds: the fixture derived the head hashes with a different frame from
+    the one the preflight recomputes, and the transaction head binding refused
+    a fixture that was otherwise correct. The big cell needs root and a real
+    manager; this one needs neither, so a divergence is caught before it
+    reaches the only channel that could show it.
+    """
+    from test_executor_birth_systemd_activation import (
+        _framed_digest, _framed_digest_v1,
+    )
+
+    for domain in (
+        preflight.HEAD_PAYLOAD_HASH_DOMAIN_V2,
+        preflight.HEAD_SIGNATURE_HASH_DOMAIN_V2,
+        preflight.REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2,
+    ):
+        for payload in (b"", b"a", b"\x00" * 65, os.urandom(97)):
+            assert _framed_digest_v1(domain, payload) == (
+                preflight._framed_sha256_v1(domain, payload)
+            )
+
+    # The other helper is deliberately NOT the product framing: the values it
+    # derives are identifiers the distribution manifest binds, and moving them
+    # invalidates the manifest the fixture signed.
+    assert _framed_digest(
+        preflight.HEAD_PAYLOAD_HASH_DOMAIN_V2, b"a",
+    ) != _framed_digest_v1(preflight.HEAD_PAYLOAD_HASH_DOMAIN_V2, b"a")

@@ -1074,3 +1074,4 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         if fixture.marker_root.exists():
             assert tuple(fixture.marker_root.iterdir()) == ()
             fixture.marker_root.rmdir()
+
