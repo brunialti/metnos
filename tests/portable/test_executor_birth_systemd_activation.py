@@ -872,7 +872,25 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         os.chown(fixture.marker_root, fixture.account.uid, fixture.account.gid)
         _systemctl("daemon-reload")
 
+        # The prerequisite is signed against the EFFECTIVE topology, and the
+        # launch it authorises happens while the timer is running. Measured on
+        # systemd 255.4: the reverse causal edge `TriggeredBy` exists only
+        # while the trigger is active — absent after `daemon-reload`, present
+        # once the timer starts, absent again after stop. Capturing with the
+        # timer stopped therefore signed a topology the launch could never
+        # present, and the signed binding refused every time. The capture is
+        # taken in the activation state the launch will observe.
+        _systemctl("start", fixture.timer_name)
+        _wait_for(
+            lambda: fixture.timer_name in _systemctl(
+                "show", fixture.service_name, "--property=TriggeredBy",
+                "--value", check=False,
+            ).stdout,
+            diagnose=lambda: _unit_diagnosis(fixture.timer_name),
+        )
         captured_tcb, effective, candidate_hash = _capture_live_bindings(fixture)
+        _systemctl("stop", fixture.timer_name, check=False)
+        _systemctl("reset-failed", fixture.service_name, check=False)
         prerequisite, request_id = _build_prerequisite_and_graph(
             fixture, captured_tcb, effective, candidate_hash,
         )
