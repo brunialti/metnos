@@ -237,6 +237,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_feedback.py': ('c514fa16f605ae333a0267e3e15503f26c3855c5c77b1144b5ce8c85e41431e9', (('helper-argument', 1),)),
     'executor_birth_identity.py': ('b5b868288dbdf732e8788e65790e6961bd962509e3927d76e52ee644b031baac', (('comparison', 2),)),
     'executor_birth_keystore.py': ('6504cb895bf4d73a7b8d3948ae9b36b1fd557b0212c90b59db7693df1bd23636', (('comparison', 8), ('helper-argument', 1))),
+    'executor_birth_legacy_retirement.py': ('ae3ce47dc9cec46994fad03b8f1732c74bc522313f79ba239de942bc1ccaae36', (('comparison', 1),)),
     'executor_birth_lifecycle.py': ('6e3b395c663f5e21df6bc88140993520b4831fae128b5ba1aa543471613ec6d4', (('comparison', 2), ('helper-argument', 1))),
     'executor_birth_operational.py': ('2cfcfb505b28f27e05fea659d734a25dab31f9ae18067b0b41e37ec926a68cf7', (('comparison', 9), ('helper-argument', 2))),
     'executor_birth_ownership_authorities.py': ('f10d7e61d1814547e9d0e834b1b4a2376df0c3f908af824bed014276aeb6135b', (('comparison', 5), ('helper-argument', 1))),
@@ -979,6 +980,8 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
 # relative path, lexical owner, symbol, container kind and complete payload;
 # the adjacent reason records why the value is not input-language authority.
 VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
+    "cc3d12d0ea243ef8e9da4931d56f09b94a4ade59f99138cd061978cc40a2c607":
+        "closed systemd unit states that count as still in flight",
     "717600791b5dbe036580683e37250568bbb77fb7cfd7d392a8586d5efd677a23":
         "closed set of systemd directives a gated unit must declare",
     "0e98a95a3c159358e36866a9e7219eee5a2701a2ceae92727ae5cadbec6166a9":

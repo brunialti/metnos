@@ -2737,3 +2737,40 @@ legami, e il consumo avviene esattamente una volta.
 
 Perni: 689 sorgenti private, 677 pubbliche. Portable 1049 verdi, guardie verdi,
 censimento 83 verdi con l'autorita' del modulo nuovo puntata alla nascita.
+
+
+### 23.35 Gruppo 7-B: il ritiro dei legami legacy come DECISIONE, non come atto
+
+Punto 2 dell'involucro del gruppo 7, nella parte che si puo' dimostrare in
+isolamento. `runtime/executor_birth_legacy_retirement.py` possiede la decisione
+e la prova; NON possiede la mutazione. Nessuna riga maschera un'unita',
+cancella uno script o ferma un processo.
+
+**Perche' separare decidere da fare.** Un piano e' un valore: si incornicia, si
+lega dentro la capacita' di completamento, si confronta prima e dopo, e si
+rigioca senza effetti. Quando pianificare ed eseguire vivono nella stessa
+funzione, l'unico modo per controllare la decisione e' compierla.
+
+**Tabella chiusa, nessun default.** Ogni coppia (kind, scope) ammessa mappa a
+UNA azione; una coppia sconosciuta viene rifiutata invece che trattata per
+difetto, perche' un difetto ritirerebbe in silenzio un nuovo tipo di ingresso
+nel modo sbagliato. Sui legami veri del prodotto: 39 passi, 15 `mask_user_unit`,
+5 `mask_system_unit`, 19 `revoke_repository_entrypoint`.
+
+**Ordine che non dipende da chi chiama.** I passi sono ordinati per byte di
+`legacy_id`, non nell'ordine in cui il catalogo li elencava: un piano la cui
+impronta cambia con l'iterazione del chiamante non si puo' legare a una
+capacita'. Provato passando i legami anche al contrario.
+
+**Il silenzio non e' prova di assenza.** `require_no_legacy_in_flight_v1`
+rifiuta un locator di cui l'osservatore non dice nulla, invece di supporlo
+inattivo. E' l'unico punto dove la lettura comoda nasconderebbe proprio il caso
+che conta: un ingresso che l'osservatore non ha visto e' piu' probabile che sia
+quello pericoloso, non meno. E ritirare un ingresso ancora in volo lascerebbe
+un processo vivo che nessuna identita' sa piu' indirizzare — peggio del non
+ritirarlo.
+
+Dodici prove portabili. Perni 690/678; portable 1144 verdi; censimento 83
+verdi con il contenitore nuovo motivato; guardie verdi. L'inventario di
+produzione e' stato rigenerato: due moduli nuovi lo spostano, ed e' la prova R1
+ad averlo detto.
