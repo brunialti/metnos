@@ -193,6 +193,26 @@ class ReconcileLock:
         self.release()
 
 
+class ReconcileBoundaries:
+    """The two boundaries a reconcile holds, with the catalog releasable early.
+
+    They are not interchangeable. The lifecycle boundary serialises the whole
+    operation and must be held to its end. The catalog boundary only protects
+    reading and signing contracts: holding it while systemd restarts the stack
+    starves the very server being started, which cannot read its catalog, is
+    therefore never ready, and is quarantined — the reconcile taking down what
+    it was repairing.
+    """
+
+    def __init__(self, lifecycle: ReconcileLock, release_catalog):
+        self.lifecycle = lifecycle
+        self._release_catalog = release_catalog
+
+    def release_catalog(self) -> None:
+        """Free the catalog boundary; idempotent, and safe to never call."""
+        self._release_catalog()
+
+
 @contextlib.contextmanager
 def catalog_reconcile_lock(
     *,
@@ -211,6 +231,15 @@ def catalog_reconcile_lock(
         raise StackFailure(
             "catalog_lock_unavailable", f"{exc.code}: {exc.detail}",
         ) from exc
+    catalog_held = True
+
+    def _release_catalog(*exc_info) -> None:
+        nonlocal catalog_held
+        if not catalog_held:
+            return
+        catalog_held = False
+        catalog.__exit__(*(exc_info or (None, None, None)))
+
     try:
         if lock is not None and (path is not None or owner_uid is not None):
             raise ValueError("lock cannot be combined with path or owner_uid")
@@ -224,11 +253,11 @@ def catalog_reconcile_lock(
                 selected = ReconcileLock(path, owner_uid=owner_uid)
         selected.acquire(wait_s=wait_s)
         try:
-            yield selected
+            yield ReconcileBoundaries(selected, _release_catalog)
         finally:
             selected.release()
     finally:
-        catalog.__exit__(*sys.exc_info())
+        _release_catalog(*sys.exc_info())
 
 
 class Systemctl:
@@ -819,7 +848,7 @@ class StackReconciler:
                 require_sidecar: str = "auto") -> dict:
         names = executor_names or []
         locks = contextlib.ExitStack()
-        locks.enter_context(catalog_reconcile_lock(wait_s=2))
+        boundaries = locks.enter_context(catalog_reconcile_lock(wait_s=2))
         breaker = CircuitBreaker()
         try:
             if automatic:
@@ -840,6 +869,11 @@ class StackReconciler:
                     "legacy_baseline_active",
                     "refusing to start the user target beside active system HTTP",
                 )
+            # Every contract read and signature is done. From here on the
+            # operation belongs to systemd, and the server it is starting must
+            # be able to read its own catalog while it boots. The lifecycle
+            # boundary stays held: it is what still serialises this restart.
+            boundaries.release_catalog()
             result = self.systemctl.run("user", "restart", TARGET_UNIT, timeout_s=180)
             if result.returncode != 0:
                 raise StackFailure(

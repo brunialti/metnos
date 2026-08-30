@@ -822,3 +822,84 @@ def test_lock_rejects_symlink(tmp_path):
     lock = sr.ReconcileLock(link)
     with pytest.raises(OSError):
         lock.acquire()
+
+
+def test_restart_frees_the_catalog_before_handing_over_to_systemd(
+    monkeypatch, tmp_path,
+) -> None:
+    """The server being restarted must be able to read its own catalog.
+
+    Holding the catalog boundary across `systemctl restart` starves the very
+    server the reconcile is starting: it cannot load its catalog, is never
+    ready, and the readiness gate quarantines the whole stack. The lifecycle
+    boundary is the one that must survive, and it does.
+    """
+    import contract_store
+
+    catalog_held = [False]
+    observed: list[tuple[str, bool, bool]] = []
+
+    @contextlib.contextmanager
+    def catalog_lock(*, timeout):
+        catalog_held[0] = True
+        try:
+            yield
+        finally:
+            catalog_held[0] = False
+
+    monkeypatch.setattr(contract_store, "catalog_admission_lock", catalog_lock)
+
+    lock_path = tmp_path / "lock"
+    lifecycle = sr.ReconcileLock(lock_path)
+    monkeypatch.setattr(sr, "ReconcileLock", lambda: lifecycle)
+
+    class RecordingSystemctl(FakeSystemctl):
+        def run(self, scope: str, *args: str, timeout_s: float = 120):
+            observed.append(("run", catalog_held[0], lock_path.exists()))
+            return super().run(scope, *args, timeout_s=timeout_s)
+
+    fake = RecordingSystemctl()
+    rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
+    monkeypatch.setattr(rec, "require_quiescent", lambda: {"ok": True})
+    monkeypatch.setattr(sr, "verify_named_executors", lambda names, sign_first=False: [])
+    monkeypatch.setattr(
+        sr, "CircuitBreaker",
+        lambda: type("Breaker", (), {
+            "success": lambda self: None,
+            "failure": lambda self: None,
+            "assert_closed": lambda self: None,
+        })(),
+    )
+
+    def wait_ready(**_kwargs):
+        observed.append(("wait_ready", catalog_held[0], lock_path.exists()))
+        return {"ok": True}
+
+    monkeypatch.setattr(rec, "wait_ready", wait_ready)
+
+    assert rec.restart()["ok"] is True
+    assert observed == [("run", False, True), ("wait_ready", False, True)]
+    assert catalog_held[0] is False
+
+
+def test_reconcile_boundaries_release_catalog_is_idempotent(
+    monkeypatch, tmp_path,
+) -> None:
+    import contract_store
+
+    events: list[str] = []
+
+    @contextlib.contextmanager
+    def catalog_lock(*, timeout):
+        events.append("catalog_enter")
+        try:
+            yield
+        finally:
+            events.append("catalog_exit")
+
+    monkeypatch.setattr(contract_store, "catalog_admission_lock", catalog_lock)
+    with sr.catalog_reconcile_lock(path=tmp_path / "lock", wait_s=0.25) as boundaries:
+        boundaries.release_catalog()
+        boundaries.release_catalog()
+        events.append("body")
+    assert events == ["catalog_enter", "catalog_exit", "body"]
