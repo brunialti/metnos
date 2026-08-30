@@ -1424,8 +1424,11 @@ detenuto»; non richiama `prepare_ownership_cutover_v1()` dall'interno dello
 stesso blocco.
 
 Il blocco degli avvii e' il file fisso root-owned
-`/run/lock/metnos/executor-birth-startup-v1.lock`, regolare, senza link, modo
-`0600`. Soltanto il programma root apre il file e acquisisce un blocco
+`/run/metnos-executor-birth-v1/startup-v1.lock`, regolare, senza link, modo
+`0600`. Sta DENTRO la radice di esecuzione del prodotto e non sotto
+`/run/lock`: quella e' `1777` per la FHS, e la stessa regola di catena che il
+modulo applica a ogni percorso rifiuta un antenato scrivibile da gruppo o
+altri, quindi il file sarebbe stato inapribile per costruzione, root incluso. Soltanto il programma root apre il file e acquisisce un blocco
 condiviso; `launch` ripete tutta la verifica. Per un `gated_service` mantiene
 il blocco fino al passaggio finale: sugli eseguibili imposta `FD_CLOEXEC` prima
 dell'`execve`, sul ramo Python lo chiude esplicitamente dopo la riduzione dei

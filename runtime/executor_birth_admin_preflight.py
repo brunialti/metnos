@@ -42,7 +42,13 @@ CHAIN_ROOT = OWNERSHIP_ROOT / "chain-v1"
 COORDINATOR_ROOT = OWNERSHIP_ROOT / "coordinator-v1"
 RELEASE_ROOT = OWNERSHIP_ROOT / "releases-v1"
 RUNTIME_ROOT = Path("/run/metnos-executor-birth-v1")
-STARTUP_GATE_PATH_V1 = Path("/run/lock/metnos/executor-birth-startup-v1.lock")
+# The gate lives inside the product's OWN private runtime root, never under
+# the shared `/run/lock`: that directory is `1777` by the FHS, and the same
+# chain rule this module applies to every path (`st_mode & 0o022`) refuses
+# any ancestor writable by group or others. A gate under `/run/lock` was
+# therefore unopenable by construction, on every standard system and even
+# as root. The rule is not relaxed; the location is one the product owns.
+STARTUP_GATE_PATH_V1 = RUNTIME_ROOT / "startup-v1.lock"
 PREFLIGHT_ATTESTATION_ROOT_V1 = OWNERSHIP_ROOT / "preflight-attestations-v1"
 OPENSSL_LINK = Path("/usr/bin/openssl")
 PYTHON_LINK = Path("/usr/bin/python3")
@@ -736,7 +742,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:af33c4e541bf80d02e1b0b8fe792287bfe39fb0c63b521e4291a56e131d69d7a"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:fd3bf42fdec7c8c95b7cfd832eef0f3298842b884cdcdaff20f9caa4a88978a8"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )

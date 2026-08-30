@@ -3960,3 +3960,38 @@ def test_fixture_and_product_agree_on_the_head_framing() -> None:
     assert _framed_digest(
         preflight.HEAD_PAYLOAD_HASH_DOMAIN_V2, b"a",
     ) != _framed_digest_v1(preflight.HEAD_PAYLOAD_HASH_DOMAIN_V2, b"a")
+
+
+def test_the_startup_gate_lives_where_the_product_owns_the_chain() -> None:
+    """The gate may only sit under a root this module creates itself.
+
+    Every path this module opens is validated by `_require_safe_directory_chain_v1`,
+    which refuses any ancestor writable by group or others. A gate placed under
+    a SHARED directory therefore depends on a mode the product does not own —
+    and `/run/lock` is `1777` by the FHS, so the gate was unopenable by
+    construction, as root included. The property is structural, not a lucky
+    path: the gate is inside the private runtime root.
+    """
+    assert preflight.STARTUP_GATE_PATH_V1.parent == preflight.RUNTIME_ROOT
+    assert preflight.RUNTIME_ROOT.parent == Path("/run")
+
+
+@LINUX_ONLY
+def test_a_shared_lock_directory_is_refused_by_the_chain_rule() -> None:
+    """The differential that names the cause, measured on this system.
+
+    `/run` is `0755` and passes; `/run/lock` is world-writable and fails. The
+    two run through the SAME validator, so the refusal is the rule speaking,
+    not a special case written for one directory.
+    """
+    shared = Path("/run/lock")
+    if not shared.is_dir():
+        pytest.skip("this system has no shared FHS lock directory")
+    assert shared.stat().st_mode & 0o022
+
+    preflight._require_safe_directory_chain_v1(
+        Path("/run"), uid=0, gid=0, stop=None,
+    )
+    with pytest.raises(preflight.PreflightError) as refused:
+        preflight._require_safe_directory_chain_v1(shared, uid=0, gid=0, stop=None)
+    assert refused.value.code == preflight.CODE_INVALID

@@ -2091,3 +2091,47 @@ L'unita' fa di piu': risolve la voce con `check --entry-id` e poi lancia. Il
 rifiuto vive in uno di quei passi successivi. La sonda riproduce ora entrambi i
 comandi come l'unita' li esegue, privilegiati, riportando uscita e stderr di
 ciascuno.
+
+
+### 23.21 La nona causa, nominata: il prodotto vietava a se' stesso il cancello
+
+La sonda privilegiata del §23.20 ha risposto in una riga sola:
+
+```
+privileged check-all: raised TimeoutExpired;
+check: exit=21 stderr='birth_ownership_preflight_invalid'
+```
+
+Due fatti insieme. Il primo: `check --entry-id` rifiuta anche eseguito da root
+FUORI dall'unita', quindi la causa non era il namespace del servizio ne'
+`ProtectSystem=strict`, ed era riproducibile da una shell qualsiasi. Il
+secondo: `check-all` accetta, e la differenza fra i due comandi e' esattamente
+l'acquisizione del cancello di avvio piu' la risoluzione della voce.
+
+**La causa.** `STARTUP_GATE_PATH_V1` era
+`/run/lock/metnos/executor-birth-startup-v1.lock`. Ogni percorso che il modulo
+apre passa da `_require_safe_directory_chain_v1`, che rifiuta qualunque
+antenato con `st_mode & 0o022`. Ma `/run/lock` e' `1777` per la FHS — e' la
+directory di lock condivisa di sistema, world-writable con sticky bit. La
+catena del cancello conteneva quindi un anello che la regola del prodotto
+rifiuta sempre: il file era inapribile **per costruzione**, su ogni sistema
+standard e anche da root. Non un guasto d'ambiente, non una corsa: una scelta
+di collocazione incompatibile con una regola dello stesso modulo.
+
+**La correzione.** Il cancello si sposta dentro la radice di esecuzione che il
+prodotto crea e possiede, `/run/metnos-executor-birth-v1/startup-v1.lock`.
+`/run` e' `0755` e passa; la radice e' `0700` root-owned. La regola non viene
+allentata di un bit: cambia il posto, non il criterio.
+
+**Perche' non si ripeta.** Due prove portabili nuove in
+`tests/portable/test_executor_birth_admin_preflight.py`. La prima e'
+strutturale e vale ovunque: il cancello deve stare dentro la radice privata
+del prodotto, cioe' in una directory il cui modo il prodotto stabilisce, non in
+una condivisa il cui modo appartiene al sistema. La seconda e' il differenziale
+che nomina la causa: `/run` passa dal validatore e `/run/lock` no, attraverso
+lo STESSO validatore — e' la regola a parlare, non un caso speciale.
+
+**Filo aperto, non regressione.** Nessuno crea ancora il cancello in
+produzione: `_acquire_startup_gate_shared_v1` lo apre e non lo crea, e oggi lo
+prepara soltanto la cella. La creazione appartiene all'installazione (B4/D);
+va fatta nella nuova posizione.

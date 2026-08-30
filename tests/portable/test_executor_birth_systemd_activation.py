@@ -78,7 +78,7 @@ RELEASE_ROOT = OWNERSHIP_ROOT / "releases-v1/00000000000000000001"
 ADMINISTRATIVE_ROOT = Path("/usr/libexec/metnos/executor-birth-v1")
 UNIT_ROOT = Path("/etc/systemd/system")
 RUNTIME_ROOT = Path("/run/metnos-executor-birth-v1")
-STARTUP_GATE = Path("/run/lock/metnos/executor-birth-startup-v1.lock")
+STARTUP_GATE = RUNTIME_ROOT / "startup-v1.lock"
 BOUNDARY_INVENTORY_PATH = (
     "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json"
 )
@@ -903,7 +903,6 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         _install_administrative_and_units(fixture)
         installed = True
         RUNTIME_ROOT.mkdir(mode=0o700)
-        STARTUP_GATE.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
         gate = os.open(STARTUP_GATE, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(gate)
         fixture.marker_root.mkdir(mode=0o700)
