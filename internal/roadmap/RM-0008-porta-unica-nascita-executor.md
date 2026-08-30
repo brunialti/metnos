@@ -1890,3 +1890,35 @@ rinviata finché un secondo agente ha lavoro non committato nell'albero
 condiviso: l'export legge il filesystem e prenderebbe il suo incremento a
 metà. Il perno della revisione sorgenti va ricalcolato a ogni pubblicazione,
 perché ogni commit che tocca una radice censita lo invalida per tutti.
+
+Il quinto run `33323601852` ha superato anche il diniego sull'unità assente e
+si è fermato su `duration component`. Terza causa misurata sulla stessa
+interfaccia: **una durata pari a zero viene resa senza suffisso**
+(`RandomizedDelayUSec=0`, `WatchdogUSec=0`) e **una illimitata come la parola
+`infinity`** (`JobTimeoutUSec`), su proprietà che nessuna unità ha mai
+impostato. Entrambe sono token canonici singoli che la grammatica a componenti
+non può analizzare.
+
+La distinzione introdotta è di sostanza, non di comodo: un direttivo firmato e
+una proprietà viva non sono lo stesso ingresso. Ciò che un catalogo può
+dichiarare resta stretto — `infinity` continua a essere rifiutato lì, perché un
+timeout illimitato è una politica che un autore non deve poter firmare — mentre
+ciò che systemd riporta non è una scelta, e i due siti di osservazione passano
+ora `observed=True`.
+
+Le tre cause di C3 hanno la stessa forma: un'assunzione non misurata su come
+systemd rende la propria interfaccia, e un diniego muto che costava un giro di
+CI per ipotesi. I dinieghi ora nominano la differenza osservata, ed è la
+ragione per cui la terza causa è stata isolata in locale invece che in CI.
+
+Commit privati `1fb9d8ce` (durata osservata) e `074efbde` (radice pubblica);
+proiezione pubblica `b607fe0`. Radici: privata 687 sorgenti
+`sha256:a12caa5261967255a041e8687eacacf479d2eb56ef970ac7e621634050846d59`,
+pubblica 675 sorgenti
+`sha256:f9a69dcee5c88c7ea5ddbb83e0cd7cac10e904b7ef5deab4fb560674789c96fe`.
+
+Dal quinto incremento il lavoro G6 procede in un worktree separato
+(`/tmp/metnos-rm0008-g6`, detached) e rientra in `main` per cherry-pick: due
+agenti sullo stesso albero si invalidano a vicenda il perno della revisione
+sorgenti, e l'export legge il filesystem, quindi chi pubblica mentre l'altro
+edita si porta dietro lavoro a metà. È costato tre rinvii di pubblicazione.
