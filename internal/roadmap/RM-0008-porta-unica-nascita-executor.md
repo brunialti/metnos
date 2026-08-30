@@ -2,8 +2,9 @@
 
 > RM-0008 · stato `active` · avanzamento verificato il 30 agosto 2026 ·
 > conservazione persistente · gruppi 1-5 della ripresa (§23.6), G6-A, G6-B1,
-> G6-B2 e G6-B3 completati; G6-C è iniziato con l'installazione amministrativa
-> byte-identica, ancora locale. La fotografia systemd viva di G6-B3 resta
+> G6-B2 e G6-B3 completati; G6-C1, installazione amministrativa byte-identica,
+> è certificato nel commit pubblico `5884f8c` dal run GitHub Actions
+> `33316187520`, verde su tutti i nove job. La fotografia systemd viva di G6-B3 resta
 > non autorizzante ed è pubblicata nel commit `5b2b3e6`, certificato con tutti
 > gli otto job Linux/Windows verdi nel run GitHub Actions `33314651224`.
 > RM-0005 è chiuso; `closed_build_enforcement()` resta `False`. Il prossimo
@@ -1759,3 +1760,11 @@ e 673 sorgenti pubbliche con radice
 `sha256:173f218ca16987dbdc47598b5354fb5b1fbfd828b4a590eebe327adaf20c7c01`;
 il gate sui 1.604 file esportati non rileva dati personali, segreti o file
 sensibili.
+
+La pubblicazione incrementale di G6-C1 è conclusa nel commit privato
+`df5841c3` e nel commit pubblico
+`5884f8ce0cad6890b551354c50a073bebdfb81d0`. Il run GitHub Actions
+`33316187520` ha concluso verdi tutti i nove job e il riepilogo bloccante; i
+soli avvisi riguardano la migrazione Node delle action. G6-C1 è certificato,
+mentre G6-C resta `active` per la cella systemd reale e gli incrementi
+successivi.

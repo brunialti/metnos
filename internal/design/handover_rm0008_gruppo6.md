@@ -9,8 +9,9 @@ Il gruppo 5 e' chiuso. Il commit pubblico e' `a5bd396`; il ciclo GitHub Actions
 `33183713818` ha concluso verdi nove lavori su nove, con errore zero su Linux e
 Windows. Il commit sorgente di ingresso del gruppo 6 e' `225f9437`.
 RM-0008 resta `active`; `closed_build_enforcement()` resta `False`. G6-C è
-iniziato con il primo incremento locale dell'installatore amministrativo; la
-cella systemd reale e il gate operativo non sono ancora implementati.
+iniziato con il primo incremento certificato pubblicamente dell'installatore
+amministrativo; la cella systemd reale e il gate operativo non sono ancora
+implementati.
 
 ### Incremento G6-A completato e certificato pubblicamente
 
@@ -2048,3 +2049,12 @@ la cella privata firmata e la workflow GitHub-hosted usa-e-getta che installa
 le unità byte-identiche, esegue il `daemon-reload` causale e prova il gate reale
 senza modificare il server gestito. La copertura totale resta riservata alla
 verifica di chiusura della fase.
+
+### Certificazione pubblica di G6-C1
+
+Il commit privato è `df5841c3`; la proiezione pubblica incrementale è
+`5884f8ce0cad6890b551354c50a073bebdfb81d0`. Il run GitHub Actions
+`33316187520` ha concluso verdi tutti i nove job Linux/Windows, compreso il
+riepilogo bloccante. Le annotazioni sulla versione Node delle action non sono
+errori di prodotto. G6-C1 è quindi certificato; G6-C resta aperto e riprende
+dalla cella systemd firmata nella VM GitHub-hosted usa-e-getta.
