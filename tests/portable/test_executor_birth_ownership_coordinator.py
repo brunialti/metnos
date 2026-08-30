@@ -35,6 +35,7 @@ from executor_birth_ownership_coordinator import (
     OwnershipCoordinatorError, OwnershipCoordinatorJournalV1,
     OwnershipCoordinatorStateV1, _prepare_under_maintenance_v1,
     _deployment_lock_for_test_v1, _deployment_lock_v1, _prepared_record,
+    _advance_to_preflight_verified_v1,
     _publish_certificate_with_prerequisite_v1,
     _require_deployment_lock_session_v1,
     _require_test_deployment_lock_session_v1,
@@ -741,3 +742,81 @@ def test_product_deployment_lock_fails_off_linux_before_io(monkeypatch):
         with _deployment_lock_v1():
             pass
     assert failure.value.code == "birth_ownership_platform_unsupported"
+
+
+def _reach_certificate_published(tmp_path):
+    journal, _result = _prepared(tmp_path)
+    authorities = _portable_authorities()
+    certificate = tmp_path / "certificate-final"
+    certificate.mkdir(mode=0o755)
+    published = _publish_certificate_with_prerequisite_v1(
+        journal=journal, certificate_directory=certificate,
+        authorities=authorities,
+        prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
+        observe_maintenance=_maintenance,
+    )
+    assert published.state is OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+    return journal
+
+
+def _observers(journal, *, build=None, head=None, preflight=None):
+    latest = journal.load()[-1]
+    return {
+        "observe_installation": lambda: build or latest.closed_build_id,
+        "observe_required_head": lambda: head or latest.cutover_id,
+        "observe_preflight": lambda: preflight or D("7"),
+    }
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+def test_isolated_coordinator_reaches_and_rereads_preflight_verified(tmp_path):
+    """The three remaining boundaries, in order, each one durable."""
+    journal = _reach_certificate_published(tmp_path)
+    result = _advance_to_preflight_verified_v1(
+        journal=journal,
+        prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
+        **_observers(journal),
+    )
+    assert result.state is OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+    states = [record.state for record in journal.load()]
+    assert states[-3:] == [
+        OwnershipCoordinatorStateV1.BUILD_VERIFIED,
+        OwnershipCoordinatorStateV1.HEAD_REQUIRED,
+        OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED,
+    ]
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+def test_isolated_coordinator_is_idempotent_once_verified(tmp_path):
+    """A repetition re-reads the evidence; it does not append a second time."""
+    journal = _reach_certificate_published(tmp_path)
+    prerequisite = _startup_prerequisite_for_test(D("5"), D("6"))
+    first = _advance_to_preflight_verified_v1(
+        journal=journal, prerequisite=prerequisite, **_observers(journal),
+    )
+    before = len(journal.load())
+    again = _advance_to_preflight_verified_v1(
+        journal=journal, prerequisite=prerequisite, **_observers(journal),
+    )
+    assert again.state is first.state
+    assert len(journal.load()) == before
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+@pytest.mark.parametrize("drift", ["build", "head"])
+def test_isolated_coordinator_denies_evidence_drift(tmp_path, drift):
+    """Resumption trusts what the system still says, not what was recorded."""
+    journal = _reach_certificate_published(tmp_path)
+    overrides = {drift: D("8")}
+    with pytest.raises(OwnershipCoordinatorError) as denied:
+        _advance_to_preflight_verified_v1(
+            journal=journal,
+            prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
+            **_observers(journal, **overrides),
+        )
+    assert str(denied.value).startswith("birth_ownership_recovery_required")
+    assert journal.load()[-1].state is (
+        OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+        if drift == "build"
+        else OwnershipCoordinatorStateV1.BUILD_VERIFIED
+    )
