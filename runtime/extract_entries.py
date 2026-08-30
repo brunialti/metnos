@@ -34,19 +34,9 @@ from messages import get as _msg
 from agentic_executor import (
     AgenticContext, AgenticLimits, AgenticProposal, run_bounded_sync,
 )
+import detection_lexicon_seed_reconciliation as _reconciliation_lex
 
 log = get_logger(__name__)
-
-# Normalizzazione campi temporali (euristica nome), SPLIT per granularità:
-# - DATETIME: punto nel tempo → ISO 8601 con orario+tz (eventi: create_events).
-# - DATE-ONLY: una data → "YYYY-MM-DD" SENZA orario (fatture/scadenze: «data,
-#   non anche tempo» — Roberto 16/6). T00:00 spurio su una pura data è rumore.
-_DATETIME_FIELD_RE = re.compile(
-    r"(^|_)(start|end|datetime|when|inizio|fine|ora|begin|finish)($|_)",
-    re.IGNORECASE)
-_DATE_ONLY_FIELD_RE = re.compile(
-    r"(^|_)(date|data|scadenza|due|deadline|emiss|issue|invoice)($|_)",
-    re.IGNORECASE)
 
 # Candidati campo-testo nelle entries d'ingresso, in ordine di preferenza.
 _TEXT_FIELDS = ("body_text", "text", "content", "body", "description",
@@ -61,25 +51,12 @@ _BATCH_QUERY_CHARS = 48000
 _MAX_INFERRED_FIELDS = 8
 _FIELD_INFERENCE_TEXT_CHARS = 8000
 
-_ORIGIN_FIELDS = frozenset({
-    "origin", "source", "origine", "origine_file", "source_file", "file_path",
-    "percorso", "path",
+_RUNTIME_OWNED_FIELD_IDS = frozenset({
+    "origin", "content_hash", "readable", "file_type", "confidence",
+    "domain", "duplicates", "diagnostic",
 })
-_HASH_FIELDS = frozenset({
-    "hash", "content_hash", "content_sha256", "signature", "firma",
-    "firma_contenuto",
-})
-_READABLE_FIELDS = frozenset({"readable", "leggibile", "file_leggibile"})
-_FILE_TYPE_FIELDS = frozenset({"file_type", "tipo_file", "formato"})
-_CONFIDENCE_FIELDS = frozenset({
-    "confidence", "confidence_level", "livello_confidenza", "confidenza",
-})
-_DOMAIN_FIELDS = frozenset({"domain", "dominio", "source_domain"})
-_DUPLICATE_FIELDS = frozenset({
-    "duplicates", "duplicate_paths", "duplicati", "percorsi_duplicati",
-})
-_DIAGNOSTIC_FIELDS = frozenset({
-    "diagnostic", "parse_diagnostic", "diagnostica", "errore_lettura",
+_DEFAULT_RELEVANCE_FIELD_IDS = frozenset({
+    "entity", "person", "project", "organization", "email", "phone",
 })
 
 
@@ -141,12 +118,6 @@ def _source_date(value):
     return parsed.isoformat() if parsed is not None else raw
 
 
-_DATE_FIELD_NAMES = {
-    "date", "data", "datetime", "timestamp", "start", "end", "when",
-    "deadline", "due", "scadenza", "inizio", "fine",
-}
-
-
 # One definition of the mark, shared with whoever has to compare these values
 # as dates (`filter_entries`, `sort_entries`): the mark states that the year
 # was assumed rather than read, and a comparator that took it literally would
@@ -154,18 +125,21 @@ _DATE_FIELD_NAMES = {
 from executor_helpers import ASSUMED_YEAR_MARK as _ASSUMED_YEAR_MARK
 
 
-def _normalize_extracted_date(field: str, value):
+def _normalize_extracted_date(field: str, value, *, lexicon=None):
     """Normalise complete observed dates without inventing missing parts."""
     if not isinstance(value, str) or not value.strip():
         return value
-    key_parts = set(_field_key(field).split("_"))
-    if not (key_parts & _DATE_FIELD_NAMES):
+    if lexicon is None:
+        lexicon = _reconciliation_lex.load()
+    if _field_temporal_kind(field, lexicon=lexicon) is None:
         return value
     raw = value.strip()
     # The marker survives normalisation: it is part of what the value claims,
     # not decoration. Strip it, normalise the date underneath, put it back.
     if raw.startswith(_ASSUMED_YEAR_MARK):
-        inner = _normalize_extracted_date(field, raw[len(_ASSUMED_YEAR_MARK):])
+        inner = _normalize_extracted_date(
+            field, raw[len(_ASSUMED_YEAR_MARK):], lexicon=lexicon,
+        )
         inner = inner if isinstance(inner, str) else raw
         return f"{_ASSUMED_YEAR_MARK}{inner.strip()}" if inner.strip() else ""
     # ISO già valido: conserva la granularità date-only vs datetime.
@@ -194,105 +168,92 @@ def _normalize_extracted_date(field: str, value):
     return _source_date(raw)
 
 
-_SOURCE_FIELD_ALIASES = {
-    "sender": ("from",), "mittente": ("from",),
-    "from": ("from",), "subject": ("subject",),
-    "oggetto": ("subject",), "body": ("body_preview", "body"),
-    "corpo": ("body_preview", "body"), "summary": ("summary",),
-    "title": ("title", "summary", "subject"),
-    "titolo": ("title", "summary", "subject"),
-    "final_url": ("final_url", "url"),
-    "url_finale": ("final_url", "url"),
-    "language": ("language", "lang"),
-    "lingua": ("language", "lang"),
-    "text_length": ("text_length",),
-    "caratteri_estratti": ("text_length",),
-    "lunghezza_testo": ("text_length",),
-    "start": ("start",), "inizio": ("start",),
-    "end": ("end",), "fine": ("end",),
-    "location": ("location",), "luogo": ("location",),
-    "description": ("description",), "descrizione": ("description",),
-    "status": ("status",), "stato": ("status",),
-    "is_redirect": ("redirected",),
-    "has_iframe": ("iframe_count", "iframe_urls"),
-    "needs_js_render": ("js_required",),
-    "attendees": ("attendees",), "partecipanti": ("attendees",),
-    "responsabile": ("organizer", "attendees", "from"),
-    "responsible": ("organizer", "attendees", "from"),
-    "date": ("date",), "data": ("date",),
-}
-
 _WEB_AUDIT_DERIVED_FIELDS = frozenset({
     "is_redirect", "is_timeout", "is_unreadable", "is_empty",
     "has_iframe", "needs_js_render",
 })
 
 
-def _source_field_value(source: dict, field: str):
+def _source_field_value(source: dict, field: str, *, lexicon=None):
     """Deterministic aliases for facts already structured by producers."""
-    key = _field_key(field)
+    if lexicon is None:
+        lexicon = _reconciliation_lex.load()
+    field_identity = (
+        lexicon.canonical_field(field) if lexicon is not None else None
+    )
+    source_identity = (
+        lexicon.source_identity(field) if lexicon is not None else None
+    )
+    derived_key = {
+        "redirect": "is_redirect",
+        "iframe": "has_iframe",
+        "javascript_required": "needs_js_render",
+    }.get(source_identity, _field_key(field))
     # Web readers already expose enough transport metadata to answer these
     # audit booleans exactly.  They are projections/derivations of observed
     # producer facts, not semantic extraction: never spend an LLM call merely
     # to rename ``redirected`` or compare ``text_length`` with zero.
-    if key == "is_redirect":
+    if derived_key == "is_redirect":
         if "redirected" in source:
             return bool(source.get("redirected"))
         origin = source.get("origin") or source.get("requested_url")
         final = source.get("final_url") or source.get("url")
         return bool(origin and final and str(origin) != str(final))
-    if key == "is_timeout":
+    if derived_key == "is_timeout":
         observed = " ".join(str(source.get(name) or "") for name in (
             "status", "error", "error_code", "error_class"))
         return "timeout" in observed.casefold()
-    if key == "is_unreadable":
+    if derived_key == "is_unreadable":
         status = str(source.get("status") or "").strip().casefold()
         return bool(status and status not in {"ok", "success"})
-    if key == "is_empty":
+    if derived_key == "is_empty":
         if "text_length" in source:
             try:
                 return int(source.get("text_length") or 0) == 0
             except (TypeError, ValueError):
                 return not bool(str(source.get("body_text") or "").strip())
         return not bool(str(source.get("body_text") or "").strip())
-    if key == "has_iframe":
+    if derived_key == "has_iframe":
         if "iframe_count" in source:
             try:
                 return int(source.get("iframe_count") or 0) > 0
             except (TypeError, ValueError):
                 return bool(source.get("iframe_count"))
         return bool(source.get("iframe_urls"))
-    if key == "needs_js_render":
+    if derived_key == "needs_js_render":
         return bool(source.get("js_required"))
     # For a calendar appointment the actionable date is its start. ``end``
     # may be days later and is exclusive for all-day Google events, so letting
     # the model choose it creates false deadlines.
     if (_source_domain(source) == "calendar"
-            and key in {"scadenza", "deadline", "due_date"}):
+            and field_identity == "deadline"):
         start = source.get("start")
         if isinstance(start, str) and start.strip():
             value = start.strip()
             return value[:10] if re.match(r"^\d{4}-\d{2}-\d{2}", value) else value
-    if key in _ORIGIN_FIELDS:
+    if field_identity == "origin":
         return _source_origin(source)
-    if key in _DOMAIN_FIELDS:
+    if field_identity == "domain":
         # ``domain`` is overloaded historically: producer family
         # (email/calendar/files) or an explicit web hostname.  An observed
         # producer value is more specific and must never be erased.
-        return (source.get(field) or source.get("domain")
-                or source.get("dominio") or _source_domain(source))
-    if key in _DUPLICATE_FIELDS:
+        return (_observed_canonical_value(source, "domain", lexicon)
+                or _source_domain(source))
+    if field_identity == "duplicates":
         return source.get("duplicate_paths") or []
-    if key in _DIAGNOSTIC_FIELDS:
+    if field_identity == "diagnostic":
         return source.get("parse_diagnostic") or ""
-    for source_key in _SOURCE_FIELD_ALIASES.get(key, (field,)):
+    source_keys = lexicon.source_keys(field) if lexicon is not None else None
+    if source_keys is None:
+        return None
+    for source_key in source_keys:
         value = source.get(source_key)
         if value not in (None, "", []):
-            return _source_date(value) if key in {"date", "data"} else value
+            return _source_date(value) if source_identity == "date" else value
     return None
 
 
-def _source_field_is_observed(source: dict, field: str) -> bool:
+def _source_field_is_observed(source: dict, field: str, *, lexicon=None) -> bool:
     """Whether a producer exposed a field, including an observed empty value.
 
     Optional facts such as a page language or publication date are allowed to
@@ -300,10 +261,22 @@ def _source_field_is_observed(source: dict, field: str) -> bool:
     lossless structured projection; falling back to an LLM would turn an
     honest absence into latency and possible invention.
     """
+    if lexicon is None:
+        lexicon = _reconciliation_lex.load()
     if field in source:
         return True
-    key = _field_key(field)
-    if key in _WEB_AUDIT_DERIVED_FIELDS:
+    field_identity = (
+        lexicon.canonical_field(field) if lexicon is not None else None
+    )
+    source_identity = (
+        lexicon.source_identity(field) if lexicon is not None else None
+    )
+    derived_key = {
+        "redirect": "is_redirect",
+        "iframe": "has_iframe",
+        "javascript_required": "needs_js_render",
+    }.get(source_identity, _field_key(field))
+    if derived_key in _WEB_AUDIT_DERIVED_FIELDS:
         evidence = {
             "is_redirect": ("redirected", "origin", "requested_url",
                             "final_url", "url"),
@@ -313,22 +286,71 @@ def _source_field_is_observed(source: dict, field: str) -> bool:
             "has_iframe": ("iframe_count", "iframe_urls"),
             "needs_js_render": ("js_required",),
         }
-        return any(name in source for name in evidence[key])
+        return any(name in source for name in evidence[derived_key])
     if (_source_domain(source) == "calendar"
-            and key in {"scadenza", "deadline", "due_date"}):
+            and field_identity == "deadline"):
         return "start" in source
-    return any(source_key in source for source_key in
-               _SOURCE_FIELD_ALIASES.get(key, (field,)))
+    source_keys = lexicon.source_keys(field) if lexicon is not None else None
+    return bool(source_keys) and any(
+        source_key in source for source_key in source_keys
+    )
 
 
 def _field_key(value: str) -> str:
     value = unicodedata.normalize("NFKD", str(value).casefold())
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
-    return re.sub(r"[^a-z0-9]+", "_", value).strip("_")
+    value = "".join(
+        character if character.isalnum() else "_" for character in value
+    )
+    return re.sub(r"_+", "_", value).strip("_")
+
+
+def _field_identity(field: str, *, lexicon=None) -> str | None:
+    if lexicon is not None:
+        return lexicon.canonical_field(field)
+    technical = str(field)
+    if technical in (_RUNTIME_OWNED_FIELD_IDS
+                     | _DEFAULT_RELEVANCE_FIELD_IDS
+                     | {"deadline", "normalized_date", "normalized_time",
+                        "type"}):
+        return technical
+    return None
+
+
+def _is_runtime_owned_field(field: str, *, lexicon=None) -> bool:
+    return _field_identity(field, lexicon=lexicon) in _RUNTIME_OWNED_FIELD_IDS
+
+
+def _field_temporal_kind(field: str, *, lexicon=None) -> str | None:
+    identity = _field_identity(field, lexicon=lexicon)
+    if identity in {"deadline", "normalized_date"}:
+        return "date_only"
+    if identity == "normalized_time":
+        return "datetime"
+    if lexicon is None:
+        return None
+    key = _field_key(field)
+    if lexicon.matches_gate("date_only_field", key):
+        return "date_only"
+    if lexicon.matches_gate("datetime_field", key):
+        return "datetime"
+    return None
+
+
+def _observed_canonical_value(source: dict, canonical: str, lexicon):
+    """Return a producer value whose field has one admitted identity."""
+    for key, value in source.items():
+        identity = (
+            lexicon.canonical_field(key) if lexicon is not None
+            else (key if key == canonical else None)
+        )
+        if identity == canonical and value not in (None, "", []):
+            return value
+    return None
 
 
 def _attach_source_provenance(record: dict, source: dict,
-                              fields: list[str]) -> dict:
+                              fields: list[str], *, lexicon=None) -> dict:
     """Preserva provenienza e riempie i campi tecnici non inferibili dal LLM."""
     out = dict(record)
     path = source.get("path")
@@ -339,20 +361,24 @@ def _attach_source_provenance(record: dict, source: dict,
     # Producer-owned structured facts win over LLM copies.  This both improves
     # fidelity (message sender/date, calendar start/end) and lets the model
     # spend its budget on genuinely semantic fields.
+    if lexicon is None:
+        lexicon = _reconciliation_lex.load()
     for field in fields:
-        value = _source_field_value(source, field)
+        value = _source_field_value(source, field, lexicon=lexicon)
         if value not in (None, "", []):
             out[field] = value
     # Canonical fact triples remain complete even when the model emits only
     # the entity or only its normalized/original spelling.  This is a lossless
     # fallback (copy of an observed value), not an inferred business fact.
-    keyed_fields = {_field_key(field): field for field in fields}
-    entity_field = next((keyed_fields[key] for key in ("entita", "entity")
-                         if key in keyed_fields), None)
-    normalized_field = next((keyed_fields[key] for key in (
-        "valore_normalizzato", "normalized_value") if key in keyed_fields), None)
-    original_field = next((keyed_fields[key] for key in (
-        "valore_originale", "original_value") if key in keyed_fields), None)
+    canonical_fields = {
+        canonical: field for field in fields
+        if lexicon is not None
+        for canonical in (lexicon.canonical_field(field),)
+        if canonical is not None
+    }
+    entity_field = canonical_fields.get("entity")
+    normalized_field = canonical_fields.get("normalized_value")
+    original_field = canonical_fields.get("original_value")
     entity_value = out.get(entity_field) if entity_field else ""
     normalized_value = out.get(normalized_field) if normalized_field else ""
     original_value = out.get(original_field) if original_field else ""
@@ -363,8 +389,7 @@ def _attach_source_provenance(record: dict, source: dict,
         out[original_field] = normalized_value or entity_value or ""
     normalized_value = out.get(normalized_field) if normalized_field else ""
     original_value = out.get(original_field) if original_field else ""
-    deadline_field = next((keyed_fields[key] for key in (
-        "scadenza", "deadline", "due_date") if key in keyed_fields), None)
+    deadline_field = canonical_fields.get("deadline")
     deadline_value = out.get(deadline_field) if deadline_field else ""
     # A copied entity label is not a useful value when the same record carries
     # a normalized deadline. Prefer the typed fact instead of propagating an
@@ -385,37 +410,36 @@ def _attach_source_provenance(record: dict, source: dict,
                 out[normalized_field] = start.strip()[:10]
             if original_field:
                 out[original_field] = start.strip()
-    substantive = [field for field in fields
-                   if _field_key(field) not in (
-                       _ORIGIN_FIELDS | _HASH_FIELDS | _READABLE_FIELDS
-                       | _FILE_TYPE_FIELDS | _CONFIDENCE_FIELDS
-                       | _DOMAIN_FIELDS | _DUPLICATE_FIELDS
-                       | _DIAGNOSTIC_FIELDS)]
+    substantive = [
+        field for field in fields
+        if not _is_runtime_owned_field(field, lexicon=lexicon)
+    ]
     completeness = (sum(1 for field in substantive
                         if out.get(field) not in (None, "", []))
                     / max(1, len(substantive)))
     for field in fields:
-        key = _field_key(field)
-        if key in _ORIGIN_FIELDS:
+        identity = _field_identity(field, lexicon=lexicon)
+        if identity == "origin":
             out[field] = _source_origin(source)
-        elif key in _HASH_FIELDS:
+        elif identity == "content_hash":
             out[field] = raw_hash or ""
-        elif key in _READABLE_FIELDS and readable is not None:
+        elif identity == "readable" and readable is not None:
             out[field] = bool(readable)
-        elif key in _FILE_TYPE_FIELDS:
+        elif identity == "file_type":
             out[field] = file_type or ""
-        elif key in _CONFIDENCE_FIELDS:
-            observed_confidence = (source.get(field)
-                                   if source.get(field) not in (None, "")
-                                   else source.get("confidence"))
+        elif identity == "confidence":
+            observed_confidence = _observed_canonical_value(
+                source, "confidence", lexicon,
+            )
             out[field] = (observed_confidence
                           if observed_confidence not in (None, "") else
                           0.10 if readable is False else
                           0.95 if completeness >= 0.5 else 0.60)
-        elif key in _DOMAIN_FIELDS:
-            out[field] = (source.get(field) or source.get("domain")
-                          or source.get("dominio")
-                          or _source_domain(source))
+        elif identity == "domain":
+            out[field] = (
+                _observed_canonical_value(source, "domain", lexicon)
+                or _source_domain(source)
+            )
     private = {
         "_source_path": path,
         "_source_name": name,
@@ -500,26 +524,20 @@ def _pick_model_text(entry) -> str:
     return _pick_text(entry)
 
 
-_RELEVANCE_DEFAULT_FIELDS = frozenset({
-    "entita", "entity", "persona", "person", "progetto", "project",
-    "organizzazione", "organization", "email", "telefono", "phone",
-})
-_RELEVANCE_GENERIC_TOKENS = frozenset({
-    "documenti", "documents", "document", "progetto", "project",
-    "programma", "program", "cartella", "folder", "report", "visita",
-    "visit", "policlinico", "hospital",
-})
-
-
 def _match_text(value) -> str:
     """Forma Unicode/case/punctuation-insensitive per il prefilter."""
     normalized = unicodedata.normalize("NFKD", str(value or "").casefold())
     normalized = "".join(
         char for char in normalized if not unicodedata.combining(char))
-    return " ".join(re.findall(r"[a-z0-9@.+_-]+", normalized))
+    normalized = "".join(
+        char if char.isalnum() or char in "@.+_-" else " "
+        for char in normalized
+    )
+    return " ".join(normalized.split())
 
 
-def _relevance_terms(explicit, reference_entries, reference_fields) -> list[str]:
+def _relevance_terms(explicit, reference_entries, reference_fields,
+                     *, lexicon=None) -> list[str]:
     """Deriva ancore ad alta precisione da record già osservati.
 
     Le frasi vengono mantenute intere.  Per persone usiamo anche il cognome,
@@ -528,6 +546,8 @@ def _relevance_terms(explicit, reference_entries, reference_fields) -> list[str]
     """
     terms: list[str] = []
     seen: set[str] = set()
+    if lexicon is None:
+        lexicon = _reconciliation_lex.load()
 
     def add(value, *, allow_short: bool = False) -> None:
         term = _match_text(value)
@@ -549,22 +569,34 @@ def _relevance_terms(explicit, reference_entries, reference_fields) -> list[str]
         explicit_acronym = bool(re.fullmatch(
             r"[A-ZÀ-ÖØ-Þ0-9][A-ZÀ-ÖØ-Þ0-9._+-]{1,4}", value.strip()))
         add(value, allow_short=explicit_acronym)
-        for token in _match_text(value).split():
-            if len(token) >= 4 and token not in _RELEVANCE_GENERIC_TOKENS:
+        for token in (_match_text(value).split() if lexicon is not None else []):
+            if (len(token) >= 4
+                    and _field_key(token)
+                    not in lexicon.relevance_generic_tokens):
                 add(token)
 
-    wanted = ({_field_key(field) for field in reference_fields}
-              if isinstance(reference_fields, list) and reference_fields
-              else _RELEVANCE_DEFAULT_FIELDS)
+    if lexicon is None:
+        return terms[:256]
+    wanted = (
+        {
+            canonical for field in reference_fields
+            if (canonical := lexicon.canonical_field(field)) is not None
+        }
+        if isinstance(reference_fields, list) and reference_fields
+        else set(_DEFAULT_RELEVANCE_FIELD_IDS)
+    )
     refs = reference_entries if isinstance(reference_entries, list) else []
     for record in refs:
         if not isinstance(record, dict):
             continue
-        record_type = _match_text(
-            record.get("tipo") or record.get("type") or "")
+        record_type = ""
         for field, value in record.items():
-            field_key = _field_key(field)
-            if field_key not in wanted or field_key in {"tipo", "type", "kind"}:
+            if lexicon.canonical_field(field) == "type":
+                record_type = _field_key(value)
+                break
+        for field, value in record.items():
+            field_identity = lexicon.canonical_field(field)
+            if field_identity not in wanted or field_identity == "type":
                 continue
             values = value if isinstance(value, list) else [value]
             for observed in values:
@@ -572,23 +604,18 @@ def _relevance_terms(explicit, reference_entries, reference_fields) -> list[str]
                     continue
                 normalized = _match_text(observed)
                 tokens = re.findall(r"[a-z0-9]+", normalized)
-                if field_key in {"email", "telefono", "phone"}:
+                if field_identity in {"email", "phone"}:
                     add(observed)
-                elif record_type in {
-                        "persona", "person", "contact", "contatto"}:
+                elif record_type in lexicon.relevance_person_types:
                     # Una frase con iniziali è troppo debole come match.
                     if (len(tokens) <= 1
                             or all(len(token) >= 2 for token in tokens)):
                         add(observed)
                     if tokens and len(tokens[-1]) >= 4:
                         add(tokens[-1])
-                elif record_type in {
-                        "organizzazione", "organization", "azienda",
-                        "company", "fornitore", "supplier"}:
+                elif record_type in lexicon.relevance_organization_types:
                     add(observed)
-                elif field_key in {
-                        "progetto", "project", "organizzazione",
-                        "organization"}:
+                elif field_identity in {"project", "organization"}:
                     add(observed)
     # Bounded anche quando l'upstream contiene migliaia di record.
     return terms[:256]
@@ -715,7 +742,7 @@ def _rows_to_records(entries: list) -> list:
     return [dict(zip(cols, r)) for r in rows[1:]]
 
 
-def _build_prompt(fields, instruction, max_per_text) -> str:
+def _build_prompt(fields, instruction, max_per_text, *, lexicon=None) -> str:
     # A name that states its GRANULARITY wins over one that states its ROLE.
     # `data_inizio` and `checkin_date` name the same thing, but the first also
     # matched the datetime pattern (through "inizio") and so took the
@@ -723,9 +750,16 @@ def _build_prompt(fields, instruction, max_per_text) -> str:
     # among them — never applied. Same page, same request, two different
     # answers depending on which language the model happened to name the
     # column in (turns 558b0e9f and 771d5a78, 2026-08-07).
-    date_only = [f for f in fields if _DATE_ONLY_FIELD_RE.search(f)]
-    date_time = [f for f in fields
-                 if _DATETIME_FIELD_RE.search(f) and f not in date_only]
+    if lexicon is None:
+        lexicon = _reconciliation_lex.load()
+    date_only = [
+        field for field in fields
+        if _field_temporal_kind(field, lexicon=lexicon) == "date_only"
+    ]
+    date_time = [
+        field for field in fields
+        if _field_temporal_kind(field, lexicon=lexicon) == "datetime"
+    ]
     import i18n
     import prompt_loader
     return prompt_loader.get(
@@ -740,7 +774,8 @@ def _build_prompt(fields, instruction, max_per_text) -> str:
     )
 
 
-def _build_batch_prompt(fields, instruction, max_per_text) -> str:
+def _build_batch_prompt(fields, instruction, max_per_text,
+                        *, lexicon=None) -> str:
     """Prompt whose input/output contract is explicitly multi-source.
 
     Reusing the scalar prompt made the local model interpret the JSON bundle
@@ -748,11 +783,16 @@ def _build_batch_prompt(fields, instruction, max_per_text) -> str:
     model sees the carrier field as structural, while callers still receive
     exactly the public ``fields`` schema after parsing.
     """
-    date_only = [field for field in fields
-                 if _DATE_ONLY_FIELD_RE.search(field)]
-    date_time = [field for field in fields
-                 if (_DATETIME_FIELD_RE.search(field)
-                     and field not in date_only)]
+    if lexicon is None:
+        lexicon = _reconciliation_lex.load()
+    date_only = [
+        field for field in fields
+        if _field_temporal_kind(field, lexicon=lexicon) == "date_only"
+    ]
+    date_time = [
+        field for field in fields
+        if _field_temporal_kind(field, lexicon=lexicon) == "datetime"
+    ]
     import i18n
     import prompt_loader
     return prompt_loader.get(
@@ -987,17 +1027,8 @@ def _source_batches(items: list[tuple[int, dict, str]], batch_size: int):
         yield current
 
 
-_AUDIT_FIELD_ALIASES = {
-    "fornitore": ("fornitore", "supplier", "vendor"),
-    "supplier": ("fornitore", "supplier", "vendor"),
-    "vendor": ("fornitore", "supplier", "vendor"),
-    "stato": ("stato", "status", "state"),
-    "status": ("stato", "status", "state"),
-    "state": ("stato", "status", "state"),
-}
-
-
-def _extract_labeled_audit_values(text: str, audit_fields: list[str]) -> dict:
+def _extract_labeled_audit_values(text: str, audit_fields: list[str],
+                                  *, lexicon=None) -> dict:
     """Extract source-level ``Label [qualifier]: value`` facts.
 
     This pass is deterministic and cardinality-neutral.  Qualifiers allow
@@ -1006,9 +1037,14 @@ def _extract_labeled_audit_values(text: str, audit_fields: list[str]) -> dict:
     """
     lines = str(text or "").splitlines()
     out: dict[str, str] = {}
+    if lexicon is None:
+        lexicon = _reconciliation_lex.load()
+    if lexicon is None:
+        return out
     for field in audit_fields:
-        key = _field_key(field)
-        aliases = _AUDIT_FIELD_ALIASES.get(key, (key.replace("_", " "),))
+        aliases = lexicon.audit_forms(field)
+        if aliases is None:
+            continue
         label = "|".join(re.escape(alias) for alias in aliases if alias)
         if not label:
             continue
@@ -1126,6 +1162,20 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 "error_class": "invalid_args", "entries": []}
     if not infer_fields:
         fields = [field.strip() for field in fields]
+
+    # This executor builds one structured artefact from several linguistic
+    # resources.  Freeze one complete, native-ready family before doing any
+    # inference or projection; a missing/partial locale must not create a
+    # hybrid record or apply caller-provided natural-language state markers.
+    reconciliation_lexicon = _reconciliation_lex.load()
+    if reconciliation_lexicon is None:
+        return {
+            "ok": False,
+            "entries": [],
+            "error": _msg("ERR_EXT_SVC_UNAVAILABLE"),
+            "error_code": "ERR_I18N_LEXICON_UNAVAILABLE",
+            "error_class": "dependency_unavailable",
+        }
 
     # Generic deterministic adapter for producers that already expose
     # structured records under a different field vocabulary.  A mapping is
@@ -1272,7 +1322,9 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
         for state, markers in raw_state_markers.items()
     }
     relevance_terms = _relevance_terms(
-        explicit_relevance_terms, reference_entries, reference_fields)
+        explicit_relevance_terms, reference_entries, reference_fields,
+        lexicon=reconciliation_lexicon,
+    )
     if relevance_terms:
         sources = [source for source in sources
                    if any(_matches_relevance(_pick_text(source), term)
@@ -1282,16 +1334,16 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     # deterministically below.  Asking the model to repeat them in every row
     # consumed a material share of generation time and could only lower their
     # fidelity.  Keep the original public schema at the boundary.
-    runtime_owned_keys = (
-        _ORIGIN_FIELDS | _HASH_FIELDS | _READABLE_FIELDS
-        | _FILE_TYPE_FIELDS | _CONFIDENCE_FIELDS | _DOMAIN_FIELDS
-        | _DUPLICATE_FIELDS | _DIAGNOSTIC_FIELDS
-    )
     model_fields = [field for field in fields
-                    if _field_key(field) not in runtime_owned_keys]
+                    if not _is_runtime_owned_field(
+                        field, lexicon=reconciliation_lexicon,
+                    )]
     if not model_fields:
         model_fields = list(fields)
-    prompt = _build_prompt(model_fields, instruction, max_per_text)
+    prompt = _build_prompt(
+        model_fields, instruction, max_per_text,
+        lexicon=reconciliation_lexicon,
+    )
 
     # drill_down: default ON (sempre attivo se la capacita' web-fetch e'
     # installata; degrada onesto se assente). Roberto 16/6.
@@ -1333,7 +1385,8 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 if record.get(target) in (None, "", []):
                     record[target] = value
             projected_record = _attach_source_provenance(
-                record, source, fields)
+                record, source, fields, lexicon=reconciliation_lexicon,
+            )
             projected_record = _attach_runtime_evidence(
                 projected_record, source, _pick_text(source), 1,
                 relevance_terms, state_markers)
@@ -1342,7 +1395,8 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
             # observed values.  Confidence therefore describes provenance
             # fidelity rather than the density of this cross-domain schema.
             for field in fields:
-                if _field_key(field) in _CONFIDENCE_FIELDS:
+                if (_field_identity(field, lexicon=reconciliation_lexicon)
+                        == "confidence"):
                     projected_record[field] = 0.95
             projected.append(projected_record)
             if max_total and len(projected) >= max_total:
@@ -1448,7 +1502,10 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
         record_cap = min(64, max_per_text * len(batch))
         raw, meta = call_llm(
             payload,
-            _build_batch_prompt(model_fields, instruction, max_per_text),
+            _build_batch_prompt(
+                model_fields, instruction, max_per_text,
+                lexicon=reconciliation_lexicon,
+            ),
             tier=tier, max_tokens=_extract_max_tokens(record_cap),
             max_query_chars=_BATCH_QUERY_CHARS + 4096,
         )
@@ -1517,15 +1574,14 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     def _has_all_fields(e):
         if not isinstance(e, dict):
             return False
-        runtime_owned = (
-            _ORIGIN_FIELDS | _HASH_FIELDS | _READABLE_FIELDS
-            | _FILE_TYPE_FIELDS | _CONFIDENCE_FIELDS | _DOMAIN_FIELDS
-            | _DUPLICATE_FIELDS | _DIAGNOSTIC_FIELDS
-        )
         return all(
             field in e
-            or _field_key(field) in runtime_owned
-            or _source_field_is_observed(e, field)
+            or _is_runtime_owned_field(
+                field, lexicon=reconciliation_lexicon,
+            )
+            or _source_field_is_observed(
+                e, field, lexicon=reconciliation_lexicon,
+            )
             for field in fields
         )
     if sources and all(_has_all_fields(e) for e in sources):
@@ -1535,7 +1591,8 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 {field: (source.get(field)
                          if source.get(field) is not None else "")
                  for field in fields},
-                source, fields)
+                source, fields, lexicon=reconciliation_lexicon,
+            )
             proj.append(_attach_runtime_evidence(
                 projected, source, _pick_text(source), 1,
                 relevance_terms, state_markers))
@@ -1574,18 +1631,25 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
 
     def _append_records(entry, text, records) -> None:
         nonlocal total_capped
-        audit_values = (_extract_labeled_audit_values(text, audit_fields)
+        audit_values = (_extract_labeled_audit_values(
+                            text, audit_fields,
+                            lexicon=reconciliation_lexicon,
+                        )
                         if audit_fields and records and text.strip() else {})
         for extracted in records:
             norm = {
                 field: _normalize_extracted_date(
-                    field, extracted.get(field, ""))
+                    field, extracted.get(field, ""),
+                    lexicon=reconciliation_lexicon,
+                )
                 for field in fields
             }
             if audit_values:
                 norm.update(audit_values)
             if isinstance(entry, dict):
-                norm = _attach_source_provenance(norm, entry, fields)
+                norm = _attach_source_provenance(
+                    norm, entry, fields, lexicon=reconciliation_lexicon,
+                )
             norm = _attach_runtime_evidence(
                 norm, entry if isinstance(entry, dict) else None, text,
                 len(records), relevance_terms, state_markers)

@@ -271,15 +271,50 @@ def _probe_windows(package_id, tool_path, by_name=False):
     # The header row carries the localized column titles and mentions nothing
     # useful; a real row always has an id, and the shortest name is the
     # closest match to what was asked.
-    rows.sort(key=lambda r: (len(r[0]), r[0]))
-    name, pkg_id, version = rows[0]
+    rows.sort(key=lambda r: (
+        len(r[0]), r[0].casefold(), r[0],
+        r[1].casefold(), r[1], r[2],
+    ))
+    name, _pkg_id, version = rows[0]
     hit = {"name": name, "version": version, "source": "winget"}
-    if by_name and len(rows) > 1:
-        hit["also_matched"] = [r[0] for r in rows[1:6]]
-    else:
-        resolved_id = _launch_identity(pkg_id)
+    resolved_rows = [
+        (row_name, _launch_identity(row_id), row_version)
+        for row_name, row_id, row_version in rows
+    ]
+    valid_ids = {}
+    for _row_name, resolved_id, _row_version in resolved_rows:
         if resolved_id:
-            hit["resolved_id"] = resolved_id
+            # Rows have a total deterministic order, so setdefault chooses the
+            # same representative even if WinGet changes provider row order.
+            valid_ids.setdefault(resolved_id.casefold(), resolved_id)
+    complete = all(resolved_id for _name, resolved_id, _version in resolved_rows)
+    if complete and len(valid_ids) == 1:
+        # WinGet can print the same installed identity more than once (for
+        # example through duplicate source rows).  Cardinality of table rows
+        # is not ambiguity; cardinality of canonical launch identities is.
+        hit["resolved_id"] = next(iter(valid_ids.values()))
+    elif len(rows) > 1:
+        hit["also_matched"] = [r[0] for r in rows[1:6]]
+        candidates_by_id = {}
+        for row_name, resolved_id, row_version in resolved_rows:
+            if not resolved_id:
+                continue
+            candidates_by_id.setdefault(resolved_id.casefold(), {
+                "name": row_name,
+                "resolved_id": resolved_id,
+                "version": row_version,
+            })
+        candidates = [
+            candidates_by_id[key] for key in sorted(candidates_by_id)
+        ]
+        if candidates:
+            # Diagnostic only.  The mutating pipeline consumes exclusively
+            # the top-level resolved_id, so it still fails closed until one
+            # exact identity is selected explicitly.
+            hit["candidates"] = candidates[:6]
+            hit["candidate_count"] = len(candidates)
+            if len(candidates) > 6:
+                hit["candidates_truncated"] = True
     return hit
 
 

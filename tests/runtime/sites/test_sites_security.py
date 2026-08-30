@@ -1493,13 +1493,32 @@ def test_goal_resolver_uses_generic_personal_reveal_and_term_alias(monkeypatch):
                 "sites.account_reveal_control": ["account menu", "profilo"],
                 "sites.goal_noise": ["le", "mie", "the", "my"],
                 "sites.goal_scope_quantifier": [],
-            }.get(concept, [])
+                }.get(concept, [])
+
+        @staticmethod
+        def native_ready_forms(concept, include_reviewed_baselines=False):
+            del include_reviewed_baselines
+            return Lexicon.forms(concept)
 
         @staticmethod
         def mapping(concept):
             if concept == "sites.goal_term_alias":
                 return {"booking": ["prenotazioni", "bookings", "trips"]}
             return {}
+
+        @staticmethod
+        def native_ready_mapping(
+            concept, require_manual=False, include_reviewed_baselines=False,
+        ):
+            del require_manual, include_reviewed_baselines
+            if concept == "sites.action_verb":
+                return {
+                    "goto": ["vai", "go"], "click": ["clicca", "click"],
+                    "fill": ["compila", "fill"],
+                    "submit": ["invia", "submit"],
+                    "wait": ["attendi", "wait"],
+                }
+            return Lexicon.mapping(concept)
 
     monkeypatch.setattr(ar, "_detlex", Lexicon())
     account = {

@@ -660,6 +660,9 @@ percorsi root-owned della piattaforma. `service_uid` e `service_gid` sono quegli
 `service_supplementary_gids` e' una lista ordinata, senza duplicati, di interi
 positivi risolta nello stesso momento. Il lanciatore rifiuta qualsiasi
 divergenza successiva.
+`service_home` non puo' coincidere con `installation_root` ne' esserne un
+discendente: l'albero della release e' immutabile e posseduto da `root`, mentre
+home, dati e cache assegnati al servizio devono restare esterni a quell'albero.
 
 I quattro percorsi di eseguibile sono assoluti. L'installatore parte dai nomi
 fissi `/usr/bin/python3`, `/usr/bin/openssl`, `/usr/bin/systemctl` e
@@ -844,7 +847,14 @@ esattamente `schema_version=1` ed `entries`. Ogni elemento, ordinato per
 `content_hash`, `uid`, `gid`, `mode` e deve essere vuota in V1.
 `manager_projection` contiene esattamente `schema_version=1` e `properties`;
 ogni proprieta', ordinata per nome, contiene esattamente `name`, `value_type` e
-`values` e usa gli stessi tipi canonici di `unit_spec`.
+`values` e usa gli stessi tipi canonici di `unit_spec`. `name` e' sempre il
+nome canonico della direttiva firmata, non il nome interno della proprieta' del
+gestore. Le coppie `Exec*`/`Exec*Ex` producono una sola direttiva dopo il
+confronto; `LimitNOFILE`/`LimitNOFILESoft` producono un solo
+`LimitNOFILE`; `RestartUSec` proietta `RestartSec`; le basi di
+`TimersMonotonic` proiettano le rispettive direttive `*Sec`. I nomi interni del
+gestore restano nel piano di interrogazione e nei controlli di cardinalita',
+ma non aggiungono proprieta' allo schema firmato.
 
 Il programma invoca il solo `systemctl` canonico, con ambiente minimo e
 timeout. Chiede `FragmentPath`, `DropInPaths`, `LoadState`, `UnitFileState` e
@@ -863,6 +873,13 @@ relativo esatto; il suo modo non costituisce una prova perche' Linux lo espone
 come `0777`. Tutti gli antenati di entrambi devono essere `root` e non
 scrivibili da gruppo o altri. Non sono ammessi drop-in estranei.
 `configured_directives_hash` e' ricalcolato col parser indipendente sui byte del
+frammento. Il suo valore usa il dominio
+`metnos.executor-birth.systemd-configured-directives/v1\0` sul documento JSON
+canonico con esattamente `schema_version=1` e `directives`. `directives` e' la
+lista completa, gia' nell'ordine canonico del parser, di oggetti con
+esattamente `section`, `name`, `value_type` e `values`; non coincide con il
+`fragment_hash` e non include metadati o byte non interpretati. Una modifica
+di ordine, tipo o valore cambia quindi entrambi i controlli indipendenti del
 frammento. `need_daemon_reload` deve essere `no`: insieme al `daemon-reload`
 causale della fabbrica prova che il gestore non usa una copia precedente.
 
@@ -911,6 +928,24 @@ prerequisito. `check`, `launch` e `check-all` pretendono poi l'identita' esatta
 della fotografia, inclusi archi e origini. Qualunque proprieta' omessa, valore
 aggiunto o deriva nega. Cosi' la baseline reale dell'host evita falsi rossi
 senza poter nascondere una nuova dipendenza dopo l'attestazione.
+
+Il verificatore definitivo non considera sufficiente una singola fotografia.
+Acquisisce dalla collocazione fissa il prerequisito handle-bound `P0`, costruisce
+la fotografia completa `S0`, rilegge il prerequisito come `P1`, ricostruisce da
+zero la fotografia completa `S1` e rilegge infine `P2`. Il solo harness di
+prova puo' inserire un killpoint fra `S0` e `P1`. Identita', metadati e byte di
+`P0`, `P1` e `P2` coincidono; documento e catture di `S0` e `S1` coincidono.
+Dopo `P2` vengono rivalidati TCB, frammenti, link, origini e la sola epoca
+ownership selezionata. La comparsa di un claim successore non ancora scelto non
+equivale a una modifica della testa richiesta; una modifica di testa, frame,
+build, richiesta, ultimo record o prerequisito invece nega.
+
+Questa osservazione resta non autorizzante finche' il protocollo interprocesso
+di `check-all` non prova il gate startup esclusivo e la manutenzione gia'
+detenuti dal coordinatore. Non sono equivalenti un booleano, un path o un FD
+ricevuto dalla CLI. Prima che tale protocollo sia definito e provato, nessun
+wrapper della fotografia puo' essere consumato dal dispatch o pubblicare
+l'attestazione definitiva.
 
 ##### 3.5.4.1 Link di abilitazione
 
@@ -2505,3 +2540,199 @@ non viene aggiornata attraverso il percorso legacy: sara' prodotta dalla porta
 Birth completa insieme agli altri byte B3. Il lavoro principale riprende
 dall'autenticazione della fotografia fixed-root e dalla riconciliazione del
 grafo.
+
+## 18. Incremento B3 di autenticazione della fotografia
+
+Il nucleo locale autentica esclusivamente la fotografia fixed-root catturata
+nel primo incremento e non riapre per pathname gli oggetti di autorita'. Sono
+verificati registri, manifesti e firme, certificati, teste, ancora e puntatore;
+la riconciliazione comprende catena, claim, transazioni V2 `000..006`, journal
+V1, disposizione legacy e descrittore del predecessore. Il risultato non e'
+ancora un'attestazione operativa: i riferimenti ad albero installato, systemd e
+attestazione definitiva restano strutturali finche' i relativi controlli vivi
+non saranno implementati.
+
+La gestione dei crash segue il protocollo e non il massimo nome in archivio.
+Un claim puo' essere pendente e i prefissi `PREPARED` o
+`RECEIPTS_COMPLETE` possono precedere la build archiviata. Anche il record
+`BUILD_VERIFIED` precede l'append dello step 13: la build puo' ancora mancare
+all'esatto killpoint di sequenza 4 e diventa obbligatoria quando una testa la
+seleziona o il journal raggiunge sequenza 5. Il certificato puo' essere pronto
+a sequenza 2; al bootstrap la pubblicazione e' provata dall'ancora fissa,
+mentre negli update e' provata dall'oggetto archiviato. Una testa
+successiva gia' aggiunta durante la ripresa non diventa autorevole finche' il
+puntatore richiesto e il record `HEAD_REQUIRED` non convergono. Il
+`predecessor-v1` resta legato alla transazione iniziale, mentre tutte le
+release V1 conservano lo stesso `administrative_bundle_hash`.
+
+Il predecessore e' assente prima della transazione iniziale, puo' mancare al
+solo `PREPARED` e deve esistere da `RECEIPTS_COMPLETE`. La finestra fra CAS di
+`required-head` e record `HEAD_REQUIRED` e' riconosciuta solo col journal a
+`BUILD_VERIFIED`. La riconciliazione e' bidirezionale: build, cutover e testa
+archiviati richiedono claim e transazione nelle rispettive soglie minime 4, 2
+e 4, quindi una coppia firmata orfana non diventa uno stato di ripresa.
+Prima della prima testa richiesta, ancora e journal di bootstrap a sequenza 2
+o 4 formano soltanto uno stato autenticato di ripresa, mai una catena
+operativa.
+
+La matrice probatoria minima contiene 31 casi discriminanti nuovi. I mutanti
+di firma conservano copie fisse, frame e digest coerenti; mutanti separati
+coprono i tre legami di predecessore e le associazioni con build, certificato
+e testa. La suite
+preflight completa, escluso il solo pin source-review da aggiornare a candidato
+operativo congelato, produce `169 passed, 1 deselected`; WinGet/piping produce
+`68 passed, 8 subtests passed`. Compilazione e controllo del diff sono verdi.
+Le due review avversariali indipendenti finali concludono entrambe `P0=0`,
+`P1=0`, `P2=0`. Il candidato resta non committato e non firmato: il passo
+successivo collega catalogo, descrittore, prerequisito, TCB e configurazione
+systemd senza anticipare l'autorita' operativa dei comandi.
+
+## 19. Congelamento del digest e scomposizione del prossimo incremento B3
+
+`startup_prerequisite_digest` e' congelato come SHA-256 grezzo dei byte
+canonici completi del documento `startup-prerequisite-v1`. Il valore testuale
+e' esattamente `sha256:` seguito da sessantaquattro cifre esadecimali
+minuscole. Non viene anteposto alcun dominio e non si calcola il digest su un
+oggetto JSON ricostruito, su un documento privo di `prerequisite_id` o su una
+selezione di campi. In formula:
+
+```text
+startup_prerequisite_digest =
+    "sha256:" || hex_lower(SHA256(startup_prerequisite_canonical_bytes))
+```
+
+La distinzione e' intenzionale. `prerequisite_id` continua a identificare il
+contenuto logico col proprio dominio e con la regola del documento privo del
+campo identificativo; `startup_prerequisite_digest` prova invece i byte
+completi effettivamente pubblicati e riletti. Il journal conserva quindi sia
+il legame semantico sia il legame byte-per-byte, senza introdurre un secondo
+dominio implicito o una ricostruzione che potrebbe divergere fra produttore e
+verificatore. Un file con identificativo valido ma byte, framing o
+canonicalizzazione differenti non soddisfa il digest del journal.
+
+L'analisi causale del confine successivo ha mostrato che catalogo e descrittore
+possono essere autenticati integralmente dalla distribuzione gia' selezionata,
+mentre TCB e configurazione systemd richiedono osservazioni vive, subprocess e
+blocchi diversi. Riunire questi due confini nello stesso sottotaglio renderebbe
+difficile attribuire un diniego a provenienza dei byte, deriva degli
+eseguibili oppure mutazione del manager. Il lavoro viene pertanto separato
+senza ridurre alcun controllo:
+
+1. il prossimo sottotaglio e' puro e non autorizzante. Aggiunge al preflight
+   autonomo, stdlib-only, i cloni chiusi dei codec di catalogo, descrittore di
+   deployment e prerequisito, con parita' rispetto ai produttori canonici;
+   deriva inoltre il grafo candidato soltanto dai byte firmati della release
+   selezionata e ne verifica identificativi, copertura, artefatti, frammenti e
+   radici fisse. Non esegue subprocess, non legge lo stato systemd effettivo,
+   non pubblica o sostituisce prerequisiti e non rende operativi `check`,
+   `check-all` o `launch`;
+2. un sottotaglio successivo e separato misura gli eseguibili amministrativi e
+   la TCB OpenSSL con percorsi fissi, ambiente chiuso e riverifica prima e dopo
+   ogni subprocess;
+3. un ulteriore sottotaglio separato costruisce e confronta la fotografia
+   systemd effettiva sotto i blocchi prescritti, applica i killpoint del
+   prerequisito e soltanto allora completa l'attestazione viva.
+
+I tipi decodificati e il grafo candidato del primo punto restano osservazioni:
+non sono capability, non possono essere forniti dal chiamante e non vengono
+accettati dall'entrata operativa. Fino alla conclusione dei due sottotagli vivi
+successivi, il dispatch pubblico continua a fallire chiuso con
+`birth_ownership_missing`.
+
+## 20. Esito del sottotaglio puro B3
+
+Il primo punto della scomposizione e' implementato e approvato localmente. Il
+preflight autonomo lega catalogo, descrittore e prerequisito ai byte firmati,
+al manifesto, alla transazione e al predecessore. Copertura, ruolo, tipo,
+dimensione e hash sono verificati su ogni artefatto; il programma
+amministrativo non e' piu' una sola dichiarazione del descrittore, ma un file
+catturato e confrontato byte per byte. I frammenti systemd vengono riparsati e
+il grafo candidato produce gli undici link V1 esatti. Per i target interni alla
+release coincidono byte catturati, dimensione del manifesto, hash del file e
+hash path-aware del catalogo.
+
+L'equivalente autonomo di `_source_identity` congela l'intera ricetta V1 con un
+fingerprint strutturale. I soli valori di contesto gia' legati al descrittore
+sono sostituiti da oggetti JSON tipati, impossibili da imitare nei campi stringa
+del catalogo. Account, gruppi supplementari, home e Python amministrativo sono
+riconciliati col descrittore. Home e dati del servizio non possono trovarsi
+dentro la radice immutabile della release. Il predecessore coincide col
+catalogo corrente soltanto nel bootstrap; nelle release successive resta
+correttamente ancorato alla fotografia iniziale.
+
+I mutanti probatori ricostruiscono identificativi e digest a valle e coprono:
+preflight assente o alterato, source recipe modificata, marker preinserito,
+account divergente, target interno con dimensione dichiarata errata,
+predecessore divergente alla release uno e predecessore iniziale legittimo in
+un aggiornamento. L'evidenza finale e' `27 passed` nel file nuovo, `86 passed`
+nel perimetro materiali/codec/catalogo e `169 passed, 1 deselected` nella suite
+autonoma; il solo caso escluso e' il pin source-review da aggiornare sul
+candidato operativo completo. Import isolato `-I -S`, compilazione e controllo
+del diff sono verdi. Due review indipendenti concludono `P0=0`, `P1=0`,
+`P2=0`.
+
+Il risultato resta osservazionale e non viene accettato dal dispatch. Pin,
+firme, staging, store vivo, commit e pubblico restano invariati. Il passo
+successivo misura gli eseguibili amministrativi e la TCB OpenSSL; la fotografia
+systemd effettiva resta il sottotaglio seguente.
+
+## 21. Esito del sottotaglio TCB B3
+
+Il secondo sottotaglio e' implementato localmente. La misura dei quattro
+eseguibili amministrativi precede l'autenticazione ownership; la verifica delle
+firme usa lo stesso OpenSSL canonico misurato e la misura viene rivalidata
+subito dopo. Percorsi e hash sono poi legati al descrittore e al prerequisito.
+La stessa osservazione copre tutti i target del catalogo esterni alla release,
+senza affidarsi a `PATH`, shell o ambiente ereditato.
+
+La TCB OpenSSL deriva direttamente l'interprete dall'ELF64, acquisisce due
+volte la chiusura prodotta da `loader --list`, legge la directory moduli con il
+comando chiuso `openssl version -m` e include tutti i file regolari presenti.
+Risoluzione limitata dei link, controlli su proprietario, modo e ACL, lettura
+handle-bound e confronti ripetuti chiudono i cambi di eseguibile, loader,
+libreria o modulo durante la misura. Il documento e ogni file usano i domini e
+il framing definiti nel §3.5.4.
+
+Una review avversariale ha rilevato che il primo binder produttivo riceveva il
+core dei materiali separatamente dalla fotografia ownership. La correzione
+richiede ora la capability produttiva autenticata e seleziona da essa testa
+richiesta, build, ultimo record stabile e predecessore, usando esclusivamente
+la TCB gia' contenuta nella medesima capability. Un secondo wrapper nominale
+separa l'osservazione produttiva dall'osservazione della seam di prova.
+
+Le prove finali del sottotaglio sono 44 e non duplicano i test gia' esistenti
+su timeout, limiti del runner e verifica Ed25519. Il perimetro
+TCB/materiali/codec/catalogo produce `130 passed`; l'intera suite preflight,
+escluso il pin source-review rinviato, produce `240 passed, 1 deselected`.
+Compilazione, esecuzione isolata `-I -S` e controllo del diff sono verdi. Il
+risultato resta non operativo. Due review avversariali indipendenti sullo
+snapshot finale concludono `P0=0`, `P1=0`, `P2=0`: nessun pin, firma, store,
+commit o pubblicazione viene anticipato. Il prossimo sottotaglio e' la
+fotografia systemd effettiva.
+
+## 22. Gate laterale RM-0005 e percorso minimo di rientro
+
+Prima di proseguire con la fotografia systemd, il census lessicale che aveva
+riaperto RM-0005 viene chiuso come gate indipendente. Il percorso minimo non
+duplica le prove B3: esegue una sola suite i18n completa, i soli consumer
+modificati, il census runtime, il catalogo firmato e uno smoke produttivo.
+
+La seconda suite i18n e' verde (`539 passed, 1.162 subtests passed`), ma la
+review incrociata ha trovato tre cause ancora aperte prima della firma:
+census non universale sui contenitori linguistici; confine amministrativo non
+interamente i18n/ready-only; audit documentale non unico e non tipizzato su
+tutti i percorsi. Il percorso minimo non cambia: si correggono soltanto questi
+tre confini, si eseguono i mutanti discriminanti e una sola regressione ampia,
+quindi si richiede review `P0=0, P1=0, P2=0`.
+
+La rigenerazione dei contratti builtin resta rinviata fino a quel verdetto.
+Nessun rilievo RM-0005 puo' essere differito a RM-0008. Dopo firma, catalogo
+verde, pubblicazione incrementale su `main`, GitHub Actions e smoke live verdi,
+il lavoro ritorna direttamente al sottotaglio systemd di G6-B3.
+
+Il riesame successivo ha aggiunto un gate P0: firma, Law 1, carta, consenso e
+fire amministrativi devono consumare la stessa closure argv, inclusi wrapper,
+path normalizzati e device distruttivi; il consenso deve essere esatto e
+one-shot. In parallelo, census e audit vengono chiusi sui dataflow e sulle
+identita' reali, non su esempi lessicali. Nessuna attivita' G6-B3, firma o
+pubblicazione puo' precedere la nuova prova a errore zero.

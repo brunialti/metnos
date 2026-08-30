@@ -18,6 +18,8 @@ The tests use a temporary safety DB to avoid contaminating the user state.
 from __future__ import annotations
 
 import sys
+import stat
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -97,6 +99,60 @@ class TestCanonicalize:
         assert signature_matches(sig, "systemctl:*:*")
         assert not signature_matches(sig, "systemctl:status:*")
         assert not signature_matches(sig, "apt:install:*")
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["sudo", "--unknown", "rm", "/tmp/x"],
+            ["doas", "PATH=/tmp", "rm", "/tmp/x"],
+            ["pkexec", "sudo", "rm", "/tmp/x"],
+            ["sudo", "-u"],
+            ["/tmp/sudo", "true"],
+            ["sudo", "/tmp/systemctl", "status", "nginx"],
+            ["env", "PATH=/tmp", "rm", "-rf", "/"],
+        ],
+    )
+    def test_privilege_wrapper_grammar_fails_closed(self, argv):
+        from safety.canonicalize import ArgvValidationError, validate_argv
+        with pytest.raises(ArgvValidationError):
+            validate_argv(argv)
+
+    @pytest.mark.parametrize(
+        ("argv", "command"),
+        [
+            (["sudo", "--", "rm", "/tmp/x"], ("rm", "/tmp/x")),
+            (["sudo", "--user", "root", "rm", "/tmp/x"], ("rm", "/tmp/x")),
+            (["doas", "-u", "root", "rm", "/tmp/x"], ("rm", "/tmp/x")),
+            (["pkexec", "--user=root", "rm", "/tmp/x"], ("rm", "/tmp/x")),
+        ],
+    )
+    def test_privilege_wrapper_closed_forms_resolve_one_target(self, argv, command):
+        from safety.canonicalize import validate_argv
+        assert validate_argv(argv).command_argv == command
+
+    def test_absolute_paths_are_normalized_in_snapshot_and_signature(self):
+        from safety.canonicalize import validate_argv
+        validated = validate_argv(["rm", "-rf", "//tmp/dir/../.."])
+        assert validated.argv == ("rm", "-rf", "/")
+        assert validated.signature.target_kind == "fs:root"
+
+    @pytest.mark.parametrize("token", ["line\nfeed", "bidi\u202etext"])
+    def test_control_and_format_characters_are_rejected(self, token):
+        from safety.canonicalize import ArgvValidationError, validate_argv
+        with pytest.raises(ArgvValidationError) as caught:
+            validate_argv(["echo", token])
+        assert caught.value.code == "ERR_ARGV_CONTROL"
+
+    def test_display_is_nfkc_bounded_json_and_markup_inert(self):
+        from safety.canonicalize import render_argv_for_display, validate_argv
+        validated = validate_argv(["echo", "Ａ`value"])
+        rendered = render_argv_for_display(validated)
+        assert rendered.startswith('["echo","A')
+        assert "`" not in rendered
+        assert r"\u0060" in rendered
+        long_rendered = render_argv_for_display(["x" * 5000])
+        assert len(long_rendered) < 256
+        assert "sha256:" in long_rendered
 
 
 # ── storage + bootstrap tests ─────────────────────────────────────────
@@ -288,7 +344,7 @@ class TestAdminFlow:
         ]:
             d = decide(text, llm_call=lambda _: '{"kind":"translated","argv":["true"]}')
             assert d.kind == "reject"
-            assert "non accetto comandi diretti" in d.reason.lower()
+            assert "comandi diretti" in d.reason.lower()
 
     def test_blacklist_hit_rejects(self, seeded_db):
         from system.admin import decide
@@ -313,9 +369,32 @@ class TestAdminFlow:
         d = decide("fammi un cowsay", llm_call=mock_llm)
         assert d.kind == "ask_user"
         assert d.card_payload is not None
-        assert d.card_payload["argv_rendered"].startswith("cowsay")
+        assert d.card_payload["argv_rendered"].startswith('["cowsay"')
 
-    def test_user_approves_unknown_creates_graylist(self, seeded_db):
+    def test_guest_never_executes_a_whitelisted_admin_command(self, seeded_db):
+        from system.admin import _decide_for_argv
+        # systemctl:status:unit is seeded whitelist, but a guest receives only
+        # its non-executing card options.
+        decision = _decide_for_argv(
+            ["systemctl", "status", "nginx"],
+            intent_text="status", actor="guest_x",
+        )
+        assert decision.kind == "ask_user"
+        assert decision.card_payload["options"] == [
+            "run_externally", "request_admin_whitelist", "reject_once",
+        ]
+
+    def test_planner_wrapper_unknown_option_is_structurally_rejected(self):
+        import system.admin as admin
+        result = admin.invoke(
+            intent="run as root",
+            command_proposed="sudo --preserve-env true",
+        )
+        assert result["decision"] == "reject"
+        assert result["error_class"] == "invalid_args"
+        assert result["error_code"] == "ERR_ARGV_WRAPPER_OPTION"
+
+    def test_user_approves_unknown_is_one_shot_without_graylist(self, seeded_db):
         from system.admin import decide, apply_user_decision
         from safety.storage import SafetyStore
         mock_llm = lambda _p: '{"kind":"translated","argv":["cowsay","hi"]}'
@@ -323,12 +402,12 @@ class TestAdminFlow:
         assert d.kind == "ask_user"
         d2 = apply_user_decision(decision=d, user_choice="approve")
         assert d2.kind == "execute_silent"
-        # Verify the graylist row was created
+        assert d2.age_class == "one_shot"
+        # A one-time approval must not silently authorize future argv sharing
+        # the same coarse signature.
         store = SafetyStore()
         row = store.find_by_signature(d.signature)
-        assert row is not None
-        assert row.kind == "graylist"
-        assert row.source == "user"
+        assert row is None
         store.close()
 
     def test_user_blocks_forever_creates_blacklist(self, seeded_db):
@@ -404,6 +483,232 @@ class TestSudoerExecution:
         res = execute(argv=["rm", "-rf", "/"], reversibility="irreversible")
         assert res.status == "blocked_at_fire"
         assert "Law 1" in res.audit.get("block_reason", "")
+
+    def test_target_becoming_symlink_is_blocked_by_immediate_revalidation(
+            self, temp_db, tmp_path, monkeypatch):
+        import system.admin as admin
+        import system.sudoer as sudoer
+        target = str(tmp_path / "future")
+        real_lstat = admin.os.lstat
+        reads = 0
+
+        def changing_lstat(path):
+            nonlocal reads
+            if str(path) == target:
+                reads += 1
+                if reads == 1:
+                    raise FileNotFoundError(path)
+                return type("S", (), {"st_mode": stat.S_IFLNK})()
+            return real_lstat(path)
+
+        monkeypatch.setattr(admin.os, "lstat", changing_lstat)
+        monkeypatch.setattr(
+            sudoer.subprocess, "run",
+            lambda *_a, **_k: (_ for _ in ()).throw(
+                AssertionError("subprocess must not run")
+            ),
+        )
+        res = sudoer.execute(argv=["rm", target])
+        assert res.status == "blocked_at_fire"
+        assert reads == 2
+
+    def test_sudoer_fires_the_exact_validated_argv(self, temp_db, monkeypatch):
+        from types import SimpleNamespace
+        from safety.canonicalize import validate_argv
+        import system.sudoer as sudoer
+        validated = validate_argv(["sudo", "-n", "true"])
+        seen = []
+        monkeypatch.setattr(
+            sudoer.subprocess, "run",
+            lambda argv, **_kwargs: (
+                seen.append(list(argv)) or
+                SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+            ),
+        )
+        result = sudoer.execute(validated_argv=validated)
+        assert result.ok is True
+        assert seen == [["sudo", "-n", "true"]]
+
+    def test_sudoer_rejects_forged_validated_product(self, temp_db, monkeypatch):
+        from dataclasses import replace
+        from safety.canonicalize import Signature, validate_argv
+        import system.sudoer as sudoer
+        validated = validate_argv(["true"])
+        forged = replace(
+            validated,
+            signature=Signature("false", "*", "*"),
+        )
+        monkeypatch.setattr(
+            sudoer.subprocess, "run",
+            lambda *_a, **_k: (_ for _ in ()).throw(
+                AssertionError("forged validated product must not execute")
+            ),
+        )
+        result = sudoer.execute(validated_argv=forged)
+        assert result.ok is False
+        assert result.status == "error"
+        assert result.audit["error_code"] == "ERR_ARGV_SNAPSHOT_MISMATCH"
+
+
+class TestAdminConsentCapability:
+    @pytest.fixture(autouse=True)
+    def _isolated_consent(self, tmp_path, monkeypatch):
+        import system.admin as admin
+        monkeypatch.setattr(admin._C, "PATH_USER_DATA", tmp_path)
+
+    def test_same_signature_different_argv_does_not_consume_capability(self):
+        import system.admin as admin
+        from safety.canonicalize import validate_argv
+        approved = validate_argv(["echo", "alpha"])
+        mutant = validate_argv(["echo", "beta"])
+        assert approved.signature == mutant.signature
+        token = admin._sign_consent_token(approved, "host")
+        assert admin._verify_consent_token(token, mutant, "host") is False
+        assert admin._verify_consent_token(token, approved, "host") is True
+        assert admin._verify_consent_token(token, approved, "host") is False
+
+    def test_concurrent_replay_has_exactly_one_winner(self):
+        import system.admin as admin
+        from safety.canonicalize import validate_argv
+        approved = validate_argv(["echo", "once"])
+        token = admin._sign_consent_token(approved, "host")
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(
+                lambda _i: admin._verify_consent_token(token, approved, "host"),
+                range(8),
+            ))
+        assert results.count(True) == 1
+
+    def test_guest_cannot_receive_or_consume_admin_capability(self):
+        import system.admin as admin
+        from safety.canonicalize import validate_argv
+        approved = validate_argv(["echo", "guest"])
+        with pytest.raises(PermissionError):
+            admin._sign_consent_token(approved, "guest_x")
+        token = admin._sign_consent_token(approved, "host")
+        assert admin._verify_consent_token(token, approved, "guest_x") is False
+
+    def test_consent_key_io_failure_is_a_typed_fail_closed_envelope(
+            self, temp_db, monkeypatch):
+        import system.admin as admin
+
+        monkeypatch.setattr(admin, "_executor_name_in_argv", lambda _argv: None)
+        monkeypatch.setattr(
+            admin, "_detect_credentials_placeholder", lambda _argv: (None, {}),
+        )
+
+        def ask(argv, **kwargs):
+            validated = kwargs["_validated_snapshot"]
+            return admin.AdminDecision(
+                kind="ask_user", argv=list(validated.argv),
+                signature=str(validated.signature),
+                card_payload={
+                    "type": "approval_card", "actor_role": "admin",
+                    "options": list(admin._ADMIN_APPROVAL_OPTIONS),
+                },
+                validated_argv=validated,
+            )
+
+        monkeypatch.setattr(admin, "_decide_for_argv", ask)
+        monkeypatch.setattr(
+            admin, "_consent_key",
+            lambda: (_ for _ in ()).throw(OSError("read-only key store")),
+        )
+        result = admin._invoke_impl(
+            intent="run tool", command_proposed="unknown_consent_tool",
+        )
+        assert result["ok"] is False
+        assert result["approval_required"] is False
+        assert result["consent_token"] is None
+        assert result["error_class"] == "dependency_unavailable"
+        assert result["error_code"] == "ERR_ADMIN_CONSENT_STORE_UNAVAILABLE"
+
+    def test_consent_db_io_failure_during_verification_is_typed_fail_closed(
+            self, temp_db, monkeypatch):
+        import system.admin as admin
+        from safety.canonicalize import validate_argv
+
+        validated = validate_argv(["unknown_consent_tool"])
+        token = admin._sign_consent_token(validated, "host")
+        monkeypatch.setattr(admin, "_executor_name_in_argv", lambda _argv: None)
+        monkeypatch.setattr(
+            admin, "_detect_credentials_placeholder", lambda _argv: (None, {}),
+        )
+
+        def ask(argv, **kwargs):
+            snapshot = kwargs["_validated_snapshot"]
+            return admin.AdminDecision(
+                kind="ask_user", argv=list(snapshot.argv),
+                signature=str(snapshot.signature),
+                card_payload={
+                    "type": "approval_card", "actor_role": "admin",
+                    "options": list(admin._ADMIN_APPROVAL_OPTIONS),
+                },
+                validated_argv=snapshot,
+            )
+
+        monkeypatch.setattr(admin, "_decide_for_argv", ask)
+        monkeypatch.setattr(
+            admin, "_open_consent_db",
+            lambda: (_ for _ in ()).throw(
+                admin.sqlite3.OperationalError("database unavailable")
+            ),
+        )
+        result = admin._invoke_impl(
+            intent="run tool", command_proposed="unknown_consent_tool",
+            actor_consent_token=token,
+        )
+        assert result["ok"] is False
+        assert result["approval_required"] is False
+        assert result["consent_token"] is None
+        assert result["error_class"] == "dependency_unavailable"
+        assert result["error_code"] == "ERR_ADMIN_CONSENT_STORE_UNAVAILABLE"
+
+    def test_guest_approval_card_contains_no_token(self, temp_db):
+        import system.admin as admin
+        result = admin._invoke_impl(
+            intent="run unknown", command_proposed="unknown_guest_xyz",
+            actor="guest_x",
+        )
+        assert result["decision"] == "approval_required"
+        assert result["consent_token"] is None
+
+    def test_error_typing_never_parses_localized_summary(self):
+        import system.admin as admin
+        result = admin._standardize_result({
+            "ok": False, "summary": "dependency unavailable esecuzione fallita",
+            "audit": {"gate": "argv_validation_rejected",
+                      "error_code": "ERR_ARGV_WRAPPER_OPTION"},
+        })
+        assert result["error_class"] == "invalid_args"
+        assert result["error_code"] == "ERR_ARGV_WRAPPER_OPTION"
+
+    def test_admin_passes_the_same_validated_object_to_sudoer(self, monkeypatch):
+        from types import SimpleNamespace
+        import loader
+        import system.admin as admin
+        from safety.canonicalize import validate_argv
+        validated = validate_argv(["echo", "exact"])
+        decision = admin.AdminDecision(
+            kind="execute_silent", argv=list(validated.argv),
+            signature=str(validated.signature), validated_argv=validated,
+        )
+        seen = {}
+
+        def fake_invoke(*_args, **kwargs):
+            seen.update(kwargs)
+            return SimpleNamespace(
+                ok=True, status="executed", exit_code=0, stdout="", stderr="",
+                duration_ms=1,
+            )
+
+        monkeypatch.setattr(loader, "invoke_verb_unique", fake_invoke)
+        result = admin._spawn_via_sudoer(
+            decision=decision, intent_text="echo", actor="host",
+        )
+        assert result["ok"] is True
+        assert seen["validated_argv"] is validated
+        assert "argv" not in seen
 
     def test_sanity_check_urgent_blocks(self, seeded_db):
         from system.sudoer import execute

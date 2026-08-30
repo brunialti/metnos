@@ -526,6 +526,34 @@ def test_cli_and_chat_admin_use_the_checked_operation(monkeypatch) -> None:
     assert calls == [("bundle", True), ("bundle", False)]
 
 
+@pytest.mark.parametrize(
+    "enabled",
+    [
+        "true", "false", "yes", "no", "attiva", "disabilita",
+        "verdadero", 1, 0, None,
+    ],
+)
+def test_chat_admin_rejects_non_boolean_enabled_without_state_change(
+    monkeypatch, enabled,
+) -> None:
+    calls: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        skill_registry,
+        "set_skill_enabled_checked",
+        lambda name, value: calls.append((name, value)),
+    )
+
+    result = skill_admin.handle_set_skills({
+        "name": "bundle", "enabled": enabled,
+    })
+
+    assert result == {
+        "ok": False,
+        "error": "param 'enabled' must be a JSON boolean",
+    }
+    assert calls == []
+
+
 def test_enablement_holds_global_catalog_lock_through_state_commit(
     monkeypatch,
 ) -> None:

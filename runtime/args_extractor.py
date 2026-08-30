@@ -51,43 +51,27 @@ _URL_RE = re.compile(r"https?://\S+")
 # EMAIL: standard RFC-light
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
 
-# DATE keywords IT/EN. Mappa a offset (giorni) dalla data corrente.
-# V1.5 19/5/2026: estesa con varianti comuni IT/EN per copertura corpus
-# query reali ("dopodomani", "next week", "this week", ...).
-_DATE_KEYWORDS_OFFSET = {
-    # IT
-    "oggi": 0,
-    "ieri": -1,
-    "domani": +1,
-    "dopodomani": +2,
-    "altroieri": -2,
-    # EN
-    "today": 0,
-    "yesterday": -1,
-    "tomorrow": +1,
-    "day after tomorrow": +2,
-    "day before yesterday": -2,
-}
+def _localized_mapping(concept: str) -> dict[str, list[str]]:
+    import detection_lexicon as _detlex
 
-# Window keywords → time_window canonical (lascia all'executor il parsing).
-_TIME_WINDOW_KEYWORDS = {
-    # IT
-    "questa settimana": "this-week",
-    "settimana scorsa": "last-week",
-    "settimana prossima": "next-week",
-    "questo mese": "this-month",
-    "ultimi 7 giorni": "last-7d",
-    "ultime 24 ore": "last-24h",
-    "ultime ore": "last-24h",
-    # EN
-    "this week": "this-week",
-    "last week": "last-week",
-    "next week": "next-week",
-    "this month": "this-month",
-    "last 7 days": "last-7d",
-    "last 24 hours": "last-24h",
-    "last hours": "last-24h",
-}
+    return {
+        str(canonical): [str(form) for form in forms if str(form).strip()]
+        for canonical, forms in _detlex.mapping(concept).items()
+        if isinstance(forms, list)
+    }
+
+
+def _localized_forms(concept: str) -> tuple[str, ...]:
+    import detection_lexicon as _detlex
+
+    return tuple(str(form) for form in _detlex.forms(concept) if str(form).strip())
+
+
+def _phrase_occurs(query: str, phrase: str) -> bool:
+    return bool(re.search(
+        r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", query,
+        flags=re.IGNORECASE | re.UNICODE,
+    ))
 
 # Pattern file con extension (*.ext, .ext)
 _FILE_EXT_RE = re.compile(r"\*?\.(?P<ext>[a-zA-Z0-9]{1,5})\b")
@@ -127,20 +111,22 @@ _KNOWN_EXTENSIONS = set(_LANG_EXT_MAP.values()) | {
     "html", "htm", "css", "scss", "vue", "swift", "scala", "ex", "exs", "hs",
 }
 
-# Home keyword IT/EN. "home" non e' un path: e' un'abbreviazione per ~/.
-# Detection: "home" come parola standalone o "home/" prefisso.
-_HOME_KEYWORDS_RE = re.compile(
-    r"(?:^|\s)(?:home|the\s+home|la\s+home|nella\s+home|in\s+home)\b",
-    re.IGNORECASE,
-)
-
 # Tilde standalone "~" (senza /) come abbreviazione di home dir. Patch
 # 25/5/2026: query "directory in ~" non veniva catturata da _PATH_RE.
 _TILDE_STANDALONE_RE = re.compile(r"(?:^|\s)~(?:\s|$|[^\w./~])")
-_HOME_PATH_RE = re.compile(
-    r"(?:^|\s)(?:home|~)/(?P<rest>[\w.\-/]+)",
-    re.IGNORECASE,
-)
+
+
+def _home_path_pattern() -> re.Pattern:
+    markers = sorted(
+        set(_localized_forms("args.home_marker")), key=len, reverse=True,
+    )
+    alternatives = [re.escape(marker) for marker in markers]
+    alternatives.append(re.escape("~"))
+    return re.compile(
+        r"(?:^|\s)(?:" + "|".join(alternatives)
+        + r")/(?P<rest>[\w.\-/]+)",
+        re.IGNORECASE | re.UNICODE,
+    )
 
 
 def _extract_paths(query: str) -> list[str]:
@@ -171,7 +157,7 @@ def _extract_paths(query: str) -> list[str]:
             out.append(p if p.startswith(("~", "/", ".")) else canon)
 
     # 1. "home/<rest>" → "~/<rest>".
-    for m in _HOME_PATH_RE.finditer(query):
+    for m in _home_path_pattern().finditer(query):
         rest = m.group("rest").strip()
         if rest:
             _add(f"~/{rest}")
@@ -181,7 +167,8 @@ def _extract_paths(query: str) -> list[str]:
         if p and not any(p in u for u in urls):
             _add(p)
     # 3. "home" standalone (senza /) → "~/" se non gia' coperto.
-    if _HOME_KEYWORDS_RE.search(query) and not any(
+    import detection_lexicon as _detlex
+    if _detlex.match("args.home_marker", query) and not any(
             p.startswith("~") for p in out):
         _add("~/")
     # 4. "~" standalone (senza /) → "~/" se non gia' coperto.
@@ -234,18 +221,34 @@ def _extract_file_ext_glob(query: str) -> Optional[str]:
     # Nome di linguaggio/formato esteso ("python", "javascript", ...) → estensione
     # canonica. Precede il fallback generico "{2,5} lettere" perche' quei nomi
     # sono piu' lunghi e non finirebbero mai per essere catturati come estensione.
-    ml = _LANG_EXT_RE.search(query)
+    try:
+        import detection_lexicon as _detlex
+        file_nouns = _detlex.native_ready_forms(
+            "args.file_noun",
+            require_manual=True,
+            include_reviewed_baselines=True,
+        )
+    except Exception:
+        file_nouns = []
+    has_file_noun = any(
+        _phrase_occurs(query, noun) for noun in file_nouns
+    )
+    ml = _LANG_EXT_RE.search(query) if has_file_noun else None
     if ml:
         return f"*.{_LANG_EXT_MAP[ml.group(1).lower()]}"
-    # "file PDF" / "files PDF" / "file di tipo PDF" / "documenti PDF".
-    # WHITELIST di estensioni note (non blacklist di stopword): «file ci sono»
-    # NON deve dare *.ci. Una parola dopo «file» diventa pattern SOLO se e' una
-    # estensione/formato riconosciuto. Generale §7.3: copre i formati comuni +
-    # le estensioni gia' censite in _LANG_EXT_MAP.
-    for kw in ("file", "files", "documento", "documenti", "document",
-               "documents"):
-        m = re.search(rf"\b{kw}\s+(?:di\s+tipo\s+|of\s+type\s+)?([A-Za-z0-9]{{2,5}})\b",
-                       query, re.IGNORECASE)
+    # The noun/linker clause can inject a glob into mutating schemas.  It is
+    # therefore served only as one complete, manually reviewed native regex
+    # family; missing/pending locale coverage means no inferred glob.
+    try:
+        clause_patterns = _detlex.native_ready_patterns(
+            "args.file_extension_clause",
+            require_manual=True,
+            include_reviewed_baselines=True,
+        )
+    except Exception:
+        clause_patterns = []
+    for pattern in clause_patterns:
+        m = pattern.search(query)
         if m:
             cand = m.group(1).lower()
             if cand in _KNOWN_EXTENSIONS:
@@ -306,11 +309,14 @@ def _extract_date_keyword(query: str) -> Optional[str]:
       "appuntamento domani" → 2026-05-20
     """
     q = query.lower()
-    for kw, offset in _DATE_KEYWORDS_OFFSET.items():
-        # Match parola intera (no "today" dentro a "today's" sufficienti).
-        pattern = rf"\b{re.escape(kw)}\b"
-        if re.search(pattern, q):
-            dt = datetime.now(timezone.utc) + timedelta(days=offset)
+    candidates = (
+        (form, canonical)
+        for canonical, forms in _localized_mapping("args.date_offset").items()
+        for form in forms
+    )
+    for form, canonical in sorted(candidates, key=lambda item: -len(item[0])):
+        if _phrase_occurs(q, form):
+            dt = datetime.now(timezone.utc) + timedelta(days=int(canonical))
             return dt.strftime("%Y-%m-%d")
     return None
 
@@ -324,20 +330,35 @@ def _extract_time_window(query: str) -> Optional[str]:
     """
     q = query.lower()
     # Multi-word patterns prima (piu' specifici).
-    for kw, canon in _TIME_WINDOW_KEYWORDS.items():
-        if kw in q:
-            return canon
-    # Numero + unita': "ultimi 7 giorni" / "last 30 days".
-    m = re.search(
-        r"\b(?:ultim[oeai]|last)\s+(\d+)\s+(giorni?|days?|or[ae]|hours?)\b",
-        q,
+    candidates = (
+        (form, canonical)
+        for canonical, forms in _localized_mapping("args.time_window").items()
+        for form in forms
     )
-    if m:
-        n = m.group(1)
-        unit = m.group(2)[0].lower()  # g/d/o/h
-        if unit in ("g", "d"):
-            return f"last-{n}d"
-        return f"last-{n}h"
+    for form, canonical in sorted(candidates, key=lambda item: -len(item[0])):
+        if _phrase_occurs(q, form):
+            return canonical
+    # Numero + unita': "ultimi 7 giorni" / "last 30 days".
+    prefixes = sorted(
+        set(_localized_forms("args.relative_window_prefix")),
+        key=len, reverse=True,
+    )
+    units = _localized_mapping("args.relative_window_unit")
+    if prefixes and units:
+        unit_owner = {
+            form.casefold(): canonical
+            for canonical, forms in units.items() for form in forms
+        }
+        unit_forms = sorted(unit_owner, key=len, reverse=True)
+        pattern = re.compile(
+            r"(?<!\w)(?:" + "|".join(map(re.escape, prefixes))
+            + r")\s+(\d+)\s+(" + "|".join(map(re.escape, unit_forms))
+            + r")(?!\w)",
+            re.IGNORECASE | re.UNICODE,
+        )
+        match = pattern.search(q)
+        if match:
+            return f"last-{match.group(1)}{unit_owner[match.group(2).casefold()]}"
     return None
 
 
@@ -485,17 +506,12 @@ def regex_extract(query: str, schema: dict | None) -> dict:
 # Parole troppo generiche per essere distintive di un flag (object/verbi comuni
 # che comparirebbero in molte description). NON un dizionario di sinonimi: e' uno
 # stop-set di rumore, gemello di prefilter._STOPWORDS.
-_FLAG_DESC_NOISE = {
-    "true", "false", "default", "solo", "only", "tutte", "tutti", "all",
-    "ritorna", "return", "returns", "value", "valore", "campo", "field",
-    "email", "emails", "mail", "messaggi", "messages", "file", "files",
-    "the", "les", "una", "uno", "con", "non", "per", "del", "della",
-    # Parole-funzione IT: il match a prefisso-4 le rende trappole («delle» in
-    # una description ~ «della» in query → recursive=True spurio, T4 5/7).
-    "delle", "dello", "degli", "dalla", "dalle", "dallo", "dagli",
-    "nella", "nelle", "nello", "negli", "sulla", "sulle", "sullo",
-    "anche", "come", "sono", "questo", "questa", "quando", "dove",
-}
+def _flag_description_noise() -> frozenset[str]:
+    return frozenset(
+        form.casefold() for form in _localized_forms(
+            "args.flag_description_noise"
+        )
+    )
 
 
 def _flag_desc_prefixes(spec: dict) -> set:
@@ -512,7 +528,7 @@ def _flag_desc_prefixes(spec: dict) -> set:
     for text in descs:
         head = _re.split(r"\bdefault\b", text.lower())[0]
         for w in _re.findall(r"[a-zàèéìòù]{4,}", head):
-            if w not in _FLAG_DESC_NOISE:
+            if w not in _flag_description_noise():
                 prefixes.add(w[:4])
     return prefixes
 
@@ -568,7 +584,7 @@ def _bool_flag_triggered(query: str, spec: dict,
         # il comportamento di default (evita falsi positivi su «default: tutte»).
         head = _re.split(r"\bdefault\b", text.lower())[0]
         dwords = [w for w in _re.findall(r"[a-zàèéìòù]{4,}", head)
-                  if w not in _FLAG_DESC_NOISE and w[:4] not in op_prefixes]
+                  if w not in _flag_description_noise() and w[:4] not in op_prefixes]
         for dw in dwords:
             for qw in qwords:
                 if len(qw) >= 4 and dw[:4] == qw[:4]:

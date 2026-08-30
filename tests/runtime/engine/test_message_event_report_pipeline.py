@@ -121,19 +121,19 @@ def test_normalizer_builds_one_schema_and_create_only_outputs():
     assert directory.startswith("Documenti/Verifica Metnos/Run_")
     writer = out.steps[8].args
     assert "path_template" not in writer
-    assert writer["path"].endswith("/rapporto_scadenze.md")
+    assert writer["path"].endswith("/riepilogo.md")
     assert writer["mode"] == "fail_if_exists"
     report = out.steps[6].args
     assert report["style"] == "compact"
     assert report["group_by"] == "scadenza"
     sheet = out.steps[9].args
     assert sheet["from_step"] == 6
-    assert sheet["path"].endswith("/entita_valori.xlsx")
+    assert sheet["path"].endswith("/dati_estratti.xlsx")
     assert sheet["columns"] == [
         "entità", "valore normalizzato", "valore originale", "origine",
         "responsabile", "confidenza",
     ]
-    assert "${step6.count} righe di dati" in out.final_message
+    assert "${step6.count}" in out.final_message
 
 
 def test_focused_contract_preserves_scope_schema_order_and_archive():
@@ -196,11 +196,11 @@ def test_focused_contract_preserves_scope_schema_order_and_archive():
         "confidenza", "conflitto",
     ]
     assert out.steps[11].args["patterns"] == [
-        "rapporto_riconciliazione.md", "impegni_riconciliati.xlsx"]
+        "riepilogo.md", "dati_estratti.xlsx"]
     assert out.steps[12].args["from_step"] == 12
     assert out.steps[12].args["dest"].endswith(
-        "/risultati_riconciliazione.zip")
-    assert "archivio:" in out.final_message
+        "/risultati.zip")
+    assert "${step13.results.0.path}" in out.final_message
     assert dispatch._should_cache_plan(out, FOCUSED_QUERY)
 
 

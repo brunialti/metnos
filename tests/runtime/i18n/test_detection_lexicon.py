@@ -11,6 +11,8 @@ Garanzie verificate:
   5. Union {lingua_corrente} ∪ {it,en}: su una lingua nuova i comandi-prestito
      it/en continuano a matchare (best-effort) finche' il daemon non traduce.
 """
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -18,6 +20,25 @@ _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 import detection_lexicon as dl  # noqa: E402
 import i18n  # noqa: E402
+
+
+_PREFILTER_RESIDUE_DIGESTS = {
+    "verb": "fe4e3363389f14e3d765037671a7c283601e0d3f5bc7e54766eb3561783d1e99",
+    "object": "923eaaa4e8447d915001d68dbecbd724527c1d6fa365f13ebe704b66a808f590",
+    "stop": "03bc76585379062db8d48773282be97432ad5d56723f13bcd430872676fdb70b",
+    "clitic": "effd4fd29be7567f15e85570eb35e01d346c90089774500f1fd75e5b3bb8c85e",
+    "precursor": "a0766e3f324bcbd62c8f7a3405467676628e7d151c8de15578affedb029dc34b",
+    "exif": "50d3e70561995dbe3d1232c79e54a393ae9b8c477e98a8915838fd538875322c",
+    "time": "26ba290ea0c4e92a2422ba739a915478d63662ccb012c3cd7cc03d5b770139d8",
+    "generic": "4f5ce93b870e80b11606fe991266a24f424314cbc5d7cefd82b0c68c42ce1fb5",
+}
+
+
+def _canonical_digest(value) -> str:
+    payload = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
 def test_coverage_it_en_complete():
@@ -210,7 +231,7 @@ def test_command_invocation_uses_native_unicode_and_multiword_forms(
         _dl.set_payload(
             "syntax.command_invocation", "fr",
             ["exécuter", "veuillez exécuter"],
-            kind="phrases", match_mode="word", source_lang="fr",
+            kind="phrases", match_mode="word", source_lang="en",
         )
         # The daemon commits one concept at a time. Native invocation without
         # native, ready polarity must not expose a privileged command.
@@ -230,7 +251,7 @@ def test_command_invocation_uses_native_unicode_and_multiword_forms(
         ):
             _dl.set_payload(
                 concept, "fr", payload, kind="phrases", match_mode="word",
-                source_lang="fr",
+                source_lang="en",
             )
         for query in (
             "exécuter ping example.net",
@@ -314,10 +335,14 @@ def test_malformed_native_polarity_fails_closed(monkeypatch, tmp_path):
                 concept, "phrases", it=it, en=en, match_mode="word",
                 review_policy="manual",
             )
-        _dl.set_payload(
-            "syntax.negation", "it", ["non", 3], kind="phrases",
-            match_mode="word", source_lang="it",
+        raw = json.dumps(["non", 3], ensure_ascii=False, sort_keys=True)
+        conn.execute(
+            "UPDATE detection_lexicon SET payload=?,version_hash=? "
+            "WHERE concept='syntax.negation' AND lang='it'",
+            (raw, _dl._sha256(raw)),
         )
+        conn.commit()
+        _dl._invalidate("syntax.negation")
         assert _dl.asserted_at("esegui ping", 0) is False
     finally:
         _dl._invalidate()
@@ -389,6 +414,134 @@ def test_union_equals_original_snapshot():
     for concept, expected in _ORIGINAL_MAPPING_UNION.items():
         got = {k: set(v) for k, v in dl.mapping(concept).items()}
         assert got == expected, f"drift mapping in {concept}"
+
+
+def test_prefilter_residue_equals_pre_migration_snapshot(tmp_path, monkeypatch):
+    """All eight migrated data sets preserve the old IT/EN behavior."""
+    import prefilter
+
+    monkeypatch.setattr(dl, "DB_PATH", tmp_path / "detection.sqlite")
+    monkeypatch.setattr(dl, "_conn", None)
+    monkeypatch.setattr(dl, "_seeded", False)
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "it")
+    dl._invalidate()
+    try:
+        dl.ensure_seeded()
+        values = {
+            "verb": prefilter.verb_to_canonical_mapping(),
+            "object": prefilter.object_hint_mapping(),
+            "stop": sorted(prefilter.stopwords()),
+            "clitic": list(prefilter.italian_clitic_suffixes()),
+            "precursor": dl.forms("prefilter.location_relative"),
+            "exif": dl.forms("prefilter.exif_marker"),
+            "time": dl.forms("prefilter.time_intent"),
+            "generic": sorted(prefilter.generic_affinity_verbs()),
+        }
+        assert {
+            name: _canonical_digest(value) for name, value in values.items()
+        } == _PREFILTER_RESIDUE_DIGESTS
+    finally:
+        dl._invalidate()
+
+
+def test_prefilter_residue_uses_third_language_during_partial_materialization(
+        tmp_path, monkeypatch):
+    """Ready concepts go live one by one and cannot erase the fallback."""
+    import prefilter
+
+    monkeypatch.setattr(dl, "DB_PATH", tmp_path / "detection.sqlite")
+    monkeypatch.setattr(dl, "_conn", None)
+    monkeypatch.setattr(dl, "_seeded", False)
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "fr")
+    dl._invalidate()
+    try:
+        dl.ensure_seeded()
+        # Prime the fallback caches before materialization: set_payload must
+        # invalidate them, otherwise these native forms remain invisible.
+        assert prefilter.detect_canonical_verb(prefilter.tokenize("lire")) is None
+        verb_source = dl.resource_for_language(
+            "prefilter.verb_canonical", "en", fallback=False,
+            ready_only=True,
+        )["payload"]
+        verb_fr = {
+            key: (["lire"] if key == "read" else [f"verbe{index}"])
+            for index, key in enumerate(verb_source)
+        }
+        object_source = dl.resource_for_language(
+            "prefilter.object_hint", "en", fallback=False,
+            ready_only=True,
+        )["payload"]
+        object_fr = {
+            key: (["photographies"]
+                  if key == "images" else [f"objet{index}"])
+            for index, key in enumerate(object_source)
+        }
+        resources = {
+            "prefilter.verb_canonical": (
+                "mapping", "word", verb_fr),
+            "prefilter.object_hint": (
+                "mapping", "word", object_fr),
+            "prefilter.stopword": ("phrases", "word", ["avec"]),
+            "prefilter.italian_clitic_suffix": (
+                "phrases", "substring", ["moi"]),
+            "prefilter.location_relative": (
+                "phrases", "substring", ["près de moi"]),
+            "prefilter.exif_marker": (
+                "phrases", "substring", ["données photo"]),
+            "prefilter.time_intent": (
+                "phrases", "word", ["quelle heure"]),
+            "prefilter.generic_affinity_verb": (
+                "phrases", "word", ["chercher"]),
+        }
+        resource_items = list(resources.items())
+        for concept, (kind, mode, payload) in resource_items[:2]:
+            dl.set_payload(
+                concept, "fr", payload, kind=kind, match_mode=mode,
+                source_lang="en",
+            )
+
+        # Only two concepts are ready at this point: they are active, while an
+        # untouched concept continues through the ordinary bilingual fallback.
+        assert prefilter.detect_canonical_verb(
+            prefilter.tokenize("lire")) == "read"
+        assert prefilter.detect_canonical_verb(
+            prefilter.tokenize("leggi")) == "read"
+        hints = prefilter.object_hint_mapping()
+        assert "photographies" in hints["images"]
+        assert "mail" in hints["messages"]
+        assert "avec" not in prefilter.stopwords()
+        assert {"the", "il"} <= prefilter.stopwords()
+
+        for concept, (kind, mode, payload) in resource_items[2:]:
+            dl.set_payload(
+                concept, "fr", payload, kind=kind, match_mode=mode,
+                source_lang="en",
+            )
+
+        assert {"avec", "the", "il"} <= prefilter.stopwords()
+        assert {"moi", "gli"} <= set(prefilter.italian_clitic_suffixes())
+        assert dl.match("prefilter.location_relative", "près de moi")
+        assert dl.match("prefilter.location_relative", "near me")
+        assert dl.match("prefilter.exif_marker", "données photo")
+        assert prefilter._detect_time_intent("quelle heure")
+        assert {"chercher", "find", "cerca"} \
+            <= prefilter.generic_affinity_verbs()
+
+        # A stale payload retained while retranslation is pending is not
+        # authoritative. The direct resource API must apply the same ready
+        # gate as the ordinary resolver and fall back without changing order.
+        dl._open().execute(
+            "UPDATE detection_lexicon SET needs_translation=1 "
+            "WHERE concept='prefilter.object_hint' AND lang='fr'"
+        )
+        dl._open().commit()
+        dl._invalidate("prefilter.object_hint")
+        fallback_hints = prefilter.object_hint_mapping()
+        assert "photographies" not in fallback_hints["images"]
+        assert "mail" in fallback_hints["messages"]
+        assert list(fallback_hints)[:3] == ["messages", "files", "images"]
+    finally:
+        dl._invalidate()
 
 
 def test_union_keeps_it_en_on_foreign_lang(monkeypatch):

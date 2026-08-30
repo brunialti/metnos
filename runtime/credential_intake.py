@@ -9,8 +9,8 @@ the input.
 
 from __future__ import annotations
 
-import functools
 import re
+from dataclasses import dataclass
 
 import detection_lexicon as _detlex
 
@@ -20,58 +20,150 @@ _BEARER = re.compile(
     r"(?i)(\bBearer\s+)(?!<REDACTED:cred>)[A-Za-z0-9._~+/-]{12,}={0,2}"
 )
 _LONG_OPAQUE = re.compile(r"\b(?!<REDACTED:cred>)[A-Fa-f0-9]{40,}\b")
-# Security must remain fail-closed even while the translated recognition DB is
-# unavailable.  These are protocol/field identifiers, not routing phrases;
-# normal operation reads the versioned, translatable concept below.
-_LABEL_FALLBACK = (
-    "password", "passwd", "passphrase", "pwd", "psw", "pass",
-    "username", "user", "utente", "nome utente", "usr", "uname",
-    "otp", "2fa", "one-time code", "verification code",
-    "codice otp", "codice 2fa", "codice di verifica",
-    "secret", "segreto", "token", "api key", "api-key", "chiave api",
-)
-_FIELD_FALLBACK = {
-    "username": ("username", "user id", "userid", "utente",
-                 "nome utente", "user", "usr", "email", "e-mail"),
-    "password": ("password", "passwd", "passphrase", "pwd", "psw", "pass"),
-}
-_CONNECTOR_FALLBACK = ("e", "con", "and", "with")
-_INTAKE_PREFIX_FALLBACK = (
-    "credenziali", "dati di accesso", "credentials", "access credentials",
-)
 _PAIR_VALUE = (
     r'(?!(?:<REDACTED:cred(?::[^>]+)?>))'
     r'(?:(?:"[^"\r\n]+")|(?:\'[^\'\r\n]+\')|(?:[^\s,;]+))'
 )
 
 
-def _forms_pattern(forms: tuple[str, ...]) -> str:
+_STRUCTURAL_LABEL = (
+    r"(?<!\w)[^\W\d_][\w-]*(?:\s+[^\W\d_][\w-]*)?(?!\w)"
+)
+_CREDENTIAL_CONCEPTS = {
+    "credentials.field_label": "mapping",
+    "credentials.pair_connector": "phrases",
+    "credentials.redaction_label": "phrases",
+    "credentials.intake_prefix": "phrases",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class CredentialLexiconSnapshot:
+    """One complete native-ready credential grammar from a single DB epoch."""
+
+    username_labels: tuple[str, ...]
+    password_labels: tuple[str, ...]
+    pair_connectors: tuple[str, ...]
+    redaction_labels: tuple[str, ...]
+    intake_prefixes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CredentialPairEvidence:
+    """A matched pair interpreted by the same snapshot that admitted it."""
+
+    match: re.Match
+    first_is_password: bool
+
+
+def _merged_forms(resources: tuple[dict, ...]) -> tuple[str, ...]:
+    forms: list[str] = []
+    seen: set[str] = set()
+    for resource in resources:
+        payload = resource.get("payload")
+        if not isinstance(payload, list) or not payload:
+            return ()
+        for raw in payload:
+            value = str(raw or "").strip()
+            folded = value.casefold()
+            if not value:
+                return ()
+            if folded not in seen:
+                seen.add(folded)
+                forms.append(value)
+    return tuple(forms)
+
+
+def _credential_family_snapshot() -> CredentialLexiconSnapshot | None:
+    """Load every storage-relevant resource atomically, or fail closed."""
+
+    try:
+        family = _detlex.native_ready_family_resources(
+            _CREDENTIAL_CONCEPTS,
+            require_manual=True,
+            include_reviewed_baselines=True,
+        )
+    except Exception:
+        return None
+    if family is None:
+        return None
+
+    labels: dict[str, list[str]] = {"username": [], "password": []}
+    owners: dict[str, str] = {}
+    label_resources = family.get("credentials.field_label") or ()
+    for resource in label_resources:
+        payload = resource.get("payload")
+        if not isinstance(payload, dict) or set(payload) != set(labels):
+            return None
+        for canonical, raw_forms in payload.items():
+            if not isinstance(raw_forms, list) or not raw_forms:
+                return None
+            bucket = labels[canonical]
+            known = {value.casefold() for value in bucket}
+            for raw in raw_forms:
+                value = str(raw or "").strip()
+                folded = value.casefold()
+                if not value or (
+                    folded in owners and owners[folded] != canonical
+                ):
+                    return None
+                owners[folded] = canonical
+                if folded not in known:
+                    known.add(folded)
+                    bucket.append(value)
+
+    connectors = _merged_forms(
+        family.get("credentials.pair_connector") or (),
+    )
+    redaction = _merged_forms(
+        family.get("credentials.redaction_label") or (),
+    )
+    prefixes = _merged_forms(
+        family.get("credentials.intake_prefix") or (),
+    )
+    if not all(labels.values()) or not connectors or not redaction or not prefixes:
+        return None
+    return CredentialLexiconSnapshot(
+        username_labels=tuple(labels["username"]),
+        password_labels=tuple(labels["password"]),
+        pair_connectors=connectors,
+        redaction_labels=redaction,
+        intake_prefixes=prefixes,
+    )
+
+
+def _forms_pattern(
+    forms: tuple[str, ...], *, structural_fallback: bool = False,
+) -> str:
     escaped = []
     for form in sorted(set(forms), key=len, reverse=True):
         value = str(form or "").strip()
         if value:
             escaped.append(re.escape(value).replace(r"\ ", r"\s+"))
     if not escaped:
-        escaped = [re.escape(value) for value in _LABEL_FALLBACK]
+        return _STRUCTURAL_LABEL if structural_fallback else r"(?!)"
     return r"(?<!\w)(?:" + "|".join(escaped) + r")(?!\w)"
 
 
-@functools.lru_cache(maxsize=16)
-def credential_pair_patterns(lang: str) -> tuple[re.Pattern, re.Pattern]:
+def credential_pair_patterns(
+    lang: str,
+    *,
+    snapshot: CredentialLexiconSnapshot | None = None,
+) -> tuple[re.Pattern, re.Pattern]:
     """Closed grammar for a username/password pair in either order."""
 
     del lang
-    try:
-        labels = _detlex.mapping("credentials.field_label")
-        connectors = tuple(_detlex.forms("credentials.pair_connector"))
-    except Exception:
-        labels = {}
-        connectors = ()
-    users = tuple(labels.get("username") or _FIELD_FALLBACK["username"])
-    passwords = tuple(labels.get("password") or _FIELD_FALLBACK["password"])
-    user_pattern = _forms_pattern(users)
-    password_pattern = _forms_pattern(passwords)
-    connector_pattern = _forms_pattern(connectors or _CONNECTOR_FALLBACK)
+    if snapshot is None:
+        snapshot = _credential_family_snapshot()
+    users = snapshot.username_labels if snapshot is not None else ()
+    passwords = snapshot.password_labels if snapshot is not None else ()
+    connectors = snapshot.pair_connectors if snapshot is not None else ()
+    # If localization is unavailable, explicit key=value pairs are still
+    # redacted with a language-neutral structural label. They are never stored.
+    structural = not users or not passwords
+    user_pattern = _forms_pattern(users, structural_fallback=structural)
+    password_pattern = _forms_pattern(passwords, structural_fallback=structural)
+    connector_pattern = _forms_pattern(connectors)
     separator = rf"(?:\s*[,;/|]\s*|\s+{connector_pattern}\s+|\s+)"
     user_then_password = re.compile(
         rf"({user_pattern})\s*[:=]?\s*({_PAIR_VALUE})"
@@ -95,26 +187,31 @@ def _explicit_pair_separators(match: re.Match) -> bool:
         char in second for char in ":=")
 
 
-def _has_intake_prefix(text: str, match: re.Match) -> bool:
+def _has_intake_prefix(
+    text: str,
+    match: re.Match,
+    snapshot: CredentialLexiconSnapshot | None,
+) -> bool:
     """Admit only a closed intake prefix immediately before a whole pair."""
 
     prefix = text[:match.start()].strip(" \t\r\n:;,-")
     suffix = text[match.end():].strip()
     if not prefix or suffix:
         return False
-    try:
-        forms = tuple(_detlex.forms("credentials.intake_prefix"))
-    except Exception:
-        forms = ()
+    forms = snapshot.intake_prefixes if snapshot is not None else ()
     normalized = " ".join(prefix.casefold().split())
     return normalized in {
         " ".join(str(form).casefold().split())
-        for form in (forms or _INTAKE_PREFIX_FALLBACK)
+        for form in forms
     }
 
 
-def credential_pair_matches(text: str, *,
-                            for_storage: bool = False) -> tuple[re.Match, ...]:
+def _credential_pair_matches(
+    text: str,
+    *,
+    for_storage: bool,
+    snapshot: CredentialLexiconSnapshot | None,
+) -> tuple[re.Match, ...]:
     """Return structurally admitted pairs, never arbitrary prose fragments.
 
     Whitespace-only pairs are ambiguous in free prose. They are admitted for
@@ -126,11 +223,15 @@ def credential_pair_matches(text: str, *,
     stripped = str(text or "").strip()
     if not stripped:
         return ()
+    if for_storage and snapshot is None:
+        return ()
     offset = str(text).find(stripped)
     whole_span = (offset, offset + len(stripped))
     accepted: list[re.Match] = []
     seen: set[tuple[int, int]] = set()
-    for pattern in credential_pair_patterns(_detlex.current_lang()):
+    for pattern in credential_pair_patterns(
+        _detlex.current_lang(), snapshot=snapshot,
+    ):
         for match in pattern.finditer(str(text)):
             explicit = _explicit_pair_separators(match)
             whole = match.span() == whole_span
@@ -140,7 +241,9 @@ def credential_pair_matches(text: str, *,
             # then collected through a typed credential dialog if needed.
             admitted = (
                 explicit if for_storage else
-                explicit or whole or _has_intake_prefix(str(text), match)
+                explicit or whole or _has_intake_prefix(
+                    str(text), match, snapshot,
+                )
             )
             if not admitted:
                 continue
@@ -151,14 +254,46 @@ def credential_pair_matches(text: str, *,
     return tuple(accepted)
 
 
-@functools.lru_cache(maxsize=16)
+def credential_pair_matches(text: str, *,
+                            for_storage: bool = False) -> tuple[re.Match, ...]:
+    """Compatibility view of matches admitted by one family snapshot."""
+
+    snapshot = _credential_family_snapshot()
+    return _credential_pair_matches(
+        text, for_storage=for_storage, snapshot=snapshot,
+    )
+
+
+def credential_pairs_for_storage(text: str) -> tuple[CredentialPairEvidence, ...]:
+    """Admit and interpret pairs through one complete atomic family snapshot."""
+
+    snapshot = _credential_family_snapshot()
+    if snapshot is None:
+        return ()
+    matches = _credential_pair_matches(
+        text, for_storage=True, snapshot=snapshot,
+    )
+    password_labels = {
+        " ".join(value.casefold().split())
+        for value in snapshot.password_labels
+    }
+    return tuple(
+        CredentialPairEvidence(
+            match=match,
+            first_is_password=(
+                " ".join(match.group(1).casefold().split())
+                in password_labels
+            ),
+        )
+        for match in matches
+    )
+
+
 def _labelled_value_pattern(lang: str) -> re.Pattern:
     del lang  # The ContextVar-backed lexicon resolves the active locale.
-    try:
-        forms = tuple(_detlex.forms("credentials.redaction_label"))
-    except Exception:
-        forms = ()
-    labels = _forms_pattern(forms or _LABEL_FALLBACK)
+    snapshot = _credential_family_snapshot()
+    forms = snapshot.redaction_labels if snapshot is not None else ()
+    labels = _forms_pattern(forms, structural_fallback=not forms)
     # An explicit separator is mandatory for an isolated label. Whitespace is
     # accepted only by ``credential_pair_patterns`` where a second typed field
     # closes the grammar; this avoids redacting ordinary phrases such as
@@ -221,15 +356,15 @@ def contains_sensitive_input(text: str) -> bool:
 def is_password_label(label: str) -> bool:
     """Classify one admitted field label through the canonical lexicon.
 
-    The translated lexicon is authoritative when available.  The closed
-    protocol fallback keeps password-first pairs correctly oriented during
-    bootstrap or while the lexicon database is unavailable.
+    The manually reviewed native lexicon is authoritative. If it is not ready,
+    durable storage has already been denied and this classifier returns false.
     """
 
-    try:
-        labels = _detlex.mapping("credentials.field_label")
-    except Exception:
-        labels = {}
-    forms = tuple(labels.get("password") or _FIELD_FALLBACK["password"])
-    folded = str(label or "").casefold()
-    return any(str(form).casefold() in folded for form in forms if form)
+    snapshot = _credential_family_snapshot()
+    if snapshot is None:
+        return False
+    folded = " ".join(str(label or "").casefold().split())
+    return folded in {
+        " ".join(form.casefold().split())
+        for form in snapshot.password_labels
+    }

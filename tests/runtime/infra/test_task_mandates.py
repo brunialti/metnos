@@ -196,6 +196,23 @@ def test_query_can_narrow_credential_mandate_without_a_command_grammar():
     ) == credential_mandates.SITE_MODE_DEFAULT
 
 
+def test_credential_and_login_mandates_fail_closed_without_lexicon(monkeypatch):
+    import credential_mandates
+    import task_mandates
+
+    def unavailable(*_args, **_kwargs):
+        raise RuntimeError("detection store unavailable")
+
+    monkeypatch.setattr(task_mandates._detlex, "match", unavailable)
+    assert task_mandates._login_requested("accedi a example.com") is False
+
+    import detection_lexicon
+    monkeypatch.setattr(detection_lexicon, "match", unavailable)
+    assert credential_mandates.site_mode_for_query(
+        "open example.com",
+    ) == credential_mandates.SITE_MODE_NONE
+
+
 def test_new_site_credentials_choose_mandate_before_storage(tmp_path,
                                                             monkeypatch):
     import importlib.util

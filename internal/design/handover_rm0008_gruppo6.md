@@ -1525,3 +1525,344 @@ Un processo Unix nello stato zombie non puo' trattenere porta o lock: il
 rafforzamento generale del contratto del servizio riguarda processi residui
 vivi, `KillMode=control-group` e il diniego del restart loop sul codice stabile
 di istanza gia' attiva, non l'uccisione indiscriminata per nome o porta.
+
+## Stato B3 — autenticazione e riconciliazione fixed-root
+
+Il secondo incremento del preflight fixed-root e' implementato localmente ma
+non e' ancora committato. Consuma soltanto i byte della fotografia handle-bound
+gia' acquisita: autentica i tre registri e le coppie firmate di build, cutover
+e teste, verifica ancora e puntatore richiesto, ricostruisce la catena e
+riconcilia claim, journal V2 `000..006`, predecessore, journal V1 e disposizione
+legacy. Il tipo di ritorno resta privato, nominalmente distinto nella seam di
+prova e dichiaratamente non operativo: non attesta albero installato, systemd o
+il documento vivo richiamato dal record `PREFLIGHT_VERIFIED`.
+
+Una review causale intermedia ha trovato tre P1 di rifiuto e selezione: i
+prefissi anteriori a `BUILD_VERIFIED` richiedevano prematuramente la build
+archiviata; il predecessore immutabile veniva legato alla transazione corrente
+anziche' a quella iniziale; una testa futura gia' aggiunta ma non ancora
+richiesta veniva confusa con un rollback. Le correzioni seguono l'ordine
+normativo: il record `BUILD_VERIFIED` puo' precedere l'append della build, che
+diventa obbligatoria con la testa e il record `HEAD_REQUIRED`; il certificato
+pubblicato e' l'ancora fissa al bootstrap e l'oggetto archiviato negli update.
+Il predecessore e' legato alla release uno, il bundle amministrativo resta
+immutabile e il puntatore richiesto coincide con il prefisso di transazioni
+che ha raggiunto `HEAD_REQUIRED`.
+
+Il riesame finale ha poi reso espliciti due killpoint e il legame inverso. Il
+predecessore e' assente senza la transazione iniziale, opzionale al solo
+`PREPARED` e obbligatorio da `RECEIPTS_COMPLETE`; una CAS del puntatore gia'
+completata prima del record `HEAD_REQUIRED` e' ammessa soltanto se la
+transazione selezionata e' esattamente a `BUILD_VERIFIED`. Ogni build, cutover
+o testa successore nell'archivio deve inoltre avere il proprio claim e journal,
+con soglia minima rispettivamente 4, 2 e 4: oggetti firmati ma orfani non sono
+confusi con una ripresa valida.
+
+La prima release ammette inoltre la finestra non autorizzante fra pubblicazione
+dell'ancora e prima testa richiesta. Una fotografia con ancora e journal a
+sequenza 2, oppure con build, certificato e testa aggiunti a sequenza 4 ma senza
+puntatore, viene autenticata per consentire la ripresa; non viene mai trattata
+come catena operativa. Anche negli aggiornamenti il record `BUILD_VERIFIED`
+puo' precedere l'append di build e testa.
+
+Le prove mirate coprono stato vuoto, claim pendente, `PREPARED`,
+`RECEIPTS_COMPLETE`, release uno a sequenza 5 e 6, release due durante il
+recupero a sequenza 4 e completata a 5 e 6, disposizione legacy, firme
+alterate, rollback del puntatore, mismatch claim/transazione e predecessore e
+legami fra predecessori e associazioni journal/artefatti. Le firme mutate
+aggiornano coerentemente copie fisse, frame e digest del journal, così il
+diniego dipende dalla sola verifica crittografica. Il sottoinsieme nuovo
+termina con `31 passed`; la
+suite autonoma completa senza il pin source-review intermedio termina con
+`169 passed, 1 deselected`. I test confinanti WinGet/piping terminano con
+`68 passed, 8 subtests passed`; compilazione e `git diff --check` sono verdi.
+Le due review avversariali indipendenti sul diff congelato concludono entrambe
+`P0=0`, `P1=0`, `P2=0`. L'incremento e' approvato localmente. Non vanno ancora
+aggiornati pin, firme, store vivo, commit o pubblico: il prossimo passo unico
+e' collegare catalogo, descrittore, prerequisito, TCB e configurazione systemd
+alla fotografia autenticata, mantenendo il risultato non operativo fino ai
+successivi `check`, `check-all` e `launch`.
+
+## Congelamento successivo — digest del prerequisito e sottotagli B3
+
+Il contratto di `startup_prerequisite_digest` e' ora esplicito e congelato. E'
+il SHA-256 grezzo dei byte canonici completi del prerequisito pubblicato,
+espresso come `sha256:` seguito da sessantaquattro cifre esadecimali minuscole.
+Non usa un dominio, non omette `prerequisite_id` e non ricanonicalizza un
+oggetto decodificato:
+
+```text
+"sha256:" || hex_lower(SHA256(startup_prerequisite_canonical_bytes))
+```
+
+La causa della precisazione e' la presenza di due legami distinti.
+`prerequisite_id` identifica semanticamente il documento mediante il dominio e
+la regola gia' definiti dal codec; il digest nel journal lega invece i byte
+completi realmente pubblicati e riletti. Confondere i due calcoli avrebbe
+permesso a produttore e verificatore di concordare sull'identificativo ma
+divergere sul framing o sui byte attestati.
+
+Il prossimo sottotaglio non comprende piu' insieme tutte le osservazioni vive.
+E' un incremento puro, autonomo e non autorizzante: implementa nel preflight
+stdlib-only i cloni chiusi dei codec di catalogo, descrittore di deployment e
+prerequisito, ne prova la parita' con i produttori canonici e deriva dai soli
+byte firmati il grafo candidato con tutti i legami di copertura, artefatto,
+frammento e radice. Non riceve path, byte o oggetti di autorita' dal chiamante;
+non esegue subprocess, non pubblica il prerequisito e lascia `check`,
+`check-all` e `launch` nel diniego compilato.
+
+La misura degli eseguibili e della TCB OpenSSL costituisce il sottotaglio
+immediatamente successivo e separato. La fotografia systemd effettiva,
+compresi blocchi, doppia osservazione e killpoint del prerequisito, costituisce
+un terzo sottotaglio separato. Questa scomposizione isola le cause di errore
+senza eliminare controlli: provenienza e grafo dei byte devono convergere prima
+dei subprocess; TCB deve convergere prima dell'autorita' del manager; soltanto
+la successiva attestazione viva potra' sostituire il diniego operativo.
+
+## Punto fermo B3 — materiali firmati e grafo candidato
+
+Il sottotaglio puro e non autorizzante e' concluso localmente. Il preflight
+autonomo decodifica catalogo dei servizi, descrittore di deployment e
+prerequisito senza importare moduli Metnos. Lega i documenti a manifesto,
+transazione, predecessore e byte catturati; verifica copertura, ruolo, tipo,
+dimensione e hash di ogni artefatto, compreso il programma amministrativo;
+rilegge indipendentemente i frammenti systemd e deriva il grafo candidato con
+gli undici link V1 esatti. Ogni target interno alla release lega inoltre
+dimensione dichiarata, byte catturati, hash del manifesto e hash path-aware del
+catalogo.
+
+La topologia non puo' essere sostituita da un catalogo semanticamente ribasato.
+Il clone calcola un fingerprint strutturale dell'intera ricetta V1. Soltanto i
+valori dinamici gia' legati al descrittore sono proiettati su marcatori JSON
+tipati, non rappresentabili nei campi testuali dello schema; descrizioni,
+restart, comandi, argomenti, ambienti, entry e legacy binding restano quindi
+congelati. `User`, `Group`, `SupplementaryGroups` e il Python amministrativo
+coincidono col descrittore. `service_home` uguale o interno alla radice
+immutabile della release e' intenzionalmente invalido. Nel bootstrap i campi
+catalogo del predecessore coincidono col catalogo della release uno; negli
+aggiornamenti il predecessore resta invece quello iniziale e non viene
+erroneamente confrontato col catalogo corrente.
+
+I riesami intermedi hanno trovato e chiuso: mancata acquisizione dei byte del
+preflight, assenza della source identity, account non riconciliati, legame
+temporale incompleto del predecessore, collisione dei primi marker testuali e
+dimensione dichiarata del target interno non confrontata coi byte. I mutanti
+ricalcolano coerentemente tutti i digest a valle, così il diniego prova il
+vincolo specifico e non un hash lasciato obsoleto.
+
+Evidenza congelata: `27 passed` nel nuovo file dei materiali; `86 passed` per
+materiali, codec confinanti e catalogo; `169 passed, 1 deselected` nella suite
+autonoma completa. Il solo test deselezionato e' il pin source-review finale,
+che resta intenzionalmente rinviato al candidato operativo completo. Import
+isolato con `python -I -S`, compilazione e `git diff --check` sono verdi. Due
+review avversariali indipendenti sul runtime finale concludono entrambe
+`P0=0`, `P1=0`, `P2=0`.
+
+Non sono stati aggiornati pin, firme, store vivo, commit o repository pubblico.
+Il prossimo passo unico e' il sottotaglio vivo ma ancora non autorizzante che
+misura i quattro eseguibili amministrativi e la TCB OpenSSL. Solo dopo la sua
+approvazione si passa alla fotografia systemd effettiva.
+
+### Analisi causale del sottotaglio TCB
+
+La misura non verra' aggiunta dopo l'autenticazione. L'ordine congelato e':
+guardia Linux e architettura locale; misura non autoritativa dei quattro nomi
+fissi e della TCB OpenSSL; autenticazione della fotografia con lo stesso
+OpenSSL canonico; rivalidazione della misura; confronto con descrittore,
+catalogo e prerequisito autenticati. Il vecchio percorso che risolvesse un
+nuovo OpenSSL indipendente non potra' produrre il tipo consumato dai passi
+successivi.
+
+La TCB comprende ELF64 e `PT_INTERP`, chiusura del loader, directory moduli e
+ogni file regolare che contiene. Catene, file, antenati e ACL vengono osservati
+prima e dopo i subprocess chiusi; alias usr-merged sono deduplicati soltanto
+dopo la risoluzione canonica. I target esterni del catalogo, inclusi Python,
+systemctl e gli eseguibili nativi, vengono misurati nello stesso sottotaglio.
+Non si usano `PATH`, `ldd`, `readelf`, shell, ambiente ereditato o callback
+forniti al wrapper produttivo.
+
+## Punto fermo B3 — eseguibili amministrativi e TCB OpenSSL
+
+Il secondo sottotaglio B3 e' implementato localmente e resta non operativo.
+Il percorso produttivo misura prima dell'autenticazione i nomi fissi Python,
+OpenSSL, systemctl e systemd-analyze, usa esattamente l'OpenSSL canonico
+misurato per autenticare la fotografia ownership e rivalida poi l'intera
+misura. I quattro hash path-aware vengono confrontati col prerequisito e i
+quattro percorsi finali col descrittore. Tutti i target del catalogo esterni
+alla release, compresi Java e Xvfb, sono letti con la stessa disciplina e
+confrontati con il rispettivo hash firmato.
+
+La TCB OpenSSL viene derivata senza `PATH` o strumenti ausiliari. Il parser
+stdlib legge l'unico `PT_INTERP` da un ELF64 dell'architettura firmata; il
+loader canonico viene eseguito due volte con `--list` e la chiusura deve
+coincidere. `openssl version -m` individua l'unica directory dei moduli, il cui
+inventario completo viene acquisito e riletto. File, antenati, link, ACL,
+identita', metadati e contenuto sono controllati prima e dopo i subprocess;
+link usr-merged e hard link leciti di librerie o moduli non sono confusi con
+file sostituibili. Il documento canonico registra OpenSSL, loader, librerie e
+moduli con dominio distinto per ciascun file e per la TCB complessiva.
+
+Il riesame causale ha trovato e chiuso due confini di autorita'. Il primo
+binder produttivo accettava i materiali core senza provare che appartenessero
+alla stessa fotografia autenticata. Ora riceve obbligatoriamente la capability
+`_AuthenticatedFixedOwnershipSnapshotV1`, usa soltanto la TCB contenuta in
+essa e seleziona la testa richiesta, l'unica build, l'ultimo record stabile
+della relativa transazione e il predecessore della stessa fotografia. Inoltre
+l'uscita produttiva e quella di prova hanno wrapper nominali distinti; il core
+nudo non e' un risultato accettabile dal prossimo sottotaglio systemd.
+
+La matrice minima contiene 44 casi e copre framing indipendente, ELF x86_64 e
+aarch64, grammatica loader e `MODULESDIR`, policy dei subprocess, raccolta
+sintetica completa, alias, limiti dei moduli, quattro killpoint TOCTOU, tutti i
+cinque hash firmati, selezione ownership e uno smoke OpenSSL reale. L'evidenza
+corrente e' `44 passed` nel file TCB, `130 passed` nel perimetro
+TCB/materiali/codec/catalogo e `240 passed, 1 deselected` nella suite preflight
+autonoma; il solo deselezionato e' ancora il pin source-review finale.
+Esecuzione isolata del programma con `python -I -S`, compilazione e
+`git diff --check` sono verdi. Pin, firme, store vivo, commit e pubblico non
+sono stati modificati. Due review avversariali indipendenti sul candidato
+finale concludono entrambe `P0=0`, `P1=0`, `P2=0`. Il prossimo passo unico e'
+la fotografia systemd viva, ancora non autorizzante, sotto i blocchi e i
+killpoint gia' congelati.
+
+## Avvio del sottotaglio systemd — confini congelati
+
+Il riesame preliminare ha separato la parte pura dalla raccolta viva. Il primo
+incremento compila il piano chiuso delle proprieta', normalizza la proiezione
+del gestore e definisce documento e hash senza subprocess o accesso al bus. Il
+secondo aggiungera' runner, frammenti, link, origini e due osservazioni complete
+A/B. Il dispatch resta nel diniego per entrambi.
+
+`configured_directives_hash` non viene dedotto implicitamente dal frammento:
+usa il dominio `metnos.executor-birth.systemd-configured-directives/v1\0` sul
+JSON canonico con esattamente `schema_version=1` e la lista `directives` di
+oggetti `section,name,value_type,values` nell'ordine prodotto dal parser
+indipendente. Nella `manager_projection`, invece, `name` e' il nome della
+direttiva firmata. Coppie o proprieta' interne del gestore vengono consumate
+come prova ma non duplicate nel documento: `Exec*`/`Exec*Ex`, i due
+`LimitNOFILE`, le proprieta' `*USec` e le basi timer convergono ciascuna nella
+sola direttiva V1 corrispondente.
+
+La raccolta viva seguira' la sequenza esatta: cattura handle-bound del
+prerequisito fisso `P0`; fotografia completa `S0`; killpoint presente soltanto
+nella seam; rilettura `P1`; nuova fotografia completa `S1`; rilettura finale
+`P2`. Sono richiesti `P0=P1=P2` per identita' e byte e `S0=S1` per documento e
+catture. Seguono rivalidazione della TCB, di ogni file/link/origine e rilettura
+della sola epoca ownership selezionata. Un claim successore non autorevole non
+viene confuso con una deriva della testa richiesta.
+
+Resta intenzionalmente vietato creare ora un wrapper produttivo autorizzante
+per `check-all`: il processo nuovo deve provare il gate startup esclusivo gia'
+detenuto dal coordinatore e la manutenzione viva, ma il protocollo
+interprocesso non e' ancora definito byte-per-byte. Non verranno introdotti
+booleani `lock_held`, FD o path da CLI, runner iniettati o NamedTuple trattati
+come permessi. Finche' tale protocollo non e' congelato, il sottotaglio produce
+soltanto osservazioni core e una seam nominale di prova.
+
+## Checkpoint laterale RM-0005 prima della ripresa G6-B3
+
+La regressione multilingue emersa durante G6 e' trattata come un gate
+separato: RM-0008 non avanza finche' RM-0005 non torna realmente chiusa. Il
+censimento ora percorre tutto `runtime/` e rileva, nei confini auditati, anche
+regex inline, membership su collezioni letterali, generatori e tabelle locali
+con nomi neutri. Le eccezioni tecniche sono legate a valori esatti e motivate;
+il census diretto e i suoi 26 test sono verdi.
+
+I consumer residui usano famiglie native versionate con semantica fail-closed
+per lingua mancante o pending. I confini sensibili comprendono sicurezza e
+onesta' del runtime, dialog cancellation, skill e amministrazione,
+routing/store, riconciliazione documentale atomica, parser, resolver, provider
+geografici, proposal evaluator e deep crawl. La pubblicazione linguistica M3
+resta dormiente; preflight e rilettura della generazione restano attivi,
+mentre la riconciliazione del registro appartiene soltanto al callback
+produttivo M4.
+
+Evidenza corrente: suite `tests/runtime/i18n/` pari a `533 passed, 1.162
+subtests passed`; consumer collegati non dipendenti dalle firme pari a `178
+passed`, `212 passed`, `1 passed` e motore deep-crawl pari a `65 passed, 4
+subtests passed`. Compilazione e `git diff --check` sono verdi. L'unico rosso
+rimasto e' causato dalle firme builtin intenzionalmente obsolete dopo il
+congelamento dei sorgenti. Non sono ancora stati eseguiti firma, commit,
+pubblicazione o prova live. Il seguito obbligatorio e': review avversariale
+finale senza rilievi; rigenerazione e firma esplicitamente autorizzata dei 21
+contratti builtin; test del catalogo firmato; closeout RM-0005; commit e
+pubblicazione incrementale su `main`; GitHub Actions e smoke live a errore
+zero. Solo allora RM-0008 riprende dalla fotografia systemd effettiva di
+G6-B3.
+
+### Aggiornamento del gate laterale RM-0005 — secondo giro avversariale
+
+La suite i18n successiva e' verde (`539 passed, 1.162 subtests passed`), ma la
+review incrociata ha invalidato il closeout prima della firma. Le molte
+riproduzioni convergono su tre cause: census aggirabile da contenitori neutri,
+monolingui o strutturalmente diversi; superficie `system/admin.py` non ancora
+interamente i18n e non congelata ready-only prima delle opzioni di consenso;
+audit documentale collocato dopo ritorni compact/map-reduce e privo di esito
+di errore tipizzato al top-level.
+
+Sono in corso tre correzioni disgiunte, ognuna accompagnata dai mutanti gia'
+riprodotti. Non sono stati anticipati firma, store vivo, commit o pubblico.
+Il rientro in G6-B3 resta invariato: matrice minima verde, review incrociata
+`P0=0, P1=0, P2=0`, firma e catalogo builtin verdi, commit/pubblicazione su
+`main`, GitHub Actions e smoke live senza errori.
+
+Un terzo riesame ha trovato due P0 nel confine amministrativo: wrapper/path o
+device potevano produrre una canonicalizzazione diversa fra i controlli, e il
+token di consenso non era legato all'argv esatto one-shot. Sono quindi in corso
+tre hardening finali: closure argv unica fino al fire; census con dataflow dei
+literal e cardinalita' delle eccezioni; audit con identita' path, alias
+order-independent e catalogo template whole-language. Finche' questi gate e la
+nuova review non sono verdi, RM-0005 resta `reopened` e G6-B3 non avanza.
+
+### Punto fermo RM-0005 — codice convergente, firma bloccata dal setup Birth
+
+Il candidato finale e' verde sul perimetro non dipendente dalle firme:
+`590 passed, 1.162 subtests passed` nella suite i18n; `82 passed`, zero rilievi
+diretti e compilazione verde nel census; due review mirate con `P0=0`, `P1=0`,
+`P2=0`. La matrice amministrazione/audit prima della firma conclude con
+`288 passed` e undici errori tutti causati dall'esclusione dei builtin con
+firma intenzionalmente obsoleta.
+
+Il comando Birth autorizzato non ha pubblicato nulla: si e' fermato con
+`birth_provisioning_io_unavailable` perche' manca
+`$METNOS_USER_CONFIG/birth`. La modalita' live e' gia' `STORE_ONLY`, quindi la
+firma precedente e' correttamente negata e non va aggirata. La radice puo'
+essere predisposta soltanto dopo l'installazione dei registri pubblici
+indipendenti di approvazione e revisione semantica. Le relative private devono
+restare fuori dal processo Metnos e non possono essere inventate o scartate per
+completare una prova.
+
+Il prossimo passo unico e' una decisione dell'operatore sulla custodia delle
+due chiavi private e l'installazione dei relativi registri pubblici. Seguono,
+in ordine: predisposizione Birth; firma dei 21 builtin; ripetizione della
+matrice amministrazione/audit; closeout RM-0005; commit e pubblicazione su
+`main`; CI e smoke live. Soltanto dopo riprende G6-B3. Nessuna autorita', firma,
+generazione, commit o pubblicazione e' stata creata durante questo tentativo.
+
+## Aggiornamento di handover — prerequisito RM-0005 risolto
+
+Il blocco descritto sopra non è più attuale. Le chiavi private delle due
+autorità operative sono custodite esclusivamente su `pc-roberto`; il server
+contiene i soli registri pubblici. Dopo una correzione generale del
+pubblicatore e dell'applicabilità delle proprietà, la radice Birth è stata
+ricostruita in modo recuperabile. La radice precedente è conservata in
+`~/.config/metnos/birth.pre-property-fix-20260830`; quella corrente carica
+l'insieme
+`e79b9b5c0f1c0a44f072eaaf1905ee90040d18430184d76be6a151d42b4802c6`
+con epoca
+`sha256:d8845d364a8c346c450b7e0101cb0daba5c308299d7a1eee0937e61ab83e6571`.
+
+La pubblicazione riprendibile ha prodotto sei nuove generazioni e ha
+riconosciuto quindici generazioni già identiche. I 21 contratti incorporati
+sono firmati e validi. Le prove conclusive registrate prima del commit sono:
+
+- censimento statico: `82 passed` ed esecuzione diretta senza rilievi;
+- matrice firmata: `302 passed, 1.162 subtests passed`;
+- verificatore, commit e insieme preparato: `51 passed, 1 skipped`, con il
+  solo salto dichiarato non applicabile alla piattaforma;
+- caricamento sigillato dell'insieme preparato: riuscito e coerente.
+
+Se occorre un nuovo handover, non bisogna ripetere la firma né ricostruire la
+radice. Il solo ordine residuo è: verificare commit e certificazione pubblica,
+registrare la chiusura formale di RM-0005 e riprendere G6-B3 dalla fotografia
+systemd viva. RM-0008 resta `active`.

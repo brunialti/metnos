@@ -392,6 +392,133 @@ tutti gli otto job Linux e Windows. Il requisito di pubblicazione e prova live
 del difetto shell/ping è quindi soddisfatto; resta aperto esclusivamente il
 censimento lessicale descritto sopra.
 
+### 6.3 Consolidamento lessicale finale in corso
+
+Il censimento residuo non e' stato trattato come una lista di eccezioni per i
+casi osservati. Il nuovo gate percorre tutto `runtime/` e, nei confini
+auditati, riconosce anche regex inline, confronti con collezioni letterali,
+generatori e tabelle locali con nomi neutri. Le eccezioni sopravvissute sono
+tipizzate, motivate e legate a valori tecnici esatti; una nuova tabella
+linguistica o un waiver obsoleto rende il gate rosso.
+
+Le superfici naturali residue sono state trasferite a famiglie versionate del
+detection lexicon. Le decisioni che possono autorizzare, mutare, sostenere una
+dichiarazione di successo o aprire un percorso costoso richiedono risorse
+native pronte e, dove previsto, revisionate manualmente. Lingua mancante,
+materializzazione pending, mapping parziale, collisione o indisponibilita'
+producono un diniego oppure un esito non positivo. Extract/describe congelano
+una sola fotografia completa della famiglia di riconciliazione; la
+pubblicazione M3 resta dormiente e la riconciliazione del registro appartiene
+al solo callback produttivo M4.
+
+L'evidenza del primo candidato (`533 test`, `1.162 subtest`) e' stata superata
+da un secondo giro avversariale. Dopo le prime tre correzioni, la suite i18n
+completa ha concluso con `539 passed, 1.162 subtests passed`; census mirato,
+amministrazione e audit risultavano rispettivamente `31`, `17` e `7` test
+verdi. La review incrociata ha tuttavia dimostrato che quei test non chiudevano
+tre cause architetturali: il census classificava la lingua per esempi e non per
+confine; `system/admin.py` localizzava soltanto una parte della superficie e
+non congelava una famiglia ready-only prima di offrire opzioni autorizzative;
+l'audit documentale era applicato dopo alcuni ritorni anticipati e non
+propagava un errore tipizzato al contratto esterno.
+
+Il nuovo punto fermo richiede quindi, prima di qualunque firma: census
+discovery-wide con eccezioni legate a owner, shape e digest; fotografia i18n
+amministrativa completa, atomica e fail-closed; fase audit unica sulle entries
+originali, indipendente dal percorso di rendering e con risultato tipizzato.
+Solo una successiva review incrociata `P0=0, P1=0, P2=0` autorizza il gate
+successivo. Restano poi obbligatori: rigenerazione e firma autorizzata dei 21
+contratti builtin; test del catalogo firmato; pubblicazione incrementale su
+`main`; GitHub Actions e smoke produttivo a errore zero.
+
+Il successivo riesame incrociato ha inoltre bloccato il candidato su due P0
+amministrativi: la canonicalizzazione non chiudeva tutte le forme di wrapper e
+gli alias di path/device distruttivi; il consenso era legato alla firma larga
+della classe di comando e non all'argv esatto one-shot. Il closeout richiede
+ora una sola closure argv condivisa da firma, Law 1, carta, consenso e fire,
+con rivalidazione fail-closed. Il medesimo riesame ha richiesto che census e
+audit seguano anche dataflow dei literal, identita' path, alias concorrenti e
+cataloghi template completi. Questi rilievi sono in correzione; firme, commit e
+pubblicazione restano intenzionalmente sospesi.
+
+### 6.4 Punto fermo finale e prerequisito della firma
+
+Il candidato successivo chiude i rilievi del terzo riesame. La suite i18n
+completa termina con `590 passed, 1.162 subtests passed`; il census statico
+termina con `82 passed`, esecuzione diretta senza rilievi e compilazione verde.
+Le due revisioni mirate finali concludono `P0=0`, `P1=0`, `P2=0`. Le fixture
+usano nomi neutrali (`unlisted` e `register_preview`) senza modificare la
+copertura del caso negativo.
+
+La matrice amministrazione/audit, eseguita prima della firma, termina con
+`288 passed` e `11 failed`. Tutti gli undici errori hanno la medesima causa
+attesa: i contratti builtin modificati hanno firme obsolete e vengono esclusi
+dal catalogo; nessun errore proviene dalla logica amministrativa o di audit.
+
+La firma autorizzata dei 21 contratti si e' arrestata prima di qualsiasi
+pubblicazione con `birth_provisioning_io_unavailable`. L'installazione e' gia'
+in modalita' `STORE_ONLY`, ma non contiene la radice fissa
+`$METNOS_USER_CONFIG/birth`; anche la firma precedente e' correttamente
+rifiutata in questa modalita'. La causa e' quindi un prerequisito di
+installazione, non un difetto da aggirare: mancano i registri pubblici
+indipendenti di approvazione e revisione semantica che l'operatore deve
+installare prima della predisposizione Birth. Il progetto vieta di inventare
+queste autorita' o di generarne e scartarne le chiavi private soltanto per far
+passare il gate.
+
+RM-0005 resta `reopened` fino a quando l'operatore avra' scelto e custodito le
+due chiavi private fuori dal processo Metnos, installato i soli registri
+pubblici e predisposto la radice Birth. A quel punto restano soltanto firma dei
+21 contratti, ripetizione della matrice, commit e pubblicazione su `main`, CI e
+smoke live a errore zero.
+
+### 6.5 Convergenza operativa del candidato finale
+
+Il prerequisito descritto nel paragrafo precedente è stato soddisfatto senza
+trasferire chiavi private al server. Le due autorità operative indipendenti
+sono custodite su `pc-roberto`; nella radice Birth sono presenti soltanto i
+registri pubblici. Le impronte SHA-256 delle chiavi pubbliche sono
+`a890906579e8d127b6237a1d9c996d9cc0369587c6d7d2d60bf8a72ea54b2635`
+per l'approvazione e
+`202352175b04b572175149d0b3ac0e64e2c566ca21964d0655d3c23692d79469`
+per la revisione semantica.
+
+La pubblicazione ha fatto emergere tre difetti generali, corretti alla causa.
+Il pubblicatore non consegnava al commit il riconciliatore del registro
+produttivo; il verificatore delle proprietà attribuiva semantica di collezione
+a ogni contratto che possedeva un campo chiamato `limit`; infine, la
+correzione del verificatore rendeva correttamente obsoleto l'insieme Birth già
+preparato. Il pubblicatore ora possiede esplicitamente il riconciliatore, la
+proprietà di limite si applica soltanto a un'uscita di collezione dichiarata e
+l'insieme è stato ricostruito da zero conservando quello precedente in
+`~/.config/metnos/birth.pre-property-fix-20260830`. Il nuovo insieme ha
+identificatore
+`e79b9b5c0f1c0a44f072eaaf1905ee90040d18430184d76be6a151d42b4802c6`
+ed epoca di contesto
+`sha256:d8845d364a8c346c450b7e0101cb0daba5c308299d7a1eee0937e61ab83e6571`.
+Il caricamento sigillato ricostruisce ancora oggi lo stesso contesto.
+
+Il generatore è ora riprendibile: confronta manifest e stato linguistico con
+la generazione corrente autenticata, salta soltanto i contratti già identici e
+pubblica gli altri attraverso Birth. L'esecuzione conclusiva ha pubblicato sei
+generazioni e riconosciuto quindici generazioni già correnti. Tutti i 21
+contratti incorporati possiedono una firma valida.
+
+Le prove finali sono tutte verdi: il censimento termina con `82 passed` e con
+esecuzione diretta priva di rilievi; la matrice firmata termina con
+`302 passed, 1.162 subtests passed`; le prove mirate del verificatore, del
+commit e dell'insieme preparato terminano con `51 passed, 1 skipped`, dove il
+caso saltato è dichiarato non applicabile alla piattaforma. Rimane valida
+anche la precedente esecuzione completa della suite i18n, pari a
+`590 passed, 1.162 subtests passed`, perché le modifiche successive riguardano
+soltanto il protocollo Birth e le associazioni statiche puntuali del
+censimento.
+
+Il candidato locale non ha più errori né prerequisiti tecnici aperti. Lo stato
+passa a `closed` dopo il commit su `main` e la verifica della relativa
+certificazione pubblica; l'esito e gli identificatori saranno registrati qui
+senza riaprire l'implementazione già convergente.
+
 ## 7. Rischi e misure
 
 | Rischio | Misura |

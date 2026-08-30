@@ -29,8 +29,10 @@ from __future__ import annotations
 
 import re
 
+import detection_lexicon as _detlex
+import detection_lexicon_seed_resolvers as _resolver_seed
+
 _EMAIL_VIA = ("email", "mail")
-_EMAIL_QUERY = re.compile(r"e-?mail|\bmail\b|posta\s+elettronica", re.I)
 _PLACEHOLDER = re.compile(r"\$\{[^}]*\}")  # ${FILLER:..}, ${RUNTIME:..}, ${stepN..}
 
 
@@ -61,7 +63,9 @@ def resolve_self_recipient(tool: str, args: dict, query: str) -> dict:
         return args
     q = query or ""
     via = str(args.get("via_channel") or "").strip().lower()
-    if not (via in _EMAIL_VIA or _EMAIL_QUERY.search(q)):
+    _resolver_seed.ensure_registered()
+    if not (via in _EMAIL_VIA
+            or _detlex.match("resolver.email_channel_request", q)):
         return args  # chat/auto senza parola-email → path "mandami=chat" (ea1ba7e)
     try:
         from compound_decomposer import _send_has_explicit_recipient

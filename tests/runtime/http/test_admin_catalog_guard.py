@@ -224,7 +224,7 @@ class TestShellIntentWordBoundary:
                 )
                 dl.set_payload(
                     concept, "fr", fr, kind="phrases", match_mode="word",
-                    source_lang="fr",
+                    source_lang="en",
                 )
             dl.register(
                 "admin.shell_intent", "phrases", match_mode="word",
@@ -232,7 +232,7 @@ class TestShellIntentWordBoundary:
             )
             dl.set_payload(
                 "admin.shell_intent", "fr", ["redémarre"],
-                kind="phrases", match_mode="word", source_lang="fr",
+                kind="phrases", match_mode="word", source_lang="en",
             )
             assert prefilter._detect_shell_intent(
                 "redémarre le service metnos") is True
@@ -532,7 +532,7 @@ class TestPlaceholderGuard:
 
     def test_helper_strips_path_to_basename_for_catalog_match(self):
         """Path che basename'a in nome executor del catalog → guard scatta.
-        Defesa contro tentativi di bypass tipo "/usr/bin/get_now"."""
+        I path relativi eseguibili vengono negati prima, al confine argv."""
         from system.admin import _executor_name_in_argv
         assert _executor_name_in_argv(["/usr/bin/get_now"]) == "get_now"
-        assert _executor_name_in_argv(["./get_now"]) == "get_now"
+        assert _executor_name_in_argv(["./get_now"]) is None

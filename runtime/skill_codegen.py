@@ -28,6 +28,9 @@ from pathlib import Path
 from typing import Optional, Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+import detection_lexicon as _detlex
+import detection_lexicon_seed_codegen as _codegen_seed
+import i18n as _i18n
 from generated_executor_contract import (
     generated_contract_context,
     validate_generated_manifest_text,
@@ -79,102 +82,17 @@ def _tojson(value: Any) -> str:
 # token-based (case-insensitive, ma non lemmatize). Aggiungere singolare quando
 # il termine plurale non lo deriva ovviamente (eventi/evento ok dal token match
 # parziale? No: prefilter fa exact substring match sulla parola).
-_AFFINITY_BY_OBJ = {
-    # Coverage di vocab.OBJECTS §2.2. Bug F4 mitigato:
-    # ogni object ha entry, cosi' il cartesian (verb × obj) produce
-    # affinity qualified anche per oggetti rari.
-    "events":      ["appuntamento", "appuntamenti", "agenda", "evento",
-                    "eventi", "calendario", "calendar", "riunione",
-                    "riunioni", "meeting", "scadenza", "deadline",
-                    "promemoria", "events", "schedule"],
-    "messages":    ["mail", "email", "messaggio", "messaggi", "posta",
-                    "newsletter", "messages", "emails", "inbox", "lettera"],
-    "files":       ["file", "documento", "documenti", "documents",
-                    "files", "spreadsheet", "doc", "docs"],
-    "dirs":        ["cartella", "cartelle", "directory", "folder",
-                    "folders", "dirs"],
-    "contacts":    ["contatto", "contatti", "rubrica", "contact",
-                    "contacts", "address", "persona"],
-    "credentials": ["credenziale", "credenziali", "chiave", "token",
-                    "credentials", "keys", "password"],
-    "approval":    ["approvazione", "approvazioni", "consenso", "conferma",
-                    "approval", "approvals", "consent", "confirmation"],
-    "processes":   ["processo", "processi", "process", "processes",
-                    "task", "pid"],
-    "urls":        ["url", "urls", "link", "links", "sito", "siti",
-                    "homepage", "pagina", "pagine"],
-    "texts":       ["testo", "testi", "text", "texts", "contenuto",
-                    "stringa"],
-    "images":      ["immagine", "immagini", "image", "images", "foto",
-                    "photo", "photos", "picture"],
-    "persons":     ["persona", "persone", "person", "people"],
-    "places":      ["luogo", "luoghi", "place", "places", "posto",
-                    "location"],
-    "numbers":     ["numero", "numeri", "number", "numbers", "telefono"],
-    "tasks":       ["task", "tasks", "promemoria", "scheduler"],
-    "skills":      ["skill", "skills", "capability", "modulo"],
-    "calendars":   ["calendario", "calendari", "calendar", "calendars",
-                    "agenda"],
-    "inputs":      ["input", "inputs", "valore", "valori"],
-    "proposals":   ["proposta", "proposte", "proposal", "proposals"],
-    "signatures":  ["firma", "firme", "signature", "signatures"],
-    "packages":    ["pacchetto", "pacchetti", "package", "packages"],
-    "entries":     ["voce", "voci", "entry", "entries", "elemento",
-                    "elementi"],
-    "lists":       ["liste", "lists", "due liste", "two lists",
-                    "insiemi", "sets"],
-    "sites":       ["sito", "siti", "site", "sites", "website",
-                    "websites", "sessione web", "web session"],
-    # OBJECTS estesi a 21 per GitHub (ADR 0141): issues/pulls. Senza queste
-    # entry l'affinity cadeva sul fallback verb-only (['cerca','find',...]),
-    # IDENTICA fra find_issues_github e find_pulls_github → il proposer non
-    # disambiguava issue vs pull (bug 2/6/2026). Termini object-specifici.
-    "issues":      ["issue", "issues", "segnalazione", "segnalazioni",
-                    "bug", "ticket", "problema", "problemi"],
-    "pulls":       ["pull request", "pull requests", "pr", "merge",
-                    "richiesta di merge", "patch", "contributo"],
-    "preferences": ["preferenza", "preferenze", "preference", "preferences",
-                    "impostazione", "impostazioni", "setting", "settings"],
-}
+def _affinity_maps() -> tuple[dict, dict]:
+    _codegen_seed.ensure_registered()
+    return (
+        _detlex.mapping("codegen.affinity.object"),
+        _detlex.mapping("codegen.affinity.action"),
+    )
 
 
-_AFFINITY_BY_VERB = {
-    # Coverage completa di vocab.ACTIONS. Una chiave per
-    # ogni verb mutating/non-mutating: il bug F4 (bare nouns nell'affinity)
-    # nasceva quando il verb non era in tabella e il cartesian fallback
-    # ritornava solo i nomi degli object.
-    "read":     ["leggi", "read", "view", "open"],
-    "write":    ["scrivi", "write", "upload"],
-    "find":     ["cerca", "find", "search"],
-    "list":     ["elenca", "list", "enumera"],
-    "get":      ["ottieni", "get"],
-    "set":      ["imposta", "set", "update"],
-    "create":   ["crea", "create", "new", "nuovo"],
-    "delete":   ["cancella", "elimina", "delete", "remove"],
-    "move":     ["sposta", "move"],
-    "send":     ["invia", "manda", "send"],
-    "share":    ["condividi", "share"],
-    "change":   ["modifica", "update", "change"],
-    "filter":   ["filtra", "filter"],
-    "sort":     ["ordina", "sort"],
-    "group":    ["raggruppa", "group"],
-    "classify": ["classifica", "classify"],
-    "describe": ["descrivi", "describe"],
-    "render":   ["mostra", "render"],
-    "extract":  ["estrai", "extract"],
-    "compress": ["comprimi", "compress"],
-    "compute":  ["calcola", "compute"],
-    "compare":  ["confronta", "compare"],
-    "order":    ["ordina", "order"],
-    "open":     ["apri", "open", "avvia sessione", "start session"],
-    "login":    ["accedi", "autentica", "login", "sign in", "authenticate"],
-    "act":      ["agisci", "interagisci", "esegui azione", "act",
-                 "interact", "perform action"],
-    "install":  ["installa", "disinstalla", "metti su", "install",
-                 "uninstall", "set up"],
-    "run":      ["avvia programma", "lancia programma", "run program",
-                 "start program", "launch program"],
-}
+# Compatibilita' per gli ispettori esistenti; il generatore rilegge il
+# catalogo a ogni chiamata per vedere una lingua appena materializzata.
+_AFFINITY_BY_OBJ, _AFFINITY_BY_VERB = _affinity_maps()
 
 
 def _default_affinity(plan) -> list:
@@ -188,8 +106,9 @@ def _default_affinity(plan) -> list:
 
     Cap 15. Fallback se uno dei due set e' vuoto: concat (back-compat).
     """
-    objs = list(_AFFINITY_BY_OBJ.get(plan.obj, []))
-    verbs = list(_AFFINITY_BY_VERB.get(plan.verb, []))
+    affinity_by_obj, affinity_by_verb = _affinity_maps()
+    objs = list(affinity_by_obj.get(plan.obj, []))
+    verbs = list(affinity_by_verb.get(plan.verb, []))
     if not objs or not verbs:
         # Fallback: concat dedup capped 15.
         seen, out = set(), []
@@ -239,26 +158,23 @@ def _en_fallback(it: str) -> str:
     """
     if not it:
         return ""
-    # Lookup tabella semplice: sostituzioni 1:1 case-insensitive.
-    subs = {
-        "Lista": "List",
-        "Identificatore": "Identifier",
-        "Inizio": "Start",
-        "Fine": "End",
-        "Default": "Default",
-        "Versione plurale": "Plural form",
-        "Cap superiore esplicito": "Explicit upper cap",
-        "Finestra temporale": "Time window",
-        "del calendario": "calendar",
-        "Stringa": "String",
-        "ritornate": "returned",
-        "max entries": "max entries",
-        "Pure compute": "Pure compute",
-        "Identificatore singolo": "Single identifier",
-    }
+    _codegen_seed.ensure_registered()
+    # Identita' semantiche stabili; sorgente e resa vivono nel catalogo output.
+    term_keys = (
+        "MSG_CODEGEN_TERM_LIST", "MSG_CODEGEN_TERM_IDENTIFIER",
+        "MSG_CODEGEN_TERM_START", "MSG_CODEGEN_TERM_END",
+        "MSG_CODEGEN_TERM_DEFAULT", "MSG_CODEGEN_TERM_PLURAL",
+        "MSG_CODEGEN_TERM_CAP", "MSG_CODEGEN_TERM_WINDOW",
+        "MSG_CODEGEN_TERM_CALENDAR", "MSG_CODEGEN_TERM_STRING",
+        "MSG_CODEGEN_TERM_RETURNED", "MSG_CODEGEN_TERM_MAX_ENTRIES",
+        "MSG_CODEGEN_TERM_PURE_COMPUTE", "MSG_CODEGEN_TERM_SINGLE_ID",
+    )
     out = it
-    for it_word, en_word in subs.items():
-        out = out.replace(it_word, en_word)
+    for key in term_keys:
+        source = _i18n.get_for_language(key, "it")
+        target = _i18n.get_for_language(key, "en")
+        if not source.startswith("<missing:"):
+            out = out.replace(source, target)
     return out
 
 
@@ -419,56 +335,35 @@ def _iso_validations(plan) -> list:
 # canonico. Senza questa specializzazione, la description "events via skill
 # `calendar list`" e' troppo astratta e il PLANNER preferisce
 # request_new_executor.
-_SKILL_DOMAIN_PHRASING = {
-    "calendar": {
-        "noun_it": "appuntamenti del calendario",
-        "noun_en": "calendar appointments",
-        "service_it": "Google Calendar",
-        "service_en": "Google Calendar",
-        "examples_it": "appuntamenti, agenda, eventi, riunioni",
-        "examples_en": "appointments, schedule, events, meetings",
-    },
-    "gmail": {
-        "noun_it": "messaggi email",
-        "noun_en": "email messages",
-        "service_it": "Gmail",
-        "service_en": "Gmail",
-        "examples_it": "email, mail, posta, messaggi",
-        "examples_en": "email, mail, messages",
-    },
-    "drive": {
-        "noun_it": "file su cloud",
-        "noun_en": "cloud files",
-        "service_it": "Google Drive",
-        "service_en": "Google Drive",
-        "examples_it": "documenti su Drive, cartelle, file condivisi",
-        "examples_en": "Drive documents, folders, shared files",
-    },
-    "sheets": {
-        "noun_it": "fogli di calcolo",
-        "noun_en": "spreadsheets",
-        "service_it": "Google Sheets",
-        "service_en": "Google Sheets",
-        "examples_it": "spreadsheet, foglio elettronico, tabelle",
-        "examples_en": "spreadsheets, sheets, tables",
-    },
-    "docs": {
-        "noun_it": "documenti di testo",
-        "noun_en": "text documents",
-        "service_it": "Google Docs",
-        "service_en": "Google Docs",
-        "examples_it": "documento Docs, testo formattato",
-        "examples_en": "Docs document, formatted text",
-    },
-    "contacts": {
-        "noun_it": "contatti rubrica",
-        "noun_en": "address book contacts",
-        "service_it": "Google Contacts",
-        "service_en": "Google Contacts",
-        "examples_it": "contatti, rubrica, email di persone",
-        "examples_en": "contacts, address book, people emails",
-    },
-}
+_SKILL_DOMAINS = (
+    "calendar", "gmail", "drive", "sheets", "docs", "contacts",
+)
+
+
+def _domain_phrasing() -> dict:
+    _codegen_seed.ensure_registered()
+    out = {}
+    for domain in _SKILL_DOMAINS:
+        prefix = f"MSG_CODEGEN_DOMAIN_{domain.upper()}"
+        out[domain] = {
+            f"{field}_{lang}": _i18n.get_for_language(
+                f"{prefix}_{field.upper()}", lang,
+            )
+            for field in ("noun", "service", "examples")
+            for lang in ("it", "en")
+        }
+    return out
+
+
+_SKILL_DOMAIN_PHRASING = _domain_phrasing()
+
+
+def _action_description(verb: str, lang: str) -> str:
+    key = f"MSG_CODEGEN_ACTION_{str(verb or '').upper()}"
+    text = _i18n.get_for_language(key, lang)
+    if text.startswith("<missing:"):
+        return _i18n.get_for_language("MSG_CODEGEN_ACTION_FALLBACK", lang)
+    return text
 
 
 def _description_boilerplate(plan) -> tuple[str, str]:
@@ -479,28 +374,9 @@ def _description_boilerplate(plan) -> tuple[str, str]:
     ...) e l'esempio di query naturale. Help il PLANNER a routing
     deterministico senza fallback a request_new_executor.
     """
-    verb_desc_it = {
-        "read":   "Legge",
-        "find":   "Cerca",
-        "set":    "Crea o aggiorna",
-        "delete": "Cancella",
-        "send":   "Invia",
-        "list":   "Elenca",
-        "get":    "Ottiene",
-        "change": "Modifica",
-        "write":  "Scrive",
-    }.get(plan.verb, "Esegue operazione su")
-    verb_desc_en = {
-        "read":   "Reads",
-        "find":   "Searches",
-        "set":    "Creates or updates",
-        "delete": "Deletes",
-        "send":   "Sends",
-        "list":   "Lists",
-        "get":    "Gets",
-        "change": "Modifies",
-        "write":  "Writes",
-    }.get(plan.verb, "Performs operation on")
+    _codegen_seed.ensure_registered()
+    verb_desc_it = _action_description(plan.verb, "it")
+    verb_desc_en = _action_description(plan.verb, "en")
     output_field = plan.output_kind
 
     # FORMATO A CAPITOLI (REGOLA UNIVERSALE §2.5): SCOPO/PATTERN/NON/OUT.
@@ -516,25 +392,33 @@ def _description_boilerplate(plan) -> tuple[str, str]:
     _sig = ", ".join(f"{a.name}={_ph(a)}" for a in _req)
     call = f"{plan.name}({_sig})"
 
-    phrase = _SKILL_DOMAIN_PHRASING.get(plan.skill_domain or "")
+    phrase = _domain_phrasing().get(plan.skill_domain or "")
     if phrase:
-        it = (f"SCOPO: {verb_desc_it} {phrase['noun_it']} di "
-              f"{phrase['service_it']} (OAuth). PATTERN: {call}. NON: usare "
-              f"per altri provider (iCloud, Outlook, IMAP); invocare senza "
-              f"credenziali. OUT: {output_field}=[...].")
-        en = (f"SCOPO: {verb_desc_en} {phrase['noun_en']} of "
-              f"{phrase['service_en']} (OAuth). PATTERN: {call}. NON: use for "
-              f"other providers (iCloud, Outlook, IMAP); invoke without "
-              f"credentials. OUT: {output_field}=[...].")
+        it = _i18n.get_for_language(
+            "MSG_CODEGEN_DESCRIPTION_PROVIDER", "it",
+            verb=verb_desc_it, noun=phrase["noun_it"],
+            service=phrase["service_it"], call=call,
+            output_field=output_field,
+        )
+        en = _i18n.get_for_language(
+            "MSG_CODEGEN_DESCRIPTION_PROVIDER", "en",
+            verb=verb_desc_en, noun=phrase["noun_en"],
+            service=phrase["service_en"], call=call,
+            output_field=output_field,
+        )
         return it, en
 
     # Fallback generico per domini non in mapping (skill nuova non Google).
     obj = plan.obj
     dom = plan.skill_domain or ""
-    it = (f"SCOPO: {verb_desc_it} {obj} (skill {dom}). PATTERN: {call}. "
-          f"NON: omettere gli argomenti richiesti. OUT: {output_field}=[...].")
-    en = (f"SCOPO: {verb_desc_en} {obj} (skill {dom}). PATTERN: {call}. "
-          f"NON: omit required arguments. OUT: {output_field}=[...].")
+    it = _i18n.get_for_language(
+        "MSG_CODEGEN_DESCRIPTION_GENERIC", "it", verb=verb_desc_it,
+        obj=obj, domain=dom, call=call, output_field=output_field,
+    )
+    en = _i18n.get_for_language(
+        "MSG_CODEGEN_DESCRIPTION_GENERIC", "en", verb=verb_desc_en,
+        obj=obj, domain=dom, call=call, output_field=output_field,
+    )
     return it, en
 
 
@@ -863,14 +747,12 @@ def build_context(plan, parsed_skill, *, description_it=None,
         if stem:
             rc_fields.append(f"{stem}_json")
     rc_form_kind = "oauth_browser_flow" if has_oauth else ""
-    rc_prompt_it = (
-        f"Per usare {parsed_skill.name} servono credenziali OAuth. Vuoi configurarle ora?"
-        if has_oauth else ""
-    )
-    rc_prompt_en = (
-        f"Using {parsed_skill.name} requires OAuth credentials. Configure now?"
-        if has_oauth else ""
-    )
+    rc_prompt_it = _i18n.get_for_language(
+        "MSG_CODEGEN_OAUTH_PROMPT", "it", skill=parsed_skill.name,
+    ) if has_oauth else ""
+    rc_prompt_en = _i18n.get_for_language(
+        "MSG_CODEGEN_OAUTH_PROMPT", "en", skill=parsed_skill.name,
+    ) if has_oauth else ""
 
     # truncated_what
     truncated_what = plan.obj  # "events", "messages", ...

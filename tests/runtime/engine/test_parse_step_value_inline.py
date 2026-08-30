@@ -103,11 +103,14 @@ def test_yes_no_legge_le_forme_dal_lessico(monkeypatch):
 
     # La prova vera: cambio il lessico, non il codice.
     finto = {"confirm.yes": ["zzyes"], "confirm.no": ["zzno"]}
-    monkeypatch.setattr(_daemon, "_dl",
-                        type("_L", (), {"forms": staticmethod(
-                            lambda c: finto.get(c, []))})())
+    monkeypatch.setattr(_daemon, "_dl", type("_L", (), {
+        "native_ready_forms": staticmethod(
+            lambda c, **_kw: finto.get(c, [])),
+    })())
     assert parse_step_value("zzyes", {"kind": "yes_no"})[:2] == (True, True)
     assert parse_step_value("zzno", {"kind": "yes_no"})[:2] == (True, False)
     assert parse_step_value("si", {"kind": "yes_no"})[0] is False
+    finto = {"confirm.yes": ["zzboth"], "confirm.no": ["zzboth"]}
+    assert parse_step_value("zzboth", {"kind": "yes_no"})[0] is False
     # I letterali tecnici non dipendono dal lessico e restano.
     assert parse_step_value("true", {"kind": "yes_no"})[:2] == (True, True)

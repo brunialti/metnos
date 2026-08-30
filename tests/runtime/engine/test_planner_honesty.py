@@ -15,6 +15,9 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
@@ -165,6 +168,96 @@ class TestTurnLogIntegration(unittest.TestCase):
                                  log.final_message)
             finally:
                 _ar.TURN_LOG_DIR = _orig
+
+
+@pytest.fixture
+def isolated_honesty_lexicon(monkeypatch, tmp_path):
+    """Isolate manual-review state from the process-wide lexicon."""
+    import detection_lexicon as dl
+    import detection_lexicon_seed_runtime_safety as safety_lexicon
+    import i18n
+
+    old_conn = dl._conn
+    monkeypatch.setattr(dl, "DB_PATH", tmp_path / "detection.sqlite")
+    monkeypatch.setattr(dl, "_conn", None)
+    monkeypatch.setattr(dl, "_seeded", False)
+    monkeypatch.setattr(dl, "_cache", {})
+    monkeypatch.setattr(dl, "_regex_cache", {})
+    monkeypatch.setattr(dl, "_coverage_gaps_logged", set())
+    monkeypatch.setattr(dl, "_declared_review_policies", {})
+    monkeypatch.setattr(dl, "_declared_baseline_languages", {})
+    monkeypatch.setattr(safety_lexicon, "_registered_target", None)
+    monkeypatch.setattr(i18n, "current_lang", lambda: "it")
+    yield dl, safety_lexicon, i18n
+    new_conn = dl._conn
+    if new_conn is not None and new_conn is not old_conn:
+        new_conn.close()
+
+
+def test_honesty_checks_fail_closed_without_native_reviewed_language(
+        isolated_honesty_lexicon, monkeypatch):
+    """Missing translations cannot substantiate an unverified receipt."""
+    _dl, _safety_lexicon, i18n = isolated_honesty_lexicon
+    from agent_runtime import (
+        _detect_false_mutation,
+        _detect_false_not_found,
+        _detect_false_success,
+        _detect_unbacked_artifact_claim,
+        _detect_unbacked_promise,
+        _is_degenerate_final,
+    )
+
+    monkeypatch.setattr(i18n, "current_lang", lambda: "es")
+    neutral = "Respuesta completa."
+    mutation = SimpleNamespace(
+        chosen_tool="write_files", result={"ok": True, "ok_count": 1},
+    )
+    assert _detect_unbacked_promise(neutral, [])
+    assert _detect_false_not_found(neutral, [mutation]) == {
+        "tool": "write_files", "ok_count": 1,
+    }
+    assert _detect_false_success(neutral, {
+        "failures": 0, "countable": 1, "items": 0, "mutations": 0,
+    })
+    assert _detect_false_mutation(neutral, {"mutations": 0})
+    assert _is_degenerate_final(neutral)
+    assert _detect_unbacked_artifact_claim(neutral, []) == {
+        "archive", "document", "spreadsheet",
+    }
+
+    # Structural proof remains authoritative even with no language resource.
+    assert not _detect_unbacked_promise(neutral, [_step("create_tasks")])
+    assert not _detect_false_mutation(neutral, {"mutations": 1})
+
+
+def test_honesty_third_language_pending_ready_and_manual_policy(
+        isolated_honesty_lexicon, monkeypatch):
+    dl, safety_lexicon, i18n = isolated_honesty_lexicon
+    from agent_runtime import _detect_unbacked_promise
+
+    safety_lexicon.register_all()
+    dl.mark_for_translation(safety_lexicon.UNBACKED_PROMISE, "es")
+    monkeypatch.setattr(i18n, "current_lang", lambda: "es")
+
+    # Pending remains fail-closed.
+    assert _detect_unbacked_promise("Respuesta completa.", [])
+
+    dl.set_translated(
+        safety_lexicon.UNBACKED_PROMISE, "es", [r"\bte\s+avisare\b"],
+    )
+    assert _detect_unbacked_promise("Te avisare manana.", [])
+    assert not _detect_unbacked_promise("Respuesta completa.", [])
+
+    # A non-manual row is unavailable even if its payload is syntactically
+    # valid and marked ready.
+    dl._open().execute(
+        "UPDATE detection_lexicon SET review_policy='automatic' "
+        "WHERE concept=? AND lang=?",
+        (safety_lexicon.UNBACKED_PROMISE, "es"),
+    )
+    dl._open().commit()
+    dl._invalidate(safety_lexicon.UNBACKED_PROMISE)
+    assert _detect_unbacked_promise("Respuesta completa.", [])
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ from aiohttp import web
 import devices
 import config as _C  # §7.11
 import i18n as _i18n
+import detection_lexicon_seed_dialog as _dialog_cancel_lex
 from html_sanitizer import to_safe_html_full
 from http_render import _error, render_template
 from http_app_state import (
@@ -583,20 +584,14 @@ def _apply_dialog_cancel(sender_id: str, query: str, *,
     e tenta `undo_last_turn` — che non trova nulla di mutante da
     revertire e risponde "Nessuna operazione recente da annullare".
 
-    Soluzione §7.3: PRIMA del pipeline, se la query e' un undo pattern E
-    ci sono dialog pending per il sender, cancella TUTTI i dialog pending
-    e ritorna il messaggio di conferma. L'utente vede coerenza fra
-    l'istruzione data (annulla abortisce il dialogo) e l'effetto osservato.
+    Soluzione §7.3: PRIMA del pipeline, se la query e' una forma esatta del
+    concetto manual/native-ready ``dialog.cancel`` E ci sono dialog pending
+    per il sender, cancella TUTTI i dialog pending e ritorna il messaggio di
+    conferma. L'utente vede coerenza fra l'istruzione data e l'effetto
+    osservato, senza confondere una richiesta più lunga con un valore.
 
     Ritorna None se non c'e' nulla da fare (caller prosegue normale).
     """
-    from fast_path import _normalize, _undo_prefix_match  # type: ignore
-    from fast_path import _UNDO_PATTERNS  # type: ignore
-    norm = _normalize(query)
-    if not norm:
-        return None
-    if norm not in _UNDO_PATTERNS and not _undo_prefix_match(norm):
-        return None
     try:
         from dialog_pending import cancel_pending, list_pending
     except Exception:
@@ -607,6 +602,9 @@ def _apply_dialog_cancel(sender_id: str, query: str, *,
     ]
     if not pending:
         return None
+    cancel_decision = _dialog_cancel_lex.exact_match(query)
+    if cancel_decision is False:
+        return None
     cancelled = 0
     for d in pending:
         dlg_id = d.get("dialog_id", "")
@@ -614,8 +612,11 @@ def _apply_dialog_cancel(sender_id: str, query: str, *,
                 and cancel_pending(
                     sender_id, dlg_id, owner_user_id=owner_user_id)):
             cancelled += 1
-    if cancelled == 0:
-        return None
+    if cancel_decision is None or cancelled == 0:
+        # A missing/pending/invalid control grammar cannot turn the text into a
+        # dialog value and resume its callback.  Retire what can be retired and
+        # report the unavailable control boundary instead.
+        return _msg("ERR_EXT_SVC_UNAVAILABLE")
     if cancelled == 1:
         return _msg("MSG_DIALOG_CANCELLED")
     return _msg("MSG_DIALOG_CANCELLED_N", n=cancelled)
@@ -693,6 +694,14 @@ def _apply_dialog_pending(sender_id: str, query: str,
     # Prendi il dialog piu' recente (last started)
     dlg = pending[-1]
     dialog_id = dlg.get("dialog_id", "")
+    cancel_decision = _dialog_cancel_lex.exact_match(query)
+    if cancel_decision is not False:
+        cancelled = cancel_pending(
+            sender_id_used, dialog_id, owner_user_id=owner_user_id,
+        )
+        if cancel_decision is None or not cancelled:
+            return _msg("ERR_EXT_SVC_UNAVAILABLE")
+        return _msg("MSG_DIALOG_CANCELLED")
     steps = dlg.get("dialog", []) or []
     # `step_index` è il nome canonical (dialog_pending.py consume usa questo)
     step_index = int(dlg.get("step_index") or 0)
@@ -973,14 +982,19 @@ def _consume_http_get_inputs_response(
 
     dialog_id = proposal.get("dialog_id") or ""
     sender_for_state = proposal.get("sender_for_state") or sender_id
-    text_norm = (query or "").strip().lower()
-
-    if text_norm in ("annulla", "cancel", "abort", "stop"):
+    cancel_decision = _dialog_cancel_lex.exact_match(query)
+    if cancel_decision is not False:
         _dp.cancel_pending(
             sender_for_state, dialog_id,
             owner_user_id=owner_user_id)
         _cap_pending_clear(sender_id)
-        return query, proposal, _msg("MSG_DIALOG_CANCELLED")
+        return (
+            query,
+            proposal,
+            _msg("MSG_DIALOG_CANCELLED")
+            if cancel_decision is True
+            else _msg("ERR_EXT_SVC_UNAVAILABLE"),
+        )
 
     state = _dp.load_pending(
         sender_for_state, dialog_id, owner_user_id=owner_user_id)
@@ -1625,8 +1639,8 @@ async def _preprocess_turn(request: web.Request):
             redacted_fields=prepared_fields,
         )
 
-    # Dialog cancel intercept: se c'e' un dialog pending e l'utente scrive
-    # "annulla"/"undo", cancella il dialog invece di routare a undo.
+    # Dialog cancel intercept: la forma esatta manual/native-ready cancella il
+    # dialog invece di essere routata a undo o accettata come valore testuale.
     _dialog_cancel_msg = _apply_dialog_cancel(
         sender_id, query, owner_user_id=user_id)
     if _dialog_cancel_msg is not None:

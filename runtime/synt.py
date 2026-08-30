@@ -277,16 +277,6 @@ def make_request(
     )
 
 
-# Stop-word minimal per tokenizzazione di nomi snake_case (verb_noun convention)
-_HINT_STOP_WORDS = frozenset({
-    "a", "an", "the", "to", "of", "in", "for", "on", "and", "or",
-    "is", "are", "be", "with", "from",
-    # IT
-    "il", "la", "lo", "i", "gli", "le", "un", "una", "di", "da", "per",
-    "in", "su", "con", "e", "o",
-})
-
-
 def keywords_from_proto_name(name: str, *, min_len: int = 3) -> list[str]:
     """Tokenizza un nome snake_case in parole utili come capability_hint.
 
@@ -301,9 +291,19 @@ def keywords_from_proto_name(name: str, *, min_len: int = 3) -> list[str]:
     out = [name]
     if "_" not in name:
         return out
+    try:
+        from detection_lexicon_seed_residual_nz import (
+            SYNT_HINT_STOP_WORDS,
+            forms as _lexicon_forms,
+        )
+        stop_words = {form.casefold() for form in _lexicon_forms(
+            SYNT_HINT_STOP_WORDS,
+        )}
+    except Exception:  # noqa: BLE001 - P2: nessun filtro e' piu' conservativo
+        stop_words = set()
     for tok in name.split("_"):
         tok = tok.strip().lower()
-        if not tok or len(tok) < min_len or tok in _HINT_STOP_WORDS:
+        if not tok or len(tok) < min_len or tok in stop_words:
             continue
         if tok not in out:
             out.append(tok)

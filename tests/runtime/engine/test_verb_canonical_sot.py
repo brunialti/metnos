@@ -1,8 +1,8 @@
 """P3 (ADR 0191 §5) — SoT unica prefilter ↔ vocab per i verbi canonici.
 
-Il #7 lamentava una «doppia SoT»: `prefilter._VERB_TO_CANONICAL` mantenuta a mano,
+Il #7 lamentava una «doppia SoT»: la vecchia tabella del prefilter mantenuta a mano,
 indipendente da `vocab.ACTION_MAPPING`. La risoluzione NON e' una derivazione cieca
-(regredirebbe): `_VERB_TO_CANONICAL` e' un'euristica di BOOST del prefilter, tarata
+(regredirebbe): il concept specifico e' un'euristica di BOOST del prefilter, tarata
 su verbi POLISEMICI per CONTENITORE (es. `mostra` = render un grafico OPPURE read il
 contenuto di un file). `vocab.ACTION_MAPPING` e' il canonico del planner/synt.
 
@@ -47,6 +47,7 @@ def _single_token(syn: str) -> bool:
 
 
 def test_prefilter_verb_table_consistent_with_vocab_except_documented():
+    verb_map = prefilter.verb_to_canonical_mapping()
     contradictions = []
     for canonical, spec in vocab.ACTION_MAPPING.items():
         if not isinstance(spec, dict):
@@ -55,7 +56,7 @@ def test_prefilter_verb_table_consistent_with_vocab_except_documented():
             for syn in spec.get(lang, []):
                 if not _single_token(syn):
                     continue
-                mapped = prefilter._VERB_TO_CANONICAL.get(syn)
+                mapped = verb_map.get(syn)
                 if mapped is None or mapped == canonical:
                     continue
                 exc = _POLYSEMOUS_EXCEPTIONS.get(syn)
@@ -73,8 +74,9 @@ def test_documented_exceptions_are_still_divergent():
     """Se un'eccezione smette di divergere (le SoT convergono), va RIMOSSA da qui
     per non mascherare una futura vera drift."""
     stale = []
+    verb_map = prefilter.verb_to_canonical_mapping()
     for token, (want_vocab, want_pref) in _POLYSEMOUS_EXCEPTIONS.items():
-        pref = prefilter._VERB_TO_CANONICAL.get(token)
+        pref = verb_map.get(token)
         in_vocab = any(
             token in spec.get(lang, [])
             for spec in vocab.ACTION_MAPPING.values()
@@ -89,8 +91,9 @@ def test_documented_exceptions_are_still_divergent():
 def test_apri_open_agree_read_in_both_sot():
     # Verificato: nessun conflitto su apri/open (entrambe -> read). Il routing
     # OPEN per i siti passa dal guard, non da qui.
-    assert prefilter._VERB_TO_CANONICAL.get("apri") == "read"
-    assert prefilter._VERB_TO_CANONICAL.get("open") == "read"
+    verb_map = prefilter.verb_to_canonical_mapping()
+    assert verb_map.get("apri") == "read"
+    assert verb_map.get("open") == "read"
     read_syn = (vocab.ACTION_MAPPING["read"].get("it", [])
                 + vocab.ACTION_MAPPING["read"].get("en", []))
     assert "apri" in read_syn and "open" in read_syn

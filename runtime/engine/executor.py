@@ -30,6 +30,7 @@ from typing import Any, Callable, Optional
 
 from .types import Framework, StepSpec, StepRun, RunResult
 from messages import get as _msg  # §11: render user-facing via DB i18n
+import detection_lexicon_seed_runtime_safety as _runtime_safety_lexicon
 
 log = logging.getLogger(__name__)
 
@@ -2156,11 +2157,7 @@ class Executor:
                 args["top_k"] = 100
         if step.tool == "find_urls" \
                 and args.get("mode") in {"research", "archive"}:
-            deep = re.search(
-                r"(esplor|mappa|archivi|scandagli|ricorsiv|intero sito|"
-                r"tutto il sito|crawl|approfondit|exhaustive|entire site|"
-                r"whole site|recursiv|\bexplore)", (query or "").lower())
-            if not deep:
+            if not _runtime_safety_lexicon.has_deep_crawl_intent(query):
                 args["mode"] = "default"
         return args
 
@@ -2519,11 +2516,7 @@ class Executor:
             # esplorare/archiviare un INTERO sito. Causa generalizzata: enum
             # pericoloso scelto senza la semantica dell'arg (§7.9 code>LLM).
             if step.tool == "find_urls" and args.get("mode") in ("research", "archive"):
-                _deepcrawl = re.search(
-                    r"(esplor|mappa|archivi|scandagli|ricorsiv|intero sito|"
-                    r"tutto il sito|crawl|approfondit|exhaustive|entire site|"
-                    r"whole site|recursiv|\bexplore)", (query or "").lower())
-                if not _deepcrawl:
+                if not _runtime_safety_lexicon.has_deep_crawl_intent(query):
                     log.info("Executor: find_urls mode=%s → default "
                              "(query informativa, no deep-crawl intent)",
                              args.get("mode"))

@@ -155,17 +155,17 @@ def test_files_mail_contacts_use_one_lossless_create_only_dataflow():
     assert writer["mode"] == "fail_if_exists"
     assert writer["content"].endswith("${step11.summary}")
     assert "${step6.input_source_total}" in writer["content"]
-    assert "${step4.used}/${step4.available_total}" in writer["content"]
-    assert "record di riferimento letti" in writer["content"]
+    assert '"used":"${step4.used}"' in writer["content"]
+    assert '"available":"${step4.available_total}"' in writer["content"]
     assert "${step8.conflicts}" in writer["content"]
     sheet = out.steps[13].args
     assert sheet["from_step"] == 10
     assert "values" not in sheet
-    assert sheet["path"].endswith("/entita_riconciliate.xlsx")
+    assert sheet["path"].endswith("/dati_estratti.xlsx")
     archive = out.steps[15].args
     assert archive["from_step"] == 15
-    assert archive["dest"].endswith("/risultati_riconciliazione.zip")
-    assert "${step10.count} righe di dati" in out.final_message
+    assert archive["dest"].endswith("/risultati.zip")
+    assert "${step10.count}" in out.final_message
     assert out.runtime_step_cap == len(out.steps) == 17
 
 

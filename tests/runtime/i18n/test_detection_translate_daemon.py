@@ -72,6 +72,18 @@ def _non_auto_traducibili():
     return _regex_concepts() | set(dl.manual_review_concepts())
 
 
+def _drain_translatable_pending(task, *, max_fires=20):
+    """Run bounded fires until only manual-review resources remain pending."""
+    results = []
+    for _ in range(max_fires):
+        result = task()
+        results.append(result)
+        assert result["ok"]
+        if result["metadata"]["pending_seen"] == 0:
+            return results
+    pytest.fail("detection translation queue did not converge")
+
+
 def test_enqueue_marks_all_pending(tmp_path, monkeypatch):
     _fresh(tmp_path, monkeypatch)
     n = dl.enqueue_language("zz")
@@ -84,13 +96,14 @@ def test_daemon_translates_phrases_and_mapping(tmp_path, monkeypatch):
     _install_mock_llm(monkeypatch)
     dl.enqueue_language("zz")
     from jobs.detection_translate_pending import task_detection_translate_pending
-    res = task_detection_translate_pending()
-    assert res["ok"]
+    results = _drain_translatable_pending(task_detection_translate_pending)
+    res = results[-1]
     saltati = _non_auto_traducibili()
     non_regex = [c for c in dl.registered_concepts() if c not in saltati]
     untranslated = [c for c in non_regex if not dl.has_native(c, "zz")]
     # tradotti = auto-traducibili; trattenuti = regex + revisione manuale
-    assert res["metadata"]["translated"] == len(non_regex), \
+    translated = sum(item["metadata"]["translated"] for item in results)
+    assert translated == len(non_regex), \
         f"untranslated non-regex: {untranslated}; meta={res['metadata']}"
     # Le righe intraducibili sono escluse in SQL (17/8): non entrano piu' nella
     # finestra, quindi `skipped_*` — che conta cio' che il giro ha LETTO e
@@ -103,7 +116,7 @@ def test_daemon_translates_phrases_and_mapping(tmp_path, monkeypatch):
     )
     assert trattenuti == len(saltati), res["metadata"]
     assert res["metadata"]["held_manual_review"] == len(
-        dl.manual_review_concepts())
+        set(dl.manual_review_concepts()) - _regex_concepts())
     assert res["metadata"]["held_consent"] == 2
     assert res["metadata"]["skipped_regex"] == 0
 
@@ -113,7 +126,7 @@ def test_coverage_after_translation_only_regex_missing(tmp_path, monkeypatch):
     _install_mock_llm(monkeypatch)
     dl.enqueue_language("zz")
     from jobs.detection_translate_pending import task_detection_translate_pending
-    task_detection_translate_pending()
+    _drain_translatable_pending(task_detection_translate_pending)
     cov = dl.verify_coverage("zz")
     assert set(cov["missing"]) == _non_auto_traducibili()
     # un concept phrases/mapping ora ha forme native nella lingua nuova
@@ -151,6 +164,39 @@ def test_mapping_parziale_o_ambiguo_non_viene_accettato(monkeypatch):
         {"read": ["read"], "run": ["run"]}, "fr", "en", "wise",
     )
     assert localized is None
+
+
+def test_failed_first_row_does_not_starve_later_pending_work(
+    tmp_path, monkeypatch,
+):
+    from jobs import detection_translate_pending as job
+
+    monkeypatch.setattr(dl, "DB_PATH", tmp_path / "rotation.sqlite")
+    monkeypatch.setattr(dl, "_conn", None)
+    monkeypatch.setattr(dl, "_seeded", True)
+    monkeypatch.setattr(dl, "_declared_review_policies", {})
+    monkeypatch.setattr(dl, "_declared_baseline_languages", {})
+    monkeypatch.setenv("METNOS_DETECTION_CAP_PER_FIRE", "1")
+    monkeypatch.setenv("METNOS_DETECTION_AUDIT_DIR", str(tmp_path / "audit"))
+    for concept in ("a.bad", "b.good"):
+        dl.register(concept, "phrases", en=["source"], it=["sorgente"])
+        dl.mark_for_translation(concept, "zz")
+
+    monkeypatch.setattr(
+        job, "_llm_localize",
+        lambda concept, *_args, **_kwargs: (
+            (None, {}) if concept == "a.bad"
+            else (["translated"], {"model": "mock"})
+        ),
+    )
+
+    first = job.task_detection_translate_pending()
+    second = job.task_detection_translate_pending()
+
+    assert first["error_count"] == 1
+    assert second["ok_count"] == 1
+    assert not dl.has_native("a.bad", "zz")
+    assert dl.has_native("b.good", "zz")
 
 
 def test_i_concetti_di_consenso_non_si_traducono_da_soli(monkeypatch):

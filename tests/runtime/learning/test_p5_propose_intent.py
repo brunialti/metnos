@@ -11,13 +11,13 @@ Comportamento atteso: get_now → read_events → final_answer testuale con 3
 slot mattutini computati. NESSUN set_events.
 
 Fix:
-  - prefilter._VERB_TO_CANONICAL: «proponi/suggerisci/raccomanda»+EN+enclitici
+  - prefilter.verb_to_canonical_mapping: «proponi/suggerisci/raccomanda»+EN+enclitici
     → "describe" (verbo canonico per "presenta informazione strutturata").
-  - _OBJECT_HINTS["events"]: aggiunti hint «orari/fasce/slot/mattina» per
+  - object_hint_mapping()["events"]: hint «orari/fasce/slot/mattina» per
     forzare detect_canonical_object → events su query suggestion-style.
   - agent_runtime.py:
-      _PROPOSE_INTENT_RE: regex semantica universale IT+EN (verbi stem+enclitic
-        quantifier + interrogative + N+proposal-noun).
+      `runtime_safety.propose_intent`: risorsa manuale IT+EN (verbi
+        stem+enclitic quantifier + interrogative + N+proposal-noun).
       _query_is_propose_intent(): wrapper deterministico §7.9.
       Gate P5 in turn_react: chosen_name in _calendar_write_tools() + query
         propose-intent → reject sintetico + hint con workflow corretto.
@@ -404,8 +404,9 @@ class TestPrefilterVerbMappingPropose(unittest.TestCase):
     `describe` (canonico), abilitando il routing al tool corretto."""
 
     def setUp(self):
-        from prefilter import _VERB_TO_CANONICAL, tokenize, detect_canonical_verb
-        self.VERB_MAP = _VERB_TO_CANONICAL
+        from prefilter import (verb_to_canonical_mapping, tokenize,
+                               detect_canonical_verb)
+        self.VERB_MAP = verb_to_canonical_mapping()
         self.tokenize = tokenize
         self.detect_verb = detect_canonical_verb
 

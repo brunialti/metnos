@@ -485,6 +485,39 @@ def _render(name: str, tool_spec: dict) -> str:
     return "\n".join(lines)
 
 
+def _birth_candidate_is_current(candidate_root: Path, contract_id) -> bool:
+    """Return true only for an exact, authenticated live candidate.
+
+    This makes a partially completed batch resumable without issuing another
+    Birth request for generations that already reached their durable
+    postcondition.  Every malformed, stale, retired or unavailable state is
+    left to the normal fail-closed Birth path.
+    """
+    from contract_store import ContractStoreError, VerifiedManifest, current_contract
+    from manifest_inventory import inventory_authoring_manifests
+    from sign import list_trusted_publics
+
+    inventory = inventory_authoring_manifests()
+    if inventory.problems:
+        return False
+    matches = tuple(
+        ref for ref in inventory.manifests if ref.contract_id == contract_id
+    )
+    trusted = tuple(list_trusted_publics())
+    if len(matches) != 1 or not trusted:
+        return False
+    try:
+        current = current_contract(matches[0], trusted_publics=trusted)
+    except ContractStoreError:
+        return False
+    return (
+        isinstance(current, VerifiedManifest)
+        and current.manifest_bytes == (candidate_root / "manifest.toml").read_bytes()
+        and current.language_state_bytes
+        == (candidate_root / "manifest.lang_state.json").read_bytes()
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate canonical manifests for in-process executors.",
@@ -493,11 +526,22 @@ def main() -> None:
         "--sign",
         action="store_true",
         help=(
-            "update code digests and sign generated contracts with the local "
-            "author key; otherwise leave signing to sign.py sign-all"
+            "publish generated contracts through Executor Birth; without this "
+            "flag only refresh the authoring copies"
+        ),
+    )
+    parser.add_argument(
+        "--birth-attempt",
+        type=int,
+        default=1,
+        help=(
+            "positive batch attempt recorded in the Birth objective; increment "
+            "only when resubmitting after a terminally rejected batch"
         ),
     )
     args = parser.parse_args()
+    if args.birth_attempt < 1:
+        parser.error("--birth-attempt must be positive")
     specs = _all_specs()
     missing = sorted(set(_META) - set(specs))
     extra = sorted(set(specs) - set(_META))
@@ -537,14 +581,23 @@ def main() -> None:
         from manifest_inventory import ContractId, ManifestOrigin
         require_birth_intent_adapter()
         published = 0
+        already_current = 0
         try:
             for name in sorted(specs):
+                contract_id = ContractId(
+                    ManifestOrigin.BUILTIN, f"{name}/manifest.toml",
+                )
+                candidate_root = write_root / name
+                if _birth_candidate_is_current(candidate_root, contract_id):
+                    already_current += 1
+                    continue
                 birth = submit_builtin_generation_birth(BirthIntent(
-                    candidate_source_root=write_root / name,
-                    contract_id=ContractId(
-                        ManifestOrigin.BUILTIN, f"{name}/manifest.toml",
+                    candidate_source_root=candidate_root,
+                    contract_id=contract_id,
+                    reason=(
+                        "regenerate shipped builtin executor contract; "
+                        f"batch attempt {args.birth_attempt}"
                     ),
-                    reason="regenerate shipped builtin executor contract",
                 ))
                 if birth.error_code or birth.publication is None:
                     raise RuntimeError(
@@ -554,7 +607,10 @@ def main() -> None:
                 published += 1
         finally:
             staging_context.cleanup()
-        suffix = f" and published {published} immutable contract generations"
+        suffix = (
+            f" and published {published} immutable contract generations; "
+            f"{already_current} already current"
+        )
     print(f"generated {len(specs)} builtin contracts under {OUT}{suffix}")
 
 

@@ -373,6 +373,33 @@ class TestPipingFromStep(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("targets", errors[0])
 
+    def test_nested_diagnostic_identity_cannot_feed_mutating_projection(self):
+        """Candidate diagnostics are not authority for a mutating consumer."""
+        from agent_runtime import resolve_from_step
+        history = self._hist("generic_resolver", {
+            "ok": True,
+            "entries": [{
+                "name": "ambiguous",
+                "candidates": [{"resolved_id": "Vendor.One"}],
+            }],
+        })
+        schema = {
+            "properties": {
+                "targets": {
+                    "type": "array",
+                    "from_entries_key": "resolved_id",
+                    "from_entries_complete": True,
+                },
+            },
+        }
+
+        new_args, errors = resolve_from_step(
+            {"from_step": 1}, history, consumer_schema=schema)
+
+        self.assertNotIn("targets", new_args)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("targets", errors[0])
+
     def test_complete_vector_projection_accepts_all_identities(self):
         from agent_runtime import resolve_from_step
         history = self._hist("generic_resolver", {

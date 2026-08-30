@@ -23,13 +23,30 @@
 > handle vivi e inventario A/B, per non mescolare epoche diverse. Questo core
 > non autorizzante e' implementato localmente; tre P1 del primo riesame sono
 > stati corretti, i 138 test mirati sono verdi e tre review finali concludono
-> `P0=0`, `P1=0`, `P2=0`; segue autenticazione e riconciliazione finale del
-> grafo. Il difetto laterale RM-0005 osservato durante B3 è consolidato: il
+> `P0=0`, `P1=0`, `P2=0`. L'autenticazione e la riconciliazione finale del
+> grafo sono ora implementate localmente in un tipo ancora non operativo: 31
+> test discriminanti nuovi e l'intera suite preflight (`169 passed,
+> 1 deselected`) sono verdi; due review finali del diff congelato concludono
+> `P0=0`, `P1=0`, `P2=0`. Anche il sottotaglio puro dei materiali firmati e
+> del grafo candidato e' completato localmente: catalogo, descrittore,
+> prerequisito, artefatti e source identity sono incrociati senza conferire
+> autorita'; 27 test probatori, 86 test del perimetro e 169 test di regressione
+> sono verdi, e due nuovi riesami finali concludono `P0=0`, `P1=0`, `P2=0`.
+> Anche la misura viva dei quattro eseguibili e della TCB OpenSSL e'
+> implementata localmente: 44 prove mirate, 130 prove del perimetro e 240
+> regressioni preflight sono verdi. Il binder e' legato alla stessa fotografia
+> ownership autenticata e le capability prodotto/test sono nominalmente
+> distinte. Il passo in corso e' la fotografia systemd effettiva.
+> Pin, firma e commit restano bloccati fino al
+> completamento dei successivi incrementi operativi. Il difetto laterale
+> RM-0005 osservato durante B3 è in consolidamento finale: il
 > dispatcher planner-visible di `admin` è generale, il ping live termina 4/4
 > con perdita zero e la regressione collegata conta 594 test e 1.144 subtest
 > verdi; il commit pubblico `62c61b5` è certificato dal run GitHub Actions
-> `33271817356`, con tutti gli otto job Linux/Windows verdi; RM-0005 resta
-> riaperta per il censimento lessicale residuo;
+> `33271817356`, con tutti gli otto job Linux/Windows verdi. Il censimento
+> lessicale residuo e' ora implementato e la suite completa conta 533 test e
+> 1.162 subtest verdi; restano review finale, rigenerazione delle firme builtin,
+> pubblicazione e smoke live prima della nuova chiusura di RM-0005;
 > G6-B4/G6-C/G6-D e F4-F6 non ancora completati
 
 ## 1. Obiettivo
@@ -1655,3 +1672,45 @@ conseguenza un alias non viene trasformato in IP usando memoria conversazionale
 o log storici. Questa lacuna resta separata dalla porta Birth e non ne modifica
 la sequenza, ma ogni sua futura correzione dovra' a sua volta passare dalla
 porta unica.
+
+### 23.10 Verifica live del prerequisito Birth per il checkpoint RM-0005
+
+Il tentativo autorizzato di firmare i 21 builtin del checkpoint laterale ha
+dimostrato una differenza fra certificazione del gruppo 2 e installazione viva:
+il codice e' in modalita' `STORE_ONLY`, ma la macchina non contiene ancora la
+radice preparata `$METNOS_USER_CONFIG/birth`. Il nuovo varco termina prima di
+pubblicare con `birth_provisioning_io_unavailable`; il firmatario precedente
+nega correttamente l'operazione e non costituisce un percorso alternativo.
+
+La predisposizione richiede i registri pubblici indipendenti di approvazione e
+revisione semantica definiti dal gruppo 2. Le chiavi private corrispondenti
+devono essere scelte e custodite dall'operatore fuori dal processo Metnos; non
+vengono generate implicitamente. Fino a questo passaggio RM-0005 resta
+`reopened` e G6-B3 resta fermo al checkpoint gia' documentato. Dopo la
+predisposizione si ripetono firma, catalogo, CI e smoke senza ridurre i gate.
+
+### 23.11 Prerequisito laterale soddisfatto e ripresa di G6-B3
+
+Le autorità operative indipendenti sono state create e custodite fuori dal
+server; Birth ne consuma soltanto i registri pubblici. La radice preparata è
+stata ricostruita dopo la correzione del verificatore delle proprietà, senza
+riusare materiale non più coerente e conservando la radice precedente per
+analisi. Il caricamento sigillato conferma l'insieme
+`e79b9b5c0f1c0a44f072eaaf1905ee90040d18430184d76be6a151d42b4802c6`
+e l'epoca
+`sha256:d8845d364a8c346c450b7e0101cb0daba5c308299d7a1eee0937e61ab83e6571`.
+
+Il collegamento produttivo possiede ora anche la riconciliazione del registro.
+Il verificatore applica la proprietà di limite soltanto quando il contratto
+dichiara sia l'ingresso di limite sia un'uscita di collezione leggibile dalla
+macchina. Il generatore dei contratti incorporati può essere ripreso dopo
+un'interruzione e non emette nuove ricevute per una generazione autenticata già
+identica. L'esecuzione conclusiva ha pubblicato sei contratti e ne ha saltati
+quindici già correnti; tutte le 21 firme sono valide.
+
+Il gate laterale è verde: censimento `82 passed`, matrice firmata
+`302 passed, 1.162 subtests passed` e perimetro Birth mirato
+`51 passed, 1 skipped` per un caso non applicabile alla piattaforma. RM-0008
+resta `active`, ma non è più fermo sul prerequisito RM-0005. Dopo la
+certificazione del commit pubblico, il percorso minimo riprende dalla
+fotografia systemd effettiva di G6-B3 descritta nell'handover.

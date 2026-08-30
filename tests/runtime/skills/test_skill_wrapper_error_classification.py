@@ -2,15 +2,63 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from runtime.skill_wrapper import (
     _classify_error,
     _error_code_for_class,
     _get_skill_oauth_config,
+    _normalize_bool_flags,
     _skill_code_home,
     _skill_home,
     _run_api,
     _validate_skill_args,
 )
+
+
+@pytest.mark.parametrize("value", [True, "true", "TRUE", 1, "1"])
+def test_store_true_normalization_accepts_only_canonical_true(value):
+    assert _normalize_bool_flags(
+        ["--permanent", value], frozenset({"--permanent"}),
+    ) == ["--permanent"]
+
+
+@pytest.mark.parametrize("value", [False, "false", "FALSE", 0, "0"])
+def test_store_true_normalization_accepts_only_canonical_false(value):
+    assert _normalize_bool_flags(
+        ["--permanent", value], frozenset({"--permanent"}),
+    ) == []
+
+
+@pytest.mark.parametrize("value", ["yes", "on", "vero", "verdadero", "maybe"])
+def test_store_true_normalization_rejects_language_and_unknown_values(value):
+    with pytest.raises(ValueError, match="invalid value for boolean flag"):
+        _normalize_bool_flags(
+            ["--permanent", value], frozenset({"--permanent"}),
+        )
+
+
+def test_store_true_unknown_value_never_reaches_subprocess(tmp_path, monkeypatch):
+    script = tmp_path / "provider.py"
+    script.write_text(
+        'parser.add_argument("--permanent", action="store_true")\n',
+        encoding="utf-8",
+    )
+    calls = []
+    monkeypatch.setattr(
+        "runtime.skill_wrapper._subprocess_runner",
+        lambda: lambda argv, env, timeout: calls.append((argv, env, timeout)),
+    )
+
+    result = _run_api(
+        script, ["--permanent", "verdadero"], skill_name="example",
+    )
+
+    assert result == (
+        2, "", "invalid value for boolean flag --permanent",
+    )
+    assert _classify_error(result[0], result[2]) == "invalid_args"
+    assert calls == []
 
 
 def test_provider_failed_precondition_is_not_recoverable_as_wrong_args():

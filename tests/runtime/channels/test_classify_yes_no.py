@@ -86,25 +86,15 @@ def test_la_punteggiatura_non_impedisce_una_conferma():
     assert _classify_yes_no("ok?") == "other"
 
 
-def test_la_rete_di_emergenza_non_e_piu_larga_del_lessico():
-    """PROPRIETA' che conta: una rete di sicurezza sul consenso deve essere
-    piu' STRETTA del percorso normale, mai piu' larga. La prima versione era
-    piu' larga e riapriva in silenzio i casi che il lessico aveva chiuso."""
-    from channels.daemon import _EMERGENCY_CONFIRMATIONS
-    import detection_lexicon as _dl
-    for concetto, emergenza in _EMERGENCY_CONFIRMATIONS.items():
-        lessico = {f.lower() for f in _dl.forms(concetto)}
-        assert emergenza <= lessico, (concetto, emergenza - lessico)
-
-
 def test_le_forme_vengono_dal_lessico(monkeypatch):
     """Autorita' unica: cambio il lessico, non il codice, e il
     classificatore segue."""
     from channels import daemon as _daemon
     finto = {"confirm.yes": ["zzyes"], "confirm.no": ["zzno"]}
-    monkeypatch.setattr(_daemon, "_dl",
-                        type("_L", (), {"forms": staticmethod(
-                            lambda c: finto.get(c, []))})())
+    monkeypatch.setattr(_daemon, "_dl", type("_L", (), {
+        "native_ready_forms": staticmethod(
+            lambda c, **_kw: finto.get(c, [])),
+    })())
     assert _classify_yes_no("zzyes") == "yes"
     assert _classify_yes_no("zzno") == "no"
     assert _classify_yes_no("si") == "other"
@@ -118,25 +108,25 @@ def test_una_forma_in_entrambe_le_liste_non_e_un_consenso(monkeypatch):
     nuovo», mai «ha acconsentito»."""
     from channels import daemon as _daemon
     ambiguo = {"confirm.yes": ["zzok"], "confirm.no": ["zzok"]}
-    monkeypatch.setattr(_daemon, "_dl",
-                        type("_L", (), {"forms": staticmethod(
-                            lambda c: ambiguo.get(c, []))})())
+    monkeypatch.setattr(_daemon, "_dl", type("_L", (), {
+        "native_ready_forms": staticmethod(
+            lambda c, **_kw: ambiguo.get(c, [])),
+    })())
     assert _classify_yes_no("zzok") == "other"
 
 
-def test_lessico_irraggiungibile_lascia_confermare(monkeypatch):
-    """Un dialogo aperto che non si puo' chiudere e' peggio di un vocabolario
-    ridotto: senza lessico restano le forme di emergenza."""
+def test_lessico_irraggiungibile_non_autorizza_conferme(monkeypatch):
+    """Un guasto al lessico non deve trasformarsi in consenso implicito."""
     from channels import daemon as _daemon
 
     class _Rotto:
         @staticmethod
-        def forms(_c):
+        def native_ready_forms(_c, **_kwargs):
             raise RuntimeError("lessico non disponibile")
 
     monkeypatch.setattr(_daemon, "_dl", _Rotto())
-    assert _classify_yes_no("si") == "yes"
-    assert _classify_yes_no("no") == "no"
+    assert _classify_yes_no("si") == "other"
+    assert _classify_yes_no("no") == "other"
     assert _classify_yes_no("boh") == "other"
 
 

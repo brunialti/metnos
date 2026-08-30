@@ -30,11 +30,35 @@ if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
 from install_direction_resolver import resolve_install_direction  # noqa: E402
+import detection_lexicon as dl  # noqa: E402
+import detection_lexicon_seed_residual_am as seed  # noqa: E402
+import i18n  # noqa: E402
 
 _SCHEMA = {"type": "object", "properties": {
     "packages": {"type": "array"},
     "uninstall": {"type": "boolean", "default": False},
 }}
+
+
+@pytest.fixture(autouse=True)
+def isolated_detection_store(monkeypatch, tmp_path):
+    old_conn = dl._conn
+    monkeypatch.setattr(dl, "DB_PATH", tmp_path / "detection.sqlite")
+    monkeypatch.setattr(dl, "_conn", None)
+    monkeypatch.setattr(dl, "_seeded", False)
+    monkeypatch.setattr(dl, "_cache", {})
+    monkeypatch.setattr(dl, "_regex_cache", {})
+    monkeypatch.setattr(dl, "_coverage_gaps_logged", set())
+    monkeypatch.setattr(dl, "_declared_review_policies", {})
+    monkeypatch.setattr(dl, "_declared_baseline_languages", {})
+    monkeypatch.setattr(seed, "_registered_target", None)
+    monkeypatch.setattr(i18n, "current_lang", lambda: "it")
+    seed.register_all()
+    dl._seeded = True
+    yield
+    new_conn = dl._conn
+    if new_conn is not None and new_conn is not old_conn:
+        new_conn.close()
 
 
 def _r(args, query, schema=_SCHEMA):
@@ -137,6 +161,34 @@ def test_il_lessico_irraggiungibile_lascia_il_valore_del_modello(monkeypatch):
                                        args_schema=_SCHEMA) is a
 
 
+def test_terza_lingua_pronta_decide_entrambe_le_direzioni(monkeypatch):
+    seed.register_all()
+    dl.mark_for_translation(seed.PACKAGE_DIRECTION_ALIAS, "es")
+    dl.set_translated(seed.PACKAGE_DIRECTION_ALIAS, "es", {
+        "install": ["instalar"],
+        "uninstall": ["desinstalar"],
+    })
+    monkeypatch.setattr(i18n, "current_lang", lambda: "es")
+
+    assert _r({"uninstall": True}, "instalar ripgrep")["uninstall"] is False
+    assert _r({"uninstall": False}, "desinstalar ripgrep")["uninstall"] is True
+
+
+def test_lingua_mancante_o_pending_non_autorizza_override(monkeypatch):
+    seed.register_all()
+    monkeypatch.setattr(i18n, "current_lang", lambda: "zz")
+    proposed = {"uninstall": True}
+    assert _r(proposed, "installa ripgrep") is proposed
+
+    dl.mark_for_translation(seed.PACKAGE_DIRECTION_ALIAS, "zz")
+    assert _r(proposed, "install ripgrep") is proposed
+
+
+def test_direzione_ambigua_non_autorizza_override():
+    proposed = {"uninstall": True}
+    assert _r(proposed, "installa e disinstalla ripgrep") is proposed
+
+
 def test_le_forme_vengono_dal_lessico_non_dal_codice():
     """§7.13 e regola di Roberto: nessuna lista di sinonimi cablata. Le
     forme si traducono, quindi vivono nel lessico i18n."""
@@ -148,9 +200,15 @@ def test_le_forme_vengono_dal_lessico_non_dal_codice():
         assert parola not in corpo, f"forma cablata nel codice: {parola}"
 
 
-def test_il_concetto_esiste_nel_lessico_in_entrambe_le_lingue():
-    import detection_lexicon as dl
-    dl.ensure_seeded()
-    for lingua, esempio in (("it", "disinstalla PowerToys"),
-                            ("en", "uninstall PowerToys")):
-        assert dl.match("packages.uninstall_request", esempio), lingua
+def test_il_mapping_bidirezionale_e_manuale_in_entrambe_le_lingue():
+    seed.register_all()
+    for lingua in ("it", "en"):
+        resource = dl.resource_for_language(
+            seed.PACKAGE_DIRECTION_ALIAS,
+            lingua,
+            fallback=False,
+            ready_only=True,
+        )
+        assert resource is not None
+        assert resource["review_policy"] == "manual"
+        assert set(resource["payload"]) == {"install", "uninstall"}

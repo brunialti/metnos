@@ -41,102 +41,27 @@ from __future__ import annotations
 
 import re
 
+import detection_lexicon_seed_parsers as _parser_lex
+
 # Verbi-testa per cui l'iniezione della finestra e' sicura: produttori
 # read-only. MAI mutating (delete/move/write/...): la finestra cambierebbe
 # il perimetro di un'azione irreversibile.
 _SAFE_VERB_HEADS = frozenset({"read", "find", "get", "list"})
 
-# Unita' → suffisso canonico. Ore: «ore/ora/h/hours/hrs». Giorni:
-# «giorni/giorno/gg/days/d».
-_HOURS = r"(?:or[ae]\b|h\b|hours?\b|hrs?\b)"
-_DAYS = r"(?:giorn[oi]\b|gg\b|days?\b|d\b)"
-# Settimane/mesi/anni: forma esplicita N+unita' (segnale forte, rolling). Il
-# bare singolare («ultimo mese/anno», «settimana scorsa») resta NOOP perche'
-# ambiguo (calendario vs rolling) → decide il planner. Vocabolario canonico
-# single-char condiviso da TUTTI i consumer (last-Nw/last-Nm/last-Ny;
-# m=mesi~30g, y=anni~365g — vedi time_window_parser/email_metnos/find_images).
-_WEEKS = r"(?:settiman[ae]\b|sett\b|weeks?\b|w\b)"
-_MONTHS = r"(?:mes[ei]\b|months?\b|m\b)"
-_YEARS = r"(?:ann[oi]\b|years?\b|y\b)"
-
-# Determinante IT (ultime/scorse/passate, ogni genere/numero) e EN
-# (last/past). Word-bounded, case-insensitive a livello di scan.
-_DET_IT = r"(?:ultim[aeio]|scors[aeio]|passat[aeio])"
-_DET_EN = r"(?:last|past)"
-
-# Pattern (regex, builder, priority): builder riceve il Match e ritorna la
-# spec canonica o None (N invalido). N a cifre (1-4 digit); numeri in
-# lettere fuori confine (noop). priority 0 = forma esplicita N+unita' /
-# singolare nudo (segnale forte); 1 = oggi/ieri (spesso discorsivi:
-# perdono il conflitto contro una finestra esplicita).
-_PATTERNS: list[tuple[re.Pattern, object, int]] = []
+def _phrase_alt(forms) -> str:
+    return "|".join(
+        re.escape(str(form)).replace(r"\ ", r"\s+")
+        for form in sorted(set(forms or ()), key=lambda item: (-len(item), item))
+        if str(form).strip()
+    )
 
 
-def _n(m: re.Match) -> int | None:
-    try:
-        n = int(m.group(1))
-    except (TypeError, ValueError):
-        return None
-    return n if 1 <= n <= 9999 else None
-
-
-def _add(rx: str, build, priority: int = 0) -> None:
-    _PATTERNS.append((re.compile(rx, re.IGNORECASE), build, priority))
-
-
-# N + ore: «ultime 24 ore», «nelle scorse 12h», «last 24 hours», «past 6 hrs»
-_add(rf"\b{_DET_IT}\s+(\d{{1,4}})\s*{_HOURS}",
-     lambda m: f"last-{_n(m)}h" if _n(m) else None)
-_add(rf"\b{_DET_EN}\s+(\d{{1,4}})\s*{_HOURS}",
-     lambda m: f"last-{_n(m)}h" if _n(m) else None)
-# N + giorni: «ultimi 3 giorni», «scorsi 2 gg», «last 7 days»
-_add(rf"\b{_DET_IT}\s+(\d{{1,4}})\s*{_DAYS}",
-     lambda m: f"last-{_n(m)}d" if _n(m) else None)
-_add(rf"\b{_DET_EN}\s+(\d{{1,4}})\s*{_DAYS}",
-     lambda m: f"last-{_n(m)}d" if _n(m) else None)
-# N + settimane/mesi/anni: «ultimi 12 mesi», «last 2 weeks», «ultimi 3 anni».
-# Anche postfix IT: «12 mesi fa/scorsi». Forma esplicita → priority 0.
-_add(rf"\b{_DET_IT}\s+(\d{{1,4}})\s*{_WEEKS}",
-     lambda m: f"last-{_n(m)}w" if _n(m) else None)
-_add(rf"\b{_DET_EN}\s+(\d{{1,4}})\s*{_WEEKS}",
-     lambda m: f"last-{_n(m)}w" if _n(m) else None)
-_add(rf"\b{_DET_IT}\s+(\d{{1,4}})\s*{_MONTHS}",
-     lambda m: f"last-{_n(m)}m" if _n(m) else None)
-_add(rf"\b{_DET_EN}\s+(\d{{1,4}})\s*{_MONTHS}",
-     lambda m: f"last-{_n(m)}m" if _n(m) else None)
-_add(rf"\b{_DET_IT}\s+(\d{{1,4}})\s*{_YEARS}",
-     lambda m: f"last-{_n(m)}y" if _n(m) else None)
-_add(rf"\b{_DET_EN}\s+(\d{{1,4}})\s*{_YEARS}",
-     lambda m: f"last-{_n(m)}y" if _n(m) else None)
-# Postfix «N <unita'> fa/scorsi/passati»: «12 mesi fa», «2 anni scorsi»
-_add(rf"\b(\d{{1,4}})\s*{_WEEKS}\s+(?:fa\b|scors[ae]|passat[ae])",
-     lambda m: f"last-{_n(m)}w" if _n(m) else None)
-_add(rf"\b(\d{{1,4}})\s*{_MONTHS}\s+(?:fa\b|scors[ai]|passat[ai])",
-     lambda m: f"last-{_n(m)}m" if _n(m) else None)
-_add(rf"\b(\d{{1,4}})\s*{_YEARS}\s+(?:fa\b|scors[ai]|passat[ai])",
-     lambda m: f"last-{_n(m)}y" if _n(m) else None)
-# Singolare nudo (N=1): «ultima ora», «ultimo giorno», «last hour», «past day».
-# Anche settimana/mese/anno: «(dell')ultimo anno», «last month» → rolling 1y/1m/1w
-# (per i produttori read/find la lettura rolling e' l'interpretazione naturale;
-# la finestra di CALENDARIO la chiede esplicitamente l'utente con date assolute).
-_add(rf"\b{_DET_IT}\s+ora\b", lambda m: "last-1h")
-_add(rf"\b{_DET_EN}\s+hour\b", lambda m: "last-1h")
-_add(rf"\b{_DET_IT}\s+giorno\b", lambda m: "last-1d")
-_add(rf"\b{_DET_EN}\s+day\b", lambda m: "last-1d")
-_add(rf"\b{_DET_IT}\s+mese\b", lambda m: "last-1m")
-_add(rf"\b{_DET_EN}\s+month\b", lambda m: "last-1m")
-_add(rf"\b{_DET_IT}\s+anno\b", lambda m: "last-1y")
-_add(rf"\b{_DET_EN}\s+year\b", lambda m: "last-1y")
-# Postfix IT: «l'ora scorsa», «il giorno passato», «le 24 ore passate»
-_add(rf"\b(\d{{1,4}})\s*{_HOURS}\s+(?:scors[ae]|passat[ae])\b",
-     lambda m: f"last-{_n(m)}h" if _n(m) else None)
-_add(rf"\b(\d{{1,4}})\s*{_DAYS}\s+(?:scors[oi]|passat[oi])\b",
-     lambda m: f"last-{_n(m)}d" if _n(m) else None)
-_add(r"\bora\s+(?:scorsa|passata)\b", lambda m: "last-1h")
-_add(r"\bgiorno\s+(?:scorso|passato)\b", lambda m: "last-1d")
-# Giorno di calendario: «oggi», «today», «ieri», «yesterday»
-_add(r"\boggi\b|\btoday\b", lambda m: "today", priority=1)
-_add(r"\bieri\b|\byesterday\b", lambda m: "yesterday", priority=1)
+def _surface_to_canonical(mapping: dict) -> dict[str, str]:
+    return {
+        str(surface).casefold(): str(canonical)
+        for canonical, forms in mapping.items()
+        for surface in forms
+    }
 
 # Anno di CALENDARIO assoluto («del 2026», «dell'anno 2026», «in 2026», «of
 # 2026») — fix bug live 3/7: la query nomina un anno assoluto (un BOUND, non
@@ -148,11 +73,6 @@ _add(r"\bieri\b|\byesterday\b", lambda m: "yesterday", priority=1)
 # MAI un dict dentro time_window (che lo schema dichiara type=string, un
 # dict lo violerebbe). Range 2000-2099: riduce falsi positivi su 4 cifre
 # non-anno; parola-segnale IT/EN richiesta come per il resto del file.
-_YEAR_RE = re.compile(
-    r"\b(?:dell['a]?\s*anno|nell['a]?\s*anno|anno|del|dal|nel|of|in|year)\s+"
-    r"(20\d{2})\b|\b(20\d{2})\s+year\b",
-    re.IGNORECASE,
-)
 _MONTHS_IMAP = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
@@ -163,11 +83,29 @@ def _parse_absolute_year(query: str) -> int | None:
     2 anni» resta rolling, «del 2026» e' un anno di calendario."""
     if not query:
         return None
-    m = _YEAR_RE.search(query)
-    if not m:
+    lexicon = _parser_lex.load_family("time_resolver")
+    if lexicon is None:
         return None
-    y = int(m.group(1) or m.group(2))
-    return y if 2000 <= y <= 2099 else None
+    candidates: list[tuple[int, int]] = []
+    prefix = _phrase_alt(lexicon["parser.time.absolute_year_prefix"])
+    suffix = _phrase_alt(lexicon["parser.time.absolute_year_suffix"])
+    if prefix:
+        rx = re.compile(
+            rf"(?<!\w)(?:{prefix})(?!\w)\s+(20\d{{2}})(?!\d)",
+            re.IGNORECASE | re.UNICODE,
+        )
+        candidates.extend((m.start(), int(m.group(1)))
+                          for m in rx.finditer(query))
+    if suffix:
+        rx = re.compile(
+            rf"(?<!\d)(20\d{{2}})\s+(?:{suffix})(?!\w)",
+            re.IGNORECASE | re.UNICODE,
+        )
+        candidates.extend((m.start(), int(m.group(1)))
+                          for m in rx.finditer(query))
+    candidates = [(pos, year) for pos, year in candidates
+                  if 2000 <= year <= 2099]
+    return min(candidates)[1] if candidates else None
 
 
 def _year_bounds_imap(year: int) -> tuple[str, str]:
@@ -187,14 +125,81 @@ def parse_query_time_window(query: str) -> str | None:
     Deterministico, mai eccezioni."""
     if not query or not isinstance(query, str):
         return None
+    lexicon = _parser_lex.load_family("time_resolver")
+    if lexicon is None:
+        return None
     candidates: list[tuple[int, int, str]] = []
-    for rx, build, priority in _PATTERNS:
-        m = rx.search(query)
-        if not m:
+    determiners = _phrase_alt(lexicon["parser.time.past_determiner"])
+    units = lexicon["parser.time.unit"]
+    reverse_units = _surface_to_canonical(units)
+    unit_alt = _phrase_alt(reverse_units)
+    if determiners and unit_alt:
+        explicit = re.compile(
+            rf"(?<!\w)(?:{determiners})(?!\w)\s+(\d{{1,4}})\s*"
+            rf"(?P<unit>{unit_alt})(?!\w)",
+            re.IGNORECASE | re.UNICODE,
+        )
+        for match in explicit.finditer(query):
+            n = int(match.group(1))
+            unit = reverse_units.get(match.group("unit").casefold())
+            if 1 <= n <= 9999 and unit:
+                candidates.append((0, match.start(), f"last-{n}{unit}"))
+        # The established bare singular contract excludes weeks; the numeric
+        # form above remains available for all registered units.
+        singular_surfaces = _surface_to_canonical(
+            lexicon["parser.time.singular_unit"])
+        singular_alt = _phrase_alt(singular_surfaces)
+        if singular_alt:
+            singular = re.compile(
+                rf"(?<!\w)(?:{determiners})(?!\w)\s+"
+                rf"(?P<unit>{singular_alt})(?!\w)",
+                re.IGNORECASE | re.UNICODE,
+            )
+            for match in singular.finditer(query):
+                unit = singular_surfaces.get(match.group("unit").casefold())
+                if unit:
+                    candidates.append((0, match.start(), f"last-1{unit}"))
+
+    for canonical in ("h", "d", "w", "m", "y"):
+        forms = lexicon[f"parser.time.past_postfix.{canonical}"]
+        unit_forms = units.get(canonical, ())
+        unit_alt_for_kind = _phrase_alt(unit_forms)
+        postfix_alt = _phrase_alt(forms)
+        if not unit_alt_for_kind or not postfix_alt:
             continue
-        spec = build(m)
-        if spec:
-            candidates.append((priority, m.start(), spec))
+        rx = re.compile(
+            rf"(?<!\w)(\d{{1,4}})\s*(?:{unit_alt_for_kind})(?!\w)\s+"
+            rf"(?:{postfix_alt})(?!\w)",
+            re.IGNORECASE | re.UNICODE,
+        )
+        for match in rx.finditer(query):
+            n = int(match.group(1))
+            if 1 <= n <= 9999:
+                candidates.append((0, match.start(), f"last-{n}{canonical}"))
+        # Historical singular postfix exists only for hour and day.
+        if canonical in {"h", "d"}:
+            singular_unit_alt = _phrase_alt(
+                lexicon["parser.time.singular_unit"].get(canonical, ()))
+            rx = re.compile(
+                rf"(?<!\w)(?:{singular_unit_alt})(?!\w)\s+"
+                rf"(?:{postfix_alt})(?!\w)",
+                re.IGNORECASE | re.UNICODE,
+            )
+            candidates.extend((0, match.start(), f"last-1{canonical}")
+                              for match in rx.finditer(query))
+
+    relative = lexicon["parser.time.relative_day"]
+    reverse_relative = _surface_to_canonical(relative)
+    relative_alt = _phrase_alt(reverse_relative)
+    if relative_alt:
+        rx = re.compile(
+            rf"(?<!\w)(?P<form>{relative_alt})(?!\w)",
+            re.IGNORECASE | re.UNICODE,
+        )
+        for match in rx.finditer(query):
+            canonical = reverse_relative.get(match.group("form").casefold())
+            if canonical:
+                candidates.append((1, match.start(), canonical))
     if not candidates:
         return None
     candidates.sort()

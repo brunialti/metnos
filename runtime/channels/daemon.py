@@ -41,6 +41,7 @@ from . import Channel, InboundMessage, OutboundMessage  # noqa: E402
 from .telegram import TelegramChannel  # noqa: E402
 import config as _C  # noqa: E402  §7.11
 import detection_lexicon as _dl  # noqa: E402  lessici NL traducibili
+import detection_lexicon_seed_dialog as _dialog_cancel_lex  # noqa: E402
 from messages import get as _msg  # noqa: E402  §11 i18n (fonte unica)
 from credential_intake import scrub_sensitive_text  # noqa: E402
 from tutor_boundary import (  # noqa: E402
@@ -361,21 +362,6 @@ def _format_turn_result(result) -> str:
     return str(result)
 
 
-# Safety net, not a fourth list: read ONLY when the lexicon does not answer
-# (missing DB, aborted seed, sandbox without the file). Without it an
-# unreachable lexicon would leave the user unable to confirm anything, and an
-# open dialog that cannot be closed is worse than a reduced vocabulary (§2.8).
-#
-# It is deliberately a SUBSET of the seeded forms, never a superset: a safety
-# net on consent must be stricter than the normal path, not wider. A test
-# pins that property, because the first version of this net was wider and
-# silently re-opened cases the lexicon had closed.
-_EMERGENCY_CONFIRMATIONS = {
-    "confirm.yes": frozenset({"si", "sì", "yes", "ok"}),
-    "confirm.no": frozenset({"no", "n"}),
-}
-
-
 def _dialog_forms(concept: str) -> frozenset:
     """Lowercase surface forms of a lexicon concept, for exact comparison.
 
@@ -383,18 +369,21 @@ def _dialog_forms(concept: str) -> frozenset:
     drift apart. The lexicon caches per (concept, language) and invalidates
     itself on write, so this stays a dictionary lookup after the first call.
 
-    An unreachable lexicon falls back to the emergency set above and says so:
-    a silent empty set would make every confirmation invalid.
+    Consent is fail-closed: a missing, pending, stale or unreviewed resource
+    returns no forms.  Reintroducing a private fallback here would let a broken
+    localization bypass the same gate that is meant to protect confirmation.
     """
     try:
-        forme = frozenset(f.lower() for f in _dl.forms(concept))
-    except Exception:  # noqa: BLE001 — il lessico non deve bloccare un dialogo
-        forme = frozenset()
-    if forme:
-        return forme
-    log.warning("lessico non disponibile per %r: uso le forme di emergenza",
-                concept)
-    return _EMERGENCY_CONFIRMATIONS.get(concept, frozenset())
+        return frozenset(
+            f.lower() for f in _dl.native_ready_forms(
+                concept,
+                require_manual=True,
+                include_reviewed_baselines=True,
+            )
+        )
+    except Exception:  # noqa: BLE001 — unavailable consent stays unavailable
+        log.warning("lessico di conferma non disponibile per %r", concept)
+        return frozenset()
 
 
 def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
@@ -430,12 +419,15 @@ def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
         # one door, one criterion. Before this the two diverged on nine real
         # forms («si.», «ok...», «(si)», the fullwidth «Ｏｋ»), where the
         # dialog re-asked a question the user had already answered.
-        if _asks_instead_of_answering(s):
-            return False, None, _msg("ERR_DIALOG_PARSE_YESNO")
         low = _normalize_reply(s)
-        if low in ("true", "1") or low in _dialog_forms("confirm.yes"):
+        if low in ("true", "1"):
             return True, True, ""
-        if low in ("false", "0") or low in _dialog_forms("confirm.no"):
+        if low in ("false", "0"):
+            return True, False, ""
+        decision = _classify_yes_no(s)
+        if decision == "yes":
+            return True, True, ""
+        if decision == "no":
             return True, False, ""
         return False, None, _msg("ERR_DIALOG_PARSE_YESNO")
     if kind == "number":
@@ -736,14 +728,15 @@ class ChannelDaemon:
                 return None
             schema = dialog[index].get("schema") or {}
             schema_kind = str(schema.get("kind") or "text")
-            cancel = (msg.text or "").strip().lower() in {
-                "annulla", "cancel", "abort", "stop",
-            }
+            cancel_decision = _dialog_cancel_lex.exact_match(msg.text or "")
+            cancel = cancel_decision is True
+            cancel_unavailable = cancel_decision is None
             if schema_kind in {
-                    "text", "credentials", "file_path", "location"} and not cancel:
+                    "text", "credentials", "file_path", "location"} \
+                    and not (cancel or cancel_unavailable):
                 return None
             valid, _, _ = parse_step_value(msg.text, schema)
-            if not valid and not cancel:
+            if not valid and not (cancel or cancel_unavailable):
                 return None
         except Exception:
             log.warning("closed cap validation failed", exc_info=True)
@@ -753,9 +746,13 @@ class ChannelDaemon:
             owner_user_id=owner_user_id)
         if reply is not None:
             self._send_text(msg.sender_id, reply, reply_to=msg.message_id)
-        if cancel:
+        if cancel or cancel_unavailable:
             _cap_pending_clear(msg.sender_id)
-            return {"ok": True, "get_inputs_cancelled": True}
+            return {
+                "ok": True,
+                "get_inputs_cancelled": True,
+                "dialog_cancel_unavailable": cancel_unavailable,
+            }
         if completed:
             try:
                 import dialog_pending as _dp
@@ -937,8 +934,6 @@ class ChannelDaemon:
         from messages import get as _msg  # §11 i18n: niente stringhe hardcoded
 
         dialog_id = proposal.get("dialog_id") or ""
-        text_norm = (msg_text or "").strip().lower()
-
         # Lookup multi-candidato (stesse chiavi di _handle_dialog_callback):
         # lo stato puo' essere salvato per actor logico (`telegram:host`,
         # orchestratore/executor via METNOS_ACTOR), per chat_id, o con la
@@ -954,11 +949,15 @@ class ChannelDaemon:
         state, hit_key = load_pending_state(
             dialog_id, candidates, owner_user_id=owner_user_id)
 
-        if text_norm in ("annulla", "cancel", "abort", "stop"):
+        cancel_decision = _dialog_cancel_lex.exact_match(msg_text or "")
+        if cancel_decision is not False:
             if state is not None:
                 _dp.cancel_pending(state.get("sender_id") or hit_key,
                                    dialog_id,
                                    owner_user_id=owner_user_id)
+            if cancel_decision is None:
+                return (_msg("ERR_EXT_SVC_UNAVAILABLE"), False, None)
+            if state is not None:
                 return (_msg("MSG_DIALOG_CANCELLED"), False, None)
             return (_msg("MSG_DIALOG_EXPIRED"), False, None)
 

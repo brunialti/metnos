@@ -9,6 +9,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
@@ -127,6 +129,37 @@ class TestAdaptersSmoke(unittest.TestCase):
             if ci.intent_kind == KIND_MATERIALIZE_PIPELINE:
                 self.assertTrue(ci.intent_body.get("suggested_query"))
                 self.assertTrue(ci.intent_body.get("tools_sequence"))
+
+    def test_telos_parametric_change_requires_structured_argument(self):
+        from change_intent_adapters.telos import iter_telos
+
+        base = {
+            "name_status": "existing_parametric",
+            "executor_target": "find_files",
+            "prop_id": "p1",
+            "rationale": "observed",
+            "ts": 0,
+            "lens": "test",
+            "cluster_score": 0.8,
+        }
+        fake = SimpleNamespace(
+            ACTIONABLE_NAME_STATUS={"existing_parametric"},
+            load_all=lambda **_kwargs: [],
+            recompose_clusters=lambda _rows: [
+                {**base, "proposed_action": "aggiungi parametro pattern"},
+                {**base, "prop_id": "p2",
+                 "proposed_action": "agrega el parámetro pattern"},
+                {**base, "prop_id": "p3", "parametric_arg": "pattern",
+                 "parametric_value": "*.pdf",
+                 "proposed_action": "localized prose is irrelevant"},
+            ],
+        )
+        with patch.dict(sys.modules, {"telos_proposals_store": fake}):
+            rows = list(iter_telos())
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].origin_source_id, "p3")
+        self.assertEqual(rows[0].intent_body["arg_name"], "pattern")
 
     def test_iter_user_feedback_smoke(self):
         from change_intent_adapters import iter_user_feedback

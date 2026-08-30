@@ -18,6 +18,8 @@ _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 from proposal_evaluator import (
     AFFINITY_OVERLAP_THRESHOLD_EVALUATOR,
     EvaluationResult,
+    SCORE_ACCEPT,
+    _decidability,
     evaluate_proposal,
 )
 
@@ -142,6 +144,166 @@ def _write_proposal(tmp_path: Path, proposal: dict) -> Path:
     p = tmp_path / f"{proposal['id']}.json"
     p.write_text(json.dumps(proposal, ensure_ascii=False, indent=2))
     return p
+
+
+@pytest.fixture
+def isolated_detection_lexicon(tmp_path, monkeypatch):
+    import detection_lexicon as dl
+
+    monkeypatch.setattr(dl, "DB_PATH", tmp_path / "detection.sqlite")
+    monkeypatch.setattr(dl, "_conn", None)
+    monkeypatch.setattr(dl, "_seeded", False)
+    monkeypatch.setattr(dl, "_cache_data_version", None)
+    monkeypatch.setattr(dl, "_declared_review_policies", {})
+    monkeypatch.setattr(dl, "_declared_baseline_languages", {})
+    monkeypatch.setattr(dl._C, "INSTANCE_LANG", "it")
+    dl._cache.clear()
+    dl._regex_cache.clear()
+    dl.ensure_seeded()
+    yield dl
+    if dl._conn is not None:
+        dl._conn.close()
+        dl._conn = None
+    dl._cache.clear()
+    dl._regex_cache.clear()
+
+
+def _materialize_mapping(dl, concept: str, lang: str, *, key: str,
+                         form: str) -> None:
+    source = dl.resource_for_language(
+        concept, "en", fallback=False, ready_only=True,
+    )["payload"]
+    translated = {
+        canonical: [
+            form if canonical == key else f"{lang}_{index}_{canonical}"
+        ]
+        for index, canonical in enumerate(source)
+    }
+    dl.mark_for_translation(concept, lang, source_lang="en")
+    dl.set_translated(concept, lang, translated)
+
+
+def test_decidability_it_en_are_equivalent_canonical_queries(
+    isolated_detection_lexicon, monkeypatch,
+) -> None:
+    import prefilter
+
+    dl = isolated_detection_lexicon
+    captured = []
+
+    def rank(query, _catalog, intent, k=0):
+        captured.append((query, intent, k))
+        return [SimpleNamespace(name="find_files_size")]
+
+    monkeypatch.setattr(prefilter, "rank_with_intent", rank)
+    proposal = {"name": "find_files_size"}
+    cases = (("it", "trova file grandi"), ("en", "find large files"))
+    for lang, query in cases:
+        monkeypatch.setattr(dl._C, "INSTANCE_LANG", lang)
+        dl._invalidate()
+        pct, info = _decidability(
+            {**proposal, "user_query": query}, catalog=object(),
+        )
+        assert pct == 1.0
+        assert info["decidability_evaluable"] is True
+        assert info["decidability_queries_total"] == 1
+        assert info["decidability_queries_pass"] == 1
+        assert captured[-1][1] == {"verb": "find", "object": "files"}
+
+
+def test_synthesized_intent_summary_is_not_admission_evidence(monkeypatch) -> None:
+    import prefilter
+
+    monkeypatch.setattr(
+        prefilter, "rank_with_intent",
+        lambda *_args, **_kwargs: pytest.fail("intent summary reached ranker"),
+    )
+
+    pct, info = _decidability(
+        {"name": "find_files_size", "intent": "trova file grandi"},
+        catalog=object(),
+    )
+
+    assert pct == 0.0
+    assert info["decidability_evaluable"] is False
+    assert info["decidability_status"] == "input_unavailable"
+
+
+def test_decidability_uses_complete_ready_third_language(
+    isolated_detection_lexicon, monkeypatch,
+) -> None:
+    import prefilter
+
+    dl = isolated_detection_lexicon
+    monkeypatch.setattr(dl._C, "INSTANCE_LANG", "zz")
+    dl.enqueue_language("zz")
+    _materialize_mapping(
+        dl, "prefilter.verb_canonical", "zz", key="find", form="zzfind",
+    )
+    _materialize_mapping(
+        dl, "vocab.action_surfaces", "zz", key="find", form="zzseek",
+    )
+    _materialize_mapping(
+        dl, "prefilter.object_hint", "zz", key="files", form="zzfiles",
+    )
+    dl._invalidate()
+    captured = []
+
+    def rank(_query, _catalog, intent, k=0):
+        captured.append((intent, k))
+        return [SimpleNamespace(name="find_files_size")]
+
+    monkeypatch.setattr(prefilter, "rank_with_intent", rank)
+    pct, info = _decidability(
+        {"name": "find_files_size", "user_query": "zzfind zzfiles"},
+        catalog=object(),
+    )
+
+    assert pct == 1.0
+    assert info["decidability_lexicon_ready"] is True
+    assert info["decidability_status"] == "ranked"
+    assert captured == [({"verb": "find", "object": "files"}, 5)]
+
+
+def test_pending_language_never_produces_positive_admission_signal(
+    tmp_path, isolated_detection_lexicon, monkeypatch,
+) -> None:
+    import prefilter
+
+    dl = isolated_detection_lexicon
+    monkeypatch.setattr(dl._C, "INSTANCE_LANG", "zz")
+    dl.enqueue_language("zz")
+    dl._invalidate()
+    monkeypatch.setattr(
+        prefilter, "rank_with_intent",
+        lambda *_args, **_kwargs: pytest.fail("pending lexicon reached ranker"),
+    )
+    prop = _make_proposal(
+        name="find_files_size",
+        path_eta_p50_ms=6000,
+        new_executor_latency_p50_ms=1500,
+        path_call_count_60d=100,
+        path_n_steps=4,
+    )
+    prop["pipeline_terminal"] = True
+    cat = _make_catalog()
+    cat.executors[prop["name"]] = SimpleNamespace(
+        name=prop["name"], affinity=prop["stages"][3]["output"]["affinity"],
+        manifest_path=Path("/tmp/find_files_size/manifest.toml"),
+        reverse_pattern=None, capabilities=[], description="",
+        lifecycle="active",
+    )
+
+    result = evaluate_proposal(
+        _write_proposal(tmp_path, prop), catalog=cat, audit=False,
+    )
+
+    assert result.signals["decidability_lexicon_ready"] is False
+    assert result.signals["decidability_status"] == "lexicon_unavailable"
+    assert result.signals["decidability_pct"] == 0.0
+    assert result.signals.get("noising_top10_pct", 0.0) == 0.0
+    assert result.score >= SCORE_ACCEPT
+    assert result.verdict == "gray"
 
 
 # ─── KILLER 1: inflation ──────────────────────────────────────────────

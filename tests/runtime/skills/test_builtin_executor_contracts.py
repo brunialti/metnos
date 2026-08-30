@@ -46,7 +46,11 @@ GITHUB_BUILTIN_REQUIRED = {
 
 
 def _contract_dirs() -> list[Path]:
-    return sorted((RUNTIME / "builtin_executor_contracts").glob("*"))
+    return sorted(
+        path
+        for path in (RUNTIME / "builtin_executor_contracts").glob("*")
+        if not path.name.startswith(".")
+    )
 
 
 def test_all_planner_visible_builtins_have_valid_signed_contracts() -> None:
@@ -106,8 +110,9 @@ def test_builtin_contract_rejects_a_runtime_module_that_differs_from_admitted_by
         _load_builtin_contract("compare_entries", changed)
 
 
-def test_builtin_generator_sign_mode_submits_one_closed_birth_candidate(
-    tmp_path: Path, monkeypatch, capsys,
+@pytest.mark.parametrize("already_current", [False, True])
+def test_builtin_generator_sign_mode_resumes_one_closed_birth_candidate(
+    tmp_path: Path, monkeypatch, capsys, already_current: bool,
 ) -> None:
     import executor_birth_intent
     import scripts.generate_builtin_executor_contracts as generator
@@ -135,6 +140,9 @@ def test_builtin_generator_sign_mode_submits_one_closed_birth_candidate(
         ]
         assert manifest["code"]["files"] == ["implementation.py.src"]
         assert (intent.candidate_source_root / "implementation.py.src").read_bytes() == b"VALUE = 1\n"
+        assert intent.reason == (
+            "regenerate shipped builtin executor contract; batch attempt 2"
+        )
         observed.append(intent.contract_id.value)
         return SimpleNamespace(error_code=None, publication=object())
 
@@ -143,13 +151,31 @@ def test_builtin_generator_sign_mode_submits_one_closed_birth_candidate(
     monkeypatch.setattr(generator, "_META", {"compare_entries": generator._META["compare_entries"]})
     monkeypatch.setattr(executor_birth_intent, "require_birth_intent_adapter", lambda: None)
     monkeypatch.setattr(executor_birth_intent, "submit_builtin_generation_birth", submit)
-    monkeypatch.setattr(sys, "argv", ["generate_builtin_executor_contracts.py", "--sign"])
+    monkeypatch.setattr(
+        generator, "_birth_candidate_is_current",
+        lambda _root, _contract_id: already_current,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "generate_builtin_executor_contracts.py", "--sign",
+            "--birth-attempt", "2",
+        ],
+    )
 
     generator.main()
 
-    assert observed == ["builtin:compare_entries/manifest.toml"]
+    assert observed == (
+        [] if already_current else ["builtin:compare_entries/manifest.toml"]
+    )
     assert sorted(path.name for path in output.iterdir()) == ["unchanged"]
-    assert "published 1 immutable contract generations" in capsys.readouterr().out
+    expected = (
+        "published 0 immutable contract generations; 1 already current"
+        if already_current
+        else "published 1 immutable contract generations; 0 already current"
+    )
+    assert expected in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("name", [
@@ -203,7 +229,7 @@ def test_admin_contract_remains_fail_closed_without_command() -> None:
     assert out["decision"] == "reject"
     assert out["approval_required"] is False
     assert out["error_class"] == "invalid_args"
-    assert out["error_code"] == "ERR_ARG_INVALID"
+    assert out["error_code"] == "ERR_ARGV_STRUCTURE"
 
 
 def test_task_history_empty_filter_is_a_bounded_valid_read() -> None:

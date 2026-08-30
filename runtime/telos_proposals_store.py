@@ -712,11 +712,16 @@ def _semantic_overlap_query(user_query: str, proposed_action: str) -> int:
     veniva mostrata con esempio 'converti heic in jpg', che NON c'entrava).
     """
     import re as _re
-    stop = {"il","la","i","gli","le","un","una","di","da","del","della","dei",
-            "delle","a","al","alla","ai","alle","in","con","su","per","tra",
-            "fra","e","o","ma","che","mi","ci","ti","si","ho","ha","hai",
-            "the","a","an","of","to","in","is","it","for","on","with","and",
-            "or","but","this","that","una","sono","ci"}
+    try:
+        from detection_lexicon_seed_residual_nz import (
+            TELOS_OVERLAP_STOP_WORDS,
+            forms as _lexicon_forms,
+        )
+        stop = {form.casefold() for form in _lexicon_forms(
+            TELOS_OVERLAP_STOP_WORDS,
+        )}
+    except Exception:  # noqa: BLE001 - P2: conservare token evita falsi negativi
+        stop = set()
     def _toks(s: str) -> set:
         return {t for t in _re.split(r"[^\w]+", (s or "").lower())
                 if t and t not in stop and len(t) >= 3}

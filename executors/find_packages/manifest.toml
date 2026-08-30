@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_packages"
-version     = "0.5.0"
+version     = "0.5.2"
 platforms   = ["linux", "windows"]
 author      = "synt-multistage <synt@metnos.com>"
 affinity    = ["installato", "installed", "e' installato", "is installed",
@@ -22,7 +22,7 @@ en = "SCOPO: checks installed software and resolves a human name to its register
 
 [code]
 files  = ["find_packages.py"]
-digest = "sha256:f9383407b07ffbc956005e40899d82af765524f38873da1b3976247c9a1c47f7"
+digest = "sha256:7e54cabc9601164debbc8455334517d11510cbd7fdb93533a91014ed38f22021"
 
 [args]
 type     = "object"
@@ -43,7 +43,11 @@ schema_inline = """
   ok: bool,
   entries: Array<{package_id: str, installed: bool, match: str, name: str,
                   version: str, source: str, resolved_id?: str,
-                  also_matched?: Array<str>, path?: str}>,
+                  also_matched?: Array<str>,
+                  candidates?: Array<{name: str, resolved_id: str, version: str}>,
+                  candidate_count?: int,
+                  candidates_truncated?: bool,
+                  path?: str}>,
   failed: Array<{package_id?: str, error: str, error_class: str, error_code: str}>,
   ok_count: int,
   fail_count: int,

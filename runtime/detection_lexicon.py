@@ -42,6 +42,8 @@ import logging
 import re
 import sqlite3
 import threading
+from collections.abc import Mapping
+from functools import wraps
 
 import config as _C  # §7.11
 import i18n as _i18n  # riusa current_lang() — UNICA fonte della lingua
@@ -65,6 +67,9 @@ CREATE TABLE IF NOT EXISTS detection_lexicon (
     review_policy TEXT NOT NULL DEFAULT 'automatic',
     version_hash TEXT,                   -- sha256 del payload corrente
     source_text_hash TEXT,              -- sha256 del payload sorgente tradotto
+    translation_attempts INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at TEXT,
+    last_translation_error TEXT,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     PRIMARY KEY (concept, lang)
 );
@@ -76,9 +81,11 @@ _conn: sqlite3.Connection | None = None
 _lock = threading.RLock()
 _cache: dict[tuple[str, str], tuple] = {}     # (concept, current_lang) -> resolved
 _regex_cache: dict[tuple[str, str], list] = {}
+_cache_data_version: int | None = None
 _seeded = False
 _coverage_gaps_logged: set[tuple[str, str]] = set()
 _declared_review_policies: dict[str, str] = {}
+_declared_baseline_languages: dict[str, frozenset[str]] = {}
 
 
 def _sha256(text: str) -> str:
@@ -113,6 +120,21 @@ def _open() -> sqlite3.Connection:
                             "ALTER TABLE detection_lexicon ADD COLUMN "
                             "review_policy TEXT NOT NULL DEFAULT 'automatic'"
                         )
+                    if "translation_attempts" not in columns:
+                        c.execute(
+                            "ALTER TABLE detection_lexicon ADD COLUMN "
+                            "translation_attempts INTEGER NOT NULL DEFAULT 0"
+                        )
+                    if "last_attempt_at" not in columns:
+                        c.execute(
+                            "ALTER TABLE detection_lexicon ADD COLUMN "
+                            "last_attempt_at TEXT"
+                        )
+                    if "last_translation_error" not in columns:
+                        c.execute(
+                            "ALTER TABLE detection_lexicon ADD COLUMN "
+                            "last_translation_error TEXT"
+                        )
                     c.commit()
                     _conn = c
                 except sqlite3.OperationalError:
@@ -142,6 +164,36 @@ def _invalidate(concept: str | None = None) -> None:
         _regex_cache.pop(k, None)
 
 
+def _synchronized(function):
+    """Serialize cache publication with in-process store mutations."""
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        with _lock:
+            return function(*args, **kwargs)
+    return guarded
+
+
+def _sync_cache_data_version() -> int | None:
+    """Invalidate process caches after a commit made by another connection.
+
+    SQLite's ``data_version`` changes only when a *different* connection
+    commits.  Writes through this module still call ``_invalidate`` directly;
+    the epoch closes the materializer/daemon path, which necessarily writes
+    through its own connection or process.
+    """
+    global _cache_data_version
+    try:
+        version = int(_open().execute("PRAGMA data_version").fetchone()[0])
+    except Exception:  # noqa: BLE001 - a cache is unsafe if freshness is unknown
+        _invalidate()
+        _cache_data_version = None
+        return None
+    if _cache_data_version is not None and version != _cache_data_version:
+        _invalidate()
+    _cache_data_version = version
+    return version
+
+
 # --------------------------------------------------------------------------
 # Seed / registrazione
 # --------------------------------------------------------------------------
@@ -164,6 +216,10 @@ def ensure_seeded() -> None:
             _seed.register_all()
         except Exception:
             log.exception("detection_lexicon: seed fallito")
+            # Un guasto transitorio non deve rendere permanente un seed
+            # parziale. Non eseguire il coverage check qui: richiamerebbe
+            # ensure_seeded ricorsivamente mentre la causa e' ancora attiva.
+            return
         _seeded = True
         _startup_coverage_check()
 
@@ -191,6 +247,7 @@ def _startup_coverage_check() -> None:
             log.exception("detection_lexicon: auto-enqueue fallito")
 
 
+@_synchronized
 def register(concept: str, kind: str, *, it=None, en=None,
              translations: dict | None = None,
              match_mode: str = "substring",
@@ -222,16 +279,25 @@ def register(concept: str, kind: str, *, it=None, en=None,
         payloads.setdefault("en", en)
     if not payloads:
         raise ValueError("at least one seed translation is required")
+    declared_languages = frozenset(
+        _i18n.normalize_language(lang) for lang in payloads
+        if _i18n.normalize_language(lang)
+    )
+    if not declared_languages:
+        raise ValueError("at least one valid seed language is required")
+    _declared_baseline_languages[concept] = declared_languages
     conn = _open()
     has_review_policy = _has_column(conn, "review_policy")
     wrote = False
-    realigned = False
+    semantic_realignment = False
     try:
         for lang, payload in sorted(payloads.items()):
             js = json.dumps(payload, ensure_ascii=False, sort_keys=True)
             policy_expr = "review_policy" if has_review_policy else "'automatic'"
             row = conn.execute(
                 "SELECT kind, match_mode, payload, " + policy_expr
+                + ", source_lang, version_hash, needs_translation, "
+                "source_text_hash "
                 + " FROM detection_lexicon "
                 "WHERE concept=? AND lang=?",
                 (concept, lang),
@@ -249,13 +315,21 @@ def register(concept: str, kind: str, *, it=None, en=None,
                 policy_matches = (
                     not has_review_policy or row[3] == review_policy
                 )
-                if stored == desired and policy_matches:
+                provenance_matches = (
+                    row[4] == lang
+                    and row[5] == _sha256(js)
+                    and not int(row[6] or 0)
+                    and row[7] is None
+                )
+                if stored == desired and policy_matches and provenance_matches:
                     continue
+                if stored != desired or not policy_matches:
+                    semantic_realignment = True
                 if has_review_policy:
                     conn.execute(
                         "UPDATE detection_lexicon SET kind=?, match_mode=?, "
                         "payload=?, needs_translation=0, source_lang=?, "
-                        "review_policy=?, version_hash=?, "
+                        "review_policy=?, version_hash=?, source_text_hash=NULL, "
                         "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
                         "WHERE concept=? AND lang=?",
                         (kind, match_mode, js, lang, review_policy,
@@ -265,14 +339,14 @@ def register(concept: str, kind: str, *, it=None, en=None,
                     conn.execute(
                         "UPDATE detection_lexicon SET kind=?, match_mode=?, "
                         "payload=?, needs_translation=0, source_lang=?, "
-                        "version_hash=?, "
+                        "version_hash=?, source_text_hash=NULL, "
                         "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
                         "WHERE concept=? AND lang=?",
                         (kind, match_mode, js, lang, _sha256(js), concept, lang),
                     )
                 log.info("detection_lexicon: concept %r lingua %r riallineato "
                          "al seed (kind %r -> %r)", concept, lang, row[0], kind)
-                wrote = realigned = True
+                wrote = True
                 continue
             if has_review_policy:
                 conn.execute(
@@ -292,18 +366,64 @@ def register(concept: str, kind: str, *, it=None, en=None,
                     (concept, lang, kind, match_mode, js, lang, _sha256(js)),
                 )
             wrote = True
-        if realigned:
+        # A language removed from the source declaration is no longer an
+        # editorial baseline.  Preserve its old payload only as pending
+        # evidence and retarget it to the current authoritative source; it
+        # must never remain a self-sourced fallback by accident.
+        source_language = (
+            _C.BOOTSTRAP_LANGUAGE
+            if _C.BOOTSTRAP_LANGUAGE in declared_languages
+            else sorted(declared_languages)[0]
+        )
+        for (persisted_language,) in conn.execute(
+            "SELECT lang FROM detection_lexicon "
+            "WHERE concept=? AND source_lang=lang",
+            (concept,),
+        ).fetchall():
+            if _i18n.normalize_language(persisted_language) in declared_languages:
+                continue
+            if has_review_policy:
+                conn.execute(
+                    "UPDATE detection_lexicon SET kind=?,match_mode=?,"
+                    "needs_translation=1,source_lang=?,review_policy=?,"
+                    "source_text_hash=NULL,"
+                    "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                    "WHERE concept=? AND lang=?",
+                    (kind, match_mode, source_language, review_policy,
+                     concept, persisted_language),
+                )
+            else:
+                conn.execute(
+                    "UPDATE detection_lexicon SET kind=?,match_mode=?,"
+                    "needs_translation=1,source_lang=?,source_text_hash=NULL,"
+                    "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                    "WHERE concept=? AND lang=?",
+                    (kind, match_mode, source_language,
+                     concept, persisted_language),
+                )
+            wrote = True
+        if semantic_realignment:
             # When the source changes, translations made from that source are
             # stale: they are marked to be redone, not deleted. Without this,
             # `verify_coverage` would keep reporting "covered" for a payload
             # that no longer matches — and for a concept like confirm.* that
             # means a user who can no longer confirm anything (§2.8).
             placeholders = ",".join("?" for _ in payloads)
-            conn.execute(
-                "UPDATE detection_lexicon SET needs_translation=1 "
-                f"WHERE concept=? AND lang NOT IN ({placeholders})",
-                (concept, *sorted(payloads)),
-            )
+            if has_review_policy:
+                conn.execute(
+                    "UPDATE detection_lexicon SET needs_translation=1,"
+                    "kind=?,match_mode=?,review_policy=? "
+                    f"WHERE concept=? AND lang NOT IN ({placeholders})",
+                    (kind, match_mode, review_policy,
+                     concept, *sorted(payloads)),
+                )
+            else:
+                conn.execute(
+                    "UPDATE detection_lexicon SET needs_translation=1,"
+                    "kind=?,match_mode=? "
+                    f"WHERE concept=? AND lang NOT IN ({placeholders})",
+                    (kind, match_mode, concept, *sorted(payloads)),
+                )
         if wrote:
             # Dentro il try: un commit fallito e' un fallimento di questo
             # concetto come gli altri, e deve passare dal rollback invece di
@@ -335,45 +455,94 @@ def register(concept: str, kind: str, *, it=None, en=None,
     return wrote
 
 
+@_synchronized
 def set_payload(concept: str, lang: str, payload, *,
                 kind: str | None = None, match_mode: str | None = None,
                 source_lang: str | None = None) -> None:
-    """INSERT/REPLACE payload per (concept, lang). Usato da daemon e admin."""
+    """Write one proven baseline or translated payload.
+
+    A non-baseline target must name an existing authoritative source.  Its
+    shape, kind, mode, review policy and source hash are copied from that
+    source before the row can become ready.
+    """
     conn = _open()
     has_review_policy = _has_column(conn, "review_policy")
     policy_expr = "review_policy" if has_review_policy else "'automatic'"
-    meta = conn.execute(
-        "SELECT kind, match_mode, " + policy_expr
-        + " FROM detection_lexicon WHERE concept=? "
-        "ORDER BY CASE WHEN lang=? THEN 0 ELSE 1 END, lang LIMIT 1",
-        (concept, lang),
-    ).fetchone()
-    kind = kind or (meta[0] if meta else "phrases")
-    match_mode = match_mode or (meta[1] if meta else "substring")
-    # The source declaration is authoritative. In particular, a human rewrite
-    # must be able to promote a legacy third-language row from ``automatic``
-    # to the newly declared ``manual`` policy; preserving the target row first
-    # would leave that language permanently unusable by the safety gate.
-    review_policy = _declared_review_policies.get(
-        concept, meta[2] if meta else "automatic",
-    )
+    normalized_lang = _i18n.normalize_language(lang)
+    normalized_source = _i18n.normalize_language(source_lang or "")
+    declared = _declared_baseline_languages.get(concept, frozenset())
+    is_declared_baseline = normalized_lang in declared
+    source_text_hash = None
+    if is_declared_baseline:
+        if normalized_source and normalized_source != normalized_lang:
+            raise ValueError("declared baseline cannot name another source")
+        source_lang = normalized_lang
+        meta = conn.execute(
+            "SELECT kind,match_mode," + policy_expr + " "
+            "FROM detection_lexicon WHERE concept=? AND lang=?",
+            (concept, normalized_lang),
+        ).fetchone()
+        kind = kind or (meta[0] if meta else "phrases")
+        match_mode = match_mode or (meta[1] if meta else "substring")
+        errors = _validate_baseline_payload(kind, payload)
+        if errors:
+            raise ValueError("invalid baseline payload: " + "; ".join(errors))
+        review_policy = _declared_review_policies.get(
+            concept, meta[2] if meta else "automatic",
+        )
+    else:
+        if not normalized_source or normalized_source == normalized_lang:
+            raise ValueError(
+                "non-baseline payload requires another authoritative source"
+            )
+        if normalized_source not in baseline_languages(concept):
+            raise ValueError("source language is not an editorial baseline")
+        if not native_resource_status(concept, normalized_source)["ok"]:
+            raise ValueError("source lexicon resource is not ready")
+        source_row = conn.execute(
+            "SELECT payload,kind,match_mode," + policy_expr + " "
+            "FROM detection_lexicon WHERE concept=? AND lang=?",
+            (concept, normalized_source),
+        ).fetchone()
+        if not source_row or source_row[0] is None:
+            raise ValueError("source payload is missing")
+        try:
+            source_payload = json.loads(source_row[0])
+        except Exception as exc:
+            raise ValueError("source payload is not valid JSON") from exc
+        if kind is not None and kind != source_row[1]:
+            raise ValueError("target kind differs from source")
+        if match_mode is not None and match_mode != source_row[2]:
+            raise ValueError("target match mode differs from source")
+        kind = source_row[1]
+        match_mode = source_row[2]
+        review_policy = _declared_review_policies.get(concept, source_row[3])
+        validation = validate_payload_shape(kind, source_payload, payload)
+        if not validation["ok"]:
+            raise ValueError("invalid translated payload: " + "; ".join(
+                validation["errors"]
+            ))
+        payload = validation["payload"]
+        source_lang = normalized_source
+        source_text_hash = _sha256(source_row[0])
     js = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     if has_review_policy:
         conn.execute(
             "INSERT OR REPLACE INTO detection_lexicon(concept, lang, kind, "
             "match_mode, payload, needs_translation, source_lang, review_policy, "
-            "version_hash, updated_at) VALUES (?,?,?,?,?,0,?,?,?,"
+            "version_hash,source_text_hash,updated_at) VALUES (?,?,?,?,?,0,?,?,?,?,"
             "strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
             (concept, lang, kind, match_mode, js, source_lang, review_policy,
-             _sha256(js)),
+             _sha256(js), source_text_hash),
         )
     else:
         conn.execute(
             "INSERT OR REPLACE INTO detection_lexicon(concept, lang, kind, "
-            "match_mode, payload, needs_translation, source_lang, version_hash, "
-            "updated_at) VALUES (?,?,?,?,?,0,?,?,"
+            "match_mode,payload,needs_translation,source_lang,version_hash,"
+            "source_text_hash,updated_at) VALUES (?,?,?,?,?,0,?,?,?,"
             "strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
-            (concept, lang, kind, match_mode, js, source_lang, _sha256(js)),
+            (concept, lang, kind, match_mode, js, source_lang, _sha256(js),
+             source_text_hash),
         )
     conn.commit()
     _invalidate(concept)
@@ -383,11 +552,18 @@ def set_payload(concept: str, lang: str, payload, *,
 # Risoluzione + matcher
 # --------------------------------------------------------------------------
 def _native(concept: str, lang: str):
-    """(kind, match_mode, payload_obj) per la lingua ESATTA, o None."""
+    """Ready ``(kind, mode, payload)`` for the exact language, or ``None``.
+
+    Pending rows may retain an obsolete payload while they are being
+    realigned.  They are evidence for the translator, never runtime input.
+    """
+    if not native_resource_status(concept, lang)["ok"]:
+        return None
     conn = _open()
     row = conn.execute(
         "SELECT kind, match_mode, payload FROM detection_lexicon "
-        "WHERE concept=? AND lang=? AND payload IS NOT NULL",
+        "WHERE concept=? AND lang=? AND payload IS NOT NULL "
+        "AND COALESCE(needs_translation,0)=0",
         (concept, lang),
     ).fetchone()
     if not row:
@@ -428,7 +604,10 @@ def resource_for_language(concept: str, lang: str, *, fallback: bool = True,
             "AND payload IS NOT NULL",
             (concept, candidate),
         ).fetchone()
-        if not row or (ready_only and int(row[3] or 0)):
+        if not row or (ready_only and (
+            int(row[3] or 0)
+            or not native_resource_status(concept, candidate)["ok"]
+        )):
             continue
         try:
             payload = json.loads(row[2])
@@ -466,22 +645,248 @@ def mapping_for_language(concept: str, lang: str, *, fallback: bool = True,
     return dict(payload) if isinstance(payload, dict) else {}
 
 
-def native_ready_forms(concept: str, *, require_manual: bool = False) -> list[str]:
-    """Validated native phrase forms admitted for the active language."""
-    resource = resource_for_language(
-        concept, current_lang(), fallback=False, ready_only=True,
+@_synchronized
+def native_ready_family_resources(
+    concepts: Mapping[str, str], *, require_manual: bool = False,
+    include_reviewed_baselines: bool = False,
+) -> dict[str, tuple[dict, ...]] | None:
+    """Read one exact, native-ready resource family in a single DB epoch.
+
+    The result keeps resources separate by language so a consumer can apply
+    its own structural merge (for example, a path alias whose first phrase is
+    a trigger).  It never calls the fallback-aware resolver.  The active
+    language is mandatory for every concept; reviewed editorial baselines are
+    optional additive resources.  An in-process writer is serialized by the
+    module lock and an external commit anywhere in the read returns ``None``.
+    """
+    if not isinstance(concepts, Mapping) or not concepts:
+        raise ValueError("native-ready family must contain at least one concept")
+    requested = tuple(concepts.items())
+    if any(
+        not isinstance(concept, str) or not concept
+        or kind not in VALID_KINDS
+        for concept, kind in requested
+    ):
+        raise ValueError("invalid native-ready family specification")
+
+    start_data_version = _sync_cache_data_version()
+    if start_data_version is None:
+        return None
+    active = current_lang()
+    snapshot: dict[str, tuple[dict, ...]] = {}
+    for concept, expected_kind in requested:
+        languages = [active]
+        if include_reviewed_baselines:
+            languages.extend(
+                language for language in baseline_languages(concept)
+                if language != active
+            )
+        resources: list[dict] = []
+        for position, language in enumerate(languages):
+            status = native_resource_status(concept, language)
+            if not status["ok"]:
+                if position == 0:
+                    return None
+                continue
+            resource = resource_for_language(
+                concept, language, fallback=False, ready_only=True,
+            )
+            if (
+                not resource
+                or resource.get("lang") != language
+                or resource.get("kind") != expected_kind
+                or (require_manual
+                    and resource.get("review_policy") != "manual")
+            ):
+                if position == 0:
+                    return None
+                continue
+            resources.append(resource)
+        if not resources or resources[0].get("lang") != active:
+            return None
+        snapshot[concept] = tuple(resources)
+    if _sync_cache_data_version() != start_data_version:
+        return None
+    return snapshot
+
+
+@_synchronized
+def native_ready_forms(
+    concept: str, *, require_manual: bool = False,
+    include_reviewed_baselines: bool = False,
+) -> list[str]:
+    """Validated native phrases, optionally plus reviewed source baselines.
+
+    The active native resource is always mandatory.  Baselines are additive
+    only after that gate, for security consumers which inspect external or LLM
+    text that may legitimately be in a bootstrap language.
+    """
+    start_data_version = _sync_cache_data_version()
+    if start_data_version is None:
+        return []
+    active = current_lang()
+    if not native_resource_status(concept, active)["ok"]:
+        return []
+    active_resource = resource_for_language(
+        concept, active, fallback=False, ready_only=True,
     )
-    if (not resource or resource.get("kind") != "phrases"
+    if (not active_resource or active_resource.get("kind") != "phrases"
+            or not isinstance(active_resource.get("payload"), list)
+            or not active_resource["payload"]
+            or not all(
+                isinstance(form, str) and form.strip()
+                for form in active_resource["payload"]
+            )
+            or (require_manual
+                and active_resource.get("review_policy") != "manual")):
+        return []
+    languages = [active]
+    if include_reviewed_baselines:
+        languages.extend(
+            lang for lang in baseline_languages(concept) if lang != active
+        )
+    forms: list[str] = []
+    seen: set[str] = set()
+    for language in languages:
+        if not native_resource_status(concept, language)["ok"]:
+            continue
+        resource = resource_for_language(
+            concept, language, fallback=False, ready_only=True,
+        )
+        if (not resource or resource.get("kind") != "phrases"
             or not isinstance(resource.get("payload"), list)
-            or not resource["payload"]
             or not all(
                 isinstance(form, str) and form.strip()
                 for form in resource["payload"]
             )
             or (require_manual
                 and resource.get("review_policy") != "manual")):
+            continue
+        for form in resource["payload"]:
+            normalized = form.strip()
+            folded = normalized.casefold()
+            if folded not in seen:
+                seen.add(folded)
+                forms.append(normalized)
+    if _sync_cache_data_version() != start_data_version:
         return []
-    return [form.strip() for form in resource["payload"]]
+    return forms
+
+
+@_synchronized
+def native_ready_patterns(
+    concept: str, *, require_manual: bool = False,
+    include_reviewed_baselines: bool = False,
+) -> list[re.Pattern]:
+    """Compiled exact-language regex resources after full readiness checks."""
+    start_data_version = _sync_cache_data_version()
+    if start_data_version is None:
+        return []
+    active = current_lang()
+    if not native_resource_status(concept, active)["ok"]:
+        return []
+    resource = resource_for_language(
+        concept, active, fallback=False, ready_only=True,
+    )
+    if (not resource or resource.get("kind") != "regex"
+            or not isinstance(resource.get("payload"), list)
+            or not resource["payload"]
+            or (require_manual
+                and resource.get("review_policy") != "manual")):
+        return []
+    languages = [active]
+    if include_reviewed_baselines:
+        languages.extend(
+            lang for lang in baseline_languages(concept) if lang != active
+        )
+    compiled: list[re.Pattern] = []
+    seen: set[str] = set()
+    for language in languages:
+        if not native_resource_status(concept, language)["ok"]:
+            continue
+        candidate = resource_for_language(
+            concept, language, fallback=False, ready_only=True,
+        )
+        if (not candidate or candidate.get("kind") != "regex"
+                or not isinstance(candidate.get("payload"), list)
+                or (require_manual
+                    and candidate.get("review_policy") != "manual")):
+            continue
+        for pattern in candidate["payload"]:
+            if not isinstance(pattern, str) or not pattern.strip():
+                return []
+            if pattern in seen:
+                continue
+            try:
+                compiled.append(re.compile(pattern, re.IGNORECASE))
+                seen.add(pattern)
+            except re.error:
+                return []
+    if _sync_cache_data_version() != start_data_version:
+        return []
+    return compiled
+
+
+@_synchronized
+def native_ready_mapping(
+    concept: str, *, require_manual: bool = False,
+    include_reviewed_baselines: bool = False,
+) -> dict[str, list[str]]:
+    """Exact-language mapping after provenance, shape and policy checks."""
+    start_data_version = _sync_cache_data_version()
+    if start_data_version is None:
+        return {}
+    active = current_lang()
+    if not native_resource_status(concept, active)["ok"]:
+        return {}
+    resource = resource_for_language(
+        concept, active, fallback=False, ready_only=True,
+    )
+    if (not resource or resource.get("kind") != "mapping"
+            or not isinstance(resource.get("payload"), dict)
+            or (require_manual
+                and resource.get("review_policy") != "manual")):
+        return {}
+    languages = [active]
+    if include_reviewed_baselines:
+        languages.extend(
+            lang for lang in baseline_languages(concept) if lang not in languages
+        )
+    result: dict[str, list[str]] = {}
+    seen: dict[str, set[str]] = {}
+    owners: dict[str, str] = {}
+    for language in languages:
+        if not native_resource_status(concept, language)["ok"]:
+            continue
+        candidate = resource_for_language(
+            concept, language, fallback=False, ready_only=True,
+        )
+        if (not candidate or candidate.get("kind") != "mapping"
+                or not isinstance(candidate.get("payload"), dict)
+                or (require_manual
+                    and candidate.get("review_policy") != "manual")):
+            continue
+        for canonical, forms in candidate["payload"].items():
+            if (not isinstance(canonical, str) or not isinstance(forms, list)
+                    or not forms or not all(
+                        isinstance(form, str) and form.strip() for form in forms
+                    )):
+                return {}
+            bucket = result.setdefault(canonical, [])
+            folded = seen.setdefault(canonical, set())
+            for form in forms:
+                normalized = form.strip()
+                surface = normalized.casefold()
+                previous_owner = owners.get(surface)
+                if previous_owner is not None and previous_owner != canonical:
+                    return {}
+                owners[surface] = canonical
+                if surface not in folded:
+                    folded.add(surface)
+                    bucket.append(normalized)
+    if _sync_cache_data_version() != start_data_version:
+        return {}
+    return result
 
 
 def validate_mapping_payload(source: dict, candidate) -> dict:
@@ -538,6 +943,86 @@ def validate_mapping_payload(source: dict, candidate) -> dict:
     }
 
 
+def validate_payload_shape(kind: str, source_payload, candidate_payload) -> dict:
+    """Validate one localized payload against its current source shape.
+
+    This is the shared admission rule for the daemon, the coverage guard and
+    the live activation gate.  A row being present in SQLite is not coverage:
+    it must be non-pending, structurally valid and, for mappings, preserve the
+    exact canonical key set without an ambiguous surface.
+    """
+    errors: list[str] = []
+    normalized = None
+    if kind == "mapping":
+        validation = validate_mapping_payload(source_payload, candidate_payload)
+        if not validation["ok"]:
+            errors.append("mapping shape differs from source")
+        if validation["ambiguous_surfaces"]:
+            errors.append("mapping has ambiguous surfaces")
+        normalized = validation["mapping"]
+    elif kind in {"phrases", "regex"}:
+        if not isinstance(candidate_payload, list) or not candidate_payload:
+            errors.append(f"{kind} payload is empty or not a list")
+            normalized = []
+        else:
+            values: list[str] = []
+            seen: set[str] = set()
+            for raw in candidate_payload:
+                if not isinstance(raw, str) or not raw.strip():
+                    errors.append(f"{kind} payload contains an invalid value")
+                    continue
+                value = raw.strip()
+                folded = value.casefold()
+                if folded in seen:
+                    errors.append(f"{kind} payload contains duplicate values")
+                    continue
+                seen.add(folded)
+                values.append(value)
+                if kind == "regex":
+                    try:
+                        re.compile(value, re.IGNORECASE)
+                    except re.error:
+                        errors.append("regex payload contains an invalid pattern")
+            normalized = values
+    else:
+        errors.append("unknown payload kind")
+    return {"ok": not errors, "payload": normalized, "errors": errors}
+
+
+def _validate_baseline_payload(kind: str, payload) -> list[str]:
+    """Validate editorial source syntax without inventing target semantics.
+
+    A baseline may intentionally be empty for a language-specific concept and
+    may contain curated polysemy.  Those two cases are invalid for an
+    automatically materialized target, but they are valid source declarations.
+    """
+    errors: list[str] = []
+    if kind == "mapping":
+        if not isinstance(payload, dict):
+            return ["baseline mapping is not an object"]
+        for canonical, forms in payload.items():
+            if not isinstance(canonical, str) or not isinstance(forms, list):
+                errors.append("baseline mapping contains an invalid entry")
+                continue
+            if any(not isinstance(value, str) or not value.strip() for value in forms):
+                errors.append("baseline mapping contains an invalid surface")
+    elif kind in {"phrases", "regex"}:
+        if not isinstance(payload, list):
+            return [f"baseline {kind} payload is not a list"]
+        for value in payload:
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"baseline {kind} payload contains an invalid value")
+                continue
+            if kind == "regex":
+                try:
+                    re.compile(value, re.IGNORECASE)
+                except re.error:
+                    errors.append("baseline regex contains an invalid pattern")
+    else:
+        errors.append("unknown payload kind")
+    return errors
+
+
 def baseline_languages(concept: str | None = None) -> list[str]:
     """Enumerate editorial source languages from registry metadata.
 
@@ -551,20 +1036,38 @@ def baseline_languages(concept: str | None = None) -> list[str]:
     if concept is not None:
         where += " AND concept=?"
         params = (concept,)
-    return [row[0] for row in conn.execute(
-        "SELECT DISTINCT lang FROM detection_lexicon WHERE " + where
+    persisted_rows = conn.execute(
+        "SELECT DISTINCT concept,lang FROM detection_lexicon WHERE " + where
         + " ORDER BY CASE WHEN lang=? THEN 0 ELSE 1 END, lang",
         (*params, _C.BOOTSTRAP_LANGUAGE),
-    )]
+    ).fetchall()
+    if concept is not None and concept in _declared_baseline_languages:
+        languages = set(_declared_baseline_languages[concept])
+    else:
+        languages = {
+            lang for persisted_concept, lang in persisted_rows
+            if persisted_concept not in _declared_baseline_languages
+        }
+        for declared in _declared_baseline_languages.values():
+            languages.update(declared)
+    return sorted(
+        languages,
+        key=lambda lang: (lang != _C.BOOTSTRAP_LANGUAGE, lang),
+    )
 
 
 def manual_review_concepts() -> frozenset[str]:
     """Concepts governed by registry policy rather than a Python name list."""
     ensure_seeded()
     conn = _open()
+    current_concepts = {
+        row[0] for row in conn.execute(
+            "SELECT DISTINCT concept FROM detection_lexicon"
+        )
+    }
     declared = {
         concept for concept, policy in _declared_review_policies.items()
-        if policy == "manual"
+        if policy == "manual" and concept in current_concepts
     }
     if not _has_column(conn, "review_policy"):
         return frozenset(declared)
@@ -573,6 +1076,8 @@ def manual_review_concepts() -> frozenset[str]:
             "SELECT DISTINCT concept FROM detection_lexicon "
             "WHERE review_policy='manual' ORDER BY concept"
         )
+        if (row[0] not in _declared_review_policies
+            or row[0] not in current_concepts)
     }
     return frozenset(declared | persisted)
 
@@ -586,6 +1091,7 @@ def _union_langs(concept: str | None = None) -> list[str]:
     return langs
 
 
+@_synchronized
 def _resolve(concept: str):
     """Risolve (kind, match_mode, merged_payload, langs) unendo le forme su
     `{lingua_corrente} ∪ {baseline editoriali registrate}`.
@@ -598,6 +1104,7 @@ def _resolve(concept: str):
     ensure_seeded()
     cur = current_lang()
     key = (concept, cur)
+    start_data_version = _sync_cache_data_version()
     if key in _cache:
         return _cache[key]
     baselines = baseline_languages(concept)
@@ -668,6 +1175,10 @@ def _resolve(concept: str):
     else:
         payload = merged_map if kind == "mapping" else merged_list
         out = (kind, match_mode, payload, used)
+    # An external materializer may have committed while this result was being
+    # assembled.  Never publish a snapshot computed across that boundary.
+    if _sync_cache_data_version() != start_data_version:
+        return _resolve(concept)
     _cache[key] = out
     return out
 
@@ -760,10 +1271,12 @@ def mapping(concept: str) -> dict:
     return dict(payload) if isinstance(payload, dict) else {}
 
 
+@_synchronized
 def _compiled(concept: str) -> list:
     """Pattern regex compilati per la lingua corrente (cache per processo)."""
     lang = current_lang()
     key = (concept, lang)
+    start_data_version = _sync_cache_data_version()
     if key in _regex_cache:
         return _regex_cache[key]
     res = _resolve(concept)
@@ -775,6 +1288,8 @@ def _compiled(concept: str) -> list:
             except re.error:
                 log.warning("detection_lexicon: regex invalido in %r: %r",
                             concept, pat)
+    if _sync_cache_data_version() != start_data_version:
+        return _compiled(concept)
     _regex_cache[key] = out
     return out
 
@@ -1050,8 +1565,104 @@ def registered_concepts() -> list[str]:
         "SELECT DISTINCT concept FROM detection_lexicon ORDER BY concept")]
 
 
+def native_resource_status(concept: str, lang: str) -> dict:
+    """Return the exact readiness decision for one native lexicon row."""
+    ensure_seeded()
+    normalized = _i18n.normalize_language(lang)
+    if not normalized:
+        return {"ok": False, "errors": ["invalid language"]}
+    conn = _open()
+    has_review_policy = _has_column(conn, "review_policy")
+    policy_expr = "review_policy" if has_review_policy else "'automatic'"
+    row = conn.execute(
+        "SELECT kind,match_mode,payload,needs_translation,source_lang,"
+        "version_hash,source_text_hash," + policy_expr + " "
+        "FROM detection_lexicon WHERE concept=? AND lang=?",
+        (concept, normalized),
+    ).fetchone()
+    if not row:
+        return {"ok": False, "errors": ["native row is missing"]}
+    kind, match_mode, raw_payload, pending, source_lang = row[:5]
+    errors: list[str] = []
+    if int(pending or 0):
+        errors.append("native row is pending")
+    if raw_payload is None:
+        errors.append("native payload is missing")
+        payload = None
+    else:
+        try:
+            payload = json.loads(raw_payload)
+        except Exception:
+            payload = None
+            errors.append("native payload is not valid JSON")
+    source_row = None
+    declared_baseline = normalized in _declared_baseline_languages.get(
+        concept, frozenset()
+    )
+    if (
+        concept in _declared_baseline_languages
+        and source_lang == normalized
+        and not declared_baseline
+    ):
+        errors.append("self-sourced language is not a declared baseline")
+    effective_source_lang = normalized if declared_baseline else source_lang
+    if effective_source_lang == normalized:
+        if source_lang != normalized:
+            errors.append("baseline source language is invalid")
+        if row[6] is not None:
+            errors.append("baseline source hash must be empty")
+    if effective_source_lang:
+        source_row = conn.execute(
+            "SELECT kind,match_mode,payload," + policy_expr + " "
+            "FROM detection_lexicon WHERE concept=? AND lang=?",
+            (concept, effective_source_lang),
+        ).fetchone()
+    else:
+        errors.append("source language is missing")
+    source_payload = None
+    if source_row is None or source_row[2] is None:
+        errors.append("source payload is missing")
+    else:
+        try:
+            source_payload = json.loads(source_row[2])
+        except Exception:
+            errors.append("source payload is not valid JSON")
+        if source_row[0] != kind or source_row[1] != match_mode:
+            errors.append("native kind or match mode differs from source")
+        if source_row[3] != row[7]:
+            errors.append("native review policy differs from source")
+    if raw_payload is not None and row[5] != _sha256(raw_payload):
+        errors.append("native version hash differs from payload")
+    if (effective_source_lang and effective_source_lang != normalized
+            and source_row is not None
+            and row[6] != _sha256(source_row[2] or "")):
+        errors.append("native source hash is stale")
+    if effective_source_lang and effective_source_lang != normalized:
+        if effective_source_lang not in baseline_languages(concept):
+            errors.append("source language is not an editorial baseline")
+        else:
+            source_status = native_resource_status(
+                concept, effective_source_lang,
+            )
+            if not source_status["ok"]:
+                errors.append("source lexicon resource is not ready")
+    if effective_source_lang == normalized:
+        errors.extend(_validate_baseline_payload(kind, payload))
+    else:
+        shape = validate_payload_shape(kind, source_payload, payload)
+        errors.extend(shape["errors"])
+    return {
+        "ok": not errors,
+        "concept": concept,
+        "lang": normalized,
+        "kind": kind,
+        "match_mode": match_mode,
+        "errors": errors,
+    }
+
+
 def has_native(concept: str, lang: str) -> bool:
-    return _native(concept, lang) is not None
+    return bool(native_resource_status(concept, lang)["ok"])
 
 
 def coverage(lang: str | None = None) -> dict:
@@ -1107,11 +1718,18 @@ def list_pending(limit: int = 100, exclude_concepts: tuple = (),
     # LIMIT as unbounded, so the convention translates directly and a caller
     # that wants the whole picture does not have to invent a big number.
     params.append(int(limit) if int(limit) > 0 else -1)
+    has_attempt_order = _has_column(conn, "last_attempt_at")
+    order = (
+        "CASE WHEN d.last_attempt_at IS NULL THEN 0 ELSE 1 END, "
+        "d.last_attempt_at, d.concept, d.lang"
+        if has_attempt_order else "d.concept, d.lang"
+    )
     rows = conn.execute(
         "SELECT d.concept, d.lang, d.source_lang, d.kind, d.match_mode, "
         "(SELECT payload FROM detection_lexicon WHERE concept=d.concept "
         " AND lang=d.source_lang) AS source_payload "
-        "FROM detection_lexicon d WHERE " + " AND ".join(where) + " LIMIT ?",
+        "FROM detection_lexicon d WHERE " + " AND ".join(where)
+        + " ORDER BY " + order + " LIMIT ?",
         tuple(params),
     ).fetchall()
     return [{"concept": r[0], "target_lang": r[1], "source_lang": r[2],
@@ -1119,12 +1737,36 @@ def list_pending(limit: int = 100, exclude_concepts: tuple = (),
             for r in rows]
 
 
+@_synchronized
+def record_translation_failure(concept: str, lang: str, error: str) -> None:
+    """Rotate a failed pending row behind never-attempted/older work."""
+    conn = _open()
+    if not all(_has_column(conn, column) for column in (
+            "translation_attempts", "last_attempt_at",
+            "last_translation_error")):
+        return
+    conn.execute(
+        "UPDATE detection_lexicon SET "
+        "translation_attempts=translation_attempts+1,"
+        "last_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),"
+        "last_translation_error=? "
+        "WHERE concept=? AND lang=? AND needs_translation=1",
+        (str(error or "translation_failed")[:240], concept, lang),
+    )
+    conn.commit()
+
+
+@_synchronized
 def mark_for_translation(
     concept: str,
     target_lang: str,
     source_lang: str = _C.BOOTSTRAP_LANGUAGE,
 ) -> None:
     """Placeholder row (payload NULL, needs_translation=1) per lazy translate."""
+    if source_lang not in baseline_languages(concept):
+        return
+    if not native_resource_status(concept, source_lang)["ok"]:
+        return
     conn = _open()
     meta = conn.execute(
         "SELECT kind, match_mode, review_policy FROM detection_lexicon WHERE concept=? "
@@ -1142,29 +1784,74 @@ def mark_for_translation(
     _invalidate(concept)
 
 
+@_synchronized
 def set_translated(concept: str, lang: str, payload) -> None:
     """UPDATE post-traduzione: payload + needs_translation=0 + hash sorgente."""
     conn = _open()
+    has_review_policy = _has_column(conn, "review_policy")
+    policy_expr = "review_policy" if has_review_policy else "'automatic'"
     src_row = conn.execute(
-        "SELECT source_lang FROM detection_lexicon WHERE concept=? AND lang=?",
+        "SELECT source_lang FROM detection_lexicon "
+        "WHERE concept=? AND lang=?",
         (concept, lang),
     ).fetchone()
     src_lang = (
         (src_row[0] if src_row else None) or _C.BOOTSTRAP_LANGUAGE
     )
+    if src_lang not in baseline_languages(concept):
+        raise ValueError("source language is not an editorial baseline")
+    if not native_resource_status(concept, src_lang)["ok"]:
+        raise ValueError("source lexicon resource is not ready")
     src_payload_row = conn.execute(
-        "SELECT payload FROM detection_lexicon WHERE concept=? AND lang=?",
+        "SELECT payload,kind,match_mode," + policy_expr + " "
+        "FROM detection_lexicon WHERE concept=? AND lang=?",
         (concept, src_lang),
     ).fetchone()
-    src_text = src_payload_row[0] if src_payload_row else ""
-    js = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-    conn.execute(
-        "UPDATE detection_lexicon SET payload=?, needs_translation=0, "
-        "source_text_hash=?, version_hash=?, "
-        "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
-        "WHERE concept=? AND lang=?",
-        (js, _sha256(src_text or ""), _sha256(js), concept, lang),
+    if not src_payload_row:
+        raise ValueError("source payload is missing")
+    src_text = src_payload_row[0]
+    try:
+        source_payload = json.loads(src_text)
+    except Exception as exc:
+        raise ValueError("source payload is not valid JSON") from exc
+    kind = src_payload_row[1]
+    match_mode = src_payload_row[2]
+    review_policy = _declared_review_policies.get(
+        concept, src_payload_row[3],
     )
+    validation = validate_payload_shape(kind, source_payload, payload)
+    if not validation["ok"]:
+        raise ValueError("invalid translated payload: " + "; ".join(
+            validation["errors"]
+        ))
+    payload = validation["payload"]
+    js = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    if has_review_policy:
+        conn.execute(
+            "UPDATE detection_lexicon SET payload=?,needs_translation=0,"
+            "kind=?,match_mode=?,review_policy=?,source_text_hash=?,"
+            "version_hash=?,translation_attempts=0,last_attempt_at=NULL,"
+            "last_translation_error=NULL,"
+            "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+            "WHERE concept=? AND lang=?",
+            (js, kind, match_mode, review_policy, _sha256(src_text or ""),
+             _sha256(js), concept, lang),
+        )
+    else:
+        attempt_fields = (
+            ",translation_attempts=0,last_attempt_at=NULL,"
+            "last_translation_error=NULL"
+            if _has_column(conn, "translation_attempts") else ""
+        )
+        conn.execute(
+            "UPDATE detection_lexicon SET payload=?,needs_translation=0,"
+            "kind=?,match_mode=?,source_text_hash=?,version_hash=?"
+            + attempt_fields
+            + ",updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+            "WHERE concept=? AND lang=?",
+            (js, kind, match_mode, _sha256(src_text or ""), _sha256(js),
+             concept, lang),
+        )
     conn.commit()
     _invalidate(concept)
 

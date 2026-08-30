@@ -31,6 +31,7 @@ from . import (
     is_output_policy_enabled,
 )
 from executor_helpers import catalog_names
+import detection_lexicon_seed_reconciliation as _reconciliation_lex
 # SoT delle operazioni singolari ratificate (ADR 0002): il loro oggetto non
 # esiste nel vocabolario chiuso, quindi nessun allineamento per-oggetto le
 # riguarda.
@@ -608,9 +609,9 @@ def _enforce_missing_clauses(framework: Framework, intent, query: str,
         names = catalog_names(catalog)
         names.discard(None)
         from compound_decomposer import derive_tool_name
-        import re as _re
         from .types import StepSpec
         from . import is_v3
+        from detection_lexicon_seed_routing import capture_store_target
         # GAP-B residue (redesign): in v3 il derive delle clausole SCOPERTE e'
         # provider-aware → un compound github che enforce-a la clausola send
         # appende send_messages_github, NON il generico (P1 gatea il pool ma
@@ -619,8 +620,7 @@ def _enforce_missing_clauses(framework: Framework, intent, query: str,
         _q = query if is_v3() else None
         # from_step = ultimo step-executor (1-based) prima del final_answer
         exec_n = sum(1 for s in steps if (s.tool or "") != "final_answer")
-        m_store = _re.search(r"\bstore\s+([A-Za-z0-9_]+)", query or "")
-        store = m_store.group(1) if m_store else None
+        store = capture_store_target(query or "")
         new_steps: list = []
         for a in (getattr(intent, "actions", None) or []):
             v = a.get("verb") if isinstance(a, dict) else None
@@ -1170,11 +1170,12 @@ def _normalize_result_folder_exclusion(framework: Framework, query: str,
         folded = unicodedata.normalize("NFKD", query or "").casefold()
         folded = "".join(ch for ch in folded
                          if not unicodedata.combining(ch))
-        mentions_results = bool(re.search(
-            r"risultati[_\s-]*metnos(?:[_\s-]*\*)?", folded))
-        excludes = any(token in folded for token in (
-            "esclud", "senza includ", "non includ", "exclude", "excluding",
-            "without includ"))
+        collapsed = folded.replace("_", "").replace("-", "").replace(" ", "")
+        mentions_results = "risultatimetnos" in collapsed
+        from detection_lexicon_seed_routing import native_manual_matches
+        excludes = native_manual_matches(
+            "routing.result_folder_exclusion", folded,
+        )
         if not (mentions_results and excludes):
             return framework
         steps = getattr(framework, "steps", None) or []
@@ -2424,14 +2425,14 @@ def _decontaminate_clause_objects(intent, query: str) -> None:
     forte (verbo identico + oggetto-schema-simile).
 
     Fix deterministico via la FUNZIONE che SOSTITUISCE i sinonimi (no liste
-    cablate, no LLM): `prefilter._OBJECT_HINTS` deriva l'oggetto dal TESTO della
+    cablate, no LLM): `prefilter.object_hint_mapping` deriva l'oggetto dal TESTO della
     clausola. Se dà un oggetto SPECIFICO e UNIVOCO che DIVERGE dall'oggetto
     assegnato dall'intent, corregge l'intent. CONSERVATIVO (anti-falso-positivo):
     corregge SOLO quando il testo-clausola contiene un hint NON-ambiguo (un solo
-    oggetto candidato dai _OBJECT_HINTS) — mai su chunk ambigui/None. Muta
+    oggetto candidato dagli object hint) — mai su chunk ambigui/None. Muta
     `intent.actions` in place, PRIMA del pool. No-op su mono-azione.
 
-    Universale: vale per ogni oggetto in _OBJECT_HINTS (foto/immagini→images,
+    Universale: vale per ogni oggetto nel mapping (foto/immagini→images,
     mail/posta→messages, ...), non cablato a un caso."""
     try:
         actions = [a for a in (getattr(intent, "actions", None) or [])
@@ -2440,7 +2441,7 @@ def _decontaminate_clause_objects(intent, query: str) -> None:
             return
         from compound_decomposer import split_query_chunks
         import prefilter as _pf
-        hints = getattr(_pf, "_OBJECT_HINTS", None)
+        hints = _pf.object_hint_mapping()
         if not hints:
             return
         chunks = split_query_chunks(query)
@@ -2449,7 +2450,7 @@ def _decontaminate_clause_objects(intent, query: str) -> None:
 
         def _obj_from_text(chunk: str):
             """Oggetto SPECIFICO e UNIVOCO dal testo (None se 0 o >1 candidati).
-            Univoco = un solo object dei _OBJECT_HINTS ha un hint nel chunk."""
+            Univoco = un solo object mapping ha un hint nel chunk."""
             cl = (chunk or "").lower()
             found = set()
             for obj, hs in hints.items():
@@ -2954,37 +2955,14 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
 # su ogni executor con cap, deterministico (§7.9). Bug live turn 4648c5c3.
 _COUNT_CAP_ARGS = frozenset({"top_k", "max_results", "max_total", "top", "limit"})
 
-# Lessico CHIUSO IT+EN — numeri-parola e nomi-conteggio/tempo. Elenco finito (come
-# vocab.QUALIFIERS / args_extractor._LANG_EXT_MAP), NON un dizionario di sinonimi.
-_NUMWORD = (r"uno|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|undici|"
-            r"dodici|venti|trenta|quaranta|cinquanta|cento|mille|"
-            r"one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
-            r"twenty|thirty|forty|fifty|hundred|thousand")
-# Cosa si conta: un numero che li precede è una quantità-RISULTATO.
-_COUNT_NOUN = (r"file|files|mail|email|messaggi?|foto|immagini?|righe|line[ae]|"
-               r"lines?|risultati?|results?|elementi?|element|items?|entr(?:y|ies)|"
-               r"record|records?|documenti?|docs?|pdf|url|urls|link|links|"
-               r"pagin[ae]|pages?|foglio|fogli|sheet|sheets")
-# Nomi-TEMPO: un numero che li precede è una finestra temporale, NON un cap di
-# conteggio (de-conflazione, cfr. «12 mesi»→time_window, non max_results=12).
-_TIME_NOUN = (r"giorni?|or[ae]|settiman[ae]|mes[ei]|ann[oi]|minut[oi]|second[oi]|"
-              r"days?|hours?|weeks?|months?|years?|minutes?|seconds?")
-# Selettore di testa che, seguito da un numero (e NON da un nome-tempo), esprime
-# un limite di risultati: «primi 10», «solo 5», «top 3», «first 5», «at most 20».
-_SELECTOR = (r"prim[ie]|ultim[ie]|sol[ie]|soltanto|appena|massimo|almeno|top|"
-             r"first|last|only|just|at\s+most|up\s+to")
-_QTY_FRAME_RE = re.compile(
-    r"(?:\b(?:" + _SELECTOR + r")\s+(?:\d+|" + _NUMWORD + r")\b"
-    r"(?!\s*(?:" + _TIME_NOUN + r")\b))"
-    r"|(?:\b(?:\d+|" + _NUMWORD + r")\s+(?:" + _COUNT_NOUN + r")\b)",
-    re.IGNORECASE)
-
-
 def _clause_requests_count(text: str) -> bool:
     """True se la clausola esprime una QUANTITÀ di risultati (numero in un frame
     di conteggio: «primi 10», «10 file», «top 5», numeri-parola inclusi). Esclude
     le finestre temporali («ultimi 7 giorni»). Deterministico, no LLM."""
-    return bool(text) and _QTY_FRAME_RE.search(text) is not None
+    if not text:
+        return False
+    from detection_lexicon_seed_routing import matches
+    return matches("routing.quantity.frame", text)
 
 
 def _demote_overtight_caps(args: dict, schema: dict, clause: str) -> None:
@@ -3191,11 +3169,10 @@ def _fill_clause_args(framework: Framework, intent, query: str,
             props = (schema.get("properties") or {})
             # store-name per clausole entries (dichiara 'store') dal chunk.
             if "store" in props and "store" not in (st.args or {}):
-                m = re.search(r"\b(?:nello? store|nell'archivio|fra le|tra le|"
-                              r"dallo? store|nelle?)\s+([a-zàèéìòù0-9_]+)",
-                              chunk.lower())
-                if m and m.group(1) not in ("store", "archivio"):
-                    extracted.setdefault("store", m.group(1))
+                from detection_lexicon_seed_routing import capture_store_target
+                store_target = capture_store_target(chunk)
+                if store_target is not None:
+                    extracted.setdefault("store", store_target)
             if not extracted:
                 continue
             # SINK (create/write): mai auto-riempire un path — sarebbe l'OUTPUT
@@ -3429,14 +3406,9 @@ def _route_mail_delete_to_trash(framework: Framework,
 
 # Marcatori di pluralità: la query chiede PIÙ file con quel nome, non un path
 # univoco. «i/tutti i/ogni/gli file X» → X è un PATTERN da cercare, non UN path.
-# Verbi con cui l'utente chiede di VEDERE qualcosa: dopo una navigazione
-# a obiettivo il piano deve leggere, non solo arrivare.
+# Closed canonical action enum: these are normalized planner/tool verbs, not
+# natural-language forms, so they intentionally remain in the consumer.
 _READ_INTENT_VERBS = ("read", "find", "get", "list")
-
-_PLURAL_FILE_MARKERS = (
-    "tutti i", "tutti gli", "i file", "gli file", "ogni file", "i files",
-    "all the", "all ", "every ", "the files", "each ",
-)
 
 
 def _route_filename_pattern_to_find(framework: Framework, query: str,
@@ -3458,7 +3430,8 @@ def _route_filename_pattern_to_find(framework: Framework, query: str,
     try:
         names = catalog_names(catalog)
         q = (query or "").lower()
-        if not any(m in q for m in _PLURAL_FILE_MARKERS):
+        from detection_lexicon_seed_routing import matches
+        if not matches("routing.file.plural_marker", q):
             return framework
         steps = framework.steps
         for i, s in enumerate(steps):
@@ -3508,8 +3481,15 @@ def _route_filename_pattern_to_find(framework: Framework, query: str,
 
 _GW_CLIENT_TOOLS = frozenset({"find_files", "read_files", "get_files",
                               "list_dirs", "find_dirs"})
-_GW_PHANTOM_PATHS = frozenset({"gdrive", "google drive", "googledrive",
-                               "google_drive", "google-drive", "drive"})
+
+
+def _is_drive_phantom(value) -> bool:
+    from detection_lexicon_seed_routing import forms
+    normalized = str(value or "").strip().casefold().strip("/")
+    return normalized in {
+        form.strip().casefold().strip("/")
+        for form in forms("routing.drive.phantom")
+    }
 
 
 def _drive_search_term(query: str) -> str:
@@ -3517,16 +3497,14 @@ def _drive_search_term(query: str) -> str:
     togliendo verbo + frase-provider + filler documentali. Deterministico (§7.9),
     best-effort: il find Drive cerca per name-contains («il documento KAKEBO»→0,
     «KAKEBO SPESE 2026»→match)."""
-    import re
+    from detection_lexicon_seed_routing import regexes
+
     q = " " + (query or "") + " "
-    q = re.sub(r"(?i)\b(su|sul|sullo|sulla|in|nel|nello|dentro|da|dal|dallo|from|on)\s+"
-               r"(google\s*drive|g\s*drive|gdrive|google\s*docs?|google\s*sheets?|"
-               r"google\s*fogli|drive|google)\b", " ", q)
-    q = re.sub(r"(?i)\b(cerca(mi)?|trova(mi)?|search|find|apri|open|leggi|read|"
-               r"scarica|download|mostra(mi)?|show)\b", " ", q)
-    q = re.sub(r"(?i)\b(il|lo|la|i|gli|le|un|uno|una|the|a|an|di|del|della|dei|degli)\b", " ", q)
-    q = re.sub(r"(?i)\b(documento|documenti|document|file|foglio|fogli|"
-               r"spreadsheet|sheet|doc|cartella|folder)\b", " ", q)
+    for concept in (
+            "routing.drive.provider_clause", "routing.drive.action",
+            "routing.drive.article", "routing.drive.document_noun"):
+        for pattern in regexes(concept):
+            q = pattern.sub(" ", q)
     return re.sub(r"\s+", " ", q).strip()
 
 
@@ -4027,10 +4005,10 @@ def _align_provider_client(framework: Framework, query: str,
                 s.args["client"] = "google_workspace"
             for pk in ("base_path", "path", "paths"):
                 v = s.args.get(pk)
-                if isinstance(v, str) and v.strip().lower().strip("/") in _GW_PHANTOM_PATHS:
+                if isinstance(v, str) and _is_drive_phantom(v):
                     s.args.pop(pk, None)
                 elif isinstance(v, list):
-                    v2 = [x for x in v if str(x).strip().lower().strip("/") not in _GW_PHANTOM_PATHS]
+                    v2 = [x for x in v if not _is_drive_phantom(x)]
                     s.args[pk] = v2 if v2 else None
                     if not v2:
                         s.args.pop(pk, None)
@@ -4047,9 +4025,9 @@ def _align_provider_client(framework: Framework, query: str,
                     if isinstance(_v, str) and _v.strip():
                         _cur = _v.strip()
                         break
-                _phantom = (_cur or "").lower().strip("/") in _GW_PHANTOM_PATHS
+                _phantom = _is_drive_phantom(_cur)
                 if _cur is None or _phantom:
-                    _ph = (_cur or "").lower() if _phantom else "google drive"
+                    _ph = (_cur or "").lower() if _phantom else ""
                     _t = _clause_scoped_drive_term(query, _ph)
                     if _t and _t.lower() != (_cur or "").lower():
                         for _k in ("query", "pattern", "patterns", "paths"):
@@ -4635,12 +4613,10 @@ def _normalize_document_report_pipeline(framework: Framework, intent,
         semantic_query = re.sub(r"(?m)^\s*>\s?", "", query or "")
         semantic_query = re.sub(r"\s+", " ", semantic_query).strip()
         ql = semantic_query.casefold()
-        logical_dedup = bool(
-            re.search(r"\bdeduplic\w*\b", ql)
-            or (re.search(r"\bduplicat\w*\b", ql)
-                and (re.search(r"\blogic\w*\b", ql)
-                     or re.search(r"\bsenza\s+cancell\w*\b", ql)
-                     or re.search(r"\bwithout\s+delet\w*\b", ql))))
+        lexicon = _reconciliation_lex.load()
+        if lexicon is None:
+            return framework
+        logical_dedup = lexicon.matches_gate("logical_dedup", ql)
         if not ({"extract", "compress"} <= verbs
                 and verbs & {"create", "write"}
                 and "files" in objects
@@ -4693,10 +4669,9 @@ def _normalize_document_report_pipeline(framework: Framework, intent,
         # misura anche artefatti Metnos. Il filtro temporale resta sui campi
         # dedicati mtime_*; usiamo il predicato generico solo quando era vuoto
         # o conteneva il placeholder temporale ormai sostituito dal resolver.
-        temporal_aliases = {
-            "modified_time", "modification_time", "mtime", "modified",
-            "last_modified", "data_modifica", "ultima_modifica",
-        }
+        temporal_aliases = frozenset(
+            form.casefold() for form in lexicon.temporal["modified_time"]
+        )
         where_field = str(filter_args.get("where_field") or "").casefold()
         if not where_field or where_field in temporal_aliases:
             for key in (
@@ -4726,8 +4701,11 @@ def _normalize_document_report_pipeline(framework: Framework, intent,
         # clause-scoped below) so document variants can be compared on common
         # business facts, not only on amount/date.
         contradiction_audit_fields = []
-        if re.search(r"contradditt|contradict|inconsisten|conflict", ql):
-            contradiction_audit_fields = ["fornitore", "stato"]
+        if lexicon.matches_gate("contradiction", ql):
+            contradiction_audit_fields = [
+                lexicon.audit[canonical][0]
+                for canonical in ("supplier", "status")
+            ]
         extract_fields: list[str] = []
         all_extract_fields = (
             list(semantic_fields) + list(sink_fields)
@@ -4840,10 +4818,12 @@ def _normalize_multisource_entity_report_pipeline(
         ))
         if source_count < 3:
             return framework
+        lexicon = _reconciliation_lex.load()
+        if lexicon is None:
+            return framework
         if not ("compress_files" in tools
                 and ("create_files_spreadsheet" in tools
-                     or re.search(r"\b(?:foglio|spreadsheet|workbook|xlsx)\b",
-                                  query or "", re.IGNORECASE))):
+                     or lexicon.matches_gate("spreadsheet", query or ""))):
             return framework
         forbidden = {
             tool for tool in tools
@@ -4858,10 +4838,7 @@ def _normalize_multisource_entity_report_pipeline(
         semantic_query = re.sub(r"(?m)^\s*>\s?", "", query or "")
         semantic_query = re.sub(r"\s+", " ", semantic_query).strip()
         ql = semantic_query.casefold()
-        if not re.search(
-                r"\b(?:analizz\w*|incroci\w*|riconcili\w*|extract\w*|"
-                r"estrai\w*|individua\w*|normalizz\w*|conflitt\w*|"
-                r"conflict\w*|deduplic\w*)\b", ql):
+        if not lexicon.matches_gate("analysis", ql):
             return framework
 
         names = catalog_names(catalog)
@@ -4877,10 +4854,9 @@ def _normalize_multisource_entity_report_pipeline(
             return framework
 
         sink_fields = derive_sink_fields(query)
-        default_sheet_fields = [
-            "entità", "tipo", "valore normalizzato", "valore originale",
-            "dominio", "origine", "responsabile", "confidenza", "conflitto",
-        ]
+        default_sheet_fields = lexicon.surfaces(
+            _reconciliation_lex.MULTISOURCE_DEFAULT_FIELD_IDS
+        )
         sheet_fields = list(dict.fromkeys(
             field for field in (sink_fields or default_sheet_fields) if field))
         if len(sheet_fields) < 2:
@@ -4890,21 +4866,34 @@ def _normalize_multisource_entity_report_pipeline(
         # and merge, however, own one canonical singular field for each
         # concept.  Do not ask the LLM for parallel plural fields: they become
         # empty competitors of the populated canonical values at the sink.
-        record_field_aliases = {
-            "domini": "dominio", "domains": "dominio",
-            "origini": "origine", "origins": "origine",
-        }
         record_sink_fields = [
-            record_field_aliases.get(field.casefold(), field)
+            lexicon.record_field(field)
             for field in sheet_fields
         ]
+        conflict_field = lexicon.surface("conflict")
+        entity_field = lexicon.surface("entity")
+        type_field = lexicon.surface("type")
+        normalized_value_field = lexicon.surface("normalized_value")
+        original_value_field = lexicon.surface("original_value")
+        project_field = lexicon.surface("project")
+        organization_field = lexicon.surface("organization")
+        role_field = lexicon.surface("role")
+        email_field = lexicon.surface("email")
+        phone_field = lexicon.surface("phone")
+        amount_field = lexicon.surface("amount")
+        deadline_field = lexicon.surface("deadline")
+        decision_field = lexicon.surface("decision")
+        status_field = lexicon.surface("status")
+        origin_field = lexicon.surface("origin")
+        responsible_field = lexicon.surface("responsible")
+        domain_field = lexicon.surface("domain")
+        duplicates_field = lexicon.surface("duplicates")
         common_fields = list(dict.fromkeys([
-            "entità", "tipo", "valore normalizzato", "valore originale",
-            "progetto", "organizzazione", "ruolo", "email", "telefono",
-            "importo", "scadenza", "decisione", "stato", "origine",
-            "responsabile", "confidenza", "dominio", "leggibile",
-            "duplicati", "diagnostica",
-            *[field for field in record_sink_fields if field != "conflitto"],
+            *lexicon.surfaces(
+                _reconciliation_lex.MULTISOURCE_COMMON_FIELD_IDS
+            ),
+            *[field for field in record_sink_fields
+              if field != conflict_field],
         ]))
         extract_instruction = (
             "Per ciascuna sorgente estrai record separati per persone, "
@@ -5030,13 +5019,13 @@ def _normalize_multisource_entity_report_pipeline(
                     "max_total": 1000,
                     "drill_down": False,
                     "structured_map": {
-                        "entità": ["name", "id"],
-                        "valore normalizzato": ["name", "id"],
-                        "valore originale": ["name", "id"],
-                        "email": "emails",
-                        "telefono": "phones",
+                        entity_field: ["name", "id"],
+                        normalized_value_field: ["name", "id"],
+                        original_value_field: ["name", "id"],
+                        email_field: "emails",
+                        phone_field: "phones",
                     },
-                    "structured_defaults": {"tipo": "contatto"},
+                    "structured_defaults": {type_field: "contatto"},
                 }
             else:
                 args = {**extraction_base, "from_step": producer_position}
@@ -5048,8 +5037,8 @@ def _normalize_multisource_entity_report_pipeline(
                         "relevance_entries": (
                             f"${{step{file_extract_position}.entries}}"),
                         "relevance_fields": [
-                            "entità", "progetto", "organizzazione",
-                            "email", "telefono",
+                            entity_field, project_field, organization_field,
+                            email_field, phone_field,
                         ],
                         "relevance_terms": scope_relevance_terms,
                     })
@@ -5063,19 +5052,20 @@ def _normalize_multisource_entity_report_pipeline(
                 f"${{step{position}.entries}}"
                 for position in extracted_positions
             ],
-            "dedup_key": ["entità", "tipo", "valore normalizzato"],
-            "cross_domain_key": "entità",
-            "domain_field": "dominio",
+            "dedup_key": [entity_field, type_field, normalized_value_field],
+            "cross_domain_key": entity_field,
+            "domain_field": domain_field,
             "cross_match_fields": [
-                "tipo", "valore normalizzato", "email", "telefono",
-                "scadenza", "importo",
+                type_field, normalized_value_field, email_field, phone_field,
+                deadline_field, amount_field,
             ],
-            "merge_fields": ["origine", "dominio", "duplicati"],
+            "merge_fields": [origin_field, domain_field, duplicates_field],
             "conflict_fields": [
-                "organizzazione", "ruolo", "email", "telefono", "importo",
-                "scadenza", "decisione", "stato", "responsabile",
+                organization_field, role_field, email_field, phone_field,
+                amount_field, deadline_field, decision_field, status_field,
+                responsible_field,
             ],
-            "conflict_field": "conflitto",
+            "conflict_field": conflict_field,
             "reconcile_within_domains": ["files"],
             "drop_unmatched_domains": ["contacts"],
             # A small model may atomize source-level amount/deadline/state
@@ -5083,42 +5073,33 @@ def _normalize_multisource_entity_report_pipeline(
             # project.  Coalesce only when that source has exactly one
             # declared subject; ambiguous multi-subject sources stay intact.
             "coalesce_source_facts": True,
-            "source_field": "origine",
-            "type_field": "tipo",
+            "source_field": origin_field,
+            "type_field": type_field,
             "subject_types": ["progetto", "project", "impegno", "commitment"],
             "coalesce_fields": [
-                "organizzazione", "importo", "scadenza", "decisione",
-                "stato", "responsabile",
+                organization_field, amount_field, deadline_field,
+                decision_field, status_field, responsible_field,
             ],
         })
         deadline_position = append_step("sort_entries", {
             "from_step": merge_position,
-            "by": "scadenza",
+            "by": deadline_field,
             "desc": False,
             "value_type": "date",
         })
         ordering = detect_ordering(semantic_query) or {}
-        conflict_severity_requested = bool(re.search(
-            r"(?:\bgravit[aà]\s+(?:(?:del|della|dei|delle|di)\s+)?"
-            r"conflitt\w*\b|\bconflict\s+severity\b|"
-            r"\bseverity\s+(?:of\s+)?conflicts?\b)",
-            ql,
-        ))
+        conflict_severity_requested = lexicon.matches_gate(
+            "conflict_severity", ql,
+        )
         primary = ("_conflict_count" if conflict_severity_requested else
-                   str(ordering.get("key_text") or "organizzazione"))
-        primary_aliases = {
-            "organization": "organizzazione",
-            "organizzazioni": "organizzazione",
-            "project": "progetto",
-            "projects": "progetto",
-            "progetti": "progetto",
-            "deadline": "scadenza",
-            "date": "scadenza",
-        }
-        primary = primary_aliases.get(primary.casefold(), primary)
+                   str(ordering.get("key_text") or organization_field))
+        primary_id = lexicon.canonical_field(primary)
+        primary = (
+            lexicon.surface(primary_id) if primary_id is not None else primary
+        )
         if primary != "_conflict_count" and primary not in common_fields:
-            primary = "organizzazione"
-        if primary == "scadenza":
+            primary = organization_field
+        if primary == deadline_field:
             sorted_position = deadline_position
         else:
             sorted_position = append_step("sort_entries", {
@@ -5157,62 +5138,36 @@ def _normalize_multisource_entity_report_pipeline(
             "paths": [result_dir], "parents": True, "exist_ok": False,
             "client": sink_client,
         })
-        report_name = "rapporto_riconciliazione.md"
-        sheet_name = "entita_riconciliate.xlsx"
-        archive_name = "risultati_riconciliazione.zip"
-        is_italian = bool(re.search(
-            r"\b(?:incrocia|esamina|ultimi|estrai|crea|cartella|foglio|non)\b",
-            ql))
+        # Stable technical artifact names are not inferred from the query
+        # language.  The user-facing receipt is resolved by the i18n store.
+        report_name = "riepilogo.md"
+        sheet_name = "dati_estratti.xlsx"
+        archive_name = "risultati.zip"
         coverage_lines = []
         for (domain, producer_position), extract_position in zip(
                 source_positions, extracted_positions):
             if domain == "contacts":
-                if is_italian:
-                    coverage_lines.append(
-                        f"- {domain}: "
-                        f"${{step{producer_position}.used}}/"
-                        f"${{step{producer_position}.available_total}} "
-                        "record di riferimento letti; "
-                        f"${{step{extract_position}.used}} "
-                        "record normalizzati"
-                    )
-                else:
-                    coverage_lines.append(
-                        f"- {domain}: "
-                        f"${{step{producer_position}.used}}/"
-                        f"${{step{producer_position}.available_total}} "
-                        "reference records read; "
-                        f"${{step{extract_position}.used}} "
-                        "records normalized"
-                    )
+                coverage_lines.append(
+                    f'{{"source":"{domain}","used":"'
+                    f'${{step{producer_position}.used}}","available":"'
+                    f'${{step{producer_position}.available_total}}",'
+                    f'"normalized":"${{step{extract_position}.used}}"}}'
+                )
                 continue
             coverage_lines.append(
-                f"- {domain}: "
-                f"${{step{extract_position}.selected_source_total}}/"
-                f"${{step{extract_position}.input_source_total}} "
-                + ("sorgenti pertinenti; " if is_italian
-                   else "relevant sources; ")
-                + f"${{step{extract_position}.used}} "
-                + ("record prodotti" if is_italian else "records produced")
+                f'{{"source":"{domain}","selected":"'
+                f'${{step{extract_position}.selected_source_total}}",'
+                f'"input":"${{step{extract_position}.input_source_total}}",'
+                f'"produced":"${{step{extract_position}.used}}"}}'
             )
-        if is_italian:
-            report_content = (
-                "# Rapporto di riconciliazione\n\n## Copertura e controlli\n"
-                + "\n".join(coverage_lines)
-                + f"\n- conflitti rilevati: ${{step{merge_position}.conflicts}}"
-                + "\n- record di riferimento non associati esclusi: "
-                + f"${{step{merge_position}.dropped_unmatched}}\n\n"
-                + f"${{step{report_position}.summary}}"
-            )
-        else:
-            report_content = (
-                "# Reconciliation report\n\n## Coverage and checks\n"
-                + "\n".join(coverage_lines)
-                + f"\n- conflicts found: ${{step{merge_position}.conflicts}}"
-                + "\n- unmatched reference records excluded: "
-                + f"${{step{merge_position}.dropped_unmatched}}\n\n"
-                + f"${{step{report_position}.summary}}"
-            )
+        report_content = (
+            "# metnos.reconciliation-evidence/1\n\n```json\n"
+            + '{"sources":[' + ",".join(coverage_lines) + '],'
+            + f'"conflicts":"${{step{merge_position}.conflicts}}",'
+            + '"dropped_unmatched":"'
+            + f'${{step{merge_position}.dropped_unmatched}}"}}\n```\n\n'
+            + f"${{step{report_position}.summary}}"
+        )
         append_step("write_files", {
             "path": f"${{step{directory_position}.results.0.path}}/{report_name}",
             "content": report_content,
@@ -5223,7 +5178,7 @@ def _normalize_multisource_entity_report_pipeline(
             "from_step": sorted_position,
             "columns": sheet_fields,
             "path": f"${{step{directory_position}.results.0.path}}/{sheet_name}",
-            "title": "entita_riconciliate",
+            "title": "reconciliation",
             "client": sink_client,
         })
         outputs_position = append_step("find_files", {
@@ -5239,24 +5194,13 @@ def _normalize_multisource_entity_report_pipeline(
         })
         append_step("final_answer", {})
 
-        if is_italian:
-            final_message = (
-                f"Completato. Risultati salvati in "
-                f"`${{step{directory_position}.results.0.path}}`:\n\n"
-                f"- rapporto: `{report_name}`\n"
-                f"- foglio dati: `{sheet_name}` "
-                f"(${{step{sorted_position}.count}} righe di dati)\n"
-                f"- archivio: `${{step{archive_position}.results.0.path}}`"
-            )
-        else:
-            final_message = (
-                f"Completed. Results saved in "
-                f"`${{step{directory_position}.results.0.path}}`:\n\n"
-                f"- report: `{report_name}`\n"
-                f"- data spreadsheet: `{sheet_name}` "
-                f"(${{step{sorted_position}.count}} data rows)\n"
-                f"- archive: `${{step{archive_position}.results.0.path}}`"
-            )
+        from messages import get as _msg
+        final_message = _msg(
+            "MSG_DOCUMENT_REPORT_RECEIPT",
+            directory=f"${{step{directory_position}.results.0.path}}",
+            rows=f"${{step{sorted_position}.count}}",
+            archive=f"${{step{archive_position}.results.0.path}}",
+        )
         normalized = Framework(
             steps=canonical,
             fillers=dict(getattr(framework, "fillers", {}) or {}),
@@ -5300,31 +5244,38 @@ def _message_event_focus_terms(query: str) -> list[str]:
     semantic_query = _semantic_query_text(query)
     if not semantic_query:
         return []
-    focus_pattern = re.compile(
-        r"\b(?:relativ[ei]?\s+a|riguardant[ei]?|concernent[ei]?|"
-        r"related\s+to|concerning|regarding)\s+(.{1,500}?)(?=[.;]|$)",
-        re.IGNORECASE,
-    )
-    match = focus_pattern.search(semantic_query)
+    from detection_lexicon_seed_routing import forms, regexes
+
+    match = next((match for pattern in regexes("routing.message_event.focus")
+                  if (match := pattern.search(semantic_query)) is not None
+                  and match.lastindex), None)
     if not match:
         return []
     clause = (match.group(1) or "").strip(" :,-")
-    parts = re.split(
-        r"\s*,\s*|\s+(?:o|od|oppure|e|ed|or|and)\s+", clause,
-        flags=re.IGNORECASE,
+    separators = regexes("routing.message_event.separator")
+    separator_spans = sorted(
+        ((match.start(), match.end())
+         for pattern in separators for match in pattern.finditer(clause)),
+        key=lambda span: (span[0], -(span[1] - span[0])),
     )
-    articles = re.compile(
-        r"^(?:(?:il|lo|la|i|gli|le|un|uno|una|the|a|an)\s+)+",
-        re.IGNORECASE,
-    )
-    generic = {
-        "email", "mail", "messaggi", "messages", "eventi", "events",
-        "appuntamenti", "appointments", "impegni", "commitments",
-    }
+    parts: list[str] = []
+    cursor = 0
+    for start, end in separator_spans:
+        if start < cursor:
+            continue
+        parts.append(clause[cursor:start])
+        cursor = end
+    parts.append(clause[cursor:])
+    articles = regexes("routing.message_event.article")
+    generic = {form.casefold() for form in
+               forms("routing.message_event.generic")}
     terms: list[str] = []
     seen: set[str] = set()
     for part in parts:
-        term = articles.sub("", part).strip(" :,-")
+        term = part
+        for article in articles:
+            term = article.sub("", term)
+        term = term.strip(" :,-")
         folded = term.casefold()
         if (not term or len(term) > 100 or folded in generic
                 or folded in seen):
@@ -5355,9 +5306,11 @@ def _normalize_message_event_report_pipeline(framework: Framework, intent,
             return framework
         if not {"read_messages", "read_events"} <= tools:
             return framework
+        lexicon = _reconciliation_lex.load()
+        if lexicon is None:
+            return framework
         if not ("create_files_spreadsheet" in tools
-                or re.search(r"\b(?:foglio|spreadsheet|workbook|xlsx)\b",
-                             query or "", re.IGNORECASE)):
+                or lexicon.matches_gate("spreadsheet", query or "")):
             return framework
         # A report normalizer must never absorb a genuinely mutating request.
         # Negative clauses such as "non inviare" do not create such a tool, so
@@ -5372,21 +5325,14 @@ def _normalize_message_event_report_pipeline(framework: Framework, intent,
 
         semantic_query = _semantic_query_text(query)
         ql = semantic_query.casefold()
-        if not re.search(
-                r"\b(?:analizz\w*|extract\w*|estrai\w*|individua\w*|"
-                r"normalizz\w*|conflitt\w*|conflict\w*|deduplic\w*)\b",
-                ql):
+        if not lexicon.matches_gate("analysis", ql):
             return framework
 
         focus_terms = _message_event_focus_terms(query)
-        wants_archive = bool(re.search(
-            r"\b(?:zip|archivio\s+compress\w*|compressed\s+archive)\b",
-            ql, re.IGNORECASE))
-        focused_reconciliation = bool(focus_terms) or bool(re.search(
-            r"\b(?:corrispondenz\w*\s+(?:esatt\w*|probabil\w*)|"
-            r"exact\s+match|probable\s+match|solo\s+(?:email|calendario)|"
-            r"only\s+(?:email|calendar)|cancellazion\w*\s+priv\w*)\b",
-            ql, re.IGNORECASE))
+        wants_archive = lexicon.matches_gate("archive", ql)
+        focused_reconciliation = bool(focus_terms) or lexicon.matches_gate(
+            "focused", ql,
+        )
 
         names = catalog_names(catalog)
         required = {
@@ -5424,31 +5370,45 @@ def _normalize_message_event_report_pipeline(framework: Framework, intent,
         mail_args.setdefault("page_size", 100)
         event_args.setdefault("top_k", 500)
 
-        default_sheet_fields = [
-            "entità", "valore normalizzato", "valore originale", "origine",
-            "responsabile", "confidenza", "conflitto",
-        ]
+        default_sheet_fields = lexicon.surfaces(
+            _reconciliation_lex.MESSAGE_EVENT_DEFAULT_FIELD_IDS
+        )
         requested_sheet_fields = derive_sink_fields(query)
         sheet_columns = list(dict.fromkeys(
             field for field in (requested_sheet_fields or default_sheet_fields)
             if field))
-        field_aliases = {
-            "domini": "dominio", "domains": "dominio",
-            "origini": "origine", "origins": "origine",
-        }
         record_sheet_fields = [
-            field_aliases.get(field.casefold(), field)
+            lexicon.record_field(field)
             for field in sheet_columns
         ]
 
+        conflict_field = lexicon.surface("conflict")
+        match_field = lexicon.surface("match")
+        entity_field = lexicon.surface("entity")
+        commitment_type_field = lexicon.surface("commitment_type")
+        person_field = lexicon.surface("person")
+        organization_field = lexicon.surface("organization")
+        normalized_value_field = lexicon.surface("normalized_value")
+        original_value_field = lexicon.surface("original_value")
+        normalized_date_field = lexicon.surface("normalized_date")
+        normalized_time_field = lexicon.surface("normalized_time")
+        timezone_field = lexicon.surface("timezone")
+        location_field = lexicon.surface("location")
+        status_field = lexicon.surface("status")
+        responsible_field = lexicon.surface("responsible")
+        origin_field = lexicon.surface("origin")
+        confidence_field = lexicon.surface("confidence")
+        domain_field = lexicon.surface("domain")
+        type_field = lexicon.surface("type")
+        deadline_field = lexicon.surface("deadline")
+
         if focused_reconciliation:
             common_fields = list(dict.fromkeys([
-                "entità", "tipo impegno", "persona", "organizzazione",
-                "data normalizzata", "ora normalizzata", "fuso orario",
-                "luogo", "valore originale", "stato", "responsabile",
-                "origine", "confidenza", "dominio",
+                *lexicon.surfaces(
+                    _reconciliation_lex.MESSAGE_EVENT_FOCUSED_FIELD_IDS
+                ),
                 *[field for field in record_sheet_fields
-                  if field not in {"conflitto", "corrispondenza"}],
+                  if field not in {conflict_field, match_field}],
             ]))
             focus_text = "; ".join(focus_terms)
             extract_instruction = (
@@ -5468,65 +5428,63 @@ def _normalize_message_event_report_pipeline(framework: Framework, intent,
             merge_args = {
                 "entries_lists": ["${step3.entries}", "${step4.entries}"],
                 "dedup_key": [
-                    "entità", "tipo impegno", "data normalizzata",
-                    "ora normalizzata",
+                    entity_field, commitment_type_field,
+                    normalized_date_field, normalized_time_field,
                 ],
                 "cross_domain_key": [
-                    "entità", "tipo impegno", "data normalizzata",
+                    entity_field, commitment_type_field, normalized_date_field,
                 ],
-                "domain_field": "dominio",
+                "domain_field": domain_field,
                 "cross_match_fields": [
-                    "ora normalizzata", "organizzazione", "persona", "luogo",
+                    normalized_time_field, organization_field, person_field,
+                    location_field,
                 ],
-                "merge_fields": ["origine", "dominio"],
+                "merge_fields": [origin_field, domain_field],
                 "conflict_fields": [
-                    "ora normalizzata", "luogo", "stato", "organizzazione",
+                    normalized_time_field, location_field, status_field,
+                    organization_field,
                 ],
-                "missing_conflict_fields": ["ora normalizzata"],
-                "missing_value_label": "mancante",
+                "missing_conflict_fields": [normalized_time_field],
+                "missing_value_label": lexicon.label("missing"),
                 "required_fields_by_domain": {
-                    "calendar": ["ora normalizzata"],
+                    "calendar": [normalized_time_field],
                 },
-                "unmatched_conflict_key": ["entità", "tipo impegno"],
-                "unmatched_conflict_fields": ["data normalizzata"],
-                "conflict_field": "conflitto",
-                "match_field": "corrispondenza",
+                "unmatched_conflict_key": [entity_field, commitment_type_field],
+                "unmatched_conflict_fields": [normalized_date_field],
+                "conflict_field": conflict_field,
+                "match_field": match_field,
                 "match_labels": {
-                    "exact": "corrispondenza esatta",
-                    "probable": "corrispondenza probabile",
-                    "email_only": "solo email",
-                    "calendar_only": "solo calendario",
-                    "cancelled": "cancellazione senza evento",
-                    "unmatched": "non riconciliato",
+                    canonical: lexicon.label(canonical)
+                    for canonical in (
+                        "exact", "probable", "email_only", "calendar_only",
+                        "cancelled", "unmatched",
+                    )
                 },
-                "match_state_field": "stato",
-                "cancellation_states": [
-                    "annullato", "annullata", "cancellato", "cancellata",
-                    "cancelled", "canceled",
-                ],
+                "match_state_field": status_field,
+                "cancellation_states": list(lexicon.cancellation_states),
                 # Model-normalized identity can drift between a person and
                 # the appointment label.  These private runtime facts allow
                 # a conservative second-stage join: same date + shared
                 # observed focus anchor + one unique best evidence score.
                 "anchor_field": "_relevance_anchors",
-                "anchor_equal_fields": ["data normalizzata"],
+                "anchor_equal_fields": [normalized_date_field],
                 "anchor_match_fields": [
-                    "_source_time_mentions", "organizzazione",
-                    "tipo impegno", "persona", "entità",
+                    "_source_time_mentions", organization_field,
+                    commitment_type_field, person_field, entity_field,
                 ],
                 "anchor_within_domains": ["email"],
             }
-            date_field = "data normalizzata"
-            report_name = "rapporto_riconciliazione.md"
-            sheet_name = "impegni_riconciliati.xlsx"
-            sheet_title = "impegni_riconciliati"
+            date_field = normalized_date_field
+            report_name = "riepilogo.md"
+            sheet_name = "dati_estratti.xlsx"
+            sheet_title = "reconciliation"
         else:
             common_fields = list(dict.fromkeys([
-                "entità", "tipo", "valore normalizzato",
-                "valore originale", "origine", "responsabile", "confidenza",
-                "scadenza", "stato", "dominio",
+                *lexicon.surfaces(
+                    _reconciliation_lex.MESSAGE_EVENT_COMMON_FIELD_IDS
+                ),
                 *[field for field in record_sheet_fields
-                  if field != "conflitto"],
+                  if field != conflict_field],
             ]))
             extract_instruction = (
                 "Per ciascuna sorgente estrai separatamente ogni persona, "
@@ -5538,23 +5496,24 @@ def _normalize_message_event_report_pipeline(framework: Framework, intent,
             )
             merge_args = {
                 "entries_lists": ["${step3.entries}", "${step4.entries}"],
-                "dedup_key": ["entità", "valore normalizzato"],
-                "cross_domain_key": "entità",
-                "domain_field": "dominio",
+                "dedup_key": [entity_field, normalized_value_field],
+                "cross_domain_key": entity_field,
+                "domain_field": domain_field,
                 "cross_match_fields": [
-                    "valore normalizzato", "scadenza", "valore originale",
+                    normalized_value_field, deadline_field,
+                    original_value_field,
                 ],
-                "merge_fields": ["origine", "dominio"],
+                "merge_fields": [origin_field, domain_field],
                 "conflict_fields": [
-                    "valore normalizzato", "valore originale", "scadenza",
-                    "stato", "responsabile",
+                    normalized_value_field, original_value_field,
+                    deadline_field, status_field, responsible_field,
                 ],
-                "conflict_field": "conflitto",
+                "conflict_field": conflict_field,
             }
-            date_field = "scadenza"
-            report_name = "rapporto_scadenze.md"
-            sheet_name = "entita_valori.xlsx"
-            sheet_title = "entita_valori"
+            date_field = deadline_field
+            report_name = "riepilogo.md"
+            sheet_name = "dati_estratti.xlsx"
+            sheet_title = "reconciliation"
 
         extract_base = {
             "fields": common_fields,
@@ -5569,12 +5528,8 @@ def _normalize_message_event_report_pipeline(framework: Framework, intent,
             extract_base["relevance_terms"] = focus_terms
         if focused_reconciliation:
             extract_base["state_markers"] = {
-                "annullato": [
-                    "annullamento prenotazione", "e stato annullato",
-                    "e stata annullata", "appuntamento annullato",
-                    "appuntamento annullata", "cancellazione prenotazione",
-                    "cancelled", "canceled",
-                ],
+                lexicon.label("state_cancelled"):
+                    list(lexicon.cancellation_states),
             }
 
         result_root = "Documenti/Verifica Metnos"
@@ -5621,7 +5576,7 @@ def _normalize_message_event_report_pipeline(framework: Framework, intent,
             "data_kind": "entries", "format": "markdown",
         }
         if not focused_reconciliation:
-            describe_args["group_by"] = "scadenza"
+            describe_args["group_by"] = deadline_field
         describe_pos = append_step("describe_entries", describe_args)
         directory_pos = append_step("create_dirs", {
             "paths": [result_dir], "parents": True, "exist_ok": False,
@@ -5647,35 +5602,24 @@ def _normalize_message_event_report_pipeline(framework: Framework, intent,
             archive_pos = append_step("compress_files", {
                 "from_step": artifacts_pos,
                 "dest": (f"${{step{directory_pos}.results.0.path}}/"
-                         "risultati_riconciliazione.zip"),
+                         "risultati.zip"),
                 "format": "zip",
             })
         append_step("final_answer", {})
-        is_italian = bool(re.search(
-            r"\b(?:analizza|ultimi|individua|crea|cartella|foglio|non)\b",
-            ql))
-        if is_italian:
-            final_message = (
-                f"Completato. Risultati salvati in "
-                f"`${{step{directory_pos}.results.0.path}}`:\n\n"
-                f"- rapporto: `{report_name}`\n"
-                f"- foglio dati: `{sheet_name}` "
-                f"(${{step{carrier_pos}.count}} righe di dati)"
+        from messages import get as _msg
+        if archive_pos:
+            final_message = _msg(
+                "MSG_DOCUMENT_REPORT_RECEIPT",
+                directory=f"${{step{directory_pos}.results.0.path}}",
+                rows=f"${{step{carrier_pos}.count}}",
+                archive=f"${{step{archive_pos}.results.0.path}}",
             )
-            if archive_pos:
-                final_message += (
-                    f"\n- archivio: `${{step{archive_pos}.results.0.path}}`")
         else:
-            final_message = (
-                f"Completed. Results saved in "
-                f"`${{step{directory_pos}.results.0.path}}`:\n\n"
-                f"- report: `{report_name}`\n"
-                f"- data spreadsheet: `{sheet_name}` "
-                f"(${{step{carrier_pos}.count}} data rows)"
+            final_message = _msg(
+                "MSG_SPREADSHEET_CREATED_RECEIPT",
+                title=sheet_name,
+                rows=f"${{step{carrier_pos}.count}}",
             )
-            if archive_pos:
-                final_message += (
-                    f"\n- archive: `${{step{archive_pos}.results.0.path}}`")
         normalized = Framework(
             steps=canonical,
             fillers=dict(getattr(framework, "fillers", {}) or {}),
@@ -5691,11 +5635,13 @@ def _normalize_message_event_report_pipeline(framework: Framework, intent,
         return framework
 
 
-_FILTER_OPERATION_MARKERS = frozenset({
-    "dedup", "deduplicate", "deduplication", "logical_dedup",
-    "remove_duplicates", "unique", "distinct", "unico", "unica",
-    "unici", "uniche",
-})
+def _filter_operation_markers() -> frozenset[str]:
+    from detection_lexicon_seed_routing import mapping
+    return frozenset(
+        form.strip().casefold().replace("-", "_")
+        for form in mapping("routing.filter.operation").get(
+            "deduplicate", ())
+    )
 
 
 def _normalize_filter_operation_values(framework: Framework) -> Framework:
@@ -5712,6 +5658,7 @@ def _normalize_filter_operation_values(framework: Framework) -> Framework:
     every other filter criterion remain untouched.
     """
     steps = list(getattr(framework, "steps", None) or [])
+    operation_markers = _filter_operation_markers()
     changed = False
     for index, step in enumerate(steps[:-1]):
         if (step.tool or "") != "filter_entries" \
@@ -5724,7 +5671,7 @@ def _normalize_filter_operation_values(framework: Framework) -> Framework:
         kept = [value for value in values
                 if not (isinstance(value, str)
                         and value.strip().casefold().replace("-", "_")
-                        in _FILTER_OPERATION_MARKERS)]
+                        in operation_markers)]
         if len(kept) != len(values):
             if not kept:
                 args.pop("kind", None)
@@ -5739,7 +5686,7 @@ def _normalize_filter_operation_values(framework: Framework) -> Framework:
         where_value = args.get("where_value")
         if (isinstance(where_value, str)
                 and where_value.strip().casefold().replace("-", "_")
-                in _FILTER_OPERATION_MARKERS):
+                in operation_markers):
             args.pop("where_value", None)
             if not any(key in args for key in (
                     "where_in", "where_not_in", "where_starts_with",
@@ -5756,13 +5703,6 @@ def _normalize_filter_operation_values(framework: Framework) -> Framework:
     return framework
 
 
-_CREATE_ONLY_REQUEST_RE = re.compile(
-    r"(?:\bnuov[aoe]\s+cartell\w*\b|\bnew\s+folder\b|"
-    r"\bnon\s+sovrascriv\w*\b|\bsenza\s+sovrascriv\w*\b|"
-    r"\bdo\s+not\s+overwrite\b|\bdon'?t\s+overwrite\b|"
-    r"\bwithout\s+overwrit\w*\b)",
-    re.IGNORECASE,
-)
 _ARTIFACT_SINK_TOOLS = frozenset({
     "write_files", "write_files_doc", "write_files_spreadsheet",
     "create_files_doc", "create_files_spreadsheet",
@@ -5782,7 +5722,8 @@ def _enforce_create_only_artifact_policy(
     refusal and create-only spreadsheet semantics.  It never runs unless the
     query explicitly asks for a new folder or forbids overwrite.
     """
-    if not _CREATE_ONLY_REQUEST_RE.search(query or ""):
+    from detection_lexicon_seed_routing import matches
+    if not matches("routing.create_only.request", query or ""):
         return framework
     steps = list(getattr(framework, "steps", None) or [])
     directory_positions = [i for i, step in enumerate(steps)
@@ -7108,7 +7049,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     query = query or ""
     # De-contaminazione oggetti-clausola (v3, 19/6): a 7-8 clausole l'LLM ancora
     # una clausola all'oggetto di una vicina (foto→files dopo «file»). Corregge
-    # via _OBJECT_HINTS (funzione canonica) PRIMA di tutto. Gated is_v3().
+    # via object_hint_mapping (funzione canonica) PRIMA di tutto. Gated is_v3().
     from . import is_v3
     if is_v3():
         _decontaminate_clause_objects(intent, query)

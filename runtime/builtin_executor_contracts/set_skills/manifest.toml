@@ -4,7 +4,7 @@ executor_standard = "metnos.executor/1.0"
 name = "set_skills"
 version = "1.0.0"
 author = "Metnos builtin maintainers"
-affinity = ["skill", "skills", "abilita", "disabilita", "attiva", "disattiva", "enable", "disable", "spegni", "accendi"]
+affinity = []
 platforms = ["linux"]
 revertible = false
 lifecycle = "active"
@@ -15,7 +15,7 @@ en = "SCOPO: Enables or disables an installed skill. PATTERN: natural request ty
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:28b73b52027343ac1c0018e97b0c8ed5fb89c14317ee0b31c805b4a599a38023"
+digest = "sha256:f211a4bdad26f9cfe0d85bb96cbc39a176bf5937ab984b8afa9a4323dcfbffe0"
 
 [args]
 type = "object"

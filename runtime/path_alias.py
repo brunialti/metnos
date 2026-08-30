@@ -61,33 +61,13 @@ def _home() -> Path:
         return Path(drive + os.sep) if drive else Path(os.sep)
 
 
-# Alias bilingue IT↔EN per i path utente standard (XDG user-dirs). Quando
-# l'utente IT scrive "Immagini" su un sistema con LANG=en_US la cartella
-# vera e' "Pictures": senza questo mapping find_files fallisce e il planner
-# ritenta inutilmente lo stesso step (bug osservato turn d39e16bb).
-USER_DIR_ALIASES = {
-    # IT lowercase → candidati ordinati per probabilita'
-    "immagini":   ["Pictures", "Immagini", "Foto", "Images", "images"],
-    "foto":       ["Pictures", "Foto", "Immagini", "images"],
-    "documenti":  ["Documents", "Documenti", "Docs"],
-    "musica":     ["Music", "Musica"],
-    "video":      ["Videos", "Video", "Movies"],
-    "scaricati":  ["Downloads", "Scaricati", "Download"],
-    "scrivania":  ["Desktop", "Scrivania"],
-    "modelli":    ["Templates", "Modelli"],
-    "pubblici":   ["Public", "Pubblici"],
-    # EN lowercase → candidati (caso utente IT che chiede in EN o opposto)
-    "pictures":   ["Pictures", "Immagini", "Foto"],
-    "documents":  ["Documents", "Documenti"],
-    "music":      ["Music", "Musica"],
-    "videos":     ["Videos", "Video", "Movies"],
-    "movies":     ["Movies", "Videos", "Video"],
-    "downloads":  ["Downloads", "Scaricati"],
-    "desktop":    ["Desktop", "Scrivania"],
-    "templates":  ["Templates", "Modelli"],
-    "public":     ["Public", "Pubblici"],
-    "images":     ["Pictures", "Immagini", "images"],
-}
+def _user_dir_aliases() -> dict[str, list[str]] | None:
+    """Lessico nativo revisionato; ``None`` mantiene fail-closed i mutanti."""
+    try:
+        from detection_lexicon_seed_residual_nz import path_user_dir_aliases
+        return path_user_dir_aliases()
+    except Exception:  # noqa: BLE001 - indisponibilita' del gate, non crash
+        return None
 
 
 # Workspace utente Metnos (convention 22/5/2026): default per path relativi
@@ -213,8 +193,9 @@ def resolve_path_with_alias(base_path: str) -> tuple[Path, Optional[str]]:
     expanded = normalize_input_path(base_path)
     if _safe_exists(expanded):
         return expanded, None
-    name_key = expanded.name.lower()
-    aliases = USER_DIR_ALIASES.get(name_key, [])
+    alias_map = _user_dir_aliases()
+    name_key = expanded.name.casefold()
+    aliases = (alias_map or {}).get(name_key, [])
     if not aliases:
         return expanded, None
     candidates: list[Path] = []
@@ -254,8 +235,9 @@ def list_alias_candidates(name: str) -> list[dict]:
     Differisce da `resolve_path_with_alias`: NON sceglie, restituisce
     tutti i candidati per disambiguazione utente via `get_inputs`.
     """
-    name_key = name.lower()
-    aliases = USER_DIR_ALIASES.get(name_key, [])
+    alias_map = _user_dir_aliases()
+    name_key = name.casefold()
+    aliases = (alias_map or {}).get(name_key, [])
     if not aliases:
         return []
     candidates: list[dict] = []
@@ -302,6 +284,17 @@ def check_mutating_path_ambiguity(
     check_path = p if target_must_exist else p.parent
     if _safe_exists(check_path):
         return None
+    if _user_dir_aliases() is None:
+        from messages import get as _msg  # §11 i18n
+        return {
+            "ok": False,
+            "error_code": "ERR_ARG_INVALID",
+            "error": _msg(
+                "ERR_ARG_INVALID", arg="path", reason="lexicon_unavailable",
+            ),
+            "candidates": [],
+            "input_path": input_path,
+        }
     candidates = list_alias_candidates(check_path.name)
     if not candidates:
         return None

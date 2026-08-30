@@ -14,14 +14,19 @@ import pytest
 
 from i18n_activation import (
     ActivationBlocked,
+    _validate_live_resource,
     activate_language,
     gate,
     synchronize_public_hreflang,
     validate_manifests,
 )
-from i18n_materializer import LocalizationPaths, materialize
-from i18n_pipeline import review_semantics, translate_pending
-from i18n_registry import LocalizationRegistry
+from i18n_materializer import InventoryItem, LocalizationPaths, materialize
+from i18n_pipeline import (
+    reconcile_published_contract_registry,
+    review_semantics,
+    translate_pending,
+)
+from i18n_registry import LocalizationRegistry, ResourceRecord
 from contract_store import current_contract, publish_localization, retire
 
 from test_i18n_materializer import _fixture, _versioned_fixture
@@ -228,6 +233,126 @@ def test_gate_blocks_before_semantic_review(tmp_path: Path):
     assert any("required check" in error for error in report.errors)
 
 
+def test_gate_rejects_registry_forged_manual_review_policy(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    import i18n_activation as activation
+
+    item = InventoryItem(
+        resource_id="input:test.phrases", layer="input", source_lang="en",
+        source_hash="a" * 64, source_text='["source"]',
+        metadata={
+            "concept": "test.phrases", "kind": "phrases",
+            "match_mode": "word", "review_policy": "automatic",
+        },
+    )
+    forged = ResourceRecord(
+        resource_id=item.resource_id, layer="input", source_lang="en",
+        target_lang="nl", source_hash=item.source_hash,
+        status="manual_review", attempts=0, translation_hash=None,
+        quality=None, artifact_path=None, last_error=None,
+        metadata={**item.metadata, "review_policy": "manual"},
+    )
+
+    class Registry:
+        def resources(self, _target):
+            return [forged]
+
+        def checks(self, _target):
+            return {
+                name: {"status": "passed"}
+                for name in activation._REQUIRED_CHECKS
+            }
+
+    monkeypatch.setattr(activation, "inventory", lambda *args, **kwargs: [item])
+
+    report = activation.gate(
+        "nl", registry=Registry(), paths=LocalizationPaths(),
+    )
+
+    assert not report.ok
+    assert report.exceptions == ()
+    assert report.errors == ("inventory identity drift: input:test.phrases",)
+
+
+def test_live_input_gate_rejects_partial_mapping_even_when_hashes_match(
+    tmp_path: Path,
+) -> None:
+    paths = _fixture(tmp_path)
+    source_text = json.dumps(
+        {"read": ["read"], "run": ["run"]},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+    partial = {"read": ["lezen"]}
+    raw_payload = json.dumps(partial, ensure_ascii=False, sort_keys=True)
+    translation_hash = hashlib.sha256(json.dumps(
+        partial, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
+    connection = sqlite3.connect(paths.detection_db)
+    try:
+        connection.execute(
+            "INSERT INTO detection_lexicon VALUES(?,?,?,?,?,?,?,?,?,?,NULL)",
+            (
+                "test.mapping", "nl", "mapping", "word", raw_payload, 0,
+                "en", "sha256:" + source_hash,
+                "sha256:" + hashlib.sha256(raw_payload.encode("utf-8")).hexdigest(),
+                "automatic",
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    item = InventoryItem(
+        resource_id="input:test.mapping",
+        layer="input",
+        source_lang="en",
+        source_hash=source_hash,
+        source_text=source_text,
+        metadata={
+            "concept": "test.mapping", "kind": "mapping",
+            "match_mode": "word", "review_policy": "automatic",
+        },
+    )
+    record = ResourceRecord(
+        resource_id=item.resource_id,
+        layer="input",
+        source_lang="en",
+        target_lang="nl",
+        source_hash=source_hash,
+        status="admitted",
+        attempts=1,
+        translation_hash=translation_hash,
+        quality="reviewed",
+        artifact_path=None,
+        last_error=None,
+        metadata=item.metadata,
+    )
+
+    error = _validate_live_resource(
+        record, item=item, paths=paths, target="nl",
+    )
+
+    assert error is not None
+    assert "input lexicon shape is invalid" in error
+
+    connection = sqlite3.connect(paths.detection_db)
+    try:
+        connection.execute(
+            "UPDATE detection_lexicon SET source_lang=NULL "
+            "WHERE concept='test.mapping' AND lang='nl'"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    error = _validate_live_resource(
+        record, item=item, paths=paths, target="nl",
+    )
+    assert error == "input lexicon metadata differs from admitted source"
+
+
 def test_activation_promotes_all_layers_then_flips_signed_authority(tmp_path: Path):
     paths, registry = _prepared(tmp_path)
     writes: list[dict] = []
@@ -256,6 +381,73 @@ def test_activation_promotes_all_layers_then_flips_signed_authority(tmp_path: Pa
     )
     assert final.ok
     assert "input:confirm.yes" in final.exceptions
+
+
+def test_post_admission_tampering_and_stale_derived_evidence_are_blocked(
+    tmp_path: Path,
+) -> None:
+    paths, registry = _prepared(tmp_path)
+    digest = hashlib.sha256(b"tutor-integrity").hexdigest()
+    activate_language(
+        "nl", registry=registry, paths=paths,
+        manifest_validator=lambda _path, _language: (True, ""),
+        tutor_compiler=lambda: (digest, {"en", "nl"}),
+        request_writer=lambda **_kwargs: (object(), True),
+        restart=lambda: None,
+    )
+    assert gate(
+        "nl", registry=registry, paths=paths, require_admitted=True,
+    ).ok
+
+    connection = sqlite3.connect(paths.messages_db)
+    original_message = connection.execute(
+        "SELECT text,version_hash,source_text_hash,source_lang FROM i18n "
+        "WHERE key='MSG_HELLO' AND lang='nl'",
+    ).fetchone()
+    connection.execute(
+        "UPDATE i18n SET text='TAMPERED' "
+        "WHERE key='MSG_HELLO' AND lang='nl'",
+    )
+    connection.commit()
+    connection.close()
+    report = gate("nl", registry=registry, paths=paths, require_admitted=True)
+    assert not report.ok
+    assert any("live message" in error for error in report.errors)
+
+    connection = sqlite3.connect(paths.messages_db)
+    connection.execute(
+        "UPDATE i18n SET text=?,version_hash=?,source_text_hash=?,source_lang=? "
+        "WHERE key='MSG_HELLO' AND lang='nl'",
+        original_message,
+    )
+    connection.commit()
+    connection.close()
+
+    knowledge = paths.docs / "nl" / "guide.html"
+    original_knowledge = knowledge.read_text(encoding="utf-8")
+    knowledge.write_text("<h1>TAMPERED</h1>", encoding="utf-8")
+    report = gate("nl", registry=registry, paths=paths, require_admitted=True)
+    assert not report.ok
+    assert any("live public knowledge" in error for error in report.errors)
+    knowledge.write_text(original_knowledge, encoding="utf-8")
+
+    original_device = paths.device_catalog.read_text(encoding="utf-8")
+    catalog = json.loads(original_device)
+    first_key = next(iter(catalog["nl"]))
+    catalog["nl"][first_key] = "TAMPERED"
+    paths.device_catalog.write_text(json.dumps(catalog), encoding="utf-8")
+    report = gate("nl", registry=registry, paths=paths, require_admitted=True)
+    assert not report.ok
+    assert any("live device catalog" in error for error in report.errors)
+    paths.device_catalog.write_text(original_device, encoding="utf-8")
+
+    registry.record_check(
+        "tutor_catalog_compile", "nl", "passed",
+        evidence_hash="0" * 64, details={"languages": ["en", "nl"]},
+    )
+    report = gate("nl", registry=registry, paths=paths, require_admitted=True)
+    assert not report.ok
+    assert any("tutor_catalog_compile evidence" in error for error in report.errors)
 
 
 def test_activation_does_not_flip_config_when_device_catalog_is_incomplete(tmp_path: Path):
@@ -317,6 +509,7 @@ def test_store_only_activation_omits_authenticated_retirement(
         store_root=store,
     )
     registry = LocalizationRegistry(tmp_path / "registry.sqlite")
+
     materialize(
         "nl", registry=registry, paths=paths,
         contract_snapshot_provider=snapshot_provider,
@@ -353,6 +546,79 @@ def test_store_only_activation_omits_authenticated_retirement(
         contract_snapshot_provider=snapshot_provider,
     )
     assert final.ok, final.errors
+
+
+def test_store_only_activation_accepts_active_versioned_contract_candidate(
+    tmp_path: Path,
+) -> None:
+    (
+        base_paths,
+        ref,
+        private_key,
+        trusted,
+        store,
+        _publication,
+        snapshot_provider,
+    ) = _versioned_fixture(tmp_path)
+    paths = replace(
+        base_paths,
+        device_catalog=tmp_path / "device" / "messages_i18n.json",
+    )
+    store_publisher = partial(
+        publish_localization,
+        private_key=private_key,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    registry = LocalizationRegistry(tmp_path / "registry.sqlite")
+
+    def publisher(current_ref, **kwargs):
+        """Model the productive M4 callback on an isolated contract store."""
+        result = store_publisher(current_ref, **kwargs)
+        reconcile_published_contract_registry(
+            snapshot_provider(current_ref), registry=registry,
+        )
+        return result
+
+    materialize(
+        "nl", registry=registry, paths=paths,
+        contract_snapshot_provider=snapshot_provider,
+    )
+    translate_pending(
+        "nl", registry=registry, paths=paths, translator=_translator,
+        contract_snapshot_provider=snapshot_provider,
+    )
+    review_semantics(
+        "nl", registry=registry, paths=paths,
+        judge=lambda source, target, resource: bool(source and target and resource),
+        contract_snapshot_provider=snapshot_provider,
+    )
+    writes: list[dict] = []
+
+    result = activate_language(
+        "nl",
+        registry=registry,
+        paths=paths,
+        tutor_compiler=lambda: (
+            hashlib.sha256(b"tutor").hexdigest(), {"en", "nl"},
+        ),
+        request_writer=lambda **kwargs: (writes.append(kwargs), True),
+        contract_snapshot_provider=snapshot_provider,
+        contract_publisher=publisher,
+    )
+
+    assert result.configuration_changed
+    assert writes and writes[0]["instance_lang"] == "nl"
+    live = snapshot_provider(ref)
+    assert "nl" in live.parsed["description"]
+    assert "nl" in live.parsed["args"]["properties"]["path"]["description"]
+    assert gate(
+        "nl",
+        registry=registry,
+        paths=paths,
+        require_admitted=True,
+        contract_snapshot_provider=snapshot_provider,
+    ).ok
 
 
 def test_full_acceptance_is_idempotent_and_runtime_surfaces_share_locale(

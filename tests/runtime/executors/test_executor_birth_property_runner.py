@@ -50,8 +50,23 @@ def test_cardinality_and_limit_generate_bounded_evidence():
     runner = Runner()
     cardinality = run_property("cardinality.zero_one_many", PropertyCandidateProfile(collection_output=True), _runner=runner)
     assert len(cardinality) == 3 and all(item.status is PropertyStatus.PASSED for item in cardinality)
-    limits = run_property("limit.zero_and_below_total", PropertyCandidateProfile(limit_input=True), _runner=runner)
+    limits = run_property(
+        "limit.zero_and_below_total",
+        PropertyCandidateProfile(collection_output=True, limit_input=True),
+        _runner=runner,
+    )
     assert len(limits) == 2 and all(item.status is PropertyStatus.PASSED for item in limits)
+
+
+def test_limit_without_a_structured_collection_is_not_applicable():
+    runner = Runner()
+    evidence = run_property(
+        "limit.zero_and_below_total",
+        PropertyCandidateProfile(limit_input=True),
+        _runner=runner,
+    )
+    assert evidence == ()
+    assert runner.calls == []
 
 
 def test_oracle_failure_and_runner_unavailability_are_evidence_not_bypass():

@@ -314,50 +314,622 @@ def test_nested_relative_spreadsheet_path_uses_common_data_root(
     assert bare == tmp_path / "spreadsheets" / "dati.xlsx"
 
 
-def test_document_audit_overrides_false_coherence_and_lists_all_anomalies(
+class _AuditLexicon:
+    fields = {
+        "origin": ["origine-fr"], "readable": ["lisible-fr"],
+        "duplicates": ["doublons-fr"], "amount": ["montant-fr"],
+        "deadline": ["echeance-fr"], "status": ["etat-fr"],
+    }
+    audit = {"supplier": ["fournisseur-fr"], "status": ["etat-fr"]}
+    relevance_generic_tokens = frozenset({"file", "document"})
+    _field_owner = {
+        "origin": "origin", "origine": "origin", "origine-fr": "origin",
+        "readable": "readable", "lisible-fr": "readable",
+        "duplicates": "duplicates", "duplicate_paths": "duplicates",
+        "doublons-fr": "duplicates", "amount": "amount",
+        "importo": "amount", "montant-fr": "amount",
+        "deadline": "deadline", "scadenza": "deadline",
+        "echeance-fr": "deadline", "status": "status", "stato": "status",
+        "etat-fr": "status",
+    }
+    _audit_owner = {
+        "supplier": "supplier", "fornitore": "supplier",
+        "fournisseur-fr": "supplier", "status": "status",
+        "stato": "status", "etat-fr": "status",
+    }
+    _variants = frozenset({
+        "approved", "approvato", "final", "draft", "bozza", "revisione",
+        "revision", "copia", "copy", "brouillon-fr", "final-fr",
+    })
+
+    @staticmethod
+    def _key(value):
+        return str(value).casefold().replace("_", " ").strip()
+
+    def canonical_field(self, surface):
+        return self._field_owner.get(self._key(surface))
+
+    def canonical_audit(self, surface):
+        return self._audit_owner.get(self._key(surface))
+
+    def is_variant_token(self, token):
+        return self._key(token) in self._variants
+
+    def surface(self, canonical):
+        return self.fields[canonical][0]
+
+
+def _audit_snapshot(describe_entries):
+    import detection_lexicon_seed_runtime_safety as safety
+
+    return describe_entries._DocumentAuditSnapshot(
+        lexicon=_AuditLexicon(),
+        patterns={
+            safety.DOCUMENT_AUDIT_CONFLICT_INTENT: (
+                re.compile(r"contradditt|contradict|conflict|incoherent", re.I),
+            ),
+            safety.DOCUMENT_AUDIT_UNREADABLE_INTENT: (
+                re.compile(r"illeggibil|unreadable|illisible", re.I),
+            ),
+            safety.DOCUMENT_AUDIT_DUPLICATE_INTENT: (
+                re.compile(r"duplicat|deduplic|doublon", re.I),
+            ),
+            safety.DOCUMENT_NO_CONTRADICTION_CLAIM: (
+                re.compile(r"(?im)^.*(?:all coherent|tutti .* coerenti).*(?:\n|$)"),
+            ),
+        },
+        templates={
+            "ERR_EXT_SVC_UNAVAILABLE": "audit unavailable",
+            "MSG_DOCUMENT_AUDIT_HEADER": "### Deterministic checks",
+            "MSG_DOCUMENT_AUDIT_CONTRADICTION": (
+                "- Conflicting data — {left} vs {right}: {details}."
+            ),
+            "MSG_DOCUMENT_AUDIT_UNREADABLE": "- Unreadable files — {files}.",
+            "MSG_DOCUMENT_AUDIT_DUPLICATES": (
+                "- Duplicates — {details}; no file was deleted."
+            ),
+        },
+    )
+
+
+def test_document_audit_compact_uses_original_entries_and_canonical_aliases(
         monkeypatch):
     import describe_entries
 
-    messages = {
-        "MSG_DOCUMENT_AUDIT_HEADER": "### Verifiche deterministiche",
-        "MSG_DOCUMENT_AUDIT_CONTRADICTION": (
-            "- Dati contraddittori — {left} vs {right}: {details}."),
-        "MSG_DOCUMENT_AUDIT_UNREADABLE": "- File illeggibili — {files}.",
-        "MSG_DOCUMENT_AUDIT_DUPLICATES": (
-            "- Duplicati eliminati logicamente — {details}; "
-            "nessun file è stato cancellato."),
-    }
+    snapshot = _audit_snapshot(describe_entries)
     monkeypatch.setattr(
-        describe_entries, "_msg",
-        lambda key, **values: messages[key].format(**values))
+        describe_entries, "_capture_document_audit_snapshot", lambda: snapshot,
+    )
     entries = [
-        {"origine": r"C:\Atlas\Budget_Atlas_approvato.pdf",
-         "importo": "120000", "scadenze": "2026-09-30",
-         "fornitore": "Orion", "stato": "APPROVATO",
-         "_duplicate_paths": [r"C:\Atlas\Budget_Atlas_copia.pdf"]},
-        {"origine": r"C:\Atlas\Budget_Atlas_revisione.docx",
-         "importo": "135000", "scadenze": "2026-09-15",
-         "fornitore": "Vega", "stato": "BOZZA NON APPROVATA"},
-        {"origine": r"C:\Atlas\Allegato_corrotto.pdf",
-         "readable": False},
+        {"origine-fr": "/a/Budget.pdf", "montant-fr": "10"},
+        {"origine-fr": "/b/Budget.pdf", "montant-fr": "20"},
+        {"origine-fr": "/a/Atlas_final.pdf", "montant-fr": "30",
+         "doublons-fr": ["/copies/Atlas_copy.pdf"]},
+        {"origine-fr": "/a/Atlas_draft.pdf", "montant-fr": "40"},
+        {"origine-fr": "/a/Annexe.pdf", "lisible-fr": False},
+        {"origine-fr": "/a/file_final.pdf", "montant-fr": "50"},
+        {"origine-fr": "/a/file_draft.pdf", "montant-fr": "60"},
     ]
-    out = describe_entries._append_document_audit(
-        "Tutti i dati estratti sono coerenti e non ci sono contraddizioni.\n"
-        "Riepilogo utile.\n"
-        "* Errori: file illeggibile. Nessun dato contraddittorio critico "
-        "tra file sani.", entries, QUERY, "markdown")
+    out = describe_entries.handle_describe_entries({
+        "entries": entries, "style": "compact", "data_kind": "entries",
+        "format": "markdown",
+        "context": "check conflicts, fichiers illisibles et doublons",
+    })
 
-    assert "Tutti i dati estratti sono coerenti" not in out
-    assert "Nessun dato contraddittorio" not in out
-    assert "Errori: file illeggibile" in out
-    assert "Budget_Atlas_approvato.pdf vs Budget_Atlas_revisione.docx" in out
-    assert "120000 ↔ 135000" in out
-    assert "2026-09-30 ↔ 2026-09-15" in out
-    assert "Orion ↔ Vega" in out
-    assert "APPROVATO ↔ BOZZA NON APPROVATA" in out
-    assert "Allegato_corrotto.pdf" in out
-    assert "Budget_Atlas_copia.pdf" in out
-    assert "nessun file è stato cancellato" in out
+    assert out["ok"] is True
+    assert out["document_audit"]["state"] == "completed"
+    conflicts = out["document_audit"]["conflicts"]
+    assert any(item["left"] == "/a/Budget.pdf" for item in conflicts)
+    assert any("Atlas_final.pdf" in item["left"] for item in conflicts)
+    assert not any("file_final.pdf" in item["left"] for item in conflicts)
+    assert out["document_audit"]["unreadable"] == ["Annexe.pdf"]
+    assert out["document_audit"]["duplicates"] == [
+        "/a/Atlas_final.pdf ← /copies/Atlas_copy.pdf",
+    ]
+    assert "### Deterministic checks" in out["summary"]
+
+
+def test_document_audit_map_reduce_runs_once_on_original_entries(monkeypatch):
+    import describe_entries
+
+    captures = 0
+    snapshot = _audit_snapshot(describe_entries)
+
+    def capture_once():
+        nonlocal captures
+        captures += 1
+        return snapshot
+
+    seen = []
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot", capture_once,
+    )
+    monkeypatch.setattr(
+        describe_entries, "_pack_entries", lambda entries: (entries[:1], True),
+    )
+    monkeypatch.setattr(describe_entries, "_DESCRIBE_MAPREDUCE", True)
+    monkeypatch.setattr(
+        describe_entries, "_describe_map_reduce",
+        lambda entries, **_kwargs: seen.extend(entries) or {
+            "ok": True, "summary": "all coherent", "item_count": len(entries),
+        },
+    )
+    original = [
+        {"origin": "/a/Atlas_final.pdf", "amount": "10"},
+        {"origin": "/a/Atlas_draft.pdf", "amount": "20"},
+    ]
+    out = describe_entries.handle_describe_entries({
+        "entries": original, "context": "check conflicts", "format": "plain",
+    })
+
+    assert captures == 1
+    assert seen == original
+    assert out["ok"] is True
+    assert "all coherent" not in out["summary"]
+    assert "10 ↔ 20" in out["summary"]
+
+
+@pytest.mark.parametrize("fmt", ["json", "html"])
+def test_document_audit_structured_formats_fail_closed(monkeypatch, fmt):
+    import describe_entries
+
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot",
+        lambda: _audit_snapshot(describe_entries),
+    )
+    out = describe_entries.handle_describe_entries({
+        "entries": [{"origin": "Budget_final.pdf", "amount": "10"}],
+        "style": "compact", "data_kind": "entries", "format": fmt,
+        "context": "check conflicts",
+    })
+
+    assert out["ok"] is False
+    assert out["error_code"] == "ERR_EXT_SVC_UNAVAILABLE"
+    assert "summary" not in out
+    assert out["document_audit"]["state"] == "unsupported_format"
+
+
+def test_document_audit_invalid_format_is_denied_before_capture(monkeypatch):
+    import describe_entries
+
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot",
+        lambda: pytest.fail("invalid format must not acquire audit authority"),
+    )
+    out = describe_entries.handle_describe_entries({
+        "entries": [], "format": "yaml", "context": "check conflicts",
+    })
+    assert out["ok"] is False
+    assert out["error_code"] == "ERR_FMT_INVALID"
+
+
+def test_document_audit_composite_family_is_read_once(monkeypatch):
+    import describe_entries
+    import detection_lexicon as detection_lexicon
+    import detection_lexicon_seed_runtime_safety as safety
+
+    snapshot = _audit_snapshot(describe_entries)
+    family_reads = []
+    template_reads = 0
+    concepts = (
+        safety.DOCUMENT_AUDIT_CONFLICT_INTENT,
+        safety.DOCUMENT_AUDIT_UNREADABLE_INTENT,
+        safety.DOCUMENT_AUDIT_DUPLICATE_INTENT,
+        safety.DOCUMENT_NO_CONTRADICTION_CLAIM,
+    )
+    resources = {
+        concept: ({"payload": [patterns[0].pattern]},)
+        for concept, patterns in snapshot.patterns.items()
+    }
+    resources["reconciliation.stub"] = ({"payload": {"stub": ["stub"]}},)
+
+    def family_once(kinds, **options):
+        family_reads.append((dict(kinds), dict(options)))
+        if len(family_reads) > 1:
+            raise AssertionError("composite family was reacquired")
+        return resources
+
+    def templates_after_cutover():
+        nonlocal template_reads
+        template_reads += 1
+        if template_reads > 1:
+            raise AssertionError("audit templates were reacquired")
+        # Simulate a commit after the family snapshot.  Compiled intent must
+        # remain frozen and no later decision may consult this mutable source.
+        resources[safety.DOCUMENT_AUDIT_CONFLICT_INTENT][0]["payload"] = [
+            "never-match",
+        ]
+        return dict(snapshot.templates)
+
+    monkeypatch.setattr(describe_entries._reconciliation_lex,
+                        "_ensure_registered", lambda: None)
+    monkeypatch.setattr(describe_entries._reconciliation_lex,
+                        "family_kinds", lambda: {"reconciliation.stub": "mapping"})
+    monkeypatch.setattr(describe_entries._reconciliation_lex,
+                        "from_resources", lambda _resources: snapshot.lexicon)
+    monkeypatch.setattr(safety, "_ensure_registered", lambda: None)
+    monkeypatch.setattr(detection_lexicon, "native_ready_family_resources",
+                        family_once)
+    monkeypatch.setattr(describe_entries, "_ready_audit_templates",
+                        templates_after_cutover)
+
+    out = describe_entries.handle_describe_entries({
+        "entries": [], "context": "check conflicts", "format": "plain",
+    })
+    assert out["ok"] is True
+    assert len(family_reads) == 1
+    assert template_reads == 1
+    assert out["document_audit"]["request"]["conflicts"] is True
+    assert set(family_reads[0][0]) == {"reconciliation.stub", *concepts}
+    assert family_reads[0][1] == {
+        "require_manual": True, "include_reviewed_baselines": True,
+    }
+
+
+def test_document_audit_family_unavailable_is_typed_failure(monkeypatch):
+    import describe_entries
+
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot", lambda: None,
+    )
+    out = describe_entries.handle_describe_entries({
+        "entries": [], "context": "check conflicts", "format": "markdown",
+    })
+    assert out == {
+        "ok": False,
+        "error_code": "ERR_EXT_SVC_UNAVAILABLE",
+        "error": "ERR_EXT_SVC_UNAVAILABLE",
+        "document_audit": {
+            "state": "unavailable",
+            "request": {"conflicts": False, "unreadable": False,
+                        "duplicates": False},
+            "conflicts": [], "unreadable": [], "duplicates": [],
+            "error_code": "ERR_EXT_SVC_UNAVAILABLE",
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "partial", "pending", "source_pending", "source_lang",
+        "version_hash", "source_hash", "placeholder",
+    ],
+)
+def test_document_audit_template_family_is_atomic_ready_and_provenanced(
+        monkeypatch, mutation):
+    import describe_entries
+
+    templates = _audit_snapshot(describe_entries).templates
+
+    def digest(text):
+        return "sha256:" + describe_entries.hashlib.sha256(
+            text.encode("utf-8"),
+        ).hexdigest()
+
+    rows = []
+    for key, text in templates.items():
+        source_hash = digest(text)
+        rows.append((key, "en", text, 0, "", source_hash, ""))
+        translated = "FR " + text
+        rows.append((
+            key, "fr", translated, 0, "en", digest(translated), source_hash,
+        ))
+
+    target_key = "MSG_DOCUMENT_AUDIT_CONTRADICTION"
+    target = next(
+        index for index, row in enumerate(rows)
+        if row[0] == target_key and row[1] == "fr"
+    )
+    row = list(rows[target])
+    if mutation == "partial":
+        rows.pop(target)
+    elif mutation == "pending":
+        row[3] = 1
+        rows[target] = tuple(row)
+    elif mutation == "source_pending":
+        source_index = next(
+            index for index, source_row in enumerate(rows)
+            if source_row[0] == target_key and source_row[1] == "en"
+        )
+        source_row = list(rows[source_index])
+        source_row[3] = 1
+        rows[source_index] = tuple(source_row)
+    elif mutation == "source_lang":
+        row[4] = "it"
+        rows[target] = tuple(row)
+    elif mutation == "version_hash":
+        row[5] = "sha256:wrong"
+        rows[target] = tuple(row)
+    elif mutation == "source_hash":
+        row[6] = "sha256:wrong"
+        rows[target] = tuple(row)
+    else:
+        row[2] = str(row[2]) + " {unexpected}"
+        row[5] = digest(str(row[2]))
+        rows[target] = tuple(row)
+
+    class Connection:
+        def execute(self, _sql, _keys):
+            return SimpleNamespace(fetchall=lambda: list(rows))
+
+    monkeypatch.setattr(describe_entries._i18n, "_open", Connection)
+    monkeypatch.setattr(describe_entries._i18n, "current_lang", lambda: "fr")
+    monkeypatch.setattr(
+        describe_entries._i18n, "language_chain", lambda _lang: ("fr", "en"),
+    )
+    monkeypatch.setattr(
+        describe_entries._i18n._C, "BOOTSTRAP_LANGUAGE", "en",
+    )
+
+    assert describe_entries._ready_audit_templates() is None
+
+
+def test_document_audit_real_template_family_is_whole_and_ready(monkeypatch):
+    import sqlite3
+    import describe_entries
+
+    connection = sqlite3.connect(
+        Path(describe_entries.__file__).resolve().parents[1]
+        / "install/data/i18n_seed.sqlite",
+    )
+    monkeypatch.setattr(describe_entries._i18n, "_open", lambda: connection)
+
+    templates = describe_entries._ready_audit_templates()
+
+    assert templates is not None
+    assert set(templates) == set(describe_entries._AUDIT_TEMPLATE_FIELDS)
+
+
+def test_document_audit_uses_meta_record_as_original_evidence(monkeypatch):
+    import describe_entries
+
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot",
+        lambda: _audit_snapshot(describe_entries),
+    )
+    out = describe_entries.handle_describe_entries({
+        "entries": [
+            {"_meta": True, "_source_path": "/a/Budget.pdf", "amount": "10",
+             "style": "compact", "kind": "entries"},
+            {"_source_path": "/b/Budget_draft.pdf", "amount": "20"},
+        ],
+        # The first mapping is deliberately malformed as a legacy descriptor,
+        # so its style/kind fields are evidence rather than control metadata.
+        "style": "compact", "data_kind": "entries",
+        "context": "check conflicts", "format": "plain",
+    })
+
+    assert out["ok"] is True
+    assert len(out["document_audit"]["conflicts"]) == 1
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_document_audit_conflicting_aliases_fail_closed_order_independently(
+        monkeypatch, reverse):
+    import describe_entries
+
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot",
+        lambda: _audit_snapshot(describe_entries),
+    )
+    aliases = [("amount", "10"), ("montant-fr", "20")]
+    if reverse:
+        aliases.reverse()
+    first = {"origin": "Budget_final.pdf", **dict(aliases)}
+    out = describe_entries.handle_describe_entries({
+        "entries": [first, {"origin": "Budget_draft.pdf", "amount": "30"}],
+        "style": "compact", "data_kind": "entries", "format": "plain",
+        "context": "check conflicts",
+    })
+
+    assert out["ok"] is False
+    assert out["error_code"] == "ERR_ARG_INVALID"
+    assert out["document_audit"]["state"] == "invalid_evidence"
+
+
+def test_document_audit_path_identity_status_alias_and_unicode_family(
+        monkeypatch):
+    import describe_entries
+
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot",
+        lambda: _audit_snapshot(describe_entries),
+    )
+    out = describe_entries.handle_describe_entries({
+        "entries": [
+            {"_source_path": "/a/预算_final.pdf",
+             "_source_name": "预算_final.pdf", "status": "approved"},
+            {"_source_path": "/b/预算_draft.pdf",
+             "_source_name": "预算_draft.pdf", "etat-fr": "draft"},
+        ],
+        "style": "compact", "data_kind": "entries", "format": "plain",
+        "context": "check conflicts",
+    })
+
+    assert out["ok"] is True
+    conflict = out["document_audit"]["conflicts"][0]
+    assert conflict["left"] == "预算_final.pdf"
+    assert conflict["right"] == "预算_draft.pdf"
+    assert "approved ↔ draft" in conflict["details"]
+
+
+def test_document_audit_preserves_same_basename_path_collision(monkeypatch):
+    import describe_entries
+
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot",
+        lambda: _audit_snapshot(describe_entries),
+    )
+    out = describe_entries.handle_describe_entries({
+        "entries": [
+            {"_source_path": "/a/Budget.pdf", "_source_name": "Budget.pdf",
+             "amount": "10"},
+            {"_source_path": "/b/Budget.pdf", "_source_name": "Budget.pdf",
+             "amount": "20"},
+        ],
+        "style": "compact", "data_kind": "entries", "format": "plain",
+        "context": "check conflicts",
+    })
+
+    conflict = out["document_audit"]["conflicts"][0]
+    assert (conflict["left"], conflict["right"]) == (
+        "/a/Budget.pdf", "/b/Budget.pdf",
+    )
+
+
+def test_document_audit_compares_divergent_records_from_same_path(monkeypatch):
+    import describe_entries
+
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot",
+        lambda: _audit_snapshot(describe_entries),
+    )
+    out = describe_entries.handle_describe_entries({
+        "entries": [
+            {"_source_path": "/a/file.pdf", "amount": "10"},
+            {"_source_path": "/a/file.pdf", "amount": "20"},
+        ],
+        "style": "compact", "data_kind": "entries", "format": "plain",
+        "context": "check conflicts",
+    })
+
+    assert out["ok"] is True
+    assert out["document_audit"]["conflicts"] == [{
+        "left": "/a/file.pdf", "right": "/a/file.pdf",
+        "details": "montant-fr: 10 ↔ 20",
+    }]
+
+
+def test_document_audit_same_path_identical_records_have_no_conflict(monkeypatch):
+    import describe_entries
+
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot",
+        lambda: _audit_snapshot(describe_entries),
+    )
+    record = {"_source_path": "/a/file.pdf", "amount": "10"}
+    out = describe_entries.handle_describe_entries({
+        "entries": [record, dict(record)],
+        "style": "compact", "data_kind": "entries", "format": "plain",
+        "context": "check conflicts",
+    })
+
+    assert out["ok"] is True
+    assert out["document_audit"]["conflicts"] == []
+
+
+def test_document_audit_duplicate_paths_keep_complete_normalized_identity(
+        monkeypatch):
+    import describe_entries
+
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot",
+        lambda: _audit_snapshot(describe_entries),
+    )
+    out = describe_entries.handle_describe_entries({
+        "entries": [{
+            "_source_path": r"C:\docs\Budget.pdf",
+            "_duplicate_paths": [
+                r"C:\copies\Budget.pdf", r"D:\copies\Budget.pdf",
+            ],
+        }],
+        "style": "compact", "data_kind": "entries", "format": "plain",
+        "context": "check duplicates",
+    })
+
+    assert out["document_audit"]["duplicates"] == [
+        "C:/docs/Budget.pdf ← C:/copies/Budget.pdf",
+        "C:/docs/Budget.pdf ← D:/copies/Budget.pdf",
+    ]
+
+
+@pytest.mark.parametrize(
+    "head",
+    [
+        {"_meta": {"truthy": True}, "style": "compact"},
+        {"_meta": True, "style": "compact", "unknown": "evidence"},
+    ],
+)
+def test_legacy_header_does_not_extract_truthy_or_open_shape(head):
+    import describe_entries
+
+    entries = [head, {"origin": "Budget.pdf"}]
+    header, retained = describe_entries._extract_header(entries)
+
+    assert header is None
+    assert retained is entries
+
+
+def test_legacy_header_extracts_exact_true_closed_shape():
+    import describe_entries
+
+    head = {"_meta": True, "style": "compact", "format": "plain"}
+    tail = {"origin": "Budget.pdf"}
+    header, retained = describe_entries._extract_header([head, tail])
+
+    assert header is head
+    assert retained == [tail]
+
+
+@pytest.mark.parametrize(
+    ("fmt", "escaped"),
+    [("markdown", True), ("bullet_list", True), ("plain", False)],
+)
+def test_document_audit_untrusted_values_are_safe_for_output_format(
+        monkeypatch, fmt, escaped):
+    import describe_entries
+
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot",
+        lambda: _audit_snapshot(describe_entries),
+    )
+    out = describe_entries.handle_describe_entries({
+        "entries": [
+            {"origin": "Budget_final.pdf", "amount": "*10*\r\n# injected"},
+            {"origin": "Budget_draft.pdf", "amount": "20"},
+        ],
+        "style": "compact", "data_kind": "entries", "format": fmt,
+        "context": "check conflicts",
+    })
+
+    detail = out["document_audit"]["conflicts"][0]["details"]
+    assert "\r" not in detail and "\n" not in detail
+    if escaped:
+        assert "\\*10\\*" in out["summary"]
+        assert "\\# injected" in out["summary"]
+    else:
+        assert "*10* # injected" in out["summary"]
+        assert "\\*10\\*" not in out["summary"]
+
+
+def test_describe_initial_validation_and_content_fetch_are_typed(monkeypatch):
+    import describe_entries
+
+    assert describe_entries.handle_describe_entries(None)["error_code"] == (
+        "ERR_ARG_INVALID"
+    )
+    assert describe_entries.handle_describe_entries({
+        "entries": [], "max_tokens": "not-an-int",
+    })["error_code"] == "ERR_ARG_INVALID"
+    assert describe_entries.handle_describe_entries({
+        "entries": [], "format": {"unsafe": "shape"},
+    })["error_code"] == "ERR_ARG_INVALID"
+    assert describe_entries.handle_describe_entries({
+        "entries": [], "max_tokens": 0,
+    })["error_code"] == "ERR_ARG_INVALID"
+    monkeypatch.setattr(
+        describe_entries, "_capture_document_audit_snapshot",
+        lambda: _audit_snapshot(describe_entries),
+    )
+    out = describe_entries.handle_describe_entries({
+        "entries": [{"url": "https://example.test", "title": "Metadata"}],
+        "context": "", "format": "plain",
+    })
+    assert out["ok"] is False
+    assert out["error_code"] == "ERR_ARG_MISSING"
+    assert out["error_class"] == "needs_content_fetch"
+    assert "entries.content" in out["error"]
 
 
 def test_sink_columns_are_clause_scoped():

@@ -6,7 +6,7 @@ la SELEZIONE del provider è CONFIGURAZIONE, non intento. Chiederla all'LLM (arg
 `client`/`provider`) genera bias verso il pattern (enum) → scelta sbagliata.
 
 Una sola modalità per tutti i casi simili (richiesta Roberto 31/5):
-  - DEFINE: registry `OBJECT_BACKENDS` (provider + disponibilità + alias NL).
+  - DEFINE: registry `OBJECT_BACKENDS` (provider + disponibilità + chiavi alias).
   - IDENTIFY: `resolve_backend_arg` — provider nominato esplicito nella query
     (match alias deterministico) → quello; altrimenti default = primo provider
     DISPONIBILE per ordine di preferenza.
@@ -17,6 +17,9 @@ Una sola modalità per tutti i casi simili (richiesta Roberto 31/5):
 è scelta del planner → il runtime ne è il proprietario, non un override.
 """
 from __future__ import annotations
+
+import detection_lexicon as _detlex
+import detection_lexicon_seed_resolvers as _resolver_seed
 
 
 def _gw_creds() -> bool:
@@ -32,19 +35,15 @@ def _gw_creds() -> bool:
 # arg        : nome dell'arg di backend nel manifest
 # providers  : ordine di PREFERENZA (il primo disponibile vince come default)
 # available  : provider -> bool (creds/config). True = sempre disponibile.
-# aliases    : provider -> tuple di token NL (IT+EN); match esplicito sulla query.
-#              Usare frasi specifiche per evitare falsi positivi.
+# alias_keys : provider -> identita' canonica del mapping traducibile.
 OBJECT_BACKENDS: dict[str, dict] = {
     "events": {
         "arg": "client",
         "providers": ["google_workspace", "local"],
         "available": lambda p: _gw_creds() if p == "google_workspace" else True,
-        "aliases": {
-            "local": ("calendario locale", "calendar locale", "local calendar",
-                      "in locale", "sul locale", "in local", "localmente"),
-            "google_workspace": ("google calendar", "calendario google",
-                                  "google primary", "su google", "on google",
-                                  "gmail calendar"),
+        "alias_keys": {
+            "local": "events.local",
+            "google_workspace": "events.google_workspace",
         },
     },
     "files": {
@@ -53,18 +52,15 @@ OBJECT_BACKENDS: dict[str, dict] = {
         # nominato esplicitamente (alias) — vale per find/read/write/... files.
         "providers": ["local", "google_workspace"],
         "available": lambda p: _gw_creds() if p == "google_workspace" else True,
-        "aliases": {
-            "google_workspace": ("google drive", "gdrive", "su drive",
-                                  "in drive", "drive google", "google docs",
-                                  "google doc", "google sheet", "google sheets",
-                                  "google fogli", "google workspace"),
+        "alias_keys": {
+            "google_workspace": "files.google_workspace",
         },
     },
     "contacts": {
         "arg": "client",
         "providers": ["google_workspace"],
         "available": lambda p: _gw_creds(),
-        "aliases": {},
+        "alias_keys": {},
     },
     "dirs": {
         "arg": "client",
@@ -76,10 +72,8 @@ OBJECT_BACKENDS: dict[str, dict] = {
         # pertinente di files (niente docs/sheet).
         "providers": ["local", "google_workspace"],
         "available": lambda p: _gw_creds() if p == "google_workspace" else True,
-        "aliases": {
-            "google_workspace": ("google drive", "gdrive", "su drive",
-                                  "in drive", "drive google",
-                                  "google workspace"),
+        "alias_keys": {
+            "google_workspace": "dirs.google_workspace",
         },
     },
 }
@@ -98,9 +92,10 @@ def object_of(tool_name: str) -> str | None:
 
 def _explicit_provider(spec: dict, query: str) -> str | None:
     """Provider NOMINATO esplicitamente nella query (match alias), o None."""
-    q = (query or "").lower()
-    for prov, toks in spec.get("aliases", {}).items():
-        if any(t in q for t in toks):
+    _resolver_seed.ensure_registered()
+    aliases = _detlex.mapping("resolver.backend_provider")
+    for prov, key in spec.get("alias_keys", {}).items():
+        if _detlex.match_any(aliases.get(key, ()), query, mode="substring"):
             return prov
     return None
 

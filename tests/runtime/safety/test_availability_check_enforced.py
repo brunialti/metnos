@@ -7,7 +7,7 @@ planner ha chiamato set_events direttamente bypassando il workflow
 (check_availability) di `calendar.j2`. Roberto aveva impegno tutto il
 giorno: evento creato lo stesso, overlap.
 
-Fix: regex `_AVAILABILITY_MARKERS_RE` su user_query + helper
+Fix: risorsa manuale `runtime_safety.availability` su user_query + helper
 `_query_requires_availability_check()` + check `_has_prior_read_events_ok()`
 nel runtime. Gate scatta PRIMA di validazione/vaglio/invoke_executor.
 Determinismo §7.9.
@@ -18,6 +18,8 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 # Path setup
 _RUNTIME = str((Path(__file__).resolve().parents[3] / "runtime"))
@@ -216,6 +218,78 @@ class TestAvailabilityGateLogic(unittest.TestCase):
             and not _has_prior_read_events_ok(prev_steps)
         )
         self.assertFalse(gate_triggered)
+
+
+@pytest.fixture
+def isolated_runtime_safety_lexicon(monkeypatch, tmp_path):
+    """Isolate readiness/policy mutations from the process-wide lexicon."""
+    import detection_lexicon as dl
+    import detection_lexicon_seed_runtime_safety as safety_lexicon
+    import i18n
+
+    old_conn = dl._conn
+    monkeypatch.setattr(dl, "DB_PATH", tmp_path / "detection.sqlite")
+    monkeypatch.setattr(dl, "_conn", None)
+    monkeypatch.setattr(dl, "_seeded", False)
+    monkeypatch.setattr(dl, "_cache", {})
+    monkeypatch.setattr(dl, "_regex_cache", {})
+    monkeypatch.setattr(dl, "_coverage_gaps_logged", set())
+    monkeypatch.setattr(dl, "_declared_review_policies", {})
+    monkeypatch.setattr(dl, "_declared_baseline_languages", {})
+    monkeypatch.setattr(safety_lexicon, "_registered_target", None)
+    monkeypatch.setattr(i18n, "current_lang", lambda: "it")
+    yield dl, safety_lexicon, i18n
+    new_conn = dl._conn
+    if new_conn is not None and new_conn is not old_conn:
+        new_conn.close()
+
+
+def test_safety_gates_require_ready_native_manual_language(
+        isolated_runtime_safety_lexicon, monkeypatch):
+    """Missing/pending/policy-invalid rows never open destructive gates."""
+    dl, safety_lexicon, i18n = isolated_runtime_safety_lexicon
+    from agent_runtime import (
+        _query_is_propose_intent,
+        _query_requires_availability_check,
+    )
+
+    safety_lexicon.register_all()
+    assert safety_lexicon.CONCEPTS <= dl.manual_review_concepts()
+
+    # A missing active language cannot inherit IT/EN and open either gate.
+    monkeypatch.setattr(i18n, "current_lang", lambda: "es")
+    assert _query_requires_availability_check("reserva la reunion")
+    assert _query_is_propose_intent("reserva la reunion")
+
+    # Pending is equally unavailable.
+    dl.mark_for_translation(safety_lexicon.AVAILABILITY, "es")
+    assert _query_requires_availability_check("reserva la reunion")
+
+    # One ready third-language concept is discriminating; partial
+    # materialization does not make the still-missing proposal gate permissive.
+    dl.set_translated(
+        safety_lexicon.AVAILABILITY, "es", [r"\bsi\s+hay\s+sitio\b"],
+    )
+    assert _query_requires_availability_check("reserva si hay sitio")
+    assert not _query_requires_availability_check("reserva la reunion")
+    assert _query_is_propose_intent("reserva la reunion")
+
+    dl.mark_for_translation(safety_lexicon.PROPOSE_INTENT, "es")
+    dl.set_translated(
+        safety_lexicon.PROPOSE_INTENT, "es", [r"\bpropone\s+tres\s+horarios\b"],
+    )
+    assert _query_is_propose_intent("propone tres horarios")
+    assert not _query_is_propose_intent("reserva la reunion")
+
+    # Even a ready payload is unusable after its manual policy is corrupted.
+    dl._open().execute(
+        "UPDATE detection_lexicon SET review_policy='automatic' "
+        "WHERE concept=? AND lang=?",
+        (safety_lexicon.AVAILABILITY, "es"),
+    )
+    dl._open().commit()
+    dl._invalidate(safety_lexicon.AVAILABILITY)
+    assert _query_requires_availability_check("reserva la reunion")
 
 
 if __name__ == "__main__":

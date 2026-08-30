@@ -192,7 +192,7 @@ class TestAdminInvokeFlow:
         assert res["approval_required"] is True
         assert res["decision"] == "approval_required"
         assert "approval_card" in res
-        assert res["approval_card"]["argv_rendered"].startswith("cowsay")
+        assert res["approval_card"]["argv_rendered"].startswith('["cowsay"')
         # consent_token presente, non vuoto
         assert res.get("consent_token")
         # summary user-facing in italiano

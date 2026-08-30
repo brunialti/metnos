@@ -365,6 +365,119 @@ def test_un_nome_ambiguo_non_espone_un_identificativo_eseguibile(monkeypatch):
     assert "resolved_id" not in voce
 
 
+def _winget_table(*rows: tuple[str, str, str]) -> str:
+    header = f"{'Nome':<20}{'Id':<42}{'Versione':<18}Origine\n"
+    rule = "-" * 88 + "\n"
+    body = "".join(
+        f"{name:<20}{package_id:<42}{version:<18}winget\n"
+        for name, package_id, version in rows
+    )
+    return header + rule + body
+
+
+def test_righe_winget_duplicate_della_stessa_identita_non_sono_ambigue(
+        monkeypatch):
+    output = _winget_table(
+        ("Dropbox", "Dropbox.Dropbox", "268.4.4072"),
+        ("Dropbox", "Dropbox.Dropbox", "268.4.4072"),
+    )
+    monkeypatch.setattr(find_packages, "_run", lambda argv, **kw: (0, output))
+
+    entry = find_packages._probe_windows(
+        "Dropbox", "winget.exe", by_name=True)
+
+    assert entry["resolved_id"] == "Dropbox.Dropbox"
+    assert "also_matched" not in entry
+
+
+def test_rappresentante_winget_non_dipende_dall_ordine_provider(monkeypatch):
+    first = (
+        ("Dropbox", "dropbox.dropbox", "1.0"),
+        ("Dropbox", "Dropbox.Dropbox", "2.0"),
+    )
+
+    results = []
+    for rows in (first, tuple(reversed(first))):
+        output = _winget_table(*rows)
+        monkeypatch.setattr(
+            find_packages, "_run", lambda argv, _out=output, **kw: (0, _out))
+        results.append(find_packages._probe_windows(
+            "Dropbox", "winget.exe", by_name=True))
+
+    assert results[0] == results[1]
+    assert results[0]["resolved_id"] == "Dropbox.Dropbox"
+
+
+def test_righe_winget_omonime_con_identita_distinte_restano_ambigue(monkeypatch):
+    output = _winget_table(
+        ("Dropbox", "Dropbox.Dropbox", "268.4.4072"),
+        ("Dropbox", "Vendor.OtherDropbox", "1.0"),
+    )
+    monkeypatch.setattr(find_packages, "_run", lambda argv, **kw: (0, output))
+
+    entry = find_packages._probe_windows(
+        "Dropbox", "winget.exe", by_name=True)
+
+    assert "resolved_id" not in entry
+    assert {candidate["resolved_id"] for candidate in entry["candidates"]} == {
+        "Dropbox.Dropbox", "Vendor.OtherDropbox",
+    }
+    assert entry["candidate_count"] == 2
+    assert "candidates_truncated" not in entry
+
+
+def test_candidati_winget_sono_deduplicati_prima_del_limite(monkeypatch):
+    output = _winget_table(
+        *(("Dropbox", "Dropbox.Dropbox", "268.4.4072") for _ in range(6)),
+        ("Dropbox", "Vendor.OtherDropbox", "1.0"),
+    )
+    monkeypatch.setattr(find_packages, "_run", lambda argv, **kw: (0, output))
+
+    entry = find_packages._probe_windows(
+        "Dropbox", "winget.exe", by_name=True)
+
+    assert [candidate["resolved_id"] for candidate in entry["candidates"]] == [
+        "Dropbox.Dropbox", "Vendor.OtherDropbox",
+    ]
+    assert entry["candidate_count"] == 2
+    assert "candidates_truncated" not in entry
+
+
+def test_limite_candidati_winget_dichiara_il_troncamento(monkeypatch):
+    output = _winget_table(*(
+        (f"Editor {index}", f"Vendor.Editor{index}", "1.0")
+        for index in range(7)
+    ))
+    monkeypatch.setattr(find_packages, "_run", lambda argv, **kw: (0, output))
+
+    entry = find_packages._probe_windows(
+        "Editor", "winget.exe", by_name=True)
+
+    assert len(entry["candidates"]) == 6
+    assert entry["candidate_count"] == 7
+    assert entry["candidates_truncated"] is True
+
+
+def test_una_identita_winget_non_valida_impedisce_la_risoluzione_automatica(
+        monkeypatch):
+    output = _winget_table(
+        ("Dropbox", "Dropbox.Dropbox", "268.4.4072"),
+        ("Dropbox", "not/a/launch-id", "1.0"),
+    )
+    monkeypatch.setattr(find_packages, "_run", lambda argv, **kw: (0, output))
+
+    entry = find_packages._probe_windows(
+        "Dropbox", "winget.exe", by_name=True)
+
+    assert "resolved_id" not in entry
+    assert entry["candidates"] == [{
+        "name": "Dropbox",
+        "resolved_id": "Dropbox.Dropbox",
+        "version": "268.4.4072",
+    }]
+    assert entry["candidate_count"] == 1
+
+
 def test_su_linux_il_nome_parziale_trova_il_pacchetto() -> None:
     """Stesso rimedio, stessa forma: «python» deve trovare `python3`."""
     voce = find_packages.invoke({"packages": ["python"]})["entries"][0]

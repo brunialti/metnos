@@ -162,8 +162,8 @@ class TestApplyAuditUnique(_BaseReviewTest):
                    state="review_needed", needs_review=1)
         from admin.promotions_review import apply_review_decisions
         values = {
-            "promoted_grace__g_001": "Conferma promozione",
-            "review_needed__r_001": "Skip",
+            "promoted_grace__g_001": "confirm",
+            "review_needed__r_001": "skip",
         }
         result = apply_review_decisions(values)
         self.assertTrue(result["ok"])
@@ -196,7 +196,7 @@ class TestConfirmGrace(_BaseReviewTest):
         from admin.promotions_review import apply_review_decisions
         from jobs.promoter_state import load_proposal_state
         result = apply_review_decisions({
-            "promoted_grace__g_001": "Conferma promozione",
+            "promoted_grace__g_001": "confirm",
         })
         self.assertTrue(result["ok"])
         row = load_proposal_state("g_001")
@@ -243,7 +243,7 @@ class TestRollbackGrace(_BaseReviewTest):
         from admin.promotions_review import apply_review_decisions
         from jobs.promoter_state import load_proposal_state
         result = apply_review_decisions({
-            "promoted_grace__g_002": "Rollback",
+            "promoted_grace__g_002": "rollback",
         })
         self.assertTrue(result["ok"])
         # state -> rolled_back
@@ -271,12 +271,26 @@ class TestResurrect(_BaseReviewTest):
         from admin.promotions_review import apply_review_decisions
         from jobs.promoter_state import load_proposal_state
         result = apply_review_decisions({
-            "archived__a_001": "Resurrect a pending",
+            "archived__a_001": "resurrect",
         })
         self.assertTrue(result["ok"])
         row = load_proposal_state("a_001")
         self.assertEqual(row["state"], "review_needed")
         self.assertEqual(row["needs_human_review"], 1)
+
+    def test_localized_label_is_not_an_administrative_value(self):
+        self._seed(proposal_id="a_002", name="delete_e",
+                   state="archived")
+        from admin.promotions_review import apply_review_decisions
+        from jobs.promoter_state import load_proposal_state
+
+        result = apply_review_decisions({
+            "archived__a_002": "Resurrect a pending",
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["failed"], 1)
+        self.assertEqual(load_proposal_state("a_002")["state"], "archived")
 
 
 # ─── 7. State mutation helpers (unit) ─────────────────────────────────────

@@ -30,6 +30,7 @@ if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
 from messages import get as _msg  # noqa: E402  §11 i18n
+import detection_lexicon_seed_residual_am as _residual_lexicon  # noqa: E402
 from backends._google_auth_common import (  # noqa: E402
     auth_needs_inputs as _common_auth_needs_inputs,
 )
@@ -44,14 +45,8 @@ ROME = ZoneInfo("Europe/Rome")
 # Google API ritorna 404 perche' "roberto" non e' un valid Google calendar
 # ID. Pattern utili: `primary` (default), email completa, oppure alias
 # semantici tradotti qui.
-_CALENDAR_ID_ALIASES = {
-    "primary": "primary",
-    "default": "primary",
-    "me": "primary",
-    "self": "primary",
-    "user": "primary",      # §7.5: alias del proprietario, no nomi propri
-    "utente": "primary",
-}
+class _CalendarIdentityLexiconUnavailable(ValueError):
+    """A natural calendar identity cannot be authenticated for this locale."""
 
 
 def _resolve_calendar_id(cal_id: str | None) -> str:
@@ -71,10 +66,22 @@ def _resolve_calendar_id(cal_id: str | None) -> str:
     if not cal_id or not isinstance(cal_id, str):
         return "primary"
     norm = cal_id.strip().lower()
+    if norm == "primary":
+        return "primary"
     if "@" in norm:
         # E' un'email Google Calendar valida → passa raw.
         return cal_id.strip()
-    return _CALENDAR_ID_ALIASES.get(norm, cal_id.strip())
+    aliases = _residual_lexicon.ready_mapping(
+        _residual_lexicon.CALENDAR_IDENTITY_ALIAS,
+    )
+    if not aliases:
+        raise _CalendarIdentityLexiconUnavailable(norm)
+    for canonical, forms in aliases.items():
+        if any(norm == str(form).strip().casefold() for form in forms):
+            return canonical
+    # A ready manual resource did not classify this value as a natural alias:
+    # preserve an explicit Google calendar ID exactly as before.
+    return cal_id.strip()
 
 
 def _err(msg: str, error_class: str, *, with_entries=False,
@@ -136,10 +143,16 @@ def read(args: dict) -> dict:
     # secondari (work, shared, family birthdays, ecc.). User può forzare
     # singolo calendar via calendar_id esplicito.
     raw_cid = args.get("calendar_id")
-    if raw_cid is None or str(raw_cid).strip().lower() in ("", "all", "tutti"):
+    if raw_cid is None or str(raw_cid).strip() == "":
         calendar_id = "all"
     else:
-        calendar_id = _resolve_calendar_id(raw_cid)
+        try:
+            calendar_id = _resolve_calendar_id(raw_cid)
+        except _CalendarIdentityLexiconUnavailable:
+            return _err(
+                _msg("ERR_ARG_INVALID", arg="calendar_id", reason=repr(raw_cid)),
+                "invalid_args", with_entries=True,
+            )
     max_results = int(args.get("max_results") or 100)  # was 25, bumped per all
     argv = ["calendar", "list", "--calendar", calendar_id,
             "--max", str(max_results)]
@@ -187,7 +200,14 @@ def create(args: dict) -> dict:
         return _err(_msg("ERR_EVENT_FIELDS_REQUIRED"),
                     "invalid_args", with_results=True)
 
-    calendar_id = _resolve_calendar_id(args.get("calendar_id"))
+    try:
+        calendar_id = _resolve_calendar_id(args.get("calendar_id"))
+    except _CalendarIdentityLexiconUnavailable:
+        return _err(
+            _msg("ERR_ARG_INVALID", arg="calendar_id",
+                 reason=repr(args.get("calendar_id"))),
+            "invalid_args", with_results=True,
+        )
     argv = ["calendar", "create",
             "--summary", summary, "--start", start, "--end", end,
             "--calendar", calendar_id]
@@ -360,7 +380,14 @@ def update(args: dict) -> dict:
     if not (isinstance(event_id, str) and event_id.strip()):
         return _err(_msg("ERR_ARG_MISSING", arg="event_id"), "invalid_args",
                     with_results=True)
-    calendar_id = _resolve_calendar_id(args.get("calendar_id"))
+    try:
+        calendar_id = _resolve_calendar_id(args.get("calendar_id"))
+    except _CalendarIdentityLexiconUnavailable:
+        return _err(
+            _msg("ERR_ARG_INVALID", arg="calendar_id",
+                 reason=repr(args.get("calendar_id"))),
+            "invalid_args", with_results=True,
+        )
     # Almeno un patch field richiesto
     patch_fields = (args.get("summary"), args.get("start"), args.get("end"),
                     args.get("location"), args.get("description"),
@@ -461,7 +488,14 @@ def delete(args: dict) -> dict:
                          options="event_id, event_ids, entries"),
                     "invalid_args", with_results=True)
 
-    calendar_id = _resolve_calendar_id(args.get("calendar_id"))
+    try:
+        calendar_id = _resolve_calendar_id(args.get("calendar_id"))
+    except _CalendarIdentityLexiconUnavailable:
+        return _err(
+            _msg("ERR_ARG_INVALID", arg="calendar_id",
+                 reason=repr(args.get("calendar_id"))),
+            "invalid_args", with_results=True,
+        )
     results: list[dict] = []
     failed: list[dict] = []
     for rid in ids:
@@ -543,7 +577,13 @@ def find_events_empty(args: dict) -> dict:
                                 or not cal_id.strip()):
         return _err(_msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="calendar_id"),
                     "invalid_args", with_entries=True)
-    cal_id_norm = _resolve_calendar_id(cal_id)
+    try:
+        cal_id_norm = _resolve_calendar_id(cal_id)
+    except _CalendarIdentityLexiconUnavailable:
+        return _err(
+            _msg("ERR_ARG_INVALID", arg="calendar_id", reason=repr(cal_id)),
+            "invalid_args", with_entries=True,
+        )
 
     try:
         tod_start, tod_end = _li._parse_time_of_day(time_of_day)

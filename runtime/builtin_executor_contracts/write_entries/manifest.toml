@@ -15,7 +15,7 @@ en = "SCOPO: Writes or updates records in a declared store. PATTERN: natural req
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:0502ad6dc5a70da4ac3c60f62571e4e81c02cf32711227981b8ced9123679fbf"
+digest = "sha256:b70aa056c7673e1abd5faa3305eb8e1056080b53cc2130ded20259e538637eb1"
 
 [args]
 type = "object"
@@ -25,7 +25,7 @@ required = ["store", "from_step"]
 type = "string"
 
 [args.properties.store.description]
-it = "Nome dello store su cui scrivere."
+it = "<missing:MSG_STORE_ARG_NAME_WRITE>"
 en = "Name of a declared runtime store."
 
 [args.properties.from_step]
@@ -33,14 +33,14 @@ type = "integer"
 minimum = 1
 
 [args.properties.from_step.description]
-it = "Step che ha prodotto i record da persistere (il runtime espande in entries)."
+it = "<missing:MSG_STORE_ARG_FROM_STEP>"
 en = "Previous producer step supplying entries."
 
 [args.properties.key]
 type = "array"
 
 [args.properties.key.description]
-it = "Campi-chiave per l'upsert (conflitto). Es. [\"id\"]. Assente -> insert puro."
+it = "<missing:MSG_STORE_ARG_KEY>"
 en = "Fields forming the upsert key."
 
 [args.properties.key.items]
@@ -50,7 +50,7 @@ type = "string"
 type = "object"
 
 [args.properties.set_fields.description]
-it = "Override {campo: valore} applicato a OGNI record prima dell'upsert (aggiorna lo stato). Es. {\"status\":\"posted\"}."
+it = "<missing:MSG_STORE_ARG_SET_FIELDS>"
 en = "Constant fields applied to every written entry."
 
 [output]

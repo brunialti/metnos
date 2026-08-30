@@ -375,7 +375,10 @@ _FIXTURES = frozenset({
 _APPLICABILITY = {
     "output_schema_declared": lambda c: bool(c.output_schema),
     "collection_output": lambda c: c.collection_output,
-    "bounded_collection_input": lambda c: c.limit_input,
+    # A field named ``limit`` does not by itself establish collection
+    # semantics.  The oracle can prove a bound only when the same
+    # machine-readable profile also declares an entries/results collection.
+    "bounded_collection_input": lambda c: c.limit_input and c.collection_output,
     "truncation_declared": lambda c: c.truncation_declared,
     "revertible_executor": lambda c: c.revertible,
     "destructive_with_undo": lambda c: c.destructive_with_undo,
