@@ -2278,9 +2278,16 @@ cancello. Con la stessa approssimazione, 8:52 + 3 x 65 s ≈ **12 min 07 s** di
 JOB contro un tetto di 15 che NON si puo' alzare.
 
 La soglia prudenziale si misura sul **job**, non sulla cella, perche' e' il job
-ad avere il tetto: oltre i 13 minuti di job va ridotto il numero di censimenti,
-non allargata l'attesa. Il margine resta stimato e non misurato: il rischio non
-e' dichiarato risolto.
+ad avere il tetto.
+
+**Misura finale, che smentisce la stima al ribasso.** Il giro `33336452969` ha
+eseguito la cella INTERA — C3 e C4 — in **373 s** (6 min 13 s), con il job a
+circa 7 min 15 s contro il tetto di 15. La stima di ~12:07 era pessimista, e la
+ragione e' istruttiva: i 461 s del giro precedente comprendevano un timer che
+riavviava senza sosta un servizio che falliva, e ogni censimento pagava quella
+contesa. Una cella che PASSA costa meno di una che fallisce. Il rischio di
+budget e' quindi risolto per misura, non per argomento, e i limiti a 300 s
+restano dove sono: non vengono mai raggiunti quando la cella e' verde.
 
 **Perdita dichiarata nella riduzione a due fotografie.** Le cinque catture
 separate esercitavano implicitamente il determinismo del censimento — due
@@ -2314,10 +2321,13 @@ primo atto e' `_require_safe_directory_chain_v1` su
 `PREFLIGHT_ATTESTATION_ROOT_V1`, che pretende una directory esistente, `0o755`
 e di root, e che la cella leggeva soltanto.
 
-**Come si conferma.** Nel giro con la radice presente il primo `check-all` deve
-uscire 0 e l'insieme delle attestazioni deve crescere. Solo quella misura
-promuove l'inferenza a causa confermata; fino ad allora resta un'ipotesi
-differenziale, e questa sezione non va letta come misura.
+**Come si conferma — e come e' stata confermata.** Il criterio, fissato prima
+della prova su richiesta del giro avversariale 2, era: nel giro con la radice
+presente il primo `check-all` deve uscire 0 e l'insieme delle attestazioni deve
+crescere. Il giro `33336452969` (`b02ce3e`) lo ha soddisfatto — **sei prove su
+sei verdi nella cella, nove job su nove nel ciclo** — quindi l'inferenza
+differenziale e' ora **causa confermata**, con il criterio dichiarato in
+anticipo e non scelto a posteriori.
 
 La cella crea ora quella radice **nello stesso setup, sotto `OWNERSHIP_ROOT`** —
 non «accanto al cancello»: il cancello vive sotto `/run`, la radice delle
@@ -2357,14 +2367,54 @@ prefissi di percorso (`startswith("/")`), un'espressione regolare per uno
 spazio dei nomi esadecimale. Nessun testo rivolto all'utente: §7.13 non e' in
 gioco e il ripuntamento sarebbe legittimo.
 
-Ma il ripuntamento non basta: scoperto il primo registro, ne emerge un secondo
-(`VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS` e
-`VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS`), che pretende per ogni contenitore
-mutato un'impronta NUOVA con una motivazione scritta. Sette contenitori la
-richiedono, fra cui `_CODE_PAYLOAD_UNAVAILABLE_CODES` e `_STATUS_FIELDS_V1`.
-Sono testi da autore, non un ricalcolo, e appartengono a un incremento proprio:
-mescolarli alla convergenza della cella avrebbe reso non atomico questo passo.
+Ma il ripuntamento non basta, e la misura completa e' piu' grande di quanto
+sembrasse a prima vista. Strumentando il censimento al suo stesso punto di
+calcolo, l'albero corrente produce **719 rilievi**, non una manciata, e di tre
+famiglie distinte:
 
-**Stato: aperto, con la strada gia' battuta.** Ricalcolo e attribuzione sono
-riproducibili; resta da scrivere le motivazioni delle sette impronte e da
-rieseguire il censimento.
+1. letterali in linea nei file il cui puntamento e' scaduto (il registro
+   `LEGACY_LITERAL_GATE_FILE_AUTHORITIES`);
+2. contenitori esecutivi senza impronta in
+   `VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS` /
+   `VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS`, che pretendono un'impronta NUOVA
+   con una motivazione scritta — fra questi `_PROJECTIONS` e `_MODES` di
+   `paired_device_arg_resolver.py`, modulo nato dal commit `cac6d7e4` che NON
+   appartiene a G6;
+3. `LEXICON_STALE_INVARIANT` sui registri stessi del censimento: contengono
+   impronte che nell'albero non esistono piu' e vanno RIMOSSE, non aggiunte.
+
+Sono motivazioni d'autore e potature, non un ricalcolo, e attraversano il
+lavoro di piu' di un agente. Mescolarle alla convergenza della cella avrebbe
+reso non atomico quel passo.
+
+**Stato: aperto, con la strada battuta e la misura corretta.** Ricalcolo,
+attribuzione e strumentazione sono riproducibili. Correzione di questa stessa
+sezione: la prima stesura parlava di «sette contenitori», e sottodichiarava.
+
+
+### 23.28 C3 e C4 CHIUSE — nove job su nove
+
+Giro `33336452969`, testa pubblica `b02ce3e`. Tutti e nove i lavori verdi:
+`Python 3.12` su ubuntu-24.04 e windows-2022, le sei attivita' 2A e il
+riepilogo di certificazione. La cella dal vivo: **6 prove su 6 in 373 s**.
+
+Cosa e' dimostrato, e non piu' soltanto sostenuto:
+
+- **C3** — il timer firmato avvia il servizio; il cancello viene acquisito e
+  rilasciato; il carico scrive il marcatore con credenziali, gruppi
+  supplementari, descrittori `[0,1,2]`, directory di lavoro, ambiente e `argv`
+  attesi, capacita' tutte azzerate, `NoNewPrivileges` attivo, marcatore `0640`
+  di proprieta' corretta; l'avvio diretto senza prerequisito NEGA, e nega prima
+  di scrivere qualunque cosa.
+- **C4** — `check-all` accetta e PUBBLICA un'attestazione; i due archi causali
+  `Triggers` e `TriggeredBy` sono nella fotografia canonica in entrambe le
+  direzioni; l'unita' ausiliaria in conflitto sposta l'impronta effettiva; e la
+  deriva relazionale fa NEGARE `check-all` **prima** di pubblicare.
+
+La catena di cause aperta il 30 agosto si chiude qui: dieci, undici e dodici
+erano tutte reali, ciascuna nascosta dalla precedente, e ognuna ha spostato il
+punto di rottura in avanti senza mai tornare indietro.
+
+**Ordine del §10: passi 1 e 2 chiusi.** B4 e D erano gia' provati; restano la
+barriera di pubblicazione (integrata, con una prova i18n adattata), la matrice
+connessa, l'unica suite totale e il checkpoint documentale.
