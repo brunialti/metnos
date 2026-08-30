@@ -736,7 +736,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:7dd6f5bd816a5d648d02f386ed512aa7f1d78b911b1b55a1b071bf7880e5a7b6"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:f9a69dcee5c88c7ea5ddbb83e0cd7cac10e904b7ef5deab4fb560674789c96fe"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -11538,14 +11538,34 @@ def tokenize_systemd_words_v1(value: str) -> tuple[str, ...]:
     return tuple(words)
 
 
-def normalize_systemd_duration_usec_v1(value: str) -> str:
+def normalize_systemd_duration_usec_v1(
+    value: str, *, observed: bool = False,
+) -> str:
+    """Normalize one duration; `observed` accepts what systemd itself renders.
+
+    A signed directive and a live property are not the same input. What a
+    catalog may DECLARE stays narrow: `infinity` remains refused there, because
+    an unbounded timeout is a policy an author must not be able to sign.  What
+    systemd REPORTS is not a choice: measured on 255.4 a zero duration renders
+    without a suffix (`RandomizedDelayUSec=0`, `WatchdogUSec=0`) and an
+    unbounded one as `infinity` (`JobTimeoutUSec`), on properties no unit ever
+    set. Both are canonical single tokens the component grammar cannot parse,
+    so refusing them on the observed side denied every real unit.
+
+    `infinity` is returned verbatim: it has no microsecond value, and inventing
+    one would compare unequal to the rendering that produced it.
+    """
     if not isinstance(value, str) or not value or value != value.strip():
         raise _invalid("duration")
+    if value == "0":
+        return "0"
+    if observed and value == "infinity":
+        return "infinity"
     total = 0
     for component in value.split(" "):
         match = _DURATION_COMPONENT_RE.fullmatch(component)
         if match is None:
-            raise _invalid("duration component")
+            raise _invalid(f"duration component {component!r} in {value!r}")
         whole, fraction, suffix = match.groups()
         factor = _DURATION_FACTORS[suffix]
         total += int(whole) * factor
@@ -11647,7 +11667,7 @@ def parse_systemd_timer_properties_v1(
             "OnBootUSec", "OnActiveUSec", "OnUnitActiveUSec"
         } or name in result:
             raise _invalid("TimersMonotonic base")
-        result[name] = normalize_systemd_duration_usec_v1(duration)
+        result[name] = normalize_systemd_duration_usec_v1(duration, observed=True)
     for value in calendar:
         base, _dynamic = parse_systemd_timer_v1(value)
         name, separator, expression = base.partition("=")
@@ -12131,7 +12151,7 @@ def _normalize_manager_directive_v1(
     if value_type == "duration":
         if name == "WatchdogSec" and raw == "0":
             return ("0",)
-        return (normalize_systemd_duration_usec_v1(raw),)
+        return (normalize_systemd_duration_usec_v1(raw, observed=True),)
     if value_type == "integer":
         return (_normalize_systemd_integer_v1(
             raw, signed=(name == "Nice"), infinity=(name == "TasksMax"),
