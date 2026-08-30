@@ -258,14 +258,12 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
         catalog.ServiceDirectiveV1(
             "Service", "ExecStart", "argv",
             (
-                # `!` runs this command with full privileges even though the
-                # unit declares `User=`: the shape REQUIRES that declaration,
-                # and the administrative program must still start privileged
-                # because it acquires the root-owned startup gate and then
-                # drops to the signed credentials itself. Without the prefix
-                # systemd demotes the whole ExecStart, the gate cannot be
-                # opened, and the launch refuses for ever.
-                "!" + administrative, "-I", "-S",
+                # `administrative` already carries systemd's `!`: the command
+                # runs with full privileges even though the unit declares
+                # `User=`, which the gated shape requires. The administrative
+                # program acquires the root-owned startup gate and then drops
+                # to the signed credentials itself.
+                administrative, "-I", "-S",
                 catalog.ADMINISTRATIVE_ADAPTER_PATH_V1,
                 "launch", "--entry-id", service_entry_id,
             ),
@@ -273,14 +271,12 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
         catalog.ServiceDirectiveV1(
             "Service", "ExecStartPre", "argv",
             (
-                # `!` runs this command with full privileges even though the
-                # unit declares `User=`: the shape REQUIRES that declaration,
-                # and the administrative program must still start privileged
-                # because it acquires the root-owned startup gate and then
-                # drops to the signed credentials itself. Without the prefix
-                # systemd demotes the whole ExecStart, the gate cannot be
-                # opened, and the launch refuses for ever.
-                "!" + administrative, "-I", "-S",
+                # `administrative` already carries systemd's `!`: the command
+                # runs with full privileges even though the unit declares
+                # `User=`, which the gated shape requires. The administrative
+                # program acquires the root-owned startup gate and then drops
+                # to the signed credentials itself.
+                administrative, "-I", "-S",
                 catalog.ADMINISTRATIVE_ADAPTER_PATH_V1,
                 "check", "--entry-id", service_entry_id,
             ),
@@ -830,31 +826,32 @@ def _unit_diagnosis(unit_name: str) -> str:
     return "\n".join(item for item in lines if item)
 
 
-def _installed_check_as(account, entry_id: str, python: str) -> str:
-    """Run the installed check from the identity the unit actually uses.
+def _installed_commands_as_unit(entry_id: str, python: str) -> str:
+    """Run what the unit runs, the way the unit runs it.
 
-    The in-process attestation runs as root, in the test's own context; the
-    unit runs demoted and inside its sandbox. When the two disagree the cause
-    lives in that difference, and only the demoted run can show it.
+    The unit's commands carry systemd's `!`, so they execute with full
+    privileges: reproducing them DEMOTED measured something the unit never
+    does. `check-all` only attests; the unit also resolves the entry and then
+    launches, and a refusal can live in either of those later steps.
     """
     program = (ADMINISTRATIVE_ROOT / "preflight.py").as_posix()
-    for command in ("check-all", "check"):
-        argv = [python, "-I", "-S", program, command]
-        if command == "check":
-            argv += ["--entry-id", entry_id]
+    report = []
+    for command, arguments in (
+        ("check-all", ()),
+        ("check", ("--entry-id", entry_id)),
+    ):
         try:
             run = subprocess.run(
-                argv, capture_output=True, text=True, timeout=60,
-                preexec_fn=_demote(account),
+                [python, "-I", "-S", program, command, *arguments],
+                capture_output=True, text=True, timeout=60,
             )
         except Exception as failure:
-            return f"demoted {command}: raised {type(failure).__name__}"
-        if run.returncode != 0:
-            return (
-                f"demoted {command}: exit={run.returncode} "
-                f"stderr={run.stderr.strip()!r}"
-            )
-    return "demoted check-all and check: accepted"
+            report.append(f"{command}: raised {type(failure).__name__}")
+            continue
+        report.append(
+            f"{command}: exit={run.returncode} stderr={run.stderr.strip()!r}"
+        )
+    return "privileged " + "; ".join(report)
 
 
 def _wait_for(predicate, timeout: float = 15.0, *, diagnose=None) -> None:
@@ -973,9 +970,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         _wait_for(
             fixture.marker_path.exists,
             diagnose=lambda: _unit_diagnosis(fixture.service_name) + "\n"
-            + _installed_check_as(
-                fixture.account, fixture.service_entry_id, python,
-            ),
+            + _installed_commands_as_unit(fixture.service_entry_id, python),
         )
         gate_descriptor = os.open(STARTUP_GATE, os.O_RDWR)
         try:
