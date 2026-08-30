@@ -28,7 +28,7 @@ BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/2"
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:711bc4d92f123dd331685064594742c56e926530fbced0446caa5aaea2affa30"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:7b3b37a241417070a9ac83cfd5dd20383bb360794d5c9f682cf6c1ccc3c85a8e"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
 MAX_BOUNDARY_SOURCE_FILES = 2_048
@@ -382,6 +382,9 @@ SYS_MODULES_MUTATING_METHODS = frozenset({
 })
 AUTHENTICATED_EXECUTION_SCOPE = (
     "runtime/admitted_module_v1.py", "load_admitted_module_v1",
+)
+AUTHENTICATED_PREFLIGHT_EXECUTION_SCOPE = (
+    "runtime/executor_birth_admin_preflight.py", "_launch_python_target_v1",
 )
 LIVE_READER_FORBIDDEN = frozenset({
     "ambiguous_local_authority",
@@ -928,6 +931,48 @@ def _is_dynamic_code_loader_call(func: ast.AST, canonical: str) -> bool:
             or canonical.startswith("importlib.")
         )
     )
+
+
+def _is_authenticated_preflight_runpy_v1(
+    call: ast.Call, path: str, scope: str,
+    aliases: Mapping[str, str], nodes: Sequence[ast.AST],
+) -> bool:
+    """Recognize the sole exact runpy door bound by the signed launch plan."""
+    if (
+        (path, scope) != AUTHENTICATED_PREFLIGHT_EXECUTION_SCOPE
+        or not isinstance(call.func, ast.Attribute)
+        or not isinstance(call.func.value, ast.Name)
+        or call.func.value.id != "runpy" or call.func.attr != "run_module"
+        or aliases.get("runpy") != "runpy"
+        or len(call.args) != 1
+        or not isinstance(call.args[0], ast.Attribute)
+        or not isinstance(call.args[0].value, ast.Name)
+        or call.args[0].value.id != "plan"
+        or call.args[0].attr != "python_module"
+        or len(call.keywords) != 2
+        or any(item.arg is None for item in call.keywords)
+    ):
+        return False
+    keywords = {item.arg: item.value for item in call.keywords}
+    if set(keywords) != {"run_name", "alter_sys"}:
+        return False
+    run_name = keywords["run_name"]
+    alter_sys = keywords["alter_sys"]
+    if (
+        not isinstance(run_name, ast.Constant) or run_name.value != "__main__"
+        or not isinstance(alter_sys, ast.Constant) or alter_sys.value is not False
+    ):
+        return False
+    for node in nodes:
+        targets: set[str] = set()
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                targets.update(_target_names(target))
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+            targets.update(_target_names(node.target))
+        if targets & {"runpy", "plan"}:
+            return False
+    return True
 
 
 def _is_sys_modules_registry(
@@ -1803,8 +1848,13 @@ def _analyse_scope(
             capabilities.add("dynamic_boundary_access")
             closed_dynamic_boundary = True
         if (
-            _is_dynamic_code_loader_call(item.func, canonical)
-            or _may_resolve_dynamic_loader_callable(item.func, aliases)
+            (
+                _is_dynamic_code_loader_call(item.func, canonical)
+                or _may_resolve_dynamic_loader_callable(item.func, aliases)
+            )
+            and not _is_authenticated_preflight_runpy_v1(
+                item, path, scope, aliases, nodes,
+            )
         ):
             capabilities.add("dynamic_boundary_access")
             closed_dynamic_boundary = True

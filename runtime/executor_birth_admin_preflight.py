@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import ast
 import base64
+import ctypes
 import errno
 import hashlib
 import json
 import os
 import platform
 import re
+import runpy
 import selectors
 import stat
 import struct
@@ -191,6 +193,12 @@ MAX_SYSTEMD_ORIGIN_BYTES_V1 = 1024 * 1024
 MAX_SYSTEMD_ADDED_EDGES_PER_UNIT_V1 = 4096
 MAX_SYSTEMD_ADDED_EDGES_TOTAL_V1 = 65536
 MAX_PREFLIGHT_ATTESTATION_BYTES_V1 = 256 * 1024
+MAX_PROC_STATUS_BYTES_V1 = 64 * 1024
+_PR_CAPBSET_DROP_V1 = 24
+_PR_SET_NO_NEW_PRIVS_V1 = 38
+_PR_CAP_AMBIENT_V1 = 47
+_PR_CAP_AMBIENT_CLEAR_ALL_V1 = 4
+_LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
     "sha256:cd747ed58214a415a0cc112fc1aa5024dbea5539a736d46eab56b6e5df2c799a"
 )
@@ -724,7 +732,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:711bc4d92f123dd331685064594742c56e926530fbced0446caa5aaea2affa30"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:7b3b37a241417070a9ac83cfd5dd20383bb360794d5c9f682cf6c1ccc3c85a8e"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -1693,6 +1701,35 @@ class _OperationalPreflightForTestV1(NamedTuple):
 
     selected: _SelectedOwnershipEpochV1
     observation: _ObservedEffectiveSystemdForTestV1
+
+
+@dataclass(slots=True)
+class _LaunchGateLeaseV1:
+    descriptor: int
+
+    def close(self) -> None:
+        if self.descriptor < 0:
+            return
+        descriptor = self.descriptor
+        self.descriptor = -1
+        _release_startup_gate_v1(descriptor)
+
+
+class _LaunchPlanV1(NamedTuple):
+    entry: _ServiceCatalogEntryV1
+    installation_root: str
+    service_user: str
+    service_uid: int
+    service_gid: int
+    service_supplementary_gids: tuple[int, ...]
+    service_home: str
+    service_shell: str
+    python_module: str | None
+    target_args: tuple[str, ...]
+    target_working_directory: str
+    environment: tuple[tuple[str, str], ...]
+    python_path: tuple[str, ...]
+    umask: int
 
 
 class _BoundPreflightMaterialsV1(NamedTuple):
@@ -8310,6 +8347,9 @@ SYS_MODULES_MUTATING_METHODS = frozenset({
 AUTHENTICATED_EXECUTION_SCOPE = (
     "runtime/admitted_module_v1.py", "load_admitted_module_v1",
 )
+AUTHENTICATED_PREFLIGHT_EXECUTION_SCOPE = (
+    "runtime/executor_birth_admin_preflight.py", "_launch_python_target_v1",
+)
 LIVE_READER_FORBIDDEN = frozenset({
     "ambiguous_local_authority",
     "authoring_read",
@@ -8659,6 +8699,48 @@ def _is_dynamic_code_loader_call(func: ast.AST, canonical: str) -> bool:
             or canonical.startswith("importlib.")
         )
     )
+
+
+def _is_authenticated_preflight_runpy_v1(
+    call: ast.Call, path: str, scope: str,
+    aliases: Mapping[str, str], nodes: Sequence[ast.AST],
+) -> bool:
+    """Recognize the sole exact runpy door bound by the signed launch plan."""
+    if (
+        (path, scope) != AUTHENTICATED_PREFLIGHT_EXECUTION_SCOPE
+        or not isinstance(call.func, ast.Attribute)
+        or not isinstance(call.func.value, ast.Name)
+        or call.func.value.id != "runpy" or call.func.attr != "run_module"
+        or aliases.get("runpy") != "runpy"
+        or len(call.args) != 1
+        or not isinstance(call.args[0], ast.Attribute)
+        or not isinstance(call.args[0].value, ast.Name)
+        or call.args[0].value.id != "plan"
+        or call.args[0].attr != "python_module"
+        or len(call.keywords) != 2
+        or any(item.arg is None for item in call.keywords)
+    ):
+        return False
+    keywords = {item.arg: item.value for item in call.keywords}
+    if set(keywords) != {"run_name", "alter_sys"}:
+        return False
+    run_name = keywords["run_name"]
+    alter_sys = keywords["alter_sys"]
+    if (
+        not isinstance(run_name, ast.Constant) or run_name.value != "__main__"
+        or not isinstance(alter_sys, ast.Constant) or alter_sys.value is not False
+    ):
+        return False
+    for node in nodes:
+        targets: set[str] = set()
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                targets.update(_target_names(target))
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+            targets.update(_target_names(node.target))
+        if targets & {"runpy", "plan"}:
+            return False
+    return True
 
 
 def _is_sys_modules_registry(
@@ -9534,8 +9616,13 @@ def _analyse_scope(
             capabilities.add("dynamic_boundary_access")
             closed_dynamic_boundary = True
         if (
-            _is_dynamic_code_loader_call(item.func, canonical)
-            or _may_resolve_dynamic_loader_callable(item.func, aliases)
+            (
+                _is_dynamic_code_loader_call(item.func, canonical)
+                or _may_resolve_dynamic_loader_callable(item.func, aliases)
+            )
+            and not _is_authenticated_preflight_runpy_v1(
+                item, path, scope, aliases, nodes,
+            )
         ):
             capabilities.add("dynamic_boundary_access")
             closed_dynamic_boundary = True
@@ -10677,6 +10764,17 @@ def _verify_local_import_closure_v1(
                     current = parent
                 return False
 
+            def authenticated_preflight_runpy(call: ast.Call) -> bool:
+                current: ast.AST = call
+                while (parent := parents.get(id(current))) is not None:
+                    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        return _is_authenticated_preflight_runpy_v1(
+                            call, item.path, parent.name, aliases,
+                            list(ast.walk(parent)),
+                        )
+                    current = parent
+                return False
+
             aliases: dict[str, str] = {}
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
@@ -10714,7 +10812,9 @@ def _verify_local_import_closure_v1(
                         node.func,
                         _resolved_alias_name(node.func, aliases) or "",
                     )
+                    and not authenticated_preflight_runpy(node)
                     or _may_resolve_dynamic_loader_callable(node.func, aliases)
+                    and not authenticated_preflight_runpy(node)
                 ):
                     raise _invalid("dynamic code loader")
                 elif (
@@ -10969,14 +11069,18 @@ def _run_operational_command_v1(command: CliCommandV1) -> None:
         return
     if command.command not in {"check", "launch"} or command.entry_id is None:
         raise _invalid("operational command")
-    gate = _acquire_startup_gate_shared_v1()
+    lease = _LaunchGateLeaseV1(_acquire_startup_gate_shared_v1())
     try:
         operational = _attest_operational_preflight_v1()
-        _require_preflight_entry_v1(operational, command.entry_id)
+        entry = _require_preflight_entry_v1(operational, command.entry_id)
         if command.command == "launch":
-            raise _missing("B3 target bootstrap is incomplete")
+            if entry.class_name != "gated_service":
+                raise _missing("B3 entrypoint supervision is incomplete")
+            _launch_gated_service_v1(
+                _make_launch_plan_v1(operational, entry), lease,
+            )
     finally:
-        _release_startup_gate_v1(gate)
+        lease.close()
 
 
 def _public_failure_v1(error: BaseException) -> tuple[str, int]:
@@ -13079,6 +13183,306 @@ def _require_preflight_entry_v1(
     if len(entries) != 1 or not entries[0].requires_preflight:
         raise _invalid("product preflight entry")
     return entries[0]
+
+
+def _trusted_python_path_v1(
+    installation_root: str, working_directory: str,
+) -> tuple[str, ...]:
+    root = PurePosixPath(validate_absolute_path_v1(installation_root))
+    working = PurePosixPath(validate_absolute_path_v1(working_directory))
+    try:
+        working.relative_to(root)
+    except ValueError as exc:
+        raise _invalid("launch Python root") from exc
+    retained: list[str] = [working.as_posix()]
+    for raw in sys.path:
+        if not isinstance(raw, str) or not raw or not raw.startswith("/"):
+            continue
+        try:
+            candidate = Path(validate_absolute_path_v1(raw))
+        except PreflightError:
+            continue
+        if candidate.as_posix() == working.as_posix():
+            continue
+        try:
+            candidate.relative_to(Path(root.as_posix()))
+        except ValueError:
+            pass
+        else:
+            continue
+        try:
+            resolved = _resolve_trusted_path_core_v1(
+                candidate, kind="directory", executable=False,
+                uid=0, gid=0, chain_stop=None, require_single_link=False,
+            )
+        except PreflightError:
+            continue
+        canonical = resolved.canonical_path
+        if canonical not in retained:
+            retained.append(canonical)
+    if len(retained) < 2:
+        raise _invalid("launch standard library path")
+    return tuple(retained)
+
+
+def _launch_dynamic_environment_v1(
+    entry: _ServiceCatalogEntryV1,
+) -> tuple[tuple[str, str], ...]:
+    directives = _service_directive_index_v1(entry.unit_spec)
+    service_type = directives.get(("Service", "Type"))
+    notify = service_type is not None and service_type.values == ("notify",)
+    watchdog = ("Service", "WatchdogSec") in directives
+    dynamic: dict[str, str] = {}
+    if notify:
+        socket = os.environ.get("NOTIFY_SOCKET")
+        if (
+            not isinstance(socket, str) or not socket
+            or "\0" in socket or len(socket.encode("utf-8")) > 4096
+            or not (socket.startswith("/") or socket.startswith("@"))
+        ):
+            raise _invalid("launch notify socket")
+        dynamic["NOTIFY_SOCKET"] = socket
+    if watchdog:
+        usec = os.environ.get("WATCHDOG_USEC")
+        pid = os.environ.get("WATCHDOG_PID")
+        if (
+            not isinstance(usec, str) or _INTEGER_RE.fullmatch(usec) is None
+            or usec == "0" or not isinstance(pid, str)
+            or _INTEGER_RE.fullmatch(pid) is None
+            or int(pid) != os.getpid()
+        ):
+            raise _invalid("launch watchdog environment")
+        dynamic["WATCHDOG_USEC"] = usec
+        dynamic["WATCHDOG_PID"] = pid
+    return tuple(sorted(dynamic.items(), key=lambda item: item[0].encode("ascii")))
+
+
+def _make_launch_plan_v1(
+    operational: _OperationalPreflightV1,
+    entry: _ServiceCatalogEntryV1,
+) -> _LaunchPlanV1:
+    if (
+        type(operational) is not _OperationalPreflightV1
+        or type(entry) is not _ServiceCatalogEntryV1
+        or entry.class_name != "gated_service"
+        or entry.execution_kind not in {"python_module", "native_executable"}
+        or entry.target_executable is None
+        or entry.target_working_directory is None
+    ):
+        raise _invalid("launch plan")
+    materials = operational.observation.observation.administrative_tcb.materials
+    capture = operational.observation.observation.administrative_tcb.capture
+    descriptor = materials.descriptor
+    directives = _service_directive_index_v1(entry.unit_spec)
+    user = directives.get(("Service", "User"))
+    group = directives.get(("Service", "Group"))
+    supplementary = directives.get(("Service", "SupplementaryGroups"))
+    observed_groups = () if supplementary is None else tuple(
+        int(item) for item in supplementary.values[0].split(" ")
+    )
+    try:
+        running_executable = validate_absolute_path_v1(
+            os.readlink("/proc/self/exe"),
+        )
+        captured_python = capture.executables.python.resolved.canonical_path
+    except (AttributeError, OSError) as exc:
+        raise _invalid("launch Python identity") from exc
+    if (
+        user is None or user.values != (descriptor.service_user,)
+        or group is None or group.values != (str(descriptor.service_gid),)
+        or observed_groups != descriptor.service_supplementary_gids
+        or entry.target_executable != (
+            descriptor.python_executable
+            if entry.execution_kind == "python_module"
+            else entry.target_executable
+        )
+        or running_executable != descriptor.python_executable
+        or captured_python != descriptor.python_executable
+    ):
+        raise _invalid("launch identity binding")
+    environment = {
+        "HOME": descriptor.service_home,
+        "LOGNAME": descriptor.service_user,
+        "SHELL": descriptor.service_shell,
+        "USER": descriptor.service_user,
+    }
+    for item in entry.target_environment:
+        if item.name in environment:
+            raise _invalid("launch environment collision")
+        environment[item.name] = item.value
+    for name, value in _launch_dynamic_environment_v1(entry):
+        if name in environment:
+            raise _invalid("launch environment collision")
+        environment[name] = value
+    return _LaunchPlanV1(
+        entry, descriptor.installation_root, descriptor.service_user,
+        descriptor.service_uid, descriptor.service_gid,
+        descriptor.service_supplementary_gids, descriptor.service_home,
+        descriptor.service_shell, entry.python_module, entry.target_args,
+        entry.target_working_directory,
+        tuple(sorted(environment.items(), key=lambda item: item[0].encode("ascii"))),
+        _trusted_python_path_v1(
+            descriptor.installation_root, entry.target_working_directory,
+        ) if entry.execution_kind == "python_module" else (),
+        0o027,
+    )
+
+
+def _prctl_v1(option: int, argument: int = 0) -> None:
+    if type(option) is not int or type(argument) is not int:
+        raise _invalid("launch prctl")
+    libc = ctypes.CDLL(None, use_errno=True)
+    prctl = libc.prctl
+    prctl.argtypes = (
+        ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong,
+        ctypes.c_ulong, ctypes.c_ulong,
+    )
+    prctl.restype = ctypes.c_int
+    if prctl(option, argument, 0, 0, 0) != 0:
+        raise _invalid("launch prctl")
+
+
+def _read_proc_status_v1() -> dict[str, str]:
+    try:
+        encoded = Path("/proc/self/status").read_bytes()
+    except OSError as exc:
+        raise _invalid("launch process status") from exc
+    if (
+        not encoded or len(encoded) > MAX_PROC_STATUS_BYTES_V1
+        or b"\0" in encoded or b"\r" in encoded
+    ):
+        raise _invalid("launch process status")
+    try:
+        lines = encoded.decode("ascii").splitlines()
+    except UnicodeDecodeError as exc:
+        raise _invalid("launch process status") from exc
+    result: dict[str, str] = {}
+    for line in lines:
+        name, separator, value = line.partition(":")
+        if separator and name in {
+            "Uid", "Gid", "Groups", "NoNewPrivs",
+            "CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb",
+        }:
+            if name in result:
+                raise _invalid("launch process status")
+            result[name] = value.strip()
+    return result
+
+
+def _drop_service_privileges_v1(plan: _LaunchPlanV1) -> None:
+    if type(plan) is not _LaunchPlanV1 or plan.entry.class_name != "gated_service":
+        raise _invalid("launch privilege plan")
+    try:
+        os.setgroups(list(plan.service_supplementary_gids))
+        os.setgid(plan.service_gid)
+        for capability in _LAUNCHER_BOUNDING_CAPABILITIES_V1:
+            _prctl_v1(_PR_CAPBSET_DROP_V1, capability)
+        _prctl_v1(_PR_CAP_AMBIENT_V1, _PR_CAP_AMBIENT_CLEAR_ALL_V1)
+        os.setuid(plan.service_uid)
+        _prctl_v1(_PR_SET_NO_NEW_PRIVS_V1, 1)
+        os.umask(plan.umask)
+        os.chdir(plan.target_working_directory)
+        os.environ.clear()
+        os.environ.update(dict(plan.environment))
+    except PreflightError:
+        raise
+    except (OSError, ValueError) as exc:
+        raise _invalid("launch privilege transition") from exc
+    status = _read_proc_status_v1()
+    expected_uid = "\t".join((str(plan.service_uid),) * 4)
+    expected_gid = "\t".join((str(plan.service_gid),) * 4)
+    observed_groups = tuple(int(item) for item in status.get("Groups", "").split())
+    if (
+        status.get("Uid") != expected_uid or status.get("Gid") != expected_gid
+        or observed_groups != plan.service_supplementary_gids
+        or status.get("NoNewPrivs") != "1"
+        or any(status.get(name) != "0000000000000000" for name in (
+            "CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb",
+        ))
+        or os.getuid() != plan.service_uid or os.geteuid() != plan.service_uid
+        or os.getgid() != plan.service_gid or os.getegid() != plan.service_gid
+        or tuple(os.getgroups()) != plan.service_supplementary_gids
+    ):
+        raise _invalid("launch privilege postcondition")
+
+
+def _close_launch_descriptors_v1(keep: int | None) -> None:
+    try:
+        raw_names = os.listdir("/proc/self/fd")
+    except OSError as exc:
+        raise _invalid("launch descriptor inventory") from exc
+    descriptors: list[int] = []
+    for raw in raw_names:
+        if not raw.isascii() or not raw.isdigit():
+            raise _invalid("launch descriptor inventory")
+        descriptor = int(raw)
+        if descriptor > 2 and descriptor != keep:
+            descriptors.append(descriptor)
+    for descriptor in sorted(set(descriptors)):
+        try:
+            os.close(descriptor)
+        except OSError as exc:
+            if exc.errno != errno.EBADF:
+                raise _invalid("launch descriptor close") from exc
+    try:
+        remaining_items: list[int] = []
+        for raw in os.listdir("/proc/self/fd"):
+            if not raw.isascii() or not raw.isdigit():
+                raise _invalid("launch descriptor inventory")
+            descriptor = int(raw)
+            if descriptor <= 2:
+                continue
+            try:
+                os.fstat(descriptor)
+            except OSError as exc:
+                if exc.errno == errno.EBADF:
+                    continue
+                raise
+            remaining_items.append(descriptor)
+        remaining = tuple(sorted(remaining_items))
+    except OSError as exc:
+        raise _invalid("launch descriptor inventory") from exc
+    expected = () if keep is None else (keep,)
+    if remaining != expected:
+        raise _invalid("launch descriptor postcondition")
+
+
+def _launch_python_target_v1(plan: _LaunchPlanV1) -> None:
+    if (
+        type(plan) is not _LaunchPlanV1
+        or plan.entry.execution_kind != "python_module"
+        or plan.python_module is None or not plan.python_path
+    ):
+        raise _invalid("launch Python target")
+    sys.path[:] = list(plan.python_path)
+    sys.argv[:] = [plan.python_module, *plan.target_args]
+    runpy.run_module(plan.python_module, run_name="__main__", alter_sys=False)
+
+
+def _launch_gated_service_v1(
+    plan: _LaunchPlanV1, lease: _LaunchGateLeaseV1,
+) -> None:
+    if type(plan) is not _LaunchPlanV1 or type(lease) is not _LaunchGateLeaseV1:
+        raise _invalid("launch gated service")
+    _drop_service_privileges_v1(plan)
+    executable = plan.entry.target_executable
+    assert executable is not None
+    if plan.entry.execution_kind == "native_executable":
+        if lease.descriptor < 3:
+            raise _invalid("launch startup gate")
+        os.set_inheritable(lease.descriptor, False)
+        _close_launch_descriptors_v1(lease.descriptor)
+        try:
+            os.execve(
+                executable, [executable, *plan.target_args],
+                dict(plan.environment),
+            )
+        except OSError as exc:
+            raise _invalid("launch native target") from exc
+        raise _recovery("launch native target returned")
+    lease.close()
+    _close_launch_descriptors_v1(None)
+    _launch_python_target_v1(plan)
 
 
 def _acquire_startup_gate_shared_v1() -> int:
