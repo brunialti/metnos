@@ -8,7 +8,9 @@ Worktree: `/tmp/metnos-rm0008-a-only`, ramo unico `main`. Non toccare
 Il gruppo 5 e' chiuso. Il commit pubblico e' `a5bd396`; il ciclo GitHub Actions
 `33183713818` ha concluso verdi nove lavori su nove, con errore zero su Linux e
 Windows. Il commit sorgente di ingresso del gruppo 6 e' `225f9437`.
-RM-0008 resta `active`; `closed_build_enforcement()` resta `False`.
+RM-0008 resta `active`; `closed_build_enforcement()` resta `False`. G6-C è
+iniziato con il primo incremento locale dell'installatore amministrativo; la
+cella systemd reale e il gate operativo non sono ancora implementati.
 
 ### Incremento G6-A completato e certificato pubblicamente
 
@@ -2001,3 +2003,48 @@ Il commit privato è `57b78c43`; la proiezione pubblica incrementale è
 riepilogo bloccante. Le sole annotazioni riguardano la versione Node usata da
 azioni GitHub e non sono errori di prodotto. G6-B3 è certificato; RM-0008
 resta `active` e riprende da G6-C nella VM usa-e-getta.
+
+## G6-C1 — installazione amministrativa byte-identica
+
+Il primo incremento di G6-C aggiunge `install/executor_birth_systemd.py` ma
+non installa ancora unità e non esegue `daemon-reload`. Il percorso produttivo
+richiede Linux, root, il record storico autenticato nominale e una sessione
+viva del deployment lock. Il percorso portabile usa record, ambiente, sessione
+e risultato nominalmente distinti e non può produrre la capability accettata
+dal prodotto.
+
+La distribuzione viene verificata integralmente prima e dopo la cattura stabile
+del descrittore e di `deployment/admin/preflight.py`. Il descrittore canonico,
+il manifesto, l'identità dell'account di servizio e tutti gli artefatti vengono
+incrociati; deve esistere un solo `group6_admin`, mentre ogni unità resta
+`group7_cutover` e non viene copiata. Solo dopo la seconda verifica invariata
+il programma è pubblicato byte per byte come
+`/usr/libexec/metnos/executor-birth-v1/preflight.py`, `root:root`, `0755`.
+
+La transazione crea in modo chiuso il solo prefisso amministrativo mancante,
+scrive uno staging legato al `descriptor_id`, sincronizza file e directory e
+usa rename no-replace. Una destinazione esatta è idempotente; uno staging
+completo viene promosso senza riscrittura; staging parziali, collisioni,
+oggetti extra, link o metadati inattesi richiedono recupero esplicito e non
+vengono rimossi automaticamente.
+
+La matrice nuova termina con `6 passed`; installer, guardia del confine e test
+del guard terminano con `77 passed`. La regressione mirata di manifesto,
+metadati, receiver e lock termina con `130 passed, 2 skipped`. Il controllo
+reale `--birth-closed` e `git diff --check` sono verdi. I cinque soli writer
+nuovi sono censiti come `store_write`; gli helper di lettura non acquisiscono
+autorità. Il confronto con il clone autonomo del preflight e la fotografia
+systemd precedente termina inoltre con `255 passed`. Il pin source-review
+candidato è
+`sha256:8380d5b96ef25a8a8d41ad882935b89fb5a8ca5455bf59b5653049788c7c3136`.
+Il profilo privato comprende 685 sorgenti; la proiezione pubblica ne comprende
+673 con radice
+`sha256:173f218ca16987dbdc47598b5354fb5b1fbfd828b4a590eebe327adaf20c7c01`.
+Il gate di esportazione esamina 1.604 file e termina con zero PII, segreti e
+file sensibili.
+
+Questo checkpoint non chiude G6-C. Il prossimo incremento minimo deve costruire
+la cella privata firmata e la workflow GitHub-hosted usa-e-getta che installa
+le unità byte-identiche, esegue il `daemon-reload` causale e prova il gate reale
+senza modificare il server gestito. La copertura totale resta riservata alla
+verifica di chiusura della fase.

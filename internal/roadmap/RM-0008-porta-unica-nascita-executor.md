@@ -2,12 +2,13 @@
 
 > RM-0008 · stato `active` · avanzamento verificato il 30 agosto 2026 ·
 > conservazione persistente · gruppi 1-5 della ripresa (§23.6), G6-A, G6-B1,
-> G6-B2 e G6-B3 completati. La fotografia systemd viva di G6-B3 resta
+> G6-B2 e G6-B3 completati; G6-C è iniziato con l'installazione amministrativa
+> byte-identica, ancora locale. La fotografia systemd viva di G6-B3 resta
 > non autorizzante ed è pubblicata nel commit `5b2b3e6`, certificato con tutti
 > gli otto job Linux/Windows verdi nel run GitHub Actions `33314651224`.
 > RM-0005 è chiuso; `closed_build_enforcement()` resta `False`. Il prossimo
-> incremento minimo è G6-C nella VM usa-e-getta. G6-B4, G6-C, G6-D e F4-F6
-> non sono ancora completati.
+> incremento minimo è la cella firmata G6-C nella VM usa-e-getta. G6-B4, il
+> resto di G6-C, G6-D e F4-F6 non sono ancora completati.
 
 ## 1. Obiettivo
 
@@ -1727,3 +1728,34 @@ commit pubblico `5b2b3e658ed918695d14991fe80150a2cb875424`. Il run GitHub Action
 `33314651224` ha concluso verdi tutti gli otto job, compreso il riepilogo
 bloccante. G6-B3 è quindi certificato; gli avvisi sulla versione Node usata
 dalle azioni GitHub non hanno modificato l'esito. Il prossimo passo resta G6-C.
+
+### 23.13 Primo incremento G6-C: programma amministrativo firmato
+
+Il nuovo installatore G6-C consuma il record storico autenticato e il
+descrittore di deployment già firmato sotto la sessione viva del deployment
+lock. Esegue due verifiche complete della distribuzione attorno alla cattura
+stabile dei byte, lega manifesto, descrittore, account e artefatti e pubblica
+atomicamente soltanto `deployment/admin/preflight.py` nella radice
+amministrativa fissa. Tutti gli artefatti `group7_cutover` sono verificati ma
+restano nella distribuzione: nessuna unità è installata in questo incremento.
+
+La destinazione esatta è idempotente e uno staging completo legato al
+`descriptor_id` è promosso senza riscrittura. Stato parziale, file aggiunti,
+modo errato o collisione terminano con recupero esplicito. Il percorso di prova
+ha autorità e risultato nominalmente separati; Windows termina nel solo
+`birth_ownership_platform_unsupported` prima di osservare il filesystem.
+
+Le prove discriminanti terminano con `6 passed`; guardia e test connessi con
+`77 passed`; la regressione mirata con `130 passed, 2 skipped`; preflight
+autonomo e fotografia systemd precedente con `255 passed`. La politica
+`birth-closed` riconosce esattamente cinque writer nuovi e nessun ampliamento
+degli helper di lettura. G6-C resta aperto: il passo successivo è la cella
+GitHub-hosted usa-e-getta con unità private pre-ribassate e firmate,
+`daemon-reload`, diniego/ammissione reale e quarantena circoscritta. La suite a
+copertura totale verrà eseguita soltanto prima della chiusura della fase.
+I profili riesaminati sono 685 sorgenti private con radice
+`sha256:8380d5b96ef25a8a8d41ad882935b89fb5a8ca5455bf59b5653049788c7c3136`
+e 673 sorgenti pubbliche con radice
+`sha256:173f218ca16987dbdc47598b5354fb5b1fbfd828b4a590eebe327adaf20c7c01`;
+il gate sui 1.604 file esportati non rileva dati personali, segreti o file
+sensibili.

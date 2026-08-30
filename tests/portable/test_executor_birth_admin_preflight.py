@@ -3194,7 +3194,7 @@ def test_real_boundary_policy_snapshot_is_exact_and_entry_schema_is_closed() -> 
     raw = _compiled_boundary_inventory_fixture()
     encoded = preflight._canonical_json(raw)
     parsed = preflight._validate_boundary_inventory_v1(encoded)
-    assert len(parsed["birth_closed"]["coordinator_store_owners"]) == 62
+    assert len(parsed["birth_closed"]["coordinator_store_owners"]) == 67
     assert len(parsed["birth_closed"]["exceptions"]) == 16
     for mutate in ("owners", "exceptions", "entry"):
         mutant = json.loads(encoded)

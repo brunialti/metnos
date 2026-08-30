@@ -59,6 +59,23 @@ after the contracts are installed, and is idempotent. It creates
 `author-root-v1`, one immutable `authority-sets/<set_id>` and the marker
 `prepared-v1.json`, whose state is `prepared_not_active`.
 
+## Closed-build administrative installation (RM-0008 group 6)
+
+The root-only G6 installer consumes an authenticated closed distribution while
+the fixed deployment lock is held. It verifies the full release twice around
+one stable capture of the signed deployment descriptor and administrative
+preflight, then cross-checks their hashes, paths, phases and service-account
+identity before changing the administrative namespace.
+
+G6 installs only the artifact marked `install_phase=group6_admin`, as an exact
+root-owned executable at
+`/usr/libexec/metnos/executor-birth-v1/preflight.py`. Artifacts marked
+`group7_cutover`, including every signed systemd unit, are verified but must
+not be copied by this step. Publication uses a descriptor-bound staging tree,
+no-replace rename and directory synchronization. An exact final tree is
+idempotent, an exact completed staging tree is resumed, and every partial,
+extra or metadata-inconsistent tree requires explicit recovery.
+
 ## Canonical paths and user isolation
 
 The installer and every generated unit use the same environment contract as
