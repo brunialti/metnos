@@ -222,6 +222,10 @@ def _point_loader_at(
     trusted=(),
 ) -> None:
     monkeypatch.setattr(loader._C, "PATH_USER_STATE", state)
+    # A fixture that exercises the PRODUCTIVE wrapper must declare the
+    # installation it runs from: the barrier cannot tell a redirected fixture
+    # from a different checkout writing into an installed instance.
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", str(loader._C.PATH_ROOT))
     monkeypatch.setattr(loader._C, "PATH_EXECUTORS", source_root)
     monkeypatch.setattr(loader, "list_trusted_publics", lambda: list(trusted))
     loader.invalidate_catalog_cache()
@@ -265,6 +269,10 @@ def test_builtin_contract_helper_returns_generation_path_without_authoring_reope
     ref.manifest_path.unlink()
     ref.manifest_path.mkdir()
     monkeypatch.setattr(loader._C, "PATH_USER_STATE", state)
+    # A fixture that exercises the PRODUCTIVE wrapper must declare the
+    # installation it runs from: the barrier cannot tell a redirected fixture
+    # from a different checkout writing into an installed instance.
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", str(loader._C.PATH_ROOT))
     monkeypatch.setattr(loader._C, "PATH_RUNTIME", runtime_root)
     monkeypatch.setattr(
         loader,

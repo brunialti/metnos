@@ -314,6 +314,11 @@ required = []
     runtime_root = tmp_path / "runtime"
     runtime_root.mkdir()
     monkeypatch.setattr(config, "PATH_USER_STATE", state)
+    # The barrier that stops one checkout writing into another installation
+    # cannot tell a redirected fixture from the real thing, so a fixture that
+    # deliberately exercises the PRODUCTIVE wrapper must declare the
+    # installation it is running from. This checkout is that installation.
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", str(config.PATH_ROOT))
     monkeypatch.setattr(config, "PATH_EXECUTORS", root)
     monkeypatch.setattr(config, "PATH_RUNTIME", runtime_root)
     for attribute in (
