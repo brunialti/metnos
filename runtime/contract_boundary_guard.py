@@ -28,7 +28,7 @@ BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/2"
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:4eb2934c12a76961b2270e1e692d527f3286a9e2521e04867e7dc603504c928a"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:07f01e5755dc72aaebf6dec77c1ec6930ce43a2ee42da33f1c353f88784162fe"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
 MAX_BOUNDARY_SOURCE_FILES = 2_048

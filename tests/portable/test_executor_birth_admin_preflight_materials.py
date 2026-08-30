@@ -409,6 +409,141 @@ def _bound_catalog_bytes(
     )
 
 
+def _isolated_g6c_records(
+    *, description: str = "isolated signed G6-C probe",
+) -> tuple[bytes, assembler.DeploymentDescriptorV1]:
+    namespace = "0123456789abcdef"
+    release_sequence = 1
+    installation_root = _binder_installation_root(release_sequence)
+    marker_root = f"/run/metnos-g6c-{namespace}"
+    marker_path = marker_root + "/marker.json"
+    service_id = f"g6c-{namespace}-probe"
+    service_name = f"metnos-g6c-{namespace}-probe.service"
+    timer_id = service_id + "-timer"
+    timer_name = f"metnos-g6c-{namespace}-probe.timer"
+    python = "/usr/bin/python3"
+    administrative = "!/usr/bin/python3"
+    service_spec = catalog.make_unit_spec_v1(service_name, (
+        catalog.ServiceDirectiveV1(
+            "Unit", "Description", "scalar", (description,),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "CapabilityBoundingSet", "scalar",
+            ("CAP_SETGID CAP_SETPCAP CAP_SETUID",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "ExecStart", "argv",
+            (
+                administrative, "-I", "-S",
+                catalog.ADMINISTRATIVE_ADAPTER_PATH_V1,
+                "launch", "--entry-id", service_id,
+            ),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "ExecStartPre", "argv",
+            (
+                administrative, "-I", "-S",
+                catalog.ADMINISTRATIVE_ADAPTER_PATH_V1,
+                "check", "--entry-id", service_id,
+            ),
+        ),
+        catalog.ServiceDirectiveV1("Service", "Group", "scalar", ("991",)),
+        catalog.ServiceDirectiveV1(
+            "Service", "KillMode", "scalar", ("control-group",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "NoNewPrivileges", "boolean", ("yes",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "PrivateTmp", "boolean", ("yes",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "ProtectSystem", "scalar", ("strict",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "ReadWritePaths", "path_list", (marker_root,),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "SupplementaryGroups", "scalar", ("44 991",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "Type", "scalar", ("oneshot",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "User", "scalar", ("metnos",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "WorkingDirectory", "path_list", ("/",),
+        ),
+    ))
+    timer_spec = catalog.make_unit_spec_v1(timer_name, (
+        catalog.ServiceDirectiveV1(
+            "Unit", "Description", "scalar",
+            ("isolated signed G6-C timer",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Timer", "AccuracySec", "duration", ("1ms",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Timer", "OnActiveSec", "duration", ("100ms",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Timer", "Unit", "unit_list", (service_name,),
+        ),
+    ))
+    entries = (
+        catalog.ServiceCatalogEntryV1(
+            service_id, service_name, None, None, "gated_service", "system",
+            "python_module", python,
+            catalog.target_executable_hash_v1(python, b"python-v1"),
+            "runtime.executor_birth_activation_probe", (marker_path,),
+            installation_root, (), None,
+            service_spec, True, True,
+        ),
+        catalog.ServiceCatalogEntryV1(
+            timer_id, timer_name, None, None, "gated_timer", "system",
+            "none", None, None, None, (), None, (), service_id,
+            timer_spec, False, False,
+        ),
+    )
+    encoded = catalog._encode_service_catalog_v1(entries, ())
+    decoded = catalog.decode_service_catalog_v1(encoded)
+    fragments = {
+        service_name: catalog.render_unit_spec_v1(service_name, service_spec),
+        timer_name: catalog.render_unit_spec_v1(timer_name, timer_spec),
+    }
+    artifacts = [assembler.DeploymentArtifactV1(
+        "deployment/admin/preflight.py",
+        "/usr/libexec/metnos/executor-birth-v1/preflight.py",
+        "administrative_program", "group6_admin", 3,
+        preflight.distribution_file_hash_v1(
+            "deployment/admin/preflight.py", b"app",
+        ),
+        0o755, 0, 0,
+    )]
+    for name, content in sorted(fragments.items()):
+        path = "deployment/systemd/" + name
+        artifacts.append(assembler.DeploymentArtifactV1(
+            path, "/etc/systemd/system/" + name,
+            "timer_unit" if name.endswith(".timer") else "service_unit",
+            "group7_cutover", len(content),
+            preflight.distribution_file_hash_v1(path, content),
+            0o644, 0, 0,
+        ))
+    descriptor = assembler.build_deployment_descriptor_v1(
+        release_sequence=release_sequence, service_user="metnos",
+        service_uid=991, service_gid=991,
+        service_supplementary_gids=(44, 991),
+        service_home="/var/lib/metnos", service_shell="/usr/sbin/nologin",
+        artifacts=tuple(artifacts), service_catalog_id=decoded.catalog_id,
+        service_coverage_hash=decoded.service_coverage_hash,
+        python_executable=python, openssl_executable="/usr/bin/openssl",
+        systemctl_executable="/usr/bin/systemctl",
+        systemd_analyze_executable="/usr/bin/systemd-analyze",
+    )
+    return encoded, descriptor
+
+
 def _bound_graph(
     mutation: str | None = None,
 ) -> dict[str, object]:
@@ -798,6 +933,35 @@ def test_candidate_units_match_independent_hash_and_exact_enablement_links() -> 
         ),
         key=lambda item: item[0].encode("utf-8"),
     )) == _EXPECTED_ENABLEMENT_LINKS
+
+
+def test_signed_isolated_g6c_recipe_has_one_closed_namespace_and_no_links() -> None:
+    encoded, descriptor = _isolated_g6c_records()
+    autonomous_catalog = preflight._decode_service_catalog_v1(encoded)
+    autonomous_descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(descriptor)
+    )
+
+    assert preflight._service_source_identity_v1(
+        autonomous_catalog, autonomous_descriptor,
+    ) == preflight._ISOLATED_G6C_SOURCE_IDENTITY_V1
+    candidate = preflight._compile_candidate_units_v1(autonomous_catalog)
+    assert len(candidate.entries) == 2
+    assert not any(item.enablement_links for item in candidate.entries)
+
+
+def test_signed_isolated_g6c_recipe_rejects_one_fully_rehashed_mutant() -> None:
+    encoded, descriptor = _isolated_g6c_records(description="mutated probe")
+    autonomous_catalog = preflight._decode_service_catalog_v1(encoded)
+    autonomous_descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(descriptor)
+    )
+
+    with pytest.raises(preflight.PreflightError) as failure:
+        preflight._service_source_identity_v1(
+            autonomous_catalog, autonomous_descriptor,
+        )
+    assert failure.value.code == preflight.CODE_INVALID
 
 
 def test_administrative_bundle_hash_matches_framing_and_changes_with_artifact() -> None:

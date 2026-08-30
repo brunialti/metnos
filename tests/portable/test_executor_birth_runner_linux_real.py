@@ -40,6 +40,14 @@ def _group6c_systemd_test_module():
     return test_executor_birth_systemd
 
 
+def _group6c_activation_test_module():
+    portable = Path(__file__).resolve().parent
+    if str(portable) not in sys.path:
+        sys.path.insert(0, str(portable))
+    import test_executor_birth_systemd_activation
+    return test_executor_birth_systemd_activation
+
+
 def _registered_backend(runner):
     """Register the real bwrap and the real interpreter, as an operator would.
 
@@ -225,6 +233,17 @@ def test_signed_isolated_systemd_cell_daemon_reload(
     monkeypatch.setenv("METNOS_REQUIRE_REAL_G6C_SYSTEMD", "1")
     module = _group6c_systemd_test_module()
     module.test_signed_isolated_cell_daemon_reload_on_disposable_vm(tmp_path)
+
+
+def test_signed_systemd_cell_denies_then_admits_real_timer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """G6-C3: execute the installed signed gate in the same disposable VM."""
+    if os.environ.get("METNOS_REQUIRE_REAL_BIRTH_LINUX") != "1":
+        pytest.skip("delegated Linux certification step only")
+    monkeypatch.setenv("METNOS_REQUIRE_REAL_G6C_SYSTEMD", "1")
+    module = _group6c_activation_test_module()
+    module.test_signed_systemd_cell_denies_then_admits_real_timer(tmp_path)
 
 
 def test_real_linux_timeout_terminates_child_and_grandchild_cgroup() -> None:
