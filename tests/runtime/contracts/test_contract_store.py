@@ -86,6 +86,7 @@ from executor_birth_receipts import (
 )
 from executor_birth_snapshot import acquire_candidate_snapshot
 import contract_store as contract_store_module
+import audit_jsonl as audit_jsonl_module
 from audit_jsonl import append_jsonl
 
 
@@ -3965,6 +3966,19 @@ def test_productive_publish_requires_registry_and_repairs_authoring_on_retry(
     live = current_manifest(ref, trusted_publics=trusted, store_root=productive)
     assert _source_payloads(ref) == contract_store_module._snapshot_payloads(live)
     assert reconciled[-1].generation_id == published.current_generation_id
+    audit_path = (
+        contract_store_module._C.PATH_USER_STATE
+        / contract_store_module.PUBLICATION_AUDIT_BASENAME
+    )
+    audit = tuple(
+        json.loads(line)
+        for line in audit_path.read_text(encoding="utf-8").splitlines()
+    )
+    assert len(audit) == 1
+    assert audit[0]["event"] == "contract_generation_commit_authorized"
+    assert audit[0]["operation"] == "publish_localization"
+    assert audit[0]["contract_id"] == ref.contract_id.value
+    assert audit[0]["candidate_generation_id"] == published.current_generation_id
 
     # Simulate an interruption half way through the three-file authoring
     # mirror.  The idempotent branch must repair it and still call RM-0005 from
@@ -3983,6 +3997,65 @@ def test_productive_publish_requires_registry_and_repairs_authoring_on_retry(
     assert repaired.repeated
     assert _source_payloads(ref) == contract_store_module._snapshot_payloads(live)
     assert reconciled[-1].generation_id == published.current_generation_id
+    assert len(audit_path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_productive_publication_stops_before_commit_when_audit_is_unavailable(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    productive = (
+        contract_store_module._C.PATH_USER_STATE / "contract-publications" / "v1"
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=productive)
+    patch = _localization_patch(
+        base,
+        selector="description",
+        source_language="it",
+        target_language="en",
+        candidate=(
+            "SCOPO: audit boundary test. PATTERN: sample(). "
+            "NON: modify. OUT: results=[]."
+        ),
+    )
+    generations = (
+        productive / contract_storage_key(ref.contract_id) / "generations"
+    )
+    before = {entry.name for entry in generations.iterdir()}
+
+    def unavailable(*_args, **_kwargs):
+        raise OSError("audit unavailable")
+
+    monkeypatch.setattr(
+        audit_jsonl_module, "append_unique_jsonl", unavailable,
+    )
+    with pytest.raises(
+        ContractStoreError, match="publication_audit_unavailable",
+    ):
+        publish_localization(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            source_language="it",
+            target_language="en",
+            patches=(patch,),
+            private_key=private,
+            trusted_publics=trusted,
+            registry_reconciler=lambda _snapshot: None,
+        )
+
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=productive,
+    ).generation_id == initial.current_generation_id
+    assert {entry.name for entry in generations.iterdir()} == before
 
 
 def test_productive_technical_retry_repairs_a_partial_authoring_mirror(
