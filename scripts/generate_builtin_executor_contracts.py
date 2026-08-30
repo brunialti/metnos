@@ -435,7 +435,8 @@ def _render(name: str, tool_spec: dict) -> str:
         lines.extend(['', f'[args.properties.{arg_name}]'])
         for key in (
             "type", "default", "enum", "minimum", "maximum",
-            "minItems", "maxItems",
+            "minItems", "maxItems", "paired_device_identity",
+            "paired_device_identity_mode",
         ):
             if key in spec:
                 lines.append(f'{key} = {_q(spec[key])}')
@@ -539,6 +540,15 @@ def main() -> None:
             "only when resubmitting after a terminally rejected batch"
         ),
     )
+    parser.add_argument(
+        "--only",
+        action="append",
+        metavar="BUILTIN",
+        help=(
+            "regenerate only this builtin through the same governed path; "
+            "repeat the option for a bounded set"
+        ),
+    )
     args = parser.parse_args()
     if args.birth_attempt < 1:
         parser.error("--birth-attempt must be positive")
@@ -547,6 +557,12 @@ def main() -> None:
     extra = sorted(set(specs) - set(_META))
     if missing or extra:
         raise SystemExit(f"contract inventory mismatch missing={missing} extra={extra}")
+    if args.only:
+        requested = set(args.only)
+        unknown = sorted(requested - set(specs))
+        if unknown:
+            parser.error(f"unknown builtin: {', '.join(unknown)}")
+        specs = {name: specs[name] for name in sorted(requested)}
     staging_context = (
         tempfile.TemporaryDirectory(prefix="metnos-builtin-birth-")
         if args.sign else None

@@ -53,10 +53,16 @@ e3a19aed build(rm0008): pin gated launch source profiles
 35653d58 feat(rm0008): activate autonomous preflight checks
 ```
 
-La proiezione pubblica corrente e'
-`458e972a9fe050a795eac3715dc440786c02b58a`. Il run GitHub Actions
-`33321931596` era `in_progress` al momento della consegna. Va verificato prima
-di dichiarare C3 chiuso.
+La proiezione pubblica e' avanzata dopo la consegna. Il run GitHub Actions
+`33323763867` ha concluso verdi le sei attivita' possedute 2A, la suite
+generale Windows e tutte le altre celle Linux; il solo errore e' la cella C3
+systemd reale, lavoro `99290172651`.
+
+La causa misurata e' circoscritta: la fotografia systemd restituisce
+`infinity` a una direttiva di durata e
+`normalize_systemd_duration_usec_v1()` la invia al parser dei componenti
+numerici, che risponde `PreflightError: duration component`. Correggere e
+provare soltanto questa semantica documentata prima di ripetere la cella.
 
 Profilo sorgenti corrente:
 
@@ -231,3 +237,19 @@ G6 e' chiuso soltanto quando tutte le condizioni seguenti sono vere:
 
 Se una prova richiede di modificare il server gestito o l'archivio operativo,
 il lavoro deve fermarsi: quella azione non appartiene al mandato G6.
+
+## 11. Dipendenza operativa misurata dopo la consegna
+
+Il materiale Birth predisposto sull'installazione esiste, ma il ramo corrente
+rifiuta il caricamento con `birth_prepared_set_mismatch`: il contesto
+autenticato appartiene a una distribuzione precedente. Il provisioner iniziale
+non ha una transizione di upgrade e, a insieme presente, svolge solo
+un'ispezione. G6-D deve quindi legare allo stesso `request_id` anche la
+distribuzione aggiornata e rendere nuovamente leggibile il runtime Birth prima
+di dichiarare `PREFLIGHT_VERIFIED`.
+
+Non risolvere questa dipendenza con una firma diretta, con un nuovo file di
+bootstrap scelto dal chiamante o sostituendo il marcatore predisposto. La
+facciata di manutenzione builtin e' gia' ristretta e riprendibile:
+`scripts/generate_builtin_executor_contracts.py --sign --only <nome>`; deve
+diventare operativa soltanto dopo la convergenza autenticata di G6-D.

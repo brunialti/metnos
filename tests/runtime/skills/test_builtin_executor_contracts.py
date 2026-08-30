@@ -125,7 +125,16 @@ def test_builtin_generator_sign_mode_resumes_one_closed_birth_candidate(
     spec = {
         "function": {
             "name": "compare_entries",
-            "parameters": {"type": "object", "properties": {}},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device": {
+                        "type": "string",
+                        "paired_device_identity": "name",
+                        "paired_device_identity_mode": "token",
+                    },
+                },
+            },
         },
     }
     observed = []
@@ -139,6 +148,15 @@ def test_builtin_generator_sign_mode_resumes_one_closed_birth_candidate(
             "implementation.py.src", "manifest.lang_state.json", "manifest.toml",
         ]
         assert manifest["code"]["files"] == ["implementation.py.src"]
+        assert manifest["args"]["properties"]["device"] == {
+            "type": "string",
+            "paired_device_identity": "name",
+            "paired_device_identity_mode": "token",
+            "description": {
+                "it": "Argomento device.",
+                "en": "Argument device.",
+            },
+        }
         assert (intent.candidate_source_root / "implementation.py.src").read_bytes() == b"VALUE = 1\n"
         assert intent.reason == (
             "regenerate shipped builtin executor contract; batch attempt 2"
@@ -147,8 +165,14 @@ def test_builtin_generator_sign_mode_resumes_one_closed_birth_candidate(
         return SimpleNamespace(error_code=None, publication=object())
 
     monkeypatch.setattr(generator, "OUT", output)
-    monkeypatch.setattr(generator, "_all_specs", lambda: {"compare_entries": (spec, module)})
-    monkeypatch.setattr(generator, "_META", {"compare_entries": generator._META["compare_entries"]})
+    monkeypatch.setattr(generator, "_all_specs", lambda: {
+        "compare_entries": (spec, module),
+        "describe_entries": (spec, module),
+    })
+    monkeypatch.setattr(generator, "_META", {
+        name: generator._META[name]
+        for name in ("compare_entries", "describe_entries")
+    })
     monkeypatch.setattr(executor_birth_intent, "require_birth_intent_adapter", lambda: None)
     monkeypatch.setattr(executor_birth_intent, "submit_builtin_generation_birth", submit)
     monkeypatch.setattr(
@@ -160,7 +184,7 @@ def test_builtin_generator_sign_mode_resumes_one_closed_birth_candidate(
         "argv",
         [
             "generate_builtin_executor_contracts.py", "--sign",
-            "--birth-attempt", "2",
+            "--birth-attempt", "2", "--only", "compare_entries",
         ],
     )
 
