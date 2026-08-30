@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:3089ab571fa2e8a2dbf09bd591492e628697c54d6dcfb507c674d52d17ded316",
+  "source_census": "sha256:2fe47e7d5b11358a7cc92877719a6f9da006718fe31ba0c00d90bafd7cae39da",
   "scan_roots": [
     "runtime",
     "install",
@@ -3500,6 +3500,17 @@
         "birth"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "scripts/generate_builtin_executor_contracts.py",
+      "scope": "_birth_candidate_is_current",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "reviewed administrative resume check over one authoring candidate and its authenticated live generation",
       "phase": "M4"
     },
     {

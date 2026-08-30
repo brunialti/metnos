@@ -219,7 +219,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/validator.py': ('b695db516e444544a7a620315f51d2c2682b85134076a3d4c7d76a2d23198b6a', (('comparison', 12),)),
     'executor_aging.py': ('a23b3323659557c5e7eaf77fa6fc9a14637582a3ed69d86160605840048ad959', (('comparison', 5),)),
     'executor_birth_admin_operations.py': ('75fedbf55e79076fdbbbd2e87025e73971c10214696d3651f9be6a11a9cd77e9', (('comparison', 1),)),
-    'executor_birth_admin_preflight.py': ('ff2705a25bd16a107f1e6ef6281c133bd73af2b0c9cd3f8679e9928e1204e345', (('comparison', 287), ('helper-argument', 13))),
+    'executor_birth_admin_preflight.py': ('4422e4b618734145f809d95c47d6526d7137b179c70a952ab90c77bcff244c45', (('comparison', 296), ('helper-argument', 16))),
     'executor_birth_approval_authority.py': ('64fdddee16f9ae109ff75b33d98008710d963b7cee4ad2e883598b27575e17d4', (('comparison', 3), ('helper-argument', 1))),
     'executor_birth_approval_store.py': ('49c7f9e7d9f6a4912b4f11e351fa6820aa6ffd635134ec364b1f877f52badce8', (('comparison', 2),)),
     'executor_birth_authoring.py': ('fa7d739a561fe9014fa80ca50d086ec55ae91d038fb3971332be208d38284ecf', (('comparison', 6), ('helper-argument', 1))),
@@ -975,6 +975,8 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
 # relative path, lexical owner, symbol, container kind and complete payload;
 # the adjacent reason records why the value is not input-language authority.
 VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
+    "5b8160bd736d40166b6ae4443dd2ebb99fafdef5aa0dfd2c7b01703a0f4f9c29":
+        "closed systemd origin-property protocol requested from the manager",
     "d36dd62ba735b02f3dd085ca60f631efa9ec31c3a5915ea6ba2d7dac10ec6891":
         "canonical tool IDs projected to durable artifact-class IDs",
     "9b53d263d83d7e6791ec1d1d85b4a4e403a40e4fe0ee03bd39e520b0782d3450":

@@ -1722,3 +1722,42 @@ e 672 sorgenti pubblici con radice
 `sha256:057be58564833e198b491211bfbb222f8d0cde77bb3d4595e578b07719a1caf3`.
 I tredici ingressi aggiunti sono esattamente le dodici partizioni del seme
 lessicale e il censimento eseguibile; non sono state ammesse aggiunte implicite.
+
+### 23.12 Fotografia systemd viva di G6-B3
+
+Il terzo sottotaglio di G6-B3 è implementato localmente. Il preflight usa il
+solo `systemctl` misurato, con argv, ambiente, timeout e limiti chiusi, e
+costruisce l'intera fotografia effettiva da proprietà del manager, frammenti,
+link di abilitazione e origini degli archi aggiunti. Tutti i file vengono
+acquisiti senza seguire link e restano legati a percorso, identità, metadati e
+byte. Drop-in, reload pendente, unità transient, origine non classificabile o
+divergenza dalla proiezione firmata causano un diniego.
+
+La lettura applica la sequenza `P0/S0/P1/S1/P2`, col solo killpoint di prova
+fra `S0` e `P1`. Prerequisiti e fotografie devono essere identici; dopo il
+confronto con gli hash firmati vengono rivalidati TCB, file, link e
+prerequisito. Il wrapper prodotto rilegge inoltre la radice ownership e
+confronta l'intera epoca selezionata, ignorando soltanto una claim successiva
+ancora non autorevole. Il risultato è un tipo nominale non autorizzante e non
+è consumato dal dispatch: il protocollo interprocesso del gate di avvio e
+della manutenzione resta un confine successivo.
+
+La matrice nuova termina con `8 passed`; insieme alla TCB amministrativa
+termina con `52 passed`. Una lettura reale, non mutante, ha confermato la
+versione supportata `255.4-1ubuntu8.17`. La prova con tutte le unità installate
+resta assegnata alla VM usa-e-getta di G6-C e non deve essere anticipata sul
+server gestito. Prima di consolidare il checkpoint vanno aggiornati il pin
+source-review, le prove autonome e il profilo di esportazione, quindi creati e
+pubblicati i commit incrementali su `main`.
+
+Il consolidamento locale è concluso. Il preflight completo termina con
+`249 passed`; guardia, manifesti e ownership terminano con
+`206 passed, 1 skipped`; il catalogo builtin firmato termina con
+`65 passed, 3 skipped`. L'omissione inventariale del helper di ripresa Birth è
+stata classificata senza ampliare le sue capacità. I nuovi profili sono
+`684 / sha256:2fe47e7d5b11358a7cc92877719a6f9da006718fe31ba0c00d90bafd7cae39da`
+per il privato e
+`672 / sha256:f662023198530f549d1977932a37cf4bd901b9fd524fd801ccb0a21ed1d57797`
+per il pubblico. Il gate di esportazione è verde con zero dati personali,
+segreti o file sensibili. Dopo commit e pubblicazione, il prossimo sottogruppo
+è G6-C nella sola VM usa-e-getta; RM-0008 resta `active`.

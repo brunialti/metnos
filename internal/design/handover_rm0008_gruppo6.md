@@ -1900,3 +1900,95 @@ ricostruire Birth in assenza di nuovi rilievi concreti. RM-0008 resta `active`;
 il prossimo passo minimo è riprendere G6-B3 dalla fotografia systemd viva. Una
 review avversariale di RM-0005 può ora essere eseguita sul commit pubblico
 certificato indicato sopra.
+
+## G6-B3 — fotografia systemd viva implementata
+
+Il sottotaglio systemd vivo è ora implementato nel preflight autonomo e resta
+deliberatamente non autorizzante. Il dispatch operativo continua a terminare
+nel diniego già esistente: questo incremento non rende eseguibili `check`,
+`check-all` o `launch` e non introduce un surrogato del gate di avvio o della
+manutenzione.
+
+Il codice usa soltanto il `systemctl` canonico già misurato dalla TCB. L'argv è
+costruito internamente; il processo riceve stdin nullo, il solo ambiente
+`LC_ALL=C`, nessuna shell, timeout di dieci secondi, limite di 4 MiB per stdout
+e di 4 KiB per stderr. Sono accettati soltanto uscita zero e stderr vuoto. La
+versione osservata dal manager deve essere esattamente
+`255.4-1ubuntu8.17`.
+
+Per ogni unità candidata il raccoglitore verifica la lista chiusa delle
+proprietà, il frammento esatto sotto `/etc/systemd/system`, l'assenza di
+drop-in, `LoadState=loaded`, `NeedDaemonReload=no`, lo stato del file e tutti i
+link di abilitazione firmati. File e antenati sono aperti senza seguire link e
+devono essere posseduti dall'identità fidata, non scrivibili da gruppo o altri
+e stabili per identità, metadati e byte. La seam portabile sostituisce soltanto
+la radice fisica e l'uid di prova; i record logici continuano a dichiarare
+`root:root` e il relativo tipo nominale non può entrare nel percorso prodotto.
+
+Gli archi aggiunti dal manager vengono sottratti soltanto dalle relazioni
+dirette firmate. Ogni bersaglio residuo è interrogato con il piano esatto
+`FragmentPath,Id,LoadState,SourcePath,Transient,UnitFileState` e classificato
+come `root_fragment`, `root_generator` o uno dei due `manager_virtual`
+consentiti. Frammento e, per i generatori, sorgente sono acquisiti senza link,
+con radici, metadati, dimensioni e domini hash distinti. Unità transient,
+origini non classificate, file sostituibili e proprietà mancanti negano.
+
+La sequenza viva è completa: `P0`, `S0`, killpoint soltanto nella seam,
+`P1`, `S1`, `P2`. Le tre catture del prerequisito devono coincidere per
+identità, metadati e byte; le due fotografie devono coincidere per documento,
+file e link. Seguono il confronto con `systemd_manager_version` ed
+`effective_units_hash` firmati, la rivalidazione di file, link, TCB e
+prerequisito e, nel solo wrapper prodotto, una nuova autenticazione della
+radice ownership. Quest'ultima confronta l'intera epoca selezionata: registri,
+ancora, testa richiesta con byte e firma, build, transazione e predecessore.
+Una nuova claim pendente non selezionata resta ignorata; qualunque mutazione
+dell'epoca selezionata nega.
+
+Le prove minime nuove sono raccolte in
+`tests/portable/test_executor_birth_admin_preflight_systemd_live.py`. Coprono
+policy reale del subprocess e limite di stream, unità candidata completa,
+frammento e link, drop-in estraneo, mutazione post-cattura, le tre classi di
+origine, unità transient e derive fra le due osservazioni. Il risultato
+corrente è `8 passed`; TCB più systemd termina con `52 passed`. Il comando
+esatto di sola lettura contro il manager reale ha restituito
+`Version=255.4-1ubuntu8.17`. Il bus non è raggiungibile nel sandbox ordinario,
+ma la stessa lettura fuori dal sandbox è riuscita senza modificare systemd.
+
+Restano prima del commit: aggiornare il pin source-review sul candidato
+completo, eseguire la matrice autonoma mirata e il controllo del profilo di
+esportazione, poi registrare commit e pubblicazione incrementali su `main`.
+La prova completa con le unità installate non va eseguita sul server corrente:
+appartiene alla cella GitHub-hosted usa-e-getta di G6-C.
+
+### Consolidamento locale del sottotaglio systemd
+
+I gate indicati nel paragrafo precedente sono stati completati. La matrice
+autonoma composta da codec, materiali, TCB e systemd termina con
+`249 passed`. Il perimetro indipendente di guardia del confine, manifesto,
+coordinatore e catena ownership termina con `206 passed, 1 skipped`; il salto
+è dichiarato dalla prova preesistente e non riguarda systemd.
+La verifica mirata del catalogo builtin firmato termina inoltre con
+`65 passed, 3 skipped`; i salti sono quelli portabili già dichiarati.
+
+Il riesame ha anche individuato una sola omissione documentale precedente:
+`_birth_candidate_is_current`, introdotto per rendere riprendibile la firma
+dei builtin, era rilevato dal guard ma non classificato nell'inventario M4. La
+voce è ora registrata come strumento amministrativo con le sole capacità
+`authoring_read` e `verified_store_read`. Non è stato modificato il codice del
+helper e non è stata aggiunta alcuna eccezione al guard. Il controllo diretto
+dell'inventario termina senza rilievi.
+
+Il nuovo profilo privato comprende 684 sorgenti Python e ha radice
+`sha256:2fe47e7d5b11358a7cc92877719a6f9da006718fe31ba0c00d90bafd7cae39da`.
+Il profilo pubblico comprende 672 sorgenti e ha radice
+`sha256:f662023198530f549d1977932a37cf4bd901b9fd524fd801ccb0a21ed1d57797`.
+Il gate di pubblicazione in modalità `--check` è verde: 1.601 file esportati,
+zero PII, zero segreti e zero file sensibili. Questi valori sostituiscono i pin
+del checkpoint RM-0005 perché il sorgente del preflight è cambiato; non
+invalidano le firme dei 21 contratti builtin, che non includono questo file.
+
+Al commit del presente checkpoint G6-B3 è completo nel codice ma RM-0008 resta
+`active`. Il prossimo passo minimo è G6-C nella VM usa-e-getta: installazione
+del grafo firmato, `daemon-reload` causale e prova della fotografia completa
+contro systemd reale. Il server gestito non deve essere modificato in questo
+passaggio.
