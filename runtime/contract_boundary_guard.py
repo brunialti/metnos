@@ -28,7 +28,7 @@ BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/2"
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:f662023198530f549d1977932a37cf4bd901b9fd524fd801ccb0a21ed1d57797"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:173f218ca16987dbdc47598b5354fb5b1fbfd828b4a590eebe327adaf20c7c01"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
 MAX_BOUNDARY_SOURCE_FILES = 2_048
@@ -201,6 +201,13 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "copied_chunks": ("store_write",),
         "main": ("store_write",),
     },
+    "executor_birth_systemd": {
+        "_install_group6_administrative_for_test_v1": ("store_write",),
+        "_install_locked_core_v1": ("store_write",),
+        "_open_parent_v1": ("store_write",),
+        "_publish_administrative_tree_v1": ("store_write",),
+        "install_group6_administrative_v1": ("store_write",),
+    },
 }
 BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth": frozenset({"executor_birth", "runtime.executor_birth"}),
@@ -249,6 +256,9 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth_source_receiver": frozenset({
         "install.executor_birth_source_receiver",
     }),
+    "executor_birth_systemd": frozenset({
+        "install.executor_birth_systemd",
+    }),
 }
 BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/executor_birth.py": "executor_birth",
@@ -272,6 +282,7 @@ BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "install/executor_birth_source_receiver.py": (
         "executor_birth_source_receiver"
     ),
+    "install/executor_birth_systemd.py": "executor_birth_systemd",
 }
 READ_OPERATIONS = frozenset({
     "exists",
@@ -434,6 +445,11 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "install/executor_birth_source_receiver.py:_write_all_v1",
     "install/executor_birth_source_receiver.py:_write_descriptor_v1",
     "install/executor_birth_source_receiver.py:main",
+    "install/executor_birth_systemd.py:_install_group6_administrative_for_test_v1",
+    "install/executor_birth_systemd.py:_install_locked_core_v1",
+    "install/executor_birth_systemd.py:_open_parent_v1",
+    "install/executor_birth_systemd.py:_publish_administrative_tree_v1",
+    "install/executor_birth_systemd.py:install_group6_administrative_v1",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
     "runtime/executor_birth_ownership_chain.py:_OwnershipChainStoreForTest._initialize_with_authorities",
     "runtime/executor_birth_ownership_chain.py:_ensure_exact_directory_v1",
