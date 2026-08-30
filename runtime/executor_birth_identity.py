@@ -241,6 +241,7 @@ _SCHEMA_NODE.update({
     "complete_value": None, "from_entries_complete": None,
     "from_entries_key": None, "from_entries_required": None,
     "from_result_key": None, "pipeline_role": None, "semantic_type": None,
+    "paired_device_identity": None, "paired_device_identity_mode": None,
     "properties": {"*": _SCHEMA_NODE}, "patternProperties": {"*": _SCHEMA_NODE},
     "dependentSchemas": {"*": _SCHEMA_NODE}, "items": _SCHEMA_NODE,
     "prefixItems": [_SCHEMA_NODE], "allOf": [_SCHEMA_NODE],

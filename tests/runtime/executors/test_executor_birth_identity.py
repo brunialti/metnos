@@ -126,6 +126,16 @@ def test_semantic_core_ignores_only_linguistic_surfaces():
     assert semantic_core_id(sample(manifest_bytes=MANIFEST.replace(b'type="string"', b'type="integer"'))) != base
 
 
+def test_semantic_core_accepts_and_binds_paired_device_identity_contract():
+    declared = MANIFEST.replace(
+        b'type="string"\n[args.properties.value.description]',
+        b'type="string"\npaired_device_identity="id"\n'
+        b'paired_device_identity_mode="exact"\n'
+        b'[args.properties.value.description]',
+    )
+    assert semantic_core_id(sample(manifest_bytes=declared)) != semantic_core_id(sample())
+
+
 def test_semantic_core_is_fail_closed_for_unknown_and_unsupported_types():
     with pytest.raises(IdentityError, match="semantic_core_unknown_field"):
         semantic_core_id(sample(manifest_bytes=MANIFEST + b"\nunknown_technical='x'\n"))

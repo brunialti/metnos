@@ -71,6 +71,29 @@ def test_conforming_manifest_passes() -> None:
     assert validate_manifest(_manifest()) == []
 
 
+def test_paired_device_identity_contract_is_closed() -> None:
+    manifest = _manifest()
+    target = manifest["args"]["properties"]["paths"]
+    target["paired_device_identity"] = "id"
+    target["paired_device_identity_mode"] = "exact"
+    assert validate_manifest(manifest) == []
+
+    target["paired_device_identity"] = "address"
+    assert "paired_device_identity" in _codes(manifest)
+
+    target["paired_device_identity"] = "id"
+    target["paired_device_identity_mode"] = "substring"
+    assert "paired_device_identity_mode" in _codes(manifest)
+
+
+def test_paired_device_identity_requires_string_or_array() -> None:
+    manifest = _manifest()
+    actor = manifest["args"]["properties"]["_actor"]
+    actor["type"] = "object"
+    actor["paired_device_identity"] = "name"
+    assert "paired_device_identity_type" in _codes(manifest)
+
+
 def test_execution_policy_is_optional_and_defaults_to_serial() -> None:
     manifest = _manifest()
     assert validate_manifest(manifest) == []
