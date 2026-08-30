@@ -742,7 +742,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:2519a75eca2dd0a2151b1e72fbc0c9d8a70df2219579441550148f162077b9dc"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:aafe78b2a0473ed9882f834da6c9456b2452e387b1d155e45fea7e4b805e3a20"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -3089,7 +3089,17 @@ def _require_isolated_g6c_source_recipe_v1(
         ("Service", "NoNewPrivileges", "boolean", ("yes",)),
         ("Service", "PrivateTmp", "boolean", ("yes",)),
         ("Service", "ProtectSystem", "scalar", ("strict",)),
-        ("Service", "ReadWritePaths", "path_list", (marker_root,)),
+        (
+            "Service", "ReadWritePaths", "path_list",
+            # The runtime root as well as the marker: the gate this unit runs
+            # before its payload verifies signatures through openssl in a
+            # temporary directory there, and `ProtectSystem=strict` mounts
+            # everything else read-only. Ordered by UTF-8 bytes.
+            tuple(sorted(
+                (marker_root, RUNTIME_ROOT.as_posix()),
+                key=lambda item: item.encode("utf-8"),
+            )),
+        ),
         ("Service", "SupplementaryGroups", "scalar", (supplementary,)),
         ("Service", "Type", "scalar", ("oneshot",)),
         ("Service", "User", "scalar", (descriptor.service_user,)),

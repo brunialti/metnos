@@ -4042,3 +4042,4 @@ def test_the_shared_gate_is_acquired_without_asking_for_write_access(
         fcntl.flock(descriptor, fcntl.LOCK_UN)
     finally:
         os.close(descriptor)
+

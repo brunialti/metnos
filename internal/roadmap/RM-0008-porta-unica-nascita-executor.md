@@ -2170,3 +2170,47 @@ la prova fallisce.
 i 60 secondi sul runner mentre il timer riavviava il servizio fallito. Il
 limite di quelle chiamate passa a 300 secondi: la cella deve fallire sul
 verdetto del prodotto, mai su un cronometro.
+
+
+### 23.23 L'undicesima causa: il cancello scrive, e l'unita' non glielo concede
+
+Il giro con il cancello in sola lettura ha portato un progresso netto e ha
+spostato di nuovo il punto. Fuori dall'unita' `check --entry-id` **esce 0**: la
+porta si apre e la voce si risolve. Dentro l'unita' il rifiuto resta, ma cambia
+codice — non piu' 21 ma 24, `birth_ownership_recovery_required` — e arriva in
+un secondo.
+
+**Il percorso, dal codice.** Il preflight autentica le firme con openssl, che
+legge chiave, contenuto e firma da file temporanei creati con
+`tempfile.mkdtemp(dir=temporary_root)`, e `temporary_root` e' la radice di
+esecuzione del prodotto. Sotto `ProtectSystem=strict` l'intera gerarchia e'
+montata in sola lettura, quindi `mkdtemp` fallisce con EROFS; l'errore diventa
+`_invalid("OpenSSL temporary directory")` e chi chiama lo riavvolge in
+`_recovery`, cioe' uscita 24. Fuori dall'unita' il montaggio e' scrivibile e la
+stessa chiamata riesce: la differenza fra i due esiti e' solo il namespace.
+
+**La correzione, alla portata di G6.** L'unita' della cella dichiara scrivibile
+anche la radice di esecuzione, accanto alla cartella del marcatore, e la
+topologia firmata ammessa dal prodotto per la cella
+(`_require_isolated_g6c_source_recipe_v1`) la richiede nella stessa forma
+esatta. Concedere quel montaggio non regala nulla al carico gia' demoted: la
+radice resta `0700` di root e i permessi discrezionali continuano a valere.
+
+**Reperto che eccede G6, registrato e non sepolto.** Le undici unita' `gated`
+della sorgente di servizio del prodotto dichiarano `ProtectSystem=strict` e
+NESSUN percorso scrivibile. Ognuna esegue lo stesso `check --entry-id` come
+`ExecStartPre`, quindi ognuna morirebbe allo stesso modo appena la nascita
+venisse imposta. Oggi non morde — `closed_build_enforcement()` e' falso e
+nessun servizio reale e' commutato sulla distribuzione candidata — ma la fase
+che completa la sorgente di servizio DEVE aggiungere la radice di esecuzione ai
+percorsi scrivibili di ogni unita' `gated`, preferibilmente nella ricetta
+condivisa `_service_unit_recipe`, che e' il punto unico dove il cancello viene
+imposto.
+
+Provato e poi ritirato per confine di mandato: imporre la dichiarazione in
+`_require_gated_service_shape_v1` e aggiungerla alla ricetta condivisa fa
+passare tutto tranne una voce del registro delle disposizioni correnti — quella
+che tiene traccia dei permessi sui dati di `metnos-telegram-daemon.service`,
+ancora irrisolti. Quel registro appartiene al completamento della sorgente di
+servizio, non a G6, e cancellarne una riga di passaggio avrebbe perso un
+requisito vero.

@@ -298,7 +298,13 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
         ),
         catalog.ServiceDirectiveV1(
             "Service", "ReadWritePaths", "path_list",
-            (marker_root.as_posix(),),
+            # The runtime root as well as the marker: the administrative
+            # program writes openssl's temporaries there, and `path_list`
+            # values are ordered by their UTF-8 bytes.
+            tuple(sorted(
+                (marker_root.as_posix(), RUNTIME_ROOT.as_posix()),
+                key=lambda item: item.encode("utf-8"),
+            )),
         ),
         catalog.ServiceDirectiveV1(
             "Service", "SupplementaryGroups", "scalar", (supplementary,),
@@ -1038,8 +1044,15 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
                 capture_output=True, text=True, timeout=300,
             )
 
-        def _edges(unit_name: str) -> set[tuple[str, str]]:
-            _tcb, observed, _candidate = _capture_live_bindings(fixture)
+        def _edges_of(observed, unit_name: str) -> set[tuple[str, str]]:
+            """Read one unit's arcs from an ALREADY taken photograph.
+
+            The census runs `systemctl show` once per unit, so a machine with
+            several hundred units costs tens of seconds per capture. Taking one
+            photograph and reading every unit from it is not only cheaper: the
+            arcs are then proven to coexist in the SAME observation, which is
+            what the relational claim actually says.
+            """
             entry = next(
                 item for item in observed.snapshot.entries
                 if item.unit_name == unit_name
@@ -1055,14 +1068,16 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         assert _attestations() > published_before
 
         # I due archi causali sono nella fotografia canonica, in entrambe le
-        # direzioni, e non solo nella lettura diretta di systemd.
-        assert ("Triggers", fixture.service_name) in _edges(fixture.timer_name)
-        assert ("TriggeredBy", fixture.timer_name) in _edges(fixture.service_name)
-
-        # Entrambi partecipano all'impronta effettiva: toglierne uno la
-        # cambia, quindi nessuno dei due e' decorativo.
+        # direzioni, e non solo nella lettura diretta di systemd. La stessa
+        # fotografia porta anche l'impronta di riferimento: uno scatto solo.
         _tcb, baseline_observation, _candidate = _capture_live_bindings(fixture)
         baseline_hash = baseline_observation.snapshot.effective_units_hash
+        assert ("Triggers", fixture.service_name) in _edges_of(
+            baseline_observation, fixture.timer_name,
+        )
+        assert ("TriggeredBy", fixture.timer_name) in _edges_of(
+            baseline_observation, fixture.service_name,
+        )
 
         auxiliary_name = f"metnos-birth-c4-{namespace}.service"
         auxiliary_path = UNIT_ROOT / auxiliary_name
@@ -1087,10 +1102,12 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             _systemctl("daemon-reload")
             _systemctl("start", auxiliary_name)
 
-            assert ("ConflictedBy", auxiliary_name) in _edges(
-                fixture.service_name,
-            )
+            # Anche qui uno scatto solo: l'arco nuovo e l'impronta derivata
+            # vengono dalla stessa osservazione.
             _tcb, drifted, _candidate = _capture_live_bindings(fixture)
+            assert ("ConflictedBy", auxiliary_name) in _edges_of(
+                drifted, fixture.service_name,
+            )
             assert drifted.snapshot.effective_units_hash != baseline_hash
 
             # La deriva relazionale nega, e nega PRIMA di pubblicare.
