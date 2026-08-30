@@ -2057,37 +2057,37 @@ la correzione non introduce una corsa.
 Alternativa scartata: togliere l'arco dalla fotografia. Il mandato di C4 chiede
 esplicitamente che i due archi causali vi siano, in entrambe le direzioni.
 
-### 23.20 Il programma amministrativo parte privilegiato
 
-La nona causa di C3 non e' una resa dell'interfaccia ne' un inquadramento: e'
-una contraddizione fra due requisiti che il prodotto pone entrambi, e che la
-fixture non poteva soddisfare insieme.
+### 23.20 Una diagnosi sbagliata, e come e' stata smentita
 
-Il cancello di avvio e' un file root-owned `0600` aperto in lettura-scrittura.
-Un processo demoted non puo' aprirlo, quindi il diniego dall'identita'
-applicativa e' **permanente per costruzione** — e infatti la cella lo dimostra
-altrove, pretendendo che `check` e `launch` invocati da quell'identita' siano
-negati. Ma `_require_gated_service_shape_v1` **richiede** `Service/User` per un
-servizio gated, quindi l'unita' deve dichiarare l'account.
+Questa voce sostituisce una spiegazione errata scritta poco prima, e la
+conserva perche' l'errore e' istruttivo.
 
-Le due cose stanno insieme grazie al marcatore `!` di systemd: il comando gira
-con piena autorita' anche quando l'unita' dichiara `User=`. E' il meccanismo
-che il prodotto gia' prevede su entrambi i lati — il normalizzatore firmato
-spoglia il prefisso, e la proiezione attende il flag `no-setuid` in
-`ExecStartEx` — ed e' l'unico modo in cui il programma amministrativo puo'
-acquisire il cancello e poi scendere alle credenziali firmate da solo, come fa
-`_drop_service_privileges_v1` con `setgroups`, `setgid`, `setuid`, `umask`,
-directory di lavoro e ambiente.
+**Cosa avevo concluso.** Che l'unita' firmata mancasse del marcatore `!` di
+systemd e quindi girasse demoted, non potendo aprire il cancello di avvio, che
+e' un file root-owned `0600`. La prova che credevo di avere era la riga
+`demoted check-all: exit=21` accanto a `in-process attestation: accepted`.
 
-Senza il prefisso systemd demoteva l'intero `ExecStart`: il cancello non si
-apriva e il lancio rifiutava a ogni giro.
+**Perche' era sbagliata.** Il marcatore c'era gia': `administrative` e'
+costruito come `"!" + python`. Il mio prefisso ne produceva due, e `!!` ha una
+semantica diversa che la grammatica del catalogo non ammette; il giro e' morto
+prima, su `argv`, e questo ha smentito la diagnosi in un colpo solo.
 
-**Come e' stata isolata.** La diagnosi ha messo le due viste affiancate nello
-stesso messaggio di fallimento: `in-process attestation: accepted` da `root` e
-`demoted check-all: exit=21` dall'identita' che l'unita' usa davvero. La
-differenza fra le due viste era l'intera causa, e leggerla e' costato un solo
-giro invece di una serie di ipotesi.
+**L'errore di metodo.** La sonda che avevo aggiunto eseguiva i comandi
+DEMOTED, ma l'unita' li esegue con piena autorita' proprio grazie al
+marcatore. Misuravo una cosa che l'unita' non fa mai, e ho letto nel mio
+strumento una conferma che non conteneva. Una sonda deve riprodurre cio' che
+il sistema fa, non una variante scelta da chi indaga; altrimenti conferma
+l'ipotesi di chi l'ha scritta.
 
-Alternativa scartata: togliere `Service/User` dalla specifica firmata. La forma
-gated lo richiede, e toglierlo avrebbe fatto rifiutare il catalogo prima ancora
-di arrivare al lancio.
+**Cosa resta vero.** Il cancello e' root-owned `0600` e un processo demoted non
+puo' aprirlo; `_require_gated_service_shape_v1` richiede `Service/User`; il
+marcatore `!` e' il meccanismo che concilia le due cose e il prodotto lo
+prevede su entrambi i lati. Nulla di questo era in discussione: era gia'
+implementato correttamente.
+
+**Dove resta la causa.** `check-all` attesta soltanto, e da root accetta.
+L'unita' fa di piu': risolve la voce con `check --entry-id` e poi lancia. Il
+rifiuto vive in uno di quei passi successivi. La sonda riproduce ora entrambi i
+comandi come l'unita' li esegue, privilegiati, riportando uscita e stderr di
+ciascuno.
