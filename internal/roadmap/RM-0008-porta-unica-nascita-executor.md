@@ -2582,3 +2582,11 @@ non avevo dove metterlo senza perderlo.
 **Perni mossi.** `_EXPECTED_SERVICE_SOURCE_IDENTITY_V1` cambia, perche' cambia
 la sorgente di servizio firmata: da `cd747ed5...` a `fc71a3b9...`. Portable
 1034 verdi, 6 rossi locali noti (root e piu' UID).
+
+**Conseguenza sul censimento, pagata nello stesso passo.** La regola di forma
+aggiunge un contenitore nuovo (l'insieme chiuso delle direttive che un'unita'
+gated deve dichiarare) e sposta l'autorita' di modulo del preflight. Entrambi
+sono stati registrati subito — impronta con motivazione, autorita' ripuntata,
+impronta superata potata — perche' ogni modifica a un file censito deve portare
+con se' la propria conseguenza sul censimento, altrimenti il debito si riapre
+il giorno dopo essere stato chiuso. Censimento: 83 prove verdi.
