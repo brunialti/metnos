@@ -736,7 +736,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:a1e737325b8966ab8f979d7c944c505d4c49e9044fd35dbaf47f7423fdabd53d"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:89b040ea8856b0f8fba8e238cbf7e764b5b2cd58c1fe5f4646d0b3424afe0561"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -12094,9 +12094,14 @@ def _normalize_signed_systemd_directive_v1(
     if value_type == "duration":
         return (normalize_systemd_duration_usec_v1(values[0]),)
     if value_type == "integer":
-        return (_normalize_systemd_integer_v1(
+        normalized_integer = _normalize_systemd_integer_v1(
             values[0], signed=(name == "Nice"), infinity=(name == "TasksMax"),
-        ),)
+        )
+        # One declared `LimitNOFILE` sets both the hard and the soft limit;
+        # the observed side reports the pair, so the signed side declares it.
+        if name == "LimitNOFILE":
+            return (normalized_integer, normalized_integer)
+        return (normalized_integer,)
     if value_type == "unit_list":
         return _normalize_systemd_word_set_v1(
             values, detail="signed systemd unit list",
@@ -12157,10 +12162,17 @@ def _normalize_manager_directive_v1(
         raise _invalid("systemd timer requires grouped context")
     raw = _systemd_single_property_v1(observed, manager_properties[0])
     if name == "LimitNOFILE":
+        # systemd reports the HARD limit in `LimitNOFILE` and the SOFT one in
+        # `LimitNOFILESoft`, and by default they differ: measured 1048576 and
+        # 1024 on a unit that configured neither. Requiring equality denied
+        # every unit that left the limit alone. A unit that sets the directive
+        # sets both, so the signed side normalizes one value to the same pair
+        # and the two shapes stay comparable.
         soft = _systemd_single_property_v1(observed, manager_properties[1])
-        normalized = _normalize_systemd_integer_v1(raw)
-        if _normalize_systemd_integer_v1(soft) != normalized:
-            raise _invalid("systemd LimitNOFILE pair")
+        return (
+            _normalize_systemd_integer_v1(raw),
+            _normalize_systemd_integer_v1(soft),
+        )
         return (normalized,)
     if value_type == "boolean":
         return (_normalize_systemd_boolean_v1(raw),)
@@ -12178,8 +12190,16 @@ def _normalize_manager_directive_v1(
         if name == "WorkingDirectory":
             if raw == "":
                 return ()
-            _catalog_absolute_path_v1(raw, "systemd working directory")
-            return (raw,)
+            # systemd prefixes the rendered directory with its own marker when
+            # the unit did not name a plain path: measured `!/home/roberto` on
+            # a unit that asked for the account home. The marker is part of
+            # what the manager reports, not a malformed path, and it is kept
+            # as its own token so a later change between marked and plain
+            # cannot pass unnoticed.
+            marker = raw[0] if raw[0] in "!-" else ""
+            path = raw[1:] if marker else raw
+            _catalog_absolute_path_v1(path, "systemd working directory")
+            return (marker, path) if marker else (path,)
         return _normalize_systemd_path_list_v1(raw)
     if value_type == "environment":
         return _normalize_systemd_environment_v1(raw)
