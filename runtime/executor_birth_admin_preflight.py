@@ -598,7 +598,7 @@ _SYSTEMD_ADDED_EDGE_RELATIONS_V1 = frozenset({
     "UpheldBy", "Conflicts", "ConflictedBy", "Before", "After",
     "OnFailure", "OnSuccess", "Triggers", "TriggeredBy",
     "PropagatesReloadTo", "ReloadPropagatedFrom", "PropagatesStopTo",
-    "StopPropagatedFrom", "JoinsNamespaceOf", "References", "ReferencedBy",
+    "StopPropagatedFrom", "JoinsNamespaceOf",
 })
 _SYSTEMD_DIRECT_RELATIONS_V1 = frozenset({
     "Requires", "Wants", "BindsTo", "After", "Before", "PartOf",
@@ -736,7 +736,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:07f01e5755dc72aaebf6dec77c1ec6930ce43a2ee42da33f1c353f88784162fe"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:0fd096b3bc0ea9c7170221eafe2efde06f511a0d3b0983947aa7712a1308ceff"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )

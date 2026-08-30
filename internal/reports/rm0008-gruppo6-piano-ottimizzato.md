@@ -899,8 +899,8 @@ appartiene all'insieme chiuso, versionato per il manager supportato,
 `Requires|Requisite|Wants|BindsTo|PartOf|Upholds|RequiredBy|RequisiteOf|
 WantedBy|BoundBy|ConsistsOf|UpheldBy|Conflicts|ConflictedBy|Before|After|
 OnFailure|OnSuccess|Triggers|TriggeredBy|PropagatesReloadTo|
-ReloadPropagatedFrom|PropagatesStopTo|StopPropagatedFrom|JoinsNamespaceOf|
-References|ReferencedBy`. Il verificatore richiede tutte queste proprieta' con
+ReloadPropagatedFrom|PropagatesStopTo|StopPropagatedFrom|JoinsNamespaceOf`.
+Il verificatore richiede tutte queste proprieta' con
 `systemctl show`, anche quando vuote; non esiste una lista aperta o scelta dal
 catalogo. `origin_kind` appartiene a
 `root_fragment|root_generator|manager_virtual`. Per i primi due, percorso,
@@ -913,6 +913,10 @@ nome appartiene alla lista chiusa delle unita' intrinseche del
 gestore supportato. Unita' transient o controllate dall'identita' di servizio
 sono vietate. `origin_kind` classifica l'origine del file dell'unita' bersaglio,
 non pretende di descrivere la provenienza dell'arco, che systemd non espone.
+Il profilo 255 non include `References` o `ReferencedBy`: non sono proprieta'
+esposte dall'interfaccia `org.freedesktop.systemd1.Unit` supportata. La diversa
+proprieta' `Refs` descrive riferimenti del gestore non configurabili e non e'
+un arco stabile del grafo firmato.
 `content_hash` usa il dominio
 `metnos.executor-birth.systemd-origin-file/v1\0` seguito da
 `u64be(len(path_utf8)) || path_utf8 || u64be(size) || file_bytes`, sempre sul
