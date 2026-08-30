@@ -11,7 +11,9 @@
 > gli otto job Linux/Windows verdi nel run GitHub Actions `33314651224`.
 > RM-0005 è chiuso; `closed_build_enforcement()` resta `False`. Il prossimo
 > incremento minimo è G6-C3, diniego e ammissione reali nella stessa cella.
-> G6-B4, G6-C3/C4, G6-D e F4-F6 non sono ancora completati.
+> **Gruppo 6 completo dal 31 agosto 2026** (§23.32): G6-B4, G6-C3, G6-C4 e
+> G6-D sono certificati. F4-F6 e il gruppo 7 non sono completati; del
+> gruppo 7 e' fatto il solo primo passo (§23.31).
 
 ## 1. Obiettivo
 
@@ -1311,6 +1313,7 @@ sviluppo.
 | 2026-08-28 | `active` | Chiuso il blocco Windows del predispositore: preparazione e pubblicazione sono separate dal checkpoint durevole `verified`; ciclo pubblico `33153843377`, commit `a04267b`, otto lavori su otto verdi. Il gruppo 4, chiusura statica F4, è il successivo. |
 | 2026-08-28 | `active` | Riesame dopo il gruppo 3 completato: la guardia chiusa misura 26 rilievi iniziali e il piano ottimizzato del gruppo 4 li divide in tre incrementi causali. Primo incremento: autenticare i due caricamenti fra executor; il bit F4 resta falso. |
 | 2026-08-28 | `active` | G4-A implementato e in certificazione locale: due dipendenze fra executor passano dalla porta autenticata e le revisioni sono state pubblicate da intenzioni Birth reali. Il riesame di velocizzazione conserva G4-A separato e unisce rimozione delle firme e congelamento dell'inventario in G4-B+C, risparmiando una matrice pubblica senza ridurre le prove. |
+| 2026-08-31 | `active` | **Gruppo 6 chiuso, `G6 complete`** (§23.32). C3 e C4 certificati su VM con systemd reale in quattro cicli pubblici consecutivi; suite a copertura totale con **zero regressioni** (74 rossi alla base pre-G6, 69 all'albero finale, 5 risolti); ciclo avversariale convergente su quattro giri per parte. Restano F4-F6 e il gruppo 7, di cui e' fatto il solo primo passo (§23.31). |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 
@@ -2590,3 +2593,74 @@ sono stati registrati subito — impronta con motivazione, autorita' ripuntata,
 impronta superata potata — perche' ogni modifica a un file censito deve portare
 con se' la propria conseguenza sul censimento, altrimenti il debito si riapre
 il giorno dopo essere stato chiuso. Censimento: 83 prove verdi.
+
+
+### 23.32 Checkpoint di chiusura — G6 complete
+
+Ultimo passo dell'ordine del §10. Il verbale che segue riporta soltanto misure,
+e dichiara come aperto cio' che resta aperto.
+
+**Suite a copertura totale, esito terminale.** Eseguita su albero fermo dopo
+l'ultimo incremento, con lo stesso comando e le stesse condizioni della base
+pre-G6:
+
+| | rossi | verdi |
+|---|---|---|
+| base pre-G6 `e2305260` | 74 | 9234 |
+| albero finale | **69** | **9337** |
+| **nuovi** | **0** | |
+| risolti | 5 | |
+
+`69 failed, 9337 passed, 85 skipped, 1192 subtests passed` in 11 min 12 s.
+**Nessuna regressione introdotta da G6.** La previsione dichiarata in §23.30 —
+da 70 a 69 dopo la chiusura del censimento — e' ora una misura, e coincide.
+
+**Matrice pubblica: quattro cicli verdi consecutivi**, su quattro teste diverse:
+`b02ce3e` (33336452969), `342f869` (33336757433), `00224c3` (33338226157),
+`e492d51` (33339928329). Nove lavori su nove ciascuno, Linux e Windows. La
+cella dal vivo: 6 prove su 6 in 373 s.
+
+**Perni.** Radice sorgenti privata `sha256:86216bb7…` su 688 sorgenti; pubblica
+`sha256:8ac8d4dc…` su 676. Guardia di confine normale e chiusa: verdi.
+Censimento del lessico: 83 verdi, zero rilievi.
+
+**Diciotto commit privati**, da `13716717` a `5b955a5e`, e cinque pubblicazioni
+incrementali. Dodici cause reali trovate e chiuse nella catena della cella, di
+cui una (la nona) e' una diagnosi mia sbagliata, ritrattata e conservata in
+§23.20 perche' l'errore e' istruttivo.
+
+**Ciclo avversariale: convergente.** Quattro giri Codex e quattro giri Claude,
+con verdetto finale `CONCORDO SUL DOCUMENTO` da entrambe le parti. Undici
+contestazioni accolte, nessuna confutata; tre di esse correggevano affermazioni
+mie che sovradichiaravano l'evidenza, e una — l'attribuzione del debito del
+censimento — era sbagliata nella direzione a me piu' comoda.
+
+**Definition of Done del §9: sette condizioni su sette.**
+
+1. C3 e C4 verdi su VM con systemd reale — si', quattro cicli.
+2. B4 e D con prove positive, negative, di idempotenza, concorrenza,
+   interruzione e ripresa — si', senza nuova autorita' pubblica.
+3. Il coordinatore isolato raggiunge e rilegge `PREFLIGHT_VERIFIED` e il
+   percorso produttivo continua a negare prima di `PREPARED` — si'.
+4. Guardie, chiusura di import, profilo sorgenti, export e piattaforme — verdi.
+5. Barriera contro la pubblicazione dall'albero di sviluppo e prova di audit —
+   integrate e verdi, con una prova i18n adattata al nuovo confine.
+6. Suite a copertura totale senza regressioni, skip o xfail nuovi non gia'
+   dichiarati — si': zero rossi nuovi.
+7. Roadmap e handover riportano commit, cicli, conteggi e impronte — questo
+   verbale.
+
+**Stato: G6 complete.** RM-0008 resta aperto per F4-F6.
+
+**Cio' che resta aperto, e non e' G6.**
+
+- I 69 rossi comuni sono preesistenti e invariati. Il confronto prova questo e
+  nulla di piu': la loro causa non e' stata classificata, e §23.29 spiega
+  perche' l'elenco causale che avevo scritto era sbagliato.
+- Il verde della cella e' su quattro cicli, non su una serie lunga sotto
+  carichi diversi: dice che non e' un caso, non che sia stabile in ogni
+  condizione.
+- Il gruppo 7 ha gia' il suo primo passo fatto (§23.31), ma il resto —
+  attivazione reale con `closed_build_enforcement()=True`, installazione dei
+  nomi definitivi, commutazione dei servizi — non e' iniziato, e comprende il
+  residuo dichiarato dei percorsi di scrittura dei dati di telegram.
