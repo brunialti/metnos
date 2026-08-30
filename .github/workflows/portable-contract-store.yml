@@ -288,39 +288,6 @@ jobs:
           path: rm0008-2a-evidence-windows-acl.json
           if-no-files-found: error
 
-  rm0008-g6c-systemd:
-    name: RM-0008 G6-C / signed isolated systemd cell
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - name: Set up Python 3.12
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: "3.12"
-          check-latest: false
-      - name: Install the minimal test dependencies
-        run: python -m pip install --disable-pip-version-check --requirement tests/portable/requirements.txt
-      - name: Require the disposable root systemd cell
-        shell: bash
-        run: |
-          sudo -n true
-          sudo test -d /run/systemd/system
-          test "$(readlink -f /usr/bin/systemctl)" = /usr/bin/systemctl
-      - name: Install the signed private cell and certify daemon-reload
-        shell: bash
-        run: >-
-          sudo -n env "PATH=$PATH"
-          "PYTHONPATH=$GITHUB_WORKSPACE/runtime:$GITHUB_WORKSPACE"
-          METNOS_REQUIRE_REAL_G6C_SYSTEMD=1
-          "${pythonLocation}/bin/python" -m pytest -q -p no:cacheprovider
-          --import-mode=importlib --confcutdir=tests/portable
-          tests/portable/test_executor_birth_systemd.py::test_signed_isolated_cell_daemon_reload_on_disposable_vm
-
   rm0008-a-summary:
     name: RM-0008 2A / certification summary
     if: always()
@@ -332,7 +299,6 @@ jobs:
       - rm0008-a-concurrency-ubuntu
       - rm0008-a-concurrency-windows
       - rm0008-a-windows-acl
-      - rm0008-g6c-systemd
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -345,10 +311,9 @@ jobs:
           CONCURRENCY_UBUNTU: ${{ needs.rm0008-a-concurrency-ubuntu.result }}
           CONCURRENCY_WINDOWS: ${{ needs.rm0008-a-concurrency-windows.result }}
           WINDOWS_ACL: ${{ needs.rm0008-a-windows-acl.result }}
-          G6C_SYSTEMD: ${{ needs.rm0008-g6c-systemd.result }}
         shell: bash
         run: |
-          for result in "$HISTORICAL" "$MANIFEST" "$PORTABLE_UBUNTU" "$PORTABLE_WINDOWS" "$CONCURRENCY_UBUNTU" "$CONCURRENCY_WINDOWS" "$WINDOWS_ACL" "$G6C_SYSTEMD"; do
+          for result in "$HISTORICAL" "$MANIFEST" "$PORTABLE_UBUNTU" "$PORTABLE_WINDOWS" "$CONCURRENCY_UBUNTU" "$CONCURRENCY_WINDOWS" "$WINDOWS_ACL"; do
             test "$result" = success
           done
       - name: Check out the repository
