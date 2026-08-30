@@ -1,12 +1,10 @@
 """Disposable-VM proof for signed G6-C denial and real admission."""
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import os
 import platform
-import pwd
 import shutil
 import stat
 import subprocess
@@ -25,10 +23,18 @@ import executor_birth_distribution_assembler as assembler
 import executor_birth_distribution_manifest as distribution
 import executor_birth_service_catalog as catalog
 from contract_boundary_guard import (
+    BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
+    BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_GUARD_VERSION,
+    BIRTH_CLOSED_OWNER,
+    BIRTH_CLOSED_SCHEMA,
+    BIRTH_CLOSED_SEALED_MODULES,
     BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
+    SCAN_ROOTS,
+    SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
     closed_python_source_review_sha256,
     closed_python_sources_from_root,
+    discover as discover_boundary_scopes,
 )
 from executor_birth_cutover import CurrentReceiptProof
 from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
@@ -73,7 +79,9 @@ ADMINISTRATIVE_ROOT = Path("/usr/libexec/metnos/executor-birth-v1")
 UNIT_ROOT = Path("/etc/systemd/system")
 RUNTIME_ROOT = Path("/run/metnos-executor-birth-v1")
 STARTUP_GATE = Path("/run/lock/metnos/executor-birth-startup-v1.lock")
-BOUNDARY_INVENTORY_PATH = "internal/reports/rm0007-m4-boundary-inventory.json"
+BOUNDARY_INVENTORY_PATH = (
+    "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json"
+)
 
 
 def _canonical(value: object) -> bytes:
@@ -98,6 +106,8 @@ def _write_control(path: Path, content: bytes, mode: int = 0o644) -> None:
 
 
 def _service_account() -> _ServiceAccountV1:
+    import pwd
+
     candidates = sorted(
         (
             item for item in pwd.getpwall()
@@ -116,6 +126,58 @@ def _service_account() -> _ServiceAccountV1:
         selected.pw_name, selected.pw_uid, selected.pw_gid, supplementary,
         selected.pw_dir, selected.pw_shell,
     )
+
+
+def _compiled_boundary_inventory(repository: Path) -> bytes:
+    """Build a closed test inventory solely from compiled public policy."""
+    entries = []
+    for fact in discover_boundary_scopes(repository):
+        if not (fact.capabilities or fact.direct_manifest_dir_access):
+            continue
+        capabilities = set(fact.capabilities)
+        if fact.key == BIRTH_CLOSED_OWNER:
+            role = "birth_owner"
+        elif capabilities & {"store_write", "publish_bootstrap"}:
+            role = "store_owner"
+        elif "legacy_bootstrap" in capabilities:
+            role = "migration_boundary"
+        elif fact.direct_manifest_dir_access:
+            role = "offline_authoring"
+        else:
+            role = "administrative_tool"
+        entry = {
+            "capabilities": list(fact.capabilities),
+            "destination": "compiled disposable-VM G6-C proof",
+            "path": fact.path,
+            "phase": "M4",
+            "role": role,
+            "scope": fact.scope,
+        }
+        exception = BIRTH_CLOSED_EXCEPTION_SCOPES.get(fact.key)
+        if exception is not None:
+            entry["closed_exception"] = exception
+        entries.append(entry)
+    return _canonical({
+        "birth_closed": {
+            "coordinator_store_owners": sorted(
+                BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
+            ),
+            "exceptions": [
+                {"scope": scope, "exception": exception}
+                for scope, exception in sorted(
+                    BIRTH_CLOSED_EXCEPTION_SCOPES.items(),
+                )
+            ],
+            "guard_version": BIRTH_CLOSED_GUARD_VERSION,
+            "owner": BIRTH_CLOSED_OWNER,
+            "schema": BIRTH_CLOSED_SCHEMA,
+            "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
+        },
+        "entries": entries,
+        "scan_roots": list(SCAN_ROOTS),
+        "schema": BOUNDARY_INVENTORY_SCHEMA,
+        "source_census": BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
+    })
 
 
 def _canonical_executable(path: str) -> tuple[str, bytes]:
@@ -298,9 +360,7 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
         "deployment/admin/preflight.py": preflight_bytes,
         "deployment/executor-birth-deployment-v1.json": descriptor_bytes,
         "deployment/executor-birth-service-catalog-v1.json": catalog_bytes,
-        BOUNDARY_INVENTORY_PATH: _canonical(json.loads(
-            (repository / BOUNDARY_INVENTORY_PATH).read_bytes(),
-        )),
+        BOUNDARY_INVENTORY_PATH: _compiled_boundary_inventory(repository),
         "requirements.lock": b"cryptography==47.0.0\n",
         **{
             "deployment/systemd/" + name: fragment
@@ -721,6 +781,8 @@ def _demote(account: _ServiceAccountV1):
 def test_signed_systemd_cell_denies_then_admits_real_timer(
     tmp_path: Path,
 ) -> None:
+    import fcntl
+
     del tmp_path  # fixed roots are intentional and the VM is disposable.
     assert os.geteuid() == 0
     assert Path("/run/systemd/system").is_dir()
