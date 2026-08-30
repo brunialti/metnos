@@ -258,7 +258,14 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
         catalog.ServiceDirectiveV1(
             "Service", "ExecStart", "argv",
             (
-                administrative, "-I", "-S",
+                # `!` runs this command with full privileges even though the
+                # unit declares `User=`: the shape REQUIRES that declaration,
+                # and the administrative program must still start privileged
+                # because it acquires the root-owned startup gate and then
+                # drops to the signed credentials itself. Without the prefix
+                # systemd demotes the whole ExecStart, the gate cannot be
+                # opened, and the launch refuses for ever.
+                "!" + administrative, "-I", "-S",
                 catalog.ADMINISTRATIVE_ADAPTER_PATH_V1,
                 "launch", "--entry-id", service_entry_id,
             ),
@@ -266,7 +273,14 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
         catalog.ServiceDirectiveV1(
             "Service", "ExecStartPre", "argv",
             (
-                administrative, "-I", "-S",
+                # `!` runs this command with full privileges even though the
+                # unit declares `User=`: the shape REQUIRES that declaration,
+                # and the administrative program must still start privileged
+                # because it acquires the root-owned startup gate and then
+                # drops to the signed credentials itself. Without the prefix
+                # systemd demotes the whole ExecStart, the gate cannot be
+                # opened, and the launch refuses for ever.
+                "!" + administrative, "-I", "-S",
                 catalog.ADMINISTRATIVE_ADAPTER_PATH_V1,
                 "check", "--entry-id", service_entry_id,
             ),
