@@ -890,6 +890,97 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             fixture.account.uid, fixture.account.gid,
         )
         assert stat.S_IMODE(marker_info.st_mode) == 0o640
+
+        # ── G6-C4: la prova relazionale, sulla stessa cella ────────────
+        # Misurato su systemd 255.4 prima di scrivere questa parte:
+        # `TriggeredBy` sul servizio NON compare dopo `daemon-reload`, solo
+        # dopo l'avvio del timer — che qui e' gia' avvenuto. `ConflictedBy`
+        # non compare ne' dopo `daemon-reload` ne' avviando un'ausiliaria
+        # `oneshot` ordinaria: systemd carica pigramente e scarica subito una
+        # oneshot inattiva senza riferimenti, e con essa spariscono i suoi
+        # archi. L'unita' ausiliaria deve quindi restare residente.
+        attestation_root = OWNERSHIP_ROOT / "preflight-attestations-v1"
+
+        def _attestations() -> set[str]:
+            if not attestation_root.is_dir():
+                return set()
+            return {item.name for item in attestation_root.iterdir()}
+
+        def _check_all() -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
+                capture_output=True, text=True, timeout=60,
+            )
+
+        def _edges(unit_name: str) -> set[tuple[str, str]]:
+            _tcb, observed, _candidate = _capture_live_bindings(fixture)
+            entry = next(
+                item for item in observed.snapshot.entries
+                if item.unit_name == unit_name
+            )
+            return {
+                (edge.relation, edge.unit_name)
+                for edge in entry.manager_added_edges
+            }
+
+        published_before = _attestations()
+        accepted = _check_all()
+        assert accepted.returncode == 0, accepted.stderr
+        assert _attestations() > published_before
+
+        # I due archi causali sono nella fotografia canonica, in entrambe le
+        # direzioni, e non solo nella lettura diretta di systemd.
+        assert ("Triggers", fixture.service_name) in _edges(fixture.timer_name)
+        assert ("TriggeredBy", fixture.timer_name) in _edges(fixture.service_name)
+
+        # Entrambi partecipano all'impronta effettiva: toglierne uno la
+        # cambia, quindi nessuno dei due e' decorativo.
+        _tcb, baseline_observation, _candidate = _capture_live_bindings(fixture)
+        baseline_hash = baseline_observation.snapshot.effective_units_hash
+
+        auxiliary_name = f"metnos-birth-c4-{namespace}.service"
+        auxiliary_path = UNIT_ROOT / auxiliary_name
+        auxiliary_body = (
+            "[Unit]\n"
+            f"Description=isolated G6-C4 conflicting unit {namespace}\n"
+            f"Conflicts={fixture.service_name}\n"
+            "[Service]\n"
+            "Type=oneshot\n"
+            "ExecStart=/bin/true\n"
+            "RemainAfterExit=yes\n"
+        ).encode("utf-8")
+        assert not auxiliary_path.exists()
+        auxiliary_installed = False
+        try:
+            _write_control(auxiliary_path, auxiliary_body)
+            auxiliary_installed = True
+            assert auxiliary_path.read_bytes() == auxiliary_body
+            auxiliary_info = auxiliary_path.stat()
+            assert (auxiliary_info.st_uid, auxiliary_info.st_gid) == (0, 0)
+            assert stat.S_IMODE(auxiliary_info.st_mode) == 0o644
+            _systemctl("daemon-reload")
+            _systemctl("start", auxiliary_name)
+
+            assert ("ConflictedBy", auxiliary_name) in _edges(
+                fixture.service_name,
+            )
+            _tcb, drifted, _candidate = _capture_live_bindings(fixture)
+            assert drifted.snapshot.effective_units_hash != baseline_hash
+
+            # La deriva relazionale nega, e nega PRIMA di pubblicare.
+            published_before_denial = _attestations()
+            denied = _check_all()
+            assert denied.returncode == preflight.EXIT_INVALID
+            assert denied.stderr == preflight.CODE_INVALID + "\n"
+            assert _attestations() == published_before_denial
+        finally:
+            if auxiliary_installed:
+                _systemctl("stop", auxiliary_name, check=False)
+                _systemctl("reset-failed", auxiliary_name, check=False)
+                assert auxiliary_path.is_file() and not auxiliary_path.is_symlink()
+                assert auxiliary_path.read_bytes() == auxiliary_body
+                auxiliary_path.unlink()
+                _systemctl("daemon-reload")
     finally:
         if installed:
             _systemctl("stop", fixture.timer_name, check=False)
