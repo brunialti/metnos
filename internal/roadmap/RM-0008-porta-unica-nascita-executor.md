@@ -2136,7 +2136,8 @@ produzione ne' il cancello (`_acquire_startup_gate_shared_v1` lo apre e non lo
 crea) ne' la radice delle attestazioni `PREFLIGHT_ATTESTATION_ROOT_V1`, che
 `_publish_preflight_attestation_core_v1` pretende esistente, `0o755` e di root.
 Oggi entrambe le prepara soltanto la cella. Sono UNA lacuna d'installazione,
-non due, e vanno chiuse insieme.
+non due, e vanno chiuse insieme — pur vivendo sotto gerarchie diverse, il
+cancello sotto `/run` e la radice sotto `OWNERSHIP_ROOT`.
 
 **Correzione del giro avversariale 1.** La prima stesura di questa sezione
 prometteva «minimo privilegio». Va detto anche il resto: nessun titolare
@@ -2266,12 +2267,20 @@ regime ogni servizio pagherebbe quel censimento a ogni avvio. Non appartiene a
 G6, che dimostra correttezza e non costo, ma va misurato prima di imporre la
 nascita su una macchina con molte unita'.
 
-**Correzione del giro avversariale 1 — il budget non e' risolto, e' rinviato.**
-Misura del giro `33335689166`: cella 461 s, job 8 min 52 s, fermatasi al PRIMO
-passo di C4. Restano circa quattro censimenti (baseline, ausiliaria, drifted,
-`check-all` negato) a ~65 s l'uno, cioe' una stima di ~13,3 min contro un
-tetto di 15 che NON si puo' alzare. Alzare i limiti di attesa non crea budget:
-se il prossimo giro supera gli 11 minuti va ridotto il numero di censimenti.
+**Correzione dei giri avversariali 1 e 2 — il budget non e' risolto, e'
+rinviato.** Misura del giro `33335689166`: cella 461 s, job 8 min 52 s,
+fermatasi al PRIMO `check-all` di C4, che il censimento lo aveva gia' completato
+ed e' caduto nella fase successiva. Dopo quel punto restano **TRE** censimenti
+completi, non quattro: la fotografia di riferimento, quella dopo l'avvio
+dell'ausiliaria e il `check-all` negato. L'avvio dell'unita' ausiliaria non e'
+un censimento: e' un `oneshot` ordinario con `ExecStart=/bin/true`, senza
+cancello. Con la stessa approssimazione, 8:52 + 3 x 65 s ≈ **12 min 07 s** di
+JOB contro un tetto di 15 che NON si puo' alzare.
+
+La soglia prudenziale si misura sul **job**, non sulla cella, perche' e' il job
+ad avere il tetto: oltre i 13 minuti di job va ridotto il numero di censimenti,
+non allargata l'attesa. Il margine resta stimato e non misurato: il rischio non
+e' dichiarato risolto.
 
 **Perdita dichiarata nella riduzione a due fotografie.** Le cinque catture
 separate esercitavano implicitamente il determinismo del censimento — due
@@ -2290,16 +2299,32 @@ corretta. Il cancello e' stato preso, rilasciato e riacquisito in esclusiva dal
 test. C3 e' verde in attesa della conferma nel giro successivo.
 
 Il fallimento e' dentro C4, al primo `check-all`, con uscita 20
-`birth_ownership_preflight_missing`. La causa e' della stessa famiglia della
-decima: `_publish_preflight_attestation_core_v1` chiama
-`_require_safe_directory_chain_v1` su `PREFLIGHT_ATTESTATION_ROOT_V1` e
-pretende una directory esistente, `0o755` e di root; la cella quella directory
-la leggeva soltanto. Ora la crea accanto al cancello, e la lacuna
-d'installazione e' registrata come una sola (§23.21).
+`birth_ownership_preflight_missing`.
 
-**Come e' stata trovata.** Non da una previsione: dalla misura. E' il quarto
-inceppamento consecutivo in cui il rifiuto nomina il passo esatto, e il punto
-di rottura si e' spostato in avanti ogni volta.
+**Che cosa e' osservato e che cosa e' inferito** (correzione del giro
+avversariale 2). L'unico dato osservato e' la coppia codice/uscita: il
+programma elimina deliberatamente il dettaglio interno, perche'
+`_public_failure_v1` restituisce soltanto classe e stato e `main` scrive solo
+quella classe. Il rifiuto pubblico quindi NON nomina il passo. La diagnosi e'
+un'**inferenza per differenziale, forte ma da confermare**: nello STESSO giro
+`check` e `launch` della unit erano riusciti, quindi
+`_attest_operational_preflight_v1()` — che `check-all` ripete identica — era
+passata; l'unico passo aggiuntivo di `check-all` e' la pubblicazione, e il suo
+primo atto e' `_require_safe_directory_chain_v1` su
+`PREFLIGHT_ATTESTATION_ROOT_V1`, che pretende una directory esistente, `0o755`
+e di root, e che la cella leggeva soltanto.
+
+**Come si conferma.** Nel giro con la radice presente il primo `check-all` deve
+uscire 0 e l'insieme delle attestazioni deve crescere. Solo quella misura
+promuove l'inferenza a causa confermata; fino ad allora resta un'ipotesi
+differenziale, e questa sezione non va letta come misura.
+
+La cella crea ora quella radice **nello stesso setup, sotto `OWNERSHIP_ROOT`** —
+non «accanto al cancello»: il cancello vive sotto `/run`, la radice delle
+attestazioni sotto `/var/lib`, e la pubblicazione di C4 parte dal processo di
+prova come root, non da dentro l'unita' protetta, quindi non serve alcun
+`ReadWritePaths` aggiuntivo. La lacuna d'installazione resta registrata come
+una sola (§23.21).
 
 ### 23.26 Revisione avversariale, giro 1
 
@@ -2310,3 +2335,36 @@ applicata in questo incremento; cinque tesi verificate e accettate. Il verdetto
 del giro 1 e' **NON CONCORDO ANCORA SUL DOCUMENTO**, e le correzioni qui sopra
 sono la risposta a quel verdetto, non la sua chiusura: il giro successivo deve
 verificarle, non fidarsene.
+
+
+### 23.27 Il censimento del lessico e' rosso, e non per colpa di G6
+
+`tests/runtime/i18n/test_executable_lexicon_census.py` fallisce sull'albero
+corrente. Attribuzione misurata, non supposta: i conteggi di
+`executor_birth_admin_preflight.py` erano gia' `(comparison 323, helper-argument
+20, iteration 1, membership 3, prefix-suffix 4, regex 1)` al commit `f5b8845f`,
+e i quattro commit di questa sessione (`b6e56a3d`, `18528cb4`, `3a712936`,
+`686acd1f`) non ne hanno spostato NESSUNO. Il puntamento era gia' scaduto.
+
+**Perche' non l'ho ripuntato in questo incremento.** Il ripuntamento meccanico
+del registro `LEGACY_LITERAL_GATE_FILE_AUTHORITIES` fa passare da 296 a 325 i
+confronti del preflight e introduce quattro categorie nuove: accettarle a
+scatola chiusa e' esattamente cio' che quella guardia esiste per impedire. Ho
+quindi ispezionato le categorie nuove prima di decidere, e sono tutte tecniche —
+nomi di direttive systemd (`("Service", "SupplementaryGroups")`), maschere di
+capacita' (`"0000000000000000"`), stati di carico (`{"loaded", "not-found"}`),
+prefissi di percorso (`startswith("/")`), un'espressione regolare per uno
+spazio dei nomi esadecimale. Nessun testo rivolto all'utente: §7.13 non e' in
+gioco e il ripuntamento sarebbe legittimo.
+
+Ma il ripuntamento non basta: scoperto il primo registro, ne emerge un secondo
+(`VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS` e
+`VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS`), che pretende per ogni contenitore
+mutato un'impronta NUOVA con una motivazione scritta. Sette contenitori la
+richiedono, fra cui `_CODE_PAYLOAD_UNAVAILABLE_CODES` e `_STATUS_FIELDS_V1`.
+Sono testi da autore, non un ricalcolo, e appartengono a un incremento proprio:
+mescolarli alla convergenza della cella avrebbe reso non atomico questo passo.
+
+**Stato: aperto, con la strada gia' battuta.** Ricalcolo e attribuzione sono
+riproducibili; resta da scrivere le motivazioni delle sette impronte e da
+rieseguire il censimento.

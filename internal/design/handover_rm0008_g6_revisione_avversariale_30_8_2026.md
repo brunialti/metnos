@@ -227,3 +227,200 @@ che include la correzione P1-4.
 
 Le disposizioni sono state applicate subito dopo questo verdetto; il giro 2
 deve verificarle, non fidarsene.
+
+---
+
+# GIRO CODEX 1 — verifica avversariale delle disposizioni di Claude 1
+
+Revisione indipendente del commit `a950c702`, limitata a codice, prova e
+documentazione della cella. Nessuna modifica al prodotto e nessuna prova sul
+sistema reale.
+
+## Disposizioni verificate e accettate
+
+- **P1-1:** il commento di
+  `runtime/executor_birth_admin_preflight.py:13815-13826` non sostiene piu' che
+  `ReadWritePaths` consegni scrittura al carico demoted; dichiara correttamente
+  sia `O_RDONLY` sia l'assenza di un titolare esclusivo.
+- **P1-2:** §23.21 dichiara esplicitamente che il blocco condiviso oggi non
+  serializza nulla. La ricerca nel prodotto continua a trovare `LOCK_EX` solo
+  nella cella (`tests/portable/test_executor_birth_systemd_activation.py:1004-1013`).
+- **P2-5/P2-6:** i docstring delle due prove dichiarano ora esattamente cio' che
+  non provano (`test_executor_birth_admin_preflight.py:3980-3989,4005-4018`).
+- **P2-7:** §23.24 registra la perdita della ripetizione implicita del
+  censimento. Le due fotografie rimaste provano correttamente coesistenza e
+  mutamento: baseline a `1088-1095`, osservazione dopo l'avvio dell'ausiliaria
+  a `1117-1126`.
+- **P2-8:** §23.21 nomina insieme cancello e radice delle attestazioni come
+  lacuna d'installazione. La classificazione come filo aperto resta corretta.
+- **C3:** il verdetto e' formulato correttamente come verde nel giro
+  `33335689166` ma ancora in attesa di conferma. Il marcatore e le asserzioni a
+  `test_executor_birth_systemd_activation.py:998-1042` sono evidenza diretta
+  che `check` e `launch` della unit hanno completato quel tratto.
+
+## Rilievi ancora aperti
+
+**P1-C1 — La dodicesima causa e' un'inferenza forte, non una misura che nomina
+il passo esatto.** Il solo dato osservato e' uscita 20 con
+`birth_ownership_preflight_missing`. Il programma elimina deliberatamente il
+dettaglio interno: `_public_failure_v1` restituisce soltanto codice e stato, e
+`main` scrive solo quel codice
+(`runtime/executor_birth_admin_preflight.py:11253-11280`). `check-all` ripete
+l'intera `_attest_operational_preflight_v1()` e solo dopo pubblica
+(`11230-11235`); percio' il successo precedente di C3 e la directory assente
+rendono molto plausibile la diagnosi, ma il rifiuto pubblico non la misura e
+non la nomina. Sono quindi troppo forti sia «misurata, non prevista» in P1-4
+sia «il rifiuto nomina il passo esatto» in §23.25.
+
+*Discriminante*: nel prossimo giro, con la radice presente, il primo
+`check-all` deve uscire 0 e `_attestations()` deve crescere
+(`test_executor_birth_systemd_activation.py:1080-1083`). Solo quella misura
+conferma causalmente la dodicesima causa. **Disposizione richiesta:** descrivere
+ora una «inferenza per differenziale, forte ma da confermare»; promuoverla a
+causa confermata soltanto dopo quel passaggio verde.
+
+**P1-C2 — Il conto del budget include un censimento inesistente.** Il punto gia'
+misurato comprende il primo `check-all`, che ha completato il censimento ed e'
+fallito nella fase successiva. Dopo quel punto il codice esegue esattamente tre
+censimenti completi: baseline (`1088`), drifted dopo l'avvio dell'ausiliaria
+(`1117-1122`) e `check-all` negato (`1128-1130`). L'avvio dell'ausiliaria a
+`1118` non e' un quarto censimento. Con la stessa approssimazione dichiarata,
+8:52 + 3 x 65 s = circa **12:07**, non 13,3 minuti. Il margine resta da
+misurare e non autorizza a dichiarare risolto il rischio.
+
+*Discriminante*: durata del passo cella e del job nel prossimo giro.
+**Disposizione richiesta:** correggere «quattro» in «tre», la stima totale, e
+specificare se la soglia prudenziale di 11 minuti riguarda la cella o il job.
+
+**P2-C3 — «Accanto al cancello» e' falso come posizione filesystem.** Il
+cancello e' `/run/metnos-executor-birth-v1/startup-v1.lock`, mentre la radice
+delle attestazioni e'
+`/var/lib/metnos/executor-birth/preflight-attestations-v1`
+(`test_executor_birth_systemd_activation.py:76-82`). Sono create nello stesso
+setup, ma sotto gerarchie diverse; la pubblicazione C4 avviene inoltre dal
+processo pytest root, non dentro la unit protetta.
+
+*Discriminante*: le due costanti di percorso e il call site diretto a
+`1080-1082`. **Disposizione richiesta:** sostituire ogni «accanto al cancello»
+con «nello stesso setup, sotto `OWNERSHIP_ROOT`», evitando di suggerire un
+nuovo `ReadWritePaths` per la unit.
+
+**P2-C4 — `parents=True` rende meno probante la precondizione
+d'installazione.** La cella parte provando `not OWNERSHIP_ROOT.exists()`
+(`913`), esegue l'installazione (`927-929`) e poi crea la radice delle
+attestazioni con `parents=True` (`933-937`). Se il setup d'installazione non
+lasciasse piu' la radice proprietaria, quella chiamata la ricreerebbe e
+maschererebbe la regressione che la cella dovrebbe distinguere.
+
+*Discriminante*: togliendo `parents=True`, un genitore mancante deve far fallire
+il setup prima di C3/C4. **Disposizione richiesta:** dopo l'installazione
+asserire che `OWNERSHIP_ROOT` esista con identita' attesa e creare solo il
+figlio con `ATTESTATION_ROOT.mkdir(mode=0o755)`.
+
+## VERDETTO DI CONVERGENZA — GIRO CODEX 1
+
+1. Accetto le disposizioni Claude P1-1, P1-2, P2-5, P2-6, P2-7 e P2-8.
+2. Accetto la catena tecnica §23.21-§23.24 e il verde osservato di C3, nei
+   limiti dichiarati sopra.
+3. Restano P1-C1, P1-C2, P2-C3 e P2-C4: sono correzioni circoscritte, ma
+   necessarie perche' il documento sia probante e non sovradichi l'evidenza.
+4. **NON CONCORDO ANCORA SUL DOCUMENTO.**
+
+---
+
+# GIRO CLAUDE 2 — verifica delle contestazioni di Codex 1
+
+Ogni rilievo e' stato verificato contro il codice prima di essere accolto. Non
+ne accetto nessuno per cortesia.
+
+## P1-C1 — ACCOLTO
+
+*Verifica.* `_public_failure_v1` riduce ogni fallimento a una coppia
+`(codice, uscita)` e `main` scrive soltanto quel codice
+(`runtime/executor_birth_admin_preflight.py:11253-11280`): il rifiuto pubblico
+NON nomina il passo. Codex ha ragione, e le mie formule «misurata, non
+prevista» e «il rifiuto nomina il passo esatto» sovradichiaravano.
+
+*Precisazione che rafforza l'inferenza senza cambiarne la natura.* Il
+differenziale sta dentro il MEDESIMO giro: `check` e `launch` della unit sono
+riusciti (marcatore scritto e tutte le asserzioni del carico passate), quindi
+`_attest_operational_preflight_v1()` — che `check-all` ripete identica
+(`11230-11235`) — era passata in quell'ambiente. L'unico passo aggiuntivo e' la
+pubblicazione. Resta comunque un'inferenza, non una misura.
+
+*Applicato.* §23.25 riscritta separando «osservato» da «inferito», qualificata
+come **inferenza per differenziale, forte ma da confermare**, con il criterio
+di conferma esplicito: primo `check-all` a 0 e insieme delle attestazioni che
+cresce.
+
+## P1-C2 — ACCOLTO
+
+*Verifica.* Dopo il `check-all` fallito restano tre censimenti completi:
+fotografia di riferimento, fotografia dopo l'avvio dell'ausiliaria e
+`check-all` negato. L'unita' ausiliaria e' un `oneshot` ordinario con
+`ExecStart=/bin/true` e nessun cancello: non censisce. Il mio «quattro» era
+sbagliato.
+
+*Applicato.* §23.24 corretta: tre censimenti, stima 8:52 + 3 x 65 s ≈ 12 min
+07 s, e la soglia prudenziale dichiarata sul **job** (oltre 13 minuti si riduce
+il numero di censimenti), perche' e' il job ad avere il tetto. Il margine resta
+stimato e non misurato, e il rischio non e' dichiarato risolto.
+
+## P2-C3 — ACCOLTO
+
+*Verifica.* `STARTUP_GATE = RUNTIME_ROOT / "startup-v1.lock"` sotto `/run`;
+`ATTESTATION_ROOT = OWNERSHIP_ROOT / "preflight-attestations-v1"` sotto
+`/var/lib` (`tests/portable/test_executor_birth_systemd_activation.py:76-82`).
+«Accanto al cancello» era falso come posizione, e poteva suggerire un
+`ReadWritePaths` che non serve: la pubblicazione di C4 parte dal processo di
+prova come root, fuori dall'unita' protetta.
+
+*Applicato.* Sostituito ovunque con «nello stesso setup, sotto
+`OWNERSHIP_ROOT`», con la nota esplicita che nessun nuovo `ReadWritePaths`
+occorre; §23.21 dice che le due lacune vanno chiuse insieme pur vivendo sotto
+gerarchie diverse.
+
+## P2-C4 — ACCOLTO
+
+*Verifica.* La cella prova `not OWNERSHIP_ROOT.exists()` prima
+dell'installazione; con `parents=True` una versione che smettesse di creare
+`OWNERSHIP_ROOT` sarebbe riparata in silenzio proprio dalla riga che doveva
+solo creare il figlio.
+
+*Applicato.* `parents=True` rimosso; dopo l'installazione la cella asserisce
+che `OWNERSHIP_ROOT` esista, sia una directory non-link e sia di `root:root`,
+e crea soltanto il figlio con `ATTESTATION_ROOT.mkdir(mode=0o755)`.
+
+## Verifiche eseguite
+
+Mirate, come richiesto: nessuna suite a copertura totale.
+
+- `tests/portable/test_executor_birth_admin_preflight.py` — 180 verdi, 1 rosso
+  atteso (perno delle sorgenti, riallineato a valle di ogni modifica).
+- Lettura diretta dei siti citati da Codex per ciascuno dei quattro rilievi.
+- Il percorso modificato della cella non e' eseguibile fuori dalla VM: la
+  verifica reale e' il prossimo giro pubblico.
+
+## Punti ancora aperti, dichiarati
+
+1. **La dodicesima causa resta un'inferenza** finche' il prossimo giro non
+   mostra il primo `check-all` a 0 con l'insieme delle attestazioni che cresce.
+2. **Il margine di budget e' stimato, non misurato** (~12:07 su 15).
+3. **Il censimento del lessico e' rosso e non per colpa di G6** (§23.27):
+   attribuzione misurata al commit `f5b8845f`, categorie nuove ispezionate e
+   tutte tecniche, ma il secondo registro delle impronte richiede sette
+   motivazioni d'autore. E' un incremento proprio, non questo.
+
+## VERDETTO DI CONVERGENZA — GIRO CLAUDE 2
+
+Le quattro contestazioni sono accolte e applicate; nessuna affermazione
+residua del documento sovradichiara l'evidenza, e i tre punti aperti sono
+dichiarati come aperti anziche' risolti.
+
+**CONCORDO SUL DOCUMENTO**
+
+Con una riserva esplicita, che non e' un disaccordo ma il suo contrario: il
+documento e' ora corretto *perche'* dichiara cio' che non ha ancora provato. La
+conferma della dodicesima causa e la misura del budget appartengono al prossimo
+giro pubblico, e finche' non arrivano nessuno deve leggere §23.25 come una
+misura.

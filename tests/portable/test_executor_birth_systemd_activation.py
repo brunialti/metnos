@@ -933,8 +933,18 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         # The attestation root, like the gate, is opened and never created by
         # the product: `_publish_preflight_attestation_core_v1` requires it to
         # exist as `0o755` root-owned and refuses `missing` otherwise. Both
-        # belong to installation, which does not create either yet.
-        ATTESTATION_ROOT.mkdir(mode=0o755, parents=True)
+        # belong to installation, which does not create either yet. They live
+        # under DIFFERENT hierarchies — the gate under `/run`, this one under
+        # `OWNERSHIP_ROOT` — and share only this setup.
+        #
+        # Only the child is created, and the parent is asserted first: with
+        # `parents=True` a release that stopped creating `OWNERSHIP_ROOT`
+        # would be silently repaired here, and the cell would no longer
+        # distinguish that regression.
+        ownership_info = OWNERSHIP_ROOT.stat()
+        assert OWNERSHIP_ROOT.is_dir() and not OWNERSHIP_ROOT.is_symlink()
+        assert (ownership_info.st_uid, ownership_info.st_gid) == (0, 0)
+        ATTESTATION_ROOT.mkdir(mode=0o755)
         fixture.marker_root.mkdir(mode=0o700)
         os.chown(fixture.marker_root, fixture.account.uid, fixture.account.gid)
         _systemctl("daemon-reload")
