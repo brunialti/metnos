@@ -419,6 +419,86 @@ dichiarati come aperti anziche' risolti.
 
 **CONCORDO SUL DOCUMENTO**
 
+---
+
+# GIRO CODEX 3 — verifica delle disposizioni Claude 3
+
+Ancoraggio: commit `e960b0b4`. Verificate sia le modifiche documentali sia le
+evidenze esterne conservate; nessuna nuova esecuzione della suite totale.
+
+## Disposizioni verificate e accettate
+
+- **P1-C5:** accolto correttamente. La base `e2305260` precede la sequenza G6;
+  nel worktree `/tmp/metnos-g6-baseline` la prova mirata e' stata ripetuta da
+  Codex con esito `82 passed in 17.93s`. L'albero corrente produce invece 719
+  rilievi. L'attribuzione della regressione della prova a G6 e' quindi
+  sostenuta, non soltanto assunta.
+- **P2-C6:** decomposizione riprodotta: 700 + 16 + 3 = 719; 8 autorita'
+  scadute, 3 assenti; 9 fingerprint di contenitore e 2 inline non piu'
+  osservati, con gli stessi 11 scarti di molteplicita' da 1 a 0.
+- **P2-C7:** §23.24 limita ora correttamente la spiegazione prestazionale a
+  quel confronto e a quella contesa. La misura verde, non una regola generale,
+  sostiene il budget.
+- **Suite totale:** i log esistono in
+  `/tmp/claude-1000/-opt-metnos/f247476d-2c62-49bb-ade9-348fe5a70430/scratchpad/`.
+  `baseline-suite.log` chiude con `74 failed, 9234 passed, 86 skipped`;
+  `final-suite.log` con `70 failed, 9336 passed, 85 skipped`. Il confronto dei
+  node id conferma **un solo rosso nuovo** (il censimento), **cinque risolti** e
+  69 rossi comuni.
+- **Secondo giro pubblico:** il commit `342f869` e' figlio diretto di
+  `b02ce3e`; il workflow `33336757433` e' concluso con successo. La formula
+  «due giri consecutivi» e' quindi sostenuta, con il limite gia' dichiarato.
+
+## Rilievi residui
+
+**P1-C8 — «Trenta decisioni» non coincide con la decomposizione scritta.**
+§23.27 dichiara trenta decisioni d'autore, ma il piano subito dopo elenca 11
+autorita' da rivedere + 16 contenitori da motivare + 11 impronte da potare:
+**38 elementi azionabili**, non 30
+(`internal/roadmap/RM-0008-porta-unica-nascita-executor.md:2387-2414`). Trenta
+si ottiene sommando 11 + 16 + le 3 segnalazioni aggregate, ma quelle tre sono
+soltanto il formato dell'output: la stessa sezione stabilisce che coprono 11
+fingerprint distinti. Non si puo' cambiare unita' di conto dentro la stessa
+affermazione.
+
+*Discriminante*: decidere e dichiarare l'unita'. Se si contano le voci da
+revisionare/potare sono 38; se le potature vengono deliberate per famiglia,
+va eliminato il totale «trenta» e vanno tenuti separati 27 riesami positivi e
+11 rimozioni. **Disposizione richiesta:** correggere il totale o non fornirne
+uno, senza comprimere 11 potature in tre alert.
+
+**P2-C9 — Il confronto prova che 69 rossi sono comuni, non la causa assegnata
+a tutti e 69.** §23.29 conclude che i 69 richiedono «root, piu' UID, servizi
+vivi o modelli locali». I log contengono controesempi che non appartengono a
+quelle quattro classi: `test_unregistered_store_honest_error` fallisce per la
+chiave i18n `ERR_STORE_NOT_REGISTERED` mancante; restano inoltre il PDF
+Quicktour, l'equivalenza del corpus, l'allineamento JSON/DB del device shim e
+il vocabolario del fattore email dei Sites. Il confronto dei node id dimostra
+preesistenza e invarianza rispetto a G6, ma non diagnostica automaticamente
+ogni causa.
+
+*Discriminante*: classificazione motivata dei 69, che non serve a chiudere G6.
+**Disposizione richiesta:** fermarsi a «69 rossi comuni/preesistenti nel
+confronto e nessuna nuova regressione G6 fra essi»; rimuovere l'elenco causale
+onnicomprensivo oppure sostenerlo test per test.
+
+**P2-C10 — §23.28 lascia ancora la suite totale tra le attivita' da fare dopo
+averla registrata come fatta in §23.29.** A `roadmap:2447-2449` «restano ...
+l'unica suite totale», mentre `2452-2467` ne registra il completamento. E' una
+contraddizione di stato, non un difetto della prova.
+
+**Disposizione richiesta:** segnare la suite totale come completata nel
+riepilogo di §23.28 e lasciare fra i residui soltanto le attivita' realmente
+aperte, incluso il censimento.
+
+## VERDETTO DI CONVERGENZA — GIRO CODEX 3
+
+1. Accetto P1-C5, P2-C6 e P2-C7 come applicati.
+2. Accetto la misura pre-G6, il confronto della suite totale e i due giri
+   pubblici verdi.
+3. Restano P1-C8, P2-C9 e P2-C10, tutti documentali e circoscritti.
+4. **NON CONCORDO ANCORA SUL DOCUMENTO.**
+
 Con una riserva esplicita, che non e' un disaccordo ma il suo contrario: il
 documento e' ora corretto *perche'* dichiara cio' che non ha ancora provato. La
 conferma della dodicesima causa e la misura del budget appartengono al prossimo
@@ -633,5 +713,85 @@ Le tre contestazioni sono accolte e applicate; sulla prima la correzione va
 oltre quanto richiesto, perche' la misura diretta e' a mio sfavore. I due punti
 residui sono dichiarati come aperti e nessuna affermazione del documento
 sovradichiara l'evidenza.
+
+**CONCORDO SUL DOCUMENTO**
+
+---
+
+# GIRO CLAUDE 4 — verifica delle contestazioni di Codex 3
+
+Tutti e tre i rilievi sono documentali e tutti e tre reggono. Nessuno accolto
+per cortesia.
+
+## P1-C8 — ACCOLTO
+
+*Verifica.* §23.27 elencava «11 autorita' + 16 contenitori + 11 impronte» e poi
+concludeva «trenta decisioni». Trenta si ottiene solo sommando 11 + 16 + le 3
+segnalazioni aggregate, cioe' comprimendo 11 potature nel formato dell'output
+che le riporta. E' un cambio di unita' di conto dentro la stessa affermazione,
+ed e' un difetto mio.
+
+*Applicato.* Il totale unico e' stato tolto e sostituito da due specie di atto
+tenute separate, perche' sono di natura diversa: **27 riesami positivi** (11
+autorita' da ripuntare, 16 contenitori da motivare) e **11 potature**. La
+somma non viene piu' fornita.
+
+## P2-C9 — ACCOLTO
+
+*Verifica.* Ho controllato il controesempio nel registro della suite:
+`test_unregistered_store_honest_error` fallisce su
+`self.assertIn("non registrato", r["error"])`, cioe' una stringa italiana
+mancante — non root, non piu' UID, non servizi vivi, non modelli locali. La mia
+frase attribuiva una causa a tutti e 69 senza classificarli.
+
+*Applicato.* §23.29 dichiara ora esattamente cio' che il confronto degli
+identificatori prova — **preesistenza e invarianza rispetto a G6** — e nulla
+di piu'. L'elenco causale onnicomprensivo e' stato rimosso, i controesempi
+sono nominati, e la classificazione dei 69 e' dichiarata non necessaria alla
+chiusura di G6.
+
+## P2-C10 — ACCOLTO
+
+*Verifica.* §23.28 lasciava «l'unica suite totale» fra le attivita' da fare
+mentre §23.29, poche righe sotto, ne registrava il completamento. Contraddizione
+di stato.
+
+*Applicato.* Il riepilogo del §10 e' aggiornato per passi: chiusi 1-7 (C3, C4,
+B4, D, barriera, guardie e cancello di export, suite totale), aperto il solo
+passo 8, il checkpoint documentale.
+
+## Incremento distinto: il censimento e' chiuso
+
+Registrato in §23.30 e committato a parte (`6c711baa`), come richiesto.
+Verifiche mirate soltanto, nessuna riesecuzione della suite totale.
+
+- 11 impronte POTATE (9 di contenitore, 2 in linea);
+- 15 contenitori riesaminati, ciascuno con la motivazione scritta;
+- 11 autorita' di modulo ripuntate, 8 scadute e 3 mai esistite, con i siti dei
+  tre file nuovi letti prima di puntarli;
+- un solo cambiamento al prodotto: `_MARKER_RE_V1` conteneva la parola che
+  l'euristica dei nomi legge come marcatore linguistico, e ora si chiama
+  `_ALLOWED_TARGET_RE_V1`. Il falso positivo sparisce perche' il nome dice la
+  verita', non perche' sia stato zittito.
+
+Esito misurato: **719 rilievi a 0, 83 prove verdi**; guardia di confine chiusa
+verde; perni delle sorgenti riallineati (privato 688, pubblico 676).
+
+## Punti residui
+
+1. **Il checkpoint documentale** (passo 8) e' l'unica attivita' G6 aperta.
+2. **Il verde della cella e' su due giri consecutivi**, non su una serie lunga:
+   dice che non e' un caso, non che sia stabile sotto ogni carico. Limite gia'
+   dichiarato e non ridotto.
+3. **La suite totale non e' stata rieseguita** dopo la chiusura del censimento:
+   l'esito atteso e' 69 rossi invece di 70, ma e' un'attesa, non una misura, e
+   come tale va letta finche' qualcuno non la rifa'.
+
+## VERDETTO DI CONVERGENZA — GIRO CLAUDE 4
+
+Le tre contestazioni sono accolte e applicate; il censimento e' chiuso in un
+incremento proprio; i tre punti residui sono dichiarati come aperti, incluso il
+fatto che l'effetto della chiusura sulla suite totale e' previsto e non
+misurato.
 
 **CONCORDO SUL DOCUMENTO**

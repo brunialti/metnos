@@ -2407,11 +2407,20 @@ settecentodiciannove. Decomposizione riprodotta:
    RIMUOVENDO gli stessi **11 fingerprint** non piu' posseduti dal sorgente
    (9 di contenitore, 2 in linea) — potatura, non aggiunta.
 
-Il piano richiede quindi: revisione di 11 autorita' di modulo, 16 contenitori
-nuovi con motivazione, potatura di 11 impronte. Sono decisioni d'autore, non un
-ricalcolo, e vanno in un incremento atomico proprio: mescolarle alla
-convergenza della cella l'avrebbe resa non atomica, e un riallineamento in
-blocco dei registri farebbe passare la prova smontando la guardia.
+Il piano richiede quindi due specie di atto, che NON vanno sommate in un
+totale unico (correzione del giro avversariale 4: la prima stesura diceva
+«trenta decisioni» cambiando unita' di conto dentro la stessa frase, perche'
+comprimeva 11 potature nelle 3 segnalazioni che le riportano):
+
+- **27 riesami positivi** — 11 autorita' di modulo da rivedere e ripuntare, 16
+  contenitori nuovi da motivare per iscritto;
+- **11 potature** — le impronte che il sorgente non possiede piu', da
+  RIMUOVERE.
+
+Sono decisioni d'autore, non un ricalcolo, e vanno in un incremento atomico
+proprio: mescolarle alla convergenza della cella l'avrebbe resa non atomica, e
+un riallineamento in blocco dei registri farebbe passare la prova smontando la
+guardia.
 
 **Stato: aperto, di proprieta' di G6, con la strada battuta e la misura
 corretta.** Ricalcolo, attribuzione e strumentazione sono riproducibili.
@@ -2444,9 +2453,17 @@ La catena di cause aperta il 30 agosto si chiude qui: dieci, undici e dodici
 erano tutte reali, ciascuna nascosta dalla precedente, e ognuna ha spostato il
 punto di rottura in avanti senza mai tornare indietro.
 
-**Ordine del §10: passi 1 e 2 chiusi.** B4 e D erano gia' provati; restano la
-barriera di pubblicazione (integrata, con una prova i18n adattata), la matrice
-connessa, l'unica suite totale e il checkpoint documentale.
+**Ordine del §10 — stato aggiornato** (correzione del giro avversariale 4: il
+riepilogo lasciava la suite totale fra le attivita' da fare mentre §23.29 ne
+registrava il completamento).
+
+Chiusi: C3 e C4 (passi 1-2); B4 e D, gia' provati (passi 3-4); la barriera di
+pubblicazione, integrata con una prova i18n adattata (passo 5); guardie di
+confine, profilo sorgenti e cancello di export, verdi (passo 6); **l'unica
+suite totale, consumata una volta sola e registrata in §23.29** (passo 7).
+
+Aperto: il checkpoint documentale (passo 8). Il debito del censimento, aperto
+in §23.27, e' chiuso in §23.30.
 
 
 ### 23.29 Unica suite totale — un solo rosso nuovo, ed e' il censimento
@@ -2475,5 +2492,53 @@ regressione che G6 introduce nell'intera suite, e G6 ne e' il proprietario.
 accettazione del manifesto 2A e inventario pubblico del Tutor: erano rossi alla
 base e sono verdi ora.
 
-I 69 rossi restanti sono preesistenti e invariati: richiedono root, piu' UID,
-servizi vivi o modelli locali, e non appartengono a G6.
+**I 69 rossi comuni: cio' che il confronto prova, e cio' che non prova**
+(correzione del giro avversariale 4). Il confronto degli identificatori di
+prova dimostra due cose e due sole: che quei 69 erano gia' rossi alla base
+pre-G6 e che G6 non li ha modificati. NON dimostra una causa comune, e la prima
+stesura ne attribuiva una a tutti e 69 — «root, piu' UID, servizi vivi o
+modelli locali» — senza classificarli uno per uno. E' falso per almeno un caso
+verificato: `test_unregistered_store_honest_error` fallisce su una stringa
+italiana mancante (`ERR_STORE_NOT_REGISTERED`), che non e' nessuna delle quattro
+classi. Restano nella stessa condizione il PDF Quicktour, l'equivalenza del
+corpus, l'allineamento JSON/DB del device shim e il vocabolario del fattore
+email dei Sites.
+
+La classificazione motivata dei 69 non serve a chiudere G6 e non viene fatta
+qui. L'affermazione sostenuta e' soltanto: **69 rossi comuni e preesistenti nel
+confronto, nessuna nuova regressione di G6 fra essi.**
+
+
+### 23.30 Il debito del censimento e' chiuso — 719 rilievi a zero
+
+Incremento distinto, come concordato con i giri avversariali: nessun
+riallineamento in blocco, e ogni voce letta prima di essere registrata, perche'
+un'impronta annotata senza leggerla e' una soppressione e non una revisione.
+
+**Potatura, 11 impronte.** Nove di contenitore e due in linea che il sorgente
+non possiede piu'. Le tre segnalazioni aggregate si chiudono TOGLIENDO, non
+aggiungendo eccezioni: era la direzione indicata dal giro Codex 2 ed era
+corretta.
+
+**Riesame, 15 contenitori con motivazione scritta.** Registri di confine (API,
+moduli, proprietari di sorgente, in doppia copia perche' il preflight firmato ne
+porta uno specchio), nomi di relazione systemd aggiunti dal gestore, proprietari
+dell'archivio del coordinatore, codici chiusi di carico assente, campi di stato
+letti da `/proc/self/status`, proiezioni e modi del dispositivo accoppiato.
+Tutti tecnici: nessun testo rivolto all'utente, §7.13 non e' in gioco.
+
+**Ripuntamento, 11 autorita' di modulo** — 8 scadute e 3 mai esistite. I siti
+dei tre file mai censiti sono stati letti prima di puntarli: confronti su
+`__main__`, prefissi di percorso, un'espressione regolare di identita',
+argomenti di `json.dumps`.
+
+**Un solo cambiamento al prodotto, e non per far passare la prova.**
+`_MARKER_RE_V1` conteneva la parola `MARKER`, che l'euristica dei nomi del
+censimento legge come marcatore linguistico. Non lo e': e' l'unico percorso
+bersaglio che il sondatore accetta. Ora si chiama `_ALLOWED_TARGET_RE_V1`, e il
+falso positivo sparisce perche' il nome dice la verita', non perche' sia stato
+zittito.
+
+Esito: **da 719 rilievi a 0, 83 prove verdi**. Con questo, l'unica regressione
+che G6 aveva introdotto nell'intera suite (§23.29) e' chiusa, e resta aperto
+soltanto il checkpoint documentale.
