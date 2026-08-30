@@ -125,6 +125,12 @@ class OwnershipCoordinatorStateV1(str, Enum):
 
 
 _STATES = tuple(OwnershipCoordinatorStateV1)
+_POST_CERTIFICATE_STATES_V1 = frozenset({
+    OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED.value,
+    OwnershipCoordinatorStateV1.BUILD_VERIFIED.value,
+    OwnershipCoordinatorStateV1.HEAD_REQUIRED.value,
+    OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED.value,
+})
 
 
 def _digest(encoded: bytes) -> str:
@@ -2574,6 +2580,117 @@ def _publish_certificate_with_prerequisite_v1(
         if reread.cutover_id != latest.cutover_id:
             raise OwnershipCoordinatorError("birth_ownership_recovery_required")
     return _result(latest)
+
+
+def _advance_to_preflight_verified_v1(
+    *, journal: OwnershipCoordinatorJournalV1,
+    prerequisite: _StartupPrerequisiteV1,
+    observe_installation: Callable[[], str],
+    observe_required_head: Callable[[], str],
+    observe_preflight: Callable[[], str],
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorResultV1:
+    """Isolated proof of the last three durable boundaries; no productive caller.
+
+    Each boundary is the same shape as the certificate one: observe the live
+    evidence, append ONE record, and only then let the seam interrupt. A new
+    process re-entering the function re-reads the evidence for every boundary
+    already crossed and refuses if it moved, so resumption never trusts what a
+    caller remembers — only what the journal and the system still say.
+
+    The three observers are injected rather than imported. The coordinator must
+    not grow a productive edge to the installed distribution, to the ownership
+    head or to the preflight: it is the thing those subsystems are cut over
+    BY, and an import here would make the boundary guard's graph a cycle.
+
+    No new record field is needed. What each boundary must agree with is
+    already carried forward: the closed build, the current proof and the
+    cutover identity. Adding fields would have changed the durable codec for
+    evidence the record already names.
+    """
+    if (
+        not isinstance(prerequisite, _StartupPrerequisiteV1)
+        or prerequisite._seal is not _PREREQUISITE_SEAL
+        or not callable(observe_installation)
+        or not callable(observe_required_head)
+        or not callable(observe_preflight)
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_prerequisite_untrusted")
+    records = journal.load()
+    if not records:
+        raise OwnershipCoordinatorError("birth_ownership_receipts_incomplete")
+    latest = records[-1]
+    if latest.state.value not in _POST_CERTIFICATE_STATES_V1:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "certificate not published",
+        )
+
+    def _carry(state: OwnershipCoordinatorStateV1):
+        return _copy_with_state(
+            latest, state=state, prerequisite=prerequisite,
+            cutover_id=latest.cutover_id, catalog_id=latest.catalog_id,
+            payload_hash=latest.certificate_payload_hash,
+            signature_hash=latest.certificate_signature_hash,
+        )
+
+    if latest.state is OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED:
+        if observe_installation() != latest.closed_build_id:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "build drift",
+            )
+        latest = _append_coordinator_record_v1(
+            journal, _carry(OwnershipCoordinatorStateV1.BUILD_VERIFIED),
+        )
+        if _crash_seam:
+            _crash_seam("build_verified")
+    elif latest.state is not OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED:
+        # Already past the boundary: re-read it instead of trusting the record.
+        if observe_installation() != latest.closed_build_id:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "build drift",
+            )
+
+    if latest.state is OwnershipCoordinatorStateV1.BUILD_VERIFIED:
+        if observe_required_head() != latest.cutover_id:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "head drift",
+            )
+        latest = _append_coordinator_record_v1(
+            journal, _carry(OwnershipCoordinatorStateV1.HEAD_REQUIRED),
+        )
+        if _crash_seam:
+            _crash_seam("head_required")
+    elif latest.state is OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED:
+        if observe_required_head() != latest.cutover_id:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "head drift",
+            )
+
+    if latest.state is OwnershipCoordinatorStateV1.HEAD_REQUIRED:
+        # The definitive preflight runs again on the effective topology and
+        # publishes its attestation. After the point of no return the recovery
+        # may not delete the certificate or the required head, so this is the
+        # last boundary and it is crossed only once the attestation exists.
+        if not _DIGEST_RE.fullmatch(observe_preflight() or ""):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "preflight attestation",
+            )
+        latest = _append_coordinator_record_v1(
+            journal, _carry(OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED),
+        )
+        if _crash_seam:
+            _crash_seam("preflight_verified")
+
+    reread = journal.load()[-1]
+    if (
+        reread.state is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+        or reread.request_id != latest.request_id
+        or reread.cutover_id != latest.cutover_id
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "final record",
+        )
+    return _result(reread)
 
 
 __all__ = [

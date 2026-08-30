@@ -35,6 +35,7 @@ from executor_birth_ownership_coordinator import (
     OwnershipCoordinatorError, OwnershipCoordinatorJournalV1,
     OwnershipCoordinatorStateV1, _prepare_under_maintenance_v1,
     _deployment_lock_for_test_v1, _deployment_lock_v1, _prepared_record,
+    _advance_to_preflight_verified_v1,
     _publish_certificate_with_prerequisite_v1,
     _require_deployment_lock_session_v1,
     _require_test_deployment_lock_session_v1,
@@ -741,3 +742,161 @@ def test_product_deployment_lock_fails_off_linux_before_io(monkeypatch):
         with _deployment_lock_v1():
             pass
     assert failure.value.code == "birth_ownership_platform_unsupported"
+
+
+def _reach_certificate_published(tmp_path):
+    journal, _result = _prepared(tmp_path)
+    authorities = _portable_authorities()
+    certificate = tmp_path / "certificate-final"
+    certificate.mkdir(mode=0o755)
+    published = _publish_certificate_with_prerequisite_v1(
+        journal=journal, certificate_directory=certificate,
+        authorities=authorities,
+        prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
+        observe_maintenance=_maintenance,
+    )
+    assert published.state is OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+    return journal
+
+
+def _observers(journal, *, build=None, head=None, preflight=None):
+    latest = journal.load()[-1]
+    return {
+        "observe_installation": lambda: build or latest.closed_build_id,
+        "observe_required_head": lambda: head or latest.cutover_id,
+        "observe_preflight": lambda: preflight or D("7"),
+    }
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+def test_isolated_coordinator_reaches_and_rereads_preflight_verified(tmp_path):
+    """The three remaining boundaries, in order, each one durable."""
+    journal = _reach_certificate_published(tmp_path)
+    result = _advance_to_preflight_verified_v1(
+        journal=journal,
+        prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
+        **_observers(journal),
+    )
+    assert result.state is OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+    states = [record.state for record in journal.load()]
+    assert states[-3:] == [
+        OwnershipCoordinatorStateV1.BUILD_VERIFIED,
+        OwnershipCoordinatorStateV1.HEAD_REQUIRED,
+        OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED,
+    ]
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+def test_isolated_coordinator_is_idempotent_once_verified(tmp_path):
+    """A repetition re-reads the evidence; it does not append a second time."""
+    journal = _reach_certificate_published(tmp_path)
+    prerequisite = _startup_prerequisite_for_test(D("5"), D("6"))
+    first = _advance_to_preflight_verified_v1(
+        journal=journal, prerequisite=prerequisite, **_observers(journal),
+    )
+    before = len(journal.load())
+    again = _advance_to_preflight_verified_v1(
+        journal=journal, prerequisite=prerequisite, **_observers(journal),
+    )
+    assert again.state is first.state
+    assert len(journal.load()) == before
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+@pytest.mark.parametrize("drift", ["build", "head"])
+def test_isolated_coordinator_denies_evidence_drift(tmp_path, drift):
+    """Resumption trusts what the system still says, not what was recorded."""
+    journal = _reach_certificate_published(tmp_path)
+    overrides = {drift: D("8")}
+    with pytest.raises(OwnershipCoordinatorError) as denied:
+        _advance_to_preflight_verified_v1(
+            journal=journal,
+            prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
+            **_observers(journal, **overrides),
+        )
+    assert str(denied.value).startswith("birth_ownership_recovery_required")
+    assert journal.load()[-1].state is (
+        OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+        if drift == "build"
+        else OwnershipCoordinatorStateV1.BUILD_VERIFIED
+    )
+
+
+def _advance_observers_for_process(journal_directory):
+    journal = OwnershipCoordinatorJournalV1(journal_directory, root_owned=False)
+    latest = journal.load()[-1]
+    build, head = latest.closed_build_id, latest.cutover_id
+    return journal, {
+        "observe_installation": lambda: build,
+        "observe_required_head": lambda: head,
+        "observe_preflight": lambda: D("7"),
+    }
+
+
+def _crash_advance(journal_directory, point):
+    journal, observers = _advance_observers_for_process(journal_directory)
+
+    def crash(observed):
+        if observed == point:
+            os._exit(91)
+
+    _advance_to_preflight_verified_v1(
+        journal=journal,
+        prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
+        _crash_seam=crash, **observers,
+    )
+
+
+def _resume_advance(journal_directory, queue):
+    try:
+        journal, observers = _advance_observers_for_process(journal_directory)
+        result = _advance_to_preflight_verified_v1(
+            journal=journal,
+            prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
+            **observers,
+        )
+        queue.put(result.state.value)
+    except Exception as exc:  # the resumed process reports, never raises out
+        queue.put("error:" + str(exc))
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux coordinator")
+@pytest.mark.parametrize("point", [
+    "build_verified", "head_required", "preflight_verified",
+])
+def test_process_death_resumes_from_every_remaining_boundary(tmp_path, point):
+    """One forward run, then a resume from each durable boundary.
+
+    The resumed process is a NEW process: it rebuilds everything from the
+    journal on disk and from the live evidence, and receives no flag, path or
+    open descriptor from the one that died. That is the property the mandate
+    asks for, and it is why the crash is a real `_exit` rather than a raised
+    exception — an exception would unwind through state the survivor still
+    holds in memory.
+    """
+    journal = _reach_certificate_published(tmp_path)
+    context = multiprocessing.get_context("spawn")
+    process = context.Process(
+        target=_crash_advance, args=(journal.directory, point),
+    )
+    process.start()
+    process.join(timeout=20)
+    assert process.exitcode == 91
+
+    queue = context.Queue()
+    recovery = context.Process(
+        target=_resume_advance, args=(journal.directory, queue),
+    )
+    recovery.start()
+    recovery.join(timeout=20)
+    assert recovery.exitcode == 0
+    assert queue.get(timeout=5) == "PREFLIGHT_VERIFIED"
+
+    reopened = OwnershipCoordinatorJournalV1(journal.directory, root_owned=False)
+    states = [record.state for record in reopened.load()]
+    # Every boundary appears exactly once however late the death arrived.
+    assert states[-3:] == [
+        OwnershipCoordinatorStateV1.BUILD_VERIFIED,
+        OwnershipCoordinatorStateV1.HEAD_REQUIRED,
+        OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED,
+    ]
