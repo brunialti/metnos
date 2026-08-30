@@ -1857,3 +1857,36 @@ portabile completa: 8 rossi, tutti già presenti sulla base `31954334` e
 legati a `root` o all'ambiente CI; la base ne aveva 9, e il nono era proprio
 l'attestazione di sorgente ora riallineata. G6-C resta `active` fino
 all'esito verde del prossimo run pubblico; il passo successivo è C4.
+
+Il quarto run `33323084847` ha superato il diniego sulle proprietà e si è
+fermato più avanti, su `systemd origin identity`. Causa riprodotta per misura
+locale su systemd 255.4: **una relazione può nominare un'unità che non
+esiste**; systemd conserva l'arco e riporta il bersaglio come `not-found`
+(osservato `After=network.target` sul manager utente). La cattura pretendeva
+invece `LoadState=loaded` per ogni unità raggiunta, rendendo impossibile
+costruire il grafo canonico su qualunque sistema reale. Il nodo assente è ora
+un quarto tipo di origine, simmetrico a `manager_virtual`: nessun file,
+nessun proprietario, nessuno stato, `load_state` vincolato a `not-found`.
+L'evidenza non si perde, perché la comparsa successiva di quell'unità cambia
+la fotografia effettiva invece di nascondersi dentro.
+
+Nello stesso run il job Windows è diventato rosso con «rustup could not choose
+a version of cargo to run»: la deviazione della home introdotta da `31954334`
+per isolare i test portabili faceva perdere a rustup il proprio toolchain.
+`tests/portable/conftest.py` fissa ora `RUSTUP_HOME` e `CARGO_HOME` alla loro
+posizione reale prima di spostare la home; è ambiente rotto, non diniego sotto
+prova.
+
+I job 2A dello stesso run sono abortiti prima di eseguire una sola cella con
+`frozen acceptance baseline differs from the pre-fix commit;
+changed=['tests/portable/conftest.py']`. La base congelata 2A è quindi da
+rifotografare: il file è stato modificato da `31954334` e nuovamente da questo
+incremento. Finché la fotografia non viene rifatta, metà del workflow non
+produce informazione.
+
+Commit privati `90a3b01f` (unità assente, diagnostica parlante, rustup) oltre
+a `eee22bf7`, `01602dfc`, `8d15ac43`, `d598d3be`. La pubblicazione resta
+rinviata finché un secondo agente ha lavoro non committato nell'albero
+condiviso: l'export legge il filesystem e prenderebbe il suo incremento a
+metà. Il perno della revisione sorgenti va ricalcolato a ogni pubblicazione,
+perché ogni commit che tocca una radice censita lo invalida per tutti.
