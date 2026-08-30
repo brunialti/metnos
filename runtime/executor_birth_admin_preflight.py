@@ -736,7 +736,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:c1a2f132719bc629f2694fe62b82052e7edc791b3c302ca3cd06f38cd6a669ef"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:a1e737325b8966ab8f979d7c944c505d4c49e9044fd35dbaf47f7423fdabd53d"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -11972,11 +11972,27 @@ def _normalize_systemd_supplementary_groups_v1(value: str) -> tuple[str, ...]:
 def _normalize_systemd_named_set_v1(
     value: str, *, pattern: str, detail: str,
 ) -> tuple[str, ...]:
+    """Normalize one named set, keeping systemd's negation marker intact.
+
+    Measured on systemd 255.4: a unit that restricts nothing renders the
+    property as a bare `~` — the empty NEGATED set, "deny nothing" — and a
+    unit that restricts something renders the plain names. Rejecting the
+    marker denied every unit that had set no restriction, which is most of
+    them. The marker is kept as its own first token rather than dropped:
+    `~` and an empty set are opposite meanings, and collapsing them would let
+    a later drift from one to the other pass unnoticed.
+    """
+    words = tokenize_systemd_words_v1(value)
+    negated = bool(words) and words[0].startswith("~")
+    if negated:
+        head = words[0][1:]
+        words = ((head,) if head else ()) + words[1:]
     normalized = _normalize_systemd_word_set_v1(
-        tokenize_systemd_words_v1(value), detail=detail,
+        words, detail=detail,
         validator=lambda item: re.fullmatch(pattern, item) is not None,
     )
-    return _systemd_scalar_set_v1(normalized)
+    scalar = _systemd_scalar_set_v1(normalized)
+    return ("~", *scalar) if negated else scalar
 
 
 def _normalize_systemd_unit_list_v1(value: str) -> tuple[str, ...]:
