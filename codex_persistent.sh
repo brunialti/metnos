@@ -1,25 +1,148 @@
 #!/usr/bin/env bash
-# Codex CLI — sessione persistente in tmux
+# Codex CLI — sessione persistente in tmux (SOLO Codex)
 #
-# Uso locale:   bash /opt/metnos/codex_persistent.sh
-# Uso da SSH:   ssh -t roberto@192.168.1.33 bash /opt/metnos/codex_persistent.sh
+# Uso locale:   bash <repo>/codex_persistent.sh
+# Uso da SSH:   ssh -t roberto@192.168.1.33 bash <repo>/codex_persistent.sh
 #
-# Se la sessione tmux esiste, si riconnette. Se non esiste, prova a riprendere
-# l'ultima sessione Codex del repository e, se non disponibile, ne avvia una.
-# L'istanza remota deve poter eseguire E2E HTTP/sidecar sul Beelink.
+# Questo script possiede UNA sessione tmux dedicata a Codex su UNA cartella
+# di lavoro. Se la sessione esiste e Codex ci gira, si riconnette; se esiste
+# ma Codex non c'e' piu' (uscita o crash), lo fa ripartire; se non esiste,
+# la crea. Si ferma invece, senza attaccarsi, quando:
+#   - nella sessione gira Claude (quella sessione e' di claude_persistent.sh);
+#   - Codex gira gia' su questa cartella in un'altra sessione tmux, o due
+#     volte nella stessa: due istanze sullo stesso repository si pestano i
+#     piedi, e chi si attacca non ha modo di accorgersene.
+#
+# NOTA sui target tmux. Un `-t nome` senza `=` e' un target di FINESTRA e fa
+# match di prefisso: `-t metnos` trova la sessione `metnos-codex`, e
+# `-t claude` trova la finestra chiamata `claude` di un'altra sessione. E'
+# cosi' che i due ruoli si erano mescolati. Qui ogni target e' esatto: `=`
+# per la sessione, `:` quando serve indicarla come sessione.
+#
+# Lo script vale per qualunque repository: nome sessione, nome finestra,
+# colore e cartella di lavoro si ricavano dalla sua posizione.
 # Il profilo puo' essere ridotto impostando CODEX_SANDBOX nell'ambiente.
 set -euo pipefail
 
-SESSION="${CODEX_TMUX_SESSION:-metnos-codex}"
-WORKDIR="${CODEX_WORKDIR:-/opt/metnos}"
+AGENT="codex"
+OTHER_AGENT="claude"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+OTHER_SCRIPT="$SCRIPT_DIR/claude_persistent.sh"
+WORKDIR="${CODEX_WORKDIR:-$SCRIPT_DIR}"
+
+# Identita' derivata dalla cartella, non scritta a mano: l'ultimo livello del
+# percorso piu' il nome dell'agente. Cosi' lo script si puo' copiare in un
+# altro repository senza toccare nulla, e due repository non possono
+# rivendicare lo stesso nome.
+PROJECT="$(basename "$WORKDIR")"
+SESSION="${CODEX_TMUX_SESSION:-${PROJECT}-${AGENT}}"
+WINDOW_NAME="${CODEX_WINDOW_NAME:-$(printf '%s-%s' "$PROJECT" "$AGENT" | tr '[:lower:]' '[:upper:]')}"
+
+# Codex non ha un comando di colore come Claude Code, quindi il colore vive
+# nella barra di stato tmux della sessione. Dice l'AGENTE, non il progetto:
+# uguale in ogni repository, e diverso da quello di Claude, cosi' a colpo
+# d'occhio si sa quale dei due si sta guardando. Il progetto lo dicono gia'
+# nome della finestra e barra di stato.
+SESSION_COLOR="${CODEX_TMUX_COLOR:-magenta}"
 CODEX_SANDBOX="${CODEX_SANDBOX:-danger-full-access}"
 CODEX_APPROVAL="${CODEX_APPROVAL_POLICY:-never}"
 CODEX_BYPASS="${CODEX_BYPASS_SANDBOX:-1}"
 
+require_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        printf 'Errore: comando richiesto non trovato: %s\n' "$1" >&2
+        exit 1
+    fi
+}
+
 apply_tuning() {
-    tmux set-option -t "$SESSION" -g history-limit 1000 >/dev/null 2>&1 || true
-    tmux set-window-option -t "$SESSION" -g aggressive-resize on >/dev/null 2>&1 || true
+    tmux set-option -t "=$SESSION:" -g history-limit 1000 >/dev/null 2>&1 || true
+    tmux set-window-option -t "=$SESSION:" -g aggressive-resize on >/dev/null 2>&1 || true
     tmux set-option -sg escape-time 10 >/dev/null 2>&1 || true
+}
+
+# Nome e colore della sessione. Si riapplicano ad ogni avvio: sono derivati,
+# quindi riscriverli non puo' che riportare l'identita' voluta.
+apply_identity() {
+    tmux rename-window -t "=$SESSION:" "$WINDOW_NAME" >/dev/null 2>&1 || true
+    tmux set-option -t "=$SESSION" status-style "fg=black,bg=$SESSION_COLOR" >/dev/null 2>&1 || true
+    tmux set-option -t "=$SESSION" status-left "[$WINDOW_NAME] " >/dev/null 2>&1 || true
+}
+
+session_exists() {
+    tmux has-session -t "=$SESSION" 2>/dev/null
+}
+
+# Censisce gli agenti CLI vivi in TUTTE le sessioni tmux: una riga
+# "sessione<TAB>agente<TAB>pid<TAB>cartella" per ognuno.
+#
+# Si guardano SOLO i figli diretti del pannello: e' li' che vive la CLI, e
+# cosi' un transitorio `bash codex_persistent.sh` non viene contato come
+# Codex. L'eventuale interprete iniziale (node e simili) viene scartato,
+# quindi conta il nome del programma e non la riga di comando. La cartella
+# e' quella reale del processo, non quella del pannello: e' l'unica che dice
+# su quale repository sta lavorando l'agente.
+agent_inventory() {
+    local session pane_pid child token cwd
+    local -a argv
+    while IFS= read -r session; do
+        [ -n "$session" ] || continue
+        while IFS= read -r pane_pid; do
+            [ -n "$pane_pid" ] || continue
+            for child in $(ps --ppid "$pane_pid" -o pid= 2>/dev/null); do
+                mapfile -t -d '' argv < "/proc/$child/cmdline" 2>/dev/null || continue
+                token="${argv[0]##*/}"
+                case "$token" in
+                    node|bun|deno|python|python3)
+                        token="${argv[1]:-}"; token="${token##*/}" ;;
+                esac
+                case "$token" in
+                    claude|codex) ;;
+                    *) continue ;;
+                esac
+                cwd="$(readlink -f "/proc/$child/cwd" 2>/dev/null || printf '?')"
+                printf '%s\t%s\t%s\t%s\n' "$session" "$token" "$child" "$cwd"
+            done
+        done < <(tmux list-panes -s -t "=$session:" -F '#{pane_pid}' 2>/dev/null)
+    done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null)
+}
+
+# Righe del censimento filtrate per agente, e opzionalmente per sessione.
+inventory_rows() {
+    local want_agent="$1" want_session="${2:-}"
+    agent_inventory | awk -F'\t' -v a="$want_agent" -v s="$want_session" \
+        '$2 == a && (s == "" || $1 == s)'
+}
+
+# La sessione deve ospitare questo agente e nessun altro.
+require_disjoint_session() {
+    if [ -n "$(inventory_rows "$OTHER_AGENT" "$SESSION")" ]; then
+        printf 'Errore: nella sessione tmux "%s" gira %s.\n' "$SESSION" "$OTHER_AGENT" >&2
+        printf 'Questo script apre solo %s. Usa %s, oppure chiudi %s in quella sessione.\n' \
+            "$AGENT" "$OTHER_SCRIPT" "$OTHER_AGENT" >&2
+        exit 1
+    fi
+}
+
+# Questo agente deve girare al piu' una volta su questa cartella di lavoro.
+# Un agente sulla stessa cartella in un'altra sessione e' un doppione; lo
+# stesso agente in un altro repository non lo e' e non viene toccato.
+require_single_instance() {
+    local rows elsewhere
+    rows="$(inventory_rows "$AGENT" | awk -F'\t' -v w="$WORKDIR" '$4 == w')"
+    [ -n "$rows" ] || return 0
+    elsewhere="$(printf '%s\n' "$rows" | awk -F'\t' -v s="$SESSION" '$1 != s')"
+    if [ -z "$elsewhere" ] && [ "$(printf '%s\n' "$rows" | wc -l)" -le 1 ]; then
+        return 0
+    fi
+    printf 'Errore: %s risulta gia in esecuzione su %s:\n' "$AGENT" "$WORKDIR" >&2
+    printf '%s\n' "$rows" | awk -F'\t' '{printf "  sessione %s, pid %s\n", $1, $3}' >&2
+    printf 'Riconnettiti a quella sessione (tmux attach -t "=<sessione>"), oppure chiudila prima di riprovare.\n' >&2
+    exit 1
+}
+
+agent_is_running() {
+    [ -n "$(inventory_rows "$AGENT" "$SESSION")" ]
 }
 
 codex_new_command() {
@@ -40,33 +163,44 @@ codex_resume_command() {
     printf '%s' "${CODEX_RESUME% }"
 }
 
-start_codex() {
+start_agent() {
     local resume_cmd new_cmd
     resume_cmd="$(codex_resume_command)"
     new_cmd="$(codex_new_command)"
     # --last evita il picker; la fallback copre il primo avvio senza sessioni.
-    tmux send-keys -t "$SESSION" "${resume_cmd} || ${new_cmd}" Enter
+    tmux send-keys -t "=$SESSION:" "${resume_cmd} || ${new_cmd}" Enter
 }
 
-if [ -n "${TMUX:-}" ]; then
-    if tmux has-session -t "$SESSION" 2>/dev/null; then
+# Porta la sessione allo stato voluto: esiste, e dentro gira un solo Codex.
+ensure_session() {
+    if session_exists; then
+        require_disjoint_session
+        require_single_instance
         apply_tuning
-        exec tmux switch-client -t "$SESSION"
+        apply_identity
+        if agent_is_running; then
+            echo "Sessione '$SESSION' trovata con $AGENT attivo, riconnessione..."
+        else
+            echo "Sessione '$SESSION' trovata senza $AGENT, lo riavvio..."
+            start_agent
+        fi
+        return
     fi
+    require_single_instance
+    echo "Creo nuova sessione '$SESSION' per $AGENT..."
     tmux new-session -d -s "$SESSION" -c "$WORKDIR"
     apply_tuning
-    start_codex
-    exec tmux switch-client -t "$SESSION"
-fi
+    apply_identity
+    start_agent
+}
 
-if tmux has-session -t "$SESSION" 2>/dev/null; then
-    apply_tuning
-    echo "Sessione '$SESSION' trovata, riconnessione..."
-    exec tmux attach -t "$SESSION"
-fi
+require_command tmux
+require_command codex
 
-echo "Creo nuova sessione '$SESSION'..."
-tmux new-session -d -s "$SESSION" -c "$WORKDIR"
-apply_tuning
-start_codex
-exec tmux attach -t "$SESSION"
+ensure_session
+
+# Se siamo già dentro tmux, switch invece di attach (evita nesting).
+if [ -n "${TMUX:-}" ]; then
+    exec tmux switch-client -t "=$SESSION"
+fi
+exec tmux attach -t "=$SESSION"
