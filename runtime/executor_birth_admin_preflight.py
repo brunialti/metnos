@@ -736,7 +736,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:b142384fc396ea3cd0093b7a1895b4820c5724b56c3ef82cd10673a5be79b0ab"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:36a1d941fc9cbe3cd918fe6d104857eae4c1bb822d3f6b0f900c9412ca53a835"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -11809,12 +11809,29 @@ def _systemd_property_plan_v1(
             for name in ("OnBootSec", "OnActiveSec", "OnUnitActiveSec")
         )
         calendar_count = int(("Timer", "OnCalendar") in configured)
-        # systemd 255 emits one empty line for an unset timer collection.
-        cardinalities["TimersMonotonic"] = max(1, monotonic_count)
-        cardinalities["TimersCalendar"] = max(1, calendar_count)
+        # Measured on systemd 255.4 with the exact argv this module builds
+        # (`--no-pager --plain --all show --property=...`): a timer collection
+        # with no entries is OMITTED, it does not render as an empty line.
+        # Only scalar and list properties render empty. Claiming one value for
+        # an unset collection put a name in the expected set that can never be
+        # observed, and denied every real timer without OnCalendar.
+        cardinalities["TimersMonotonic"] = monotonic_count
+        cardinalities["TimersCalendar"] = calendar_count
     return _SystemdPropertyPlanV1(
         entry.class_name, requested_properties,
         tuple(sorted(cardinalities.items())),
+    )
+
+
+def _systemd_set_detail_v1(
+    reason: str, expected: set[str], observed: set[str],
+) -> str:
+    """Name the two sides of a set difference, deterministically and bounded."""
+    missing = sorted(expected - observed)
+    unexpected = sorted(observed - expected)
+    return (
+        f"{reason} missing={','.join(missing[:12]) or '-'} "
+        f"unexpected={','.join(unexpected[:12]) or '-'}"
     )
 
 
@@ -11837,10 +11854,20 @@ def _validate_systemd_property_cardinality_v1(
         name for name, count in cardinalities.items() if count != 0
     }
     if set(observed) != expected_names:
-        raise _invalid("systemd property set")
+        # The detail names the difference. It never reaches stderr, and the
+        # interface systemd exposes has already moved once under us: a denial
+        # that only says "the set differs" costs a full CI round trip to learn
+        # which name it was. Property names are not payload; values are, and
+        # stay out.
+        raise _invalid(_systemd_set_detail_v1(
+            "systemd property set", expected_names, set(observed),
+        ))
     for name, count in cardinalities.items():
         if len(observed.get(name, ())) != count:
-            raise _invalid("systemd property cardinality")
+            raise _invalid(
+                "systemd property cardinality "
+                f"{name} expected={count} observed={len(observed.get(name, ()))}"
+            )
 
 
 def _systemd_single_property_v1(

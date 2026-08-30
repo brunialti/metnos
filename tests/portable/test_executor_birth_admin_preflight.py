@@ -3815,3 +3815,55 @@ def test_timer_parser_matches_real_repeated_systemd_255_shape() -> None:
         preflight.parse_systemd_timer_properties_v1,
         ("{ OnBootUSec=15min ; next_elapse=[n/a] ; injected=yes }",), (),
     )
+
+
+def test_unset_timer_collection_is_absent_not_empty() -> None:
+    """systemd omits a timer collection with no entries; it is not empty.
+
+    Measured on systemd 255.4 with the exact argv this module builds: a timer
+    carrying only monotonic entries renders `TimersMonotonic` once per entry
+    and does not render `TimersCalendar` at all. Only scalar and list
+    properties render empty. Claiming one value for an unset collection put a
+    name in the expected set that can never be observed.
+    """
+    observed = {
+        "TimersMonotonic": ("{ OnActiveUSec=100ms ; next_elapse=[n/a] }",),
+        "AccuracyUSec": ("1ms",),
+    }
+    accepted = preflight._SystemdPropertyPlanV1(
+        "gated_timer", ("TimersMonotonic", "TimersCalendar", "AccuracyUSec"),
+        (("AccuracyUSec", 1), ("TimersCalendar", 0), ("TimersMonotonic", 1)),
+    )
+    preflight._validate_systemd_property_cardinality_v1(accepted, observed)
+
+    claiming_empty_collection = preflight._SystemdPropertyPlanV1(
+        "gated_timer", ("TimersMonotonic", "TimersCalendar", "AccuracyUSec"),
+        (("AccuracyUSec", 1), ("TimersCalendar", 1), ("TimersMonotonic", 1)),
+    )
+    with pytest.raises(preflight.PreflightError) as caught:
+        preflight._validate_systemd_property_cardinality_v1(
+            claiming_empty_collection, observed,
+        )
+    # The denial names the difference: learning which property it was must not
+    # cost a CI round trip.
+    assert "TimersCalendar" in caught.value.detail
+    assert "missing=" in caught.value.detail
+
+
+def test_property_denials_name_the_difference() -> None:
+    plan = preflight._SystemdPropertyPlanV1(
+        "gated_service", ("ExecStart", "FragmentPath"),
+        (("ExecStart", 1), ("FragmentPath", 1)),
+    )
+    with pytest.raises(preflight.PreflightError) as unexpected:
+        preflight._validate_systemd_property_cardinality_v1(
+            plan, {"ExecStart": ("x",), "FragmentPath": ("y",),
+                   "Surprise": ("z",)},
+        )
+    assert "unexpected=Surprise" in unexpected.value.detail
+
+    with pytest.raises(preflight.PreflightError) as cardinality:
+        preflight._validate_systemd_property_cardinality_v1(
+            plan, {"ExecStart": ("x", "x2"), "FragmentPath": ("y",)},
+        )
+    assert "ExecStart expected=1 observed=2" in cardinality.value.detail

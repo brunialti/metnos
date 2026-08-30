@@ -68,6 +68,9 @@ from sign import (
 
 SHADOW_RELATIVE = Path("contract-publications-shadow")
 BINDING_FILE = "binding.json"
+_CODE_PAYLOAD_UNAVAILABLE_CODES = frozenset({
+    "code_file_missing", "code_file_invalid", "code_file_unreadable",
+})
 BINDING_VERSION = 1
 GENERATION_FILES = (
     "manifest.toml",
@@ -83,6 +86,7 @@ RETIREMENT_VERSION = 1
 RETIREMENT_SIGNATURE_DOMAIN = b"metnos.contract-retirement/v1\x00"
 DEFAULT_LOCK_TIMEOUT = 5.0
 DEFAULT_REPLACE_TIMEOUT = 2.0
+PUBLICATION_AUDIT_BASENAME = "contract-publications.audit.jsonl"
 WINDOWS_POWER_LOSS_LIMIT = (
     "NTFS process-crash atomicity is supported; sudden-power-loss durability "
     "of the newest directory entry is not claimed"
@@ -296,6 +300,34 @@ def _auditable_event(fields: Mapping[str, object]) -> dict[str, object]:
     return event
 
 
+def _is_productive_store_root(store_root: Path | str) -> bool:
+    _container, productive_root, _marker = _production_paths()
+    return Path(os.path.abspath(store_root)) == productive_root
+
+
+def _record_productive_audit(
+    store_root: Path | str,
+    event: Mapping[str, object],
+) -> None:
+    """Durably authorize a productive mutation before its first write.
+
+    This boundary is inside the store rather than an optional command wrapper,
+    so direct callers and the sealed Birth publisher cannot omit it.  Isolated
+    stores deliberately remain free of operational audit side effects.
+    """
+    if not _is_productive_store_root(store_root):
+        return
+    from audit_jsonl import append_unique_jsonl
+
+    try:
+        append_unique_jsonl(
+            Path(_C.PATH_USER_STATE) / PUBLICATION_AUDIT_BASENAME,
+            event,
+        )
+    except Exception as exc:
+        raise ContractStoreError("publication_audit_unavailable") from exc
+
+
 def _trusted_public_tuple(
     trusted_publics: Iterable[TrustedPublic],
 ) -> tuple[TrustedPublic, ...]:
@@ -411,10 +443,36 @@ def production_store_mode() -> ProductionStoreMode:
         raise ContractStoreError(exc.code, exc.detail) from exc
 
 
+def _require_productive_installation_source() -> None:
+    """Bind productive writes to the explicitly selected installation.
+
+    The user-state directory is shared by every checkout owned by the same
+    account.  Deriving ``PATH_ROOT`` from the imported module is therefore not
+    enough for a productive mutation: a temporary checkout would otherwise
+    address the installed instance's store.  Productive services and install
+    procedures already carry ``METNOS_INSTALL_ROOT``; isolated fixtures use an
+    explicit ``store_root`` and never enter this boundary.
+    """
+    configured_text = os.environ.get("METNOS_INSTALL_ROOT", "").strip()
+    source_root = Path(__file__).resolve().parents[1]
+    if not configured_text:
+        raise ContractStoreError("publication_installation_root_required")
+    configured_root = Path(os.path.abspath(configured_text))
+    selected_root = Path(os.path.abspath(_C.PATH_ROOT))
+    if configured_root != source_root or selected_root != source_root:
+        raise ContractStoreError(
+            "publication_installation_root_mismatch",
+            f"configured={configured_root} source={source_root}",
+        )
+
+
 def _publication_root(store_root: Path | str | None) -> tuple[Path, bool]:
     """Resolve an isolated fixture or an activated productive store."""
     if store_root is not None:
         return _m2_shadow_root(store_root), False
+    # Refuse before the first production-state read.  Besides ordinary
+    # maintenance this covers any caller reached from a test or utility.
+    _require_productive_installation_source()
     mode = production_store_mode()
     if mode is not ProductionStoreMode.ACTIVE:
         raise ContractStoreError("publication_not_active", mode.value)
@@ -2113,11 +2171,43 @@ def _require_catalog_name_candidate(
     for current_ref in inventory.installed():
         if current_ref.contract_id == ref.contract_id:
             continue
-        revision = current_contract(
-            current_ref,
-            trusted_publics=trusted_publics,
-            store_root=store_root,
-        )
+        try:
+            revision = current_contract(
+                current_ref,
+                trusted_publics=trusted_publics,
+                store_root=store_root,
+            )
+        except ContractStoreError as exc:
+            if exc.code not in _CODE_PAYLOAD_UNAVAILABLE_CODES:
+                raise
+            # The signed manifest reserves the public name even when its code
+            # payload cannot currently be read. Authenticate the immutable
+            # generation without its code binding so one unavailable contract
+            # cannot block an unrelated repair or release its name.
+            identifier = current_revision_id(
+                current_ref, store_root=store_root,
+            )
+            base = _load_generation_for_commit(
+                current_ref,
+                identifier,
+                trusted_publics=trusted_publics,
+                store_root=store_root,
+            )
+            try:
+                current_name = tomllib.loads(
+                    base["manifest.toml"].decode("utf-8")
+                ).get("name")
+            except (KeyError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+                raise ContractStoreError(
+                    "catalog_candidate_invalid",
+                    f"unbound_payload:{current_ref.contract_id.value}:{error}",
+                ) from error
+            if not isinstance(current_name, str) or not current_name.strip():
+                raise ContractStoreError(
+                    "published_name_invalid", current_ref.contract_id.value,
+                ) from exc
+            installed_names.append((current_ref.contract_id, current_name))
+            continue
         if isinstance(revision, ContractRetirement):
             # Retirement removes executable authority, not the stable public
             # identity used by the i18n registry.  Authenticate the immutable
@@ -3379,6 +3469,7 @@ def _commit_payloads_locked(
     trusted_publics: tuple[TrustedPublic, ...],
     store_root: Path,
     replace_timeout: float,
+    operation: str,
     precommit: Callable[[str], None] | None = None,
     birth_authorization: BirthCommitAuthorization | None = None,
 ) -> tuple[str, bool]:
@@ -3420,6 +3511,13 @@ def _commit_payloads_locked(
     ):
         repeated = True
 
+    _record_productive_audit(store_root, _auditable_event({
+        "event": "contract_generation_commit_authorized",
+        "operation": operation,
+        "contract_id": ref.contract_id.value,
+        "expected_generation_id": expected_generation_id,
+        "candidate_generation_id": desired,
+    }))
     if birth_authorization is not None:
         _persist_birth_receipt_locked(
             ref,
@@ -3488,6 +3586,8 @@ def acquire_current_reattestation_snapshot(
     _validate_manifest_ref(ref)
     trusted = _trusted_public_tuple(trusted_publics)
     root = _store_root(store_root)
+    if _is_productive_store_root(root):
+        _require_productive_installation_source()
     with catalog_admission_lock(store_root=root, timeout=lock_timeout):
         with _writer_lock(ref.contract_id, store_root=root, timeout=lock_timeout):
             contract_dir = _existing_contract_directory(ref.contract_id, store_root=root)
@@ -3555,6 +3655,8 @@ def persist_current_reattestation_receipt(
     _validate_manifest_ref(ref)
     trusted = _trusted_public_tuple(trusted_publics)
     root = _store_root(store_root)
+    if _is_productive_store_root(root):
+        _require_productive_installation_source()
 
     def verified(candidate: bytes) -> object:
         try:
@@ -3585,6 +3687,12 @@ def persist_current_reattestation_receipt(
                 if existing != encoded:
                     raise ContractStoreError("birth_reattestation_receipt_conflict")
                 return existing
+            _record_productive_audit(root, _auditable_event({
+                "event": "contract_reattestation_receipt_authorized",
+                "operation": "persist_current_reattestation_receipt",
+                "contract_id": ref.contract_id.value,
+                "generation_id": generation_identifier,
+            }))
             receipt_dir = receipt_path.parent
             if receipt_dir.exists():
                 _require_plain_directory(receipt_dir, code="birth_receipt_store_invalid")
@@ -4457,6 +4565,7 @@ def publish_localization(
             trusted_publics=trusted,
             store_root=root,
             replace_timeout=replace_timeout,
+            operation="publish_localization",
         )
         if productive:
             _reconcile_authoring_locked(
@@ -4566,6 +4675,7 @@ def publish_technical_update(
             trusted_publics=trusted,
             store_root=root,
             replace_timeout=replace_timeout,
+            operation="publish_technical_update",
             birth_authorization=birth_authorization,
             precommit=(
                 None
@@ -4887,6 +4997,7 @@ def commit_birth_snapshot(
                 expected_generation_id=expected_generation_id,
                 trusted_publics=trusted, store_root=root,
                 replace_timeout=replace_timeout,
+                operation="commit_birth_snapshot",
             )
             _verify_published_postcondition(
                 installed_ref, payloads, desired=desired,
@@ -4980,6 +5091,7 @@ def publish_signed_source(
             trusted_publics=trusted,
             store_root=root,
             replace_timeout=replace_timeout,
+            operation="publish_signed_source",
             precommit=(
                 None
                 if removal is None
@@ -5117,14 +5229,16 @@ def retire(
             )
 
         if not repeated:
-            audit_sink(_auditable_event({
+            event = _auditable_event({
                 "event": "contract_retirement_authorized",
                 "contract_id": ref.contract_id.value,
                 "expected_generation_id": expected_generation_id,
                 "retirement_id": desired,
                 "actor": actor.strip(),
                 "reason": reason.strip(),
-            }))
+            })
+            _record_productive_audit(root, event)
+            audit_sink(event)
             # The sink is application code.  Recheck the exact active state
             # before committing its authorization with one pointer replace.
             live_previous = _read_current_optional(contract_dir)
@@ -5299,14 +5413,16 @@ def reactivate_technical_update(
         )
 
         def authorize(candidate_id: str) -> None:
-            audit_sink(_auditable_event({
+            event = _auditable_event({
                 "event": "contract_reactivation_authorized",
                 "contract_id": ref.contract_id.value,
                 "expected_retirement_id": expected_retirement_id,
                 "target_generation_id": candidate_id,
                 "actor": actor.strip(),
                 "reason": reason.strip(),
-            }))
+            })
+            _record_productive_audit(root, event)
+            audit_sink(event)
             _record_surface_removal_locked(
                 removal,
                 removal_audit,
@@ -5327,6 +5443,7 @@ def reactivate_technical_update(
             trusted_publics=trusted,
             store_root=root,
             replace_timeout=replace_timeout,
+            operation="reactivate_technical_update",
             precommit=authorize,
         )
         if productive:
@@ -5441,14 +5558,16 @@ def rollback(
         )
         payloads = _snapshot_payloads(target)
         if not repeated:
-            audit_sink(_auditable_event({
+            event = _auditable_event({
                 "event": "contract_generation_rollback",
                 "contract_id": ref.contract_id.value,
                 "expected_generation_id": expected_generation_id,
                 "target_generation_id": target_generation_id,
                 "actor": actor.strip(),
                 "reason": reason.strip(),
-            }))
+            })
+            _record_productive_audit(root, event)
+            audit_sink(event)
             # The audit callback is application code; repeat all target checks
             # and the CAS precondition before making its pointer authoritative.
             live_previous = _read_current_optional(contract_dir)
