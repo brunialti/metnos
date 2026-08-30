@@ -27,6 +27,12 @@ MAX_RELATIVE_PATH_COMPONENTS_V1 = 32
 ADMINISTRATIVE_ADAPTER_PATH_V1 = (
     "/usr/libexec/metnos/executor-birth-v1/preflight.py"
 )
+# The product's private runtime root, mirrored from the administrative
+# preflight, which owns it. Every gated unit must declare it writable: the gate
+# each unit runs before its payload verifies signatures through openssl, which
+# needs a temporary directory there, and a hardened unit mounts the hierarchy
+# read-only.
+RUNTIME_ROOT_TEXT_V1 = "/run/metnos-executor-birth-v1"
 
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ENTRY_ID_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
@@ -372,6 +378,15 @@ def _service_unit_recipe(
         _source_directive("Service", "Group", "@service_gid@"),
         _source_directive("Service", "KillMode", "control-group"),
         _source_directive("Service", "NoNewPrivileges", "yes"),
+        # Imposed here, with the gate itself, and never left to each unit:
+        # every gated unit runs the same `check --entry-id` before its payload,
+        # and that program verifies signatures through openssl in a temporary
+        # directory under the product's runtime root. Without this the gate
+        # dies with the generic recovery code — measured on the live G6-C cell
+        # (roadmap §23.23). It is a consequence of the shape, not a per-unit
+        # choice, and it grants the demoted payload nothing: the root stays
+        # `0700` root-owned, so discretionary permissions still apply.
+        _source_directive("Service", "ReadWritePaths", RUNTIME_ROOT_TEXT_V1),
         *settings,
         _source_directive(
             "Service", "SupplementaryGroups",
@@ -978,6 +993,17 @@ SERVICE_SOURCE_V1 = tuple(sorted((
 # Current directives absent from the candidate recipe may disappear only by
 # one of these reviewed migrations.  The mechanical census test requires an
 # exact match, so a new legacy directive cannot vanish silently.
+#
+# One entry was retired here rather than migrated, and the reason must not be
+# lost with it.  `metnos-telegram-daemon.service` used to record
+# `Service/ReadWritePaths` as absent from the candidate, pending
+# "replace_with_verified_service_data_permissions".  The candidate now declares
+# that directive for every gated unit, because the birth gate needs the runtime
+# root writable, so the key is no longer absent and this register can no longer
+# express the residue.  The residue is real: telegram's DATA write paths are
+# still not carried over, and no directive-level record can say "present, but
+# not yet complete".  It is tracked in the roadmap instead (§23.31), and the
+# group that switches the real services owns it.
 _CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1 = MappingProxyType({
     ("metnos-durable-worker.service", "Service", "Environment"):
         "move_to_signed_target_or_minimum_environment",
@@ -1005,8 +1031,6 @@ _CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1 = MappingProxyType({
         "move_to_signed_target_or_minimum_environment",
     ("metnos-telegram-daemon.service", "Service", "Environment"):
         "move_to_signed_target_or_minimum_environment",
-    ("metnos-telegram-daemon.service", "Service", "ReadWritePaths"):
-        "replace_with_verified_service_data_permissions",
     ("metnos-telegram-daemon.service", "Unit", "Documentation"):
         "drop_nonoperational_legacy_metadata",
     ("metnos.target", "Unit", "Documentation"):

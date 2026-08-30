@@ -220,7 +220,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_aging.py': ('a23b3323659557c5e7eaf77fa6fc9a14637582a3ed69d86160605840048ad959', (('comparison', 5),)),
     'executor_birth_activation_probe.py': ('4f4dee67e65a43ea550f7e14894f407fde8509c531b66e7ada5233201c7c0d89', (('comparison', 1), ('helper-argument', 1), ('regex', 1))),
     'executor_birth_admin_operations.py': ('75fedbf55e79076fdbbbd2e87025e73971c10214696d3651f9be6a11a9cd77e9', (('comparison', 1),)),
-    'executor_birth_admin_preflight.py': ('ea2d5a16418301201461454e34409e476c7e5a8bd72f44fcfa96b22438ae037b', (('comparison', 325), ('helper-argument', 20), ('iteration', 1), ('membership', 6), ('prefix-suffix', 5), ('regex', 1))),
+    'executor_birth_admin_preflight.py': ('0456eff9dddb8d8546d672f594cadbd02f392f83f1143979a7ccbc1ac6eb95a7', (('comparison', 325), ('helper-argument', 20), ('iteration', 1), ('membership', 6), ('prefix-suffix', 5), ('regex', 1))),
     'executor_birth_approval_authority.py': ('64fdddee16f9ae109ff75b33d98008710d963b7cee4ad2e883598b27575e17d4', (('comparison', 3), ('helper-argument', 1))),
     'executor_birth_approval_store.py': ('49c7f9e7d9f6a4912b4f11e351fa6820aa6ffd635134ec364b1f877f52badce8', (('comparison', 2),)),
     'executor_birth_authoring.py': ('fa7d739a561fe9014fa80ca50d086ec55ae91d038fb3971332be208d38284ecf', (('comparison', 6), ('helper-argument', 1))),
@@ -261,7 +261,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_secure_fs.py': ('87976be9d7da4796064546571ad8ecd5cff12a8f4bced15668b947f26aa9c645', (('comparison', 98), ('helper-argument', 4))),
     'executor_birth_semantic_authority.py': ('8f9544cd3bc21efdb02a2541343180ec39666c185448a6ed6e1e8f7310e08c4b', (('comparison', 10), ('helper-argument', 1))),
     'executor_birth_semantic_review.py': ('d067e9471c8bf12548417060ffc035222c74aece6e7d4fd798769fa5196c4982', (('helper-argument', 1),)),
-    'executor_birth_service_catalog.py': ('5f1292f231f0c47f222109a949ba81ff5419277e2383d345b4004bfa6a75be0c', (('comparison', 56), ('helper-argument', 14))),
+    'executor_birth_service_catalog.py': ('2c721cc7e8ffea101db279b2c86b2c391a9cc1b54434927253d3657f1506f323', (('comparison', 56), ('helper-argument', 14))),
     'executor_birth_shadow.py': ('84f2962447c3797a49b3b6c09eec9e1c20641beb20c45b4010ebebb4b7347f9b', (('comparison', 5),)),
     'executor_birth_snapshot.py': ('321b1a7e149e3ad68149681058ff75af340efe3e8d3407c8f218d748aa90fda4', (('comparison', 4), ('helper-argument', 1))),
     'executor_birth_template_table_v1.py': ('6a30a80299d9b6902e04d159d74838c5edf3cb10985d0f4dc7660ded250a18a1', (('helper-argument', 1),)),
@@ -870,9 +870,9 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
     "7a1f405766485dd9f76fb8626733f70d66649ff6945d5db2dcd3e917e50cf872", "7a467038a55860596bf5dd4211c1194899d22f487e3ff84ca24edf40260b5ad1", "7a7cfed187c3a7ae17adabe1bd7b1c4279128b62a9e45cb7ba87695f86105955", "7a7dfbfac2011f407e8e2e5fe7176439d8643c8bbd7cc0695c83a34d7243b783",
     "7a98aaf66247c6328bb78d7243d8ab9eac6cc11ca154de3fa5713acc39828450", "7aa62ab6c18dd51e33f25ea0850799f0ada06bd0ea256f30900e5107e9a7d2df", "7b54a5df2508478d4eb26cbc4f600e498ca6e8995193be8406efb580ce91ac13", "7bd5f3f81efbe2fadbc0814da9c3c09d024031408f9aae6dcb5ff773adcbf56b",
     "7be4907e0c54daf741ed609bc6024a8682361389b17e2f78605db68056cf29fb", "7c3123e3909ed8ec0780b737e6556e152e454c0fffc73032631562c8b5dfb108", "7c6bb5cf5b448493a0832621f75d9d636628ceb648dcbdabf3178428121c716f", "7ca17ea1a542c0d5e73deadb78cdc9365f33cac0b937c78b8110b1d68425bb3f",
-    "7d258725b2efc509878da19e076cfda83ca9d081ac7cda857a43bea96cbb2d82", "7d2ec01e99efcc142488e9e4544ac3112f7dfa326fb63adfa621a8cffbc2c1d8", 
+    "7d258725b2efc509878da19e076cfda83ca9d081ac7cda857a43bea96cbb2d82", "7d2ec01e99efcc142488e9e4544ac3112f7dfa326fb63adfa621a8cffbc2c1d8",
     "7d6018ce0082920fc52ce6e2d73e96d8b9d7accd812e51cad2151d68fa1b047d", "7dc1a1a5310680721813962e55c66b1e93adc5327f4d1b34ab71723802bc126f", "7e752970841f4008ef5b4ee7af91b977d00d9f872cc5f10f72a28f634d965ccf", "7e8cca5a27c4a545a4c7c168411f5c82da43dc37b585e0fc6c86e7c8f1260cf9",
-    "7f1174944a8eb79f4be794f9d1feaa87652c528133a21c14da1e72fa48a2539a", "7f1cac39db37f2324215019930ae7765cfc27c1acc666f74672234cc26477fe0", "7f8654ef3b77a9afd3364d2f9bd341028fdae60f4992730fa9dad701eaec180d", "7f981db36e8828ade1ff95353c909c7e39bbc3cade9dc62b0fb3f38bfd0c116e",
+    "7f1174944a8eb79f4be794f9d1feaa87652c528133a21c14da1e72fa48a2539a", "7f8654ef3b77a9afd3364d2f9bd341028fdae60f4992730fa9dad701eaec180d", "7f981db36e8828ade1ff95353c909c7e39bbc3cade9dc62b0fb3f38bfd0c116e",
     "7fa79031687d1ad27674fd5ad0bfcfd8880445456ac4494d3b0ecbf349594bd2", "7ff671ae9115ba285e2e9abb0e4987328a47a0b319eb292b4fe15ce7c9a468ab", "800b879208fb9bbccb571a93763e73580e0cccc7c6066dd400a37168c3adf891", "80a2d86daa9978b72cee04c1188593ed85d1baf131e80e3528e5fd5176113647",
     "80ae327b9e1abb50bd4cfc891dd5ca9050f3dd19c01268f1ba1826805375dd4f", "814f2e9deef23475e7c23f09229b4bea916405457ac16c79db13f689c4f0c239", "81507678d3f40715a0d77be3bf8b27bebaa11b8b7b269aa4cc15874ac5906e8e", "81833770c3f549b7cac220e920f5d3fc0c29150da8561a6c553d826b76511db5",
     "81a18e94120c1563bc15b78f5cd822cd498b6eddd23ce7f57391bb94eebbd7c0", "81b995ffcaa92745e4e9d3583e1c61852ad835094d6248cac7b535b24b06bdd8", "820b10ef551027ebe0f4140a892c226a70d7c7fd3ed34e6a6ca9131c30bfbd9f", "827b8a82ec39f0ab8416a7774543be23b82fd4ba6ab1164fa5dd79a93c1fdb07",
@@ -978,6 +978,8 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
 # relative path, lexical owner, symbol, container kind and complete payload;
 # the adjacent reason records why the value is not input-language authority.
 VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
+    "717600791b5dbe036580683e37250568bbb77fb7cfd7d392a8586d5efd677a23":
+        "closed set of systemd directives a gated unit must declare",
     "0e98a95a3c159358e36866a9e7219eee5a2701a2ceae92727ae5cadbec6166a9":
         "closed boundary API registry mirrored inside the signed preflight",
     "1723360c898511beb5fe3d17010b9470470fb684d6807600f723b4c385279aba":

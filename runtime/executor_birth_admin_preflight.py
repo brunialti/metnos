@@ -206,7 +206,7 @@ _PR_CAP_AMBIENT_V1 = 47
 _PR_CAP_AMBIENT_CLEAR_ALL_V1 = 4
 _LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:cd747ed58214a415a0cc112fc1aa5024dbea5539a736d46eab56b6e5df2c799a"
+    "sha256:fc71a3b9e40cf3cd4d562f75644731e91f7e843f7148dc39ad63d7bcd0c7fe36"
 )
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -742,7 +742,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:f6efc9ce69de6b6e2f411de5095ccaf050548eb863e2e260fe65967efd724032"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:8ac8d4dc1ca4e964a55cff0de304435e617032bc78c2b4bf3315be5ab5c83948"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -2465,6 +2465,7 @@ def _require_gated_service_shape_v1(entry: _ServiceCatalogEntryV1) -> None:
         ("Service", "WorkingDirectory"), ("Service", "KillMode"),
         ("Service", "CapabilityBoundingSet"),
         ("Service", "NoNewPrivileges"),
+        ("Service", "ReadWritePaths"),
     }
     if (
         not required.issubset(directives)
@@ -2482,6 +2483,17 @@ def _require_gated_service_shape_v1(entry: _ServiceCatalogEntryV1) -> None:
         or directives[("Service", "NoNewPrivileges")].values != ("yes",)
     ):
         raise _invalid("gated service launcher capabilities")
+    # The gate this unit runs before its payload verifies signatures through
+    # openssl, in a temporary directory under the product's runtime root. A
+    # hardened unit mounts the hierarchy read-only, so a unit that does not
+    # declare that root writable dies at launch with the generic recovery code
+    # and no reason at all — measured on the live cell. Refusing here names it
+    # at capture time instead. The grant gives the demoted payload nothing:
+    # the root stays `0700` root-owned and discretionary permissions apply.
+    if RUNTIME_ROOT.as_posix() not in (
+        directives[("Service", "ReadWritePaths")].values
+    ):
+        raise _invalid("gated service writable roots")
     group = directives[("Service", "Group")].values[0]
     if _INTEGER_RE.fullmatch(group) is None or group == "0":
         raise _invalid("gated service gid")
