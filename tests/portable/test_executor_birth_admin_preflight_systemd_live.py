@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import stat
 import sys
 from pathlib import Path
@@ -656,3 +657,75 @@ def test_double_observation_denies_prerequisite_or_manager_drift(
         preflight._observe_effective_systemd_for_test_v1,
         administrative, **common,
     ).detail == "effective systemd A/B mismatch"
+
+
+def _live_manager_units() -> tuple[str, ...]:
+    probe = subprocess.run(
+        ["systemctl", "--user", "--no-pager", "--plain", "--no-legend",
+         "list-units", "--type=service", "--state=loaded"],
+        capture_output=True, text=True,
+    )
+    if probe.returncode != 0:
+        return ()
+    return tuple(
+        line.split()[0] for line in probe.stdout.splitlines() if line.split()
+    )[:3]
+
+
+@LINUX_ONLY
+def test_every_applicable_directive_survives_real_manager_output() -> None:
+    """Sweep the module's own normalizers against what systemd really renders.
+
+    Every C3 denial so far was one unmeasured assumption about that rendering,
+    and each cost a full CI round because the cell that would have caught it
+    needs root. This cell needs none: it asks the live manager for the exact
+    property set the module requests and runs each value through the very
+    normalizer the productive path uses. A recorded observation cannot replace
+    it, because a recorded observation carries the same assumption as the code
+    and therefore always agrees with the defect.
+
+    Directives that legitimately need the signed catalog to be interpreted are
+    reported as such by the module itself and are not failures here.
+    """
+    units = _live_manager_units()
+    if not units:
+        pytest.skip("no live user manager on this host")
+
+    def observe(unit: str, properties: list[str]) -> dict:
+        shown = subprocess.run(
+            ["systemctl", "--user", "--no-pager", "--plain", "--all", "show",
+             "--property=" + ",".join(sorted(set(properties))), "--", unit],
+            capture_output=True, text=True,
+        )
+        collected: dict[str, list[str]] = {}
+        for line in shown.stdout.splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                collected.setdefault(key, []).append(value)
+        return {key: tuple(value) for key, value in collected.items()}
+
+    refused: list[tuple[str, str, str]] = []
+    applicable = preflight._systemd_applicable_directives_v1("gated_service")
+    properties: list[str] = []
+    for section, name, _value_type in applicable:
+        properties.extend(
+            preflight._systemd_manager_properties_for_directive_v1(
+                section, name,
+            )
+        )
+    for unit in units:
+        observed = observe(unit, properties)
+        if not observed:
+            continue
+        for section, name, value_type in applicable:
+            try:
+                preflight._normalize_manager_directive_v1(
+                    section, name, value_type, observed,
+                )
+            except preflight.PreflightError as denial:
+                if "signed context" in denial.detail:
+                    continue
+                if "grouped context" in denial.detail:
+                    continue
+                refused.append((unit, name, denial.detail))
+    assert refused == [], refused

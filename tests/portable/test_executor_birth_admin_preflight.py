@@ -1,6 +1,7 @@
 """Compact portable oracles for the autonomous RM-0008 preflight."""
 from __future__ import annotations
 
+import functools
 import json
 import os
 import subprocess
@@ -3899,3 +3900,24 @@ def test_duration_denial_names_the_component() -> None:
     assert "'1 s'" in _invalid(
         preflight.normalize_systemd_duration_usec_v1, "1 s",
     ).detail
+
+
+def test_named_sets_keep_the_systemd_negation_marker() -> None:
+    """A unit that restricts nothing renders the negated EMPTY set.
+
+    Measured on systemd 255.4: `RestrictAddressFamilies=~` on every unit that
+    set no restriction, plain names on the units that did. Rejecting the
+    marker denied most real units. `~` and an empty set are opposite meanings,
+    so the marker is kept as its own token instead of being dropped.
+    """
+    named = functools.partial(
+        preflight._normalize_systemd_named_set_v1,
+        pattern=r"AF_[A-Z0-9_]+", detail="address families",
+    )
+    assert named("~") == ("~",)
+    assert named("") == ()
+    assert named("AF_INET AF_UNIX") == ("AF_INET AF_UNIX",)
+    assert named("~AF_NETLINK AF_PACKET") == ("~", "AF_NETLINK AF_PACKET")
+    # The grammar still holds for everything that is not the marker.
+    _invalid(named, "AF_INET nonsense")
+    _invalid(named, "~nonsense")
