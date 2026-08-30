@@ -2808,3 +2808,35 @@ ancora ribaltarlo.
 
 Nove prove portabili; perni 691/679; portable 1070 verdi; guardie e censimento
 verdi; inventario di produzione rigenerato.
+
+
+### 23.37 Gruppo 7-D: l'involucro che compone i cinque punti in una sola chiamata
+
+`complete_dominant_startup_v1` compone il superamento senza mai rilasciare i
+tre blocchi. L'ordine e' la proprieta', non una comodita'.
+
+**Ogni cosa viene letta due volte.** Tutte le osservazioni avvengono con i
+blocchi tenuti; la capacita' viene coniata solo dopo tutte; poi OGNI
+osservazione viene rifatta e confrontata prima che il superamento avvenga. Una
+seconda lettura che concorda e' l'unica cosa che separa «era vero quando
+guardavamo» da «e' vero adesso», e questo confine esiste perche' quelle due
+cose differiscono. Provato con cinque casi, uno per campo: se un solo valore si
+muove fra le due letture, il superamento non avviene e la ricevuta non esiste.
+
+**Il chiamante fornisce osservatori, mai osservazioni.** Un'impronta passata al
+posto di un osservatore permetterebbe di prendere la decisione FUORI dai
+blocchi e limitarsi a riferirla qui; un argomento che non sia chiamabile viene
+rifiutato. E' una differenza sottile e decisiva: la funzione non accetta la
+parola di nessuno su cosa sia vero, si procura da sola ogni valore, due volte.
+
+**Un'interruzione prima del consumo non supera nulla.** Una capacita' coniata e
+non consumata non autorizza niente; provato con la cucitura di crash allo
+stadio `capability_minted`.
+
+Ventitre' prove portabili nel modulo. Perni 691/679; portable 1161 verdi;
+guardie e censimento verdi.
+
+Restano al gruppo 7 i due punti che toccano il sistema reale: l'installazione e
+la rilettura della topologia dominante (punto 1) e l'esecuzione del piano di
+ritiro (punto 2 nella sua parte mutante). L'involucro li riceve gia' come
+osservatori, quindi la loro aggiunta non cambia questa composizione.

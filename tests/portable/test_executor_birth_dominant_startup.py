@@ -142,3 +142,113 @@ def test_no_productive_minter_is_exported() -> None:
         name.startswith("mint") or name.startswith("consume")
         for name in dominant.__all__
     )
+
+
+class _Observers:
+    """Observers that can be made to drift on their SECOND reading."""
+
+    def __init__(self, drift: str | None = None) -> None:
+        self.drift = drift
+        self.reads: dict[str, int] = {}
+        self.crossed: list[str] = []
+
+    def _value(self, name: str, first: str, second: str) -> str:
+        count = self.reads.get(name, 0) + 1
+        self.reads[name] = count
+        if count == 1 or self.drift != name:
+            return first
+        return second
+
+    def identity(self):
+        value = self._value("identity", _digest("1"), _digest("e"))
+        return (value, _digest("2"))
+
+    def topology(self) -> str:
+        return self._value("topology", _digest("4"), _digest("a"))
+
+    def catalog(self) -> str:
+        return self._value("catalog", _digest("3"), _digest("b"))
+
+    def retirement(self) -> str:
+        return self._value("retirement", _digest("6"), _digest("c"))
+
+    def enforcement(self) -> str:
+        return self._value("enforcement", _digest("5"), _digest("d"))
+
+    def cross(self, digest: str) -> None:
+        self.crossed.append(digest)
+
+
+def _complete(observers: _Observers, **extra):
+    return dominant.complete_dominant_startup_v1(
+        sessions=_sessions(),
+        observe_identity=observers.identity,
+        observe_topology=observers.topology,
+        observe_catalog=observers.catalog,
+        plan_retirement=observers.retirement,
+        observe_enforcement=observers.enforcement,
+        cross=observers.cross,
+        **extra,
+    )
+
+
+def test_the_crossing_reads_everything_twice_before_it_runs() -> None:
+    """One reading says it was true when we looked; two say it is true now."""
+    observers = _Observers()
+    receipt = _complete(observers)
+
+    assert observers.crossed == [receipt.bindings_digest]
+    assert receipt.retirement_plan_digest == _digest("6")
+    assert receipt.enforcement_evidence_digest == _digest("5")
+    # Every observer was consulted exactly twice: once to bind, once to agree.
+    assert set(observers.reads.values()) == {2}
+
+
+@pytest.mark.parametrize(
+    "drift", ["identity", "topology", "catalog", "retirement", "enforcement"],
+)
+def test_any_field_that_moves_between_the_two_readings_stops_it(
+    drift: str,
+) -> None:
+    """The ground moving under the crossing is the failure this prevents."""
+    observers = _Observers(drift=drift)
+    with pytest.raises(dominant.DominantStartupError) as drifted:
+        _complete(observers)
+    assert drifted.value.code == "dominant_startup_binding_drift"
+    assert observers.crossed == []
+
+
+def test_an_interruption_before_the_consumption_crosses_nothing() -> None:
+    """A capability minted and not consumed authorises no crossing."""
+    observers = _Observers()
+
+    class _Interrupted(Exception):
+        pass
+
+    def seam(stage: str) -> None:
+        if stage == "capability_minted":
+            raise _Interrupted
+
+    with pytest.raises(_Interrupted):
+        _complete(observers, _crash_seam=seam)
+    assert observers.crossed == []
+
+
+def test_an_observer_that_is_a_value_is_refused() -> None:
+    """The caller supplies ways to observe, never observations.
+
+    A digest passed in place of an observer would let the decision be made
+    outside the locks and merely reported here.
+    """
+    observers = _Observers()
+    with pytest.raises(dominant.DominantStartupError) as denied:
+        dominant.complete_dominant_startup_v1(
+            sessions=_sessions(),
+            observe_identity=observers.identity,
+            observe_topology=_digest("4"),
+            observe_catalog=observers.catalog,
+            plan_retirement=observers.retirement,
+            observe_enforcement=observers.enforcement,
+            cross=observers.cross,
+        )
+    assert denied.value.code == "dominant_startup_observer_invalid"
