@@ -1,53 +1,13 @@
 # RM-0008 — Porta unica di nascita e ciclo controllato degli executor
 
-> RM-0008 · stato `active` · avanzamento verificato il 29 agosto 2026 · conservazione
-> persistente · 33 correzioni adversarial approvate da Roberto · rilievi sul
-> dossier risolti nel §21 · prove in
-> `internal/reports/rm0008-adversarial-evidence-20260825.md` · implementazione
-> autorizzata e in corso: gruppi 1-5 della ripresa (§23.6) completati e verdi
-> su Linux/Windows; G6-A completato e certificato pubblicamente con errore
-> zero; G6-B1 e G6-B2 completati; base architetturale G6-B3 approvata,
-> pubblicata e certificata con errore zero su Linux/Windows nel run pubblico
-> `33259624116`; il riesame preliminare del nucleo G6-B3 ha rilevato che il
-> programma amministrativo autonomo non possiede ancora il dispatch
-> eseguibile dei tre comandi chiusi: invocato con `check-all` termina
-> erroneamente con codice zero senza eseguire controlli. Questo P0 viene
-> corretto prima di assemblare o firmare una distribuzione; la mappa causale ha
-> delimitato quattro incrementi operativi del preflight, seguiti dal nucleo
-> preparatore G6-B3. Punto d'ingresso e codec non autorizzanti di registri,
-> cutover, testa, claim e journal V2 fino a `HEAD_REQUIRED` sono completati
-> localmente; il vettore da 30.000 ricevute chiude la parita' del journal entro
-> 8 MiB. Anche il decoder autonomo `predecessor-v1` e' completato e approvato;
-> i 125 test mirati sono verdi. Il riesame dell'I/O ha isolato il prossimo
-> rischio: le prove ownership devono essere fotografate dalla radice fissa con
-> handle vivi e inventario A/B, per non mescolare epoche diverse. Questo core
-> non autorizzante e' implementato localmente; tre P1 del primo riesame sono
-> stati corretti, i 138 test mirati sono verdi e tre review finali concludono
-> `P0=0`, `P1=0`, `P2=0`. L'autenticazione e la riconciliazione finale del
-> grafo sono ora implementate localmente in un tipo ancora non operativo: 31
-> test discriminanti nuovi e l'intera suite preflight (`169 passed,
-> 1 deselected`) sono verdi; due review finali del diff congelato concludono
-> `P0=0`, `P1=0`, `P2=0`. Anche il sottotaglio puro dei materiali firmati e
-> del grafo candidato e' completato localmente: catalogo, descrittore,
-> prerequisito, artefatti e source identity sono incrociati senza conferire
-> autorita'; 27 test probatori, 86 test del perimetro e 169 test di regressione
-> sono verdi, e due nuovi riesami finali concludono `P0=0`, `P1=0`, `P2=0`.
-> Anche la misura viva dei quattro eseguibili e della TCB OpenSSL e'
-> implementata localmente: 44 prove mirate, 130 prove del perimetro e 240
-> regressioni preflight sono verdi. Il binder e' legato alla stessa fotografia
-> ownership autenticata e le capability prodotto/test sono nominalmente
-> distinte. Il passo in corso e' la fotografia systemd effettiva.
-> Pin, firma e commit restano bloccati fino al
-> completamento dei successivi incrementi operativi. Il difetto laterale
-> RM-0005 osservato durante B3 è in consolidamento finale: il
-> dispatcher planner-visible di `admin` è generale, il ping live termina 4/4
-> con perdita zero e la regressione collegata conta 594 test e 1.144 subtest
-> verdi; il commit pubblico `62c61b5` è certificato dal run GitHub Actions
-> `33271817356`, con tutti gli otto job Linux/Windows verdi. Il censimento
-> lessicale residuo e' ora implementato e la suite completa conta 533 test e
-> 1.162 subtest verdi; restano review finale, rigenerazione delle firme builtin,
-> pubblicazione e smoke live prima della nuova chiusura di RM-0005;
-> G6-B4/G6-C/G6-D e F4-F6 non ancora completati
+> RM-0008 · stato `active` · avanzamento verificato il 30 agosto 2026 ·
+> conservazione persistente · gruppi 1-5 della ripresa (§23.6), G6-A, G6-B1,
+> G6-B2 e G6-B3 completati. La fotografia systemd viva di G6-B3 resta
+> non autorizzante ed è pubblicata nel commit `5b2b3e6`, certificato con tutti
+> gli otto job Linux/Windows verdi nel run GitHub Actions `33314651224`.
+> RM-0005 è chiuso; `closed_build_enforcement()` resta `False`. Il prossimo
+> incremento minimo è G6-C nella VM usa-e-getta. G6-B4, G6-C, G6-D e F4-F6
+> non sono ancora completati.
 
 ## 1. Obiettivo
 
@@ -1761,3 +1721,9 @@ per il privato e
 per il pubblico. Il gate di esportazione è verde con zero dati personali,
 segreti o file sensibili. Dopo commit e pubblicazione, il prossimo sottogruppo
 è G6-C nella sola VM usa-e-getta; RM-0008 resta `active`.
+
+La pubblicazione incrementale è conclusa nel commit privato `57b78c43` e nel
+commit pubblico `5b2b3e658ed918695d14991fe80150a2cb875424`. Il run GitHub Actions
+`33314651224` ha concluso verdi tutti gli otto job, compreso il riepilogo
+bloccante. G6-B3 è quindi certificato; gli avvisi sulla versione Node usata
+dalle azioni GitHub non hanno modificato l'esito. Il prossimo passo resta G6-C.

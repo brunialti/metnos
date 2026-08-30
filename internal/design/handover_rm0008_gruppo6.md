@@ -1,6 +1,6 @@
 # RM-0008 — passaggio di consegne del gruppo 6
 
-## Stato corrente — 29/8/2026
+## Stato corrente — 30/8/2026
 
 Worktree: `/tmp/metnos-rm0008-a-only`, ramo unico `main`. Non toccare
 `/opt/metnos` e non creare rami.
@@ -1992,3 +1992,12 @@ Al commit del presente checkpoint G6-B3 è completo nel codice ma RM-0008 resta
 del grafo firmato, `daemon-reload` causale e prova della fotografia completa
 contro systemd reale. Il server gestito non deve essere modificato in questo
 passaggio.
+
+### Certificazione pubblica di G6-B3
+
+Il commit privato è `57b78c43`; la proiezione pubblica incrementale è
+`5b2b3e658ed918695d14991fe80150a2cb875424`. Il run GitHub Actions
+`33314651224` ha concluso verdi tutti gli otto job Linux/Windows e il
+riepilogo bloccante. Le sole annotazioni riguardano la versione Node usata da
+azioni GitHub e non sono errori di prodotto. G6-B3 è certificato; RM-0008
+resta `active` e riprende da G6-C nella VM usa-e-getta.
