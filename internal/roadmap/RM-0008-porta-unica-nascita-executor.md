@@ -2542,3 +2542,43 @@ zittito.
 Esito: **da 719 rilievi a 0, 83 prove verdi**. Con questo, l'unica regressione
 che G6 aveva introdotto nell'intera suite (§23.29) e' chiusa, e resta aperto
 soltanto il checkpoint documentale.
+
+
+### 23.31 Gruppo 7, primo passo: le undici unita' ricevono la radice che il cancello scrive
+
+Primo lavoro del gruppo successivo che NON tocca il server reale, e chiude il
+reperto lasciato aperto in §23.23.
+
+**Il difetto.** Le undici unita' `gated` della sorgente di servizio dichiaravano
+`ProtectSystem=strict` e nessun percorso scrivibile. Ognuna esegue lo stesso
+`check --entry-id` come `ExecStartPre`, e quel programma verifica le firme con
+openssl in una directory temporanea sotto la radice di esecuzione del prodotto.
+Ognuna sarebbe quindi morta al lancio con il codice generico di recupero, come
+la cella dal vivo ha dimostrato prima della correzione.
+
+**Dove sta la correzione.** Nella ricetta condivisa `_service_unit_recipe`,
+cioe' nell'unico punto dove il cancello viene imposto. Non e' una scelta per
+unita': e' una conseguenza della forma, e metterla dove sta il cancello e'
+l'unico modo perche' non possa essere dimenticata per una unita' sola. Il
+manifesto non regala nulla al carico gia' demoted: la radice resta `0700` di
+root e i permessi discrezionali continuano a valere.
+
+**La regola di forma.** `_require_gated_service_shape_v1` esige ora quella
+dichiarazione. Un'unita' che la omette viene rifiutata alla cattura, con un
+nome, invece di morire a runtime senza ragione.
+
+**La voce del registro delle disposizioni, ritirata e non persa.** Il registro
+`_CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1` teneva traccia di
+`metnos-telegram-daemon.service / Service / ReadWritePaths` come direttiva
+ASSENTE dal candidato. Ora il candidato la dichiara, quindi la chiave non e'
+piu' assente e quel registro — che ragiona per (unita', sezione, nome) — non
+puo' piu' esprimere il residuo. **Il residuo e' reale**: i percorsi di
+scrittura dei DATI di telegram non sono ancora riportati, e nessun registro a
+livello di direttiva sa dire «presente, ma non ancora completo». E' scritto qui
+e nel commento del registro, e appartiene al gruppo che commuta i servizi
+reali. Questo era il motivo per cui la correzione era stata rimandata: allora
+non avevo dove metterlo senza perderlo.
+
+**Perni mossi.** `_EXPECTED_SERVICE_SOURCE_IDENTITY_V1` cambia, perche' cambia
+la sorgente di servizio firmata: da `cd747ed5...` a `fc71a3b9...`. Portable
+1034 verdi, 6 rossi locali noti (root e piu' UID).

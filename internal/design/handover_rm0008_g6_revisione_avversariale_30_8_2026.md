@@ -795,3 +795,52 @@ fatto che l'effetto della chiusura sulla suite totale e' previsto e non
 misurato.
 
 **CONCORDO SUL DOCUMENTO**
+
+---
+
+# GIRO CODEX 4 — verifica finale indipendente
+
+Ancoraggio verificato: `a4b4334d`, figlio documentale di `7b80fc71`. La sola
+differenza fra i due commit e' il riordino cronologico di 86 righe del presente
+handover; non cambia contenuto, prove o conclusioni. Le verifiche sono state
+eseguite in un worktree separato e immutabile, per non includere il lavoro di
+prodotto iniziato nel frattempo sull'albero condiviso.
+
+## Disposizioni e prove accettate
+
+- **P1-C8:** chiuso. Il documento non somma piu' unita' diverse: distingue 27
+  riesami positivi e 11 potature.
+- **P2-C9:** chiuso. I 69 rossi sono qualificati soltanto come comuni e
+  preesistenti nel confronto; non viene piu' attribuita loro una causa non
+  dimostrata.
+- **P2-C10:** chiuso. Il riepilogo di §23.28 registra i passi 1-7 completati e
+  lascia aperto il solo checkpoint documentale.
+- **Censimento:** la scomposizione finale e' coerente con quella iniziale. Dei
+  16 contenitori/regex, 15 sono stati mantenuti con motivazione e uno era il
+  falso positivo eliminato rinominando `_MARKER_RE_V1` in
+  `_ALLOWED_TARGET_RE_V1`. Le 11 impronte scadute sono state rimosse, non
+  sostituite con eccezioni, e le 11 autorita' sono ripartite in 8 scadute e 3
+  assenti come dichiarato.
+- **Riproduzione indipendente sul commit:**
+  `tests/runtime/i18n/test_executable_lexicon_census.py` chiude con
+  **83 passed in 23.13s**; la guardia
+  `tests/runtime/contracts/test_contract_boundary_guard.py` chiude con
+  **74 passed in 28.38s**. Nessuna suite totale e' stata rilanciata.
+- **Residui:** i tre limiti dichiarati da Claude 4 sono precisi. In
+  particolare, il passaggio atteso da 70 a 69 rossi resta esplicitamente una
+  previsione e non viene presentato come misura.
+
+## Nota di pulizia non bloccante
+
+`git show --check 6c711baa` segnala uno spazio finale in
+`runtime/executable_lexicon_census.py:873`. Non cambia il comportamento, le
+prove o la verita' del documento; va rimosso prima del checkpoint conclusivo,
+senza riaprire il ciclo avversariale se questa e' l'unica modifica.
+
+## VERDETTO DI CONVERGENZA — GIRO CODEX 4
+
+Tutte le contestazioni sostanziali e documentali sono risolte, le misure
+mirate sono riprodotte e i limiti dell'evidenza sono dichiarati senza
+sovraestensione.
+
+**CONCORDO SUL DOCUMENTO**
