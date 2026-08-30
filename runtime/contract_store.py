@@ -411,10 +411,36 @@ def production_store_mode() -> ProductionStoreMode:
         raise ContractStoreError(exc.code, exc.detail) from exc
 
 
+def _require_productive_installation_source() -> None:
+    """Bind productive writes to the explicitly selected installation.
+
+    The user-state directory is shared by every checkout owned by the same
+    account.  Deriving ``PATH_ROOT`` from the imported module is therefore not
+    enough for a productive mutation: a temporary checkout would otherwise
+    address the installed instance's store.  Productive services and install
+    procedures already carry ``METNOS_INSTALL_ROOT``; isolated fixtures use an
+    explicit ``store_root`` and never enter this boundary.
+    """
+    configured_text = os.environ.get("METNOS_INSTALL_ROOT", "").strip()
+    source_root = Path(__file__).resolve().parents[1]
+    if not configured_text:
+        raise ContractStoreError("publication_installation_root_required")
+    configured_root = Path(os.path.abspath(configured_text))
+    selected_root = Path(os.path.abspath(_C.PATH_ROOT))
+    if configured_root != source_root or selected_root != source_root:
+        raise ContractStoreError(
+            "publication_installation_root_mismatch",
+            f"configured={configured_root} source={source_root}",
+        )
+
+
 def _publication_root(store_root: Path | str | None) -> tuple[Path, bool]:
     """Resolve an isolated fixture or an activated productive store."""
     if store_root is not None:
         return _m2_shadow_root(store_root), False
+    # Refuse before the first production-state read.  Besides ordinary
+    # maintenance this covers any caller reached from a test or utility.
+    _require_productive_installation_source()
     mode = production_store_mode()
     if mode is not ProductionStoreMode.ACTIVE:
         raise ContractStoreError("publication_not_active", mode.value)

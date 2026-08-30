@@ -309,6 +309,9 @@ def _create_productive_shadow(
     root, _explicit_ref, private, trusted = _create_source(tmp_path)
     ref = _inventory_ref(root, name="read_files", origin=ManifestOrigin.CORE)
     user_state = tmp_path / "user-state"
+    module_root = Path(contract_store_module.__file__).resolve().parents[1]
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", str(module_root))
+    monkeypatch.setattr(contract_store_module._C, "PATH_ROOT", module_root)
     monkeypatch.setattr(contract_store_module._C, "PATH_USER_STATE", user_state)
     monkeypatch.setattr(contract_store_module._C, "PATH_EXECUTORS", root)
     monkeypatch.setattr(contract_store_module._C, "PATH_RUNTIME", root)
@@ -924,6 +927,9 @@ def test_m2_publish_requires_an_explicit_nonproduction_shadow_root(
 ) -> None:
     _root, ref, _private, trusted = _create_source(tmp_path)
     user_state = tmp_path / "user-state"
+    module_root = Path(contract_store_module.__file__).resolve().parents[1]
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", str(module_root))
+    monkeypatch.setattr(contract_store_module._C, "PATH_ROOT", module_root)
     monkeypatch.setattr(contract_store_module._C, "PATH_USER_STATE", user_state)
 
     with pytest.raises(ContractStoreError, match="publication_not_active"):
@@ -954,6 +960,59 @@ def test_m2_publish_requires_an_explicit_nonproduction_shadow_root(
             )
     assert not user_state.exists()
     assert not hasattr(contract_store_module, "writer_lock")
+
+
+def test_productive_publication_refuses_unselected_checkout_before_state_read(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted = _create_source(tmp_path)
+    user_state = tmp_path / "shared-user-state"
+    monkeypatch.setattr(contract_store_module._C, "PATH_USER_STATE", user_state)
+    monkeypatch.delenv("METNOS_INSTALL_ROOT", raising=False)
+
+    observed = False
+
+    def unexpected_state_read() -> ProductionStoreMode:
+        nonlocal observed
+        observed = True
+        return ProductionStoreMode.ACTIVE
+
+    monkeypatch.setattr(
+        contract_store_module, "production_store_mode", unexpected_state_read,
+    )
+    with pytest.raises(
+        ContractStoreError, match="publication_installation_root_required",
+    ):
+        publish_signed_source(
+            ref,
+            expected_generation_id=None,
+            trusted_publics=trusted,
+        )
+
+    assert not observed
+    assert not user_state.exists()
+
+
+def test_productive_publication_refuses_different_configured_checkout(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted = _create_source(tmp_path)
+    user_state = tmp_path / "shared-user-state"
+    monkeypatch.setattr(contract_store_module._C, "PATH_USER_STATE", user_state)
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", str(tmp_path / "other-checkout"))
+
+    with pytest.raises(
+        ContractStoreError, match="publication_installation_root_mismatch",
+    ):
+        publish_signed_source(
+            ref,
+            expected_generation_id=None,
+            trusted_publics=trusted,
+        )
+
+    assert not user_state.exists()
 
 
 def test_shadow_root_parent_link_is_rejected_before_creating_outside(
@@ -2095,8 +2154,12 @@ def test_stale_localization_candidate_cannot_overwrite_a_newer_publication(
 
 def test_localization_is_inactive_without_an_explicit_isolated_store(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     _root, ref, private, trusted = _create_source(tmp_path)
+    module_root = Path(contract_store_module.__file__).resolve().parents[1]
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", str(module_root))
+    monkeypatch.setattr(contract_store_module._C, "PATH_ROOT", module_root)
     patch = LocalizationPatch(
         selector="description",
         source_hash="sha256:" + "0" * 64,
