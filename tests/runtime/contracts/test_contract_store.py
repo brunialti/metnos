@@ -1183,6 +1183,163 @@ def test_publication_rejects_duplicate_installed_name_before_creating_binding(
     assert not (store / contract_storage_key(colliding.contract_id)).exists()
 
 
+@pytest.mark.parametrize(
+    "unavailable_code",
+    ("code_file_missing", "code_file_invalid", "code_file_unreadable"),
+)
+def test_unavailable_payload_does_not_block_unrelated_contract_repair(
+    tmp_path: Path,
+    monkeypatch,
+    unavailable_code: str,
+) -> None:
+    root, first_ref, private, trusted = _create_source(tmp_path)
+    second_ref = _add_source_contract(
+        root,
+        directory_name="second",
+        name="read_contacts",
+        private=private,
+    )
+    store = tmp_path / "store"
+    publish_signed_source(
+        first_ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    second = publish_signed_source(
+        second_ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    (second_ref.manifest_dir / "second.py").write_text(
+        "def invoke(args):\n    return {'results': ['repaired']}\n",
+        encoding="utf-8",
+    )
+    draft = prepare_technical_draft(second_ref)
+    real_current = contract_store_module.current_contract
+
+    def current_with_unavailable_payload(current_ref, **kwargs):
+        if current_ref.contract_id == first_ref.contract_id:
+            raise ContractStoreError(unavailable_code)
+        return real_current(current_ref, **kwargs)
+
+    monkeypatch.setattr(
+        contract_store_module, "current_contract", current_with_unavailable_payload,
+    )
+    repaired = publish_technical_update(
+        second_ref,
+        expected_generation_id=second.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+
+    assert repaired.current_generation_id != second.current_generation_id
+
+
+def test_payload_digest_inconsistency_still_blocks_unrelated_repair(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root, first_ref, private, trusted = _create_source(tmp_path)
+    second_ref = _add_source_contract(
+        root,
+        directory_name="second",
+        name="read_contacts",
+        private=private,
+    )
+    store = tmp_path / "store"
+    publish_signed_source(
+        first_ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    second = publish_signed_source(
+        second_ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    (second_ref.manifest_dir / "second.py").write_text(
+        "def invoke(args):\n    return {'results': ['candidate']}\n",
+        encoding="utf-8",
+    )
+    draft = prepare_technical_draft(second_ref)
+    real_current = contract_store_module.current_contract
+
+    def current_with_inconsistent_digest(current_ref, **kwargs):
+        if current_ref.contract_id == first_ref.contract_id:
+            raise ContractStoreError("code_digest_mismatch")
+        return real_current(current_ref, **kwargs)
+
+    monkeypatch.setattr(
+        contract_store_module, "current_contract", current_with_inconsistent_digest,
+    )
+    with pytest.raises(ContractStoreError, match="code_digest_mismatch"):
+        publish_technical_update(
+            second_ref,
+            expected_generation_id=second.current_generation_id,
+            draft=draft,
+            private_key=private,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    assert current_revision_id(
+        second_ref, store_root=store,
+    ) == second.current_generation_id
+
+
+def test_unavailable_payload_keeps_its_signed_name_reserved(
+    tmp_path: Path,
+) -> None:
+    root, first_ref, private, trusted = _create_source(tmp_path)
+    second_ref = _add_source_contract(
+        root,
+        directory_name="second",
+        name="read_contacts",
+        private=private,
+    )
+    store = tmp_path / "store"
+    publish_signed_source(
+        first_ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    (first_ref.manifest_dir / "sample.py").unlink()
+    second_manifest = second_ref.manifest_path
+    second_manifest.write_text(
+        second_manifest.read_text(encoding="utf-8").replace(
+            'name = "read_contacts"', 'name = "read_files"', 1,
+        ),
+        encoding="utf-8",
+    )
+    (second_ref.manifest_dir / "manifest.toml.sig").write_bytes(
+        sign_manifest_bytes(second_manifest.read_bytes(), private_key=private),
+    )
+    colliding = replace(
+        second_ref,
+        name="read_files",
+        manifest_hash=(
+            "sha256:" + hashlib.sha256(second_manifest.read_bytes()).hexdigest()
+        ),
+    )
+
+    with pytest.raises(ContractStoreError, match="published_name_collision"):
+        publish_signed_source(
+            colliding,
+            expected_generation_id=None,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    assert not (store / contract_storage_key(colliding.contract_id)).exists()
+
+
 def test_retirement_keeps_name_reserved_for_its_contract_identity(
     tmp_path: Path,
 ) -> None:
