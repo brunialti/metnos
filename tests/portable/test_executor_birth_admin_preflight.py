@@ -3677,6 +3677,12 @@ def test_systemctl_show_parser_preserves_only_allowed_repetition() -> None:
         _invalid(preflight.parse_systemctl_show_v1, output, properties)
 
 
+def test_effective_edge_profile_matches_supported_systemd_interface() -> None:
+    relations = preflight._SYSTEMD_ADDED_EDGE_RELATIONS_V1
+    assert {"Triggers", "TriggeredBy", "Conflicts", "ConflictedBy"} <= relations
+    assert relations.isdisjoint({"References", "ReferencedBy"})
+
+
 def test_manager_version_is_exact() -> None:
     assert preflight.parse_systemd_manager_version_v1(
         b"Version=255.4-1ubuntu8.17\n",
