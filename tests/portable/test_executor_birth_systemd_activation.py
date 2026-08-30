@@ -761,13 +761,40 @@ def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProce
     )
 
 
-def _wait_for(predicate, timeout: float = 15.0) -> None:
+def _unit_diagnosis(unit_name: str) -> str:
+    """What the manager says about a unit, for a timeout that must explain.
+
+    A timeout that reports only "timed out" costs one CI round per hypothesis,
+    and this cell runs only where root and a real manager exist. The unit
+    state and its last log lines are what any operator would look at first.
+    """
+    lines = []
+    shown = _systemctl(
+        "show", unit_name, "--property=ActiveState,SubState,Result,"
+        "ExecMainStatus,ExecMainCode,NRestarts,LoadState", check=False,
+    )
+    lines.append(shown.stdout.strip().replace("\n", " "))
+    logged = subprocess.run(
+        ["journalctl", "--no-pager", "-n", "25", "-u", unit_name],
+        capture_output=True, text=True, timeout=30,
+    )
+    lines.append(logged.stdout.strip()[-1500:])
+    return "\n".join(item for item in lines if item)
+
+
+def _wait_for(predicate, timeout: float = 15.0, *, diagnose=None) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
             return
         time.sleep(0.05)
-    raise AssertionError("G6-C live condition timed out")
+    detail = ""
+    if diagnose is not None:
+        try:
+            detail = "\n" + diagnose()
+        except Exception as failure:  # a diagnosis must never mask the timeout
+            detail = f"\ndiagnosis unavailable: {type(failure).__name__}"
+    raise AssertionError("G6-C live condition timed out" + detail)
 
 
 def _demote(account: _ServiceAccountV1):
@@ -850,7 +877,10 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             assert not fixture.marker_path.exists()
 
         _systemctl("start", fixture.timer_name)
-        _wait_for(fixture.marker_path.exists)
+        _wait_for(
+            fixture.marker_path.exists,
+            diagnose=lambda: _unit_diagnosis(fixture.service_name),
+        )
         gate_descriptor = os.open(STARTUP_GATE, os.O_RDWR)
         try:
             fcntl.flock(gate_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
