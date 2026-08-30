@@ -68,6 +68,13 @@ from sign import (
 
 SHADOW_RELATIVE = Path("contract-publications-shadow")
 BINDING_FILE = "binding.json"
+
+# Failures that mean the code payload is ABSENT, not that it disagrees with
+# what was signed.  A digest mismatch stays fatal everywhere: that is
+# tampering.  These three only say the bytes are not there to be read.
+_CODE_PAYLOAD_ABSENT_CODES = frozenset({
+    "code_file_missing", "code_file_invalid", "code_file_unreadable",
+})
 BINDING_VERSION = 1
 GENERATION_FILES = (
     "manifest.toml",
@@ -2154,11 +2161,47 @@ def _require_catalog_name_candidate(
     for current_ref in inventory.installed():
         if current_ref.contract_id == ref.contract_id:
             continue
-        revision = current_contract(
-            current_ref,
-            trusted_publics=trusted_publics,
-            store_root=store_root,
-        )
+        try:
+            revision = current_contract(
+                current_ref,
+                trusted_publics=trusted_publics,
+                store_root=store_root,
+            )
+        except ContractStoreError as exc:
+            if exc.code not in _CODE_PAYLOAD_ABSENT_CODES:
+                raise
+            # A name is reserved by the signed manifest, never by the code
+            # payload behind it.  A contract whose payload is absent still
+            # holds its public identity, and must keep holding it: releasing
+            # the name here would let a different ContractId take it and make
+            # registry reconciliation fail once the payload returns.  It must
+            # also not block an unrelated contract's pointer commit, which is
+            # how one incomplete publication can otherwise freeze every
+            # repair in the store.  The signature, structure, language state
+            # and generation digest are still authenticated; only the binding
+            # to code is not, exactly as for the retired predecessor below.
+            identifier = current_revision_id(current_ref, store_root=store_root)
+            base = _load_generation_for_commit(
+                current_ref,
+                identifier,
+                trusted_publics=trusted_publics,
+                store_root=store_root,
+            )
+            try:
+                current_name = tomllib.loads(
+                    base["manifest.toml"].decode("utf-8")
+                ).get("name")
+            except (KeyError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
+                raise ContractStoreError(
+                    "catalog_candidate_invalid",
+                    f"unbound_payload:{current_ref.contract_id.value}:{e}",
+                ) from e
+            if not isinstance(current_name, str) or not current_name.strip():
+                raise ContractStoreError(
+                    "published_name_invalid", current_ref.contract_id.value,
+                ) from exc
+            installed_names.append((current_ref.contract_id, current_name))
+            continue
         if isinstance(revision, ContractRetirement):
             # Retirement removes executable authority, not the stable public
             # identity used by the i18n registry.  Authenticate the immutable
