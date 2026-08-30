@@ -1219,6 +1219,52 @@ def test_local_import_closure_distinguishes_local_methods_from_stdlib_loaders(
         )
 
 
+@pytest.mark.parametrize("mutation", (
+    None, "scope", "module", "keyword", "alias", "rebind",
+))
+def test_local_import_closure_allows_only_exact_signed_preflight_runpy_door(
+    tmp_path, mutation,
+):
+    path = "runtime/executor_birth_admin_preflight.py"
+    import_line = b"import runpy\n"
+    scope = b"_launch_python_target_v1"
+    argument = b"plan.python_module"
+    keywords = b'run_name="__main__", alter_sys=False'
+    prefix = b""
+    if mutation == "scope":
+        scope = b"rogue"
+    elif mutation == "module":
+        argument = b"'rogue'"
+    elif mutation == "keyword":
+        keywords += b", init_globals={}"
+    elif mutation == "alias":
+        import_line = b"import runpy as runner\n"
+    elif mutation == "rebind":
+        prefix = b" plan = object()\n"
+    owner = b"runpy" if mutation != "alias" else b"runner"
+    source = (
+        import_line + b"def " + scope + b"(plan):\n" + prefix
+        + b" " + owner + b".run_module(" + argument + b", "
+        + keywords + b")\n"
+    )
+    item = distribution.DistributionFile(
+        path=path, size=len(source), content_hash="sha256:" + "0" * 64,
+        role="runtime_code",
+    )
+    if mutation is None:
+        distribution._verify_local_import_closure(
+            tmp_path, (item,), {path: source},
+        )
+    else:
+        with pytest.raises(
+            distribution.DistributionManifestError,
+            match="dynamic code loader",
+        ):
+            distribution._verify_local_import_closure(
+                tmp_path, (item,), {path: source},
+            )
+
+
 def test_local_import_closure_limits_the_door_exception_to_its_exact_scope(
         tmp_path):
     path = "runtime/admitted_module_v1.py"

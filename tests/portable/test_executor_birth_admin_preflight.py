@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -2781,6 +2782,8 @@ def test_operational_dispatch_keeps_check_all_outside_shared_gate(
 ) -> None:
     events = []
     operational = object()
+    entry = SimpleNamespace(class_name="gated_service")
+    plan = object()
 
     monkeypatch.setattr(
         preflight, "_acquire_startup_gate_shared_v1",
@@ -2798,11 +2801,23 @@ def test_operational_dispatch_keeps_check_all_outside_shared_gate(
         preflight, "_require_preflight_entry_v1",
         lambda authority, entry_id: events.append(
             ("entry", authority, entry_id),
-        ),
+        ) or entry,
     )
     monkeypatch.setattr(
         preflight, "_publish_preflight_attestation_v1",
         lambda authority: events.append(("publish", authority)),
+    )
+    monkeypatch.setattr(
+        preflight, "_make_launch_plan_v1",
+        lambda authority, selected: events.append(
+            ("plan", authority, selected),
+        ) or plan,
+    )
+    monkeypatch.setattr(
+        preflight, "_launch_gated_service_v1",
+        lambda selected, lease: events.append(
+            ("launch", selected, lease.descriptor),
+        ),
     )
 
     preflight._run_operational_command_v1(
@@ -2820,15 +2835,12 @@ def test_operational_dispatch_keeps_check_all_outside_shared_gate(
     ]
 
     events.clear()
-    with pytest.raises(preflight.PreflightError) as caught:
-        preflight._run_operational_command_v1(
-            preflight.CliCommandV1("launch", "service-http"),
-        )
-    failure = caught.value
-    assert failure.code == preflight.CODE_MISSING
-    assert failure.detail == "B3 target bootstrap is incomplete"
+    preflight._run_operational_command_v1(
+        preflight.CliCommandV1("launch", "service-http"),
+    )
     assert events == [
         "gate", "attest", ("entry", operational, "service-http"),
+        ("plan", operational, entry), ("launch", plan, 41),
         ("release", 41),
     ]
 

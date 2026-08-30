@@ -1082,6 +1082,43 @@ def test_birth_closed_rejects_reflection_dynamic_import_and_subprocess(
         )
 
 
+@pytest.mark.parametrize("mutation", (None, "scope", "argument", "keyword", "alias"))
+def test_guard_allows_only_exact_authenticated_preflight_runpy_door(
+    tmp_path: Path, mutation: str | None,
+) -> None:
+    imported = "import runpy"
+    owner = "runpy"
+    scope = "_launch_python_target_v1"
+    argument = "plan.python_module"
+    keywords = 'run_name="__main__", alter_sys=False'
+    if mutation == "scope":
+        scope = "rogue"
+    elif mutation == "argument":
+        argument = "'rogue'"
+    elif mutation == "keyword":
+        keywords += ", init_globals={}"
+    elif mutation == "alias":
+        imported = "import runpy as runner"
+        owner = "runner"
+    facts = _scan(
+        tmp_path, imported + "\n"
+        f"def {scope}(plan):\n"
+        f"    {owner}.run_module({argument}, {keywords})\n",
+        relative="runtime/executor_birth_admin_preflight.py",
+    )
+    selected = [
+        fact for fact in facts
+        if fact.path == "runtime/executor_birth_admin_preflight.py"
+    ]
+    if mutation is None:
+        assert selected == []
+    else:
+        assert any(
+            "dynamic_boundary_access" in fact.capabilities
+            for fact in selected
+        )
+
+
 def test_birth_closed_offline_signing_requires_exact_exception(tmp_path: Path) -> None:
     facts = _closed_facts(
         tmp_path / "compiled",

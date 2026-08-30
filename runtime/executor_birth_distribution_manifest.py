@@ -1411,6 +1411,58 @@ def _verify_local_import_closure(
                 root_name = aliases.get(current.id, current.id)
                 return ".".join((root_name, *reversed(parts)))
 
+            def authenticated_preflight_runpy(call: ast.Call) -> bool:
+                if (
+                    item.path != "runtime/executor_birth_admin_preflight.py"
+                    or not isinstance(call.func, ast.Attribute)
+                    or not isinstance(call.func.value, ast.Name)
+                    or call.func.value.id != "runpy"
+                    or call.func.attr != "run_module"
+                    or aliases.get("runpy") != "runpy"
+                    or len(call.args) != 1
+                    or not isinstance(call.args[0], ast.Attribute)
+                    or not isinstance(call.args[0].value, ast.Name)
+                    or call.args[0].value.id != "plan"
+                    or call.args[0].attr != "python_module"
+                    or len(call.keywords) != 2
+                    or any(keyword.arg is None for keyword in call.keywords)
+                ):
+                    return False
+                keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+                if set(keywords) != {"run_name", "alter_sys"}:
+                    return False
+                if (
+                    not isinstance(keywords["run_name"], ast.Constant)
+                    or keywords["run_name"].value != "__main__"
+                    or not isinstance(keywords["alter_sys"], ast.Constant)
+                    or keywords["alter_sys"].value is not False
+                ):
+                    return False
+                current: ast.AST = call
+                function: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+                while (parent := parents.get(id(current))) is not None:
+                    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        function = parent
+                        break
+                    current = parent
+                if function is None or function.name != "_launch_python_target_v1":
+                    return False
+                for inner in ast.walk(function):
+                    targets: list[ast.AST] = []
+                    if isinstance(inner, ast.Assign):
+                        targets.extend(inner.targets)
+                    elif isinstance(
+                        inner, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr),
+                    ):
+                        targets.append(inner.target)
+                    if any(
+                        isinstance(target, ast.Name)
+                        and target.id in {"runpy", "plan"}
+                        for target in targets
+                    ):
+                        return False
+                return True
+
             def dynamic_loader_call(call: ast.Call) -> bool:
                 canonical = resolved_callable(call.func)
                 if canonical is None:
@@ -1455,6 +1507,7 @@ def _verify_local_import_closure(
                     and node.func.id in {"compile", "eval", "exec", "FunctionType"}
                     and not authenticated_door_eval(node)
                     or dynamic_loader_call(node)
+                    and not authenticated_preflight_runpy(node)
                 ):
                     raise DistributionManifestError(
                         "birth_ownership_distribution_extra_file", "dynamic code loader",
