@@ -736,7 +736,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:436ef9f4ecd675896df594575bf65d38654390e361e763f792dc6b749a1005c3"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:a43b81f22fa8ae70c9dd945cb74944540bf26eb548cc34c770421eb435ba09c9"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -12260,8 +12260,12 @@ def _compile_systemd_manager_projection_v1(
 
     timer_values: dict[str, tuple[str, ...]] = {}
     if entry.class_name == "gated_timer":
-        monotonic_raw = observed["TimersMonotonic"]
-        calendar_raw = observed["TimersCalendar"]
+        # A timer collection with no entries is OMITTED by systemd, not
+        # rendered empty, so the property is simply absent from the
+        # observation. The `("",)` form is kept for the manager that does
+        # render an empty line; both mean the same empty collection.
+        monotonic_raw = observed.get("TimersMonotonic", ())
+        calendar_raw = observed.get("TimersCalendar", ())
         monotonic = () if monotonic_raw == ("",) else monotonic_raw
         calendar = () if calendar_raw == ("",) else calendar_raw
         parsed_timers = parse_systemd_timer_properties_v1(monotonic, calendar)
