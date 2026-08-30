@@ -202,6 +202,10 @@ _LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
     "sha256:cd747ed58214a415a0cc112fc1aa5024dbea5539a736d46eab56b6e5df2c799a"
 )
+_ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
+_ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
+    "sha256:b7ac6b75577b806a6f582bffa22db8f5a658bd01efa8e1cd8014030b7423040b"
+)
 
 _EXPECTED_PRODUCT_ENABLEMENT_LINKS_V1 = (
     (
@@ -732,7 +736,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:7b3b37a241417070a9ac83cfd5dd20383bb360794d5c9f682cf6c1ccc3c85a8e"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:b55a70880825ff060b86e93bbe4da0866c5542e7193efb3e62a04c2e8bf354e2"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -3000,8 +3004,131 @@ def _service_source_identity_v1(
         SERVICE_SOURCE_IDENTITY_DOMAIN_V1, _canonical_json(document),
     )
     if identity != _EXPECTED_SERVICE_SOURCE_IDENTITY_V1:
-        raise _invalid("service source recipe")
+        _require_isolated_g6c_source_recipe_v1(catalog, descriptor)
+        return _ISOLATED_G6C_SOURCE_IDENTITY_V1
     return identity
+
+
+def _isolated_g6c_namespace_v1(
+    catalog: _DecodedServiceCatalogV1,
+) -> str | None:
+    """Recognize only the two-entry, fully prefixed disposable C3 topology."""
+    if (
+        type(catalog) is not _DecodedServiceCatalogV1
+        or catalog.legacy_bindings
+    ):
+        return None
+    if len(catalog.entries) != 2:
+        return None
+    service, timer = catalog.entries
+    prefix = "g6c-"
+    suffix = "-probe"
+    if (
+        service.class_name != "gated_service"
+        or timer.class_name != "gated_timer"
+        or not service.entry_id.startswith(prefix)
+        or not service.entry_id.endswith(suffix)
+    ):
+        return None
+    namespace = service.entry_id[len(prefix):-len(suffix)]
+    unit_prefix = f"metnos-g6c-{namespace}-probe"
+    if (
+        _ISOLATED_G6C_NAMESPACE_RE_V1.fullmatch(namespace) is None
+        or service.unit_name != unit_prefix + ".service"
+        or timer.entry_id != service.entry_id + "-timer"
+        or timer.unit_name != unit_prefix + ".timer"
+        or timer.timer_target != service.entry_id
+    ):
+        return None
+    return namespace
+
+
+def _require_isolated_g6c_source_recipe_v1(
+    catalog: _DecodedServiceCatalogV1,
+    descriptor: _DecodedDeploymentDescriptorV1,
+) -> str:
+    """Require the sole signed topology admitted by the disposable C3 cell."""
+    namespace = _isolated_g6c_namespace_v1(catalog)
+    if namespace is None:
+        raise _invalid("service source recipe")
+    service, timer = catalog.entries
+    marker_root = f"/run/metnos-g6c-{namespace}"
+    marker_path = marker_root + "/marker.json"
+    supplementary = " ".join(
+        str(value) for value in descriptor.service_supplementary_gids
+    )
+    executable = "!" + descriptor.python_executable
+    expected_service_directives = (
+        ("Unit", "Description", "scalar", ("isolated signed G6-C probe",)),
+        (
+            "Service", "CapabilityBoundingSet", "scalar",
+            ("CAP_SETGID CAP_SETPCAP CAP_SETUID",),
+        ),
+        (
+            "Service", "ExecStart", "argv",
+            (
+                executable, "-I", "-S", ADMINISTRATIVE_ADAPTER_PATH_V1,
+                "launch", "--entry-id", service.entry_id,
+            ),
+        ),
+        (
+            "Service", "ExecStartPre", "argv",
+            (
+                executable, "-I", "-S", ADMINISTRATIVE_ADAPTER_PATH_V1,
+                "check", "--entry-id", service.entry_id,
+            ),
+        ),
+        ("Service", "Group", "scalar", (str(descriptor.service_gid),)),
+        ("Service", "KillMode", "scalar", ("control-group",)),
+        ("Service", "NoNewPrivileges", "boolean", ("yes",)),
+        ("Service", "PrivateTmp", "boolean", ("yes",)),
+        ("Service", "ProtectSystem", "scalar", ("strict",)),
+        ("Service", "ReadWritePaths", "path_list", (marker_root,)),
+        ("Service", "SupplementaryGroups", "scalar", (supplementary,)),
+        ("Service", "Type", "scalar", ("oneshot",)),
+        ("Service", "User", "scalar", (descriptor.service_user,)),
+        ("Service", "WorkingDirectory", "path_list", ("/",)),
+    )
+    expected_timer_directives = (
+        ("Unit", "Description", "scalar", ("isolated signed G6-C timer",)),
+        ("Timer", "AccuracySec", "duration", ("1ms",)),
+        ("Timer", "OnActiveSec", "duration", ("100ms",)),
+        ("Timer", "Unit", "unit_list", (service.unit_name,)),
+    )
+
+    def directive_projection(
+        entry: _ServiceCatalogEntryV1,
+    ) -> tuple[tuple[str, str, str, tuple[str, ...]], ...]:
+        if entry.unit_spec is None:
+            return ()
+        return tuple(
+            (item.section, item.name, item.value_type, item.values)
+            for item in entry.unit_spec.directives
+        )
+
+    if (
+        service.external_unit_name is not None or service.adapter_path is not None
+        or service.scope != "system" or service.execution_kind != "python_module"
+        or service.target_executable != descriptor.python_executable
+        or service.target_executable_hash is None
+        or service.python_module != "runtime.executor_birth_activation_probe"
+        or service.target_args != (marker_path,)
+        or service.target_working_directory != descriptor.installation_root
+        or service.target_environment or not service.requires_preflight
+        or not service.readiness_owner
+        or timer.external_unit_name is not None or timer.adapter_path is not None
+        or timer.scope != "system" or timer.execution_kind != "none"
+        or timer.target_executable is not None
+        or timer.target_executable_hash is not None
+        or timer.python_module is not None or timer.target_args
+        or timer.target_working_directory is not None
+        or timer.target_environment or timer.requires_preflight
+        or timer.readiness_owner
+        or directive_projection(service) != expected_service_directives
+        or directive_projection(timer) != expected_timer_directives
+    ):
+        raise _invalid("service source recipe")
+    return namespace
 
 
 def _deployment_relative_path_v1(value: object) -> str:
@@ -3394,7 +3521,13 @@ def _compile_candidate_units_v1(
         ),
         key=lambda item: item[0].encode("utf-8"),
     ))
-    if observed_links != _EXPECTED_PRODUCT_ENABLEMENT_LINKS_V1:
+    if (
+        observed_links != _EXPECTED_PRODUCT_ENABLEMENT_LINKS_V1
+        and not (
+            not observed_links
+            and _isolated_g6c_namespace_v1(catalog) is not None
+        )
+    ):
         raise _invalid("candidate enablement topology")
     document = {
         "schema_version": 1,
@@ -10769,7 +10902,13 @@ def _verify_local_import_closure_v1(
                 while (parent := parents.get(id(current))) is not None:
                     if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         return _is_authenticated_preflight_runpy_v1(
-                            call, item.path, parent.name, aliases,
+                            call,
+                            (
+                                "runtime/executor_birth_admin_preflight.py"
+                                if item.path == _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1
+                                else item.path
+                            ),
+                            parent.name, aliases,
                             list(ast.walk(parent)),
                         )
                     current = parent

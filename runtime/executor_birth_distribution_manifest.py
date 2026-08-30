@@ -1413,7 +1413,10 @@ def _verify_local_import_closure(
 
             def authenticated_preflight_runpy(call: ast.Call) -> bool:
                 if (
-                    item.path != "runtime/executor_birth_admin_preflight.py"
+                    item.path not in {
+                        "runtime/executor_birth_admin_preflight.py",
+                        _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1,
+                    }
                     or not isinstance(call.func, ast.Attribute)
                     or not isinstance(call.func.value, ast.Name)
                     or call.func.value.id != "runpy"
