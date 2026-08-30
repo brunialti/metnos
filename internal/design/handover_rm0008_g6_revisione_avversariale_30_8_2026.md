@@ -424,3 +424,35 @@ documento e' ora corretto *perche'* dichiara cio' che non ha ancora provato. La
 conferma della dodicesima causa e la misura del budget appartengono al prossimo
 giro pubblico, e finche' non arrivano nessuno deve leggere §23.25 come una
 misura.
+
+---
+
+# AGGIORNAMENTO DI FATTO dopo il GIRO CLAUDE 2 — non e' un nuovo giro
+
+Il giro 2 si era chiuso con tre punti dichiarati aperti. Il ciclo pubblico
+`33336452969` (testa `b02ce3e`, nove job su nove verdi, cella 6 prove su 6 in
+373 s) ne ha chiusi due. Lo registro qui perche' chi rivede non legga un
+documento che sottodichiara cio' che ora e' provato.
+
+**Punto 1 — CHIUSO.** La dodicesima causa non e' piu' un'inferenza. Il criterio
+di conferma era stato fissato da Codex PRIMA della prova — primo `check-all` a
+0 e insieme delle attestazioni che cresce — e il giro lo ha soddisfatto. Il
+criterio non e' stato scelto a posteriori, il che e' la ragione per cui vale.
+
+**Punto 2 — CHIUSO, e la mia stima era sbagliata nella direzione prudente.**
+Budget misurato: cella 373 s, job circa 7 min 15 s contro un tetto di 15. La
+stima del giro 2 diceva ~12:07. La ragione dello scarto e' istruttiva e va
+tenuta: i 461 s del giro precedente comprendevano un timer che riavviava senza
+sosta un servizio che falliva, e ogni censimento pagava quella contesa. **Una
+cella che passa costa meno di una che fallisce**, quindi una stima ricavata da
+un giro rosso sovrastima sempre il costo di un giro verde.
+
+**Punto 3 — RESTA APERTO, e la misura precedente era troppo bassa.** Il
+censimento del lessico e' rosso. Strumentando il censimento al suo stesso punto
+di calcolo, l'albero produce **719 rilievi** di tre famiglie: puntamenti
+scaduti, contenitori senza impronta (fra cui due di `paired_device_arg_resolver.py`,
+modulo del commit `cac6d7e4` che non appartiene a G6) e `LEXICON_STALE_INVARIANT`
+sui registri stessi, che vanno POTATI e non accresciuti. §23.27 diceva «sette
+contenitori»: sottodichiarava, ed e' stata corretta.
+
+Nulla di questo modifica il verdetto del giro 2. Lo rende soltanto attuale.
