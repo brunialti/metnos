@@ -2664,3 +2664,32 @@ censimento — era sbagliata nella direzione a me piu' comoda.
   attivazione reale con `closed_build_enforcement()=True`, installazione dei
   nomi definitivi, commutazione dei servizi — non e' iniziato, e comprende il
   residuo dichiarato dei percorsi di scrittura dei dati di telegram.
+
+
+### 23.33 Gruppo 7: chiuso il residuo dei percorsi dati di telegram
+
+Il §23.31 aveva ritirato dal registro delle disposizioni la voce su
+`metnos-telegram-daemon.service` e dichiarato che il residuo restava reale: i
+percorsi di scrittura dei DATI non erano ancora riportati nella sorgente
+firmata. Ora lo sono.
+
+**Perche' non bastava copiare l'unita' legacy.** Quella dichiara
+`ReadWritePaths=%h/.local/state/metnos %h/.local/share/metnos`, ma la sorgente
+firmata VIETA i segnaposto systemd (`%` e' rifiutato dal validatore dei valori):
+un contratto firmato non puo' contenere un valore che si risolve altrove e piu'
+tardi. La sorgente ha pero' gia' i legami `@service_state@` e `@service_data@`,
+che il compilatore risolve dalla home del servizio, e che producono esattamente
+le stesse due directory.
+
+**La forma.** `_service_unit_recipe` accetta ora `writable_paths` per unita' ed
+emette UNA sola direttiva `ReadWritePaths` che contiene la radice di esecuzione
+del cancello piu' i percorsi propri dell'unita'. Una direttiva sola, e la parte
+imposta dal cancello resta centrale e non dimenticabile.
+
+Verificato sull'unita' compilata:
+`('/run/metnos-executor-birth-v1', '/var/lib/metnos/.local/share/metnos',
+'/var/lib/metnos/.local/state/metnos')`.
+
+`_EXPECTED_SERVICE_SOURCE_IDENTITY_V1` da `fc71a3b9…` a `62e8f65e…`, con la
+conseguenza sul censimento pagata nello stesso passo: due autorita' ripuntate,
+zero impronte stantie.

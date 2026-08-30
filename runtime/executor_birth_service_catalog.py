@@ -359,6 +359,7 @@ def _source_directive(
 def _service_unit_recipe(
     entry_id: str, *, relations: tuple[SourceDirectiveRecipeV1, ...] = (),
     settings: tuple[SourceDirectiveRecipeV1, ...] = (),
+    writable_paths: tuple[str, ...] = (),
 ) -> tuple[SourceDirectiveRecipeV1, ...]:
     return (
         _source_directive("Unit", "Description", f"Metnos controlled {entry_id}"),
@@ -386,7 +387,10 @@ def _service_unit_recipe(
         # (roadmap §23.23). It is a consequence of the shape, not a per-unit
         # choice, and it grants the demoted payload nothing: the root stays
         # `0700` root-owned, so discretionary permissions still apply.
-        _source_directive("Service", "ReadWritePaths", RUNTIME_ROOT_TEXT_V1),
+        _source_directive(
+            "Service", "ReadWritePaths",
+            RUNTIME_ROOT_TEXT_V1, *writable_paths,
+        ),
         *settings,
         _source_directive(
             "Service", "SupplementaryGroups",
@@ -404,6 +408,7 @@ def _service(
     target_recipe: SourceTargetRecipeV1,
     relations: tuple[SourceDirectiveRecipeV1, ...] = (),
     settings: tuple[SourceDirectiveRecipeV1, ...] = (),
+    writable_paths: tuple[str, ...] = (),
 ) -> ServiceSourceEntryV1:
     return ServiceSourceEntryV1(
         entry_id, "gated_service", unit_name=unit_name,
@@ -415,6 +420,7 @@ def _service(
         target_recipe=target_recipe,
         unit_recipe=_service_unit_recipe(
             entry_id, relations=relations, settings=settings,
+            writable_paths=writable_paths,
         ),
     )
 
@@ -596,6 +602,11 @@ SERVICE_SOURCE_V1 = tuple(sorted((
     ),
     _service(
         "service-telegram-daemon", "metnos-telegram-daemon.service",
+        # Carried over from the legacy unit, which declared
+        # `%h/.local/state/metnos %h/.local/share/metnos`. The signed source
+        # forbids systemd specifiers, so the same two directories are named
+        # through the bindings the compiler resolves from the service home.
+        writable_paths=("@service_state@", "@service_data@"),
         target_recipe=_python_target(
             "runtime.channels.daemon",
             environment=_TARGET_DATA_ENVIRONMENT_V1,
@@ -1000,10 +1011,10 @@ SERVICE_SOURCE_V1 = tuple(sorted((
 # "replace_with_verified_service_data_permissions".  The candidate now declares
 # that directive for every gated unit, because the birth gate needs the runtime
 # root writable, so the key is no longer absent and this register can no longer
-# express the residue.  The residue is real: telegram's DATA write paths are
-# still not carried over, and no directive-level record can say "present, but
-# not yet complete".  It is tracked in the roadmap instead (§23.31), and the
-# group that switches the real services owns it.
+# express a partial migration.  The migration is now COMPLETE for that unit:
+# the legacy `%h/.local/state/metnos %h/.local/share/metnos` is carried over
+# through the `@service_state@` and `@service_data@` bindings, because the
+# signed source forbids systemd specifiers (roadmap §23.33).
 _CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1 = MappingProxyType({
     ("metnos-durable-worker.service", "Service", "Environment"):
         "move_to_signed_target_or_minimum_environment",
