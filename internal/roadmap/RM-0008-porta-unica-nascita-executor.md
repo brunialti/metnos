@@ -1811,3 +1811,49 @@ GitHub Actions finale `33318421582` ha concluso verdi tutti i nove job,
 compreso il riepilogo bloccante; le sole annotazioni sono gli avvisi Node delle
 action. G6-C resta `active`: il passo successivo è C3, con avvio reale,
 diniego senza prerequisito e ammissione con il gate firmato.
+
+### 23.15 Terzo incremento G6-C: attivazione systemd reale
+
+La cella `tests/portable/test_executor_birth_systemd_activation.py` costruisce
+una distribuzione firmata completa, installa il programma amministrativo e due
+unità isolate, acquisisce la fotografia TCB/systemd e ricostruisce il grafo di
+proprietà canonico. Prima del prerequisito nega sia l'avvio diretto sia il
+timer reale; dopo il prerequisito prova diniego per identità applicativa,
+ammissione causale attraverso il timer reale, credenziali e argv firmati,
+soli descrittori 0/1/2, `NoNewPrivs=1`, capability azzerate, namespace mount
+vivo, acquisizione del gate startup esclusivo e rimozione circoscritta.
+
+Il primo run pubblico ha rilevato due difetti di fixture, entrambi corretti:
+import POSIX a raccolta Windows e dipendenza da un inventario privato escluso
+dall'export. Il secondo run ha mostrato che systemd 255 non espone le
+proprietà nominali `References` e `ReferencedBy`; il profilo è stato allineato
+all'interfaccia reale.
+
+Il terzo run `33321931596` è rimasto rosso su
+`PreflightError: systemd property set`. Causa accertata per misura diretta su
+systemd 255.4, con l'argv esatto costruito dal modulo
+(`--no-pager --plain --all show --property=...`): **una collezione di timer
+priva di voci non viene resa come riga vuota, viene omessa del tutto**; solo
+scalari e liste rendono il vuoto. Il piano dichiarava invece
+`TimersCalendar` con cardinalità `max(1, calendar_count)`, quindi attendeva un
+valore che nessun timer senza `OnCalendar` può esporre. La cardinalità è ora
+il conteggio reale: una collezione a zero voci non entra nell'insieme atteso.
+
+Nello stesso incremento i due dinieghi sulle proprietà systemd nominano la
+differenza osservata — nomi mancanti, nomi inattesi, attesa e osservata per la
+cardinalità. `detail` non raggiunge stderr; i nomi di proprietà non sono
+payload, i valori restano fuori. Un rifiuto muto costava un giro completo di
+CI per ogni ipotesi, ed è quanto è accaduto due volte su tre run.
+
+Due celle portabili fissano la resa misurata e i dinieghi parlanti. La radice
+sorgenti privata è stata ricalcolata dopo la modifica dei byte di runtime:
+686 sorgenti, radice
+`sha256:56f827a48be59b878af9b69f068bc49910ead6f60e7c2f83409fe735e8ea046c`,
+allineata nei quattro punti che la vincolano (preflight, guard di confine,
+inventario di confine, `publish-public.sh`).
+
+Commit privato `eee22bf7`. Matrice mirata: 303 superati, 4 saltati. Matrice
+portabile completa: 8 rossi, tutti già presenti sulla base `31954334` e
+legati a `root` o all'ambiente CI; la base ne aveva 9, e il nono era proprio
+l'attestazione di sorgente ora riallineata. G6-C resta `active` fino
+all'esito verde del prossimo run pubblico; il passo successivo è C4.
