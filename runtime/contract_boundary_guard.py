@@ -28,7 +28,7 @@ BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/2"
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:8380d5b96ef25a8a8d41ad882935b89fb5a8ca5455bf59b5653049788c7c3136"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:5f8f775d828a2a0030c7f438dc40c27a51c4dcdd67d8cab337e08a76b8c13971"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
 MAX_BOUNDARY_SOURCE_FILES = 2_048
@@ -204,8 +204,10 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
     "executor_birth_systemd": {
         "_install_group6_administrative_for_test_v1": ("store_write",),
         "_install_locked_core_v1": ("store_write",),
+        "_install_signed_isolated_systemd_for_test_v1": ("store_write",),
         "_open_parent_v1": ("store_write",),
         "_publish_administrative_tree_v1": ("store_write",),
+        "_publish_isolated_units_for_test_v1": ("store_write",),
         "install_group6_administrative_v1": ("store_write",),
     },
 }
@@ -447,8 +449,10 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "install/executor_birth_source_receiver.py:main",
     "install/executor_birth_systemd.py:_install_group6_administrative_for_test_v1",
     "install/executor_birth_systemd.py:_install_locked_core_v1",
+    "install/executor_birth_systemd.py:_install_signed_isolated_systemd_for_test_v1",
     "install/executor_birth_systemd.py:_open_parent_v1",
     "install/executor_birth_systemd.py:_publish_administrative_tree_v1",
+    "install/executor_birth_systemd.py:_publish_isolated_units_for_test_v1",
     "install/executor_birth_systemd.py:install_group6_administrative_v1",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
     "runtime/executor_birth_ownership_chain.py:_OwnershipChainStoreForTest._initialize_with_authorities",
