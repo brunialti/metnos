@@ -1959,3 +1959,65 @@ riferimento vanno catturate da systemd vero e riprodotte, non inventate. Ciò
 non allenta nessuna prova — la cella reale resta l'autorità — ma sposta la
 scoperta della classe di difetto dominante dal canale da otto minuti a quello
 da due.
+
+### 23.17 G6-C4, G6-B4 e G6-D
+
+**C4** estende la cella esistente, senza secondo apparato: una baseline
+positiva e un solo caso differenziale, come chiede il piano. Dopo l'ammissione
+il `check-all` installato conclude con successo e pubblica un'attestazione; i
+due archi causali compaiono nella fotografia canonica in entrambe le direzioni.
+Il differenziale installa un'unità ausiliaria root-owned in conflitto col
+candidato: compare `ConflictedBy`, l'impronta effettiva cambia e il `check-all`
+successivo nega **senza pubblicare**. Commit `36ad878e`, pubblico `855b44d`.
+
+**B4** consegna il solo nucleo privato di pubblicazione: no-replace,
+sincronizzazione e rilettura completa. La ricevuta è la **rilettura**, non la
+rinomina, e una ripetizione esatta è idempotente perché una pubblicazione
+interrotta fra le due deve poter riprendere. Il nucleo non decide se la
+pubblicazione sia autorizzata — tipo, proprietario, minter e validatore
+appartengono a D, come il piano assegna — ed è il taglio che ha risparmiato più
+lavoro. Windows nega prima di consultare sessione, filesystem o autorità.
+Undici celle in un solo apparato, con i dinieghi come righe di **una** tabella
+parametrizzata. Commit `b77fc2e1`, pubblico `041af39`.
+
+**D** aggiunge le tre transizioni oltre `CERTIFICATE_PUBLISHED`, che erano
+dichiarate ma non esistevano. Tre scelte hanno ridotto il lavoro senza
+indebolire le prove:
+
+1. **nessun campo nuovo** nel record durevole — ciò con cui ogni confine deve
+   concordare è già portato avanti (build chiuso, prova corrente, identità del
+   cutover), e aggiungere campi avrebbe cambiato il codec durevole per evidenza
+   che il record già nomina;
+2. i tre osservatori sono **iniettati**, non importati: il coordinatore non deve
+   acquisire un arco produttivo verso distribuzione installata, testa di
+   proprietà o preflight, perché è la cosa che quei sottosistemi commutano e un
+   import renderebbe ciclico il grafo della guardia di confine;
+3. l'apparato di interruzione è quello esistente.
+
+La ripresa è provata da **tutti e tre** i confini con una sola corsa in avanti
+e tre riprese in processo nuovo. Il processo che riprende non riceve dal morto
+né booleani né percorsi né descrittori aperti, ed è la ragione per cui la morte
+è un `_exit` reale: un'eccezione si srotolerebbe attraverso stato ancora in
+memoria. La forma economica prova quindi una proprietà **più forte**, non più
+debole. Commit `76973509` e `8c7ba8a9`, pubblico `589e604`.
+
+### 23.18 Attrito di processo rimosso
+
+Due frizioni hanno dominato la giornata più del prodotto.
+
+**I perni delle radici sorgenti.** Ogni commit che tocca una radice censita li
+invalida entrambi, e sono accoppiati in modo non ovvio: scrivere quello
+pubblico modifica un file censito e sposta quello privato, mentre la riga del
+perno privato è normalizzata via dal censimento ed è un punto fisso. Farlo a
+mano costava una pubblicazione rifiutata per tentativo — **sei su nove**.
+`internal/tools/rm0008_repin_source_roots.py` applica l'ordine che converge e
+verifica col medesimo cancello; non approva nulla, ricalcola ciò che il
+revisore ha già deciso cambiando i sorgenti. Commit `bb418825`.
+
+**I dinieghi muti.** Ogni causa di C3 è stata un'assunzione mai misurata su
+come systemd rende la propria interfaccia, e la cella che le scopre richiede
+`root`, quindi gira solo in CI: otto minuti per ipotesi. Da quando i dinieghi
+nominano la differenza osservata, le cause si isolano in locale in due minuti,
+e il sweep delle direttive ne ha trovate due in blocco prima che la CI le
+incontrasse. Lo stesso è stato fatto per il timeout dal vivo, che ora riporta
+stato e giornale dell'unità.
