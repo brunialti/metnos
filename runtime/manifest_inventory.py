@@ -520,6 +520,9 @@ def inventory_store_manifests(
     )
     if binding_reader is None:
         from contract_store import read_binding as binding_reader
+    from contract_store import (
+        publication_is_uninitialized as _publication_is_uninitialized,
+    )
 
     version_root, _marker = _publication_paths(
         store_root=store_root,
@@ -559,6 +562,11 @@ def inventory_store_manifests(
             if not isinstance(contract_id, ContractId):
                 raise TypeError("binding returned no ContractId")
         except Exception as exc:
+            if _publication_is_uninitialized(contract_dir):
+                # A reserved-but-never-written slot claims nothing. Refusing
+                # the store for it would let one aborted publication stop
+                # every contract from loading.
+                continue
             problems.append(InventoryProblem(
                 "binding_invalid",
                 str(contract_dir),

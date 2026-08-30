@@ -4688,3 +4688,78 @@ def test_registry_converges_when_manifest_callback_finishes_after_retirement(
         "retirement", current.retirement_id,
     )
     assert calls[-1] == ("outer", "retirement", current.retirement_id)
+
+
+def _reserved_slot(version_root: Path, name: str) -> Path:
+    """Reproduce what `_writer_lock` leaves when the writer never commits."""
+    slot = version_root / name
+    (slot / "generations").mkdir(parents=True)
+    (slot / "writer.lock").write_bytes(b"\0")
+    return slot
+
+
+def test_uninitialized_publication_slot_is_recognized(tmp_path: Path) -> None:
+    from contract_store import publication_is_uninitialized
+
+    version_root = tmp_path / "v1"
+    version_root.mkdir()
+    assert publication_is_uninitialized(_reserved_slot(version_root, "a" * 64))
+
+    # A slot without the lock is still inert: the writer may die before it.
+    bare = version_root / ("b" * 64)
+    (bare / "generations").mkdir(parents=True)
+    assert publication_is_uninitialized(bare)
+
+
+def test_initialized_publication_is_never_treated_as_a_free_slot(
+    tmp_path: Path,
+) -> None:
+    from contract_store import publication_is_uninitialized
+
+    version_root = tmp_path / "v1"
+    version_root.mkdir()
+
+    with_binding = _reserved_slot(version_root, "c" * 64)
+    (with_binding / BINDING_FILE).write_bytes(b"{}")
+    assert not publication_is_uninitialized(with_binding)
+
+    with_history = _reserved_slot(version_root, "d" * 64)
+    (with_history / "generations" / "gen").mkdir()
+    assert not publication_is_uninitialized(with_history)
+
+    with_pointer = _reserved_slot(version_root, "e" * 64)
+    (with_pointer / "current").write_text("x\n")
+    assert not publication_is_uninitialized(with_pointer)
+
+    stray = _reserved_slot(version_root, "f" * 64)
+    (stray / "unexpected").write_bytes(b"")
+    assert not publication_is_uninitialized(stray)
+
+    no_generations = version_root / ("0" * 64)
+    no_generations.mkdir()
+    assert not publication_is_uninitialized(no_generations)
+
+
+def test_inventory_steps_over_a_reserved_slot_but_not_over_a_claim(
+    tmp_path: Path,
+) -> None:
+    """One aborted publication must not stop every contract from loading."""
+    from manifest_inventory import inventory_store_manifests
+
+    version_root = tmp_path / "v1"
+    version_root.mkdir()
+    _reserved_slot(version_root, "a" * 64)
+    claiming = _reserved_slot(version_root, "b" * 64)
+    (claiming / BINDING_FILE).write_bytes(b"not a binding")
+
+    def _refuse(_directory: Path) -> Any:
+        raise AssertionError("unreadable binding")
+
+    inventory = inventory_store_manifests(
+        (),
+        store_root=version_root,
+        binding_reader=_refuse,
+    )
+    problems = [(problem.code, Path(problem.path).name)
+                for problem in inventory.problems]
+    assert problems == [("binding_invalid", "b" * 64)]

@@ -619,6 +619,47 @@ def read_binding(contract_dir: Path | str) -> ContractBinding:
     return decode_binding(binding_bytes, storage_key=directory.name)
 
 
+def publication_is_uninitialized(contract_dir: Path | str) -> bool:
+    """Say whether a directory is a reserved slot, not yet a publication.
+
+    ``_writer_lock`` creates the contract directory and its lock before any
+    authority exists, so a writer that refuses or dies between the two leaves
+    a slot holding nothing.  Such a slot carries no claim: the inventory must
+    step over it instead of refusing the whole store, which would let one
+    aborted publication stop every contract from loading.
+
+    The recognition is deliberately exact.  Only an empty ``generations``
+    directory and the lock file may be present, both plain and unlinked; a
+    binding, a pointer, a stored generation or any other entry means the
+    directory does claim something and stays the caller's problem.
+    """
+    directory = Path(contract_dir)
+    if _is_link_like(directory) or not directory.is_dir():
+        return False
+    try:
+        entries = tuple(directory.iterdir())
+    except OSError:
+        return False
+    generations_seen = False
+    for entry in entries:
+        if _is_link_like(entry):
+            return False
+        if entry.name == "generations":
+            if not entry.is_dir():
+                return False
+            try:
+                if any(entry.iterdir()):
+                    return False
+            except OSError:
+                return False
+            generations_seen = True
+            continue
+        if entry.name == "writer.lock" and entry.is_file():
+            continue
+        return False
+    return generations_seen
+
+
 def _ensure_binding_locked(contract_dir: Path, contract_id: ContractId) -> ContractBinding:
     """Create the immutable binding once, or verify an interrupted retry."""
     desired = encode_binding(contract_id)
