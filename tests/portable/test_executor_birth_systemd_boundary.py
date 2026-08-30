@@ -11,8 +11,10 @@ from contract_boundary_guard import (
 _WRITE_APIS = (
     "_install_group6_administrative_for_test_v1",
     "_install_locked_core_v1",
+    "_install_signed_isolated_systemd_for_test_v1",
     "_open_parent_v1",
     "_publish_administrative_tree_v1",
+    "_publish_isolated_units_for_test_v1",
     "install_group6_administrative_v1",
 )
 
@@ -37,6 +39,7 @@ def test_systemd_installer_read_helpers_do_not_gain_write_authority() -> None:
         "_manifest_file_v1",
         "_require_descriptor_binding_v1",
         "_verify_installed_tree_v1",
+        "_verify_unit_file_v1",
     ):
         assert api not in configured
         assert _boundary_api_capabilities(

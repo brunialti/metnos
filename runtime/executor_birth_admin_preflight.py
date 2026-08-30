@@ -710,7 +710,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:173f218ca16987dbdc47598b5354fb5b1fbfd828b4a590eebe327adaf20c7c01"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:c0aa838eae3d375e8f3acf532b56c784c65f4793e83ec8c341288412d8e2648d"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -761,8 +761,10 @@ _BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
     "install/executor_birth_source_receiver.py:main",
     "install/executor_birth_systemd.py:_install_group6_administrative_for_test_v1",
     "install/executor_birth_systemd.py:_install_locked_core_v1",
+    "install/executor_birth_systemd.py:_install_signed_isolated_systemd_for_test_v1",
     "install/executor_birth_systemd.py:_open_parent_v1",
     "install/executor_birth_systemd.py:_publish_administrative_tree_v1",
+    "install/executor_birth_systemd.py:_publish_isolated_units_for_test_v1",
     "install/executor_birth_systemd.py:install_group6_administrative_v1",
     "runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher._persist_current_reattestation",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
@@ -8082,8 +8084,10 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
     "executor_birth_systemd": {
         "_install_group6_administrative_for_test_v1": ("store_write",),
         "_install_locked_core_v1": ("store_write",),
+        "_install_signed_isolated_systemd_for_test_v1": ("store_write",),
         "_open_parent_v1": ("store_write",),
         "_publish_administrative_tree_v1": ("store_write",),
+        "_publish_isolated_units_for_test_v1": ("store_write",),
         "install_group6_administrative_v1": ("store_write",),
     },
 }

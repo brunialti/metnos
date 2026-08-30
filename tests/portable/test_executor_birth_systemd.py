@@ -4,7 +4,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
+import shutil
 import stat
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +16,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from install import executor_birth_systemd as installer
 import executor_birth_distribution_manifest as distribution
+import executor_birth_service_catalog as catalog
 from contract_boundary_guard import (
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
     BIRTH_CLOSED_EXCEPTION_SCOPES,
@@ -77,24 +81,120 @@ class _Fixture:
     release_root: Path
     ownership_root: Path
     administrative_root: Path
+    unit_root: Path
     preflight: bytes
-    unit_source: Path
+    unit_sources: tuple[Path, ...]
+    unit_fragments: tuple[tuple[str, bytes], ...]
     descriptor: object
     record: object
     environment: object
     account: _ServiceAccountV1
 
 
-def _fixture(tmp_path: Path) -> _Fixture:
+def _fixture(
+    tmp_path: Path, *, namespace: str = "0123456789abcdef",
+    unit_root: Path | None = None,
+) -> _Fixture:
     release_root = tmp_path / "release"
     ownership_root = tmp_path / "ownership"
     administrative_root = tmp_path / "admin" / "executor-birth-v1"
+    unit_root = tmp_path / "systemd" if unit_root is None else unit_root
     preflight = b"#!/usr/bin/python3\nraise SystemExit(0)\n"
-    unit = b"[Unit]\nDescription=isolated G6-C probe\n"
-    unit_path = "deployment/systemd/metnos-g6c-probe.service"
     account = _ServiceAccountV1(
         "metnos", 12345, 12345, (12345,),
         "/var/lib/metnos", "/usr/sbin/nologin",
+    )
+    entry_prefix = f"g6c-{namespace}-"
+    unit_prefix = f"metnos-g6c-{namespace}-"
+    service_entry_id = entry_prefix + "probe"
+    timer_entry_id = entry_prefix + "probe-timer"
+    service_name = unit_prefix + "probe.service"
+    timer_name = unit_prefix + "probe.timer"
+    service_spec = catalog.make_unit_spec_v1(service_name, (
+        catalog.ServiceDirectiveV1(
+            "Unit", "Description", "scalar", ("isolated G6-C probe",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "CapabilityBoundingSet", "scalar",
+            ("CAP_SETGID CAP_SETPCAP CAP_SETUID",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "ExecStart", "argv",
+            (
+                "!/usr/bin/python3", "-I", "-S",
+                catalog.ADMINISTRATIVE_ADAPTER_PATH_V1,
+                "launch", "--entry-id", service_entry_id,
+            ),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "ExecStartPre", "argv",
+            (
+                "!/usr/bin/python3", "-I", "-S",
+                catalog.ADMINISTRATIVE_ADAPTER_PATH_V1,
+                "check", "--entry-id", service_entry_id,
+            ),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "Group", "scalar", (str(account.gid),),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "KillMode", "scalar", ("control-group",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "NoNewPrivileges", "boolean", ("yes",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "User", "scalar", (account.name,),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Service", "WorkingDirectory", "path_list", ("/",),
+        ),
+    ))
+    timer_spec = catalog.make_unit_spec_v1(timer_name, (
+        catalog.ServiceDirectiveV1(
+            "Unit", "Description", "scalar", ("isolated G6-C timer",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Timer", "OnBootSec", "duration", ("1h",),
+        ),
+        catalog.ServiceDirectiveV1(
+            "Timer", "Unit", "unit_list", (service_name,),
+        ),
+    ))
+    entries = (
+        catalog.ServiceCatalogEntryV1(
+            service_entry_id, service_name, None, None, "gated_service",
+            "system", "native_executable", "/usr/bin/true",
+            catalog.target_executable_hash_v1("/usr/bin/true", b"true"),
+            None, (), "/", (), None, service_spec, True, True,
+        ),
+        catalog.ServiceCatalogEntryV1(
+            timer_entry_id, timer_name, None, None, "gated_timer", "system",
+            "none", None, None, None, (), None, (), service_entry_id,
+            timer_spec, False, False,
+        ),
+    )
+    catalog_bytes = catalog._encode_service_catalog_v1(entries, ())
+    decoded_catalog = catalog.decode_service_catalog_v1(catalog_bytes)
+    unit_fragments = tuple(sorted((
+        (service_name, catalog.render_unit_spec_v1(service_name, service_spec)),
+        (timer_name, catalog.render_unit_spec_v1(timer_name, timer_spec)),
+    )))
+    unit_artifacts = tuple(
+        DeploymentArtifactV1(
+            "deployment/systemd/" + unit_name,
+            DEFAULT_SYSTEM_UNIT_ROOT_TEXT_V1 + "/" + unit_name,
+            (
+                "timer_unit" if unit_name.endswith(".timer")
+                else "service_unit"
+            ),
+            "group7_cutover", len(fragment),
+            distribution.file_content_hash(
+                "deployment/systemd/" + unit_name, fragment,
+            ),
+            0o644, 0, 0,
+        )
+        for unit_name, fragment in unit_fragments
     )
     artifacts = (
         DeploymentArtifactV1(
@@ -106,12 +206,7 @@ def _fixture(tmp_path: Path) -> _Fixture:
             ),
             0o755, 0, 0,
         ),
-        DeploymentArtifactV1(
-            unit_path,
-            DEFAULT_SYSTEM_UNIT_ROOT_TEXT_V1 + "/metnos-g6c-probe.service",
-            "service_unit", "group7_cutover", len(unit),
-            distribution.file_content_hash(unit_path, unit), 0o644, 0, 0,
-        ),
+        *unit_artifacts,
     )
     descriptor = build_deployment_descriptor_v1(
         release_sequence=1, service_user=account.name,
@@ -119,8 +214,8 @@ def _fixture(tmp_path: Path) -> _Fixture:
         service_supplementary_gids=account.supplementary_gids,
         service_home=account.home, service_shell=account.shell,
         artifacts=artifacts,
-        service_catalog_id="sha256:" + "1" * 64,
-        service_coverage_hash="sha256:" + "2" * 64,
+        service_catalog_id=decoded_catalog.catalog_id,
+        service_coverage_hash=decoded_catalog.service_coverage_hash,
         python_executable="/usr/bin/python3",
         openssl_executable="/usr/bin/openssl",
         systemctl_executable="/usr/bin/systemctl",
@@ -134,9 +229,8 @@ def _fixture(tmp_path: Path) -> _Fixture:
             "deployment_descriptor", descriptor_bytes,
         ),
         "deployment/executor-birth-service-catalog-v1.json": (
-            "service_catalog", b'{"schema_version":1}\n',
+            "service_catalog", catalog_bytes,
         ),
-        unit_path: ("service_unit", unit),
         "requirements.lock": ("dependency_lock", b"cryptography==47.0.0\n"),
         "runtime/__version__.py": (
             "product_version", b'__version__ = "1.2.3"\n',
@@ -155,6 +249,10 @@ def _fixture(tmp_path: Path) -> _Fixture:
             "boundary_inventory", inventory,
         ),
     }
+    values.update({
+        "deployment/systemd/" + unit_name: ("service_unit", fragment)
+        for unit_name, fragment in unit_fragments
+    })
     files = []
     for path, (role, content) in values.items():
         destination = release_root.joinpath(*path.split("/"))
@@ -210,9 +308,13 @@ def _fixture(tmp_path: Path) -> _Fixture:
         claimed_installation_root=descriptor.installation_root,
     )
     return _Fixture(
-        release_root, ownership_root, administrative_root, preflight,
-        release_root.joinpath(*unit_path.split("/")), descriptor, record,
-        environment, account,
+        release_root, ownership_root, administrative_root, unit_root,
+        preflight,
+        tuple(
+            release_root / "deployment" / "systemd" / unit_name
+            for unit_name, _fragment in unit_fragments
+        ),
+        unit_fragments, descriptor, record, environment, account,
     )
 
 
@@ -222,6 +324,17 @@ def _install(fixture: _Fixture, session: object, **kwargs):
         ownership_root=fixture.ownership_root,
         administrative_root=fixture.administrative_root,
         account=fixture.account, **kwargs,
+    )
+
+
+def _capability(
+    fixture: _Fixture, session: object, *, namespace: str,
+    **kwargs,
+):
+    return installer._signed_isolated_systemd_for_test_v1(
+        fixture.record, environment=fixture.environment, session=session,
+        ownership_root=fixture.ownership_root, unit_root=fixture.unit_root,
+        account=fixture.account, namespace=namespace, **kwargs,
     )
 
 
@@ -241,7 +354,10 @@ def test_install_is_byte_identical_idempotent_and_defers_every_unit(
     assert tuple(item.name for item in fixture.administrative_root.iterdir()) == (
         "preflight.py",
     )
-    assert not (fixture.administrative_root / fixture.unit_source.name).exists()
+    assert not any(
+        (fixture.administrative_root / source.name).exists()
+        for source in fixture.unit_sources
+    )
     assert not any(
         item.name.startswith(installer._STAGING_PREFIX_V1)
         for item in fixture.administrative_root.parent.iterdir()
@@ -350,3 +466,190 @@ def test_product_and_platform_boundaries_refuse_before_administrative_io(
         )
     assert platform.value.code == "birth_ownership_platform_unsupported"
     assert not fixture.administrative_root.exists()
+
+
+def test_signed_isolated_capability_installs_exact_names_and_bytes(
+    tmp_path: Path,
+) -> None:
+    namespace = "0123456789abcdef"
+    fixture = _fixture(tmp_path, namespace=namespace)
+    fixture.unit_root.mkdir(mode=0o755)
+    with _deployment_lock_for_test_v1(fixture.ownership_root) as session:
+        capability = _capability(fixture, session, namespace=namespace)
+        installed = installer._install_signed_isolated_systemd_for_test_v1(
+            capability, session=session, ownership_root=fixture.ownership_root,
+        )
+
+    assert type(capability) is installer._SignedIsolatedSystemdTestV1
+    assert type(installed) is installer._InstalledIsolatedSystemdTestV1
+    assert installed.unit_names == tuple(
+        name for name, _fragment in fixture.unit_fragments
+    )
+    assert tuple(sorted(item.name for item in fixture.unit_root.iterdir())) == (
+        installed.unit_names
+    )
+    for unit_name, expected in fixture.unit_fragments:
+        observed = fixture.unit_root / unit_name
+        assert observed.read_bytes() == expected
+        assert stat.S_IMODE(observed.stat().st_mode) == 0o644
+        assert observed.stat().st_nlink == 1
+
+
+def test_isolated_namespace_mismatch_is_rejected_without_unit_root_io(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path, namespace="0123456789abcdef")
+    with _deployment_lock_for_test_v1(fixture.ownership_root) as session:
+        with pytest.raises(DistributionAssemblerError) as caught:
+            _capability(
+                fixture, session, namespace="fedcba9876543210",
+            )
+    assert caught.value.code == "birth_ownership_deployment_invalid"
+    assert caught.value.detail == "isolated namespace"
+    assert not fixture.unit_root.exists()
+
+
+def test_changed_signed_unit_is_rejected_before_unit_root_mutation(
+    tmp_path: Path,
+) -> None:
+    namespace = "0123456789abcdef"
+    fixture = _fixture(tmp_path, namespace=namespace)
+    fixture.unit_root.mkdir(mode=0o755)
+    with _deployment_lock_for_test_v1(fixture.ownership_root) as session:
+        capability = _capability(fixture, session, namespace=namespace)
+        fixture.unit_sources[0].write_bytes(b"[Unit]\nDescription=changed\n")
+        fixture.unit_sources[0].chmod(0o644)
+        with pytest.raises(distribution.DistributionManifestError) as caught:
+            installer._install_signed_isolated_systemd_for_test_v1(
+                capability, session=session,
+                ownership_root=fixture.ownership_root,
+            )
+    assert caught.value.code == "birth_ownership_distribution_file_mismatch"
+    assert tuple(fixture.unit_root.iterdir()) == ()
+
+
+def test_occupied_unit_namespace_requires_recovery_without_cleanup(
+    tmp_path: Path,
+) -> None:
+    namespace = "0123456789abcdef"
+    fixture = _fixture(tmp_path, namespace=namespace)
+    fixture.unit_root.mkdir(mode=0o755)
+    occupied_name = fixture.unit_fragments[0][0]
+    occupied = fixture.unit_root / occupied_name
+    occupied.write_bytes(b"pre-existing\n")
+    occupied.chmod(0o644)
+    with _deployment_lock_for_test_v1(fixture.ownership_root) as session:
+        capability = _capability(fixture, session, namespace=namespace)
+        with pytest.raises(DistributionAssemblerError) as caught:
+            installer._install_signed_isolated_systemd_for_test_v1(
+                capability, session=session,
+                ownership_root=fixture.ownership_root,
+            )
+    assert caught.value.code == "birth_ownership_recovery_required"
+    assert caught.value.detail == "unit namespace occupied"
+    assert tuple(fixture.unit_root.iterdir()) == (occupied,)
+    assert occupied.read_bytes() == b"pre-existing\n"
+
+
+def test_isolated_capability_and_platform_boundaries_refuse_before_io(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    namespace = "0123456789abcdef"
+    fixture = _fixture(tmp_path, namespace=namespace)
+    with pytest.raises(DistributionAssemblerError) as forged:
+        installer._install_signed_isolated_systemd_for_test_v1(
+            object(), session=object(), ownership_root=fixture.ownership_root,
+        )
+    assert forged.value.code == "birth_ownership_deployment_invalid"
+    assert not fixture.unit_root.exists()
+
+    monkeypatch.setattr(installer.sys, "platform", "win32")
+    with pytest.raises(DistributionAssemblerError) as platform:
+        installer._signed_isolated_systemd_for_test_v1(
+            fixture.record, environment=fixture.environment, session=object(),
+            ownership_root=fixture.ownership_root,
+            unit_root=fixture.unit_root, account=fixture.account,
+            namespace=namespace,
+        )
+    assert platform.value.code == "birth_ownership_platform_unsupported"
+    assert not fixture.unit_root.exists()
+
+
+@pytest.mark.skipif(
+    os.environ.get("METNOS_REQUIRE_REAL_G6C_SYSTEMD") != "1",
+    reason="the destructive G6-C systemd cell is CI opt-in only",
+)
+def test_signed_isolated_cell_daemon_reload_on_disposable_vm(
+    tmp_path: Path,
+) -> None:
+    assert os.geteuid() == 0
+    assert Path("/run/systemd/system").is_dir()
+    assert shutil.which("systemctl") == "/usr/bin/systemctl"
+    namespace = secrets.token_hex(8)
+    fixture = _fixture(
+        tmp_path, namespace=namespace,
+        unit_root=Path(DEFAULT_SYSTEM_UNIT_ROOT_TEXT_V1),
+    )
+    admin_parent = Path(DEFAULT_ADMINISTRATIVE_ROOT_TEXT_V1).parent
+    admin_root = Path(DEFAULT_ADMINISTRATIVE_ROOT_TEXT_V1)
+    unit_paths = tuple(
+        fixture.unit_root / name for name, _fragment in fixture.unit_fragments
+    )
+    stage_paths = tuple(
+        fixture.unit_root / installer._isolated_stage_name_v1(
+            fixture.descriptor.descriptor_id, name,
+        )
+        for name, _fragment in fixture.unit_fragments
+    )
+    assert not admin_parent.exists()
+    assert not admin_root.exists()
+    assert all(not path.exists() for path in unit_paths + stage_paths)
+
+    installed_units: tuple[str, ...] = ()
+    created_admin_parent = False
+    try:
+        with _deployment_lock_for_test_v1(fixture.ownership_root) as session:
+            _install(fixture, session)
+            created_admin_parent = True
+            capability = _capability(fixture, session, namespace=namespace)
+            installed = installer._install_signed_isolated_systemd_for_test_v1(
+                capability, session=session,
+                ownership_root=fixture.ownership_root,
+            )
+            installed_units = installed.unit_names
+        subprocess.run(
+            ["/usr/bin/systemctl", "daemon-reload"],
+            check=True, timeout=30,
+        )
+        for unit_name, expected in fixture.unit_fragments:
+            path = fixture.unit_root / unit_name
+            assert path.read_bytes() == expected
+            fragment_path = subprocess.run(
+                [
+                    "/usr/bin/systemctl", "show", unit_name,
+                    "--property=FragmentPath", "--value",
+                ],
+                check=True, capture_output=True, text=True, timeout=30,
+            ).stdout.strip()
+            assert fragment_path == str(path)
+    finally:
+        expected_by_name = dict(fixture.unit_fragments)
+        for unit_name in installed_units:
+            path = fixture.unit_root / unit_name
+            if path.exists():
+                assert path.is_file() and not path.is_symlink()
+                assert path.read_bytes() == expected_by_name[unit_name]
+                path.unlink()
+        if admin_root.exists():
+            installed_preflight = admin_root / "preflight.py"
+            assert tuple(admin_root.iterdir()) == (installed_preflight,)
+            assert installed_preflight.read_bytes() == fixture.preflight
+            installed_preflight.unlink()
+            admin_root.rmdir()
+        if created_admin_parent and admin_parent.exists():
+            assert tuple(admin_parent.iterdir()) == ()
+            admin_parent.rmdir()
+        subprocess.run(
+            ["/usr/bin/systemctl", "daemon-reload"],
+            check=True, timeout=30,
+        )
