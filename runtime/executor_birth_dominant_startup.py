@@ -198,3 +198,83 @@ __all__ = [
     "DominantStartupError",
     "bindings_digest_v1",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class DominantStartupReceiptV1:
+    """What the crossing actually consumed, re-read and agreed twice."""
+
+    bindings_digest: str
+    retirement_plan_digest: str
+    enforcement_evidence_digest: str
+
+
+def complete_dominant_startup_v1(
+    *,
+    sessions: tuple[object, ...],
+    observe_identity,
+    observe_topology,
+    observe_catalog,
+    plan_retirement,
+    observe_enforcement,
+    cross,
+    _crash_seam=None,
+) -> DominantStartupReceiptV1:
+    """Compose the whole crossing in ONE call that never releases the locks.
+
+    The order is the property, not a convenience. Every observation happens
+    while the three locks are held; the capability is minted only after all of
+    them; each is then OBSERVED AGAIN and compared before the crossing runs.
+    A second reading that agrees is the only thing separating "it was true when
+    we looked" from "it is true now", and the whole boundary exists because
+    those differ.
+
+    Nothing is passed in already decided: the caller supplies observers, not
+    values. An argument that carried a digest instead of a way to obtain one
+    would let the decision be made outside the locks and merely reported here.
+    """
+    for observer in (
+        observe_identity, observe_topology, observe_catalog, plan_retirement,
+        observe_enforcement, cross,
+    ):
+        if not callable(observer):
+            raise _invalid("dominant_startup_observer_invalid")
+    held = _require_live_sessions_v1(sessions)
+
+    topology = _require_digest_v1(observe_topology(), "effective_topology_hash")
+    catalog = _require_digest_v1(observe_catalog(), "catalog_id")
+    retirement = _require_digest_v1(plan_retirement(), "retirement_plan_digest")
+    enforcement = _require_digest_v1(
+        observe_enforcement(), "enforcement_evidence_digest",
+    )
+    identity = observe_identity()
+    if type(identity) is not tuple or len(identity) != 2:
+        raise _invalid("dominant_startup_binding_invalid", "identity")
+    request_id, previous_head = identity
+    bindings = DominantStartupBindingsV1(
+        request_id=_require_digest_v1(request_id, "request_id"),
+        previous_head_digest=_require_digest_v1(
+            previous_head, "previous_head_digest",
+        ),
+        catalog_id=catalog,
+        effective_topology_hash=topology,
+        enforcement_evidence_digest=enforcement,
+    )
+    capability = _DominantStartupInstalledV1(bindings, held, _CAPABILITY_SEAL_V1)
+    if _crash_seam:
+        _crash_seam("capability_minted")
+
+    # The second reading. Same observers, same locks, no cached value.
+    if (
+        observe_identity() != identity
+        or observe_topology() != topology
+        or observe_catalog() != catalog
+        or plan_retirement() != retirement
+        or observe_enforcement() != enforcement
+    ):
+        raise _invalid("dominant_startup_binding_drift", "second reading")
+    digest = consume_v1(capability, bindings)
+    if _crash_seam:
+        _crash_seam("capability_consumed")
+    cross(digest)
+    return DominantStartupReceiptV1(digest, retirement, enforcement)
