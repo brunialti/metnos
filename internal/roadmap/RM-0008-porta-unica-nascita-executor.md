@@ -2693,3 +2693,47 @@ Verificato sull'unita' compilata:
 `_EXPECTED_SERVICE_SOURCE_IDENTITY_V1` da `fc71a3b9…` a `62e8f65e…`, con la
 conseguenza sul censimento pagata nello stesso passo: due autorita' ripuntate,
 zero impronte stantie.
+
+
+### 23.34 Gruppo 7-A: la capacita' privata che autorizza il superamento
+
+Primo pezzo di sostanza del gruppo 7, costruito con la stessa forma che ha
+retto in G6-B4: l'autorita' vive da sola, isolata, e il grafo produttivo non la
+raggiunge finche' l'involucro che la conia non esiste.
+
+**Che cosa autorizza.** Il piano ottimizzato chiede al gruppo 7 un unico
+involucro che, nella STESSA chiamata e senza rilasciare i blocchi di
+deployment, avvio esclusivo e manutenzione, installi e rilegga la topologia
+dominante, neutralizzi i legami legacy, ricalcoli dai byte correnti con
+`closed_build_enforcement()=True`, costruisca la capacita' e la consumi una
+sola volta prima di oltrepassare `CERTIFICATE_READY`.
+`runtime/executor_birth_dominant_startup.py` possiede il quarto e il quinto
+punto, e nient'altro: non installa, non neutralizza, non tocca il giornale.
+
+**Perche' l'autorita' sta da sola.** Perche' il superamento sia dimostrabile:
+un chiamante non puo' ottenerla tenendo un percorso, un'impronta o il nome di
+uno stato. Il tipo e' la credenziale, il conio richiede l'insieme completo dei
+legami, e il consumo avviene esattamente una volta.
+
+**Proprieta' provate** (15 casi in
+`tests/portable/test_executor_birth_dominant_startup.py`):
+
+- consumo unico: un secondo superamento sulla stessa autorita' e' rifiutato;
+- **deriva fra conio e uso**: il chiamante rilegge cio' che ha osservato, e un
+  solo campo cambiato ferma il superamento — e' il difetto che questo confine
+  esiste per impedire, cioe' che il terreno si muova fra la verifica e l'uso;
+- incorniciatura: spostare un valore da un campo al successivo cambia
+  l'impronta, quindi nessun campo puo' scivolare nel vicino;
+- **tre blocchi, tre sessioni vive e distinte**: la stessa sessione passata tre
+  volte soddisfa il conteggio ma non la proprieta', e viene rifiutata; una
+  sessione serializzabile pure, perche' un'autorita' sopravvissuta a un confine
+  di processo autorizzerebbe un superamento i cui blocchi non sono piu' tenuti
+  da chi lo esegue;
+- ne' copia ne' pickle: entrambi sollevano;
+- un sosia non apre la porta e il sigillo non e' raggiungibile;
+- ogni legame deve essere un'impronta: un nome, un percorso o un hash troncato
+  non sono un'identita';
+- da `__all__` non si raggiunge nulla che conii o consumi.
+
+Perni: 689 sorgenti private, 677 pubbliche. Portable 1049 verdi, guardie verdi,
+censimento 83 verdi con l'autorita' del modulo nuovo puntata alla nascita.
