@@ -78,6 +78,10 @@ Un percorso puo' appartenere a un solo ruolo. Un trasferimento richiede un
 commit esplicito del proprietario corrente; fino a quel commit l'altro ruolo lo
 tratta in sola lettura.
 
+Il codice nuovo o modificato usa esclusivamente l'inglese per commenti,
+docstring e documentazione incorporata nel sorgente. Questa regola vale nei
+rami interni fin dall'inizio, non viene rimandata all'esportazione pubblica.
+
 ## 4. Messaggi di sincronizzazione
 
 Lo stato viaggia nei trailer dei commit. Non serve un registro condiviso da
@@ -118,10 +122,19 @@ sviluppo non vengono spinti direttamente nel deposito GitHub pubblico. Dopo
 che entrambi gli agenti hanno accettato lo stesso commit e le prove richieste
 dalla barriera sono verdi, l'integratore puo' produrre da quel commit un ramo
 pubblico mediante il percorso di esportazione curata e le verifiche di
-pubblicabilita'. Il ramo pubblico contiene la storia esportata, non la storia
-interna del ramo di lavoro. I checkpoint intermedi restano piccoli e
-incrementali; non si riscrive la storia e non si comprime la sequenza prima
-della convergenza.
+pubblicabilita'. La pubblicazione resta bloccata se il candidato finale non
+supera anche il gate forte GII, eseguito sia sull'albero esportato sia
+sull'indice Git finale: il controllo e' fail-closed e deve riportare zero dati
+personali, identificatori riconducibili a persone, segreti, percorsi o dettagli
+di infrastruttura privata. Un controllo parziale o eseguito prima dell'ultima
+trasformazione non vale come prova.
+
+Nel candidato pubblico, commenti di sorgente, docstring e documentazione
+incorporata nel codice sono esclusivamente in inglese. Un commento non
+classificato o una traduzione non revisionata ferma la pubblicazione. Il ramo
+pubblico contiene la storia esportata, non la storia interna del ramo di
+lavoro. I checkpoint intermedi restano piccoli e incrementali; non si
+riscrive la storia e non si comprime la sequenza prima della convergenza.
 
 ## 5. Sincronizzazione senza intervento di Roberto
 
