@@ -488,7 +488,11 @@ def _decodifica_canonica(documento, grezzo: bytes, riferimenti: dict,
     ):
         if str(dalla_emissione) != str(dalla_riga):
             return f"{nome} discorde fra emissione durevole e riga"
-    if em_byte is not None and bytes(em_byte) != bytes(documento["encoded"]):
+    # The productive schema forbids a NULL here, so absence is a divergence:
+    # turning a missing value into agreement is how a gap becomes a green.
+    if em_byte is None:
+        return "l'emissione durevole non porta i byte della ricevuta"
+    if bytes(em_byte) != bytes(documento["encoded"]):
         return "byte discordi fra emissione durevole e riga"
     if contratto is None:
         return "l'emissione durevole non nomina un contratto"

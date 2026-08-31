@@ -531,3 +531,28 @@ pretende uguaglianza esatta di `request_id`, `issuer_id`, `objective_hash`,
 
 Venti casi verdi; `git diff --check` pulito; dato reale invariato: 12 legami,
 tutti `epoca_storica`, zero non classificati.
+
+---
+
+## 16. Decimo giro — la proprietà entra nel commit
+
+Tre adeguamenti, tutti sulla stessa idea: **una proprietà provata da una prova
+temporanea non è una proprietà del commit.**
+
+1. **Il caso è ora versionato.** La modifica della sola
+   `birth_producer_issuance.request_id`, dopo una costruzione integralmente
+   fatta con le API, è il ventunesimo caso: un solo ignoto, zero rifiuti.
+   Verificato non vacuo — togliendo il confronto della richiesta, la prova
+   diventa rossa con `{'epoca_storica': 2}`.
+2. **L'assenza non è accordo.** `birth_producer_issuance.encoded` mancante era
+   trattato come «niente da confrontare»; lo schema produttivo lo vieta, e ora
+   la sua assenza è una discordanza.
+3. **Una mutazione che non avviene rende rossa la prova.** Le alterazioni
+   negative inghiottivano `sqlite3.Error`, quindi un caso negativo che non
+   riusciva a mutare restava verde sul caso positivo. Ora ogni mutazione
+   pretende di aver toccato esattamente una riga.
+
+**Ventuno casi verdi, `git diff --check` pulito, misura reale invariata**: 12
+legami, tutti `epoca_storica`, zero non classificati, blocco sul negozio.
+
+Con questo, per i criteri che A ha elencato, il perimetro B è pronto per B1.

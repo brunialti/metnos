@@ -204,15 +204,25 @@ def riga(stato_dir: Path, righe: list[dict], contratto: str | None = None,
                                 "issuer_id", "objective_hash",
                                 "candidate_source_id", "executor_origin",
                                 "revision_authorship", "expires_at"}}
-        if alterazioni:
+        alterazioni_emissione = r.get("alterazioni_emissione") or {}
+        if alterazioni or alterazioni_emissione:
             conn = sqlite3.connect(percorso)
-            for colonna, valore in alterazioni.items():
-                try:
-                    conn.execute(
-                        f"update birth_producer_receipts set {colonna} = ? "
+            # A mutation that does not happen must make the test red, not leave
+            # it green on the positive case: neither the error nor a zero row
+            # count may be swallowed.
+            for tabella, mutazioni in (
+                ("birth_producer_receipts", alterazioni),
+                ("birth_producer_issuance", alterazioni_emissione),
+            ):
+                for colonna, valore in mutazioni.items():
+                    cursore = conn.execute(
+                        f"update {tabella} set {colonna} = ? "
                         "where request_id = ?", (valore, r["request_id"]))
-                except sqlite3.Error:
-                    pass
+                    if cursore.rowcount != 1:
+                        conn.close()
+                        raise AssertionError(
+                            f"la mutazione su {tabella}.{colonna} ha toccato "
+                            f"{cursore.rowcount} righe, attesa 1")
             conn.commit(); conn.close()
     return stato_dir
 
@@ -724,6 +734,40 @@ def _(base: Path) -> list[str]:
     e = esegui(negozio, base / "stato", aut, stato_di(("cur", "corrente", gen("a"))))
     return ([] if e["conteggio"].get(C.IGNOTA) == 1
             else [f"il dubbio sulla generazione corrente non ha bloccato: {e['conteggio']}"])
+
+
+@caso("richiesta alterata nella sola catena di emissione: blocca")
+def _(base: Path) -> list[str]:
+    """The durable chain must be bound, not merely present.
+
+    Everything is built by the real APIs and is coherent; then one column of
+    ``birth_producer_issuance`` is changed.  A census that reads the issuance
+    only to learn the contract would still call this an authenticated
+    conclusion.
+    """
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    ric = "sha256:" + "3" * 64
+    buoni = produttore(k)
+    pubblicazione(negozio, "emi", [gen("a"), gen("b")], gen("b"),
+                  {gen("a"): ammissione(k, contratto="emi", generazione=gen("a"),
+                                        byte_produttore=buoni, richiesta=ric)})
+    encoded, firma = busta(k, contratto="emi", generazione=gen("a"),
+                           precedente=gen("b"), richiesta=ric,
+                           byte_produttore=buoni)
+    r = riga_coerente(k, byte_produttore=buoni, encoded=encoded, firma=firma,
+                      richiesta=ric)
+    r["alterazioni_emissione"] = {"request_id": "sha256:" + "9" * 64}
+    stato = riga(base / "stato", [r], "emi", k)
+    e = esegui(negozio, stato, aut, stato_di(("emi", "corrente", gen("b"))))
+    errori = []
+    if e["conteggio"].get(C.IGNOTA) != 1:
+        errori.append(f"la catena alterata non ha bloccato: {e['conteggio']}")
+    if e["rifiuti"]:
+        errori.append(f"e' stato contato come rifiuto: {len(e['rifiuti'])}")
+    if "discorde fra emissione durevole e riga" not in e["motivi"]:
+        errori.append(f"motivo inatteso: {e['motivi']}")
+    return errori
 
 
 def main() -> int:
