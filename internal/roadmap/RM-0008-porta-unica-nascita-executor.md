@@ -3186,3 +3186,56 @@ sbagliata sarebbe stato peggio che non controllare: una guardia che strilla su
 codice corretto insegna a zittire le guardie. Riscritta sull'invariante vera —
 o il runtime possiede il pattern, o il modulo possiede un `reverse()` — e
 `tests/runtime/infra/test_reverse_patterns_declared.py` la tiene, 18 casi.
+
+
+### 23.48 La fusione in produzione, il guasto che ho causato e cosa lo bloccava
+
+31 agosto, con Roberto presente e autorizzante. Registrato per intero perche'
+l'errore e' piu' istruttivo del risultato.
+
+**Cosa e' successo.** Ho portato i 539 commit della linea RM-0008 nell'albero di
+installazione `/opt/metnos`. La fusione tecnica e' riuscita — due soli conflitti
+sostanziali, entrambi la stessa correzione scritta due volte in parallelo — ma
+**il servizio non e' piu' ripartito** ed e' rimasto giu' circa dieci minuti.
+
+**Perche'.** Il codice fuso, all'avvio, attiva l'autorita' di nascita se un
+insieme risulta preparato. Su questa macchina un insieme E' preparato (creato il
+30 agosto da un'altra sessione), quindi la tolleranza `prepared_not_active` non
+si applica e l'attivazione diventa fatale. Falliva con
+`birth_provisioning_acl_unsafe`.
+
+**La causa prima, misurata e verificata.** `_verify_posix_directory` rifiuta una
+radice `historical_public` con `mode & 0o022`, e `/opt/metnos/runtime` e' `775`,
+cioe' scrivibile dal gruppo. E' la STESSA famiglia del difetto del §23.21: una
+regola del prodotto che rifiuta un percorso che il prodotto stesso usa. Provato:
+con `chmod g-w runtime` la prima fase passa.
+
+**Il secondo blocco, oltre il primo.** Superata quella, l'avvio si ferma piu'
+avanti, in `load_sealed_authorities_v1`: la ricostruzione del materiale di
+contesto (`prepare_context_material_v1`) fallisce con lo stesso codice. Non e'
+piu' un bit di permesso — e' nel modello dei ruoli del filesystem sicuro, area
+del lavoro in corso di un'altra sessione.
+
+**I miei due errori, per intero.**
+
+1. Ho fuso **sull'albero da cui gira il servizio** invece che in copia e poi
+   spostare. Avevo fatto la prova in copia, e poi ho abbandonato quella
+   disciplina proprio nel gesto che contava.
+2. Non ho provato che il codice nuovo **si avviasse** prima di metterlo li'. Le
+   suite erano verdi, ma nessuna suite avvia il server con le radici reali: e'
+   la differenza fra «il codice e' corretto» e «il servizio parte», e questa
+   sessione l'ha imparata a spese di Roberto.
+
+C'e' un terzo errore, di misura: ho provato l'ipotesi del permesso eseguendo il
+controllo DAL WORKTREE, dove `PATH_RUNTIME` punta al worktree stesso. Il
+`chmod` sulla cartella di produzione non poteva influenzare un controllo su
+un'altra cartella, e ho concluso «ipotesi sbagliata» quando era giusta. La stessa
+lezione della sessione, la quinta volta: verificare CHE COSA si sta misurando,
+non solo il risultato.
+
+**Stato finale.** Albero riportato a `14ea7179`, servizio attivo, permessi
+ripristinati identici, nessuna perdita. La fusione riuscita e verificata resta
+in `/tmp/metnos-prova-fusione`.
+
+**Ordine corretto, ora dimostrato:** prima si porta l'autorita' di nascita a
+uno stato attivabile, poi si fonde il codice che la pretende. Non il contrario.
