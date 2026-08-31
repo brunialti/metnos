@@ -2,7 +2,7 @@
 
 Data: 31 agosto 2026  
 Unita': `F4-EPOCA-01`  
-Stato: proposta A, quinta versione pronta alla revisione incrociata
+Stato: proposta A, sesta versione pronta alla revisione incrociata
 Ancora fattuale B: `937ba594`
 
 ## 1. Risultato richiesto
@@ -120,7 +120,8 @@ current_inventory_hash
 campo omonimo. Il certificato V1 e la sua ancora esistente restano byte per byte
 immutati. Il primo passaggio reale emette invece un certificato V2, con dominio
 di firma e dominio dell'identificativo V2 distinti, che contiene esattamente
-tutti i campi V1 piu' `context_transition_id` e `schema_version=2`. Usa la
+tutti i campi V1 piu' `context_transition_id`,
+`dominant_startup_receipt` e `schema_version=2`. Usa la
 stessa autorita' gia' circoscritta allo scopo ownership-cutover: non nasce una
 chiave e non si amplia lo scopo. Il verificatore sceglie il codec dal formato
 canonico e non prova un formato come ripiego dell'altro.
@@ -147,6 +148,13 @@ distribuzione installata.
 ordinata e senza duplicati di coppie `(contract_id, generation_id)`. Le coppie
 devono essere identiche a quelle di `current_receipts` nel certificato; il
 conteggio non partecipa come autorita' separata.
+
+`dominant_startup_receipt` e' il digest restituito dall'involucro del gruppo 7
+dopo la seconda lettura concordante sotto deployment lock, startup esclusivo e
+manutenzione. I suoi binding V2 aggiungono `context_transition_id` ai fatti V1
+gia' osservati. Il coordinatore accetta quel digest soltanto nella chiamata
+interna dell'involucro, lo rende durevole in `CERTIFICATE_READY` e lo include
+nel certificato: una ripresa deve ripresentare il valore identico.
 
 ## 5. Insieme nuovo e identità conservate
 
@@ -225,9 +233,12 @@ manutenzione e nascita. La sequenza è:
 9. riattestare ogni generazione corrente nel percorso V2 mediante una nuova
    ricevuta Producer, poi rileggere entrambe le rappresentazioni;
 10. ripetere il censimento e pretendere identita' identiche al punto 6;
-11. registrare `RECEIPTS_COMPLETE`, pubblicare il record di transizione
-    append-only e preparare payload e firma del certificato;
-12. registrare `CERTIFICATE_READY`, rileggere record, payload e firma;
+11. registrare `RECEIPTS_COMPLETE` e pubblicare il record di transizione
+    append-only;
+12. dentro l'involucro dominante del gruppo 7, rileggere i suoi binding,
+    consumare la capacita', costruire payload e firma e registrare
+    `CERTIFICATE_READY` legando la sua ricevuta, il record, il payload e la
+    firma;
 13. pubblicare il certificato F4 V2 che lega `transition_id`,
     `request_id`, build e impronte delle ricevute;
 14. pubblicare build e testa F4 append-only;
@@ -261,7 +272,8 @@ campi V2 le identita' `provisioning_transaction_id`, `previous_set_id`,
 `previous_admission_context_id`, `previous_context_epoch`, `target_set_id`,
 `target_admission_context_id`, `target_context_epoch`,
 `target_context_material_sha256`, `target_set_json_sha256`,
-`context_transition_id` e `current_inventory_hash`.
+`context_transition_id`, `current_inventory_hash` e
+`dominant_startup_receipt`.
 
 La transazione di provisioning V2 e' interna e recuperabile: il suo header lega
 `request_id`, build verificata, insieme precedente e inventario delle sorgenti;
@@ -276,7 +288,7 @@ ogni ripresa accetta soltanto la stessa transazione e gli stessi byte.
 | nessuno | testa precedente valida | nuova transazione soltanto con autorizzazione completa |
 | `PREPARED` | staging o insieme target concordante, testa vecchia | pubblicare/rileggere l'insieme e completare le riattestazioni vincolate |
 | `RECEIPTS_COMPLETE` | inventario e ricevute concordanti, testa vecchia | pubblicare il record, preparare certificato e registrare le impronte |
-| `CERTIFICATE_READY` | record, payload e firma concordanti, testa vecchia | pubblicare il certificato esatto |
+| `CERTIFICATE_READY` | ricevuta dominante, record, payload e firma concordanti, testa vecchia | pubblicare il certificato esatto |
 | `CERTIFICATE_PUBLISHED` | certificato presente | completare build e testa; nel primo passaggio non e' ammesso il ritorno al regime precedente |
 | `BUILD_VERIFIED` | oggetti F4 riletti, selettore vecchio | pubblicare la testa e confrontare il predecessore |
 | `HEAD_REQUIRED` | selettore nuovo | completare tutte le riletture |
@@ -367,7 +379,9 @@ Prima di B2 servono almeno:
 17. interruzione della transazione di provisioning prima e dopo `PREPARED`,
     con ripresa soltanto dell'inventario esatto;
 18. richiesta Producer V1 o di un'altra epoca non riutilizzabile in V2;
-19. server completo e turni reali in copia dopo la transizione.
+19. ricevuta dominante assente, diversa o proveniente da binding senza
+    `context_transition_id` rifiutata anche in ripresa;
+20. server completo e turni reali in copia dopo la transizione.
 
 Le prove di interruzione osservano file e ricevute reali. Non è sufficiente
 avanzare una macchina di stati fittizia. La suite completa resta riservata a
@@ -404,6 +418,8 @@ Le interfacce congelate sono minime:
 - B restituisce ad A il `CurrentReceiptProof` ordinato di identita' e impronte;
   A verifica che le identita' producano `current_inventory_hash` e le lega nel
   certificato;
+- A estende l'involucro dominante in V2 con `context_transition_id` e lega la
+  ricevuta consumata nel record coordinatore e nel certificato V2;
 - il lettore storico V1 resta distinto dal lettore corrente V2: nessun
   ripiego automatico da V2 a V1 e nessuna riscrittura delle ricevute V1.
 
