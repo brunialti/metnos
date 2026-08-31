@@ -293,3 +293,92 @@ Non servono nuove famiglie di prove oltre a quelle gia' richieste: basta
 correggere la fixture V1/V2, chiudere i legami esatti del rilievo 8 e applicare
 le condizioni fail-closed del rilievo 9. Nessuna suite completa in questa
 barriera.
+
+---
+
+## Sesto giro
+
+Data: 31 agosto 2026
+Commit esaminato: `d7c7382f34a6df64fcf3f88cfef3dc5fc708c786`
+Verdetto: `MODIFICHE_RICHIESTE`
+
+Sono accolte l'identita' a tripla, la derivazione dell'istante dal campo
+firmato `issued_at` e la verifica `lstat` degli oggetti al primo livello del
+negozio. Le quindici prove dichiarate sono verdi. La ripetizione reale in sola
+lettura conferma 12 legami storici e zero non classificati; l'uscita resta
+correttamente bloccata dai due rilievi inventariali gia' noti.
+
+Restano quattro falsi verdi, riprodotti sull'oggetto Git immutabile esaminato.
+
+### Rilievo 11 — la ricevuta nella busta non e' ancora il gemello del negozio
+
+`_catena_ammissione` riceve `byte_busta` ma non lo usa. Dopo la verifica firma,
+la ricevuta nella busta viene accoppiata al negozio soltanto mediante la tripla.
+Due AdmissionReceipt entrambe firmate, con la stessa tripla ma byte diversi,
+vengono quindi classificate come due fatti storici coerenti. La prova
+indipendente usa nel negozio una ricevuta con un `producer_receipt_hash` e nella
+busta una ricevuta con un altro hash, entrambi validamente firmati: il risultato
+e' ancora due `epoca_storica`, zero ignoti.
+
+La correzione minima e' confrontare i byte Admission decodificati dalla busta
+con `gemello.prove["byte"]` prima di ereditare corrente e ritirato. Nello stesso
+punto, i tre identificativi di richiesta devono esistere e coincidere, non
+soltanto non discordare quando presenti.
+
+### Rilievo 12 — riga e busta accettano ancora assenze e un rifiuto discorde
+
+I confronti di `receipt_hash`, campi Producer, `result_binding`, `receipt_id` e
+`request_id` sono condizionali: un campo assente viene accettato. La fixture
+conferma il difetto per costruzione, perche' usa una tabella ridotta che non
+contiene la maggior parte delle colonne produttive e resta verde. Anche il
+rifiuto usa `rejection_code OR error_code`: due codici diversi, uno nella riga
+e uno nella busta firmata, vengono ancora registrati come un solo rifiuto
+terminale valido. Il caso indipendente lo riproduce.
+
+La correzione minima e' pretendere lo schema produttivo e uguaglianza esatta di
+tutti i campi obbligatori. Per il rifiuto, `rejection_code` ed `error_code`
+devono entrambi esistere e coincidere; per il commit, pubblicazione, legame e
+identita' devono esistere e coincidere.
+
+### Rilievo 13 — formato terminale e percorsi ricevuta non sono produttivi
+
+La verifica terminale esegue `json.loads` e verifica la firma, ma non applica la
+decodifica canonica V2 del prodotto. La fixture continua a emettere
+`schema_version: 1`, senza rapporto ed errore canonici, e tutte le prove verdi
+passano su quella forma. Deve riusare la decodifica produttiva V2 o una
+primitiva pubblica estratta da essa; la prova positiva deve usare la tabella
+vera del Producer store, non uno schema ridotto parallelo.
+
+Inoltre `lstat` copre soltanto le directory al primo livello. La scansione delle
+ricevute usa ancora `glob`, `is_dir` e `read_bytes`: una AdmissionReceipt
+spostata fuori dal negozio e raggiunta mediante collegamento viene accettata
+come storica. La prova indipendente lo riproduce. Ogni directory V2 e ogni file
+ricevuta devono essere oggetti regolari posseduti, raggiunti senza seguire
+collegamenti.
+
+### Rilievo 14 — il contenuto non verificato decide ancora il fuori ambito
+
+Quando una AdmissionReceipt non verifica, il suo JSON non autenticato decide
+ancora se il contesto e' diverso. Una ricevuta non verificabile posta sulla
+generazione corrente autenticata, ma con un altro contesto scritto nei byte,
+viene mossa in `fuori_ambito` e non blocca. Il quarto caso indipendente lo
+riproduce. Il contenuto non verificato non puo' decidere il perimetro: se la
+generazione del percorso e' corrente, il dubbio blocca; soltanto lo stato
+corrente autenticato puo' dimostrare che un oggetto precedente non riduce il
+lavoro F4.
+
+### Prova indipendente e chiusura richiesta
+
+Sul clone isolato dell'esatto commit, il comando mirato di B riporta 15 verdi.
+La prova A aggiunge quattro sole variazioni dei casi gia' richiesti e riproduce:
+
+1. byte Admission firmati diversi accettati come gemello;
+2. codici di rifiuto diversi accettati come un solo rifiuto;
+3. file ricevuta raggiunto mediante collegamento accettato come posseduto;
+4. ricevuta non verificabile sulla generazione corrente spostata fuori ambito.
+
+La fixture terminale va portata a V2 e alla tabella produttiva; i commenti
+italiani reintrodotti nel file di prova vanno tradotti in inglese. Non serve
+allargare il censimento, cambiare il disegno dei tre futuri o eseguire la suite
+completa. Il prossimo giro deve rendere rossi questi quattro casi prima della
+correzione e verdi dopo.
