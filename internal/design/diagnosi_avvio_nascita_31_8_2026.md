@@ -1813,6 +1813,46 @@ misura delle risorse. Completezza e velocità non sono alternative: il
 censimento può mantenere il fail-closed usando un solo attraversamento e
 cursor SQLite in streaming.
 
+**Profilo quantitativo aggiunto per Claude.** Con le esclusioni correnti il
+perimetro fisico contiene circa **70 022 file per 26,520 GiB**. I soli 585 file
+da almeno 8 MiB valgono **18,489 GiB**; i 29 file da almeno 100 MB valgono
+6,520 GiB. I gruppi che dominano la lettura sono:
+
+| gruppo | dimensione circa | natura |
+|---|---:|---|
+| `/opt/metnos/client-rs/target` | 11 GiB | build e binari Rust |
+| `/opt/metnos/tests/e2e/tmp` | 2,5 GiB | copie di stato di prove concluse |
+| `/opt/metnos/models` | 2,0 GiB | modelli ONNX e archivi |
+| `/opt/metnos/.claude/worktrees` | 2,0 GiB | repliche di sviluppo |
+| `~/.local/share/metnos/{tool,intent}_classifier` | 2,4 GiB | modelli `safetensors` |
+| `~/.local/share/metnos/playwright-browsers` | 646 MiB | browser e risorse binarie |
+| `~/.local/share/metnos/index` | 615 MiB | matrici e indici vettoriali |
+| `/opt/metnos/dist` | 122 MiB | repliche di distribuzione |
+
+Ci sono inoltre **248 database per circa 0,747 GiB**; molti sono copie sotto
+`tests/e2e/tmp`, e oggi ogni loro tabella viene prima caricata interamente in
+una lista. Questi numeri spiegano il superamento dei cinque minuti: il
+programma sta trattando modelli, browser, matrici, binari compilati e copie di
+test come se fossero contenitori semantici di ricevute RM-0008.
+
+La correzione non deve reintrodurre il vecchio «salta tutto sopra 8 MB», che
+renderebbe di nuovo incompleta la misura. Deve invece dichiarare un **perimetro
+semantico per tipo e ruolo**:
+
+- archivi strutturati vivi e configurazione: scansione completa, fail-closed;
+- SQLite: interrogazione strutturale in streaming;
+- JSON, JSONL, TOML, testo, log e sorgenti pertinenti: scansione a blocchi;
+- modelli, browser, matrici, binari compilati, build cache, worktree di
+  sviluppo, distribuzioni replicate e fixture E2E: esclusione/classificazione
+  esplicita con conteggio di file e byte, mai omissione silenziosa;
+- copie archiviate pertinenti alla nascita: classe separata, come già avviene.
+
+Il rapporto finale deve quindi distinguere `esaminati`, `esclusi per regola
+semantica dichiarata` e `non esaminati per errore`; soltanto l'ultima classe
+rende la misura incompleta. Una singola enumerazione, deduplicazione globale,
+regex su byte per i contenitori testuali e cursor SQLite evitano il resto del
+costo senza indebolire la conclusione.
+
 **Disposizione richiesta:** eseguire una sola enumerazione deduplicata,
 interrogare le righe SQLite in streaming, misurare tempo e memoria di picco e
 aggiungere una prova prestazionale non vacua. Sul perimetro reale di questa
