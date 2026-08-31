@@ -382,3 +382,69 @@ italiani reintrodotti nel file di prova vanno tradotti in inglese. Non serve
 allargare il censimento, cambiare il disegno dei tre futuri o eseguire la suite
 completa. Il prossimo giro deve rendere rossi questi quattro casi prima della
 correzione e verdi dopo.
+
+---
+
+## Settimo giro
+
+Data: 31 agosto 2026
+Commit esaminato: `fb73a7b35d27b87d381db32dd689abfb4d52e2d4`
+Verdetto: `MODIFICHE_RICHIESTE`
+
+Sono accolti il confronto esatto dei byte Admission, l'esistenza dei tre
+identificativi di richiesta, il confronto dei codici di rifiuto e la regola che
+una ricevuta non verificabile sulla generazione corrente blocca. La misura
+reale resta 12 storici, zero ignoti, con i due rilievi inventariali noti.
+
+Restano due difetti riprodotti e un punto gia' dichiarato aperto dallo stesso
+checkpoint B.
+
+### Rilievo 15 — un oggetto non regolare viene ignorato invece di bloccare
+
+`_ricevute_del_contratto` usa ora `lstat`, ma `_regolare` e `_cartella`
+restituiscono falso e il chiamante salta l'oggetto. La forma e' quindi cambiata
+da «seguire il collegamento» a «non censirlo», non a «bloccare». La prova
+indipendente sposta una ricevuta fuori dal negozio e lascia un collegamento al
+suo nome: il risultato contiene zero legami, zero ignoti e zero bloccanti.
+
+La correzione minima e' far restituire alla scansione anche i problemi di
+percorso e aggiungerli a `bloccanti`. Lo stesso vale per directory V1/V2,
+componenti non esadecimali, file inattesi e qualunque errore `lstat`: nulla
+all'interno delle radici possedute puo' sparire dal censimento.
+
+### Rilievo 16 — `result_binding` deve dipendere dallo stato terminale
+
+`_catena_riga_busta` pretende sempre che `result_binding` sia il digest della
+busta. Il Producer store produttivo impone invece:
+
+- `committed`: `result_binding` presente e `rejection_code` assente;
+- `rejected`: `result_binding` assente e `rejection_code` presente.
+
+Una riga `rejected` costruita mediante `register_producer_receipt`,
+`claim_producer_receipt` e `finalize_producer_receipt`, con busta e codice
+coerenti, viene classificata ignota e non come rifiuto terminale autenticato.
+Il caso e' riprodotto sull'oggetto esaminato.
+
+La correzione minima e' rendere il confronto dipendente dallo stato e usare
+nelle fixture le API del Producer store. L'attuale `CREATE TABLE` non e' la
+tabella produttiva: omette colonne, `NOT NULL`, vincoli di stato e migrazione.
+Copiarne alcuni nomi non esercita il contratto reale.
+
+### Rilievo 17 — prova durevole e busta V2
+
+Il percorso `RM0008-Prova` continua a eseguire 15 casi: le quattro variazioni
+del sesto giro non sono presenti nel file versionato. Devono entrare nella
+prova, insieme ai due casi sopra, cosi' il prossimo checkpoint sia
+riproducibile dal solo commit.
+
+B dichiara correttamente ancora aperto il decoder terminale. Per non introdurre
+codice prodotto prima di B1, lo strumento interno puo' riusare direttamente
+l'attuale `_decode_terminal_envelope` con una `BirthRequest` legata alla riga e
+alla ricevuta verificata; la fixture usa `_terminal_envelope` e il vero Producer
+store. L'estrazione di un codec pubblico resta nell'implementazione B2 gia'
+assegnata a B. Non e' ammesso mantenere `json.loads` come secondo decoder ne'
+accettare `schema_version: 1`.
+
+I commenti italiani ancora presenti nel file di prova vanno tradotti in
+inglese nello stesso incremento. Nessuna suite completa: bastano i casi mirati
+versionati e la misura reale in sola lettura.
