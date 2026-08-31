@@ -73,7 +73,14 @@ def observe_enforcement_v1(gate_module_path: Path) -> EnforcementEvidenceV1:
     payload = gate_module_path.read_bytes()
     if not payload or len(payload) > MAX_GATE_MODULE_BYTES_V1:
         raise _invalid("enforcement_module_invalid", "size")
-    matches = _ENFORCEMENT_LITERAL_RE_V1.findall(payload)
+    # Match on NORMALISED line endings, digest the RAW bytes. The artefact's
+    # identity is its bytes, CRLF included, but the bit it declares must not
+    # depend on which platform checked the file out: a gate module with Windows
+    # line endings would otherwise make the evidence unobtainable, which is a
+    # denial of service on the certification rather than a safety property.
+    matches = _ENFORCEMENT_LITERAL_RE_V1.findall(
+        payload.replace(b"\r\n", b"\n").replace(b"\r", b"\n"),
+    )
     if len(matches) != 1:
         raise _invalid("enforcement_literal_ambiguous", str(len(matches)))
     return EnforcementEvidenceV1(

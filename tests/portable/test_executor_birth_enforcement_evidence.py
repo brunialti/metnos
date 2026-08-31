@@ -14,7 +14,9 @@ GATE = Path(__file__).resolve().parents[2] / "runtime" / evidence.GATE_MODULE_BA
 def _module(tmp_path: Path, body: str) -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
     path = tmp_path / evidence.GATE_MODULE_BASENAME_V1
-    path.write_text(body, encoding="utf-8")
+    # Written as bytes: `write_text` translates newlines on Windows, and this
+    # fixture must control the artefact's bytes exactly.
+    path.write_bytes(body.encode("utf-8"))
     return path
 
 
@@ -29,6 +31,22 @@ def closed_build_enforcement() -> bool:
     """Doc."""
     return False
 '''
+
+
+def test_the_bit_survives_windows_line_endings(tmp_path: Path) -> None:
+    """A checkout with CRLF must declare the same bit, with its own identity.
+
+    The bit is a property of the artefact's content; the digest is a property
+    of its bytes. Conflating them would make a Windows checkout unable to
+    certify itself, which is a denial of service on the certification and not a
+    safety property.
+    """
+    unix = evidence.observe_enforcement_v1(_module(tmp_path / "unix", _CLOSED))
+    windows = evidence.observe_enforcement_v1(
+        _module(tmp_path / "win", _CLOSED.replace("\n", "\r\n")),
+    )
+    assert unix.enforced is windows.enforced is True
+    assert unix.module_digest != windows.module_digest
 
 
 def test_the_product_gate_reads_as_open_today() -> None:
