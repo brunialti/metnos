@@ -25,18 +25,53 @@ Run:  python3 internal/tools/prova_modi_sign.py
 from __future__ import annotations
 
 import ast
+import atexit
 import os
+import shutil
 import stat
 import sys
 import tempfile
 from pathlib import Path
 
 RADICE = Path(__file__).resolve().parents[2]
+
+# The user roots are redirected BEFORE `sign.py` is imported, not after.
+# Importing it reaches `config`, which derives the log file from
+# `PATH_USER_STATE`, and `logging_setup` then opens it: a test that only wanted
+# to know what mode a replacement leaves behind was touching the live state
+# directory of a running installation.  Only a read-only sandbox stopped it.
+# The scratch is created here, private, and removed when the process ends.
+_SCRATCH = Path(tempfile.mkdtemp(prefix="prova-modi-sign-"))
+_SCRATCH.chmod(0o700)
+atexit.register(shutil.rmtree, _SCRATCH, True)
+for _nome in ("METNOS_USER_CONFIG", "METNOS_USER_STATE", "METNOS_USER_DATA"):
+    _radice = _SCRATCH / _nome.split("_")[-1].lower()
+    _radice.mkdir(mode=0o700, exist_ok=True)
+    os.environ[_nome] = str(_radice)
+os.environ["METNOS_LOG_FILE"] = str(_SCRATCH / "prova.log")
+
 sys.path.insert(0, str(RADICE / "runtime"))
 
 from sign import _atomic_replace_bytes  # noqa: E402
 
 SORGENTE = RADICE / "runtime" / "sign.py"
+
+
+def radici_isolate() -> list[str]:
+    """The imported module must have resolved to the scratch, not to $HOME."""
+    import config as C
+
+    errori = []
+    for attributo in ("PATH_USER_CONFIG", "PATH_USER_STATE", "PATH_USER_DATA",
+                      "LOG_FILE"):
+        valore = str(getattr(C, attributo, ""))
+        if not valore.startswith(str(_SCRATCH)):
+            errori.append(f"{attributo} = {valore}: fuori dallo scratch")
+    vivo = Path.home() / ".local" / "state" / "metnos"
+    for percorso in (C.PATH_USER_STATE, C.PATH_USER_CONFIG, C.PATH_USER_DATA):
+        if vivo in Path(percorso).parents or Path(percorso) == vivo:
+            errori.append(f"{percorso} punta allo stato vivo")
+    return errori
 
 
 def modo(percorso: Path) -> str:
@@ -184,6 +219,7 @@ def main() -> int:
     fallimenti += bool(errori)
 
     for nome, fn in (
+        ("radici utente isolate prima dell'import", radici_isolate),
         ("ingressi pubblici (authoring vs solo-negozio)", prova_ingressi),
         ("percorsi toccati dal firmatario", prova_percorsi_toccati),
     ):

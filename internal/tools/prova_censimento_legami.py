@@ -104,7 +104,7 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 9:
+    if estrai(out, "locazioni con legami") != 9:
         errori.append(f"record != 9: {estrai(out, 'record semantici univoci')}")
     return errori
 
@@ -121,7 +121,7 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 1:
+    if estrai(out, "locazioni con legami") != 1:
         errori.append("le due superfici non sono state unificate")
     if "sha256:" not in out or "nuda" not in out:
         errori.append("le superfici osservate non sono riportate")
@@ -137,7 +137,7 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 1:
+    if estrai(out, "locazioni con legami") != 1:
         errori.append("il database e' stato contato due volte")
     if estrai(out, "righe SQLite") != 1 or "file: 0" not in out:
         errori.append("il database compare anche come file")
@@ -160,7 +160,7 @@ def _(base: Path) -> list[str]:
     if "Nessuna conclusione quantitativa" not in out:
         errori.append("manca il divieto di concludere")
     # e l'errore non deve essere contato come riscontro
-    if estrai(out, "record semantici univoci") != 1:
+    if estrai(out, "locazioni con legami") != 1:
         errori.append("l'errore di apertura e' stato contato come legame")
     return errori
 
@@ -175,7 +175,7 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 2:
+    if estrai(out, "locazioni con legami") != 2:
         errori.append("le due rappresentazioni non danno 2 record")
     if estrai(out, "fatti distinti") != 1:
         errori.append("le due rappresentazioni non danno 1 fatto")
@@ -210,7 +210,7 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 0:
+    if estrai(out, "locazioni con legami") != 0:
         errori.append("un digest dentro una sequenza piu' lunga e' stato accettato")
     return errori
 
@@ -228,7 +228,7 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0 (la tabella e' leggibile)")
-    if estrai(out, "record semantici univoci") != 3:
+    if estrai(out, "locazioni con legami") != 3:
         errori.append(f"record != 3: {estrai(out, 'record semantici univoci')}")
     if "ord" not in out:
         errori.append("l'identita' di riga usata non e' dichiarata")
@@ -244,9 +244,9 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 1:
+    if estrai(out, "locazioni con legami") != 1:
         errori.append("la radice ripetuta ha prodotto due record")
-    if estrai(out, "file esaminati") != 1:
+    if estrai(out, "oggetti fisici letti") != 1:
         errori.append("il file e' stato letto due volte")
     if "duplicata, collassata" not in out:
         errori.append("il collasso della radice duplicata non e' dichiarato")
@@ -263,9 +263,9 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 1:
+    if estrai(out, "locazioni con legami") != 1:
         errori.append("la radice annidata ha prodotto due record")
-    if estrai(out, "file esaminati") != 1:
+    if estrai(out, "oggetti fisici letti") != 1:
         errori.append("il file e' stato letto due volte")
     if "annidata in" not in out:
         errori.append("il collasso della radice annidata non e' dichiarato")
@@ -282,16 +282,16 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 4:
+    if estrai(out, "locazioni con legami") != 4:
         errori.append(f"record != 4: {estrai(out, 'record semantici univoci')}")
     if estrai(out, "righe SQLite") != 4 or "file: 0" not in out:
         errori.append("il database e' stato contato anche come file")
-    if estrai(out, "file esaminati") != 1:
+    if estrai(out, "oggetti fisici letti") != 1:
         errori.append("il database e' stato aperto due volte")
     return errori
 
 
-@caso("collegamento fisico allo stesso file: un solo record")
+@caso("collegamento fisico: letto una volta, ma entrambe le locazioni riportate")
 def _(base: Path) -> list[str]:
     radice = costruisci_radice(base)
     dati = base / "dati"; dati.mkdir()
@@ -302,10 +302,59 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 1:
-        errori.append("lo stesso inode ha prodotto due record")
+    if estrai(out, "oggetti fisici letti") != 1:
+        errori.append("l'inode e' stato letto due volte")
+    if estrai(out, "locazioni con legami") != 2:
+        errori.append("un alias e' stato cancellato invece che riportato")
     if estrai(out, "oggetti deduplicati") != 1:
         errori.append("la deduplicazione non e' dichiarata")
+    for atteso in ("uno.json", "due.json"):
+        if atteso not in out:
+            errori.append(f"la locazione {atteso} non compare")
+    return errori
+
+
+@caso("alias vivo + archiviato: la dipendenza viva non si perde")
+def _(base: Path) -> list[str]:
+    radice = costruisci_radice(base)
+    archivio = base / "birth.archivio"; archivio.mkdir()
+    stato = base / "stato"; stato.mkdir()
+    (archivio / "receipt.json").write_text(f"sha256:{CTX}")
+    os.link(archivio / "receipt.json", stato / "receipt.json")
+    rc, out = esegui(radice, [base])
+    errori = []
+    if rc != C.EXIT_OK:
+        errori.append(f"uscita {rc}, attesa 0")
+    if estrai(out, "oggetti fisici letti") != 1:
+        errori.append("l'inode e' stato letto due volte")
+    if estrai(out, "locazioni con legami") != 2:
+        errori.append("le due locazioni non sono entrambe riportate")
+    if estrai(out, "dipendenze VIVE") != 1:
+        errori.append("la dipendenza VIVA e' stata persa dietro l'alias archiviato")
+    if estrai(out, "copie ARCHIVIATE") != 1:
+        errori.append("la copia archiviata non e' stata riconosciuta")
+    return errori
+
+
+@caso("due alias vivi: due locazioni, un oggetto, nessuna classe inventata")
+def _(base: Path) -> list[str]:
+    radice = costruisci_radice(base)
+    uno = base / "stato_a"; due = base / "stato_b"
+    uno.mkdir(); due.mkdir()
+    (uno / "receipt.json").write_text(f"sha256:{CTX}")
+    os.link(uno / "receipt.json", due / "receipt.json")
+    rc, out = esegui(radice, [base])
+    errori = []
+    if rc != C.EXIT_OK:
+        errori.append(f"uscita {rc}, attesa 0")
+    if estrai(out, "oggetti fisici letti") != 1:
+        errori.append("l'inode e' stato letto due volte")
+    if estrai(out, "locazioni con legami") != 2:
+        errori.append("le due locazioni vive non sono entrambe riportate")
+    if estrai(out, "dipendenze VIVE") != 2:
+        errori.append("le due locazioni vive non contano entrambe come vive")
+    if estrai(out, "copie ARCHIVIATE") != 0:
+        errori.append("e' comparsa una copia archiviata inesistente")
     return errori
 
 
@@ -330,7 +379,7 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 1:
+    if estrai(out, "locazioni con legami") != 1:
         errori.append("il file con l'identificativo non e' stato trovato")
     # La soglia e' una VELOCITA', non un tempo: cosi' la prova non dipende da
     # quanto e' veloce la macchina. La via che decodifica ogni blocco candidato
@@ -357,7 +406,7 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 1:
+    if estrai(out, "locazioni con legami") != 1:
         errori.append("il prefiltro ha nascosto un identificativo vero")
     return errori
 
@@ -375,7 +424,7 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_OK:
         errori.append(f"uscita {rc}, attesa 0")
-    if estrai(out, "record semantici univoci") != 1:
+    if estrai(out, "locazioni con legami") != 1:
         errori.append("un identificativo a cavallo di due blocchi e' stato perso")
     return errori
 

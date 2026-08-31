@@ -105,7 +105,7 @@ class NonEsaminato:
 class Misura:
     secondi: float
     memoria_picco_mb: float
-    file_esaminati: int
+    oggetti_letti: int
     byte_esaminati: int
     oggetti_deduplicati: int
     radici_collassate: list[str]
@@ -385,15 +385,18 @@ def censisci(radice_nascita: Path, perimetro: list[Path]):
     rx = _regex_identificativi(identificativi)
     ricerca = RicercaByte(identificativi)
     non_esaminati: list[NonEsaminato] = []
-    record: list[Record] = []
 
     radici, note = normalizza_perimetro(perimetro)
 
-    # One walk.  Objects are keyed by inode, so the same file reached twice -
-    # through overlapping roots, a hard link, a bind mount - is examined once.
-    visti: set[tuple[int, int]] = set()
+    # One walk, and one read per inode - but every path that reaches that inode
+    # is kept.  Collapsing the aliases too was a way of losing a live
+    # dependency: a receipt hard-linked from an archived root and from the live
+    # state was reported once, with whichever class the walk happened to meet
+    # first.  Content is looked at once; locations are all recorded.
+    esiti: dict[tuple[int, int], list[tuple[str, str, set[str], set[str], set[str]]]] = {}
+    alias: dict[tuple[int, int], list[Path]] = {}
     deduplicati = 0
-    file_esaminati = 0
+    oggetti_letti = 0
     byte_esaminati = 0
 
     for radice in radici:
@@ -413,28 +416,53 @@ def censisci(radice_nascita: Path, perimetro: list[Path]):
                 non_esaminati.append(NonEsaminato(str(percorso), f"stat: {exc}"))
                 continue
             chiave = (st.st_dev, st.st_ino)
-            if chiave in visti:
+            if chiave in alias:
+                alias[chiave].append(percorso)
                 deduplicati += 1
                 continue
-            visti.add(chiave)
-            file_esaminati += 1
+            alias[chiave] = [percorso]
+            oggetti_letti += 1
             if percorso.suffix in ESTENSIONI_SQLITE:
-                record.extend(
-                    esamina_sqlite(percorso, rx, radice_nascita, non_esaminati)
+                trovate = esamina_sqlite(
+                    percorso, rx, radice_nascita, non_esaminati
                 )
                 byte_esaminati += st.st_size
+                base = str(percorso)
+                esiti[chiave] = [
+                    ("riga_sqlite", r.locazione[len(base):],
+                     r.identificativi, r.superfici, r.colonne)
+                    for r in trovate
+                ]
             else:
                 rec, letti = esamina_file(
                     percorso, ricerca, radice_nascita, non_esaminati
                 )
                 byte_esaminati += letti
-                if rec is not None:
-                    record.append(rec)
+                esiti[chiave] = (
+                    [("file", "", rec.identificativi, rec.superfici, set())]
+                    if rec is not None else []
+                )
+
+    # One record per (alias path, finding): the content was read once, but a
+    # link that exists in two places is two locations, and their classes can
+    # differ.
+    record: list[Record] = []
+    for chiave, trovate in esiti.items():
+        for percorso in alias[chiave]:
+            for tipo, coda, ident, superfici, colonne in trovate:
+                record.append(Record(
+                    classe=classe_di(percorso, radice_nascita),
+                    tipo=tipo,
+                    locazione=f"{percorso}{coda}",
+                    identificativi=set(ident),
+                    superfici=set(superfici),
+                    colonne=set(colonne),
+                ))
 
     misura = Misura(
         secondi=time.monotonic() - avvio,
         memoria_picco_mb=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024,
-        file_esaminati=file_esaminati,
+        oggetti_letti=oggetti_letti,
         byte_esaminati=byte_esaminati,
         oggetti_deduplicati=deduplicati,
         radici_collassate=note,
@@ -492,14 +520,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  strumento                : {misura.impronta_strumento}")
     print(f"  tempo trascorso          : {misura.secondi:.1f} s")
     print(f"  memoria di picco         : {misura.memoria_picco_mb:.0f} MB")
-    print(f"  file esaminati           : {misura.file_esaminati}")
+    print(f"  oggetti fisici letti     : {misura.oggetti_letti}")
     print(f"  byte esaminati           : {misura.byte_esaminati / 1073741824:.1f} GiB")
     print(f"  oggetti deduplicati      : {misura.oggetti_deduplicati}")
     print(f"  soglia del prefiltro     : {misura.soglia_prefiltro} cifre esadecimali")
 
     print("\n== ESITO ==")
-    print(f"  record semantici univoci : {len(record)}"
+    print(f"  locazioni con legami     : {len(record)}"
           f"   (file: {len(file_rec)}, righe SQLite: {len(righe_rec)})")
+    print(f"  oggetti fisici che li portano: {len({r.locazione.split('#')[0] for r in record})}")
     print(f"  di cui dipendenze VIVE   : {len(vive)}")
     print(f"  di cui copie ARCHIVIATE  : {len(archiviate)}")
     print(f"  fatti distinti (classe x identificativo): {len(fatti)}")
