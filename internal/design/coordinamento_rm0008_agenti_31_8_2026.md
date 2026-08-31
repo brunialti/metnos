@@ -33,7 +33,7 @@ Il punto di partenza e' gia' misurato:
 | fatti della diagnosi e O15/O17 | `internal/design/diagnosi_avvio_nascita_31_8_2026.md` |
 | protocollo fra agenti | questo documento |
 | contenuto di una consegna | commit indicato dalla consegna |
-| stato della fase | roadmap, aggiornata solo dall'integratore dopo una barriera |
+| stato della fase | roadmap, aggiornata dall'integratore di turno dopo una barriera accettata da entrambi |
 
 I messaggi di coordinamento non ricopiano analisi, risultati o elenchi. Portano
 solo un riferimento al commit che li contiene. In questo modo non esistono due
@@ -41,20 +41,31 @@ versioni concorrenti dello stesso fatto.
 
 ## 3. Ruoli e separazione fisica
 
-Per ogni unita' di lavoro esistono due ruoli, assegnati nel suo primo commit:
+I due agenti sono paritetici nelle decisioni. Entrambi progettano, sviluppano
+codice, scrivono prove e revisionano il lavoro dell'altro. Nessuno e' il
+revisore permanente dell'altro.
 
-- **costruttore**: prepara specifica o codice e le prove mirate;
-- **verificatore**: cerca controesempi, prepara una prova di accettazione
-  indipendente e decide se la consegna soddisfa il contratto;
-- **integratore**: e' uno dei due agenti, indicato all'apertura dell'unita'; e'
-  l'unico che unisce i rami e aggiorna la roadmap.
+Il carico non deve pero' essere simmetrico. L'agente con piu' risorse prende
+scansioni ampie, sintesi trasversali, integrazione e verifiche costose. L'altro
+riceve porzioni di codice circoscritte, contesto gia' selezionato e prove
+mirate. Questa differenza riduce il tempo senza ridurre il peso del suo giudizio
+tecnico.
+
+Ogni unita' assegna tre funzioni:
+
+- **agente A**: possiede una parte del disegno, del codice e delle prove;
+- **agente B**: possiede una parte diversa del disegno, del codice e delle
+  prove;
+- **integratore di turno**: uno dei due unisce meccanicamente soltanto commit
+  accettati da entrambi e aggiorna la roadmap. Il ruolo alterna fra le unita' e
+  non concede autorita' tecnica superiore.
 
 Ogni agente usa un ramo e un worktree distinti. Per la prossima unita':
 
-| ruolo iniziale | ramo | worktree | file posseduti |
+| agente | ramo | worktree | perimetro iniziale |
 |---|---|---|---|
-| costruttore e integratore | `codex/rm0008-f4-transizione` | `/tmp/metnos-rm0008-f4-transizione` | specifica della transizione e, dopo la prima barriera, moduli assegnati |
-| verificatore indipendente | `rm0008/f4-verifica-epoca` | `/tmp/metnos-rm0008-f4-verifica` | rapporto sui 12 legami e prove di accettazione assegnate |
+| A, piu' risorse | `codex/rm0008-f4-transizione` | `/tmp/metnos-rm0008-f4-transizione` | nucleo della transizione, analisi trasversale, prove di modulo e revisione del perimetro B |
+| B, risorse minori | `rm0008/f4-verifica-epoca` | `/tmp/metnos-rm0008-f4-verifica` | adeguamento circoscritto dei 12 legami, prove di accettazione e revisione del perimetro A |
 
 Il ramo `rm0008/diagnosi-avvio` resta il riferimento chiuso della diagnosi e
 non viene usato come tavolo di lavoro concorrente.
@@ -73,7 +84,7 @@ Ogni checkpoint usa questi campi:
 
 ```text
 RM0008-Unita: F4-EPOCA-01
-RM0008-Ruolo: costruttore | verificatore | integratore
+RM0008-Ruolo: agente-a | agente-b | integratore-di-turno
 RM0008-Stato: OFFERTA | PRESA | PRONTA | MODIFICHE_RICHIESTE | ACCETTATA | INTEGRATA | BLOCCATA
 RM0008-Ancora: <commit esatto esaminato>
 RM0008-Percorsi: <elenco compatto dei percorsi posseduti>
@@ -86,15 +97,15 @@ Regole:
 1. `OFFERTA` apre l'unita', assegna i percorsi e indica l'ancora comune.
 2. `PRESA` conferma che il secondo agente ha letto la stessa ancora e accetta
    il proprio perimetro.
-3. `PRONTA` rende revisionabile un commit immutabile. Il costruttore non lo
-   modifica mentre viene verificato: eventuali correzioni nascono in commit
+3. `PRONTA` rende revisionabile un commit immutabile. L'autore non lo modifica
+   mentre viene verificato: eventuali correzioni nascono in commit
    successivi.
 4. `MODIFICHE_RICHIESTE` deve indicare una proprieta' violata e una prova
    riproducibile. Osservazioni solo stilistiche non fermano l'unita'.
 5. `ACCETTATA` nomina il commit preciso verificato. Se la testa cambia,
    l'accettazione non si trasferisce automaticamente.
-6. `INTEGRATA` viene emesso solo dall'integratore dopo le prove mirate sulla
-   composizione dei due rami.
+6. `INTEGRATA` viene emesso solo dall'integratore di turno dopo l'accettazione
+   incrociata e le prove mirate sulla composizione dei due rami.
 
 Ogni stato `PRONTA`, `MODIFICHE_RICHIESTE`, `ACCETTATA` o `INTEGRATA` viene
 spinto sia nel deposito locale di recupero sia su GitHub. I checkpoint intermedi
@@ -103,8 +114,9 @@ sequenza prima della convergenza.
 
 ## 5. Sincronizzazione senza intervento di Roberto
 
-L'integratore e' responsabile di attivare il verificatore, passargli il percorso
-di questo documento e il commit `PRONTA`, e controllarne l'esito. Il testo di
+L'integratore di turno e' responsabile di attivare l'altro agente, passargli il
+percorso di questo documento e il commit `PRONTA`, e controllarne l'esito. Al
+giro successivo la responsabilita' passa all'altro agente. Il testo di
 attivazione e' fisso:
 
 ```text
@@ -129,7 +141,23 @@ Se un agente non risponde:
 5. segnala a Roberto il blocco solo se esaurisce tutto il lavoro indipendente e
    il mancato riscontro impedisce la barriera successiva.
 
-## 6. Barriere
+## 6. Aggiornamento a Roberto
+
+Durante il lavoro attivo, l'agente A invia ogni 30 minuti un aggiornamento
+breve costruito leggendo le teste correnti di entrambi i rami:
+
+```text
+Fatto: <checkpoint conclusi da entrambi dall'ultimo aggiornamento>.
+Manca: <prossima barriera e lavoro necessario per raggiungerla>.
+```
+
+Si aggiunge `Blocco:` soltanto se esiste un impedimento reale. Nessun log,
+comando, richiesta di attivazione o scelta tecnica viene trasferito a Roberto.
+Se nei 30 minuti non esiste un nuovo checkpoint, l'aggiornamento indica quale
+lavoro e' ancora in corso senza dichiarare avanzamenti non provati. Gli
+aggiornamenti terminano quando l'unita' e' chiusa o sospesa.
+
+## 7. Barriere
 
 | barriera | condizione | effetto |
 |---|---|---|
@@ -143,15 +171,15 @@ La suite completa non gira durante gli incrementi. Come richiesto, viene usata
 solo a B3, prima della chiusura della fase. Prima si usano prove mirate veloci e
 non vacue.
 
-## 7. Revisioni incrociate
+## 8. Revisioni incrociate
 
 Le revisioni incrociate avvengono quando cambia un artefatto significativo, non
 a intervalli di tempo. Non duplicano le prove e non fermano attivita' che
 restano indipendenti.
 
 Metodo e cadenza sono responsabilita' dei due agenti. Roberto non deve
-programmare giri, scegliere chi parte o riattivare il revisore. L'integratore
-decide quando chiedere un controllo ulteriore usando tre segnali concreti:
+programmare giri, scegliere chi parte o riattivare un agente. L'integratore di
+turno decide quando chiedere un controllo ulteriore usando tre segnali concreti:
 
 - cambia un contratto o un confine condiviso dai due rami;
 - una prova smentisce un presupposto usato dall'altro ramo;
@@ -162,10 +190,10 @@ accorpando nello stesso giro gli artefatti gia' stabili. Se uno dei segnali
 compare, la revisione parte al checkpoint incrementale successivo, senza
 attendere una richiesta esterna.
 
-| momento | cosa rivede il costruttore | cosa rivede il verificatore | uscita |
+| momento | cosa rivede l'agente A | cosa rivede l'agente B | uscita |
 |---|---|---|---|
-| R1 — prima di B1 | classificazione dei 12 legami e completezza del censimento | protocollo di epoca, stati e recupero | due `ACCETTATA` sulla stessa coppia di commit |
-| R2 — prima di B2 | prova indipendente: deve misurare il contratto senza copiarne l'implementazione | codice, prove di modulo e composizione | rilievi riproducibili oppure due `ACCETTATA` |
+| R1 — prima di B1 | classificazione e disegno di adeguamento dei 12 legami | protocollo di epoca, stati e recupero | due `ACCETTATA` sulla stessa coppia di commit |
+| R2 — prima di B2 | codice di adeguamento e prove di accettazione del perimetro B | nucleo della transizione e prove di modulo del perimetro A | rilievi riproducibili oppure due `ACCETTATA` |
 | R3 — prima di B3 | delta integrato, piano della suite totale e documentazione | stesso delta partendo dai criteri RM-0008 | autorizzazione congiunta alla verifica di chiusura |
 | R4 — prima e dopo B4 | checklist operativa e ricevute prodotte | precondizioni prima, postcondizioni dopo | doppio riscontro sul commit e sull'esito reale |
 
@@ -196,27 +224,29 @@ normativo richiede prima due `ACCETTATA` sul commit proposto e poi la decisione
 di Roberto. Fino a quella decisione la roadmap vigente resta autorevole e il
 codice non anticipa la proposta.
 
-## 8. Ripartizione della prossima unita'
+## 9. Ripartizione della prossima unita'
 
 ### Tratto parallelo 1 — disegno ed evidenze
 
-Il costruttore prepara il protocollo append-only a nuova epoca: stati,
+L'agente A prepara il nucleo del protocollo append-only a nuova epoca: stati,
 proprietario normativo, ingresso, ripresa dopo interruzione, ripetibilita',
 conservazione dell'epoca precedente e ritorno controllato.
 
-Il verificatore classifica indipendentemente le 12 dipendenze vive di O15. Per
-ognuna indica se deve puntare alla nuova epoca, restare legata a quella storica
-o cessare di essere corrente, e prova che nessun ripuntamento meccanico riduca
-le guardie esistenti.
+L'agente B classifica le 12 dipendenze vive di O15 e disegna il loro adeguamento.
+Per ognuna indica se deve puntare alla nuova epoca, restare legata a quella
+storica o cessare di essere corrente, e prova che nessun ripuntamento meccanico
+riduca le guardie esistenti.
 
 I due prodotti sono in file distinti. B1 richiede che la specifica citi il
-rapporto dei legami e che il verificatore accetti il comportamento per tutte e
-12 le dipendenze.
+rapporto dei legami e che entrambi gli agenti accettino il comportamento per
+tutte e 12 le dipendenze. B1 congela anche le interfacce comuni necessarie ai
+due perimetri di codice.
 
 ### Tratto parallelo 2 — costruzione e accettazione
 
-Dopo B1 il costruttore implementa il punto comune e le prove di modulo. Il
-verificatore prepara, in un file di prova separato, i casi di accettazione:
+Dopo B1 entrambi sviluppano codice in parallelo. L'agente A implementa il punto
+comune e le relative prove di modulo. L'agente B implementa l'adeguamento dei
+legami nel proprio perimetro e prepara, in file distinti, i casi di accettazione:
 
 - zero, una e molte dipendenze correnti;
 - ripetizione dopo una interruzione in ogni passo durevole;
@@ -225,17 +255,21 @@ verificatore prepara, in un file di prova separato, i casi di accettazione:
 - seconda esecuzione idempotente;
 - impossibilita' di dichiarare F4 con una dipendenza non classificata.
 
-Il verificatore non copia l'implementazione nei propri attesi: osserva
-postcondizioni e ricevute. Il costruttore non modifica la prova indipendente.
+Le prove dell'agente B non copiano il nucleo dell'agente A nei propri attesi:
+osservano postcondizioni e ricevute. Le prove dell'agente A verificano il
+contratto del nucleo senza incorporare le regole specifiche dei singoli legami.
+Entrambi revisionano il codice dell'altro, ma ogni correzione viene applicata
+dal proprietario del relativo percorso.
 
 ### Tratto seriale — integrazione e passaggio F4
 
-L'integratore unisce soltanto commit `ACCETTATA`, esegue le prove mirate sulla
-composizione e pubblica `INTEGRATA`. Dopo B3, installazione, commutazione dei
-servizi, cambio dell'imposizione, riavvio e cicli reali sono seriali. Il secondo
-agente osserva e verifica; non opera contemporaneamente sul sistema.
+L'integratore di turno unisce soltanto commit `ACCETTATA`, esegue le prove
+mirate sulla composizione e pubblica `INTEGRATA`. Dopo B3, installazione,
+commutazione dei servizi, cambio dell'imposizione, riavvio e cicli reali sono
+seriali. L'altro agente osserva e verifica; non opera contemporaneamente sul
+sistema.
 
-## 9. Risoluzione dei disaccordi
+## 10. Risoluzione dei disaccordi
 
 Un disaccordo viene risolto nell'ordine seguente:
 
@@ -255,11 +289,12 @@ sistema in funzione non gia' coperta. Non viene coinvolto per scegliere una
 soluzione tecnica fra alternative che codice, contratto e prove possono
 distinguere.
 
-## 10. Criterio di riuscita del coordinamento
+## 11. Criterio di riuscita del coordinamento
 
 Il meccanismo funziona se:
 
 - Roberto non deve copiare prompt, commit o osservazioni fra gli agenti;
+- entrambi gli agenti producono codice e prove su perimetri distinti;
 - nessun file viene modificato in parallelo da entrambi;
 - ogni verdetto e' legato al commit realmente esaminato;
 - una interruzione riparte dall'ultimo commit senza ricostruzioni manuali;
