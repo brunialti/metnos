@@ -1,214 +1,219 @@
-"""Independent checks for the second publication-recovery checkpoint."""
+"""Independent checks for a publication-recovery candidate checkpoint."""
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 import tempfile
 from pathlib import Path
 from unittest import mock
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "runtime"))
 
-import executor_birth_publication_recovery as recovery  # noqa: E402
-from manifest_inventory import ContractId, ManifestOrigin  # noqa: E402
+def load_candidate(candidate_root: Path):
+    """Import the recovery module and its identity type from one immutable tree."""
+    runtime = candidate_root.resolve() / "runtime"
+    sys.path.insert(0, str(runtime))
+    import executor_birth_publication_recovery as recovery
+    from manifest_inventory import ContractId, ManifestOrigin
 
-
-def identity(name: str) -> ContractId:
-    return ContractId(ManifestOrigin.BUILTIN, f"{name}/manifest.toml")
-
-
-def authorization(contract_id: ContractId):
-    return recovery.AutorizzazioneRecupero(
-        contract_id, contract_id.storage_key, recovery._TOKEN,
-    )
+    return recovery, ContractId, ManifestOrigin
 
 
-def incomplete(root: Path, contract_id: ContractId) -> Path:
-    container = root / contract_id.storage_key
-    (container / "generations").mkdir(parents=True)
-    (container / "writer.lock").write_bytes(b"\0")
-    return container
+def exact_container(path: Path) -> None:
+    """Create only the incomplete shape admitted by the recovery primitive."""
+    (path / "generations").mkdir(parents=True)
+    (path / "writer.lock").write_bytes(b"\0")
 
 
-def check_rename_does_not_replace() -> list[str]:
+def remove_exact_container(path: Path) -> None:
+    """Remove a fixture container without traversing any unknown entries."""
+    lock = path / "writer.lock"
+    if lock.exists():
+        lock.unlink()
+    generations = path / "generations"
+    if generations.exists():
+        generations.rmdir()
+    path.rmdir()
+
+
+def check_authorization_cannot_be_minted(recovery, ContractId, ManifestOrigin) -> list[str]:
+    """An importer must not be able to construct an inventory authorization."""
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
-        contract_id = identity("no-replace")
-        incomplete(root, contract_id)
-        original = os.rename
-        replaced = []
-
-        def racing_rename(source, destination, *args, **kwargs):
-            occupied = root / os.fspath(destination)
-            occupied.mkdir()
-            before = occupied.stat().st_ino
-            result = original(source, destination, *args, **kwargs)
-            replaced.append((before, occupied.stat().st_ino))
-            return result
-
-        with mock.patch.object(os, "rename", racing_rename):
-            recovery.rimuovi_contenitore_incompleto(
-                authorization(contract_id), store_root=root,
-            )
-        return [] if replaced and replaced[0][0] == replaced[0][1] else [
-            f"occupied destination replaced: {replaced!r}",
-        ]
-
-
-def check_commit_is_synced_before_cleanup() -> list[str]:
-    with tempfile.TemporaryDirectory() as temporary:
-        root = Path(temporary)
-        contract_id = identity("sync")
-        incomplete(root, contract_id)
-        original_open = recovery._apri_directory
-        original_rename = os.rename
-        original_fsync = os.fsync
-        renamed = False
-        synced_after_rename = []
-
-        def observing_rename(*args, **kwargs):
-            nonlocal renamed
-            result = original_rename(*args, **kwargs)
-            renamed = True
-            return result
-
-        def observing_fsync(fd):
-            if renamed:
-                synced_after_rename.append(fd)
-            return original_fsync(fd)
-
-        def stop_before_cleanup(name, *, dir_fd=None):
-            if os.fspath(name).startswith(recovery.PREFISSO_RITIRO):
-                raise recovery.RecuperoPubblicazioneError("injected_stop")
-            return original_open(name, dir_fd=dir_fd)
-
+        contract_id = ContractId(ManifestOrigin.BUILTIN, "outside/manifest.toml")
+        exact_container(root / contract_id.storage_key)
+        emitter = getattr(recovery, "_emetti_sigillo", None)
+        root_identity = recovery._identita_radice(root)
+        if not callable(emitter):
+            return []
+        authorization = recovery.AutorizzazioneRecupero(
+            contract_id, contract_id.storage_key, root_identity, emitter()
+        )
         try:
-            with (
-                mock.patch.object(os, "rename", observing_rename),
-                mock.patch.object(os, "fsync", observing_fsync),
-                mock.patch.object(recovery, "_apri_directory", stop_before_cleanup),
-            ):
-                recovery.rimuovi_contenitore_incompleto(
-                    authorization(contract_id), store_root=root,
-                )
+            recovery.ispeziona_contenitore_incompleto(
+                authorization, store_root=root
+            )
         except recovery.RecuperoPubblicazioneError:
-            pass
-        return [] if synced_after_rename else [
-            "rename commit was not synced before cleanup",
-        ]
+            return []
+        return ["the module-level seal emitter minted an authorization"]
 
 
-def check_retry_resumes_retired_name() -> list[str]:
+def check_retry_after_generations_removal(recovery, ContractId, ManifestOrigin) -> list[str]:
+    """A stop after removing generations must leave a resumable state."""
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
-        contract_id = identity("resume")
-        incomplete(root, contract_id)
-        original_open = recovery._apri_directory
+        contract_id = ContractId(ManifestOrigin.BUILTIN, "cleanup-gap/manifest.toml")
+        exact_container(root / contract_id.storage_key)
+        authorization = recovery._autorizzazione_di_prova(contract_id, root)
+        original_rmdir = recovery.os.rmdir
         stopped = False
 
-        def stop_once(name, *, dir_fd=None):
+        def stop_after_generations(name, *args, **kwargs):
             nonlocal stopped
-            if (
-                not stopped
-                and os.fspath(name).startswith(recovery.PREFISSO_RITIRO)
-            ):
+            result = original_rmdir(name, *args, **kwargs)
+            if not stopped and os.fspath(name) == recovery.NOME_GENERAZIONI:
                 stopped = True
                 raise recovery.RecuperoPubblicazioneError("injected_stop")
-            return original_open(name, dir_fd=dir_fd)
-
-        try:
-            with mock.patch.object(recovery, "_apri_directory", stop_once):
-                recovery.rimuovi_contenitore_incompleto(
-                    authorization(contract_id), store_root=root,
-                )
-        except recovery.RecuperoPubblicazioneError:
-            pass
-        try:
-            outcome = recovery.rimuovi_contenitore_incompleto(
-                authorization(contract_id), store_root=root,
-            )
-        except recovery.RecuperoPubblicazioneError as exc:
-            return [f"retry did not resume: {exc.code}"]
-        return [] if outcome.rimosso else ["retry did not complete removal"]
-
-
-def check_unexpected_entry_is_preserved() -> list[str]:
-    with tempfile.TemporaryDirectory() as temporary:
-        root = Path(temporary)
-        contract_id = identity("late-entry")
-        incomplete(root, contract_id)
-        original = os.rename
-        late_path = root / (
-            recovery.PREFISSO_RITIRO + contract_id.storage_key
-        ) / "late-entry.txt"
-
-        def rename_then_add(source, destination, *args, **kwargs):
-            result = original(source, destination, *args, **kwargs)
-            late_path.write_text("must remain unmodified")
             return result
 
-        with mock.patch.object(os, "rename", rename_then_add):
-            recovery.rimuovi_contenitore_incompleto(
-                authorization(contract_id), store_root=root,
-            )
-        return [] if late_path.exists() else [
-            "entry added after verification was removed",
-        ]
+        try:
+            with mock.patch.object(recovery.os, "rmdir", stop_after_generations):
+                recovery.rimuovi_contenitore_incompleto(
+                    authorization, store_root=root
+                )
+        except recovery.RecuperoPubblicazioneError as exc:
+            if exc.code != "injected_stop":
+                return [f"unexpected first-stop result: {exc.code}"]
 
-
-def check_authorization_origin_is_enforced() -> list[str]:
-    with tempfile.TemporaryDirectory() as temporary:
-        root = Path(temporary)
-        contract_id = identity("not-in-inventory")
-        incomplete(root, contract_id)
-        constructed = authorization(contract_id)
-        recovery.ispeziona_contenitore_incompleto(constructed, store_root=root)
-        return ["module token allowed construction outside inventory"]
-
-
-def check_authorization_is_bound_to_root() -> list[str]:
-    with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
-        first_root = Path(first)
-        second_root = Path(second)
-        contract_id = identity("root-binding")
-        incomplete(first_root, contract_id)
-        incomplete(second_root, contract_id)
-        issued = authorization(contract_id)
-        recovery.ispeziona_contenitore_incompleto(issued, store_root=first_root)
-        recovery.ispeziona_contenitore_incompleto(issued, store_root=second_root)
-        return ["one authorization selected the same key in two caller roots"]
-
-
-def check_completed_retry_is_idempotent() -> list[str]:
-    with tempfile.TemporaryDirectory() as temporary:
-        root = Path(temporary)
-        contract_id = identity("completed-retry")
-        incomplete(root, contract_id)
-        issued = authorization(contract_id)
-        recovery.rimuovi_contenitore_incompleto(issued, store_root=root)
         try:
             outcome = recovery.rimuovi_contenitore_incompleto(
-                issued, store_root=root,
+                authorization, store_root=root
             )
+        except Exception as exc:  # The candidate currently leaks FileNotFoundError.
+            code = getattr(exc, "code", type(exc).__name__)
+            return [f"retry did not resume after partial cleanup: {code}"]
+        return [] if outcome.rimosso else ["retry did not complete recovery"]
+
+
+def prepare_rename_collision(recovery, root: Path):
+    """Return a rename wrapper that creates one exact occupied destination."""
+    original = recovery._rinomina_senza_sostituzione
+
+    def collide(source: str, destination: str, *, dir_fd: int) -> None:
+        exact_container(root / destination)
+        original(source, destination, dir_fd=dir_fd)
+
+    return collide
+
+
+def check_receipt_binds_exact_container(recovery, ContractId, ManifestOrigin) -> list[str]:
+    """A prepared receipt must not authorize a different retired directory."""
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        contract_id = ContractId(ManifestOrigin.BUILTIN, "receipt-object/manifest.toml")
+        original_path = root / contract_id.storage_key
+        retired_path = root / (recovery.PREFISSO_RITIRO + contract_id.storage_key)
+        exact_container(original_path)
+        authorization = recovery._autorizzazione_di_prova(contract_id, root)
+
+        try:
+            with mock.patch.object(
+                recovery,
+                "_rinomina_senza_sostituzione",
+                prepare_rename_collision(recovery, root),
+            ):
+                recovery.rimuovi_contenitore_incompleto(
+                    authorization, store_root=root
+                )
         except recovery.RecuperoPubblicazioneError as exc:
-            return [f"completed retry failed: {exc.code}"]
-        return [] if outcome.rimosso else ["completed retry lost its outcome"]
+            if exc.code != "nome_di_ritiro_occupato":
+                return [f"unexpected collision result: {exc.code}"]
+        else:
+            return ["the occupied retired name was not rejected"]
+
+        occupied_identity = retired_path.stat().st_dev, retired_path.stat().st_ino
+        remove_exact_container(original_path)
+        try:
+            recovery.rimuovi_contenitore_incompleto(
+                authorization, store_root=root
+            )
+        except recovery.RecuperoPubblicazioneError:
+            return []
+        if not retired_path.exists():
+            return [
+                "a receipt prepared for the original container removed a different "
+                f"retired directory {occupied_identity}"
+            ]
+        return []
+
+
+def check_receipt_records_commit(recovery, ContractId, ManifestOrigin) -> list[str]:
+    """A receipt written before a failed rename must not prove completion."""
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        contract_id = ContractId(ManifestOrigin.BUILTIN, "receipt-stage/manifest.toml")
+        original_path = root / contract_id.storage_key
+        retired_path = root / (recovery.PREFISSO_RITIRO + contract_id.storage_key)
+        exact_container(original_path)
+        authorization = recovery._autorizzazione_di_prova(contract_id, root)
+
+        try:
+            with mock.patch.object(
+                recovery,
+                "_rinomina_senza_sostituzione",
+                prepare_rename_collision(recovery, root),
+            ):
+                recovery.rimuovi_contenitore_incompleto(
+                    authorization, store_root=root
+                )
+        except recovery.RecuperoPubblicazioneError as exc:
+            if exc.code != "nome_di_ritiro_occupato":
+                return [f"unexpected collision result: {exc.code}"]
+
+        remove_exact_container(original_path)
+        remove_exact_container(retired_path)
+        try:
+            outcome = recovery.rimuovi_contenitore_incompleto(
+                authorization, store_root=root
+            )
+        except recovery.RecuperoPubblicazioneError:
+            return []
+        return [
+            "a pre-rename receipt reported completion after the rename had failed"
+        ] if outcome.rimosso else []
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "candidate_root",
+        nargs="?",
+        type=Path,
+        default=Path(__file__).resolve().parents[2],
+    )
+    candidate = parser.parse_args().candidate_root
+    recovery, ContractId, ManifestOrigin = load_candidate(candidate)
     cases = (
-        ("rename cannot replace an occupied name", check_rename_does_not_replace),
-        ("commit is synced before cleanup", check_commit_is_synced_before_cleanup),
-        ("retry resumes the retired name", check_retry_resumes_retired_name),
-        ("late unexpected entries are preserved", check_unexpected_entry_is_preserved),
-        ("authorization origin is enforced", check_authorization_origin_is_enforced),
-        ("authorization is bound to one root", check_authorization_is_bound_to_root),
-        ("completed retry is idempotent", check_completed_retry_is_idempotent),
+        (
+            "authorization is inventory-only",
+            check_authorization_cannot_be_minted,
+        ),
+        (
+            "partial cleanup is resumable",
+            check_retry_after_generations_removal,
+        ),
+        (
+            "receipt binds the exact container",
+            check_receipt_binds_exact_container,
+        ),
+        (
+            "receipt distinguishes preparation from commit",
+            check_receipt_records_commit,
+        ),
     )
     failures = 0
     for name, case in cases:
-        errors = case()
+        errors = case(recovery, ContractId, ManifestOrigin)
         failures += bool(errors)
         print(("PASS" if not errors else "FAIL"), name, "; ".join(errors))
     return 1 if failures else 0
