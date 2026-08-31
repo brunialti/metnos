@@ -50,6 +50,12 @@ def D(character: str) -> str:
     return "sha256:" + character * 64
 
 
+# The digest the group 7 wrapper returns after reading every binding
+# twice under the three locks. These proofs are about the journal, not
+# about the wrapper, so a fixed value stands in for a real receipt.
+_CROSSING_RECEIPT = "sha256:" + "7" * 64
+
+
 def _canonical(value) -> bytes:
     return json.dumps(
         value, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
@@ -348,6 +354,7 @@ def _crash_publish(journal_path, certificate_path, authority_path, point):
         authorities=authorities, prerequisite=prerequisite,
         observe_maintenance=_maintenance,
         _crash_seam=crash,
+        crossing_receipt=_CROSSING_RECEIPT,
     )
 
 
@@ -361,6 +368,7 @@ def _resume_publish(journal_path, certificate_path, authority_path, queue):
             authorities=_load_private_at_v1(authority_path, root_owned=False),
             prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
             observe_maintenance=_maintenance,
+            crossing_receipt=_CROSSING_RECEIPT,
         )
         queue.put(result.state.value)
     except Exception as exc:
@@ -413,6 +421,7 @@ def test_signature_without_certificate_ready_is_never_adopted(tmp_path):
             authorities=authorities,
             prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
             observe_maintenance=_maintenance,
+            crossing_receipt=_CROSSING_RECEIPT,
         )
 
 
@@ -429,6 +438,7 @@ def test_fresh_maintenance_is_required_before_certificate_ready(tmp_path):
             observe_maintenance=lambda: _maintenance(
                 "inactive_http_and_sidecar_broker",
             ),
+            crossing_receipt=_CROSSING_RECEIPT,
         )
     assert [record.state for record in journal.load()] == [
         OwnershipCoordinatorStateV1.PREPARED,
@@ -465,6 +475,7 @@ def test_partial_certificate_temporary_is_rebuilt_before_publication(tmp_path):
         authorities=authorities,
         prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
         observe_maintenance=_maintenance,
+        crossing_receipt=_CROSSING_RECEIPT,
     )
     assert published.state is OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
 
@@ -754,6 +765,7 @@ def _reach_certificate_published(tmp_path):
         authorities=authorities,
         prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
         observe_maintenance=_maintenance,
+        crossing_receipt=_CROSSING_RECEIPT,
     )
     assert published.state is OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
     return journal
@@ -900,3 +912,30 @@ def test_process_death_resumes_from_every_remaining_boundary(tmp_path, point):
         OwnershipCoordinatorStateV1.HEAD_REQUIRED,
         OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED,
     ]
+
+
+@pytest.mark.parametrize("receipt", [None, "", "sha256:short", "not-a-digest", 7])
+def test_the_crossing_refuses_without_a_group7_receipt(tmp_path, receipt) -> None:
+    """A caller that never went through the wrapper cannot cross.
+
+    The coordinator cannot verify WHAT the wrapper observed — it was not there
+    while the three locks were held — but it can refuse to cross for a caller
+    that shows nothing at all. Without this the boundary would be reachable
+    from anywhere that holds a journal and a certificate directory, which is
+    exactly the door group 7 exists to close.
+    """
+    journal, _result = _prepared(tmp_path)
+    certificate = tmp_path / "certificate"
+    certificate.mkdir(mode=0o755)
+
+    with pytest.raises(OwnershipCoordinatorError) as denied:
+        _publish_certificate_with_prerequisite_v1(
+            journal=journal, certificate_directory=certificate,
+            authorities=_portable_authorities(),
+            prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
+            observe_maintenance=_maintenance,
+            crossing_receipt=receipt,
+        )
+    assert denied.value.code == "birth_ownership_prerequisite_untrusted"
+    # A refused crossing leaves nothing behind.
+    assert not any(certificate.iterdir())

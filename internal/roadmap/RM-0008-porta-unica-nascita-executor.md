@@ -3040,3 +3040,38 @@ sarebbe vista. E' un sostituto legittimo e non un equivalente, e va letto cosi'.
 L'unico movimento e' un rosso in meno, in
 `test_source_shape_is_bounded_under_descriptor_limit[wide]`: e' una delle sei
 prove che in locale dipendono dall'ambiente, e non e' un merito del gruppo 7.
+
+
+### 23.44 Gruppo 7-H: l'attraversamento passa dall'involucro, o non passa
+
+Ultimo lavoro del gruppo 7 che non tocca il sistema reale. Il collegamento e'
+l'inverso di come sembra a prima vista: non e' il coordinatore a invocare
+l'involucro, e' **l'involucro a chiamare l'attraversamento**, passandogli la
+ricevuta che ha ottenuto.
+
+`_publish_certificate_with_prerequisite_v1` richiede ora `crossing_receipt`,
+l'impronta che l'involucro restituisce dopo aver letto ogni legame due volte
+sotto i tre blocchi e aver consumato la propria capacita'. Il parametro e'
+OBBLIGATORIO, senza valore di difetto: §7.1 vieta i parametri di sola
+compatibilita', e un difetto qui avrebbe lasciato aperta esattamente la porta
+che il gruppo 7 esiste per chiudere.
+
+**Che cosa questo dimostra, e che cosa no.** Il coordinatore non puo' verificare
+CHE COSA l'involucro abbia osservato: non era li' mentre i blocchi erano tenuti,
+e pretendere il contrario sarebbe teatro. Puo' pero' rifiutare l'attraversamento
+a un chiamante che non mostra nulla. Senza, il confine sarebbe raggiungibile da
+chiunque tenga un giornale e una directory di certificato. E' una condizione
+necessaria, non sufficiente, e va letta cosi'.
+
+Cinque casi di rifiuto — assente, vuoto, troncato, non-impronta, non-stringa —
+e la verifica che un attraversamento rifiutato non lasci nulla dietro di se'.
+Le sei chiamate esistenti nella suite del coordinatore passano ora la ricevuta.
+
+Portable 1112 verdi; coordinatore 36 verdi; perni 693/681; guardie e censimento
+verdi.
+
+**Con questo il gruppo 7 e' completo per tutto cio' che non tocca il server.**
+Resta soltanto l'esecuzione reale: installazione dei nomi definitivi,
+commutazione dei servizi correnti, ribaltamento del letterale in
+`closed_build_enforcement`, riavvio, due cicli di instradamento, dichiarazione
+di F4.

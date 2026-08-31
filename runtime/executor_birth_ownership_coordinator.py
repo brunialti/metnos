@@ -2491,13 +2491,25 @@ def _publish_certificate_with_prerequisite_v1(
     authorities: RootOwnershipAuthoritiesV1,
     prerequisite: _StartupPrerequisiteV1,
     observe_maintenance: Callable[[], bytes],
+    crossing_receipt: str,
     _crash_seam: Callable[[str], None] | None = None,
 ) -> OwnershipCoordinatorResultV1:
-    """Isolated Group-5 proof of READY/publish/recovery; no productive caller."""
+    """Isolated Group-5 proof of READY/publish/recovery; no productive caller.
+
+    `crossing_receipt` is the digest the group 7 wrapper produced after it read
+    every binding twice under the three locks and consumed its capability. It
+    is REQUIRED, and required by position in the flow rather than by trust: this
+    function cannot verify what the wrapper observed, but it can refuse to cross
+    for a caller that never went through it. Without the parameter the crossing
+    would be reachable from anywhere that holds a journal and a certificate
+    directory, which is precisely the door group 7 exists to close.
+    """
     if (
         not isinstance(prerequisite, _StartupPrerequisiteV1)
         or prerequisite._seal is not _PREREQUISITE_SEAL
         or not callable(observe_maintenance)
+        or type(crossing_receipt) is not str
+        or _DIGEST_RE.fullmatch(crossing_receipt) is None
     ):
         raise OwnershipCoordinatorError("birth_ownership_prerequisite_untrusted")
     records = journal.load()
