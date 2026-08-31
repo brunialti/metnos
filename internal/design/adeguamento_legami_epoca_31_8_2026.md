@@ -351,3 +351,47 @@ Quindici prove mirate, verdi. Fra le nuove: ricevuta V2 vista, contesto discorde
 nel percorso che blocca, V1 e V2 sulla stessa generazione, seconda esecuzione
 identica senza deriva, e molte dipendenze correnti che chiedono tutte la nuova
 epoca.
+
+---
+
+## 11. Quarto giro — la catena, il tempo firmato, la tripla
+
+Rilievi 8, 9, 10 e quinto giro di A. Il più grave era il primo, e **l'ho
+riprodotto prima di accettarlo**: con firme di ammissione e produttore entrambe
+valide, ma con `producer_receipt_hash` inventato e richieste discordanti, il
+classificatore rispondeva `{'epoca_storica': 2}`. Falso verde, riproducibile.
+
+**R8 — i tre atti sono una conclusione, o non lo sono.** Autenticavo ricevuta di
+ammissione, ricevuta di produttore e busta terminale **separatamente**, e poi le
+accoppiavo sull'identità. Ora sono legate: `producer_receipt_hash` deve essere
+l'hash reale dei byte Producer della riga, `birth_request_id`, `request_id`
+della busta e colonna durevole devono coincidere, e `receipt_hash`,
+`issuer_id`, `objective_hash`, `candidate_source_id`, `executor_origin`,
+`revision_authorship`, `expires_at` e `result_binding` della riga devono
+coincidere con ciò che è firmato. Hash e legame canonico vengono dalle
+primitive del prodotto, non ricalcolati qui.
+
+**R9 — il tempo viene dal campo firmato.** Verificavo la scadenza usando
+`registered_at`, una colonna **modificabile**: chi può scrivere nel database
+decideva se una firma fosse temporalmente valida, e un valore illeggibile
+ripiegava in silenzio sull'ora corrente. Ora l'istante è `issued_at` **dentro la
+ricevuta firmata**, e un `registered_at` durevole invalido blocca. I percorsi
+usano `lstat`: un collegamento a una directory inventariata non può più evitare
+il blocco risolvendosi su un percorso posseduto.
+
+**Quinto giro — identità a tripla.** A ha congelato la coesistenza: V1 storica e
+V2 corrente sono **atti distinti**, identificati da
+`(contract_id, generation_id, admission_context_id)`. Usavo la coppia e
+pretendevo che V1 e V2 concordassero: era la fusione di due fatti. Ora solo una
+ripetizione della **stessa** tripla deve concordare, e deve concordare byte per
+byte. La prova che chiamavo «V1 storica e V2 corrente» non esercitava il caso —
+usava lo stesso contesto per entrambe — ed è stata rifatta con due contesti.
+
+**Un difetto mio, due volte lo stesso.** Leggevo `contract_id` con `str()` su un
+oggetto `ContractId`, ottenendo il suo repr: nessuna chiave combaciava mai. È lo
+stesso errore che avevo già corretto sul lato negozio, ricomparso sul lato
+produttore.
+
+Esito reale: **12 legami, tutti `epoca_storica`, zero non classificati**. Il
+blocco resta quello del negozio. Quindici prove verdi, con finzioni che ora
+costruiscono una catena coerente invece di valori segnaposto.

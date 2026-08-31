@@ -74,15 +74,26 @@ def autorita_finta(contesto: str = CTX) -> tuple[C.Autorita, dict]:
 
 
 def ammissione(chiavi: dict, *, contratto: str, generazione: str,
-               contesto: str = CTX) -> bytes:
+               contesto: str = CTX, byte_produttore: bytes | None = None,
+               richiesta: str = "sha256:" + "3" * 64) -> bytes:
+    """A signed admission receipt whose chain is coherent by construction.
+
+    ``producer_receipt_hash`` is the real hash of the producer bytes the row
+    will carry, and ``birth_request_id`` is the request the envelope and the
+    row will name: a fixture with placeholder values would be refused by the
+    chain check, and a positive test has to exercise the productive form.
+    """
+    from executor_birth_producer_store import producer_receipt_hash
+    hash_produttore = ("sha256:" + "5" * 64 if byte_produttore is None
+                       else producer_receipt_hash(byte_produttore))
     controllo = AdmissionCheck("v1", AdmittedCheckStatus.PASSED, "sha256:" + "0" * 64)
     return issue_admission_receipt(
         policy_version="v1", contract_id=identita(contratto),
         generation_id=f"sha256:{generazione}", candidate_id="sha256:" + "1" * 64,
         semantic_core_id="sha256:" + "2" * 64, admission_context_id=contesto,
-        birth_request_id="sha256:" + "3" * 64,
+        birth_request_id=richiesta,
         authoring_journal_hash="sha256:" + "4" * 64, predecessor_id=None,
-        producer_receipt_hash="sha256:" + "5" * 64,
+        producer_receipt_hash=hash_produttore,
         revision_class=RevisionClass.CODE_REVISION,
         check_results={"manifest_lint": controllo},
         semantic_review_hash=None, approval_hash=None,
@@ -143,10 +154,13 @@ def riga(stato_dir: Path, righe: list[dict]) -> Path:
 
 
 def busta(chiavi: dict, *, contratto: str, generazione: str,
-          precedente: str, contesto: str = CTX, richiesta: str = "req-1",
+          precedente: str, contesto: str = CTX,
+          richiesta: str = "sha256:" + "3" * 64,
+          byte_produttore: bytes | None = None,
           ammissione_byte: bytes | None = None) -> tuple[bytes, bytes]:
     byte = ammissione_byte if ammissione_byte is not None else ammissione(
-        chiavi, contratto=contratto, generazione=generazione, contesto=contesto
+        chiavi, contratto=contratto, generazione=generazione, contesto=contesto,
+        byte_produttore=byte_produttore, richiesta=richiesta,
     )
     interno = {
         "schema_version": 1, "request_id": richiesta,
@@ -259,9 +273,10 @@ def _(base: Path) -> list[str]:
     negozio = base / "negozio"; negozio.mkdir()
     pubblicazione(negozio, "cin", [gen("a"), gen("b")], gen("b"),
                   {gen("a"): ammissione(k, contratto="cin", generazione=gen("a"))})
-    prod = bytearray(produttore(k)); prod[-1] ^= 0xFF
+    buoni = produttore(k)
+    prod = bytearray(buoni); prod[-1] ^= 0xFF     # una firma sola, guastata
     encoded, firma = busta(k, contratto="cin", generazione=gen("a"),
-                           precedente=gen("b"))
+                           precedente=gen("b"), byte_produttore=buoni)
     stato = riga(base / "stato", [{"state": "committed", "encoded": bytes(prod),
                                    "terminal_envelope": encoded,
                                    "terminal_auth": firma}])
@@ -281,10 +296,13 @@ def _(base: Path) -> list[str]:
     negozio = base / "negozio"; negozio.mkdir()
     pubblicazione(negozio, "sei", [gen("a"), gen("b")], gen("b"),
                   {gen("a"): ammissione(k, contratto="sei", generazione=gen("a"))})
+    buoni = produttore(k)
     encoded, firma = busta(k, contratto="sei", generazione=gen("a"),
-                           precedente=gen("b"), richiesta="req-busta")
-    stato = riga(base / "stato", [{"state": "committed", "request_id": "req-riga",
-                                   "encoded": produttore(k),
+                           precedente=gen("b"), richiesta="sha256:" + "a" * 64,
+                           byte_produttore=buoni)
+    stato = riga(base / "stato", [{"state": "committed",
+                                   "request_id": "sha256:" + "b" * 64,
+                                   "encoded": buoni,
                                    "terminal_envelope": encoded,
                                    "terminal_auth": firma}])
     STATO = stato_di(("sei", "corrente", gen("b")))
@@ -303,10 +321,11 @@ def _(base: Path) -> list[str]:
     negozio = base / "negozio"; negozio.mkdir()
     pubblicazione(negozio, "set", [gen("a"), gen("b")], gen("b"),
                   {gen("a"): ammissione(k, contratto="set", generazione=gen("a"))})
+    buoni = produttore(k)
     encoded, firma = busta(k, contratto="set", generazione=gen("a"),
-                           precedente=gen("b"))
+                           precedente=gen("b"), byte_produttore=buoni)
     guasta = bytearray(firma); guasta[-1] ^= 0xFF
-    stato = riga(base / "stato", [{"state": "committed", "encoded": produttore(k),
+    stato = riga(base / "stato", [{"state": "committed", "encoded": buoni,
                                    "terminal_envelope": encoded,
                                    "terminal_auth": bytes(guasta)}])
     STATO = stato_di(("set", "corrente", gen("b")))
@@ -326,9 +345,10 @@ def _(base: Path) -> list[str]:
     pubblicazione(negozio, "ott", [gen("a"), gen("b")], gen("b"),
                   {gen("a"): ammissione(k, contratto="ott", generazione=gen("a"))})
     # la busta porta un contratto che nel negozio non ha quella ricevuta
+    buoni = produttore(k)
     encoded, firma = busta(k, contratto="estraneo", generazione=gen("e"),
-                           precedente=gen("f"))
-    stato = riga(base / "stato", [{"state": "committed", "encoded": produttore(k),
+                           precedente=gen("f"), byte_produttore=buoni)
+    stato = riga(base / "stato", [{"state": "committed", "encoded": buoni,
                                    "terminal_envelope": encoded,
                                    "terminal_auth": firma}])
     STATO = stato_di(("ott", "corrente", gen("b")))
@@ -414,25 +434,30 @@ def _(base: Path) -> list[str]:
     return errori
 
 
-@caso("V1 storica e V2 corrente per la stessa generazione: due legami distinti")
+@caso("V1 e V2 su contesti DIVERSI: due atti distinti, non fusi")
 def _(base: Path) -> list[str]:
     aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
     cartella = pubblicazione(negozio, "vqua", [gen("a"), gen("b")], gen("b"),
                              {gen("a"): ammissione(k, contratto="vqua",
                                                    generazione=gen("a"))})
+    # il V2 appartiene a un contesto diverso: e' un atto distinto, e questo
+    # censimento, legato al proprio insieme, non lo raccoglie
+    altro = "sha256:" + "c" * 64
     v2 = cartella / "admission-receipts-v2" / gen("a")
     v2.mkdir(parents=True)
-    (v2 / f"{CTX.removeprefix('sha256:')}.json").write_bytes(
-        ammissione(k, contratto="vqua", generazione=gen("a"))
+    (v2 / f"{altro.removeprefix('sha256:')}.json").write_bytes(
+        ammissione(k, contratto="vqua", generazione=gen("a"), contesto=altro)
     )
     STATO = stato_di(("vqua", "corrente", gen("b")))
     e = esegui(negozio, base / "stato", aut, STATO)
     errori = []
-    if len(e["legami"]) != 2:
-        errori.append(f"le due ricevute non danno due legami: {len(e['legami'])}")
-    if e["conteggio"].get(C.STORICA) != 2:
+    # solo la V1 di questo contesto e' un legame nostro; la V2 di un altro
+    # contesto e' un atto distinto e resta fuori
+    if e["conteggio"].get(C.STORICA) != 1:
         errori.append(f"classi inattese: {e['conteggio']}")
+    if e["conteggio"].get(C.IGNOTA):
+        errori.append(f"ha bloccato invece di distinguere: {e['motivi']}")
     return errori
 
 

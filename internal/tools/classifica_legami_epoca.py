@@ -48,6 +48,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -271,7 +272,7 @@ def legami_del_negozio(negozio: Path, autorita: Autorita,
         except Exception as exc:  # noqa: BLE001
             bloccanti.append(f"{contratto}: directory non raggiungibile ({exc})")
             continue
-        cartelle_viste.add(Path(cartella).resolve())
+        cartelle_viste.add(Path(cartella))
         if stato_finto is not None:
             # Test seam: a fixture cannot sign whole generations, so it states
             # what the store would authenticate.  Production never reaches
@@ -339,7 +340,10 @@ def legami_del_negozio(negozio: Path, autorita: Autorita,
             dal_documento = str(
                 getattr(ricevuta, "generation_id", "") or ""
             ).removeprefix("sha256:")
-            contratto_documento = str(getattr(ricevuta, "contract_id", "") or "")
+            grezzo_contratto = getattr(ricevuta, "contract_id", None)
+            contratto_documento = str(
+                getattr(grezzo_contratto, "value", grezzo_contratto) or ""
+            )
             if dal_percorso_contesto and dal_percorso_contesto != \
                     autorita.contesto.removeprefix("sha256:"):
                 # V2 carries the context in the path as well: a receipt filed
@@ -360,12 +364,20 @@ def legami_del_negozio(negozio: Path, autorita: Autorita,
                 legame.ritirato = ritirato
                 legame.corrente = (generazione_corrente == dal_percorso)
                 legame.prove = {"generazione_corrente": generazione_corrente,
+                                "byte": percorso.read_bytes(),
                                 "fonte": "current_contract + verify_admission_receipt"}
             risultato.append(legame)
 
     # R7: nothing in the store may live outside the inventory.
-    for voce in sorted(Path(negozio).glob("*")):
-        if voce.is_dir() and voce.resolve() not in cartelle_viste:
+    for voce in sorted(Path(negozio).iterdir()):
+        # lstat, never stat: a symlink to an inventoried directory must not be
+        # able to slip past the check by resolving onto an owned path.
+        stato_voce = voce.lstat()
+        if stat.S_ISLNK(stato_voce.st_mode):
+            bloccanti.append(f"collegamento nel negozio: {voce.name}")
+        elif not stat.S_ISDIR(stato_voce.st_mode):
+            bloccanti.append(f"oggetto non-directory nel negozio: {voce.name}")
+        elif voce not in cartelle_viste:
             bloccanti.append(f"directory inattesa nel negozio: {voce.name}")
     return risultato, bloccanti, fuori_ambito
 
@@ -396,6 +408,65 @@ def _verifica_busta_terminale(encoded: bytes, firma: bytes | None,
         chiave.verify(bytes(firma), DOMINIO_TERMINALE + bytes(encoded))
     except Exception:  # noqa: BLE001 - any failure is a refusal
         return "firma della busta terminale non valida"
+    return ""
+
+
+def _catena_riga_busta(documento, interno, produttore) -> str:
+    """Bind the durable row to the envelope and to the signed Producer receipt.
+
+    Reuses the store's own canonical hash and binding: recomputing either here
+    would be a second implementation of a value the product already defines.
+    """
+    from executor_birth_producer_store import producer_receipt_hash
+    from executor_birth_operational import _terminal_binding
+
+    atteso = producer_receipt_hash(bytes(documento["encoded"]))
+    if documento.get("receipt_hash") not in (None, atteso):
+        return "receipt_hash della riga discorde dai byte Producer firmati"
+    for campo, colonna in (("issuer_id", "issuer_id"),
+                           ("objective_hash", "objective_hash"),
+                           ("candidate_source_id", "candidate_source_id"),
+                           ("expires_at", "expires_at")):
+        valore = getattr(produttore, campo, None)
+        osservato = documento.get(colonna)
+        if valore is not None and osservato is not None \
+                and str(valore) != str(osservato):
+            return f"{colonna} discorde fra riga e ricevuta Producer firmata"
+    for campo, colonna in (("executor_origin", "executor_origin"),
+                           ("revision_authorship", "revision_authorship")):
+        valore = getattr(produttore, campo, None)
+        osservato = documento.get(colonna)
+        valore = getattr(valore, "value", valore)
+        if valore is not None and osservato is not None \
+                and str(valore) != str(osservato):
+            return f"{colonna} discorde fra riga e ricevuta Producer firmata"
+    busta = documento.get("terminal_envelope")
+    grezzo = bytes(busta) if isinstance(busta, (bytes, bytearray)) \
+        else str(busta).encode()
+    legame_atteso = _terminal_binding(grezzo)
+    osservato = documento.get("result_binding")
+    if osservato is not None and str(osservato) != str(legame_atteso):
+        return "result_binding discorde dal legame canonico della busta"
+    return ""
+
+
+def _catena_ammissione(ammissione, documento, interno, byte_busta) -> str:
+    """Bind the Admission receipt to the Producer bytes and to the request."""
+    from executor_birth_producer_store import producer_receipt_hash
+
+    atteso = producer_receipt_hash(bytes(documento["encoded"]))
+    dichiarato = str(getattr(ammissione, "producer_receipt_hash", "") or "")
+    if dichiarato != atteso:
+        return ("producer_receipt_hash dell'ammissione non e' l'hash dei byte "
+                "Producer presenti nella riga")
+    richieste = {
+        str(getattr(ammissione, "birth_request_id", "") or ""),
+        str(interno.get("request_id") or ""),
+        str(documento.get("request_id") or ""),
+    } - {""}
+    if len(richieste) > 1:
+        return ("richiesta discorde fra ammissione, busta e riga: "
+                + ", ".join(sorted(r[:16] for r in richieste)))
     return ""
 
 
@@ -441,20 +512,19 @@ def legami_dello_stato(stato_db: Path, autorita: Autorita,
     from datetime import datetime, timezone
     from executor_birth_receipts import verify_producer_receipt
 
-    def _istante(documento) -> datetime:
-        """Verify a concluded receipt at the moment it was recorded.
+    def _istante_firmato(grezzo: bytes) -> datetime:
+        """The verification instant comes from the receipt's own signed field.
 
-        Producer receipts expire, and these concluded on 30 August: checking
-        them against today's clock asks whether they are still spendable, which
-        is not the question.  The question is whether they were valid when they
-        were used, so the durable ``registered_at`` column - a recorded fact,
-        not a caller's choice - is the instant of verification.
+        ``registered_at`` is a mutable database column: deriving the instant
+        from it let anyone with write access decide whether a signature was
+        temporally valid, and an unparsable value silently became "now".  The
+        signed ``issued_at`` cannot be edited without breaking the signature,
+        so it is the only honest source; an unreadable one blocks.
         """
-        grezzo = str(documento.get("registered_at") or "")
-        try:
-            return datetime.fromisoformat(grezzo.replace("Z", "+00:00"))
-        except ValueError:
-            return datetime.now(timezone.utc)
+        interno = json.loads(grezzo)
+        return datetime.fromisoformat(
+            str(interno["issued_at"]).replace("Z", "+00:00")
+        )
 
     percorso = stato_db / "producer_receipts.sqlite"
     if not percorso.exists():
@@ -473,6 +543,17 @@ def legami_dello_stato(stato_db: Path, autorita: Autorita,
             legame = Legame(tipo="ricevuta_produttore", locazione=locazione,
                             contesto=autorita.contesto, stato=situazione)
 
+            # An invalid durable timestamp is a defect of the row, not a
+            # detail to skip: it blocks even though it is not what we verify.
+            grezzo_data = str(documento.get("registered_at") or "")
+            if grezzo_data:
+                try:
+                    datetime.fromisoformat(grezzo_data.replace("Z", "+00:00"))
+                except ValueError:
+                    legame.discorde = "registered_at durevole non interpretabile"
+                    risultato.append(legame)
+                    continue
+
             # (1) the Producer receipt itself, signed, against the set registry
             codificata = documento.get("encoded")
             if codificata is None:
@@ -482,7 +563,7 @@ def legami_dello_stato(stato_db: Path, autorita: Autorita,
             try:
                 produttore = verify_producer_receipt(
                     bytes(codificata), registry=autorita.registro_produttori,
-                    now=_istante(documento),
+                    now=_istante_firmato(bytes(codificata)),
                 )
             except Exception as exc:  # noqa: BLE001
                 # Symmetric to the admission side: the store also holds rows of
@@ -536,6 +617,17 @@ def legami_dello_stato(stato_db: Path, autorita: Autorita,
                 risultato.append(legame)
                 continue
 
+            # (2-bis) the chain: three authenticated acts are one conclusion
+            # only if the values that appear in more than one of them agree.
+            # Verifying each signature separately and then pairing on identity
+            # alone let a fixture with a fabricated producer hash and mismatched
+            # requests pass as two historical links - a reproducible false green.
+            motivo = _catena_riga_busta(documento, interno, produttore)
+            if motivo:
+                legame.discorde = motivo
+                risultato.append(legame)
+                continue
+
             codificata_ammissione = interno.get("admission_receipt")
             if codificata_ammissione is None:
                 motivo_rifiuto = (documento.get("rejection_code")
@@ -568,11 +660,21 @@ def legami_dello_stato(stato_db: Path, autorita: Autorita,
                 continue
             if str(ammissione.admission_context_id) != autorita.contesto:
                 continue
+            motivo = _catena_ammissione(
+                ammissione, documento, interno, byte_ammissione
+            )
+            if motivo:
+                legame.discorde = motivo
+                risultato.append(legame)
+                continue
 
             generazione = str(
                 getattr(ammissione, "generation_id", "") or ""
             ).removeprefix("sha256:")
-            contratto = str(getattr(ammissione, "contract_id", "") or "")
+            # ``contract_id`` is a ContractId, not a string: str() would give
+            # its repr and no key would ever match.
+            grezzo_contratto = getattr(ammissione, "contract_id", None)
+            contratto = str(getattr(grezzo_contratto, "value", grezzo_contratto) or "")
             legame.generazione = generazione
             legame.contratto = contratto
             if situazione != "committed":
@@ -591,7 +693,9 @@ def legami_dello_stato(stato_db: Path, autorita: Autorita,
                 legame.discorde = ("contratto discorde fra ricevuta e "
                                    "pubblicazione nella stessa busta")
             else:
-                gemello = per_gemello.get((contratto, generazione))
+                gemello = per_gemello.get(
+                    (contratto, generazione, autorita.contesto)
+                )
                 if gemello is None:
                     legame.discorde = ("nessun gemello verificato con identita' "
                                        f"({contratto}, {generazione[:16]})")
@@ -616,22 +720,22 @@ def classifica(codice: Path, installazione: Path, negozio: Path,
     del_negozio, bloccanti, fuori_ambito = legami_del_negozio(
         negozio, autorita, stato_finto
     )
-    # Two receipts can now share one identity - a V1 historical one and a V2
-    # one for the same generation.  Overwriting the key would silently pick
-    # whichever came last, so agreement is required and a disagreement is a
-    # divergence rather than a coin toss.
-    per_gemello: dict[tuple[str, str], Legame] = {}
+    # Identity is the TRIPLE (contract, generation, context), which the epoch
+    # specification froze: a V1 historical receipt and a V2 current one for the
+    # same generation are two distinct acts, not one fact to reconcile.  Only a
+    # repetition of the same triple has to agree, and it has to agree byte for
+    # byte - anything less would let one act stand in for another.
+    per_gemello: dict[tuple[str, str, str], Legame] = {}
     for legame in del_negozio:
         if not (legame.contratto and legame.generazione) or legame.discorde:
             continue
-        chiave = (legame.contratto, legame.generazione)
+        chiave = (legame.contratto, legame.generazione, legame.contesto)
         gia = per_gemello.get(chiave)
         if gia is None:
             per_gemello[chiave] = legame
-        elif (gia.corrente, gia.ritirato) != (legame.corrente, legame.ritirato):
+        elif gia.prove.get("byte") != legame.prove.get("byte"):
             gia.discorde = legame.discorde = (
-                "due ricevute con la stessa identita' non concordano sullo "
-                "stato della generazione"
+                "due ricevute con la stessa tripla non hanno gli stessi byte"
             )
             per_gemello.pop(chiave, None)
     rifiuti: list[str] = []
