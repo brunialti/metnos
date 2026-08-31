@@ -412,6 +412,8 @@ I percorsi di prodotto di A sono:
 
 - `install/birth_authority_provisioner.py` e
   `install/birth_authority_provisioning.py`;
+- `install/executor_birth_source_receiver.py` e
+  `install/executor_birth_systemd.py`;
 - `runtime/executor_birth_secure_fs.py`,
   `runtime/executor_birth_prepared_set.py` e
   `runtime/executor_birth_prepared_root.py`;
@@ -421,7 +423,11 @@ I percorsi di prodotto di A sono:
   `runtime/executor_birth_ownership_chain.py`,
   `runtime/executor_birth_ownership_cutover.py`,
   `runtime/executor_birth_ownership_coordinator.py` e
-  `runtime/executor_birth_dominant_startup.py`.
+  `runtime/executor_birth_dominant_startup.py`;
+- l'aggiornamento meccanico finale di `runtime/contract_boundary_guard.py`,
+  `runtime/executor_birth_admin_preflight.py` e
+  `internal/reports/rm0007-m4-boundary-inventory.json`, dopo la composizione
+  dei due perimetri.
 
 I percorsi di prodotto di B sono:
 
