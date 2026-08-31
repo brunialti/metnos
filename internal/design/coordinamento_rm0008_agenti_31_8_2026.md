@@ -108,34 +108,43 @@ Regole:
    incrociata e le prove mirate sulla composizione dei due rami.
 
 Ogni stato `PRONTA`, `MODIFICHE_RICHIESTE`, `ACCETTATA` o `INTEGRATA` viene
-spinto sia nel deposito locale di recupero sia su GitHub. I checkpoint intermedi
-restano piccoli e incrementali; non si riscrive la storia e non si comprime la
-sequenza prima della convergenza.
+spinto nel deposito locale di recupero. I rami di sviluppo non vengono mai
+spinti nel deposito GitHub pubblico: quel deposito riceve soltanto
+l'esportazione curata, dopo le relative verifiche di pubblicabilita'. I
+checkpoint intermedi restano piccoli e incrementali; non si riscrive la storia
+e non si comprime la sequenza prima della convergenza.
 
 ## 5. Sincronizzazione senza intervento di Roberto
 
-L'integratore di turno e' responsabile di attivare l'altro agente, passargli il
-percorso di questo documento e il commit `PRONTA`, e controllarne l'esito. Al
-giro successivo la responsabilita' passa all'altro agente. Il testo di
-attivazione e' fisso:
+L'avvio iniziale dei due processi appartiene all'orchestrazione della sessione,
+non al protocollo Git e non concede autorita' tecnica. Dopo l'avvio, nessun
+agente deve disporre di un canale diretto verso l'altro: ciascuno pubblica il
+proprio checkpoint nel deposito locale di recupero e osserva il ramo dell'altro.
+Il testo di avvio e' fisso:
 
 ```text
 Leggi integralmente internal/design/coordinamento_rm0008_agenti_31_8_2026.md.
 Lavora sull'unita' indicata dal piu' recente trailer RM0008-Unita.
 Verifica l'esatto RM0008-Ancora, opera solo nei tuoi RM0008-Percorsi e pubblica
-il prossimo stato con i trailer prescritti. Non chiedere a Roberto di inoltrare
-messaggi ordinari. Fermati prima di qualunque modifica al sistema in funzione.
+il prossimo stato nel deposito locale di recupero con i trailer prescritti.
+Osserva il ramo dell'altro agente prima di ogni incremento e mentre attendi una
+barriera. Non chiedere a Roberto di inoltrare messaggi ordinari. Fermati prima
+di qualunque modifica al sistema in funzione.
 ```
 
 Quando entrambi gli agenti sono attivi, ciascuno controlla il ramo dell'altro
 alla fine di un proprio incremento e prima di iniziarne un altro. Non usa una
-testa letta in precedenza: rilegge sempre il commit nominato dal trailer.
+testa letta in precedenza: rilegge sempre il commit nominato dal trailer. Se ha
+esaurito il lavoro indipendente e attende una revisione, osserva il riferimento
+locale a intervalli brevi e limitati; un cambiamento avvia subito il giro
+successivo, l'assenza di cambiamenti non produce nuovi commit.
 
-Se un agente non risponde:
+Se un agente non pubblica un nuovo checkpoint:
 
 1. l'altro continua soltanto sulle attivita' indipendenti gia' assegnate;
 2. controlla se esiste un nuovo commit o un lavoro ancora in corso;
-3. se non esiste, ripete una volta l'attivazione con la stessa ancora;
+3. se non esiste, l'orchestrazione della sessione puo' riavviarlo una volta con
+   la stessa ancora, senza creare un secondo processo concorrente;
 4. non prende possesso dei file dell'altro e non crea una seconda
    implementazione;
 5. segnala a Roberto il blocco solo se esaurisce tutto il lavoro indipendente e
