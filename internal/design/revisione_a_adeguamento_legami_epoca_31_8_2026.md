@@ -570,3 +570,23 @@ riprodotto un percorso permissivo residuo in questo commit; il consumo diretto
 del valore decodificato resta il naturale consolidamento del codec pubblico in
 B2. Per B1 bastano i tre adeguamenti sopra, 21 casi verdi, `diff --check` e la
 misura reale. Nessuna suite completa.
+
+---
+
+## Undicesimo giro
+
+Data: 1 settembre 2026
+Commit esaminato: `df36c169333b5435c6ffe23c9d6a87024384622a`
+Verdetto: `ACCETTATA`
+
+I tre adeguamenti richiesti sono presenti e discriminanti. Le 21 prove
+versionate sono verdi; il caso nuovo parte da una riga costruita con le API
+produttive, altera soltanto la richiesta dell'emissione e ottiene un unico
+ignoto e zero rifiuti. L'assenza dei byte dell'emissione blocca e le mutazioni
+di prova pretendono di toccare esattamente una riga. `git diff --check` e'
+pulito.
+
+La ripetizione reale in sola lettura resta stabile: 12 legami tutti storici,
+zero non classificati e due problemi inventariali noti che bloccano F4. Nessun
+rilievo resta aperto sul perimetro B. A accetta l'esatto commit
+`df36c169333b5435c6ffe23c9d6a87024384622a` per B1.
