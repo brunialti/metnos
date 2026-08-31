@@ -89,22 +89,6 @@ class AutorizzazioneRecupero:
             raise RecuperoPubblicazioneError("autorizzazione_non_emessa")
 
 
-def _fabbrica_sigillo():
-    """The seal and its verifier share a closure and nothing else."""
-    segreto = object()
-
-    def emetti():
-        return segreto
-
-    def valido(candidato) -> bool:
-        return candidato is segreto
-
-    return emetti, valido
-
-
-_emetti_sigillo, _sigillo_valido = _fabbrica_sigillo()
-
-
 @dataclass(frozen=True, slots=True)
 class EsitoRecupero:
     """What the primitive observed and what it removed - never a hope."""
@@ -115,52 +99,55 @@ class EsitoRecupero:
     percorso: str
 
 
+def _fabbrica_autorita():
+    """The issuer closes over the seal, and nothing else can reach it.
+
+    Exporting a mint - or a second door for fixtures - means an importer can
+    build an authorization without passing the inventory, which is the whole
+    property.  Only the validator leaves the closure; tests substitute the
+    inventory and cross the same productive door.
+    """
+    segreto = object()
+
+    def autorizza_dall_inventario(contract_id_value: str, *, store_root):
+        """Issue an authorization only for a contract authoring declares.
+
+        The store root is observed here and its identity travels in the
+        authorization: the entry points refuse a root that is not the one the
+        authorization was issued against.
+        """
+        from manifest_inventory import inventory_authoring_manifests
+
+        inventario = inventory_authoring_manifests()
+        if inventario.problems:
+            raise RecuperoPubblicazioneError(
+                "inventario_autoriale_con_problemi", str(len(inventario.problems))
+            )
+        for ref in inventario.manifests:
+            if ref.contract_id.value == contract_id_value:
+                return AutorizzazioneRecupero(
+                    ref.contract_id, ref.contract_id.storage_key,
+                    _identita_radice(store_root), segreto,
+                )
+        raise RecuperoPubblicazioneError(
+            "contratto_non_inventariato", contract_id_value
+        )
+
+    def valido(candidato) -> bool:
+        return candidato is segreto
+
+    return autorizza_dall_inventario, valido
+
+
+autorizza_dall_inventario, _sigillo_valido = _fabbrica_autorita()
+
+
 def _identita_radice(store_root) -> tuple[int, int]:
     fd = _apri_directory(os.fspath(store_root))
     try:
         return _identita(fd)
     finally:
         os.close(fd)
-
-
-def autorizza_dall_inventario(
-    contract_id_value: str, *, store_root,
-) -> AutorizzazioneRecupero:
-    """Issue an authorization only for a contract authoring actually declares.
-
-    The store root is observed here and its identity travels in the
-    authorization: the entry points refuse a root that is not the one the
-    authorization was issued against.
-    """
-    from manifest_inventory import inventory_authoring_manifests
-
-    inventario = inventory_authoring_manifests()
-    if inventario.problems:
-        raise RecuperoPubblicazioneError(
-            "inventario_autoriale_con_problemi", str(len(inventario.problems))
-        )
-    for ref in inventario.manifests:
-        if ref.contract_id.value == contract_id_value:
-            return AutorizzazioneRecupero(
-                ref.contract_id, ref.contract_id.storage_key,
-                _identita_radice(store_root), _emetti_sigillo(),
-            )
-    raise RecuperoPubblicazioneError(
-        "contratto_non_inventariato", contract_id_value
-    )
-
-
-def _autorizzazione_di_prova(contract_id, store_root) -> AutorizzazioneRecupero:
-    """Separate entry for fixtures: a temporary root, never the productive graph.
-
-    Tests cannot publish a manifest, so they need a way in; keeping it a named,
-    separate door is what stops the productive one from having to accept a
-    free-form identity.
-    """
-    return AutorizzazioneRecupero(
-        contract_id, contract_id.storage_key,
-        _identita_radice(store_root), _emetti_sigillo(),
-    )
 
 
 RENAME_NOREPLACE = 1
@@ -346,15 +333,28 @@ def _pulisci_e_rimuovi(fd_radice: int, ritirato: str, identita: tuple[int, int],
     try:
         if _identita(fd_ritirato) != identita:
             raise RecuperoPubblicazioneError("identita_cambiata", ritirato)
-        _verifica_forma(fd_ritirato)
+        # After the commit point the shape check no longer applies: cleanup is
+        # monotone, so the reachable states are the full shape, the shape
+        # without the lock, and the empty container.  Demanding `generations`
+        # here made an interruption between the two removals unrecoverable -
+        # the opposite of the property this design claims.
         voci = set(os.listdir(fd_ritirato))
-        inattesi = voci - ATTESI
-        if inattesi:
-            raise RecuperoPubblicazioneError("voce_tardiva",
-                                             ",".join(sorted(inattesi)))
+        if voci not in ({NOME_GENERAZIONI, NOME_LUCCHETTO},
+                        {NOME_GENERAZIONI}, set()):
+            raise RecuperoPubblicazioneError(
+                "stato_di_pulizia_non_raggiungibile", ",".join(sorted(voci)))
         if NOME_LUCCHETTO in voci:
             os.unlink(NOME_LUCCHETTO, dir_fd=fd_ritirato)
-        os.rmdir(NOME_GENERAZIONI, dir_fd=fd_ritirato)
+        if NOME_GENERAZIONI in voci:
+            fd_generazioni = _apri_directory(NOME_GENERAZIONI,
+                                             dir_fd=fd_ritirato)
+            try:
+                if os.listdir(fd_generazioni):
+                    raise RecuperoPubblicazioneError("generazioni_non_vuote",
+                                                     NOME_GENERAZIONI)
+            finally:
+                os.close(fd_generazioni)
+            os.rmdir(NOME_GENERAZIONI, dir_fd=fd_ritirato)
     finally:
         os.close(fd_ritirato)
     os.rmdir(ritirato, dir_fd=fd_radice)
@@ -378,12 +378,30 @@ def rimuovi_contenitore_incompleto(
     ritirato = PREFISSO_RITIRO + autorizzazione.storage_key
     ricevuta = _percorso_ricevuta(radice, autorizzazione.storage_key,
                                   autorizzazione.radice_identita)
-    atteso = {
-        "schema_version": 1,
-        "contract_id": autorizzazione.contract_id.value,
-        "storage_key": autorizzazione.storage_key,
-        "radice": list(autorizzazione.radice_identita),
-    }
+    def documento(stato: str, contenitore: tuple[int, int]) -> dict:
+        # The container's own identity is durable BEFORE the rename: without it
+        # a receipt prepared for the original authorizes removing whatever
+        # different container happens to occupy the retired name.
+        return {
+            "schema_version": 2,
+            "stato": stato,
+            "contract_id": autorizzazione.contract_id.value,
+            "storage_key": autorizzazione.storage_key,
+            "radice": list(autorizzazione.radice_identita),
+            "contenitore": list(contenitore),
+        }
+
+    def concorda(registrata, stato: str, contenitore=None) -> bool:
+        if not isinstance(registrata, dict) or registrata.get("stato") != stato:
+            return False
+        base = {k: registrata.get(k) for k in
+                ("contract_id", "storage_key", "radice")}
+        se_uguale = (base == {"contract_id": autorizzazione.contract_id.value,
+                              "storage_key": autorizzazione.storage_key,
+                              "radice": list(autorizzazione.radice_identita)})
+        if contenitore is None:
+            return se_uguale
+        return se_uguale and registrata.get("contenitore") == list(contenitore)
 
     fd_radice = _apri_directory(os.fspath(radice))
     try:
@@ -403,7 +421,10 @@ def rimuovi_contenitore_incompleto(
             # neither, and a receipt: the work is already done, and saying so
             # is not the same as saying "it never existed".
             if not presente and not in_ritiro:
-                if registrata == atteso:
+                # Idempotent only from `committed`.  A `prepared` receipt with
+                # both names gone means a rename that FAILED, and calling that
+                # success is how a failure becomes a completed recovery.
+                if concorda(registrata, "committed"):
                     return EsitoRecupero(
                         autorizzazione.contract_id.value,
                         autorizzazione.storage_key, True,
@@ -429,21 +450,29 @@ def rimuovi_contenitore_incompleto(
                 # The receipt is durable BEFORE the commit point, so an
                 # interruption immediately after the rename still leaves the
                 # provenance that lets the next attempt resume.
-                _scrivi_ricevuta(ricevuta, atteso)
+                _scrivi_ricevuta(ricevuta, documento("prepared", identita))
                 _rinomina_senza_sostituzione(
                     autorizzazione.storage_key, ritirato, dir_fd=fd_radice)
                 os.fsync(fd_radice)
+                _scrivi_ricevuta(ricevuta, documento("committed", identita))
             else:
                 # retired only: resume, but only with complete provenance.  A
                 # deterministic name proves nothing by itself.
-                if registrata != atteso:
-                    raise RecuperoPubblicazioneError(
-                        "ritirato_senza_provenienza", ritirato)
                 fd_ritirato = _apri_directory(ritirato, dir_fd=fd_radice)
                 try:
                     identita = _identita(fd_ritirato)
                 finally:
                     os.close(fd_ritirato)
+                # The retired container is resumed only when the receipt claims
+                # THIS inode: a deterministic name proves nothing, and a
+                # receipt without the identity would authorize removing
+                # whatever occupied that name.
+                if not (concorda(registrata, "prepared", identita)
+                        or concorda(registrata, "committed", identita)):
+                    raise RecuperoPubblicazioneError(
+                        "ritirato_senza_provenienza", ritirato)
+                if concorda(registrata, "prepared", identita):
+                    _scrivi_ricevuta(ricevuta, documento("committed", identita))
 
             _pulisci_e_rimuovi(fd_radice, ritirato, identita, autorizzazione)
     finally:

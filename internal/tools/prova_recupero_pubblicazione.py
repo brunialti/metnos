@@ -35,14 +35,30 @@ def identita(nome: str = "orfano") -> ContractId:
     return ContractId(ManifestOrigin.BUILTIN, f"{nome}/manifest.toml")
 
 
-def autorizza(cid: ContractId, base: Path) -> R.AutorizzazioneRecupero:
-    """Issue an authorization for a fixture identity, bound to this root.
+class _InventarioFinto:
+    def __init__(self, refs): self.manifests = tuple(refs); self.problems = ()
 
-    Production issues these only from the authoring inventory and against the
-    productive root; the fixture door is separate on purpose, and the tests
-    below check that a caller cannot reach the seal from outside.
+
+class _RefFinto:
+    def __init__(self, cid): self.contract_id = cid
+
+
+def autorizza(cid: ContractId, base: Path) -> R.AutorizzazioneRecupero:
+    """Cross the SAME productive door, with the inventory substituted.
+
+    There is no fixture entry any more: the module exports no mint, so a test
+    gets an authorization exactly the way production does - by being in the
+    authoring inventory - and the substitution is of the inventory, not of the
+    door.
     """
-    return R._autorizzazione_di_prova(cid, base)
+    import manifest_inventory
+    vero = manifest_inventory.inventory_authoring_manifests
+    manifest_inventory.inventory_authoring_manifests = \
+        lambda *a, **k: _InventarioFinto([_RefFinto(cid)])
+    try:
+        return R.autorizza_dall_inventario(cid.value, store_root=base)
+    finally:
+        manifest_inventory.inventory_authoring_manifests = vero
 
 
 def contenitore_incompleto(radice: Path, cid: ContractId) -> Path:
@@ -411,7 +427,8 @@ def _(base: Path) -> list[str]:
     try:
         R.rimuovi_contenitore_incompleto(autorizza(cid, base), store_root=base)
     except R.RecuperoPubblicazioneError as exc:
-        errori = ([] if exc.code in {"voce_tardiva", "oggetti_inattesi"}
+        errori = ([] if exc.code in {"voce_tardiva", "oggetti_inattesi",
+                                     "stato_di_pulizia_non_raggiungibile"}
                   else [f"codice inatteso: {exc.code}"])
     except Exception as exc:
         errori = [f"eccezione inattesa: {type(exc).__name__}"]
@@ -430,8 +447,9 @@ def _(base: Path) -> list[str]:
 @caso("R9 il sigillo non e' raggiungibile da chi importa il modulo")
 def _(base: Path) -> list[str]:
     errori = []
-    if hasattr(R, "_TOKEN"):
-        errori.append("il sigillo e' ancora un attributo del modulo")
+    for nome in ("_TOKEN", "_emetti_sigillo", "_autorizzazione_di_prova"):
+        if hasattr(R, nome):
+            errori.append(f"il modulo esporta ancora {nome}")
     try:
         R.AutorizzazioneRecupero(identita(), identita().storage_key, (0, 0),
                                  object())
@@ -480,6 +498,120 @@ def _(base: Path) -> list[str]:
         return ([] if exc.code == "contenitore_assente"
                 else [f"codice inatteso: {exc.code}"])
     return ["ha dichiarato successo su un contenitore mai esistito"]
+
+
+@caso("R12 arresto fra le due rimozioni: la ripresa completa")
+def _(base: Path) -> list[str]:
+    cid = identita()
+    contenitore_incompleto(base, cid)
+    aut = autorizza(cid, base)
+    ritirato = base / (R.PREFISSO_RITIRO + cid.storage_key)
+    vero_rmdir = os.rmdir
+    stato = {"n": 0}
+
+    def rmdir_che_si_ferma(percorso, *a, **kw):
+        stato["n"] += 1
+        if stato["n"] == 2:            # dopo generations, prima del contenitore
+            raise OSError(5, "arresto iniettato")
+        return vero_rmdir(percorso, *a, **kw)
+
+    os.rmdir = rmdir_che_si_ferma
+    try:
+        R.rimuovi_contenitore_incompleto(aut, store_root=base)
+    except Exception:
+        pass
+    finally:
+        os.rmdir = vero_rmdir
+    errori = []
+    if not ritirato.exists():
+        errori.append("nessuno stato intermedio da riprendere")
+        return errori
+    if (ritirato / "generations").exists():
+        errori.append("la prima rimozione non e' avvenuta")
+    esito = R.rimuovi_contenitore_incompleto(aut, store_root=base)
+    if ritirato.exists() or not esito.rimosso:
+        errori.append("la ripresa dallo stato intermedio non ha completato")
+    return errori
+
+
+@caso("R13 la ricevuta identifica il contenitore: un altro inode non passa")
+def _(base: Path) -> list[str]:
+    cid = identita()
+    contenitore_incompleto(base, cid)
+    aut = autorizza(cid, base)
+    ritirato = base / (R.PREFISSO_RITIRO + cid.storage_key)
+    # fa fallire la rinomina occupando il nome, poi elimina l'originale e
+    # lascia al suo posto un contenitore DIVERSO
+    vero_scrivi = R._scrivi_ricevuta
+
+    def scrivi_e_occupa(percorso, documento):
+        vero_scrivi(percorso, documento)
+        if not ritirato.exists():
+            (ritirato / "generations").mkdir(parents=True)
+            (ritirato / "writer.lock").write_text("1")
+
+    R._scrivi_ricevuta = scrivi_e_occupa
+    try:
+        R.rimuovi_contenitore_incompleto(aut, store_root=base)
+    except R.RecuperoPubblicazioneError:
+        pass
+    finally:
+        R._scrivi_ricevuta = vero_scrivi
+    import shutil
+    shutil.rmtree(base / cid.storage_key, ignore_errors=True)
+    try:
+        R.rimuovi_contenitore_incompleto(aut, store_root=base)
+    except R.RecuperoPubblicazioneError as exc:
+        errori = ([] if exc.code == "ritirato_senza_provenienza"
+                  else [f"codice inatteso: {exc.code}"])
+        if not ritirato.exists():
+            errori.append("ha rimosso un contenitore che la ricevuta non nomina")
+        return errori
+    return ["ha rimosso un contenitore diverso da quello registrato"]
+
+
+@caso("R14 rinomina fallita e nomi assenti: non e' un successo")
+def _(base: Path) -> list[str]:
+    cid = identita()
+    contenitore_incompleto(base, cid)
+    aut = autorizza(cid, base)
+    ritirato = base / (R.PREFISSO_RITIRO + cid.storage_key)
+    vero = R._rinomina_senza_sostituzione
+    R._rinomina_senza_sostituzione = lambda *a, **k: (_ for _ in ()).throw(
+        R.RecuperoPubblicazioneError("nome_di_ritiro_occupato", "iniettato"))
+    try:
+        R.rimuovi_contenitore_incompleto(aut, store_root=base)
+    except R.RecuperoPubblicazioneError:
+        pass
+    finally:
+        R._rinomina_senza_sostituzione = vero
+    import shutil
+    shutil.rmtree(base / cid.storage_key, ignore_errors=True)
+    shutil.rmtree(ritirato, ignore_errors=True)
+    # resta solo la ricevuta 'prepared': dichiarare successo sarebbe falso
+    try:
+        R.rimuovi_contenitore_incompleto(aut, store_root=base)
+    except R.RecuperoPubblicazioneError as exc:
+        return ([] if exc.code == "contenitore_assente"
+                else [f"codice inatteso: {exc.code}"])
+    return ["ha dichiarato completata una rinomina che era fallita"]
+
+
+@caso("R11 il modulo non espone alcuna porta per fabbricare un'autorizzazione")
+def _(base: Path) -> list[str]:
+    errori = []
+    for nome in dir(R):
+        oggetto = getattr(R, nome)
+        if callable(oggetto) and nome not in {"autorizza_dall_inventario"}:
+            try:
+                candidato = oggetto()
+            except Exception:
+                continue
+            if isinstance(candidato, R.AutorizzazioneRecupero):
+                errori.append(f"{nome} emette un'autorizzazione")
+    if not hasattr(R, "autorizza_dall_inventario"):
+        errori.append("manca la porta produttiva")
+    return errori
 
 
 def main() -> int:

@@ -690,3 +690,43 @@ l'atomicità. Reso sincronizzato — la collisione compare fra la verifica e il
 punto d'impegno — diventa rosso se si toglie `RENAME_NOREPLACE`.
 
 Ventitré prove versionate verdi, `git diff --check` pulito.
+
+---
+
+## 20. Terzo giro sulla primitiva — l'autorità, la ripresa, la ricevuta
+
+**R11 — il sigillo era ancora raggiungibile.** Avevo messo il segreto in una
+chiusura, ma **l'emettitore** restava un attributo del modulo, e c'era pure una
+seconda porta per le finzioni. Un'autorizzazione che chiunque importi il modulo
+può fabbricare non è un'autorizzazione. Ora la funzione produttiva **chiude sul
+sigillo ed è l'unica** che lo emette; il modulo non esporta né la zecca né una
+porta di prova, e le prove sostituiscono **l'inventario**, non la porta.
+
+**R12 — una sospensione durante la pulizia non era riprendibile.** Dopo il punto
+d'impegno pretendevo ancora la forma completa, quindi un arresto fra le due
+rimozioni rendeva il contenitore irrecuperabile per sempre — l'opposto della
+proprietà che il disegno dichiara. Ora dopo l'impegno valgono solo gli stati
+**monotoni** realmente raggiungibili: forma completa, forma senza lucchetto,
+contenitore vuoto.
+
+**R13 — la ricevuta non identificava il contenitore.** Registrava contratto,
+chiave e radice, ma non l'inode: una ricevuta preparata per l'originale
+autorizzava la rimozione di un contenitore **diverso** che avesse occupato il
+nome di ritiro. Ora l'identità è durevole prima della rinomina e confrontata a
+ogni ripresa.
+
+**R14 — «preparata» e «impegnata» erano lo stesso documento.** Con entrambi i
+nomi assenti leggevo la ricevuta come successo, anche quando la rinomina era
+**fallita**. Ora gli stati sono due: `prepared` prima del punto d'impegno,
+`committed` dopo la rinomina e il `fsync`. L'idempotenza vale **solo da
+`committed`**; un `prepared` con entrambi i nomi assenti è un fallimento, e
+viene detto tale.
+
+Ventisette prove versionate verdi, `git diff --check` pulito. Non vacue:
+riammettendo `prepared` come successo, il caso R14 torna rosso.
+
+**E un errore di metodo, il terzo dello stesso tipo.** Ho di nuovo tagliato
+codice con uno slicing per indice invece che con una sostituzione di testo
+esatto, cancellando tre definizioni che ho poi dovuto ricostruire. È la terza
+volta in questa unità: il rimedio non è stare più attento, è non usare più
+quello strumento su codice.
