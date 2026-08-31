@@ -227,8 +227,9 @@ emittente, tutte in stato terminale (21 `committed`, 2 `rejected`), registrate
 fra le 10:48 e le 11:17 del 30 agosto — cioè **prima** che l'insieme corrente
 esistesse (13:17). Nulla è in volo.
 
-> **Nota di ordine.** O10-O13 stanno al §5-bis, dove sono state prodotte;
-> O14 e O15 rispondono alle misure C2 e C3 chieste dalla revisione.
+> **Nota di ordine.** O10-O13 stanno al §5-bis, dove sono state prodotte.
+> O14 e O15 rispondono alle misure C2 e C3 chieste dal GIRO CODEX 1; O15 è stata
+> poi rigenerata e O16 aggiunta dopo il GIRO CODEX 2.
 
 ### O14 — Quali gesti rimettono davvero il permesso di gruppo (misura C2)
 
