@@ -193,7 +193,7 @@ def _(base: Path) -> list[str]:
     errori = []
     if rc != C.EXIT_AZIONE: errori.append(f"uscita {rc}, attesa {C.EXIT_AZIONE}")
     if conta(out, C.CESSA) != 1: errori.append("il ritiro non e' stato riconosciuto")
-    # e non esiste piu' un modo per dichiararlo da riga di comando
+    # and the command line no longer offers a way to declare it
     import argparse, io as _io, contextlib
     ap_err = _io.StringIO()
     with contextlib.redirect_stderr(ap_err):
@@ -209,16 +209,17 @@ def _(base: Path) -> list[str]:
 def _(base: Path) -> list[str]:
     radice = radice_nascita(base)
     negozio = base / "negozio"; negozio.mkdir()
-    # due contratti con la STESSA generazione di prova
+    # two contracts sharing the SAME test generation digest
     pubblicazione(negozio, "builtin:a", ["gg"], "gg", {"gg": CTX})
     pubblicazione(negozio, "builtin:b", ["gg", "hh"], "hh", {"gg": CTX})
-    # la busta nomina il contratto b: deve accoppiarsi solo con quello
+    # the envelope names contract b, so it must pair only with that one
     rc, out = esegui(radice, negozio, stato_nascita(base, [busta("builtin:b", "gg", "hh")]),
                      {"builtin:a": ("corrente", "gg"), "builtin:b": ("corrente", "hh")})
     errori = []
     if rc != C.EXIT_AZIONE:
         errori.append(f"uscita {rc}, attesa {C.EXIT_AZIONE}")
-    # a/gg e' corrente -> nuova epoca; b/gg e' superata -> storica; la busta segue b
+    # a/gg is current -> new epoch; b/gg is superseded -> historical;
+    # the envelope follows b
     if conta(out, C.NUOVA) != 1:
         errori.append("il contratto a non e' stato riconosciuto corrente")
     if conta(out, C.STORICA) != 2:
@@ -231,7 +232,7 @@ def _(base: Path) -> list[str]:
     radice = radice_nascita(base)
     negozio = base / "negozio"; negozio.mkdir()
     pubblicazione(negozio, "builtin:d", ["aaa", "bbb"], "bbb", {"aaa": CTX})
-    # riscrive il documento con una generazione diversa da quella del nome
+    # rewrite the document with a generation other than the one in its name
     ric = negozio / "pub-builtin_d" / "admission-receipts" / "aaa.json"
     doc = json.loads(ric.read_text()); doc["generation_id"] = "sha256:zzz"
     ric.write_text(json.dumps(doc))
@@ -291,8 +292,8 @@ def _(base: Path) -> list[str]:
     conn = sqlite3.connect(stato / "producer_receipts.sqlite")
     conn.execute("create table birth_producer_receipts (receipt_id text, state text, "
                  "expires_at text, rejection_code text, terminal_envelope blob)")
-    # busta committed che non e' JSON e non nomina il contesto in chiaro:
-    # la versione precedente la lasciava passare in silenzio.
+    # a committed envelope that is not JSON and does not name the context in
+    # clear: the previous version let it through in silence.
     conn.execute("insert into birth_producer_receipts values (?,?,?,?,?)",
                  ("r", "committed", "x", None, b"non e' json, e non nomina nulla"))
     conn.commit(); conn.close()
