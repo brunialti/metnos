@@ -3012,3 +3012,31 @@ ferma tutto senza superare nulla; e un cancello aperto, che ferma la
 composizione al proprio passo prima di toccare il resto.
 
 Portable 1190 verdi; perni 693/681; guardie e censimento verdi.
+
+
+### 23.43 Misura del gruppo 7: zero regressioni, e come e' stata ottenuta
+
+Sei moduli nuovi dai §§23.34-23.42 senza una misura completa sono esattamente
+il punto in cui una regressione passa inosservata. Confronto contro la chiusura
+di G6 (§23.29, 69 rossi), stesso comando e stesse condizioni:
+
+| fetta | rossi | nuovi | risolti |
+|---|---|---|---|
+| `tests/runtime/{i18n,contracts,executors,infra}` | 27 | 0 | 0 |
+| resto di `tests/runtime` | 35 | 0 | 0 |
+| `tests/portable` | 6 | 0 | 1 |
+| **totale** | **68** | **0** | **1** |
+
+`3248 + 5056 + 1107 = 9411` prove verdi.
+
+**Come e' stata ottenuta, e il limite che questo comporta.** La suite completa
+in un colpo solo e' stata interrotta dall'esterno due volte, al 6% e prima
+ancora. L'ho quindi misurata in TRE fette, confrontando ciascuna con la
+corrispondente fetta della misura di chiusura. Non e' identico a un giro unico:
+un'esecuzione spezzata perde gli effetti d'ordine e di stato condiviso fra
+fette, quindi una regressione che si manifesti solo in quella combinazione non
+sarebbe vista. E' un sostituto legittimo e non un equivalente, e va letto cosi'.
+
+L'unico movimento e' un rosso in meno, in
+`test_source_shape_is_bounded_under_descriptor_limit[wide]`: e' una delle sei
+prove che in locale dipendono dall'ambiente, e non e' un merito del gruppo 7.
