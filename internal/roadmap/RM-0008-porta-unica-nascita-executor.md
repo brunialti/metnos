@@ -1366,7 +1366,7 @@ sviluppo.
 | 2026-08-28 | `active` | Riesame dopo il gruppo 3 completato: la guardia chiusa misura 26 rilievi iniziali e il piano ottimizzato del gruppo 4 li divide in tre incrementi causali. Primo incremento: autenticare i due caricamenti fra executor; il bit F4 resta falso. |
 | 2026-08-28 | `active` | G4-A implementato e in certificazione locale: due dipendenze fra executor passano dalla porta autenticata e le revisioni sono state pubblicate da intenzioni Birth reali. Il riesame di velocizzazione conserva G4-A separato e unisce rimozione delle firme e congelamento dell'inventario in G4-B+C, risparmiando una matrice pubblica senza ridurre le prove. |
 | 2026-08-31 | `active` | **Gruppo 6 chiuso, `G6 complete`** (§23.32). C3 e C4 certificati su VM con systemd reale in quattro cicli pubblici consecutivi; suite a copertura totale con **zero regressioni** (74 rossi alla base pre-G6, 69 all'albero finale, 5 risolti); ciclo avversariale convergente su quattro giri per parte. Restano F4-F6 e il gruppo 7, di cui e' fatto il solo primo passo (§23.31). |
-| 2026-09-01 | `active` | F4-EPOCA-01 ha raggiunto la convergenza tecnica incrociata sui commit A `ba26f5cd` e B `df36c169`; il §23.49 registra la variazione normativa offerta alla revisione incrociata prima del codice di prodotto. |
+| 2026-09-01 | `active` | F4-EPOCA-01 ha raggiunto la convergenza tecnica incrociata sui commit A `ba26f5cd` e B `df36c169`; il §23.49 registra la variazione normativa offerta alla revisione incrociata prima del codice di prodotto della transizione. La precondizione indipendente del contenitore incompleto può essere sviluppata e provata, ma non applicata automaticamente. |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 
@@ -1418,6 +1418,15 @@ chiusura della fase:
 | avvio senza ritorno a versioni precedenti | `executor_birth_ownership_preflight.py` | `ExecStartPre` dominante su tutti gli ingressi e verifica della catena richiesta, non soltanto dell'ancora iniziale |
 | proprietario unico | guardia `--birth-closed` e punto di diniego | inventario chiuso ancora non valido, eccezioni mancanti, installatore e generatore incorporato con autorità di firma precedente, booleano compilato ancora falso |
 | prova operativa | prove unitarie e portabili | prova generale Linux sotto `root`, passaggio controllato, caricamento a freddo dal solo archivio, riavvio e due cicli di instradamento |
+
+La transizione di epoca non può iniziare finché l'inventario produttivo riporta
+un problema, incluso un contenitore di prima pubblicazione incompleto. Quel
+contenitore è una precondizione separata: la sua primitiva di recupero può
+essere sviluppata e provata prima della variazione, ma non appartiene
+all'esecuzione automatica F4. Un eventuale uso sul negozio reale richiede una
+decisione operativa esplicita, identità derivata dall'inventario autenticato e
+una postcondizione recuperabile; nessun percorso libero o pulizia generica è
+ammesso.
 
 Il coordinatore F4 deve possedere un registro durevole con esattamente i sette
 stati ordinati `PREPARED`, `RECEIPTS_COMPLETE`, `CERTIFICATE_READY`,
@@ -3329,7 +3338,10 @@ La variazione normativa è quella applicata nei §§7.3 e 23.2:
 - ogni identità estranea, inventario incompleto o byte discordante arresta la
   ripresa senza modificare la selezione corrente.
 
-Il codice di prodotto può iniziare soltanto dopo l'accettazione incrociata del
-commit esatto che contiene questa variazione. La ripartizione dei file, le
-interfacce congelate e i 24 casi minimi di prova restano quelli della specifica
-convergente e non vengono duplicati qui.
+Il codice di prodotto della transizione può iniziare soltanto dopo
+l'accettazione incrociata del commit esatto che contiene questa variazione. La
+primitiva separata per la precondizione del contenitore incompleto può essere
+sviluppata e provata prima, senza anticipare la transizione e senza autorizzare
+alcun uso sul negozio reale. La ripartizione dei file, le interfacce congelate e
+i 24 casi minimi di prova restano quelli della specifica convergente e non
+vengono duplicati qui.
