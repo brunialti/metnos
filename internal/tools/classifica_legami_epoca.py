@@ -220,17 +220,34 @@ def _ricevute_del_contratto(cartella: Path):
     carries both identities, and the caller checks them against the signed
     receipt instead of trusting either.
     """
-    for percorso in sorted(cartella.glob("admission-receipts/*.json")):
-        yield percorso, percorso.name.removesuffix(".json"), ""
+    def _regolare(percorso: Path) -> bool:
+        """Owned, regular, and reached without following a link."""
+        try:
+            return stat.S_ISREG(percorso.lstat().st_mode)
+        except OSError:
+            return False
+
+    def _cartella(percorso: Path) -> bool:
+        try:
+            return stat.S_ISDIR(percorso.lstat().st_mode)
+        except OSError:
+            return False
+
+    v1 = cartella / "admission-receipts"
+    if _cartella(v1):
+        for percorso in sorted(v1.iterdir()):
+            if percorso.name.endswith(".json") and _regolare(percorso):
+                yield percorso, percorso.name.removesuffix(".json"), ""
     radice_v2 = cartella / "admission-receipts-v2"
-    if not radice_v2.is_dir():
+    if not _cartella(radice_v2):
         return
     for per_generazione in sorted(radice_v2.iterdir()):
-        if not per_generazione.is_dir():
+        if not _cartella(per_generazione):
             continue
-        for percorso in sorted(per_generazione.glob("*.json")):
-            yield (percorso, per_generazione.name,
-                   percorso.name.removesuffix(".json"))
+        for percorso in sorted(per_generazione.iterdir()):
+            if percorso.name.endswith(".json") and _regolare(percorso):
+                yield (percorso, per_generazione.name,
+                       percorso.name.removesuffix(".json"))
 
 
 def legami_del_negozio(negozio: Path, autorita: Autorita,
@@ -317,14 +334,19 @@ def legami_del_negozio(negozio: Path, autorita: Autorita,
                 # refusal only when its unverified content claims OUR context,
                 # because that is somebody asserting this epoch without the
                 # authority to do so.  Either way it is counted, never dropped.
-                try:
-                    pretende = json.loads(percorso.read_bytes()).get(
-                        "admission_context_id"
-                    ) == autorita.contesto
-                except Exception:  # noqa: BLE001
-                    # Corrupted bytes must block, not crash the census: the
-                    # doubt falls on the side of refusing.
-                    pretende = True
+                # Unverified content cannot decide the perimeter.  Only the
+                # AUTHENTICATED current state can show that a previous object
+                # does not reduce F4 work: if the generation in its path is the
+                # current one, the doubt blocks, whatever its bytes claim.
+                pretende = (generazione_corrente == dal_percorso
+                            or bool(errore_stato))
+                if not pretende:
+                    try:
+                        pretende = json.loads(percorso.read_bytes()).get(
+                            "admission_context_id"
+                        ) == autorita.contesto
+                    except Exception:  # noqa: BLE001
+                        pretende = True
                 if not pretende:
                     fuori_ambito.append(str(percorso))
                     continue
@@ -421,31 +443,35 @@ def _catena_riga_busta(documento, interno, produttore) -> str:
     from executor_birth_operational import _terminal_binding
 
     atteso = producer_receipt_hash(bytes(documento["encoded"]))
-    if documento.get("receipt_hash") not in (None, atteso):
+    if "receipt_hash" not in documento:
+        return "schema della riga incompleto: manca receipt_hash"
+    if documento.get("receipt_hash") != atteso:
         return "receipt_hash della riga discorde dai byte Producer firmati"
     for campo, colonna in (("issuer_id", "issuer_id"),
                            ("objective_hash", "objective_hash"),
                            ("candidate_source_id", "candidate_source_id"),
                            ("expires_at", "expires_at")):
         valore = getattr(produttore, campo, None)
-        osservato = documento.get(colonna)
-        if valore is not None and osservato is not None \
-                and str(valore) != str(osservato):
+        if colonna not in documento:
+            return f"schema della riga incompleto: manca {colonna}"
+        if str(valore) != str(documento.get(colonna)):
             return f"{colonna} discorde fra riga e ricevuta Producer firmata"
     for campo, colonna in (("executor_origin", "executor_origin"),
                            ("revision_authorship", "revision_authorship")):
         valore = getattr(produttore, campo, None)
         osservato = documento.get(colonna)
         valore = getattr(valore, "value", valore)
-        if valore is not None and osservato is not None \
-                and str(valore) != str(osservato):
+        if colonna not in documento:
+            return f"schema della riga incompleto: manca {colonna}"
+        if str(valore) != str(documento.get(colonna)):
             return f"{colonna} discorde fra riga e ricevuta Producer firmata"
     busta = documento.get("terminal_envelope")
     grezzo = bytes(busta) if isinstance(busta, (bytes, bytearray)) \
         else str(busta).encode()
     legame_atteso = _terminal_binding(grezzo)
-    osservato = documento.get("result_binding")
-    if osservato is not None and str(osservato) != str(legame_atteso):
+    if "result_binding" not in documento:
+        return "schema della riga incompleto: manca result_binding"
+    if str(documento.get("result_binding")) != str(legame_atteso):
         return "result_binding discorde dal legame canonico della busta"
     return ""
 
@@ -459,14 +485,18 @@ def _catena_ammissione(ammissione, documento, interno, byte_busta) -> str:
     if dichiarato != atteso:
         return ("producer_receipt_hash dell'ammissione non e' l'hash dei byte "
                 "Producer presenti nella riga")
-    richieste = {
+    # All three must EXIST and agree: accepting an absent one let a row omit
+    # the very field that ties it to the other two.
+    richieste = [
         str(getattr(ammissione, "birth_request_id", "") or ""),
         str(interno.get("request_id") or ""),
         str(documento.get("request_id") or ""),
-    } - {""}
-    if len(richieste) > 1:
+    ]
+    if not all(richieste):
+        return "richiesta assente in ammissione, busta o riga"
+    if len(set(richieste)) > 1:
         return ("richiesta discorde fra ammissione, busta e riga: "
-                + ", ".join(sorted(r[:16] for r in richieste)))
+                + ", ".join(sorted(r[:16] for r in set(richieste))))
     return ""
 
 
@@ -630,8 +660,13 @@ def legami_dello_stato(stato_db: Path, autorita: Autorita,
 
             codificata_ammissione = interno.get("admission_receipt")
             if codificata_ammissione is None:
-                motivo_rifiuto = (documento.get("rejection_code")
-                                  or interno.get("error_code"))
+                # Both codes must exist and be the same: an alternative between
+                # the two let a row and its signed envelope disagree about why
+                # the birth was refused, and still count as one valid refusal.
+                della_riga = documento.get("rejection_code")
+                della_busta = interno.get("error_code")
+                motivo_rifiuto = (della_riga if della_riga and della_busta
+                                  and della_riga == della_busta else None)
                 if situazione == "rejected" and motivo_rifiuto:
                     # A refusal that concluded properly, and whose two
                     # signatures stand, admitted nothing: not a dependency.
@@ -696,6 +731,17 @@ def legami_dello_stato(stato_db: Path, autorita: Autorita,
                 gemello = per_gemello.get(
                     (contratto, generazione, autorita.contesto)
                 )
+                if gemello is not None and \
+                        gemello.prove.get("byte") != byte_ammissione:
+                    # Same triple, different signed bytes: two receipts, not one
+                    # fact.  Pairing on the triple alone accepted both as
+                    # coherent history.
+                    legame.discorde = (
+                        "i byte dell'ammissione nella busta non sono quelli "
+                        "del gemello autenticato nel negozio"
+                    )
+                    risultato.append(legame)
+                    continue
                 if gemello is None:
                     legame.discorde = ("nessun gemello verificato con identita' "
                                        f"({contratto}, {generazione[:16]})")

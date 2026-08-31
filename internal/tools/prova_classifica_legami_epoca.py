@@ -139,18 +139,48 @@ def pubblicazione(negozio: Path, contratto: str, generazioni: list[str],
 def riga(stato_dir: Path, righe: list[dict]) -> Path:
     stato_dir.mkdir(exist_ok=True)
     conn = sqlite3.connect(stato_dir / "producer_receipts.sqlite")
-    conn.execute("create table birth_producer_receipts (receipt_id text, "
-                 "request_id text, state text, registered_at text, "
-                 "rejection_code text, encoded blob, terminal_envelope blob, "
-                 "terminal_auth blob)")
+    # The productive columns, not a reduced parallel schema: a fixture missing
+    # the mandatory fields would stay green precisely because the check has
+    # nothing to compare.
+    conn.execute(
+        "create table birth_producer_receipts (receipt_id text, "
+        "receipt_hash text, request_id text, state text, registered_at text, "
+        "rejection_code text, issuer_id text, objective_hash text, "
+        "candidate_source_id text, executor_origin text, "
+        "revision_authorship text, expires_at text, result_binding text, "
+        "encoded blob, terminal_envelope blob, terminal_auth blob)"
+    )
     for r in righe:
-        conn.execute("insert into birth_producer_receipts values (?,?,?,?,?,?,?,?)",
-                     (r.get("receipt_id"), r.get("request_id"), r.get("state"),
-                      r.get("registered_at", ISTANTE), r.get("rejection_code"),
-                      r.get("encoded"), r.get("terminal_envelope"),
-                      r.get("terminal_auth")))
+        conn.execute(
+            "insert into birth_producer_receipts values "
+            "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (r.get("receipt_id"), r.get("receipt_hash"), r.get("request_id"),
+             r.get("state"), r.get("registered_at", ISTANTE),
+             r.get("rejection_code"), r.get("issuer_id"),
+             r.get("objective_hash"), r.get("candidate_source_id"),
+             r.get("executor_origin"), r.get("revision_authorship"),
+             r.get("expires_at"), r.get("result_binding"),
+             r.get("encoded"), r.get("terminal_envelope"),
+             r.get("terminal_auth")))
     conn.commit(); conn.close()
     return stato_dir
+
+
+def riga_coerente(chiavi: dict, *, byte_produttore: bytes, encoded: bytes,
+                  firma: bytes, richiesta: str, stato: str = "committed") -> dict:
+    """A durable row whose mandatory columns agree with what is signed."""
+    from executor_birth_producer_store import producer_receipt_hash
+    from executor_birth_operational import _terminal_binding
+    return {
+        "state": stato, "request_id": richiesta,
+        "receipt_hash": producer_receipt_hash(byte_produttore),
+        "issuer_id": EMITTENTE, "objective_hash": "sha256:" + "6" * 64,
+        "candidate_source_id": "sha256:" + "7" * 64,
+        "executor_origin": "builtin", "revision_authorship": "human",
+        "expires_at": SCADENZA, "result_binding": _terminal_binding(encoded),
+        "encoded": byte_produttore, "terminal_envelope": encoded,
+        "terminal_auth": firma,
+    }
 
 
 def busta(chiavi: dict, *, contratto: str, generazione: str,
@@ -277,9 +307,10 @@ def _(base: Path) -> list[str]:
     prod = bytearray(buoni); prod[-1] ^= 0xFF     # una firma sola, guastata
     encoded, firma = busta(k, contratto="cin", generazione=gen("a"),
                            precedente=gen("b"), byte_produttore=buoni)
-    stato = riga(base / "stato", [{"state": "committed", "encoded": bytes(prod),
-                                   "terminal_envelope": encoded,
-                                   "terminal_auth": firma}])
+    r = riga_coerente(k, byte_produttore=buoni, encoded=encoded, firma=firma,
+                      richiesta="sha256:" + "3" * 64)
+    r["encoded"] = bytes(prod)          # solo la firma Producer e' guastata
+    stato = riga(base / "stato", [r])
     STATO = stato_di(("cin", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []
@@ -300,11 +331,9 @@ def _(base: Path) -> list[str]:
     encoded, firma = busta(k, contratto="sei", generazione=gen("a"),
                            precedente=gen("b"), richiesta="sha256:" + "a" * 64,
                            byte_produttore=buoni)
-    stato = riga(base / "stato", [{"state": "committed",
-                                   "request_id": "sha256:" + "b" * 64,
-                                   "encoded": buoni,
-                                   "terminal_envelope": encoded,
-                                   "terminal_auth": firma}])
+    stato = riga(base / "stato", [riga_coerente(
+        k, byte_produttore=buoni, encoded=encoded, firma=firma,
+        richiesta="sha256:" + "b" * 64)])   # la riga nomina un'altra richiesta
     STATO = stato_di(("sei", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []
@@ -325,9 +354,9 @@ def _(base: Path) -> list[str]:
     encoded, firma = busta(k, contratto="set", generazione=gen("a"),
                            precedente=gen("b"), byte_produttore=buoni)
     guasta = bytearray(firma); guasta[-1] ^= 0xFF
-    stato = riga(base / "stato", [{"state": "committed", "encoded": buoni,
-                                   "terminal_envelope": encoded,
-                                   "terminal_auth": bytes(guasta)}])
+    stato = riga(base / "stato", [riga_coerente(
+        k, byte_produttore=buoni, encoded=encoded, firma=bytes(guasta),
+        richiesta="sha256:" + "3" * 64)])
     STATO = stato_di(("set", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []
@@ -348,9 +377,9 @@ def _(base: Path) -> list[str]:
     buoni = produttore(k)
     encoded, firma = busta(k, contratto="estraneo", generazione=gen("e"),
                            precedente=gen("f"), byte_produttore=buoni)
-    stato = riga(base / "stato", [{"state": "committed", "encoded": buoni,
-                                   "terminal_envelope": encoded,
-                                   "terminal_auth": firma}])
+    stato = riga(base / "stato", [riga_coerente(
+        k, byte_produttore=buoni, encoded=encoded, firma=firma,
+        richiesta="sha256:" + "3" * 64)])
     STATO = stato_di(("ott", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []

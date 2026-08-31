@@ -395,3 +395,50 @@ produttore.
 Esito reale: **12 legami, tutti `epoca_storica`, zero non classificati**. Il
 blocco resta quello del negozio. Quindici prove verdi, con finzioni che ora
 costruiscono una catena coerente invece di valori segnaposto.
+
+---
+
+## 12. Sesto giro — i quattro falsi verdi
+
+Rilievi 11-14 di A, con quattro casi indipendenti. Tutti riprodotti, tutti
+chiusi.
+
+**R11 — la ricevuta nella busta non era il gemello.** Ricevevo i byte e non li
+usavo: due ricevute firmate con la stessa tripla ma byte diversi passavano come
+due fatti coerenti. Ora i byte della busta devono essere **quelli** del gemello
+autenticato, e le tre richieste devono **esistere** e coincidere, non soltanto
+non discordare quando presenti.
+
+**R12 — un campo assente veniva accettato.** I confronti erano condizionali, e
+la fixture confermava il difetto *per costruzione*: usava una tabella ridotta che
+non conteneva le colonne su cui il controllo doveva cadere. Ora si pretende lo
+schema produttivo e l'uguaglianza esatta; la fixture usa la tabella vera. E il
+rifiuto non usa più `rejection_code` **oppure** `error_code`: devono esistere
+entrambi e coincidere, altrimenti due codici diversi contavano come un solo
+rifiuto valido.
+
+**R13 — i percorsi delle ricevute.** `lstat` copriva solo il primo livello del
+negozio; le ricevute si leggevano con `glob` e `read_bytes`, quindi una ricevuta
+spostata fuori e raggiunta per collegamento passava come storica. Ora ogni
+directory V2 e ogni file ricevuta devono essere oggetti regolari, raggiunti
+senza seguire collegamenti.
+
+**R14 — il contenuto non verificato decideva il perimetro.** Una ricevuta non
+verificabile, posta sulla generazione **corrente** ma con un altro contesto
+scritto nei byte, finiva fuori ambito. Ora solo lo stato corrente autenticato
+può dimostrare che un oggetto precedente non riduce il lavoro F4: se la
+generazione del percorso è quella corrente, il dubbio blocca.
+
+**Un errore di misura mio**, che vale la pena registrare: la prima riproduzione
+del caso 1 falliva perché le due ricevute che credevo diverse erano **byte
+identiche** — il costruttore di finzioni è deterministico. Non era il difetto a
+resistere: era la mia prova a non esercitarlo. Rifatta con due produttori
+davvero distinti, il caso cade come deve.
+
+Esito reale invariato: 12 legami, tutti `epoca_storica`, zero non classificati.
+Quindici prove verdi più le quattro variazioni indipendenti.
+
+**Resta aperto** dal R13: la verifica terminale usa `json.loads` e la firma, non
+la decodifica canonica V2 del prodotto, e la fixture emette ancora
+`schema_version: 1`. Serve la primitiva pubblica di decodifica; non la
+sostituisco con una seconda implementazione.
