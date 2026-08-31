@@ -448,3 +448,41 @@ accettare `schema_version: 1`.
 I commenti italiani ancora presenti nel file di prova vanno tradotti in
 inglese nello stesso incremento. Nessuna suite completa: bastano i casi mirati
 versionati e la misura reale in sola lettura.
+
+---
+
+## Ottavo giro
+
+Data: 31 agosto 2026
+Commit esaminato: `f3f66c76a929eab7def869ea603848c32c84657f`
+Verdetto: `MODIFICHE_RICHIESTE`
+
+I rilievi 15 e 16 sono chiusi. Le 20 prove versionate sono verdi; la scansione
+segnala ora gli oggetti non regolari come bloccanti. Una prova A indipendente
+ha inoltre costruito un rifiuto coerente mediante le vere API
+`register_producer_receipt`, `claim_producer_receipt` e
+`finalize_producer_receipt`: il classificatore lo riconosce come unico rifiuto
+terminale, senza legami o bloccanti. La ripetizione reale in sola lettura
+conferma 12 legami storici, zero ignoti e il blocco sui due problemi
+inventariali gia' noti.
+
+E' chiusa anche la parte del rilievo 17 relativa alle variazioni versionate.
+Restano soltanto i due punti strutturali dichiarati aperti nel checkpoint B:
+
+1. il classificatore deve consumare la busta terminale canonica V2 tramite il
+   decoder del prodotto, non mediante un secondo `json.loads` permissivo;
+2. la fixture positiva deve creare la riga e la relativa emissione mediante le
+   API reali del Producer store, non mediante il `CREATE TABLE` parallelo.
+
+La soluzione minima per B1 e' riusare `_decode_terminal_envelope` con una
+`BirthRequest` legata alla riga durevole e all'identita' di contratto
+autenticata dalla catena di emissione; la prova deve emettere la busta con
+`_terminal_envelope` e attraversare emissione, claim e finalize produttivi.
+L'eventuale estrazione di un codec pubblico resta lavoro B2 e non deve
+ritardare questa barriera diagnostica.
+
+Prima del prossimo checkpoint vanno inoltre tradotti in inglese i nuovi
+commenti italiani della prova (`due produttori`, `discorde`, `come impone il
+Producer store`). Non servono altri casi, ne' modifiche di prodotto, ne' la
+suite completa in questo giro. Con decoder V2, fixture produttiva, 20 prove
+verdi e misura reale invariata, A puo' accettare B1.
