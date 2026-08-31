@@ -74,3 +74,78 @@ Il giro successivo deve rendere lo strumento coerente con quelle affermazioni:
 identita' composta, nessuna autorita' dal chiamante, fatti autenticati e nessun
 caso terminale ignorato. Restano prove mirate; la suite completa non va
 eseguita in questa barriera.
+
+---
+
+## Secondo giro
+
+Data: 31 agosto 2026
+Commit esaminato: `dfb551a74773081b09f734e62dc8cc35b99a10a0`
+Verdetto: `MODIFICHE_RICHIESTE`
+
+Le correzioni su identita' composta, ritiro autenticato e casi terminali sono
+accolte. Restano tre punti dello stesso confine di autenticazione.
+
+### Rilievo 5 — ricevuta e contesto restano dati non autenticati
+
+`contesto_corrente` legge direttamente `prepared-v1.json` e
+`material-v1.json`; `legami_del_negozio` decodifica i JSON delle ricevute ma
+non ne verifica la firma. Il limite e' dichiarato dal rapporto, ma dichiararlo
+non rende probante il verdetto. Le chiavi pubbliche necessarie sono gia'
+nell'insieme preparato e non richiedono di attivare il nucleo ne' di caricare
+chiavi private.
+
+La correzione minima e' una sola acquisizione in sola lettura mediante
+`open_prepared_root_session_v1`, `load_prepared_set_v1` e il registro pubblico
+dell'insieme. Da quella acquisizione devono derivare il contesto e i
+verificatori; ogni AdmissionReceipt deve passare
+`verify_admission_receipt`, compresi identita', contesto e ciclo approvato.
+Nessun lettore JSON parallelo deve decidere l'autorita'.
+
+### Rilievo 6 — la busta Producer ignora entrambe le prove disponibili
+
+Il classificatore legge soltanto `state` e `terminal_envelope`. La riga reale
+contiene anche la ricevuta Producer firmata in `encoded` e la firma della busta
+in `terminal_auth`; entrambe sono ignorate. Percio' una riga modificata nel DB
+puo' ancora essere chiamata conclusione o rifiuto valido.
+
+Prima di classificare una riga occorre:
+
+1. verificare la ricevuta Producer e la sua corrispondenza con le colonne
+   durevoli, usando il registro pubblico Producer dell'insieme;
+2. verificare `terminal_auth` col `signing_key_id` interno alla busta e con il
+   dominio produttivo;
+3. pretendere che `request_id`, stato, risultato, contratto, generazione e byte
+   della AdmissionReceipt concordino fra riga, busta e gemello verificato.
+
+Un rifiuto terminale privo di una di queste prove non viene escluso: blocca.
+Non serve un secondo formato diagnostico; vanno riusati codec, domini e
+registri produttivi.
+
+### Rilievo 7 — l'inventario autenticato non possiede ancora i percorsi letti
+
+`stato_autenticato_dei_contratti` non rifiuta `inventario.problems`; inoltre
+la scansione successiva torna a derivare il contratto dal `binding.json`
+grezzo di ogni cartella. Lo stato corrente puo' quindi essere autenticato
+mentre il percorso dal quale viene presa la ricevuta non lo e'.
+
+La scansione deve partire dai riferimenti accettati dall'inventario produttivo,
+pretendere zero problemi e raggiungere per ciascun contratto la directory del
+negozio mediante la primitiva posseduta dal negozio. Directory inattese,
+binding discordante o contratto non inventariato bloccano l'intero censimento,
+anche se non contengono una ricevuta del contesto cercato.
+
+### Prove minime del terzo giro
+
+- firma AdmissionReceipt errata, contesto alterato e marker/set incoerenti;
+- firma Producer errata, colonna diversa dal contenuto firmato e richiesta
+  diversa;
+- `terminal_auth` errata e busta firmata con identita' diversa dal gemello;
+- problema inventariale o directory inattesa senza ricevute del contesto;
+- dato reale: 12 storici, due rifiuti terminali autenticati, zero ignoti.
+
+La riga d'uso iniziale va inoltre allineata: cita ancora `--ritirati`, gia'
+rimosso. E' una correzione documentale, non un rilievo autonomo.
+
+La suite completa resta esclusa. Il terzo giro puo' fermarsi alle prove mirate
+e a una nuova esecuzione in sola lettura sul dato reale.
