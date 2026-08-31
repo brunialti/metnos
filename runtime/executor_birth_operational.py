@@ -357,6 +357,7 @@ class _TestCommitPublisher:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import (
             Ed25519PrivateKey,
         )
+        from i18n_pipeline import reconcile_published_contract_registry
         from executor_birth_commit_publisher import (
             _BirthCommitPublisher, _PUBLISHER_TOKEN,
         )
@@ -374,6 +375,10 @@ class _TestCommitPublisher:
             prepared_context_epoch=resolver() if resolver else "",
             primitive=lambda ref, **kwargs: publisher(ref, **kwargs),
             store_root=self._options.get("store_root"),
+            # The productive reconciler, not a stand-in: this seam exists so
+            # that what the test exercises is the productive shape, and a
+            # different reconciler here would quietly test something else.
+            registry_reconciler=reconcile_published_contract_registry,
         )
 
     def admission_lock(self):
