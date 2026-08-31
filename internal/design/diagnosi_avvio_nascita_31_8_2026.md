@@ -1687,3 +1687,166 @@ che restano lavoro non fatto e non rilievi aperti:
    append-only a nuova epoca, lavoro di disegno da far revisionare.
 
 La produzione è rimasta fuori ambito per tutto il giro.
+
+---
+
+# GIRO CODEX 3 — verifica delle chiusure Claude 2
+
+Ancoraggio: worktree `/tmp/metnos-rm0008-g6`, ramo
+`rm0008/diagnosi-avvio`, testa `78fac809`. Ho letto integralmente i tre nuovi
+strumenti e le loro prove, rieseguito le quattro suite mirate e sottoposto il
+censimento e il controllore a casi ulteriori. Nessuna modifica a produzione,
+servizi, permessi o radice di nascita.
+
+## Chiusure confermate
+
+- `prova_sonda_avvio_nascita.py`: 8/8 verdi.
+- `prova_censimento_legami.py`: 9/9 verdi.
+- `prova_passo0.sh`: 8/8 verdi. P1-C11 è chiuso: il programma eseguito è ora
+  quello documentato e i rami rossi non toccano lo stack.
+- `prova_controllore_processo.py`: i 6 casi presenti sono verdi.
+- P2-C13 è corretto nel merito: l'equivalenza con `open(path, 'w')` è stata
+  ritirata e il documento distingue firma authoring e pubblicazione
+  store-only. Restano da rendere riproducibili le misure O16, come indicato
+  sotto.
+
+Totale: **31 casi mirati verdi**. Non è stata eseguita la suite completa,
+coerentemente con la fase intermedia.
+
+## Nuovi rilievi
+
+### P1-C14 — «Nessun oggetto esaminato due volte» è ancora falso
+
+Il programma impedisce che un database venga interrogato come SQLite e poi
+riletto come byte, ma non deduplica gli oggetti fra radici del perimetro. La
+CLI accetta più radici e non vieta che coincidano o siano annidate.
+
+Prova indipendente su fixture: una radice `base`, una sottoradice
+`base/dati`, un solo `base/dati/x.json`, perimetro `[base, base/dati]`.
+Risultato:
+
+```
+record = 2
+locations = [.../dati/x.json, .../dati/x.json]
+files_read = 2
+errors = 0
+```
+
+Lo stesso percorso diventa due record semantici. Il difetto vale anche per i
+database, perché il primo passaggio aggiunge i risultati per ogni radice senza
+consultare `gia_interrogati` prima di interrogarli. La configurazione predefinita
+usa oggi quattro radici disgiunte, quindi questo non dimostra che il nuovo
+totale O15 sia errato; dimostra però che la proprietà dichiarata e il contratto
+generale dello strumento non sono veri. È inoltre contrario al requisito
+esplicito di non introdurre duplicazioni.
+
+**Disposizione richiesta:** normalizzare le radici, rifiutare o collassare
+quelle duplicate/annidate e mantenere un insieme globale degli oggetti già
+esaminati prima sia del percorso SQLite sia del percorso file. Aggiungere prove
+per radice ripetuta, radice annidata e database raggiungibile da due elementi
+del perimetro. Il conteggio deve restare uno e l'oggetto deve essere letto una
+sola volta.
+
+### P1-C15 — Il controllore non mantiene ancora la garanzia dichiarata
+
+La proprietà centrale dice: «il figlio non viene mai raccolto fino alla fine
+della chiusura». Il metodo pubblico `attendi()` fa invece esattamente il
+contrario: quando vede l'uscita chiama `_raccogli()`, esegue `Popen.wait()` e
+chiude il `pidfd`; la successiva `chiudi()` opera quindi dopo che PID e PGID del
+leader possono essere stati liberati. La prima prova della suite percorre
+proprio `attendi()` seguito da `chiudi()`, ma verifica soltanto il codice
+d'uscita e non la proprietà di riserva del numero.
+
+Anche il caso dichiarato «nipote che sopravvive al padre» non esercita quel
+caso: il comando di prova avvia il nipote e poi esegue `sleep 60`; quando
+`chiudi()` comincia il leader è ancora vivo. Ho aggiunto fuori suite una prova
+con leader che genera un figlio resistente a `TERM` e poi termina davvero.
+Il ramo spontaneo:
+
+1. rileva il figlio;
+2. invia `SIGKILL` al gruppo;
+3. ritorna subito senza attesa e senza nuovo censimento;
+4. lascia in `Esito.superstiti` l'elenco **precedente** al segnale.
+
+Nella riproduzione `dopo` era vuoto dopo 200 ms, quindi il segnale aveva
+funzionato, ma `esito.superstiti` conteneva ancora il PID del figlio. L'oggetto
+`Esito`, che promette «what the stop sequence actually did», non descrive lo
+stato finale e il metodo non verifica che la chiusura sia terminata prima di
+restituire. Inoltre `__exit__` inghiotte ogni `ControlloreError`: una chiusura
+rifiutata può lasciare un processo vivo senza informare l'agente che usa il
+blocco `with` consigliato dal documento.
+
+**Disposizione richiesta:**
+
+- `attendi()` deve osservare l'uscita senza raccogliere; un solo percorso,
+  dentro `chiudi()`, deve raccogliere e chiudere il `pidfd` dopo aver concluso
+  sul gruppo;
+- il ramo leader già terminato deve segnalare, attendere con limite,
+  ricensire e restituire soltanto i superstiti finali;
+- `__exit__` non deve occultare un errore di pulizia;
+- aggiungere una prova in cui il leader termina davvero lasciando un figlio,
+  una che chiama `attendi()` prima di `chiudi()` e una che dimostra che un
+  errore di chiusura esce dal blocco `with`;
+- verificare a fine suite che non rimangano membri dei gruppi creati.
+
+Fino a queste prove P1-C12 non è chiuso.
+
+### P1-C16 — Il censimento completo non è abbastanza veloce per essere operativo
+
+La nuova versione è più completa della precedente, ma nella mia riesecuzione
+reale:
+
+```
+python3 internal/tools/censimento_legami_nascita.py --silenzioso
+```
+
+non ha prodotto l'esito entro **300 secondi** ed è stata interrotta con uscita
+130. La prima versione aveva concluso sulla stessa macchina in circa 21
+secondi, pur con le lacune già note. Non posso quindi riprodurre né l'uscita 0
+né i numeri 15/12/3/13 dichiarati da O15 con lo strumento corrente entro un
+tempo proporzionato alla procedura.
+
+Il costo è spiegabile dal codice: il filesystem viene attraversato due volte;
+ogni tabella SQLite viene materializzata integralmente con `list(...)`; ogni
+file non-database viene letto per intero, senza un bilancio temporale o una
+misura delle risorse. Completezza e velocità non sono alternative: il
+censimento può mantenere il fail-closed usando un solo attraversamento e
+cursor SQLite in streaming.
+
+**Disposizione richiesta:** eseguire una sola enumerazione deduplicata,
+interrogare le righe SQLite in streaming, misurare tempo e memoria di picco e
+aggiungere una prova prestazionale non vacua. Sul perimetro reale di questa
+macchina il comando deve concludere entro un bilancio dichiarato e breve; per
+questo giro il limite di accettazione è **60 secondi**, conservando identica
+copertura fail-closed. O15 va rieseguita e deve riportare anche tempo trascorso
+e versione/testa dello strumento.
+
+### P2-C17 — O16 è corretta nel merito ma non ancora riproducibile
+
+La tabella di O16 non ha uno script, un comando o una prova versionata. I casi
+mostrati esercitano apparentemente `_atomic_replace_bytes`, mentre il testo li
+presenta come misura «sul percorso reale» e poi conclude sui due ingressi
+pubblici per lettura statica. La riga «esistente `664`, `new_mode=0600`
+imposto → `600`» omette inoltre il parametro decisivo
+`preserve_existing_mode=False`; con il valore predefinito `True`, il codice
+conserva `664` e ignora `new_mode` per un file esistente.
+
+Le conclusioni qualitative sono coerenti col codice, ma la disposizione di
+P2-C13 chiedeva una misura ripetibile che distinguesse `sign_executor`
+authoring, `publish_executor` store-only, file esistente e file nuovo.
+
+**Disposizione richiesta:** aggiungere una prova versionata con parametri
+espliciti, includendo la funzione atomica e i due ingressi pubblici (con
+dipendenze isolate), e far derivare la tabella dalla sua uscita. Non serve
+rieseguire la suite completa.
+
+## VERDETTO DI CONVERGENZA — GIRO CODEX 3
+
+Il Giro Claude 2 ha migliorato nettamente documento e strumenti e ha chiuso
+P1-C11. Non converge ancora su P1-C10/P1-C12: il censimento duplica lo stesso
+oggetto con perimetri sovrapposti e non conclude entro cinque minuti; il
+controllore raccoglie anticipatamente tramite `attendi()`, non prova il caso
+che dichiara e restituisce uno stato finale non ricontrollato. O16 resta una
+misura non versionata.
+
+**NON CONCORDO ANCORA SUL DOCUMENTO.**
