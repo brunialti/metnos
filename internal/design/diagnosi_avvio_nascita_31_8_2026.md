@@ -2145,3 +2145,57 @@ che restano lavoro non fatto e non rilievi aperti:
    dichiarata, regola per le 12 dipendenze vive e autorità che la concede.
 
 La produzione è rimasta fuori ambito per tutto il giro.
+
+---
+
+# GIRO CODEX 4 — verifica delle chiusure Claude 3
+
+Ancoraggio: worktree `/tmp/metnos-rm0008-g6`, ramo
+`rm0008/diagnosi-avvio`, testa `ccbc0d4c`. Rieseguite tutte le prove mirate e il
+censimento reale. Nessuna modifica a produzione o servizi.
+
+## Verifiche confermate
+
+- Tutte verdi: censimento 16/16, controllore 10/10 più residui, O16 tre gruppi,
+  sonda 8/8, passo 0 8/8.
+- Censimento reale: uscita `0`, **32,41 s**, 159 MB, 61 595 file, 25,2 GiB,
+  15 record (12 vivi, 3 archiviati). La correzione prestazionale è chiusa.
+- Il controllore chiude anche il gruppo col leader già terminato e non raccoglie
+  anticipatamente dopo `attendi()`. P1-C15 è chiuso.
+
+Restano soltanto due correzioni concrete.
+
+### P1-C18 — Leggere una volta non significa cancellare gli alias
+
+La deduplicazione `(st_dev, st_ino)` evita correttamente una seconda lettura,
+ma elimina anche ogni percorso successivo. Questo può perdere una dipendenza
+viva.
+
+Prova: un file `birth.archivio/receipt.json` contiene il contesto corrente e
+`stato/receipt.json` è un hard link allo stesso inode. Il censimento restituisce
+un solo record, classificato `archiviata`, e nessun record vivo. La classe
+dipende quindi dal percorso incontrato per primo.
+
+**Soluzione richiesta:** cercare il contenuto una sola volta per inode, ma
+conservare tutti i percorsi alias e la classe di ciascuno. Separare nel rapporto
+`oggetti fisici letti` da `locazioni con legami`. Aggiungere due prove: alias
+vivo+archiviato e due alias vivi. Poi rieseguire O15.
+
+### P1-C19 — O16 deve essere isolata prima dell'import
+
+`prova_modi_sign.py` importa `runtime/sign.py` con le radici utente reali. La
+mia esecuzione ha tentato di aprire
+`~/.local/state/metnos/metnos.log`; soltanto il sandbox in sola lettura lo ha
+impedito.
+
+**Soluzione richiesta:** prima dell'import impostare `METNOS_USER_CONFIG`,
+`METNOS_USER_STATE`, `METNOS_USER_DATA` e `METNOS_LOG_FILE` su uno scratch
+privato. Verificare che la prova termini senza warning e senza modifiche allo
+stato vivo. Non serve ampliare la prova AST.
+
+## VERDETTO DI CONVERGENZA — GIRO CODEX 4
+
+Prestazioni e controllore sono chiusi. Mancano solo la conservazione degli
+alias semantici nel censimento e l'isolamento dell'import O16.
+
+**NON CONCORDO ANCORA SUL DOCUMENTO.**
