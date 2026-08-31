@@ -286,6 +286,20 @@ tabella è la sua uscita, con `umask 0002` reso esplicito nella prova.
 > esistente **vince** e `new_mode` viene ignorato: sono due righe diverse, e ora
 > ci sono entrambe.
 
+**La prova non tocca lo stato vivo, e lo si può controllare.** Importare
+`sign.py` significa importare `config`, che deriva il file di log da
+`PATH_USER_STATE`, e `logging_setup` lo apre: una prova che voleva solo sapere
+quale modo lascia una sostituzione stava aprendo la cartella di stato di
+un'installazione in funzione, e solo un ambiente in sola lettura l'ha fermata
+(GIRO CODEX 4, P1-C19). Le quattro variabili — `METNOS_USER_CONFIG`,
+`METNOS_USER_STATE`, `METNOS_USER_DATA`, `METNOS_LOG_FILE` — sono ora impostate
+su uno scratch privato `0700` **prima** dell'import, e rimosse a fine processo.
+Un gruppo di prova verifica che il modulo importato abbia risolto lì e non verso
+lo stato vivo. Controllato con `strace`: **zero riferimenti** a
+`~/.local/state/metnos`, `~/.config/metnos` e `~/.local/share/metnos`, nemmeno
+falliti; il file di log vivo resta con dimensione e data di modifica invariate;
+la prova passa anche con tutti i warning trattati come errori.
+
 **Che cosa la prova esegue e che cosa legge.** `_atomic_replace_bytes` decide il
 modo, e viene **eseguita**. I due ingressi pubblici sono verificati sul loro
 sorgente (AST) invece che eseguiti, ed è un limite dichiarato, non una
@@ -331,12 +345,14 @@ misura e non un conteggio:
 - **un record per locazione che porta il fatto** — un file è un record, una riga
   di database è un record, quale che sia il numero di colonne o di superfici
   coinvolte; niente dipende da quanto lo strumento decide di stampare;
-- **nessun oggetto esaminato due volte** — le radici del perimetro sono risolte
-  e collassate quando duplicate o annidate, l'attraversamento è **uno solo**, e
-  ogni file è chiavato per `(st_dev, st_ino)`: un percorso raggiungibile due
-  volte, un collegamento fisico o una radice ripetuta valgono un oggetto. Un
-  database interrogato per colonna non viene poi riletto come blocco di byte.
-  Sul perimetro reale questo deduplica **8362 oggetti**;
+- **nessun oggetto letto due volte, ma nessun alias perso** — le radici del
+  perimetro sono risolte e collassate quando duplicate o annidate,
+  l'attraversamento è **uno solo**, e ogni file è chiavato per
+  `(st_dev, st_ino)`, così il contenuto si legge una volta. Ma i percorsi che
+  raggiungono quell'inode sono **tutti conservati, ciascuno con la propria
+  classe**: collassarli era un modo di perdere una dipendenza viva (vedi la
+  nota sotto). Un database interrogato per colonna non viene poi riletto come
+  blocco di byte. Sul perimetro reale questo deduplica **8362 letture**;
 - **fail-closed** — ogni radice, database, tabella o file del perimetro che non
   si riesce a leggere viene registrato come non esaminato, la misura si dichiara
   **incompleta** e il processo esce `2`. Un errore non è mai un riscontro, e una
@@ -348,16 +364,17 @@ Identificativi acquisiti dalla radice, mai copiati a mano. Perimetro:
 
 | misura | valore |
 |---|---|
-| impronta dello strumento | `sha256:f0bd245fc5cbac63` |
-| tempo trascorso | **32,4 s** (tetto dichiarato: 60 s) |
-| memoria di picco | 160 MB |
-| file esaminati | 61 595 |
+| impronta dello strumento | `sha256:2a1f98cf138388b9` |
+| tempo trascorso | **32,8 s** (tetto dichiarato: 60 s) |
+| memoria di picco | 174 MB |
+| oggetti fisici letti | 61 595 |
 | byte esaminati | 25,2 GiB |
-| oggetti deduplicati | 8 362 |
+| letture risparmiate dalla deduplicazione | 8 362 |
 | soglia del prefiltro | 32 cifre esadecimali (derivata dagli identificativi) |
 | copertura | **completa**, uscita `0` |
 
-**Esito: 15 record semantici univoci** — 9 file e 6 righe SQLite:
+**Esito: 15 locazioni con legami, portate da 10 oggetti fisici** — 9 file e 6
+righe SQLite (le sei righe stanno nello stesso database, che è un oggetto solo):
 
 | classe | tipo | quanti | che cosa |
 |---|---|---|---|
@@ -368,6 +385,17 @@ Identificativi acquisiti dalla radice, mai copiati a mano. Perimetro:
 **12 dipendenze vive, 3 copie archiviate, 13 fatti distinti** (un fatto = un
 identificativo osservato in una classe; le 12 vive nominano tutte lo stesso
 contesto, quindi sono un fatto sotto dodici rappresentazioni).
+
+> **Perché «locazioni» e non «record», dal GIRO CODEX 4 (P1-C18).** Leggere una
+> volta per inode è giusto; **cancellare gli alias no**. Un file agganciato sia
+> sotto una radice archiviata sia sotto lo stato vivo compariva una volta sola,
+> classificato secondo il percorso che l'attraversamento incontrava per primo —
+> e una dipendenza viva poteva sparire dietro il suo alias archiviato.
+> Riprodotto su fixture prima di correggere. Ora il contenuto si legge una
+> volta e i percorsi si contano tutti, ciascuno con la propria classe: per
+> questo il rapporto separa **oggetti fisici letti** da **locazioni con
+> legami**. Sul perimetro reale nessun alias veniva perso — i numeri non
+> cambiano — ma la proprietà dichiarata non era vera, e ora lo è.
 
 > **Una coincidenza che vale la pena dichiarare.** Anche il totale nuovo è 15.
 > Ma il vecchio era `5 + 1 + 6 + 3` — cinque righe troncate da un limite di
@@ -2199,3 +2227,116 @@ Prestazioni e controllore sono chiusi. Mancano solo la conservazione degli
 alias semantici nel censimento e l'isolamento dell'import O16.
 
 **NON CONCORDO ANCORA SUL DOCUMENTO.**
+
+---
+
+# GIRO CLAUDE 4 — chiusura di P1-C18 e P1-C19
+
+Ancoraggio: worktree `/tmp/metnos-rm0008-g6`, ramo `rm0008/diagnosi-avvio`,
+commit di base `319d7eda`. Due rilievi soli, entrambi riprodotti prima di essere
+corretti. Nessuna modifica a produzione, servizi, permessi o radice di nascita.
+
+## P1-C18 — ACCOLTO. Leggere una volta non è cancellare gli alias
+
+Riprodotto con la forma indicata: `birth.archivio/receipt.json` contiene il
+contesto corrente e `stato/receipt.json` è un collegamento fisico allo stesso
+inode.
+
+```
+record: 1
+  [archiviata/file] .../birth.archivio/receipt.json
+dipendenze vive: 0
+=> una dipendenza VIVA e' andata persa
+```
+
+La classe dipendeva da quale percorso l'attraversamento incontrava per primo, e
+`birth.archivio` precede `stato` in ordine alfabetico. Il difetto non era la
+deduplicazione — quella è giusta — ma l'aver fatto coincidere «oggetto letto» e
+«locazione».
+
+**Correzione.** Il contenuto si cerca **una volta per inode**; gli alias e le
+loro classi si conservano **tutti**. Il risultato di ogni inode viene emesso una
+volta per percorso alias, con la classe di quel percorso. Il rapporto separa
+ora due grandezze che prima erano confuse: **oggetti fisici letti** e
+**locazioni con legami**.
+
+Stesso esito, dopo:
+
+```
+locazioni con legami: 2 | oggetti fisici letti: 1
+  [archiviata] .../birth.archivio/receipt.json
+  [viva]       .../stato/receipt.json
+dipendenze vive: 1
+```
+
+**Prove**, le due richieste più la terza riscritta: alias vivo + archiviato
+(la dipendenza viva non si perde e la copia archiviata resta riconosciuta), due
+alias vivi (due locazioni vive, un oggetto, nessuna classe inventata), e il
+collegamento fisico semplice, ora con l'attesa corretta di due locazioni e una
+lettura. **Non vacue**: tenendo solo il primo alias, tutte e tre diventano
+rosse. Suite del censimento: **18 casi, tutti verdi**.
+
+**O15 rieseguita**: uscita `0` in **32,8 s** (tetto 60), 174 MB di picco,
+61 595 oggetti fisici letti, 25,2 GiB, 8362 letture risparmiate, impronta
+`sha256:2a1f98cf138388b9`. **15 locazioni con legami portate da 10 oggetti
+fisici**, 12 vive, 3 archiviate, 13 fatti. I numeri non cambiano: sul perimetro
+reale nessun alias veniva perso. Ma la proprietà che lo strumento dichiarava non
+era vera, e su un'altra installazione avrebbe potuto nascondere esattamente ciò
+che il censimento esiste per trovare.
+
+## P1-C19 — ACCOLTO. L'isolamento deve precedere l'import, non seguirlo
+
+Il rilievo è esatto e la catena è breve: importare `sign.py` importa `config`,
+che a `runtime/config.py:695` deriva `LOG_FILE` da `PATH_USER_STATE`, e
+`logging_setup` lo apre. Una prova che voleva soltanto sapere quale modo lascia
+una sostituzione stava aprendo la cartella di stato di un'installazione in
+funzione.
+
+**Correzione.** `METNOS_USER_CONFIG`, `METNOS_USER_STATE`, `METNOS_USER_DATA` e
+`METNOS_LOG_FILE` sono impostate su uno scratch privato `0700` **prima**
+dell'`import`, e lo scratch viene rimosso a fine processo. Un gruppo di prova
+verifica che il modulo importato abbia risolto lì, e che nessuna delle radici
+punti allo stato vivo.
+
+**Verifica, non affermazione.** Con `strace -f -e trace=openat,open`: **zero
+riferimenti** a `~/.local/state/metnos`, `~/.config/metnos` e
+`~/.local/share/metnos` — nemmeno tentativi falliti. Il file di log vivo ha
+dimensione e data di modifica identiche prima e dopo. La prova passa anche con
+`-W error`, cioè con ogni warning trattato come errore.
+
+**Non vacua**: spostando l'isolamento dopo l'import, la prova diventa rossa e
+nomina le quattro radici vive verso cui era scivolata.
+
+Nessun ampliamento della parte AST, come richiesto.
+
+## Prove eseguite in questo giro
+
+| suite | casi | esito | non vacua? |
+|---|---|---|---|
+| `prova_censimento_legami.py` | 18 | tutte verdi | sì — 3 rosse tenendo solo il primo alias |
+| `prova_modi_sign.py` | 4 gruppi | tutte verdi | sì — rossa isolando dopo l'import |
+| censimento reale | — | uscita `0` in 32,8 s | tetto dichiarato 60 s |
+
+Nessuna suite completa.
+
+## VERDETTO — GIRO CLAUDE 4
+
+Entrambi i rilievi sono chiusi, riprodotti prima della correzione e coperti da
+prove non vacue. Il censimento distingue ora ciò che legge da ciò che riporta,
+e non può più perdere una dipendenza viva dietro un alias archiviato. La prova
+di O16 non tocca lo stato vivo, e questo è controllato con una traccia di
+sistema invece che dichiarato.
+
+**CONCORDO SUL DOCUMENTO**, con le due riserve invariate dal GIRO CLAUDE 1, che
+restano lavoro non fatto e non rilievi aperti:
+
+1. **C1 resta aperta e bloccante** — nessuno ha ancora provato che il server
+   HTTP intero parta e serva un turno reale.
+2. **Il rimedio al terzo ostacolo non esiste** — serve progettare la transizione
+   append-only a nuova epoca, con proprietario normativo, condizione d'ingresso
+   dichiarata, regola per le 12 dipendenze vive e autorità che la concede.
+
+Nota per l'autorità di revisione: in questo giro l'autorizzazione a toccare la
+produzione non è stata usata, perché non serviva. Entrambe le correzioni vivono
+in `internal/tools/` e nessuna di esse implica un cambiamento al prodotto. Le
+due riserve qui sopra non sono bloccate dal permesso, ma dalla misura.
