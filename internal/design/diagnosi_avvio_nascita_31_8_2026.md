@@ -19,8 +19,14 @@ Gli ostacoli non sono due, sono **tre**. Il secondo non è quello che la consegn
 diceva: è lo stesso bit di permesso del primo, applicato ai **file** invece che
 alla directory. Il terzo non era noto e non è un permesso: **l'insieme preparato
 descrive una distribuzione vecchia di un commit**, e il provisioner non ha alcun
-percorso previsto per rifarlo. Rimossi tutti e tre, l'avvio arriva in fondo in
-0,9 secondi: **non c'è un quarto ostacolo.**
+percorso previsto per rifarlo. Rimossi tutti e tre, il cancello d'avvio arriva
+in fondo in 0,9 secondi: **nessun quarto ostacolo nel bootstrap isolato; server
+HTTP e turno reale non ancora provati** (misura C1, ancora aperta e bloccante).
+
+**Che cosa questo documento NON autorizza.** Né una correzione in produzione né
+la ricostruzione manuale della radice di nascita: il §5 spiega perché la scelta
+«(A) o (B)» era una falsa alternativa e qual è invece il punto decisionale
+vero.
 
 ---
 
@@ -221,6 +227,58 @@ emittente, tutte in stato terminale (21 `committed`, 2 `rejected`), registrate
 fra le 10:48 e le 11:17 del 30 agosto — cioè **prima** che l'insieme corrente
 esistesse (13:17). Nulla è in volo.
 
+> **Nota di ordine.** O10-O13 stanno al §5-bis, dove sono state prodotte;
+> O14 e O15 rispondono alle misure C2 e C3 chieste dalla revisione.
+
+### O14 — Quali gesti rimettono davvero il permesso di gruppo (misura C2)
+
+Eseguita in un repository git usa-e-getta con `umask 0002`, un file per gesto:
+
+| gesto | modo dopo |
+|---|---|
+| creazione di un file nuovo (git o programma) | `664` |
+| `git checkout` che non riscrive il file | `644` (invariato) |
+| `git checkout` di un'altra versione | **`664`** |
+| cambio di ramo che riscrive il file | **`664`** |
+| `merge` che riscrive il file | **`664`** |
+| riscrittura in posto (`open(path,'w')`) | `644` (invariato) |
+
+Quindi il `chmod` sopravvive a una riscrittura in posto — che è come
+`sign.py publish` tocca un file esistente — ma **non sopravvive a nessuna
+operazione git che materializzi byte diversi**. E l'installazione di codice
+nuovo È un'operazione git. Il cerotto è garantito rompersi alla prossima
+installazione, non «forse».
+
+### O15 — Che cosa nomina l'insieme corrente fuori dalla radice (misura C3)
+
+Misura riproducibile in `internal/tools/censimento_legami_nascita.py`: gli
+identificativi si **acquisiscono** dalla radice (mai copiati a mano), le radici
+esaminate sono dichiarate, e gli archivi SQLite si interrogano tabella per
+tabella invece di cercare testo nei loro byte.
+
+Radici: `~/.local/state/metnos`, `~/.local/share/metnos`, `~/.config/metnos`,
+`/opt/metnos`. Identificativi: `set_id`, inventario pubblico d'autore,
+`context_material_sha256`, `set_json_sha256`, `transaction_id`,
+`prepared_admission_context_id`, `prepared_context_epoch`, gli 11 produttori.
+File letti: 69 373.
+
+**Esito: 15 legami fuori dalla radice di nascita.** Fra questi:
+
+- **6 ricevute di ammissione** sotto
+  `~/.local/state/metnos/contract-publications/v1/*/admission-receipts/`
+  nominano `prepared_admission_context_id = sha256:f90abe9d…`, cioè il contesto
+  che una ri-preparazione cambierebbe (21 ricevute in totale su 123
+  pubblicazioni; le altre nominano contesti diversi, quindi contesti multipli
+  già convivono);
+- 1 riscontro in `producer_receipts.sqlite`, campo `encoded`;
+- 8 nella radice precedente `birth.pre-property-fix-20260830`.
+
+E l'epoca **viene confrontata**, non solo registrata:
+`contract_store.py:4888` rifiuta con `birth_context_changed` se l'epoca
+corrente non coincide con quella dell'autorizzazione, e
+`executor_birth_reattestation.py:231,334` fa lo stesso alla riattestazione di
+una generazione corrente.
+
 ---
 
 ## 3. (b) Che cosa ho INFERITO — dichiarato come inferenza
@@ -235,12 +293,12 @@ regola del prodotto rifiuta la forma che il prodotto stesso installa — la
 stessa famiglia del §23.21. La produzione è a `umask 0002` e ogni file nasce
 `664`. *Confidenza: alta.*
 
-**I3. Un `chmod` è un cerotto, non una correzione.** Con `umask 0002`, il
-prossimo `git checkout`, `git merge` o `sign.py publish` ricrea file `664`, e il
-servizio smette di avviarsi — senza che nessuno colleghi le due cose.
-*Confidenza: alta sul meccanismo, media su quali comandi esattamente ricreino i
-modi* (git non traccia i bit oltre a quello d'esecuzione, quindi un file
-riscritto prende `0666 & ~umask`).
+**I3. Un `chmod` è un cerotto, non una correzione.** ~~Confidenza media su
+quali comandi ricreino i modi~~ — **ora misurata, O14**: ogni operazione git che
+materializza byte diversi (checkout di un'altra versione, cambio di ramo,
+merge) rimette `664`; una riscrittura in posto no. Poiché installare codice
+nuovo è un'operazione git, il cerotto **si rompe alla prossima installazione**,
+e non «forse».
 
 **I4. Il terzo ostacolo è strutturale, non un incidente.** L'insieme preparato
 appunta le impronte della distribuzione, la distribuzione cambia a ogni commit,
@@ -251,15 +309,21 @@ disegno* — può darsi che il disegno preveda di preparare l'insieme come
 **ultimo** atto dell'installazione, e che nessuno abbia scritto il percorso di
 ri-preparazione perché F4 non è chiusa.
 
-**I5. Rifare l'insieme da zero costa poco su questa macchina, oggi.** Le 23
-ricevute sono terminali e anteriori all'insieme corrente; la produzione non
-legge mai l'insieme; nessun executor è ancora nato dalla porta. *Confidenza:
-media* — è la conclusione che mi fido di meno, perché non ho misurato che cosa
-altro sia legato alla radice d'autore.
+**I5. ~~Rifare l'insieme da zero costa poco su questa macchina, oggi.~~
+SMENTITA dalla misura C3 (O15).** Avevo scritto che mi fidavo poco di questa
+inferenza, e aveva ragione a non fidarsi: il censimento trova **15 legami fuori
+dalla radice**, fra cui 6 ricevute di ammissione di contratti pubblicati che
+nominano il contesto corrente, e l'epoca **è confrontata** in due punti del
+prodotto (`contract_store.py:4888`, `executor_birth_reattestation.py:231,334`).
+Cambiare epoca non è gratis. Quello che resta vero è soltanto il pezzo
+misurato in O10: l'identità d'autore non si perde, perché viene riderivata da
+`~/.config/metnos/keys`.
 
-**I6. Non c'è un quarto ostacolo.** *Confidenza: media* — O6 lo prova per
-`require_birth_runtime_before_workers()` in un processo isolato, **non** prova
-che il server HTTP intero parta, né che i turni funzionino.
+**I6. Non c'è un quarto ostacolo NEL BOOTSTRAP ISOLATO.** *Confidenza: media*
+— O6 e O12 lo provano per `require_birth_runtime_before_workers()` in un
+processo isolato, **non** provano che il server HTTP intero parta, né che un
+turno funzioni. La misura C1 resta aperta e **bloccante**; la sintesi al §0 è
+stata riscritta per non promuovere questa inferenza a fatto.
 
 ---
 
@@ -268,19 +332,42 @@ che il server HTTP intero parta, né che i turni funzionino.
 Per I1, I2, I4 le misure smentitrici sono già state eseguite e sono O3, O4, O7,
 O8: le dichiaro qui perché siano contestabili, non perché siano da rifare.
 
-Restano **aperte**, e vanno eseguite prima di toccare la produzione:
+Stato delle quattro misure smentitrici:
 
-| # | inferenza | misura che la smentirebbe | dove |
+| # | inferenza | misura | stato |
 |---|---|---|---|
-| C1 | I6 «non c'è un quarto ostacolo» | avviare il **server HTTP completo** dalla replica su una porta libera, con le tre correzioni, e chiedere un turno reale | copia |
-| C2 | I3 «il `chmod` è fragile» | dopo il `chmod`, eseguire un `git checkout` di un file del catalogo e rileggerne il modo: se resta `644`, I3 è sbagliata | copia |
-| C3 | I5 «rifare l'insieme costa poco» | censire ogni cosa che nomina il `set_id` corrente o l'impronta d'inventario dell'autore, fuori dalla radice di nascita | lettura |
-| C4 | I4 «non esiste percorso di ri-preparazione» | cercare nel gruppo 2 della RM-0008 se la ri-preparazione è un atto **previsto e non ancora scritto**, o **deliberatamente vietato** | lettura |
+| C1 | I6 «nessun quarto ostacolo» | avviare il **server HTTP completo** dalla replica su una porta libera e chiedere un turno reale | **APERTA — BLOCCANTE** |
+| C2 | I3 «il `chmod` è fragile» | in un worktree git usa-e-getta con `umask 0002`, misurare separatamente checkout, cambio di ramo, merge e riscrittura in posto | **CHIUSA** → O14, I3 confermata e ristretta ai gesti provati |
+| C3 | I5 «rifare l'insieme costa poco» | censimento riproducibile su file e archivi SQLite, con identificativi acquisiti dalla radice | **CHIUSA** → O15, **I5 smentita** |
+| C4 | I4 «non esiste percorso di ri-preparazione» | leggere le sezioni normative del gruppo 2 | **CHIUSA** → vedi sotto, e cambia il §5 |
 
-**C4 è la più importante**: decide se il rimedio al terzo ostacolo è codice
-nuovo o una procedura d'esercizio. Se la ri-preparazione è deliberatamente
-vietata, allora l'unico ordine ammesso è *congelare la distribuzione, poi
-preparare*, e va rifatto l'insieme sull'albero fuso definitivo.
+### C4 chiusa: la ri-preparazione non è una lacuna, è un confine
+
+Il rapporto `internal/reports/rm0008-gruppo2-analisi-implementazione.md` non
+tace sulla questione. Verificato riga per riga:
+
+- **§7.6** (righe 997-1001): la pulizia «non si rimuove mai una radice finale
+  esistente».
+- **§8.1** (righe 1107-1122): autore, insieme e `prepared-v1.json` si installano
+  per «rinomina **senza sostituzione**», e «Non esiste sostituzione di una
+  destinazione finale».
+- **§8.2** (righe 1140-1155): tre finali validi senza transazione danno «Successo
+  di sola ispezione»; e «Una differenza dopo l'installazione è un errore, non un
+  invito a riprovare con altri byte».
+- **§9.4** (righe 1240-1246): «Un aggiornamento della distribuzione o di un
+  registro produce un **nuovo materiale e una nuova epoca**; non modifica in
+  posto l'insieme immutabile.»
+
+Quindi il predispositore del gruppo 2 è **deliberatamente** *prima installazione
+oppure ispezione*. Non gli manca un pezzo: gli è vietato sostituire un finale.
+E l'aggiornamento della distribuzione **è previsto** — come nuova epoca, non
+come riparazione.
+
+**Conseguenza sul §5**: la scelta «(A) riparare / (B) rimuovere a mano» era una
+falsa alternativa. (A) come riparazione dei finali contraddice §8.1 e §8.2;
+(B) come rimozione manuale della radice contraddice §7.6 e non è una procedura
+d'esercizio prevista da nessuna autorità normativa. Il punto decisionale vero è
+un altro, ed è scritto al §5.
 
 ---
 
@@ -301,19 +388,204 @@ Raccomandazione: **(3)**, con **(2)** come primo incremento se serve sbloccare
 prima. Il cerotto da solo, no: rimette in produzione un guasto che si
 ripresenta senza preavviso e senza indizio.
 
-### Ostacolo 3 (insieme stantio) — due strade, e una è mia da proporre, non da scegliere
+### Ostacolo 3 (insieme stantio) — non è una scelta fra due strade
 
-- **(A) Ri-preparare come atto previsto**: aggiungere al provisioner il percorso
-  che oggi manca — riconoscere che la distribuzione installata non produce più
-  il materiale descritto, e ricostruire materiale e insieme conservando
-  l'identità d'autore. È codice nell'area F4 e **deve passare dal ciclo
-  avversariale sul codice**, come dice il §6 della consegna.
-- **(B) Ordine d'esercizio**: nessun codice nuovo. Si fonde e si congela la
-  distribuzione, e **solo dopo** si prepara l'insieme, da zero, sull'albero
-  definitivo. Costa la radice d'autore corrente e le 23 ricevute terminali
-  (O9), e resta fragile allo stesso modo al commit successivo.
+La misura C4 ha eliminato l'alternativa che avevo scritto. Riassunta perché non
+torni: **(A)** intesa come «insegnare al predispositore a riparare o sostituire
+i finali esistenti» contraddice §8.1 («Non esiste sostituzione di una
+destinazione finale») e §8.2 («Una differenza dopo l'installazione è un errore,
+non un invito a riprovare con altri byte»). **(B)** intesa come «portare via a
+mano la radice e ripartire» contraddice §7.6 («non si rimuove mai una radice
+finale esistente») e non è autorizzata da nessuna autorità normativa: che sia
+già stata fatta il 30 agosto (O11) è un **precedente, non un permesso** — e
+anzi, alla luce del §7.6, quel gesto era già fuori protocollo.
 
-Non scelgo io fra (A) e (B): dipende da C4.
+### Il punto decisionale vero
+
+§9.4 dice che cosa deve succedere quando la distribuzione cambia: **nuovo
+materiale e nuova epoca**, senza modificare in posto l'insieme immutabile. Il
+prodotto non ha oggi la **transizione** che porta da un'epoca alla successiva.
+Quello che manca non è una riparazione: è un protocollo append-only, con:
+
+1. **un proprietario normativo** — quale tratto lo possiede (F4 è il candidato,
+   ma va detto, non dedotto);
+2. **una condizione d'ingresso dichiarata** — «la distribuzione installata non
+   produce più il materiale che l'insieme descrive» oggi è un rifiuto muto;
+   deve diventare un esito nominato, che dice quale file non corrisponde;
+3. **una regola per i legami esistenti** — le 6 ricevute di ammissione di O15
+   nominano il contesto corrente, e l'epoca è confrontata in due punti del
+   prodotto: una nuova epoca deve dire che cosa ne è di loro;
+4. **chi autorizza** — la transizione non può essere automatica, altrimenti
+   sparisce la proprietà che il controllo esiste per garantire: un cambiamento
+   inatteso a uno dei 20 file verrebbe benedetto invece di fermare tutto.
+
+Finché quel protocollo non è progettato e revisionato, **non esiste un rimedio
+ammesso per il terzo ostacolo**, e quindi non esiste un percorso ammesso verso
+la produzione. Le misure O10-O13 restano utili come prova di **meccanismo** — la
+catena sa costruire un insieme dalla distribuzione corrente conservando
+l'identità d'autore — ma il meccanismo non è l'autorizzazione.
+
+## 5-bis. Il meccanismo, misurato (O10-O13)
+
+> **Come leggere questa sezione, dopo C4.** Quando l'ho scritta la chiamavo
+> «(B) misurata» e concludevo «costa poco». Le misure O10-O13 restano valide —
+> sono fatti — ma la conclusione no: provano che la catena **sa** costruire un
+> insieme dalla distribuzione corrente conservando l'identità d'autore, non che
+> sia lecito farlo. §7.6 e §8.1 dicono di no. Meccanismo ≠ autorizzazione.
+
+Su un punto la correzione vale comunque: avevo scritto che rifare l'insieme
+«costa la radice d'autore corrente». **Quello era sbagliato**, e O10 lo
+smentisce.
+
+### O10 — L'identità d'autore non si perde: viene riderivata da una chiave stabile
+
+`AUTHOR_SOURCE_BASENAME_V1 = "keys"` (riga 1344): il provisioner costruisce la
+radice d'autore migrando `~/.config/metnos/keys/author_priv.bin`, che è del
+**26 aprile** e non cambia. La radice di nascita non *contiene* l'identità: la
+*deriva*.
+
+### O11 — La ricostruzione è già accaduta il 30 agosto
+
+Sulla macchina c'è `~/.config/metnos/birth.pre-property-fix-20260830`, una
+radice precedente delle 12:47, sostituita da quella corrente alle 13:17.
+
+| radice | set_id | materiale | transazione |
+|---|---|---|---|
+| `birth.pre-property-fix-20260830` | `9613b852…` | `54e670ec…` | `eaf11ac8…` |
+| `birth` (corrente) | `e79b9b5c…` | `6ce61fb5…` | `4bef73fa…` |
+
+Insieme diverso, materiale diverso, transazione diversa — e **le stesse due
+chiavi pubbliche d'autore in entrambe**. La ricostruzione è un'operazione già
+praticata, quattro ore prima che nascesse l'insieme che oggi ci blocca.
+
+### O12 — Riprodotta sulla replica, dal principio alla fine
+
+Portata via tutta la radice di nascita, conservati i soli ingressi
+dell'operatore, e rieseguito il provisioner:
+
+```
+ESITO provisioner: installed
+chiave attiva: birth-ed25519-v1-sha256-c0c9eba4…   <- la STESSA di oggi
+set_id  = a9788f7eb6e2cd35…    (nuovo)
+materiale = 795b92d92e3e1b27…  (costruito dalla distribuzione CORRENTE)
+```
+
+E con quell'insieme, **codice corrente, nessun file retrocesso**:
+
+```
+cancello 1  ok
+cancello 2  ok
+cancello 2b letti 22, nessun rifiuto
+cancello 3  ok -> PreparedSetV1(set_id='a9788f7e…')
+ESITO: AVVIO COMPLETATO in 0.7s
+```
+
+**Questa è la prova end-to-end che mancava**: con i permessi corretti e
+l'insieme rifatto, il codice fuso si avvia con il codice che vogliamo davvero
+installare.
+
+### O13 — Un dettaglio che costa un'ora se non lo si sa
+
+Il primo tentativo di ricostruzione è fallito con `birth_provisioning_acl_unsafe`
+per una ragione stupida: avevo creato la cartella `birth` con `mkdir` sotto
+`umask 0002`, quindi `775`, e il provisioner la vuole `755`. **È la stessa
+famiglia degli ostacoli 1 e 2**, comparsa una terza volta. Chi esegue la
+ricostruzione deve creare quella cartella a `755`, non «e basta».
+
+### Che cosa costerebbe davvero, se fosse lecito
+
+Non l'identità d'autore. Ma nemmeno «poco», dopo O15:
+
+- il `set_id` e le chiavi di ammissione e produzione che vivono **sotto**
+  l'insieme (sono per-insieme per costruzione: `set_id` è l'impronta di un
+  documento che **include** `context_material_sha256`, riga 2280-2283);
+- le 23 ricevute terminali di O9, che diventano orfane — nessuna in volo;
+- **i 15 legami di O15**, fra cui 6 ricevute di ammissione di contratti
+  pubblicati che nominano il contesto corrente, mentre l'epoca è confrontata in
+  due punti del prodotto: questo è il costo che avevo omesso, ed è quello che
+  smentisce I5;
+- **la ripetizione**: andrebbe rifatto a ogni installazione di codice che tocchi
+  uno dei 20 file. Misurato sulla linea RM-0008: **69 commit negli ultimi 7
+  giorni** toccano quei file, 81 negli ultimi 30, su 12 giornate distinte.
+
+Quindi non sarebbe «un cerotto che dura poco»: sarebbe **un passo obbligatorio
+di ogni installazione**, oggi non documentato, che se dimenticato spegne il
+servizio all'avvio successivo con un messaggio che non dice cosa fare. È così
+che il servizio è andato giù il 31 agosto — ed è la ragione per cui la
+transizione va progettata come prodotto, non ricordata a memoria.
+
+---
+
+## 5-ter. Il meccanismo esiste: che cosa servirebbe, e il contro che conta
+
+### Che cosa esiste già
+
+La catena completa di installazione di un insieme è scritta, con punti di
+ripresa durevoli:
+
+```
+created → author_staged → inputs_staged → authorities_staged
+        → context_staged → verified → author_installed
+        → set_installed → marker_installed
+```
+
+Ed è la stessa catena che O12 ha appena eseguito dall'inizio alla fine. Non
+manca la macchina: manca **la condizione d'ingresso**.
+
+### Che cosa manca, in tre pezzi
+
+1. **Accorgersi dello scostamento.** Il confronto esiste già ed è a due passi:
+   `read_prepared_set_v1` ricostruisce il materiale e lo confronta. Oggi
+   `_inspect_installed_v1` (riga 1439) verifica solo che marcatore, `set.json` e
+   materiale siano coerenti **fra loro**, e non guarda mai la distribuzione.
+   Aggiungere il confronto è poco codice.
+2. **Lasciar ripartire la catena con una radice d'autore già presente.** Oggi
+   la riga 1432-1433 rifiuta: autore presente + marcatore assente = ambiguo.
+   Serve un ingresso distinto — «insieme presente ma scostato» — che riusi
+   l'autore invece di pretendere che non ci sia.
+3. **Decidere che fine fa il vecchio.** Insieme precedente e ricevute orfane
+   hanno bisogno di una regola di ritiro. È l'unico pezzo davvero nuovo.
+
+**Fattibilità: alta.** Non è crittografia nuova, è una seconda porta su una
+macchina che funziona e che ho appena visto funzionare.
+
+### Il contro vero, e non è di ingegneria
+
+Oggi «la distribuzione installata non produce più il materiale che l'insieme
+descrive» è un **rifiuto**, e il commento nel codice lo dice: *«That is a
+mismatch to report, never a reason to adopt what is on disk.»*
+
+Se il provisioner si ri-prepara **da solo** quando nota lo scostamento, quella
+proprietà sparisce: un cambiamento inatteso a uno dei 20 file — che è
+esattamente ciò che quel controllo esiste per intercettare — verrebbe
+silenziosamente benedetto invece di fermare tutto. **(A) fatta male è peggio di
+(B).**
+
+### La forma che secondo me regge
+
+Il difetto vero, oggi, non è che manchi la ri-preparazione: è che **il
+fallimento è muto**. Al momento il servizio muore su
+`birth_prepared_set_mismatch` senza dire a nessuno cosa fare, e ci sono volute
+sei ore di misure per capirlo.
+
+Quindi (A) nella forma difendibile è:
+
+1. lo scostamento viene **riconosciuto e nominato** all'avvio, con un messaggio
+   che dice quale file non corrisponde e quale comando lo risolve;
+2. la ri-preparazione resta un **atto esplicito dell'operatore**, mai
+   automatica: la proprietà di sicurezza sopravvive intatta;
+3. la procedura di O12 smette di essere folclore e diventa quel comando.
+
+Costa poco più di (B) — perché il comando *è* (B), soltanto scritto una volta
+per tutte invece che ricordato a mente — e non svende nulla.
+
+> **Raccomandazione, corretta dopo C4**: nessuna delle due «subito». O12 prova
+> che il meccanismo esiste, non che sia lecito usarlo: §7.6 vieta di rimuovere
+> una radice finale e §8.1 vieta di sostituirla. La forma difendibile resta
+> quella dei tre punti qui sopra — esito nominato, atto esplicito, protocollo
+> append-only a nuova epoca — ma **è progettazione da fare e far revisionare**,
+> non un passo da eseguire oggi. Fino ad allora il fermo prima della produzione
+> è assoluto.
 
 ---
 
@@ -339,125 +611,255 @@ Non scelgo io fra (A) e (B): dipende da C4.
    dell'unità di sistema vecchia e disabilitata: non è un guasto, non
    ripararlo.
 4. **Non riavviare i servizi durante un turno utente attivo.**
-5. **Dopo ogni comando interrotto o andato in timeout**, cerca i residui:
-   `ps -eo pid,ppid,pcpu,etime,args --sort=-pcpu | awk 'NR==1 || ($2==1 && $3>50)'`
-   Se compare un processo con PPID=1 che è nostro, confermalo con
-   `tr '\0' ' ' < /proc/<pid>/cmdline` e poi `kill -9 <pid>`.
+5. **Conserva il PID di ogni processo che avvii tu**, e chiudi quello, non
+   quello che «sembra nostro». Una scansione generica non vede un residuo
+   addormentato e può mostrare un processo estraneo; «se è nostro» non è un
+   criterio riproducibile, e fra il censimento e il segnale il PID può essere
+   stato riusato da un altro processo.
+
+   ```bash
+   # avviare tenendo il PID e l'identita'
+   setsid /opt/metnos/.venv/bin/python "$S/sonda.py" & MIO=$!
+   MIA_RIGA=$(tr '\0' ' ' < "/proc/$MIO/cmdline" 2>/dev/null || true)
+   MIO_UID=$(stat -c %u "/proc/$MIO" 2>/dev/null || true)
+
+   # chiudere: identita' verificata, terminazione ordinaria, attesa, poi forza
+   chiudi_mio() {
+     [ -d "/proc/$MIO" ] || { echo "gia' terminato"; return 0; }
+     riga=$(tr '\0' ' ' < "/proc/$MIO/cmdline" 2>/dev/null || true)
+     uid=$(stat -c %u "/proc/$MIO" 2>/dev/null || true)
+     if [ "$riga" != "$MIA_RIGA" ] || [ "$uid" != "$MIO_UID" ]; then
+       echo "FERMO: il PID $MIO non e' piu' lo stesso processo; non tocco nulla" >&2
+       return 1
+     fi
+     kill -TERM "$MIO" 2>/dev/null || true
+     for _ in $(seq 1 20); do [ -d "/proc/$MIO" ] || return 0; sleep 0.5; done
+     riga=$(tr '\0' ' ' < "/proc/$MIO/cmdline" 2>/dev/null || true)
+     [ "$riga" = "$MIA_RIGA" ] || { echo "FERMO: identita' cambiata" >&2; return 1; }
+     kill -KILL "$MIO"
+   }
+   ```
+
+   La scansione `PPID=1` del §10.8 di CLAUDE.md resta utile come **rete di
+   sicurezza a fine sessione**, non come modo di chiudere ciò che hai avviato:
+   se trova qualcosa che tu non hai avviato, quello è materiale da riferire, non
+   da uccidere.
 6. **Ogni misura dichiara le proprie radici prima di misurare.** Se non vedi
    stampato `PATH_RUNTIME`, non stai misurando quello che credi.
 
-### Passo 0 — Verifica il punto di partenza
+### Passo 0 — Verifica il punto di partenza (eseguibile, si ferma da solo)
+
+Il controllo **non** è una sequenza di comandi da leggere a occhio: una pipeline
+come `git … | wc -l` stampa `0` anche quando `git` fallisce, e `0` è proprio il
+valore «atteso». Usa questo blocco, che si ferma da sé su ogni discordanza:
 
 ```bash
-git -C /opt/metnos status --porcelain | wc -l        # atteso: 0
-git -C /opt/metnos log -1 --format=%h                # atteso: 14ea7179
-systemctl --user is-active metnos.target             # atteso: active
-git -C /opt/metnos tag | grep pre-fusione-31-8-2026  # atteso: la riga esiste
+#!/usr/bin/env bash
+set -euo pipefail
+PROD=/opt/metnos
+TESTA_ATTESA=14ea7179
+TAG_ATTESO=pre-fusione-31-8-2026
+
+fermo() { echo "FERMO: $*" >&2; exit 1; }
+
+[ -d "$PROD/.git" ] || fermo "$PROD non e' un repository git"
+radice=$(git -C "$PROD" rev-parse --show-toplevel)
+[ "$radice" = "$PROD" ] || fermo "la radice del repository e' $radice, non $PROD"
+sporchi=$(git -C "$PROD" status --porcelain | wc -l)
+[ "$sporchi" -eq 0 ] || fermo "$sporchi file non committati: mettili al riparo prima"
+testa=$(git -C "$PROD" rev-parse --short=8 HEAD)
+[ "$testa" = "$TESTA_ATTESA" ] || fermo "testa $testa, attesa $TESTA_ATTESA"
+git -C "$PROD" rev-parse -q --verify "refs/tags/$TAG_ATTESO" >/dev/null \
+  || fermo "manca il tag $TAG_ATTESO"
+stato=$(systemctl --user is-active metnos.target || true)
+[ "$stato" = "active" ] || fermo "metnos.target e' '$stato', non 'active'"
+echo "PASSO 0 VERDE — $PROD a $testa, albero pulito, tag presente, stack attivo"
 ```
 
-Se `status` non è 0: **fermati**. C'è lavoro non committato di un'altra
-sessione, e va messo al riparo prima (è già successo: 47 file).
+Provato in entrambi i versi:
 
-### Passo 1 — Costruisci l'apparato di prova
+```
+$ ./passo0.sh
+PASSO 0 VERDE — /opt/metnos a 14ea7179, albero pulito, tag presente, stack attivo   (uscita 0)
+$ ./passo0.sh /percorso/inesistente
+FERMO: /percorso/inesistente non e' un repository git                                (uscita 1)
+```
+
+Qualunque `FERMO`: **non proseguire**. In particolare, file non committati
+significa lavoro di un'altra sessione da mettere al riparo prima (è già
+successo: 47 file).
+
+### Passo 1 — Costruisci l'apparato di prova (scratch nuovo e privato)
+
+Lo scratch contiene una copia della radice di nascita: non può essere una
+cartella riusata, né ereditare `umask 0002`.
 
 ```bash
-S=<SCRATCH>
-mkdir -p "$S"
-rsync -a --exclude='.git' /tmp/metnos-prova-fusione/ "$S/replica/"
-mkdir -p "$S/cfg" "$S/state" "$S/data"
+#!/usr/bin/env bash
+set -euo pipefail
+fermo() { echo "FERMO: $*" >&2; exit 1; }
+
+S=$(mktemp -d "${TMPDIR:-/tmp}/rm0008-XXXXXXXX")
+chmod 700 "$S"
+[ "$(stat -c '%u %a' "$S")" = "$(id -u) 700" ] || fermo "scratch non privato"
+[ -z "$(ls -A "$S")" ] || fermo "scratch non vuoto"
+echo "scratch: $S"
+
+# distribuzione: copia esatta, con eliminazione, cosi' una prova precedente
+# non puo' lasciare residui
+rsync -a --delete --exclude='.git' /tmp/metnos-prova-fusione/ "$S/replica/"
+
+# radici utente separate; 'birth' deve restare 755, non 775 (vedi O13)
+mkdir -m 700 "$S/cfg" "$S/state" "$S/data"
 cp -a ~/.config/metnos/birth "$S/cfg/birth"
+[ "$(stat -c %a "$S/cfg/birth")" = 755 ] || fermo "cfg/birth non e' 755"
+
+# modello di permessi della PRODUZIONE, altrimenti non riproduci il guasto
 chmod 775 "$S/replica/runtime"
 find "$S/replica/runtime" -maxdepth 1 -type f -name '*.py' -exec chmod 664 {} +
+[ "$(stat -c %a "$S/replica/runtime")" = 775 ] || fermo "replica/runtime non e' 775"
+echo "PASSO 1 VERDE"
 ```
 
-Atteso: `stat -c '%a' "$S/replica/runtime"` stampa `775`.
-
 `cp -a` è obbligatorio: conserva i permessi, e i permessi sono l'oggetto della
-misura.
+misura. A fine lavoro: verifica che nessun processo tenga descrittori aperti
+nello scratch (`lsof +D "$S"`, oppure la funzione `chiudi_mio` della regola 5),
+poi `rm -rf "$S"`.
 
 ### Passo 2 — Riproduci il guasto prima di correggerlo
 
 La sonda è già scritta e versionata: `internal/tools/sonda_avvio_nascita.py`.
-Non riscriverla. Copiala e basta:
+Non riscriverla, e **non interpretare il testo**: leggi il codice d'uscita.
+
+```
+0  tutti i cancelli verdi          3  cancello 2 rosso (distribuzione)
+1  la sonda non ha potuto girare   4  cancello 2b rosso (file del catalogo)
+2  cancello 1 rosso (radice)       5  cancello 3 rosso (insieme non concordante)
+```
 
 ```bash
 cp /tmp/metnos-rm0008-g6/internal/tools/sonda_avvio_nascita.py "$S/sonda.py"
+
+sonda() {  # $1 = codice d'uscita atteso
+  set +e
+  ( cd "$S" && timeout 300 env \
+      METNOS_INSTALL_ROOT="$S/replica" METNOS_USER_CONFIG="$S/cfg" \
+      METNOS_USER_STATE="$S/state" METNOS_USER_DATA="$S/data" \
+      PYTHONPATH="$S/replica" \
+      /opt/metnos/.venv/bin/python sonda.py )
+  rc=$?; set -e
+  [ "$rc" -eq "$1" ] || { echo "FERMO: uscita $rc, attesa $1" >&2; exit 1; }
+  echo "  (uscita $rc, come atteso)"
+}
+
+sonda 3     # primo ostacolo: la directory runtime e' 775
 ```
 
-Poi:
-
-```bash
-cd "$S" && timeout 300 env \
-  METNOS_INSTALL_ROOT="$S/replica" METNOS_USER_CONFIG="$S/cfg" \
-  METNOS_USER_STATE="$S/state" METNOS_USER_DATA="$S/data" \
-  PYTHONPATH="$S/replica" \
-  /opt/metnos/.venv/bin/python sonda.py
-```
-
-Atteso: cancello 1 `ok`, cancello 2 `FALLITO … birth_provisioning_acl_unsafe`.
-
-Se il cancello 2 passa: **fermati**. Non stai misurando la produzione — quasi
-certamente la replica ha `runtime` a `755` e il passo 1 è andato storto.
+Se la sonda esce `0` qui, **fermati**: non stai misurando la produzione, quasi
+certamente il passo 1 è andato storto.
 
 Usa `/opt/metnos/.venv/bin/python`, non `python3`: con l'interprete di sistema
-manca `tomlkit` e la sonda muore prima di misurare.
+manca `tomlkit` e la sonda esce `1` senza misurare nulla.
+
+Le prove della sonda stessa (verde, ogni rifiuto atteso, file assente, sonda
+non eseguibile) stanno in `internal/tools/prova_sonda_avvio_nascita.py`: girano
+in pochi secondi, non toccano nulla e non chiedono una radice di nascita.
 
 ### Passo 3 — Verifica i tre ostacoli in sequenza, in copia
 
-```bash
-chmod g-w "$S/replica/runtime"          # atteso poi: cancello 2 ok, cancello 2b rifiuta 22 letture
-# poi porta a 644 i 20 file distinti del catalogo
-# atteso poi: cancello 2b legge 22, cancello 3 FALLITO birth_prepared_set_mismatch
-```
-
-L'elenco dei file lo dà il catalogo stesso, mai una lista copiata a mano:
+Ogni riesecuzione della sonda ha il suo codice atteso, e il blocco si ferma da
+sé se non coincide.
 
 ```bash
-cd "$S/replica" && /opt/metnos/.venv/bin/python - <<'PY'
-import ast, os
-src = open('runtime/executor_birth_context_v1.py').read()
+# --- secondo ostacolo: la directory e' a posto, i file no ---
+chmod g-w "$S/replica/runtime"
+sonda 4     # atteso: cancello 2 ok; cancello 2b rifiuta ogni lettura, mode=664
+
+# --- terzo ostacolo: permessi a posto, insieme stantio ---
+# l'elenco dei file lo dà il catalogo, mai una lista copiata a mano
+( cd "$S/replica" && /opt/metnos/.venv/bin/python - <<'CATALOGO'
+import ast, os, pathlib
+src = pathlib.Path('runtime/executor_birth_context_v1.py').read_text()
 for n in ast.parse(src).body:
     if isinstance(n, ast.AnnAssign) and getattr(n.target, 'id', '') == 'CONTEXT_CATALOG_V1':
         cat = ast.literal_eval(n.value); break
-for f in sorted({f for _, _, files, _ in cat for f in files}):
-    print(f)
-PY
+else:
+    raise SystemExit("FERMO: CONTEXT_CATALOG_V1 non trovato")
+nomi = sorted({f for _, _, files, _ in cat for f in files})
+if len(nomi) != 20:
+    raise SystemExit(f"FERMO: il catalogo ha {len(nomi)} file, non 20: documento scaduto")
+for f in nomi:
+    os.chmod(pathlib.Path('runtime') / f, 0o644)
+print(f"portati a 644: {len(nomi)} file")
+CATALOGO
+) || { echo "FERMO: catalogo inatteso" >&2; exit 1; }
+
+sonda 5     # atteso: cancelli 1, 2 e 2b verdi; cancello 3 birth_prepared_set_mismatch
 ```
 
-Atteso: 20 nomi. Se ne stampa un numero diverso, il catalogo è cambiato e
-**questo documento è scaduto**: fermati e riferisci.
+Se il catalogo non ha esattamente 20 file, **questo documento è scaduto**:
+fermati e riferisci.
 
-### Passo 4 — Non andare oltre senza il verdetto su C4
+A questo punto hai riprodotto tutti e tre gli ostacoli, in copia, senza aver
+toccato niente.
 
-A questo punto hai riprodotto tutto in copia e non hai toccato niente. **Il
-passo successivo dipende dalla scelta fra (A) e (B) del §5**, che dipende da C4,
-che è una lettura di disegno e non una misura. Se non hai quel verdetto:
-**fermati e riferisci.** Non applicare il cerotto «intanto», perché rimette in
-produzione un guasto che si ripresenta muto.
+### Passo 4 — Fermo: il rimedio al terzo ostacolo non esiste ancora
 
-### Passo 5 — Solo dopo il verdetto: la prova d'avvio, ancora in copia
+A questo punto hai riprodotto tutto in copia e non hai toccato niente.
+**Qui la procedura finisce**, e non per prudenza: la misura C4 ha stabilito che
+il predispositore del gruppo 2 è deliberatamente *prima installazione oppure
+ispezione* (§8.1, §8.2), che una radice finale non si rimuove (§7.6) e che un
+aggiornamento della distribuzione richiede **nuovo materiale e nuova epoca**
+(§9.4).
 
-Prima di qualunque cosa su `/opt/metnos`, la correzione scelta va provata sulla
-replica con `require_birth_runtime_before_workers()` e con il **server HTTP
-completo su una porta libera** (misura C1). Le suite verdi non contano: nessuna
-suite avvia il server con le radici vere. È l'errore che è costato dieci minuti
-di servizio giù.
+Quindi:
 
-### Passo 6 — Solo dopo che l'avvio è provato: la produzione
+- **non** applicare il `chmod` in produzione «intanto» — O14 dimostra che si
+  rompe alla prossima installazione, e da solo non risolve il terzo ostacolo;
+- **non** portare via la radice di nascita e rifarla — O11/O12 provano che il
+  meccanismo funziona, non che sia lecito: §7.6 dice il contrario;
+- **non** scrivere una riparazione nel predispositore — contraddice §8.1/§8.2.
 
-Nell'ordine, senza saltarne nessuno:
+Ciò che serve è progettare la **transizione append-only a nuova epoca** (§5,
+«Il punto decisionale vero»), farla revisionare, e solo allora scrivere i passi
+5 e 6. Se stai leggendo questo documento cercando il comando che sblocca la
+produzione: **non c'è, e il fatto che non ci sia è il risultato del lavoro.**
 
-1. Rileggi il punto di ritorno (tag `pre-fusione-31-8-2026`).
-2. Ferma lo stack: `systemctl --user stop metnos.target`.
-3. Applica la correzione già provata in copia.
-4. Prova l'avvio **fuori dal servizio**, con le radici di produzione dichiarate
-   ed esplicite, e leggi le righe che le stampano.
-5. Solo se il passo 4 è verde: `systemctl --user start metnos.target`.
-6. Verifica: `systemctl --user is-active metnos.target metnos-http.service` e
-   **un turno reale** su `/agent/turn`.
-7. Cerca i residui (regola 5).
+### Passo 5 — La misura C1, l'unica che si può ancora fare in copia
 
-Se il passo 4 fallisce, **non** avviare lo stack: torna al punto di ritorno.
+C1 è aperta e bloccante: O6 e O12 provano che
+`require_birth_runtime_before_workers()` completa in un processo isolato, non
+che il server HTTP parta né che un turno funzioni.
+
+Si esegue **interamente sulla replica**, mai in produzione, e richiede:
+
+- una porta libera scelta e verificata (`ss -ltn` prima di legarla), mai la
+  8770 della produzione;
+- radici utente separate (`METNOS_USER_CONFIG/STATE/DATA` dentro lo scratch),
+  così il server di prova non tocca lo stato vivo;
+- il PID conservato e chiuso con `chiudi_mio` della regola 5;
+- un turno reale su `/agent/turn` con il corpo minimo del dominio toccato, e
+  l'esito letto dal codice HTTP oltre che dal testo.
+
+Non scrivo qui il blocco completo perché non l'ho eseguito: scriverlo come se
+fosse provato sarebbe esattamente l'errore che questo documento esiste per non
+ripetere. Chi esegue C1 lo scrive e lo lascia qui, con l'uscita osservata.
+
+### Passo 6 — NON AUTORIZZATO
+
+Nessun passo su `/opt/metnos` è autorizzato finché la transizione a nuova epoca
+non è scelta, progettata e provata. Quando lo sarà, il passo 6 dovrà contenere —
+e oggi non li ha — almeno:
+
+1. la **prova che non c'è un turno utente attivo** (§8.6 di CLAUDE.md), non
+   l'impressione che non ce ne sia;
+2. il comando esatto della correzione, già eseguito in copia;
+3. l'istantanea immediatamente precedente alla mutazione (codice, permessi,
+   stato i18n, radice di nascita), con il comando che la produce;
+4. i comandi di ritorno **e la verifica del ritorno** per ognuna di quelle
+   quattro cose: «torna al punto di ritorno» non è una procedura, è una
+   speranza;
+5. il criterio di verifica finale, incluso un turno reale.
 
 ---
 
@@ -472,8 +874,14 @@ Se il passo 4 fallisce, **non** avviare lo stack: torna al punto di ritorno.
   ributta giù senza indizio.
 - **Non rifare la fusione**: è già fatta e verificata in
   `/tmp/metnos-prova-fusione` (`2cb6eac4`).
-- **Non toccare la radice di nascita reale** finché la scelta fra (A) e (B) non è
-  presa: le prove si fanno su `cp -a` della radice, non sulla radice.
+- **Non toccare la radice di nascita reale, e non rimuoverla.** §7.6 del
+  rapporto del gruppo 2 dice che non si rimuove mai una radice finale esistente.
+  Le prove si fanno su `cp -a` della radice, mai sulla radice. Che il 30 agosto
+  sia già stato fatto (O11) non è un precedente da imitare: alla luce del §7.6
+  era già fuori protocollo.
+- **Non scrivere una riparazione nel predispositore**: §8.1 vieta la
+  sostituzione di una destinazione finale e §8.2 dice che «una differenza dopo
+  l'installazione è un errore, non un invito a riprovare con altri byte».
 
 ---
 
@@ -491,15 +899,389 @@ Se il passo 4 fallisce, **non** avviare lo stack: torna al punto di ritorno.
 
 ## 9. La domanda per il revisore
 
-Non «il codice è giusto?», ma:
+> Le tre domande originali sono state chiuse dal GIRO CODEX 1 e dalle misure
+> C2/C3/C4. Restano queste.
 
-1. **I1 regge?** Il secondo ostacolo è davvero lo stesso bit di permesso sui
-   file, e non il modello dei ruoli? (O3 dice di sì; contraddice la consegna
-   precedente.)
-2. **I4 regge, e con quale intenzione di disegno?** L'insieme preparato appunta
-   la distribuzione e nessuno può riallinearli: è una lacuna da colmare (A) o un
-   ordine d'esercizio da rispettare (B)? È la domanda C4, ed è quella che decide
-   il lavoro.
-3. **I5 è troppo comoda?** Ho concluso che rifare l'insieme costa poco senza
-   censire che cosa dipende dalla radice d'autore. È la mia inferenza più
-   debole, e chiede la misura C3.
+1. **Chi possiede normativamente la transizione a nuova epoca?** §9.4 la
+   prescrive, nessun tratto la implementa. F4 è il candidato, ma va dichiarato.
+2. **Che cosa succede ai legami esistenti quando l'epoca cambia?** O15 conta 6
+   ricevute di ammissione che nominano il contesto corrente, e l'epoca è
+   confrontata in due punti del prodotto.
+3. **C1 resta aperta**: nessuno ha ancora provato che il server HTTP intero
+   parta e serva un turno con le tre correzioni. Finché non è fatta, «nessun
+   quarto ostacolo» vale solo per il bootstrap isolato.
+
+---
+
+# GIRO CODEX 1 — revisione avversariale della diagnosi e della sonda
+
+Ancoraggio: contenuto letto inizialmente sul worktree
+`/tmp/metnos-rm0008-g6` a testa `651d2b06` e poi materializzato senza cambio
+semantico nel commit `be423001`, insieme a
+`internal/tools/sonda_avvio_nascita.py`. Nessuna azione eseguita su
+`/opt/metnos`; le sole riproduzioni aggiuntive hanno usato percorsi inesistenti
+o la replica gia' presente sotto lo scratchpad.
+
+## Evidenze che reggono
+
+- **I1 regge.** La catena
+  `open_distribution_sources_v1()` -> sessione `historical_public` ->
+  `_verify_posix_file()` rifiuta esattamente `mode & 0o022`; non serve
+  invocare un difetto del modello dei ruoli per spiegare O3.
+- **O4/O5 reggono come prova differenziale del terzo ostacolo.** Il documento
+  distingue correttamente la retrocessione usata per isolare una causa da una
+  correzione ammissibile.
+- **O7/O8 reggono contro codice e disegno.** Il predispositore, davanti ai tre
+  finali validi, esegue sola ispezione; autore finale senza marcatore e senza
+  journal e' uno stato ambiguo, non una prima installazione.
+- La separazione fra osservazioni, inferenze e misure smentitrici e' utile e va
+  conservata. Non autorizza ancora il passo di produzione.
+
+## Rilievi bloccanti
+
+### P1-C1 — C4 ha gia' una risposta normativa, ma non autorizza ne' A ne' B
+
+Il rapporto del Gruppo 2 non lascia la ri-preparazione come dettaglio omesso:
+
+- la pulizia «non rimuove mai una radice finale esistente» (§7.6, righe
+  997-1001);
+- autore, insieme e `prepared-v1.json` sono installati senza sostituzione e
+  «non esiste sostituzione di una destinazione finale» (§8.1, righe
+  1107-1122);
+- tre finali validi senza transazione producono sola ispezione (§8.2, riga
+  1142), mentre una differenza non invita a rigenerare (§8.2, righe
+  1151-1153);
+- un aggiornamento produce **nuovo materiale e nuova epoca**, senza modificare
+  in posto l'insieme immutabile (§9.4, righe 1240-1246).
+
+Quindi A, se significa insegnare al predispositore a sostituire o riparare i
+finali esistenti, contraddice il disegno. B, se significa rimuovere manualmente
+radice e finali e ripartire, non e' una procedura d'esercizio prevista dal
+disegno e non e' autorizzata dalla sola constatazione che 23 ricevute sono
+terminali. La conclusione sostenuta e': il predispositore di Gruppo 2 e'
+deliberatamente *prima installazione o ispezione*; l'evoluzione richiede una
+transizione esplicita a nuova epoca, con proprietario e protocollo da decidere
+nel tratto successivo/F4.
+
+**Disposizione richiesta:** chiudere C4 con questa evidenza, eliminare la falsa
+scelta A/B e formulare il vero punto decisionale: progettare e revisionare la
+transizione append-only a nuova epoca, oppure dimostrare da un'autorita'
+normativa diversa che l'installazione puo' essere ricreata da zero. Fino ad
+allora il fermo prima della produzione resta assoluto.
+
+### P1-C2 — La sonda stampa fallimenti ma termina con successo
+
+`show()` intercetta `BaseException`, restituisce `False`, ma nessun chiamante
+traduce il risultato in uno stato d'uscita non zero. Anche con cancello 1, 2 o
+3 rosso, il processo arriva in fondo e normalmente restituisce 0. Un agente o
+un involucro che controlli il comando anziche' interpretare testo libero puo'
+quindi registrare un falso verde. Inoltre `BaseException` assorbe anche le
+interruzioni, e l'`os.stat()` nel ramo d'errore del cancello 2b e' fuori da una
+protezione: un file assente o un collegamento puo' sostituire la diagnosi
+originale con un secondo errore.
+
+**Disposizione richiesta:** dare alla sonda un contratto d'uscita stabile
+(zero soltanto quando tutti i cancelli richiesti sono verdi; non zero
+altrimenti), intercettare `Exception`, non `BaseException`, non eseguire un
+cancello dipendente quando il prerequisito e' rosso e rendere la stampa del
+modo incapace di coprire l'errore originale. Aggiungere prove della sonda per
+verde, rifiuto atteso e file assente.
+
+### P1-C3 — Il controllo iniziale puo' dichiarare pulito un percorso inesistente
+
+Il comando `git -C /opt/metnos status --porcelain | wc -l` non usa
+`pipefail`. Riprodotto con un percorso inesistente: `git` stampa il fatal,
+`wc -l` stampa `0` e l'intera pipeline termina con 0. E' precisamente il valore
+«atteso». Il passo 0 inoltre esplicita il fermo solo per `status != 0`, non per
+testa, servizio o tag discordanti.
+
+**Disposizione richiesta:** usare un blocco con `set -euo pipefail`, verificare
+prima che la radice sia il repository atteso e trasformare ciascuna delle
+quattro aspettative in un confronto eseguibile che termina subito su ogni
+discordanza.
+
+### P1-C4 — La procedura vieta di improvvisare ma omette i comandi decisivi
+
+Nel passo 3 «porta a 644 i 20 file» e' un commento, non un comando, e non sono
+mostrate le tre riesecuzioni della sonda con i rispettivi stati d'uscita. Il
+passo 5 non definisce comando di avvio del server isolato, scelta e prova della
+porta libera, lockfile, autenticazione della richiesta, corpo minimo del turno,
+uscita attesa e arresto verificato. Il passo 6 non contiene prova di assenza di
+un turno utente attivo, comando della correzione, snapshot immediatamente
+precedente alla mutazione, comandi di ritorno o verifica del ritorno. «Torna al
+punto di ritorno» lascia proprio il gesto piu' delicato all'improvvisazione.
+
+**Disposizione richiesta:** rendere eseguibili i passi 3 e 5 con comandi
+copiabili, uscite e codici attesi, e punti di fermo. Il passo 6 deve restare
+esplicitamente non autorizzato finche' non e' scelta e provata la transizione;
+quando verra' scritto, dovra' includere controllo del turno attivo e ritorno
+completo per codice, permessi, stato i18n e radice di nascita.
+
+### P1-C5 — La regola sui processi residui ha un bersaglio soggettivo
+
+La scansione `PPID=1` e CPU maggiore di 50 puo' non vedere un residuo dormiente
+e puo' mostrare un processo estraneo. «Se e' nostro» non e' un discriminante
+riproducibile, e passare direttamente al segnale non recuperabile non verifica
+che PID e identita' siano rimasti gli stessi fra censimento e azione.
+
+**Disposizione richiesta:** conservare il PID del solo processo avviato dalla
+procedura (o una sua unita'/cgroup isolata), verificarne identita', UID e riga
+di comando, chiedere prima la terminazione ordinaria, attendere con limite e
+usare l'arresto forzato soltanto se la stessa identita' e' ancora viva. Nessuna
+azione deve derivare da una scansione generica del sistema.
+
+## Rilievi probatori
+
+### P2-C6 — C2 non e' eseguibile sull'apparato descritto
+
+Il passo 1 crea `replica/` con `--exclude='.git'`; C2 chiede poi un
+`git checkout` «in copia». Sulla replica reale il comando termina 128 con
+«not a git repository». Anche corretto questo, un solo `checkout` non dimostra
+automaticamente l'effetto di `merge` e `sign.py publish`, che I3 mantiene
+distinti e qualifica solo con confidenza media.
+
+**Disposizione richiesta:** eseguire C2 in un worktree Git usa-e-getta, con
+`umask 0002`, file e commit noti, e misurare separatamente soltanto i meccanismi
+che si vogliono poi nominare. In alternativa restringere I3 al meccanismo
+effettivamente provato.
+
+### P2-C7 — Lo scratch non e' obbligatoriamente nuovo ne' privato
+
+`S=<SCRATCH>; mkdir -p "$S"` accetta una directory gia' popolata. `rsync`
+senza eliminazione puo' lasciare file di una prova precedente e `cp -a` verso
+una destinazione esistente puo' cambiare la forma della copia. Lo scratch
+contiene inoltre una copia della radice di nascita e non deve ereditare
+semplicemente la `umask 0002` descritta nel documento.
+
+**Disposizione richiesta:** creare una directory nuova con modo 0700, provarne
+proprietario e vuotezza e rifiutare il riuso. Dichiarare anche la pulizia finale
+e la verifica che nessun processo conservi descrittori verso lo scratch.
+
+### P2-C8 — C3 non ha ancora una misura riproducibile
+
+«Censire ogni cosa» non definisce radici, formati, identificatori completi,
+comandi, falsi positivi o uscita attesa. Una ricerca testuale non basta per
+SQLite o documenti strutturati, e O9 conta ricevute senza ancora provare quali
+campi le leghino a `set_id`, inventario o identita' d'autore.
+
+**Disposizione richiesta:** acquisire prima gli identificatori canonici dalla
+copia, elencare tutte le radici e gli archivi inclusi, interrogare
+esplicitamente i database pertinenti, registrare conteggi e legami per campo e
+definire il risultato che smentisce I5. Fino a quella misura I5 non puo'
+sostenere alcuna rimozione o ricreazione.
+
+### P2-C9 — La sintesi promuove I6 da inferenza a fatto
+
+La sintesi conclude senza qualifica «non c'e' un quarto ostacolo», mentre I6
+ammette che O6 prova soltanto `require_birth_runtime_before_workers()` e C1
+resta aperta sul server intero e sul turno. La sezione dettagliata e' onesta;
+la frase piu' visibile non lo e'.
+
+**Disposizione richiesta:** scrivere in sintesi «nessun quarto ostacolo nel
+bootstrap isolato; server HTTP e turno non ancora provati» e mantenere C1 come
+condizione bloccante.
+
+## VERDETTO DI CONVERGENZA — GIRO CODEX 1
+
+La diagnosi causale dei tre ostacoli e' forte e I1 regge. Non converge ancora
+la decisione sul terzo ostacolo ne' la procedura operativa: C4 esclude la falsa
+scelta corrente, la sonda puo' restituire falsi verdi e i passi che precedono
+la produzione non sono ancora riproducibili senza giudizio implicito.
+
+**NON CONCORDO ANCORA SUL DOCUMENTO.**
+
+---
+
+# GIRO CLAUDE 1 — verifica avversariale dei rilievi di Codex
+
+Ancoraggio: worktree `/tmp/metnos-rm0008-g6`, ramo `rm0008/diagnosi-avvio`,
+commit di base `be423001`. Nessuna azione su `/opt/metnos`: albero, permessi,
+radice di nascita e servizi verificati invariati alla fine del giro. Tutte le
+riproduzioni sono avvenute nello scratchpad di sessione o in repository git
+usa-e-getta creati per l'occasione.
+
+## Rilievi accolti, con la prova
+
+### P1-C1 — ACCOLTO, ed è il rilievo che cambia il documento
+
+**Non l'ho preso per buono: ho verificato le quattro citazioni una per una** in
+`internal/reports/rm0008-gruppo2-analisi-implementazione.md`. Sono tutte reali e
+dicono ciò che Codex riporta:
+
+- §7.6 riga 1001: «non si rimuove mai una radice finale esistente»;
+- §8.1 righe 1113-1121: rinomina «senza sostituzione» per autore, insieme e
+  marcatore; «Non esiste sostituzione di una destinazione finale»;
+- §8.2 riga 1142 e 1151-1153: tre finali validi senza transazione = «Successo di
+  sola ispezione»; «Una differenza dopo l'installazione è un errore, non un
+  invito a riprovare con altri byte»;
+- §9.4 righe 1241-1246: «Un aggiornamento della distribuzione o di un registro
+  produce un nuovo materiale e una nuova epoca; non modifica in posto l'insieme
+  immutabile».
+
+**Applicato**: §4 chiude C4 con questa evidenza; §5 elimina la falsa alternativa
+A/B e formula il punto decisionale vero (transizione append-only a nuova epoca,
+con proprietario normativo, condizione d'ingresso dichiarata, regola per i
+legami esistenti e autorità che la concede); §5-bis riqualifica O10-O13 come
+prova di **meccanismo**, non di autorizzazione; §7 aggiunge i due divieti
+espliciti; il passo 4 diventa un fermo motivato e il passo 6 diventa
+«NON AUTORIZZATO».
+
+**Aggiungo un fatto che rafforza il rilievo contro la mia stessa tesi
+precedente**: O11 documenta che il 30 agosto la radice di nascita *è già stata*
+sostituita. Alla luce del §7.6 quel gesto era fuori protocollo. L'avevo citato
+come prova che «si può»; è invece la prova che è già successo senza che nessuno
+lo autorizzasse.
+
+### P1-C2 — ACCOLTO, sonda riscritta e provata
+
+La sonda aveva tre difetti reali: intercettava `BaseException` (quindi anche le
+interruzioni), non traduceva mai un cancello rosso in uno stato d'uscita, e
+faceva `os.stat()` dentro il ramo d'errore senza protezione.
+
+**Applicato** in `internal/tools/sonda_avvio_nascita.py`:
+
+- contratto d'uscita dichiarato nel docstring e stabile: `0` tutti verdi, `2`
+  cancello 1, `3` cancello 2, `4` cancello 2b, `5` cancello 3, `1` la sonda non
+  ha potuto girare;
+- `except Exception`, mai `BaseException`;
+- un cancello con il prerequisito rosso **non viene eseguito** e viene stampato
+  come «NON ESEGUITO»;
+- `_mode_of()` degrada a «modo non leggibile (FileNotFoundError)» invece di
+  sollevare, così l'errore originale non viene mai coperto.
+
+**Prove**, in `internal/tools/prova_sonda_avvio_nascita.py`: 8 casi con moduli
+finti (nessuna chiave, nessun insieme preparato, nessun modello di ruoli), tutte
+verdi — tutti verdi, ciascun cancello rosso col suo codice, file assente con
+l'errore originale conservato, e le due uscite `1` della sonda non eseguibile.
+
+**La suite non è vacua**: iniettando la regressione «il cancello 3 gira anche se
+il 2b è rosso», due prove diventano rosse e la suite esce `1`.
+
+In parallelo la sonda è stata verificata anche contro l'apparato reale, sette
+casi: verde (uscita 0), cancello 3 stantio (5), file a 664 (4), directory a 775
+(3), radice assente (2), catalogo con un file rimosso (4), e le due uscite `1`.
+
+### P1-C3 — ACCOLTO, e l'ho commesso di nuovo mentre lo correggevo
+
+Il rilievo è esatto: `git … | wc -l` senza `pipefail` stampa `0` anche quando
+`git` fallisce, e `0` è il valore atteso.
+
+**Applicato**: il passo 0 è ora un blocco `set -euo pipefail` che verifica la
+radice del repository, la pulizia, la testa, il tag e lo stack, e si ferma da sé
+su ogni discordanza. Provato nei due versi: verde su `/opt/metnos` (uscita 0),
+`FERMO` su un percorso inesistente (uscita 1).
+
+**Nota onesta**: durante la verifica della sonda ho scritto io stesso un test il
+cui esito passava per un `grep`, e ho letto l'uscita del `grep` invece che
+quella della sonda. Me ne sono accorto e l'ho rifatto catturando il codice
+giusto. È lo stesso errore del rilievo, commesso mentre lo correggevo: è la
+ragione per cui la disposizione «leggi il codice d'uscita, non il testo» sta ora
+scritta nel passo 2.
+
+### P1-C4 — ACCOLTO
+
+**Applicato**: il passo 3 contiene ora i comandi completi, ogni riesecuzione
+della sonda col suo codice atteso e un `FERMO` automatico se non coincide; il
+`chmod` dei 20 file è un comando che deriva l'elenco dal catalogo e si ferma se
+il catalogo non ha esattamente 20 file. Il passo 5 elenca ciò che C1 richiede
+(porta libera verificata, radici separate, PID conservato, turno reale) ma **non
+finge di essere provato**: non l'ho eseguito, e scriverne il blocco come se lo
+fosse sarebbe l'errore che il documento esiste per non ripetere. Il passo 6 è
+esplicitamente non autorizzato e elenca i cinque elementi che dovrà contenere,
+incluse la prova di assenza di turno attivo e la verifica del ritorno.
+
+### P1-C5 — ACCOLTO
+
+**Applicato**: la regola 5 non parte più da una scansione generica. Si conserva
+il PID del processo che si è avviato, insieme alla riga di comando e all'UID; si
+verifica l'identità **prima** di ogni segnale; si chiede la terminazione
+ordinaria, si attende con limite, e si forza soltanto se la stessa identità è
+ancora viva. La scansione `PPID=1` del §10.8 resta come rete di sicurezza a fine
+sessione: ciò che trova e che non hai avviato tu è materiale da riferire, non da
+uccidere.
+
+### P2-C6 — ACCOLTO, C2 eseguita in un worktree git vero
+
+Il rilievo è esatto: la replica nasce con `--exclude='.git'`, quindi
+`git checkout` là dentro esce 128.
+
+**Eseguita** in un repository git usa-e-getta con `umask 0002`, un gesto per
+volta (O14):
+
+| gesto | modo dopo |
+|---|---|
+| creazione di un file nuovo | `664` |
+| `git checkout` che non riscrive | `644` |
+| `git checkout` di un'altra versione | `664` |
+| cambio di ramo che riscrive | `664` |
+| `merge` che riscrive | `664` |
+| riscrittura in posto | `644` |
+
+I3 esce **confermata e ristretta ai gesti provati**: `sign.py publish` che
+riscrive un file esistente conserva il modo; ogni operazione git che materializza
+byte diversi lo rimette a `664`.
+
+### P2-C7 — ACCOLTO
+
+**Applicato**: il passo 1 crea lo scratch con `mktemp -d`, lo porta a `0700`,
+verifica proprietario e vuotezza e rifiuta il riuso; `rsync` ha `--delete`; le
+radici utente si creano con `mkdir -m 700`; si verifica che `cfg/birth` sia
+`755` e non `775`. La pulizia finale è dichiarata, con la verifica che nessun
+processo tenga descrittori aperti nello scratch.
+
+### P2-C8 — ACCOLTO, ed è il rilievo che ha smentito una mia inferenza
+
+**Eseguita** come misura riproducibile:
+`internal/tools/censimento_legami_nascita.py`. Acquisisce gli identificativi
+dalla radice invece di copiarli a mano, dichiara le quattro radici esaminate,
+interroga gli archivi SQLite tabella per tabella e colonna per colonna invece di
+cercare testo nei loro byte, e stampa il criterio che smentisce I5.
+
+Esito (O15): **15 legami fuori dalla radice di nascita**, su 69 373 file letti.
+Fra questi **6 ricevute di ammissione** di contratti pubblicati che nominano
+`prepared_admission_context_id = sha256:f90abe9d…`. E l'epoca **è confrontata**,
+non solo registrata: `contract_store.py:4888` rifiuta con `birth_context_changed`,
+`executor_birth_reattestation.py:231,334` fa lo stesso alla riattestazione.
+
+**I5 è smentita** e nel §3 è marcata come tale. Codex aveva ragione a non
+accettarla: era la mia inferenza più comoda, l'avevo dichiarata debole, e la
+misura l'ha demolita.
+
+### P2-C9 — ACCOLTO
+
+**Applicato**: la sintesi al §0 dice ora «nessun quarto ostacolo nel bootstrap
+isolato; server HTTP e turno reale non ancora provati», e dichiara che il
+documento non autorizza né una correzione in produzione né la ricostruzione
+della radice. I6 al §3 è riformulata allo stesso modo. C1 resta **aperta e
+bloccante** nella tabella del §4.
+
+## Rilievi respinti
+
+Nessuno. Tutti e nove reggono alla verifica.
+
+## Che cosa il giro aggiunge, oltre alle correzioni
+
+- Due misure nuove che erano solo intenzioni: **O14** (C2) e **O15** (C3).
+- Una prova che mancava: la sonda ora ha **prove proprie**, e le prove sono state
+  verificate non vacue con una regressione iniettata.
+- Una correzione al mio stesso documento che nessuno aveva chiesto: O11 non è
+  più citato come «si può fare», ma come «è già stato fatto fuori protocollo».
+
+## VERDETTO — GIRO CLAUDE 1
+
+Tutti e nove i rilievi sono accolti e applicati; le due misure aperte C2 e C3
+sono state eseguite e una di esse ha smentito un'inferenza; la sonda ha un
+contratto d'uscita provato e prove proprie non vacue; la procedura si ferma da
+sé invece di chiedere giudizio.
+
+**CONCORDO SUL DOCUMENTO**, con due riserve dichiarate che non sono rilievi
+irrisolti ma lavoro esplicitamente non fatto:
+
+1. **C1 resta aperta e bloccante.** Il passo 5 dice che cosa richiede e non
+   finge di averlo eseguito.
+2. **Il rimedio al terzo ostacolo non esiste.** Il documento ora lo dichiara
+   invece di proporne uno: serve progettare la transizione append-only a nuova
+   epoca, e quello è lavoro di disegno da far revisionare, non un passo da
+   eseguire.
+
+La produzione resta fuori ambito, e lo è rimasta per tutto il giro.
