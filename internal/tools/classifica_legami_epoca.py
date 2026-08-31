@@ -80,12 +80,90 @@ class Legame:
     prove: dict = field(default_factory=dict)
 
 
-def contesto_corrente(radice: Path) -> str:
-    prep = json.loads((radice / "prepared-v1.json").read_text())
-    materiale = json.loads(
-        (radice / prep["authority_set"] / "context" / "material-v1.json").read_text()
+@dataclass
+class Autorita:
+    """Everything the verification needs, acquired once, read-only.
+
+    The context and the verifier keys come from the prepared set itself, not
+    from a parallel JSON reader: declaring a limit does not make a verdict
+    probative, and the public keys were already there.  Nothing is rebuilt from
+    ``PATH_RUNTIME``, so this acquisition does not depend on the distribution
+    matching the set - which is precisely the obstacle a transition exists to
+    resolve.
+    """
+
+    contesto: str
+    chiavi_ammissione: dict
+    registro_produttori: object
+
+
+def prepara_percorsi(codice: Path, installazione: Path) -> None:
+    """Two roots, and they are not the same one.
+
+    The Birth modules exist only in the RM-0008 line, so the code is imported
+    from that tree; the contracts, however, were published from the running
+    installation, and their code digests only verify against it.  Collapsing
+    the two made four contracts fail authentication for no reason but the
+    wrong root.
+    """
+    import sys as _sys
+    radice_codice = str(codice / "runtime")
+    if radice_codice not in _sys.path:
+        _sys.path.insert(0, radice_codice)
+    os.environ.setdefault("METNOS_INSTALL_ROOT", str(installazione))
+
+
+def acquisisci_autorita(codice: Path, installazione: Path) -> Autorita:
+    prepara_percorsi(codice, installazione)
+    from executor_birth_prepared_root import open_prepared_root_session_v1
+    from executor_birth_prepared_set import (
+        AUTHORITY_SETS_BASENAME_V1, authority_registry_v1, load_prepared_set_v1,
     )
-    return materiale["prepared_admission_context_id"]
+    from executor_birth_keystore import _load_birth_keystore_in_session
+    from executor_birth_receipts import IssuerKey, IssuerRegistry
+    from executor_birth_identity import ExecutorOrigin
+    from executor_birth_bootstrap import _producer_capabilities_for_bootstrap
+    from executor_birth_producer_table_v1 import (
+        producer_author_v1, producer_store_name_v1,
+    )
+
+    sessione = open_prepared_root_session_v1()
+    with sessione:
+        with sessione.global_lock(exclusive=False, create=False):
+            preparato = load_prepared_set_v1(sessione)
+            luogo = (AUTHORITY_SETS_BASENAME_V1, preparato.set_id)
+            registro = authority_registry_v1(sessione, luogo)
+            ammissione = _load_birth_keystore_in_session(
+                luogo + ("admission",), sessione
+            )
+            # The issuer identity, the store name and the author all come
+            # from the closed capability table, exactly as the productive
+            # assembly derives them: no name, origin or author is chosen here.
+            voci: dict = {}
+            for capacita in _producer_capabilities_for_bootstrap():
+                nome = producer_store_name_v1(
+                    capacita.producer_id, capacita.operation
+                )
+                if nome not in registro["producers"]:
+                    continue
+                caricato = _load_birth_keystore_in_session(
+                    luogo + ("producers", nome), sessione
+                )
+                autore = producer_author_v1(
+                    capacita.producer_id, capacita.operation
+                )
+                voci.setdefault(capacita.producer_id, []).extend(
+                    IssuerKey(identificativo, chiave,
+                              frozenset(ExecutorOrigin), frozenset({autore}))
+                    for identificativo, chiave in caricato.verifier_keys.items()
+                )
+    return Autorita(
+        contesto=str(preparato.prepared_admission_context_id),
+        chiavi_ammissione=dict(ammissione.verifier_keys),
+        registro_produttori=IssuerRegistry(
+            {k: tuple(v) for k, v in voci.items()}
+        ),
+    )
 
 
 def _classifica(legame: Legame) -> Legame:
@@ -122,137 +200,222 @@ def _classifica(legame: Legame) -> Legame:
     return legame
 
 
-def stato_autenticato_dei_contratti(negozio: Path, installazione: Path) -> dict:
-    """Contract id -> (generazione corrente autenticata | ritiro | errore).
+def legami_del_negozio(negozio: Path, autorita: Autorita,
+                       stato_finto: dict | None = None
+                       ) -> tuple[list[Legame], list[str], list[str]]:
+    """Admission receipts, reached and authenticated through the store itself.
 
-    The first version read ``binding.json``, ``current`` and the receipts as
-    plain files.  That is reproducible on the observed bytes and proves nothing
-    against a divergence between what a locator says and what is signed, which
-    is precisely the divergence a transition has to survive.  Here the
-    inventory and the current generation come from the productive primitives of
-    the store, and a contract whose current state cannot be authenticated is
-    never given a class: it blocks.
+    The scan starts from the refs the productive inventory accepted, demands
+    zero inventory problems, and reaches each contract's directory with the
+    store's own primitive.  Deriving the contract from a raw ``binding.json``
+    let the current state be authenticated while the path the receipt came from
+    was not - an unexpected directory could contribute a receipt nobody
+    inventoried.  Anything the inventory does not own blocks the whole census,
+    even when it holds no receipt of the context we are looking for.
     """
-    import sys as _sys
-    radice_codice = str(installazione / "runtime")
-    if radice_codice not in _sys.path:
-        _sys.path.insert(0, radice_codice)
-    os.environ.setdefault("METNOS_INSTALL_ROOT", str(installazione))
     from manifest_inventory import inventory_store_manifests
-    from contract_store import ContractRetirement, current_contract
+    from contract_store import (
+        ContractRetirement, _existing_contract_directory, current_contract,
+    )
+    from executor_birth_receipts import verify_admission_receipt
     from sign import list_trusted_publics
 
+    bloccanti: list[str] = []
+    fuori_ambito: list[str] = []
     inventario = inventory_store_manifests(store_root=negozio)
+    if inventario.problems:
+        for problema in inventario.problems:
+            bloccanti.append(f"problema d'inventario: {problema}")
     fidate = list_trusted_publics()
-    stato: dict = {}
-    for ref in inventario.manifests:
-        chiave = str(ref.contract_id)
-        try:
-            osservato = current_contract(
-                ref, trusted_publics=fidate, store_root=negozio
-            )
-        except Exception as exc:  # noqa: BLE001 - reported, never swallowed
-            stato[chiave] = ("errore", f"{getattr(exc, 'code', type(exc).__name__)}")
-            continue
-        if isinstance(osservato, ContractRetirement):
-            stato[chiave] = ("ritiro", str(osservato.previous_generation_id or ""))
-        else:
-            stato[chiave] = ("corrente",
-                             str(osservato.generation_id or "").removeprefix("sha256:"))
-    return stato
 
-
-def legami_del_negozio(negozio: Path, contesto: str, stato: dict) -> list[Legame]:
-    """Admission receipts naming the context, keyed by composite identity.
-
-    Identity is ``(contract_id, generation_id)``.  Indexing on the digest alone
-    would let two contracts that happen to share a generation digest borrow each
-    other's twin, and the F4 contract already uses the pair.  Every place the
-    pair appears - the path, the document, and later the envelope - has to
-    agree; a divergence is refused rather than resolved by preferring one
-    source.
-    """
     risultato: list[Legame] = []
-    for cartella in sorted(negozio.glob("*")):
-        if not cartella.is_dir():
-            continue
+    cartelle_viste: set[Path] = set()
+    for ref in inventario.manifests:
+        contratto = ref.contract_id.value
         try:
-            binding = json.loads((cartella / "binding.json").read_text())
-            contratto = str(binding.get("contract_id") or cartella.name)
-        except (OSError, json.JSONDecodeError):
-            contratto = cartella.name
-        for percorso in sorted(cartella.glob("admission-receipts/*.json")):
-            dal_percorso = percorso.name.removesuffix(".json")
-            try:
-                documento = json.loads(percorso.read_text())
-            except (OSError, json.JSONDecodeError) as exc:
-                risultato.append(Legame(
-                    tipo="ricevuta_ammissione", locazione=str(percorso),
-                    contesto="(illeggibile)", contratto=contratto,
-                    generazione=dal_percorso,
-                    motivo=f"lettura fallita: {exc}",
-                ))
-                continue
-            if documento.get("admission_context_id") != contesto:
-                continue
-            dal_documento = str(
-                documento.get("generation_id", "")
-            ).removeprefix("sha256:")
-            contratto_documento = str(documento.get("contract_id") or contratto)
-            legame = Legame(
-                tipo="ricevuta_ammissione",
-                locazione=str(percorso),
-                contesto=contesto,
-                contratto=contratto,
-                generazione=dal_percorso,
-                stato=str(documento.get("approved_lifecycle") or ""),
+            cartella = _existing_contract_directory(
+                ref.contract_id, store_root=negozio
             )
-            # Divergence between the three places the identity appears is a
-            # refusal, not something to reconcile.
+        except Exception as exc:  # noqa: BLE001
+            bloccanti.append(f"{contratto}: directory non raggiungibile ({exc})")
+            continue
+        cartelle_viste.add(Path(cartella).resolve())
+        if stato_finto is not None:
+            # Test seam: a fixture cannot sign whole generations, so it states
+            # what the store would authenticate.  Production never reaches
+            # here, and the seam is not exposed on the command line, so no
+            # caller can use it to declare a contract retired.
+            genere, valore = stato_finto.get(contratto, ("errore", "assente"))
+            ritirato = genere == "ritiro"
+            generazione_corrente = valore if genere == "corrente" else ""
+            errore_stato = valore if genere == "errore" else ""
+        else:
+            try:
+                osservato = current_contract(
+                    ref, trusted_publics=fidate, store_root=negozio
+                )
+                ritirato = isinstance(osservato, ContractRetirement)
+                generazione_corrente = (
+                    "" if ritirato
+                    else str(osservato.generation_id or "").removeprefix("sha256:")
+                )
+                errore_stato = ""
+            except Exception as exc:  # noqa: BLE001
+                ritirato = False
+                generazione_corrente = ""
+                errore_stato = str(getattr(exc, "code", type(exc).__name__))
+
+        for percorso in sorted(Path(cartella).glob("admission-receipts/*.json")):
+            dal_percorso = percorso.name.removesuffix(".json")
+            legame = Legame(
+                tipo="ricevuta_ammissione", locazione=str(percorso),
+                contesto=autorita.contesto, contratto=contratto,
+                generazione=dal_percorso,
+            )
+            try:
+                ricevuta = verify_admission_receipt(
+                    percorso.read_bytes(),
+                    verifier_keys=autorita.chiavi_ammissione,
+                )
+            except Exception as exc:  # noqa: BLE001
+                # A receipt this set cannot verify is not automatically a
+                # defect: the store also holds receipts of previous epochs,
+                # signed by keyrings this set does not carry.  It becomes a
+                # refusal only when its unverified content claims OUR context,
+                # because that is somebody asserting this epoch without the
+                # authority to do so.  Either way it is counted, never dropped.
+                try:
+                    pretende = json.loads(percorso.read_bytes()).get(
+                        "admission_context_id"
+                    ) == autorita.contesto
+                except Exception:  # noqa: BLE001
+                    # Corrupted bytes must block, not crash the census: the
+                    # doubt falls on the side of refusing.
+                    pretende = True
+                if not pretende:
+                    fuori_ambito.append(str(percorso))
+                    continue
+                legame.discorde = (
+                    "ricevuta che pretende questo contesto ma non e' "
+                    f"verificabile: {getattr(exc, 'code', type(exc).__name__)}"
+                )
+                risultato.append(legame)
+                continue
+            if str(ricevuta.admission_context_id) != autorita.contesto:
+                continue
+            legame.stato = str(getattr(ricevuta, "approved_lifecycle", "") or "")
+            dal_documento = str(
+                getattr(ricevuta, "generation_id", "") or ""
+            ).removeprefix("sha256:")
+            contratto_documento = str(getattr(ricevuta, "contract_id", "") or "")
             if dal_documento and dal_documento != dal_percorso:
                 legame.discorde = (f"generazione: percorso={dal_percorso[:16]} "
                                    f"documento={dal_documento[:16]}")
-            elif contratto_documento != contratto:
-                legame.discorde = (f"contratto: locatore={contratto} "
+            elif contratto_documento and contratto_documento != contratto:
+                legame.discorde = (f"contratto: inventario={contratto} "
                                    f"documento={contratto_documento}")
-            voce = stato.get(contratto)
-            if voce is None:
-                legame.discorde = legame.discorde or (
-                    "il contratto non compare nell'inventario autenticato"
-                )
-            elif voce[0] == "errore":
-                legame.discorde = legame.discorde or (
-                    f"stato corrente non autenticabile: {voce[1]}"
-                )
+            elif errore_stato:
+                legame.discorde = f"stato corrente non autenticabile: {errore_stato}"
             else:
-                legame.ritirato = voce[0] == "ritiro"
-                legame.corrente = (voce[1] == dal_percorso)
-                legame.prove = {"generazione_corrente": voce[1],
-                                "fonte": "current_contract"}
+                legame.ritirato = ritirato
+                legame.corrente = (generazione_corrente == dal_percorso)
+                legame.prove = {"generazione_corrente": generazione_corrente,
+                                "fonte": "current_contract + verify_admission_receipt"}
             risultato.append(legame)
-    return risultato
+
+    # R7: nothing in the store may live outside the inventory.
+    for voce in sorted(Path(negozio).glob("*")):
+        if voce.is_dir() and voce.resolve() not in cartelle_viste:
+            bloccanti.append(f"directory inattesa nel negozio: {voce.name}")
+    return risultato, bloccanti, fuori_ambito
 
 
-def legami_dello_stato(stato_db: Path, contesto: str,
-                       per_gemello: dict[tuple[str, str], Legame],
-                       rifiuti: list[str]) -> list[Legame]:
-    """Producer receipts, under a closed terminal rule.
+DOMINIO_TERMINALE = b"metnos.executor-birth.terminal/v1\0"
 
-    A producer receipt is not an independent fact: it is the birth side of the
-    commit whose contract side is the admission receipt.  Three outcomes, and
-    no fourth:
 
-    * a **valid terminal rejection** carries no admission receipt - it is not a
-      dependency at all, and saying "unreadable" about it was wrong;
-    * a **valid conclusion** carries one, and is paired by the composite
-      identity ``(contract_id, generation_id)``;
-    * anything else - an incoherent state, an envelope that does not parse, a
-      pair with no twin - is ``non_classificato`` and blocks.
+def _verifica_busta_terminale(encoded: bytes, firma: bytes | None,
+                              chiavi: dict) -> str:
+    """Verify the terminal envelope with the key its own header names.
 
-    The previous version let a `committed` row with a broken envelope that did
-    not repeat the context in clear fall into a side list and leave the verdict
-    green.  A conclusion we cannot read is exactly the case that must not pass.
+    The key id travels inside the signed envelope, and the verifier is chosen
+    from the set's admission keyring: an envelope cannot nominate a key the set
+    does not hold.  Returns an empty string when the signature stands, or the
+    reason it does not.
     """
+    if firma is None:
+        return "busta terminale senza firma"
+    try:
+        interno = json.loads(encoded)
+    except json.JSONDecodeError:
+        return "busta terminale non interpretabile"
+    identificativo = interno.get("signing_key_id")
+    chiave = chiavi.get(identificativo)
+    if chiave is None:
+        return f"chiave della busta assente dall'insieme: {identificativo}"
+    try:
+        chiave.verify(bytes(firma), DOMINIO_TERMINALE + bytes(encoded))
+    except Exception:  # noqa: BLE001 - any failure is a refusal
+        return "firma della busta terminale non valida"
+    return ""
+
+
+def _pretende_il_contesto(documento, contesto: str) -> bool:
+    """Does this row's envelope claim our context?  Read without verifying.
+
+    This decides scope, never authority: a row that claims our epoch has to be
+    proven, and a row that cannot even be read is treated as claiming it, so
+    the doubt falls on the side of blocking.
+    """
+    busta = documento.get("terminal_envelope")
+    if busta is None:
+        return False
+    grezzo = bytes(busta) if isinstance(busta, (bytes, bytearray)) \
+        else str(busta).encode()
+    try:
+        interno = json.loads(grezzo)
+        codificata = interno.get("admission_receipt")
+        if codificata is None:
+            return contesto.encode() in grezzo
+        ricevuta = json.loads(base64.b64decode(codificata))
+        return ricevuta.get("admission_context_id") == contesto
+    except (json.JSONDecodeError, binascii.Error, TypeError, ValueError):
+        return True
+
+
+def legami_dello_stato(stato_db: Path, autorita: Autorita,
+                       per_gemello: dict[tuple[str, str], Legame],
+                       rifiuti: list[str],
+                       fuori_ambito: list[str]) -> list[Legame]:
+    """Producer rows, using BOTH proofs the row actually carries.
+
+    A row holds the signed Producer receipt in ``encoded`` and the signature of
+    the terminal envelope in ``terminal_auth``.  Reading only ``state`` and the
+    envelope meant a row edited in the database could still be called a valid
+    conclusion or a valid refusal, which is the one thing this census must not
+    allow.  Both signatures are verified, and every field that appears in more
+    than one place - request, state, contract, generation, admission bytes -
+    has to agree across row, envelope and verified twin.
+
+    A terminal refusal missing any of those proofs is not excluded: it blocks.
+    """
+    from datetime import datetime, timezone
+    from executor_birth_receipts import verify_producer_receipt
+
+    def _istante(documento) -> datetime:
+        """Verify a concluded receipt at the moment it was recorded.
+
+        Producer receipts expire, and these concluded on 30 August: checking
+        them against today's clock asks whether they are still spendable, which
+        is not the question.  The question is whether they were valid when they
+        were used, so the durable ``registered_at`` column - a recorded fact,
+        not a caller's choice - is the instant of verification.
+        """
+        grezzo = str(documento.get("registered_at") or "")
+        try:
+            return datetime.fromisoformat(grezzo.replace("Z", "+00:00"))
+        except ValueError:
+            return datetime.now(timezone.utc)
+
     percorso = stato_db / "producer_receipts.sqlite"
     if not percorso.exists():
         return []
@@ -267,159 +430,196 @@ def legami_dello_stato(stato_db: Path, contesto: str,
             documento = dict(zip(colonne, valori))
             locazione = f"{percorso}#birth_producer_receipts:{rid}"
             situazione = str(documento.get("state") or "")
-            busta = documento.get("terminal_envelope")
-            grezzo = (b"" if busta is None
-                      else busta if isinstance(busta, bytes) else str(busta).encode())
+            legame = Legame(tipo="ricevuta_produttore", locazione=locazione,
+                            contesto=autorita.contesto, stato=situazione)
 
-            interno = None
-            if grezzo:
-                try:
-                    interno = json.loads(grezzo)
-                except json.JSONDecodeError:
-                    interno = None
-
-            # A properly concluded refusal carries the key with a null value
-            # and names why it refused.  It admitted nothing, so it is not a
-            # dependency - but a refusal WITHOUT a reason is still incoherent
-            # and must block rather than be waved through.
-            if situazione == "rejected" and interno is not None \
-                    and interno.get("admission_receipt") is None:
-                motivo_rifiuto = (documento.get("rejection_code")
-                                  or interno.get("error_code"))
-                if motivo_rifiuto:
-                    rifiuti.append(f"{locazione} ({motivo_rifiuto})")
-                    continue
-                risultato.append(Legame(
-                    tipo="ricevuta_produttore", locazione=locazione,
-                    contesto=contesto, stato=situazione,
-                    discorde="rifiuto terminale senza codice di rifiuto",
-                ))
-                continue
-
-            if interno is None:
-                if not grezzo and situazione not in {"committed", "rejected"}:
-                    continue
-                risultato.append(Legame(
-                    tipo="ricevuta_produttore", locazione=locazione,
-                    contesto=contesto, stato=situazione,
-                    discorde="busta terminale non interpretabile",
-                ))
-                continue
-
-            codificata = interno.get("admission_receipt")
+            # (1) the Producer receipt itself, signed, against the set registry
+            codificata = documento.get("encoded")
             if codificata is None:
-                risultato.append(Legame(
-                    tipo="ricevuta_produttore", locazione=locazione,
-                    contesto=contesto, stato=situazione,
-                    discorde=("conclusione senza ricevuta di ammissione in "
-                              f"stato {situazione or '(assente)'}"),
-                ))
+                legame.discorde = "riga senza ricevuta produttore firmata"
+                risultato.append(legame)
                 continue
             try:
-                ricevuta = json.loads(base64.b64decode(codificata))
-            except (binascii.Error, json.JSONDecodeError, TypeError, ValueError):
-                risultato.append(Legame(
-                    tipo="ricevuta_produttore", locazione=locazione,
-                    contesto=contesto, stato=situazione,
-                    discorde="ricevuta di ammissione non decodificabile",
-                ))
+                produttore = verify_producer_receipt(
+                    bytes(codificata), registry=autorita.registro_produttori,
+                    now=_istante(documento),
+                )
+            except Exception as exc:  # noqa: BLE001
+                # Symmetric to the admission side: the store also holds rows of
+                # previous epochs, whose producer keys this set does not carry.
+                # Such a row is out of scope and is counted; it becomes a
+                # refusal only if its envelope claims OUR context.
+                if not _pretende_il_contesto(documento, autorita.contesto):
+                    fuori_ambito.append(locazione)
+                    continue
+                legame.discorde = ("riga che pretende questo contesto ma la "
+                                   "ricevuta produttore non e' verificabile: "
+                                   f"{getattr(exc, 'code', type(exc).__name__)}")
+                risultato.append(legame)
+                continue
+            # the signed receipt must match the durable columns
+            for campo, colonna in (("receipt_id", "receipt_id"),
+                                   ("request_id", "request_id")):
+                atteso = getattr(produttore, campo, None)
+                osservato = documento.get(colonna)
+                if atteso is not None and osservato is not None \
+                        and str(atteso) != str(osservato):
+                    legame.discorde = (f"{colonna} discorde fra riga e ricevuta "
+                                       "produttore firmata")
+            if legame.discorde:
+                risultato.append(legame)
                 continue
 
-            if ricevuta.get("admission_context_id") != contesto:
+            busta = documento.get("terminal_envelope")
+            if busta is None:
+                if situazione in {"committed", "rejected"}:
+                    legame.discorde = f"stato {situazione} senza busta terminale"
+                    risultato.append(legame)
                 continue
+            grezzo = bytes(busta) if isinstance(busta, (bytes, bytearray)) \
+                else str(busta).encode()
 
-            generazione = str(ricevuta.get("generation_id", "")).removeprefix("sha256:")
-            contratto = str(ricevuta.get("contract_id", ""))
-            pubblicazione = interno.get("publication") or {}
-            legame = Legame(
-                tipo="ricevuta_produttore", locazione=locazione,
-                contesto=contesto, contratto=contratto,
-                generazione=generazione, stato=situazione,
-                prove={"scade": str(documento.get("expires_at") or "")},
+            # (2) the envelope signature, with the key the envelope names
+            motivo = _verifica_busta_terminale(
+                grezzo, documento.get("terminal_auth"), autorita.chiavi_ammissione
             )
+            if motivo:
+                legame.discorde = motivo
+                risultato.append(legame)
+                continue
+            interno = json.loads(grezzo)
+
+            if interno.get("request_id") is not None \
+                    and documento.get("request_id") is not None \
+                    and str(interno["request_id"]) != str(documento["request_id"]):
+                legame.discorde = "richiesta discorde fra riga e busta"
+                risultato.append(legame)
+                continue
+
+            codificata_ammissione = interno.get("admission_receipt")
+            if codificata_ammissione is None:
+                motivo_rifiuto = (documento.get("rejection_code")
+                                  or interno.get("error_code"))
+                if situazione == "rejected" and motivo_rifiuto:
+                    # A refusal that concluded properly, and whose two
+                    # signatures stand, admitted nothing: not a dependency.
+                    rifiuti.append(f"{locazione} ({motivo_rifiuto})")
+                    continue
+                legame.discorde = ("conclusione senza ricevuta di ammissione in "
+                                   f"stato {situazione or '(assente)'}")
+                risultato.append(legame)
+                continue
+
+            try:
+                byte_ammissione = base64.b64decode(codificata_ammissione)
+            except (binascii.Error, TypeError, ValueError):
+                legame.discorde = "ricevuta di ammissione non decodificabile"
+                risultato.append(legame)
+                continue
+            from executor_birth_receipts import verify_admission_receipt
+            try:
+                ammissione = verify_admission_receipt(
+                    byte_ammissione, verifier_keys=autorita.chiavi_ammissione
+                )
+            except Exception as exc:  # noqa: BLE001
+                legame.discorde = ("ricevuta di ammissione nella busta non "
+                                   f"verificabile: {getattr(exc, 'code', type(exc).__name__)}")
+                risultato.append(legame)
+                continue
+            if str(ammissione.admission_context_id) != autorita.contesto:
+                continue
+
+            generazione = str(
+                getattr(ammissione, "generation_id", "") or ""
+            ).removeprefix("sha256:")
+            contratto = str(getattr(ammissione, "contract_id", "") or "")
+            legame.generazione = generazione
+            legame.contratto = contratto
             if situazione != "committed":
-                legame.discorde = (f"conclusione con ricevuta ma stato "
+                legame.discorde = ("conclusione con ricevuta ma stato "
                                    f"{situazione or '(assente)'}")
+                risultato.append(legame)
+                continue
+            pubblicazione = interno.get("publication") or {}
+            dalla_pubblicazione = str(
+                pubblicazione.get("current_generation_id", "")
+            ).removeprefix("sha256:")
+            if dalla_pubblicazione and dalla_pubblicazione != generazione:
+                legame.discorde = ("generazione discorde fra ricevuta e "
+                                   "pubblicazione nella stessa busta")
+            elif str(pubblicazione.get("contract_id") or contratto) != contratto:
+                legame.discorde = ("contratto discorde fra ricevuta e "
+                                   "pubblicazione nella stessa busta")
             else:
-                # The envelope repeats the identity: it has to agree with the
-                # receipt it carries.
-                dalla_pubblicazione = str(
-                    pubblicazione.get("current_generation_id", "")
-                ).removeprefix("sha256:")
-                contratto_pubblicazione = str(pubblicazione.get("contract_id") or contratto)
-                if dalla_pubblicazione and dalla_pubblicazione != generazione:
-                    legame.discorde = ("generazione discorde fra ricevuta e "
-                                       "pubblicazione nella stessa busta")
-                elif contratto_pubblicazione != contratto:
-                    legame.discorde = ("contratto discorde fra ricevuta e "
-                                       "pubblicazione nella stessa busta")
+                gemello = per_gemello.get((contratto, generazione))
+                if gemello is None:
+                    legame.discorde = ("nessun gemello verificato con identita' "
+                                       f"({contratto}, {generazione[:16]})")
                 else:
-                    gemello = per_gemello.get((contratto, generazione))
-                    if gemello is None:
-                        legame.discorde = ("nessun gemello con identita' "
-                                           f"({contratto}, {generazione[:16]})")
-                    else:
-                        legame.corrente = gemello.corrente
-                        legame.ritirato = gemello.ritirato
-                        legame.discorde = gemello.discorde
-                        legame.prove["gemello"] = gemello.locazione
+                    legame.corrente = gemello.corrente
+                    legame.ritirato = gemello.ritirato
+                    legame.discorde = gemello.discorde
+                    legame.prove = {"gemello": gemello.locazione,
+                                    "emittente": str(getattr(produttore, "issuer_id", ""))}
             risultato.append(legame)
     finally:
         conn.close()
     return risultato
 
 
-def classifica(radice: Path, negozio: Path, stato_db: Path,
-               installazione: Path, stato: dict | None = None):
-    """``stato`` is a seam for the tests only.
-
-    Production always derives it from the store's own primitives; a fixture may
-    hand it in so a test can exercise the rule without publishing signed
-    contracts.  It is never reachable from the command line, so a caller cannot
-    use it to declare a contract retired.
-    """
-    contesto = contesto_corrente(radice)
-    if stato is None:
-        stato = stato_autenticato_dei_contratti(negozio, installazione)
-    del_negozio = legami_del_negozio(negozio, contesto, stato)
+def classifica(codice: Path, installazione: Path, negozio: Path,
+               stato_db: Path, autorita: "Autorita | None" = None,
+               stato_finto: dict | None = None):
+    """``autorita`` and ``stato_finto`` are seams for the tests only."""
+    if autorita is None:
+        autorita = acquisisci_autorita(codice, installazione)
+    del_negozio, bloccanti, fuori_ambito = legami_del_negozio(
+        negozio, autorita, stato_finto
+    )
     per_gemello = {
         (l.contratto, l.generazione): l
-        for l in del_negozio if l.contratto and l.generazione
+        for l in del_negozio if l.contratto and l.generazione and not l.discorde
     }
     rifiuti: list[str] = []
-    dello_stato = legami_dello_stato(stato_db, contesto, per_gemello, rifiuti)
+    dello_stato = legami_dello_stato(
+        stato_db, autorita, per_gemello, rifiuti, fuori_ambito
+    )
     tutti = [_classifica(l) for l in del_negozio + dello_stato]
-    return contesto, tutti, rifiuti, len(stato)
+    return autorita.contesto, tutti, rifiuti, bloccanti, fuori_ambito
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--radice-nascita",
-                    default=os.path.expanduser("~/.config/metnos/birth"))
     ap.add_argument("--negozio", default=os.path.expanduser(
         "~/.local/state/metnos/contract-publications/v1"))
     ap.add_argument("--stato-nascita", default=os.path.expanduser(
         "~/.local/state/metnos/birth"))
+    ap.add_argument("--radice-codice",
+                    default=str(Path(__file__).resolve().parents[2]),
+                    help="the tree that carries the RM-0008 runtime modules")
     ap.add_argument("--radice-installazione", default="/opt/metnos",
-                    help="l'albero da cui i contratti sono stati pubblicati: "
-                         "serve ad autenticare le generazioni correnti")
+                    help="the installation the contracts were published from")
     args = ap.parse_args(argv)
 
     try:
-        contesto, legami, rifiuti, contratti = classifica(
-            Path(args.radice_nascita), Path(args.negozio),
-            Path(args.stato_nascita), Path(args.radice_installazione),
+        contesto, legami, rifiuti, bloccanti, fuori_ambito = classifica(
+            Path(args.radice_codice), Path(args.radice_installazione),
+            Path(args.negozio), Path(args.stato_nascita),
         )
     except Exception as exc:  # noqa: BLE001
         print(f"CLASSIFICAZIONE NON ESEGUIBILE: {type(exc).__name__}: {exc}",
               file=sys.stderr)
         return EXIT_SELF
 
-    print(f"contesto corrente : {contesto}")
-    print(f"contratti autenticati dall'inventario produttivo: {contratti}")
+    print(f"contesto (dall'insieme preparato): {contesto}")
     print(f"legami esaminati  : {len(legami)}")
-    if rifiuti:
-        print(f"rifiuti terminali validi (non sono legami): {len(rifiuti)}")
+    print(f"rifiuti terminali autenticati (non sono legami): {len(rifiuti)}")
+    print(f"ricevute di altre epoche, non verificabili con questo insieme: "
+          f"{len(fuori_ambito)}")
+    if bloccanti:
+        print(f"anomalie del negozio che bloccano: {len(bloccanti)}")
+        for voce in bloccanti[:10]:
+            print(f"    {voce}")
     print()
     for legame in legami:
         print(f"[{legame.classe}] {legame.tipo}")
@@ -437,13 +637,10 @@ def main(argv: list[str] | None = None) -> int:
     for classe in (STORICA, NUOVA, CESSA, IGNOTA):
         print(f"  {classe:26} {conteggio.get(classe, 0)}")
 
-    print("\n== LIMITE DICHIARATO ==")
-    print("  la firma delle ricevute di ammissione NON viene verificata: il")
-    print("  verificatore appartiene all'autorita' di nascita sigillata, che")
-    print("  durante la transizione non e' attiva. Sono autenticati inventario,")
-    print("  generazione corrente e ritiro; l'identita' composta e' confrontata")
-    print("  fra percorso, documento e busta.")
-
+    if bloccanti:
+        print("\nESITO: il negozio contiene oggetti che l'inventario non "
+              "possiede. F4 non puo' essere dichiarata.")
+        return EXIT_NON_CLASSIFICATO
     if conteggio.get(IGNOTA):
         print("\nESITO: almeno un legame NON e' classificato. "
               "F4 non puo' essere dichiarata.")

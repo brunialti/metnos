@@ -1,142 +1,183 @@
 """Targeted tests for the epoch-dependency classifier.
 
-The rule has three admitted futures and one refusal, and the refusal is the
-part that matters: a dependency the rule cannot decide must block F4 rather
-than be given a default.  Every case here is built on a fixture; nothing reads
-the installation.
+The rule has three admitted futures and one refusal, and the refusal is what
+these tests are about: a dependency whose authority cannot be established must
+block rather than receive a default.  After the third review the classifier no
+longer reads authority out of JSON, so the fixtures here are **signed** with
+keys the fake authority holds, and each negative case breaks exactly one of
+those signatures.
+
+Nothing reads the installation: every case builds its own store, its own
+producer database and its own keyring.
 
 Run:  python3 internal/tools/prova_classifica_legami_epoca.py
 """
 from __future__ import annotations
 
 import base64
-import io
 import json
 import sqlite3
 import sys
 import tempfile
-from contextlib import redirect_stdout
 from pathlib import Path
 
+RADICE = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(RADICE / "runtime"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (  # noqa: E402
+    Ed25519PrivateKey,
+)
 import classifica_legami_epoca as C  # noqa: E402
+from executor_birth_receipts import (  # noqa: E402
+    AdmissionCheck, AdmissionKind, AdmittedCheckStatus, ApprovedLifecycle,
+    IssuerKey, IssuerRegistry, RevisionClass, issue_admission_receipt,
+    issue_producer_receipt,
+)
+from executor_birth_identity import ExecutorOrigin, RevisionAuthor  # noqa: E402
+from manifest_inventory import ContractId, ManifestOrigin  # noqa: E402
+from contract_store import encode_binding  # noqa: E402
 
 CTX = "sha256:" + "f" * 64
-SET_ID = "5" * 64
+ISTANTE = "2026-08-30T12:00:00Z"
+SCADENZA = "2026-08-30T13:00:00Z"
+EMITTENTE = "p-" + "1" * 64
 
 
-def radice_nascita(base: Path) -> Path:
-    radice = base / "birth"
-    insieme = radice / "authority-sets" / SET_ID
-    (insieme / "context").mkdir(parents=True)
-    (radice / "prepared-v1.json").write_text(json.dumps({
-        "set_id": SET_ID, "authority_set": f"authority-sets/{SET_ID}",
-    }))
-    (insieme / "context" / "material-v1.json").write_text(json.dumps({
-        "prepared_admission_context_id": CTX,
-        "prepared_context_epoch": "sha256:" + "e" * 64,
-    }))
-    return radice
+def gen(marchio: str) -> str:
+    """A generation digest of the real length, readable in a test."""
+    return (marchio * 64)[:64]
+
+
+def chiave() -> tuple[str, Ed25519PrivateKey]:
+    privata = Ed25519PrivateKey.generate()
+    identificativo = "birth-ed25519-v1-sha256-" + "c" * 64
+    return identificativo, privata
+
+
+def autorita_finta(contesto: str = CTX) -> tuple[C.Autorita, dict]:
+    """A fake authority holding one admission key and one producer key."""
+    id_amm, priv_amm = chiave()
+    id_pro, priv_pro = chiave()
+    id_pro = "birth-ed25519-v1-sha256-" + "d" * 64
+    registro = IssuerRegistry({EMITTENTE: (
+        IssuerKey(id_pro, priv_pro.public_key(),
+                  frozenset(ExecutorOrigin), frozenset({RevisionAuthor.HUMAN})),
+    )})
+    aut = C.Autorita(
+        contesto=contesto,
+        chiavi_ammissione={id_amm: priv_amm.public_key()},
+        registro_produttori=registro,
+    )
+    return aut, {"id_amm": id_amm, "priv_amm": priv_amm,
+                 "id_pro": id_pro, "priv_pro": priv_pro}
+
+
+def ammissione(chiavi: dict, *, contratto: str, generazione: str,
+               contesto: str = CTX) -> bytes:
+    controllo = AdmissionCheck("v1", AdmittedCheckStatus.PASSED, "sha256:" + "0" * 64)
+    return issue_admission_receipt(
+        policy_version="v1", contract_id=identita(contratto),
+        generation_id=f"sha256:{generazione}", candidate_id="sha256:" + "1" * 64,
+        semantic_core_id="sha256:" + "2" * 64, admission_context_id=contesto,
+        birth_request_id="sha256:" + "3" * 64,
+        authoring_journal_hash="sha256:" + "4" * 64, predecessor_id=None,
+        producer_receipt_hash="sha256:" + "5" * 64,
+        revision_class=RevisionClass.CODE_REVISION,
+        check_results={"manifest_lint": controllo},
+        semantic_review_hash=None, approval_hash=None,
+        approved_lifecycle=ApprovedLifecycle.ACTIVE, kind=AdmissionKind.ADMISSION,
+        issued_at=ISTANTE, key_id=chiavi["id_amm"],
+        private_key=chiavi["priv_amm"],
+    )
+
+
+def produttore(chiavi: dict) -> bytes:
+    return issue_producer_receipt(
+        issuer_id=EMITTENTE, executor_origin=ExecutorOrigin.BUILTIN,
+        revision_authorship=RevisionAuthor.HUMAN,
+        objective_hash="sha256:" + "6" * 64,
+        candidate_source_id="sha256:" + "7" * 64,
+        issued_at=ISTANTE, expires_at=SCADENZA, nonce="a" * 32,
+        key_id=chiavi["id_pro"], private_key=chiavi["priv_pro"],
+    )
+
+
+def identita(nome: str) -> ContractId:
+    """A real ContractId: the store addresses directories by its storage key."""
+    return ContractId(ManifestOrigin.BUILTIN, f"{nome}/manifest.toml")
 
 
 def pubblicazione(negozio: Path, contratto: str, generazioni: list[str],
-                  corrente: str, ricevute: dict[str, str]) -> None:
-    """One publication: its generations, its pointer, and its receipts."""
-    cartella = negozio / f"pub-{contratto.replace('/', '_').replace(':', '_')}"
+                  corrente: str, ricevute: dict[str, bytes]) -> Path:
+    identificativo = identita(contratto)
+    cartella = negozio / identificativo.storage_key
     (cartella / "generations").mkdir(parents=True)
     for g in generazioni:
         (cartella / "generations" / g).mkdir()
     (cartella / "current").write_text(f"sha256:{corrente}")
-    (cartella / "binding.json").write_text(json.dumps({"contract_id": contratto}))
+    # The productive encoder decides the canonical bytes; guessing them here
+    # would be a second implementation of the store's own format.
+    (cartella / "binding.json").write_bytes(encode_binding(identificativo))
     (cartella / "admission-receipts").mkdir()
-    for generazione, contesto in ricevute.items():
-        (cartella / "admission-receipts" / f"{generazione}.json").write_text(
-            json.dumps({
-                "admission_context_id": contesto,
-                "approved_lifecycle": "active",
-                "contract_id": contratto,
-                "generation_id": f"sha256:{generazione}",
-            })
-        )
+    for generazione, byte in ricevute.items():
+        (cartella / "admission-receipts" / f"{generazione}.json").write_bytes(byte)
+    return cartella
 
 
-def stato_nascita(base: Path, buste: list[dict | None]) -> Path:
-    stato = base / "stato"
-    stato.mkdir(exist_ok=True)
-    conn = sqlite3.connect(stato / "producer_receipts.sqlite")
-    conn.execute(
-        "create table birth_producer_receipts "
-        "(receipt_id text, state text, expires_at text, terminal_envelope blob)"
+def riga(stato_dir: Path, righe: list[dict]) -> Path:
+    stato_dir.mkdir(exist_ok=True)
+    conn = sqlite3.connect(stato_dir / "producer_receipts.sqlite")
+    conn.execute("create table birth_producer_receipts (receipt_id text, "
+                 "request_id text, state text, registered_at text, "
+                 "rejection_code text, encoded blob, terminal_envelope blob, "
+                 "terminal_auth blob)")
+    for r in righe:
+        conn.execute("insert into birth_producer_receipts values (?,?,?,?,?,?,?,?)",
+                     (r.get("receipt_id"), r.get("request_id"), r.get("state"),
+                      r.get("registered_at", ISTANTE), r.get("rejection_code"),
+                      r.get("encoded"), r.get("terminal_envelope"),
+                      r.get("terminal_auth")))
+    conn.commit(); conn.close()
+    return stato_dir
+
+
+def busta(chiavi: dict, *, contratto: str, generazione: str,
+          precedente: str, contesto: str = CTX, richiesta: str = "req-1",
+          ammissione_byte: bytes | None = None) -> tuple[bytes, bytes]:
+    byte = ammissione_byte if ammissione_byte is not None else ammissione(
+        chiavi, contratto=contratto, generazione=generazione, contesto=contesto
     )
-    for busta in buste:
-        grezzo = None if busta is None else json.dumps(busta).encode()
-        conn.execute(
-            "insert into birth_producer_receipts values (?,?,?,?)",
-            ("r", "committed", "2026-08-30T12:17:49Z", grezzo),
-        )
-    conn.commit()
-    conn.close()
-    return stato
-
-
-def busta(contratto: str, generazione: str, precedente: str,
-          contesto: str = CTX) -> dict:
-    ricevuta = {
-        "admission_context_id": contesto, "contract_id": contratto,
-        "generation_id": f"sha256:{generazione}",
+    interno = {
+        "schema_version": 1, "request_id": richiesta,
+        "signing_key_id": chiavi["id_amm"],
+        "admission_receipt": base64.b64encode(byte).decode(),
+        "publication": {"contract_id": identita(contratto).value,
+                        "current_generation_id": f"sha256:{generazione}",
+                        "previous_generation_id": f"sha256:{precedente}"},
     }
-    return {
-        "admission_receipt":
-            base64.b64encode(json.dumps(ricevuta).encode()).decode(),
-        "publication": {
-            "contract_id": contratto,
-            "current_generation_id": f"sha256:{generazione}",
-            "previous_generation_id": f"sha256:{precedente}",
-        },
-    }
+    encoded = json.dumps(interno).encode()
+    firma = chiavi["priv_amm"].sign(C.DOMINIO_TERMINALE + encoded)
+    return encoded, firma
 
 
-def esegui(radice: Path, negozio: Path, stato: Path,
-           autenticato: dict | None = None) -> tuple[int, str]:
-    """Run the rule with an injected authenticated state.
+def stato_di(*coppie) -> dict:
+    """What the store would authenticate: contract value -> (kind, value)."""
+    return {identita(nome).value: (genere, valore)
+            for nome, genere, valore in coppie}
 
-    The retirement class is no longer reachable from the command line: it is
-    decided by the contract's own tombstone, so a fixture declares it here the
-    way the store would, and never as a caller argument.
-    """
-    contesto, legami, rifiuti, contratti = C.classifica(
-        radice, negozio, stato, Path("/non-usato"), stato=autenticato or {},
+
+def esegui(negozio: Path, stato_dir: Path, aut: C.Autorita,
+           stato: dict | None = None):
+    contesto, legami, rifiuti, bloccanti, fuori = C.classifica(
+        RADICE, RADICE, negozio, stato_dir, autorita=aut, stato_finto=stato or {},
     )
-    conteggio = {}
+    conteggio: dict[str, int] = {}
     for l in legami:
         conteggio[l.classe] = conteggio.get(l.classe, 0) + 1
-    righe = [f"legami esaminati  : {len(legami)}",
-             f"rifiuti terminali validi (non sono legami): {len(rifiuti)}"]
-    for l in legami:
-        righe.append(f"[{l.classe}] {l.tipo} {l.locazione} perche': {l.motivo}")
-    righe.append("== CLASSIFICAZIONE ==")
-    for classe in (C.STORICA, C.NUOVA, C.CESSA, C.IGNOTA):
-        righe.append(f"  {classe:26} {conteggio.get(classe, 0)}")
-    if conteggio.get(C.IGNOTA):
-        rc = C.EXIT_NON_CLASSIFICATO
-        righe.append("F4 non puo' essere dichiarata")
-    elif conteggio.get(C.NUOVA) or conteggio.get(C.CESSA):
-        rc = C.EXIT_AZIONE
-    else:
-        rc = C.EXIT_OK
-    return rc, "\n".join(righe)
-
-
-def autenticato(**contratti) -> dict:
-    """Fixture for what the store would authenticate: id -> (classe, valore)."""
-    return {k.replace("__", ":"): v for k, v in contratti.items()}
-
-
-def conta(testo: str, classe: str) -> int:
-    for riga in testo.splitlines():
-        if riga.strip().startswith(classe):
-            return int(riga.split()[-1])
-    raise AssertionError(f"classe {classe!r} assente dal riepilogo")
+    return {"legami": legami, "rifiuti": rifiuti, "bloccanti": bloccanti,
+            "fuori": fuori, "conteggio": conteggio,
+            "motivi": " | ".join(l.motivo for l in legami)}
 
 
 CASI = []
@@ -149,193 +190,187 @@ def caso(nome):
     return deco
 
 
-@caso("zero dipendenze: nessun legame, verde")
+@caso("nascita firmata su generazione superata: storica")
 def _(base: Path) -> list[str]:
-    radice = radice_nascita(base)
+    aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
-    rc, out = esegui(radice, negozio, stato_nascita(base, []), {})
-    return [] if rc == C.EXIT_OK and conta(out, C.STORICA) == 0 else [f"uscita {rc}"]
-
-
-@caso("generazione superata: storica, verde")
-def _(base: Path) -> list[str]:
-    radice = radice_nascita(base)
-    negozio = base / "negozio"; negozio.mkdir()
-    pubblicazione(negozio, "builtin:uno", ["aaa", "bbb"], "bbb", {"aaa": CTX})
-    rc, out = esegui(radice, negozio, stato_nascita(base, []),
-                     {"builtin:uno": ("corrente", "bbb")})
+    pubblicazione(negozio, "uno", [gen("a"), gen("b")], gen("b"),
+                  {gen("a"): ammissione(k, contratto="uno", generazione=gen("a"))})
+    STATO = stato_di(("uno", "corrente", gen("b")))
+    e = esegui(negozio, base / "stato", aut, STATO)
     errori = []
-    if rc != C.EXIT_OK: errori.append(f"uscita {rc}, attesa 0")
-    if conta(out, C.STORICA) != 1: errori.append("non e' storica")
+    if e["conteggio"].get(C.STORICA) != 1:
+        errori.append(f"storiche: {e['conteggio']}")
+    if e["conteggio"].get(C.IGNOTA):
+        errori.append(f"ignote: {e['motivi']}")
     return errori
 
 
-@caso("generazione CORRENTE: nuova epoca, richiede azione")
+@caso("firma AdmissionReceipt errata: blocca")
 def _(base: Path) -> list[str]:
-    radice = radice_nascita(base)
+    aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
-    pubblicazione(negozio, "builtin:due", ["aaa", "bbb"], "aaa", {"aaa": CTX})
-    rc, out = esegui(radice, negozio, stato_nascita(base, []),
-                     {"builtin:due": ("corrente", "aaa")})
+    byte = bytearray(ammissione(k, contratto="due", generazione=gen("a")))
+    byte[-1] ^= 0xFF                       # una firma sola, guastata
+    pubblicazione(negozio, "due", [gen("a"), gen("b")], gen("b"), {gen("a"): bytes(byte)})
+    STATO = stato_di(("due", "corrente", gen("b")))
+    e = esegui(negozio, base / "stato", aut, STATO)
     errori = []
-    if rc != C.EXIT_AZIONE: errori.append(f"uscita {rc}, attesa {C.EXIT_AZIONE}")
-    if conta(out, C.NUOVA) != 1: errori.append("non richiede la nuova epoca")
+    if e["conteggio"].get(C.IGNOTA) != 1:
+        errori.append("una firma guasta non ha bloccato")
+    if "non e' verificabile" not in e["motivi"]:
+        errori.append(f"motivo inatteso: {e['motivi']}")
     return errori
 
 
-@caso("ritiro AUTENTICATO: cessa; il chiamante non puo' dichiararlo")
+@caso("contesto alterato: la ricevuta non e' piu' di questa epoca")
 def _(base: Path) -> list[str]:
-    radice = radice_nascita(base)
+    aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
-    pubblicazione(negozio, "builtin:tre", ["aaa"], "aaa", {"aaa": CTX})
-    rc, out = esegui(radice, negozio, stato_nascita(base, []),
-                     {"builtin:tre": ("ritiro", "aaa")})
+    altro = "sha256:" + "b" * 64
+    pubblicazione(negozio, "tre", [gen("a")], gen("a"),
+                  {gen("a"): ammissione(k, contratto="tre",
+                                     generazione=gen("a"), contesto=altro)})
+    STATO = stato_di(("tre", "corrente", gen("a")))
+    e = esegui(negozio, base / "stato", aut, STATO)
+    return [] if not e["legami"] else [f"raccolta una ricevuta di un altro contesto: {e['motivi']}"]
+
+
+@caso("generazione discorde fra percorso e ricevuta firmata: blocca")
+def _(base: Path) -> list[str]:
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    # la ricevuta firma 'bbb' ma viene riposta sotto il nome 'aaa'
+    pubblicazione(negozio, "qua", [gen("a"), gen("b")], gen("b"),
+                  {gen("a"): ammissione(k, contratto="qua", generazione=gen("b"))})
+    STATO = stato_di(("qua", "corrente", gen("b")))
+    e = esegui(negozio, base / "stato", aut, STATO)
     errori = []
-    if rc != C.EXIT_AZIONE: errori.append(f"uscita {rc}, attesa {C.EXIT_AZIONE}")
-    if conta(out, C.CESSA) != 1: errori.append("il ritiro non e' stato riconosciuto")
-    # and the command line no longer offers a way to declare it
-    import argparse, io as _io, contextlib
-    ap_err = _io.StringIO()
-    with contextlib.redirect_stderr(ap_err):
-        try:
-            C.main(["--ritirati", "builtin:tre"])
-            errori.append("--ritirati e' ancora accettato")
-        except SystemExit:
-            pass
+    if e["conteggio"].get(C.IGNOTA) != 1:
+        errori.append("la discordanza non ha bloccato")
+    if "generazione: percorso" not in e["motivi"]:
+        errori.append(f"motivo inatteso: {e['motivi']}")
     return errori
 
 
-@caso("stesso digest, due contratti: il gemello NON viene condiviso")
+@caso("firma Producer errata: blocca se la riga pretende questo contesto")
 def _(base: Path) -> list[str]:
-    radice = radice_nascita(base)
+    aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
-    # two contracts sharing the SAME test generation digest
-    pubblicazione(negozio, "builtin:a", ["gg"], "gg", {"gg": CTX})
-    pubblicazione(negozio, "builtin:b", ["gg", "hh"], "hh", {"gg": CTX})
-    # the envelope names contract b, so it must pair only with that one
-    rc, out = esegui(radice, negozio, stato_nascita(base, [busta("builtin:b", "gg", "hh")]),
-                     {"builtin:a": ("corrente", "gg"), "builtin:b": ("corrente", "hh")})
+    pubblicazione(negozio, "cin", [gen("a"), gen("b")], gen("b"),
+                  {gen("a"): ammissione(k, contratto="cin", generazione=gen("a"))})
+    prod = bytearray(produttore(k)); prod[-1] ^= 0xFF
+    encoded, firma = busta(k, contratto="cin", generazione=gen("a"),
+                           precedente=gen("b"))
+    stato = riga(base / "stato", [{"state": "committed", "encoded": bytes(prod),
+                                   "terminal_envelope": encoded,
+                                   "terminal_auth": firma}])
+    STATO = stato_di(("cin", "corrente", gen("b")))
+    e = esegui(negozio, stato, aut, STATO)
     errori = []
-    if rc != C.EXIT_AZIONE:
-        errori.append(f"uscita {rc}, attesa {C.EXIT_AZIONE}")
-    # a/gg is current -> new epoch; b/gg is superseded -> historical;
-    # the envelope follows b
-    if conta(out, C.NUOVA) != 1:
-        errori.append("il contratto a non e' stato riconosciuto corrente")
-    if conta(out, C.STORICA) != 2:
-        errori.append("la busta non ha seguito il gemello del proprio contratto")
+    if e["conteggio"].get(C.IGNOTA) != 1:
+        errori.append(f"la firma produttore guasta non ha bloccato: {e['conteggio']}")
+    if "ricevuta produttore non e' verificabile" not in e["motivi"]:
+        errori.append(f"motivo inatteso: {e['motivi']}")
     return errori
 
 
-@caso("generazione discorde fra percorso e documento: non classificato")
+@caso("richiesta diversa fra riga e busta firmata: blocca")
 def _(base: Path) -> list[str]:
-    radice = radice_nascita(base)
+    aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
-    pubblicazione(negozio, "builtin:d", ["aaa", "bbb"], "bbb", {"aaa": CTX})
-    # rewrite the document with a generation other than the one in its name
-    ric = negozio / "pub-builtin_d" / "admission-receipts" / "aaa.json"
-    doc = json.loads(ric.read_text()); doc["generation_id"] = "sha256:zzz"
-    ric.write_text(json.dumps(doc))
-    rc, out = esegui(radice, negozio, stato_nascita(base, []),
-                     {"builtin:d": ("corrente", "bbb")})
+    pubblicazione(negozio, "sei", [gen("a"), gen("b")], gen("b"),
+                  {gen("a"): ammissione(k, contratto="sei", generazione=gen("a"))})
+    encoded, firma = busta(k, contratto="sei", generazione=gen("a"),
+                           precedente=gen("b"), richiesta="req-busta")
+    stato = riga(base / "stato", [{"state": "committed", "request_id": "req-riga",
+                                   "encoded": produttore(k),
+                                   "terminal_envelope": encoded,
+                                   "terminal_auth": firma}])
+    STATO = stato_di(("sei", "corrente", gen("b")))
+    e = esegui(negozio, stato, aut, STATO)
     errori = []
-    if rc != C.EXIT_NON_CLASSIFICATO:
-        errori.append(f"uscita {rc}, attesa {C.EXIT_NON_CLASSIFICATO}")
-    if "generazione: percorso" not in out:
-        errori.append("la discordanza non e' nominata")
+    if e["conteggio"].get(C.IGNOTA) != 1:
+        errori.append(f"la richiesta discorde non ha bloccato: {e['conteggio']}")
+    if "richiesta discorde" not in e["motivi"]:
+        errori.append(f"motivo inatteso: {e['motivi']}")
     return errori
 
 
-@caso("stato corrente non autenticabile: non classificato, blocco")
+@caso("terminal_auth errata: blocca")
 def _(base: Path) -> list[str]:
-    radice = radice_nascita(base)
+    aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
-    pubblicazione(negozio, "builtin:e", ["aaa"], "aaa", {"aaa": CTX})
-    rc, out = esegui(radice, negozio, stato_nascita(base, []),
-                     {"builtin:e": ("errore", "code_digest_mismatch")})
+    pubblicazione(negozio, "set", [gen("a"), gen("b")], gen("b"),
+                  {gen("a"): ammissione(k, contratto="set", generazione=gen("a"))})
+    encoded, firma = busta(k, contratto="set", generazione=gen("a"),
+                           precedente=gen("b"))
+    guasta = bytearray(firma); guasta[-1] ^= 0xFF
+    stato = riga(base / "stato", [{"state": "committed", "encoded": produttore(k),
+                                   "terminal_envelope": encoded,
+                                   "terminal_auth": bytes(guasta)}])
+    STATO = stato_di(("set", "corrente", gen("b")))
+    e = esegui(negozio, stato, aut, STATO)
     errori = []
-    if rc != C.EXIT_NON_CLASSIFICATO:
-        errori.append(f"uscita {rc}, attesa {C.EXIT_NON_CLASSIFICATO}")
-    if "non autenticabile" not in out:
-        errori.append("il difetto di autenticazione non e' nominato")
+    if e["conteggio"].get(C.IGNOTA) != 1:
+        errori.append(f"la firma della busta guasta non ha bloccato: {e['conteggio']}")
+    if "firma della busta terminale non valida" not in e["motivi"]:
+        errori.append(f"motivo inatteso: {e['motivi']}")
     return errori
 
 
-@caso("rifiuto terminale valido: non e' un legame")
+@caso("busta firmata con identita' diversa dal gemello: blocca")
 def _(base: Path) -> list[str]:
-    radice = radice_nascita(base)
+    aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
-    stato = base / "stato"; stato.mkdir()
-    conn = sqlite3.connect(stato / "producer_receipts.sqlite")
-    conn.execute("create table birth_producer_receipts (receipt_id text, state text, "
-                 "expires_at text, rejection_code text, terminal_envelope blob)")
-    conn.execute("insert into birth_producer_receipts values (?,?,?,?,?)",
-                 ("r", "rejected", "x", "property_runner_unavailable",
-                  json.dumps({"admission_receipt": None,
-                              "error_code": "property_runner_unavailable"}).encode()))
-    conn.commit(); conn.close()
-    rc, out = esegui(radice, negozio, stato, {})
+    pubblicazione(negozio, "ott", [gen("a"), gen("b")], gen("b"),
+                  {gen("a"): ammissione(k, contratto="ott", generazione=gen("a"))})
+    # la busta porta un contratto che nel negozio non ha quella ricevuta
+    encoded, firma = busta(k, contratto="estraneo", generazione=gen("e"),
+                           precedente=gen("f"))
+    stato = riga(base / "stato", [{"state": "committed", "encoded": produttore(k),
+                                   "terminal_envelope": encoded,
+                                   "terminal_auth": firma}])
+    STATO = stato_di(("ott", "corrente", gen("b")))
+    e = esegui(negozio, stato, aut, STATO)
     errori = []
-    if rc != C.EXIT_OK: errori.append(f"uscita {rc}, attesa 0")
-    if "rifiuti terminali validi (non sono legami): 1" not in out:
-        errori.append("il rifiuto valido non e' stato escluso come tale")
-    if conta(out, C.IGNOTA) != 0:
-        errori.append("un rifiuto valido e' stato chiamato illeggibile")
+    if e["conteggio"].get(C.IGNOTA) != 1:
+        errori.append(f"l'identita' estranea non ha bloccato: {e['conteggio']}")
+    if "nessun gemello verificato" not in e["motivi"]:
+        errori.append(f"motivo inatteso: {e['motivi']}")
     return errori
 
 
-@caso("conclusione invalida SENZA testo del contesto: blocca comunque")
+@caso("directory inattesa SENZA ricevute del contesto: blocca lo stesso")
 def _(base: Path) -> list[str]:
-    radice = radice_nascita(base)
+    aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
-    stato = base / "stato"; stato.mkdir()
-    conn = sqlite3.connect(stato / "producer_receipts.sqlite")
-    conn.execute("create table birth_producer_receipts (receipt_id text, state text, "
-                 "expires_at text, rejection_code text, terminal_envelope blob)")
-    # a committed envelope that is not JSON and does not name the context in
-    # clear: the previous version let it through in silence.
-    conn.execute("insert into birth_producer_receipts values (?,?,?,?,?)",
-                 ("r", "committed", "x", None, b"non e' json, e non nomina nulla"))
-    conn.commit(); conn.close()
-    rc, out = esegui(radice, negozio, stato, {})
+    pubblicazione(negozio, "nov", [gen("a"), gen("b")], gen("b"),
+                  {gen("a"): ammissione(k, contratto="nov", generazione=gen("a"))})
+    # una pubblicazione interrotta: nessun binding, nessuna ricevuta
+    orfana = negozio / "orfana"; (orfana / "generations").mkdir(parents=True)
+    STATO = stato_di(("nov", "corrente", gen("b")))
+    e = esegui(negozio, base / "stato", aut, STATO)
     errori = []
-    if rc != C.EXIT_NON_CLASSIFICATO:
-        errori.append(f"uscita {rc}, attesa {C.EXIT_NON_CLASSIFICATO}")
-    if "non interpretabile" not in out:
-        errori.append("la busta illeggibile non e' nominata")
+    if not e["bloccanti"]:
+        errori.append("una directory che l'inventario non possiede non blocca")
+    if e["conteggio"].get(C.STORICA) != 1:
+        errori.append("il legame legittimo e' andato perso")
     return errori
 
 
-@caso("rifiuto terminale senza codice: incoerente, blocca")
+@caso("generazione corrente: nuova epoca, non storica")
 def _(base: Path) -> list[str]:
-    radice = radice_nascita(base)
+    aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
-    stato = base / "stato"; stato.mkdir()
-    conn = sqlite3.connect(stato / "producer_receipts.sqlite")
-    conn.execute("create table birth_producer_receipts (receipt_id text, state text, "
-                 "expires_at text, rejection_code text, terminal_envelope blob)")
-    conn.execute("insert into birth_producer_receipts values (?,?,?,?,?)",
-                 ("r", "rejected", "x", None,
-                  json.dumps({"admission_receipt": None}).encode()))
-    conn.commit(); conn.close()
-    rc, out = esegui(radice, negozio, stato, {})
+    pubblicazione(negozio, "die", [gen("a"), gen("b")], gen("a"),
+                  {gen("a"): ammissione(k, contratto="die", generazione=gen("a"))})
+    STATO = stato_di(("die", "corrente", gen("a")))
+    e = esegui(negozio, base / "stato", aut, STATO)
     errori = []
-    if rc != C.EXIT_NON_CLASSIFICATO:
-        errori.append(f"uscita {rc}, attesa {C.EXIT_NON_CLASSIFICATO}")
-    if "senza codice di rifiuto" not in out:
-        errori.append("il rifiuto senza ragione non e' nominato")
+    if e["conteggio"].get(C.NUOVA) != 1:
+        errori.append(f"la generazione corrente non chiede la nuova epoca: {e['conteggio']}")
     return errori
-
-
-@caso("contesto diverso: la dipendenza non appartiene a questa epoca")
-def _(base: Path) -> list[str]:
-    radice = radice_nascita(base)
-    negozio = base / "negozio"; negozio.mkdir()
-    pubblicazione(negozio, "builtin:altro", ["aaa"], "aaa",
-                  {"aaa": "sha256:" + "b" * 64})
-    rc, out = esegui(radice, negozio, stato_nascita(base, []),
-                     {"builtin:altro": ("corrente", "aaa")})
-    return [] if rc == C.EXIT_OK and "legami esaminati  : 0" in out else [f"uscita {rc}"]
 
 
 def main() -> int:

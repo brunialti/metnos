@@ -243,3 +243,79 @@ terminale valido; conclusione invalida senza testo del contesto.
 byte osservati; adesso poggia su inventario e generazioni autenticati, su
 un'identità composta confrontata in tre punti, su un'autorità che il chiamante
 non può fabbricare e su una regola terminale senza casi ignorati.
+
+---
+
+## 9. Terzo giro — l'autorità non si legge più da un JSON
+
+Rilievi 5, 6 e 7 di A, tutti accolti. Il difetto comune era uno: **dichiarare un
+limite non rende probante un verdetto**. Le chiavi pubbliche erano già
+nell'insieme preparato; non usarle era una scelta, non un vincolo.
+
+**R5 — contesto e verificatori dall'insieme.** Una sola acquisizione in sola
+lettura (`open_prepared_root_session_v1` + `load_prepared_set_v1` + registro
+pubblico, sotto lucchetto condiviso) dà il contesto, la chiave di ammissione e
+gli undici registri di produttore, **senza ricostruire da `PATH_RUNTIME`** —
+quindi senza dipendere dal terzo ostacolo. Ogni ricevuta passa ora da
+`verify_admission_receipt`. Il limite dichiarato al §8 **è ritirato**: non era un
+limite, era una lacuna.
+
+**R6 — entrambe le prove della riga.** La riga porta la ricevuta di produttore
+firmata in `encoded` e la firma della busta in `terminal_auth`; leggevo solo
+`state` e la busta, quindi una riga modificata nel database poteva ancora
+passare per conclusione valida. Ora si verificano entrambe, e richiesta, stato,
+contratto, generazione e byte dell'ammissione devono concordare fra riga, busta
+e gemello verificato.
+
+**R7 — il negozio si attraversa dall'inventario.** Si parte dai riferimenti che
+l'inventario produttivo accetta, si pretende **zero problemi**, e la directory
+si raggiunge con la primitiva del negozio. Una directory che l'inventario non
+possiede blocca, anche se non contiene ricevute del contesto cercato.
+
+### Tre errori miei, trovati eseguendo
+
+- **La scadenza andava verificata al momento giusto.** Passavo l'ora corrente a
+  `verify_producer_receipt`, e 23 ricevute concluse il 30 agosto risultavano
+  `producer_receipt_expired`. La domanda non è se siano ancora spendibili, ma se
+  fossero valide quando sono state usate: l'istante è ora la colonna durevole
+  `registered_at`.
+- **Non verificabile ≠ invalido.** Il negozio contiene anche ricevute di epoche
+  precedenti, firmate da portachiavi che questo insieme non ha. Sono **fuori
+  ambito** e vengono contate; diventano un rifiuto solo se il loro contenuto non
+  verificato **pretende il nostro contesto**, che è qualcuno che afferma questa
+  epoca senza averne l'autorità.
+- **Due radici, non una.** I moduli di nascita esistono solo nella linea
+  RM-0008; i contratti sono stati pubblicati dall'installazione. Confonderle
+  faceva fallire quattro contratti per il solo motivo della radice sbagliata.
+
+E un difetto di robustezza: una ricevuta con byte corrotti faceva **crollare** il
+censimento invece di bloccarlo. Ora il dubbio cade dalla parte del rifiuto.
+
+### Esito reale, e una divergenza da dichiarare
+
+```
+legami esaminati  : 12          epoca_storica              12
+rifiuti terminali autenticati: 0    nuova_epoca                 0
+ricevute di altre epoche    : 32    cessa_di_essere_corrente    0
+anomalie del negozio        : 2     non_classificato            0
+```
+
+**Divergenza dai numeri attesi da A**: A si aspettava «due rifiuti terminali
+autenticati». Ne trovo **zero**, e la ragione è verificabile: le due righe
+`rejected` non portano alcuna ricevuta di ammissione e sono registrate alle
+10:48 e 10:58 del 30 agosto, cioè **prima** che questo insieme esistesse
+(13:17). Non sono rifiuti di questa epoca: sono fuori ambito. L'attesa nasceva
+dalla lettura non autenticata, dove il contesto compariva altrove nella busta.
+
+**E il censimento oggi BLOCCA**, non per i 12 legami ma per il negozio: la
+directory `4e2feabf…` è una **pubblicazione interrotta** del 30 agosto alle
+12:48 — nessun `binding.json`, nessun `current`, `generations` vuota, un
+`writer.lock`. L'inventario produttivo la segnala come `binding_invalid`. È una
+precondizione di F4 che nessuno aveva notato, ed è esattamente ciò che il
+rilievo 7 chiedeva di far emergere.
+
+Dieci prove mirate verdi, con finzioni **firmate**: firma di ammissione guasta,
+contesto alterato, generazione discorde fra percorso e ricevuta firmata, firma
+di produttore guasta, richiesta discorde fra riga e busta, `terminal_auth`
+guasta, busta con identità estranea al gemello, directory inattesa senza
+ricevute, generazione corrente.
