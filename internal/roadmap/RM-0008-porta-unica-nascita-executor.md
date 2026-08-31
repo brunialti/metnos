@@ -2877,10 +2877,9 @@ verita'.
 
 Perni 692/680; portable 1171 verdi; guardie e censimento verdi.
 
-**Che cosa resta al gruppo 7.** Soltanto il punto 1 — installare e rileggere la
-topologia dominante — e poi l'esecuzione reale sul server: commutazione dei
-servizi, ribaltamento del bit di imposizione, dichiarazione di F4. Tutto il
-resto e' costruito e provato in isolamento.
+**Che cosa resta al gruppo 7.** Il punto 1 e' chiuso in §23.41; resta soltanto
+l'esecuzione reale sul server: commutazione dei servizi, ribaltamento del bit di
+imposizione, dichiarazione di F4.
 
 
 ### 23.39 Windows smentisce il §23.36: il bit non deve dipendere dai fine-riga
@@ -2949,3 +2948,38 @@ modulo suo, non un ramo dentro questo.
 Le prove POSIX sono marcate come tali, e una prova nuova verifica che su Windows
 il diniego arrivi senza toccare il filesystem. Nessun salto silenzioso: il
 comportamento e' dichiarato in entrambe le direzioni.
+
+
+### 23.41 Gruppo 7-F: la topologia installata, e la ricevuta e' la RILETTURA
+
+Punto 1 dell'involucro, ultimo pezzo che si potesse costruire in isolamento.
+`runtime/executor_birth_dominant_topology.py` scrive i frammenti di unita' e li
+rilegge; non decide quali unita' compongano la topologia, non ricarica il
+gestore, non avvia nulla e non tiene alcun blocco — l'involucro li tiene gia'
+tutti e tre quando chiama.
+
+**La ricevuta e' la rilettura, mai la scrittura.** Una scrittura che ha
+restituito successo e' un'affermazione su una chiamata di sistema; un file
+riletto dalla directory in cui e' stato scritto e' un fatto sul filesystem. Su
+un confine il cui scopo e' sostituire la topologia in esecuzione, solo il
+secondo vale qualcosa.
+
+**Un nome che tiene byte DIVERSI e' una collisione, mai una sovrascrittura.**
+Quei byte sono una topologia che nessuno ha dichiarato, e sostituirli in
+silenzio la distruggerebbe. Provato: dopo il diniego il file precedente e'
+ancora intatto.
+
+**Ripetibile.** Una installazione ripresa riconosce i propri byte invece di
+fallire, e la ricevuta distingue «scritto adesso» da «trovato gia' scritto».
+La scrittura passa da un nome temporaneo con `O_EXCL`, `fsync` e rinomina,
+quindi un'interruzione non lascia un'unita' a meta' che il gestore potrebbe
+leggere.
+
+**Windows nega per primo**, per la lezione del §23.40: un frammento di unita'
+senza un gestore che lo interpreti darebbe un verde che non dimostra nulla.
+
+Tredici prove portabili. Perni 693/681; portable 1104 verdi; guardie e
+censimento verdi; inventario di produzione rigenerato.
+
+Con questo, i cinque punti dell'involucro sono costruiti e provati in
+isolamento. Al gruppo 7 resta solo cio' che tocca il server reale.
