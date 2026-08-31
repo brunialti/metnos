@@ -232,7 +232,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_distribution_installer.py': ('3b8e2ea7272fecd3a52e45c12c1e69e8289c9e3651493500fa1be93a01af0cfb', (('prefix-suffix', 2),)),
     'executor_birth_distribution_manifest.py': ('d4f424c2e65d7a78973387d16f21b69b2daafc7ca4a3e91130fe59320f291b47', (('comparison', 54), ('helper-argument', 4), ('membership', 1))),
     'executor_birth_dominant_startup.py': ('c5db1ad64f97b0e63991d087aaaf386442be51d44c2d97d55bce5bef1b7ef8de', (('comparison', 1), ('iteration', 1), ('prefix-suffix', 1))),
-    'executor_birth_enforcement_evidence.py': ('a2a56797ab45a1c9077e33800740f3d4704b758e18fc67769d7c09bdbbaaf9ee', (('comparison', 1),)),
+    'executor_birth_enforcement_evidence.py': ('27da48ec1d3ffba70ec221916a7e3d465fce8fd55448a418b16f10a86a5df55d', (('comparison', 1),)),
     'executor_birth_epoch_store.py': ('daf0dc1090d62503a65e1f9a9cd1d98cea28f4b0108170df853d0623fb09c271', (('comparison', 2), ('helper-argument', 7))),
     'executor_birth_failure_review.py': ('939fd468b73460af22db7f348ebacf6146c7e1bb7a7153a3afe34ab78681d511', (('comparison', 3), ('helper-argument', 1))),
     'executor_birth_feedback.py': ('c514fa16f605ae333a0267e3e15503f26c3855c5c77b1144b5ce8c85e41431e9', (('helper-argument', 1),)),

@@ -2881,3 +2881,33 @@ Perni 692/680; portable 1171 verdi; guardie e censimento verdi.
 topologia dominante — e poi l'esecuzione reale sul server: commutazione dei
 servizi, ribaltamento del bit di imposizione, dichiarazione di F4. Tutto il
 resto e' costruito e provato in isolamento.
+
+
+### 23.39 Windows smentisce il §23.36: il bit non deve dipendere dai fine-riga
+
+I cicli pubblici `ef796f6` e `854165d` sono rossi soltanto su
+`Python 3.12 / windows-2022`, con `enforcement_literal_ambiguous: 0`. In locale
+erano verdi: la differenza e' il fine-riga.
+
+**Il difetto era del prodotto, non della prova.** Il lettore del bit cercava il
+letterale con un'espressione regolare ancorata a `\n`. Un modulo del cancello
+estratto su Windows ha `\r\n`, quindi il letterale non veniva trovato, quindi
+l'evidenza risultava «ambigua» e diventava INOTTENIBILE. Non e' una proprieta'
+di sicurezza: e' un rifiuto di servizio sulla certificazione, che nega a una
+copia legittima il diritto di certificarsi.
+
+**La correzione tiene separate due cose che stavo confondendo.** Il BIT e' una
+proprieta' del contenuto, e si legge su un testo con i fine-riga normalizzati.
+L'IMPRONTA e' una proprieta' dei byte, e continua a coprirli grezzi, `\r\n`
+inclusi. Cosi' una copia Windows dichiara lo stesso bit e conserva un'identita'
+propria — che e' esattamente cio' che serve, perche' e' un artefatto diverso.
+
+Una prova nuova lo fissa: stesso bit, impronte diverse, fra una copia con `\n` e
+una con `\r\n`. La finzione scrive ora byte espliciti, perche' `write_text`
+traduce i fine-riga su Windows e un apparato che non controlla i byte del
+proprio artefatto non puo' dimostrare nulla su di essi.
+
+**Cosa imparo, e non e' la prima volta in questa sessione.** Una prova che gira
+su una sola piattaforma non dice nulla sulle altre, e il §23.36 dichiarava una
+proprieta' generale sulla base di una misura locale. La matrice pubblica
+Linux+Windows esiste per questo, e ha fatto il suo mestiere.
