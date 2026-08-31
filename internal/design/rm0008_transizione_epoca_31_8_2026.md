@@ -2,7 +2,7 @@
 
 Data: 31 agosto 2026  
 Unita': `F4-EPOCA-01`  
-Stato: proposta A, terza versione pronta alla revisione incrociata
+Stato: proposta A, quinta versione pronta alla revisione incrociata
 Ancora fattuale B: `937ba594`
 
 ## 1. Risultato richiesto
@@ -73,12 +73,23 @@ prepared-v1.json
 ```
 
 La prima epoca interpreta `prepared-v1.json` come ancora storica. Le epoche
-successive aggiungono:
+successive aggiungono oggetti in due radici gia' possedute, senza confonderne
+i proprietari:
 
 ```text
-authority-sets/<set_id-nuovo>/...
-context-transitions-v1/<transition_id>.json
+<PATH_USER_CONFIG>/birth/authority-sets/<set_id-nuovo>/...
+/var/lib/metnos/executor-birth/chain-v1/
+    context-transitions-v1/<transition_digest>.json
 ```
+
+`transition_digest` e' `transition_id` senza il prefisso `sha256:`. L'insieme
+resta nella radice Birth e viene aperto soltanto mediante la sessione sicura
+gia' esistente. Il record appartiene invece al negozio root-owned della catena
+F4: il suo inizializzatore crea anche `context-transitions-v1` con le stesse
+proprieta' delle altre directory del negozio; il lettore ordinario non la crea
+e non la ripara. Il record non porta una firma separata: nome, digest del
+contenuto e `context_transition_id` nel certificato firmato sono una sola
+catena di autenticazione.
 
 Non nasce un secondo selettore. Il solo selettore sostituibile resta
 `required-head-v1.bin` della catena F4 gia' costruita. La testa firmata seleziona
@@ -106,11 +117,19 @@ current_inventory_hash
 ```
 
 `transition_id` e' il digest con dominio dei byte canonici del record senza il
-campo omonimo. Il certificato F4 viene esteso prima del primo passaggio reale
-con il solo campo obbligatorio `context_transition_id`; la firma esistente
-copre quindi quel campo insieme a `request_id`, `closed_build_id` e all'elenco
-completo delle ricevute correnti. Non serve una nuova chiave e non esiste un
-formato storico produttivo da mantenere: F4 non e' ancora avvenuta.
+campo omonimo. Il certificato V1 e la sua ancora esistente restano byte per byte
+immutati. Il primo passaggio reale emette invece un certificato V2, con dominio
+di firma e dominio dell'identificativo V2 distinti, che contiene esattamente
+tutti i campi V1 piu' `context_transition_id` e `schema_version=2`. Usa la
+stessa autorita' gia' circoscritta allo scopo ownership-cutover: non nasce una
+chiave e non si amplia lo scopo. Il verificatore sceglie il codec dal formato
+canonico e non prova un formato come ripiego dell'altro.
+
+La testa firmata, il suo codec V1 e `required-head-v1.bin` restano invariati:
+`cutover_id` puo' nominare un certificato V1 storico oppure un V2. La catena
+verifica V1 per l'ancora e V2 per ogni passaggio che seleziona un contesto; un
+V1 nuovo dopo l'ancora non puo' rendere avviabile una distribuzione che richiede
+la transizione.
 
 Il lettore verifica la catena completa
 `required-head -> certificato -> context_transition_id -> record -> insieme`.
@@ -123,6 +142,11 @@ senza sostituzione, sincronizzazione e rilettura. Un nome gia' occupato e'
 accettato soltanto se i byte coincidono. Predecessore, build, epoca, insieme,
 inventario corrente e ricevute devono concordare fra record, certificato e
 distribuzione installata.
+
+`current_inventory_hash` e' il digest con dominio della sequenza canonica,
+ordinata e senza duplicati di coppie `(contract_id, generation_id)`. Le coppie
+devono essere identiche a quelle di `current_receipts` nel certificato; il
+conteggio non partecipa come autorita' separata.
 
 ## 5. Insieme nuovo e identità conservate
 
@@ -161,6 +185,14 @@ protocollo distingue quei fatti dall'inventario che F4 deve rendere avviabile:
 - il certificato F4 copre identita' e impronta di ogni nuova ricevuta; il
   conteggio da solo non e' una prova.
 
+Il percorso V2 e' relativo alla directory del contratto. `generation_digest`
+e' `generation_id` senza `sha256:` e `context_digest` e'
+`admission_context_id` senza `sha256:`; entrambi devono essere esattamente 64
+cifre esadecimali minuscole. Il writer deriva il secondo valore
+dall'autorizzazione Birth sigillata e il lettore lo deriva dal contesto
+selezionato dalla testa: nessuna API pubblica accetta uno dei due come percorso
+o selettore libero.
+
 Il percorso V1 delle ricevute resta storico. Da questa transizione in avanti
 anche le nuove ammissioni ordinarie usano il percorso V2 legato al contesto,
 cosi' una seconda epoca puo' aggiungere una nuova ricevuta per la stessa
@@ -175,55 +207,76 @@ manutenzione e nascita. La sequenza è:
 
 1. verificare build chiusa, catena F4 precedente e prova di manutenzione;
 2. aprire il contesto selezionato dalla testa F4, oppure `prepared-v1.json`
-   soltanto prima della prima testa, e ricostruirne il materiale;
+   soltanto prima della prima testa, e ricostruirne il materiale dalla
+   `installation_root` della distribuzione verificata corrispondente;
 3. riconoscere lo scostamento verso la nuova distribuzione;
-4. riprendere o costruire il nuovo insieme riusando l'autore senza modificarlo;
-5. rileggere e pubblicare l'insieme con rinomina senza sostituzione;
-6. costruire dal nuovo insieme un nucleo di nascita sigillato e limitato alla
-   riattestazione, senza installarlo come nucleo ordinario;
-7. congelare sotto manutenzione l'inventario autenticato delle generazioni
-   correnti e derivare il record e `transition_id` per la richiesta gia'
-   registrata;
-8. riattestare ogni generazione corrente nel percorso V2 mediante una nuova
+4. riprendere o aprire la transazione di provisioning V2 riusando l'autore
+   senza modificarlo;
+5. costruire e rileggere nello staging il nuovo insieme, senza pubblicarlo e
+   senza toccare `prepared-v1.json`;
+6. acquisire la manutenzione, congelare l'inventario autenticato delle
+   generazioni correnti e derivare record e `transition_id`;
+7. registrare `PREPARED` legando richiesta, transazione di provisioning,
+   predecessore, distribuzione, insieme target, byte attesi, inventario e
+   `transition_id`, poi pubblicare l'insieme con rinomina senza sostituzione;
+8. costruire dal nuovo insieme e dalla distribuzione verificata un nucleo di
+   nascita sigillato e limitato alla riattestazione, senza installarlo come
+   nucleo ordinario;
+9. riattestare ogni generazione corrente nel percorso V2 mediante una nuova
    ricevuta Producer, poi rileggere entrambe le rappresentazioni;
-9. ripetere il censimento e pretendere identita' identiche al punto 7;
-10. pubblicare il record di transizione append-only;
-11. emettere e pubblicare il certificato F4 che lega `transition_id`,
+10. ripetere il censimento e pretendere identita' identiche al punto 6;
+11. registrare `RECEIPTS_COMPLETE`, pubblicare il record di transizione
+    append-only e preparare payload e firma del certificato;
+12. registrare `CERTIFICATE_READY`, rileggere record, payload e firma;
+13. pubblicare il certificato F4 V2 che lega `transition_id`,
     `request_id`, build e impronte delle ricevute;
-12. pubblicare build e testa F4 append-only;
-13. sostituire atomicamente il solo `required-head-v1.bin`;
-14. rileggere catena, record, insieme, distribuzione, inventario e ricevute;
-15. chiudere il giornale senza cancellare oggetti finali.
+14. pubblicare build e testa F4 append-only;
+15. sostituire atomicamente il solo `required-head-v1.bin`;
+16. rileggere catena, record, insieme, distribuzione, inventario e ricevute;
+17. chiudere il giornale senza cancellare oggetti finali.
 
 Nel primo passaggio, `CERTIFICATE_PUBLISHED` conserva il punto di non ritorno
 dal regime precedente gia' stabilito dalla roadmap: un recupero deve
 completare. Negli aggiornamenti successivi il punto di non ritorno e' il
-confronto-e-scambio del punto 13. La selezione del contesto cambia sempre e
-soltanto col punto 13; non esiste un commutatore parallelo.
+confronto-e-scambio del punto 15. La selezione del contesto cambia sempre e
+soltanto col punto 15; non esiste un commutatore parallelo.
 
 ## 8. Stati e ripresa
 
-Il giornale F4 append-only viene esteso, non affiancato da un secondo registro,
-e usa gli stati:
+Il giornale F4 append-only mantiene senza aggiunte o rimozioni i sette stati
+esistenti:
 
 ```text
 PREPARED
-SET_PUBLISHED
 RECEIPTS_COMPLETE
-CONTEXT_BOUND
+CERTIFICATE_READY
 CERTIFICATE_PUBLISHED
 BUILD_VERIFIED
 HEAD_REQUIRED
 PREFLIGHT_VERIFIED
 ```
 
+I record V1 e V2 storici restano esatti. Un record coordinatore V3 aggiunge ai
+campi V2 le identita' `provisioning_transaction_id`, `previous_set_id`,
+`previous_admission_context_id`, `previous_context_epoch`, `target_set_id`,
+`target_admission_context_id`, `target_context_epoch`,
+`target_context_material_sha256`, `target_set_json_sha256`,
+`context_transition_id` e `current_inventory_hash`.
+
+La transazione di provisioning V2 e' interna e recuperabile: il suo header lega
+`request_id`, build verificata, insieme precedente e inventario delle sorgenti;
+non accetta questi valori dal chiamante e non pubblica `prepared-v1.json`.
+Prima di `PREPARED` mantiene lo staging e il proprio inventario durevole. Il
+coordinatore scrive `PREPARED` soltanto quando set, materiale, record di
+transizione e inventario corrente hanno identita' complete; da quel momento
+ogni ripresa accetta soltanto la stessa transazione e gli stessi byte.
+
 | ultimo stato durevole | stato osservato | azione |
 |---|---|---|
 | nessuno | testa precedente valida | nuova transazione soltanto con autorizzazione completa |
-| `PREPARED` | insieme non pubblicato | riprendere soltanto i byte inventariati |
-| `SET_PUBLISHED` | insieme nuovo concordante, testa vecchia | completare le riattestazioni; non rimuovere l'insieme |
-| `RECEIPTS_COMPLETE` | inventario e ricevute concordanti, testa vecchia | pubblicare il record e rileggere `transition_id` |
-| `CONTEXT_BOUND` | record presente, testa vecchia | emettere il certificato con lo stesso `transition_id` e `request_id` |
+| `PREPARED` | staging o insieme target concordante, testa vecchia | pubblicare/rileggere l'insieme e completare le riattestazioni vincolate |
+| `RECEIPTS_COMPLETE` | inventario e ricevute concordanti, testa vecchia | pubblicare il record, preparare certificato e registrare le impronte |
+| `CERTIFICATE_READY` | record, payload e firma concordanti, testa vecchia | pubblicare il certificato esatto |
 | `CERTIFICATE_PUBLISHED` | certificato presente | completare build e testa; nel primo passaggio non e' ammesso il ritorno al regime precedente |
 | `BUILD_VERIFIED` | oggetti F4 riletti, selettore vecchio | pubblicare la testa e confrontare il predecessore |
 | `HEAD_REQUIRED` | selettore nuovo | completare tutte le riletture |
@@ -249,6 +302,13 @@ risultato; due richieste diverse non possono entrambe pubblicare la sequenza
 successiva. I lettori vedono una testa intera e verificata e scartano una
 lettura se il selettore cambia durante l'acquisizione.
 
+Per ogni riattestazione, `objective` e `request_id` Producer usano domini V2 e
+includono almeno `(contract_id, generation_id, transition_id,
+admission_context_id, context_epoch, source_id)`. La registrazione terminale,
+la richiesta sigillata e la ricevuta devono concordare su questi valori. Una
+richiesta V1 non viene riutilizzata per una ricevuta V2 e una seconda epoca non
+puo' consumare la richiesta della prima.
+
 ## 10. Legame con F4
 
 La distribuzione F4 usa una radice immutabile amministrativa, non `/opt/metnos`.
@@ -266,6 +326,21 @@ manifest. La build chiusa diventa avviabile soltanto se:
 Una build precedente alla testa richiesta non è un percorso di ritorno. Il
 ritorno richiede una nuova release e una nuova transizione, entrambe con
 sequenza superiore.
+
+Il caricatore produttivo autentica prima la catena richiesta e ottiene da essa
+la `VerifiedDistribution` sigillata. Solo dopo apre internamente una sessione
+in sola lettura sulla sua `installation_root`, verifica nuovamente i file
+richiesti e ricostruisce il materiale dell'insieme esatto nominato dal record.
+Non usa `config.PATH_RUNTIME`, non riceve una radice dal chiamante e ripete la
+lettura della testa dopo l'acquisizione: un cambio durante la lettura fa
+scartare l'intera acquisizione.
+
+`ContextSelectionV1` e' un risultato nominale non costruibile dal chiamante.
+Ha due soli produttori privati: il lettore della catena richiesta crea la
+selezione ordinaria; il coordinatore F4 crea una selezione staged, vincolata a
+`transition_id` e capace soltanto di riattestare. Entrambi verificano record,
+insieme e distribuzione prima di consegnare chiavi o materiale al bootstrap.
+Il bootstrap non accetta dizionari, percorsi o identita' equivalenti.
 
 ## 11. Prove richieste
 
@@ -287,7 +362,12 @@ Prima di B2 servono almeno:
 13. un solo selettore: nessuna combinazione fra testa F4 e contesto diverso;
 14. diniego di una build precedente dopo il punto di non ritorno;
 15. ritorno mediante nuova release con sequenza superiore;
-16. server completo e turni reali in copia dopo la transizione.
+16. ancora e certificato V1 storici seguiti da certificato V2, senza ripiego
+    fra codec o domini;
+17. interruzione della transazione di provisioning prima e dopo `PREPARED`,
+    con ripresa soltanto dell'inventario esatto;
+18. richiesta Producer V1 o di un'altra epoca non riutilizzabile in V2;
+19. server completo e turni reali in copia dopo la transizione.
 
 Le prove di interruzione osservano file e ricevute reali. Non è sufficiente
 avanzare una macchina di stati fittizia. La suite completa resta riservata a
@@ -312,6 +392,21 @@ Agente B:
 Le interfacce comuni vengono congelate a B1. Ogni variazione successiva richiede
 una revisione incrociata prima che uno dei due rami la usi.
 
+Le interfacce congelate sono minime:
+
+- A consegna a runtime `ContextSelectionV1`, nominale e sigillato, contenente
+  `transition_id`, `set_id`, `admission_context_id`, `context_epoch` e la
+  distribuzione verificata; B non ricostruisce la selezione;
+- B persiste e rilegge una ricevuta V2 soltanto per la coppia corrente e per
+  l'identita' di contesto contenuta nell'autorizzazione sigillata;
+- B deriva `objective` e `request_id` Producer V2 includendo la selezione di
+  contesto e ne verifica la registrazione terminale autenticata;
+- B restituisce ad A il `CurrentReceiptProof` ordinato di identita' e impronte;
+  A verifica che le identita' producano `current_inventory_hash` e le lega nel
+  certificato;
+- il lettore storico V1 resta distinto dal lettore corrente V2: nessun
+  ripiego automatico da V2 a V1 e nessuna riscrittura delle ricevute V1.
+
 ## 13. Condizione B1
 
 B1 è raggiunta soltanto quando entrambi gli agenti concordano, sugli stessi
@@ -323,5 +418,11 @@ commit, su:
 - punto di non ritorno e matrice di ripresa;
 - interfacce fra nucleo e adattamento delle dipendenze;
 - insieme minimo di prove non vacue.
+
+Poiche' la roadmap §7.3 congela oggi il certificato V1 esatto, B1 comprende
+anche un addendum alla roadmap che autorizzi il certificato V2, il record
+coordinatore V3 e la transazione di provisioning V2 appena descritti. L'addendum
+viene applicato soltanto dopo l'accettazione incrociata della stessa versione
+di questa specifica.
 
 Fino a B1 questo documento non autorizza modifiche al codice di prodotto.
