@@ -2840,3 +2840,44 @@ Restano al gruppo 7 i due punti che toccano il sistema reale: l'installazione e
 la rilettura della topologia dominante (punto 1) e l'esecuzione del piano di
 ritiro (punto 2 nella sua parte mutante). L'involucro li riceve gia' come
 osservatori, quindi la loro aggiunta non cambia questa composizione.
+
+
+### 23.38 Gruppo 7-E: il ritiro eseguito, riletto e ripetibile
+
+`runtime/executor_birth_legacy_neutralizer.py` esegue un piano che NON decide:
+la decisione resta in §23.35. La separazione regge in entrambe le direzioni —
+chi decide non tocca il disco, chi tocca il disco non sceglie.
+
+**Sotto una radice iniettata, sempre.** Un modulo che potesse scrivere in
+`/etc/systemd/system` per difetto sarebbe a un refuso di distanza dal ritirare
+il sistema vivo mentre dimostra qualcosa su una finzione. I locator sono
+relativi, e uno che esca dalla radice — anche attraverso un collegamento —
+viene rifiutato.
+
+**Mascherare e revocare, e nessuna cancellazione.** Un'unita' si maschera
+puntando il nome a `/dev/null`, la convenzione di systemd e l'unica forma che
+sopravvive a un `daemon-reload` senza essere resuscitata. Un ingresso di
+repository si RINOMINA da parte, mai si cancella: un ingresso cancellato non e'
+piu' ispezionabile, e il ritiro deve restare verificabile a posteriori.
+
+**Ripetibile.** Un ritiro interrotto e ripreso riconosce il proprio lavoro
+invece di fallire; la ricevuta pero' distingue «fatto adesso» da «trovato gia'
+fatto», e le due impronte differiscono. Chi rilegge la ricevuta sa quale delle
+due cose e' successa.
+
+**Un nome occupato non viene mai sostituito.** Se il nome tiene qualcos'altro,
+il modulo nega: quel file custodisce uno stato di cui nessuno gli ha parlato, e
+sostituirlo in silenzio lo distruggerebbe.
+
+Undici prove portabili. Un solo cambiamento di nome nel prodotto, per la stessa
+ragione del §23.30: `REVOKED_SUFFIX_V1` conteneva `SUFFIX`, parola che
+l'euristica del censimento legge come marcatore linguistico. Si chiama ora
+`RETIRED_EXTENSION_V1`, e il falso positivo sparisce perche' il nome dice la
+verita'.
+
+Perni 692/680; portable 1171 verdi; guardie e censimento verdi.
+
+**Che cosa resta al gruppo 7.** Soltanto il punto 1 — installare e rileggere la
+topologia dominante — e poi l'esecuzione reale sul server: commutazione dei
+servizi, ribaltamento del bit di imposizione, dichiarazione di F4. Tutto il
+resto e' costruito e provato in isolamento.
