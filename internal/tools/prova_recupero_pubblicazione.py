@@ -614,6 +614,40 @@ def _(base: Path) -> list[str]:
     return errori
 
 
+@caso("R15 il ramo idempotente rende durevole invece di ereditare")
+def _(base: Path) -> list[str]:
+    """A repeat must sync, not inherit a removal that may not be durable.
+
+    After a success both names are gone and the receipt is `committed`: that is
+    exactly the idempotent branch.  The previous attempt may have removed the
+    retired name and stopped before syncing the root, so returning success
+    without syncing inherits a removal nobody made durable.
+    """
+    cid = identita()
+    contenitore_incompleto(base, cid)
+    aut = autorizza(cid, base)
+    R.rimuovi_contenitore_incompleto(aut, store_root=base)
+
+    vero = os.fsync
+    sincronizzati = []
+
+    def osserva(fd):
+        sincronizzati.append(fd)
+        return vero(fd)
+
+    os.fsync = osserva
+    try:
+        esito = R.rimuovi_contenitore_incompleto(aut, store_root=base)
+    finally:
+        os.fsync = vero
+    errori = []
+    if not esito.rimosso:
+        errori.append("la ripetizione non dichiara la rimozione")
+    if not sincronizzati:
+        errori.append("il ramo idempotente non ha reso durevole nulla")
+    return errori
+
+
 def main() -> int:
     fallimenti = 0
     for nome, fn in CASI:

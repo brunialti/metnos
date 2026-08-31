@@ -730,3 +730,24 @@ codice con uno slicing per indice invece che con una sostituzione di testo
 esatto, cancellando tre definizioni che ho poi dovuto ricostruire. È la terza
 volta in questa unità: il rimedio non è stare più attento, è non usare più
 quello strumento su codice.
+
+---
+
+## 21. Quarto giro — il bordo di durabilità del ramo idempotente
+
+**R15.** Il ramo «entrambi i nomi assenti e ricevuta `committed`» ritornava
+successo senza sincronizzare la radice. Ma il tentativo precedente può aver
+rimosso il nome di ritiro e essersi fermato **prima** del proprio `fsync`: così
+la ripetizione ereditava una rimozione che nessuno aveva reso durevole. Ora il
+ramo idempotente sincronizza, e un `fsync` che fallisce fa fallire il giro, che
+resta ripetibile.
+
+Ventotto prove verdi. **E anche qui la prima versione della prova era vacua**:
+iniettavo l'interruzione contando le chiamate a `fsync`, e scattava sulla
+ricevuta invece che sulla radice, quindi il secondo giro non passava affatto dal
+ramo idempotente. Riscritta per costruire lo stato in modo diretto — una
+rimozione riuscita, poi la ripetizione — diventa rossa se si toglie il `fsync`.
+
+È la seconda volta in questa unità che una mia prova negativa non esercita il
+ramo che nomina. La forma è sempre la stessa: costruisco lo stato **inducendolo**
+invece di **produrlo**, e poi non verifico di esserci arrivato.

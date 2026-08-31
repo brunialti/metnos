@@ -425,6 +425,11 @@ def rimuovi_contenitore_incompleto(
                 # both names gone means a rename that FAILED, and calling that
                 # success is how a failure becomes a completed recovery.
                 if concorda(registrata, "committed"):
+                    # The previous attempt may have removed the retired name
+                    # and stopped before syncing the root: returning success
+                    # here would inherit a removal that is not yet durable.
+                    # A failing sync fails the round, which stays repeatable.
+                    os.fsync(fd_radice)
                     return EsitoRecupero(
                         autorizzazione.contract_id.value,
                         autorizzazione.storage_key, True,
