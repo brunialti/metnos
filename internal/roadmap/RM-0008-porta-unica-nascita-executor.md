@@ -2923,8 +2923,21 @@ gruppo 7 con quella domanda: **cosa fa questo su Windows?**
   puri: nessun accesso al filesystem, nessuna dipendenza di piattaforma.
 - `executor_birth_legacy_neutralizer` **non lo era**. Mascherare significa
   creare un collegamento a `/dev/null` che il gestore legge come «questa unita'
-  non esiste»: ne' il bersaglio ne' il gestore esistono su Windows, e le sue
-  prove sarebbero diventate rosse al giro successivo.
+  non esiste»: ne' il bersaglio ne' il gestore esistono su Windows.
+
+**Correzione, contro me stesso.** Avevo scritto che «le sue prove sarebbero
+diventate rosse al giro successivo». La misura lo smentisce: nel ciclo
+`1369f68` il lavoro Windows riporta `11 passed` per quel modulo, e i due soli
+rossi sono quelli dei fine-riga. Su quel runner `os.symlink` riesce e un
+collegamento pendente e' ammesso, quindi le prove passavano. Avevo dedotto un
+fallimento invece di misurarlo — lo stesso errore che questa sessione ha gia'
+corretto due volte.
+
+**Perche' la correzione resta giusta lo stesso, ma per un'altra ragione.** Non
+perche' fallisse, ma perche' PASSAVA senza significare nulla: un collegamento
+pendente a un bersaglio inesistente, su una macchina senza gestore che lo
+interpreti, non maschera niente. Una prova verde che non dimostra la proprieta'
+che dichiara e' peggio di una rossa, perche' non lo dice.
 
 **La correzione non e' un salto condizionale dentro il nucleo.** Il modulo nega
 su Windows PRIMA di risolvere qualunque percorso, come fa gia' il nucleo di
