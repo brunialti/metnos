@@ -60,12 +60,15 @@ Ogni unita' assegna tre funzioni:
   accettati da entrambi e aggiorna la roadmap. Il ruolo alterna fra le unita' e
   non concede autorita' tecnica superiore.
 
-Ogni agente usa un ramo e un worktree distinti. Per la prossima unita':
+Ogni agente usa un ramo e un worktree distinti. I due alberi non appartengono
+allo stesso deposito Git: il punto d'incontro e' sempre e soltanto
+`/tmp/metnos-rm0008-recovery`, nominato col percorso completo e mai con
+`origin`. Per la prossima unita':
 
-| agente | ramo | worktree | perimetro iniziale |
+| agente | deposito proprietario | ramo e worktree | perimetro iniziale |
 |---|---|---|---|
-| A, piu' risorse | `codex/rm0008-f4-transizione` | `/tmp/metnos-rm0008-f4-transizione` | nucleo della transizione, analisi trasversale, prove di modulo e revisione del perimetro B |
-| B, risorse minori | `rm0008/f4-verifica-epoca` | `/tmp/metnos-rm0008-f4-verifica` | adeguamento circoscritto dei 12 legami, prove di accettazione e revisione del perimetro A |
+| A, piu' risorse | `/opt/metnos/.git` | `codex/rm0008-f4-transizione` in `/tmp/metnos-rm0008-f4-transizione` | nucleo della transizione, analisi trasversale, prove di modulo e revisione del perimetro B |
+| B, risorse minori | `/tmp/metnos-rm0008-a-only/.git` | `rm0008/f4-verifica-epoca` in `/tmp/metnos-rm0008-f4-verifica` | adeguamento circoscritto dei 12 legami, prove di accettazione e revisione del perimetro A |
 
 Il ramo `rm0008/diagnosi-avvio` resta il riferimento chiuso della diagnosi e
 non viene usato come tavolo di lavoro concorrente.
@@ -108,7 +111,10 @@ Regole:
    incrociata e le prove mirate sulla composizione dei due rami.
 
 Ogni stato `PRONTA`, `MODIFICHE_RICHIESTE`, `ACCETTATA` o `INTEGRATA` viene
-spinto nel deposito locale di recupero. I rami di sviluppo non vengono mai
+spinto esplicitamente a `/tmp/metnos-rm0008-recovery`, usando la destinazione
+`refs/heads/<ramo-del-ruolo>`. Non si usa il nome `origin`: nell'albero A indica
+il deposito pubblico, nell'albero B indica il recupero locale. I rami di
+sviluppo non vengono mai
 spinti nel deposito GitHub pubblico: quel deposito riceve soltanto
 l'esportazione curata, dopo le relative verifiche di pubblicabilita'. I
 checkpoint intermedi restano piccoli e incrementali; non si riscrive la storia
@@ -132,9 +138,11 @@ barriera. Non chiedere a Roberto di inoltrare messaggi ordinari. Fermati prima
 di qualunque modifica al sistema in funzione.
 ```
 
-Quando entrambi gli agenti sono attivi, ciascuno controlla il ramo dell'altro
-alla fine di un proprio incremento e prima di iniziarne un altro. Non usa una
-testa letta in precedenza: rilegge sempre il commit nominato dal trailer. Se ha
+Quando entrambi gli agenti sono attivi, ciascuno acquisisce dal percorso
+`/tmp/metnos-rm0008-recovery` l'esatto riferimento del ramo dell'altro in uno
+spazio locale `refs/remotes/rm0008-peer/`, poi lo controlla alla fine di un
+proprio incremento e prima di iniziarne un altro. Non usa una testa letta in
+precedenza: rilegge sempre il commit nominato dal trailer. Se ha
 esaurito il lavoro indipendente e attende una revisione, osserva il riferimento
 locale a intervalli brevi e limitati; un cambiamento avvia subito il giro
 successivo, l'assenza di cambiamenti non produce nuovi commit.
