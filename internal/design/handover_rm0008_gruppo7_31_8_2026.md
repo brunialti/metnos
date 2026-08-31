@@ -32,6 +32,8 @@ ingressi, riavvio, due cicli di instradamento, dichiarazione di F4.
 | piano di ritiro, decisione (punto 2) | `runtime/executor_birth_legacy_retirement.py` | 12 | §23.35 |
 | evidenza del bit (punto 3) | `runtime/executor_birth_enforcement_evidence.py` | 10 | §23.36, §23.39 |
 | ritiro, esecuzione (punto 2) | `runtime/executor_birth_legacy_neutralizer.py` | 12 | §23.38, §23.40 |
+| topologia dominante (punto 1) | `runtime/executor_birth_dominant_topology.py` | 13 | §23.41 |
+| **composizione dei cinque** | `tests/portable/test_executor_birth_group7_composition.py` | 3 | §23.42 |
 | percorsi scrivibili delle unita' | `runtime/executor_birth_service_catalog.py` | — | §23.31, §23.33 |
 
 Nessuno di questi ha un chiamante produttivo: l'autorita' vive isolata finche'
@@ -39,14 +41,21 @@ l'involucro non la conia, com'e' stato per il nucleo di pubblicazione di G6-B4.
 
 ## 3. Che cosa manca
 
-- **Punto 1**, l'installazione e la rilettura della topologia dominante. Non
-  partire da zero: `install/executor_birth_systemd.py::_install_locked_core_v1`
-  ha gia' la forma giusta — `require_session()` ai due estremi, `verify()` prima
-  e dopo, confronto delle due verifiche — e installa l'albero amministrativo.
-  Il punto 1 e' la stessa forma applicata ai frammenti di unita'.
-- **L'esecuzione reale**: commutazione dei servizi, ribaltamento del letterale
-  in `closed_build_enforcement`, riavvio, dichiarazione di F4. Questa parte
-  tocca il server gestito e va concordata prima, non dedotta da questa consegna.
+**Tutti e cinque i punti dell'involucro sono costruiti, provati singolarmente e
+provati INSIEME** (§23.42). Resta soltanto cio' che tocca il sistema reale:
+
+- collegare l'involucro al giornale del coordinatore, cioe' far si' che il
+  superamento di `CERTIFICATE_READY` passi davvero di li' invece che dalla
+  transizione attuale;
+- l'esecuzione reale: installazione dei nomi definitivi in
+  `/etc/systemd/system`, commutazione dei servizi correnti, ribaltamento del
+  letterale in `closed_build_enforcement`, riavvio, due cicli di instradamento,
+  dichiarazione di F4.
+
+La seconda parte tocca il server gestito e va concordata prima, non dedotta da
+questa consegna. Per la prima, la forma da riusare e'
+`install/executor_birth_systemd.py::_install_locked_core_v1`: `require_session()`
+ai due estremi, `verify()` prima e dopo, confronto delle due verifiche.
 
 ## 4. Trappole gia' pagate — non ripagarle
 
