@@ -2,7 +2,7 @@
 
 Data: 31 agosto 2026  
 Unita': `F4-EPOCA-01`  
-Stato: proposta A, sesta versione pronta alla revisione incrociata
+Stato: proposta A, settima versione pronta alla revisione incrociata
 Ancora fattuale B: `937ba594`
 
 ## 1. Risultato richiesto
@@ -38,6 +38,10 @@ di ciclo degli executor previste in F5.
   quindi partire dalle generazioni correnti, non dai 12 legami storici;
 - diagnosi O17: il server completo parte e serve turni reali in una copia
   isolata quando il contesto concorda.
+- verifica in sola lettura del 31 agosto: la radice produttiva
+  `/var/lib/metnos/executor-birth` non esiste ancora; non esistono certificati,
+  teste o giornali F4 produttivi da mantenere compatibili. Esistono invece le
+  ricevute V1 del negozio dei contratti e restano storiche.
 
 Ne consegue che non sono ammesse tre scorciatoie: rimuovere la radice
 precedente, riscrivere `prepared-v1.json` oppure cambiare l'epoca dentro
@@ -117,20 +121,15 @@ current_inventory_hash
 ```
 
 `transition_id` e' il digest con dominio dei byte canonici del record senza il
-campo omonimo. Il certificato V1 e la sua ancora esistente restano byte per byte
-immutati. Il primo passaggio reale emette invece un certificato V2, con dominio
-di firma e dominio dell'identificativo V2 distinti, che contiene esattamente
-tutti i campi V1 piu' `context_transition_id`,
-`dominant_startup_receipt` e `schema_version=2`. Usa la
-stessa autorita' gia' circoscritta allo scopo ownership-cutover: non nasce una
-chiave e non si amplia lo scopo. Il verificatore sceglie il codec dal formato
-canonico e non prova un formato come ripiego dell'altro.
+campo omonimo. Prima del primo passaggio reale, roadmap e codec del certificato
+V1 vengono emendati insieme: il payload esatto aggiunge i due campi obbligatori
+`context_transition_id` e `dominant_startup_receipt`. Schema, dominio di firma,
+dominio di `cutover_id`, autorita' e nomi dei file restano V1. Non esiste un
+payload produttivo precedente da decodificare e non nasce un codec alternativo.
 
-La testa firmata, il suo codec V1 e `required-head-v1.bin` restano invariati:
-`cutover_id` puo' nominare un certificato V1 storico oppure un V2. La catena
-verifica V1 per l'ancora e V2 per ogni passaggio che seleziona un contesto; un
-V1 nuovo dopo l'ancora non puo' rendere avviabile una distribuzione che richiede
-la transizione.
+La testa firmata, il suo codec V1 e `required-head-v1.bin` restano invariati.
+Un certificato privo di uno dei due nuovi campi e' semplicemente invalido: il
+verificatore non prova una forma precedente come ripiego.
 
 Il lettore verifica la catena completa
 `required-head -> certificato -> context_transition_id -> record -> insieme`.
@@ -151,7 +150,7 @@ conteggio non partecipa come autorita' separata.
 
 `dominant_startup_receipt` e' il digest restituito dall'involucro del gruppo 7
 dopo la seconda lettura concordante sotto deployment lock, startup esclusivo e
-manutenzione. I suoi binding V2 aggiungono `context_transition_id` ai fatti V1
+manutenzione. I suoi binding V1 aggiungono `context_transition_id` ai fatti
 gia' osservati. Il coordinatore accetta quel digest soltanto nella chiamata
 interna dell'involucro, lo rende durevole in `CERTIFICATE_READY` e lo include
 nel certificato: una ripresa deve ripresentare il valore identico.
@@ -239,7 +238,7 @@ manutenzione e nascita. La sequenza è:
     consumare la capacita', costruire payload e firma e registrare
     `CERTIFICATE_READY` legando la sua ricevuta, il record, il payload e la
     firma;
-13. pubblicare il certificato F4 V2 che lega `transition_id`,
+13. pubblicare il certificato F4 V1 emendato che lega `transition_id`,
     `request_id`, build e impronte delle ricevute;
 14. pubblicare build e testa F4 append-only;
 15. sostituire atomicamente il solo `required-head-v1.bin`;
@@ -267,8 +266,8 @@ HEAD_REQUIRED
 PREFLIGHT_VERIFIED
 ```
 
-I record V1 e V2 storici restano esatti. Un record coordinatore V3 aggiunge ai
-campi V2 le identita' `provisioning_transaction_id`, `previous_set_id`,
+Il record coordinatore V2 viene emendato prima del primo uso produttivo e
+aggiunge le identita' `provisioning_transaction_id`, `previous_set_id`,
 `previous_admission_context_id`, `previous_context_epoch`, `target_set_id`,
 `target_admission_context_id`, `target_context_epoch`,
 `target_context_material_sha256`, `target_set_json_sha256`,
@@ -374,8 +373,8 @@ Prima di B2 servono almeno:
 13. un solo selettore: nessuna combinazione fra testa F4 e contesto diverso;
 14. diniego di una build precedente dopo il punto di non ritorno;
 15. ritorno mediante nuova release con sequenza superiore;
-16. ancora e certificato V1 storici seguiti da certificato V2, senza ripiego
-    fra codec o domini;
+16. certificato V1 emendato completo; una forma senza i nuovi campi e un campo
+    extra vengono rifiutati senza ripiego;
 17. interruzione della transazione di provisioning prima e dopo `PREPARED`,
     con ripresa soltanto dell'inventario esatto;
 18. richiesta Producer V1 o di un'altra epoca non riutilizzabile in V2;
@@ -418,8 +417,8 @@ Le interfacce congelate sono minime:
 - B restituisce ad A il `CurrentReceiptProof` ordinato di identita' e impronte;
   A verifica che le identita' producano `current_inventory_hash` e le lega nel
   certificato;
-- A estende l'involucro dominante in V2 con `context_transition_id` e lega la
-  ricevuta consumata nel record coordinatore e nel certificato V2;
+- A estende l'involucro dominante V1 con `context_transition_id` e lega la
+  ricevuta consumata nel record coordinatore e nel certificato V1;
 - il lettore storico V1 resta distinto dal lettore corrente V2: nessun
   ripiego automatico da V2 a V1 e nessuna riscrittura delle ricevute V1.
 
@@ -436,9 +435,9 @@ commit, su:
 - insieme minimo di prove non vacue.
 
 Poiche' la roadmap §7.3 congela oggi il certificato V1 esatto, B1 comprende
-anche un addendum alla roadmap che autorizzi il certificato V2, il record
-coordinatore V3 e la transazione di provisioning V2 appena descritti. L'addendum
-viene applicato soltanto dopo l'accettazione incrociata della stessa versione
-di questa specifica.
+anche un addendum alla roadmap che emendi il certificato V1, il record
+coordinatore V2 e l'involucro dominante V1 e autorizzi la transazione di
+provisioning V2 appena descritta. L'addendum viene applicato soltanto dopo
+l'accettazione incrociata della stessa versione di questa specifica.
 
 Fino a B1 questo documento non autorizza modifiche al codice di prodotto.
