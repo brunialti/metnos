@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from contract_store import ContractStoreError, PublicationResult
+from contract_store import BirthCommitBindings, ContractStoreError, PublicationResult
+import contract_store as contract_store_module
 from executor_birth import observe_candidate
 from executor_birth_identity import (
     AdmissionContextV1, ContextComponent, ExecutorOrigin, RevisionAuthor,
@@ -22,7 +23,8 @@ from executor_birth_predecessor import (
     AdmissionContextPin, predecessor_snapshot, revision_facts_id,
 )
 from executor_birth_operational import (
-    BirthRequest, _assemble_birth_runtime_bundle, _birth_executor_for_test,
+    BirthRequest, _BirthCommitPublisher, _assemble_birth_runtime_bundle,
+    _birth_executor_for_test,
     _install_birth_runtime_bundle, _runtime_bundle_snapshot, _sealed_core_for_test,
     birth_executor, candidate_source_id,
     approval_scope,
@@ -121,6 +123,7 @@ def _fixture(tmp_path: Path, publisher):
     db = tmp_path / "producer.sqlite"
     register_producer_receipt(encoded, registry=registry, now=NOW, db_path=db)
     admission_private = Ed25519PrivateKey.generate()
+    author_private = Ed25519PrivateKey.generate()
     production = _assemble_production_dependencies()
     shadow = _sealed_dependencies_for_test(
         property_runner=_AttestedPropertyRunner(),
@@ -138,7 +141,8 @@ def _fixture(tmp_path: Path, publisher):
         shadow_dependencies=shadow, admission_private_key=admission_private,
         admission_public_key=admission_private.public_key(),
         admission_key_id="birth-1", policy_version="birth-policy-v1",
-        now=lambda: NOW, publisher=publisher, publisher_options={},
+        now=lambda: NOW, publisher=publisher,
+        publisher_options={"trusted_publics": (("author", author_private.public_key()),)},
     )
     ref = ManifestRef(
         contract_id, ManifestOrigin.USER, ManifestStatus.ADMITTED,
@@ -161,6 +165,50 @@ def test_public_request_cannot_supply_trust_or_publication_authorities():
     assert "_core" not in inspect.signature(birth_executor).parameters
 
 
+def test_productive_commit_publisher_fixes_all_store_authorities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    author = Ed25519PrivateKey.generate()
+    admission = Ed25519PrivateKey.generate()
+    trusted = (("author", author.public_key()),)
+    publisher = _BirthCommitPublisher(
+        author_private_key=author,
+        trusted_publics=trusted,
+        admission_verifier_keys={"birth-1": admission.public_key()},
+        options={},
+    )
+    forged_verifier = lambda _encoded: object()
+    bindings = BirthCommitBindings(
+        candidate_id=D,
+        semantic_core_id=D,
+        admission_context_id=D,
+        predecessor_id=None,
+        issuer=lambda *_args: b"forged",
+        verifier=forged_verifier,
+    )
+    sentinel = object()
+
+    def commit(ref, **values):
+        assert ref is sentinel
+        assert values["private_key"] is author
+        assert values["trusted_publics"] == trusted
+        fixed = values["birth_bindings"]
+        assert fixed.verifier is not forged_verifier
+        with pytest.raises(Exception):
+            fixed.verifier(b"not-an-admission-receipt")
+        return sentinel
+
+    monkeypatch.setattr(contract_store_module, "_commit_birth_snapshot", commit)
+
+    assert publisher(sentinel, birth_bindings=bindings) is sentinel
+    with pytest.raises(ValueError, match="birth_publisher_authority_exposed"):
+        publisher(
+            sentinel,
+            birth_bindings=bindings,
+            private_key=Ed25519PrivateKey.generate(),
+        )
+
+
 def test_approval_is_resolved_from_observed_facts_per_request(tmp_path):
     seen = []
     request, core = _fixture(tmp_path, lambda *_args, **_kwargs: None)
@@ -177,23 +225,23 @@ def test_admitted_pipeline_commits_receipt_and_replays_verified_postcondition(tm
     calls = []
 
     def publisher(ref, *, expected_generation_id, snapshot, request_id,
-                  birth_authorization, **_options):
+                  birth_bindings, **_options):
         calls.append(snapshot)
         assert expected_generation_id is None
-        assert birth_authorization.predecessor_id is None
-        assert birth_authorization.predecessor_snapshot_id == predecessor_snapshot(
+        assert birth_bindings.predecessor_id is None
+        assert birth_bindings.predecessor_snapshot_id == predecessor_snapshot(
             None, "absent", None,
         ).snapshot_id
-        assert birth_authorization.revision_facts_id == revision_facts_id(
+        assert birth_bindings.revision_facts_id == revision_facts_id(
             RevisionFacts(first_birth=True),
         )
-        assert birth_authorization.context_epoch == D
-        assert birth_authorization.context_epoch_resolver() == D
+        assert birth_bindings.context_epoch == D
+        assert birth_bindings.context_epoch_resolver() == D
         generation = "sha256:" + "3" * 64
         journal = "sha256:" + "4" * 64
-        encoded = birth_authorization.issuer(generation, {}, request_id, journal)
-        receipt = birth_authorization.verifier(encoded)
-        assert receipt.candidate_id == birth_authorization.candidate_id
+        encoded = birth_bindings.issuer(generation, {}, request_id, journal)
+        receipt = birth_bindings.verifier(encoded)
+        assert receipt.candidate_id == birth_bindings.candidate_id
         assert receipt.birth_request_id == request_id
         assert receipt.check_results["authoring_install_journal_v1"].evidence_hash == journal
         return PublicationResult(ref.contract_id, expected_generation_id, generation,
@@ -216,9 +264,9 @@ def test_admitted_pipeline_commits_receipt_and_replays_verified_postcondition(tm
 def test_complete_pipeline_rejects_context_epoch_toctou(tmp_path):
     epoch = {"value": D}
 
-    def publisher(_ref, *, birth_authorization, **_kwargs):
+    def publisher(_ref, *, birth_bindings, **_kwargs):
         epoch["value"] = "sha256:" + "9" * 64
-        if birth_authorization.context_epoch_resolver() != birth_authorization.context_epoch:
+        if birth_bindings.context_epoch_resolver() != birth_bindings.context_epoch:
             raise ContractStoreError("birth_context_changed")
         raise AssertionError("changed epoch accepted")
 
@@ -232,9 +280,9 @@ def test_complete_pipeline_rejects_context_epoch_toctou(tmp_path):
 def test_complete_pipeline_forwards_predecessor_pin_for_pointer_toctou(tmp_path):
     expected_pin = predecessor_snapshot(None, "absent", None).snapshot_id
 
-    def publisher(_ref, *, birth_authorization, **_kwargs):
-        assert birth_authorization.predecessor_id is None
-        assert birth_authorization.predecessor_snapshot_id == expected_pin
+    def publisher(_ref, *, birth_bindings, **_kwargs):
+        assert birth_bindings.predecessor_id is None
+        assert birth_bindings.predecessor_snapshot_id == expected_pin
         # This is the failure emitted by the productive publisher when its
         # locked reconstruction observes a pointer different from this pin.
         raise ContractStoreError("birth_predecessor_changed")
@@ -275,11 +323,11 @@ def test_rotation_issues_new_terminal_and_admission_signatures_only_with_active_
     admission_key_ids = []
 
     def publisher(ref, *, expected_generation_id, request_id,
-                  birth_authorization, **_kwargs):
-        encoded = birth_authorization.issuer(
+                  birth_bindings, **_kwargs):
+        encoded = birth_bindings.issuer(
             "sha256:" + "3" * 64, {}, request_id, "sha256:" + "4" * 64,
         )
-        admission_key_ids.append(birth_authorization.verifier(encoded).authentication.key_id)
+        admission_key_ids.append(birth_bindings.verifier(encoded).authentication.key_id)
         return PublicationResult(
             ref.contract_id, expected_generation_id, "sha256:" + "3" * 64,
             "commit_birth_snapshot", False,
@@ -524,11 +572,50 @@ def test_runtime_bundle_install_is_atomic_and_install_once(monkeypatch, tmp_path
     assert outcomes.count("installed") == 1
     assert outcomes.count("birth_runtime_bundle_already_installed") == 1
     snapshot = _runtime_bundle_snapshot()
-    assert snapshot is bundle
-    assert snapshot.core is core
-    assert snapshot.producer_factories[capability](
-        intent_api.BirthIntent(tmp_path, request.manifest_ref.contract_id, "test")
-    ) is request
+    assert snapshot is bundle.verification
+    assert not hasattr(snapshot, "core")
+    assert not hasattr(snapshot, "execute_request")
+    assert not hasattr(snapshot, "reattest_current")
+    assert not hasattr(snapshot, "producer_factories")
+
+
+def test_public_runtime_snapshot_cannot_reach_private_keys_or_core(
+    monkeypatch, tmp_path,
+):
+    request, core = _fixture(tmp_path, lambda *_args, **_kwargs: None)
+    capability = intent_api._producer_capabilities_for_bootstrap()[0]
+    state = _assemble_birth_runtime_bundle(
+        core, {capability: lambda _intent: request},
+    )
+    monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
+    _install_birth_runtime_bundle(state)
+    public = _runtime_bundle_snapshot()
+
+    seen: set[int] = set()
+
+    def walk(value: object) -> None:
+        identity = id(value)
+        if identity in seen:
+            return
+        seen.add(identity)
+        assert not isinstance(value, Ed25519PrivateKey)
+        assert value.__class__.__name__ not in {"_BirthCore", "_BirthRuntimeState"}
+        if isinstance(value, dict):
+            for key, item in value.items():
+                walk(key)
+                walk(item)
+        elif isinstance(value, (tuple, list, set, frozenset)):
+            for item in value:
+                walk(item)
+        for slot in getattr(value.__class__, "__slots__", ()):
+            if isinstance(slot, str) and hasattr(value, slot):
+                walk(getattr(value, slot))
+        closure = getattr(value, "__closure__", None)
+        if closure:
+            for cell in closure:
+                walk(cell.cell_contents)
+
+    walk(public)
 
 
 def test_racing_readers_never_observe_a_partial_runtime(monkeypatch, tmp_path):
@@ -542,9 +629,7 @@ def test_racing_readers_never_observe_a_partial_runtime(monkeypatch, tmp_path):
     def read() -> None:
         barrier.wait()
         snapshot = _runtime_bundle_snapshot()
-        observations.append(None if snapshot is None else (
-            snapshot.core, snapshot.producer_factories.get(capability),
-        ))
+        observations.append(snapshot)
 
     readers = [threading.Thread(target=read) for _ in range(8)]
     for reader in readers:
@@ -553,8 +638,9 @@ def test_racing_readers_never_observe_a_partial_runtime(monkeypatch, tmp_path):
     _install_birth_runtime_bundle(bundle)
     for reader in readers:
         reader.join()
-    assert all(item is None or (item[0] is core and callable(item[1]))
-               for item in observations)
+    assert all(
+        item is None or item is bundle.verification for item in observations
+    )
 
 
 def test_forged_actor_cannot_be_expressed_or_select_another_capability(tmp_path):

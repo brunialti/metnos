@@ -82,10 +82,9 @@ _MAPPING_TMPL = (
 
 def _human_review_concepts() -> frozenset:
     """Concepts a model must never localize, from registry policy."""
-    try:
-        return _dl.manual_review_concepts()
-    except Exception:  # noqa: BLE001 — better translate less than translate badly
-        return frozenset()
+    # Failure to read this boundary must abort the fire. Returning an empty set
+    # would authorize the model to translate consent and safety grammar.
+    return _dl.manual_review_concepts()
 
 
 def _extract_json(raw: str):
@@ -160,7 +159,7 @@ def task_detection_translate_pending(payload: dict | None = None) -> dict:
     _dl.ensure_seeded()
     # Exclude in SQL, not in the loop: the window is bounded, and the rows
     # that can never be translated are as many as the window itself (18 regex
-    # concepts + the consent gates, against a default CAP of 20). Skipping
+    # concepts + manual-review resources, against a default CAP of 20). Skipping
     # them after reading lets them occupy every slot at every fire, and the
     # daemon converges on doing nothing while the work it could do waits
     # behind them. The loop keeps its own checks as a backstop.
@@ -174,8 +173,11 @@ def task_detection_translate_pending(payload: dict | None = None) -> dict:
     # not the same report (§2.8). Count them once, without a window.
     _held = _dl.list_pending(limit=0)
     held_regex = sum(1 for r in _held if r["kind"] in _excluded_kinds)
+    held_manual_review = sum(1 for r in _held
+                             if r["concept"] in _excluded_concepts
+                             and r["kind"] not in _excluded_kinds)
     held_consent = sum(1 for r in _held
-                       if r["concept"] in _excluded_concepts
+                       if r["concept"] in {"confirm.yes", "confirm.no"}
                        and r["kind"] not in _excluded_kinds)
     ok = err = skipped = 0
     events: list[dict] = []
@@ -191,14 +193,12 @@ def task_detection_translate_pending(payload: dict | None = None) -> dict:
                            "kind": kind, "result": "skip_regex_manual"})
             continue
         if concept in _human_review_concepts():
-            # These concepts decide whether a consent was given. A form
-            # invented by a model and never read back by anyone does not
-            # produce a missed recognition here: it produces a yes the user
-            # never said. They stay with a person; the union with it/en keeps
-            # the new language usable through loanwords («ok», «yes», «no»).
+            # These concepts affect consent or privileged-command polarity.
+            # A plausible model-generated form can invert authority, so it
+            # remains pending until an explicit human-reviewed write.
             skipped += 1
             events.append({"ts": _now_iso(), "concept": concept, "lang": tgt,
-                           "kind": kind, "result": "skip_consent_manual"})
+                           "kind": kind, "result": "skip_manual_review"})
             continue
         try:
             source_payload = json.loads(row["source_payload"]) \
@@ -239,6 +239,8 @@ def task_detection_translate_pending(payload: dict | None = None) -> dict:
                      # different facts and a single number would hide one.
                      "skipped_regex": skipped,
                      "held_regex": held_regex,
+                     "held_manual_review": held_manual_review,
+                     # Backward-compatible, now semantically exact subset.
                      "held_consent": held_consent,
                      "tier_used": tier},
     }

@@ -112,6 +112,68 @@ class TestPrefilterShellIntent:
             f"admin non dovrebbe stare in top-3 di una query mail, top-3: {top3}"
         )
 
+    @pytest.mark.parametrize("command", ["ping", "traceroute", "dig", "whois"])
+    def test_safety_grammar_command_keeps_admin_as_generic_fallback(
+            self, seeded_db, command):
+        from loader import load_catalog
+        from prefilter import rank_adaptive
+
+        catalog = load_catalog(verify=False, include_synth=False)
+        selected, _ = rank_adaptive(
+            f"esegui {command} verso example.net",
+            catalog, k_min=3, k_max=8, llm_call=None,
+        )
+        assert "admin" in [executor.name for executor in selected]
+
+    def test_live_ping_wording_exposes_guarded_admin_fallback(self, seeded_db):
+        from loader import load_catalog
+        from prefilter import rank_adaptive
+
+        catalog = load_catalog(verify=False, include_synth=False)
+        selected, _ = rank_adaptive(
+            "fai ping a pc-roberto",
+            catalog, k_min=3, k_max=8, llm_call=None,
+        )
+        assert "admin" in [executor.name for executor in selected]
+
+    def test_live_ping_admin_survives_proposer_verb_filter(self, seeded_db):
+        """Il filtro del verbo non deve annullare la selezione di sicurezza."""
+        from engine.proposer import SimpleProposer
+        from engine.types import Intent
+        from loader import load_catalog
+        from prefilter import rank_adaptive
+
+        catalog = load_catalog(verify=False, include_synth=False)
+        selected, _ = rank_adaptive(
+            "fai ping a 192.168.1.137",
+            catalog, k_min=3, k_max=8, llm_call=None,
+        )
+        pool = [executor.name for executor in selected]
+        assert "admin" in pool
+
+        effective = SimpleProposer()._effective_pool(
+            query="fai ping a 192.168.1.137",
+            intent=Intent(
+                kind="action", verb="run", object="processes",
+                confidence=1.0, lang="it",
+            ),
+            pool=pool,
+            catalog=list(catalog),
+            exclude_tools=(),
+        )
+        assert "admin" in effective
+
+    def test_message_ping_does_not_expose_admin(self, seeded_db):
+        from loader import load_catalog
+        from prefilter import rank_adaptive
+
+        catalog = load_catalog(verify=False, include_synth=False)
+        selected, _ = rank_adaptive(
+            "mandami un ping", catalog, k_min=3, k_max=8, llm_call=None,
+        )
+        names = [executor.name for executor in selected]
+        assert "admin" not in names
+
 
 # ── 3-4. admin invoke() flow ──────────────────────────────────────────
 
@@ -238,6 +300,32 @@ class TestAdminInvokeFlow:
 # ── 5. Cap-pending integration (light) ────────────────────────────────
 
 class TestCapPendingAdminApproval:
+    def test_runtime_dispatches_admin_in_process_and_builds_pending(
+            self, seeded_db):
+        """Il percorso reale non deve avviare admin.py come subprocess."""
+        from agent_runtime import invoke_tool_by_name
+        from loader import load_catalog
+
+        catalog = list(load_catalog(verify=False, include_synth=False))
+        obs = invoke_tool_by_name(
+            "admin",
+            {"intent": "fammi un cowsay",
+             "command_proposed": "cowsay ciao"},
+            catalog=catalog,
+            actor="host",
+            channel="http",
+        )
+
+        assert obs["ok"] is True, obs
+        assert obs["decision"] == "approval_required"
+        proposal = obs["expandable_caps"][0]
+        assert proposal["kind"] == "admin_approval"
+        assert proposal["args_original"] == {
+            "intent": "fammi un cowsay",
+            "command_proposed": "cowsay ciao",
+        }
+        assert proposal["args_suggested"]["actor_consent_token"]
+
     def test_proposal_kind_is_admin_approval(self, seeded_db, monkeypatch,
                                               tmp_path):
         """Quando admin emette approval_required, il runtime salva un

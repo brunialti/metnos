@@ -408,11 +408,16 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
 
 def reattest_current_generation(request: ReattestationRequest) -> ReattestationResult:
     """Run productive reattestation using only the installed sealed runtime."""
-    from executor_birth_operational import _runtime_bundle_snapshot
-    bundle = _runtime_bundle_snapshot()
-    if bundle is None:
-        raise BirthReattestationError("birth_runtime_bundle_unavailable")
-    return _execute(request, _assemble_reattestation_core(bundle.core))
+    from executor_birth_operational import _execute_installed_reattestation
+    try:
+        result = _execute_installed_reattestation(request)
+    except RuntimeError as exc:
+        raise BirthReattestationError(
+            "birth_runtime_bundle_unavailable",
+        ) from exc
+    if not isinstance(result, ReattestationResult):
+        raise BirthReattestationError("birth_reattestation_result_invalid")
+    return result
 
 
 def _reattest_current_for_test(

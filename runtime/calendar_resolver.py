@@ -19,26 +19,19 @@ Cache TTL per non ripetere la list nello stesso giro/sessione.
 """
 from __future__ import annotations
 
-import re
 import time
 from typing import Optional
+
+import detection_lexicon as _detlex
+import detection_lexicon_seed_resolvers as _resolver_seed
 
 # Tool di evento su cui il calendario è un asse di configurazione.
 _EVENT_TOOLS = frozenset({"create_events", "read_events", "delete_events"})
 
 # Alias che significano "primary" (coerente con google_workspace._CAL_ID_ALIASES):
 # se l'arg vale uno di questi NON è un target esplicito → si applica la policy.
-_PRIMARY_ALIASES = frozenset({
-    "", "primary", "default", "me", "self", "roberto", "user", "utente",
-})
-_ALL_ALIASES = frozenset({"all", "tutti"})
-
-# Trigger NL: la parola "calendar*" (calendario/calendari/calendar/calendars).
-_CAL_WORD = re.compile(r"\bcalendar\w*", re.IGNORECASE)
-# "tutti i calendari" / "ogni calendario" / "all calendars" (solo read).
-_ALL_CALS = re.compile(
-    r"\b(tutti i calendari|ogni calendario|all calendars|every calendar)\b",
-    re.IGNORECASE)
+_PRIMARY_CANONICAL = frozenset({"", "primary"})
+_ALL_CANONICAL = frozenset({"all"})
 
 _CACHE: dict = {"ts": 0.0, "owned": None}
 _TTL_S = 120.0
@@ -111,12 +104,23 @@ def resolve_calendar(tool: str, args: dict, query: str) -> dict:
         return args
     # calendar_id bare-name (es. LLM emette "lavoro" come id): candidato target
     # da risolvere fra gli owned, NON da passare grezzo al backend.
-    explicit_name = cl if (cl and cl not in _PRIMARY_ALIASES
-                           and cl not in _ALL_ALIASES) else None
+    _resolver_seed.ensure_registered()
+    lexicon = _detlex.mapping("resolver.calendar")
+    primary_aliases = _PRIMARY_CANONICAL | {
+        str(form).casefold() for form in lexicon.get("primary_alias", ())
+    }
+    all_aliases = _ALL_CANONICAL | {
+        str(form).casefold() for form in lexicon.get("all_alias", ())
+    }
+    explicit_name = cl if (cl and cl not in primary_aliases
+                           and cl not in all_aliases) else None
 
     ql = (query or "").lower()
     # "tutti i calendari" (alias arg o frase) → aggregato, solo lettura.
-    if tool == "read_events" and (cl in _ALL_ALIASES or _ALL_CALS.search(ql)):
+    all_request = _detlex.match_any(
+        lexicon.get("all_request", ()), ql, mode="word",
+    )
+    if tool == "read_events" and (cl in all_aliases or all_request):
         out = dict(args)
         out["calendar_id"] = "all"
         return out
@@ -126,7 +130,8 @@ def resolve_calendar(tool: str, args: dict, query: str) -> dict:
     matched = None
     if explicit_name:
         matched = _match_owned_name(explicit_name)
-    if not matched and _CAL_WORD.search(ql):
+    if not matched and _detlex.match_any(
+            lexicon.get("calendar_word", ()), ql, mode="word"):
         matched = _match_owned_in_query(ql)
 
     out = dict(args)

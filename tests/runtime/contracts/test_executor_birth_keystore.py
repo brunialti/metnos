@@ -14,6 +14,7 @@ from executor_birth_keystore import (
     load_birth_keystore,
     raw_public_key,
 )
+import executor_birth_keystore as keystore_module
 
 
 def _private_raw(key: Ed25519PrivateKey) -> bytes:
@@ -242,3 +243,29 @@ def test_missing_store_fails_closed_and_never_generates_files(tmp_path: Path) ->
     with pytest.raises(BirthKeyStoreError, match="birth_keystore_unavailable"):
         load_birth_keystore(root)
     assert not root.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="descriptor-relative POSIX boundary")
+def test_root_swap_during_load_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "birth-keys"
+    _provision(root, [Ed25519PrivateKey.generate()])
+    moved = tmp_path / "moved-birth-keys"
+    original = keystore_module._PosixStoreReader.read
+    swapped = False
+
+    def read(reader, relative: str, *, limit: int) -> bytes:
+        nonlocal swapped
+        payload = original(reader, relative, limit=limit)
+        if relative == "keystore.json" and not swapped:
+            swapped = True
+            root.rename(moved)
+            _provision(root, [Ed25519PrivateKey.generate()])
+        return payload
+
+    monkeypatch.setattr(keystore_module._PosixStoreReader, "read", read)
+    with pytest.raises(BirthKeyStoreError, match="birth_keystore_unsafe"):
+        load_birth_keystore(root)
+    assert swapped

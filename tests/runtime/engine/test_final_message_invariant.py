@@ -205,6 +205,38 @@ class TestFinalMessageInvariant(unittest.TestCase):
         self.assertEqual(log.final_message, "ciao",
                          "non sovrascrivere final_message non vuoto")
 
+    def test_successful_admin_receipt_is_authoritative_for_admin_only_turn(self):
+        from agent_runtime import StepLog, TurnLog, _finalize_engine_result
+
+        log = TurnLog(
+            ts_start=0.0, turn_id="t_admin_receipt",
+            user_query="fai ping a 192.0.2.10",
+        )
+        step = StepLog(step_num=1, chosen_tool="admin", raw_args={})
+        step.result = {
+            "ok": True,
+            "decision": "execute_silent",
+            "summary": "Eseguito ping: 4 ricevuti, 0% persi.",
+        }
+
+        _finalize_engine_result(
+            log,
+            {
+                "steps": [step],
+                "match_source": "engine",
+                "final_kind": "answer",
+                "final_text": "Operazione completata.",
+                "verb": "run",
+                "error_class": "",
+            },
+            actor="host", channel="http",
+            conversation_id="", turn_id=log.turn_id,
+        )
+
+        self.assertEqual(
+            log.final_message, "Eseguito ping: 4 ricevuti, 0% persi.",
+        )
+
     def test_mutation_receipt_appends_missing_human_target_identity(self):
         from agent_runtime import TurnLog, StepLog
         log = TurnLog(

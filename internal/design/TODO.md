@@ -10,7 +10,7 @@ non restano artificialmente aperte.
 | Priorita' | Voce | Stato | Condizione di chiusura |
 |---:|---|---|---|
 | P0 MAX | **AFF-I18N-001** | analisi di dettaglio completata; revisione adversarial e approvazione richieste prima dello sviluppo | Specifica approvata, implementazione generale, migrazione, benchmark di routing e copertura i18n verificati senza regressioni. |
-| P0 | **RM-0008 / Birth Gate** | `active`; specifica candidata pronta per revisione adversarial; sviluppo non autorizzato | Porta deterministica senza bypass; solo i sintetizzati ricevono revisione semantica, test indipendenti, preesercizio e riesame frontier; certificazione interamente verde. |
+| P0 | **RM-0008 / Birth Gate** | `ready`; analisi concordata fra i revisori; restano due punti puntuali (RM-0008 §21.1: riattestazione in F4, vincolo di epoca corrente unica); sviluppo non autorizzato | Porta deterministica senza bypass; solo i sintetizzati ricevono revisione semantica, test indipendenti, preesercizio e riesame frontier; certificazione interamente verde. |
 | P0 | **SEC-001** | attesa esterna | Audit indipendente svolto da un soggetto diverso dall'implementatore; finding classificati e chiusura verificata di quelli alti o bloccanti. |
 | P1 | **EXEC-BIND-001** | analisi separata; nessuna implementazione autorizzata | Stabilire se e come legare i byte verificati a quelli eseguiti per processi locali, builtin e bundle remoti, censendo prima la chiusura reale delle dipendenze. |
 | P1 | **REL-001** | osservazione temporale | Almeno un ciclo di release con telemetria versionata e volume sufficiente per dominio; ratifica degli SLO sulla base dei dati osservati. |
@@ -21,10 +21,13 @@ alternative sono conclusi in
 soluzione KISS candidata. Il prossimo passo è una revisione adversarial, poi
 l'approvazione esplicita della specifica: questa voce non autorizza ancora lo
 sviluppo.
-`RM-0008` raccoglie le conclusioni approvate sulla Birth Gate. Deve ora essere
-confutata e corretta fino a convergenza. La porta deterministica riguarda ogni
-origine; revisione LLM, preesercizio, feedback frontier e revisione automatica
-riguardano soltanto gli executor sintetizzati.
+`RM-0008` è convergente dopo cinque giri adversarial ed è stata consolidata in
+dossier esecutivo. La porta deterministica riguarda ogni origine; revisione del
+modello, preesercizio, riesame frontier e autoriparo riguardano soltanto gli
+executor sintetizzati. I bloccanti della revisione del dossier sono
+stati risolti; restano i due punti puntuali del §21.1 (riattestazione delle
+generazioni correnti in F4, vincolo di epoca corrente unica). Le prove puntuali
+stanno in `internal/reports/rm0008-adversarial-evidence-20260825.md`.
 `EXEC-BIND-001` conserva il rischio deliberatamente escluso dalla revisione
 KISS di RM-0007. Prima di proporre copie di codice o binding di release deve
 censire file dichiarati, import, risorse locali, builtin già caricati,

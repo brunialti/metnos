@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -76,6 +77,12 @@ class ResolveTargetTests(unittest.TestCase):
         self.assertEqual(r.status, "ambiguous")
         self.assertEqual(len(r.candidates), 2)
 
+    def test_local_marker_selects_the_only_available_device(self):
+        self.casa.online = False
+        r = R("comprimi la cartella sul mio pc", [self.pc, self.casa])
+        self.assertEqual(r.target, "id-ufficio")
+        self.assertTrue(r.explicit)
+
     def test_server_marker_resets(self):
         r = R("quanti processi girano qui sul server", [self.pc])
         self.assertEqual(r.target, td.SERVER)
@@ -96,6 +103,37 @@ class ResolveTargetTests(unittest.TestCase):
         )
         self.assertEqual(r.target, "id-ufficio")
         self.assertTrue(r.explicit)
+
+    def test_weak_server_alias_never_overrides_strong_device_target(self):
+        for query in (
+            "machine status on portatile-ufficio for metnos",
+            "temperatura cpu sul portatile-ufficio con metnos",
+            "on portatile-ufficio check system status in metnos",
+        ):
+            r = R(query, [self.pc], server_aliases=["metnos"])
+            self.assertEqual(r.target, "id-ufficio")
+            self.assertTrue(r.explicit)
+
+    def test_later_weak_alias_can_revoke_the_same_server_identity(self):
+        for query in (
+            "controlla temperatura cpu sul server, ma non metnos",
+            "inspect cpu temperature on the server, but not metnos",
+        ):
+            r = R(
+                query, [self.pc], last="id-ufficio",
+                server_aliases=["metnos"],
+            )
+            self.assertEqual(r.target, "id-ufficio")
+            self.assertFalse(r.explicit)
+
+    def test_overlapping_weak_alias_does_not_erase_strong_marker_strip(self):
+        r = R(
+            "temperatura cpu sul metnos", [self.pc],
+            server_aliases=["metnos"],
+        )
+        self.assertEqual(r.target, td.SERVER)
+        self.assertTrue(r.explicit)
+        self.assertEqual(r.cleaned_query, "temperatura cpu")
 
     def test_server_identity_is_not_a_generic_placement_marker(self):
         r = R(
@@ -120,6 +158,141 @@ class ResolveTargetTests(unittest.TestCase):
         )
         self.assertEqual(r.target, "id-ufficio")
         self.assertTrue(r.explicit)
+
+    def test_coordinated_negated_server_does_not_override_sticky_italian(self):
+        r = R(
+            "non eseguire sul mio computer, o sul server",
+            [self.pc], last="id-ufficio",
+        )
+        self.assertEqual(r.status, "ambiguous")
+
+    def test_coordinated_negated_server_does_not_override_sticky_english(self):
+        r = R(
+            "do not execute on my computer, or on the server",
+            [self.pc], last="id-ufficio",
+        )
+        self.assertEqual(r.status, "ambiguous")
+
+    def test_colon_target_list_remains_negated(self):
+        for query in (
+            "non eseguire su nessuno di questi: sul mio computer o sul server",
+            "do not execute on either of these: on my computer or on the server",
+        ):
+            r = R(query, [self.pc], last="id-ufficio")
+            self.assertEqual(r.status, "ambiguous")
+
+    def test_sequence_after_comma_can_assert_server_target(self):
+        for query in (
+            "non eseguire sul mio computer, e poi esegui sul server",
+            "do not execute on my computer, and then execute on the server",
+        ):
+            r = R(query, [self.pc], last="id-ufficio")
+            self.assertEqual(r.target, td.SERVER)
+            self.assertTrue(r.explicit)
+
+    def test_strong_sequence_can_assert_a_new_named_target(self):
+        for query in (
+            "non sul server, e poi esegui sul portatile-ufficio",
+            "not on the server, and then execute on portatile-ufficio",
+        ):
+            r = R(query, [self.pc])
+            self.assertEqual(r.target, "id-ufficio")
+            self.assertTrue(r.explicit)
+
+    def test_negated_local_target_is_not_reused_from_sticky(self):
+        for query in (
+            "non eseguire sul mio pc",
+            "do not execute on my computer",
+        ):
+            r = R(query, [self.pc], last="id-ufficio")
+            self.assertEqual(r.target, td.SERVER)
+            self.assertFalse(r.explicit)
+
+    def test_negated_server_cannot_be_selected_as_default(self):
+        for query in (
+            "non eseguire sul server",
+            "do not execute on the server",
+        ):
+            r = R(query, [self.pc])
+            self.assertEqual(r.status, "ambiguous")
+
+    def test_negated_server_alias_cannot_be_selected(self):
+        for query in (
+            "non controllare temperatura cpu metnos",
+            "do not inspect cpu temperature on metnos",
+        ):
+            r = R(query, [], server_aliases=["metnos"])
+            self.assertEqual(r.status, "ambiguous")
+
+    def test_unavailable_polarity_cannot_select_a_fallback_target(self):
+        with patch(
+            "detection_lexicon.polarity_state_at",
+            return_value="unavailable",
+        ):
+            r = R("esegui sul mio pc", [self.pc], last="id-ufficio")
+        self.assertEqual(r.status, "ambiguous")
+
+    def test_negated_named_device_is_not_an_explicit_target(self):
+        for query in (
+            "non eseguire sul portatile-ufficio",
+            "do not execute on portatile-ufficio",
+        ):
+            r = R(query, [self.pc])
+            self.assertEqual(r.target, td.SERVER)
+            self.assertFalse(r.explicit)
+            sticky = R(query, [self.pc], last="id-ufficio")
+            self.assertEqual(sticky.target, td.SERVER)
+            self.assertFalse(sticky.explicit)
+
+    def test_later_asserted_named_device_is_not_hidden_by_negated_mention(self):
+        for query in (
+            "non sul portatile-ufficio, ma sul portatile-ufficio",
+            "not on portatile-ufficio, but on portatile-ufficio",
+        ):
+            r = R(query, [self.pc])
+            self.assertEqual(r.target, "id-ufficio")
+            self.assertTrue(r.explicit)
+
+    def test_later_revocation_wins_for_each_target_form(self):
+        cases = (
+            "esegui sul server, ma non eseguire sul server",
+            "execute on the server, but do not execute on the server",
+            "esegui sul portatile-ufficio, ma non eseguire sul portatile-ufficio",
+            "execute on portatile-ufficio, but do not execute on portatile-ufficio",
+            "esegui sul mio computer, ma non eseguire sul mio computer",
+            "execute on my computer, but do not execute on my computer",
+        )
+        for query in cases:
+            r = R(query, [self.pc])
+            self.assertFalse(r.explicit)
+            if "server" in query:
+                self.assertEqual(r.status, "ambiguous")
+            else:
+                self.assertEqual(r.target, td.SERVER)
+
+    def test_later_target_correction_wins_across_identities(self):
+        casa = FakeDev("id-casa", "PC-CASA")
+        r = R(
+            "esegui sul server, ma sul portatile-ufficio",
+            [self.pc, casa],
+        )
+        self.assertEqual(r.target, "id-ufficio")
+        self.assertTrue(r.explicit)
+        r = R(
+            "esegui sul portatile-ufficio, ma sul pc-casa",
+            [self.pc, casa],
+        )
+        self.assertEqual(r.target, "id-casa")
+        self.assertTrue(r.explicit)
+
+    def test_later_local_assertion_overrides_earlier_named_negation(self):
+        for query in (
+            "non sul portatile-ufficio, ma sul mio computer",
+            "not on portatile-ufficio, but on my computer",
+        ):
+            r = R(query, [self.pc])
+            self.assertEqual(r.target, "id-ufficio")
+            self.assertTrue(r.explicit)
 
     def test_sticky_reused_when_no_reference(self):
         r = R("comprimila in zip", [self.pc], last="id-ufficio")
@@ -217,6 +390,17 @@ class ReferencesDeviceTests(unittest.TestCase):
     def test_bare_name_is_not_reference(self):
         casa = FakeDev("c", "casa")
         self.assertFalse(td.references_device("trova le foto di casa", [casa]))
+
+    def test_negated_named_device_is_still_a_reference_constraint(self):
+        self.assertTrue(td.references_device(
+            "do not execute on portatile-ufficio", [self.pc],
+        ))
+
+    def test_negated_server_alias_is_still_a_reference_constraint(self):
+        self.assertTrue(td.references_device(
+            "do not inspect cpu temperature on metnos", [],
+            server_aliases=["metnos"],
+        ))
 
 
 class DeviceEligibleManifestTests(unittest.TestCase):

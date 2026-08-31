@@ -9,7 +9,7 @@ import hashlib
 import base64
 import json
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
@@ -24,8 +24,7 @@ if TYPE_CHECKING:
     from executor_birth_intent import BirthIntent, _ProducerCapability
 
 from contract_store import (
-    BirthCommitAuthorization, ManifestRef, PublicationResult,
-    catalog_admission_lock,
+    BirthCommitBindings, ManifestRef, PublicationResult, catalog_admission_lock,
 )
 from executor_birth import ObservedCandidate, observe_candidate
 from executor_birth_approval import ApprovalEvidence, ApprovalSubject, approval_evidence_hash
@@ -320,6 +319,72 @@ class _BirthCore:
         object.__setattr__(self, "publisher_options", MappingProxyType(dict(self.publisher_options)))
 
 
+class _BirthCommitPublisher:
+    """Only productive adapter from admitted Birth data to the store writer."""
+
+    __slots__ = (
+        "__author_private_key",
+        "__trusted_publics",
+        "__admission_verifier_keys",
+        "__options",
+    )
+
+    def __init__(
+        self,
+        *,
+        author_private_key: Ed25519PrivateKey,
+        trusted_publics: tuple[tuple[str, Ed25519PublicKey], ...],
+        admission_verifier_keys: Mapping[str, Ed25519PublicKey],
+        options: Mapping[str, object],
+    ) -> None:
+        fixed_options = dict(options)
+        for reserved in (
+            "private_key", "trusted_publics", "birth_bindings",
+        ):
+            if reserved in fixed_options:
+                if reserved != "trusted_publics":
+                    raise ValueError("birth_publisher_authority_exposed")
+                fixed_options.pop(reserved)
+        self.__author_private_key = author_private_key
+        self.__trusted_publics = trusted_publics
+        self.__admission_verifier_keys = MappingProxyType(
+            dict(admission_verifier_keys),
+        )
+        self.__options = MappingProxyType(fixed_options)
+
+    def __call__(
+        self,
+        ref: ManifestRef,
+        *,
+        birth_bindings: BirthCommitBindings,
+        **values: object,
+    ) -> PublicationResult:
+        from contract_store import _commit_birth_snapshot
+
+        if not isinstance(birth_bindings, BirthCommitBindings):
+            raise ValueError("birth_bindings_invalid")
+        if any(
+            name in values
+            for name in ("private_key", "trusted_publics", "birth_bindings")
+        ):
+            raise ValueError("birth_publisher_authority_exposed")
+        fixed_bindings = replace(
+            birth_bindings,
+            verifier=lambda encoded: verify_admission_receipt(
+                encoded,
+                verifier_keys=self.__admission_verifier_keys,
+            ),
+        )
+        return _commit_birth_snapshot(
+            ref,
+            private_key=self.__author_private_key,
+            trusted_publics=self.__trusted_publics,
+            birth_bindings=fixed_bindings,
+            **dict(self.__options),
+            **values,
+        )
+
+
 def _sealed_core_for_test(**values: object) -> _BirthCore:
     """Test-only trust-core constructor; the public API never accepts it."""
     values.setdefault("postcondition_verifier", lambda _request, expected, _receipt: expected)
@@ -339,15 +404,34 @@ def _assemble_birth_core(
     approval_resolver: ApprovalResolver,
     shadow_dependencies: _BirthDependencies, admission_private_key: object,
     admission_verifier_keys: Mapping[str, object], admission_key_id: str, policy_version: str,
-    now: Callable[[], datetime], publisher_options: Mapping[str, object],
+    now: Callable[[], datetime], author_private_key: object,
+    publisher_options: Mapping[str, object],
     postcondition_verifier: PostconditionVerifier,
 ) -> _BirthCore:
     """Core bootstrap assembler; productive publication is not selectable."""
-    from contract_store import authenticate_birth_predecessor, commit_birth_snapshot
+    from contract_store import authenticate_birth_predecessor
     options = dict(publisher_options)
+    if "private_key" in options:
+        raise ValueError("birth_publisher_secret_exposed")
     trusted_publics = options.get("trusted_publics")
     if trusted_publics is None:
         raise ValueError("birth_predecessor_trust_missing")
+    try:
+        trusted_publics = tuple(trusted_publics)
+        active_author = tuple(
+            public for name, public in trusted_publics if name == "author"
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("birth_author_trust_invalid") from exc
+    if (
+        not isinstance(author_private_key, Ed25519PrivateKey)
+        or len(active_author) != 1
+        or not isinstance(active_author[0], Ed25519PublicKey)
+        or author_private_key.public_key().public_bytes_raw()
+        != active_author[0].public_bytes_raw()
+    ):
+        raise ValueError("birth_author_trust_invalid")
+    options["trusted_publics"] = trusted_publics
 
     def resolve_predecessor(request: BirthRequest):
         return authenticate_birth_predecessor(
@@ -356,12 +440,20 @@ def _assemble_birth_core(
             lock_timeout=float(options.get("lock_timeout", 10.0)),
         )
 
+    publisher = _BirthCommitPublisher(
+        author_private_key=author_private_key,
+        trusted_publics=trusted_publics,
+        admission_verifier_keys=admission_verifier_keys,
+        options=options,
+    )
+
     return _BirthCore(
         producer_registry, producer_db, context_resolver, resolve_predecessor,
         context_epoch_resolver, approval_resolver,
         shadow_dependencies, admission_private_key, admission_verifier_keys,
-        admission_key_id, policy_version, now, commit_birth_snapshot, postcondition_verifier,
-        publisher_options, _CORE_SEAL,
+        admission_key_id, policy_version, now, publisher,
+        postcondition_verifier,
+        options, _CORE_SEAL,
     )
 
 
@@ -570,10 +662,13 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             issued_receipts.append(encoded)
             return encoded
 
-        authorization = BirthCommitAuthorization(
-            observed.identities.candidate_id, observed.identities.semantic_core_id,
-            observed.identities.admission_context_id, predecessor, issuer,
-            lambda encoded: verify_admission_receipt(
+        bindings = BirthCommitBindings(
+            candidate_id=observed.identities.candidate_id,
+            semantic_core_id=observed.identities.semantic_core_id,
+            admission_context_id=observed.identities.admission_context_id,
+            predecessor_id=predecessor,
+            issuer=issuer,
+            verifier=lambda encoded: verify_admission_receipt(
                 encoded, verifier_keys=core.admission_verifier_keys,
             ),
             predecessor_snapshot_id=predecessor_snapshot.snapshot_id,
@@ -594,7 +689,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         publication = core.publisher(
             request.manifest_ref, expected_generation_id=predecessor,
             snapshot=observed.snapshot, request_id=request.request_id,
-            birth_authorization=authorization, **dict(core.publisher_options),
+            birth_bindings=bindings,
         )
         _publication_binding(request, publication, predecessor)
         successful = BirthResult(request.request_id, report, publication, None)
@@ -650,44 +745,104 @@ def _peek_receipt(core: _BirthCore, request: BirthRequest, instant: datetime):
 
 
 @dataclass(frozen=True, slots=True)
-class BirthRuntimeBundle:
-    """One immutable publication unit for every productive Birth dependency."""
+class BirthRuntimeVerificationView:
+    """Public-only material needed by readers outside the Birth executor."""
 
-    core: _BirthCore
+    trusted_publics: tuple[tuple[str, Ed25519PublicKey], ...]
+    admission_verifier_keys: Mapping[str, Ed25519PublicKey]
+    producer_db: Path
+    admission_key_id: str
+
+    def __post_init__(self) -> None:
+        if (
+            not self.trusted_publics
+            or any(
+                not isinstance(name, str) or not name
+                or not isinstance(key, Ed25519PublicKey)
+                for name, key in self.trusted_publics
+            )
+            or self.admission_key_id not in self.admission_verifier_keys
+            or any(
+                not isinstance(key_id, str) or not key_id
+                or not isinstance(key, Ed25519PublicKey)
+                for key_id, key in self.admission_verifier_keys.items()
+            )
+        ):
+            raise ValueError("birth_runtime_verification_view_invalid")
+        object.__setattr__(
+            self,
+            "admission_verifier_keys",
+            MappingProxyType(dict(self.admission_verifier_keys)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _BirthRuntimeState:
+    """Private installed state; no public value retains the signing core."""
+
     producer_factories: Mapping[object, Callable[["BirthIntent"], BirthRequest]]
+    core: _BirthCore
+    reattestation_core: object
+    verification: BirthRuntimeVerificationView
     _seal: object
 
     def __post_init__(self) -> None:
-        if self._seal is not _RUNTIME_SEAL or self.core._seal is not _CORE_SEAL:
+        if self._seal is not _RUNTIME_SEAL:
             raise ValueError("birth_runtime_bundle_untrusted")
         factories = dict(self.producer_factories)
-        if not factories or any(not callable(value) for value in factories.values()):
-            raise ValueError("birth_runtime_bundle_invalid")
+        if (
+            not factories
+            or any(not callable(value) for value in factories.values())
+            or not isinstance(self.core, _BirthCore)
+            or not isinstance(self.verification, BirthRuntimeVerificationView)
+        ):
+            raise ValueError("birth_runtime_state_invalid")
         object.__setattr__(self, "producer_factories", MappingProxyType(factories))
 
 
 _RUNTIME_SEAL = object()
 _RUNTIME_LOCK = threading.Lock()
-_RUNTIME_BUNDLE: BirthRuntimeBundle | None = None
+_RUNTIME_BUNDLE: _BirthRuntimeState | None = None
 
 
 def _assemble_birth_runtime_bundle(
     core: _BirthCore,
     producer_factories: Mapping["_ProducerCapability", Callable[["BirthIntent"], BirthRequest]],
-) -> BirthRuntimeBundle:
+) -> _BirthRuntimeState:
     """Bootstrap primitive; its inputs must already be fully validated."""
     from executor_birth_intent import _is_producer_capability
     if not producer_factories or any(
         not _is_producer_capability(capability) for capability in producer_factories
     ):
         raise ValueError("birth_producer_capability_untrusted")
-    return BirthRuntimeBundle(core, producer_factories, _RUNTIME_SEAL)
+    if not isinstance(core, _BirthCore) or core._seal is not _CORE_SEAL:
+        raise ValueError("birth_core_untrusted")
+    trusted_publics = tuple(core.publisher_options.get("trusted_publics", ()))
+    verification = BirthRuntimeVerificationView(
+        trusted_publics=trusted_publics,
+        admission_verifier_keys=core.admission_verifier_keys,
+        producer_db=core.producer_db,
+        admission_key_id=core.admission_key_id,
+    )
+
+    from executor_birth_reattestation import (
+        _assemble_reattestation_core,
+    )
+    reattestation_core = _assemble_reattestation_core(core)
+
+    return _BirthRuntimeState(
+        producer_factories,
+        core,
+        reattestation_core,
+        verification,
+        _RUNTIME_SEAL,
+    )
 
 
-def _install_birth_runtime_bundle(bundle: BirthRuntimeBundle) -> None:
+def _install_birth_runtime_bundle(bundle: _BirthRuntimeState) -> None:
     """Publish the complete runtime exactly once, with no partial state."""
     global _RUNTIME_BUNDLE
-    if not isinstance(bundle, BirthRuntimeBundle) or bundle._seal is not _RUNTIME_SEAL:
+    if not isinstance(bundle, _BirthRuntimeState) or bundle._seal is not _RUNTIME_SEAL:
         raise ValueError("birth_runtime_bundle_untrusted")
     with _RUNTIME_LOCK:
         if _RUNTIME_BUNDLE is not None:
@@ -695,9 +850,19 @@ def _install_birth_runtime_bundle(bundle: BirthRuntimeBundle) -> None:
         _RUNTIME_BUNDLE = bundle
 
 
-def _runtime_bundle_snapshot() -> BirthRuntimeBundle | None:
-    # Assignment is atomic in supported CPython runtimes. The lock supplies a
-    # language-level happens-before edge for alternate Python implementations.
+def _runtime_bundle_snapshot() -> BirthRuntimeVerificationView | None:
+    """Return public verification data, never the installed signing core."""
+    with _RUNTIME_LOCK:
+        return None if _RUNTIME_BUNDLE is None else _RUNTIME_BUNDLE.verification
+
+
+def _installed_runtime_state() -> _BirthRuntimeState | None:
+    """Module-private productive state accessor.
+
+    The repository boundary guard forbids references outside the exact Birth
+    facades.  In particular bootstrap callers receive only the public
+    verification view and never a callable closure over this value.
+    """
     with _RUNTIME_LOCK:
         return _RUNTIME_BUNDLE
 
@@ -710,37 +875,50 @@ def _execute_intent_with_capability(
         raise ValueError("birth_intent_invalid")
     if not _is_producer_capability(capability):
         raise ValueError("birth_producer_capability_untrusted")
-    bundle = _runtime_bundle_snapshot()
-    if bundle is None:
+    state = _installed_runtime_state()
+    if state is None:
         # Every mutating CLI/job facade crosses this same lazy boot gate.  A
         # missing pre-provisioned key or incomplete recovery fails before any
         # producer worker can observe a partial runtime.
         from executor_birth_bootstrap import bootstrap_birth_runtime
         try:
-            bundle = bootstrap_birth_runtime()
+            bootstrap_birth_runtime()
         except Exception as exc:
             raise RuntimeError("birth_runtime_bundle_unavailable") from exc
-    factory = bundle.producer_factories.get(capability)
+        state = _installed_runtime_state()
+        if state is None:
+            raise RuntimeError("birth_runtime_bundle_unavailable")
+    factory = state.producer_factories.get(capability)
     if factory is None:
         raise ValueError("birth_producer_capability_unavailable")
     request = factory(intent)
     if not isinstance(request, BirthRequest):
         raise ValueError("birth_request_invalid")
-    # Use the core from the same bundle snapshot as the producer factory.
-    return _execute(request, bundle.core)
+    # Every productive producer crosses the same single public owner. The
+    # request contains no publisher or trust authority.
+    return birth_executor(request)
 
 
 def birth_executor(request: BirthRequest) -> BirthResult:
     """Execute the sealed productive Birth pipeline."""
     if not isinstance(request, BirthRequest):
         raise ValueError("birth_request_invalid")
-    bundle = _runtime_bundle_snapshot()
-    if bundle is None:
+    state = _installed_runtime_state()
+    if state is None:
         report = BirthReport(1, request.manifest_ref.contract_id, None, None, None,
                              None, (), (), BirthOutcome.REJECTED,
                              "birth_core_unavailable")
         return BirthResult(request.request_id, report, None, "birth_core_unavailable")
-    return _execute(request, bundle.core)
+    return _execute(request, state.core)
+
+
+def _execute_installed_reattestation(request: object) -> object:
+    """Run the separate productive facade without exporting its sealed core."""
+    state = _installed_runtime_state()
+    if state is None:
+        raise RuntimeError("birth_runtime_bundle_unavailable")
+    from executor_birth_reattestation import _execute
+    return _execute(request, state.reattestation_core)
 
 
 def _birth_executor_for_test(request: BirthRequest, *, _core: _BirthCore) -> BirthResult:

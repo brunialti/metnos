@@ -37,22 +37,40 @@ from __future__ import annotations
 
 import re
 
-# «tutta/tutte/tutti + (0-3 parole) + parola-mail» IT, «all + (0-3 parole) +
-# parola-mail» EN. Inoltre il POSSESSIVO PLURALE «(le) mie/miei + ... + parola-
-# mail» (IT) e «my + ... + mail» (EN): «le mie email» = TUTTE le mie caselle
-# (≠ «la mia mail» singolare, escluso da mie/miei). Word-boundary, case-insens.
-_ALL_MAIL_QUERY = re.compile(
-    r"\btutt[aei]\b(?:\s+\S+){0,3}?\s+"
-    r"(?:e-?mail\w*|mail\w*|posta\b|casell\w*|account\w*|messagg\w*)"
-    r"|\bmie[i]?\b(?:\s+\S+){0,3}?\s+"
-    r"(?:e-?mail\w*|mail\w*|posta\b|casell\w*|account\w*|messagg\w*)"
-    r"|\b(?:all|my)\b(?:\s+\S+){0,3}?\s+"
-    r"(?:e-?mails?\b|mails?\b|inbox(?:es)?\b|accounts?\b|"
-    r"mailbox(?:es)?\b|messages?\b)",
-    re.IGNORECASE,
-)
+import detection_lexicon as _detlex
+import detection_lexicon_seed_resolvers as _resolver_seed
 
 _EMAIL_VIA = ("", "email", "mail")
+
+
+def _has_bulk_mail_request(query: str) -> bool:
+    """Quantificatore seguito entro tre token da un nome-mail localizzato."""
+    _resolver_seed.ensure_registered()
+    lexicon = _detlex.mapping("resolver.mail_bulk")
+    quantifiers = [
+        *lexicon.get("universal", ()),
+        *lexicon.get("plural_possessive", ()),
+    ]
+    nouns = lexicon.get("mail_noun", ())
+    if not quantifiers or not nouns:
+        return False
+    q_alt = "|".join(
+        re.escape(str(form)) for form in sorted(
+            quantifiers, key=lambda item: -len(str(item)),
+        ) if str(form).strip()
+    )
+    n_alt = "|".join(
+        re.escape(str(form)) for form in sorted(
+            nouns, key=lambda item: -len(str(item)),
+        ) if str(form).strip()
+    )
+    if not q_alt or not n_alt:
+        return False
+    return bool(re.search(
+        rf"(?<!\w)(?:{q_alt})(?!\w)(?:\s+\S+){{0,3}}?\s+"
+        rf"(?:{n_alt})(?!\w)",
+        query, re.IGNORECASE,
+    ))
 
 
 def _named_accounts(query_lower: str, known: list[str]) -> list[str]:
@@ -117,7 +135,7 @@ def resolve_mail_account(tool: str, args: dict, query: str) -> dict:
         return out
     if named:
         return args  # 2+ account nominati: scelta ambigua, decide il planner
-    if not _ALL_MAIL_QUERY.search(query):
+    if not _has_bulk_mail_request(query):
         return args
     if isinstance(acct, str) and acct.strip().lower() == "all":
         return args  # gia' canonico

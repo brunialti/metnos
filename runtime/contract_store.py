@@ -194,13 +194,14 @@ class PublicationResult:
 
 
 @dataclass(frozen=True, slots=True)
-class BirthCommitAuthorization:
-    """Sealed Birth authority used at the exact RM-0007 precommit point.
+class BirthCommitBindings:
+    """Immutable Birth facts consumed at the RM-0007 precommit point.
 
-    The store deliberately does not own Birth's private signing key.  The
-    issuer receives the generation selected by RM-0007 and hashes of the
-    canonical payloads; the verifier must authenticate the returned wire
-    receipt.  All identity bindings are checked again by this boundary.
+    This value is data, not an authority: constructing it cannot reach the
+    private store primitive. The sealed operational publisher replaces the
+    verifier with its bootstrap-bound Admission keyring before committing.
+    The issuer receives the generation selected by RM-0007 and hashes of the
+    canonical payloads; all identity bindings are checked again by the store.
     """
 
     candidate_id: str
@@ -1731,6 +1732,25 @@ def _read_current_optional(contract_dir: Path) -> str | None:
         if _windows_platform()
         else _read_regular_file(current, code="current_invalid")
     )
+    try:
+        text = value.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise ContractStoreError("current_invalid", str(exc)) from exc
+    if not text.endswith("\n") or text.count("\n") != 1:
+        raise ContractStoreError("current_invalid", repr(text))
+    identifier = text[:-1]
+    generation_directory_name(identifier)
+    return identifier
+
+
+def _read_current_optional_without_recovery(contract_dir: Path) -> str | None:
+    """Read the pointer without Windows sharing helpers or any repair path."""
+    current = contract_dir / "current"
+    if _is_link_like(current):
+        raise ContractStoreError("current_invalid", str(current))
+    if not current.exists():
+        return None
+    value = _read_regular_file(current, code="current_invalid")
     try:
         text = value.decode("ascii")
     except UnicodeDecodeError as exc:
@@ -3464,7 +3484,6 @@ def _commit_payloads_locked(
     store_root: Path,
     replace_timeout: float,
     precommit: Callable[[str], None] | None = None,
-    birth_authorization: BirthCommitAuthorization | None = None,
 ) -> tuple[str, bool]:
     """Verify and commit one complete postcondition under the writer lock."""
     candidate = _verify_payloads(
@@ -3504,16 +3523,6 @@ def _commit_payloads_locked(
     ):
         repeated = True
 
-    if birth_authorization is not None:
-        _persist_birth_receipt_locked(
-            ref,
-            desired,
-            canonical_payloads,
-            previous=(expected_generation_id if repeated else previous),
-            contract_dir=contract_dir,
-            authorization=birth_authorization,
-            replace_timeout=replace_timeout,
-        )
     if not repeated:
         if precommit is not None:
             precommit(desired)
@@ -3813,7 +3822,7 @@ def _validate_birth_receipt_binding(
     ref: ManifestRef,
     generation_identifier: str,
     previous: str | None,
-    authorization: BirthCommitAuthorization,
+    authorization: BirthCommitBindings,
     request_id: str | None = None,
     journal_hash: str | None = None,
 ) -> None:
@@ -3852,6 +3861,80 @@ def _validate_birth_receipt_binding(
             )
 
 
+def inspect_birth_authoring_recovery(
+    ref: ManifestRef,
+    *,
+    new_generation_id: str,
+    request_id: str,
+    journal_hash: str,
+    predecessor_generation_id: str | None,
+    candidate_id: str,
+    semantic_core_id: str,
+    admission_context_id: str,
+    trusted_publics: Iterable[TrustedPublic],
+    admission_verifier_keys: Mapping[str, Ed25519PublicKey],
+    store_root: Path | str | None = None,
+) -> str | None:
+    """Read-only validation for one pending authoring recovery journal.
+
+    The caller revalidates under the writer lock before changing the authoring
+    tree. This first pass deliberately performs no staging recovery, directory
+    creation, pointer repair or receipt write.
+    """
+    from executor_birth_receipts import verify_admission_receipt
+
+    _validate_manifest_ref(ref)
+    generation_directory_name(new_generation_id)
+    trusted = _trusted_public_tuple(trusted_publics)
+    root = _store_root(store_root)
+    contract_dir = _existing_contract_directory(
+        ref.contract_id, store_root=root,
+    )
+    current_before = _read_current_optional_without_recovery(contract_dir)
+    if current_before is not None:
+        _load_generation_for_commit(
+            ref,
+            current_before,
+            trusted_publics=trusted,
+            store_root=root,
+        )
+    receipt_path = _birth_receipt_path(contract_dir, new_generation_id)
+    try:
+        if receipt_path.stat(follow_symlinks=False).st_size > 64 * 1024:
+            raise ContractStoreError("birth_receipt_invalid", "size")
+    except OSError as exc:
+        raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
+    encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+    try:
+        receipt = verify_admission_receipt(
+            encoded, verifier_keys=admission_verifier_keys,
+        )
+    except Exception as exc:
+        raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
+    bindings = BirthCommitBindings(
+        candidate_id=candidate_id,
+        semantic_core_id=semantic_core_id,
+        admission_context_id=admission_context_id,
+        predecessor_id=predecessor_generation_id,
+        issuer=lambda *_args: b"",
+        verifier=lambda _encoded: receipt,
+    )
+    _validate_birth_receipt_binding(
+        receipt,
+        ref=ref,
+        generation_identifier=new_generation_id,
+        previous=predecessor_generation_id,
+        authorization=bindings,
+        request_id=request_id,
+        journal_hash=journal_hash,
+    )
+    if _read_regular_file(receipt_path, code="birth_receipt_invalid") != encoded:
+        raise ContractStoreError("birth_receipt_reread_mismatch")
+    if _read_current_optional_without_recovery(contract_dir) != current_before:
+        raise ContractStoreError("birth_recovery_read_race")
+    return current_before
+
+
 def _persist_birth_receipt_locked(
     ref: ManifestRef,
     generation_identifier: str,
@@ -3859,7 +3942,7 @@ def _persist_birth_receipt_locked(
     *,
     previous: str | None,
     contract_dir: Path,
-    authorization: BirthCommitAuthorization,
+    authorization: BirthCommitBindings,
     replace_timeout: float,
     request_id: str | None = None,
     journal_hash: str | None = None,
@@ -3871,10 +3954,10 @@ def _persist_birth_receipt_locked(
     an orphan receipt, which is harmless: an exact retry validates and reuses
     it, while any byte or binding mismatch fails closed.
     """
-    if not isinstance(authorization, BirthCommitAuthorization):
-        raise ContractStoreError("birth_authorization_invalid")
+    if not isinstance(authorization, BirthCommitBindings):
+        raise ContractStoreError("birth_bindings_invalid")
     if not callable(authorization.issuer) or not callable(authorization.verifier):
-        raise ContractStoreError("birth_authorization_invalid")
+        raise ContractStoreError("birth_bindings_invalid")
     for field in (
         "candidate_id", "semantic_core_id", "admission_context_id",
     ):
@@ -3902,7 +3985,7 @@ def _persist_birth_receipt_locked(
     else:
         try:
             if request_id is None or journal_hash is None:
-                raise ContractStoreError("birth_authorization_invalid", "journal binding")
+                raise ContractStoreError("birth_bindings_invalid", "journal binding")
             encoded = authorization.issuer(
                 generation_identifier, digests, request_id, journal_hash,
             )
@@ -4573,14 +4656,14 @@ def publish_technical_update(
     removal: SurfaceRemoval | None = None,
     removal_audit: Callable[[Mapping[str, object]], None] | None = None,
     registry_reconciler: RegistryReconciler | None = None,
-    birth_authorization: BirthCommitAuthorization | None = None,
+    birth_bindings: BirthCommitBindings | None = None,
     store_root: Path | str | None = None,
     lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
     replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
 ) -> PublicationResult:
     """Sign and publish one technical draft under a single writer lock."""
     _deny_closed_legacy_api("publish_technical_update", store_root)
-    if birth_authorization is not None:
+    if birth_bindings is not None:
         raise ContractStoreError("birth_commit_boundary_required")
     root, productive = _publication_root(store_root)
     _require_registry_reconciler(productive, registry_reconciler)
@@ -4647,7 +4730,6 @@ def publish_technical_update(
             trusted_publics=trusted,
             store_root=root,
             replace_timeout=replace_timeout,
-            birth_authorization=birth_authorization,
             precommit=(
                 None
                 if removal is None
@@ -4713,7 +4795,7 @@ def authenticate_birth_predecessor(
             ), detached
 
 
-def commit_birth_snapshot(
+def _commit_birth_snapshot(
     ref: ManifestRef,
     *,
     expected_generation_id: str | None,
@@ -4721,7 +4803,7 @@ def commit_birth_snapshot(
     request_id: str,
     private_key: Ed25519PrivateKey,
     trusted_publics: Iterable[TrustedPublic],
-    birth_authorization: BirthCommitAuthorization,
+    birth_bindings: BirthCommitBindings,
     registry_reconciler: RegistryReconciler | None = None,
     store_root: Path | str | None = None,
     lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
@@ -4737,8 +4819,8 @@ def commit_birth_snapshot(
     )
     from executor_birth_snapshot import CandidateSnapshot
 
-    if not isinstance(birth_authorization, BirthCommitAuthorization):
-        raise ContractStoreError("birth_authorization_required")
+    if not isinstance(birth_bindings, BirthCommitBindings):
+        raise ContractStoreError("birth_bindings_required")
     if not isinstance(snapshot, CandidateSnapshot):
         raise ContractStoreError("candidate_snapshot_required")
     _canonical_sha256(request_id, field="request_id")
@@ -4783,29 +4865,29 @@ def commit_birth_snapshot(
                 current_payloads,
             )
             if (
-                birth_authorization.predecessor_snapshot_id is not None
-                and birth_authorization.predecessor_snapshot_id
+                birth_bindings.predecessor_snapshot_id is not None
+                and birth_bindings.predecessor_snapshot_id
                 != pinned_predecessor.snapshot_id
             ):
                 raise ContractStoreError("birth_predecessor_changed")
-            if birth_authorization.revision_facts_id is not None:
+            if birth_bindings.revision_facts_id is not None:
                 locked_facts = derive_revision_facts(
                     pinned_predecessor, current_payloads, snapshot,
                 )
                 if (
                     canonical_revision_facts_id(locked_facts)
-                    != birth_authorization.revision_facts_id
+                    != birth_bindings.revision_facts_id
                 ):
                     raise ContractStoreError("birth_revision_facts_changed")
-            if birth_authorization.context_epoch is not None:
-                resolver = birth_authorization.context_epoch_resolver
+            if birth_bindings.context_epoch is not None:
+                resolver = birth_bindings.context_epoch_resolver
                 if resolver is None:
                     raise ContractStoreError("birth_context_resolver_required")
                 try:
                     current_context_epoch = resolver()
                 except Exception as exc:
                     raise ContractStoreError("birth_context_unavailable", str(exc)) from exc
-                if current_context_epoch != birth_authorization.context_epoch:
+                if current_context_epoch != birth_bindings.context_epoch:
                     raise ContractStoreError("birth_context_changed")
 
             pending = load_prepared_journal(control)
@@ -4815,14 +4897,14 @@ def commit_birth_snapshot(
                 receipt_path = _birth_receipt_path(contract_dir, pending.new_generation_id)
                 encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
                 try:
-                    receipt = birth_authorization.verifier(encoded)
+                    receipt = birth_bindings.verifier(encoded)
                 except Exception as exc:
                     raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
                 _validate_birth_receipt_binding(
                     receipt, ref=ref,
                     generation_identifier=pending.new_generation_id,
                     previous=pending.predecessor_generation_id,
-                    authorization=birth_authorization,
+                    authorization=birth_bindings,
                     request_id=pending.request_id,
                     journal_hash=pending.journal_hash,
                 )
@@ -4859,7 +4941,7 @@ def commit_birth_snapshot(
                     receipt_path = _birth_receipt_path(contract_dir, replay_desired)
                     encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
                     try:
-                        receipt = birth_authorization.verifier(encoded)
+                        receipt = birth_bindings.verifier(encoded)
                     except Exception as exc:
                         raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
                     receipt_journal_hash = getattr(
@@ -4868,7 +4950,7 @@ def commit_birth_snapshot(
                     _validate_birth_receipt_binding(
                         receipt, ref=ref, generation_identifier=replay_desired,
                         previous=expected_generation_id,
-                        authorization=birth_authorization,
+                        authorization=birth_bindings,
                         request_id=request_id,
                         journal_hash=receipt_journal_hash,
                     )
@@ -4910,9 +4992,9 @@ def commit_birth_snapshot(
                 canonical_tree_id=old_tree_id or new_tree_id,
                 old_tree_id=old_tree_id,
                 new_tree_id=new_tree_id,
-                candidate_id=birth_authorization.candidate_id,
-                semantic_core_id=birth_authorization.semantic_core_id,
-                admission_context_id=birth_authorization.admission_context_id,
+                candidate_id=birth_bindings.candidate_id,
+                semantic_core_id=birth_bindings.semantic_core_id,
+                admission_context_id=birth_bindings.admission_context_id,
                 predecessor_generation_id=previous,
                 new_generation_id=desired,
                 staging_basename=f".birth-stage-{suffix}",
@@ -4945,7 +5027,7 @@ def commit_birth_snapshot(
             )
             _persist_birth_receipt_locked(
                 ref, desired, payloads, previous=previous,
-                contract_dir=contract_dir, authorization=birth_authorization,
+                contract_dir=contract_dir, authorization=birth_bindings,
                 replace_timeout=replace_timeout, request_id=request_id,
                 journal_hash=journal.journal_hash,
             )
@@ -5756,7 +5838,7 @@ __all__ = [
     "ACTIVE_RELATIVE",
     "BINDING_FILE",
     "BINDING_VERSION",
-    "BirthCommitAuthorization",
+    "BirthCommitBindings",
     "ContractBinding",
     "ContractRetirement",
     "ContractRevision",
@@ -5781,7 +5863,6 @@ __all__ = [
     "authenticate_execution_binding",
     "authenticate_birth_predecessor",
     "catalog_admission_lock",
-    "commit_birth_snapshot",
     "contract_storage_key",
     "contract_revision_id",
     "current_contract",
@@ -5793,6 +5874,7 @@ __all__ = [
     "encode_retirement",
     "generation_directory_name",
     "generation_id",
+    "inspect_birth_authoring_recovery",
     "prepare_technical_draft",
     "production_store_mode",
     "publish_localization",

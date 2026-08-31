@@ -78,10 +78,10 @@ def _provision_keystore(root: Path, key: Ed25519PrivateKey) -> None:
 def provision_e2e_birth_bootstrap(user_config: Path) -> Path:
     """Create one complete Birth authority domain under ``user_config``.
 
-    Every signing role gets fresh, distinct key material.  Only the admission
-    and producer roles retain private keys because those are the only roles
-    used by the runtime to issue receipts.  Approval and semantic registries
-    intentionally contain public verification material only.
+    Every signing role gets fresh, distinct key material.  Author, Admission
+    and Producer retain only the private keys required by their sealed runtime
+    operations.  Approval and semantic registries intentionally contain public
+    verification material only.
     """
     birth_dir = user_config / "birth"
     birth_dir.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -96,6 +96,7 @@ def provision_e2e_birth_bootstrap(user_config: Path) -> Path:
                 used_publics.add(public)
                 return key
 
+    _provision_keystore(birth_dir / "author-keystore", distinct_key())
     _provision_keystore(birth_dir / "admission", distinct_key())
 
     producers = {}

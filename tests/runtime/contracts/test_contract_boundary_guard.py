@@ -10,6 +10,7 @@ from contract_boundary_guard import (
     BIRTH_CLOSED_OWNER,
     BIRTH_CLOSED_SCHEMA,
     BIRTH_CLOSED_SEALED_MODULES,
+    BIRTH_COMMIT_OWNER,
     SCAN_ROOTS,
     SCHEMA,
     ScopeFacts,
@@ -62,7 +63,10 @@ def _closed_inventory(
         key = f"{entry['path']}:{entry['scope']}"
         compiled = BIRTH_CLOSED_EXCEPTION_SCOPES.get(key)
         entry["role"] = "birth_owner" if key == BIRTH_CLOSED_OWNER else (
-            "store_owner" if key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
+            "store_owner" if (
+                key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
+                or key == BIRTH_COMMIT_OWNER
+            )
             else
             "offline_authoring" if compiled == "offline_nonproductive_authoring"
             else "operational_producer" if compiled is not None
@@ -78,6 +82,7 @@ def _closed_inventory(
         "schema": BIRTH_CLOSED_SCHEMA,
         "guard_version": BIRTH_CLOSED_GUARD_VERSION,
         "owner": BIRTH_CLOSED_OWNER,
+        "commit_owner": BIRTH_COMMIT_OWNER,
         "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
         "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
         "exceptions": [
@@ -805,6 +810,86 @@ def test_private_store_write_requires_reviewed_store_owner(
     ) == []
 
 
+def test_birth_commit_private_writer_has_one_compiled_adapter(
+    tmp_path: Path,
+) -> None:
+    owner_source = (
+        "from contract_store import _commit_birth_snapshot\n"
+        "class _BirthCommitPublisher:\n"
+        "    def __call__(self, request):\n"
+        "        return _commit_birth_snapshot(request)\n"
+    )
+    facts = _scan(
+        tmp_path,
+        owner_source,
+        relative="runtime/executor_birth_operational.py",
+    )
+    inventory = _inventory(
+        facts, {"_BirthCommitPublisher.__call__": "store_owner"},
+    )
+    assert check(facts, inventory) == []
+
+    _scan(
+        tmp_path,
+        "from contract_store import _commit_birth_snapshot as write\n"
+        "def second_owner(request): return write(request)\n",
+        relative="runtime/second_owner.py",
+    )
+    facts = discover(tmp_path)
+    inventory = _inventory(
+        facts,
+        {
+            "_BirthCommitPublisher.__call__": "store_owner",
+            "second_owner": "store_owner",
+        },
+    )
+    assert "birth_commit_owner_invalid" in _codes(check(facts, inventory))
+
+
+def test_birth_commit_authority_assembly_cannot_be_imported_or_rebuilt(
+    tmp_path: Path,
+) -> None:
+    attempts = (
+        (
+            "runtime/foreign_factory.py",
+            "from executor_birth_operational import _BirthCommitPublisher\n",
+            "birth_commit_factory_owner_invalid",
+        ),
+        (
+            "runtime/foreign_alias.py",
+            "import executor_birth_operational as birth\n"
+            "factory = birth._BirthCommitPublisher\n",
+            "birth_commit_factory_owner_invalid",
+        ),
+        (
+            "runtime/foreign_subclass.py",
+            "from executor_birth_operational import _BirthCommitPublisher as Base\n"
+            "class ForgedPublisher(Base):\n"
+            "    pass\n",
+            "birth_commit_factory_owner_invalid",
+        ),
+        (
+            "runtime/foreign_core.py",
+            "from executor_birth_operational import _assemble_birth_core\n",
+            "birth_core_assembly_owner_invalid",
+        ),
+        (
+            "runtime/foreign_runtime.py",
+            "from executor_birth_operational import _assemble_birth_runtime_bundle\n",
+            "birth_runtime_assembly_owner_invalid",
+        ),
+        (
+            "runtime/foreign_state.py",
+            "from executor_birth_operational import _installed_runtime_state\n",
+            "birth_runtime_private_state_owner_invalid",
+        ),
+    )
+    for index, (relative, source, expected_code) in enumerate(attempts):
+        case = tmp_path / str(index)
+        facts = _scan(case, source, relative=relative)
+        assert expected_code in _codes(check(facts, _inventory(facts)))
+
+
 def test_render_is_deterministic_and_never_auto_approves_new_scope(
     tmp_path: Path,
 ) -> None:
@@ -864,6 +949,10 @@ def _closed_facts(
 ) -> list[ScopeFacts]:
     _scan(
         tmp_path,
+        "from contract_store import _commit_birth_snapshot\n"
+        "class _BirthCommitPublisher:\n"
+        "    def __call__(self, request):\n"
+        "        return _commit_birth_snapshot(request)\n"
         "def birth_executor(request): return request\n",
         relative="runtime/executor_birth_operational.py",
     )
@@ -1017,6 +1106,7 @@ def test_birth_closed_render_binds_policy_without_inventing_exceptions(
         "schema": BIRTH_CLOSED_SCHEMA,
         "guard_version": BIRTH_CLOSED_GUARD_VERSION,
         "owner": BIRTH_CLOSED_OWNER,
+        "commit_owner": BIRTH_COMMIT_OWNER,
         "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
         "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
         "exceptions": [

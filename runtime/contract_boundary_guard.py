@@ -50,6 +50,10 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "submit_synth_producer_birth": ("birth",),
     },
     "executor_birth_operational": {
+        "_BirthCommitPublisher": ("birth_commit_factory",),
+        "_assemble_birth_core": ("birth_core_assembly",),
+        "_assemble_birth_runtime_bundle": ("birth_runtime_assembly",),
+        "_installed_runtime_state": ("birth_runtime_private_state",),
         "birth_executor": ("birth",),
     },
     "executor_birth_synth": {
@@ -65,6 +69,7 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "current_contract": ("verified_store_read",),
         "current_manifest": ("verified_store_read",),
         "diagnose_store": ("verified_store_read",),
+        "inspect_birth_authoring_recovery": ("verified_store_read",),
         "publish_localization": ("publish_localization",),
         "publish_technical_update": ("publish_technical",),
         "publish_signed_source": ("publish_bootstrap",),
@@ -223,6 +228,11 @@ LIVE_READER_FORBIDDEN = frozenset({
     "authoring_write",
     "authoring_verify",
     "birth",
+    "birth_commit",
+    "birth_commit_factory",
+    "birth_core_assembly",
+    "birth_runtime_assembly",
+    "birth_runtime_private_state",
     "legacy_bootstrap",
     "publish_bootstrap",
     "publish_localization",
@@ -245,12 +255,20 @@ PUBLISH_CAPABILITIES = frozenset({
 })
 FLOW_CAPABILITIES = PUBLISH_CAPABILITIES | frozenset({
     "ambiguous_local_authority",
+    "birth_commit",
+    "birth_runtime_private_state",
     "authoring_write",
     "cutover_guard",
     "legacy_bootstrap",
     "sign",
     "store_write",
     "dynamic_boundary_access",
+})
+PRIVATE_BIRTH_AUTHORITY_CAPABILITIES = frozenset({
+    "birth_commit_factory",
+    "birth_core_assembly",
+    "birth_runtime_assembly",
+    "birth_runtime_private_state",
 })
 
 # These are implementation boundaries, not a caller-extensible allow-list.
@@ -261,6 +279,26 @@ BIRTH_CLOSED_SEALED_MODULES = (
     "runtime/sign.py",
 )
 BIRTH_CLOSED_OWNER = "runtime/executor_birth_operational.py:birth_executor"
+BIRTH_COMMIT_OWNER = (
+    "runtime/executor_birth_operational.py:_BirthCommitPublisher.__call__"
+)
+BIRTH_COMMIT_FACTORY_SCOPES = frozenset({
+    "runtime/executor_birth_operational.py:_assemble_birth_core",
+})
+BIRTH_CORE_ASSEMBLY_SCOPES = frozenset({
+    "runtime/executor_birth_operational.py:_assemble_birth_core",
+    "runtime/executor_birth_bootstrap.py:_build",
+})
+BIRTH_RUNTIME_ASSEMBLY_SCOPES = frozenset({
+    "runtime/executor_birth_operational.py:_assemble_birth_runtime_bundle",
+    "runtime/executor_birth_bootstrap.py:_build",
+})
+BIRTH_RUNTIME_PRIVATE_STATE_SCOPES = frozenset({
+    "runtime/executor_birth_operational.py:_installed_runtime_state",
+    "runtime/executor_birth_operational.py:_execute_intent_with_capability",
+    "runtime/executor_birth_operational.py:birth_executor",
+    "runtime/executor_birth_operational.py:_execute_installed_reattestation",
+})
 BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
@@ -308,6 +346,7 @@ VALID_ROLES = frozenset({
 })
 LIVE_MUTATIONS = frozenset({
     "birth",
+    "birth_commit",
     "publish_localization",
     "publish_technical",
     "reactivate",
@@ -454,6 +493,8 @@ def _boundary_api_capabilities(canonical: str) -> tuple[str, ...]:
     # No module may import a private store implementation detail.  Treat every
     # such call as private store authority, rather than maintaining a brittle
     # nominal list of mutator names that a new helper could bypass.
+    if owner == "contract_store" and api == "_commit_birth_snapshot":
+        return ("birth_commit",)
     if owner == "contract_store" and api.startswith("_"):
         return ("store_write",)
     return tuple(BOUNDARY_APIS.get(owner, {}).get(api, ()))
@@ -468,8 +509,23 @@ def _defined_boundary_capabilities(path: str, scope: str) -> tuple[str, ...]:
     if module is None:
         return ()
     api = scope.rsplit(".", 1)[-1]
+    if module == "executor_birth_operational" and api == "_BirthCommitPublisher":
+        # Defining the adapter type is inert. Construction, import, reference
+        # and subclassing are the authority-bearing operations.
+        return ()
     capabilities = set(BOUNDARY_APIS.get(module, {}).get(api, ()))
     return tuple(sorted(capabilities))
+
+
+def _local_private_boundary_capabilities(
+    path: str, api: str,
+) -> tuple[str, ...]:
+    """Classify sensitive private symbols referenced inside their module."""
+
+    owner = BOUNDARY_SOURCE_OWNERS.get(path)
+    if owner != "executor_birth_operational" or not api.startswith("_"):
+        return ()
+    return tuple(BOUNDARY_APIS[owner].get(api, ()))
 
 
 def _target_names(node: ast.AST) -> set[str]:
@@ -860,6 +916,7 @@ def _analyse_scope(
     nodes = _scope_nodes(node)
     aliases = dict(imported_aliases)
     dynamic_boundary_access = False
+    sensitive_private_imports: set[str] = set()
     closed_dynamic_boundary = False
     boundary_text = re.compile(
         r"(?:contract_store|runtime\.sign|(?:^|[/\\])sign\.py|"
@@ -880,6 +937,13 @@ def _analyse_scope(
                 dynamic_boundary_access = True
             for alias in item.names:
                 aliases[alias.asname or alias.name] = f"{item.module}.{alias.name}"
+                private_caps = _boundary_api_capabilities(
+                    f"{item.module}.{alias.name}",
+                )
+                if alias.name.startswith("_"):
+                    sensitive_private_imports.update(
+                        set(private_caps) & PRIVATE_BIRTH_AUTHORITY_CAPABILITIES,
+                    )
         elif isinstance(item, ast.ImportFrom) and item.module is None:
             if _relative_boundary_import(item):
                 dynamic_boundary_access = True
@@ -895,6 +959,7 @@ def _analyse_scope(
     capabilities: set[str] = set(
         _defined_boundary_capabilities(path, scope)
     )
+    capabilities.update(sensitive_private_imports)
     manifest_dir_locator_used = any(
         isinstance(item, ast.Attribute)
         and item.attr == "manifest_dir"
@@ -922,6 +987,9 @@ def _analyse_scope(
             separator + remainder if separator else ""
         )
         capabilities.update(_boundary_api_capabilities(canonical))
+        capabilities.update(_local_private_boundary_capabilities(
+            path, canonical.rsplit(".", 1)[-1],
+        ))
 
     for item in nodes:
         if (
@@ -962,6 +1030,7 @@ def _analyse_scope(
             calls.add(api)
 
         capabilities.update(_boundary_api_capabilities(canonical))
+        capabilities.update(_local_private_boundary_capabilities(path, api))
         if api == "getattr" and item.args:
             module_name = _dotted_name(item.args[0])
             if module_name is not None:
@@ -1114,6 +1183,7 @@ def _analyse_scope(
         if (
             api.startswith("_")
             and _boundary_owner(canonical.rpartition(".")[0]) == "contract_store"
+            and api != "_commit_birth_snapshot"
         ):
             capabilities.add("store_write")
 
@@ -1138,6 +1208,7 @@ class _ScopeCollector(ast.NodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         qualified = ".".join((*self.stack, node.name))
+        self.scopes.append((qualified, node))
         self.containers[qualified] = node
         self.stack.append(node.name)
         self.generic_visit(node)
@@ -1394,6 +1465,44 @@ def check(
         for fact in facts
         if fact.capabilities or fact.direct_manifest_dir_access
     }
+    commit_scopes = sorted(
+        fact.key for fact in facts if "birth_commit" in fact.capabilities
+    )
+    if commit_scopes and commit_scopes != [BIRTH_COMMIT_OWNER]:
+        findings.append(Finding(
+            "birth_commit_owner_invalid",
+            "<repository>",
+            f"expected exactly {[BIRTH_COMMIT_OWNER]!r}, found {commit_scopes!r}",
+        ))
+    exact_authorities = (
+        (
+            "birth_commit_factory", BIRTH_COMMIT_FACTORY_SCOPES,
+            "birth_commit_factory_owner_invalid",
+        ),
+        (
+            "birth_core_assembly", BIRTH_CORE_ASSEMBLY_SCOPES,
+            "birth_core_assembly_owner_invalid",
+        ),
+        (
+            "birth_runtime_assembly", BIRTH_RUNTIME_ASSEMBLY_SCOPES,
+            "birth_runtime_assembly_owner_invalid",
+        ),
+        (
+            "birth_runtime_private_state", BIRTH_RUNTIME_PRIVATE_STATE_SCOPES,
+            "birth_runtime_private_state_owner_invalid",
+        ),
+    )
+    for capability, expected_scopes, code in exact_authorities:
+        actual_scopes = frozenset(
+            fact.key for fact in facts if capability in fact.capabilities
+        )
+        if actual_scopes and actual_scopes != expected_scopes:
+            findings.append(Finding(
+                code,
+                "<repository>",
+                f"expected exactly {sorted(expected_scopes)!r}, "
+                f"found {sorted(actual_scopes)!r}",
+            ))
     for key, fact in discovered.items():
         entry = entries.get(key)
         if entry is None:
@@ -1499,6 +1608,12 @@ def check(
                 key,
                 "only a reviewed store_owner scope may mutate the publication store",
             ))
+        if "birth_commit" in capabilities and role != "store_owner":
+            findings.append(Finding(
+                "birth_commit_outside_boundary",
+                key,
+                "only the compiled Birth commit adapter may call the private writer",
+            ))
         if (
             capabilities & {"legacy_bootstrap", "publish_bootstrap"}
             and role not in {"migration_boundary", "store_owner"}
@@ -1579,6 +1694,7 @@ def birth_closed_findings(
         "schema": BIRTH_CLOSED_SCHEMA,
         "guard_version": BIRTH_CLOSED_GUARD_VERSION,
         "owner": BIRTH_CLOSED_OWNER,
+        "commit_owner": BIRTH_COMMIT_OWNER,
         "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
         "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
         "exceptions": [
@@ -1605,6 +1721,15 @@ def birth_closed_findings(
         findings.append(Finding(
             "birth_closed_owner_invalid", "<inventory>",
             f"expected exactly {[BIRTH_CLOSED_OWNER]!r}, found {owners!r}",
+        ))
+
+    commit_scopes = sorted(
+        fact.key for fact in facts if "birth_commit" in fact.capabilities
+    )
+    if commit_scopes != [BIRTH_COMMIT_OWNER]:
+        findings.append(Finding(
+            "birth_closed_commit_owner_invalid", "<repository>",
+            f"expected exactly {[BIRTH_COMMIT_OWNER]!r}, found {commit_scopes!r}",
         ))
 
     fact_keys = {fact.key for fact in facts}
@@ -1717,6 +1842,7 @@ def render_birth_closed_inventory(
         "schema": BIRTH_CLOSED_SCHEMA,
         "guard_version": BIRTH_CLOSED_GUARD_VERSION,
         "owner": BIRTH_CLOSED_OWNER,
+        "commit_owner": BIRTH_COMMIT_OWNER,
         "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
         "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
         "exceptions": [
@@ -1731,7 +1857,7 @@ def render_birth_closed_inventory(
     }
     for entry in payload["entries"]:
         key = _entry_key(entry)
-        if key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS:
+        if key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS or key == BIRTH_COMMIT_OWNER:
             entry["role"] = "store_owner"
         old = previous.get(_entry_key(entry), {})
         if "closed_exception" in old:

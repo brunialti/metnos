@@ -36,6 +36,8 @@ def test_unknown_lang_reports_all_missing():
 
 
 POSITIVE = {
+    "syntax.command_invocation": ["esegui ping", "please run ping"],
+    "syntax.inhibition": ["evita di eseguire", "instead of running"],
     "undo.grammar_marker": ["annulla l'ultimo", "undo", "torna indietro"],
     "undo.intent_bypass": ["annulla", "please undo", "ripristina"],
     "tasks.marker": ["crea un task", "promemoria", "every reminder", "storico"],
@@ -93,6 +95,26 @@ def test_asserted_at_is_domain_neutral_and_resets_at_clause_boundaries():
         ("use the computer without falling back to the server", "server", False),
         ("non sul computer, ma sul server", "server", True),
         ("not on the computer but on the server", "server", True),
+        ("evita di eseguire ping verso il server", "server", False),
+        ("avoid executing ping against the server", "server", False),
+        ("invece di eseguire ping sul server", "server", False),
+        ("instead of running ping on the server", "server", False),
+        ("evita traceroute ma esegui ping sul server", "ping", True),
+        ("avoid traceroute but execute ping on the server", "ping", True),
+        ("evita traceroute, esegui ping sul server", "ping", True),
+        ("avoid traceroute, execute ping on the server", "ping", True),
+        ("execute neither mount nor systemctl", "systemctl", False),
+        ("but neither execute mount nor systemctl", "systemctl", False),
+        ("non usare il computer, usa il server", "server", True),
+        ("don't use the computer, use the server", "server", True),
+        ("non eseguire sul mio computer, o sul server", "server", False),
+        ("do not execute on my computer, or on the server", "server", False),
+        ("non eseguire su nessuno di questi: sul mio computer o sul server", "server", False),
+        ("do not execute on either of these: on my computer or on the server", "server", False),
+        ("non eseguire sul mio computer, e sul server", "server", False),
+        ("do not execute on my computer, and on the server", "server", False),
+        ("do not execute on my computer, and then execute on the server", "server", True),
+        ("non eseguire sul mio computer, e poi esegui sul server", "server", True),
         ("esegui sul server", "server", True),
         ("run on the server", "server", True),
     )
@@ -100,10 +122,226 @@ def test_asserted_at_is_domain_neutral_and_resets_at_clause_boundaries():
         assert dl.asserted_at(text, text.index(marker)) is expected
 
 
+def test_asserted_at_command_scope_keeps_soft_separator_polarity():
+    samples = (
+        ("do not execute mount, or systemctl", "systemctl", False),
+        ("do not execute mount, systemctl", "systemctl", False),
+        ("do not execute mount, execute systemctl", "systemctl", True),
+        ("do not execute: mount or systemctl", "systemctl", False),
+        ("do not execute mount: execute systemctl", "systemctl", True),
+        ("do not execute mount, then execute systemctl", "systemctl", True),
+        ("non eseguire mount, poi esegui systemctl", "systemctl", True),
+        ("do not execute mount, and execute systemctl", "systemctl", True),
+        ("non eseguire mount, e esegui systemctl", "systemctl", True),
+        ("do not execute mount, although you can execute systemctl", "systemctl", False),
+        ("do not execute mount, since you can execute systemctl", "systemctl", False),
+        ("do not execute systemctl, execute the sentence systemctl is forbidden", "systemctl", False),
+        ("do not execute systemctl, execute a harmless example mentioning systemctl", "systemctl", False),
+    )
+    for text, marker, expected in samples:
+        assert dl.asserted_at(
+            text, text.rindex(marker), command_scope=True,
+        ) is expected
+
+
+def test_polarity_state_distinguishes_asserted_and_negated():
+    assert dl.polarity_state_at("execute ping", 8) == "asserted"
+    assert dl.polarity_state_at("do not execute ping", 15) == "negated"
+
+
+def test_asserted_at_fails_closed_on_legacy_read_only_store(
+        monkeypatch, tmp_path):
+    """A DB immutable without a new polarity concept cannot assert effects."""
+    import sqlite3
+    import detection_lexicon as _dl
+
+    path = tmp_path / "legacy-detection.sqlite"
+    conn = sqlite3.connect(str(path))
+    conn.executescript(_dl._SCHEMA)
+    conn.commit()
+    monkeypatch.setattr(_dl, "_conn", conn)
+    monkeypatch.setattr(_dl, "_seeded", True)
+    _dl._invalidate()
+    try:
+        for concept, it, en in (
+            ("syntax.negation", ["non"], ["not"]),
+            ("syntax.command_invocation", ["esegui"], ["run"]),
+            ("syntax.contrast", ["ma"], ["but"]),
+        ):
+            assert _dl.register(
+                concept, "phrases", it=it, en=en, match_mode="word")
+        conn.execute("PRAGMA query_only=ON")
+        _dl._invalidate()
+        assert _dl.forms("syntax.inhibition") == []
+        text = "esegui ping example.net"
+        assert _dl.asserted_at(text, text.index("esegui")) is False
+    finally:
+        _dl._invalidate()
+
+
+def test_command_invocation_uses_native_unicode_and_multiword_forms(
+        monkeypatch, tmp_path):
+    """A partial third-language safety grammar remains fail-closed."""
+    import sqlite3
+    import detection_lexicon as _dl
+    from prefilter import _detect_command_grammar_intent
+
+    path = tmp_path / "translated-detection.sqlite"
+    conn = sqlite3.connect(str(path))
+    conn.executescript(_dl._SCHEMA)
+    conn.commit()
+    monkeypatch.setattr(_dl, "_conn", conn)
+    monkeypatch.setattr(_dl, "_seeded", True)
+    monkeypatch.setattr(_dl, "current_lang", lambda: "fr")
+    _dl._invalidate()
+    try:
+        concepts = (
+            ("syntax.negation", ["non"], ["not"]),
+            ("syntax.inhibition", ["evita"], ["avoid"]),
+            ("syntax.contrast", ["ma"], ["but"]),
+            ("syntax.command_invocation", ["esegui"], ["run"]),
+            ("syntax.negative_coordination", ["o"], ["or"]),
+            ("syntax.sequence", ["poi"], ["then"]),
+        )
+        for concept, it, en in concepts:
+            assert _dl.register(
+                concept, "phrases", it=it, en=en, match_mode="word",
+                review_policy="manual")
+        _dl.set_payload(
+            "syntax.command_invocation", "fr",
+            ["exécuter", "veuillez exécuter"],
+            kind="phrases", match_mode="word", source_lang="fr",
+        )
+        # The daemon commits one concept at a time. Native invocation without
+        # native, ready polarity must not expose a privileged command.
+        for query in (
+            "exécuter ping example.net",
+            "veuillez exécuter ping example.net",
+            "exécuter ping example.net, mais ne pas exécuter date",
+        ):
+            assert _detect_command_grammar_intent(
+                query, command_names={"ping"}) is False, query
+        for concept, payload in (
+            ("syntax.negation", ["ne pas"]),
+            ("syntax.inhibition", ["évitez", "au lieu de"]),
+            ("syntax.contrast", ["mais", "plutôt"]),
+            ("syntax.negative_coordination", ["ou"]),
+            ("syntax.sequence", ["puis"]),
+        ):
+            _dl.set_payload(
+                concept, "fr", payload, kind="phrases", match_mode="word",
+                source_lang="fr",
+            )
+        for query in (
+            "exécuter ping example.net",
+            "veuillez exécuter ping example.net",
+        ):
+            assert _detect_command_grammar_intent(
+                query, command_names={"ping"}) is True, query
+        for query in (
+            "ne pas exécuter ping example.net",
+            "évitez exécuter ping example.net",
+            "au lieu de exécuter ping example.net",
+        ):
+            assert _detect_command_grammar_intent(
+                query, command_names={"ping"}) is False, query
+    finally:
+        _dl._invalidate()
+
+
+def test_command_syntax_concepts_require_manual_review():
+    dl.ensure_seeded()
+    assert {
+        "syntax.negation", "syntax.inhibition", "syntax.contrast",
+        "syntax.command_invocation", "syntax.negative_coordination",
+        "syntax.sequence",
+    } <= set(dl.manual_review_concepts())
+
+
+def test_manual_policy_upgrade_replaces_legacy_automatic_target(
+        monkeypatch, tmp_path):
+    import sqlite3
+    import detection_lexicon as _dl
+
+    conn = sqlite3.connect(str(tmp_path / "policy-upgrade.sqlite"))
+    conn.executescript(_dl._SCHEMA)
+    conn.commit()
+    monkeypatch.setattr(_dl, "_conn", conn)
+    monkeypatch.setattr(_dl, "_seeded", True)
+    monkeypatch.setattr(_dl, "current_lang", lambda: "fr")
+    _dl._invalidate()
+    try:
+        _dl.register(
+            "syntax.negation", "phrases", match_mode="word",
+            translations={"it": ["non"], "en": ["not"], "fr": ["ne"]},
+        )
+        _dl.register(
+            "syntax.negation", "phrases", match_mode="word",
+            it=["non"], en=["not"], review_policy="manual",
+        )
+        _dl.set_payload(
+            "syntax.negation", "fr", ["ne pas"], kind="phrases",
+            match_mode="word", source_lang="en",
+        )
+        resource = _dl.resource_for_language(
+            "syntax.negation", "fr", fallback=False, ready_only=True,
+        )
+        assert resource is not None
+        assert resource["review_policy"] == "manual"
+        assert resource["payload"] == ["ne pas"]
+    finally:
+        _dl._invalidate()
+
+
+def test_malformed_native_polarity_fails_closed(monkeypatch, tmp_path):
+    import sqlite3
+    import detection_lexicon as _dl
+
+    conn = sqlite3.connect(str(tmp_path / "malformed-polarity.sqlite"))
+    conn.executescript(_dl._SCHEMA)
+    conn.commit()
+    monkeypatch.setattr(_dl, "_conn", conn)
+    monkeypatch.setattr(_dl, "_seeded", True)
+    monkeypatch.setattr(_dl, "current_lang", lambda: "it")
+    _dl._invalidate()
+    try:
+        for concept, it, en in (
+            ("syntax.negation", ["non"], ["not"]),
+            ("syntax.inhibition", ["evita"], ["avoid"]),
+            ("syntax.contrast", ["ma"], ["but"]),
+        ):
+            _dl.register(
+                concept, "phrases", it=it, en=en, match_mode="word",
+                review_policy="manual",
+            )
+        _dl.set_payload(
+            "syntax.negation", "it", ["non", 3], kind="phrases",
+            match_mode="word", source_lang="it",
+        )
+        assert _dl.asserted_at("esegui ping", 0) is False
+    finally:
+        _dl._invalidate()
+
+
 # Snapshot CONGELATO degli insiemi ORIGINALI (pre-migrazione) it∪en. Guard
 # anti-drift: l'union della lingua corrente (it -> it∪en) DEVE eguagliarli,
 # altrimenti il seed e' derivato → regressione silenziosa di detection.
 _ORIGINAL_PHRASE_UNION = {
+    "admin.shell_intent": {
+        "mount", "monta", "monto", "montare", "umount", "smonta",
+        "smontare", "share", "nas", "cifs", "smb", "nfs", "kill",
+        "uccidi", "termina", "killa", "ammazza", "systemctl", "service",
+        "servizio", "restart", "riavvia", "riavviare", "start", "avvia",
+        "avviare", "stop", "ferma", "fermare", "fermo", "chmod", "chown",
+        "permessi", "permission", "ifconfig", "ip route", "iptables",
+        "rete", "network", "apt", "apt-get", "pacchetto", "package",
+        "installa", "installare", "journalctl", "syslog", "log di sistema",
+        "comando shell", "shell command", "esegui", "porta", "porte",
+        "port", "ports", "socket", "sockets", "listening", "ascolta",
+        "ascoltante", "tcp", "udp", "modulo kernel", "moduli kernel",
+        "kernel module", "scheda video", "gpu", "video card", "lsof",
+        "lsblk", "lsmod", "lspci", "lsusb", "dmesg", "sensors", "sensor",
+    },
     "undo.grammar_marker": {"annulla", "annullare", "annullo", "annullala",
         "undo", "ripristina", "ripristino", "ripristinare", "torna indietro",
         "torna su", "rollback", "disfa", "disfare", "annulla l'ultimo"},

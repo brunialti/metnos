@@ -815,50 +815,242 @@ def _detect_time_intent(qlow: str) -> bool:
     return bool(_TIME_INTENT_RE.search(qlow or ""))
 
 
-_SHELL_INTENT_HINTS = (
-    # mount / umount
-    "mount", "monta", "monto", "montare", "umount", "smonta", "smontare",
-    "share", "nas", "cifs", "smb", "nfs",
-    # kill / process
-    "kill", "uccidi", "termina", "killa", "ammazza",
-    # systemctl / services
-    "systemctl", "service", "servizio", "restart", "riavvia", "riavviare",
-    "start", "avvia", "avviare", "stop", "ferma", "fermare", "fermo",
-    # permissions
-    "chmod", "chown", "permessi", "permission",
-    # network — basics
-    "ifconfig", "ip route", "iptables", "rete", "network",
-    # packages
-    "apt", "apt-get", "pacchetto", "package", "installa", "installare",
-    # logs
-    "journalctl", "syslog", "log di sistema",
-    # generic shell verb
-    "comando shell", "shell command", "esegui",
-    # ── long-tail sysinfo fallback (22/5/2026): query che `get_processes`
-    # non copre (porte, socket, kernel module, GPU, ecc.). Trigger inietta
-    # admin nel pool: il LLM (che conosce i comandi Linux) propone p.es.
-    # `ss -tlnp` o `lsmod` e la whitelist v3 li auto-approva.
-    "porta", "porte", "port", "ports",
-    "socket", "sockets",
-    "listening", "ascolta", "ascoltante",
-    "tcp", "udp",
-    "modulo kernel", "moduli kernel", "kernel module",
-    "scheda video", "gpu", "video card",
-    "lsof", "lsblk", "lsmod", "lspci", "lsusb",
-    "dmesg", "sensors", "sensor",
-)
+def _detect_shell_intent(qlow: str) -> bool:
+    """Whether an asserted shell/admin form exists in the active registry."""
+    try:
+        import detection_lexicon as _detlex
+        from safety.canonicalize import command_grammar_binaries
+
+        query = qlow or ""
+        names = {
+            str(name).casefold() for name in command_grammar_binaries() if name
+        }
+        matches = list(_COMMAND_TOKEN_RE.finditer(query))
+        tokens = [match.group(0).casefold() for match in matches]
+        groups: dict[tuple[int, int], list[tuple[int, int]]] = {}
+        for begin, stop in _detlex.phrase_spans("admin.shell_intent", query):
+            if _detlex.asserted_at(query, begin, command_scope=True):
+                group_start = max(
+                    (query.rfind(boundary, 0, begin) + 1
+                     for boundary in ",.;:!?"),
+                    default=0,
+                )
+                groups.setdefault(
+                    (group_start, _clause_end(query, begin)), [],
+                ).append((begin, stop))
+        for _clause, spans in sorted(groups.items()):
+            identities = {
+                identity
+                for begin, stop in spans
+                if (identity := _shell_operation_identity(
+                    query, begin, stop, matches, tokens, names,
+                )) is not None
+            }
+            if not _later_polarity_revokes_operation(
+                    query, identities, max(stop for _begin, stop in spans),
+                    matches, tokens, names):
+                return True
+        return False
+    except Exception as exc:
+        log.warning("shell intent lexicon unavailable: %s", exc)
+        return False
 
 
-_SHELL_INTENT_RE = re.compile(
-    r"\b(?:" + "|".join(re.escape(h) for h in _SHELL_INTENT_HINTS) + r")\b",
+_COMMAND_TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9.+-]*", re.IGNORECASE)
+
+# A command name is not sufficient evidence by itself: the safety grammar also
+# contains binaries whose names are ordinary natural-language words (``date``,
+# ``file``, ``last``, ``who``, ...).  Require a generic invocation signal near
+# the binary, or an unmistakably command-line-shaped argument after a binary at
+# the start of the request.  Invocation surfaces live in the translatable
+# detection lexicon; adding a binary to the canonical grammar never requires
+# adding that binary here.
+_CLI_FIRST_ARGUMENT_RE = re.compile(
+    r"\s*(?:"
+    r"--?[a-z0-9]"                    # option: -c, --count
+    r"|(?:\.{0,2}/|~/)[^\s]+"       # absolute/relative/home path
+    r"|[a-z_][a-z0-9_]*=[^\s]+"      # key=value
+    r"|(?:https?|ftp|sftp)://[^\s]+" # URL
+    r"|\d{1,3}(?:\.\d{1,3}){3}\b"  # IPv4-shaped target
+    r"|[a-z0-9](?:[a-z0-9-]*\.)+[a-z]{2,}\b"  # DNS-shaped target
+    r")",
     re.IGNORECASE,
 )
 
 
-def _detect_shell_intent(qlow: str) -> bool:
-    """True se la query contiene un marker shell-related come TOKEN INTERO
-    (word boundary). Case-insensitive."""
-    return bool(_SHELL_INTENT_RE.search(qlow or ""))
+def _clause_end(query: str, start: int) -> int:
+    end = len(query)
+    for boundary in ",.;:!?":
+        found = query.find(boundary, start)
+        if found >= 0:
+            end = min(end, found)
+    return end
+
+
+def _polarity_scope_end(query: str, start: int) -> int:
+    """End of a negative scope; commas/colons may introduce target lists."""
+    end = len(query)
+    for boundary in ".;!?":
+        found = query.find(boundary, start)
+        if found >= 0:
+            end = min(end, found)
+    return end
+
+
+def _explicit_command_targets(
+        query: str, polarity_stop: int, command_matches, command_tokens,
+        command_names) -> set[str]:
+    """Grammar binaries explicitly scoped by a following polarity marker.
+
+    The first binary must be structurally adjacent either to the polarity or
+    to its invocation phrase.  Once that binding is established, every later
+    grammar binary in the same negative scope belongs conservatively to that
+    scope. Commas and colons do not end it because they commonly coordinate or
+    introduce targets (``do not execute: mount, or systemctl``). This is
+    deliberately fail-closed: ambiguous explanatory prose may suppress an
+    admin suggestion, but cannot expose one.
+    """
+    import detection_lexicon as _detlex
+
+    end = _polarity_scope_end(query, polarity_stop)
+    candidates = [
+        (match, token)
+        for match, token in zip(command_matches, command_tokens)
+        if token in command_names and polarity_stop <= match.start() < end
+    ]
+    for index, (match, token) in enumerate(candidates):
+        invocation = _detlex.phrase_before(
+            "syntax.command_invocation", query, match.start(),
+        )
+        if (invocation is not None and invocation[0] >= polarity_stop
+                and not query[polarity_stop:invocation[0]].strip()):
+            return {item for _match, item in candidates[index:]}
+        # ``do not ping ...`` is also explicit: the grammar binary immediately
+        # follows the polarity phrase. A word merely mentioned in a reason
+        # (``do not do it because date is slow``) has intervening prose and
+        # cannot neutralize an anaphoric revocation.
+        if not query[polarity_stop:match.start()].strip():
+            return {item for _match, item in candidates[index:]}
+    return set()
+
+
+def _later_polarity_revokes_operation(
+        query: str, operations, after: int, command_matches,
+        command_tokens, command_names) -> bool:
+    """Whether later negative polarity revokes the current operation group.
+
+    A negation or inhibition with no following grammar binary in its clause is
+    anaphoric (``non farlo``, ``avoid executing it``) and therefore revokes the
+    current command. If it names the same binary it also revokes it. A
+    different named binary scopes the polarity to that other operation.
+    """
+    import detection_lexicon as _detlex
+
+    operation_set = (
+        {operations} if isinstance(operations, str) else set(operations)
+    )
+    unknown_identity = not operation_set
+
+    polarity_spans = sorted({
+        span
+        for concept in ("syntax.negation", "syntax.inhibition")
+        for span in _detlex.phrase_spans(concept, query, start=after)
+    })
+    for _begin, stop in polarity_spans:
+        named = _explicit_command_targets(
+            query, stop, command_matches, command_tokens, command_names,
+        )
+        if not named or unknown_identity:
+            return True
+        operation_set.difference_update(named)
+        if not operation_set:
+            return True
+    return False
+
+
+def _shell_operation_identity(
+        query: str, begin: int, stop: int, command_matches, command_tokens,
+        command_names) -> str | None:
+    """Best structural identity for an asserted shell-intent span."""
+    import detection_lexicon as _detlex
+
+    surface = query[begin:stop].casefold()
+    if surface in command_names:
+        return surface
+    end = _clause_end(query, stop)
+    for match, token in zip(command_matches, command_tokens):
+        if token not in command_names or not stop <= match.start() < end:
+            continue
+        invocation = _detlex.phrase_before(
+            "syntax.command_invocation", query, match.start(),
+        )
+        if invocation is not None and invocation[0] == begin:
+            return token
+    return None
+
+
+def _detect_command_grammar_intent(query: str, *, command_names=None) -> bool:
+    """Whether the query invokes a command understood by the safety grammar.
+
+    This is the generic, low-priority fallback for shell commands.  Natural
+    language hints above can still promote ``admin`` strongly.  A literal
+    command name is accepted only with a localized invocation phrase or,
+    when it starts the request, command-line-shaped syntax.  This prevents
+    grammar binaries such as ``date``, ``file`` and ``who`` from turning
+    ordinary prose into administrative intent.  The result only exposes the
+    guarded admin tool; it never grants permission.
+
+    ``command_names`` is injectable so the invariant can be tested with a
+    future command without editing production tables.
+    """
+    if command_names is None:
+        try:
+            from safety.canonicalize import command_grammar_binaries
+            command_names = command_grammar_binaries()
+        except Exception as exc:
+            log.warning("command grammar unavailable for admin fallback: %s", exc)
+            return False
+    names = {str(name).casefold() for name in command_names if name}
+    matches = list(_COMMAND_TOKEN_RE.finditer(query or ""))
+    tokens = [match.group(0).casefold() for match in matches]
+    for index, (match, token) in enumerate(zip(matches, tokens)):
+        if token not in names:
+            continue
+        try:
+            import detection_lexicon as _detlex
+            if not _detlex.native_ready_forms(
+                    "syntax.command_invocation", require_manual=True):
+                continue
+            invocation_span = _detlex.phrase_before(
+                "syntax.command_invocation", query or "", match.start())
+            asserted = (
+                invocation_span is not None
+                and _detlex.asserted_at(
+                    query or "", match.start(), command_scope=True,
+                )
+            )
+            revoked_later = _later_polarity_revokes_operation(
+                query or "", {token}, match.end(), matches, tokens, names,
+            )
+        except Exception as exc:
+            log.warning("command assertion guard unavailable: %s", exc)
+            invocation_span = None
+            asserted = False
+            revoked_later = True
+        if invocation_span is not None and asserted and not revoked_later:
+            return True
+        if index == 0 and _CLI_FIRST_ARGUMENT_RE.match(
+                (query or "")[match.end():]):
+            try:
+                cli_asserted = _detlex.asserted_at(
+                    query or "", match.start(), command_scope=True,
+                )
+            except Exception as exc:
+                log.warning("CLI assertion guard unavailable: %s", exc)
+                cli_asserted = False
+            if cli_asserted and not revoked_later:
+                return True
+    return False
 
 
 def _query_has_marker(qlow, markers):
@@ -1117,11 +1309,20 @@ def rank_with_intent(query, catalog, intent, *, k=3):
     # gpu/...). Se admin gia' in seen_names (matched per affinity), lo
     # promuoviamo comunque al top — il PLANNER deve vederlo come prima
     # opzione, non al 6° posto.
-    if _detect_shell_intent(qlow):
+    shell_intent = _detect_shell_intent(qlow)
+    command_fallback = _detect_command_grammar_intent(qlow)
+    if shell_intent:
         admin_exec = next((e for e in catalog if e.name == "admin"), None)
         if admin_exec is not None:
             primary = [(s, e) for s, e in primary if e.name != "admin"]
             primary.insert(0, (15, admin_exec))
+            seen_names.add("admin")
+    elif command_fallback and "admin" not in seen_names:
+        admin_exec = next((e for e in catalog if e.name == "admin"), None)
+        if admin_exec is not None:
+            # A recognised command is evidence for the fallback, not evidence
+            # that it should outrank a purpose-built executor.
+            primary.append((1, admin_exec))
             seen_names.add("admin")
 
     # Time intent injection (6/5/2026): "che ore sono", "what time", etc.
@@ -1156,7 +1357,12 @@ def rank_with_intent(query, catalog, intent, *, k=3):
         if e.name in primary_names and e.name not in head_names:
             forced.append(e)
             head_names.add(e.name)
-    return head + forced
+    result = head + forced
+    if command_fallback:
+        admin_exec = next((e for _s, e in primary if e.name == "admin"), None)
+        if admin_exec is not None and all(e.name != "admin" for e in result):
+            result.append(admin_exec)
+    return result
 
 
 def _filter_dormant(catalog):
@@ -1389,11 +1595,18 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
     # sia in cima al pool (head-injection). 22/5/2026: anche se gia'
     # presente per affinity, lo promuoviamo a position 0.
     qlow_bow = (query or "").lower()
-    if _detect_shell_intent(qlow_bow):
+    shell_intent = _detect_shell_intent(qlow_bow)
+    command_fallback = _detect_command_grammar_intent(qlow_bow)
+    if shell_intent:
         admin_exec = next((e for e in catalog if e.name == "admin"), None)
         if admin_exec is not None:
             selected = [e for e in selected if e.name != "admin"]
             selected = [admin_exec] + selected[:max(0, k_max - 1)]
+    elif command_fallback:
+        admin_exec = next((e for e in catalog if e.name == "admin"), None)
+        if admin_exec is not None and all(e.name != "admin" for e in selected):
+            # Preserve the normal top-K ordering and add one guarded fallback.
+            selected.append(admin_exec)
     _, conf = adaptive_k(scores, k_min, k_max)
     return selected, {
         "chosen_k": K,

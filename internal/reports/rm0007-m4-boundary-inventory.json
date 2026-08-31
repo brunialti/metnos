@@ -994,7 +994,7 @@
     },
     {
       "path": "runtime/contract_store.py",
-      "scope": "commit_birth_snapshot",
+      "scope": "_commit_birth_snapshot",
       "role": "store_owner",
       "capabilities": [
         "authoring_read",
@@ -1047,6 +1047,17 @@
         "verified_store_read"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "inspect_birth_authoring_recovery",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "read-only authenticated recovery evidence before bootstrap database mutation",
       "phase": "M4"
     },
     {
@@ -1215,12 +1226,31 @@
     },
     {
       "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "_PostconditionAdapter._classify_authoring_recovery",
+      "role": "store_owner",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "read-only validation of one pending authoring recovery decision",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "_PostconditionAdapter.plan_authoring_recovery",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read-only complete recovery plan assembled before durable bootstrap state",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
       "scope": "_PostconditionAdapter.recover_authoring",
       "role": "store_owner",
       "capabilities": [
         "authoring_read",
-        "store_write",
-        "verified_store_read"
+        "store_write"
       ],
       "destination": "reviewed startup owner of publication and authoring recovery",
       "phase": "M4"
@@ -1230,6 +1260,8 @@
       "scope": "_build",
       "role": "store_owner",
       "capabilities": [
+        "birth_core_assembly",
+        "birth_runtime_assembly",
         "store_write"
       ],
       "destination": "sealed bootstrap assembly that completes store recovery before workers",
@@ -1447,10 +1479,73 @@
     },
     {
       "path": "runtime/executor_birth_operational.py",
+      "scope": "_BirthCommitPublisher.__call__",
+      "role": "store_owner",
+      "capabilities": [
+        "birth_commit"
+      ],
+      "destination": "sole compiled adapter from sealed Birth authority to the private store commit",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_operational.py",
+      "scope": "_assemble_birth_core",
+      "role": "birth_owner",
+      "capabilities": [
+        "birth_commit_factory",
+        "birth_core_assembly"
+      ],
+      "destination": "sole assembler that binds fixed author and Admission authorities to the commit adapter",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_operational.py",
+      "scope": "_assemble_birth_runtime_bundle",
+      "role": "birth_owner",
+      "capabilities": [
+        "birth_runtime_assembly"
+      ],
+      "destination": "sole assembler of the private installed Birth runtime state",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_operational.py",
+      "scope": "_execute_installed_reattestation",
+      "role": "birth_owner",
+      "capabilities": [
+        "birth_runtime_private_state"
+      ],
+      "destination": "sealed reattestation facade that never returns the installed signing core",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_operational.py",
+      "scope": "_execute_intent_with_capability",
+      "role": "operational_producer",
+      "capabilities": [
+        "birth",
+        "birth_runtime_private_state"
+      ],
+      "destination": "sealed producer dispatch that routes every admitted intent through birth_executor",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_operational.py",
+      "scope": "_installed_runtime_state",
+      "role": "birth_owner",
+      "capabilities": [
+        "birth_runtime_private_state"
+      ],
+      "destination": "module-private accessor for the installed signing state used only by exact Birth facades",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_operational.py",
       "scope": "birth_executor",
       "role": "administrative_tool",
       "capabilities": [
-        "birth"
+        "birth",
+        "birth_runtime_private_state"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
       "phase": "M4"

@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from contract_store import (
     ACTIVE_BYTES,
     BINDING_FILE,
-    BirthCommitAuthorization,
+    BirthCommitBindings,
     GENERATION_FILES,
     RETIREMENT_FILES,
     ContractRetirement,
@@ -33,9 +33,9 @@ from contract_store import (
     ProductionStoreMode,
     SurfaceRemoval,
     TechnicalDraft,
+    _commit_birth_snapshot,
     activate_store,
     authenticate_execution_binding,
-    commit_birth_snapshot,
     contract_storage_key,
     contract_revision_id,
     current_contract,
@@ -2222,7 +2222,7 @@ def _birth_authorization(
     admission_private: Ed25519PrivateKey,
     *,
     observed: list[tuple[str, Mapping[str, str]]] | None = None,
-) -> BirthCommitAuthorization:
+) -> BirthCommitBindings:
     public = admission_private.public_key()
 
     def issue(
@@ -2258,7 +2258,7 @@ def _birth_authorization(
             private_key=admission_private,
         )
 
-    return BirthCommitAuthorization(
+    return BirthCommitBindings(
         candidate_id=_BIRTH_DIGEST,
         semantic_core_id=_BIRTH_DIGEST,
         admission_context_id=_BIRTH_DIGEST,
@@ -2268,6 +2268,20 @@ def _birth_authorization(
             encoded, public_key=public, expected_key_id="birth-test-key",
         ),
     )
+
+
+def test_birth_commit_bindings_are_plain_data_not_a_store_capability() -> None:
+    bindings = BirthCommitBindings(
+        candidate_id=_BIRTH_DIGEST,
+        semantic_core_id=_BIRTH_DIGEST,
+        admission_context_id=_BIRTH_DIGEST,
+        predecessor_id=None,
+        issuer=lambda *_args: b"not-authorized",
+        verifier=lambda _encoded: object(),
+    )
+
+    assert bindings.candidate_id == _BIRTH_DIGEST
+    assert not hasattr(bindings, "publish")
 
 
 def _birth_draft(ref: ManifestRef) -> TechnicalDraft:
@@ -2309,14 +2323,14 @@ def test_birth_receipt_is_durable_and_reread_before_pointer(tmp_path: Path) -> N
         ref, initial.current_generation_id, admission_private, observed=observed,
     )
 
-    result = commit_birth_snapshot(
+    result = _commit_birth_snapshot(
         ref,
         expected_generation_id=initial.current_generation_id,
         snapshot=snapshot,
         request_id="sha256:" + "8" * 64,
         private_key=private,
         trusted_publics=trusted,
-        birth_authorization=authorization,
+        birth_bindings=authorization,
         store_root=store,
     )
 
@@ -2346,10 +2360,10 @@ def _execution_binding_fixture(tmp_path, monkeypatch):
     authorization = _birth_authorization(
         ref, predecessor, admission_private,
     )
-    publication = commit_birth_snapshot(
+    publication = _commit_birth_snapshot(
         ref, expected_generation_id=predecessor, snapshot=snapshot,
         request_id="sha256:" + "8" * 64, private_key=private,
-        trusted_publics=trusted, birth_authorization=authorization,
+        trusted_publics=trusted, birth_bindings=authorization,
         store_root=store,
     )
     monkeypatch.setattr(
@@ -2441,19 +2455,23 @@ def test_birth_commit_rejects_changed_context_epoch(tmp_path: Path) -> None:
         ref, initial.current_generation_id, Ed25519PrivateKey.generate(),
     )
     epoch = {"value": "sha256:" + "1" * 64}
-    authorization = BirthCommitAuthorization(
-        base.candidate_id, base.semantic_core_id, base.admission_context_id,
-        base.predecessor_id, base.issuer, base.verifier,
+    authorization = BirthCommitBindings(
+        candidate_id=base.candidate_id,
+        semantic_core_id=base.semantic_core_id,
+        admission_context_id=base.admission_context_id,
+        predecessor_id=base.predecessor_id,
+        issuer=base.issuer,
+        verifier=base.verifier,
         context_epoch="sha256:" + "0" * 64,
         context_epoch_resolver=lambda: epoch["value"],
     )
 
     with pytest.raises(ContractStoreError, match="birth_context_changed"):
-        commit_birth_snapshot(
+        _commit_birth_snapshot(
             ref, expected_generation_id=initial.current_generation_id,
             snapshot=snapshot, request_id="sha256:" + "2" * 64,
             private_key=private, trusted_publics=trusted,
-            birth_authorization=authorization, store_root=store,
+            birth_bindings=authorization, store_root=store,
         )
     assert current_revision_id(ref, store_root=store) == initial.current_generation_id
 
@@ -2474,18 +2492,22 @@ def test_birth_commit_rejects_changed_authenticated_predecessor(tmp_path: Path) 
         initial.current_generation_id, "generation",
         {"manifest.toml": b"authenticated-old-revision"},
     )
-    authorization = BirthCommitAuthorization(
-        base.candidate_id, base.semantic_core_id, base.admission_context_id,
-        base.predecessor_id, base.issuer, base.verifier,
+    authorization = BirthCommitBindings(
+        candidate_id=base.candidate_id,
+        semantic_core_id=base.semantic_core_id,
+        admission_context_id=base.admission_context_id,
+        predecessor_id=base.predecessor_id,
+        issuer=base.issuer,
+        verifier=base.verifier,
         predecessor_snapshot_id=stale.snapshot_id,
     )
 
     with pytest.raises(ContractStoreError, match="birth_predecessor_changed"):
-        commit_birth_snapshot(
+        _commit_birth_snapshot(
             ref, expected_generation_id=initial.current_generation_id,
             snapshot=snapshot, request_id="sha256:" + "a" * 64,
             private_key=private, trusted_publics=trusted,
-            birth_authorization=authorization, store_root=store,
+            birth_bindings=authorization, store_root=store,
         )
 
 
@@ -2511,21 +2533,21 @@ def test_birth_crash_after_receipt_before_generation_is_idempotent(
 
     monkeypatch.setattr(contract_store_module, "_install_generation", crash)
     with pytest.raises(RuntimeError, match="injected crash"):
-        commit_birth_snapshot(
+        _commit_birth_snapshot(
             ref, expected_generation_id=initial.current_generation_id,
             snapshot=snapshot, request_id="sha256:" + "9" * 64,
             private_key=private, trusted_publics=trusted,
-            birth_authorization=authorization, store_root=store,
+            birth_bindings=authorization, store_root=store,
         )
     assert current_revision_id(ref, store_root=store) == initial.current_generation_id
     assert len(tuple(store.rglob("admission-receipts/*.json"))) == 1
 
     monkeypatch.setattr(contract_store_module, "_install_generation", original_install)
-    result = commit_birth_snapshot(
+    result = _commit_birth_snapshot(
         ref, expected_generation_id=initial.current_generation_id,
         snapshot=snapshot, request_id="sha256:" + "9" * 64,
         private_key=private, trusted_publics=trusted,
-        birth_authorization=authorization, store_root=store,
+        birth_bindings=authorization, store_root=store,
     )
     assert current_revision_id(ref, store_root=store) == result.current_generation_id
     assert len(observed) == 1
@@ -2542,7 +2564,7 @@ def test_birth_receipt_failure_leaves_pointer_unchanged(tmp_path: Path) -> None:
     good = _birth_authorization(
         ref, initial.current_generation_id, Ed25519PrivateKey.generate(),
     )
-    invalid = BirthCommitAuthorization(
+    invalid = BirthCommitBindings(
         candidate_id=good.candidate_id,
         semantic_core_id=good.semantic_core_id,
         admission_context_id=good.admission_context_id,
@@ -2552,11 +2574,11 @@ def test_birth_receipt_failure_leaves_pointer_unchanged(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ContractStoreError, match="birth_receipt_invalid"):
-        commit_birth_snapshot(
+        _commit_birth_snapshot(
             ref, expected_generation_id=initial.current_generation_id,
             snapshot=snapshot, request_id="sha256:" + "6" * 64,
             private_key=private, trusted_publics=trusted,
-            birth_authorization=invalid, store_root=store,
+            birth_bindings=invalid, store_root=store,
         )
     assert current_revision_id(ref, store_root=store) == initial.current_generation_id
     assert not tuple(store.rglob("admission-receipts/*.json"))
@@ -2590,19 +2612,19 @@ def test_birth_crash_after_pointer_completes_version_on_retry(
     monkeypatch.setattr(authoring, "advance_version", crash)
     request_id = "sha256:" + "5" * 64
     with pytest.raises(RuntimeError, match="injected crash after pointer"):
-        commit_birth_snapshot(
+        _commit_birth_snapshot(
             ref, expected_generation_id=initial.current_generation_id,
             snapshot=snapshot, request_id=request_id, private_key=private,
-            trusted_publics=trusted, birth_authorization=authorization,
+            trusted_publics=trusted, birth_bindings=authorization,
             store_root=store,
         )
     committed = current_revision_id(ref, store_root=store)
     assert committed != initial.current_generation_id
 
-    result = commit_birth_snapshot(
+    result = _commit_birth_snapshot(
         ref, expected_generation_id=initial.current_generation_id,
         snapshot=snapshot, request_id=request_id, private_key=private,
-        trusted_publics=trusted, birth_authorization=authorization,
+        trusted_publics=trusted, birth_bindings=authorization,
         store_root=store,
     )
     assert result.repeated
@@ -2621,27 +2643,27 @@ def test_birth_post_cleanup_replay_requires_exact_request_id(tmp_path: Path) -> 
         ref, initial.current_generation_id, Ed25519PrivateKey.generate(),
     )
     request_id = "sha256:" + "4" * 64
-    first = commit_birth_snapshot(
+    first = _commit_birth_snapshot(
         ref, expected_generation_id=initial.current_generation_id,
         snapshot=snapshot, request_id=request_id, private_key=private,
-        trusted_publics=trusted, birth_authorization=authorization,
+        trusted_publics=trusted, birth_bindings=authorization,
         store_root=store,
     )
-    repeated = commit_birth_snapshot(
+    repeated = _commit_birth_snapshot(
         ref, expected_generation_id=initial.current_generation_id,
         snapshot=snapshot, request_id=request_id, private_key=private,
-        trusted_publics=trusted, birth_authorization=authorization,
+        trusted_publics=trusted, birth_bindings=authorization,
         store_root=store,
     )
     assert repeated.repeated
     assert repeated.current_generation_id == first.current_generation_id
 
     with pytest.raises(ContractStoreError, match="birth_receipt_binding_invalid"):
-        commit_birth_snapshot(
+        _commit_birth_snapshot(
             ref, expected_generation_id=initial.current_generation_id,
             snapshot=snapshot, request_id="sha256:" + "3" * 64,
             private_key=private, trusted_publics=trusted,
-            birth_authorization=authorization, store_root=store,
+            birth_bindings=authorization, store_root=store,
         )
 
 
@@ -2767,17 +2789,17 @@ def test_birth_commit_recovers_every_durable_boundary(
     _inject_birth_commit_crash(monkeypatch, boundary)
 
     with pytest.raises(RuntimeError, match=f"after {boundary}"):
-        commit_birth_snapshot(
+        _commit_birth_snapshot(
             ref, expected_generation_id=predecessor, snapshot=snapshot,
             request_id=request_id, private_key=private,
-            trusted_publics=trusted, birth_authorization=authorization,
+            trusted_publics=trusted, birth_bindings=authorization,
             store_root=store,
         )
 
-    recovered = commit_birth_snapshot(
+    recovered = _commit_birth_snapshot(
         ref, expected_generation_id=predecessor, snapshot=snapshot,
         request_id=request_id, private_key=private,
-        trusted_publics=trusted, birth_authorization=authorization,
+        trusted_publics=trusted, birth_bindings=authorization,
         store_root=store,
     )
     assert recovered.current_generation_id == current_revision_id(
@@ -2815,10 +2837,10 @@ def test_birth_crash_recovery_rejects_tampered_durable_state(
     )
     _inject_birth_commit_crash(monkeypatch, crash_boundary)
     with pytest.raises(RuntimeError):
-        commit_birth_snapshot(
+        _commit_birth_snapshot(
             ref, expected_generation_id=predecessor, snapshot=snapshot,
             request_id=request_id, private_key=private,
-            trusted_publics=trusted, birth_authorization=authorization,
+            trusted_publics=trusted, birth_bindings=authorization,
             store_root=store,
         )
 
@@ -2851,10 +2873,10 @@ def test_birth_crash_recovery_rejects_tampered_durable_state(
         (generation / "manifest.toml").write_bytes(b"tampered")
 
     with pytest.raises(ContractStoreError):
-        commit_birth_snapshot(
+        _commit_birth_snapshot(
             ref, expected_generation_id=predecessor, snapshot=snapshot,
             request_id=request_id, private_key=private,
-            trusted_publics=trusted, birth_authorization=authorization,
+            trusted_publics=trusted, birth_bindings=authorization,
             store_root=store,
         )
 

@@ -13,7 +13,7 @@ import stat
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Callable, Mapping
 
@@ -23,8 +23,7 @@ from executor_birth import observe_candidate
 from executor_birth_identity import ExecutorOrigin, RevisionAuthor
 from executor_birth_intent import BirthIntent, _ProducerCapability, _producer_capabilities_for_bootstrap
 from executor_birth_operational import (
-    BirthRequest, BirthRuntimeBundle, _assemble_birth_core,
-    _assemble_birth_runtime_bundle, _install_birth_runtime_bundle,
+    BirthRequest, BirthRuntimeVerificationView,
     _runtime_bundle_snapshot, approval_scope, candidate_source_id,
 )
 from executor_birth_producer_store import get_or_issue_producer_receipt
@@ -58,6 +57,27 @@ class BirthBootstrapPaths:
 _BOOT_LOCK = threading.Condition()
 _BOOT_STATE = "cold"
 _BOOT_ERROR: BaseException | None = None
+_AUTHOR_KEYSTORE_BASENAME = "author-keystore"
+
+
+@dataclass(frozen=True, slots=True)
+class _CreatedPrivatePath:
+    path: Path
+    device: int
+    inode: int
+    file_type: int
+    change_time_ns: int
+
+
+def _created_private_path(path: Path) -> _CreatedPrivatePath:
+    info = path.lstat()
+    return _CreatedPrivatePath(
+        path,
+        info.st_dev,
+        info.st_ino,
+        stat.S_IFMT(info.st_mode),
+        info.st_ctime_ns,
+    )
 
 
 def default_birth_bootstrap_paths() -> BirthBootstrapPaths:
@@ -88,50 +108,221 @@ def _read_config(path: Path) -> dict[str, object]:
     return value
 
 
-def _secure_state_db(state_dir: Path) -> Path:
+def _linked_path(path: Path, info: os.stat_result) -> bool:
+    return bool(
+        stat.S_ISLNK(info.st_mode)
+        or getattr(info, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        or (hasattr(path, "is_junction") and path.is_junction())
+    )
+
+
+def _require_private_directory(path: Path, *, error: str) -> None:
     try:
-        state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        info = state_dir.stat()
-        if not state_dir.is_dir() or state_dir.is_symlink() or (os.name != "nt" and info.st_mode & 0o077):
-            raise BirthBootstrapError("birth_state_permissions")
-        path = state_dir / "producer-receipts.sqlite"
-        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-        descriptor = os.open(path, flags, 0o600)
-        try:
-            db_info = os.fstat(descriptor)
-            if not stat.S_ISREG(db_info.st_mode) or db_info.st_nlink != 1 or (os.name != "nt" and db_info.st_mode & 0o077):
-                raise BirthBootstrapError("birth_state_permissions")
-        finally:
-            os.close(descriptor)
-        return path
+        for component in reversed((path, *path.parents)):
+            component_info = component.lstat()
+            if _linked_path(component, component_info):
+                raise BirthBootstrapError(error)
+        info = path.lstat()
+        if _linked_path(path, info) or not stat.S_ISDIR(info.st_mode):
+            raise BirthBootstrapError(error)
+        if os.name == "posix" and (
+            stat.S_IMODE(info.st_mode) != 0o700 or info.st_uid != os.geteuid()
+        ):
+            raise BirthBootstrapError(error)
+        if os.name == "nt":
+            from executor_birth_keystore import _check_windows_acl
+            _check_windows_acl(path, confidential=True)
     except BirthBootstrapError:
         raise
-    except OSError as exc:
-        raise BirthBootstrapError("birth_state_unavailable") from exc
+    except Exception as exc:
+        raise BirthBootstrapError(error) from exc
 
 
-def _secure_approval_db(path: Path) -> Path:
-    """Validate the explicitly configured durable approval database path."""
+def _secure_private_directory_tree(
+    *, anchor: Path, target: Path, error: str,
+    created_paths: list[_CreatedPrivatePath] | None = None,
+) -> Path:
+    anchor = Path(os.path.abspath(anchor))
+    target = Path(os.path.abspath(target))
     try:
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        parent = path.parent.stat()
-        if (not path.parent.is_dir() or path.parent.is_symlink()
-                or (os.name != "nt" and parent.st_mode & 0o077)):
-            raise BirthBootstrapError("birth_approval_store_permissions")
-        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-        descriptor = os.open(path, flags, 0o600)
+        relative = target.relative_to(anchor)
+    except ValueError as exc:
+        raise BirthBootstrapError(error) from exc
+    _require_private_directory(anchor, error=error)
+    current = anchor
+    for part in relative.parts:
+        current = current / part
+        created = False
         try:
+            os.mkdir(current, 0o700)
+            created = True
+        except FileExistsError:
+            pass
+        except OSError as exc:
+            raise BirthBootstrapError(error) from exc
+        if created and os.name == "nt":
+            try:
+                from executor_birth_keystore import _harden_windows_private_acl
+                _harden_windows_private_acl(current)
+            except Exception as exc:
+                raise BirthBootstrapError(error) from exc
+        _require_private_directory(current, error=error)
+        if created and created_paths is not None:
+            created_paths.append(_created_private_path(current))
+    return target
+
+
+def _secure_private_database(
+    path: Path,
+    *,
+    anchor: Path,
+    permissions_error: str,
+    unavailable_error: str,
+    created_paths: list[_CreatedPrivatePath] | None = None,
+) -> Path:
+    path = Path(os.path.abspath(path))
+    _secure_private_directory_tree(
+        anchor=anchor,
+        target=path.parent,
+        error=permissions_error,
+        created_paths=created_paths,
+    )
+    flags = (
+        os.O_RDWR | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    )
+    created = False
+    try:
+        try:
+            descriptor = os.open(
+                path, flags | os.O_CREAT | os.O_EXCL, 0o600,
+            )
+            created = True
+        except FileExistsError:
+            descriptor = os.open(path, flags)
+        try:
+            entry = path.lstat()
             info = os.fstat(descriptor)
-            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                    or (os.name != "nt" and info.st_mode & 0o077)):
-                raise BirthBootstrapError("birth_approval_store_permissions")
+            if (
+                _linked_path(path, entry)
+                or not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or (entry.st_dev, entry.st_ino) != (info.st_dev, info.st_ino)
+            ):
+                raise BirthBootstrapError(permissions_error)
+            if created and os.name == "nt":
+                from executor_birth_keystore import _harden_windows_private_acl
+                try:
+                    _harden_windows_private_acl(path)
+                except Exception as exc:
+                    if created_paths is not None:
+                        created_paths.append(_created_private_path(path))
+                    raise BirthBootstrapError(permissions_error) from exc
+            entry = path.lstat()
+            if (
+                _linked_path(path, entry)
+                or not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or (entry.st_dev, entry.st_ino) != (info.st_dev, info.st_ino)
+            ):
+                raise BirthBootstrapError(permissions_error)
+            if os.name == "posix":
+                os.fchmod(descriptor, 0o600)
+                info = os.fstat(descriptor)
+                if (
+                    stat.S_IMODE(info.st_mode) != 0o600
+                    or info.st_uid != os.geteuid()
+                ):
+                    raise BirthBootstrapError(permissions_error)
+            else:
+                from executor_birth_keystore import _check_windows_acl
+                _check_windows_acl(path, confidential=True)
+            if created and created_paths is not None:
+                created_paths.append(_created_private_path(path))
         finally:
             os.close(descriptor)
+        for suffix in ("-journal", "-shm", "-wal"):
+            companion = Path(str(path) + suffix)
+            if not companion.exists() and not companion.is_symlink():
+                continue
+            companion_info = companion.lstat()
+            if (
+                _linked_path(companion, companion_info)
+                or not stat.S_ISREG(companion_info.st_mode)
+                or companion_info.st_nlink != 1
+                or (os.name == "posix" and (
+                    stat.S_IMODE(companion_info.st_mode) != 0o600
+                    or companion_info.st_uid != os.geteuid()
+                ))
+            ):
+                raise BirthBootstrapError(permissions_error)
+            if os.name == "nt":
+                from executor_birth_keystore import _check_windows_acl
+                _check_windows_acl(companion, confidential=True)
         return path
     except BirthBootstrapError:
         raise
     except OSError as exc:
-        raise BirthBootstrapError("birth_approval_store_unavailable") from exc
+        raise BirthBootstrapError(unavailable_error) from exc
+
+
+def _secure_state_db(
+    state_dir: Path, *, created_paths: list[_CreatedPrivatePath] | None = None,
+) -> Path:
+    state_dir = Path(os.path.abspath(state_dir))
+    return _secure_private_database(
+        state_dir / "producer-receipts.sqlite",
+        anchor=state_dir.parent,
+        permissions_error="birth_state_permissions",
+        unavailable_error="birth_state_unavailable",
+        created_paths=created_paths,
+    )
+
+
+def _secure_approval_db(
+    path: Path,
+    *,
+    config_dir: Path | None = None,
+    created_paths: list[_CreatedPrivatePath] | None = None,
+) -> Path:
+    """Validate the fixed, configuration-confined approval database path."""
+    path = Path(os.path.abspath(path))
+    anchor = Path(os.path.abspath(config_dir or path.parent))
+    return _secure_private_database(
+        path,
+        anchor=anchor,
+        permissions_error="birth_approval_store_permissions",
+        unavailable_error="birth_approval_store_unavailable",
+        created_paths=created_paths,
+    )
+
+
+def _rollback_created_private_paths(paths: list[_CreatedPrivatePath]) -> None:
+    """Remove only empty bootstrap objects created by the failed attempt."""
+    for created in reversed(paths):
+        path = created.path
+        try:
+            info = path.lstat()
+            if (
+                _linked_path(path, info)
+                or (info.st_dev, info.st_ino) != (
+                    created.device, created.inode,
+                )
+                or stat.S_IFMT(info.st_mode) != created.file_type
+                or (
+                    stat.S_ISREG(info.st_mode)
+                    and info.st_ctime_ns != created.change_time_ns
+                )
+            ):
+                continue
+            if stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size == 0:
+                path.unlink()
+            elif stat.S_ISDIR(info.st_mode):
+                path.rmdir()
+        except OSError:
+            # Never replace the primary bootstrap failure with cleanup noise.
+            continue
 
 
 def _resolve(config_dir: Path, value: object) -> Path:
@@ -139,6 +330,48 @@ def _resolve(config_dir: Path, value: object) -> Path:
         raise BirthBootstrapError("birth_key_path_invalid")
     path = Path(value)
     return path if path.is_absolute() else config_dir / path
+
+
+def _resolve_private_db(config_dir: Path, value: object) -> Path:
+    if not isinstance(value, str) or not value or "\0" in value or "\\" in value:
+        raise BirthBootstrapError("birth_approval_store_invalid")
+    parsed = PurePosixPath(value)
+    if (
+        parsed.is_absolute()
+        or parsed.as_posix() != value
+        or ".." in parsed.parts
+        or len(parsed.parts) not in {1, 2}
+        or not parsed.name.endswith(".sqlite")
+    ):
+        raise BirthBootstrapError("birth_approval_store_invalid")
+    return config_dir.joinpath(*parsed.parts)
+
+
+def _load_author_authority(
+    root: Path,
+) -> tuple[Ed25519PrivateKey, tuple[tuple[str, Ed25519PublicKey], ...]]:
+    """Load the fixed, closed author keystore without exposing path selection."""
+    from executor_birth_keystore import BirthKeyStoreError, load_birth_keystore
+
+    try:
+        loaded = load_birth_keystore(root)
+    except BirthKeyStoreError as exc:
+        if exc.code == "birth_keystore_unavailable":
+            code = "birth_author_keystore_unavailable"
+        elif exc.code == "birth_keystore_unsafe":
+            code = "birth_author_keystore_unsafe"
+        else:
+            code = "birth_author_keystore_invalid"
+        raise BirthBootstrapError(code) from exc
+    trusted_publics = tuple(
+        (
+            "author" if key_id == loaded.active_key_id
+            else f"author-verifier:{key_id}",
+            loaded.verifier_keys[key_id],
+        )
+        for key_id in sorted(loaded.verifier_keys)
+    )
+    return loaded.active_private_key, trusted_publics
 
 
 def _load_authorities(value: Mapping[str, object], config_dir: Path, *,
@@ -291,23 +524,99 @@ class _PostconditionAdapter:
             admission_verifier_keys=self.verifier_keys, store_root=self.store_root,
         )
 
-    def recover_authoring(self) -> None:
-        # Execute the same closed recovery matrix as the publisher, under the
-        # same lock order, before exposing any productive facade.
+    def _classify_authoring_recovery(self, ref, control, pending) -> str:
+        """Validate one journal without changing its authoring control tree."""
+        from contract_store import (
+            ContractStoreError,
+            inspect_birth_authoring_recovery,
+        )
+        from executor_birth_authoring import authoring_tree_id, observe_tree
+
+        if pending.contract_id != ref.contract_id.value:
+            raise BirthBootstrapError("birth_authoring_recovery_ambiguous")
+        try:
+            current = inspect_birth_authoring_recovery(
+                ref,
+                new_generation_id=pending.new_generation_id,
+                request_id=pending.request_id,
+                journal_hash=pending.journal_hash,
+                predecessor_generation_id=pending.predecessor_generation_id,
+                candidate_id=pending.candidate_id,
+                semantic_core_id=pending.semantic_core_id,
+                admission_context_id=pending.admission_context_id,
+                trusted_publics=self.trusted_publics,
+                admission_verifier_keys=self.verifier_keys,
+                store_root=self.store_root,
+            )
+        except ContractStoreError as exc:
+            code = (
+                "birth_authoring_recovery_receipt_conflict"
+                if exc.code == "birth_receipt_binding_invalid"
+                else "birth_authoring_recovery_receipt_invalid"
+            )
+            raise BirthBootstrapError(
+                code,
+            ) from exc
+        if current == pending.new_generation_id:
+            if (
+                authoring_tree_id(observe_tree(control.canonical))
+                != pending.new_tree_id
+            ):
+                raise BirthBootstrapError("birth_authoring_recovery_ambiguous")
+            return "finalize"
+        if current == pending.predecessor_generation_id:
+            return "rollback"
+        raise BirthBootstrapError("birth_authoring_recovery_pointer_conflict")
+
+    def plan_authoring_recovery(self) -> tuple[tuple[object, object, str], ...]:
+        """Validate every pending journal in a strictly read-only pass."""
         from manifest_inventory import inventory_authoring_manifests
         from executor_birth_authoring import (
-            advance_version, authoring_paths, authoring_token, authoring_tree_id,
-            cleanup_transaction, load_prepared_journal, observe_tree, rollback_prepared,
+            AuthoringInstallError, authoring_paths, load_prepared_journal,
         )
-        from contract_store import (
-            DEFAULT_LOCK_TIMEOUT,
-            _birth_receipt_path, _publication_base_locked, _writer_lock,
-            catalog_admission_lock,
-        )
-        from executor_birth_receipts import verify_admission_receipt
+
         inventory = inventory_authoring_manifests()
         if inventory.problems:
             raise BirthBootstrapError("birth_authoring_inventory_invalid")
+        result: list[tuple[object, object, str]] = []
+        try:
+            for ref in inventory.manifests:
+                control = authoring_paths(
+                    ref.manifest_dir, ref.contract_id.value,
+                )
+                pending = load_prepared_journal(control)
+                if pending is None:
+                    continue
+                action = self._classify_authoring_recovery(
+                    ref, control, pending,
+                )
+                result.append((ref.contract_id, pending, action))
+        except AuthoringInstallError as exc:
+            raise BirthBootstrapError(
+                "birth_authoring_recovery_ambiguous",
+            ) from exc
+        return tuple(result)
+
+    def recover_authoring(
+        self, plan: tuple[tuple[object, object, str], ...],
+    ) -> None:
+        # Revalidate and execute the same closed matrix under the publisher's
+        # lock order. No durable bootstrap database is opened before ``plan``.
+        from manifest_inventory import inventory_authoring_manifests
+        from executor_birth_authoring import (
+            advance_version, authoring_paths, authoring_token,
+            cleanup_transaction, load_prepared_journal, rollback_prepared,
+        )
+        from contract_store import (
+            DEFAULT_LOCK_TIMEOUT,
+            _writer_lock, catalog_admission_lock,
+        )
+        inventory = inventory_authoring_manifests()
+        if inventory.problems:
+            raise BirthBootstrapError("birth_authoring_inventory_invalid")
+        expected = {contract_id: (pending, action) for contract_id, pending, action in plan}
+        if len(expected) != len(plan):
+            raise BirthBootstrapError("birth_authoring_recovery_ambiguous")
         for ref in inventory.manifests:
             control = authoring_paths(ref.manifest_dir, ref.contract_id.value)
             with catalog_admission_lock(store_root=self.store_root):
@@ -317,46 +626,40 @@ class _PostconditionAdapter:
                     with _writer_lock(ref.contract_id, store_root=self.store_root):
                         pending = load_prepared_journal(control)
                         if pending is None:
+                            if ref.contract_id in expected:
+                                raise BirthBootstrapError(
+                                    "birth_authoring_recovery_ambiguous",
+                                )
                             continue
-                        if pending.contract_id != ref.contract_id.value:
+                        planned = expected.pop(ref.contract_id, None)
+                        if planned is None or planned[0] != pending:
                             raise BirthBootstrapError("birth_authoring_recovery_ambiguous")
-                        contract_dir, _generations, current, _payloads = _publication_base_locked(
-                            ref, trusted_publics=self.trusted_publics,
-                            store_root=self.store_root, technical_base=True,
+                        action = self._classify_authoring_recovery(
+                            ref, control, pending,
                         )
-                        try:
-                            encoded = _birth_receipt_path(
-                                contract_dir, pending.new_generation_id,
-                            ).read_bytes()
-                            receipt = verify_admission_receipt(
-                                encoded, verifier_keys=self.verifier_keys,
+                        if action != planned[1]:
+                            raise BirthBootstrapError(
+                                "birth_authoring_recovery_ambiguous",
                             )
-                        except Exception as exc:
-                            raise BirthBootstrapError("birth_authoring_recovery_receipt_invalid") from exc
-                        bindings = {
-                            "contract_id": ref.contract_id.value,
-                            "generation_id": pending.new_generation_id,
-                            "birth_request_id": pending.request_id,
-                            "authoring_journal_hash": pending.journal_hash,
-                            "predecessor_id": pending.predecessor_generation_id,
-                            "candidate_id": pending.candidate_id,
-                            "semantic_core_id": pending.semantic_core_id,
-                            "admission_context_id": pending.admission_context_id,
-                        }
-                        if any(getattr(receipt, field) != wanted for field, wanted in bindings.items()):
-                            raise BirthBootstrapError("birth_authoring_recovery_receipt_conflict")
-                        if current == pending.new_generation_id:
-                            if authoring_tree_id(observe_tree(control.canonical)) != pending.new_tree_id:
-                                raise BirthBootstrapError("birth_authoring_recovery_ambiguous")
+                        if action == "finalize":
                             advance_version(control, pending.contract_id, pending.new_tree_id)
                             cleanup_transaction(control, pending)
-                        elif current == pending.predecessor_generation_id:
+                        elif action == "rollback":
                             rollback_prepared(control, pending)
                         else:
-                            raise BirthBootstrapError("birth_authoring_recovery_pointer_conflict")
+                            raise BirthBootstrapError(
+                                "birth_authoring_recovery_ambiguous",
+                            )
+        if expected:
+            raise BirthBootstrapError("birth_authoring_recovery_ambiguous")
 
 
-def _build(paths: BirthBootstrapPaths, *, now: Callable[[], datetime]) -> BirthRuntimeBundle:
+def _build(
+    paths: BirthBootstrapPaths, *, now: Callable[[], datetime],
+) -> "_BirthRuntimeState":
+    from executor_birth_operational import (
+        _assemble_birth_core, _assemble_birth_runtime_bundle,
+    )
     value = _read_config(paths.config)
     required = {"schema_version", "policy_version", "receipt_ttl_seconds", "admission", "approval", "producers", "context", "semantic_review"}
     expected = required | ({"windows_sandbox"} if os.name == "nt" else set())
@@ -399,8 +702,9 @@ def _build(paths: BirthBootstrapPaths, *, now: Callable[[], datetime]) -> BirthR
             sandbox["config_hash"], sandbox["runtime_binary_hash"],
         )
     from executor_birth_keystore import load_birth_keystore
-    from sign import list_trusted_publics
-    trusted_publics = tuple(list_trusted_publics())
+    author_private_key, trusted_publics = _load_author_authority(
+        config_dir / _AUTHOR_KEYSTORE_BASENAME,
+    )
     author_keys = tuple(public for _name, public in trusted_publics)
     admission_store = load_birth_keystore(
         _resolve(config_dir, admission["keystore"]),
@@ -413,8 +717,6 @@ def _build(paths: BirthBootstrapPaths, *, now: Callable[[], datetime]) -> BirthR
         value, config_dir,
         forbidden_public_keys=(*author_keys, *tuple(verifiers.values())),
     )
-    producer_db = _secure_state_db(paths.state_dir)
-    approval_db = _secure_approval_db(_resolve(config_dir, approval["db_path"]))
     from executor_birth_approval_authority import load_approval_authority
     try:
         approval_authority = load_approval_authority(
@@ -422,14 +724,18 @@ def _build(paths: BirthBootstrapPaths, *, now: Callable[[], datetime]) -> BirthR
         )
     except Exception as exc:
         raise BirthBootstrapError("birth_approval_authority_invalid") from exc
-    verifier = _PostconditionAdapter(trusted_publics=trusted_publics, verifier_keys=verifiers)
-    verifier.recover_authoring()
     context_builder = _context_builder(value["context"], config_dir)
     try:
         from executor_birth_semantic_authority import load_semantic_authority
         semantic_authority = load_semantic_authority(value["semantic_review"], config_dir)
     except Exception as exc:
         raise BirthBootstrapError("semantic_review_unavailable") from exc
+    verifier = _PostconditionAdapter(
+        trusted_publics=trusted_publics,
+        verifier_keys=verifiers,
+    )
+    producer_db = paths.state_dir / "producer-receipts.sqlite"
+    approval_db = _resolve_private_db(config_dir, approval["db_path"])
     from executor_birth_approval_store import resolve_request_approval
     def approval_resolver(request, observed, revision, instant):
         return resolve_request_approval(
@@ -451,17 +757,40 @@ def _build(paths: BirthBootstrapPaths, *, now: Callable[[], datetime]) -> BirthR
         ),
         admission_private_key=admission_private, admission_verifier_keys=verifiers,
         admission_key_id=key_id, policy_version=value["policy_version"], now=now,
+        author_private_key=author_private_key,
         publisher_options={"trusted_publics": trusted_publics},
         postcondition_verifier=verifier.verify,
     )
     factories = {cap: _request_factory(auth, registry, producer_db, ttl, now, context_builder)
                  for cap, auth in authorities.items()}
-    return _assemble_birth_runtime_bundle(core, factories)
+    bundle = _assemble_birth_runtime_bundle(core, factories)
+
+    # No filesystem mutation precedes validation and assembly of every
+    # configured authority and the complete read-only recovery plan. Durable
+    # databases are created together and compensated if the second target or
+    # the locked recovery revalidation fails.
+    recovery_plan = verifier.plan_authoring_recovery()
+    created_paths: list[_CreatedPrivatePath] = []
+    try:
+        if _secure_state_db(
+            paths.state_dir, created_paths=created_paths,
+        ) != producer_db:
+            raise BirthBootstrapError("birth_state_unavailable")
+        if _secure_approval_db(
+            approval_db,
+            config_dir=config_dir,
+            created_paths=created_paths,
+        ) != approval_db:
+            raise BirthBootstrapError("birth_approval_store_unavailable")
+        verifier.recover_authoring(recovery_plan)
+    except BaseException:
+        _rollback_created_private_paths(created_paths)
+        raise
+    return bundle
 
 
-def bootstrap_birth_runtime(paths: BirthBootstrapPaths | None = None, *,
-                            now: Callable[[], datetime] | None = None) -> BirthRuntimeBundle:
-    """Initialize exactly once; concurrent callers see one result or one failure."""
+def bootstrap_birth_runtime() -> BirthRuntimeVerificationView:
+    """Install fixed roots once and return public verification data only."""
     global _BOOT_STATE, _BOOT_ERROR
     with _BOOT_LOCK:
         while _BOOT_STATE == "building":
@@ -473,16 +802,41 @@ def bootstrap_birth_runtime(paths: BirthBootstrapPaths | None = None, *,
             raise BirthBootstrapError("birth_bootstrap_failed") from _BOOT_ERROR
         _BOOT_STATE = "building"
     try:
-        bundle = _build(paths or default_birth_bootstrap_paths(), now=now or (lambda: datetime.now(timezone.utc)))
-        _install_birth_runtime_bundle(bundle)
+        state = _build(
+            default_birth_bootstrap_paths(),
+            now=lambda: datetime.now(timezone.utc),
+        )
+        from executor_birth_operational import _install_birth_runtime_bundle
+        _install_birth_runtime_bundle(state)
     except BaseException as exc:
         with _BOOT_LOCK:
             _BOOT_ERROR = exc; _BOOT_STATE = "failed"; _BOOT_LOCK.notify_all()
         raise
     with _BOOT_LOCK:
         _BOOT_STATE = "ready"; _BOOT_LOCK.notify_all()
-    return bundle
+    return state.verification
 
 
 def require_birth_runtime_before_workers() -> None:
-    bootstrap_birth_runtime()
+    """Install the Birth authority before any mutating worker starts.
+
+    RM-0008 group 2 has not provisioned the authority set yet, so on an
+    installation that still lacks ``birth/bootstrap.json`` the sealed runtime
+    simply does not exist.  That is the declared ``prepared_not_active`` state,
+    not a failure: the analysis document forbids group 2 from making the closed
+    path binding before the cutover.  Refusing to boot there would make the
+    service unstartable, which is what happened between commit ea9cd0ab and
+    this change.  Every other bootstrap error stays fatal.
+    """
+    try:
+        bootstrap_birth_runtime()
+    except BirthBootstrapError as exc:
+        if str(exc) != "birth_bootstrap_config_unavailable":
+            raise
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Birth runtime not provisioned yet (%s): continuing without the "
+            "sealed authority, as required before the RM-0008 cutover",
+            exc,
+        )

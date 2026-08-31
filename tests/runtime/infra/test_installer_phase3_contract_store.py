@@ -19,6 +19,21 @@ from admin import i18n_migrate_manifests
 from install.phases import phase3_code
 
 
+@pytest.fixture(autouse=True)
+def _isolate_birth_author_provisioning(monkeypatch):
+    """No phase-3 unit test may write the productive Birth trust root."""
+
+    monkeypatch.setattr(
+        phase3_code,
+        "_provision_birth_author_keystore",
+        lambda: {
+            "active_key_id": "birth-ed25519-v1-sha256-" + "a" * 64,
+            "created": False,
+            "verifiers": 1,
+        },
+    )
+
+
 def test_shared_cutover_guard_proves_the_complete_lifecycle_catalog() -> None:
     import stack_reconcile
 
@@ -144,6 +159,11 @@ def test_active_rerun_uses_only_layout_aware_publication(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         phase3_code,
+        "_provision_birth_author_keystore",
+        lambda: events.append("provision-author") or {"created": False},
+    )
+    monkeypatch.setattr(
+        phase3_code,
         "_publish_active_authoring_contracts",
         lambda: events.append("publish") or {
             "examined": 1,
@@ -168,7 +188,9 @@ def test_active_rerun_uses_only_layout_aware_publication(monkeypatch) -> None:
 
     result = phase3_code._install_executor_contracts()
 
-    assert events == ["migrate", "key:False", "publish", "verify"]
+    assert events == [
+        "migrate", "key:False", "provision-author", "publish", "verify",
+    ]
     assert result["mode_before"] == "active"
     assert result["mode_after"] == "active"
 
@@ -255,6 +277,11 @@ def test_legacy_install_persists_report_before_guarded_activation(
     )
     monkeypatch.setattr(
         phase3_code,
+        "_provision_birth_author_keystore",
+        lambda: events.append("provision-author") or {"created": True},
+    )
+    monkeypatch.setattr(
+        phase3_code,
         "_sign_and_verify_legacy_contracts",
         lambda: events.append("sign-verify") or {"signed": 1, "verified": 1},
     )
@@ -291,8 +318,8 @@ def test_legacy_install_persists_report_before_guarded_activation(
     result = phase3_code._install_executor_contracts()
 
     assert events == [
-        "guard-enter", "migrate", "key:True", "sign-verify", "prepare",
-        "persist", "activate", "guard-exit",
+        "guard-enter", "migrate", "key:True", "provision-author",
+        "sign-verify", "prepare", "persist", "activate", "guard-exit",
     ]
     assert result["mode_after"] == "active"
     assert result["signing"]["verified"] == 1
@@ -340,6 +367,49 @@ def test_marker_only_recovery_resumes_only_from_saved_report(monkeypatch) -> Non
     assert result["resumed"] is True
     assert result["mode_before"] == "recovery_required"
     assert result["recovery_source"] == "saved_preparation_report"
+
+
+def test_marker_only_recovery_provisions_author_before_activation(
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+    report = _report()
+
+    @contextmanager
+    def guard():
+        events.append("guard-enter")
+        yield lambda: True, {"source": "stopped"}
+        events.append("guard-exit")
+
+    monkeypatch.setattr(phase3_code, "_phase3_cutover_boundary", guard)
+    monkeypatch.setattr(
+        phase3_code,
+        "_ensure_author_keypair",
+        lambda *, allow_create: (
+            events.append(f"key:{allow_create}") or {"created": False}
+        ),
+    )
+    monkeypatch.setattr(
+        phase3_code,
+        "_provision_birth_author_keystore",
+        lambda: events.append("provision-author") or {"created": False},
+    )
+    monkeypatch.setattr(
+        phase3_code,
+        "_activate_prepared_report_locked",
+        lambda value, *, proof: (
+            events.append("activate")
+            or {"bindings": 1, "loaded": 1, "retired": 0}
+        ),
+    )
+
+    result = phase3_code._activate_prepared_report(report)
+
+    assert events == [
+        "guard-enter", "key:False", "provision-author", "activate",
+        "guard-exit",
+    ]
+    assert result["author_keystore"] == {"created": False}
 
 
 def test_root_only_recovery_authenticates_store_without_old_report(
@@ -656,6 +726,11 @@ def test_root_only_recovery_keeps_shared_guard_through_first_cold_load(
     )
     monkeypatch.setattr(
         phase3_code,
+        "_provision_birth_author_keystore",
+        lambda: events.append("provision-author") or {"created": False},
+    )
+    monkeypatch.setattr(
+        phase3_code,
         "_store_only_catalog",
         lambda: events.append("catalog") or (expected, trusted),
     )
@@ -680,8 +755,8 @@ def test_root_only_recovery_keeps_shared_guard_through_first_cold_load(
     result = phase3_code._recover_store_only()
 
     assert events == [
-        "guard-enter", "key:False", "catalog", "proof", "activate",
-        "cold-load", "guard-exit",
+        "guard-enter", "key:False", "provision-author", "catalog", "proof",
+        "activate", "cold-load", "guard-exit",
     ]
     assert result["verification"]["loaded"] == 1
 

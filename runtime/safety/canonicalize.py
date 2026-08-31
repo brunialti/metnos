@@ -87,6 +87,28 @@ _BINARY_TARGET_HINTS: dict[tuple[str, str], str] = {
     for h in _RULES["binary_target_hints"]
 }
 
+
+def command_grammar_binaries() -> frozenset[str]:
+    """Return every binary with an explicit canonicalisation grammar.
+
+    The planner uses this inventory only to make the guarded ``admin``
+    fallback visible when a request names a real command.  It is deliberately
+    not a permission check: whitelist/graylist/blacklist decisions remain the
+    responsibility of the safety store at execution time.
+
+    Keeping the inventory here means that adding a command family to
+    ``canonicalize_rules.json`` automatically makes it discoverable without a
+    second, inevitably incomplete list in the prefilter.
+    """
+    return frozenset().union(
+        _SUBCMD_BINS,
+        _NO_SUBCOMMAND_BINS,
+        _FLAG_AGG_BINS,
+        # These two families have specialised canonicalisation below rather
+        # than entries in the JSON family lists.
+        {"mount", "umount"},
+    )
+
 # Single-letter flags often combined into one token, like `rm -rf` → `-rf`.
 _FLAG_RE = re.compile(r"^-[A-Za-z][A-Za-z0-9-]*$")
 _LONG_FLAG_RE = re.compile(r"^--[a-z][a-z0-9-]*(=.*)?$")

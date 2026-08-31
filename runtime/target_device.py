@@ -19,14 +19,17 @@ o, in mancanza, il server. Il controllo di connessione (§L1.d placement) è
 applicato SEMPRE al target risolto: offline → status «unreachable» (mai fallback
 silenzioso, §2.8).
 
-Debito i18n: i marcatori sono inline {it,en} (vedi [[project-i18n-lexicon-debt]]);
-i NOMI device sono dato, non lessico, quindi language-agnostic.
+I marcatori linguistici arrivano dal detection catalog RM-0005; i NOMI device
+sono dato d'istanza, non lessico, quindi restano language-agnostic.
 """
 from __future__ import annotations
 
 import re
 import socket
 from dataclasses import dataclass, field
+
+import detection_lexicon as _detlex
+import detection_lexicon_seed_resolvers as _resolver_seed
 
 SERVER = "server"
 
@@ -38,44 +41,44 @@ SERVER = "server"
 # girano sul server anche con destinazione appiccicosa a un PC — così «che ore
 # sono» dopo un'operazione sul PC non fallisce (get_now non è impacchettabile).
 
-# Preposizioni locative che ANCORANO un nome-device (IT + EN). L'ancora è ciò che
-# distingue «sul portatile» (instrada) da «il portatile» (no).
-_PREP = r"(?:su|sul|sullo|sulla|sui|sugli|sulle|nel|su\s+questo|on|onto)"
-# Ancora NOMINALE (10/7, turn 143f7cff «che processore ha il pc-roberto»):
-# il device è l'OGGETTO della frase, non un complemento di luogo. Articoli/
-# preposizioni nominali; il match nominale NON strippa la query (come i
-# marcatori server nominali — strippare demolirebbe la semantica).
-_PREP_NOMINAL = (r"(?:il|lo|la|l'|del|dello|della|dell'|dei|degli|delle|di|"
-                 r"the|of|from)")
+_TARGET_LEXICON_KEYS = frozenset({
+    "locative_anchor", "nominal_anchor", "local_marker",
+    "server_adjunct", "server_nominal",
+})
 
-# Marcatori «questo pc / locale» → device dell'utente (ancorati per frase).
-_LOCAL_MARKERS = (
-    "su questo pc", "su questo computer", "su questa macchina",
-    "sul mio pc", "sul mio computer", "sul mio portatile", "sul mio fisso",
-    "localmente", "in locale", "qui sul pc", "sul pc locale",
-    "on this pc", "on this computer", "on this machine",
-    "on my pc", "on my computer", "on my laptop", "on my machine", "locally",
-)
-# Marcatori «server / .33» → riporta al server.
-# AVVERBIALI (complemento di luogo, «dove eseguire»): il marcatore è un adjunct
-# rimovibile — la query resta sensata senza («elenca i file sul server» →
-# «elenca i file»). Routing + STRIP.
-_SERVER_MARKERS_ADJUNCT = (
-    "sul server", "qui sul server", "sul .33", "sul metnos", "lato server",
-    "on the server", "server side",
-)
-# NOMINALI: «server» è l'OGGETTO della domanda («stato del server», «come sta
-# il server», «descrivi metnos server»). Routing sì, STRIP **NO** — strippare
-# demoliva la semantica (bug 9/7: «stato del server»→«stato»→intent object
-# instabile approval/numbers → misroute get_approval/wttr.in). «server» in
-# Metnos = .33; il PC è «pc/computer/laptop».
-_SERVER_MARKERS_NOMINAL = (
-    "del server", "dello .33", "questo server", "il server", "metnos server",
-    "server metnos", "questo metnos", "of the server", "this server",
-    "the server",
-)
-# Unione (compat per i call-site che testano solo la presenza).
-_SERVER_MARKERS = _SERVER_MARKERS_ADJUNCT + _SERVER_MARKERS_NOMINAL
+
+def _target_lexicon() -> dict | None:
+    """Mapping completo e reviewed per la lingua attiva, o fail-closed."""
+    _resolver_seed.ensure_registered()
+    resource = _detlex.resource_for_language(
+        "resolver.target_device", _detlex.current_lang(),
+        fallback=False, ready_only=True,
+    )
+    payload = resource.get("payload") if resource else None
+    if (not resource or resource.get("kind") != "mapping"
+            or resource.get("review_policy") != "manual"
+            or not isinstance(payload, dict)
+            or set(payload) != _TARGET_LEXICON_KEYS
+            or any(
+                not isinstance(payload.get(key), list)
+                or not payload.get(key)
+                or not all(
+                    isinstance(form, str) and form.strip()
+                    for form in payload[key]
+                )
+                for key in _TARGET_LEXICON_KEYS
+            )):
+        return None
+    merged = _detlex.mapping("resolver.target_device")
+    return merged if set(merged) == _TARGET_LEXICON_KEYS else None
+
+
+def _anchor_regex(forms) -> str:
+    values = [str(form).strip() for form in forms or () if str(form).strip()]
+    return "(?:" + "|".join(
+        re.escape(form).replace(r"\ ", r"\s+")
+        for form in sorted(values, key=len, reverse=True)
+    ) + ")"
 
 
 @dataclass
@@ -89,6 +92,20 @@ class TargetResolution:
     unreachable_name: str | None = None              # per status="unreachable"
     unreachable_id: str | None = None                # id del device offline (A.1 defer)
     cleaned_query: str = ""           # query senza l'adjunct di destinazione
+
+
+@dataclass(frozen=True)
+class _TargetMention:
+    """One ordered placement mention after centralized polarity analysis."""
+    identity: str
+    start: int
+    stop: int
+    state: str
+    span: str
+    strip: bool
+    source: str
+    strong: bool
+    device: object | None = None
 
 
 def _norm(s: str) -> str:
@@ -149,24 +166,15 @@ def _find_server_alias(query: str, aliases) -> str | None:
     return None
 
 
-def _find_asserted_marker(qn: str, markers) -> str | None:
-    """Return a target marker only when its local clause asserts that target.
-
-    A negated destination is a restriction, not a placement request:
-    ``sul mio computer, senza ripiegare sul server`` must not let the later
-    word ``server`` override the explicit computer.  Punctuation and contrast
-    conjunctions delimit the small deterministic clause inspected here.
-    """
-    import detection_lexicon as _detlex
-
-    for marker in markers:
-        pattern = re.compile(
-            r"(?<![a-z0-9])" + re.escape(marker) + r"(?![a-z0-9])"
+def _match_polarity_state(qn: str, match) -> str:
+    """Tri-state polarity shared by every explicit target form."""
+    try:
+        import detection_lexicon as _detlex
+        return _detlex.polarity_state_at(
+            qn, match.start(), target_scope=True,
         )
-        for match in pattern.finditer(qn):
-            if _detlex.asserted_at(qn, match.start()):
-                return marker
-    return None
+    except Exception:
+        return "unavailable"
 
 
 def _find_named_device(qn: str, devices):
@@ -178,12 +186,18 @@ def _find_named_device(qn: str, devices):
                                         (§5: unicità per owner o errore ambiguous);
       - `None`                          nessun match.
     """
+    lexicon = _target_lexicon()
+    if lexicon is None:
+        return None
+    locative_anchor = _anchor_regex(lexicon["locative_anchor"])
+    nominal_anchor = _anchor_regex(lexicon["nominal_anchor"])
     matches = []  # (device, span, name, nominal)
     for d in devices:
         name = _norm(getattr(d, "name", "") or "")
         if len(name) < 3:
             continue  # nomi troppo corti = rischio falso positivo, salta
-        pat = r"(?<![a-z0-9])" + _PREP + r"\s+[\"']?" + re.escape(name) + r"(?![a-z0-9])"
+        pat = (r"(?<![a-z0-9])" + locative_anchor + r"\s+[\"']?"
+               + re.escape(name) + r"(?![a-z0-9])")
         m = re.search(pat, qn)
         if m:
             matches.append((d, m.group(0), name, False))
@@ -195,7 +209,7 @@ def _find_named_device(qn: str, devices):
         # e roulerebbe per errore (test bare_name). Strutturale, no liste.
         if not re.search(r"[-_\d]", name):
             continue
-        pat_n = (r"(?<![a-z0-9])" + _PREP_NOMINAL + r"\s+[\"']?"
+        pat_n = (r"(?<![a-z0-9])" + nominal_anchor + r"\s+[\"']?"
                  + re.escape(name) + r"(?![a-z0-9])")
         m = re.search(pat_n, qn)
         if m:
@@ -223,6 +237,129 @@ def _find_named_device(qn: str, devices):
                 best[0][3])
     d, s, _n, nom = best[0]
     return (d, s, None, nom)
+def _surface_mentions(
+        qn: str, specs, *, identity: str,
+        device=None, source: str = "marker",
+        strong: bool = True) -> list[_TargetMention]:
+    """Non-overlapping literal marker mentions, longest surface first."""
+    candidates = []
+    for surface, strip in specs:
+        pattern = re.compile(
+            r"(?<![a-z0-9])" + re.escape(surface) + r"(?![a-z0-9])"
+        )
+        for match in pattern.finditer(qn):
+            candidates.append((match, surface, bool(strip)))
+    mentions: list[_TargetMention] = []
+    occupied_until = -1
+    for match, _surface, strip in sorted(
+            candidates,
+            key=lambda item: (
+                item[0].start(), -(item[0].end() - item[0].start()),
+            )):
+        if match.start() < occupied_until:
+            continue
+        occupied_until = match.end()
+        mentions.append(_TargetMention(
+            identity=identity,
+            start=match.start(),
+            stop=match.end(),
+            state=_match_polarity_state(qn, match),
+            span=match.group(0),
+            strip=strip,
+            source=source,
+            strong=strong,
+            device=device,
+        ))
+    return mentions
+
+
+def _named_device_mentions(qn: str, devices,
+                           lexicon: dict | None = None) -> list[_TargetMention]:
+    """All ordered named-device mentions, excluding nested bare duplicates."""
+    lexicon = lexicon or _target_lexicon()
+    if lexicon is None:
+        return []
+    locative_anchor = _anchor_regex(lexicon["locative_anchor"])
+    nominal_anchor = _anchor_regex(lexicon["nominal_anchor"])
+    out: list[_TargetMention] = []
+    for device in devices:
+        name = _norm(getattr(device, "name", "") or "")
+        if len(name) < 3:
+            continue
+        anchored = []
+        locative = re.compile(
+            r"(?<![a-z0-9])" + locative_anchor + r"\s+[\"']?"
+            + re.escape(name) + r"(?![a-z0-9])"
+        )
+        anchored.extend((match, True) for match in locative.finditer(qn))
+        if re.search(r"[-_\d]", name):
+            nominal = re.compile(
+                r"(?<![a-z0-9])" + nominal_anchor + r"\s+[\"']?"
+                + re.escape(name) + r"(?![a-z0-9])"
+            )
+            anchored.extend((match, False) for match in nominal.finditer(qn))
+        ranges = [(match.start(), match.end()) for match, _strip in anchored]
+        candidates = list(anchored)
+        if re.search(r"[-_\d]", name):
+            bare = re.compile(
+                r"(?<![a-z0-9])" + re.escape(name) + r"(?![a-z0-9])"
+            )
+            for match in bare.finditer(qn):
+                if not any(
+                        begin <= match.start() and match.end() <= stop
+                        for begin, stop in ranges):
+                    candidates.append((match, True))
+        for match, strip in candidates:
+            out.append(_TargetMention(
+                identity=str(getattr(device, "id", "")),
+                start=match.start(),
+                stop=match.end(),
+                state=_match_polarity_state(qn, match),
+                span=match.group(0),
+                strip=strip,
+                source="named",
+                strong=True,
+                device=device,
+            ))
+    return [
+        mention for mention in out
+        if not any(
+            other.start <= mention.start
+            and mention.stop < other.stop
+            for other in out
+        )
+    ]
+
+
+def _latest_mentions(mentions) -> dict[str, _TargetMention]:
+    """Last mention wins independently for each stable target identity."""
+    latest: dict[str, _TargetMention] = {}
+    for mention in mentions:
+        previous = latest.get(mention.identity)
+        overlaps = (
+            previous is not None
+            and mention.start < previous.stop
+            and previous.start < mention.stop
+        )
+        prefer_overlap = (
+            overlaps
+            and (
+                mention.strong,
+                mention.stop - mention.start,
+            ) > (
+                previous.strong,
+                previous.stop - previous.start,
+            )
+        )
+        prefer_later = (
+            previous is not None and not overlaps
+            and (mention.start, mention.stop) >= (
+                previous.start, previous.stop
+            )
+        )
+        if previous is None or prefer_overlap or prefer_later:
+            latest[mention.identity] = mention
+    return latest
 
 
 _POSIX_SERVER_PATH_RE = re.compile(
@@ -262,81 +399,133 @@ def resolve_target(query: str,
 
     qn = _norm(query)
     res = TargetResolution(cleaned_query=query or "")
-
-    # --- SERVER esplicito (vince, riporta al .33) ---
-    # Adjunct («sul server») → strip; nominale («del server») → query INTATTA
-    # (il «server» è l'oggetto della domanda, non un complemento di luogo).
-    sm = _find_asserted_marker(qn, _SERVER_MARKERS_ADJUNCT)
-    if sm:
-        res.target = SERVER
-        res.device_name = None
-        res.explicit = True
-        res.cleaned_query = _strip_span(query, sm)
-        return res
-    sm = _find_asserted_marker(qn, _SERVER_MARKERS_NOMINAL)
-    if sm:
-        res.target = SERVER
-        res.device_name = None
-        res.explicit = True
-        # niente strip: la query resta intera per intent/routing
-        return res
-
-    # --- NOME device esplicito (ancorato: locativo → strip; nominale → no) ---
-    named = _find_named_device(qn, devices)
-    if named:
-        dev, span, dup, nominal = named
-        res.explicit = True
-        if not nominal:
-            res.cleaned_query = _strip_span(query, span)
-        if dup is not None:               # nomi duplicati → ambiguo (§5)
-            res.status = "ambiguous"
-            res.candidates = dup
-            return res
-        if not is_available(dev, now):
-            res.status = "unreachable"
-            res.unreachable_name = getattr(dev, "name", None)
-            res.unreachable_id = getattr(dev, "id", None)
-            return res
-        res.target = dev.id
-        res.device_name = getattr(dev, "name", None)
-        return res
-
-    # --- Marcatore LOCALE → device dell'utente ---
-    lm = _find_marker(qn, _LOCAL_MARKERS)
-    if lm:
-        res.explicit = True
-        res.cleaned_query = _strip_span(query, lm)
-        avail = [d for d in devices if is_available(d, now)]
-        if len(avail) == 1:
-            res.target = avail[0].id
-            res.device_name = getattr(avail[0], "name", None)
-            return res
-        if len(avail) == 0:
-            res.status = "unreachable"
-            # se ha device ma nessuno raggiungibile, nomina il primo per il messaggio
-            res.unreachable_name = (getattr(devices[0], "name", None)
-                                    if devices else None)
-            return res
-        # più device raggiungibili e nessun nome → ambiguo
+    target_lexicon = _target_lexicon()
+    if target_lexicon is None:
         res.status = "ambiguous"
-        res.candidates = [(d.id, getattr(d, "name", "")) for d in avail]
+        return res
+    machine_focus = _has_machine_focus(qn)
+
+    # Build one ordered event stream. The last mention wins independently for
+    # each stable target identity, including across equivalent forms (generic
+    # local marker versus a named device). This prevents an earlier assertion
+    # from bypassing a later revocation and honors later target corrections.
+    server_specs = [
+        *((marker, True) for marker in target_lexicon["server_adjunct"]),
+        *((marker, False) for marker in target_lexicon["server_nominal"]),
+    ]
+    server_mentions = _surface_mentions(
+        qn, server_specs, identity=SERVER, source="server", strong=True,
+    )
+    if machine_focus:
+        server_mentions.extend(_surface_mentions(
+            qn,
+            ((alias, False) for alias in _server_aliases(server_aliases)),
+            identity=SERVER,
+            source="alias",
+            strong=False,
+        ))
+    local_mentions = _surface_mentions(
+        qn, ((marker, True) for marker in target_lexicon["local_marker"]),
+        identity="__local__", source="local", strong=True,
+    )
+    mentions = list(server_mentions)
+    mentions.extend(_named_device_mentions(qn, devices, target_lexicon))
+    if devices:
+        for local in local_mentions:
+            for device in devices:
+                mentions.append(_TargetMention(
+                    identity=str(device.id),
+                    start=local.start,
+                    stop=local.stop,
+                    state=local.state,
+                    span=local.span,
+                    strip=local.strip,
+                    source=local.source,
+                    strong=local.strong,
+                    device=device,
+                ))
+    else:
+        mentions.extend(local_mentions)
+
+    latest = _latest_mentions(mentions)
+    if any(mention.state == "unavailable" for mention in latest.values()):
+        res.status = "ambiguous"
         return res
 
-    # --- Identita' debole del server ---
-    # Un alias nudo (per esempio il nome dell'istanza o il suo hostname) e'
-    # destinazione soltanto in una domanda sulla macchina. Un device espresso
-    # con sintassi esplicita e i marcatori locali sono gia' stati risolti sopra:
-    # quindi «installa <nome-prodotto> sul PC-X» non viene dirottato al server.
-    if _has_machine_focus(qn) and _find_server_alias(qn, server_aliases):
-        res.target = SERVER
-        res.device_name = None
+    asserted = [
+        mention for mention in latest.values()
+        if mention.state == "asserted"
+    ]
+    if asserted:
+        if any(mention.strong for mention in asserted):
+            asserted = [mention for mention in asserted if mention.strong]
+        last_start = max(mention.start for mention in asserted)
+        winners = [
+            mention for mention in asserted if mention.start == last_start
+        ]
+        if len(winners) > 1 and all(
+                mention.source == "local" for mention in winners):
+            available = [
+                mention for mention in winners
+                if mention.device is not None
+                and is_available(mention.device, now)
+            ]
+            if len(available) == 1:
+                winners = available
+            elif not available:
+                res.status = "unreachable"
+                first = winners[0]
+                res.unreachable_name = getattr(first.device, "name", None)
+                res.unreachable_id = getattr(first.device, "id", None)
+                return res
+            else:
+                winners = available
+        if len(winners) != 1:
+            res.status = "ambiguous"
+            res.candidates = [
+                (
+                    mention.identity,
+                    "server" if mention.identity == SERVER else str(
+                        getattr(mention.device, "name", "") or ""
+                    ),
+                )
+                for mention in winners
+            ]
+            return res
+        winner = winners[0]
         res.explicit = True
+        if winner.strip:
+            res.cleaned_query = _strip_span(query, winner.span)
+        if winner.identity == SERVER:
+            res.target = SERVER
+            return res
+        if winner.identity == "__local__" or winner.device is None:
+            res.status = "unreachable"
+            return res
+        if not is_available(winner.device, now):
+            res.status = "unreachable"
+            res.unreachable_name = getattr(winner.device, "name", None)
+            res.unreachable_id = getattr(winner.device, "id", None)
+            return res
+        res.target = winner.identity
+        res.device_name = getattr(winner.device, "name", None)
         return res
+
+    server_negated = (
+        latest.get(SERVER) is not None
+        and latest[SERVER].state == "negated"
+    )
+    forbidden_device_ids = {
+        identity for identity, mention in latest.items()
+        if identity not in {SERVER, "__local__"}
+        and mention.state == "negated"
+    }
 
     # --- Nessun segnale: destinazione appiccicosa, poi server ---
     if last_target and last_target != SERVER:
         dev = next((d for d in devices if d.id == last_target), None)
-        if dev is not None:
+        sticky_forbidden = str(last_target) in forbidden_device_ids
+        if dev is not None and not sticky_forbidden:
             if is_available(dev, now):
                 # Hint forma-path→host (5/7, visto live): lo STICKY non deve
                 # dirottare al device una query con un path in forma POSIX
@@ -349,6 +538,9 @@ def resolve_target(query: str,
                 _dev_os = (getattr(dev, "os_family", "") or "").lower()
                 if ("posix" in _hints and "windows" not in _hints
                         and _dev_os.startswith("win")):
+                    if server_negated:
+                        res.status = "ambiguous"
+                        return res
                     res.target = SERVER
                     return res
                 res.target = dev.id
@@ -359,9 +551,15 @@ def resolve_target(query: str,
             # turno → decadi al SERVER, NON errore (§1: «che ore sono» non deve
             # fallire solo perché l'ultimo PC usato è spento). Un riferimento
             # ESPLICITO a un PC offline dà invece «non connesso» (sopra).
+            if server_negated:
+                res.status = "ambiguous"
+                return res
             res.target = SERVER
             return res
         # il device appiccicoso non esiste più → decadi al server
+    if server_negated:
+        res.status = "ambiguous"
+        return res
     res.target = SERVER
     return res
 
@@ -374,9 +572,16 @@ def references_device(query: str, devices: list, *, server_aliases=None) -> bool
     connessione ad OGNI turno (mai una risposta cachata stantia / sul server
     sbagliato). Economico: solo regex, nessun I/O."""
     qn = _norm(query)
-    if _find_marker(qn, _SERVER_MARKERS):
+    target_lexicon = _target_lexicon()
+    if target_lexicon is None:
         return True
-    if _find_marker(qn, _LOCAL_MARKERS):
+    server_markers = [
+        *target_lexicon["server_adjunct"],
+        *target_lexicon["server_nominal"],
+    ]
+    if _find_marker(qn, server_markers):
+        return True
+    if _find_marker(qn, target_lexicon["local_marker"]):
         return True
     if devices and _find_named_device(qn, devices):
         return True

@@ -12,6 +12,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 import detection_lexicon as dl  # noqa: E402
@@ -87,7 +89,7 @@ def test_daemon_translates_phrases_and_mapping(tmp_path, monkeypatch):
     saltati = _non_auto_traducibili()
     non_regex = [c for c in dl.registered_concepts() if c not in saltati]
     untranslated = [c for c in non_regex if not dl.has_native(c, "zz")]
-    # tradotti = tutti gli auto-traducibili; trattenuti = regex + consenso
+    # tradotti = auto-traducibili; trattenuti = regex + revisione manuale
     assert res["metadata"]["translated"] == len(non_regex), \
         f"untranslated non-regex: {untranslated}; meta={res['metadata']}"
     # Le righe intraducibili sono escluse in SQL (17/8): non entrano piu' nella
@@ -95,9 +97,14 @@ def test_daemon_translates_phrases_and_mapping(tmp_path, monkeypatch):
     # messo da parte — resta a zero, e il conto vive in `held_*`. Le due cose
     # restano distinte: una finestra piena di righe da tradurre e una finestra
     # piena di righe che nessun modello puo' toccare non sono lo stesso esito.
-    trattenuti = res["metadata"]["held_regex"] + res["metadata"]["held_consent"]
+    trattenuti = (
+        res["metadata"]["held_regex"]
+        + res["metadata"]["held_manual_review"]
+    )
     assert trattenuti == len(saltati), res["metadata"]
-    assert res["metadata"]["held_consent"] == len(dl.manual_review_concepts())
+    assert res["metadata"]["held_manual_review"] == len(
+        dl.manual_review_concepts())
+    assert res["metadata"]["held_consent"] == 2
     assert res["metadata"]["skipped_regex"] == 0
 
 
@@ -185,7 +192,32 @@ def test_i_concetti_di_consenso_non_si_traducono_da_soli(monkeypatch):
     monkeypatch.setattr(_job._dl, "list_pending", _finto_list_pending)
     esito = _job.task_detection_translate_pending()
     assert chiamate == [], "il modello NON deve essere interpellato"
-    assert esito["metadata"]["held_consent"] >= 1, esito["metadata"]
+    assert esito["metadata"]["held_manual_review"] >= 1, esito["metadata"]
+
+
+def test_manual_review_boundary_failure_aborts_before_model(monkeypatch):
+    """A missing safety policy is an error, never an empty allow-all set."""
+    from jobs import detection_translate_pending as _job
+
+    model_calls = []
+    pending_calls = []
+    monkeypatch.setattr(
+        _job._dl, "manual_review_concepts",
+        lambda: (_ for _ in ()).throw(RuntimeError("policy unavailable")),
+    )
+    monkeypatch.setattr(
+        _job._dl, "list_pending",
+        lambda *args, **kwargs: pending_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        _job, "_llm_localize",
+        lambda *args, **kwargs: model_calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(RuntimeError, match="policy unavailable"):
+        _job.task_detection_translate_pending()
+    assert pending_calls == []
+    assert model_calls == []
 
 
 def test_il_backstop_nel_ciclo_regge_se_l_esclusione_non_arriva(monkeypatch):

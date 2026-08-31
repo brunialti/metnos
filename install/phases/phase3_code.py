@@ -433,6 +433,33 @@ def _ensure_author_keypair(*, allow_create: bool) -> dict[str, Any]:
     return {"created": created, "name": DEFAULT_AUTHOR_KEY}
 
 
+def _provision_birth_author_keystore() -> dict[str, object]:
+    """Seal the proven installation author into the fixed Birth trust root."""
+
+    from config import PATH_USER_CONFIG
+    from sign import KEYS_DIR
+    from install.birth_authority_provisioning import (
+        BirthAuthorityProvisioningError,
+        inspect_author_keystore,
+        provision_author_keystore,
+    )
+
+    try:
+        try:
+            return inspect_author_keystore(
+                birth_dir=PATH_USER_CONFIG / "birth",
+            )
+        except BirthAuthorityProvisioningError as exc:
+            if exc.code != "birth_author_keystore_unavailable":
+                raise
+        return provision_author_keystore(
+            legacy_keys_dir=KEYS_DIR,
+            birth_dir=PATH_USER_CONFIG / "birth",
+        )
+    except BirthAuthorityProvisioningError as exc:
+        raise ContractCatalogInstallError(exc.code, exc.detail) from exc
+
+
 def _clean_authoring_inventory():
     from manifest_inventory import inventory_authoring_manifests
 
@@ -554,9 +581,11 @@ def _activate_prepared_report(report: dict[str, Any]) -> dict[str, Any]:
 
     with _phase3_cutover_boundary() as (proof, evidence):
         key = _ensure_author_keypair(allow_create=False)
+        author_keystore = _provision_birth_author_keystore()
         verification = _activate_prepared_report_locked(report, proof=proof)
     return {
         "key": key,
+        "author_keystore": author_keystore,
         "quiescence": evidence,
         "verification": verification,
     }
@@ -615,6 +644,7 @@ def _recover_store_only() -> dict[str, Any]:
 
     with _phase3_cutover_boundary() as (proof, evidence):
         key = _ensure_author_keypair(allow_create=False)
+        author_keystore = _provision_birth_author_keystore()
         expected, trusted = _store_only_catalog()
         # ``activate_store`` ignores the shadow in STORE_ONLY mode, but still
         # requires a canonical shadow-shaped locator at its API boundary.
@@ -630,6 +660,7 @@ def _recover_store_only() -> dict[str, Any]:
         verification = _verify_contract_store_for_installation()
     return {
         "key": key,
+        "author_keystore": author_keystore,
         "quiescence": evidence,
         "verification": verification,
     }
@@ -642,6 +673,7 @@ def _install_executor_contracts() -> dict[str, Any]:
     if mode_before == "active":
         migration = _migrate_contract_language_states()
         key = _ensure_author_keypair(allow_create=False)
+        author_keystore = _provision_birth_author_keystore()
         publication = _publish_active_authoring_contracts()
         verification = _verify_contract_store_for_installation()
         ui.ok(
@@ -653,6 +685,7 @@ def _install_executor_contracts() -> dict[str, Any]:
             "mode_after": "active",
             "migration": migration,
             "key": key,
+            "author_keystore": author_keystore,
             "publication": publication,
             "verification": verification,
         }
@@ -694,6 +727,7 @@ def _install_executor_contracts() -> dict[str, Any]:
     with _phase3_cutover_boundary() as (proof, evidence):
         migration = _migrate_contract_language_states()
         key = _ensure_author_keypair(allow_create=True)
+        author_keystore = _provision_birth_author_keystore()
         signing = _sign_and_verify_legacy_contracts()
         report = prepare_contract_store_shadow()
         report_path = _write_cutover_report(report)
@@ -707,6 +741,7 @@ def _install_executor_contracts() -> dict[str, Any]:
         "mode_after": "active",
         "migration": migration,
         "key": key,
+        "author_keystore": author_keystore,
         "signing": signing,
         "report": str(report_path),
         "quiescence": evidence,
