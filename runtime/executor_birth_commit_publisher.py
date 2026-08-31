@@ -145,7 +145,11 @@ class _BirthCommitPublisher:
         prepared_context_epoch: str,
         primitive,
         store_root,
-        registry_reconciler=None,
+        # No default: the constructor below refuses anything that is not
+        # callable, so `None` could never have been a valid value. A default
+        # that the same function rejects is not a default — it is a trap for
+        # the next caller, and it cost twenty red tests before it was seen.
+        registry_reconciler,
     ) -> None:
         if token is not _PUBLISHER_TOKEN:
             raise BirthCommitLinkError("birth_commit_publisher_private")

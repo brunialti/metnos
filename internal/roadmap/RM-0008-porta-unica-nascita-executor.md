@@ -3115,3 +3115,30 @@ inventario vuoto.
 Restano da guardare la seconda famiglia (20, `BirthCommitLinkError`) e le nove
 asserzioni assortite. Le sei che chiedono root o un modello locale sono ambiente
 vero, e restano.
+
+
+### 23.46 La seconda famiglia: un valore di difetto che la funzione stessa rifiuta
+
+Venti rossi con `BirthCommitLinkError: birth_commit_publisher_invalid`, una
+sola causa. `_BirthCommitPublisher.__init__` dichiarava
+`registry_reconciler=None` e poche righe sotto rifiutava tutto cio' che non
+fosse chiamabile: **il valore di difetto non poteva mai essere valido**. Non e'
+un difetto, e' una trappola per il chiamante successivo — e il chiamante
+successivo era il cucito di prova di `executor_birth_operational`, che si
+fidava di quel difetto e falliva da allora.
+
+**La correzione toglie la contraddizione invece di aggirarla.** Il parametro
+non ha piu' un valore di difetto: chi costruisce il pubblicatore deve dire quale
+riconciliatore usa, e non esiste piu' un valore che la funzione accetta nella
+firma e rifiuta nel corpo. Il cucito passa ora il riconciliatore PRODUTTIVO,
+non un sostituto, perche' quel cucito esiste proprio perche' cio' che la prova
+esercita sia la forma produttiva: un riconciliatore diverso avrebbe provato in
+silenzio un'altra cosa.
+
+Ventisette prove verdi fra `test_executor_birth_operational` e
+`test_executor_birth_reattestation`, che erano venticinque rosse.
+
+**Bilancio dei 69.** Quarantasei chiusi in due incrementi — ventuno per la firma
+stantia (§23.45) e venticinque qui — e nessuno dei due era «ambiente». Restano
+nove asserzioni assortite da guardare una per una e sei che chiedono davvero
+root o un modello locale.
