@@ -3,7 +3,7 @@
 Data: 31 agosto 2026  
 Unita': `F4-EPOCA-01`  
 Stato: proposta A, settima versione pronta alla revisione incrociata
-Ancora fattuale B: `937ba594`
+Ancora fattuale B in revisione: `dfb551a7`
 
 ## 1. Risultato richiesto
 
@@ -30,9 +30,10 @@ di ciclo degli executor previste in F5.
   nuovi;
 - roadmap §7.3 e §23.6: F4 lega build, censimento, riattestazione, passaggio e
   avvio chiuso in un ordine non permutabile;
-- diagnosi O15 e classificazione B: i 12 legami osservati sono sei atti
-  storici sotto due rappresentazioni; tutte le generazioni coperte sono
-  superate e nessuno dei 12 oggetti va ripuntato;
+- diagnosi O15 e classificazione B: i 12 candidati osservati corrispondono a
+  sei generazioni superate sotto due rappresentazioni e nessuno va ripuntato;
+  B1 richiede ancora l'autenticazione finale di ricevute e buste prima di
+  trattare il conteggio come prova;
 - misura B sul negozio: 123 pubblicazioni, 21 con ricevute storiche e zero
   ricevute per la generazione corrente; il censimento da riattestare deve
   quindi partire dalle generazioni correnti, non dai 12 legami storici;
@@ -172,8 +173,9 @@ ricevute storiche. Non viene rinominato, potato o reinterpretato come corrente.
 
 ## 6. Dipendenze correnti
 
-Il rapporto dell'agente B dimostra che i 12 legami di O15 sono storici. Questo
-protocollo distingue quei fatti dall'inventario che F4 deve rendere avviabile:
+Il rapporto dell'agente B, dopo la chiusura dei rilievi di autenticazione, deve
+dimostrare che i 12 legami di O15 sono storici. Questo protocollo distingue
+quei fatti dall'inventario che F4 deve rendere avviabile:
 
 - i 12 legami storici e tutte le altre ricevute di generazioni superate restano
   byte per byte immutati;
