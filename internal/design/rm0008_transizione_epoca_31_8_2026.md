@@ -2,8 +2,8 @@
 
 Data: 31 agosto 2026  
 Unita': `F4-EPOCA-01`  
-Stato: proposta A, settima versione pronta alla revisione incrociata
-Ancora fattuale B in revisione: `dfb551a7`
+Stato: proposta A, ottava versione pronta alla revisione incrociata
+Ancora fattuale B in revisione: `41845f1f`
 
 ## 1. Risultato richiesto
 
@@ -32,11 +32,13 @@ di ciclo degli executor previste in F5.
   avvio chiuso in un ordine non permutabile;
 - diagnosi O15 e classificazione B: i 12 candidati osservati corrispondono a
   sei generazioni superate sotto due rappresentazioni e nessuno va ripuntato;
-  B1 richiede ancora l'autenticazione finale di ricevute e buste prima di
-  trattare il conteggio come prova;
-- misura B sul negozio: 123 pubblicazioni, 21 con ricevute storiche e zero
+  B1 richiede ancora il legame esatto fra ricevute, buste e righe durevoli
+  prima di trattare il conteggio come prova;
+- misura B sul negozio: 122 pubblicazioni autenticate, un contenitore di prima
+  pubblicazione incompleto, 21 pubblicazioni con ricevute storiche e zero
   ricevute per la generazione corrente; il censimento da riattestare deve
-  quindi partire dalle generazioni correnti, non dai 12 legami storici;
+  quindi partire dalle generazioni correnti, non dai 12 legami storici, e la
+  transizione non puo' iniziare finche' il contenitore incompleto permane;
 - diagnosi O17: il server completo parte e serve turni reali in una copia
   isolata quando il contesto concorda.
 - verifica in sola lettura del 31 agosto: la radice produttiva
@@ -181,6 +183,8 @@ quei fatti dall'inventario che F4 deve rendere avviabile:
   byte per byte immutati;
 - sotto la manutenzione F4 si acquisisce invece l'inventario autenticato delle
   generazioni correnti, con identita' composta `(contract_id, generation_id)`;
+  l'acquisizione richiede `problems == ()` e possiede ogni oggetto immediato
+  della radice del negozio;
 - ogni generazione corrente viene riattestata nel nuovo contesto, anche se non
   possiede una ricevuta dell'epoca precedente;
 - la riattestazione aggiunge una ricevuta in
@@ -208,6 +212,27 @@ cosi' una seconda epoca puo' aggiungere una nuova ricevuta per la stessa
 generazione senza sostituire quella precedente. Prima della testa nuova, le
 riletture produttive provano firma, identita' composta, contesto, predecessore
 e postcondizione di ciascun fatto nuovo.
+
+La coesistenza V1/V2 per la stessa generazione e' lecita ed e' il caso normale
+della transizione: la ricevuta V1 resta l'atto storico del contesto precedente,
+la ricevuta V2 e' il nuovo atto per la generazione ancora corrente. L'identita'
+di una singola ricevuta e' quindi la tripla `(contract_id, generation_id,
+admission_context_id)`. Il contesto V1 viene dal documento firmato, quello V2
+deve concordare anche col percorso. Due copie della stessa tripla devono avere
+byte identici; due triple con contesti diversi non vengono sovrascritte, fuse o
+obbligate ad avere la stessa classe temporale.
+
+La pubblicazione incompleta osservata e' una precondizione distinta dalla
+transizione. Non viene rimossa manualmente e non viene ignorata. Il perimetro B
+fornisce una primitiva di recupero mirata che, sotto il lucchetto di catalogo e
+quello dello specifico contratto, accetta soltanto il `ContractId` derivato
+dall'inventario autoriale e il relativo storage key esatto; rilegge con `lstat`
+un contenitore ordinario privo di `binding.json`, `current`, staging e altri
+oggetti, con `generations/` ordinaria e vuota e il solo `writer.lock` ordinario;
+qualunque differenza blocca. La rimozione del contenitore vuoto e il `fsync`
+della radice sono l'unica postcondizione ammessa. La primitiva e' provata su una
+copia; il suo uso sul negozio reale richiede un gate operativo separato e non
+fa parte dell'esecuzione automatica F4.
 
 ## 7. Ordine vincolante
 
@@ -296,6 +321,11 @@ ogni ripresa accetta soltanto la stessa transazione e gli stessi byte.
 | `PREFLIGHT_VERIFIED` | tutto concordante | successo idempotente |
 | qualunque | identità estranea o inventario incompleto | `birth_context_transition_recovery_required`, nessuna modifica |
 
+In questa matrice `inventario incompleto` comprende sia una generazione
+corrente mancante, cambiata o aggiunta, sia qualunque problema restituito
+dall'inventario produttivo, oggetto immediato non posseduto, alias o tipo di
+file inatteso. Un inventario parziale non puo' essere congelato.
+
 Un'interruzione prima del punto di non ritorno può lasciare finali append-only
 non selezionati; sono innocui e riutilizzabili soltanto dalla stessa richiesta.
 Non vengono eliminati automaticamente. Un ritorno funzionale dopo il punto di
@@ -382,7 +412,13 @@ Prima di B2 servono almeno:
 18. richiesta Producer V1 o di un'altra epoca non riutilizzabile in V2;
 19. ricevuta dominante assente, diversa o proveniente da binding senza
     `context_transition_id` rifiutata anche in ripresa;
-20. server completo e turni reali in copia dopo la transizione.
+20. V1 storica e V2 corrente della stessa generazione coesistono come triple
+    distinte; una copia discordante della stessa tripla e' rifiutata;
+21. problema d'inventario, oggetto non posseduto, alias o file non regolare
+    impediscono il congelamento;
+22. recupero del contenitore incompleto accetta soltanto la forma vuota esatta,
+    e seconda esecuzione innocua;
+23. server completo e turni reali in copia dopo la transizione.
 
 Le prove di interruzione osservano file e ricevute reali. Non è sufficiente
 avanzare una macchina di stati fittizia. La suite completa resta riservata a
@@ -402,9 +438,11 @@ Agente A:
 Agente B:
 
 - rapporto e classificazione delle 12 dipendenze;
+- estensione del censimento ai percorsi V1 e V2 con identita' per tripla;
 - adattamento append-only di ricevute e registrazioni Producer;
 - persistenza e lettura nel negozio dei contratti, riattestazione e
   postcondizione;
+- recupero mirato del contenitore di prima pubblicazione incompleto;
 - prova di accettazione che compone nucleo e dipendenze;
 - revisione del codice dell'agente A.
 
@@ -451,7 +489,7 @@ Le interfacce congelate sono minime:
 - A consegna a runtime `ContextSelectionV1`, nominale e sigillato, contenente
   `transition_id`, `set_id`, `admission_context_id`, `context_epoch` e la
   distribuzione verificata; B non ricostruisce la selezione;
-- B persiste e rilegge una ricevuta V2 soltanto per la coppia corrente e per
+- B persiste e rilegge una ricevuta V2 soltanto per la tripla corrente e per
   l'identita' di contesto contenuta nell'autorizzazione sigillata;
 - B deriva `objective` e `request_id` Producer V2 includendo la selezione di
   contesto e ne verifica la registrazione terminale autenticata;
@@ -473,6 +511,7 @@ commit, su:
 - classificazione completa delle 12 dipendenze;
 - punto di non ritorno e matrice di ripresa;
 - interfacce fra nucleo e adattamento delle dipendenze;
+- percorso V2 e semantica di coesistenza V1/V2 per la stessa generazione;
 - insieme minimo di prove non vacue.
 
 Poiche' la roadmap §7.3 congela oggi il certificato V1 esatto, B1 comprende
