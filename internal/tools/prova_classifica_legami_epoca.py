@@ -373,6 +373,104 @@ def _(base: Path) -> list[str]:
     return errori
 
 
+@caso("percorso V2: una ricevuta filed sotto il contesto viene vista")
+def _(base: Path) -> list[str]:
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    cartella = pubblicazione(negozio, "vdue", [gen("a"), gen("b")], gen("b"), {})
+    # la stessa forma dichiarata dal protocollo:
+    # admission-receipts-v2/<generazione>/<contesto>.json
+    v2 = cartella / "admission-receipts-v2" / gen("a")
+    v2.mkdir(parents=True)
+    (v2 / f"{CTX.removeprefix('sha256:')}.json").write_bytes(
+        ammissione(k, contratto="vdue", generazione=gen("a"))
+    )
+    STATO = stato_di(("vdue", "corrente", gen("b")))
+    e = esegui(negozio, base / "stato", aut, STATO)
+    errori = []
+    if e["conteggio"].get(C.STORICA) != 1:
+        errori.append(f"la ricevuta V2 non e' stata vista: {e['conteggio']}")
+    return errori
+
+
+@caso("percorso V2 con contesto discorde dalla ricevuta firmata: blocca")
+def _(base: Path) -> list[str]:
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    cartella = pubblicazione(negozio, "vtre", [gen("a"), gen("b")], gen("b"), {})
+    # riposta sotto un contesto diverso da quello che la ricevuta firma
+    v2 = cartella / "admission-receipts-v2" / gen("a")
+    v2.mkdir(parents=True)
+    (v2 / f"{'b' * 64}.json").write_bytes(
+        ammissione(k, contratto="vtre", generazione=gen("a"))
+    )
+    STATO = stato_di(("vtre", "corrente", gen("b")))
+    e = esegui(negozio, base / "stato", aut, STATO)
+    errori = []
+    if e["conteggio"].get(C.IGNOTA) != 1:
+        errori.append(f"il contesto discorde nel percorso non ha bloccato: {e['conteggio']}")
+    if "contesto: percorso" not in e["motivi"]:
+        errori.append(f"motivo inatteso: {e['motivi']}")
+    return errori
+
+
+@caso("V1 storica e V2 corrente per la stessa generazione: due legami distinti")
+def _(base: Path) -> list[str]:
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    cartella = pubblicazione(negozio, "vqua", [gen("a"), gen("b")], gen("b"),
+                             {gen("a"): ammissione(k, contratto="vqua",
+                                                   generazione=gen("a"))})
+    v2 = cartella / "admission-receipts-v2" / gen("a")
+    v2.mkdir(parents=True)
+    (v2 / f"{CTX.removeprefix('sha256:')}.json").write_bytes(
+        ammissione(k, contratto="vqua", generazione=gen("a"))
+    )
+    STATO = stato_di(("vqua", "corrente", gen("b")))
+    e = esegui(negozio, base / "stato", aut, STATO)
+    errori = []
+    if len(e["legami"]) != 2:
+        errori.append(f"le due ricevute non danno due legami: {len(e['legami'])}")
+    if e["conteggio"].get(C.STORICA) != 2:
+        errori.append(f"classi inattese: {e['conteggio']}")
+    return errori
+
+
+@caso("seconda esecuzione identica: stesso esito, nessuna deriva")
+def _(base: Path) -> list[str]:
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    pubblicazione(negozio, "idem", [gen("a"), gen("b")], gen("b"),
+                  {gen("a"): ammissione(k, contratto="idem",
+                                        generazione=gen("a"))})
+    STATO = stato_di(("idem", "corrente", gen("b")))
+    primo = esegui(negozio, base / "stato", aut, STATO)
+    secondo = esegui(negozio, base / "stato", aut, STATO)
+    errori = []
+    if primo["conteggio"] != secondo["conteggio"]:
+        errori.append(f"esiti diversi: {primo['conteggio']} vs {secondo['conteggio']}")
+    if [l.locazione for l in primo["legami"]] != [l.locazione for l in secondo["legami"]]:
+        errori.append("l'ordine o l'insieme delle locazioni e' cambiato")
+    return errori
+
+
+@caso("molte dipendenze correnti: ciascuna chiede la nuova epoca")
+def _(base: Path) -> list[str]:
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    coppie = []
+    for nome in ("mua", "mub", "muc"):
+        pubblicazione(negozio, nome, [gen("a")], gen("a"),
+                      {gen("a"): ammissione(k, contratto=nome,
+                                            generazione=gen("a"))})
+        coppie.append((nome, "corrente", gen("a")))
+    e = esegui(negozio, base / "stato", aut, stato_di(*coppie))
+    errori = []
+    if e["conteggio"].get(C.NUOVA) != 3:
+        errori.append(f"le tre correnti non chiedono la nuova epoca: {e['conteggio']}")
+    return errori
+
+
 def main() -> int:
     fallimenti = 0
     for nome, fn in CASI:

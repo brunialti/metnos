@@ -319,3 +319,35 @@ contesto alterato, generazione discorde fra percorso e ricevuta firmata, firma
 di produttore guasta, richiesta discorde fra riga e busta, `terminal_auth`
 guasta, busta con identità estranea al gemello, directory inattesa senza
 ricevute, generazione corrente.
+
+---
+
+## 10. Il censimento legge anche il percorso V2
+
+Rilievo mio (B2 della revisione su `d1c25395`), chiuso da me perché il
+censimento è il mio perimetro. Il protocollo di A introduce
+`admission-receipts-v2/<generazione>/<contesto>.json` e stabilisce che da quella
+transizione in avanti **anche le ammissioni ordinarie** lo usino. Un censimento
+che legge solo V1 continuerebbe a rispondere «nulla da fare» mentre la scrittura
+avviene dove non guarda: è il solo modo in cui questo strumento può mentire
+restando verde.
+
+Ora legge entrambi i tracciati. Nel V2 il percorso porta **due** identità —
+generazione e contesto — e nessuna delle due viene creduta: si confrontano con
+la ricevuta firmata, e una ricevuta riposta sotto un contesto diverso da quello
+che firma è una divergenza, non la ricevuta di un'altra epoca.
+
+**Una conseguenza da dichiarare**: con V1 e V2 sulla stessa generazione, due
+ricevute condividono l'identità composta. Sovrascrivere la chiave avrebbe scelto
+in silenzio l'ultima arrivata; ora l'accordo è **richiesto**, e un disaccordo
+sullo stato della generazione blocca invece di risolversi a caso.
+
+Resta aperta una domanda che non è mia: se una stessa generazione possa avere
+insieme una ricevuta V1 storica e una V2 corrente. Il censimento oggi le tratta
+come due locazioni distinte dello stesso fatto e non presume la risposta; quando
+il disegno la darà, la chiave di identità potrà stringersi.
+
+Quindici prove mirate, verdi. Fra le nuove: ricevuta V2 vista, contesto discorde
+nel percorso che blocca, V1 e V2 sulla stessa generazione, seconda esecuzione
+identica senza deriva, e molte dipendenze correnti che chiedono tutte la nuova
+epoca.

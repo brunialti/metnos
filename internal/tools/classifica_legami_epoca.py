@@ -46,6 +46,7 @@ import binascii
 import glob
 import json
 import os
+import re
 import sqlite3
 import sys
 from dataclasses import dataclass, field
@@ -200,6 +201,37 @@ def _classifica(legame: Legame) -> Legame:
     return legame
 
 
+_ESADECIMALE_64 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _ricevute_del_contratto(cartella: Path):
+    """Every admission receipt of a contract, on both layouts.
+
+    V1 files a receipt as ``admission-receipts/<generation>.json``; from the
+    epoch transition on, receipts are filed as
+    ``admission-receipts-v2/<generation>/<context>.json`` so a second epoch can
+    add its own receipt for the same generation without replacing the first.
+    A census that only reads V1 keeps answering "nothing to do" while the
+    writing happens somewhere it does not look - which is the one failure a
+    census must not have.
+
+    Yields ``(path, generation, context_or_empty)``: for V2 the path itself
+    carries both identities, and the caller checks them against the signed
+    receipt instead of trusting either.
+    """
+    for percorso in sorted(cartella.glob("admission-receipts/*.json")):
+        yield percorso, percorso.name.removesuffix(".json"), ""
+    radice_v2 = cartella / "admission-receipts-v2"
+    if not radice_v2.is_dir():
+        return
+    for per_generazione in sorted(radice_v2.iterdir()):
+        if not per_generazione.is_dir():
+            continue
+        for percorso in sorted(per_generazione.glob("*.json")):
+            yield (percorso, per_generazione.name,
+                   percorso.name.removesuffix(".json"))
+
+
 def legami_del_negozio(negozio: Path, autorita: Autorita,
                        stato_finto: dict | None = None
                        ) -> tuple[list[Legame], list[str], list[str]]:
@@ -265,8 +297,8 @@ def legami_del_negozio(negozio: Path, autorita: Autorita,
                 generazione_corrente = ""
                 errore_stato = str(getattr(exc, "code", type(exc).__name__))
 
-        for percorso in sorted(Path(cartella).glob("admission-receipts/*.json")):
-            dal_percorso = percorso.name.removesuffix(".json")
+        for percorso, dal_percorso, dal_percorso_contesto in _ricevute_del_contratto(
+                Path(cartella)):
             legame = Legame(
                 tipo="ricevuta_ammissione", locazione=str(percorso),
                 contesto=autorita.contesto, contratto=contratto,
@@ -308,7 +340,15 @@ def legami_del_negozio(negozio: Path, autorita: Autorita,
                 getattr(ricevuta, "generation_id", "") or ""
             ).removeprefix("sha256:")
             contratto_documento = str(getattr(ricevuta, "contract_id", "") or "")
-            if dal_documento and dal_documento != dal_percorso:
+            if dal_percorso_contesto and dal_percorso_contesto != \
+                    autorita.contesto.removeprefix("sha256:"):
+                # V2 carries the context in the path as well: a receipt filed
+                # under one context and signed for another is a divergence, not
+                # a receipt of somebody else's epoch.
+                legame.discorde = ("contesto: percorso="
+                                   f"{dal_percorso_contesto[:16]} "
+                                   f"ricevuta={autorita.contesto[7:23]}")
+            elif dal_documento and dal_documento != dal_percorso:
                 legame.discorde = (f"generazione: percorso={dal_percorso[:16]} "
                                    f"documento={dal_documento[:16]}")
             elif contratto_documento and contratto_documento != contratto:
@@ -576,10 +616,24 @@ def classifica(codice: Path, installazione: Path, negozio: Path,
     del_negozio, bloccanti, fuori_ambito = legami_del_negozio(
         negozio, autorita, stato_finto
     )
-    per_gemello = {
-        (l.contratto, l.generazione): l
-        for l in del_negozio if l.contratto and l.generazione and not l.discorde
-    }
+    # Two receipts can now share one identity - a V1 historical one and a V2
+    # one for the same generation.  Overwriting the key would silently pick
+    # whichever came last, so agreement is required and a disagreement is a
+    # divergence rather than a coin toss.
+    per_gemello: dict[tuple[str, str], Legame] = {}
+    for legame in del_negozio:
+        if not (legame.contratto and legame.generazione) or legame.discorde:
+            continue
+        chiave = (legame.contratto, legame.generazione)
+        gia = per_gemello.get(chiave)
+        if gia is None:
+            per_gemello[chiave] = legame
+        elif (gia.corrente, gia.ritirato) != (legame.corrente, legame.ritirato):
+            gia.discorde = legame.discorde = (
+                "due ricevute con la stessa identita' non concordano sullo "
+                "stato della generazione"
+            )
+            per_gemello.pop(chiave, None)
     rifiuti: list[str] = []
     dello_stato = legami_dello_stato(
         stato_db, autorita, per_gemello, rifiuti, fuori_ambito
