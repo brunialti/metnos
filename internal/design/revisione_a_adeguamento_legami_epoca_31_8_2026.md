@@ -97,7 +97,10 @@ chiavi private.
 
 La correzione minima e' una sola acquisizione in sola lettura mediante
 `open_prepared_root_session_v1`, `load_prepared_set_v1` e il registro pubblico
-dell'insieme. Da quella acquisizione devono derivare il contesto e i
+dell'insieme, sotto `global_lock(exclusive=False, create=False)`. Questa forma
+e' stata provata sul dato reale e restituisce un insieme, un verificatore
+Admission e undici registri Producer senza ricostruire da `PATH_RUNTIME`. Da
+quella acquisizione devono derivare il contesto e i
 verificatori; ogni AdmissionReceipt deve passare
 `verify_admission_receipt`, compresi identita', contesto e ciclo approvato.
 Nessun lettore JSON parallelo deve decidere l'autorita'.
