@@ -395,14 +395,25 @@ Agente A:
 - codec del record di transizione e legame con la testa F4 esistente;
 - coordinatore e recupero;
 - integrazione con distribuzione F4 e caricatore;
+- provisioning dell'insieme, selezione del contesto, bootstrap e involucro
+  dominante;
 - prove di modulo, concorrenza e interruzione del nucleo.
 
 Agente B:
 
 - rapporto e classificazione delle 12 dipendenze;
 - adattamento append-only di ricevute e registrazioni Producer;
+- persistenza e lettura nel negozio dei contratti, riattestazione e
+  postcondizione;
 - prova di accettazione che compone nucleo e dipendenze;
 - revisione del codice dell'agente A.
+
+`executor_birth_bootstrap.py`, i moduli di selezione, provisioner,
+coordinatore, catena e involucro dominante sono di A. `contract_store.py`,
+`executor_birth_reattestation.py`, `executor_birth_producer_store.py` e la
+postcondizione delle ricevute sono di B. B espone in un modulo nuovo il solo
+costruttore sigillato della richiesta Producer V2; A lo compone nel bootstrap.
+Nessuno dei due modifica i file dell'altro durante il tratto parallelo.
 
 Le interfacce comuni vengono congelate a B1. Ogni variazione successiva richiede
 una revisione incrociata prima che uno dei due rami la usi.
