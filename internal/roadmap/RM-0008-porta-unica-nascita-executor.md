@@ -3142,3 +3142,47 @@ Ventisette prove verdi fra `test_executor_birth_operational` e
 stantia (§23.45) e venticinque qui — e nessuno dei due era «ambiente». Restano
 nove asserzioni assortite da guardare una per una e sei che chiedono davvero
 root o un modello locale.
+
+
+### 23.47 Le nove assortite: cinque chiuse, tre d'ambiente, una da decidere
+
+Guardate una per una, come andava fatto dall'inizio.
+
+**Chiuse.**
+
+- `test_device_shim_i18n`: il pacchetto messaggi del dispositivo era disallineato
+  dal DB. Il test stesso diceva come rigenerarlo; fatto, 2192 template.
+- `test_sites_security::test_email_factor_vocabulary_has_no_site_specific_brand`:
+  RM-0005 ha sostituito il regex cablato `_FACTOR_WORD_RE` con ricerche guidate
+  dal lessico — direzione giusta, un vocabolario sta nel lessico e non in un
+  letterale — ma il test controllava ancora il simbolo rimosso. La proprieta'
+  non e' sparita col simbolo: ora si verifica sulle forme che il risolutore
+  CONSULTA davvero, tutte e tre le famiglie di concetti, piu' i pattern di
+  codice.
+- `test_fs_listing_device_routing` (tre casi): il test cablava
+  `/opt/metnos/executors/read_files` mentre il predicato sotto prova deriva la
+  radice da `config.PATH_ROOT`. §7.11 vieta esattamente questo: i tre casi erano
+  veri solo se il repository viveva in quella cartella. Ora derivano il percorso
+  dalla stessa sorgente del prodotto.
+
+**Ambiente vero, restano rosse.** Il PDF del Quicktour e' un artefatto generato
+e non tracciato; il modello BGE ONNX non e' nel worktree; cinque casi chiedono
+`sudo -n chown` verso un altro uid.
+
+**Una da decidere, e non e' mia.** `test_store_entries::test_unregistered_store_honest_error`
+fallisce perche' il DB i18n PRODUTTIVO non contiene
+`ERR_STORE_NOT_REGISTERED`, che il seed dichiara. Non e' un difetto del test:
+un utente che nomina uno store inesistente riceve oggi
+`<missing:ERR_STORE_NOT_REGISTERED>` invece di un messaggio. La correzione
+richiede di riseminare il DB in `~/.local/share/metnos/`, cioe' toccare lo
+stato vivo, e non la faccio senza che sia chiesto.
+
+**Un difetto sfiorato e non commesso.** Avevo scritto una guardia che
+pretendeva ogni `reverse_pattern` dentro il catalogo chiuso del §2.3: avrebbe
+bocciato `delete_persons` e `delete_events`, che dichiarano un nome fuori
+catalogo MA implementano `reverse()` nel modulo, che e' il disegno previsto e
+ammesso da `_require_reviewed_module_reverse_v1`. Controllare l'invariante
+sbagliata sarebbe stato peggio che non controllare: una guardia che strilla su
+codice corretto insegna a zittire le guardie. Riscritta sull'invariante vera —
+o il runtime possiede il pattern, o il modulo possiede un `reverse()` — e
+`tests/runtime/infra/test_reverse_patterns_declared.py` la tiene, 18 casi.

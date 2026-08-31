@@ -3741,9 +3741,31 @@ def test_every_terminal_login_failure_has_redacted_evidence(monkeypatch):
 
 
 def test_email_factor_vocabulary_has_no_site_specific_brand():
+    """No brand may enter the factor vocabulary, whatever holds it.
+
+    RM-0005 replaced the hardcoded `_FACTOR_WORD_RE` with lexicon-driven
+    lookups, which is the right direction: a vocabulary belongs in the lexicon,
+    not in a regex literal. The property it guarded did not go away with it, so
+    it is checked here against the forms the resolver ACTUALLY consults — all
+    of them, not a symbol that happens to exist today.
+    """
     from playwright_sidecar import factor_resolvers as fr
 
-    assert "booking" not in fr._FACTOR_WORD_RE.pattern.casefold()
+    concepts = (
+        "sites.factor.email_page",
+        "sites.factor.non_code",
+        "sites.factor.marker",
+    )
+    vocabulary = {
+        form.casefold()
+        for concept in concepts
+        for form in fr._manual_forms(concept)
+    }
+    assert vocabulary, "the factor vocabulary resolved to nothing at all"
+    assert not any("booking" in form for form in vocabulary)
+    assert not any(
+        "booking" in pattern.pattern.casefold() for pattern in fr._code_patterns()
+    )
 
 
 def test_ambiguous_unstyled_page_expands_resources_before_model(monkeypatch):

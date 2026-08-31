@@ -84,6 +84,21 @@ def test_extractor_windows_path_with_spaces_segment():
 
 # ── 3. args_resolver: install root mai ricordato/iniettato ───────────────
 
+
+def _install_root_path() -> str:
+    """Un percorso DENTRO l'install root, derivato come lo deriva il prodotto.
+
+    §7.11: la radice non si cabla. Scrivere `/opt/metnos/...` qui rendeva questi
+    tre casi veri soltanto se il repository viveva in quella cartella, e falsi
+    ovunque altrove — il predicato sotto prova usa `config.PATH_ROOT`, e il test
+    deve usare la stessa sorgente o non prova la proprieta' che dichiara.
+    """
+    import config as _C
+
+    return str(Path(_C.PATH_ROOT) / "executors" / "read_files")
+
+
+
 def test_install_root_never_remembered(monkeypatch):
     import args_resolver as ar
     import args_defaults
@@ -91,7 +106,7 @@ def test_install_root_never_remembered(monkeypatch):
     monkeypatch.setattr(args_defaults, "set_default",
                         lambda *a, **k: captured.append(a))
     ar.remember_scope_args("find_files",
-                           {"base_path": "/opt/metnos/executors/read_files"},
+                           {"base_path": _install_root_path()},
                            actor="tester")
     assert captured == [], f"path install-root ricordato: {captured}"
     ar.remember_scope_args("find_files", {"base_path": "/tmp/dati"},
@@ -103,7 +118,7 @@ def test_install_root_never_injected(monkeypatch):
     import args_resolver as ar
     import args_defaults
     monkeypatch.setattr(args_defaults, "get_default",
-                        lambda *a, **k: "/opt/metnos/executors/read_files")
+                        lambda *a, **k: _install_root_path())
     schema = {"properties": {"base_path": {"type": "string"}},
               "required": ["base_path"]}
     out = ar.resolve_scope_args("find_files", {}, schema,
@@ -126,7 +141,7 @@ def test_predicato_install_root_riconosce_la_radice():
     causali, che sono quelle che contano."""
     import args_resolver as AR
 
-    assert AR._is_install_root_path("/opt/metnos/executors/read_files")
+    assert AR._is_install_root_path(_install_root_path())
     assert not AR._is_install_root_path(WIN_DIR)
     assert not AR._is_install_root_path("/home/utente/Documenti")
 
@@ -141,7 +156,7 @@ def test_piano_avvelenato_resta_comunque_un_contenitore_da_enumerare():
     fw = Framework(steps=[
         StepSpec(tool="find_files",
                  args={"client": "local",
-                       "base_path": "/opt/metnos/executors/read_files"}),
+                       "base_path": _install_root_path()}),
         StepSpec(tool="create_files_spreadsheet",
                  args={"title": "File in etc", "columns": ["path"],
                        "client": "local"}),
