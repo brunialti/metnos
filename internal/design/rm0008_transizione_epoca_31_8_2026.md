@@ -408,12 +408,34 @@ Agente B:
 - prova di accettazione che compone nucleo e dipendenze;
 - revisione del codice dell'agente A.
 
-`executor_birth_bootstrap.py`, i moduli di selezione, provisioner,
-coordinatore, catena e involucro dominante sono di A. `contract_store.py`,
-`executor_birth_reattestation.py`, `executor_birth_producer_store.py` e la
-postcondizione delle ricevute sono di B. B espone in un modulo nuovo il solo
-costruttore sigillato della richiesta Producer V2; A lo compone nel bootstrap.
-Nessuno dei due modifica i file dell'altro durante il tratto parallelo.
+I percorsi di prodotto di A sono:
+
+- `install/birth_authority_provisioner.py` e
+  `install/birth_authority_provisioning.py`;
+- `runtime/executor_birth_secure_fs.py`,
+  `runtime/executor_birth_prepared_set.py` e
+  `runtime/executor_birth_prepared_root.py`;
+- i nuovi `runtime/executor_birth_context_transition.py` e
+  `runtime/executor_birth_context_selection.py`;
+- `runtime/executor_birth_bootstrap.py`,
+  `runtime/executor_birth_ownership_chain.py`,
+  `runtime/executor_birth_ownership_cutover.py`,
+  `runtime/executor_birth_ownership_coordinator.py` e
+  `runtime/executor_birth_dominant_startup.py`.
+
+I percorsi di prodotto di B sono:
+
+- `runtime/contract_store.py`;
+- `runtime/executor_birth_reattestation.py`;
+- `runtime/executor_birth_producer_store.py` e
+  `runtime/executor_birth_operational.py`;
+- il nuovo `runtime/executor_birth_producer_context.py`, che espone il solo
+  costruttore sigillato della richiesta Producer V2.
+
+A compone quel costruttore nel bootstrap. Ciascun agente possiede inoltre i
+nuovi file di prova dedicati al proprio perimetro; la prova di accettazione che
+compone i due perimetri e' di B. Nessuno dei due modifica i file dell'altro
+durante il tratto parallelo.
 
 Le interfacce comuni vengono congelate a B1. Ogni variazione successiva richiede
 una revisione incrociata prima che uno dei due rami la usi.
