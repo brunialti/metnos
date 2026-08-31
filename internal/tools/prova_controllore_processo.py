@@ -136,6 +136,104 @@ def _() -> list[str]:
     return errori
 
 
+@caso("leader terminato DAVVERO con figlio vivo: gruppo chiuso e stato finale vero")
+def _() -> list[str]:
+    # Il leader genera un figlio che ignora TERM e poi esce lui stesso: e' il
+    # caso che la prova precedente diceva di coprire e non copriva, perche' il
+    # leader restava vivo con `sleep 60`.
+    p = C.ProcessoControllato(
+        ["sh", "-c", "sh -c \"trap '' TERM; while :; do sleep 0.2; done\" & exit 0"]
+    ).avvia()
+    time.sleep(0.6)
+    errori = []
+    if p._vivo():
+        errori.append("il leader doveva essere gia' terminato")
+    prima = C._membri_del_gruppo(p.pgid, escludi=p.pid)
+    if not prima:
+        errori.append("il figlio doveva essere vivo prima della chiusura")
+    esito = p.chiudi(grazia=1.5)
+    if not esito.uscita_spontanea:
+        errori.append("l'uscita spontanea del leader non e' stata riconosciuta")
+    dopo = C._membri_del_gruppo(p.pgid, escludi=p.pid)
+    if dopo:
+        errori.append(f"il gruppo ha ancora membri vivi: {dopo}")
+    if esito.superstiti != dopo:
+        errori.append(
+            f"Esito.superstiti={esito.superstiti} non descrive lo stato finale {dopo}"
+        )
+    return errori
+
+
+@caso("attendi() poi chiudi(): il numero resta riservato fra le due chiamate")
+def _() -> list[str]:
+    p = C.ProcessoControllato(["sh", "-c", "exit 5"]).avvia()
+    pid = p.pid
+    codice = p.attendi(5)
+    errori = []
+    if codice != 5:
+        errori.append(f"attendi ha reso {codice}, atteso 5")
+    # La proprieta' dichiarata: il figlio non e' raccolto, quindi il PID e'
+    # ancora riservato e la maniglia e' ancora aperta.
+    if p._pidfd is None:
+        errori.append("attendi() ha chiuso il pidfd: ha raccolto in anticipo")
+    if not os.path.exists(f"/proc/{pid}"):
+        errori.append("attendi() ha raccolto il figlio: il PID e' stato liberato")
+    esito = p.chiudi(grazia=1)
+    if esito.codice != 5:
+        errori.append(f"chiudi ha reso {esito.codice}, atteso 5")
+    if esito.term_inviato or esito.kill_inviato:
+        errori.append("segnali inviati a un processo gia' uscito")
+    return errori
+
+
+@caso("errore di chiusura: esce dal blocco with invece di essere inghiottito")
+def _() -> list[str]:
+    errori = []
+    visto = False
+    try:
+        with C.ProcessoControllato(["sleep", "30"]) as p:
+            # identita' corrotta: chiudi() deve rifiutare, e il rifiuto deve
+            # attraversare __exit__ invece di sparire.
+            uid, riga, avvio, pgid = p._identita
+            p._identita = (uid, riga, avvio + 1, pgid)
+            vero = (uid, riga, avvio, pgid)
+    except C.ControlloreError:
+        visto = True
+    if not visto:
+        errori.append("__exit__ ha inghiottito l'errore di pulizia")
+    # ripulisci con l'identita' vera
+    try:
+        p._identita = vero
+        p.chiudi(grazia=2)
+    except Exception:
+        pass
+    return errori
+
+
+@caso("errore nel corpo del with: l'errore di pulizia non lo sostituisce")
+def _() -> list[str]:
+    errori = []
+    catturata = None
+    try:
+        with C.ProcessoControllato(["sleep", "30"]) as p:
+            uid, riga, avvio, pgid = p._identita
+            vero = (uid, riga, avvio, pgid)
+            p._identita = (uid, riga, avvio + 1, pgid)
+            raise ValueError("errore del corpo")
+    except BaseException as exc:
+        catturata = exc
+    if not isinstance(catturata, C.ControlloreError):
+        errori.append(f"attesa ControlloreError, arrivata {type(catturata).__name__}")
+    elif not isinstance(catturata.__cause__, ValueError):
+        errori.append("l'errore originale del corpo e' andato perso")
+    try:
+        p._identita = vero
+        p.chiudi(grazia=2)
+    except Exception:
+        pass
+    return errori
+
+
 def main() -> int:
     fallimenti = 0
     for nome, fn in CASI:
@@ -146,9 +244,31 @@ def main() -> int:
         print(f"{'ROSSO' if errori else 'verde'}  {nome}"
               + ("  -> " + "; ".join(errori) if errori else ""))
         fallimenti += bool(errori)
+    # A fine suite: nessun processo di prova deve essere sopravvissuto.
+    residui = [
+        int(v) for v in os.listdir("/proc")
+        if v.isdigit() and _e_di_prova(int(v))
+    ]
+    if residui:
+        print(f"ROSSO  nessun residuo a fine suite  -> processi rimasti: {residui}")
+        fallimenti += 1
+    else:
+        print("verde  nessun residuo a fine suite")
+
     print()
     print("ESITO:", "tutte verdi" if not fallimenti else f"{fallimenti} PROVE ROSSE")
     return 1 if fallimenti else 0
+
+
+def _e_di_prova(pid: int) -> bool:
+    """A leftover of this suite, recognised by its own command line."""
+    try:
+        riga = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(
+            "utf-8", "ignore"
+        )
+    except OSError:
+        return False
+    return "trap '' TERM; while :; do sleep 0.2; done" in riga
 
 
 if __name__ == "__main__":

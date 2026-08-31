@@ -113,6 +113,7 @@ class ProcessoControllato:
         self._proc: subprocess.Popen | None = None
         self._pidfd: int | None = None
         self._identita: tuple[int, str, int, int] | None = None
+        self._codice_raccolto: int | None = None
         self.pid: int | None = None
         self.pgid: int | None = None
 
@@ -143,34 +144,68 @@ class ProcessoControllato:
 
     def _vivo(self) -> bool:
         """Ask the handle, not the number, and do not reap."""
+        return self._pidfd is not None and self._stato_uscita() is None
+
+    def attendi(self, secondi: float) -> int | None:
+        """Observe the exit WITHOUT reaping; return the code, or None.
+
+        Reaping here would destroy the one property this class is built on: an
+        unreaped child keeps its PID, and with it the group id.  The first
+        version called ``_raccogli()`` from this method, so any caller that did
+        ``attendi()`` and then ``chiudi()`` was signalling a group id that had
+        already been released - exactly the reuse the docstring claimed to have
+        made impossible.  ``WNOWAIT`` reads the status and leaves the child in
+        place; only ``chiudi()`` reaps.
+        """
+        scadenza = time.monotonic() + secondi
+        while time.monotonic() < scadenza:
+            stato = self._stato_uscita()
+            if stato is not None:
+                return stato
+            time.sleep(0.05)
+        return None
+
+    def _stato_uscita(self) -> int | None:
+        """The exit status of an exited-but-unreaped child, or None if alive."""
         if self._pidfd is None:
-            return False
+            return self._codice_raccolto
         try:
             info = os.waitid(
                 os.P_PIDFD, self._pidfd,
                 os.WEXITED | os.WNOHANG | os.WNOWAIT,
             )
         except ChildProcessError:
-            return False
-        return info is None
-
-    def attendi(self, secondi: float) -> int | None:
-        """Wait for spontaneous exit; return the code, or None if still alive."""
-        scadenza = time.monotonic() + secondi
-        while time.monotonic() < scadenza:
-            if not self._vivo():
-                return self._raccogli()
-            time.sleep(0.05)
-        return None
+            return self._codice_raccolto
+        if info is None:
+            return None
+        if info.si_code == os.CLD_EXITED:
+            return info.si_status
+        return -info.si_status
 
     def _raccogli(self) -> int | None:
+        """The single place that reaps and releases the handle.
+
+        It runs only after the stop sequence has finished with the group, so
+        the group id is ours for the whole time we are signalling it.
+        """
         if self._proc is None:
             return None
         codice = self._proc.wait()
+        self._codice_raccolto = codice
         if self._pidfd is not None:
             os.close(self._pidfd)
             self._pidfd = None
         return codice
+
+    def _attendi_gruppo_vuoto(self, secondi: float) -> list[int]:
+        """Wait, with a limit, until nothing but our unreaped leader is left."""
+        scadenza = time.monotonic() + secondi
+        while time.monotonic() < scadenza:
+            superstiti = _membri_del_gruppo(self.pgid, escludi=self.pid)
+            if not superstiti and self._stato_uscita() is not None:
+                return []
+            time.sleep(0.05)
+        return _membri_del_gruppo(self.pgid, escludi=self.pid)
 
     def _verifica_identita(self) -> None:
         """Refuse to signal if the recorded identity no longer matches."""
@@ -192,39 +227,45 @@ class ProcessoControllato:
             raise ControlloreError("processo mai avviato")
 
         if not self._vivo():
+            # The leader has exited but is not reaped, so the group id is still
+            # reserved and its remaining members are still reachable.
             esito.uscita_spontanea = True
-            esito.codice = self._raccogli()
-            esito.superstiti = _membri_del_gruppo(self.pgid, escludi=self.pid)
-            if esito.superstiti:
+            rimasti = _membri_del_gruppo(self.pgid, escludi=self.pid)
+            if rimasti:
                 esito.note.append(
                     "il leader era gia' uscito ma il gruppo aveva superstiti"
                 )
-                os.killpg(self.pgid, signal.SIGKILL)
-                esito.kill_inviato = True
+                os.killpg(self.pgid, signal.SIGTERM)
+                esito.term_inviato = True
+                rimasti = self._attendi_gruppo_vuoto(grazia)
+                if rimasti:
+                    os.killpg(self.pgid, signal.SIGKILL)
+                    esito.kill_inviato = True
+                    rimasti = self._attendi_gruppo_vuoto(5)
+            esito.codice = self._raccogli()
+            # Recensus AFTER the wait: the first version returned the list it
+            # had read before signalling, so Esito described the state the
+            # sequence started from, not the one it produced.
+            esito.superstiti = _membri_del_gruppo(self.pgid, escludi=self.pid)
+            if esito.superstiti:
+                esito.note.append(
+                    f"ATTENZIONE: {len(esito.superstiti)} processi del gruppo "
+                    "sono sopravvissuti anche a SIGKILL"
+                )
             return esito
 
         self._verifica_identita()
         os.killpg(self.pgid, signal.SIGTERM)
         esito.term_inviato = True
 
-        scadenza = time.monotonic() + grazia
-        while time.monotonic() < scadenza:
-            if not self._vivo() and not _membri_del_gruppo(self.pgid,
-                                                           escludi=self.pid):
-                break
-            time.sleep(0.05)
-
-        # The leader is still unreaped here, so the group id is still ours.
-        superstiti = _membri_del_gruppo(self.pgid, escludi=self.pid)
+        # The leader is still unreaped throughout, so the group id is ours.
+        superstiti = self._attendi_gruppo_vuoto(grazia)
         if self._vivo() or superstiti:
             self._verifica_identita()
             os.killpg(self.pgid, signal.SIGKILL)
             esito.kill_inviato = True
             esito.note.append("terminazione ordinaria non sufficiente")
-            scadenza = time.monotonic() + 5
-            while (time.monotonic() < scadenza
-                   and _membri_del_gruppo(self.pgid, escludi=self.pid)):
-                time.sleep(0.05)
+            self._attendi_gruppo_vuoto(5)
 
         esito.codice = self._raccogli()
         esito.superstiti = _membri_del_gruppo(self.pgid, escludi=self.pid)
@@ -238,8 +279,19 @@ class ProcessoControllato:
     def __enter__(self) -> "ProcessoControllato":
         return self.avvia()
 
-    def __exit__(self, *_exc) -> None:
+    def __exit__(self, exc_type, exc, traceback) -> bool:
+        """Close, and let a cleanup failure reach the caller.
+
+        Swallowing ``ControlloreError`` here meant that a refused close - the
+        very case where a process may still be alive - left the block silently,
+        and the agent following the procedure never learned it.  If the body
+        already raised, the cleanup failure is attached to it rather than
+        replacing it.
+        """
         try:
             self.chiudi()
-        except ControlloreError:
-            pass
+        except ControlloreError as pulizia:
+            if exc is None:
+                raise
+            raise pulizia from exc
+        return False

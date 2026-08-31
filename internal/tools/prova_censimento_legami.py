@@ -16,6 +16,7 @@ import os
 import re
 import sqlite3
 import sys
+import time
 import tempfile
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -231,6 +232,151 @@ def _(base: Path) -> list[str]:
         errori.append(f"record != 3: {estrai(out, 'record semantici univoci')}")
     if "ord" not in out:
         errori.append("l'identita' di riga usata non e' dichiarata")
+    return errori
+
+
+@caso("radice ripetuta nel perimetro: un solo record, un solo file letto")
+def _(base: Path) -> list[str]:
+    radice = costruisci_radice(base)
+    dati = base / "dati"; dati.mkdir()
+    (dati / "x.json").write_text(f"sha256:{CTX}")
+    rc, out = esegui(radice, [dati, dati])
+    errori = []
+    if rc != C.EXIT_OK:
+        errori.append(f"uscita {rc}, attesa 0")
+    if estrai(out, "record semantici univoci") != 1:
+        errori.append("la radice ripetuta ha prodotto due record")
+    if estrai(out, "file esaminati") != 1:
+        errori.append("il file e' stato letto due volte")
+    if "duplicata, collassata" not in out:
+        errori.append("il collasso della radice duplicata non e' dichiarato")
+    return errori
+
+
+@caso("radice annidata nel perimetro: un solo record, un solo file letto")
+def _(base: Path) -> list[str]:
+    radice = costruisci_radice(base)
+    esterna = base / "esterna"; interna = esterna / "dati"
+    interna.mkdir(parents=True)
+    (interna / "x.json").write_text(f"sha256:{CTX}")
+    rc, out = esegui(radice, [esterna, interna])
+    errori = []
+    if rc != C.EXIT_OK:
+        errori.append(f"uscita {rc}, attesa 0")
+    if estrai(out, "record semantici univoci") != 1:
+        errori.append("la radice annidata ha prodotto due record")
+    if estrai(out, "file esaminati") != 1:
+        errori.append("il file e' stato letto due volte")
+    if "annidata in" not in out:
+        errori.append("il collasso della radice annidata non e' dichiarato")
+    return errori
+
+
+@caso("database raggiungibile da due elementi del perimetro: interrogato una volta")
+def _(base: Path) -> list[str]:
+    radice = costruisci_radice(base)
+    esterna = base / "esterna"; interna = esterna / "stato"
+    interna.mkdir(parents=True)
+    db_con_righe(interna / "ricevute.sqlite", 4, lambda i: f"sha256:{CTX} n{i}")
+    rc, out = esegui(radice, [esterna, interna, esterna])
+    errori = []
+    if rc != C.EXIT_OK:
+        errori.append(f"uscita {rc}, attesa 0")
+    if estrai(out, "record semantici univoci") != 4:
+        errori.append(f"record != 4: {estrai(out, 'record semantici univoci')}")
+    if estrai(out, "righe SQLite") != 4 or "file: 0" not in out:
+        errori.append("il database e' stato contato anche come file")
+    if estrai(out, "file esaminati") != 1:
+        errori.append("il database e' stato aperto due volte")
+    return errori
+
+
+@caso("collegamento fisico allo stesso file: un solo record")
+def _(base: Path) -> list[str]:
+    radice = costruisci_radice(base)
+    dati = base / "dati"; dati.mkdir()
+    uno = dati / "uno.json"
+    uno.write_text(f"sha256:{CTX}")
+    os.link(uno, dati / "due.json")
+    rc, out = esegui(radice, [dati])
+    errori = []
+    if rc != C.EXIT_OK:
+        errori.append(f"uscita {rc}, attesa 0")
+    if estrai(out, "record semantici univoci") != 1:
+        errori.append("lo stesso inode ha prodotto due record")
+    if estrai(out, "oggetti deduplicati") != 1:
+        errori.append("la deduplicazione non e' dichiarata")
+    return errori
+
+
+@caso("prestazione: un file binario grande non costa una scansione lenta")
+def _(base: Path) -> list[str]:
+    radice = costruisci_radice(base)
+    dati = base / "dati"; dati.mkdir()
+    # 64 MiB che imitano un binario di debug Rust: nomi di simbolo con hash
+    # esadecimali da 16 cifre, separati da byte non esadecimali. Con una soglia
+    # di 16 ogni blocco passa il prefiltro e la scansione crolla; con la soglia
+    # derivata dagli identificativi reali (32) vengono scartati a velocita' C.
+    grande = dati / "grande.bin"
+    mattone = b"_ZN6metnos" + b"\x00" + b"a1b2c3d4e5f60718" + b"\x00\x01\x02"
+    grande.write_bytes(mattone * (64 * 1024 * 1024 // len(mattone)))
+    # e un file che CONTIENE l'identificativo, per provare che non lo perde
+    (dati / "vero.json").write_text(f"sha256:{CTX}")
+    dimensione_mb = grande.stat().st_size / (1024 * 1024)
+    t = time.monotonic()
+    rc, out = esegui(radice, [dati])
+    trascorso = time.monotonic() - t
+    velocita = dimensione_mb / trascorso if trascorso else float("inf")
+    errori = []
+    if rc != C.EXIT_OK:
+        errori.append(f"uscita {rc}, attesa 0")
+    if estrai(out, "record semantici univoci") != 1:
+        errori.append("il file con l'identificativo non e' stato trovato")
+    # La soglia e' una VELOCITA', non un tempo: cosi' la prova non dipende da
+    # quanto e' veloce la macchina. La via che decodifica ogni blocco candidato
+    # e ci passa una regex Python misura ~79 MB/s su un binario di debug reale;
+    # la via a due stadi ne misura oltre 1000. Un pavimento a 300 MB/s separa
+    # le due senza essere sensibile al rumore.
+    if velocita < 300:
+        errori.append(
+            f"scansione a {velocita:.0f} MB/s (pavimento 300): "
+            "la ricerca non e' piu' a due stadi"
+        )
+    return errori
+
+
+@caso("il prefiltro non perde un identificativo dentro un file binario")
+def _(base: Path) -> list[str]:
+    radice = costruisci_radice(base)
+    dati = base / "dati"; dati.mkdir()
+    rumore = bytes(range(128, 256)) * (4 * 1024 * 1024 // 128)
+    (dati / "misto.bin").write_bytes(
+        rumore + b"\x00\x00" + f"sha256:{CTX}".encode() + b"\x00\x00" + rumore
+    )
+    rc, out = esegui(radice, [dati])
+    errori = []
+    if rc != C.EXIT_OK:
+        errori.append(f"uscita {rc}, attesa 0")
+    if estrai(out, "record semantici univoci") != 1:
+        errori.append("il prefiltro ha nascosto un identificativo vero")
+    return errori
+
+
+@caso("identificativo a cavallo di due blocchi di lettura: trovato lo stesso")
+def _(base: Path) -> list[str]:
+    radice = costruisci_radice(base)
+    dati = base / "dati"; dati.mkdir()
+    # lo colloca esattamente a cavallo del confine di blocco
+    riempimento = b"." * (C.BLOCCO_LETTURA - 10)
+    (dati / "confine.bin").write_bytes(
+        riempimento + f"sha256:{CTX}".encode() + b"."
+    )
+    rc, out = esegui(radice, [dati])
+    errori = []
+    if rc != C.EXIT_OK:
+        errori.append(f"uscita {rc}, attesa 0")
+    if estrai(out, "record semantici univoci") != 1:
+        errori.append("un identificativo a cavallo di due blocchi e' stato perso")
     return errori
 
 
