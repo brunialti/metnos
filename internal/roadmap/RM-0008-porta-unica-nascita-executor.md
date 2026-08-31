@@ -2983,3 +2983,32 @@ censimento verdi; inventario di produzione rigenerato.
 
 Con questo, i cinque punti dell'involucro sono costruiti e provati in
 isolamento. Al gruppo 7 resta solo cio' che tocca il server reale.
+
+
+### 23.42 Gruppo 7-G: cinque pezzi provati non sono un meccanismo che compone
+
+Ogni pezzo dei §§23.34-23.41 ha le sue prove. Nessuna di quelle prove dice che
+i pezzi COMBACINO: un'impronta prodotta da un modulo e consumata da un altro
+puo' differire nella forma, nell'incorniciatura o nel momento in cui viene
+letta, e ognuno di quei disallineamenti sopravvive indenne a una suite di prove
+unitarie verdi.
+
+`tests/portable/test_executor_birth_group7_composition.py` e' la cella che li
+prenderebbe. Un mondo usa-e-getta — radice delle unita', radice di repository,
+artefatto del cancello — e i cinque moduli VERI passati all'involucro come
+osservatori, senza finzioni al loro posto.
+
+**Perche' la composizione e' una prova e non una dimostrazione di comodo.**
+L'involucro legge ogni osservatore DUE volte, e qui ogni osservatore compie un
+effetto reale alla prima lettura: installa le unita', maschera, revoca. La
+seconda lettura concorda soltanto se ognuna di quelle operazioni e' idempotente
+E riferisce la stessa identita' quando ritrova il proprio lavoro gia' fatto.
+Quell'accordo e' esattamente la proprieta' che le suite dei singoli moduli non
+possono mostrare, perche' nessuna di esse vede l'altra meta'.
+
+Tre casi: la composizione riuscita, con le unita' installate e l'ingresso
+legacy rinominato da parte; una topologia che cambia FRA le due letture, che
+ferma tutto senza superare nulla; e un cancello aperto, che ferma la
+composizione al proprio passo prima di toccare il resto.
+
+Portable 1190 verdi; perni 693/681; guardie e censimento verdi.
