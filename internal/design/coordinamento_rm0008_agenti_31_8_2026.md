@@ -114,11 +114,14 @@ Ogni stato `PRONTA`, `MODIFICHE_RICHIESTE`, `ACCETTATA` o `INTEGRATA` viene
 spinto esplicitamente a `/tmp/metnos-rm0008-recovery`, usando la destinazione
 `refs/heads/<ramo-del-ruolo>`. Non si usa il nome `origin`: nell'albero A indica
 il deposito pubblico, nell'albero B indica il recupero locale. I rami di
-sviluppo non vengono mai
-spinti nel deposito GitHub pubblico: quel deposito riceve soltanto
-l'esportazione curata, dopo le relative verifiche di pubblicabilita'. I
-checkpoint intermedi restano piccoli e incrementali; non si riscrive la storia
-e non si comprime la sequenza prima della convergenza.
+sviluppo non vengono spinti direttamente nel deposito GitHub pubblico. Dopo
+che entrambi gli agenti hanno accettato lo stesso commit e le prove richieste
+dalla barriera sono verdi, l'integratore puo' produrre da quel commit un ramo
+pubblico mediante il percorso di esportazione curata e le verifiche di
+pubblicabilita'. Il ramo pubblico contiene la storia esportata, non la storia
+interna del ramo di lavoro. I checkpoint intermedi restano piccoli e
+incrementali; non si riscrive la storia e non si comprime la sequenza prima
+della convergenza.
 
 ## 5. Sincronizzazione senza intervento di Roberto
 
@@ -161,18 +164,21 @@ Se un agente non pubblica un nuovo checkpoint:
 ## 6. Aggiornamento a Roberto
 
 Durante il lavoro attivo, l'agente A invia ogni 30 minuti un aggiornamento
-breve costruito leggendo le teste correnti di entrambi i rami:
+breve costruito leggendo le teste correnti di entrambi i rami. Il messaggio
+contiene soltanto l'elenco ordinato dei passi previsti e lo stato di ciascuno:
 
 ```text
-Fatto: <checkpoint conclusi da entrambi dall'ultimo aggiornamento>.
-Manca: <prossima barriera e lavoro necessario per raggiungerla>.
+1. <passo>: FATTO
+2. <passo>: IN CORSO
+3. <passo>: DA FARE
 ```
 
-Si aggiunge `Blocco:` soltanto se esiste un impedimento reale. Nessun log,
+Si usano soltanto gli stati `FATTO`, `IN CORSO`, `DA FARE` e `BLOCCATO`;
+quest'ultimo deve riportare in poche parole l'impedimento reale. Nessun log,
 comando, richiesta di attivazione o scelta tecnica viene trasferito a Roberto.
-Se nei 30 minuti non esiste un nuovo checkpoint, l'aggiornamento indica quale
-lavoro e' ancora in corso senza dichiarare avanzamenti non provati. Gli
-aggiornamenti terminano quando l'unita' e' chiusa o sospesa.
+Se nei 30 minuti non esiste un nuovo checkpoint, gli stati restano invariati:
+non si dichiarano avanzamenti non provati. Gli aggiornamenti terminano quando
+l'unita' e' chiusa o sospesa.
 
 ## 7. Barriere
 
