@@ -556,3 +556,49 @@ temporanea non è una proprietà del commit.**
 legami, tutti `epoca_storica`, zero non classificati, blocco sul negozio.
 
 Con questo, per i criteri che A ha elencato, il perimetro B è pronto per B1.
+
+---
+
+## 17. Dopo B1 — la primitiva di recupero del contenitore incompleto
+
+Primo lavoro sbloccato del perimetro B, e l'unico che non dipende dall'addendum
+di roadmap: il contenitore di prima pubblicazione incompleto è una precondizione
+**distinta** dalla transizione di epoca.
+
+`runtime/executor_birth_publication_recovery.py`. La sicurezza sta in ciò che
+**rifiuta**:
+
+- il chiamante nomina un **contratto**, mai un percorso, e il contenitore è
+  indirizzato dalla chiave di quell'identità: un contenitore che nessun
+  contratto rivendica non è raggiungibile affatto;
+- forma esatta e nient'altro: niente `binding.json`, niente `current`,
+  `generations/` ordinaria e **vuota**, al più un `writer.lock` ordinario, e
+  ogni passo letto con `lstat`. Qualunque differenza è un rifiuto, non un caso
+  da gestire;
+- unica postcondizione ammessa: la rimozione del contenitore vuoto e il `fsync`
+  della radice.
+
+**Un difetto trovato scrivendola, e vale la pena registrarlo.** Avevo messo la
+verifica **dentro** il lucchetto di scrittura. Ma il lucchetto produttivo
+**crea** le directory del contratto: la primitiva avrebbe fabbricato un
+contenitore per qualunque contratto e poi rimosso ciò che aveva appena fatto.
+Una primitiva di recupero che può creare il proprio soggetto non è un recupero.
+Ora la forma si verifica **prima** di ogni lucchetto e si **rilegge** sotto,
+perché ciò che era vero un istante fa deve esserlo mentre nessun altro può
+cambiarlo.
+
+Dieci prove su copia, verdi, verificate non vacue: forma esatta con e senza
+applicazione, `binding.json` presente, `current` presente, `generations` non
+vuota, oggetto inatteso, collegamento al posto del contenitore, `generations`
+collegata, contenitore assente, e un percorso passato al posto di un'identità.
+
+### Il contenitore reale è raggiungibile, e appartiene a un contratto ritirato
+
+Misurato sull'inventario autoriale (123 manifest, zero problemi): la chiave
+`4e2feabf…` è rivendicata da **`retired:reply_messages/manifest.toml`**. La
+prima pubblicazione interrotta del 30 agosto riguarda quindi un executor
+**ritirato**, e la primitiva può raggiungerla per identità come il disegno
+prevede — la proprietà di sicurezza è soddisfacibile, non solo enunciata.
+
+L'uso sul negozio reale resta una decisione operativa separata, fuori
+dall'esecuzione automatica F4 e non presa qui.
