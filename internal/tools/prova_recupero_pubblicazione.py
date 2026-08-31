@@ -35,6 +35,16 @@ def identita(nome: str = "orfano") -> ContractId:
     return ContractId(ManifestOrigin.BUILTIN, f"{nome}/manifest.toml")
 
 
+def autorizza(cid: ContractId) -> R.AutorizzazioneRecupero:
+    """Issue an authorization for a fixture identity.
+
+    Production issues these only from the authoring inventory; a test cannot
+    publish a manifest, so it mints one through the same private token.  The
+    point the tests exercise is that a caller CANNOT do this from outside.
+    """
+    return R.AutorizzazioneRecupero(cid, cid.storage_key, R._TOKEN)
+
+
 def contenitore_incompleto(radice: Path, cid: ContractId) -> Path:
     """The exact shape an interrupted first publication leaves behind."""
     cartella = radice / cid.storage_key
@@ -47,7 +57,7 @@ def contenitore_incompleto(radice: Path, cid: ContractId) -> Path:
 def _(base: Path) -> list[str]:
     cid = identita()
     cartella = contenitore_incompleto(base, cid)
-    esito = R.recupera_contenitore_incompleto(cid, store_root=base)
+    esito = R.ispeziona_contenitore_incompleto(autorizza(cid), store_root=base)
     errori = []
     if esito.rimosso:
         errori.append("ha dichiarato una rimozione non chiesta")
@@ -60,7 +70,7 @@ def _(base: Path) -> list[str]:
 def _(base: Path) -> list[str]:
     cid = identita()
     cartella = contenitore_incompleto(base, cid)
-    esito = R.recupera_contenitore_incompleto(cid, store_root=base, applica=True)
+    esito = R.rimuovi_contenitore_incompleto(autorizza(cid), store_root=base)
     errori = []
     if not esito.rimosso:
         errori.append("non ha dichiarato la rimozione")
@@ -77,7 +87,7 @@ def _(base: Path) -> list[str]:
     cartella = contenitore_incompleto(base, cid)
     (cartella / "binding.json").write_text("{}")
     try:
-        R.recupera_contenitore_incompleto(cid, store_root=base, applica=True)
+        R.rimuovi_contenitore_incompleto(autorizza(cid), store_root=base)
     except R.RecuperoPubblicazioneError as exc:
         return ([] if exc.code == "contenitore_non_incompleto"
                 else [f"codice inatteso: {exc.code}"])
@@ -90,7 +100,7 @@ def _(base: Path) -> list[str]:
     cartella = contenitore_incompleto(base, cid)
     (cartella / "current").write_text("sha256:" + "a" * 64)
     try:
-        R.recupera_contenitore_incompleto(cid, store_root=base, applica=True)
+        R.rimuovi_contenitore_incompleto(autorizza(cid), store_root=base)
     except R.RecuperoPubblicazioneError as exc:
         return ([] if exc.code == "contenitore_non_incompleto"
                 else [f"codice inatteso: {exc.code}"])
@@ -103,7 +113,7 @@ def _(base: Path) -> list[str]:
     cartella = contenitore_incompleto(base, cid)
     (cartella / "generations" / ("b" * 64)).mkdir()
     try:
-        R.recupera_contenitore_incompleto(cid, store_root=base, applica=True)
+        R.rimuovi_contenitore_incompleto(autorizza(cid), store_root=base)
     except R.RecuperoPubblicazioneError as exc:
         errori = ([] if exc.code == "generazioni_non_vuote"
                   else [f"codice inatteso: {exc.code}"])
@@ -119,7 +129,7 @@ def _(base: Path) -> list[str]:
     cartella = contenitore_incompleto(base, cid)
     (cartella / "staging").mkdir()
     try:
-        R.recupera_contenitore_incompleto(cid, store_root=base, applica=True)
+        R.rimuovi_contenitore_incompleto(autorizza(cid), store_root=base)
     except R.RecuperoPubblicazioneError as exc:
         return ([] if exc.code == "oggetti_inattesi"
                 else [f"codice inatteso: {exc.code}"])
@@ -134,7 +144,7 @@ def _(base: Path) -> list[str]:
     (altrove / "writer.lock").write_text("1")
     os.symlink(altrove, base / cid.storage_key)
     try:
-        R.recupera_contenitore_incompleto(cid, store_root=base, applica=True)
+        R.rimuovi_contenitore_incompleto(autorizza(cid), store_root=base)
     except R.RecuperoPubblicazioneError as exc:
         errori = ([] if exc.code == "contenitore_non_ordinario"
                   else [f"codice inatteso: {exc.code}"])
@@ -153,7 +163,7 @@ def _(base: Path) -> list[str]:
     os.symlink(fuori, cartella / "generations")
     (cartella / "writer.lock").write_text("1")
     try:
-        R.recupera_contenitore_incompleto(cid, store_root=base, applica=True)
+        R.rimuovi_contenitore_incompleto(autorizza(cid), store_root=base)
     except R.RecuperoPubblicazioneError as exc:
         errori = ([] if exc.code == "generazioni_non_ordinarie"
                   else [f"codice inatteso: {exc.code}"])
@@ -166,25 +176,117 @@ def _(base: Path) -> list[str]:
 @caso("contenitore assente: rifiuta invece di inventare")
 def _(base: Path) -> list[str]:
     try:
-        R.recupera_contenitore_incompleto(identita("mai"), store_root=base,
-                                          applica=True)
+        R.rimuovi_contenitore_incompleto(autorizza(identita("mai")), store_root=base)
     except R.RecuperoPubblicazioneError as exc:
-        return ([] if exc.code == "contenitore_non_ordinario"
+        return ([] if exc.code == "contenitore_assente"
                 else [f"codice inatteso: {exc.code}"])
     return ["ha accettato un contenitore inesistente"]
 
 
-@caso("il chiamante non puo' passare un percorso: solo un ContractId")
+@caso("senza autorizzazione dall'inventario: rifiuta, e un percorso non basta")
 def _(base: Path) -> list[str]:
     cid = identita()
     contenitore_incompleto(base, cid)
     try:
-        R.recupera_contenitore_incompleto(
-            str(base / cid.storage_key), store_root=base, applica=True)
+        R.rimuovi_contenitore_incompleto(
+            str(base / cid.storage_key), store_root=base)
     except R.RecuperoPubblicazioneError as exc:
-        return ([] if exc.code == "identita_non_canonica"
+        return ([] if exc.code == "autorizzazione_assente"
                 else [f"codice inatteso: {exc.code}"])
-    return ["ha accettato un percorso al posto di un'identita'"]
+    return ["ha accettato un percorso al posto di un'autorizzazione"]
+
+
+@caso("R1 il lucchetto globale e' quello della copia, non del negozio configurato")
+def _(base: Path) -> list[str]:
+    cid = identita()
+    contenitore_incompleto(base, cid)
+    R.rimuovi_contenitore_incompleto(autorizza(cid), store_root=base)
+    # The catalog lock leaves its sidecar beside the store it serializes: if it
+    # had gone to the configured store, nothing would appear here.
+    accanto = list(base.parent.glob("*")) + list(base.glob("*"))
+    nomi = {p.name for p in accanto}
+    return ([] if any("lock" in n for n in nomi)
+            else [f"nessun lucchetto accanto alla copia: {sorted(nomi)}"])
+
+
+@caso("R2 l'ispezione non scrive: nessun oggetto creato")
+def _(base: Path) -> list[str]:
+    cid = identita()
+    cartella = base / cid.storage_key
+    (cartella / "generations").mkdir(parents=True)   # senza writer.lock
+    prima = sorted(p.name for p in cartella.iterdir())
+    R.ispeziona_contenitore_incompleto(autorizza(cid), store_root=base)
+    dopo = sorted(p.name for p in cartella.iterdir())
+    return ([] if prima == dopo
+            else [f"l'ispezione ha creato oggetti: {set(dopo) - set(prima)}"])
+
+
+@caso("R3 un'identita' non inventariata non ottiene autorizzazione")
+def _(base: Path) -> list[str]:
+    cid = identita("mai-dichiarato-da-nessuno")
+    contenitore_incompleto(base, cid)
+    try:
+        R.autorizza_dall_inventario(cid.value)
+    except R.RecuperoPubblicazioneError as exc:
+        return ([] if exc.code in {"contratto_non_inventariato",
+                                   "inventario_autoriale_con_problemi"}
+                else [f"codice inatteso: {exc.code}"])
+    return ["ha autorizzato un contratto che l'inventario non dichiara"]
+
+
+@caso("R4 un errore tardivo lascia una forma che il tentativo dopo riconosce")
+def _(base: Path) -> list[str]:
+    cid = identita()
+    cartella = contenitore_incompleto(base, cid)
+    # interrompe DOPO la rinomina, che e' il punto d'impegno
+    vero_rmdir = os.rmdir
+    stato = {"visti": 0}
+
+    def rmdir_che_fallisce(percorso, *a, **kw):
+        stato["visti"] += 1
+        if stato["visti"] >= 2:
+            raise OSError(5, "interruzione iniettata")
+        return vero_rmdir(percorso, *a, **kw)
+
+    os.rmdir = rmdir_che_fallisce
+    try:
+        R.rimuovi_contenitore_incompleto(autorizza(cid), store_root=base)
+    except Exception:
+        pass
+    finally:
+        os.rmdir = vero_rmdir
+    errori = []
+    if cartella.exists():
+        errori.append("il contenitore e' ancora al proprio nome: nessun impegno")
+    ritirati = [p.name for p in base.iterdir()
+                if p.name.startswith(R.PREFISSO_RITIRO)]
+    if not ritirati:
+        errori.append("nessuna forma di ritiro riconoscibile dopo l'arresto")
+    return errori
+
+
+@caso("R5 una sostituzione fra i due passaggi non tocca il bersaglio estraneo")
+def _(base: Path) -> list[str]:
+    cid = identita()
+    contenitore_incompleto(base, cid)
+    estraneo = base / "estraneo"
+    (estraneo / "generations").mkdir(parents=True)
+    (estraneo / "writer.lock").write_text("1")
+    (estraneo / "prezioso.txt").write_text("da non toccare")
+    # sostituisce il contenitore con un collegamento all'estraneo
+    import shutil
+    shutil.rmtree(base / cid.storage_key)
+    os.symlink(estraneo, base / cid.storage_key)
+    try:
+        R.rimuovi_contenitore_incompleto(autorizza(cid), store_root=base)
+    except R.RecuperoPubblicazioneError:
+        pass
+    errori = []
+    if not (estraneo / "prezioso.txt").exists():
+        errori.append("ha toccato il bersaglio estraneo")
+    if not (estraneo / "generations").exists():
+        errori.append("ha rimosso generations nel bersaglio estraneo")
+    return errori
 
 
 def main() -> int:

@@ -602,3 +602,42 @@ prevede — la proprietà di sicurezza è soddisfacibile, non solo enunciata.
 
 L'uso sul negozio reale resta una decisione operativa separata, fuori
 dall'esecuzione automatica F4 e non presa qui.
+
+---
+
+## 18. La primitiva riscritta — cinque proprietà che non aveva
+
+A ha reso riproducibili cinque difetti della prima versione. Erano tutti veri, e
+uno era pericoloso.
+
+**R1 — il lucchetto globale stava sul negozio sbagliato.** Passavo `store_root`
+al lucchetto del contratto e non a quello di catalogo: i due non serializzavano
+lo stesso negozio, e il globale finiva su quello che diceva la configurazione.
+
+**R2 — osservare scriveva.** La modalità dichiarata osservativa prendeva il
+lucchetto di scrittura, che **crea** il file: dichiarava «non ho rimosso nulla»
+dopo aver creato qualcosa. Ora ispezione e rimozione sono **due ingressi** con
+due postcondizioni, e l'ispezione non prende lucchetti.
+
+**R3 — `ContractId` prova la sintassi, non la provenienza.** Il costruttore è
+pubblico: chiunque poteva fabbricare un'identità valida, preparare la forma
+ammessa e farla rimuovere. Ora serve un'**autorizzazione** che solo
+l'inventario autoriale produce.
+
+**R4 — un errore tardivo lasciava uno stato peggiore.** Svuotavo e poi rimuovevo:
+un arresto sull'ultimo passo lasciava un contenitore mezzo vuoto che il
+controllo di forma avrebbe rifiutato **per sempre**. Ora c'è un solo punto
+d'impegno — una rinomina senza sostituzione verso un nome di ritiro — e un
+arresto lascia una forma che il tentativo successivo riconosce.
+
+**R5 — il più grave: `lstat` e poi operazioni per nome.** Una sostituzione
+sincronizzata fra i due passaggi faceva atterrare le rimozioni **dentro una
+directory estranea**. Ora ogni controllo e ogni rimozione passano da descrittori
+aperti con `O_NOFOLLOW`, relativi al padre, e l'identità `(st_dev, st_ino)` è
+confrontata prima e dopo. Windows è rifiutato esplicitamente prima di ogni
+effetto, perché `O_DIRECTORY` non esiste lì.
+
+Quindici prove versionate verdi, comprese le cinque proprietà che A aveva
+dimostrato mancanti — portate nel mio file invece di dipendere dal suo, così il
+prossimo checkpoint è riproducibile dal solo commit. Non vacue: ripristinando la
+risoluzione per nome, la prova del collegamento torna rossa.
