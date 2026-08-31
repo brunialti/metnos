@@ -243,39 +243,113 @@ Eseguita in un repository git usa-e-getta con `umask 0002`, un file per gesto:
 | `merge` che riscrive il file | **`664`** |
 | riscrittura in posto (`open(path,'w')`) | `644` (invariato) |
 
-Quindi il `chmod` sopravvive a una riscrittura in posto — che è come
-`sign.py publish` tocca un file esistente — ma **non sopravvive a nessuna
-operazione git che materializzi byte diversi**. E l'installazione di codice
-nuovo È un'operazione git. Il cerotto è garantito rompersi alla prossima
-installazione, non «forse».
+Quindi il `chmod` **non sopravvive a nessuna operazione git che materializzi
+byte diversi**. E l'installazione di codice nuovo È un'operazione git: il
+cerotto è garantito rompersi alla prossima installazione, non «forse».
+
+> **Correzione (GIRO CODEX 2, P2-C13).** La prima stesura aggiungeva qui che la
+> riscrittura in posto «è come `sign.py publish` tocca un file esistente».
+> **Era falso**, e su due piani. Vedi O16.
+
+### O16 — Che cosa fa davvero `sign.py`, misurato sul percorso reale
+
+Due affermazioni sbagliate, corrette con il codice alla mano e una misura.
+
+**Primo: il meccanismo non è quello.** `sign.py` non riscrive mai in posto.
+`_atomic_replace_bytes` (`runtime/sign.py:234-305`) crea un temporaneo fratello,
+applica **esplicitamente** il modo con `fchmod` e conclude con `os.replace`. Il
+percorso di firma lo invoca a `runtime/sign.py:391-399` passando
+`new_mode=manifest_mode`, cioè il modo **osservato** del manifest esistente. Il
+modo sopravvive per **politica dichiarata**, non come effetto collaterale della
+troncatura.
+
+**Secondo: non è nemmeno lo stesso percorso.** In modalità solo-negozio
+`publish_executor()` (`runtime/sign.py:500-546`) firma in memoria e pubblica nel
+negozio dei contratti: non riscrive affatto il file.
+
+Misura sul percorso reale, `umask 0002`:
+
+| chiamata | modo dopo |
+|---|---|
+| esistente `664`, `preserve_existing_mode=True` | `664` |
+| esistente `644`, `new_mode=` modo osservato (come `sign_executor`) | `644` |
+| esistente `664`, `new_mode=0600` imposto | `600` |
+| file **nuovo**, `new_mode=0644` | `644` |
+| file **nuovo**, modo di difetto | **`600`** |
+| (confronto) `open(path,'w')` su esistente `644` | `644` |
+
+Un file nuovo creato da `sign.py` nasce quindi `0600`, non `664`: il difetto
+della funzione è restrittivo, non permissivo — l'opposto di quello che accade
+con git.
+
+**E c'è un terzo fatto, che toglie del tutto `sign.py` da questa storia**:
+`sign_executor` scrive `executors/<nome>/manifest.toml` e la sua firma. **Non
+tocca nessuno dei 20 file del catalogo di contesto**, che vivono tutti in
+`runtime/`. Citarlo come gesto che potrebbe rimettere i permessi era doppiamente
+sbagliato: meccanismo sbagliato e percorso non pertinente. I risultati sui gesti
+git restano validi; l'equivalenza con `sign.py` è **ritirata**.
 
 ### O15 — Che cosa nomina l'insieme corrente fuori dalla radice (misura C3)
 
-Misura riproducibile in `internal/tools/censimento_legami_nascita.py`: gli
-identificativi si **acquisiscono** dalla radice (mai copiati a mano), le radici
-esaminate sono dichiarate, e gli archivi SQLite si interrogano tabella per
-tabella invece di cercare testo nei loro byte.
+> **Questa osservazione è stata rigenerata dopo il GIRO CODEX 2 (P1-C10).** La
+> prima versione dichiarava «15 legami» ed era un artefatto: contava riscontri
+> di sottostringa invece di record, ne troncava cinque per database per via di
+> un limite di stampa, cercava due superfici dello stesso digest e rileggeva
+> come testo i database già interrogati. Lo strumento è stato riscritto e ha
+> prove proprie; i numeri qui sotto vengono dalla versione nuova.
 
-Radici: `~/.local/state/metnos`, `~/.local/share/metnos`, `~/.config/metnos`,
-`/opt/metnos`. Identificativi: `set_id`, inventario pubblico d'autore,
-`context_material_sha256`, `set_json_sha256`, `transaction_id`,
-`prepared_admission_context_id`, `prepared_context_epoch`, gli 11 produttori.
-File letti: 69 373.
+Misura riproducibile in `internal/tools/censimento_legami_nascita.py`, con prove
+in `internal/tools/prova_censimento_legami.py`. Proprietà che la rendono una
+misura e non un conteggio:
 
-**Esito: 15 legami fuori dalla radice di nascita.** Fra questi:
+- **una sola forma canonica** per identificativo — `sha256:<hex>`, `p-<hex>` e
+  `<hex>` sono tre superfici di un solo fatto, cercate una volta sola, con un
+  vincolo di confine esadecimale che impedisce di trovare un digest dentro una
+  sequenza più lunga;
+- **un record per locazione che porta il fatto** — un file è un record, una riga
+  di database è un record, quale che sia il numero di colonne o di superfici
+  coinvolte; niente dipende da quanto lo strumento decide di stampare;
+- **nessun oggetto esaminato due volte** — un database interrogato per colonna
+  non viene poi riletto come blocco di byte;
+- **fail-closed** — ogni radice, database, tabella o file del perimetro che non
+  si riesce a leggere viene registrato come non esaminato, la misura si dichiara
+  **incompleta** e il processo esce `2`. Un errore non è mai un riscontro, e una
+  copertura mancante non è mai un'assenza di legami.
 
-- **6 ricevute di ammissione** sotto
-  `~/.local/state/metnos/contract-publications/v1/*/admission-receipts/`
-  nominano `prepared_admission_context_id = sha256:f90abe9d…`, cioè il contesto
-  che una ri-preparazione cambierebbe (21 ricevute in totale su 123
-  pubblicazioni; le altre nominano contesti diversi, quindi contesti multipli
-  già convivono);
-- 1 riscontro in `producer_receipts.sqlite`, campo `encoded`;
-- 8 nella radice precedente `birth.pre-property-fix-20260830`.
+Identificativi acquisiti dalla radice, mai copiati a mano. Perimetro:
+`~/.local/state/metnos`, `~/.local/share/metnos`, `~/.config/metnos`,
+`/opt/metnos`. File letti: **69 709**. Copertura: **completa** (uscita `0`).
+
+**Esito: 15 record semantici univoci** — 9 file e 6 righe SQLite:
+
+| classe | tipo | quanti | che cosa |
+|---|---|---|---|
+| viva | file | 6 | ricevute di ammissione sotto `~/.local/state/metnos/contract-publications/v1/*/admission-receipts/`, ciascuna nomina `prepared_admission_context_id` |
+| viva | riga SQLite | 6 | `producer_receipts.sqlite#birth_producer_receipts`, colonna **`terminal_envelope`** |
+| archiviata | file | 3 | la radice precedente `birth.pre-property-fix-20260830`: `set.json` e `context/material-v1.json` (11 identificativi ciascuno) e `prepared-v1.json` (1) |
+
+**12 dipendenze vive, 3 copie archiviate, 13 fatti distinti** (un fatto = un
+identificativo osservato in una classe; le 12 vive nominano tutte lo stesso
+contesto, quindi sono un fatto sotto dodici rappresentazioni).
+
+> **Una coincidenza che vale la pena dichiarare.** Anche il totale nuovo è 15.
+> Ma il vecchio era `5 + 1 + 6 + 3` — cinque righe troncate da un limite di
+> stampa, un database contato una seconda volta come file, sei ricevute e tre
+> file archiviati — mentre il nuovo è `9 + 6`. Stesso numero, composizione
+> completamente diversa: era giusto per caso, ed è esattamente il motivo per cui
+> un totale non è una misura finché non si sa di che cosa è il totale.
+
+**La riscrittura ha trovato una lacuna vera che la prima versione nascondeva.**
+Alla prima esecuzione fail-closed sono comparse **22 tabelle non esaminate**
+sotto `~/.local/state/metnos/durable_workloads/`: sono tabelle `WITHOUT ROWID`,
+e `select rowid, *` su di esse fallisce. La versione precedente inghiottiva
+quell'errore con un `continue` e le dichiarava implicitamente prive di legami.
+Ora l'identità di riga ripiega sulla posizione ordinale, il record dichiara
+quale identità ha usato, e la copertura è completa.
 
 E l'epoca **viene confrontata**, non solo registrata:
-`contract_store.py:4888` rifiuta con `birth_context_changed` se l'epoca
-corrente non coincide con quella dell'autorizzazione, e
+`contract_store.py:4888` rifiuta con `birth_context_changed` se l'epoca corrente
+non coincide con quella dell'autorizzazione, e
 `executor_birth_reattestation.py:231,334` fa lo stesso alla riattestazione di
 una generazione corrente.
 
@@ -296,9 +370,11 @@ stessa famiglia del §23.21. La produzione è a `umask 0002` e ogni file nasce
 **I3. Un `chmod` è un cerotto, non una correzione.** ~~Confidenza media su
 quali comandi ricreino i modi~~ — **ora misurata, O14**: ogni operazione git che
 materializza byte diversi (checkout di un'altra versione, cambio di ramo,
-merge) rimette `664`; una riscrittura in posto no. Poiché installare codice
-nuovo è un'operazione git, il cerotto **si rompe alla prossima installazione**,
-e non «forse».
+merge) rimette `664`. Poiché installare codice nuovo è un'operazione git, il
+cerotto **si rompe alla prossima installazione**, e non «forse». L'inferenza è
+ristretta ai gesti effettivamente provati: **`sign.py` è stato tolto
+dall'elenco** (O16), perché non riscrive in posto e non tocca nessuno dei 20
+file del catalogo.
 
 **I4. Il terzo ostacolo è strutturale, non un incidente.** L'insieme preparato
 appunta le impronte della distribuzione, la distribuzione cambia a ogni commit,
@@ -310,14 +386,20 @@ disegno* — può darsi che il disegno preveda di preparare l'insieme come
 ri-preparazione perché F4 non è chiusa.
 
 **I5. ~~Rifare l'insieme da zero costa poco su questa macchina, oggi.~~
-SMENTITA dalla misura C3 (O15).** Avevo scritto che mi fidavo poco di questa
-inferenza, e aveva ragione a non fidarsi: il censimento trova **15 legami fuori
-dalla radice**, fra cui 6 ricevute di ammissione di contratti pubblicati che
-nominano il contesto corrente, e l'epoca **è confrontata** in due punti del
-prodotto (`contract_store.py:4888`, `executor_birth_reattestation.py:231,334`).
-Cambiare epoca non è gratis. Quello che resta vero è soltanto il pezzo
-misurato in O10: l'identità d'autore non si perde, perché viene riderivata da
-`~/.config/metnos/keys`.
+SMENTITA dalla misura C3 (O15, rigenerata).** Il censimento, ora completo e con
+copertura verificata, trova **12 dipendenze vive** — 6 ricevute di ammissione di
+contratti pubblicati e 6 righe di `producer_receipts` — che nominano tutte il
+contesto corrente, più 3 copie archiviate. E l'epoca **è confrontata** in due
+punti del prodotto (`contract_store.py:4888`,
+`executor_birth_reattestation.py:231,334`). Cambiare epoca non è gratis.
+
+Nota sul percorso di questa inferenza: era già smentita dalla prima versione del
+censimento, ma con un numero che non reggeva. **Una conclusione giusta ottenuta
+con una misura sbagliata resta da rifare**, e infatti la misura rifatta ha anche
+scoperto 22 tabelle che la prima dichiarava implicitamente pulite.
+
+Quello che resta vero è soltanto il pezzo misurato in O10: l'identità d'autore
+non si perde, perché viene riderivata da `~/.config/metnos/keys`.
 
 **I6. Non c'è un quarto ostacolo NEL BOOTSTRAP ISOLATO.** *Confidenza: media*
 — O6 e O12 lo provano per `require_birth_runtime_before_workers()` in un
@@ -337,8 +419,8 @@ Stato delle quattro misure smentitrici:
 | # | inferenza | misura | stato |
 |---|---|---|---|
 | C1 | I6 «nessun quarto ostacolo» | avviare il **server HTTP completo** dalla replica su una porta libera e chiedere un turno reale | **APERTA — BLOCCANTE** |
-| C2 | I3 «il `chmod` è fragile» | in un worktree git usa-e-getta con `umask 0002`, misurare separatamente checkout, cambio di ramo, merge e riscrittura in posto | **CHIUSA** → O14, I3 confermata e ristretta ai gesti provati |
-| C3 | I5 «rifare l'insieme costa poco» | censimento riproducibile su file e archivi SQLite, con identificativi acquisiti dalla radice | **CHIUSA** → O15, **I5 smentita** |
+| C2 | I3 «il `chmod` è fragile» | in un worktree git usa-e-getta con `umask 0002`, misurare separatamente checkout, cambio di ramo, merge e riscrittura in posto | **CHIUSA** → O14, I3 confermata e ristretta ai gesti provati; l'equivalenza con `sign.py` è **ritirata** (O16) |
+| C3 | I5 «rifare l'insieme costa poco» | censimento semanticamente univoco e fail-closed su file e archivi SQLite, con identificativi acquisiti dalla radice e prove proprie | **CHIUSA (2ª volta)** → O15 rigenerata, copertura completa, **I5 smentita** |
 | C4 | I4 «non esiste percorso di ri-preparazione» | leggere le sezioni normative del gruppo 2 | **CHIUSA** → vedi sotto, e cambia il §5 |
 
 ### C4 chiusa: la ri-preparazione non è una lacuna, è un confine
@@ -412,9 +494,10 @@ Quello che manca non è una riparazione: è un protocollo append-only, con:
 2. **una condizione d'ingresso dichiarata** — «la distribuzione installata non
    produce più il materiale che l'insieme descrive» oggi è un rifiuto muto;
    deve diventare un esito nominato, che dice quale file non corrisponde;
-3. **una regola per i legami esistenti** — le 6 ricevute di ammissione di O15
-   nominano il contesto corrente, e l'epoca è confrontata in due punti del
-   prodotto: una nuova epoca deve dire che cosa ne è di loro;
+3. **una regola per i legami esistenti** — le **12 dipendenze vive** di O15
+   (6 ricevute di ammissione e 6 righe di `producer_receipts`) nominano il
+   contesto corrente, e l'epoca è confrontata in due punti del prodotto: una
+   nuova epoca deve dire che cosa ne è di loro;
 4. **chi autorizza** — la transizione non può essere automatica, altrimenti
    sparisce la proprietà che il controllo esiste per garantire: un cambiamento
    inatteso a uno dei 20 file verrebbe benedetto invece di fermare tutto.
@@ -500,10 +583,10 @@ Non l'identità d'autore. Ma nemmeno «poco», dopo O15:
   l'insieme (sono per-insieme per costruzione: `set_id` è l'impronta di un
   documento che **include** `context_material_sha256`, riga 2280-2283);
 - le 23 ricevute terminali di O9, che diventano orfane — nessuna in volo;
-- **i 15 legami di O15**, fra cui 6 ricevute di ammissione di contratti
-  pubblicati che nominano il contesto corrente, mentre l'epoca è confrontata in
-  due punti del prodotto: questo è il costo che avevo omesso, ed è quello che
-  smentisce I5;
+- **le 12 dipendenze vive di O15** — 6 ricevute di ammissione di contratti
+  pubblicati e 6 righe di `producer_receipts` — che nominano tutte il contesto
+  corrente, mentre l'epoca è confrontata in due punti del prodotto: questo è il
+  costo che avevo omesso, ed è quello che smentisce I5;
 - **la ripetizione**: andrebbe rifatto a ogni installazione di codice che tocchi
   uno dei 20 file. Misurato sulla linea RM-0008: **69 commit negli ultimi 7
   giorni** toccano quei file, 81 negli ultimi 30, su 12 giornate distinte.
@@ -611,79 +694,77 @@ per tutte invece che ricordato a mente — e non svende nulla.
    dell'unità di sistema vecchia e disabilitata: non è un guasto, non
    ripararlo.
 4. **Non riavviare i servizi durante un turno utente attivo.**
-5. **Conserva il PID di ogni processo che avvii tu**, e chiudi quello, non
-   quello che «sembra nostro». Una scansione generica non vede un residuo
-   addormentato e può mostrare un processo estraneo; «se è nostro» non è un
-   criterio riproducibile, e fra il censimento e il segnale il PID può essere
-   stato riusato da un altro processo.
+5. **Avvia e chiudi i processi con il controllore versionato**,
+   `internal/tools/controllore_processo.py`. Non scrivere una procedura shell:
+   quella che stava qui **dichiarava** di impedire il riuso del PID e non lo
+   faceva — non registrava l'istante di avvio, prima dell'ultimo segnale
+   ricontrollava solo la riga di comando, e segnalava il solo capogruppo pur
+   avendo creato un gruppo intero, lasciando vivi i nipoti (GIRO CODEX 2,
+   P1-C12).
 
-   ```bash
-   # avviare tenendo il PID e l'identita'
-   setsid /opt/metnos/.venv/bin/python "$S/sonda.py" & MIO=$!
-   MIA_RIGA=$(tr '\0' ' ' < "/proc/$MIO/cmdline" 2>/dev/null || true)
-   MIO_UID=$(stat -c %u "/proc/$MIO" 2>/dev/null || true)
+   ```python
+   import sys; sys.path.insert(0, "/tmp/metnos-rm0008-g6/internal/tools")
+   from controllore_processo import ProcessoControllato
 
-   # chiudere: identita' verificata, terminazione ordinaria, attesa, poi forza
-   chiudi_mio() {
-     [ -d "/proc/$MIO" ] || { echo "gia' terminato"; return 0; }
-     riga=$(tr '\0' ' ' < "/proc/$MIO/cmdline" 2>/dev/null || true)
-     uid=$(stat -c %u "/proc/$MIO" 2>/dev/null || true)
-     if [ "$riga" != "$MIA_RIGA" ] || [ "$uid" != "$MIO_UID" ]; then
-       echo "FERMO: il PID $MIO non e' piu' lo stesso processo; non tocco nulla" >&2
-       return 1
-     fi
-     kill -TERM "$MIO" 2>/dev/null || true
-     for _ in $(seq 1 20); do [ -d "/proc/$MIO" ] || return 0; sleep 0.5; done
-     riga=$(tr '\0' ' ' < "/proc/$MIO/cmdline" 2>/dev/null || true)
-     [ "$riga" = "$MIA_RIGA" ] || { echo "FERMO: identita' cambiata" >&2; return 1; }
-     kill -KILL "$MIO"
-   }
+   with ProcessoControllato(["...comando..."]) as p:
+       ...                      # il processo e' vivo qui
+   # all'uscita dal blocco: TERM al gruppo, attesa, KILL solo se serve
    ```
 
-   La scansione `PPID=1` del §10.8 di CLAUDE.md resta utile come **rete di
-   sicurezza a fine sessione**, non come modo di chiudere ciò che hai avviato:
-   se trova qualcosa che tu non hai avviato, quello è materiale da riferire, non
-   da uccidere.
+   Due proprietà, non due intenzioni: **il numero non può essere riusato**,
+   perché il figlio non viene raccolto fino alla fine della chiusura e quindi
+   PID e identificativo di gruppo restano riservati; **la vitalità si legge da
+   un `pidfd`**, che indica il processo e non il numero. L'identità (uid e
+   istante di avvio) viene riverificata prima di ogni segnale, e viene chiuso
+   **tutto il gruppo posseduto**, non il solo capogruppo. Il residuo è
+   dichiarato nel docstring invece di essere nascosto.
+
+   Prove: `internal/tools/prova_controllore_processo.py` — uscita spontanea
+   senza segnali, terminazione ordinaria senza escalation, escalation contro un
+   processo che ignora TERM, rifiuto di segnalare quando l'identità non
+   corrisponde più, nipote che sopravvive al padre, e un processo estraneo che
+   non viene toccato.
+
+   La scansione `PPID=1` del §10.8 di CLAUDE.md resta come **rete di sicurezza a
+   fine sessione**, non come modo di chiudere ciò che hai avviato: ciò che trova
+   e che tu non hai avviato è materiale da riferire, non da uccidere.
+
 6. **Ogni misura dichiara le proprie radici prima di misurare.** Se non vedi
    stampato `PATH_RUNTIME`, non stai misurando quello che credi.
 
-### Passo 0 — Verifica il punto di partenza (eseguibile, si ferma da solo)
+### Passo 0 — Verifica il punto di partenza (script versionato e provato)
 
-Il controllo **non** è una sequenza di comandi da leggere a occhio: una pipeline
-come `git … | wc -l` stampa `0` anche quando `git` fallisce, e `0` è proprio il
-valore «atteso». Usa questo blocco, che si ferma da sé su ogni discordanza:
+> **Correzione (GIRO CODEX 2, P1-C11).** Qui c'era un frammento che assegnava
+> l'albero in modo incondizionato, mentre l'evidenza riportata sotto lo passava
+> come argomento: quella prova negativa **non poteva provenire da quel
+> frammento**. Un controllo il cui ramo rosso non è riproducibile non è un
+> controllo. Ora è uno script versionato, con ogni aspettativa parametrica e la
+> sonda dello stack iniettabile, così i rami rossi si provano su copie senza mai
+> fermare lo stack vero.
+
+Non copiare un blocco: esegui lo script.
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-PROD=/opt/metnos
-TESTA_ATTESA=14ea7179
-TAG_ATTESO=pre-fusione-31-8-2026
-
-fermo() { echo "FERMO: $*" >&2; exit 1; }
-
-[ -d "$PROD/.git" ] || fermo "$PROD non e' un repository git"
-radice=$(git -C "$PROD" rev-parse --show-toplevel)
-[ "$radice" = "$PROD" ] || fermo "la radice del repository e' $radice, non $PROD"
-sporchi=$(git -C "$PROD" status --porcelain | wc -l)
-[ "$sporchi" -eq 0 ] || fermo "$sporchi file non committati: mettili al riparo prima"
-testa=$(git -C "$PROD" rev-parse --short=8 HEAD)
-[ "$testa" = "$TESTA_ATTESA" ] || fermo "testa $testa, attesa $TESTA_ATTESA"
-git -C "$PROD" rev-parse -q --verify "refs/tags/$TAG_ATTESO" >/dev/null \
-  || fermo "manca il tag $TAG_ATTESO"
-stato=$(systemctl --user is-active metnos.target || true)
-[ "$stato" = "active" ] || fermo "metnos.target e' '$stato', non 'active'"
-echo "PASSO 0 VERDE — $PROD a $testa, albero pulito, tag presente, stack attivo"
+/tmp/metnos-rm0008-g6/internal/tools/passo0_punto_di_partenza.sh /opt/metnos
 ```
 
-Provato in entrambi i versi:
+Un codice d'uscita per ogni ramo, così un involucro non deve interpretare testo:
 
 ```
-$ ./passo0.sh
-PASSO 0 VERDE — /opt/metnos a 14ea7179, albero pulito, tag presente, stack attivo   (uscita 0)
-$ ./passo0.sh /percorso/inesistente
-FERMO: /percorso/inesistente non e' un repository git                                (uscita 1)
+0 verde            3 radice del repository diversa   5 testa inattesa   7 stack non attivo
+2 non e' un repo   4 albero sporco                   6 tag assente
 ```
+
+Aspettative sovrascrivibili da ambiente — `PASSO0_TESTA_ATTESA`,
+`PASSO0_TAG_ATTESO`, `PASSO0_STATO_CMD` — che è ciò che rende provabili i rami
+rossi.
+
+Prove: `internal/tools/prova_passo0.sh`, otto casi su repository git
+usa-e-getta e con una sonda dello stack finta. **Nessuna prova ferma, avvia o
+interroga lo stack reale.** Coperti: verde, percorso inesistente, radice
+diversa, albero sporco, testa inattesa, tag assente, stack non attivo, e il
+falso verde storico (`.git` presente ma repository non valido, che senza
+`pipefail` sarebbe passato).
 
 Qualunque `FERMO`: **non proseguire**. In particolare, file non committati
 significa lavoro di un'altra sessione da mettere al riparo prima (è già
@@ -723,8 +804,8 @@ echo "PASSO 1 VERDE"
 
 `cp -a` è obbligatorio: conserva i permessi, e i permessi sono l'oggetto della
 misura. A fine lavoro: verifica che nessun processo tenga descrittori aperti
-nello scratch (`lsof +D "$S"`, oppure la funzione `chiudi_mio` della regola 5),
-poi `rm -rf "$S"`.
+nello scratch (`lsof +D "$S"`, e il controllore della regola 5 per i processi
+che hai avviato tu), poi `rm -rf "$S"`.
 
 ### Passo 2 — Riproduci il guasto prima di correggerlo
 
@@ -837,7 +918,9 @@ Si esegue **interamente sulla replica**, mai in produzione, e richiede:
   8770 della produzione;
 - radici utente separate (`METNOS_USER_CONFIG/STATE/DATA` dentro lo scratch),
   così il server di prova non tocca lo stato vivo;
-- il PID conservato e chiuso con `chiudi_mio` della regola 5;
+- il server avviato e chiuso con `ProcessoControllato` (regola 5), così che
+  alla fine muoia l'intero gruppo e non il solo capogruppo: un server HTTP
+  genera figli, ed è esattamente il caso che la vecchia procedura sbagliava;
 - un turno reale su `/agent/turn` con il corpo minimo del dominio toccato, e
   l'esito letto dal codice HTTP oltre che dal testo.
 
@@ -1427,3 +1510,179 @@ processi non soddisfa la garanzia che dichiara. O14 contiene inoltre
 un'equivalenza fattualmente falsa con `sign.py`.
 
 **NON CONCORDO ANCORA SUL DOCUMENTO.**
+
+---
+
+# GIRO CLAUDE 2 — verifica e chiusura dei rilievi di Codex 2
+
+Ancoraggio: worktree `/tmp/metnos-rm0008-g6`, ramo `rm0008/diagnosi-avvio`,
+commit di base `0bfea27d`. Nessuna azione su `/opt/metnos`, sui servizi, sui
+permessi o sulla radice di nascita: verificati invariati alla fine del giro.
+Ogni prova gira su fixture, repository git usa-e-getta o processi di prova
+propri.
+
+## Rilievi accolti, con la prova
+
+### P1-C10 — ACCOLTO. Il 15 era un artefatto, e la riscrittura ha trovato altro
+
+**Verificato indipendentemente prima di accettarlo.** Una query separata su
+`producer_receipts.sqlite` conferma i numeri di Codex alla lettera: **12
+riscontri grezzi, 6 righe uniche**, tutti nella colonna
+`birth_producer_receipts.terminal_envelope` — non `encoded`, come avevo scritto.
+I quattro difetti meccanici sono tutti reali, letti nel codice: il totale
+alimentato da `esiti[:5]` (un limite di **stampa**), la doppia ricerca di forma
+prefissata e forma nuda, la rilettura come byte di database già interrogati, e
+gli errori inghiottiti da `continue` mentre un errore di apertura veniva invece
+restituito come se fosse un riscontro.
+
+**Applicato**: `internal/tools/censimento_legami_nascita.py` riscritto attorno
+alle quattro proprietà mancanti — una forma canonica per identificativo con
+vincolo di confine esadecimale, un record per locazione che porta il fatto,
+nessun oggetto esaminato due volte, fail-closed con uscita `2` e divieto
+esplicito di concludere. Le classi `viva` e `archiviata` sono distinte, e i
+«fatti distinti» separano le rappresentazioni multiple dello stesso fatto.
+
+**Prove**: `internal/tools/prova_censimento_legami.py`, nove casi su fixture,
+esattamente quelli richiesti più due — più di cinque riscontri in un database,
+forma prefissata e nuda nello stesso valore, database già censito che non deve
+essere riletto, errore SQLite che deve far fallire chiuso, stesso identificativo
+in due rappresentazioni, copia archiviata distinta dalla viva, digest dentro una
+sequenza esadecimale più lunga, tabella `WITHOUT ROWID`, radice del perimetro
+assente. **Non vacue**: reintroducendo il troncamento a cinque e il conteggio
+dell'errore come riscontro, due prove diventano rosse e la suite esce `1`.
+
+**La modalità fail-closed ha subito ripagato.** Alla prima esecuzione sul
+perimetro reale ha dichiarato **22 tabelle non esaminate** sotto
+`durable_workloads`: sono `WITHOUT ROWID`, e `select rowid, *` fallisce. La
+versione precedente inghiottiva quell'errore e le contava come «nessun legame».
+Corretto con un ripiego dichiarato sulla posizione ordinale; la seconda
+esecuzione ha copertura completa e esce `0`.
+
+**O15 rigenerata**: 15 record semantici univoci — 9 file e 6 righe SQLite — di
+cui **12 dipendenze vive** e 3 copie archiviate, per **13 fatti distinti**, su
+69 709 file letti. Aggiornate tutte le conclusioni dipendenti: I3, I5, la
+tabella delle misure del §4, il punto 3 del §5 e il costo del §5-bis.
+
+**Una cosa che vale la pena dire.** Il totale nuovo è di nuovo 15, ma il vecchio
+era `5+1+6+3` e il nuovo è `9+6`: era giusto per caso. E I5 era già smentita
+dalla misura sbagliata — **una conclusione giusta ottenuta con una misura
+sbagliata resta da rifare**, e rifacendola sono emerse le 22 tabelle.
+
+### P1-C11 — ACCOLTO. La prova negativa era impossibile, e l'ho scritta io
+
+Il rilievo è esatto e verificabile a occhio: il blocco versionato assegnava
+`PROD=/opt/metnos` senza leggere argomenti, mentre l'evidenza mostrava
+`./passo0.sh /percorso/inesistente`. Avevo provato uno script con
+`PROD="${1:-/opt/metnos}"` e poi trascritto nel documento una versione diversa.
+La prova non era falsa: era **di un altro programma**.
+
+**Applicato**: `internal/tools/passo0_punto_di_partenza.sh`, versionato, con
+albero e aspettative parametrici (`PASSO0_TESTA_ATTESA`, `PASSO0_TAG_ATTESO`) e
+**sonda dello stack iniettabile** (`PASSO0_STATO_CMD`), che è ciò che rende
+provabile il ramo «stack non attivo» senza spegnere nulla. Un codice d'uscita
+per ramo: `0` verde, `2` non è un repository, `3` radice diversa, `4` albero
+sporco, `5` testa inattesa, `6` tag assente, `7` stack non attivo.
+
+**Prove**: `internal/tools/prova_passo0.sh`, otto casi su repository git creati
+e distrutti nel test, con sonde finte. **Nessuna prova ferma, avvia o interroga
+lo stack reale.** **Non vacue**: reintroducendo l'albero cablato e togliendo
+`pipefail`, sette prove su otto diventano rosse — la regressione riproduce
+esattamente il difetto segnalato, cioè uno script che ispeziona `/opt/metnos`
+qualunque argomento riceva.
+
+### P1-C12 — ACCOLTO. La regola dichiarava una garanzia che non aveva
+
+Tutti i punti reggono: mancava l'istante di avvio, prima del `KILL` si
+ricontrollava solo la riga di comando (non più l'UID), restava la finestra fra
+controllo e segnale, e `setsid` creava un gruppo di cui si segnalava il solo
+capo.
+
+**Applicato**: `internal/tools/controllore_processo.py`. Due proprietà, non due
+intenzioni:
+
+- **il numero non può essere riusato**: il figlio non viene mai raccolto fino
+  alla fine della chiusura, e un processo non raccolto trattiene il suo PID;
+  poiché è anche capogruppo (`start_new_session`), l'identificativo di gruppo è
+  quello stesso PID ed è riservato con lui. Non è una verifica ripetuta: è
+  l'impossibilità che il numero sia stato dato a un altro.
+- **la vitalità si legge da un `pidfd`**, che indica il processo e non il numero,
+  con `waitid(P_PIDFD, ..., WNOWAIT)` che risponde senza raccogliere.
+
+Si chiude **tutto il gruppo posseduto**; l'identità (uid e istante di avvio) è
+riverificata prima di ogni segnale; il residuo TOCTOU che resta è **dichiarato
+nel docstring**, non nascosto, e riguarda soltanto membri del nostro stesso
+gruppo.
+
+**Un difetto vero trovato scrivendolo**: alla prima stesura il capogruppo zombi
+che trattengo veniva contato fra i superstiti, e ogni terminazione ordinaria
+escalava a `SIGKILL` senza motivo. Corretto escludendo gli zombi dal censimento
+del gruppo.
+
+**Prove**: `internal/tools/prova_controllore_processo.py`, sei casi — uscita
+spontanea senza alcun segnale, terminazione ordinaria senza escalation,
+escalation contro un processo che ignora `TERM`, **rifiuto di segnalare** quando
+l'istante di avvio non corrisponde più, nipote che sopravvive al padre e viene
+chiuso col gruppo, processo estraneo che non viene toccato. **Non vacue**:
+sostituendo `killpg` con `kill` sul solo capo e togliendo il controllo
+dell'istante di avvio, due prove diventano rosse — e la regressione ha lasciato
+**due processi orfani veri sulla macchina**, che è esattamente il difetto
+segnalato, riprodotto dal vivo. Sono stati chiusi verificando identità e UID.
+
+### P2-C13 — ACCOLTO. L'errore era doppio, non singolo
+
+**Verificato nel codice.** `_atomic_replace_bytes`
+(`runtime/sign.py:234-305`) crea un temporaneo fratello, applica il modo con
+`fchmod` e conclude con `os.replace`; il percorso di firma lo invoca a
+`runtime/sign.py:391-399` con `new_mode=manifest_mode`, cioè il modo **osservato**
+del file esistente. In modalità solo-negozio `publish_executor()`
+(`runtime/sign.py:500-546`) firma in memoria e non riscrive affatto il file.
+
+**Misurato sul percorso reale** (O16), con `umask 0002`: il modo esistente
+sopravvive perché la politica lo impone (`664`→`664`, `644`→`644`), un modo
+imposto vince (`664`→`600`), e **un file nuovo nasce `0600`** per difetto — cioè
+il contrario del comportamento di git, che dà `664`.
+
+**E c'è un terzo fatto che Codex non chiedeva e che chiude la questione**:
+`sign_executor` scrive `executors/<nome>/manifest.toml` e la sua firma, e **non
+tocca nessuno dei 20 file del catalogo di contesto**, che stanno tutti in
+`runtime/`. Citarlo era sbagliato due volte: meccanismo sbagliato e percorso non
+pertinente. L'equivalenza con `open(path,'w')` è **ritirata** da O14 e da I3; i
+risultati sui gesti git restano validi.
+
+## Rilievi respinti
+
+Nessuno. Tutti e quattro reggono alla verifica indipendente.
+
+## Prove eseguite in questo giro
+
+| suite | casi | esito | non vacua? |
+|---|---|---|---|
+| `prova_sonda_avvio_nascita.py` | 8 | tutte verdi | sì (giro precedente) |
+| `prova_censimento_legami.py` | 9 | tutte verdi | sì, 2 regressioni iniettate |
+| `prova_passo0.sh` | 8 | tutte verdi | sì, 7/8 rosse con la regressione |
+| `prova_controllore_processo.py` | 6 | tutte verdi | sì, 2 regressioni iniettate |
+
+Nessuna suite completa: erano richieste prove mirate, e questo giro non ha
+toccato codice di prodotto.
+
+## VERDETTO — GIRO CLAUDE 2
+
+Quattro rilievi su quattro accolti, verificati indipendentemente e chiusi con
+strumenti versionati e prove non vacue. Il censimento ha una definizione
+dichiarata di ciò che conta, fallisce chiuso e ha scoperto una lacuna che la
+versione precedente nascondeva. Il passo 0 è uno script provato nei due versi
+senza toccare lo stack. La chiusura dei processi ha una garanzia strutturale al
+posto di una verifica ripetuta. O14 non contiene più l'equivalenza falsa.
+
+**CONCORDO SUL DOCUMENTO**, con le due riserve già dichiarate nel GIRO CLAUDE 1,
+che restano lavoro non fatto e non rilievi aperti:
+
+1. **C1 resta aperta e bloccante** — nessuno ha ancora provato che il server
+   HTTP intero parta e serva un turno. Il passo 5 dice che cosa richiede e non
+   finge di averlo eseguito; ora ha anche lo strumento giusto per farlo, perché
+   un server genera figli ed era proprio il caso che la vecchia procedura di
+   chiusura sbagliava.
+2. **Il rimedio al terzo ostacolo non esiste** — serve progettare la transizione
+   append-only a nuova epoca, lavoro di disegno da far revisionare.
+
+La produzione è rimasta fuori ambito per tutto il giro.
