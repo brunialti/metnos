@@ -41,8 +41,12 @@ part of any automatic F4 execution.
 """
 from __future__ import annotations
 
+import ctypes
+import errno
+import json
 import os
 import stat
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -65,23 +69,40 @@ class RecuperoPubblicazioneError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class AutorizzazioneRecupero:
-    """Proof that the authoring inventory claims this identity.
+    """Proof that the authoring inventory claims this identity, on THIS store.
 
-    Only :func:`autorizza_dall_inventario` builds one, and it does so by finding
-    the contract in the productive authoring inventory.  A caller that could
-    construct this freely would be back to naming its own target.
+    The seal lives inside a closure that is never bound to a module attribute,
+    so an importer cannot reach it and mint one: an authorization anyone can
+    build is not an authorization.  It also carries the identity of the store
+    root it was issued against, because the same key selects the same container
+    in any root a caller might pass - binding the root is what makes "the
+    caller does not name the target" true rather than merely stated.
     """
 
     contract_id: object
     storage_key: str
-    _token: object
+    radice_identita: tuple[int, int]
+    _sigillo: object
 
     def __post_init__(self) -> None:
-        if self._token is not _TOKEN:
+        if not _sigillo_valido(self._sigillo):
             raise RecuperoPubblicazioneError("autorizzazione_non_emessa")
 
 
-_TOKEN = object()
+def _fabbrica_sigillo():
+    """The seal and its verifier share a closure and nothing else."""
+    segreto = object()
+
+    def emetti():
+        return segreto
+
+    def valido(candidato) -> bool:
+        return candidato is segreto
+
+    return emetti, valido
+
+
+_emetti_sigillo, _sigillo_valido = _fabbrica_sigillo()
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,8 +115,23 @@ class EsitoRecupero:
     percorso: str
 
 
-def autorizza_dall_inventario(contract_id_value: str) -> AutorizzazioneRecupero:
-    """Issue an authorization only for a contract authoring actually declares."""
+def _identita_radice(store_root) -> tuple[int, int]:
+    fd = _apri_directory(os.fspath(store_root))
+    try:
+        return _identita(fd)
+    finally:
+        os.close(fd)
+
+
+def autorizza_dall_inventario(
+    contract_id_value: str, *, store_root,
+) -> AutorizzazioneRecupero:
+    """Issue an authorization only for a contract authoring actually declares.
+
+    The store root is observed here and its identity travels in the
+    authorization: the entry points refuse a root that is not the one the
+    authorization was issued against.
+    """
     from manifest_inventory import inventory_authoring_manifests
 
     inventario = inventory_authoring_manifests()
@@ -106,11 +142,59 @@ def autorizza_dall_inventario(contract_id_value: str) -> AutorizzazioneRecupero:
     for ref in inventario.manifests:
         if ref.contract_id.value == contract_id_value:
             return AutorizzazioneRecupero(
-                ref.contract_id, ref.contract_id.storage_key, _TOKEN
+                ref.contract_id, ref.contract_id.storage_key,
+                _identita_radice(store_root), _emetti_sigillo(),
             )
     raise RecuperoPubblicazioneError(
         "contratto_non_inventariato", contract_id_value
     )
+
+
+def _autorizzazione_di_prova(contract_id, store_root) -> AutorizzazioneRecupero:
+    """Separate entry for fixtures: a temporary root, never the productive graph.
+
+    Tests cannot publish a manifest, so they need a way in; keeping it a named,
+    separate door is what stops the productive one from having to accept a
+    free-form identity.
+    """
+    return AutorizzazioneRecupero(
+        contract_id, contract_id.storage_key,
+        _identita_radice(store_root), _emetti_sigillo(),
+    )
+
+
+RENAME_NOREPLACE = 1
+
+
+def _rinomina_senza_sostituzione(
+    origine: str, destinazione: str, *, dir_fd: int,
+) -> None:
+    """Rename relative to one parent descriptor, refusing to replace.
+
+    ``os.rename`` replaces on POSIX, so checking that the destination is free
+    and then renaming is a race: a directory created between the two steps is
+    silently overwritten.  ``renameat2`` with ``RENAME_NOREPLACE`` makes the
+    refusal atomic, and a collision leaves both objects untouched.
+    """
+    if not sys.platform.startswith("linux"):
+        raise RecuperoPubblicazioneError("piattaforma_non_supportata", sys.platform)
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        raise RecuperoPubblicazioneError("rinomina_atomica_non_disponibile",
+                                         "renameat2")
+    renameat2.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+                          ctypes.c_char_p, ctypes.c_uint)
+    renameat2.restype = ctypes.c_int
+    esito = renameat2(dir_fd, os.fsencode(origine), dir_fd,
+                      os.fsencode(destinazione), RENAME_NOREPLACE)
+    if esito != 0:
+        numero = ctypes.get_errno()
+        if numero == errno.EEXIST:
+            raise RecuperoPubblicazioneError("nome_di_ritiro_occupato",
+                                             destinazione)
+        raise RecuperoPubblicazioneError("rinomina_fallita",
+                                         os.strerror(numero))
 
 
 def _apri_directory(nome: str, *, dir_fd: int | None = None) -> int:
@@ -185,6 +269,9 @@ def ispeziona_contenitore_incompleto(
                                          type(autorizzazione).__name__)
     fd_radice = _apri_directory(os.fspath(store_root))
     try:
+        if _identita(fd_radice) != autorizzazione.radice_identita:
+            raise RecuperoPubblicazioneError("radice_non_autorizzata",
+                                             str(store_root))
         fd_contenitore = _apri_directory(autorizzazione.storage_key,
                                          dir_fd=fd_radice)
         try:
@@ -199,26 +286,109 @@ def ispeziona_contenitore_incompleto(
     )
 
 
+RICEVUTE = "recovery-receipts-v1"
+
+
+def _percorso_ricevuta(store_root, storage_key: str,
+                       radice_identita: tuple[int, int]) -> Path:
+    """Receipts live OUTSIDE the store root, and are named per store.
+
+    Outside, because an immediate object of the store root that the inventory
+    does not own is exactly what the census blocks on: a receipt written inside
+    would make this primitive create the anomaly it exists to remove.
+
+    Per store, because a name built from the storage key alone is shared by
+    every store that holds that contract - two of them would read each other's
+    provenance, which is how a retired container with no receipt of its own
+    still looked resumable.
+    """
+    dispositivo, inode = radice_identita
+    return (Path(store_root).parent / RICEVUTE
+            / f"{dispositivo:x}-{inode:x}" / f"{storage_key}.json")
+
+
+def _scrivi_ricevuta(percorso: Path, documento: dict) -> None:
+    percorso.parent.mkdir(parents=True, exist_ok=True)
+    temporaneo = percorso.with_suffix(".json.parziale")
+    byte = json.dumps(documento, sort_keys=True,
+                      separators=(",", ":")).encode("ascii")
+    descrittore = os.open(temporaneo, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(descrittore, byte)
+        os.fsync(descrittore)
+    finally:
+        os.close(descrittore)
+    os.replace(temporaneo, percorso)
+    fd_cartella = os.open(percorso.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd_cartella)
+    finally:
+        os.close(fd_cartella)
+
+
+def _leggi_ricevuta(percorso: Path) -> dict | None:
+    try:
+        return json.loads(percorso.read_bytes())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _pulisci_e_rimuovi(fd_radice: int, ritirato: str, identita: tuple[int, int],
+                       autorizzazione: AutorizzazioneRecupero) -> None:
+    """Empty and remove the retired container, naming only what is expected.
+
+    Iterating and deleting everything that is not ``generations`` removed a file
+    that appeared after the shape was verified, and reported success.  The
+    container is re-verified through the same descriptor, and only the two
+    admitted names are touched: anything else blocks and stays intact.
+    """
+    fd_ritirato = _apri_directory(ritirato, dir_fd=fd_radice)
+    try:
+        if _identita(fd_ritirato) != identita:
+            raise RecuperoPubblicazioneError("identita_cambiata", ritirato)
+        _verifica_forma(fd_ritirato)
+        voci = set(os.listdir(fd_ritirato))
+        inattesi = voci - ATTESI
+        if inattesi:
+            raise RecuperoPubblicazioneError("voce_tardiva",
+                                             ",".join(sorted(inattesi)))
+        if NOME_LUCCHETTO in voci:
+            os.unlink(NOME_LUCCHETTO, dir_fd=fd_ritirato)
+        os.rmdir(NOME_GENERAZIONI, dir_fd=fd_ritirato)
+    finally:
+        os.close(fd_ritirato)
+    os.rmdir(ritirato, dir_fd=fd_radice)
+    os.fsync(fd_radice)
+
+
 def rimuovi_contenitore_incompleto(
     autorizzazione: AutorizzazioneRecupero, *, store_root: Path | str,
 ) -> EsitoRecupero:
-    """Remove the container, with one recoverable commit point."""
+    """Remove the container through one durable, resumable commit point.
+
+    The states this has to survive are enumerated, not hoped for: original
+    only, retired only, both, neither, and a collision on the retired name.
+    """
     from contract_store import ContractStoreError, catalog_admission_lock
 
     if not isinstance(autorizzazione, AutorizzazioneRecupero):
         raise RecuperoPubblicazioneError("autorizzazione_assente",
                                          type(autorizzazione).__name__)
     radice = Path(store_root)
-    # Verified before any lock: the productive writer lock creates the contract
-    # directories it needs, so locking first would let this primitive fabricate
-    # a container and then remove what it had just made.
-    prima = ispeziona_contenitore_incompleto(autorizzazione, store_root=radice)
+    ritirato = PREFISSO_RITIRO + autorizzazione.storage_key
+    ricevuta = _percorso_ricevuta(radice, autorizzazione.storage_key,
+                                  autorizzazione.radice_identita)
+    atteso = {
+        "schema_version": 1,
+        "contract_id": autorizzazione.contract_id.value,
+        "storage_key": autorizzazione.storage_key,
+        "radice": list(autorizzazione.radice_identita),
+    }
 
     fd_radice = _apri_directory(os.fspath(radice))
     try:
-        # The same root goes to both locks: the global lock and the contract
-        # lock have to serialize the SAME store, and passing it to only one of
-        # them left the global lock on whatever store the configuration named.
+        if _identita(fd_radice) != autorizzazione.radice_identita:
+            raise RecuperoPubblicazioneError("radice_non_autorizzata", str(radice))
         try:
             gestore = catalog_admission_lock(store_root=radice)
         except ContractStoreError as exc:
@@ -226,45 +396,67 @@ def rimuovi_contenitore_incompleto(
                 "lucchetto_non_ottenuto", getattr(exc, "code", str(exc))
             ) from None
         with gestore:
-            fd_contenitore = _apri_directory(autorizzazione.storage_key,
-                                             dir_fd=fd_radice)
-            try:
-                _verifica_forma(fd_contenitore)
-                identita = _identita(fd_contenitore)
-                ritirato = PREFISSO_RITIRO + autorizzazione.storage_key
-                try:
-                    os.lstat(ritirato, dir_fd=fd_radice)
-                except FileNotFoundError:
-                    pass
-                else:
-                    raise RecuperoPubblicazioneError(
-                        "nome_di_ritiro_occupato", ritirato)
-                # The single commit point: after this rename the container is
-                # no longer reachable under its own name, and an interruption
-                # leaves a shape the next attempt recognises instead of a
-                # half-emptied container the shape check would refuse forever.
-                os.rename(autorizzazione.storage_key, ritirato,
-                          src_dir_fd=fd_radice, dst_dir_fd=fd_radice)
-                if _identita(fd_contenitore) != identita:
-                    raise RecuperoPubblicazioneError("identita_cambiata",
-                                                     autorizzazione.storage_key)
-            finally:
-                os.close(fd_contenitore)
+            presente = _esiste(autorizzazione.storage_key, fd_radice)
+            in_ritiro = _esiste(ritirato, fd_radice)
+            registrata = _leggi_ricevuta(ricevuta)
 
-            fd_ritirato = _apri_directory(ritirato, dir_fd=fd_radice)
-            try:
-                if _identita(fd_ritirato) != identita:
-                    raise RecuperoPubblicazioneError("identita_cambiata", ritirato)
-                for nome in sorted(os.listdir(fd_ritirato)):
-                    if nome == NOME_GENERAZIONI:
-                        os.rmdir(nome, dir_fd=fd_ritirato)
-                    else:
-                        os.unlink(nome, dir_fd=fd_ritirato)
-            finally:
-                os.close(fd_ritirato)
-            os.rmdir(ritirato, dir_fd=fd_radice)
-            os.fsync(fd_radice)
+            # neither, and a receipt: the work is already done, and saying so
+            # is not the same as saying "it never existed".
+            if not presente and not in_ritiro:
+                if registrata == atteso:
+                    return EsitoRecupero(
+                        autorizzazione.contract_id.value,
+                        autorizzazione.storage_key, True,
+                        str(radice / autorizzazione.storage_key),
+                    )
+                raise RecuperoPubblicazioneError(
+                    "contenitore_assente", autorizzazione.storage_key)
+
+            # both: an interruption between the receipt and the rename, or a
+            # collision.  Either way the original is not ours to touch twice.
+            if presente and in_ritiro:
+                raise RecuperoPubblicazioneError("nome_di_ritiro_occupato",
+                                                 ritirato)
+
+            if presente:
+                fd_contenitore = _apri_directory(autorizzazione.storage_key,
+                                                 dir_fd=fd_radice)
+                try:
+                    _verifica_forma(fd_contenitore)
+                    identita = _identita(fd_contenitore)
+                finally:
+                    os.close(fd_contenitore)
+                # The receipt is durable BEFORE the commit point, so an
+                # interruption immediately after the rename still leaves the
+                # provenance that lets the next attempt resume.
+                _scrivi_ricevuta(ricevuta, atteso)
+                _rinomina_senza_sostituzione(
+                    autorizzazione.storage_key, ritirato, dir_fd=fd_radice)
+                os.fsync(fd_radice)
+            else:
+                # retired only: resume, but only with complete provenance.  A
+                # deterministic name proves nothing by itself.
+                if registrata != atteso:
+                    raise RecuperoPubblicazioneError(
+                        "ritirato_senza_provenienza", ritirato)
+                fd_ritirato = _apri_directory(ritirato, dir_fd=fd_radice)
+                try:
+                    identita = _identita(fd_ritirato)
+                finally:
+                    os.close(fd_ritirato)
+
+            _pulisci_e_rimuovi(fd_radice, ritirato, identita, autorizzazione)
     finally:
         os.close(fd_radice)
-    return EsitoRecupero(prima.contract_id, prima.storage_key, True,
-                         prima.percorso)
+    return EsitoRecupero(
+        autorizzazione.contract_id.value, autorizzazione.storage_key, True,
+        str(radice / autorizzazione.storage_key),
+    )
+
+
+def _esiste(nome: str, fd_radice: int) -> bool:
+    try:
+        os.lstat(nome, dir_fd=fd_radice)
+    except FileNotFoundError:
+        return False
+    return True

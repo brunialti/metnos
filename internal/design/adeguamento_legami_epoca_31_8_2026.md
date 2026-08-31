@@ -641,3 +641,52 @@ Quindici prove versionate verdi, comprese le cinque proprietà che A aveva
 dimostrato mancanti — portate nel mio file invece di dipendere dal suo, così il
 prossimo checkpoint è riproducibile dal solo commit. Non vacue: ripristinando la
 risoluzione per nome, la prova del collegamento torna rossa.
+
+---
+
+## 19. Secondo giro sulla primitiva — cinque proprietà nel punto d'impegno
+
+**R6 — la rinomina «senza sostituzione» sostituiva.** Controllavo che il nome
+fosse libero e poi usavo `os.rename`, che su POSIX **sostituisce**. Fra i due
+passi una directory vuota veniva sovrascritta. Ora si usa `renameat2` con
+`RENAME_NOREPLACE`, relativa allo stesso descrittore padre: una collisione
+lascia entrambi gli oggetti intatti, e il rifiuto è atomico invece che sperato.
+
+**R7 — il punto d'impegno non era durevole né ripreso.** Nessun `fsync` dopo la
+rinomina, e un nuovo tentativo cercava sempre il nome originale, quindi finiva
+con «contenitore assente» invece di riprendere. Ora una **ricevuta durevole**
+precede il punto d'impegno, la radice è sincronizzata subito dopo, e la matrice
+distingue i cinque stati: solo originale, solo ritirato, entrambi, nessuno,
+collisione. Un ritirato si riprende **solo con provenienza completa** — un nome
+deterministico non prova nulla da sé.
+
+**R8 — la pulizia cancellava una voce mai autorizzata.** Iterava e rimuoveva
+tutto ciò che non fosse `generations`: un file comparso dopo la verifica veniva
+eliminato e la funzione dichiarava successo. Ora il contenitore ritirato è
+riverificato attraverso lo stesso descrittore e la pulizia **nomina** solo
+`generations` e l'eventuale `writer.lock`; qualunque altra voce blocca e resta
+intatta.
+
+**R9 — l'autorizzazione era fabbricabile.** Il sigillo era un attributo del
+modulo: chiunque importasse poteva scrivere `R._TOKEN`. Ora vive in una
+chiusura che non è legata ad alcun attributo, e l'autorizzazione porta
+l'**identità della radice** contro cui è stata emessa — perché la stessa chiave
+seleziona lo stesso contenitore in qualunque radice il chiamante passi. La porta
+di prova è separata e nominata.
+
+**R10 — la seconda esecuzione non era idempotente.** Dopo un successo non
+restava nulla che distinguesse «già recuperato» da «mai esistito». Ora la
+ricevuta lo distingue: una ripetizione restituisce lo stesso esito, e un
+contenitore mai esistito resta un rifiuto.
+
+**Un difetto trovato dalle prove, non dal codice.** La ricevuta era indirizzata
+per sola chiave, quindi due negozi diversi se la contendevano — e nella suite,
+dove gli inode di directory temporanee si riciclano, un caso leggeva la
+provenienza di un altro. Ora il nome include l'identità della radice.
+
+**E una prova che non provava.** Il caso della collisione creava il nome
+occupato *prima* della chiamata: esercitava il controllo anticipato, non
+l'atomicità. Reso sincronizzato — la collisione compare fra la verifica e il
+punto d'impegno — diventa rosso se si toglie `RENAME_NOREPLACE`.
+
+Ventitré prove versionate verdi, `git diff --check` pulito.
