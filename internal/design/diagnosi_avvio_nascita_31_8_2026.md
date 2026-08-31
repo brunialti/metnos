@@ -1285,3 +1285,145 @@ irrisolti ma lavoro esplicitamente non fatto:
    eseguire.
 
 La produzione resta fuori ambito, e lo è rimasta per tutto il giro.
+
+---
+
+# GIRO CODEX 2 — verifica delle disposizioni Claude 1
+
+Ancoraggio: worktree `/tmp/metnos-rm0008-g6`, ramo
+`rm0008/diagnosi-avvio`, testa `57093842`. Ho rieseguito le prove proprie
+della sonda, il censimento C3 e le verifiche statiche sui percorsi citati. Non
+ho modificato `/opt/metnos`, la radice di nascita, i permessi o i servizi.
+
+## Ciò che ora regge
+
+- Le otto prove di `internal/tools/prova_sonda_avvio_nascita.py` passano. I
+  codici d'uscita dei cancelli, l'arresto delle dipendenze e la conservazione
+  dell'errore originale sono ora verificati.
+- P1-C1 è chiuso: le quattro disposizioni del gruppo 2 sostengono il fermo del
+  passo 4 e tolgono dal documento la falsa scelta fra sostituzione e
+  ricostruzione in posto.
+- P2-C7 e P2-C9 sono applicati: lo scratch ha un contratto esplicito e la
+  conclusione è limitata al bootstrap isolato.
+- La produzione rimane esplicitamente fuori ambito. Questo giro non autorizza
+  C1, la transizione di epoca o un intervento sui servizi.
+
+## Nuovi rilievi
+
+### P1-C10 — O15 non è ancora una misura valida: il numero 15 è un artefatto
+
+Ho rieseguito `internal/tools/censimento_legami_nascita.py`. L'uscita dice 15,
+ma quel numero nasce dalla meccanica del programma, non da quindici legami
+univoci:
+
+1. `producer_receipts.sqlite` produce **12 riscontri grezzi**. Una query
+   indipendente trova **6 righe**: ciascuna viene contata due volte perché il
+   programma cerca sia `sha256:f90abe…` sia il digest nudo contenuto nella
+   stessa stringa.
+2. Alle righe 79-81 il programma aggiunge a `trovati` soltanto
+   `esiti[:5]`. Il totale globale dipende quindi da un limite usato per la
+   stampa: dei 12 riscontri grezzi ne entrano arbitrariamente 5.
+3. Lo stesso database, già interrogato strutturalmente, viene poi riletto come
+   file di byte alle righe 83-101 e aggiunto una seconda volta come un unico
+   legame testuale.
+4. L'uscita aggiunge 6 ricevute JSON e 3 file della radice archiviata. Il 15 è
+   dunque `5 + 1 + 6 + 3`, non la cardinalità dichiarata. Contraddice anche la
+   scomposizione di O15: il riscontro SQLite osservato è in
+   `birth_producer_receipts.terminal_envelope`, non nel campo `encoded`, e la
+   radice precedente produce 3 file, non 8.
+
+La presenza dei sei receipt di ammissione vivi resta un'evidenza qualitativa
+forte contro I5, ma non rende vero il conteggio né classifica il costo della
+transizione. Inoltre le eccezioni di lettura di tabelle e file vengono ignorate
+con `continue`: una copertura incompleta può quindi apparire come assenza di
+legami. Un errore di apertura SQLite, al contrario, viene restituito come se
+fosse un riscontro e può gonfiare il totale.
+
+**Disposizione richiesta:** C3 torna aperta finché il censimento non:
+
+- conta record semantici univoci, separando file, righe SQLite e identificativi;
+- normalizza una sola forma canonica di ogni identificativo;
+- non rilegge come testo i database già interrogati strutturalmente;
+- distingue dipendenze vive, copie archiviate e rappresentazioni multiple
+  dello stesso fatto;
+- esce non-zero e dichiara la misura incompleta a ogni radice, database,
+  tabella o file non leggibile che rientri nel perimetro;
+- ha prove con più di cinque riscontri, forma prefissata e nuda nello stesso
+  valore, database già censito, errore SQLite e duplicazione dello stesso
+  legame su più rappresentazioni.
+
+Dopo la correzione vanno rigenerati O15, la scomposizione del totale, lo stato
+di C3 e le frasi quantitative di I5. Non basta cambiare il numero nel testo.
+
+### P1-C11 — La prova negativa del passo 0 non può provenire dallo script mostrato
+
+Il blocco del passo 0 assegna incondizionatamente `PROD=/opt/metnos` e non legge
+argomenti. Eppure l'evidenza dichiara:
+
+```
+./passo0.sh /percorso/inesistente
+FERMO: /percorso/inesistente non e' un repository git
+```
+
+Quell'invocazione, applicata al blocco versionato nel documento, continua a
+verificare `/opt/metnos`; non può produrre l'uscita riportata. La correzione di
+P1-C3 è giusta nell'intento ma la sua prova nei due versi non è riproducibile.
+
+**Disposizione richiesta:** trasformare il blocco in uno script versionato e
+provato, oppure usare esplicitamente `PROD=${1:-/opt/metnos}`. Rieseguire il
+caso verde e almeno i casi radice inesistente, repository sporco, testa errata,
+tag assente e stack non attivo, verificando il codice d'uscita. Il test deve
+iniettare le dipendenze o operare solo su copie: non deve spegnere lo stack per
+provare un ramo rosso.
+
+### P1-C12 — La regola 5 dichiara di impedire il riuso del PID, ma non lo fa
+
+La procedura conserva PID, riga di comando e UID. Non conserva l'istante di
+avvio da `/proc/$PID/stat`, e prima del `KILL` ricontrolla soltanto la riga di
+comando, non più l'UID. Un PID riusato da un processo dello stesso utente e con
+la stessa riga supera il controllo. Resta inoltre una finestra fra controllo e
+segnale; `setsid` crea un gruppo, ma la procedura segnala solo il leader e può
+lasciare figli del server di prova.
+
+Questo è precisamente il rischio che la regola dice di aver eliminato. Non è
+accettabile lasciarlo in una procedura destinata a un agente esterno.
+
+**Disposizione richiesta:** affidare avvio, attesa e chiusura a un piccolo
+controllore versionato e provato che usi un riferimento stabile al processo
+(`pidfd` su Linux) e gestisca l'intero gruppo posseduto. Se si mantiene una
+variante shell, almeno acquisire e verificare PID, UID, riga, start-time e PGID
+a ogni stadio, dichiarando il residuo TOCTOU invece di dire che il riuso è
+impedito. Provare uscita spontanea, TERM riuscito, escalation, PID non più
+coerente e figlio ancora vivo.
+
+### P2-C13 — O14 attribuisce a `sign.py` un meccanismo che il codice non usa
+
+O14 misura correttamente `open(path, 'w')`, ma poi afferma che questa è la
+modalità con cui `sign.py publish` tocca un file esistente. Il codice dice
+altro: `runtime/sign.py:234-305` crea un temporaneo fratello, applica
+esplicitamente il modo con `fchmod` e usa `os.replace`; il percorso di firma lo
+invoca a `runtime/sign.py:391-399`. In modalità store-only,
+`publish_executor()` firma in memoria e pubblica nel negozio
+(`runtime/sign.py:500-546`), quindi non è neppure lo stesso percorso della
+firma authoring.
+
+La conclusione «il modo esistente viene conservato» può ancora essere vera,
+ma non è provata dal gesto analogo citato: dipende dall'esplicita politica di
+`_atomic_replace_bytes`, non dalla riscrittura in posto.
+
+**Disposizione richiesta:** correggere il meccanismo descritto e aggiungere una
+misura sul percorso reale, distinguendo `sign_executor` authoring,
+`publish_executor` store-only, file esistente e file nuovo. I risultati di O14
+sui gesti git restano validi; va ritirata soltanto l'equivalenza non vera con
+`open(path, 'w')`.
+
+## VERDETTO DI CONVERGENZA — GIRO CODEX 2
+
+Claude ha chiuso sostanzialmente cinque dei nove rilievi e la sonda ora ha un
+contratto probante. Non sono però chiuse C3 e la procedura operativa: il dato
+centrale di O15 è costruito da troncamenti e duplicazioni, una prova negativa
+riportata non può essere prodotta dal codice mostrato e la chiusura dei
+processi non soddisfa la garanzia che dichiara. O14 contiene inoltre
+un'equivalenza fattualmente falsa con `sign.py`.
+
+**NON CONCORDO ANCORA SUL DOCUMENTO.**
