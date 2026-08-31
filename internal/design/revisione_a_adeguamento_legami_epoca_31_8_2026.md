@@ -486,3 +486,55 @@ commenti italiani della prova (`due produttori`, `discorde`, `come impone il
 Producer store`). Non servono altri casi, ne' modifiche di prodotto, ne' la
 suite completa in questo giro. Con decoder V2, fixture produttiva, 20 prove
 verdi e misura reale invariata, A puo' accettare B1.
+
+---
+
+## Nono giro
+
+Data: 31 agosto 2026
+Commit esaminato: `7f704e433185bc8056aa96e99a900b3fa17d208c`
+Verdetto: `MODIFICHE_RICHIESTE`
+
+La busta V2 prodotta da `_terminal_envelope` passa ora dal decoder canonico e
+i 20 casi sono verdi. La misura reale resta 12 legami storici, zero ignoti e
+il blocco sui due problemi inventariali noti. Una prova A costruita con il vero
+Producer store conferma inoltre che un rifiuto V2 coerente viene riconosciuto.
+
+Restano due falsi contratti nella prova e nella catena.
+
+### Rilievo 18 — la fixture non usa ancora il Producer store
+
+`riga()` crea ancora a mano `birth_producer_receipts` e
+`birth_producer_issuance`, senza chiavi, vincoli, schema versionato o
+migrazione. Inserisce persino `birth_producer_issuance.encoded = NULL`, forma
+vietata dallo schema produttivo. Le 20 prove verdi non chiudono quindi il
+requisito dichiarato: nominare le colonne non equivale ad attraversare le API.
+
+La correzione minima e' usare almeno nei casi positivi
+`get_or_issue_and_claim_producer_receipt` e `finalize_producer_receipt`, che
+creano insieme ricevuta, emissione, claim e conclusione reali. I casi negativi
+possono poi alterare una sola colonna del database cosi' prodotto. Non serve
+riscrivere le venti prove ne' aggiungere un secondo costruttore.
+
+### Rilievo 19 — l'emissione lega soltanto il contratto, non la richiesta
+
+`_decodifica_canonica` cerca l'emissione per `receipt_id` ma ne legge soltanto
+`contract_id`. Non confronta `request_id`, `issuer_id`, `objective_hash`,
+`candidate_source_id` ed `encoded` con riga e ricevuta Producer. Una prova A
+parte da un rifiuto V2 creato e finalizzato con le API reali, poi modifica
+soltanto `birth_producer_issuance.request_id`: il classificatore lo accetta
+ancora come rifiuto autenticato. La catena durevole e' quindi presente ma non
+interamente legata.
+
+Va letta una sola riga di emissione e richiesta uguaglianza esatta di tutti i
+campi condivisi prima di costruire `BirthRequest`. Il risultato del decoder
+(`BirthResult`, byte Admission e identificativo della chiave) deve inoltre
+alimentare i controlli successivi; chiamare il decoder come sola guardia e poi
+rileggere la semantica con due `json.loads` mantiene due interpretazioni della
+stessa busta.
+
+Infine `git diff --check` fallisce per uno spazio finale in
+`prova_classifica_legami_epoca.py:177`. Il prossimo checkpoint richiede solo:
+fixture positiva tramite API, caso di richiesta emissione discorde, consumo
+del risultato decodificato, `diff --check` e le prove mirate. Nessuna suite
+completa.
