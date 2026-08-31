@@ -25,6 +25,30 @@ def exact_container(path: Path) -> None:
     (path / "writer.lock").write_bytes(b"\0")
 
 
+class FakeInventory:
+    """Minimal authoring inventory fixture for the productive issuer."""
+
+    def __init__(self, contract_id) -> None:
+        self.manifests = (type("ManifestRef", (), {"contract_id": contract_id})(),)
+        self.problems = ()
+
+
+def authorization(recovery, contract_id, root: Path):
+    """Use the productive issuer while substituting only its inventory input."""
+    import manifest_inventory
+
+    original = manifest_inventory.inventory_authoring_manifests
+    manifest_inventory.inventory_authoring_manifests = (
+        lambda *args, **kwargs: FakeInventory(contract_id)
+    )
+    try:
+        return recovery.autorizza_dall_inventario(
+            contract_id.value, store_root=root
+        )
+    finally:
+        manifest_inventory.inventory_authoring_manifests = original
+
+
 def remove_exact_container(path: Path) -> None:
     """Remove a fixture container without traversing any unknown entries."""
     lock = path / "writer.lock"
@@ -64,7 +88,7 @@ def check_retry_after_generations_removal(recovery, ContractId, ManifestOrigin) 
         root = Path(temporary)
         contract_id = ContractId(ManifestOrigin.BUILTIN, "cleanup-gap/manifest.toml")
         exact_container(root / contract_id.storage_key)
-        authorization = recovery._autorizzazione_di_prova(contract_id, root)
+        issued = authorization(recovery, contract_id, root)
         original_rmdir = recovery.os.rmdir
         stopped = False
 
@@ -79,7 +103,7 @@ def check_retry_after_generations_removal(recovery, ContractId, ManifestOrigin) 
         try:
             with mock.patch.object(recovery.os, "rmdir", stop_after_generations):
                 recovery.rimuovi_contenitore_incompleto(
-                    authorization, store_root=root
+                    issued, store_root=root
                 )
         except recovery.RecuperoPubblicazioneError as exc:
             if exc.code != "injected_stop":
@@ -87,7 +111,7 @@ def check_retry_after_generations_removal(recovery, ContractId, ManifestOrigin) 
 
         try:
             outcome = recovery.rimuovi_contenitore_incompleto(
-                authorization, store_root=root
+                issued, store_root=root
             )
         except Exception as exc:  # The candidate currently leaks FileNotFoundError.
             code = getattr(exc, "code", type(exc).__name__)
@@ -114,7 +138,7 @@ def check_receipt_binds_exact_container(recovery, ContractId, ManifestOrigin) ->
         original_path = root / contract_id.storage_key
         retired_path = root / (recovery.PREFISSO_RITIRO + contract_id.storage_key)
         exact_container(original_path)
-        authorization = recovery._autorizzazione_di_prova(contract_id, root)
+        issued = authorization(recovery, contract_id, root)
 
         try:
             with mock.patch.object(
@@ -123,7 +147,7 @@ def check_receipt_binds_exact_container(recovery, ContractId, ManifestOrigin) ->
                 prepare_rename_collision(recovery, root),
             ):
                 recovery.rimuovi_contenitore_incompleto(
-                    authorization, store_root=root
+                    issued, store_root=root
                 )
         except recovery.RecuperoPubblicazioneError as exc:
             if exc.code != "nome_di_ritiro_occupato":
@@ -135,7 +159,7 @@ def check_receipt_binds_exact_container(recovery, ContractId, ManifestOrigin) ->
         remove_exact_container(original_path)
         try:
             recovery.rimuovi_contenitore_incompleto(
-                authorization, store_root=root
+                issued, store_root=root
             )
         except recovery.RecuperoPubblicazioneError:
             return []
@@ -155,7 +179,7 @@ def check_receipt_records_commit(recovery, ContractId, ManifestOrigin) -> list[s
         original_path = root / contract_id.storage_key
         retired_path = root / (recovery.PREFISSO_RITIRO + contract_id.storage_key)
         exact_container(original_path)
-        authorization = recovery._autorizzazione_di_prova(contract_id, root)
+        issued = authorization(recovery, contract_id, root)
 
         try:
             with mock.patch.object(
@@ -164,7 +188,7 @@ def check_receipt_records_commit(recovery, ContractId, ManifestOrigin) -> list[s
                 prepare_rename_collision(recovery, root),
             ):
                 recovery.rimuovi_contenitore_incompleto(
-                    authorization, store_root=root
+                    issued, store_root=root
                 )
         except recovery.RecuperoPubblicazioneError as exc:
             if exc.code != "nome_di_ritiro_occupato":
@@ -174,13 +198,58 @@ def check_receipt_records_commit(recovery, ContractId, ManifestOrigin) -> list[s
         remove_exact_container(retired_path)
         try:
             outcome = recovery.rimuovi_contenitore_incompleto(
-                authorization, store_root=root
+                issued, store_root=root
             )
         except recovery.RecuperoPubblicazioneError:
             return []
         return [
             "a pre-rename receipt reported completion after the rename had failed"
         ] if outcome.rimosso else []
+
+
+def check_idempotent_retry_syncs_removal(recovery, ContractId, ManifestOrigin) -> list[str]:
+    """A retry after the final removal must make the parent durable."""
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        contract_id = ContractId(ManifestOrigin.BUILTIN, "final-sync/manifest.toml")
+        original_path = root / contract_id.storage_key
+        retired_path = root / (recovery.PREFISSO_RITIRO + contract_id.storage_key)
+        exact_container(original_path)
+        issued = authorization(recovery, contract_id, root)
+        original_fsync = recovery.os.fsync
+        stopped = False
+
+        def stop_before_final_sync(descriptor: int) -> None:
+            nonlocal stopped
+            if not stopped and not original_path.exists() and not retired_path.exists():
+                stopped = True
+                raise recovery.RecuperoPubblicazioneError("injected_stop")
+            original_fsync(descriptor)
+
+        try:
+            with mock.patch.object(recovery.os, "fsync", stop_before_final_sync):
+                recovery.rimuovi_contenitore_incompleto(issued, store_root=root)
+        except recovery.RecuperoPubblicazioneError as exc:
+            if exc.code != "injected_stop":
+                return [f"unexpected final-stop result: {exc.code}"]
+        if not stopped:
+            return ["the proof did not reach the final parent sync"]
+
+        synced: list[int] = []
+
+        def observe_sync(descriptor: int) -> None:
+            synced.append(descriptor)
+            original_fsync(descriptor)
+
+        with mock.patch.object(recovery.os, "fsync", observe_sync):
+            outcome = recovery.rimuovi_contenitore_incompleto(
+                issued, store_root=root
+            )
+        if not outcome.rimosso:
+            return ["idempotent retry did not preserve the completed outcome"]
+        return [] if synced else [
+            "idempotent retry returned before syncing the parent directory"
+        ]
 
 
 def main() -> int:
@@ -209,6 +278,10 @@ def main() -> int:
         (
             "receipt distinguishes preparation from commit",
             check_receipt_records_commit,
+        ),
+        (
+            "idempotent retry makes the final removal durable",
+            check_idempotent_retry_syncs_removal,
         ),
     )
     failures = 0
