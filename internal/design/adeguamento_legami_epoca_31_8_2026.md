@@ -471,3 +471,35 @@ più la firma invece della decodifica canonica V2, e le fixture non usano le API
 del Producer store (`register`/`claim`/`finalize`). A indica la via — riusare
 `_decode_terminal_envelope` con una `BirthRequest` legata alla riga — e resta il
 prossimo passo del mio perimetro.
+
+---
+
+## 14. Ottavo giro — la busta la decodifica il prodotto
+
+I due punti strutturali che avevo lasciato aperti sono chiusi.
+
+**Il decoder è quello del prodotto.** La busta terminale non passa più da un
+`json.loads` permissivo ma da `_decode_terminal_envelope`, che impone versione
+di schema, byte canonici e legame con la richiesta — tre cose che un lettore
+indulgente non nota. La `BirthRequest` è legata alla **riga durevole** e al
+contratto che la **catena di emissione** nomina (`birth_producer_issuance`), non
+a un valore scelto qui. Verificato sul dato reale: tutte le buste sono canoniche
+V2 e la misura non cambia.
+
+**Le finzioni emettono la busta produttiva.** `_terminal_envelope` legge dal
+nucleo un solo attributo, quindi una controfigura di tre righe basta: le prove
+costruiscono ora buste canoniche vere, sia per il commit sia per il rifiuto,
+invece di una forma ridotta parallela. Una prova che passa su un formato che il
+prodotto non emette non dimostra il contratto dichiarato.
+
+Commenti del nuovo file di prova tradotti in inglese.
+
+**Venti casi verdi; dato reale invariato**: 12 legami, tutti `epoca_storica`,
+zero non classificati, blocco sul negozio.
+
+Con questo, per dichiarazione di A, il perimetro B è pronto per B1.
+
+**Un difetto di metodo mio, due volte nello stesso giro.** Ho modificato il
+codice due volte con sostituzioni per indice di riga e con espressioni regolari
+generalizzate, e due volte ho corrotto un file che ho poi dovuto riparare o
+ripristinare. Su codice si sostituisce testo esatto, non forme.

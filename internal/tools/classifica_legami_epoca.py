@@ -301,6 +301,7 @@ def legami_del_negozio(negozio: Path, autorita: Autorita,
 
     risultato: list[Legame] = []
     cartelle_viste: set[Path] = set()
+    riferimenti: dict[str, object] = {}
     for ref in inventario.manifests:
         contratto = ref.contract_id.value
         try:
@@ -311,6 +312,7 @@ def legami_del_negozio(negozio: Path, autorita: Autorita,
             bloccanti.append(f"{contratto}: directory non raggiungibile ({exc})")
             continue
         cartelle_viste.add(Path(cartella))
+        riferimenti[contratto] = ref
         if stato_finto is not None:
             # Test seam: a fixture cannot sign whole generations, so it states
             # what the store would authenticate.  Production never reaches
@@ -422,7 +424,7 @@ def legami_del_negozio(negozio: Path, autorita: Autorita,
             bloccanti.append(f"oggetto non-directory nel negozio: {voce.name}")
         elif voce not in cartelle_viste:
             bloccanti.append(f"directory inattesa nel negozio: {voce.name}")
-    return risultato, bloccanti, fuori_ambito
+    return risultato, bloccanti, fuori_ambito, riferimenti
 
 
 DOMINIO_TERMINALE = b"metnos.executor-birth.terminal/v1\0"
@@ -451,6 +453,40 @@ def _verifica_busta_terminale(encoded: bytes, firma: bytes | None,
         chiave.verify(bytes(firma), DOMINIO_TERMINALE + bytes(encoded))
     except Exception:  # noqa: BLE001 - any failure is a refusal
         return "firma della busta terminale non valida"
+    return ""
+
+
+def _decodifica_canonica(documento, grezzo: bytes, riferimenti: dict,
+                         conn) -> str:
+    """Run the productive V2 decoder over the terminal envelope."""
+    from executor_birth_operational import BirthRequest, _decode_terminal_envelope
+
+    contratto = None
+    try:
+        for (valore,) in conn.execute(
+            "select contract_id from birth_producer_issuance where receipt_id = ?",
+            (documento.get("receipt_id"),),
+        ):
+            contratto = valore
+            break
+    except sqlite3.Error:
+        contratto = None
+    if contratto is None:
+        return "nessuna emissione durevole lega questa riga a un contratto"
+    ref = riferimenti.get(str(contratto))
+    if ref is None:
+        return f"il contratto {contratto} non e' nell'inventario autenticato"
+    try:
+        richiesta = BirthRequest(
+            request_id=str(documento.get("request_id") or ""),
+            manifest_ref=ref, producer_receipt=bytes(documento["encoded"]),
+            actor="censimento", reason="classificazione dei legami",
+            approval_refs=(), operation_hint="diagnostica",
+            candidate_source_root=Path("/"),
+        )
+        _decode_terminal_envelope(grezzo, richiesta)
+    except Exception as exc:  # noqa: BLE001
+        return f"busta terminale non canonica V2: {type(exc).__name__}"
     return ""
 
 
@@ -558,9 +594,9 @@ def _pretende_il_contesto(documento, contesto: str) -> bool:
 
 
 def legami_dello_stato(stato_db: Path, autorita: Autorita,
-                       per_gemello: dict[tuple[str, str], Legame],
-                       rifiuti: list[str],
-                       fuori_ambito: list[str]) -> list[Legame]:
+                       per_gemello: dict[tuple[str, str, str], Legame],
+                       rifiuti: list[str], fuori_ambito: list[str],
+                       riferimenti: dict) -> list[Legame]:
     """Producer rows, using BOTH proofs the row actually carries.
 
     A row holds the signed Producer receipt in ``encoded`` and the signature of
@@ -668,6 +704,16 @@ def legami_dello_stato(stato_db: Path, autorita: Autorita,
             motivo = _verifica_busta_terminale(
                 grezzo, documento.get("terminal_auth"), autorita.chiavi_ammissione
             )
+            if motivo:
+                legame.discorde = motivo
+                risultato.append(legame)
+                continue
+            # The product's own canonical V2 decoder, not a second permissive
+            # json.loads: it enforces the schema version, the canonical bytes
+            # and the binding to the request, none of which a lenient parser
+            # notices.  The request is bound to the durable row and to the
+            # contract the durable issuance chain names.
+            motivo = _decodifica_canonica(documento, grezzo, riferimenti, conn)
             if motivo:
                 legame.discorde = motivo
                 risultato.append(legame)
@@ -797,7 +843,7 @@ def classifica(codice: Path, installazione: Path, negozio: Path,
     """``autorita`` and ``stato_finto`` are seams for the tests only."""
     if autorita is None:
         autorita = acquisisci_autorita(codice, installazione)
-    del_negozio, bloccanti, fuori_ambito = legami_del_negozio(
+    del_negozio, bloccanti, fuori_ambito, riferimenti = legami_del_negozio(
         negozio, autorita, stato_finto
     )
     # Identity is the TRIPLE (contract, generation, context), which the epoch
@@ -820,7 +866,7 @@ def classifica(codice: Path, installazione: Path, negozio: Path,
             per_gemello.pop(chiave, None)
     rifiuti: list[str] = []
     dello_stato = legami_dello_stato(
-        stato_db, autorita, per_gemello, rifiuti, fuori_ambito
+        stato_db, autorita, per_gemello, rifiuti, fuori_ambito, riferimenti
     )
     tutti = [_classifica(l) for l in del_negozio + dello_stato]
     return autorita.contesto, tutti, rifiuti, bloccanti, fuori_ambito

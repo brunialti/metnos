@@ -36,7 +36,22 @@ from executor_birth_receipts import (  # noqa: E402
 )
 from executor_birth_identity import ExecutorOrigin, RevisionAuthor  # noqa: E402
 from manifest_inventory import ContractId, ManifestOrigin  # noqa: E402
-from contract_store import encode_binding  # noqa: E402
+from contract_store import PublicationResult, encode_binding  # noqa: E402
+from executor_birth_shadow import (  # noqa: E402
+    BirthOutcome, BirthReport,
+)
+from executor_birth_operational import (  # noqa: E402
+    BirthResult, _terminal_envelope,
+)
+
+
+class _NucleoFinto:
+    """The envelope builder reads one attribute from the core, and one only."""
+
+    __slots__ = ("admission_key_id",)
+
+    def __init__(self, identificativo: str) -> None:
+        self.admission_key_id = identificativo
 
 CTX = "sha256:" + "f" * 64
 ISTANTE = "2026-08-30T12:00:00Z"
@@ -136,7 +151,7 @@ def pubblicazione(negozio: Path, contratto: str, generazioni: list[str],
     return cartella
 
 
-def riga(stato_dir: Path, righe: list[dict]) -> Path:
+def riga(stato_dir: Path, righe: list[dict], contratto: str | None = None) -> Path:
     stato_dir.mkdir(exist_ok=True)
     conn = sqlite3.connect(stato_dir / "producer_receipts.sqlite")
     # The productive columns, not a reduced parallel schema: a fixture missing
@@ -150,7 +165,19 @@ def riga(stato_dir: Path, righe: list[dict]) -> Path:
         "revision_authorship text, expires_at text, result_binding text, "
         "encoded blob, terminal_envelope blob, terminal_auth blob)"
     )
+    # The durable issuance chain is what binds a row to a contract: without it
+    # the productive decoder has no request to bind the envelope to.
+    conn.execute("create table birth_producer_issuance (request_id text, "
+                 "issuer_id text, capability_id text, contract_id text, "
+                 "objective_hash text, candidate_source_id text, "
+                 "receipt_id text, encoded blob)")
     for r in righe:
+        conn.execute(
+            "insert into birth_producer_issuance values (?,?,?,?,?,?,?,?)",
+            (r.get("request_id"), EMITTENTE, "cap", 
+             identita(contratto).value if contratto else None,
+             r.get("objective_hash"), r.get("candidate_source_id"),
+             r.get("receipt_id"), None))
         conn.execute(
             "insert into birth_producer_receipts values "
             "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -166,13 +193,36 @@ def riga(stato_dir: Path, righe: list[dict]) -> Path:
     return stato_dir
 
 
+def busta_rifiuto(chiavi: dict, *, contratto: str, richiesta: str,
+                  codice: str) -> tuple[bytes, bytes]:
+    """A refusal envelope built by the productive builder, like a commit one."""
+    encoded = _terminal_envelope(
+        _NucleoFinto(chiavi["id_amm"]),
+        BirthResult(
+            request_id=richiesta,
+            report=BirthReport(
+                schema_version=1, contract_id=identita(contratto),
+                candidate_id=None, semantic_core_id=None,
+                admission_context_id=None, revision_class=None,
+                changed_dimensions=(), checks=(),
+                outcome=BirthOutcome.REJECTED, error_code=codice,
+            ),
+            publication=None, error_code=codice,
+        ),
+        None,
+    )
+    return encoded, chiavi["priv_amm"].sign(C.DOMINIO_TERMINALE + encoded)
+
+
 def riga_coerente(chiavi: dict, *, byte_produttore: bytes, encoded: bytes,
                   firma: bytes, richiesta: str, stato: str = "committed") -> dict:
     """A durable row whose mandatory columns agree with what is signed."""
     from executor_birth_producer_store import producer_receipt_hash
     from executor_birth_operational import _terminal_binding
+    import json as _json
     return {
         "state": stato, "request_id": richiesta,
+        "receipt_id": _json.loads(byte_produttore)["receipt_id"],
         "receipt_hash": producer_receipt_hash(byte_produttore),
         "issuer_id": EMITTENTE, "objective_hash": "sha256:" + "6" * 64,
         "candidate_source_id": "sha256:" + "7" * 64,
@@ -192,15 +242,33 @@ def busta(chiavi: dict, *, contratto: str, generazione: str,
         chiavi, contratto=contratto, generazione=generazione, contesto=contesto,
         byte_produttore=byte_produttore, richiesta=richiesta,
     )
-    interno = {
-        "schema_version": 1, "request_id": richiesta,
-        "signing_key_id": chiavi["id_amm"],
-        "admission_receipt": base64.b64encode(byte).decode(),
-        "publication": {"contract_id": identita(contratto).value,
-                        "current_generation_id": f"sha256:{generazione}",
-                        "previous_generation_id": f"sha256:{precedente}"},
-    }
-    encoded = json.dumps(interno).encode()
+    # The productive builder, not a reduced parallel form: the classifier now
+    # consumes the canonical V2 envelope through the product's own decoder, so
+    # a fixture that emitted anything else would prove nothing.  The builder
+    # reads exactly one attribute from the core, which is why a stand-in works.
+    encoded = _terminal_envelope(
+        _NucleoFinto(chiavi["id_amm"]),
+        BirthResult(
+            request_id=richiesta,
+            report=BirthReport(
+                schema_version=1, contract_id=identita(contratto),
+                candidate_id="sha256:" + "1" * 64,
+                semantic_core_id="sha256:" + "2" * 64,
+                admission_context_id=contesto,
+                revision_class=RevisionClass.CODE_REVISION,
+                changed_dimensions=(), checks=(),
+                outcome=BirthOutcome.ADMITTED, error_code=None,
+            ),
+            publication=PublicationResult(
+                contract_id=identita(contratto),
+                previous_generation_id=f"sha256:{precedente}",
+                current_generation_id=f"sha256:{generazione}",
+                operation="commit_birth_snapshot", repeated=False,
+            ),
+            error_code=None,
+        ),
+        byte,
+    )
     firma = chiavi["priv_amm"].sign(C.DOMINIO_TERMINALE + encoded)
     return encoded, firma
 
@@ -284,7 +352,7 @@ def _(base: Path) -> list[str]:
 def _(base: Path) -> list[str]:
     aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
-    # la ricevuta firma 'bbb' ma viene riposta sotto il nome 'aaa'
+    # the receipt signs one generation but is filed under another
     pubblicazione(negozio, "qua", [gen("a"), gen("b")], gen("b"),
                   {gen("a"): ammissione(k, contratto="qua", generazione=gen("b"))})
     STATO = stato_di(("qua", "corrente", gen("b")))
@@ -309,8 +377,8 @@ def _(base: Path) -> list[str]:
                            precedente=gen("b"), byte_produttore=buoni)
     r = riga_coerente(k, byte_produttore=buoni, encoded=encoded, firma=firma,
                       richiesta="sha256:" + "3" * 64)
-    r["encoded"] = bytes(prod)          # solo la firma Producer e' guastata
-    stato = riga(base / "stato", [r])
+    r["encoded"] = bytes(prod)          # only the Producer signature is broken
+    stato = riga(base / "stato", [r], 'cin')
     STATO = stato_di(("cin", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []
@@ -333,13 +401,14 @@ def _(base: Path) -> list[str]:
                            byte_produttore=buoni)
     stato = riga(base / "stato", [riga_coerente(
         k, byte_produttore=buoni, encoded=encoded, firma=firma,
-        richiesta="sha256:" + "b" * 64)])   # la riga nomina un'altra richiesta
+        richiesta="sha256:" + "b" * 64)], "sei")   # the row names a different request
     STATO = stato_di(("sei", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []
     if e["conteggio"].get(C.IGNOTA) != 1:
         errori.append(f"la richiesta discorde non ha bloccato: {e['conteggio']}")
-    if "richiesta discorde" not in e["motivi"]:
+    if "richiesta discorde" not in e["motivi"] and \
+            "non canonica V2" not in e["motivi"]:
         errori.append(f"motivo inatteso: {e['motivi']}")
     return errori
 
@@ -356,7 +425,7 @@ def _(base: Path) -> list[str]:
     guasta = bytearray(firma); guasta[-1] ^= 0xFF
     stato = riga(base / "stato", [riga_coerente(
         k, byte_produttore=buoni, encoded=encoded, firma=bytes(guasta),
-        richiesta="sha256:" + "3" * 64)])
+        richiesta="sha256:" + "3" * 64)], "set")
     STATO = stato_di(("set", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []
@@ -373,13 +442,13 @@ def _(base: Path) -> list[str]:
     negozio = base / "negozio"; negozio.mkdir()
     pubblicazione(negozio, "ott", [gen("a"), gen("b")], gen("b"),
                   {gen("a"): ammissione(k, contratto="ott", generazione=gen("a"))})
-    # la busta porta un contratto che nel negozio non ha quella ricevuta
+    # the envelope names a contract the store has no such receipt for
     buoni = produttore(k)
     encoded, firma = busta(k, contratto="estraneo", generazione=gen("e"),
                            precedente=gen("f"), byte_produttore=buoni)
     stato = riga(base / "stato", [riga_coerente(
         k, byte_produttore=buoni, encoded=encoded, firma=firma,
-        richiesta="sha256:" + "3" * 64)])
+        richiesta="sha256:" + "3" * 64)], "ott")
     STATO = stato_di(("ott", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []
@@ -396,7 +465,7 @@ def _(base: Path) -> list[str]:
     negozio = base / "negozio"; negozio.mkdir()
     pubblicazione(negozio, "nov", [gen("a"), gen("b")], gen("b"),
                   {gen("a"): ammissione(k, contratto="nov", generazione=gen("a"))})
-    # una pubblicazione interrotta: nessun binding, nessuna ricevuta
+    # an interrupted publication: no binding, no receipts
     orfana = negozio / "orfana"; (orfana / "generations").mkdir(parents=True)
     STATO = stato_di(("nov", "corrente", gen("b")))
     e = esegui(negozio, base / "stato", aut, STATO)
@@ -427,8 +496,8 @@ def _(base: Path) -> list[str]:
     aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
     cartella = pubblicazione(negozio, "vdue", [gen("a"), gen("b")], gen("b"), {})
-    # la stessa forma dichiarata dal protocollo:
-    # admission-receipts-v2/<generazione>/<contesto>.json
+    # the exact shape the protocol declares:
+    # admission-receipts-v2/<generation>/<context>.json
     v2 = cartella / "admission-receipts-v2" / gen("a")
     v2.mkdir(parents=True)
     (v2 / f"{CTX.removeprefix('sha256:')}.json").write_bytes(
@@ -447,7 +516,7 @@ def _(base: Path) -> list[str]:
     aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
     cartella = pubblicazione(negozio, "vtre", [gen("a"), gen("b")], gen("b"), {})
-    # riposta sotto un contesto diverso da quello che la ricevuta firma
+    # filed under a context other than the one the receipt signs
     v2 = cartella / "admission-receipts-v2" / gen("a")
     v2.mkdir(parents=True)
     (v2 / f"{'b' * 64}.json").write_bytes(
@@ -470,8 +539,8 @@ def _(base: Path) -> list[str]:
     cartella = pubblicazione(negozio, "vqua", [gen("a"), gen("b")], gen("b"),
                              {gen("a"): ammissione(k, contratto="vqua",
                                                    generazione=gen("a"))})
-    # il V2 appartiene a un contesto diverso: e' un atto distinto, e questo
-    # censimento, legato al proprio insieme, non lo raccoglie
+    # the V2 belongs to a different context: a distinct act, which this
+    # census, bound to its own set, does not collect
     altro = "sha256:" + "c" * 64
     v2 = cartella / "admission-receipts-v2" / gen("a")
     v2.mkdir(parents=True)
@@ -481,8 +550,8 @@ def _(base: Path) -> list[str]:
     STATO = stato_di(("vqua", "corrente", gen("b")))
     e = esegui(negozio, base / "stato", aut, STATO)
     errori = []
-    # solo la V1 di questo contesto e' un legame nostro; la V2 di un altro
-    # contesto e' un atto distinto e resta fuori
+    # only the V1 of this context is ours; the V2 of another context is a
+    # distinct act and stays out
     if e["conteggio"].get(C.STORICA) != 1:
         errori.append(f"classi inattese: {e['conteggio']}")
     if e["conteggio"].get(C.IGNOTA):
@@ -538,8 +607,8 @@ def _(base: Path) -> list[str]:
             candidate_source_id="sha256:" + "7" * 64,
             issued_at=ISTANTE, expires_at=SCADENZA, nonce=nonce,
             key_id=k["id_pro"], private_key=k["priv_pro"])
-    # due produttori DAVVERO diversi: il costruttore e' deterministico, e con
-    # lo stesso nonce le due ricevute sarebbero byte identiche
+    # two genuinely different producers: the builder is deterministic, so the
+    # same nonce would make the two receipts byte-identical
     X, Y = prod("a" * 32), prod("b" * 32)
     ric = "sha256:" + "3" * 64
     nel_negozio = ammissione(k, contratto="bad", generazione=gen("a"),
@@ -552,7 +621,7 @@ def _(base: Path) -> list[str]:
                            precedente=gen("b"), richiesta=ric,
                            ammissione_byte=altra)
     stato = riga(base / "stato", [riga_coerente(
-        k, byte_produttore=X, encoded=encoded, firma=firma, richiesta=ric)])
+        k, byte_produttore=X, encoded=encoded, firma=firma, richiesta=ric)], "bad")
     e = esegui(negozio, stato, aut, stato_di(("bad", "corrente", gen("b"))))
     return ([] if e["conteggio"].get(C.IGNOTA) == 1
             else [f"i byte diversi non hanno bloccato: {e['conteggio']}"])
@@ -563,17 +632,16 @@ def _(base: Path) -> list[str]:
     aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
     ric = "sha256:" + "3" * 64
-    interno = {"schema_version": 1, "request_id": ric,
-               "signing_key_id": k["id_amm"], "admission_receipt": None,
-               "error_code": "codice_busta"}
-    encoded = json.dumps(interno).encode()
-    firma = k["priv_amm"].sign(C.DOMINIO_TERMINALE + encoded)
+    encoded, firma = busta_rifiuto(k, contratto="rif",
+                                   richiesta=ric, codice="codice_busta")
     buoni = produttore(k)
     r = riga_coerente(k, byte_produttore=buoni, encoded=encoded, firma=firma,
                       richiesta=ric, stato="rejected")
-    r["rejection_code"] = "codice_riga"      # discorde da quello firmato
+    r["rejection_code"] = "codice_riga"      # differs from the signed one
     r["result_binding"] = None
-    e = esegui(negozio, riga(base / "stato", [r]), aut, {})
+    pubblicazione(negozio, "rif", [gen("a")], gen("a"), {})
+    e = esegui(negozio, riga(base / "stato", [r], "rif"), aut,
+               stato_di(("rif", "corrente", gen("a"))))
     return ([] if e["conteggio"].get(C.IGNOTA) == 1
             else [f"due codici diversi accettati come un rifiuto: {e['conteggio']}"])
 
@@ -583,16 +651,15 @@ def _(base: Path) -> list[str]:
     aut, k = autorita_finta()
     negozio = base / "negozio"; negozio.mkdir()
     ric = "sha256:" + "3" * 64
-    interno = {"schema_version": 1, "request_id": ric,
-               "signing_key_id": k["id_amm"], "admission_receipt": None,
-               "error_code": "property_runner_unavailable"}
-    encoded = json.dumps(interno).encode()
-    firma = k["priv_amm"].sign(C.DOMINIO_TERMINALE + encoded)
+    encoded, firma = busta_rifiuto(k, contratto="coe",
+                                   richiesta=ric, codice="property_runner_unavailable")
     r = riga_coerente(k, byte_produttore=produttore(k), encoded=encoded,
                       firma=firma, richiesta=ric, stato="rejected")
     r["rejection_code"] = "property_runner_unavailable"
-    r["result_binding"] = None               # come impone il Producer store
-    e = esegui(negozio, riga(base / "stato", [r]), aut, {})
+    r["result_binding"] = None               # as the Producer store requires
+    pubblicazione(negozio, "coe", [gen("a")], gen("a"), {})
+    e = esegui(negozio, riga(base / "stato", [r], "coe"), aut,
+               stato_di(("coe", "corrente", gen("a"))))
     errori = []
     if e["conteggio"].get(C.IGNOTA):
         errori.append(f"un rifiuto coerente e' stato dichiarato ignoto: {e['motivi']}")
