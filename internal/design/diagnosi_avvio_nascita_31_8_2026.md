@@ -20,8 +20,13 @@ diceva: è lo stesso bit di permesso del primo, applicato ai **file** invece che
 alla directory. Il terzo non era noto e non è un permesso: **l'insieme preparato
 descrive una distribuzione vecchia di un commit**, e il provisioner non ha alcun
 percorso previsto per rifarlo. Rimossi tutti e tre, il cancello d'avvio arriva
-in fondo in 0,9 secondi: **nessun quarto ostacolo nel bootstrap isolato; server
-HTTP e turno reale non ancora provati** (misura C1, ancora aperta e bloccante).
+in fondo in 0,9 secondi, e **il server intero parte e serve un turno reale**
+(O17): nessun quarto ostacolo.
+
+**C1 è ora chiusa** (O17): con i tre ostacoli rimossi, il server HTTP intero
+parte in copia e serve due turni reali su domini diversi, e l'autorità di
+nascita si attiva davvero invece di essere tollerata. Resta che **il terzo
+ostacolo, in produzione, non ha un rimedio ammesso**.
 
 **Che cosa questo documento NON autorizza.** Né una correzione in produzione né
 la ricostruzione manuale della radice di nascita: il §5 spiega perché la scelta
@@ -438,6 +443,62 @@ non coincide con quella dell'autorizzazione, e
 `executor_birth_reattestation.py:231,334` fa lo stesso alla riattestazione di
 una generazione corrente.
 
+### O17 — C1: il server intero parte e serve un turno reale (in copia)
+
+Questa è la misura che mancava dal primo giorno, e che il documento ha sempre
+dichiarato aperta: le suite verdi non dicono che il servizio parte, e la
+differenza fra «il codice è corretto» e «il servizio parte» è costata dieci
+minuti di interruzione il 31 agosto.
+
+**Apparato**, tutto in copia: la distribuzione è la replica dell'albero fuso,
+riallineata con `rsync --delete` e con le due correzioni di permesso applicate;
+le radici utente sono separate, quindi il server scrive stato, configurazione e
+chiave amministrativa **dentro lo scratch**; la porta è scelta libera dal kernel
+e non può essere la 8770 della produzione; il server è avviato, atteso e chiuso
+con `ProcessoControllato`, così scende tutto il gruppo — e qui conta più che
+altrove, perché un server HTTP genera figli. Strumento versionato:
+`internal/tools/prova_c1_server_turno.py`.
+
+L'insieme di nascita della replica è stato ricostruito dalla sua stessa
+distribuzione, così il terzo ostacolo non si presenta: **la sonda a tre cancelli
+esce `0`.**
+
+**Esito, due turni su due domini diversi:**
+
+| | primo turno | secondo turno |
+|---|---|---|
+| richiesta | «che ore sono» | «elenca i file python nella cartella …/internal/tools» |
+| pronto dopo | 1,0 s | 1,3 s |
+| codice HTTP | 200 | 200 |
+| esito del motore | `answer` | `answer` |
+| passi | `get_now` ok | `find_files` ok |
+| risposta | «Sono le 18:12.» | la tabella dei file, corretta |
+| chiusura | TERM, nessuna escalation, **zero superstiti** | idem |
+
+**L'autorità di nascita si è attivata davvero, non è stata tollerata.** Due
+riscontri indipendenti: nell'uscita del server il messaggio di tolleranza
+(«not provisioned yet / continuing without the sealed authority») compare
+**zero volte**; e nello stato isolato compare `state/birth/` con
+`producer_receipts.sqlite` e `approvals.sqlite`, che `_build_sealed` crea
+**dopo** che `load_sealed_authorities_v1()` è riuscita. Se l'attivazione fosse
+stata saltata, quella cartella non esisterebbe.
+
+> **Un falso verde còlto mentre lo scrivevo, e vale la pena registrarlo.** La
+> prima versione della prova dichiarava C1 verde su un `200`. Il turno però
+> rispondeva «Il catalogo degli executor è vuoto; nessuna operazione può essere
+> pianificata»: l'istanza isolata non aveva il negozio dei contratti. Codice
+> HTTP giusto, turno fallito. Ora la prova rifiuta anche un `final_kind`
+> uguale a `error` e un messaggio vuoto, e le radici isolate vengono seminate
+> con una **copia** del catalogo dei contratti e del dizionario i18n. È
+> esattamente la lezione del documento applicata al documento stesso: un esito
+> tecnico non è un esito.
+
+**Che cosa questo prova, e che cosa no.** Prova che il codice fuso, con i tre
+ostacoli rimossi, avvia il server intero e serve turni reali su due domini.
+**Non** prova che la produzione possa essere aggiornata: il terzo ostacolo lì
+resta, e non ha un rimedio ammesso (§5). C1 era la condizione necessaria che
+mancava, non quella sufficiente.
+
 ---
 
 ## 3. (b) Che cosa ho INFERITO — dichiarato come inferenza
@@ -486,11 +547,13 @@ scoperto 22 tabelle che la prima dichiarava implicitamente pulite.
 Quello che resta vero è soltanto il pezzo misurato in O10: l'identità d'autore
 non si perde, perché viene riderivata da `~/.config/metnos/keys`.
 
-**I6. Non c'è un quarto ostacolo NEL BOOTSTRAP ISOLATO.** *Confidenza: media*
-— O6 e O12 lo provano per `require_birth_runtime_before_workers()` in un
-processo isolato, **non** provano che il server HTTP intero parta, né che un
-turno funzioni. La misura C1 resta aperta e **bloccante**; la sintesi al §0 è
-stata riscritta per non promuovere questa inferenza a fatto.
+**I6. ~~Non c'è un quarto ostacolo NEL BOOTSTRAP ISOLATO.~~ Ora è una misura,
+non un'inferenza.** O6 e O12 la provavano solo per
+`require_birth_runtime_before_workers()` in un processo isolato, e la
+qualificavo *confidenza media* proprio per questo. **O17 chiude C1**: il server
+HTTP intero parte e serve due turni reali, e l'attivazione dell'autorità di
+nascita è verificata da due riscontri indipendenti. Non resta un'inferenza da
+credere.
 
 ---
 
@@ -503,7 +566,7 @@ Stato delle quattro misure smentitrici:
 
 | # | inferenza | misura | stato |
 |---|---|---|---|
-| C1 | I6 «nessun quarto ostacolo» | avviare il **server HTTP completo** dalla replica su una porta libera e chiedere un turno reale | **APERTA — BLOCCANTE** |
+| C1 | I6 «nessun quarto ostacolo» | avviare il **server HTTP completo** dalla replica su una porta libera e chiedere un turno reale | **CHIUSA** → O17, due turni verdi, nascita attivata |
 | C2 | I3 «il `chmod` è fragile» | in un worktree git usa-e-getta con `umask 0002`, misurare separatamente checkout, cambio di ramo, merge e riscrittura in posto | **CHIUSA** → O14, I3 confermata e ristretta ai gesti provati; l'equivalenza con `sign.py` è **ritirata** (O16) |
 | C3 | I5 «rifare l'insieme costa poco» | censimento semanticamente univoco e fail-closed su file e archivi SQLite, con identificativi acquisiti dalla radice e prove proprie | **CHIUSA (2ª volta)** → O15 rigenerata, copertura completa, **I5 smentita** |
 | C4 | I4 «non esiste percorso di ri-preparazione» | leggere le sezioni normative del gruppo 2 | **CHIUSA** → vedi sotto, e cambia il §5 |
@@ -1004,27 +1067,54 @@ Ciò che serve è progettare la **transizione append-only a nuova epoca** (§5,
 5 e 6. Se stai leggendo questo documento cercando il comando che sblocca la
 produzione: **non c'è, e il fatto che non ci sia è il risultato del lavoro.**
 
-### Passo 5 — La misura C1, l'unica che si può ancora fare in copia
+### Passo 5 — C1, eseguita: il server intero, in copia
 
-C1 è aperta e bloccante: O6 e O12 provano che
-`require_birth_runtime_before_workers()` completa in un processo isolato, non
-che il server HTTP parta né che un turno funzioni.
+Non è più una descrizione di ciò che servirebbe: è uno strumento versionato con
+l'uscita osservata (O17).
 
-Si esegue **interamente sulla replica**, mai in produzione, e richiede:
+```bash
+/opt/metnos/.venv/bin/python /tmp/metnos-rm0008-g6/internal/tools/prova_c1_server_turno.py \
+  --replica "$S/replica" --radici "$S/c1radici" \
+  --query "che ore sono"
+```
 
-- una porta libera scelta e verificata (`ss -ltn` prima di legarla), mai la
-  8770 della produzione;
-- radici utente separate (`METNOS_USER_CONFIG/STATE/DATA` dentro lo scratch),
-  così il server di prova non tocca lo stato vivo;
-- il server avviato e chiuso con `ProcessoControllato` (regola 5), così che
-  alla fine muoia l'intero gruppo e non il solo capogruppo: un server HTTP
-  genera figli, ed è esattamente il caso che la vecchia procedura sbagliava;
-- un turno reale su `/agent/turn` con il corpo minimo del dominio toccato, e
-  l'esito letto dal codice HTTP oltre che dal testo.
+`--radici` è una directory che contiene `cfg/`, `state/` e `data/` **isolate**.
+Prima di eseguirla vanno seminate, in **copia**, con le due cose senza cui il
+motore non ha nulla da pianificare:
 
-Non scrivo qui il blocco completo perché non l'ho eseguito: scriverlo come se
-fosse provato sarebbe esattamente l'errore che questo documento esiste per non
-ripetere. Chi esegue C1 lo scrive e lo lascia qui, con l'uscita osservata.
+```bash
+cp -a ~/.local/state/metnos/contract-publications "$S/c1radici/state/"
+cp -a ~/.local/share/metnos/i18n.sqlite            "$S/c1radici/data/"
+```
+
+Lo strumento sceglie da sé una porta libera, **rifiuta la 8770**, avvia il
+server con `ProcessoControllato` e lo chiude col suo intero gruppo. Un codice
+d'uscita per esito:
+
+```
+0 verde   2 il server non e' diventato pronto   4 processi sopravvissuti
+1 la prova non ha potuto girare                 3 il turno non e' riuscito
+```
+
+Uscita osservata:
+
+```
+porta         : 56629  (produzione 8770 esclusa)
+pronto dopo 1.0s -> {"ok": true, "version": "1.1", ...}
+== TURNO REALE ==
+  richiesta : 'che ore sono'
+  codice    : 200  in 2.5s
+  esito     : answer
+  passi     : [{'step': 1, 'tool': 'get_now', 'ok': True, 'error_class': None}]
+  risposta  : Sono le 18:12.
+chiusura: term=True kill=False codice=-15 superstiti=[]
+C1 VERDE
+```
+
+**Un `200` non basta, e lo strumento lo sa.** La prima esecuzione dichiarava
+verde un turno che rispondeva «Il catalogo degli executor è vuoto»: codice
+giusto, turno fallito. Ora un `final_kind` uguale a `error` e un messaggio vuoto
+sono entrambi fallimenti.
 
 ### Passo 6 — NON AUTORIZZATO
 
@@ -2340,3 +2430,61 @@ Nota per l'autorità di revisione: in questo giro l'autorizzazione a toccare la
 produzione non è stata usata, perché non serviva. Entrambe le correzioni vivono
 in `internal/tools/` e nessuna di esse implica un cambiamento al prodotto. Le
 due riserve qui sopra non sono bloccate dal permesso, ma dalla misura.
+
+---
+
+# C1 ESEGUITA — la prima riserva è caduta
+
+31 agosto, sera. Roberto, autorità di revisione, ha autorizzato il seguito e ha
+scelto **«solo C1, in copia»**; ha poi autorizzato il `chmod` in produzione
+«se serve e quando serve».
+
+## Che cosa è stato fatto
+
+C1, per intero, in copia. L'esito è **O17**, la procedura eseguibile è il
+**passo 5**, e lo strumento è `internal/tools/prova_c1_server_turno.py`.
+
+Il server intero, costruito dall'albero fuso, parte in circa un secondo e serve
+due turni reali su domini diversi — `get_now` e `find_files` — con
+`final_kind: answer`, chiudendo il proprio gruppo senza lasciare nulla. E
+l'autorità di nascita **si attiva davvero**: il messaggio di tolleranza non
+compare mai, e lo stato durevole di nascita viene creato, cosa che accade solo
+dopo che la lettura sigillata è riuscita.
+
+Nel farlo la prova ha còlto un falso verde **suo**: dichiarava C1 riuscita su un
+`200` mentre il motore rispondeva che il catalogo degli executor era vuoto. È
+la stessa lezione che questo documento ripete da quattro giri — un esito tecnico
+non è un esito — applicata questa volta allo strumento che la enunciava.
+
+## Il `chmod` in produzione: autorizzato, non ancora necessario
+
+L'autorizzazione c'è. Non l'ho usata, e la ragione è una misura, non una
+cautela.
+
+Applicare oggi `chmod g-w` e `644` a `/opt/metnos` **non sbloccherebbe nulla**:
+la produzione gira su `14ea7179`, il cui cancello d'avvio non legge mai la
+radice di nascita (O1), quindi per il servizio in funzione quei permessi sono
+inerti. Servirebbero soltanto al codice fuso — che però in produzione resta
+fermo sul terzo ostacolo, che non ha un rimedio ammesso (§5). E O14 misura che
+il `chmod` **si disfa da solo** alla prima operazione git che materializzi byte
+diversi, cioè alla prossima installazione di codice.
+
+Farlo ora significherebbe quindi introdurre una modifica che non abilita niente
+e che sparisce senza avvisare. «Quando serve» è il momento in cui il codice
+fuso entra davvero, e quel momento è ancora bloccato a monte.
+
+Il rimedio durevole resta quello del §5: l'installazione posa la distribuzione
+non scrivibile dal gruppo, con una guardia che lo tiene. È una modifica al
+prodotto e va proposta, non fatta di iniziativa.
+
+## Stato delle riserve
+
+1. ~~**C1 aperta e bloccante**~~ — **chiusa**, O17.
+2. **Il rimedio al terzo ostacolo non esiste.** Invariato, ed è ora l'unica cosa
+   che separa la linea RM-0008 dalla produzione: serve progettare la transizione
+   append-only a nuova epoca, con proprietario normativo, condizione d'ingresso
+   dichiarata, regola per le 12 dipendenze vive di O15 e autorità che la
+   concede.
+
+Produzione, servizi, permessi e radice di nascita: invariati anche in questo
+tratto.
