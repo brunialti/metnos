@@ -245,7 +245,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_operational.py': ('2cfcfb505b28f27e05fea659d734a25dab31f9ae18067b0b41e37ec926a68cf7', (('comparison', 9), ('helper-argument', 2))),
     'executor_birth_ownership_authorities.py': ('f10d7e61d1814547e9d0e834b1b4a2376df0c3f908af824bed014276aeb6135b', (('comparison', 5), ('helper-argument', 1))),
     'executor_birth_ownership_chain.py': ('4078192d823041fef0a90dbbe8d7ed5f2b534e5c514ca879dee4455f4071df70', (('comparison', 10), ('helper-argument', 2))),
-    'executor_birth_ownership_coordinator.py': ('0895e0eb4b9c2673a801df162df8c450bf9c3ad15ee0592993ed39023e67eeb7', (('comparison', 11), ('helper-argument', 1))),
+    'executor_birth_ownership_coordinator.py': ('575d94ac32e6b568c32ff2ec839a30152279211844864e73be84ec538a9040b2', (('comparison', 11), ('helper-argument', 1))),
     'executor_birth_ownership_cutover.py': ('ea44fec10358acc6b6e221e222a0293047d60a5532a36ba5b757b26f6b4891a8', (('comparison', 8), ('helper-argument', 1))),
     'executor_birth_ownership_preflight.py': ('b83755c189489215c0ec3778a00852c850830c24f3889f588a5182969f5bd2d2', (('comparison', 1), ('helper-argument', 1))),
     'executor_birth_postcondition.py': ('bf51bc292082ab283b96151a28229d002f0c0342b332c0240fba5f6832c19c89', (('comparison', 1),)),
