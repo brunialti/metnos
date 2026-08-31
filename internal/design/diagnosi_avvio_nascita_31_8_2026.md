@@ -268,16 +268,35 @@ troncatura.
 `publish_executor()` (`runtime/sign.py:500-546`) firma in memoria e pubblica nel
 negozio dei contratti: non riscrive affatto il file.
 
-Misura sul percorso reale, `umask 0002`:
+Misura versionata e ripetibile: `internal/tools/prova_modi_sign.py`. La
+tabella è la sua uscita, con `umask 0002` reso esplicito nella prova.
 
-| chiamata | modo dopo |
+| chiamata (parametri per esteso) | modo dopo |
 |---|---|
-| esistente `664`, `preserve_existing_mode=True` | `664` |
+| esistente `664`, `preserve_existing_mode=True` (difetto) | `664` |
 | esistente `644`, `new_mode=` modo osservato (come `sign_executor`) | `644` |
-| esistente `664`, `new_mode=0600` imposto | `600` |
+| esistente `664`, `new_mode=0600` **senza** `preserve_existing_mode=False` | **`664`** |
+| esistente `664`, `new_mode=0600`, `preserve_existing_mode=False` | `600` |
 | file **nuovo**, `new_mode=0644` | `644` |
 | file **nuovo**, modo di difetto | **`600`** |
-| (confronto) `open(path,'w')` su esistente `644` | `644` |
+
+> **Correzione (GIRO CODEX 3, P2-C17).** La prima stesura di questa tabella
+> aveva una riga «esistente `664`, `new_mode=0600` imposto → `600`» che ometteva
+> il parametro decisivo. Col difetto `preserve_existing_mode=True` il modo
+> esistente **vince** e `new_mode` viene ignorato: sono due righe diverse, e ora
+> ci sono entrambe.
+
+**Che cosa la prova esegue e che cosa legge.** `_atomic_replace_bytes` decide il
+modo, e viene **eseguita**. I due ingressi pubblici sono verificati sul loro
+sorgente (AST) invece che eseguiti, ed è un limite dichiarato, non una
+dimenticanza: `sign_executor` passa da `deny_legacy_signing_api` e prende il
+lock di ammissione del catalogo, `publish_executor` richiede il negozio dei
+contratti e le chiavi reali. Eseguirli toccherebbe stato vivo, che è
+esattamente ciò che questa diagnosi vieta. Quello che si può asserire senza
+eseguirli è ciò che serve alla tesi: **quale politica di modo passa il percorso
+authoring**, e **che il percorso solo-negozio non scrive affatto il file**. La
+prova fallisce se una delle due cambia — verificato togliendo `new_mode` dal
+percorso authoring in una copia.
 
 Un file nuovo creato da `sign.py` nasce quindi `0600`, non `664`: il difetto
 della funzione è restrittivo, non permissivo — l'opposto di quello che accade
@@ -292,12 +311,14 @@ git restano validi; l'equivalenza con `sign.py` è **ritirata**.
 
 ### O15 — Che cosa nomina l'insieme corrente fuori dalla radice (misura C3)
 
-> **Questa osservazione è stata rigenerata dopo il GIRO CODEX 2 (P1-C10).** La
-> prima versione dichiarava «15 legami» ed era un artefatto: contava riscontri
-> di sottostringa invece di record, ne troncava cinque per database per via di
-> un limite di stampa, cercava due superfici dello stesso digest e rileggeva
-> come testo i database già interrogati. Lo strumento è stato riscritto e ha
-> prove proprie; i numeri qui sotto vengono dalla versione nuova.
+> **Rigenerata due volte.** Dopo il GIRO CODEX 2 (P1-C10), perché «15 legami»
+> era un artefatto: riscontri di sottostringa invece di record, cinque per
+> database per via di un limite di stampa, due superfici dello stesso digest
+> cercate separatamente, database riletti come testo. Dopo il GIRO CODEX 3
+> (P1-C14 e P1-C16), perché lo strumento esaminava ancora due volte lo stesso
+> oggetto quando due radici si sovrapponevano, e perché impiegava più di cinque
+> minuti, il che lo rendeva inutilizzabile in una procedura. I numeri qui sotto
+> vengono dalla terza versione, con la misura di costo accanto.
 
 Misura riproducibile in `internal/tools/censimento_legami_nascita.py`, con prove
 in `internal/tools/prova_censimento_legami.py`. Proprietà che la rendono una
@@ -310,8 +331,12 @@ misura e non un conteggio:
 - **un record per locazione che porta il fatto** — un file è un record, una riga
   di database è un record, quale che sia il numero di colonne o di superfici
   coinvolte; niente dipende da quanto lo strumento decide di stampare;
-- **nessun oggetto esaminato due volte** — un database interrogato per colonna
-  non viene poi riletto come blocco di byte;
+- **nessun oggetto esaminato due volte** — le radici del perimetro sono risolte
+  e collassate quando duplicate o annidate, l'attraversamento è **uno solo**, e
+  ogni file è chiavato per `(st_dev, st_ino)`: un percorso raggiungibile due
+  volte, un collegamento fisico o una radice ripetuta valgono un oggetto. Un
+  database interrogato per colonna non viene poi riletto come blocco di byte.
+  Sul perimetro reale questo deduplica **8362 oggetti**;
 - **fail-closed** — ogni radice, database, tabella o file del perimetro che non
   si riesce a leggere viene registrato come non esaminato, la misura si dichiara
   **incompleta** e il processo esce `2`. Un errore non è mai un riscontro, e una
@@ -319,7 +344,18 @@ misura e non un conteggio:
 
 Identificativi acquisiti dalla radice, mai copiati a mano. Perimetro:
 `~/.local/state/metnos`, `~/.local/share/metnos`, `~/.config/metnos`,
-`/opt/metnos`. File letti: **69 709**. Copertura: **completa** (uscita `0`).
+`/opt/metnos`.
+
+| misura | valore |
+|---|---|
+| impronta dello strumento | `sha256:f0bd245fc5cbac63` |
+| tempo trascorso | **32,4 s** (tetto dichiarato: 60 s) |
+| memoria di picco | 160 MB |
+| file esaminati | 61 595 |
+| byte esaminati | 25,2 GiB |
+| oggetti deduplicati | 8 362 |
+| soglia del prefiltro | 32 cifre esadecimali (derivata dagli identificativi) |
+| copertura | **completa**, uscita `0` |
 
 **Esito: 15 record semantici univoci** — 9 file e 6 righe SQLite:
 
@@ -339,6 +375,26 @@ contesto, quindi sono un fatto sotto dodici rappresentazioni).
 > file archiviati — mentre il nuovo è `9 + 6`. Stesso numero, composizione
 > completamente diversa: era giusto per caso, ed è esattamente il motivo per cui
 > un totale non è una misura finché non si sa di che cosa è il totale.
+
+**Perché ora ci sta in mezzo minuto, senza escludere nulla.** Il costo è stato
+misurato invece che indovinato. L'enumerazione costa 0,2 s; leggere 26,5 GiB a
+1833 MB/s ne costerebbe 15. Il tempo se ne andava altrove: i binari Rust di
+debug sotto `client-rs/target/` — 108 MB l'uno — costavano **1,4 s ciascuno**,
+perché i loro nomi di simbolo sono pieni di hash esadecimali da 16 cifre, che
+bucavano il prefiltro e mandavano ogni blocco candidato in una decodifica UTF-8
+più una regex Python. Due correzioni, entrambe misurate sullo stesso file:
+
+| via | velocità |
+|---|---|
+| soglia fissa 16 + decodifica + regex (prima) | 79 MB/s |
+| soglia 32 (minimo reale) + decodifica | 240 MB/s |
+| soglia 32 + `bytes.find` (memmem in C) | **1615 MB/s** |
+
+Nessuna esclusione è stata introdotta per guadagnare velocità: la copertura è
+identica, il filtro decide soltanto **dove** deve girare la ricerca esatta. Il
+prefiltro è una condizione necessaria dimostrata — un identificativo è una corsa
+di cifre esadecimali lunga almeno quanto il più corto di essi — e la soglia è
+derivata dagli identificativi, non fissata.
 
 **La riscrittura ha trovato una lacuna vera che la prima versione nascondeva.**
 Alla prima esecuzione fail-closed sono comparse **22 tabelle non esaminate**
@@ -720,11 +776,24 @@ per tutte invece che ricordato a mente — e non svende nulla.
    **tutto il gruppo posseduto**, non il solo capogruppo. Il residuo è
    dichiarato nel docstring invece di essere nascosto.
 
-   Prove: `internal/tools/prova_controllore_processo.py` — uscita spontanea
-   senza segnali, terminazione ordinaria senza escalation, escalation contro un
-   processo che ignora TERM, rifiuto di segnalare quando l'identità non
-   corrisponde più, nipote che sopravvive al padre, e un processo estraneo che
-   non viene toccato.
+   Tre cose che il GIRO CODEX 3 ha dovuto correggere, e che vanno sapute:
+   `attendi()` **osserva senza raccogliere** — la prima versione raccoglieva
+   lì, liberando il numero proprio prima che `chiudi()` lo segnalasse, cioè
+   annullando la garanzia che dichiarava; il ramo con il capogruppo già uscito
+   **segnala, attende e ricensisce**, perché prima restituiva l'elenco letto
+   *prima* del segnale e quindi `Esito` descriveva lo stato di partenza; e
+   `__exit__` **non inghiotte** un errore di pulizia, perché una chiusura
+   rifiutata è esattamente il caso in cui un processo può essere rimasto vivo.
+
+   Prove: `internal/tools/prova_controllore_processo.py`, dieci casi più il
+   controllo finale che non resti alcun membro dei gruppi creati — uscita
+   spontanea senza segnali, terminazione ordinaria senza escalation, escalation
+   contro un processo che ignora TERM, rifiuto di segnalare quando l'identità
+   non corrisponde più, **capogruppo che termina davvero lasciando un figlio
+   vivo**, **`attendi()` seguito da `chiudi()` con il numero ancora riservato
+   fra le due**, **errore di chiusura che esce dal blocco `with`**, errore del
+   corpo che non viene sostituito da quello di pulizia, e un processo estraneo
+   che non viene toccato.
 
    La scansione `PPID=1` del §10.8 di CLAUDE.md resta come **rete di sicurezza a
    fine sessione**, non come modo di chiudere ciò che hai avviato: ciò che trova
@@ -1890,3 +1959,189 @@ che dichiara e restituisce uno stato finale non ricontrollato. O16 resta una
 misura non versionata.
 
 **NON CONCORDO ANCORA SUL DOCUMENTO.**
+
+---
+
+# GIRO CLAUDE 3 — verifica e chiusura dei rilievi di Codex 3
+
+Ancoraggio: worktree `/tmp/metnos-rm0008-g6`, ramo `rm0008/diagnosi-avvio`,
+commit di base `217c652d`. Nessuna azione su `/opt/metnos`, sui servizi, sui
+permessi o sulla radice di nascita: verificati invariati a fine giro. Ogni prova
+gira su fixture, repository usa-e-getta o processi di prova propri.
+
+## Rilievi accolti, con la prova
+
+### P1-C14 — ACCOLTO. La proprietà dichiarata era falsa, riprodotta prima di correggere
+
+Non l'ho preso per buono. Riprodotto su fixture con la stessa forma indicata —
+`base`, `base/dati`, un solo `base/dati/x.json`, perimetro `[base, base/dati]`:
+
+```
+record: 2
+locazioni: [.../base/dati/x.json, .../base/dati/x.json]
+file letti: 2
+```
+
+E anche con la radice semplicemente **ripetuta** (`[base, base]`): 2 record. Il
+difetto non era nell'ordine dei due passaggi, era nell'assenza di qualunque
+nozione di identità dell'oggetto.
+
+**Applicato**: `normalizza_perimetro()` risolve le radici, scarta le duplicate e
+collassa quelle annidate **dichiarando il collasso nell'uscita**; c'è un solo
+attraversamento, non più due; ogni file è chiavato per `(st_dev, st_ino)`, così
+un percorso raggiungibile due volte, un collegamento fisico o un punto di
+montaggio ripetuto valgono un oggetto solo. Il conteggio dei deduplicati è
+riportato nella misura.
+
+**Prove aggiunte**, tutte richieste dalla disposizione: radice ripetuta, radice
+annidata, database raggiungibile da due elementi del perimetro, più un
+collegamento fisico che la disposizione non chiedeva ma che è lo stesso difetto
+sotto altra forma. **Non vacue**: togliendo la normalizzazione e la
+deduplicazione, quattro prove diventano rosse.
+
+**Effetto sul perimetro reale**: 8362 oggetti deduplicati. Il difetto non
+cambiava i numeri di O15 — le quattro radici di difetto sono disgiunte, come
+Codex stesso notava — ma faceva leggere due volte una parte considerevole
+dell'albero, il che si lega direttamente a P1-C16.
+
+### P1-C16 — ACCOLTO. E il costo è stato misurato, non indovinato
+
+Confermato: la versione precedente non concludeva entro cinque minuti.
+
+Prima di ottimizzare ho misurato dove andava il tempo, perché la spiegazione
+ovvia era sbagliata. L'enumerazione costa **0,2 s**. Leggere 26,5 GiB a 1833
+MB/s ne costerebbe **15**. Il profilo per oggetto ha mostrato il vero colpevole:
+i binari Rust di debug sotto `client-rs/target/`, 108 MB l'uno, a **1,4 s
+ciascuno** — perché i loro nomi di simbolo contengono hash esadecimali da 16
+cifre, che soddisfacevano il prefiltro e mandavano ogni blocco in una decodifica
+UTF-8 più una regex Python.
+
+Due correzioni, misurate sullo stesso file:
+
+| via | velocità |
+|---|---|
+| soglia fissa 16 + decodifica + regex (prima) | 79 MB/s |
+| soglia 32, derivata dal minimo reale, + decodifica | 240 MB/s |
+| soglia 32 + `bytes.find`, cioè `memmem` in C | **1615 MB/s** |
+
+Più le righe SQLite in streaming invece che materializzate con `list()`.
+
+**Copertura invariata, e questo è il punto.** Non ho escluso nulla per andare
+più veloce: il prefiltro è una condizione **necessaria dimostrata** — un
+identificativo è una corsa di cifre esadecimali lunga almeno quanto il più corto
+di essi — e decide soltanto dove deve girare la ricerca esatta. La soglia è
+derivata dagli identificativi, non fissata a mano. Due prove lo verificano: un
+identificativo dentro un file binario non viene perso, e uno a cavallo di due
+blocchi di lettura nemmeno.
+
+**Censimento reale rieseguito**: uscita `0`, **32,4 s** contro un tetto di 60,
+160 MB di picco, 61 595 file, 25,2 GiB esaminati, 8362 deduplicati, soglia 32,
+impronta `sha256:f0bd245fc5cbac63`. Numeri identici alla versione lenta —
+15 record, 12 vivi, 3 archiviati, 13 fatti — il che è la conferma che la
+velocità non è stata comprata con la copertura.
+
+**Prova prestazionale non vacua**: misura una **velocità**, non un tempo, con
+pavimento a 300 MB/s, così non dipende da quanto è veloce la macchina.
+Reintroducendo la decodifica per blocco misura 99 MB/s e diventa rossa.
+
+### P1-C15 — ACCOLTO. Tutti e tre i difetti riprodotti prima di correggere
+
+```
+(a) attendi() su un processo uscito:  pidfd chiuso = True, /proc/<pid> presente = False
+    => il numero NON e' piu' riservato dopo attendi()
+(b) leader terminato con figlio vivo: esito.superstiti = [1133141, 1133146]
+                                      membri reali dopo = []
+    => Esito NON descrive lo stato finale
+(c) __exit__: `except ControlloreError: pass`
+```
+
+**Applicato**:
+
+- `attendi()` osserva con `WNOWAIT` e **non raccoglie**; c'è un solo punto che
+  raccoglie e chiude la maniglia, dentro `chiudi()`, dopo aver concluso sul
+  gruppo. Senza questo, la proprietà centrale della classe era falsa proprio
+  per il chiamante che seguiva la sequenza consigliata;
+- il ramo con capogruppo già uscito ora **segnala, attende con limite e
+  ricensisce**, e restituisce soltanto i superstiti finali;
+- `__exit__` lascia uscire l'errore di pulizia; se il corpo aveva già fallito,
+  il fallimento della pulizia si aggancia a quello (`raise ... from ...`)
+  invece di sostituirlo.
+
+**Prove aggiunte**, esattamente quelle richieste: capogruppo che termina
+**davvero** lasciando un figlio vivo (il caso che la vecchia prova diceva di
+coprire e non copriva, perché il leader restava vivo con `sleep 60`),
+`attendi()` seguito da `chiudi()` con verifica che il numero sia ancora
+riservato **fra le due chiamate**, errore di chiusura che esce dal blocco
+`with`, più un quarto caso che la disposizione non chiedeva: un errore nel corpo
+del `with` non deve essere sostituito da quello di pulizia. E il controllo di
+fine suite che non resti alcun membro dei gruppi creati.
+
+Dieci casi più il controllo finale, tutti verdi. **Non vacui**: sostituendo
+`killpg` con `kill` sul solo capogruppo e togliendo il controllo dell'istante di
+avvio, due prove diventano rosse.
+
+### P2-C17 — ACCOLTO, e il rilievo sul parametro omesso era esatto
+
+La riga «esistente `664`, `new_mode=0600` imposto → `600`» ometteva
+`preserve_existing_mode=False`. **Verificato eseguendo entrambe le forme**: col
+difetto `True` il modo esistente vince e `new_mode` viene ignorato (`664`), con
+`False` il modo imposto vince (`600`). Sono due righe diverse e ora ci sono
+entrambe.
+
+**Applicato**: `internal/tools/prova_modi_sign.py`, versionata, con ogni
+parametro scritto per esteso e `umask 0002` reso esplicito nella prova. La
+tabella di O16 è la sua uscita.
+
+La distinzione richiesta è resa così: **la funzione atomica viene eseguita**,
+perché è lei che decide il modo; **i due ingressi pubblici sono verificati sul
+sorgente** (AST), e il motivo è dichiarato nel docstring invece di essere
+taciuto — `sign_executor` passa da `deny_legacy_signing_api` e prende il lock di
+ammissione del catalogo, `publish_executor` richiede negozio e chiavi reali, e
+eseguirli toccherebbe stato vivo, che questa diagnosi vieta. Le asserzioni
+strutturali sono comunque falsificabili: che il percorso authoring passi
+`new_mode` derivato dal modo osservato, che non apra il file in scrittura, che
+il percorso solo-negozio non scriva affatto, e che `sign.py` non nomini nessuno
+dei 20 file del catalogo. **Non vacua**: togliendo `new_mode` dal percorso
+authoring in una copia, la prova diventa rossa.
+
+## Rilievi respinti
+
+Nessuno. Tutti e quattro reggono alla verifica indipendente.
+
+## Prove eseguite in questo giro
+
+| suite | casi | esito | non vacua? |
+|---|---|---|---|
+| `prova_censimento_legami.py` | 16 | tutte verdi | sì — 4 rosse togliendo dedup/normalizzazione; la prestazionale cade a 99 MB/s |
+| `prova_controllore_processo.py` | 10 + residui | tutte verdi | sì — 2 rosse con `kill` sul solo capogruppo |
+| `prova_modi_sign.py` | 3 gruppi | tutte verdi | sì — rossa togliendo `new_mode` dal percorso authoring |
+| censimento reale | — | uscita `0` in 32,4 s | tetto dichiarato 60 s |
+
+Nessuna suite completa: erano richieste prove mirate, e questo giro non ha
+toccato codice di prodotto.
+
+## VERDETTO — GIRO CLAUDE 3
+
+Quattro rilievi su quattro accolti, riprodotti prima di essere corretti, chiusi
+con strumenti versionati e prove non vacue. Il censimento non esamina più due
+volte lo stesso oggetto, conclude in 32 s contro un tetto di 60 **senza aver
+tolto nulla dalla copertura**, e riporta tempo, memoria, deduplicazioni e la
+propria impronta. Il controllore mantiene ora la garanzia che dichiarava, anche
+per il chiamante che usa `attendi()`, e non nasconde più un fallimento di
+pulizia. O16 è una prova versionata e la sua riga ambigua è diventata due righe
+misurate.
+
+**CONCORDO SUL DOCUMENTO**, con le due riserve dichiarate fin dal GIRO CLAUDE 1,
+che restano lavoro non fatto e non rilievi aperti:
+
+1. **C1 resta aperta e bloccante** — nessuno ha ancora provato che il server
+   HTTP intero parta e serva un turno reale. Il passo 5 dice che cosa richiede e
+   non finge di averlo eseguito; ora ha anche lo strumento adatto, perché un
+   server genera figli ed è esattamente il caso su cui la vecchia procedura di
+   chiusura sbagliava — e su cui questo giro ha corretto anche il ramo del
+   capogruppo che esce per primo.
+2. **Il rimedio al terzo ostacolo non esiste** — serve progettare la transizione
+   append-only a nuova epoca, con proprietario normativo, condizione d'ingresso
+   dichiarata, regola per le 12 dipendenze vive e autorità che la concede.
+
+La produzione è rimasta fuori ambito per tutto il giro.
