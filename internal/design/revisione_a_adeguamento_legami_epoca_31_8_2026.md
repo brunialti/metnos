@@ -538,3 +538,35 @@ Infine `git diff --check` fallisce per uno spazio finale in
 fixture positiva tramite API, caso di richiesta emissione discorde, consumo
 del risultato decodificato, `diff --check` e le prove mirate. Nessuna suite
 completa.
+
+---
+
+## Decimo giro
+
+Data: 31 agosto 2026
+Commit esaminato: `9df14d63c50a2f0dcc19db03bf0528470b164223`
+Verdetto: `MODIFICHE_RICHIESTE`
+
+R18 e la correzione sostanziale di R19 sono accolti. Le 20 prove sono verdi,
+`git diff --check` e' pulito e la misura reale e' invariata. La prova A
+indipendente usa emissione, claim, finalize e busta V2 produttivi: il caso
+coerente e' accettato e la modifica della sola richiesta nella catena di
+emissione viene ora bloccata.
+
+Resta soltanto da rendere quella proprieta' parte del commit, senza affidarla
+alla prova temporanea A:
+
+1. aggiungere ai casi versionati la modifica della sola
+   `birth_producer_issuance.request_id` dopo la costruzione con le API, e
+   pretendere un unico ignoto e zero rifiuti;
+2. trattare `birth_producer_issuance.encoded` assente come discordanza: lo
+   schema produttivo lo vieta e il censimento non deve trasformarne l'assenza
+   in accordo;
+3. non ignorare `sqlite3.Error` nelle mutazioni negative. Una mutazione che non
+   avviene deve rendere rossa la prova, non lasciarla verde sul caso positivo.
+
+Il decoder canonico precede ora ogni lettura semantica, quindi non e' stato
+riprodotto un percorso permissivo residuo in questo commit; il consumo diretto
+del valore decodificato resta il naturale consolidamento del codec pubblico in
+B2. Per B1 bastano i tre adeguamenti sopra, 21 casi verdi, `diff --check` e la
+misura reale. Nessuna suite completa.
