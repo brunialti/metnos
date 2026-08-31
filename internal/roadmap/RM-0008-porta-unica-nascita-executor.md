@@ -524,6 +524,8 @@ maintenance_evidence_hash
 boundary_inventory_hash
 boundary_guard_version
 closed_build_id
+context_transition_id
+dominant_startup_receipt
 ```
 
 `previous_cutover_id` è nullo soltanto per il primo cutover e lega gli upgrade
@@ -544,6 +546,56 @@ almeno gli hash di `contract_store.py`, `sign.py`,
 `contract_boundary_guard.py`, tutti i moduli `executor_birth*`, il preflight del
 servizio e la versione del pacchetto. Il certificato non contiene tempi,
 percorsi personali o dati liberi dell'operatore.
+
+#### Transizione dell'epoca di autorità
+
+Il primo cutover F4 introduce una nuova epoca di autorità senza aggiungere un
+secondo selettore. `required-head-v1.bin` resta l'unico selettore sostituibile e
+la catena verificata è esattamente
+`required-head -> certificato -> context_transition_id -> record -> insieme`.
+Il record canonico append-only è conservato in
+`/var/lib/metnos/executor-birth/chain-v1/context-transitions-v1/<transition_digest>.json`;
+l'insieme è conservato in
+`<PATH_USER_CONFIG>/birth/authority-sets/<set_id>`. Il record contiene
+esattamente:
+
+```text
+schema_version
+transition_id
+request_id
+closed_build_id
+previous_cutover_id
+previous_set_id
+previous_admission_context_id
+previous_context_epoch
+set_id
+prepared_admission_context_id
+prepared_context_epoch
+context_material_sha256
+set_json_sha256
+current_inventory_hash
+```
+
+`transition_id` autentica con un dominio dedicato i byte canonici del record
+senza il campo omonimo. `current_inventory_hash` autentica la sequenza canonica,
+ordinata e senza duplicati delle coppie `(contract_id, generation_id)`, che deve
+coincidere con le identità in `current_receipts`. Record e insieme sono
+pubblicati senza sostituzione e riletti; un nome già occupato è idempotente
+soltanto per byte identici.
+
+`dominant_startup_receipt` usa il dominio
+`metnos.executor-birth.dominant-startup-receipt/v1\0` e il framing con
+lunghezza, nell'ordine, di `bindings_digest`, `retirement_plan_digest` ed
+`enforcement_evidence_digest`. I binding dell'involucro dominante includono
+anche `context_transition_id`. Il valore nasce solo dopo la seconda lettura
+concordante sotto i tre blocchi, viene registrato in `CERTIFICATE_READY` e deve
+essere identico in ogni ripresa.
+
+Queste estensioni sono obbligatorie nel codec V1 prima del primo certificato
+produttivo. Schema, domini esistenti, autorità, nomi dei file, testa firmata e
+`required-head-v1.bin` restano V1 perché non esiste un certificato produttivo
+precedente da conservare. Un certificato privo dei due campi nuovi è invalido;
+non è ammesso un ripiego sul payload precedente.
 
 #### Manifest di distribuzione della build chiusa
 
@@ -1314,6 +1366,7 @@ sviluppo.
 | 2026-08-28 | `active` | Riesame dopo il gruppo 3 completato: la guardia chiusa misura 26 rilievi iniziali e il piano ottimizzato del gruppo 4 li divide in tre incrementi causali. Primo incremento: autenticare i due caricamenti fra executor; il bit F4 resta falso. |
 | 2026-08-28 | `active` | G4-A implementato e in certificazione locale: due dipendenze fra executor passano dalla porta autenticata e le revisioni sono state pubblicate da intenzioni Birth reali. Il riesame di velocizzazione conserva G4-A separato e unisce rimozione delle firme e congelamento dell'inventario in G4-B+C, risparmiando una matrice pubblica senza ridurre le prove. |
 | 2026-08-31 | `active` | **Gruppo 6 chiuso, `G6 complete`** (§23.32). C3 e C4 certificati su VM con systemd reale in quattro cicli pubblici consecutivi; suite a copertura totale con **zero regressioni** (74 rossi alla base pre-G6, 69 all'albero finale, 5 risolti); ciclo avversariale convergente su quattro giri per parte. Restano F4-F6 e il gruppo 7, di cui e' fatto il solo primo passo (§23.31). |
+| 2026-09-01 | `active` | F4-EPOCA-01 ha raggiunto la convergenza tecnica incrociata sui commit A `ba26f5cd` e B `df36c169`; il §23.49 registra la variazione normativa offerta alla revisione incrociata prima del codice di prodotto. |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 
@@ -1366,9 +1419,21 @@ chiusura della fase:
 | proprietario unico | guardia `--birth-closed` e punto di diniego | inventario chiuso ancora non valido, eccezioni mancanti, installatore e generatore incorporato con autorità di firma precedente, booleano compilato ancora falso |
 | prova operativa | prove unitarie e portabili | prova generale Linux sotto `root`, passaggio controllato, caricamento a freddo dal solo archivio, riavvio e due cicli di instradamento |
 
-Il coordinatore F4 deve possedere un registro durevole con almeno gli stati
-`PREPARED`, `RECEIPTS_COMPLETE`, `CERTIFICATE_PUBLISHED`, `BUILD_VERIFIED`,
-`HEAD_REQUIRED` e `PREFLIGHT_VERIFIED`. Nel primo passaggio,
+Il coordinatore F4 deve possedere un registro durevole con esattamente i sette
+stati ordinati `PREPARED`, `RECEIPTS_COMPLETE`, `CERTIFICATE_READY`,
+`CERTIFICATE_PUBLISHED`, `BUILD_VERIFIED`, `HEAD_REQUIRED` e
+`PREFLIGHT_VERIFIED`. Il record V2 aggiunge obbligatoriamente
+`provisioning_transaction_id`, `previous_set_id`,
+`previous_admission_context_id`, `previous_context_epoch`, `target_set_id`,
+`target_admission_context_id`, `target_context_epoch`,
+`target_context_material_sha256`, `target_set_json_sha256`,
+`context_transition_id`, `current_inventory_hash` e
+`dominant_startup_receipt`. `PREPARED` è scrivibile soltanto quando la
+transazione di provisioning V2, il predecessore, l'insieme target, il record di
+transizione e l'inventario hanno identità complete e byte recuperabili; una
+ripresa ammette soltanto la stessa transazione e gli stessi byte.
+
+Nel primo passaggio,
 `CERTIFICATE_PUBLISHED` pubblica l'ancora fissa ed e' il punto di non ritorno
 dal regime precedente: dopo tale stato il recupero non puo' cancellare il
 certificato, riaprire i proprietari precedenti o avviare il predecessore. Negli
@@ -3239,3 +3304,32 @@ in `/tmp/metnos-prova-fusione`.
 
 **Ordine corretto, ora dimostrato:** prima si porta l'autorita' di nascita a
 uno stato attivabile, poi si fonde il codice che la pretende. Non il contrario.
+
+
+### 23.49 F4-EPOCA-01: variazione normativa prima del codice
+
+Il riesame della seconda epoca ha trovato un solo selettore corretto ma un
+legame durevole incompleto fra insieme preparato, richiesta Producer, ricevute
+correnti, certificato e ripresa. I due agenti hanno convergito sulla specifica
+`internal/design/rm0008_transizione_epoca_31_8_2026.md`: A ha offerto il
+disegno definitivo in `ba26f5cd`; B lo ha accettato e ha chiuso il censimento
+autenticato in `df36c169`; A ha ripetuto le 21 prove e accettato quel checkpoint
+in `da04150d`.
+
+La variazione normativa è quella applicata nei §§7.3 e 23.2:
+
+- il certificato V1 lega obbligatoriamente transizione di contesto e ricevuta
+  completa dell'avvio dominante;
+- il record di transizione autentica predecessore, insieme target, epoca,
+  materiale e inventario corrente senza introdurre un secondo selettore;
+- il record coordinatore V2 identifica la transazione di provisioning e tutti
+  i byte recuperabili già da `PREPARED`, conservando i sette stati esistenti;
+- le ricevute correnti V2 sono legate alla selezione di contesto; le ricevute
+  storiche V1 restano immutabili e non sono un ripiego automatico;
+- ogni identità estranea, inventario incompleto o byte discordante arresta la
+  ripresa senza modificare la selezione corrente.
+
+Il codice di prodotto può iniziare soltanto dopo l'accettazione incrociata del
+commit esatto che contiene questa variazione. La ripartizione dei file, le
+interfacce congelate e i 24 casi minimi di prova restano quelli della specifica
+convergente e non vengono duplicati qui.
