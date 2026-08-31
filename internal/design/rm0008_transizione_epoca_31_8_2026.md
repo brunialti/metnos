@@ -2,7 +2,7 @@
 
 Data: 31 agosto 2026  
 Unita': `F4-EPOCA-01`  
-Stato: proposta A, seconda versione pronta alla revisione incrociata
+Stato: proposta A, terza versione pronta alla revisione incrociata
 Ancora fattuale B: `937ba594`
 
 ## 1. Risultato richiesto
@@ -77,19 +77,21 @@ successive aggiungono:
 
 ```text
 authority-sets/<set_id-nuovo>/...
-context-transitions-v1/<request_id>.json
+context-transitions-v1/<transition_id>.json
 ```
 
 Non nasce un secondo selettore. Il solo selettore sostituibile resta
 `required-head-v1.bin` della catena F4 gia' costruita. La testa firmata seleziona
-il certificato di passaggio; il certificato firmato contiene `request_id`; quel
-valore seleziona e autentica transitivamente il record canonico in
-`context-transitions-v1`.
+il certificato di passaggio; il certificato firmato contiene
+`context_transition_id`; quel valore seleziona e autentica transitivamente il
+record canonico in `context-transitions-v1`.
 
 Il record di transizione contiene esattamente:
 
 ```text
 schema_version
+transition_id
+request_id
 closed_build_id
 previous_cutover_id
 previous_set_id
@@ -103,12 +105,18 @@ set_json_sha256
 current_inventory_hash
 ```
 
-`request_id` e' il digest con dominio della build, del passaggio precedente e
-dei byte canonici di questo record. Il certificato F4 gia' firma `request_id`,
-`closed_build_id` e l'elenco completo delle ricevute correnti. Il lettore
-verifica quindi la catena completa
-`required-head -> certificato -> request_id -> record -> insieme`, senza una
-nuova chiave e senza due puntatori che possano divergere.
+`transition_id` e' il digest con dominio dei byte canonici del record senza il
+campo omonimo. Il certificato F4 viene esteso prima del primo passaggio reale
+con il solo campo obbligatorio `context_transition_id`; la firma esistente
+copre quindi quel campo insieme a `request_id`, `closed_build_id` e all'elenco
+completo delle ricevute correnti. Non serve una nuova chiave e non esiste un
+formato storico produttivo da mantenere: F4 non e' ancora avvenuta.
+
+Il lettore verifica la catena completa
+`required-head -> certificato -> context_transition_id -> record -> insieme`.
+`request_id` conserva il proprio significato di identita' della richiesta del
+coordinatore e deve coincidere fra giornale, certificato e record; non viene
+usato come impronta indiretta di un altro documento.
 
 Il record e l'insieme sono append-only: nome temporaneo esclusivo, rinomina
 senza sostituzione, sincronizzazione e rilettura. Un nome gia' occupato e'
@@ -174,13 +182,14 @@ manutenzione e nascita. La sequenza è:
 6. costruire dal nuovo insieme un nucleo di nascita sigillato e limitato alla
    riattestazione, senza installarlo come nucleo ordinario;
 7. congelare sotto manutenzione l'inventario autenticato delle generazioni
-   correnti e derivare il record di transizione e `request_id`;
+   correnti e derivare il record e `transition_id` per la richiesta gia'
+   registrata;
 8. riattestare ogni generazione corrente nel percorso V2 mediante una nuova
    ricevuta Producer, poi rileggere entrambe le rappresentazioni;
 9. ripetere il censimento e pretendere identita' identiche al punto 7;
 10. pubblicare il record di transizione append-only;
-11. emettere e pubblicare il certificato F4 che lega `request_id`, build e
-    impronte delle ricevute;
+11. emettere e pubblicare il certificato F4 che lega `transition_id`,
+    `request_id`, build e impronte delle ricevute;
 12. pubblicare build e testa F4 append-only;
 13. sostituire atomicamente il solo `required-head-v1.bin`;
 14. rileggere catena, record, insieme, distribuzione, inventario e ricevute;
@@ -213,8 +222,8 @@ PREFLIGHT_VERIFIED
 | nessuno | testa precedente valida | nuova transazione soltanto con autorizzazione completa |
 | `PREPARED` | insieme non pubblicato | riprendere soltanto i byte inventariati |
 | `SET_PUBLISHED` | insieme nuovo concordante, testa vecchia | completare le riattestazioni; non rimuovere l'insieme |
-| `RECEIPTS_COMPLETE` | inventario e ricevute concordanti, testa vecchia | pubblicare il record legato a `request_id` |
-| `CONTEXT_BOUND` | record presente, testa vecchia | emettere il certificato con lo stesso `request_id` |
+| `RECEIPTS_COMPLETE` | inventario e ricevute concordanti, testa vecchia | pubblicare il record e rileggere `transition_id` |
+| `CONTEXT_BOUND` | record presente, testa vecchia | emettere il certificato con lo stesso `transition_id` e `request_id` |
 | `CERTIFICATE_PUBLISHED` | certificato presente | completare build e testa; nel primo passaggio non e' ammesso il ritorno al regime precedente |
 | `BUILD_VERIFIED` | oggetti F4 riletti, selettore vecchio | pubblicare la testa e confrontare il predecessore |
 | `HEAD_REQUIRED` | selettore nuovo | completare tutte le riletture |
@@ -229,9 +238,10 @@ selettore precedente.
 
 ## 9. Ripetibilità e concorrenza
 
-`request_id` copre almeno passaggio precedente, build nuova, record canonico,
-insieme precedente e inventario completo delle generazioni correnti. Una
-ripetizione identica restituisce il risultato gia' verificato. Qualunque
+`request_id` conserva la derivazione gia' posseduta dal coordinatore F4.
+`transition_id` copre richiesta, passaggio precedente, build nuova, insieme
+precedente, nuovo insieme e inventario completo delle generazioni correnti.
+Una ripetizione identica restituisce il risultato gia' verificato. Qualunque
 differenza produce un conflitto nominato.
 
 Una sola transizione può avanzare. Due richieste uguali convergono sullo stesso
@@ -247,7 +257,8 @@ manifest. La build chiusa diventa avviabile soltanto se:
 
 - il suo `closed_build_id` coincide con testa, certificato e record di
   transizione;
-- `request_id` ricalcolato sui byte del record coincide col certificato;
+- `transition_id` ricalcolato sui byte del record coincide col certificato e
+  `request_id` coincide fra record, certificato e giornale;
 - insieme e materiale ricostruito coincidono col record;
 - la prova delle ricevute coincide con l'inventario corrente congelato;
 - la normale catena F4 di build, passaggio e testa richiede la stessa release.
