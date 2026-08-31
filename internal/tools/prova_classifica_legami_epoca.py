@@ -97,15 +97,39 @@ def busta(contratto: str, generazione: str, precedente: str,
 
 
 def esegui(radice: Path, negozio: Path, stato: Path,
-           ritirati: list[str] | None = None) -> tuple[int, str]:
-    buf = io.StringIO()
-    argomenti = ["--radice-nascita", str(radice), "--negozio", str(negozio),
-                 "--stato-nascita", str(stato)]
-    if ritirati:
-        argomenti += ["--ritirati", *ritirati]
-    with redirect_stdout(buf):
-        rc = C.main(argomenti)
-    return rc, buf.getvalue()
+           autenticato: dict | None = None) -> tuple[int, str]:
+    """Run the rule with an injected authenticated state.
+
+    The retirement class is no longer reachable from the command line: it is
+    decided by the contract's own tombstone, so a fixture declares it here the
+    way the store would, and never as a caller argument.
+    """
+    contesto, legami, rifiuti, contratti = C.classifica(
+        radice, negozio, stato, Path("/non-usato"), stato=autenticato or {},
+    )
+    conteggio = {}
+    for l in legami:
+        conteggio[l.classe] = conteggio.get(l.classe, 0) + 1
+    righe = [f"legami esaminati  : {len(legami)}",
+             f"rifiuti terminali validi (non sono legami): {len(rifiuti)}"]
+    for l in legami:
+        righe.append(f"[{l.classe}] {l.tipo} {l.locazione} perche': {l.motivo}")
+    righe.append("== CLASSIFICAZIONE ==")
+    for classe in (C.STORICA, C.NUOVA, C.CESSA, C.IGNOTA):
+        righe.append(f"  {classe:26} {conteggio.get(classe, 0)}")
+    if conteggio.get(C.IGNOTA):
+        rc = C.EXIT_NON_CLASSIFICATO
+        righe.append("F4 non puo' essere dichiarata")
+    elif conteggio.get(C.NUOVA) or conteggio.get(C.CESSA):
+        rc = C.EXIT_AZIONE
+    else:
+        rc = C.EXIT_OK
+    return rc, "\n".join(righe)
+
+
+def autenticato(**contratti) -> dict:
+    """Fixture for what the store would authenticate: id -> (classe, valore)."""
+    return {k.replace("__", ":"): v for k, v in contratti.items()}
 
 
 def conta(testo: str, classe: str) -> int:
@@ -125,121 +149,180 @@ def caso(nome):
     return deco
 
 
-@caso("zero dipendenze: nessun legame, uscita verde")
+@caso("zero dipendenze: nessun legame, verde")
 def _(base: Path) -> list[str]:
     radice = radice_nascita(base)
     negozio = base / "negozio"; negozio.mkdir()
-    stato = stato_nascita(base, [])
-    rc, out = esegui(radice, negozio, stato)
-    errori = []
-    if rc != C.EXIT_OK:
-        errori.append(f"uscita {rc}, attesa {C.EXIT_OK}")
-    if conta(out, C.STORICA) or conta(out, C.NUOVA) or conta(out, C.IGNOTA):
-        errori.append("ha classificato legami inesistenti")
-    return errori
+    rc, out = esegui(radice, negozio, stato_nascita(base, []), {})
+    return [] if rc == C.EXIT_OK and conta(out, C.STORICA) == 0 else [f"uscita {rc}"]
 
 
-@caso("una dipendenza su generazione superata: epoca storica, verde")
+@caso("generazione superata: storica, verde")
 def _(base: Path) -> list[str]:
     radice = radice_nascita(base)
     negozio = base / "negozio"; negozio.mkdir()
     pubblicazione(negozio, "builtin:uno", ["aaa", "bbb"], "bbb", {"aaa": CTX})
-    stato = stato_nascita(base, [])
-    rc, out = esegui(radice, negozio, stato)
+    rc, out = esegui(radice, negozio, stato_nascita(base, []),
+                     {"builtin:uno": ("corrente", "bbb")})
     errori = []
-    if rc != C.EXIT_OK:
-        errori.append(f"uscita {rc}, attesa {C.EXIT_OK}")
-    if conta(out, C.STORICA) != 1:
-        errori.append("la generazione superata non e' storica")
+    if rc != C.EXIT_OK: errori.append(f"uscita {rc}, attesa 0")
+    if conta(out, C.STORICA) != 1: errori.append("non e' storica")
     return errori
 
 
-@caso("una dipendenza sulla generazione CORRENTE: nuova epoca, richiede azione")
+@caso("generazione CORRENTE: nuova epoca, richiede azione")
 def _(base: Path) -> list[str]:
     radice = radice_nascita(base)
     negozio = base / "negozio"; negozio.mkdir()
     pubblicazione(negozio, "builtin:due", ["aaa", "bbb"], "aaa", {"aaa": CTX})
-    stato = stato_nascita(base, [])
-    rc, out = esegui(radice, negozio, stato)
+    rc, out = esegui(radice, negozio, stato_nascita(base, []),
+                     {"builtin:due": ("corrente", "aaa")})
     errori = []
-    if rc != C.EXIT_AZIONE:
-        errori.append(f"uscita {rc}, attesa {C.EXIT_AZIONE}")
-    if conta(out, C.NUOVA) != 1:
-        errori.append("la generazione corrente non richiede la nuova epoca")
-    if conta(out, C.STORICA) != 0:
-        errori.append("una generazione corrente e' stata dichiarata storica")
+    if rc != C.EXIT_AZIONE: errori.append(f"uscita {rc}, attesa {C.EXIT_AZIONE}")
+    if conta(out, C.NUOVA) != 1: errori.append("non richiede la nuova epoca")
     return errori
 
 
-@caso("contratto in ritiro: cessa di essere corrente, non viene riscritto")
+@caso("ritiro AUTENTICATO: cessa; il chiamante non puo' dichiararlo")
 def _(base: Path) -> list[str]:
     radice = radice_nascita(base)
     negozio = base / "negozio"; negozio.mkdir()
     pubblicazione(negozio, "builtin:tre", ["aaa"], "aaa", {"aaa": CTX})
-    stato = stato_nascita(base, [])
-    rc, out = esegui(radice, negozio, stato, ritirati=["builtin:tre"])
+    rc, out = esegui(radice, negozio, stato_nascita(base, []),
+                     {"builtin:tre": ("ritiro", "aaa")})
     errori = []
-    if rc != C.EXIT_AZIONE:
-        errori.append(f"uscita {rc}, attesa {C.EXIT_AZIONE}")
-    if conta(out, C.CESSA) != 1:
-        errori.append("il contratto in ritiro non e' stato riconosciuto")
-    if conta(out, C.NUOVA) != 0:
-        errori.append("un contratto in ritiro chiede la nuova epoca")
+    if rc != C.EXIT_AZIONE: errori.append(f"uscita {rc}, attesa {C.EXIT_AZIONE}")
+    if conta(out, C.CESSA) != 1: errori.append("il ritiro non e' stato riconosciuto")
+    # e non esiste piu' un modo per dichiararlo da riga di comando
+    import argparse, io as _io, contextlib
+    ap_err = _io.StringIO()
+    with contextlib.redirect_stderr(ap_err):
+        try:
+            C.main(["--ritirati", "builtin:tre"])
+            errori.append("--ritirati e' ancora accettato")
+        except SystemExit:
+            pass
     return errori
 
 
-@caso("molte dipendenze miste: ciascuna con la sua classe")
+@caso("stesso digest, due contratti: il gemello NON viene condiviso")
 def _(base: Path) -> list[str]:
     radice = radice_nascita(base)
     negozio = base / "negozio"; negozio.mkdir()
-    pubblicazione(negozio, "builtin:a", ["a1", "a2"], "a2", {"a1": CTX})
-    pubblicazione(negozio, "builtin:b", ["b1", "b2"], "b1", {"b1": CTX})
-    pubblicazione(negozio, "builtin:c", ["c1"], "c1", {"c1": CTX})
-    stato = stato_nascita(base, [busta("builtin:a", "a1", "a2")])
-    rc, out = esegui(radice, negozio, stato, ritirati=["builtin:c"])
+    # due contratti con la STESSA generazione di prova
+    pubblicazione(negozio, "builtin:a", ["gg"], "gg", {"gg": CTX})
+    pubblicazione(negozio, "builtin:b", ["gg", "hh"], "hh", {"gg": CTX})
+    # la busta nomina il contratto b: deve accoppiarsi solo con quello
+    rc, out = esegui(radice, negozio, stato_nascita(base, [busta("builtin:b", "gg", "hh")]),
+                     {"builtin:a": ("corrente", "gg"), "builtin:b": ("corrente", "hh")})
     errori = []
     if rc != C.EXIT_AZIONE:
         errori.append(f"uscita {rc}, attesa {C.EXIT_AZIONE}")
-    for classe, atteso in ((C.STORICA, 2), (C.NUOVA, 1), (C.CESSA, 1)):
-        if conta(out, classe) != atteso:
-            errori.append(f"{classe}: {conta(out, classe)}, atteso {atteso}")
+    # a/gg e' corrente -> nuova epoca; b/gg e' superata -> storica; la busta segue b
+    if conta(out, C.NUOVA) != 1:
+        errori.append("il contratto a non e' stato riconosciuto corrente")
+    if conta(out, C.STORICA) != 2:
+        errori.append("la busta non ha seguito il gemello del proprio contratto")
     return errori
 
 
-@caso("ricevuta produttore senza gemello: NON classificata, F4 bloccata")
+@caso("generazione discorde fra percorso e documento: non classificato")
 def _(base: Path) -> list[str]:
     radice = radice_nascita(base)
     negozio = base / "negozio"; negozio.mkdir()
-    # la busta nomina una generazione che nessuna pubblicazione conosce
-    stato = stato_nascita(base, [busta("builtin:ignoto", "zzz", "yyy")])
-    rc, out = esegui(radice, negozio, stato)
+    pubblicazione(negozio, "builtin:d", ["aaa", "bbb"], "bbb", {"aaa": CTX})
+    # riscrive il documento con una generazione diversa da quella del nome
+    ric = negozio / "pub-builtin_d" / "admission-receipts" / "aaa.json"
+    doc = json.loads(ric.read_text()); doc["generation_id"] = "sha256:zzz"
+    ric.write_text(json.dumps(doc))
+    rc, out = esegui(radice, negozio, stato_nascita(base, []),
+                     {"builtin:d": ("corrente", "bbb")})
     errori = []
     if rc != C.EXIT_NON_CLASSIFICATO:
         errori.append(f"uscita {rc}, attesa {C.EXIT_NON_CLASSIFICATO}")
-    if conta(out, C.IGNOTA) != 1:
-        errori.append("il legame senza gemello e' stato classificato lo stesso")
-    if "F4 non puo' essere dichiarata" not in out:
-        errori.append("il blocco di F4 non e' dichiarato")
+    if "generazione: percorso" not in out:
+        errori.append("la discordanza non e' nominata")
     return errori
 
 
-@caso("busta illeggibile: NON classificata invece di essere ignorata")
+@caso("stato corrente non autenticabile: non classificato, blocco")
+def _(base: Path) -> list[str]:
+    radice = radice_nascita(base)
+    negozio = base / "negozio"; negozio.mkdir()
+    pubblicazione(negozio, "builtin:e", ["aaa"], "aaa", {"aaa": CTX})
+    rc, out = esegui(radice, negozio, stato_nascita(base, []),
+                     {"builtin:e": ("errore", "code_digest_mismatch")})
+    errori = []
+    if rc != C.EXIT_NON_CLASSIFICATO:
+        errori.append(f"uscita {rc}, attesa {C.EXIT_NON_CLASSIFICATO}")
+    if "non autenticabile" not in out:
+        errori.append("il difetto di autenticazione non e' nominato")
+    return errori
+
+
+@caso("rifiuto terminale valido: non e' un legame")
 def _(base: Path) -> list[str]:
     radice = radice_nascita(base)
     negozio = base / "negozio"; negozio.mkdir()
     stato = base / "stato"; stato.mkdir()
     conn = sqlite3.connect(stato / "producer_receipts.sqlite")
-    conn.execute("create table birth_producer_receipts "
-                 "(receipt_id text, state text, expires_at text, terminal_envelope blob)")
-    conn.execute("insert into birth_producer_receipts values (?,?,?,?)",
-                 ("r", "committed", "x", CTX.encode() + b" non e' json"))
+    conn.execute("create table birth_producer_receipts (receipt_id text, state text, "
+                 "expires_at text, rejection_code text, terminal_envelope blob)")
+    conn.execute("insert into birth_producer_receipts values (?,?,?,?,?)",
+                 ("r", "rejected", "x", "property_runner_unavailable",
+                  json.dumps({"admission_receipt": None,
+                              "error_code": "property_runner_unavailable"}).encode()))
     conn.commit(); conn.close()
-    rc, out = esegui(radice, negozio, stato)
+    rc, out = esegui(radice, negozio, stato, {})
+    errori = []
+    if rc != C.EXIT_OK: errori.append(f"uscita {rc}, attesa 0")
+    if "rifiuti terminali validi (non sono legami): 1" not in out:
+        errori.append("il rifiuto valido non e' stato escluso come tale")
+    if conta(out, C.IGNOTA) != 0:
+        errori.append("un rifiuto valido e' stato chiamato illeggibile")
+    return errori
+
+
+@caso("conclusione invalida SENZA testo del contesto: blocca comunque")
+def _(base: Path) -> list[str]:
+    radice = radice_nascita(base)
+    negozio = base / "negozio"; negozio.mkdir()
+    stato = base / "stato"; stato.mkdir()
+    conn = sqlite3.connect(stato / "producer_receipts.sqlite")
+    conn.execute("create table birth_producer_receipts (receipt_id text, state text, "
+                 "expires_at text, rejection_code text, terminal_envelope blob)")
+    # busta committed che non e' JSON e non nomina il contesto in chiaro:
+    # la versione precedente la lasciava passare in silenzio.
+    conn.execute("insert into birth_producer_receipts values (?,?,?,?,?)",
+                 ("r", "committed", "x", None, b"non e' json, e non nomina nulla"))
+    conn.commit(); conn.close()
+    rc, out = esegui(radice, negozio, stato, {})
     errori = []
     if rc != C.EXIT_NON_CLASSIFICATO:
         errori.append(f"uscita {rc}, attesa {C.EXIT_NON_CLASSIFICATO}")
-    if conta(out, C.IGNOTA) != 1:
-        errori.append("una busta illeggibile non blocca")
+    if "non interpretabile" not in out:
+        errori.append("la busta illeggibile non e' nominata")
+    return errori
+
+
+@caso("rifiuto terminale senza codice: incoerente, blocca")
+def _(base: Path) -> list[str]:
+    radice = radice_nascita(base)
+    negozio = base / "negozio"; negozio.mkdir()
+    stato = base / "stato"; stato.mkdir()
+    conn = sqlite3.connect(stato / "producer_receipts.sqlite")
+    conn.execute("create table birth_producer_receipts (receipt_id text, state text, "
+                 "expires_at text, rejection_code text, terminal_envelope blob)")
+    conn.execute("insert into birth_producer_receipts values (?,?,?,?,?)",
+                 ("r", "rejected", "x", None,
+                  json.dumps({"admission_receipt": None}).encode()))
+    conn.commit(); conn.close()
+    rc, out = esegui(radice, negozio, stato, {})
+    errori = []
+    if rc != C.EXIT_NON_CLASSIFICATO:
+        errori.append(f"uscita {rc}, attesa {C.EXIT_NON_CLASSIFICATO}")
+    if "senza codice di rifiuto" not in out:
+        errori.append("il rifiuto senza ragione non e' nominato")
     return errori
 
 
@@ -247,16 +330,11 @@ def _(base: Path) -> list[str]:
 def _(base: Path) -> list[str]:
     radice = radice_nascita(base)
     negozio = base / "negozio"; negozio.mkdir()
-    altro = "sha256:" + "b" * 64
-    pubblicazione(negozio, "builtin:altro", ["aaa"], "aaa", {"aaa": altro})
-    stato = stato_nascita(base, [])
-    rc, out = esegui(radice, negozio, stato)
-    errori = []
-    if rc != C.EXIT_OK:
-        errori.append(f"uscita {rc}, attesa {C.EXIT_OK}")
-    if "legami esaminati : 0" not in out:
-        errori.append("ha raccolto una dipendenza di un altro contesto")
-    return errori
+    pubblicazione(negozio, "builtin:altro", ["aaa"], "aaa",
+                  {"aaa": "sha256:" + "b" * 64})
+    rc, out = esegui(radice, negozio, stato_nascita(base, []),
+                     {"builtin:altro": ("corrente", "aaa")})
+    return [] if rc == C.EXIT_OK and "legami esaminati  : 0" in out else [f"uscita {rc}"]
 
 
 def main() -> int:

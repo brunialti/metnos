@@ -178,3 +178,68 @@ le due ricevute `rejected`).
 - Che cosa fare delle 21 ricevute complessive sugli **altri** contesti: la
   regola le classificherebbe allo stesso modo, ma non le ho misurate una per
   una e non le dichiaro.
+
+---
+
+## 8. Secondo giro — le quattro garanzie chieste dall'agente A
+
+Revisione `MODIFICHE_RICHIESTE` di A su `937ba594`
+(`internal/design/revisione_a_adeguamento_legami_epoca_31_8_2026.md`). Tutti e
+quattro i rilievi sono accolti. **Il disegno dei tre futuri e la conclusione sui
+12 oggetti non cambiano**, come A richiedeva: cambia ciò su cui poggiano.
+
+**R1 — identità composta.** L'indice del gemello era la sola generazione, mentre
+il contratto F4 usa già `(contract_id, generation_id)`. Due contratti con lo
+stesso digest potevano prendersi il gemello a vicenda. Ora la chiave è la coppia,
+e l'identità viene confrontata in **tutti e tre i posti** in cui compare —
+percorso, documento e busta: una divergenza è un rifiuto, non qualcosa da
+riconciliare preferendo una fonte.
+
+**R2 — nessuna autorità dal chiamante.** `--ritirati` è stato **rimosso**. Il
+ritiro proviene ora dalla lapide autenticata del contratto
+(`ContractRetirement`), che è una decisione autorevole e non un dato
+diagnostico. Una prova verifica anche che l'argomento non sia più accettato.
+
+**R3 — fatti autenticati.** Inventario e generazione corrente arrivano dalle
+primitive produttive del negozio — `inventory_store_manifests` e
+`current_contract` — invece che da letture dirette di `binding.json` e
+`current`. Sul dato reale: **122 contratti su 122 autenticati**, con la radice
+d'installazione reale. Un contratto il cui stato corrente non è autenticabile
+non riceve una classe: **blocca**.
+
+> **Limite dichiarato, non taciuto.** La firma delle ricevute di ammissione non
+> viene verificata: il verificatore appartiene all'autorità di nascita
+> sigillata, che durante la transizione non è attiva. Lo strumento lo stampa
+> a ogni esecuzione, invece di lasciar credere di aver verificato più di quanto
+> abbia verificato.
+
+**R4 — regola terminale chiusa.** Le due buste reali non erano illeggibili:
+sono righe `rejected` con `admission_receipt` a `null` e un codice di rifiuto —
+rifiuti conclusi correttamente, che non hanno ammesso niente e quindi **non sono
+dipendenze**. Ora sono escluse per stato e forma, contate a parte e nominate col
+loro codice. Al contrario, una conclusione `committed` con busta invalida che
+non ripeta il contesto in chiaro **prima passava in silenzio**: oggi blocca. E un
+rifiuto senza codice — cioè senza una ragione — blocca anch'esso.
+
+### Esito reale dopo le quattro correzioni
+
+```
+contratti autenticati dall'inventario produttivo: 122
+legami esaminati  : 12
+rifiuti terminali validi (non sono legami): 2
+
+epoca_storica              12
+nuova_epoca                 0
+cessa_di_essere_corrente    0
+non_classificato            0
+```
+
+Undici prove mirate, tutte verdi, fra cui le cinque che A chiedeva per nome:
+due contratti con lo stesso digest che non condividono il gemello; identità
+discorde fra percorso e documento; stato corrente non autenticabile; rifiuto
+terminale valido; conclusione invalida senza testo del contesto.
+
+**La conclusione regge, e ora regge su qualcosa.** Prima era riproducibile sui
+byte osservati; adesso poggia su inventario e generazioni autenticati, su
+un'identità composta confrontata in tre punti, su un'autorità che il chiamante
+non può fabbricare e su una regola terminale senza casi ignorati.
