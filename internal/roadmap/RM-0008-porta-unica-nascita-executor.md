@@ -3075,3 +3075,43 @@ Resta soltanto l'esecuzione reale: installazione dei nomi definitivi,
 commutazione dei servizi correnti, ribaltamento del letterale in
 `closed_build_enforcement`, riavvio, due cicli di instradamento, dichiarazione
 di F4.
+
+
+### 23.45 I 69 rossi non erano 69 problemi: due cause ne spiegavano quaranta
+
+Prima di correggere qualcosa li ho CLASSIFICATI, cosa che nessuno aveva mai
+fatto: li chiamavamo «di ambiente» senza averli guardati. Su 56 blocchi di
+fallimento:
+
+| n. | famiglia |
+|---|---|
+| 20 | `invocations.UnknownExecutorError: executor sconosciuto: find_packages` |
+| 20 | `executor_birth_commit_publisher.BirthCommitLinkError` |
+| 9 | `AssertionError` assortite |
+| 5 | `sudo -n chown` verso un altro uid — ambiente vero |
+| 1 | `AttributeError` su `playwright_sidecar.factor_resolvers` |
+| 1 | modello BGE ONNX assente nel worktree — ambiente vero |
+
+**La prima famiglia era un difetto del repository, non dell'ambiente.** Su 85
+executor firmati, 84 verificavano e uno no. `find_packages` aveva manifesto e
+codice modificati il 30 agosto — versione da 0.5.0 a 0.5.2, digest del codice
+nuovo — senza che la firma fosse rinnovata: l'ultima risale al 23. Il caricatore
+lo rifiutava da allora, in silenzio, e ventuno prove rosse venivano lette come
+rumore d'ambiente.
+
+Verificato prima di toccare nulla: manifesto e codice sono coerenti fra loro (il
+digest dichiarato coincide con il file reale), quindi la firma e' stantia e non
+il manifesto corrotto. Rifirmato con la chiave del progetto; le ventuno prove
+sono verdi.
+
+**La guardia che mancava, ed e' il vero valore.** Una firma stantia e' invisibile
+per natura: il file c'e', ha il nome giusto e la dimensione giusta, e solo una
+verifica dice che non significa nulla. `tests/runtime/infra/test_executor_signatures_current.py`
+verifica ora OGNI manifesto spedito e, separatamente, che il digest del codice
+dichiarato corrisponda al file — perche' un manifesto firmato che descrive
+altro codice non prova niente. 171 casi, piu' il rifiuto di passare con un
+inventario vuoto.
+
+Restano da guardare la seconda famiglia (20, `BirthCommitLinkError`) e le nove
+asserzioni assortite. Le sei che chiedono root o un modello locale sono ambiente
+vero, e restano.
