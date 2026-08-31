@@ -2,11 +2,18 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
 
 import executor_birth_legacy_neutralizer as neutralizer
+
+
+POSIX_ONLY = pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="masking is a systemd concept; the core denies on Windows first",
+)
 
 
 class _Step:
@@ -30,6 +37,7 @@ def _tree(tmp_path: Path) -> Path:
     return root
 
 
+@POSIX_ONLY
 def test_a_unit_is_masked_and_an_entrypoint_is_moved_aside(tmp_path: Path) -> None:
     """Masking points the name at /dev/null; revoking renames, never deletes."""
     root = _tree(tmp_path)
@@ -47,6 +55,7 @@ def test_a_unit_is_masked_and_an_entrypoint_is_moved_aside(tmp_path: Path) -> No
     assert [entry.repeated for entry in performed] == [False, False]
 
 
+@POSIX_ONLY
 def test_running_the_same_plan_again_is_idempotent(tmp_path: Path) -> None:
     """A resumed retirement recognises its own work instead of failing."""
     root = _tree(tmp_path)
@@ -65,6 +74,7 @@ def test_running_the_same_plan_again_is_idempotent(tmp_path: Path) -> None:
     ), "the receipt must say whether the work was done now or found done"
 
 
+@POSIX_ONLY
 @pytest.mark.parametrize(("case", "code"), [
     ("occupied_unit", "neutralizer_mask_occupied"),
     ("occupied_retired", "neutralizer_entrypoint_occupied"),
@@ -73,6 +83,7 @@ def test_running_the_same_plan_again_is_idempotent(tmp_path: Path) -> None:
     ("unknown_action", "neutralizer_action_unknown"),
     ("missing_entrypoint", "neutralizer_entrypoint_invalid"),
 ])
+@POSIX_ONLY
 def test_neutralization_denials(tmp_path: Path, case: str, code: str) -> None:
     """Every denial is one row of one table, not one apparatus each."""
     root = _tree(tmp_path)
@@ -100,6 +111,7 @@ def test_neutralization_denials(tmp_path: Path, case: str, code: str) -> None:
     assert denied.value.code == code
 
 
+@POSIX_ONLY
 def test_an_occupied_name_is_never_replaced(tmp_path: Path) -> None:
     """Refusing is the point: that file holds state nobody told us about."""
     root = _tree(tmp_path)
@@ -132,3 +144,19 @@ def test_no_productive_neutralizer_is_exported() -> None:
         name.startswith(("neutralize", "mask", "revoke"))
         for name in neutralizer.__all__
     )
+
+
+def test_windows_denies_before_resolving_any_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """The denial does not depend on how well an emulation held."""
+    monkeypatch.setattr(neutralizer.sys, "platform", "win32")
+
+    def _must_not_run(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("the filesystem must not be consulted")
+
+    monkeypatch.setattr(neutralizer.os, "symlink", _must_not_run)
+    monkeypatch.setattr(neutralizer.os, "rename", _must_not_run)
+    with pytest.raises(neutralizer.LegacyNeutralizerError) as denied:
+        neutralizer.neutralize_for_test_v1(_capability(tmp_path), [])
+    assert denied.value.code == "neutralizer_unsupported_platform"

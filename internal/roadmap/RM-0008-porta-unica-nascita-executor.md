@@ -2911,3 +2911,28 @@ proprio artefatto non puo' dimostrare nulla su di essi.
 su una sola piattaforma non dice nulla sulle altre, e il §23.36 dichiarava una
 proprieta' generale sulla base di una misura locale. La matrice pubblica
 Linux+Windows esiste per questo, e ha fatto il suo mestiere.
+
+
+### 23.40 La lezione di Windows applicata prima che costi un secondo giro
+
+Il §23.39 ha corretto un difetto che solo Windows aveva mostrato. Invece di
+aspettare che la matrice bocciasse anche il resto, ho riletto i moduli nuovi del
+gruppo 7 con quella domanda: **cosa fa questo su Windows?**
+
+- `executor_birth_dominant_startup` e `executor_birth_legacy_retirement` sono
+  puri: nessun accesso al filesystem, nessuna dipendenza di piattaforma.
+- `executor_birth_legacy_neutralizer` **non lo era**. Mascherare significa
+  creare un collegamento a `/dev/null` che il gestore legge come «questa unita'
+  non esiste»: ne' il bersaglio ne' il gestore esistono su Windows, e le sue
+  prove sarebbero diventate rosse al giro successivo.
+
+**La correzione non e' un salto condizionale dentro il nucleo.** Il modulo nega
+su Windows PRIMA di risolvere qualunque percorso, come fa gia' il nucleo di
+pubblicazione di B4, perche' emulare la forma renderebbe il diniego dipendente
+da quanto bene ha retto l'emulazione — che non e' una proprieta' dimostrabile.
+Il ritiro su Windows, quando servira', e' un meccanismo diverso e merita un
+modulo suo, non un ramo dentro questo.
+
+Le prove POSIX sono marcate come tali, e una prova nuova verifica che su Windows
+il diniego arrivi senza toccare il filesystem. Nessun salto silenzioso: il
+comportamento e' dichiarato in entrambe le direzioni.

@@ -19,6 +19,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -49,6 +50,20 @@ class LegacyNeutralizerError(RuntimeError):
 
 def _invalid(code: str, detail: str = "") -> LegacyNeutralizerError:
     return LegacyNeutralizerError(code, detail)
+
+
+def _require_supported_platform_v1() -> None:
+    """Windows denies first, before any path is resolved.
+
+    Masking is a systemd concept: a symlink to `/dev/null` that the manager
+    reads as "this unit does not exist". Neither the target nor the manager
+    exists on Windows, and emulating the shape would make the denial depend on
+    how well the emulation held — which is not a property this boundary can
+    prove. The Windows retirement, when it is needed, is a different mechanism
+    and deserves its own module rather than a branch inside this one.
+    """
+    if sys.platform.startswith("win"):
+        raise _invalid("neutralizer_unsupported_platform", sys.platform)
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +130,7 @@ def _neutralize_core_v1(
     root: Path, steps: Sequence[object],
 ) -> tuple[NeutralizedEntryV1, ...]:
     """Perform every step, then RE-READ the filesystem for the receipt."""
+    _require_supported_platform_v1()
     if not isinstance(root, Path) or not root.is_absolute() or not root.is_dir():
         raise _invalid("neutralizer_root_invalid", str(root))
     performed: list[NeutralizedEntryV1] = []

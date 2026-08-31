@@ -238,7 +238,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_feedback.py': ('c514fa16f605ae333a0267e3e15503f26c3855c5c77b1144b5ce8c85e41431e9', (('helper-argument', 1),)),
     'executor_birth_identity.py': ('b5b868288dbdf732e8788e65790e6961bd962509e3927d76e52ee644b031baac', (('comparison', 2),)),
     'executor_birth_keystore.py': ('6504cb895bf4d73a7b8d3948ae9b36b1fd557b0212c90b59db7693df1bd23636', (('comparison', 8), ('helper-argument', 1))),
-    'executor_birth_legacy_neutralizer.py': ('9d4e3c64d09a73c56bfbdf16e1fc19dd33e385d58b6bc5e61432c236034b7e11', (('comparison', 2), ('prefix-suffix', 1))),
+    'executor_birth_legacy_neutralizer.py': ('da58116530dee022e04966426a0946d4ca892fdeb8e15173468085bc9f853cd3', (('comparison', 2), ('prefix-suffix', 2))),
     'executor_birth_legacy_retirement.py': ('ae3ce47dc9cec46994fad03b8f1732c74bc522313f79ba239de942bc1ccaae36', (('comparison', 1),)),
     'executor_birth_lifecycle.py': ('6e3b395c663f5e21df6bc88140993520b4831fae128b5ba1aa543471613ec6d4', (('comparison', 2), ('helper-argument', 1))),
     'executor_birth_operational.py': ('2cfcfb505b28f27e05fea659d734a25dab31f9ae18067b0b41e37ec926a68cf7', (('comparison', 9), ('helper-argument', 2))),

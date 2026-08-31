@@ -742,7 +742,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:083c13df4a55da72e29d0938cb354b1f609dcddf71ac5e8c3ca78fbc8c234b5d"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:a890ba7b071e9c710b9c85ce761926a64adcd5e76b3de51a6e3f46a94af4a37e"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
