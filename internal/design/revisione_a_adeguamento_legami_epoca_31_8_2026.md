@@ -152,3 +152,22 @@ rimosso. E' una correzione documentale, non un rilievo autonomo.
 
 La suite completa resta esclusa. Il terzo giro puo' fermarsi alle prove mirate
 e a una nuova esecuzione in sola lettura sul dato reale.
+
+---
+
+## Terzo giro
+
+Data: 31 agosto 2026
+Commit esaminato: `df450ad77d0a913130ffb9cc77dfc776486998ac`
+Verdetto: `MODIFICHE_RICHIESTE`
+
+La traduzione in inglese dei commenti nelle prove e' corretta e soddisfa la
+regola di lingua appena fissata. L'uscita diagnostica in italiano non e'
+documentazione incorporata nel codice e non costituisce un rilievo.
+
+Il delta tecnico rispetto a `dfb551a74773081b09f734e62dc8cc35b99a10a0`
+modifica soltanto commenti e formattazione nel file di prova. Non cambia il
+classificatore, non aggiunge prove di autenticazione e non chiude i rilievi 5,
+6 e 7. Restano quindi necessarie, senza ulteriori ampliamenti, le correzioni e
+le prove minime gia' elencate nel secondo giro. La suite completa resta
+esclusa da questa barriera.
