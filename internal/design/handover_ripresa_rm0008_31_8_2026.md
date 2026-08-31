@@ -4,12 +4,16 @@
 > contesto nuovo). Contiene tutto: stato, compito, vincoli, ciclo avversariale.
 > **Metnos e' in funzione.** Non e' un'emergenza: e' un lavoro da fare bene.
 
-## 1. Leggi prima queste due
+## 1. Leggi prima queste tre
 
 - `internal/design/handover_fusione_produzione_31_8_2026.md` — il tentativo di
   fusione, i due blocchi, le trappole gia' pagate.
 - `internal/roadmap/RM-0008-porta-unica-nascita-executor.md` §23.44-§23.48 —
   l'ultimo tratto, incluso il verbale del guasto che ho causato.
+- **`internal/design/diagnosi_avvio_nascita_31_8_2026.md` — LEGGI QUESTO PER
+  PRIMO.** Diagnosi misurata del 31/8 pomeriggio: gli ostacoli sono **tre**, non
+  due, il secondo **non e' quello descritto qui sotto**, e il terzo non era
+  noto. Contiene anche le istruzioni operative passo per passo.
 
 ## 2. Stato verificato (31/8, ore 13:20)
 
@@ -28,20 +32,33 @@ Punti di ritorno: tag `pre-fusione-31-8-2026`; copia del DB i18n in
 
 ## 3. Il compito
 
-Sbloccare il **secondo** ostacolo alla messa in produzione.
+Sbloccare gli ostacoli alla messa in produzione. Erano dati per due; misurati,
+sono **tre**, e il terzo e' quello che decide il lavoro.
 
 - **Primo, gia' risolto e verificato**: `_verify_posix_directory`
   (`runtime/executor_birth_secure_fs.py:855-873`) rifiuta una radice
   `historical_public` con `mode & 0o022`, e `/opt/metnos/runtime` e' `775`.
   `chmod g-w` sblocca `open_distribution_sources_v1()`.
-- **Secondo, aperto**: l'avvio si ferma in
-  `runtime/executor_birth_prepared_root.py:196`, dove
-  `prepare_context_material_v1()` fallisce con lo stesso codice
-  `birth_provisioning_acl_unsafe`. Non e' un bit di permesso: e' nel modello dei
-  ruoli del filesystem sicuro, codice di un'altra sessione.
+- **Secondo — CORRETTO DALLA MISURA del 31/8 pomeriggio.** Scrivevo qui «non e'
+  un bit di permesso: e' nel modello dei ruoli». **E' sbagliato.** E' lo stesso
+  identico bit di permesso del primo, applicato ai **file** invece che alla
+  directory: i 20 file del catalogo di contesto sotto `/opt/metnos/runtime` sono
+  `0o664`, e `_verify_posix_file` rifiuta `mode & 0o022` come
+  `_verify_posix_directory`. Riprodotto e isolato file per file; il primo
+  rifiutato e' `executor_standard.py`. Vedi la diagnosi, §2 O3.
+- **Terzo — NON ERA NOTO, ed e' quello che conta.** Rimossi i primi due,
+  l'avvio si ferma su `birth_prepared_set_mismatch`: l'insieme preparato
+  congela le impronte della distribuzione al commit `3eeb4b1b` (28/8), mentre
+  la distribuzione e' a `cac6d7e4` (30/8). L'insieme e' diventato stantio
+  cinque ore e mezza dopo essere stato creato, per un commit ordinario, e il
+  provisioner **non ha alcun percorso per rifarlo** (`already_installed`).
+  Vedi la diagnosi, §2 O4/O7/O8.
+- **Non c'e' un quarto ostacolo**: rimossi i tre,
+  `require_birth_runtime_before_workers()` completa in 0,9 s (diagnosi, §2 O6).
 
 L'insieme preparato esiste (`~/.config/metnos/birth/`, creato il 30/8) e i suoi
-permessi sembrano corretti: `755` per l'integrita', `700` per il confidenziale.
+permessi sono corretti: `755` per l'integrita', `700` per il confidenziale — il
+problema non e' li', e' nella distribuzione che l'insieme descrive.
 
 ## 4. Autorizzazione
 
