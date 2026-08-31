@@ -461,18 +461,37 @@ def _decodifica_canonica(documento, grezzo: bytes, riferimenti: dict,
     """Run the productive V2 decoder over the terminal envelope."""
     from executor_birth_operational import BirthRequest, _decode_terminal_envelope
 
-    contratto = None
+    # Exactly one issuance row, and every field it shares with the row and the
+    # signed receipt must be equal.  Reading only the contract left the durable
+    # chain present but not bound: altering the issuance request alone still
+    # passed as an authenticated conclusion.
     try:
-        for (valore,) in conn.execute(
-            "select contract_id from birth_producer_issuance where receipt_id = ?",
+        emissioni = list(conn.execute(
+            "select request_id, issuer_id, objective_hash, candidate_source_id, "
+            "contract_id, encoded from birth_producer_issuance "
+            "where receipt_id = ?",
             (documento.get("receipt_id"),),
-        ):
-            contratto = valore
-            break
-    except sqlite3.Error:
-        contratto = None
+        ))
+    except sqlite3.Error as exc:
+        return f"emissione durevole non leggibile: {exc}"
+    if len(emissioni) != 1:
+        return (f"emissioni durevoli per questa ricevuta: {len(emissioni)}, "
+                "attesa esattamente una")
+    (em_richiesta, em_emittente, em_obiettivo, em_sorgente, contratto,
+     em_byte) = emissioni[0]
+    for nome, dalla_emissione, dalla_riga in (
+        ("request_id", em_richiesta, documento.get("request_id")),
+        ("issuer_id", em_emittente, documento.get("issuer_id")),
+        ("objective_hash", em_obiettivo, documento.get("objective_hash")),
+        ("candidate_source_id", em_sorgente,
+         documento.get("candidate_source_id")),
+    ):
+        if str(dalla_emissione) != str(dalla_riga):
+            return f"{nome} discorde fra emissione durevole e riga"
+    if em_byte is not None and bytes(em_byte) != bytes(documento["encoded"]):
+        return "byte discordi fra emissione durevole e riga"
     if contratto is None:
-        return "nessuna emissione durevole lega questa riga a un contratto"
+        return "l'emissione durevole non nomina un contratto"
     ref = riferimenti.get(str(contratto))
     if ref is None:
         return f"il contratto {contratto} non e' nell'inventario autenticato"

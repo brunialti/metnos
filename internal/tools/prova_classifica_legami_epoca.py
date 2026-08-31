@@ -85,7 +85,8 @@ def autorita_finta(contesto: str = CTX) -> tuple[C.Autorita, dict]:
         registro_produttori=registro,
     )
     return aut, {"id_amm": id_amm, "priv_amm": priv_amm,
-                 "id_pro": id_pro, "priv_pro": priv_pro}
+                 "id_pro": id_pro, "priv_pro": priv_pro,
+                 "registro": registro}
 
 
 def ammissione(chiavi: dict, *, contratto: str, generazione: str,
@@ -151,45 +152,68 @@ def pubblicazione(negozio: Path, contratto: str, generazioni: list[str],
     return cartella
 
 
-def riga(stato_dir: Path, righe: list[dict], contratto: str | None = None) -> Path:
-    stato_dir.mkdir(exist_ok=True)
-    conn = sqlite3.connect(stato_dir / "producer_receipts.sqlite")
-    # The productive columns, not a reduced parallel schema: a fixture missing
-    # the mandatory fields would stay green precisely because the check has
-    # nothing to compare.
-    conn.execute(
-        "create table birth_producer_receipts (receipt_id text, "
-        "receipt_hash text, request_id text, state text, registered_at text, "
-        "rejection_code text, issuer_id text, objective_hash text, "
-        "candidate_source_id text, executor_origin text, "
-        "revision_authorship text, expires_at text, result_binding text, "
-        "encoded blob, terminal_envelope blob, terminal_auth blob)"
+def riga(stato_dir: Path, righe: list[dict], contratto: str | None = None,
+         chiavi: dict | None = None) -> Path:
+    """Build the durable rows by CROSSING the real Producer store APIs.
+
+    Naming the columns is not the same as crossing the APIs: a hand-written
+    CREATE TABLE has no keys, no constraints, no schema version and no
+    migration, and it happily accepted forms the productive schema forbids.
+    Here the positive path goes through ``get_or_issue_and_claim_producer_receipt``
+    and ``finalize_producer_receipt``, which create receipt, issuance, claim and
+    conclusion together; a negative case then alters one column of the database
+    those APIs produced.
+    """
+    from datetime import datetime, timezone
+    from executor_birth_producer_store import (
+        ProducerReceiptBinding, finalize_producer_receipt,
+        get_or_issue_and_claim_producer_receipt,
     )
-    # The durable issuance chain is what binds a row to a contract: without it
-    # the productive decoder has no request to bind the envelope to.
-    conn.execute("create table birth_producer_issuance (request_id text, "
-                 "issuer_id text, capability_id text, contract_id text, "
-                 "objective_hash text, candidate_source_id text, "
-                 "receipt_id text, encoded blob)")
+
+    stato_dir.mkdir(exist_ok=True)
+    percorso = stato_dir / "producer_receipts.sqlite"
+    # The instant must sit inside the receipts' own validity window and carry
+    # the precision the store demands: "now" would be outside both.
+    adesso = datetime.fromisoformat(ISTANTE.replace("Z", "+00:00"))
+    legame = ProducerReceiptBinding(
+        objective_hash="sha256:" + "6" * 64,
+        candidate_source_id="sha256:" + "7" * 64,
+        executor_origin=ExecutorOrigin.BUILTIN,
+        revision_authorship=RevisionAuthor.HUMAN,
+    )
+    registro = (chiavi or {}).get("registro")
     for r in righe:
-        conn.execute(
-            "insert into birth_producer_issuance values (?,?,?,?,?,?,?,?)",
-            (r.get("request_id"), EMITTENTE, "cap", 
-             identita(contratto).value if contratto else None,
-             r.get("objective_hash"), r.get("candidate_source_id"),
-             r.get("receipt_id"), None))
-        conn.execute(
-            "insert into birth_producer_receipts values "
-            "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (r.get("receipt_id"), r.get("receipt_hash"), r.get("request_id"),
-             r.get("state"), r.get("registered_at", ISTANTE),
-             r.get("rejection_code"), r.get("issuer_id"),
-             r.get("objective_hash"), r.get("candidate_source_id"),
-             r.get("executor_origin"), r.get("revision_authorship"),
-             r.get("expires_at"), r.get("result_binding"),
-             r.get("encoded"), r.get("terminal_envelope"),
-             r.get("terminal_auth")))
-    conn.commit(); conn.close()
+        emessa = get_or_issue_and_claim_producer_receipt(
+            request_id=r["request_id"], issuer_id=EMITTENTE,
+            capability_id="cap",
+            contract_id=identita(contratto).value if contratto else "builtin:x/manifest.toml",
+            binding=legame, registry=registro, now=adesso, db_path=percorso,
+            issue=lambda r=r: r.get("issue_encoded", r["encoded"]),
+        )
+        finalize_producer_receipt(
+            emessa, registry=registro, binding=legame,
+            request_id=r["request_id"], now=adesso, db_path=percorso,
+            result_binding=r.get("result_binding"),
+            rejection_code=r.get("rejection_code"),
+            terminal_envelope=r.get("terminal_envelope"),
+            terminal_auth=r.get("terminal_auth"),
+        )
+        # A negative case alters a single column of what the APIs produced.
+        alterazioni = {k: v for k, v in r.items()
+                       if k in {"encoded", "receipt_hash", "request_id",
+                                "issuer_id", "objective_hash",
+                                "candidate_source_id", "executor_origin",
+                                "revision_authorship", "expires_at"}}
+        if alterazioni:
+            conn = sqlite3.connect(percorso)
+            for colonna, valore in alterazioni.items():
+                try:
+                    conn.execute(
+                        f"update birth_producer_receipts set {colonna} = ? "
+                        "where request_id = ?", (valore, r["request_id"]))
+                except sqlite3.Error:
+                    pass
+            conn.commit(); conn.close()
     return stato_dir
 
 
@@ -377,8 +401,11 @@ def _(base: Path) -> list[str]:
                            precedente=gen("b"), byte_produttore=buoni)
     r = riga_coerente(k, byte_produttore=buoni, encoded=encoded, firma=firma,
                       richiesta="sha256:" + "3" * 64)
-    r["encoded"] = bytes(prod)          # only the Producer signature is broken
-    stato = riga(base / "stato", [r], 'cin')
+    # the APIs issue a VALID receipt; the corruption is applied afterwards to
+    # the stored column, which is what a negative case must exercise
+    r["issue_encoded"] = buoni
+    r["encoded"] = bytes(prod)
+    stato = riga(base / "stato", [r], "cin", k)
     STATO = stato_di(("cin", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []
@@ -401,7 +428,7 @@ def _(base: Path) -> list[str]:
                            byte_produttore=buoni)
     stato = riga(base / "stato", [riga_coerente(
         k, byte_produttore=buoni, encoded=encoded, firma=firma,
-        richiesta="sha256:" + "b" * 64)], "sei")   # the row names a different request
+        richiesta="sha256:" + "b" * 64)], "sei", k)  # row names another request
     STATO = stato_di(("sei", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []
@@ -425,7 +452,7 @@ def _(base: Path) -> list[str]:
     guasta = bytearray(firma); guasta[-1] ^= 0xFF
     stato = riga(base / "stato", [riga_coerente(
         k, byte_produttore=buoni, encoded=encoded, firma=bytes(guasta),
-        richiesta="sha256:" + "3" * 64)], "set")
+        richiesta="sha256:" + "3" * 64)], "set", k)
     STATO = stato_di(("set", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []
@@ -448,7 +475,7 @@ def _(base: Path) -> list[str]:
                            precedente=gen("f"), byte_produttore=buoni)
     stato = riga(base / "stato", [riga_coerente(
         k, byte_produttore=buoni, encoded=encoded, firma=firma,
-        richiesta="sha256:" + "3" * 64)], "ott")
+        richiesta="sha256:" + "3" * 64)], "ott", k)
     STATO = stato_di(("ott", "corrente", gen("b")))
     e = esegui(negozio, stato, aut, STATO)
     errori = []
@@ -621,7 +648,7 @@ def _(base: Path) -> list[str]:
                            precedente=gen("b"), richiesta=ric,
                            ammissione_byte=altra)
     stato = riga(base / "stato", [riga_coerente(
-        k, byte_produttore=X, encoded=encoded, firma=firma, richiesta=ric)], "bad")
+        k, byte_produttore=X, encoded=encoded, firma=firma, richiesta=ric)], "bad", k)
     e = esegui(negozio, stato, aut, stato_di(("bad", "corrente", gen("b"))))
     return ([] if e["conteggio"].get(C.IGNOTA) == 1
             else [f"i byte diversi non hanno bloccato: {e['conteggio']}"])
@@ -640,7 +667,7 @@ def _(base: Path) -> list[str]:
     r["rejection_code"] = "codice_riga"      # differs from the signed one
     r["result_binding"] = None
     pubblicazione(negozio, "rif", [gen("a")], gen("a"), {})
-    e = esegui(negozio, riga(base / "stato", [r], "rif"), aut,
+    e = esegui(negozio, riga(base / "stato", [r], "rif", k), aut,
                stato_di(("rif", "corrente", gen("a"))))
     return ([] if e["conteggio"].get(C.IGNOTA) == 1
             else [f"due codici diversi accettati come un rifiuto: {e['conteggio']}"])
@@ -658,7 +685,7 @@ def _(base: Path) -> list[str]:
     r["rejection_code"] = "property_runner_unavailable"
     r["result_binding"] = None               # as the Producer store requires
     pubblicazione(negozio, "coe", [gen("a")], gen("a"), {})
-    e = esegui(negozio, riga(base / "stato", [r], "coe"), aut,
+    e = esegui(negozio, riga(base / "stato", [r], "coe", k), aut,
                stato_di(("coe", "corrente", gen("a"))))
     errori = []
     if e["conteggio"].get(C.IGNOTA):

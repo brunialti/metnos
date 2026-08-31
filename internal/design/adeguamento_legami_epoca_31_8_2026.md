@@ -503,3 +503,31 @@ Con questo, per dichiarazione di A, il perimetro B è pronto per B1.
 codice due volte con sostituzioni per indice di riga e con espressioni regolari
 generalizzate, e due volte ho corrotto un file che ho poi dovuto riparare o
 ripristinare. Su codice si sostituisce testo esatto, non forme.
+
+---
+
+## 15. Nono giro — la catena durevole legata per intero
+
+**R18 — la finzione attraversa ora le API vere.** `riga()` costruiva a mano le
+due tabelle, senza chiavi, vincoli, versione di schema né migrazione, e
+inseriva perfino una forma che lo schema produttivo vieta. Nominare le colonne
+non è attraversare le API. Ora il percorso positivo passa da
+`get_or_issue_and_claim_producer_receipt` e `finalize_producer_receipt`, che
+creano insieme ricevuta, emissione, claim e conclusione; un caso negativo altera
+**una sola colonna** del database che quelle API hanno prodotto.
+
+Due dettagli che la finzione ha dovuto imparare dal prodotto: l'istante deve
+stare **dentro la finestra di validità** delle ricevute e avere la precisione
+che il negozio impone; e una ricevuta corrotta va emessa **valida** e guastata
+**dopo**, perché le API rifiutano di emetterne una invalida — che è
+esattamente ciò che devono fare.
+
+**R19 — l'emissione lega tutto, non solo il contratto.** Cercavo l'emissione per
+`receipt_id` e ne leggevo il solo contratto: la catena durevole era presente ma
+non legata, e alterare la sola richiesta dell'emissione passava ancora come
+conclusione autenticata. Ora si legge **esattamente una** riga di emissione e si
+pretende uguaglianza esatta di `request_id`, `issuer_id`, `objective_hash`,
+`candidate_source_id` e byte.
+
+Venti casi verdi; `git diff --check` pulito; dato reale invariato: 12 legami,
+tutti `epoca_storica`, zero non classificati.
