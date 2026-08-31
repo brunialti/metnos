@@ -251,3 +251,45 @@ argomenti effettivi e rimosso l'import duplicato.
 
 La suite completa resta esclusa. Il prossimo giro richiede soltanto queste
 prove mirate e la ripetizione in sola lettura sul dato reale.
+
+---
+
+## Quinto giro
+
+Data: 31 agosto 2026
+Commit esaminato: `41845f1fc392ef01386f13a29bb69c762f0ff46d`
+Verdetto: `MODIFICHE_RICHIESTE`
+
+E' accolto il rilievo B2: il censimento deve conoscere anche il percorso V2.
+La specifica A `9290d86ffae73212a773f806650822d6c6b2e5f4` ne congela ora forma,
+proprietario e semantica. La coesistenza sulla stessa generazione e' ammessa:
+V1 storica e V2 corrente sono atti distinti identificati dalla tripla
+`(contract_id, generation_id, admission_context_id)`.
+
+L'implementazione di `41845f1f` usa invece ancora la coppia
+`(contract_id, generation_id)` e pretende che V1 e V2 concordino sullo stato
+della generazione. La prova nominata «V1 storica e V2 corrente» costruisce in
+realta' due ricevute dello stesso contesto e rende la generazione non corrente
+per entrambe: non esercita il caso dichiarato. Va corretta usando due contesti
+distinti e senza fondere le due triple. Una copia ripetuta della stessa tripla
+deve concordare byte per byte.
+
+Il censimento B1 puo' misurare lo stato V1 realmente presente. Dopo la prima
+transizione, pero', l'autorita' V2 corrente deriva dalla catena richiesta e
+l'autorita' storica dal suo insieme immutabile: il solo
+`load_prepared_set_v1` non puo' diventare un secondo selettore di autorita'. Il
+supporto produttivo V2 di B2 deve consumare la selezione autenticata fornita
+dal caricatore A; fino ad allora un V2 incontrato senza autorita' autenticata
+blocca, non viene classificato dal contenuto.
+
+Il nuovo delta non modifica la catena fra Admission, Producer, busta e riga
+durevole: il rilievo 8 e la sua prova di falso verde restano aperti. Restano
+aperti anche il rilievo 9 su contenuto non verificato, istante firmato e
+`lstat`, e il rilievo 10 sulla busta produttiva V2. I nuovi commenti italiani
+nel file di prova vanno tradotti; `_ESADECIMALE_64` deve essere applicato ai
+due componenti V2 oppure rimosso, non lasciato come controllo apparente.
+
+Non servono nuove famiglie di prove oltre a quelle gia' richieste: basta
+correggere la fixture V1/V2, chiudere i legami esatti del rilievo 8 e applicare
+le condizioni fail-closed del rilievo 9. Nessuna suite completa in questa
+barriera.
