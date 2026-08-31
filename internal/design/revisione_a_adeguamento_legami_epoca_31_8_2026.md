@@ -171,3 +171,83 @@ classificatore, non aggiunge prove di autenticazione e non chiude i rilievi 5,
 6 e 7. Restano quindi necessarie, senza ulteriori ampliamenti, le correzioni e
 le prove minime gia' elencate nel secondo giro. La suite completa resta
 esclusa da questa barriera.
+
+---
+
+## Quarto giro
+
+Data: 31 agosto 2026
+Commit esaminato: `dd86dc05993a05f6698b6f073b994950e6fb5438`
+Verdetto: `MODIFICHE_RICHIESTE`
+
+Sono accolti il caricamento unico dell'autorita' preparata, la verifica delle
+firme Admission e Producer, la verifica di `terminal_auth` e l'inventario
+produttivo con zero problemi. Le dieci prove mirate sono verdi. La nuova
+esecuzione reale in sola lettura conferma 12 oggetti storici, zero relazioni
+non classificate e il blocco dovuto alla pubblicazione incompleta gia'
+segnalata. Restano tre correzioni concentrate sullo stesso confine probatorio.
+
+### Rilievo 8 — i tre atti autenticati non sono ancora legati fra loro
+
+Il classificatore autentica separatamente la ricevuta Admission, la ricevuta
+Producer e la busta terminale, ma poi le accoppia quasi soltanto mediante
+`(contract_id, generation_id)`. Non verifica i legami che rendono quei tre atti
+un'unica conclusione:
+
+- `AdmissionReceipt.producer_receipt_hash` deve essere l'hash esatto dei byte
+  Producer presenti in `encoded`;
+- `AdmissionReceipt.birth_request_id`, `terminal_envelope.request_id` e la
+  colonna durevole `request_id` devono coincidere;
+- i byte Admission nella busta devono essere identici al gemello autenticato
+  letto dal negozio, non soltanto avere la stessa identita';
+- `receipt_hash`, `issuer_id`, `objective_hash`, `candidate_source_id`,
+  `executor_origin`, `revision_authorship` ed `expires_at` della riga devono
+  coincidere con la ricevuta Producer autenticata;
+- `result_binding` deve coincidere con il legame canonico della busta terminale;
+- per un rifiuto, `rejection_code` della riga ed `error_code` della busta devono
+  coincidere esattamente: l'alternativa fra i due non e' probante.
+
+Una prova avversariale indipendente ha costruito firme Admission e Producer
+valide con lo stesso contratto e la stessa generazione, ma con hash Producer e
+richieste discordanti. Il classificatore ha comunque restituito
+`{'epoca_storica': 2}`. E' un falso verde riproducibile, non un requisito
+teorico.
+
+La correzione deve riusare i codec e i calcoli canonici produttivi. Servono una
+prova positiva con una coppia realmente coerente e prove negative singole per
+hash Producer, richiesta, byte Admission, colonne durevoli, `result_binding` e
+codice di rifiuto discordanti.
+
+### Rilievo 9 — provenienza, tempo e percorsi devono restare fail-closed
+
+Il contenuto JSON non autenticato di un oggetto precedente non puo' decidere da
+solo che l'oggetto e' fuori perimetro. Un oggetto Admission non verificabile
+puo' essere escluso dal lavoro corrente soltanto quando lo stato corrente
+autenticato dimostra che la generazione del suo percorso non e' corrente;
+altrimenti blocca. Le righe Producer non verificate restano oggetti precedenti
+non verificati e non possono autorizzare, ridurre o soddisfare alcun lavoro F4.
+In ogni caso F4 riattesta tutte le generazioni correnti autenticate, anche se
+non esiste una vecchia ricevuta.
+
+La validazione storica della firma Producer non deve usare un
+`registered_at` modificabile nel database ne' ripiegare silenziosamente
+sull'ora corrente quando il timestamp e' invalido. Deve derivare l'istante dal
+campo firmato della ricevuta, oppure riusare il verificatore storico
+produttivo; un timestamp durevole invalido deve bloccare.
+
+Infine l'inventario dei percorsi deve usare `lstat`, rifiutare collegamenti e
+oggetti non regolari e confrontare i percorsi posseduti esatti. `is_dir()` e
+`resolve()` non devono permettere a un alias di una directory inventariata di
+evitare il blocco. La stessa regola vale per i file ricevuta.
+
+### Rilievo 10 — le prove devono esercitare il formato produttivo corrente
+
+La fixture terminale usa ancora una busta ridotta `schema_version: 1`, mentre
+il prodotto emette la busta canonica V2. La prova positiva deve costruire il
+formato produttivo corrente e tutti i legami del rilievo 8; altrimenti il verde
+non dimostra il contratto dichiarato. Vanno inoltre tradotti in inglese i
+commenti rimasti nel nuovo file di prova, allineata la sezione `Usage` agli
+argomenti effettivi e rimosso l'import duplicato.
+
+La suite completa resta esclusa. Il prossimo giro richiede soltanto queste
+prove mirate e la ripetizione in sola lettura sul dato reale.
