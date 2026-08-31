@@ -205,49 +205,70 @@ def _classifica(legame: Legame) -> Legame:
 _ESADECIMALE_64 = re.compile(r"[0-9a-f]{64}\Z")
 
 
-def _ricevute_del_contratto(cartella: Path):
+def _ricevute_del_contratto(cartella: Path, problemi: list[str]):
     """Every admission receipt of a contract, on both layouts.
 
     V1 files a receipt as ``admission-receipts/<generation>.json``; from the
     epoch transition on, receipts are filed as
-    ``admission-receipts-v2/<generation>/<context>.json`` so a second epoch can
-    add its own receipt for the same generation without replacing the first.
-    A census that only reads V1 keeps answering "nothing to do" while the
-    writing happens somewhere it does not look - which is the one failure a
-    census must not have.
+    ``admission-receipts-v2/<generation>/<context>.json``.
 
-    Yields ``(path, generation, context_or_empty)``: for V2 the path itself
-    carries both identities, and the caller checks them against the signed
-    receipt instead of trusting either.
+    Nothing inside an owned root may disappear from the census.  An earlier
+    version followed links; this one refused to follow them but then *skipped*
+    the object, which only changed the way it vanished.  Every anomaly - a
+    link, a non-regular object, a non-hexadecimal component, an unexpected
+    file, any ``lstat`` failure - is reported to the caller and blocks.
+
+    Yields ``(path, generation, context_or_empty)``.
     """
-    def _regolare(percorso: Path) -> bool:
-        """Owned, regular, and reached without following a link."""
+    def _tipo(percorso: Path) -> str:
         try:
-            return stat.S_ISREG(percorso.lstat().st_mode)
-        except OSError:
-            return False
-
-    def _cartella(percorso: Path) -> bool:
-        try:
-            return stat.S_ISDIR(percorso.lstat().st_mode)
-        except OSError:
-            return False
+            modo = percorso.lstat().st_mode
+        except OSError as exc:
+            problemi.append(f"{percorso}: lstat fallita ({exc})")
+            return "errore"
+        if stat.S_ISLNK(modo):
+            problemi.append(f"{percorso}: collegamento nel negozio")
+            return "errore"
+        if stat.S_ISDIR(modo):
+            return "directory"
+        if stat.S_ISREG(modo):
+            return "file"
+        problemi.append(f"{percorso}: oggetto non regolare")
+        return "errore"
 
     v1 = cartella / "admission-receipts"
-    if _cartella(v1):
-        for percorso in sorted(v1.iterdir()):
-            if percorso.name.endswith(".json") and _regolare(percorso):
-                yield percorso, percorso.name.removesuffix(".json"), ""
+    if v1.exists() or v1.is_symlink():
+        if _tipo(v1) == "directory":
+            for percorso in sorted(v1.iterdir()):
+                if _tipo(percorso) != "file":
+                    continue
+                nome = percorso.name
+                if not nome.endswith(".json") or not _ESADECIMALE_64.fullmatch(
+                        nome.removesuffix(".json")):
+                    problemi.append(f"{percorso}: nome inatteso in V1")
+                    continue
+                yield percorso, nome.removesuffix(".json"), ""
+
     radice_v2 = cartella / "admission-receipts-v2"
-    if not _cartella(radice_v2):
+    if not (radice_v2.exists() or radice_v2.is_symlink()):
+        return
+    if _tipo(radice_v2) != "directory":
         return
     for per_generazione in sorted(radice_v2.iterdir()):
-        if not _cartella(per_generazione):
+        if _tipo(per_generazione) != "directory":
+            continue
+        if not _ESADECIMALE_64.fullmatch(per_generazione.name):
+            problemi.append(f"{per_generazione}: generazione non esadecimale")
             continue
         for percorso in sorted(per_generazione.iterdir()):
-            if percorso.name.endswith(".json") and _regolare(percorso):
-                yield (percorso, per_generazione.name,
-                       percorso.name.removesuffix(".json"))
+            if _tipo(percorso) != "file":
+                continue
+            nome = percorso.name
+            if not nome.endswith(".json") or not _ESADECIMALE_64.fullmatch(
+                    nome.removesuffix(".json")):
+                problemi.append(f"{percorso}: nome inatteso in V2")
+                continue
+            yield percorso, per_generazione.name, nome.removesuffix(".json")
 
 
 def legami_del_negozio(negozio: Path, autorita: Autorita,
@@ -316,7 +337,7 @@ def legami_del_negozio(negozio: Path, autorita: Autorita,
                 errore_stato = str(getattr(exc, "code", type(exc).__name__))
 
         for percorso, dal_percorso, dal_percorso_contesto in _ricevute_del_contratto(
-                Path(cartella)):
+                Path(cartella), bloccanti):
             legame = Legame(
                 tipo="ricevuta_ammissione", locazione=str(percorso),
                 contesto=autorita.contesto, contratto=contratto,
@@ -468,11 +489,24 @@ def _catena_riga_busta(documento, interno, produttore) -> str:
     busta = documento.get("terminal_envelope")
     grezzo = bytes(busta) if isinstance(busta, (bytes, bytearray)) \
         else str(busta).encode()
-    legame_atteso = _terminal_binding(grezzo)
+    # The Producer store binds the two columns to the terminal state: a commit
+    # carries result_binding and no rejection code, a refusal the opposite.
+    # Demanding the binding in both cases made a genuine authenticated refusal
+    # unclassifiable.
+    situazione = str(documento.get("state") or "")
     if "result_binding" not in documento:
         return "schema della riga incompleto: manca result_binding"
-    if str(documento.get("result_binding")) != str(legame_atteso):
-        return "result_binding discorde dal legame canonico della busta"
+    legame_atteso = _terminal_binding(grezzo)
+    if situazione == "committed":
+        if documento.get("rejection_code") is not None:
+            return "riga committed con un codice di rifiuto"
+        if str(documento.get("result_binding")) != str(legame_atteso):
+            return "result_binding discorde dal legame canonico della busta"
+    elif situazione == "rejected":
+        if documento.get("result_binding") is not None:
+            return "riga rejected con un result_binding"
+        if documento.get("rejection_code") is None:
+            return "riga rejected senza codice di rifiuto"
     return ""
 
 

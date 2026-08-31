@@ -525,6 +525,113 @@ def _(base: Path) -> list[str]:
     return errori
 
 
+@caso("byte Admission diversi fra negozio e busta: blocca")
+def _(base: Path) -> list[str]:
+    from executor_birth_receipts import issue_producer_receipt
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    def prod(nonce: str) -> bytes:
+        return issue_producer_receipt(
+            issuer_id=EMITTENTE, executor_origin=ExecutorOrigin.BUILTIN,
+            revision_authorship=RevisionAuthor.HUMAN,
+            objective_hash="sha256:" + "6" * 64,
+            candidate_source_id="sha256:" + "7" * 64,
+            issued_at=ISTANTE, expires_at=SCADENZA, nonce=nonce,
+            key_id=k["id_pro"], private_key=k["priv_pro"])
+    # due produttori DAVVERO diversi: il costruttore e' deterministico, e con
+    # lo stesso nonce le due ricevute sarebbero byte identiche
+    X, Y = prod("a" * 32), prod("b" * 32)
+    ric = "sha256:" + "3" * 64
+    nel_negozio = ammissione(k, contratto="bad", generazione=gen("a"),
+                             byte_produttore=X, richiesta=ric)
+    altra = ammissione(k, contratto="bad", generazione=gen("a"),
+                       byte_produttore=Y, richiesta=ric)
+    pubblicazione(negozio, "bad", [gen("a"), gen("b")], gen("b"),
+                  {gen("a"): nel_negozio})
+    encoded, firma = busta(k, contratto="bad", generazione=gen("a"),
+                           precedente=gen("b"), richiesta=ric,
+                           ammissione_byte=altra)
+    stato = riga(base / "stato", [riga_coerente(
+        k, byte_produttore=X, encoded=encoded, firma=firma, richiesta=ric)])
+    e = esegui(negozio, stato, aut, stato_di(("bad", "corrente", gen("b"))))
+    return ([] if e["conteggio"].get(C.IGNOTA) == 1
+            else [f"i byte diversi non hanno bloccato: {e['conteggio']}"])
+
+
+@caso("codici di rifiuto diversi fra riga e busta: blocca")
+def _(base: Path) -> list[str]:
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    ric = "sha256:" + "3" * 64
+    interno = {"schema_version": 1, "request_id": ric,
+               "signing_key_id": k["id_amm"], "admission_receipt": None,
+               "error_code": "codice_busta"}
+    encoded = json.dumps(interno).encode()
+    firma = k["priv_amm"].sign(C.DOMINIO_TERMINALE + encoded)
+    buoni = produttore(k)
+    r = riga_coerente(k, byte_produttore=buoni, encoded=encoded, firma=firma,
+                      richiesta=ric, stato="rejected")
+    r["rejection_code"] = "codice_riga"      # discorde da quello firmato
+    r["result_binding"] = None
+    e = esegui(negozio, riga(base / "stato", [r]), aut, {})
+    return ([] if e["conteggio"].get(C.IGNOTA) == 1
+            else [f"due codici diversi accettati come un rifiuto: {e['conteggio']}"])
+
+
+@caso("rifiuto terminale coerente: e' un rifiuto, non un ignoto")
+def _(base: Path) -> list[str]:
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    ric = "sha256:" + "3" * 64
+    interno = {"schema_version": 1, "request_id": ric,
+               "signing_key_id": k["id_amm"], "admission_receipt": None,
+               "error_code": "property_runner_unavailable"}
+    encoded = json.dumps(interno).encode()
+    firma = k["priv_amm"].sign(C.DOMINIO_TERMINALE + encoded)
+    r = riga_coerente(k, byte_produttore=produttore(k), encoded=encoded,
+                      firma=firma, richiesta=ric, stato="rejected")
+    r["rejection_code"] = "property_runner_unavailable"
+    r["result_binding"] = None               # come impone il Producer store
+    e = esegui(negozio, riga(base / "stato", [r]), aut, {})
+    errori = []
+    if e["conteggio"].get(C.IGNOTA):
+        errori.append(f"un rifiuto coerente e' stato dichiarato ignoto: {e['motivi']}")
+    if len(e["rifiuti"]) != 1:
+        errori.append(f"non e' stato contato come rifiuto: {len(e['rifiuti'])}")
+    return errori
+
+
+@caso("ricevuta raggiunta per collegamento: BLOCCA, non sparisce")
+def _(base: Path) -> list[str]:
+    import os
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    cartella = pubblicazione(negozio, "lnk", [gen("a"), gen("b")], gen("b"), {})
+    fuori = base / "fuori.json"
+    fuori.write_bytes(ammissione(k, contratto="lnk", generazione=gen("a")))
+    os.symlink(fuori, cartella / "admission-receipts" / f"{gen('a')}.json")
+    e = esegui(negozio, base / "stato", aut, stato_di(("lnk", "corrente", gen("b"))))
+    errori = []
+    if not e["bloccanti"]:
+        errori.append("il collegamento e' stato saltato invece di bloccare")
+    if e["conteggio"].get(C.STORICA):
+        errori.append("una ricevuta raggiunta per collegamento e' stata accettata")
+    return errori
+
+
+@caso("non verificabile sulla generazione CORRENTE: blocca")
+def _(base: Path) -> list[str]:
+    aut, k = autorita_finta()
+    negozio = base / "negozio"; negozio.mkdir()
+    guasta = bytearray(ammissione(k, contratto="cur", generazione=gen("a"),
+                                  contesto="sha256:" + "b" * 64))
+    guasta[-1] ^= 0xFF
+    pubblicazione(negozio, "cur", [gen("a")], gen("a"), {gen("a"): bytes(guasta)})
+    e = esegui(negozio, base / "stato", aut, stato_di(("cur", "corrente", gen("a"))))
+    return ([] if e["conteggio"].get(C.IGNOTA) == 1
+            else [f"il dubbio sulla generazione corrente non ha bloccato: {e['conteggio']}"])
+
+
 def main() -> int:
     fallimenti = 0
     for nome, fn in CASI:

@@ -442,3 +442,32 @@ Quindici prove verdi più le quattro variazioni indipendenti.
 la decodifica canonica V2 del prodotto, e la fixture emette ancora
 `schema_version: 1`. Serve la primitiva pubblica di decodifica; non la
 sostituisco con una seconda implementazione.
+
+---
+
+## 13. Settimo giro — sparire non è bloccare
+
+**R15 — il rilievo più acuto finora.** Avevo corretto «segue il collegamento» in
+«non lo censisce», e credevo di aver chiuso. Ma un oggetto saltato **sparisce
+lo stesso**: la forma del difetto era cambiata, non il difetto. Ora ogni anomalia
+dentro le radici possedute — collegamento, oggetto non regolare, componente non
+esadecimale, nome inatteso, `lstat` fallita — viene **riportata e blocca**.
+
+**R16 — `result_binding` dipende dallo stato.** Lo pretendevo sempre, mentre il
+Producer store lo impone su `committed` e lo vieta su `rejected`. Conseguenza:
+un rifiuto terminale **autentico** veniva dichiarato ignoto. Ora il confronto
+segue lo stato, e un `committed` con codice di rifiuto o un `rejected` con
+legame bloccano entrambi.
+
+**R17 — le prove devono stare nel commit.** Le quattro variazioni del sesto giro
+le avevo eseguite fuori dal file versionato: il checkpoint non era riproducibile
+dal solo commit. Ora sono dentro, insieme al caso del rifiuto coerente. **Venti
+casi**, tutti verdi.
+
+Esito reale invariato: 12 legami, tutti `epoca_storica`, zero non classificati.
+
+**Resta aperto**, dichiarato: la busta terminale è ancora letta con `json.loads`
+più la firma invece della decodifica canonica V2, e le fixture non usano le API
+del Producer store (`register`/`claim`/`finalize`). A indica la via — riusare
+`_decode_terminal_envelope` con una `BirthRequest` legata alla riga — e resta il
+prossimo passo del mio perimetro.
