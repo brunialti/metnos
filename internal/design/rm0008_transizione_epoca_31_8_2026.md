@@ -151,12 +151,17 @@ ordinata e senza duplicati di coppie `(contract_id, generation_id)`. Le coppie
 devono essere identiche a quelle di `current_receipts` nel certificato; il
 conteggio non partecipa come autorita' separata.
 
-`dominant_startup_receipt` e' il digest restituito dall'involucro del gruppo 7
-dopo la seconda lettura concordante sotto deployment lock, startup esclusivo e
-manutenzione. I suoi binding V1 aggiungono `context_transition_id` ai fatti
-gia' osservati. Il coordinatore accetta quel digest soltanto nella chiamata
-interna dell'involucro, lo rende durevole in `CERTIFICATE_READY` e lo include
-nel certificato: una ripresa deve ripresentare il valore identico.
+`dominant_startup_receipt` e' il digest con dominio
+`metnos.executor-birth.dominant-startup-receipt/v1\0` e framing
+length-delimited, nell'ordine, di `bindings_digest`, `retirement_plan_digest` e
+`enforcement_evidence_digest`, tutti digest canonici. I binding V1 aggiungono
+`context_transition_id` ai fatti gia' osservati. Dopo la seconda lettura
+concordante sotto deployment lock, startup esclusivo e manutenzione,
+l'involucro consuma la capacita', calcola questo digest completo e lo passa
+alla sola chiamata interna di attraversamento. Il coordinatore non accetta il
+solo `bindings_digest` ne' un digest fornito da un chiamante esterno: rende il
+valore completo durevole in `CERTIFICATE_READY` e lo include nel certificato.
+Una ripresa deve ripresentare il valore identico.
 
 ## 5. Insieme nuovo e identità conservate
 
@@ -412,13 +417,15 @@ Prima di B2 servono almeno:
 18. richiesta Producer V1 o di un'altra epoca non riutilizzabile in V2;
 19. ricevuta dominante assente, diversa o proveniente da binding senza
     `context_transition_id` rifiutata anche in ripresa;
-20. V1 storica e V2 corrente della stessa generazione coesistono come triple
+20. digest dominante che omette o cambia il piano di ritiro oppure usa il solo
+    `bindings_digest` rifiutato prima della pubblicazione;
+21. V1 storica e V2 corrente della stessa generazione coesistono come triple
     distinte; una copia discordante della stessa tripla e' rifiutata;
-21. problema d'inventario, oggetto non posseduto, alias o file non regolare
+22. problema d'inventario, oggetto non posseduto, alias o file non regolare
     impediscono il congelamento;
-22. recupero del contenitore incompleto accetta soltanto la forma vuota esatta,
+23. recupero del contenitore incompleto accetta soltanto la forma vuota esatta,
     e seconda esecuzione innocua;
-23. server completo e turni reali in copia dopo la transizione.
+24. server completo e turni reali in copia dopo la transizione.
 
 Le prove di interruzione osservano file e ricevute reali. Non è sufficiente
 avanzare una macchina di stati fittizia. La suite completa resta riservata a
