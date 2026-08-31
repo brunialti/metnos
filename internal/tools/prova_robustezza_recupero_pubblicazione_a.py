@@ -1,7 +1,6 @@
-"""Independent robustness checks for publication-container recovery."""
+"""Independent checks for the second publication-recovery checkpoint."""
 from __future__ import annotations
 
-import contextlib
 import os
 import sys
 import tempfile
@@ -11,158 +10,201 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "runtime"))
 
-import contract_store  # noqa: E402
 import executor_birth_publication_recovery as recovery  # noqa: E402
 from manifest_inventory import ContractId, ManifestOrigin  # noqa: E402
-
-
-@contextlib.contextmanager
-def isolated_catalog_lock(*, store_root=None, timeout=None):
-    """Avoid reaching the configured store while retaining writer-lock behavior."""
-    del store_root, timeout
-    yield
 
 
 def identity(name: str) -> ContractId:
     return ContractId(ManifestOrigin.BUILTIN, f"{name}/manifest.toml")
 
 
-def incomplete(root: Path, contract_id: ContractId, *, lock: bool = True) -> Path:
+def authorization(contract_id: ContractId):
+    return recovery.AutorizzazioneRecupero(
+        contract_id, contract_id.storage_key, recovery._TOKEN,
+    )
+
+
+def incomplete(root: Path, contract_id: ContractId) -> Path:
     container = root / contract_id.storage_key
     (container / "generations").mkdir(parents=True)
-    if lock:
-        (container / "writer.lock").write_bytes(b"\0")
+    (container / "writer.lock").write_bytes(b"\0")
     return container
 
 
-def check_lock_scope() -> list[str]:
-    calls = []
-
-    @contextlib.contextmanager
-    def observing_lock(*, store_root=None, timeout=None):
-        calls.append(store_root)
-        del timeout
-        yield
-
+def check_rename_does_not_replace() -> list[str]:
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
-        cid = identity("scope")
-        incomplete(root, cid)
-        with mock.patch.object(contract_store, "catalog_admission_lock", observing_lock):
-            recovery.recupera_contenitore_incompleto(cid, store_root=root)
-        return [] if calls == [root] else [f"catalog lock roots: {calls!r}"]
+        contract_id = identity("no-replace")
+        incomplete(root, contract_id)
+        original = os.rename
+        replaced = []
 
+        def racing_rename(source, destination, *args, **kwargs):
+            occupied = root / os.fspath(destination)
+            occupied.mkdir()
+            before = occupied.stat().st_ino
+            result = original(source, destination, *args, **kwargs)
+            replaced.append((before, occupied.stat().st_ino))
+            return result
 
-def check_observation_is_read_only() -> list[str]:
-    with tempfile.TemporaryDirectory() as temporary:
-        root = Path(temporary)
-        cid = identity("observe")
-        container = incomplete(root, cid, lock=False)
-        with mock.patch.object(
-            contract_store, "catalog_admission_lock", isolated_catalog_lock,
-        ):
-            recovery.recupera_contenitore_incompleto(cid, store_root=root)
-        return [] if not (container / "writer.lock").exists() else [
-            "observation created writer.lock",
-        ]
-
-
-def check_identity_is_authorized() -> list[str]:
-    with tempfile.TemporaryDirectory() as temporary:
-        root = Path(temporary)
-        cid = identity("not-in-inventory")
-        container = incomplete(root, cid)
-        with mock.patch.object(
-            contract_store, "catalog_admission_lock", isolated_catalog_lock,
-        ):
-            recovery.recupera_contenitore_incompleto(
-                cid, store_root=root, applica=True,
+        with mock.patch.object(os, "rename", racing_rename):
+            recovery.rimuovi_contenitore_incompleto(
+                authorization(contract_id), store_root=root,
             )
-        return ["unverified ContractId removed its container"] if not container.exists() else []
+        return [] if replaced and replaced[0][0] == replaced[0][1] else [
+            f"occupied destination replaced: {replaced!r}",
+        ]
 
 
-def check_late_failure_preserves_retry_shape() -> list[str]:
+def check_commit_is_synced_before_cleanup() -> list[str]:
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
-        cid = identity("late-failure")
-        container = incomplete(root, cid)
-        path_type = type(container)
-        original_rmdir = path_type.rmdir
+        contract_id = identity("sync")
+        incomplete(root, contract_id)
+        original_open = recovery._apri_directory
+        original_rename = os.rename
+        original_fsync = os.fsync
+        renamed = False
+        synced_after_rename = []
 
-        def failing_rmdir(path):
-            if path == container:
-                raise OSError("injected final removal failure")
-            return original_rmdir(path)
+        def observing_rename(*args, **kwargs):
+            nonlocal renamed
+            result = original_rename(*args, **kwargs)
+            renamed = True
+            return result
+
+        def observing_fsync(fd):
+            if renamed:
+                synced_after_rename.append(fd)
+            return original_fsync(fd)
+
+        def stop_before_cleanup(name, *, dir_fd=None):
+            if os.fspath(name).startswith(recovery.PREFISSO_RITIRO):
+                raise recovery.RecuperoPubblicazioneError("injected_stop")
+            return original_open(name, dir_fd=dir_fd)
 
         try:
             with (
-                mock.patch.object(
-                    contract_store, "catalog_admission_lock", isolated_catalog_lock,
-                ),
-                mock.patch.object(path_type, "rmdir", failing_rmdir),
+                mock.patch.object(os, "rename", observing_rename),
+                mock.patch.object(os, "fsync", observing_fsync),
+                mock.patch.object(recovery, "_apri_directory", stop_before_cleanup),
             ):
-                recovery.recupera_contenitore_incompleto(
-                    cid, store_root=root, applica=True,
+                recovery.rimuovi_contenitore_incompleto(
+                    authorization(contract_id), store_root=root,
                 )
-        except OSError:
+        except recovery.RecuperoPubblicazioneError:
             pass
-        else:
-            return ["injected failure was not observed"]
-        missing = [
-            name for name in ("generations", "writer.lock")
-            if not (container / name).exists()
+        return [] if synced_after_rename else [
+            "rename commit was not synced before cleanup",
         ]
-        return [] if not missing else ["late failure removed: " + ", ".join(missing)]
 
 
-def check_component_replacement_is_confined() -> list[str]:
+def check_retry_resumes_retired_name() -> list[str]:
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
-        cid = identity("replacement")
-        container = incomplete(root, cid)
-        held = root / "held"
-        outside = root / "outside"
-        (outside / "generations").mkdir(parents=True)
-        (outside / "writer.lock").write_bytes(b"\0")
-        path_type = type(container)
-        original_iterdir = path_type.iterdir
-        container_reads = 0
+        contract_id = identity("resume")
+        incomplete(root, contract_id)
+        original_open = recovery._apri_directory
+        stopped = False
 
-        def replacing_iterdir(path):
-            nonlocal container_reads
-            if path == container:
-                container_reads += 1
-                if container_reads == 2:
-                    os.rename(container, held)
-                    os.symlink(outside, container)
-            return original_iterdir(path)
+        def stop_once(name, *, dir_fd=None):
+            nonlocal stopped
+            if (
+                not stopped
+                and os.fspath(name).startswith(recovery.PREFISSO_RITIRO)
+            ):
+                stopped = True
+                raise recovery.RecuperoPubblicazioneError("injected_stop")
+            return original_open(name, dir_fd=dir_fd)
 
         try:
-            with (
-                mock.patch.object(
-                    contract_store, "catalog_admission_lock", isolated_catalog_lock,
-                ),
-                mock.patch.object(path_type, "iterdir", replacing_iterdir),
-            ):
-                recovery.recupera_contenitore_incompleto(
-                    cid, store_root=root, applica=True,
+            with mock.patch.object(recovery, "_apri_directory", stop_once):
+                recovery.rimuovi_contenitore_incompleto(
+                    authorization(contract_id), store_root=root,
                 )
-        except OSError:
+        except recovery.RecuperoPubblicazioneError:
             pass
-        damaged = [
-            name for name in ("generations", "writer.lock")
-            if not (outside / name).exists()
+        try:
+            outcome = recovery.rimuovi_contenitore_incompleto(
+                authorization(contract_id), store_root=root,
+            )
+        except recovery.RecuperoPubblicazioneError as exc:
+            return [f"retry did not resume: {exc.code}"]
+        return [] if outcome.rimosso else ["retry did not complete removal"]
+
+
+def check_unexpected_entry_is_preserved() -> list[str]:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        contract_id = identity("late-entry")
+        incomplete(root, contract_id)
+        original = os.rename
+        late_path = root / (
+            recovery.PREFISSO_RITIRO + contract_id.storage_key
+        ) / "late-entry.txt"
+
+        def rename_then_add(source, destination, *args, **kwargs):
+            result = original(source, destination, *args, **kwargs)
+            late_path.write_text("must remain unmodified")
+            return result
+
+        with mock.patch.object(os, "rename", rename_then_add):
+            recovery.rimuovi_contenitore_incompleto(
+                authorization(contract_id), store_root=root,
+            )
+        return [] if late_path.exists() else [
+            "entry added after verification was removed",
         ]
-        return [] if not damaged else ["replacement target lost: " + ", ".join(damaged)]
+
+
+def check_authorization_origin_is_enforced() -> list[str]:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        contract_id = identity("not-in-inventory")
+        incomplete(root, contract_id)
+        constructed = authorization(contract_id)
+        recovery.ispeziona_contenitore_incompleto(constructed, store_root=root)
+        return ["module token allowed construction outside inventory"]
+
+
+def check_authorization_is_bound_to_root() -> list[str]:
+    with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+        first_root = Path(first)
+        second_root = Path(second)
+        contract_id = identity("root-binding")
+        incomplete(first_root, contract_id)
+        incomplete(second_root, contract_id)
+        issued = authorization(contract_id)
+        recovery.ispeziona_contenitore_incompleto(issued, store_root=first_root)
+        recovery.ispeziona_contenitore_incompleto(issued, store_root=second_root)
+        return ["one authorization selected the same key in two caller roots"]
+
+
+def check_completed_retry_is_idempotent() -> list[str]:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        contract_id = identity("completed-retry")
+        incomplete(root, contract_id)
+        issued = authorization(contract_id)
+        recovery.rimuovi_contenitore_incompleto(issued, store_root=root)
+        try:
+            outcome = recovery.rimuovi_contenitore_incompleto(
+                issued, store_root=root,
+            )
+        except recovery.RecuperoPubblicazioneError as exc:
+            return [f"completed retry failed: {exc.code}"]
+        return [] if outcome.rimosso else ["completed retry lost its outcome"]
 
 
 def main() -> int:
     cases = (
-        ("catalog lock follows requested store", check_lock_scope),
-        ("observation is read-only", check_observation_is_read_only),
-        ("contract identity carries inventory authority", check_identity_is_authorized),
-        ("late failure preserves a retryable shape", check_late_failure_preserves_retry_shape),
-        ("component replacement cannot affect another container", check_component_replacement_is_confined),
+        ("rename cannot replace an occupied name", check_rename_does_not_replace),
+        ("commit is synced before cleanup", check_commit_is_synced_before_cleanup),
+        ("retry resumes the retired name", check_retry_resumes_retired_name),
+        ("late unexpected entries are preserved", check_unexpected_entry_is_preserved),
+        ("authorization origin is enforced", check_authorization_origin_is_enforced),
+        ("authorization is bound to one root", check_authorization_is_bound_to_root),
+        ("completed retry is idempotent", check_completed_retry_is_idempotent),
     )
     failures = 0
     for name, case in cases:
