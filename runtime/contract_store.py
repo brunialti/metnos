@@ -3946,42 +3946,24 @@ def read_current_birth_receipt_v2(
             return _read_regular_file(path, code="birth_receipt_invalid")
 
 
-@dataclass(frozen=True, slots=True)
-class CurrentReceiptEntry:
-    contract_id: str
-    generation_id: str
-    receipt_hash: str
-
-
-@dataclass(frozen=True, slots=True)
-class CurrentReceiptProof:
-    """Ordered identities and hashes of every current V2 receipt.
-
-    The coordinator binds these in the F4 certificate, so a count alone is not
-    a proof: each identity travels with the hash of the exact bytes that were
-    read back.  ``admission_context_id`` is a single value because a transition
-    has exactly one selected context.
-    """
-
-    admission_context_id: str
-    entries: tuple[CurrentReceiptEntry, ...]
-
-
 def current_receipt_proof(
     pairs: Iterable[tuple[ManifestRef, object]],
     *,
     trusted_publics: Iterable[TrustedPublic],
     store_root: Path | str | None = None,
     lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
-) -> CurrentReceiptProof:
+):
     """Read back every current V2 receipt and order the proof deterministically.
 
-    A generation without a receipt in the selected context is an error, not an
-    empty success: the transition must have reattested every current
-    generation.  Every pair must name the same context, which is the single
-    selector rule stated by the protocol.
+    Returns the existing ``executor_birth_cutover.CurrentReceiptProof``, which
+    is the shape the F4 certificate already consumes: sorted unique identities
+    plus the hash of the exact bytes read back for each.  A generation without
+    a receipt in the selected context is an error, not an empty success, and
+    every pair must name the same context, which is the single selector rule.
     """
-    collected: dict[tuple[str, str], CurrentReceiptEntry] = {}
+    from executor_birth_cutover import CurrentReceiptProof
+
+    collected: dict[tuple[str, str], str] = {}
     context: str | None = None
     for ref, request in pairs:
         generation_identifier, context_identifier = _sealed_v2_triple(ref, request)
@@ -3998,23 +3980,18 @@ def current_receipt_proof(
                 "birth_receipt_v2_missing", ref.contract_id.value,
             )
         key = (ref.contract_id.value, generation_identifier)
-        entry = CurrentReceiptEntry(
-            key[0], key[1], admission_receipt_hash(encoded),
-        )
+        digest = admission_receipt_hash(encoded)
         previous = collected.get(key)
-        if previous is not None and previous != entry:
+        if previous is not None and previous != digest:
             raise ContractStoreError("birth_receipt_v2_duplicate", key[0])
-        collected[key] = entry
+        collected[key] = digest
     if context is None:
         raise ContractStoreError("birth_receipt_v2_missing", "empty inventory")
-    ordered = tuple(
-        collected[key] for key in sorted(
-            collected, key=lambda item: (
-                item[0].encode("utf-8"), item[1].encode("utf-8"),
-            ),
-        )
-    )
-    return CurrentReceiptProof(context, ordered)
+    # Python orders strings by code point, which for UTF-8 is the same order as
+    # the encoded bytes, so this satisfies both the certificate's stated byte
+    # ordering and the sorted-tuple invariant of the proof type.
+    identities = tuple(sorted(collected))
+    return CurrentReceiptProof(identities, {k: collected[k] for k in identities})
 
 
 def authenticate_execution_binding(

@@ -38,7 +38,7 @@ class _StandInSelection:
     transition_id: str
     set_id: str
     admission_context_id: str
-    context_epoch: int
+    context_epoch: str
     distribution: object = None
 
 
@@ -59,10 +59,13 @@ CTX_A = "sha256:" + "a" * 64
 CTX_B = "sha256:" + "b" * 64
 
 
-def _selection(context: str = CTX_A, epoca: int = 2) -> _StandInSelection:
-    return _StandInSelection(
-        "sha256:" + "1" * 64, "sha256:" + "2" * 64, context, epoca,
-    )
+EPOCA = "sha256:" + "e" * 64
+
+
+def _selection(context: str = CTX_A, epoca: str = EPOCA) -> _StandInSelection:
+    # set_id is bare hex and context_epoch is a digest: the forms the loader
+    # actually delivers.
+    return _StandInSelection("sha256:" + "1" * 64, "2" * 64, context, epoca)
 
 
 def _autorizzazione(context: str = CTX_A) -> C.BirthCommitAuthorization:
@@ -112,7 +115,7 @@ class Negozio:
         self.generation = risultato.current_generation_id
         self.dir = self.root / C.contract_storage_key(ref.contract_id)
 
-    def richiesta(self, context: str = CTX_A, epoca: int = 2):
+    def richiesta(self, context: str = CTX_A, epoca: str = EPOCA):
         return P.build_producer_request_v2(
             _selection(context, epoca),
             contract_id=self.ref.contract_id,
@@ -321,18 +324,17 @@ def _(n: Negozio) -> None:
     prova = C.current_receipt_proof(
         [(n.ref, n.richiesta())], trusted_publics=n.trusted, store_root=n.root,
     )
-    assert prova.admission_context_id == CTX_A
-    assert len(prova.entries) == 1
-    voce = prova.entries[0]
-    assert voce.contract_id == n.ref.contract_id.value
-    assert voce.generation_id == n.generation
-    assert voce.receipt_hash == C.admission_receipt_hash(n.leggi())
+    from executor_birth_cutover import CurrentReceiptProof
+    assert isinstance(prova, CurrentReceiptProof), "non e' il tipo che A consuma"
+    identita = (n.ref.contract_id.value, n.generation)
+    assert prova.identities == (identita,)
+    assert prova.receipt_hashes[identita] == C.admission_receipt_hash(n.leggi())
     # A repeated pair is the same fact, not a duplicate entry.
     ripetuta = C.current_receipt_proof(
         [(n.ref, n.richiesta()), (n.ref, n.richiesta())],
         trusted_publics=n.trusted, store_root=n.root,
     )
-    assert ripetuta.entries == prova.entries
+    assert ripetuta == prova
 
 
 @caso("16 §11.5 una generazione senza ricevuta non e' un successo vuoto")

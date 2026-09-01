@@ -29,12 +29,16 @@ MODULE = "executor_birth_context_selection"
 
 @dataclass(frozen=True, slots=True)
 class _StandInSelection:
-    """Stand-in for the frozen ``ContextSelectionV1`` shape."""
+    """Stand-in mirroring the shape agent A actually delivers.
+
+    ``set_id`` is bare hex and ``context_epoch`` is a canonical digest: both
+    were read from the loader module and its tests, not assumed.
+    """
 
     transition_id: str
     set_id: str
     admission_context_id: str
-    context_epoch: int
+    context_epoch: str
     distribution: object = None
 
 
@@ -45,7 +49,13 @@ def _install_stand_in() -> None:
 
 
 def _remove_stand_in() -> None:
-    sys.modules.pop(MODULE, None)
+    """Make the loader module unimportable, not merely absent from the cache.
+
+    Once agent A's real module exists on disk, popping the cache entry lets the
+    real import succeed and the case stops testing what it claims.  A ``None``
+    entry makes ``import`` raise, which is absence as the code experiences it.
+    """
+    sys.modules[MODULE] = None
 
 
 _install_stand_in()
@@ -55,6 +65,11 @@ import executor_birth_producer_context as P  # noqa: E402
 
 def _sha(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
+
+
+def _hex(text: str) -> str:
+    """The loader delivers ``set_id`` as bare hex, without the prefix."""
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 class _Contract:
@@ -72,9 +87,9 @@ class _Contract:
 def _selection(**over):
     base = dict(
         transition_id=_sha("transition"),
-        set_id=_sha("set"),
+        set_id=_hex("set"),
         admission_context_id=_sha("context"),
-        context_epoch=2,
+        context_epoch=_sha("epoca-2"),
     )
     base.update(over)
     return _StandInSelection(**base)
@@ -132,14 +147,14 @@ def _() -> None:
 
 @prova("4 §11.18 un'altra epoca non e' riutilizzabile")
 def _() -> None:
-    other = _selection(context_epoch=3)
+    other = _selection(context_epoch=_sha("epoca-3"))
     assert _build().request_id != _build(other).request_id
     assert _build().objective_hash != _build(other).objective_hash
 
 
 @prova("5 un insieme target diverso produce una richiesta diversa")
 def _() -> None:
-    other = _selection(set_id=_sha("altro-insieme"))
+    other = _selection(set_id=_hex("altro-insieme"))
     assert _build().request_id != _build(other).request_id
 
 
@@ -167,8 +182,8 @@ def _() -> None:
         _sha("generation").encode(),
         _sha("context").encode(),
         _sha("transition").encode(),
-        _sha("set").encode(),
-        (2).to_bytes(8, "big"),
+        _hex("set").encode(),
+        _sha("epoca-2").encode(),
     )
     v1 = P._hash(b"metnos.executor-birth.producer-request/v1\0", *campi)
     assert r.request_id != v1, "un dominio V1 collide con il V2"
@@ -181,9 +196,9 @@ def _() -> None:
         transition_id: str
         set_id: str
         admission_context_id: str
-        context_epoch: int
+        context_epoch: str
 
-    sosia = Sosia(_sha("transition"), _sha("set"), _sha("context"), 2)
+    sosia = Sosia(_sha("transition"), _hex("set"), _sha("context"), _sha("epoca-2"))
     _rifiuta("producer_request_v2_invalid", lambda: _build(sosia))
 
 
@@ -208,7 +223,7 @@ def _() -> None:
     atteso = P._hash(
         P._REQUEST_DOMAIN, b"origin/manifest.toml", _sha("generation").encode(),
         _sha("context").encode(), _sha("transition").encode(),
-        _sha("set").encode(), (2).to_bytes(8, "big"),
+        _hex("set").encode(), _sha("epoca-2").encode(),
     )
     assert r.request_id == atteso, "il pre-immagine non usa il valore del contratto"
 
@@ -223,9 +238,9 @@ def _() -> None:
     _rifiuta("producer_request_v2_invalid", lambda: _build(generation="sha256:zz"))
 
 
-@prova("14 epoca: booleano, negativa e non intera rifiutate")
+@prova("14 epoca: solo un'impronta canonica, mai un numero o altro")
 def _() -> None:
-    for guasta in (True, False, -1, 1.0, "2", None, 1 << 62):
+    for guasta in (True, 2, -1, 1.0, "2", None, "sha256:" + "A" * 64, "8" * 64):
         _rifiuta(
             "producer_request_v2_invalid",
             lambda g=guasta: _build(_selection(context_epoch=g)),
@@ -251,7 +266,7 @@ def _() -> None:
     try:
         P.ProducerRequestV2(
             _sha("r"), _sha("o"), "o/m.toml", _sha("g"), _sha("c"),
-            _sha("t"), 2, _sha("s"), object(),
+            _sha("t"), _sha("e"), _hex("s"), object(),
         )
     except P.ProducerContextError as exc:
         assert exc.code == "producer_request_v2_untrusted"

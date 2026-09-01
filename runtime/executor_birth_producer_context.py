@@ -43,9 +43,6 @@ __all__ = [
 _REQUEST_DOMAIN = b"metnos.executor-birth.producer-request/v2\0"
 _OBJECTIVE_DOMAIN = b"metnos.executor-birth.producer-objective/v2\0"
 
-_MAX_EPOCH = 1 << 62
-
-
 class ProducerContextError(RuntimeError):
     def __init__(self, code: str, detail: str = "") -> None:
         self.code = code
@@ -71,7 +68,7 @@ class ProducerRequestV2:
     generation_id: str
     admission_context_id: str
     transition_id: str
-    context_epoch: int
+    context_epoch: str
     set_id: str
     _seal: object
 
@@ -118,11 +115,17 @@ def _selection_class():
     return ContextSelectionV1
 
 
-def _epoch(value: object) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise ProducerContextError("producer_request_v2_invalid", "context_epoch")
-    if value < 0 or value >= _MAX_EPOCH:
-        raise ProducerContextError("producer_request_v2_invalid", "context_epoch")
+def _hex_digest(value: object, field: str) -> str:
+    """Accept only a bare lowercase 64 hex digest, with no ``sha256:`` prefix.
+
+    The loader delivers ``set_id`` in this form while the other identities
+    carry the prefix.  Both are validated for the form they actually have
+    rather than normalised into one, so a value that crossed from one field to
+    the other is rejected instead of silently accepted.
+    """
+    if (not isinstance(value, str) or len(value) != 64
+            or any(char not in "0123456789abcdef" for char in value)):
+        raise ProducerContextError("producer_request_v2_invalid", field)
     return value
 
 
@@ -155,11 +158,13 @@ def build_producer_request_v2(
         raise ProducerContextError("producer_request_v2_invalid", "selection")
 
     transition_id = _digest(getattr(selection, "transition_id", None), "transition_id")
-    set_id = _digest(getattr(selection, "set_id", None), "set_id")
+    set_id = _hex_digest(getattr(selection, "set_id", None), "set_id")
     admission_context_id = _digest(
         getattr(selection, "admission_context_id", None), "admission_context_id",
     )
-    context_epoch = _epoch(getattr(selection, "context_epoch", None))
+    context_epoch = _digest(
+        getattr(selection, "context_epoch", None), "context_epoch",
+    )
     contract_value = _contract_value(contract_id)
     generation = _digest(generation_id, "generation_id")
 
@@ -172,7 +177,7 @@ def build_producer_request_v2(
         admission_context_id.encode("ascii"),
         transition_id.encode("ascii"),
         set_id.encode("ascii"),
-        context_epoch.to_bytes(8, "big"),
+        context_epoch.encode("ascii"),
     )
     return ProducerRequestV2(
         _hash(_REQUEST_DOMAIN, *fields),

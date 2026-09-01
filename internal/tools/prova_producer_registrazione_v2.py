@@ -31,7 +31,7 @@ class _StandInSelection:
     transition_id: str
     set_id: str
     admission_context_id: str
-    context_epoch: int
+    context_epoch: str
     distribution: object = None
 
 
@@ -70,9 +70,15 @@ class _Contract:
     __repr__ = __str__
 
 
-def _richiesta(context: str = CTX_A, epoca: int = 2, contratto: str = CONTRACT):
+EPOCA_2 = "sha256:" + "e" * 64
+EPOCA_3 = "sha256:" + "f" * 64
+
+
+def _richiesta(context: str = CTX_A, epoca: str = EPOCA_2,
+               contratto: str = CONTRACT):
+    # set_id bare hex, context_epoch a digest: the delivered forms.
     return P.build_producer_request_v2(
-        _StandInSelection("sha256:" + "1" * 64, "sha256:" + "3" * 64, context, epoca),
+        _StandInSelection("sha256:" + "1" * 64, "3" * 64, context, epoca),
         contract_id=_Contract(contratto), generation_id=GEN,
     )
 
@@ -229,10 +235,10 @@ def _(b: Banco) -> None:
 def _(b: Banco) -> None:
     # The receipt of epoch 2 carries epoch 2's objective, so it cannot even be
     # bound to epoch 3: the refusal lands before any lookup.
-    prima = _richiesta(epoca=2)
+    prima = _richiesta(epoca=EPOCA_2)
     encoded = b.apri(prima)
     b.chiudi(prima, encoded)
-    seconda = _richiesta(epoca=3)
+    seconda = _richiesta(epoca=EPOCA_3)
     assert seconda.request_id != prima.request_id
     assert seconda.objective_hash != prima.objective_hash
     _rifiuta("producer_receipt_binding_invalid", lambda: b.verifica(seconda, encoded))
@@ -242,9 +248,9 @@ def _(b: Banco) -> None:
 def _(b: Banco) -> None:
     # Same shape, but the binding now agrees: the refusal must come from the
     # absent registration, not from the receipt.
-    prima = _richiesta(epoca=2)
+    prima = _richiesta(epoca=EPOCA_2)
     b.chiudi(prima, b.apri(prima))
-    seconda = _richiesta(epoca=3)
+    seconda = _richiesta(epoca=EPOCA_3)
     fresca = b.ricevuta(seconda.objective_hash)
     _rifiuta("producer_request_v2_unregistered", lambda: b.verifica(seconda, fresca))
 
