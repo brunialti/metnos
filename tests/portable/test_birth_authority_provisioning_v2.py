@@ -23,10 +23,11 @@ from executor_birth_prepared_set import PREPARED_STATE_V1, PreparedSetV1
 from install.birth_authority_provisioner import (
     BirthProvisioningError, CheckpointV1, ProvisioningStateV1,
     MaterialPlanEntryV2, MaterialPlanV2, PayloadConfidentialityV1,
-    PayloadObjectTypeV1, TransactionHeaderV2,
+    PayloadObjectTypeV1, PreparedAuthoritySetV2, TransactionHeaderV2,
     _build_transaction_header_v2, _materialize_material_plan_v2,
     decode_transaction_header_v2,
     decode_material_plan_v2, empty_digests_v1,
+    is_prepared_authority_set_v2, prepare_transition_authority_set_v2,
     provisioning_source_inventory_hash_v2,
 )
 from rm0008_2b import support
@@ -610,3 +611,59 @@ def test_v2_builds_a_new_set_without_copying_or_replacing_the_author_root(
         for item in (base / "birth" / "author-root-v1").rglob("*")
         if item.is_file()
     } == author_before
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_fixed_entry_returns_the_same_sealed_prepared_set_on_resume(
+    tmp_path, monkeypatch,
+):
+    import config as runtime_config
+    from executor_birth_prepared_root import read_prepared_set_v1
+
+    base = support.make_config(
+        tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
+    )
+    support.provision(monkeypatch, base)
+    support.use_config(monkeypatch, base)
+    previous = read_prepared_set_v1()
+    distribution = replace(
+        _distribution(), installation_root=str(runtime_config.PATH_RUNTIME),
+    )
+    marker_before = (base / "birth" / "prepared-v1.json").read_bytes()
+
+    first = prepare_transition_authority_set_v2(
+        _claim(), distribution, previous,
+    )
+    second = prepare_transition_authority_set_v2(
+        _claim(), distribution, previous,
+    )
+
+    assert isinstance(first, PreparedAuthoritySetV2)
+    assert is_prepared_authority_set_v2(first)
+    assert second == first
+    assert first.previous_set_id == previous.set_id
+    assert first.target_set_id != previous.set_id
+    assert first.request_id == _claim().request_id
+    assert len(list((base / "birth").glob(
+        ".birth-provisioning-v2.txn.*",
+    ))) == 1
+    assert (base / "birth" / "prepared-v1.json").read_bytes() == marker_before
+    with pytest.raises(BirthProvisioningError):
+        replace(first, target_set_id="0" * 64)
+    claim = _claim()
+    changed_request = D("4")
+    changed_claim = replace(
+        claim,
+        request_id=changed_request,
+        claim_id=_successor_claim_id_v1({
+            **claim.as_value(include_id=False),
+            "request_id": changed_request,
+        }),
+    )
+    with pytest.raises(BirthProvisioningError):
+        prepare_transition_authority_set_v2(
+            changed_claim, distribution, previous,
+        )
+    assert prepare_transition_authority_set_v2(
+        _claim(), distribution, previous,
+    ) == first
