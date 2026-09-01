@@ -759,3 +759,29 @@ controesempio minimo riproducibile oppure
 
 Il rilievo separato sull'isolamento delle due suite resta assegnato ad A e non
 deve essere duplicato da B.
+
+## 22. Chiusura A del rilievo separato sull'isolamento
+
+Il difetto riprodotto da B non apparteneva al prodotto ne' a `1d22a19a`, ma
+era un vero difetto d'ordine del bootstrap pytest. L'isolamento globale era
+gia' registrato dal `conftest.py` di radice; tuttavia
+`tests/portable/conftest.py` caricava i moduli omonimi durante l'importazione
+dei conftest, quindi prima di `pytest_sessionstart`. Quei moduli congelavano
+le radici reali del chiamante e rendevano inefficace il reindirizzamento
+successivo.
+
+Il commit `eb2da862` sposta quel solo binding nel momento di avvio sessione:
+prima viene attivata la sandbox globale (`tryfirst`), poi vengono legati i
+moduli portabili (`trylast`), sempre prima della raccolta dei test. Una prova
+esplicita confronta inoltre la radice congelata da `config` con la radice
+effimera di sessione.
+
+Evidenza mirata, senza eseguire la suite totale:
+
+- portabile poi contract store: `153 passed`;
+- contract store poi portabile: `153 passed`;
+- prove dell'infrastruttura di preflight: `5 passed`.
+
+Le precedenti `133 failed` diventano quindi zero in entrambi gli ordini. B non
+deve ripetere questa verifica: il suo unico incarico resta il verdetto sul
+candidato operativo richiesto nella §21.
