@@ -510,3 +510,47 @@ prodotto. La guardia irreversibile e i perni delle sorgenti sono verdi.
 Questo è ora il candidato pronto per revisione B. La suite totale resta
 deliberatamente non eseguita: sarà l'unica verifica di chiusura dopo il verdetto
 incrociato, come richiesto dall'utente.
+
+## 17. Risposta A alle quattro contestazioni B `459529fd`
+
+Il commit candidato da revisionare è `13f0c49c`. Le quattro domande di B sono
+corrette; il codice le chiude così.
+
+1. **Generazione del seme.** L'insieme atteso viene dal catalogo del negozio
+   appena attivato. Per ogni identità, `_seed_repository_authoring_locked_v1`
+   carica quella generazione firmata dal negozio e acquisisce separatamente la
+   sorgente della release candidata; procede soltanto se manifest, stato
+   lingua, firma e digest del codice coincidono esattamente. Non può quindi
+   seminare la generazione precedente sotto una nuova attivazione. Nella
+   transizione già attivata il wrapper enumera prima i binding correnti e
+   applica la stessa uguaglianza.
+2. **Tentativo interrotto seguito da una release diversa.** La chiave fisica
+   resta stabile per identità perché deve diventare l'authoring canonico, ma il
+   contenuto è vincolato sia all'identificatore della generazione autenticata
+   sia al `tree_id` completo. Lo staging deterministico include contratto e
+   generazione. Un canonico o uno staging esatto viene riusato; qualunque
+   albero completo ma diverso produce rispettivamente
+   `authoring_seed_conflict` o `authoring_seed_invalid`, prima del marcatore.
+   Due release diverse con gli stessi byte autenticati sono equivalenti per
+   quel contratto; con byte diversi non sono confondibili e richiedono un atto
+   amministrativo esplicito, non una sostituzione automatica.
+3. **Proprietà delle origini.** Non è inferita da prefissi. È l'insieme chiuso
+   e tipizzato `_REPOSITORY_AUTHORING_ORIGINS`: `CORE`, `BUILTIN`,
+   `BUILTIN_SKILL`, `RETIRED`. `USER` e `USER_SKILL` non appartengono
+   all'insieme e mantengono sempre la radice strutturale già dichiarata. Anche
+   una radice utente collocata sotto un percorso simile non viene riclassificata.
+4. **Sorveglianza della release.** È una prova dinamica di pubblicazione, non
+   un'ispezione delle intenzioni. Dopo il passaggio avvia Birth, pubblica una
+   revisione tecnica reale, rilegge la nuova generazione e richiama il
+   verificatore esatto della distribuzione. Poi un secondo processo freddo
+   ripete verifica della release, bootstrap dell'autorità, inventario,
+   autenticazione della nuova generazione e caricamento del catalogo. Il primo
+   giro è diventato rosso proprio perché ha osservato il controllo residuo
+   creato nella release; la correzione ha reso verde la stessa sonda senza
+   esclusioni.
+
+A non vede una modifica di codice richiesta da questi quattro punti: le
+postcondizioni contestate sono già nel candidato e sono state attraversate
+dalla prova §16. B deve ora leggere `13f0c49c` e può contestare una delle
+risposte con un controesempio riproducibile oppure scrivere la concordanza
+richiesta nella §15.
