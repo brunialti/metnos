@@ -16,6 +16,10 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from executor_birth_cutover import CurrentReceiptProof
+from executor_birth_context_transition import (
+    context_transition_basename_v1,
+    issue_context_transition_v1,
+)
 import executor_birth_ownership_chain as chain_module
 import executor_birth_distribution_manifest as distribution_module
 import executor_birth_ownership_authorities as authority_module
@@ -133,6 +137,23 @@ def cutover(authority, *, previous, build, request):
     )
     return encoded, signature, verify_ownership_cutover_certificate(
         encoded, signature, registry=authority.cutover_registry,
+    )
+
+
+def context_transition(*, proof=None, request="5"):
+    return issue_context_transition_v1(
+        request_id=D(request),
+        closed_build_id=D("6"),
+        previous_cutover_id=None,
+        previous_set_id="7" * 64,
+        previous_admission_context_id=D("8"),
+        previous_context_epoch=D("9"),
+        set_id="a" * 64,
+        prepared_admission_context_id=D("b"),
+        prepared_context_epoch=D("c"),
+        context_material_sha256="d" * 64,
+        set_json_sha256="e" * 64,
+        current_proof=proof or CurrentReceiptProof((), {}),
     )
 
 
@@ -638,6 +659,121 @@ def test_read_only_open_never_creates_missing_store(authority, tmp_path):
     with pytest.raises(OwnershipChainError, match="recovery_required"):
         open_test_store(tmp_path / "absent-store", authority)
     assert not (tmp_path / "absent-store").exists()
+
+
+def test_context_transition_store_is_initialized_and_exact_retries_converge(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    assert directory.is_dir()
+    assert directory.stat().st_mode & 0o777 == 0o755
+
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    first = store.append_context_transition(encoded, expected_proof=proof)
+    second = store.append_context_transition(encoded, expected_proof=proof)
+
+    assert first == second == expected
+    assert tuple(item.name for item in directory.iterdir()) == (
+        context_transition_basename_v1(expected.transition_id),
+    )
+    initial = _inspect_ownership_chain_state_for_test_v1(store)
+    assert isinstance(initial, _InitialOwnershipChainStateForTestV1)
+
+
+def test_context_transition_append_recovers_an_exact_temporary_prefix(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    basename = context_transition_basename_v1(expected.transition_id)
+    temporary = directory / f".{basename}.tmp"
+    temporary.write_bytes(encoded[:17])
+    temporary.chmod(0o644)
+
+    observed = store.append_context_transition(encoded, expected_proof=proof)
+
+    assert observed == expected
+    assert not temporary.exists()
+
+
+def test_context_transition_collision_inventory_and_proof_mismatch_stop(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    destination = directory / context_transition_basename_v1(
+        expected.transition_id,
+    )
+    destination.write_bytes(b"{}")
+    destination.chmod(0o644)
+
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.append_context_transition(encoded, expected_proof=proof)
+
+    destination.write_bytes(encoded)
+    destination.chmod(0o644)
+    identity = (("explicit:alpha/manifest.toml", D("f")),)
+    other = CurrentReceiptProof(identity, {identity[0]: D("0")})
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.read_context_transition(
+            expected.transition_id,
+            expected_proof=other,
+        )
+
+    (directory / "unexpected").write_bytes(b"")
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.read_context_transition(expected.transition_id)
+
+
+def test_context_transition_post_publication_retry_is_idempotent(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+
+    def interrupt(boundary):
+        if boundary == "after_context_transition_record":
+            raise _OwnershipChainCrashForTest(boundary)
+
+    with pytest.raises(_OwnershipChainCrashForTest):
+        store.append_context_transition(
+            encoded,
+            expected_proof=proof,
+            _crash_seam=interrupt,
+        )
+
+    assert store.append_context_transition(
+        encoded,
+        expected_proof=proof,
+    ) == expected
+
+
+def test_context_transition_reader_rejects_a_second_file_name(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    store.append_context_transition(encoded, expected_proof=proof)
+    path = (
+        store.root
+        / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+        / context_transition_basename_v1(expected.transition_id)
+    )
+    try:
+        os.link(path, tmp_path / "second-name")
+    except OSError:
+        pytest.skip("hard links unavailable")
+
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.read_context_transition(expected.transition_id)
 
 
 def test_product_store_constructors_do_not_accept_authority_injection():
