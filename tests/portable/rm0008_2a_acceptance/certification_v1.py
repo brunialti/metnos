@@ -59,10 +59,10 @@ _FROZEN_WORKFLOW_SHA256 = (
 _EFFECTIVE_PYTEST_SUPPORT_SHA256 = {
     "conftest.py": "c31a567f781dcbd3e1ce06c67c901a1b3be07c21a5d8c4030cc8bf262a753015",
     "tests/portable/conftest.py": (
-        "3e97642c45cd5d4e24d63f05078910ccb818aa49465db788a7b52ae064096193"
+        "326ff30ed872a9b0cded1cbdd27f155043342d431e76f9d108b29c1e70cb41d1"
     ),
     "tests/runtime/conftest.py": (
-        "6c3c097efa2cf52334cb4fc40945c1b1d9c91bf7f774a768958809bd8c9086ab"
+        "87f5d98acdfb3950dc6e443e01360163336bb2c4adf10dc16fdc97e8308696a0"
     ),
     "tests/windows_identity/conftest.py": (
         "856572740b3f2246296ba064168da30894092e690ab5c65d1b0ea159029768b3"
