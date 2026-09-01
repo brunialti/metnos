@@ -12,6 +12,7 @@ import dataclasses
 import hashlib
 import json
 from collections.abc import Mapping
+from types import SimpleNamespace
 from typing import Callable
 
 import pytest
@@ -1145,6 +1146,53 @@ def test_pending_cutover_selection_uses_exact_authenticated_bytes() -> None:
     assert build is graph["distribution"]
     assert selected is transaction
     assert predecessor is graph["predecessor"]
+
+
+def test_cutover_prerequisite_is_derived_from_captured_facts(monkeypatch) -> None:
+    graph = _bound_graph()
+    transaction = _receipts_complete_transaction(graph)
+    candidate = preflight._bind_candidate_cutover_materials_core_v1(
+        graph["distribution"], transaction, graph["predecessor"],
+        graph["captured"],
+    )
+    tcb = preflight._CapturedAdministrativeTcbV1(
+        SimpleNamespace(
+            python_binary_hash=D("1"),
+            openssl_binary_hash=D("2"),
+            systemctl_binary_hash=D("3"),
+            systemd_analyze_binary_hash=D("4"),
+        ),
+        SimpleNamespace(openssl_tcb_hash=D("5")),
+    )
+    prepared = preflight._PreparedCutoverCandidateV2(
+        candidate, tcb, preflight._PREPARED_CUTOVER_CANDIDATE_SEAL_V2,
+    )
+    effective = preflight._CapturedEffectiveSystemdUnitsV1(
+        "255.4-1ubuntu8.17",
+        preflight._EffectiveSystemdUnitsSnapshotV1((), b"effective", D("6")),
+        (), (),
+    )
+    revalidated = []
+    monkeypatch.setattr(
+        preflight, "_revalidate_captured_administrative_tcb_v1",
+        lambda *args, **kwargs: revalidated.append("tcb"),
+    )
+    monkeypatch.setattr(
+        preflight, "_revalidate_captured_effective_systemd_v1",
+        lambda *args, **kwargs: revalidated.append("systemd"),
+    )
+
+    prerequisite = preflight._build_startup_prerequisite_for_cutover_v2(
+        prepared, effective,
+    )
+
+    assert prerequisite.request_id == transaction.request_id
+    assert prerequisite.predecessor_id == graph["predecessor"].predecessor_id
+    assert prerequisite.candidate_units_hash == (
+        candidate.candidate_units.candidate_units_hash
+    )
+    assert prerequisite.effective_units_hash == D("6")
+    assert revalidated == ["tcb", "systemd", "tcb", "systemd"]
 
 
 @pytest.mark.parametrize(

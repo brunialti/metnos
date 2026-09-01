@@ -786,7 +786,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:f4c1f35719aba0aecfdba825a90ff7042757ccdade13deaa52d152000edd47d7"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:e7d9d0f6e5e4e966325ca8e43f2184b660a39ecb3385f6cfd52acf767a38fd34"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -4192,6 +4192,79 @@ def _prepare_cutover_candidate_v2(
         materials, authenticated.administrative_tcb.capture,
         _PREPARED_CUTOVER_CANDIDATE_SEAL_V2,
     )
+
+
+def _capture_cutover_effective_systemd_v2(
+    prepared: _PreparedCutoverCandidateV2,
+) -> _CapturedEffectiveSystemdUnitsV1:
+    """Measure the installed candidate through the fixed product manager."""
+    if (
+        type(prepared) is not _PreparedCutoverCandidateV2
+        or prepared._seal is not _PREPARED_CUTOVER_CANDIDATE_SEAL_V2
+    ):
+        raise _invalid("prepared cutover candidate")
+    materials = prepared.materials
+    captured = _capture_effective_systemd_units_core_v1(
+        materials,
+        systemctl_executable=materials.descriptor.systemctl_executable,
+        live_root=Path("/"), uid=0, gid=0,
+    )
+    _revalidate_captured_effective_systemd_v1(
+        captured, live_root=Path("/"), uid=0, gid=0,
+    )
+    return captured
+
+
+def _build_startup_prerequisite_for_cutover_v2(
+    prepared: _PreparedCutoverCandidateV2,
+    effective: _CapturedEffectiveSystemdUnitsV1,
+):
+    """Build the prerequisite only from authenticated and freshly read facts."""
+    from executor_birth_distribution_assembler import (
+        build_startup_prerequisite_v1,
+    )
+
+    if (
+        type(prepared) is not _PreparedCutoverCandidateV2
+        or prepared._seal is not _PREPARED_CUTOVER_CANDIDATE_SEAL_V2
+        or type(effective) is not _CapturedEffectiveSystemdUnitsV1
+    ):
+        raise _invalid("cutover prerequisite input")
+    materials = prepared.materials
+    tcb = prepared.administrative_tcb
+    _revalidate_captured_administrative_tcb_v1(
+        tcb, _administrative_links_v1(), uid=0, gid=0, chain_stop=None,
+    )
+    _revalidate_captured_effective_systemd_v1(
+        effective, live_root=Path("/"), uid=0, gid=0,
+    )
+    prerequisite = build_startup_prerequisite_v1(
+        request_id=materials.transaction.request_id,
+        closed_build_id=materials.transaction.closed_build_id,
+        release_sequence=materials.transaction.release_sequence,
+        deployment_descriptor_id=materials.descriptor.descriptor_id,
+        predecessor_id=materials.predecessor.predecessor_id,
+        administrative_bundle_hash=materials.administrative_bundle_hash,
+        python_binary_hash=tcb.executables.python_binary_hash,
+        openssl_binary_hash=tcb.executables.openssl_binary_hash,
+        openssl_tcb_hash=tcb.openssl_tcb.openssl_tcb_hash,
+        systemctl_binary_hash=tcb.executables.systemctl_binary_hash,
+        systemd_analyze_binary_hash=(
+            tcb.executables.systemd_analyze_binary_hash
+        ),
+        service_catalog_id=materials.catalog.catalog_id,
+        service_coverage_hash=materials.catalog.service_coverage_hash,
+        systemd_manager_version=effective.manager_version,
+        candidate_units_hash=materials.candidate_units.candidate_units_hash,
+        effective_units_hash=effective.snapshot.effective_units_hash,
+    )
+    _revalidate_captured_administrative_tcb_v1(
+        tcb, _administrative_links_v1(), uid=0, gid=0, chain_stop=None,
+    )
+    _revalidate_captured_effective_systemd_v1(
+        effective, live_root=Path("/"), uid=0, gid=0,
+    )
+    return prerequisite
 
 
 def _decode_ownership_cutover_v1(
