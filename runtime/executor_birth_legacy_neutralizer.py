@@ -24,7 +24,7 @@ import stat
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 
 NEUTRALIZER_DOMAIN_V1 = b"metnos.executor-birth.legacy-neutralizer/v1\0"
@@ -306,7 +306,8 @@ def _publish_preservation_record_v1(
 
 
 def _preserve_replaced_unit_v1(
-    legacy_id: str, path: Path, replacement: bytes,
+    legacy_id: str, path: Path, replacement: bytes, *,
+    _crash_seam: Callable[[str], None] | None = None,
 ) -> tuple[str, bool]:
     """Preserve one occupied unit and recognize only the four named states."""
     if type(replacement) is not bytes or not replacement:
@@ -330,12 +331,16 @@ def _preserve_replaced_unit_v1(
             legacy_id, path, preserved, expected,
         )
         _publish_preservation_record_v1(path, encoded)
+    if _crash_seam is not None:
+        _crash_seam("preservation_record_published")
     if current_exists and not preserved_exists:
         if _regular_file_evidence_v1(path) != expected:
             raise _invalid("neutralizer_preservation_conflict", path.name)
         _rename_sibling_no_replace_v1(path, preserved)
         if _regular_file_evidence_v1(preserved) != expected:
             raise _invalid("neutralizer_preservation_unconfirmed", path.name)
+        if _crash_seam is not None:
+            _crash_seam("replaced_system_unit_preserved")
         return preserved.name, False
     if not current_exists and preserved_exists:
         if _regular_file_evidence_v1(preserved) != expected:
@@ -358,12 +363,16 @@ def _preserve_replaced_unit_v1(
 def _neutralize_core_v1(
     root: Path, steps: Sequence[object],
     replacement_fragments: Mapping[tuple[str, str], bytes],
+    *, _crash_seam: Callable[[str], None] | None = None,
 ) -> tuple[NeutralizedEntryV1, ...]:
     """Perform every step, then RE-READ the filesystem for the receipt."""
     _require_supported_platform_v1()
     if not isinstance(root, Path) or not root.is_absolute() or not root.is_dir():
         raise _invalid("neutralizer_root_invalid", str(root))
-    if not isinstance(replacement_fragments, Mapping):
+    if (
+        not isinstance(replacement_fragments, Mapping)
+        or _crash_seam is not None and not callable(_crash_seam)
+    ):
         raise _invalid("neutralizer_replacements_invalid", "shape")
     performed: list[NeutralizedEntryV1] = []
     ordered_steps = tuple(
@@ -393,6 +402,7 @@ def _neutralize_core_v1(
             observed, repeated = _preserve_replaced_unit_v1(
                 legacy_id, path,
                 replacement_fragments.get((scope, locator), b""),
+                _crash_seam=_crash_seam,
             )
         else:
             raise _invalid("neutralizer_action_unknown", str(action))
@@ -445,12 +455,14 @@ def neutralize_for_test_v1(
     capability: _TestOnlyNeutralizationCapabilityV1,
     steps: Sequence[object],
     *, replacement_fragments: Mapping[tuple[str, str], bytes],
+    _crash_seam: Callable[[str], None] | None = None,
 ) -> tuple[NeutralizedEntryV1, ...]:
     """Exercise the core through a capability no productive caller can hold."""
     if type(capability) is not _TestOnlyNeutralizationCapabilityV1:
         raise _invalid("neutralizer_capability_invalid", type(capability).__name__)
     return _neutralize_core_v1(
         capability.root, steps, replacement_fragments,
+        _crash_seam=_crash_seam,
     )
 
 

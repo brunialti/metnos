@@ -254,6 +254,45 @@ def test_preservation_resumes_at_each_durable_record_boundary(
     assert record.read_bytes() == encoded
 
 
+@POSIX_ONLY
+@pytest.mark.parametrize(
+    "stage", ["preservation_record_published", "replaced_system_unit_preserved"],
+)
+def test_declared_preservation_interruptions_converge(
+    tmp_path: Path, stage: str,
+) -> None:
+    root = _tree(tmp_path)
+    unit = root / "systemd" / "metnos-http.service"
+    unit.write_bytes(b"previous")
+    replacement = b"current"
+    step = _Step(
+        "legacy-service-http-system", "preserve_replaced_system_unit",
+        "systemd/metnos-http.service",
+    )
+
+    class Interrupted(Exception):
+        pass
+
+    def interrupt(observed: str) -> None:
+        if observed == stage:
+            raise Interrupted
+
+    with pytest.raises(Interrupted):
+        neutralizer.neutralize_for_test_v1(
+            _capability(root), [step],
+            replacement_fragments={("system", step.locator): replacement},
+            _crash_seam=interrupt,
+        )
+    resumed = _apply(
+        root, [step], {("system", step.locator): replacement},
+    )
+    preserved = unit.with_name(
+        unit.name + neutralizer.PRESERVED_EXTENSION_V1,
+    )
+    assert resumed[0].repeated is (stage == "replaced_system_unit_preserved")
+    assert not unit.exists() and preserved.read_bytes() == b"previous"
+
+
 def test_a_look_alike_capability_does_not_open_the_door(tmp_path: Path) -> None:
     """The type is the credential; a shape with the same field is not."""
     root = _tree(tmp_path)

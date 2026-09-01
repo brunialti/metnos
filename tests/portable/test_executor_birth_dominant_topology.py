@@ -53,6 +53,61 @@ def test_installing_the_same_topology_again_is_idempotent(tmp_path: Path) -> Non
 
 
 @POSIX_ONLY
+@pytest.mark.parametrize(
+    "stage", ["dominant_fragment_staged", "dominant_fragment_published"],
+)
+def test_declared_fragment_interruptions_converge(
+    tmp_path: Path, stage: str,
+) -> None:
+    class Interrupted(Exception):
+        pass
+
+    def interrupt(observed: str) -> None:
+        if observed == stage:
+            raise Interrupted
+
+    fragments = {"metnos-probe.service": _UNIT}
+    with pytest.raises(Interrupted):
+        topology.install_for_test_v1(
+            _capability(tmp_path), fragments, _crash_seam=interrupt,
+        )
+    resumed = topology.install_for_test_v1(
+        _capability(tmp_path), fragments,
+    )
+    assert resumed[0].repeated is (stage == "dominant_fragment_published")
+    assert (tmp_path / "metnos-probe.service").read_bytes() == _UNIT
+    assert not (tmp_path / ".metnos-probe.service.installing").exists()
+
+
+@POSIX_ONLY
+def test_fragment_staging_resumes_only_from_an_exact_prefix(tmp_path: Path) -> None:
+    temporary = tmp_path / ".metnos-probe.service.installing"
+    temporary.write_bytes(_UNIT[:11])
+    installed = topology.install_for_test_v1(
+        _capability(tmp_path), {"metnos-probe.service": _UNIT},
+    )
+    assert installed[0].repeated is False
+    assert (tmp_path / "metnos-probe.service").read_bytes() == _UNIT
+    assert not temporary.exists()
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("with_final", [False, True])
+def test_undeclared_fragment_staging_state_is_refused(
+    tmp_path: Path, with_final: bool,
+) -> None:
+    temporary = tmp_path / ".metnos-probe.service.installing"
+    temporary.write_bytes(b"different")
+    if with_final:
+        (tmp_path / "metnos-probe.service").write_bytes(_UNIT)
+    with pytest.raises(topology.DominantTopologyError) as captured:
+        topology.install_for_test_v1(
+            _capability(tmp_path), {"metnos-probe.service": _UNIT},
+        )
+    assert captured.value.code == "topology_temporary_conflict"
+
+
+@POSIX_ONLY
 def test_a_name_holding_other_bytes_is_a_collision(tmp_path: Path) -> None:
     """Never an overwrite: those bytes are a topology nobody declared."""
     existing = tmp_path / "metnos-probe.service"
