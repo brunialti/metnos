@@ -17,7 +17,12 @@ import sys
 from pathlib import Path
 
 # SONDA_ROOT lets the mutation harness point the probe at a mutated copy.
-ROOT = Path(os.environ.get("SONDA_ROOT", "")) or Path(__file__).resolve().parents[1].parent
+_ROOT_OVERRIDE = os.environ.get("SONDA_ROOT")
+ROOT = (
+    Path(_ROOT_OVERRIDE).resolve()
+    if _ROOT_OVERRIDE
+    else Path(__file__).resolve().parents[2]
+)
 RUNTIME = ROOT / "runtime"
 
 failures: list[str] = []

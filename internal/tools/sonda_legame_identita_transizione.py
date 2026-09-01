@@ -29,7 +29,12 @@ import ast
 import os
 from pathlib import Path
 
-ROOT = Path(os.environ.get("SONDA_ROOT", "")) or Path(__file__).resolve().parents[2]
+_ROOT_OVERRIDE = os.environ.get("SONDA_ROOT")
+ROOT = (
+    Path(_ROOT_OVERRIDE).resolve()
+    if _ROOT_OVERRIDE
+    else Path(__file__).resolve().parents[2]
+)
 PROVISIONER = ROOT / "install" / "birth_authority_provisioner.py"
 ENTRY = ROOT / "install" / "executor_birth_transition.py"
 
