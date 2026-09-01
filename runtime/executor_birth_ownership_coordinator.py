@@ -4018,6 +4018,360 @@ def _cross_certificate_boundary_locked_for_test_v2(
     )
 
 
+def _certificate_material_for_head_v2(
+    record: OwnershipCoordinatorRecordV2, *, certificate_directory: Path,
+    chain_store: object, authorities: RootOwnershipAuthoritiesV1,
+) -> tuple[bytes, bytes, OwnershipCutoverCertificate]:
+    """Reread the exact published certificate before archiving its head."""
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    if (
+        type(record) is not OwnershipCoordinatorRecordV2
+        or record.sequence != 4
+        or record.state is not OwnershipCoordinatorStateV1.BUILD_VERIFIED
+        or not isinstance(chain_store, OwnershipChainStore)
+        or not is_root_ownership_authorities_v1(authorities)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head certificate input",
+        )
+    try:
+        if record.release_sequence == 1:
+            encoded = _safe_read(
+                Path(certificate_directory) / PAYLOAD_BASENAME,
+                MAX_PAYLOAD_BYTES,
+            )
+            signature = _safe_read(
+                Path(certificate_directory) / SIGNATURE_BASENAME, 64,
+            )
+        else:
+            encoded, signature = chain_store._read_pair(
+                chain_store.root / "cutovers-v1",
+                record.cutover_id.removeprefix("sha256:"),
+                maximum=MAX_PAYLOAD_BYTES,
+            )
+        proof = record.current_proof
+        assert proof is not None
+        certificate = verify_ownership_cutover_certificate(
+            encoded,
+            signature,
+            registry=authorities.public.cutover,
+            expected_proof=proof,
+            expected_previous_cutover_id=record.previous_cutover_id,
+            expected_context_transition_id=record.context_transition_id,
+            expected_dominant_startup_receipt=(
+                record.dominant_startup_receipt
+            ),
+        )
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head certificate reread",
+        ) from exc
+    if (
+        _digest(encoded) != record.certificate_payload_hash
+        or _digest(signature) != record.certificate_signature_hash
+        or certificate.cutover_id != record.cutover_id
+        or certificate.catalog_id != record.catalog_id
+        or certificate.request_id != record.request_id
+        or certificate.closed_build_id != record.closed_build_id
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head certificate binding",
+        )
+    return encoded, signature, certificate
+
+
+def _cross_head_boundary_core_v2(
+    *, published: object, distribution: object, authorities: object,
+    certificate_directory: Path, chain_store: object,
+    append_record: object, observe_graph: object,
+    verify_installation: object, verify_required_chain: object,
+    require_sessions: object,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Advance sequence 3 to 5 around one recoverable required-head CAS."""
+    from executor_birth_ownership_chain import (
+        OwnershipChainStore, OwnershipHead, VerifiedOwnershipChain,
+    )
+
+    if (
+        type(published) is not OwnershipCoordinatorRecordV2
+        or published.sequence != 3
+        or published.state
+        is not OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+        or not _verified_distribution_matches_payload_v1(distribution)
+        or not is_root_ownership_authorities_v1(authorities)
+        or not isinstance(chain_store, OwnershipChainStore)
+        or not callable(append_record)
+        or not callable(observe_graph)
+        or not callable(verify_installation)
+        or not callable(verify_required_chain)
+        or not callable(require_sessions)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head crossing input",
+        )
+
+    def require() -> None:
+        require_sessions()
+
+    def graph_transaction():
+        require()
+        graph = observe_graph()
+        if type(graph) is not _ObservedOwnershipCoordinatorGraphV2:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "head graph",
+            )
+        matches = tuple(
+            item for item in graph.transactions
+            if item.claim.request_id == published.request_id
+        )
+        if (
+            len(matches) != 1 or len(matches[0].records) < 4
+            or matches[0].records[3] != published
+            or matches[0].latest.sequence not in {3, 4, 5}
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "head predecessor",
+            )
+        return matches[0]
+
+    transaction = graph_transaction()
+    require()
+    observed_distribution = verify_installation()
+    require()
+    if (
+        type(observed_distribution) is not VerifiedDistribution
+        or observed_distribution != distribution
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "installed distribution",
+        )
+    build_record = _build_verified_record_v2(
+        published, observed_distribution,
+    )
+    if transaction.latest.sequence == 3:
+        build_record = append_record(build_record)
+        _require_transaction_record_reread_v2(
+            observe_graph(), build_record, detail="build verified reread",
+        )
+        require()
+        if _crash_seam is not None:
+            _crash_seam("build_verified")
+    elif transaction.records[4] != build_record:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "build verified binding",
+        )
+
+    encoded_certificate, certificate_signature, certificate = (
+        _certificate_material_for_head_v2(
+            build_record,
+            certificate_directory=Path(certificate_directory),
+            chain_store=chain_store,
+            authorities=authorities,
+        )
+    )
+    require()
+    archived_certificate = chain_store.append_cutover(
+        encoded_certificate,
+        certificate_signature,
+        _crash_seam=(
+            (lambda point: _crash_seam("cutover_" + point))
+            if _crash_seam is not None else None
+        ),
+    )
+    require()
+    if archived_certificate != certificate:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "cutover archive reread",
+        )
+    if _crash_seam is not None:
+        _crash_seam("cutover_archived")
+
+    chain_store.append_authenticated_build(
+        observed_distribution,
+        _crash_seam=(
+            (lambda point: _crash_seam("build_" + point))
+            if _crash_seam is not None else None
+        ),
+    )
+    require()
+    if _crash_seam is not None:
+        _crash_seam("build_archived")
+
+    material = _head_required_material_v2(
+        build_record, authorities=authorities,
+    )
+    archived_head = chain_store.append_head(
+        material.encoded,
+        material.signature,
+        _crash_seam=(
+            (lambda point: _crash_seam("head_" + point))
+            if _crash_seam is not None else None
+        ),
+    )
+    require()
+    if archived_head != material.head:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head archive reread",
+        )
+    if _crash_seam is not None:
+        _crash_seam("head_archived")
+
+    required = chain_store.update_required_head(
+        material.encoded,
+        material.signature,
+        expected_head_id=build_record.previous_head_id,
+        _crash_seam=(
+            (lambda point: _crash_seam("required_" + point))
+            if _crash_seam is not None else None
+        ),
+    )
+    require()
+    if required != material.head:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "required head reread",
+        )
+    verified_chain = verify_required_chain(certificate)
+    require()
+    if (
+        type(verified_chain) is not VerifiedOwnershipChain
+        or type(verified_chain.required_head) is not OwnershipHead
+        or verified_chain.required_head != material.head
+        or (
+            verified_chain.required_distribution is not None
+            and verified_chain.required_distribution != observed_distribution
+        )
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "required chain reread",
+        )
+    if _crash_seam is not None:
+        _crash_seam("required_chain_verified")
+
+    transaction = graph_transaction()
+    if transaction.latest.sequence == 4:
+        persisted = append_record(material.record)
+        _require_transaction_record_reread_v2(
+            observe_graph(), persisted, detail="head required reread",
+        )
+        require()
+        if _crash_seam is not None:
+            _crash_seam("head_required")
+    elif transaction.latest.sequence == 5:
+        persisted = transaction.latest
+        if persisted != material.record:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "head required binding",
+            )
+    else:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head journal order",
+        )
+    final = graph_transaction().latest
+    if final != persisted:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head final reread",
+        )
+    return final
+
+
+def _cross_head_boundary_locked_v2(
+    sessions: tuple[object, ...], published: object, distribution: object, *,
+    authorities: object,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Product crossing with all three live sessions continuously held."""
+    from executor_birth_dominant_startup import _require_product_sessions_v1
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    held = _require_product_sessions_v1(sessions)
+    store = OwnershipChainStore()
+
+    def observe_graph():
+        snapshot = _resolve_ownership_coordinator_locked_v2(held[0])
+        return _require_locked_coordinator_graph_snapshot_v2(
+            snapshot, held[0],
+        )
+
+    return _cross_head_boundary_core_v2(
+        published=published,
+        distribution=distribution,
+        authorities=authorities,
+        certificate_directory=DEFAULT_OWNERSHIP_ROOT_V1,
+        chain_store=store,
+        append_record=lambda record: _append_ownership_transaction_locked_v2(
+            held[0], record,
+        ),
+        observe_graph=observe_graph,
+        verify_installation=lambda: verify_current_installation_distribution_v1(
+            distribution.encoded, distribution.signature,
+        ),
+        verify_required_chain=lambda _certificate: (
+            store.read_required_chain_cold_v1()
+        ),
+        require_sessions=lambda: _require_product_sessions_v1(held),
+        _crash_seam=_crash_seam,
+    )
+
+
+def _cross_head_boundary_locked_for_test_v2(
+    deployment_session: object, startup_session: object, *,
+    ownership_root: Path, gate_path: Path, published: object,
+    distribution: object, authorities: object, chain_store: object,
+    builds: Mapping[str, VerifiedDistribution],
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Portable nominal seam; productive sessions cannot enter it."""
+    from executor_birth_ownership_chain import _OwnershipChainStoreForTest
+    from executor_birth_startup_gate import (
+        _require_exclusive_startup_gate_session_for_test_v1,
+    )
+
+    ownership_root = Path(ownership_root)
+    gate_path = Path(gate_path)
+    if (
+        type(chain_store) is not _OwnershipChainStoreForTest
+        or type(builds) is not dict
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "test head crossing",
+        )
+
+    def require() -> None:
+        _require_test_deployment_lock_session_v1(
+            deployment_session, ownership_root,
+        )
+        _require_exclusive_startup_gate_session_for_test_v1(
+            startup_session, gate_path,
+        )
+
+    require()
+    return _cross_head_boundary_core_v2(
+        published=published,
+        distribution=distribution,
+        authorities=authorities,
+        certificate_directory=ownership_root,
+        chain_store=chain_store,
+        append_record=lambda record: (
+            _append_ownership_transaction_locked_for_test_v2(
+                deployment_session, ownership_root, record,
+            )
+        ),
+        observe_graph=lambda: (
+            _resolve_ownership_coordinator_locked_for_test_v2(
+                deployment_session, ownership_root,
+            ).observation
+        ),
+        verify_installation=lambda: distribution,
+        verify_required_chain=lambda certificate: chain_store.read_required_chain(
+            anchor=certificate, builds=builds,
+        ),
+        require_sessions=require,
+        _crash_seam=_crash_seam,
+    )
+
+
 def _publish_context_transition_locked_v2(
     session: _DeploymentLockSessionV1,
     publication: object,

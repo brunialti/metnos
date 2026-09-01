@@ -46,6 +46,7 @@ from executor_birth_ownership_coordinator import (
     _record_hash, _record_hash_v2, _successor_claim_basename_v1,
     _prepared_record_v2, _append_prepared_transition_locked_for_test_v2,
     _build_verified_record_v2, _head_required_material_v2,
+    _cross_head_boundary_locked_for_test_v2,
     _certificate_published_record_v2, _certificate_ready_material_v2,
     _cross_certificate_boundary_locked_for_test_v2,
     _receipts_complete_record_v2, _startup_prerequisite_for_test,
@@ -65,7 +66,9 @@ from executor_birth_ownership_authorities import (
 from executor_birth_ownership_cutover import (
     _binding_values, _bindings_from_proof, _catalog_id,
 )
-from executor_birth_ownership_chain import _OwnershipChainStoreForTest
+from executor_birth_ownership_chain import (
+    _OwnershipChainCrashForTest, _OwnershipChainStoreForTest,
+)
 from executor_birth_ownership_preflight import (
     _sealed_build_identity_for_test, canonical_maintenance_proof,
     maintenance_evidence_hash,
@@ -77,6 +80,7 @@ from executor_birth_admin_preflight import (
 from executor_birth_prepared_set import (
     PREPARED_STATE_V1, PreparedAuthoritySetV2, PreparedSetV1,
 )
+from executor_birth_startup_gate import _exclusive_startup_gate_for_test_v1
 import executor_birth_prepared_set as prepared_set_module
 
 
@@ -810,6 +814,151 @@ def test_build_verified_record_rejects_distribution_drift(mutation):
         _build_verified_record_v2(mutation(published), distribution)
 
 
+def _complete_initial_head_crossing_v2(
+    tmp_path: Path, interruption_stage: str | None,
+):
+    ownership_root = tmp_path / "ownership"
+    authorities = portable_authorities()
+    distribution = payload_bound_distribution_v2()
+    claim = bound_claim(
+        release_sequence=1,
+        previous_head_id=None,
+        closed_build_id=distribution.identity.closed_build_id,
+        source_id=D("2"),
+        previous_closed_build_id=None,
+        previous_cutover_id=None,
+    )
+    _encoded_transition, transition = issue_context_transition_v1(
+        request_id=claim.request_id,
+        closed_build_id=claim.closed_build_id,
+        previous_cutover_id=None,
+        previous_set_id="1" * 64,
+        previous_admission_context_id=D("2"),
+        previous_context_epoch=D("3"),
+        set_id="4" * 64,
+        prepared_admission_context_id=D("5"),
+        prepared_context_epoch=D("6"),
+        context_material_sha256="7" * 64,
+        set_json_sha256="8" * 64,
+        current_inventory=proof().inventory,
+    )
+    records = transaction_records(
+        claim,
+        end_sequence=1,
+        previous_closed_build_id=None,
+        previous_cutover_id=None,
+        cutover_id=D("3"),
+        head_id=D("4"),
+        distribution=distribution,
+        context_transition_id=transition.transition_id,
+    )
+    runtime_root = tmp_path / "runtime"
+    runtime_root.mkdir(mode=0o700)
+    gate_path = runtime_root / "startup-v1.lock"
+    gate_path.touch(mode=0o600)
+
+    with _deployment_lock_for_test_v1(ownership_root) as deployment_session:
+        directory = make_coordinator_root(ownership_root)
+        write_claim(directory, claim)
+        write_transaction(directory, claim, records)
+        store = _OwnershipChainStoreForTest._initialize_with_authorities(
+            ownership_root / "chain-v1", authorities.public,
+        )
+        store.append_context_transition(
+            transition.encoded, expected_proof=proof(),
+        )
+        complete = records[-1]
+        certificate_material = _certificate_ready_material_v2(
+            complete,
+            authorities=authorities,
+            prerequisite=_startup_prerequisite_for_test(D("1"), D("2")),
+            observe_maintenance=lambda: complete.maintenance_proof,
+            crossing_receipt=dominant_receipt(
+                complete, catalog_id=proof_catalog_id(),
+            ),
+        )
+        published = _cross_certificate_boundary_locked_for_test_v2(
+            deployment_session,
+            ownership_root,
+            certificate_material,
+            authorities=authorities,
+        )
+        arguments = dict(
+            ownership_root=ownership_root,
+            gate_path=gate_path,
+            published=published,
+            distribution=distribution,
+            authorities=authorities,
+            chain_store=store,
+            builds={distribution.identity.closed_build_id: distribution},
+        )
+        with _exclusive_startup_gate_for_test_v1(gate_path) as startup_session:
+            if interruption_stage is not None:
+                def interrupt(stage):
+                    if stage == interruption_stage:
+                        raise _OwnershipChainCrashForTest(stage)
+
+                with pytest.raises(
+                    _OwnershipChainCrashForTest,
+                    match=interruption_stage,
+                ):
+                    _cross_head_boundary_locked_for_test_v2(
+                        deployment_session,
+                        startup_session,
+                        **arguments,
+                        _crash_seam=interrupt,
+                    )
+            result = _cross_head_boundary_locked_for_test_v2(
+                deployment_session, startup_session, **arguments,
+            )
+            repeated = _cross_head_boundary_locked_for_test_v2(
+                deployment_session, startup_session, **arguments,
+            )
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            deployment_session, ownership_root,
+        ).observation
+        required = store.read_required_head()
+    return result, repeated, graph, required, distribution, certificate_material
+
+
+@LINUX_ONLY
+def test_head_crossing_publishes_one_verified_required_prefix(tmp_path):
+    result, repeated, graph, required, distribution, certificate = (
+        _complete_initial_head_crossing_v2(tmp_path, None)
+    )
+    assert result is repeated or result == repeated
+    assert result.state is OwnershipCoordinatorStateV1.HEAD_REQUIRED
+    assert result.installed_tree_hash == installed_tree_hash_v1(
+        distribution.files,
+    )
+    assert result.head_id == required.head_id
+    assert result.cutover_id == certificate.certificate.cutover_id
+    assert graph.transactions[-1].latest == result
+    assert len(graph.transactions[-1].records) == 6
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("interruption_stage", (
+    "build_verified",
+    "cutover_after_signature",
+    "build_after_signature",
+    "head_after_signature",
+    "required_before_replace",
+    "required_after_replace",
+    "required_chain_verified",
+    "head_required",
+))
+def test_head_crossing_converges_across_every_durable_boundary(
+    tmp_path, interruption_stage,
+):
+    result, repeated, graph, required, _distribution, _certificate = (
+        _complete_initial_head_crossing_v2(tmp_path, interruption_stage)
+    )
+    assert result == repeated == graph.transactions[-1].latest
+    assert result.state is OwnershipCoordinatorStateV1.HEAD_REQUIRED
+    assert required.head_id == result.head_id
+
+
 @LINUX_ONLY
 @pytest.mark.parametrize(
     "interruption_stage", ("certificate_ready", "certificate_signature"),
@@ -1484,6 +1633,7 @@ def transaction_records(
     previous_closed_build_id: str | None,
     previous_cutover_id: str | None,
     cutover_id: str, head_id: str,
+    distribution=None, context_transition_id: str = D("9"),
 ) -> tuple[OwnershipCoordinatorRecordV2, ...]:
     install_value = {
         "schema_version": 1,
@@ -1513,10 +1663,22 @@ def transaction_records(
             previous_closed_build_id=previous_closed_build_id,
             previous_cutover_id=previous_cutover_id,
             closed_build_id=claim.closed_build_id,
-            distribution_payload_hash=D("c"),
-            distribution_signature_hash=D("d"),
-            boundary_inventory_hash=D("e"),
-            boundary_guard_version="guard-v2",
+            distribution_payload_hash=(
+                digest(distribution.encoded)
+                if distribution is not None else D("c")
+            ),
+            distribution_signature_hash=(
+                digest(distribution.signature)
+                if distribution is not None else D("d")
+            ),
+            boundary_inventory_hash=(
+                distribution.identity.boundary_inventory_hash
+                if distribution is not None else D("e")
+            ),
+            boundary_guard_version=(
+                distribution.identity.boundary_guard_version
+                if distribution is not None else "guard-v2"
+            ),
             source_id=claim.source_id,
             successor_claim_id=claim.claim_id,
             deployment_descriptor_id=install_value["deployment_descriptor_id"],
@@ -1536,7 +1698,7 @@ def transaction_records(
             target_context_epoch=D("6"),
             target_context_material_sha256="7" * 64,
             target_set_json_sha256="8" * 64,
-            context_transition_id=D("9"),
+            context_transition_id=context_transition_id,
             current_inventory_hash=inventory_hash,
             current_proof=current if sequence >= 1 else None,
             maintenance_before_hash=evidence_hash if sequence >= 1 else None,
