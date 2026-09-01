@@ -255,3 +255,41 @@ passi tornano autonomi. Roberto non viene coinvolto come centralino.
   pacchetto pubblico, misurare traduzioni riutilizzabili e GII forte, senza
   pubblicare né cambiare il sistema in funzione;
 - ultima testa B osservata: `8df420ed`.
+
+## 11. Diagnosi del turno `81f1ce66878646a4`
+
+Il turno del 1 settembre 2026 non è un errore del servizio Codex e non è un
+limite di servizio. Il primo passo ha trovato una singola applicazione
+installata, ma la risposta dell'executor in esercizio contiene
+`also_matched=[...]` e non contiene `resolved_id`. Il secondo passo consuma
+esclusivamente `resolved_id`, come dichiara il manifesto firmato, e ha quindi
+rifiutato la proiezione incompleta prima di qualsiasi effetto. La ricevuta
+conferma `mutations=0` e un solo fallimento dichiarato.
+
+La forma osservata è quella della revisione precedente ancora caricata dal
+sistema in funzione. La correzione generale è già nel candidato RM-0008 dal
+commit `e2305260`: misura l'ambiguità sulle identità canoniche, non sul numero
+di righe del provider, e conserva il rifiuto quando le identità sono davvero
+diverse o anche una sola non è valida. La prova dedicata usa due righe della
+stessa applicazione e richiede un solo `resolved_id`; l'intero file del dominio
+pacchetti passa `49 passed` sulla testa A corrente.
+
+Non si aggiunge un caso speciale e non si pubblica anticipatamente un solo
+executor. La risoluzione del turno è il passaggio finale già autorizzato, dopo
+la chiusura dei gate RM-0008: esso rende attiva la revisione già provata. Il
+ritest della stessa richiesta diventa una prova live post-passaggio; se allora
+la sorgente restituisce identità realmente distinte o non valide, il rifiuto
+resta corretto e va diagnosticato come capacità del provider, non aggirato con
+un nome o un percorso dedotto.
+
+### Stayalive A — 2026-09-01T21:12:40+02:00
+
+- testa A prima di questo checkpoint: `33e8981c`;
+- stato: `ATTIVO`;
+- fatto: causa del turno fallito attribuita alla revisione precedente in
+  esercizio; correzione candidata e 49 prove del dominio confermate;
+- dipendenza: nessuna nuova dipendenza da B; il riscontro B sulla prova 24
+  resta necessario soltanto per il checkpoint congiunto F4;
+- prossimo passo autonomo: continuare i lotti GII sul ramo pubblico separato e
+  mantenere il ritest live nella lista del passaggio finale;
+- ultima testa B osservata: `8df420ed`.
