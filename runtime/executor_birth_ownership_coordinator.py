@@ -33,10 +33,11 @@ from executor_birth_ownership_authorities import (
 )
 from executor_birth_ownership_cutover import (
     MAX_PAYLOAD_BYTES, PAYLOAD_BASENAME, SIGNATURE_BASENAME,
-    OwnershipCutoverRegistry, install_ownership_cutover_certificate,
+    OwnershipCutoverError, OwnershipCutoverRegistry,
+    install_ownership_cutover_certificate,
     issue_ownership_cutover_certificate, read_ownership_cutover_certificate,
-    verify_ownership_cutover_certificate, _publish_no_replace, _safe_read,
-    _sync_directory, _write_temporary,
+    verify_ownership_cutover_certificate, _prepare_recoverable_temporary,
+    _publish_no_replace, _safe_read, _sync_directory, _write_temporary,
 )
 
 
@@ -58,6 +59,9 @@ _TEMPORARY_RECORD_RE = re.compile(
 )
 _LEGACY_RECORD_RE_V1 = re.compile(r"record-([0-9]{3})-v1\.json\Z")
 _TRANSACTION_RECORD_RE_V2 = re.compile(r"record-([0-9]{3})-v2\.json\Z")
+_TEMPORARY_TRANSACTION_RECORD_RE_V2 = re.compile(
+    r"\.record-([0-9]{3})-v2\.json\.([0-9a-f]{64})\.tmp\Z"
+)
 _SUCCESSOR_CLAIM_BASENAME_RE_V1 = re.compile(
     r"(?:initial|[0-9a-f]{64})\.json\Z"
 )
@@ -1374,36 +1378,251 @@ def _read_transaction_directory_v2(
             raise OwnershipCoordinatorError(
                 "birth_ownership_recovery_required", "transaction record",
             ) from exc
-        if (
-            record.sequence != sequence
-            or record.request_id != request_id
-            or record.previous_record_sha256 != previous_hash
-        ):
-            raise OwnershipCoordinatorError(
-                "birth_ownership_recovery_required", "transaction chain",
-            )
-        if records:
-            first_value = records[0].as_value()
-            value = record.as_value()
-            if any(
-                value[key] != first_value[key]
-                for key in _TRANSACTION_CARRY_KEYS_V2
-            ):
-                raise OwnershipCoordinatorError(
-                    "birth_ownership_recovery_required", "transaction carry",
-                )
-            for threshold, keys in _TRANSACTION_THRESHOLD_KEYS_V2:
-                if sequence > threshold:
-                    threshold_value = records[threshold].as_value()
-                    if any(value[key] != threshold_value[key] for key in keys):
-                        raise OwnershipCoordinatorError(
-                            "birth_ownership_recovery_required",
-                            "transaction threshold carry",
-                        )
+        _require_transaction_record_link_v2(
+            tuple(records), record, sequence=sequence,
+            request_id=request_id, previous_hash=previous_hash,
+        )
         records.append(record)
         encoded_records.append(encoded)
         previous_hash = _record_hash_v2(encoded)
     return tuple(records), tuple(encoded_records)
+
+
+def _require_transaction_record_link_v2(
+    records: tuple[OwnershipCoordinatorRecordV2, ...],
+    record: OwnershipCoordinatorRecordV2, *, sequence: int,
+    request_id: str, previous_hash: str | None,
+) -> None:
+    if (
+        type(record) is not OwnershipCoordinatorRecordV2
+        or record.sequence != sequence
+        or record.request_id != request_id
+        or record.previous_record_sha256 != previous_hash
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "transaction chain",
+        )
+    if not records:
+        return
+    first_value = records[0].as_value()
+    value = record.as_value()
+    if any(
+        value[key] != first_value[key]
+        for key in _TRANSACTION_CARRY_KEYS_V2
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "transaction carry",
+        )
+    for threshold, keys in _TRANSACTION_THRESHOLD_KEYS_V2:
+        if sequence > threshold:
+            threshold_value = records[threshold].as_value()
+            if any(value[key] != threshold_value[key] for key in keys):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "transaction threshold carry",
+                )
+
+
+def _ensure_coordinator_child_directory_v2(
+    parent: Path, basename: str, *, root_owned: bool,
+) -> tuple[Path, bool]:
+    _require_read_only_directory_v2(parent, root_owned=root_owned)
+    child = parent / basename
+    created = False
+    try:
+        child.mkdir(mode=0o755)
+        created = True
+        if os.name != "nt":
+            child.chmod(0o755)
+    except FileExistsError:
+        pass
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "transaction directory",
+        ) from exc
+    _require_read_only_directory_v2(child, root_owned=root_owned)
+    if created:
+        try:
+            _sync_directory(parent)
+        except OSError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction directory sync",
+            ) from exc
+    return child, created
+
+
+class _OwnershipCoordinatorTransactionJournalV2:
+    """Append and recover one exact V2 transaction under the outer lock."""
+
+    __slots__ = (
+        "coordinator_directory", "directory", "request_id", "_root_owned",
+    )
+
+    def __init__(
+        self, coordinator_directory: Path,
+        record: OwnershipCoordinatorRecordV2, *, root_owned: bool,
+    ) -> None:
+        if type(record) is not OwnershipCoordinatorRecordV2:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "transaction record",
+            )
+        self.coordinator_directory = Path(coordinator_directory)
+        self.request_id = record.request_id
+        claims = _read_successor_claims_snapshot_v1(
+            self.coordinator_directory
+            / SUCCESSOR_CLAIMS_DIRECTORY_BASENAME_V1,
+            root_owned=root_owned,
+        )
+        matching_claims = tuple(
+            claim for claim in claims if claim.request_id == record.request_id
+        )
+        if len(matching_claims) != 1:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "claim transaction binding",
+            )
+        claim = matching_claims[0]
+        if (
+            claim.claim_id != record.successor_claim_id
+            or claim.source_id != record.source_id
+            or claim.closed_build_id != record.closed_build_id
+            or claim.release_sequence != record.release_sequence
+            or claim.previous_head_id != record.previous_head_id
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "claim transaction binding",
+            )
+        candidate = (
+            self.coordinator_directory / TRANSACTIONS_DIRECTORY_BASENAME_V2
+            / self.request_id
+        )
+        if not candidate.exists() and record.sequence != 0:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction gap",
+            )
+        transactions, _ = _ensure_coordinator_child_directory_v2(
+            self.coordinator_directory, TRANSACTIONS_DIRECTORY_BASENAME_V2,
+            root_owned=root_owned,
+        )
+        self.directory, _ = _ensure_coordinator_child_directory_v2(
+            transactions, self.request_id, root_owned=root_owned,
+        )
+        self._root_owned = root_owned
+
+    def _inventory(
+        self,
+    ) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+        committed: list[Path] = []
+        temporary: list[Path] = []
+        for path in _read_directory_entries_v2(self.directory):
+            if _TRANSACTION_RECORD_RE_V2.fullmatch(path.name):
+                committed.append(path)
+            elif _TEMPORARY_TRANSACTION_RECORD_RE_V2.fullmatch(path.name):
+                temporary.append(path)
+            else:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "transaction inventory",
+                )
+        return (
+            tuple(sorted(committed, key=lambda item: item.name)),
+            tuple(sorted(temporary, key=lambda item: item.name)),
+        )
+
+    def _committed(
+        self, paths: tuple[Path, ...],
+    ) -> tuple[OwnershipCoordinatorRecordV2, ...]:
+        if not paths:
+            return ()
+        records: list[OwnershipCoordinatorRecordV2] = []
+        previous_hash = None
+        for sequence, path in enumerate(paths):
+            if path.name != _record_basename_v2(sequence):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "transaction inventory",
+                )
+            encoded = _read_control_file_v2(
+                path, MAX_RECORD_BYTES_V1, root_owned=self._root_owned,
+            )
+            record = _decode_record_v2(encoded)
+            _require_transaction_record_link_v2(
+                tuple(records), record, sequence=sequence,
+                request_id=self.request_id, previous_hash=previous_hash,
+            )
+            records.append(record)
+            previous_hash = _record_hash_v2(encoded)
+        return tuple(records)
+
+    def append(
+        self, record: OwnershipCoordinatorRecordV2, *,
+        _crash_seam: Callable[[str], None] | None = None,
+    ) -> OwnershipCoordinatorRecordV2:
+        if type(record) is not OwnershipCoordinatorRecordV2:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "transaction record",
+            )
+        if record.request_id != self.request_id:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "claim transaction binding",
+            )
+        committed_paths, temporary_paths = self._inventory()
+        records = self._committed(committed_paths)
+        sequence = len(records)
+        expected_temporary_name = (
+            f".{_record_basename_v2(record.sequence)}."
+            f"{record.request_id[7:]}.tmp"
+        )
+        if temporary_paths and (
+            len(temporary_paths) != 1
+            or temporary_paths[0].name != expected_temporary_name
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required",
+                "transaction temporary inventory",
+            )
+        if record.sequence < sequence:
+            if temporary_paths or records[record.sequence] != record:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_journal_conflict",
+                    _record_basename_v2(record.sequence),
+                )
+            return records[record.sequence]
+        previous_hash = (
+            _record_hash_v2(records[-1].encode()) if records else None
+        )
+        _require_transaction_record_link_v2(
+            records, record, sequence=sequence,
+            request_id=self.request_id, previous_hash=previous_hash,
+        )
+        encoded = record.encode()
+        destination = self.directory / _record_basename_v2(sequence)
+        temporary = self.directory / expected_temporary_name
+        try:
+            publish = _prepare_recoverable_temporary(
+                temporary, destination, encoded,
+            )
+            if publish and _crash_seam is not None:
+                _crash_seam("transaction_record_staged")
+            if publish:
+                _publish_no_replace(temporary, destination, encoded)
+            if _crash_seam is not None:
+                _crash_seam("transaction_record_published")
+        except OwnershipCutoverError as exc:
+            code = (
+                "birth_ownership_journal_conflict"
+                if exc.code == "birth_ownership_cutover_conflict"
+                else "birth_ownership_recovery_required"
+            )
+            raise OwnershipCoordinatorError(code, exc.detail) from exc
+        loaded, _ = _read_transaction_directory_v2(
+            self.directory, request_id=self.request_id,
+            root_owned=self._root_owned,
+        )
+        if len(loaded) != sequence + 1 or loaded[-1] != record:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction reread",
+            )
+        return loaded[-1]
 
 
 def _read_transactions_snapshot_v2(
@@ -2329,6 +2548,44 @@ def _resolve_ownership_coordinator_locked_for_test_v2(
     return _OwnershipCoordinatorGraphSnapshotForTestV2(
         observation, _TEST_COORDINATOR_GRAPH_SNAPSHOT_SEAL_V2,
     )
+
+
+def _append_ownership_transaction_locked_v2(
+    session: _DeploymentLockSessionV1,
+    record: OwnershipCoordinatorRecordV2,
+) -> OwnershipCoordinatorRecordV2:
+    _require_deployment_lock_session_v1(session)
+    if type(record) is not OwnershipCoordinatorRecordV2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "transaction record",
+        )
+    journal = _OwnershipCoordinatorTransactionJournalV2(
+        DEFAULT_COORDINATOR_DIRECTORY_V1, record, root_owned=True,
+    )
+    result = journal.append(record)
+    _require_deployment_lock_session_v1(session)
+    return result
+
+
+def _append_ownership_transaction_locked_for_test_v2(
+    session: _DeploymentLockSessionForTestV1, ownership_root: Path,
+    record: OwnershipCoordinatorRecordV2, *,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Portable persistence seam; never accepts a productive lock session."""
+    ownership_root = Path(ownership_root)
+    _require_test_deployment_lock_session_v1(session, ownership_root)
+    if type(record) is not OwnershipCoordinatorRecordV2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "transaction record",
+        )
+    journal = _OwnershipCoordinatorTransactionJournalV2(
+        ownership_root / COORDINATOR_DIRECTORY_BASENAME_V1,
+        record, root_owned=False,
+    )
+    result = journal.append(record, _crash_seam=_crash_seam)
+    _require_test_deployment_lock_session_v1(session, ownership_root)
+    return result
 
 
 def _request_id(
