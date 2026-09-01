@@ -3384,8 +3384,7 @@ censimento e' riproducibile con
 sul catalogo firmato dal passaggio produttivo.
 
 Questa sezione registra una proposta, non una regola gia' attiva. Il codice che
-dipende dalla variazione non viene anticipato. Roberto ha gia' autorizzato B ad
-accettarla e ha autorizzato il passaggio finale dopo la chiusura di tutti i
-gate; secondo il protocollo manca ancora l'accettazione B sul commit corretto.
-Nessuna misura svolta per formulare o correggere la proposta ha modificato il
-sistema in funzione.
+dipende dalla variazione non viene anticipato. Secondo il protocollo mancano
+ancora l'accettazione B sul commit corretto e il successivo verbale separato
+della decisione dell'autorita'. Nessuna misura svolta per formulare o
+correggere la proposta ha modificato il sistema in funzione.
