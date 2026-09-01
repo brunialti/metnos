@@ -469,6 +469,10 @@ def install_maintenance_fixture(monkeypatch, tmp_path, *, drift: bool):
         guard_module, "_verify_store_only_catalog_locked",
         lambda: verified.append(True),
     )
+    monkeypatch.setattr(
+        guard_module, "_maintenance_evidence_under_transition_v1",
+        lambda _session: canonical(evidence),
+    )
     port = Port()
     monkeypatch.setattr(
         coordinator_module, "_current_reattestation_port_v1", lambda: port,
@@ -2047,6 +2051,46 @@ def test_dominant_identity_rejects_a_different_context_transition():
         coordinator_module._observe_dominant_identity_core_v2(
             graph, records[1], lambda _transition_id, _proof: other,
         )
+
+
+def test_completed_transition_selection_returns_only_the_exact_final_release():
+    distribution = payload_bound_distribution_v2()
+    claim = bound_claim(
+        release_sequence=1,
+        previous_head_id=None,
+        closed_build_id=distribution.identity.closed_build_id,
+        source_id=D("2"),
+        previous_closed_build_id=None,
+        previous_cutover_id=None,
+    )
+    records = transaction_records(
+        claim,
+        end_sequence=6,
+        previous_closed_build_id=None,
+        previous_cutover_id=None,
+        cutover_id=D("3"),
+        head_id=D("4"),
+        distribution=distribution,
+    )
+    transaction = coordinator_module._ResolvedOwnershipTransactionV2(
+        claim, records, tuple(record.encode() for record in records),
+    )
+    graph = _ObservedOwnershipCoordinatorGraphV2(
+        (claim,), (), (transaction,), (), (), None,
+    )
+
+    assert coordinator_module._completed_transition_from_graph_v2(
+        graph, distribution,
+    ) == records[-1]
+    incomplete = coordinator_module._ResolvedOwnershipTransactionV2(
+        claim, records[:-1], tuple(record.encode() for record in records[:-1]),
+    )
+    assert coordinator_module._completed_transition_from_graph_v2(
+        _ObservedOwnershipCoordinatorGraphV2(
+            (claim,), (), (incomplete,), (), (), None,
+        ),
+        distribution,
+    ) is None
 
 
 def legacy_records(

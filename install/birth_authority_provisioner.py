@@ -21,6 +21,8 @@ import hmac
 import json
 import os
 import secrets
+import stat
+import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -4191,6 +4193,439 @@ def _complete_transition_receipts_locked_v2(
         session, publication, complete,
     )
     return complete
+
+
+def _require_transition_directory_v2(
+    path: Path, *, owner: tuple[int, int],
+) -> Path:
+    """Bind a transition root to one non-writable directory identity."""
+    if not isinstance(path, Path) or not path.is_absolute():
+        raise _reject("birth_transition_root_invalid")
+    try:
+        info = path.lstat()
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise _reject("birth_transition_root_invalid", exc) from None
+    if (
+        resolved != path
+        or not stat.S_ISDIR(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or (info.st_uid, info.st_gid) != owner
+        or stat.S_IMODE(info.st_mode) & 0o022
+    ):
+        raise _reject("birth_transition_root_invalid")
+    return path
+
+
+def _path_is_within_v2(path: str, root: Path) -> bool:
+    if not path.startswith("/"):
+        return False
+    candidate = Path(path.removesuffix(" (deleted)"))
+    return candidate == root or root in candidate.parents
+
+
+def _process_tree_references_root_v2(
+    root: Path, *, proc_root: Path = Path("/proc"),
+) -> bool:
+    """Observe executable, working, mapped and open paths under one root."""
+    if (
+        not isinstance(root, Path) or not root.is_absolute()
+        or not isinstance(proc_root, Path) or not proc_root.is_absolute()
+    ):
+        raise _reject("birth_transition_process_observation_invalid")
+    try:
+        resolved_root = root.resolve(strict=True)
+        processes = tuple(sorted(
+            (item for item in proc_root.iterdir() if item.name.isdecimal()),
+            key=lambda item: int(item.name),
+        ))
+    except OSError as exc:
+        raise _reject(
+            "birth_transition_process_observation_invalid", exc,
+        ) from None
+    for process in processes:
+        try:
+            for name in ("cwd", "exe"):
+                try:
+                    target = os.readlink(process / name)
+                except FileNotFoundError:
+                    continue
+                if _path_is_within_v2(target, resolved_root):
+                    return True
+            descriptors = process / "fd"
+            try:
+                entries = tuple(descriptors.iterdir())
+            except FileNotFoundError:
+                entries = ()
+            for entry in entries:
+                try:
+                    target = os.readlink(entry)
+                except FileNotFoundError:
+                    continue
+                if _path_is_within_v2(target, resolved_root):
+                    return True
+            try:
+                mappings = (process / "maps").read_text(
+                    encoding="utf-8", errors="strict",
+                )
+            except FileNotFoundError:
+                mappings = ""
+            for line in mappings.splitlines():
+                fields = line.split(maxsplit=5)
+                if len(fields) == 6 and _path_is_within_v2(
+                    fields[5], resolved_root,
+                ):
+                    return True
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        except (OSError, UnicodeError) as exc:
+            raise _reject(
+                "birth_transition_process_observation_invalid", exc,
+            ) from None
+    return False
+
+
+def _capture_bound_transition_catalog_v2(
+    distribution: object, prepared: object,
+):
+    """Reread the signed catalog and bind it to the prepared candidate."""
+    from executor_birth_service_catalog import (
+        capture_current_service_catalog_v1,
+    )
+
+    loaded = capture_current_service_catalog_v1(distribution)
+    materials = getattr(prepared, "materials", None)
+    expected = getattr(materials, "catalog", None)
+    expected_fragments = getattr(materials, "unit_fragments", None)
+    if (
+        expected is None
+        or loaded.catalog.catalog_id != expected.catalog_id
+        or loaded.catalog.service_coverage_hash
+        != expected.service_coverage_hash
+        or loaded.catalog.encoded != expected.encoded
+        or loaded.unit_fragments != expected_fragments
+    ):
+        raise _reject("birth_transition_catalog_changed")
+    return loaded
+
+
+def _observe_bound_enforcement_v2(prepared: object) -> str:
+    """Bind the closed-bit observation to the signed candidate file bytes."""
+    from executor_birth_distribution_manifest import file_content_hash
+    from executor_birth_enforcement_evidence import (
+        observe_enforcement_v1, require_enforced_v1,
+    )
+
+    materials = getattr(prepared, "materials", None)
+    distribution = getattr(materials, "distribution", None)
+    facts = getattr(distribution, "facts", None)
+    files = getattr(distribution, "files", ())
+    relative = "runtime/executor_birth_legacy_gate.py"
+    matches = tuple(item for item in files if item.path == relative)
+    if facts is None or len(matches) != 1:
+        raise _reject("birth_transition_enforcement_invalid")
+    gate = Path(facts.installation_root) / relative
+    evidence = observe_enforcement_v1(gate)
+    try:
+        payload = gate.read_bytes()
+    except OSError as exc:
+        raise _reject("birth_transition_enforcement_invalid", exc) from None
+    expected = matches[0]
+    if (
+        len(payload) != evidence.module_bytes
+        or "sha256:" + hashlib.sha256(payload).hexdigest()
+        != evidence.module_digest
+        or len(payload) != expected.size
+        or file_content_hash(relative, payload) != expected.content_hash
+    ):
+        raise _reject("birth_transition_enforcement_invalid")
+    return require_enforced_v1(evidence)
+
+
+def _transition_roots_v2(prepared: object) -> Mapping[str, Path]:
+    """Derive every mutable root only from the authenticated candidate."""
+    materials = getattr(prepared, "materials", None)
+    descriptor = getattr(materials, "descriptor", None)
+    predecessor = getattr(materials, "predecessor", None)
+    if descriptor is None or predecessor is None:
+        raise _reject("birth_transition_root_invalid")
+    roots = {
+        "system": _require_transition_directory_v2(
+            Path(descriptor.system_unit_root), owner=(0, 0),
+        ),
+        "user": _require_transition_directory_v2(
+            Path(descriptor.service_home) / ".config/systemd/user",
+            owner=(descriptor.service_uid, descriptor.service_gid),
+        ),
+        "repository": _require_transition_directory_v2(
+            Path(predecessor.installation_root), owner=(0, 0),
+        ),
+    }
+    return MappingProxyType(roots)
+
+
+def _retire_bound_catalog_v2(
+    distribution: object, prepared: object, maintenance: object,
+) -> str:
+    """Prove quiescence, apply the signed plan and return its stable digest."""
+    from executor_birth_legacy_neutralizer import _neutralize_core_v1
+    from executor_birth_legacy_retirement import (
+        plan_catalog_retirement_v1, plan_digest_v1,
+        require_no_legacy_in_flight_v1,
+    )
+    loaded = _capture_bound_transition_catalog_v2(distribution, prepared)
+    plan = plan_catalog_retirement_v1(loaded.catalog)
+    roots = _transition_roots_v2(prepared)
+    observed = maintenance.observe()
+    unit_states = {
+        (item["scope"], item["unit"]): item["active_state"]
+        for item in observed["units"]
+    }
+    repository_steps = tuple(
+        step for step in plan.steps if step.scope == "repository"
+    )
+    if repository_steps and _process_tree_references_root_v2(
+        roots["repository"],
+    ):
+        raise _reject("birth_transition_repository_in_use")
+    states = {
+        (step.scope, step.locator): "inactive"
+        for step in plan.steps if step.scope == "repository"
+    }
+    states.update({
+        (step.scope, step.locator): unit_states[(step.scope, step.locator)]
+        for step in plan.steps
+        if step.scope != "repository"
+        and (step.scope, step.locator) in unit_states
+    })
+    require_no_legacy_in_flight_v1(plan.steps, states)
+
+    preserve_action = "preserve_replaced_system_unit"
+    ordinary = tuple(
+        step for step in plan.steps if step.action != preserve_action
+    )
+    preserved = tuple(
+        step for step in plan.steps if step.action == preserve_action
+    )
+    for scope in ("repository", "user", "system"):
+        scoped = tuple(step for step in ordinary if step.scope == scope)
+        if scoped:
+            _neutralize_core_v1(roots[scope], scoped, {})
+    fragments = dict(loaded.unit_fragments)
+    replacements = {
+        (step.scope, step.locator): fragments.get(step.locator, b"")
+        for step in preserved
+    }
+    if preserved:
+        _neutralize_core_v1(roots["system"], preserved, replacements)
+    return plan_digest_v1(plan.steps)
+
+
+def _install_bound_topology_v2(
+    distribution: object, prepared: object,
+):
+    """Install, reload and measure the exact signed dominant topology."""
+    from executor_birth_admin_preflight import (
+        _capture_cutover_effective_systemd_v2,
+    )
+    from executor_birth_dominant_topology import (
+        _install_core_v1, _install_enablement_links_core_v1,
+    )
+
+    loaded = _capture_bound_transition_catalog_v2(distribution, prepared)
+    roots = _transition_roots_v2(prepared)
+    fragments = dict(loaded.unit_fragments)
+    if len(fragments) != len(loaded.unit_fragments):
+        raise _reject("birth_transition_topology_invalid")
+    materials = prepared.materials
+    expected_units = tuple(
+        item.unit_name for item in materials.candidate_units.entries
+    )
+    if tuple(sorted(fragments)) != tuple(sorted(expected_units)):
+        raise _reject("birth_transition_topology_invalid")
+    _install_core_v1(roots["system"], fragments)
+    links = tuple(sorted(
+        (
+            link for entry in materials.candidate_units.entries
+            for link in entry.enablement_links
+        ),
+        key=lambda link: link.path.encode("utf-8"),
+    ))
+    if links:
+        _install_enablement_links_core_v1(
+            roots["system"], links, owner=(0, 0),
+        )
+    environment = {
+        "LANG": "C", "LC_ALL": "C",
+        "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+    }
+    try:
+        result = subprocess.run(
+            [materials.descriptor.systemctl_executable, "daemon-reload"],
+            capture_output=True, check=False, close_fds=True,
+            env=environment, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise _reject("birth_transition_manager_reload_failed", exc) from None
+    if result.returncode != 0:
+        raise _reject("birth_transition_manager_reload_failed")
+    _capture_bound_transition_catalog_v2(distribution, prepared)
+    return _capture_cutover_effective_systemd_v2(prepared)
+
+
+def complete_transition_cutover_v2(distribution: object):
+    """Complete the productive V2 crossing while retaining all three locks."""
+    from contract_cutover_guard import (
+        _begin_topology_transition_v1,
+        _contract_cutover_guard_for_service_user_v1,
+        _maintenance_evidence_under_transition_v1,
+    )
+    from executor_birth_admin_preflight import (
+        _attest_operational_preflight_v1,
+        _build_startup_prerequisite_for_cutover_v2,
+        _prepare_cutover_candidate_v2,
+    )
+    from executor_birth_distribution_manifest import (
+        verify_current_installation_distribution_v1,
+    )
+    from executor_birth_dominant_startup import complete_dominant_startup_v1
+    from executor_birth_ownership_authorities import (
+        load_root_ownership_authorities_v1,
+    )
+    from executor_birth_ownership_coordinator import (
+        _certificate_ready_material_v2, _completed_transition_locked_v2,
+        _cross_certificate_boundary_locked_v2,
+        _cross_head_boundary_locked_v2,
+        _cross_preflight_boundary_locked_v2, _deployment_lock_v1,
+        _observe_dominant_identity_locked_v2, _result,
+        _transition_inventory_under_maintenance_v2,
+    )
+    from executor_birth_startup_gate import _exclusive_startup_gate_v1
+    from install.executor_birth_startup_prerequisite import (
+        _publish_startup_prerequisite_locked_v2,
+    )
+
+    with _deployment_lock_v1() as deployment_session:
+        verified = verify_current_installation_distribution_v1(
+            distribution.encoded, distribution.signature,
+        )
+        if verified != distribution:
+            raise _reject("birth_transition_distribution_changed")
+        completed = _completed_transition_locked_v2(
+            deployment_session, verified,
+        )
+        if completed is not None:
+            _attest_operational_preflight_v1()
+            repeated = _completed_transition_locked_v2(
+                deployment_session, verified,
+            )
+            if repeated != completed:
+                raise _reject("birth_transition_final_state_changed")
+            return _result(completed)
+
+        preparation = _prepare_transition_receipt_material_locked_v2(
+            deployment_session, verified,
+        )
+        descriptor = preparation.descriptor
+        with _exclusive_startup_gate_v1() as startup_session:
+            with _contract_cutover_guard_for_service_user_v1(
+                descriptor.service_user,
+            ) as (maintenance, evidence):
+                with _transition_inventory_under_maintenance_v2(
+                    maintenance, evidence,
+                ) as frozen:
+                    complete = _complete_transition_receipts_locked_v2(
+                        deployment_session, preparation, frozen,
+                    )
+                    prepared = _prepare_cutover_candidate_v2(
+                        complete, verified,
+                    )
+                    _begin_topology_transition_v1(
+                        maintenance, complete.maintenance_proof,
+                    )
+                    sessions = (
+                        deployment_session, startup_session, maintenance,
+                    )
+                    effective_observations: list[object] = []
+                    final_records: list[object] = []
+
+                    def observe_identity():
+                        return _observe_dominant_identity_locked_v2(
+                            deployment_session, complete,
+                        )
+
+                    def observe_catalog() -> str:
+                        return _capture_bound_transition_catalog_v2(
+                            verified, prepared,
+                        ).catalog.catalog_id
+
+                    def observe_enforcement() -> str:
+                        return _observe_bound_enforcement_v2(prepared)
+
+                    def plan_retirement() -> str:
+                        return _retire_bound_catalog_v2(
+                            verified, prepared, maintenance,
+                        )
+
+                    def observe_topology() -> str:
+                        observed = _install_bound_topology_v2(
+                            verified, prepared,
+                        )
+                        effective_observations.append(observed)
+                        return observed.snapshot.effective_units_hash
+
+                    def observe_maintenance() -> bytes:
+                        return _maintenance_evidence_under_transition_v1(
+                            maintenance,
+                        )
+
+                    def cross(receipt) -> None:
+                        if len(effective_observations) < 2:
+                            raise _reject(
+                                "birth_transition_topology_unconfirmed",
+                            )
+                        prerequisite = (
+                            _build_startup_prerequisite_for_cutover_v2(
+                                prepared, effective_observations[-1],
+                            )
+                        )
+                        sealed = _publish_startup_prerequisite_locked_v2(
+                            prerequisite, complete, sessions,
+                        )
+                        authorities = load_root_ownership_authorities_v1()
+                        material = _certificate_ready_material_v2(
+                            complete,
+                            authorities=authorities,
+                            prerequisite=sealed,
+                            observe_maintenance=observe_maintenance,
+                            crossing_receipt=receipt,
+                        )
+                        published = _cross_certificate_boundary_locked_v2(
+                            deployment_session, material,
+                            authorities=authorities,
+                        )
+                        head = _cross_head_boundary_locked_v2(
+                            sessions, published, verified,
+                            authorities=authorities,
+                        )
+                        final_records.append(
+                            _cross_preflight_boundary_locked_v2(
+                                sessions, head,
+                            )
+                        )
+
+                    complete_dominant_startup_v1(
+                        sessions=sessions,
+                        observe_identity=observe_identity,
+                        observe_topology=observe_topology,
+                        observe_catalog=observe_catalog,
+                        plan_retirement=plan_retirement,
+                        observe_enforcement=observe_enforcement,
+                        cross=cross,
+                    )
+                    if len(final_records) != 1:
+                        raise _reject("birth_transition_final_state_missing")
+                    return _result(final_records[0])
 
 
 def prepare_transition_receipts_v2(

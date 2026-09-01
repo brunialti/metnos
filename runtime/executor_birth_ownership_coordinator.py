@@ -3273,6 +3273,60 @@ def _transition_edge_locked_v2(
     return _transition_edge_from_graph_v2(graph, distribution)
 
 
+def _completed_transition_from_graph_v2(
+    graph: object, distribution: object,
+) -> OwnershipCoordinatorRecordV2 | None:
+    """Return only the final transaction for the exact current release."""
+    if (
+        type(graph) is not _ObservedOwnershipCoordinatorGraphV2
+        or not is_verified_distribution(distribution)
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    matches = tuple(
+        transaction for transaction in graph.transactions
+        if transaction.claim.closed_build_id
+        == distribution.identity.closed_build_id
+        and transaction.claim.release_sequence == distribution.release_sequence
+    )
+    if not matches:
+        return None
+    transaction = matches[0] if len(matches) == 1 else None
+    if (
+        transaction is None
+        or transaction is not graph.transactions[-1]
+        or transaction.claim is not graph.claims[-1]
+        or graph.pending_claims
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    latest = transaction.latest
+    if latest.sequence != 6:
+        return None
+    if (
+        latest.state is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+        or latest.distribution_payload_hash != _digest(distribution.encoded)
+        or latest.distribution_signature_hash != _digest(distribution.signature)
+        or latest.previous_closed_build_id
+        != distribution.previous_closed_build_id
+        or latest.boundary_inventory_hash
+        != distribution.identity.boundary_inventory_hash
+        or latest.boundary_guard_version
+        != distribution.identity.boundary_guard_version
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    return latest
+
+
+def _completed_transition_locked_v2(
+    session: _DeploymentLockSessionV1, distribution: object,
+) -> OwnershipCoordinatorRecordV2 | None:
+    """Reread an exact completed transition under the productive lock."""
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    completed = _completed_transition_from_graph_v2(graph, distribution)
+    _require_deployment_lock_session_v1(session)
+    return completed
+
+
 def _prepared_transition_from_graph_v2(
     graph: object, *, distribution: object, previous_context: object,
     prepared_authority_set: object, current_inventory: object,
@@ -4952,26 +5006,25 @@ def _current_reattestation_port_v1():
 def _transition_inventory_under_maintenance_v2(maintenance, evidence):
     """Freeze exact current identities under an already held maintenance guard."""
     from contract_cutover_guard import (
+        _maintenance_evidence_under_transition_v1,
         _verify_store_only_catalog_locked,
     )
     from executor_birth_cutover import freeze_current_inventory_v1
     from executor_birth_ownership_preflight import canonical_maintenance_proof
 
     port = _current_reattestation_port_v1()
-    initial = canonical_maintenance_proof(
+    initial = _maintenance_evidence_under_transition_v1(maintenance)
+    supplied = canonical_maintenance_proof(
         source=evidence["source"], units=evidence["units"],
     )
-    if maintenance() is not True:
+    if supplied != initial or maintenance() is not True:
         raise OwnershipCoordinatorError(
             "birth_ownership_maintenance_changed",
         )
     inventory = freeze_current_inventory_v1(port.enumerate_current())
     _verify_store_only_catalog_locked()
-    fresh = maintenance.observe()
     if (
-        canonical_maintenance_proof(
-            source=fresh["source"], units=fresh["units"],
-        ) != initial
+        _maintenance_evidence_under_transition_v1(maintenance) != initial
         or maintenance() is not True
     ):
         raise OwnershipCoordinatorError(
@@ -4986,12 +5039,10 @@ def _transition_inventory_under_maintenance_v2(maintenance, evidence):
         final_inventory = freeze_current_inventory_v1(
             port.enumerate_current(),
         )
-        final = maintenance.observe()
         if (
             final_inventory != inventory
-            or canonical_maintenance_proof(
-                source=final["source"], units=final["units"],
-            ) != initial
+            or _maintenance_evidence_under_transition_v1(maintenance)
+            != initial
             or maintenance() is not True
         ):
             raise OwnershipCoordinatorError(

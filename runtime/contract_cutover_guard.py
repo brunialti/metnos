@@ -21,13 +21,14 @@ class ContractCutoverGuardError(RuntimeError):
 
 
 _QUIESCENT_STATES = frozenset({"inactive", "failed"})
+_TRANSITION_LOAD_STATES_V1 = frozenset({"loaded", "masked"})
 _MAINTENANCE_SESSION_SEAL_V1 = object()
 _MAINTENANCE_SESSION_GUARD_V1 = threading.Lock()
 _ACTIVE_MAINTENANCE_SESSIONS_V1: dict[object, object] = {}
 
 
-def prove_stack_stopped(reconciler) -> dict:
-    """Prove that every catalog consumer/writer and browser ingress is idle."""
+def _prove_stack_stopped_v1(reconciler, *, load_states: frozenset[str]) -> dict:
+    """Prove every catalog consumer and browser ingress remains idle."""
     from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 
     observations: list[dict[str, object]] = []
@@ -39,7 +40,7 @@ def prove_stack_stopped(reconciler) -> dict:
             main_pid = int(state.get("MainPID") or 0)
         except (TypeError, ValueError):
             main_pid = -1
-        if load_state != "loaded" or state.get("ManagerError"):
+        if load_state not in load_states or state.get("ManagerError"):
             raise ContractCutoverGuardError(
                 "quiescence_unknown", f"cannot inspect {scope} unit {unit}",
             )
@@ -71,11 +72,26 @@ def prove_stack_stopped(reconciler) -> dict:
     return {"source": browser["source"], "units": observations}
 
 
+def prove_stack_stopped(reconciler) -> dict:
+    """Prove the complete pre-transition unit catalog is loaded and idle."""
+    return _prove_stack_stopped_v1(
+        reconciler, load_states=frozenset({"loaded"}),
+    )
+
+
+def _prove_transition_stack_stopped_v1(reconciler) -> dict:
+    """Accept only named quiescent load states while topology is replaced."""
+    return _prove_stack_stopped_v1(
+        reconciler, load_states=_TRANSITION_LOAD_STATES_V1,
+    )
+
+
 class _MaintenanceProofV1:
     """Preserve the legacy boolean guard and expose fresh canonical evidence."""
 
     __slots__ = (
         "_reconciler", "_token", "_owner_process", "_active", "_seal",
+        "_transition_evidence",
     )
 
     def __init__(self, reconciler, token: object, seal: object) -> None:
@@ -86,6 +102,7 @@ class _MaintenanceProofV1:
         self._owner_process = os.getpid()
         self._active = True
         self._seal = seal
+        self._transition_evidence = None
 
     def __copy__(self):
         raise TypeError("maintenance sessions cannot be copied")
@@ -100,6 +117,8 @@ class _MaintenanceProofV1:
         raise TypeError("maintenance sessions cannot be serialized")
 
     def observe(self) -> dict:
+        if self._transition_evidence is not None:
+            return _prove_transition_stack_stopped_v1(self._reconciler)
         return prove_stack_stopped(self._reconciler)
 
     def __call__(self) -> bool:
@@ -121,6 +140,43 @@ def _require_maintenance_session_v1(session: object) -> None:
     ):
         raise ContractCutoverGuardError("cutover_session_invalid")
     session.observe()
+
+
+def _begin_topology_transition_v1(
+    session: object, expected_evidence: bytes,
+) -> None:
+    """Keep the same live lock while admitted unit load states change."""
+    from executor_birth_ownership_preflight import canonical_maintenance_proof
+
+    if (
+        type(session) is not _MaintenanceProofV1
+        or type(expected_evidence) is not bytes
+    ):
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    _require_maintenance_session_v1(session)
+    observed = session.observe()
+    current = canonical_maintenance_proof(
+        source=observed["source"], units=observed["units"],
+    )
+    if current != expected_evidence:
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    session._transition_evidence = expected_evidence
+    _require_maintenance_session_v1(session)
+
+
+def _maintenance_evidence_under_transition_v1(session: object) -> bytes:
+    """Return the initial proof only after fresh transition quiescence."""
+    from executor_birth_ownership_preflight import canonical_maintenance_proof
+
+    _require_maintenance_session_v1(session)
+    if type(session) is not _MaintenanceProofV1:
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    if session._transition_evidence is not None:
+        return session._transition_evidence
+    observed = session.observe()
+    return canonical_maintenance_proof(
+        source=observed["source"], units=observed["units"],
+    )
 
 
 @contextmanager
