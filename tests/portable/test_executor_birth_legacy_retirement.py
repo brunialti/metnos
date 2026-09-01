@@ -80,17 +80,30 @@ def test_a_second_same_destination_overlap_is_refused() -> None:
     assert denied.value.code == "legacy_retirement_overlap"
 
 
-def test_the_product_census_is_not_optional() -> None:
+def test_a_future_catalog_can_grow_without_weakening_overlap_detection() -> None:
     product = _product_catalog()
-    without_overlap = tuple(
-        item for item in product.legacy_bindings
-        if item.legacy_id != "legacy-service-http-system"
+    prototype = next(
+        item for item in product.entries if item.unit_name is not None
     )
-    with pytest.raises(retirement.LegacyRetirementError) as denied:
-        retirement.plan_catalog_retirement_v1(replace(
-            product, legacy_bindings=without_overlap,
-        ))
-    assert denied.value.code == "legacy_retirement_census_invalid"
+    future = replace(
+        prototype,
+        entry_id="service-future",
+        unit_name="metnos-future.service",
+        readiness_owner=False,
+    )
+    plan = retirement.plan_catalog_retirement_v1(replace(
+        product,
+        entries=tuple(sorted(
+            (*product.entries, future),
+            key=lambda item: item.entry_id.encode("utf-8"),
+        )),
+    ))
+    assert (
+        plan.dominant_unit_count,
+        plan.legacy_binding_count,
+        plan.cross_scope_match_count,
+        plan.same_destination_overlap_count,
+    ) == (16, 39, 16, 1)
 
 
 def test_the_plan_does_not_depend_on_the_order_it_was_given() -> None:

@@ -31,7 +31,6 @@ _RETIREMENT_ACTIONS_V1: Mapping[tuple[str, str], str] = {
     ("python_module", "repository"): "revoke_repository_entrypoint",
 }
 _PRESERVE_REPLACED_SYSTEM_UNIT_V1 = "preserve_replaced_system_unit"
-_EXPECTED_PRODUCT_CENSUS_V1 = (15, 39, 16, 1)
 
 _IN_FLIGHT_STATES_V1 = frozenset({
     "activating", "active", "deactivating", "reloading", "running",
@@ -172,11 +171,6 @@ def plan_catalog_retirement_v1(catalog: object) -> CatalogRetirementPlanV1:
         len(dominant_units), len(steps),
         cross_scope_matches, same_destination_overlaps,
     )
-    if census != _EXPECTED_PRODUCT_CENSUS_V1:
-        raise _invalid(
-            "legacy_retirement_census_invalid",
-            "/".join(str(value) for value in census),
-        )
     return CatalogRetirementPlanV1(
         catalog.catalog_id, steps, *census,
     )
