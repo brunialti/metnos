@@ -70,6 +70,72 @@ def test_reused_key_cannot_forge_a_second_capability(tmp_path: Path) -> None:
         bootstrap._sealed_authorities(sealed)
 
 
+def test_required_context_preserves_chain_inspection_failure(monkeypatch) -> None:
+    import executor_birth_ownership_chain as ownership_chain
+    import executor_birth_prepared_root as prepared_root
+
+    def fail_inspection():
+        raise ownership_chain.OwnershipChainError(
+            "birth_ownership_recovery_required", "productive store",
+        )
+
+    monkeypatch.setattr(
+        ownership_chain, "inspect_ownership_chain_state_v1", fail_inspection,
+    )
+    monkeypatch.setattr(
+        prepared_root, "load_required_context_runtime_v1",
+        lambda: pytest.fail("loaded context after failed chain inspection"),
+    )
+    with pytest.raises(bootstrap.BirthBootstrapError) as failure:
+        bootstrap._required_context_runtime_for_bootstrap_v1()
+    assert failure.value.code == "birth_ownership_recovery_required"
+    assert failure.value.detail == "productive store"
+
+
+def test_required_context_preserves_context_load_failure(monkeypatch) -> None:
+    import executor_birth_ownership_chain as ownership_chain
+    import executor_birth_prepared_root as prepared_root
+
+    state = ownership_chain.VerifiedOwnershipChain("cutover", ())
+    monkeypatch.setattr(
+        ownership_chain, "inspect_ownership_chain_state_v1", lambda: state,
+    )
+
+    def fail_load():
+        raise ownership_chain.OwnershipChainError(
+            "birth_ownership_authority_missing", "metnos",
+        )
+
+    monkeypatch.setattr(
+        prepared_root, "load_required_context_runtime_v1", fail_load,
+    )
+    with pytest.raises(bootstrap.BirthBootstrapError) as failure:
+        bootstrap._required_context_runtime_for_bootstrap_v1()
+    assert failure.value.code == "birth_ownership_authority_missing"
+    assert failure.value.detail == "metnos"
+
+
+def test_required_context_preserves_prepared_root_failure(monkeypatch) -> None:
+    import executor_birth_ownership_chain as ownership_chain
+    import executor_birth_prepared_root as prepared_root
+
+    state = ownership_chain.VerifiedOwnershipChain("cutover", ())
+    monkeypatch.setattr(
+        ownership_chain, "inspect_ownership_chain_state_v1", lambda: state,
+    )
+
+    def fail_load():
+        raise prepared_root.PreparedRootError("birth_context_selection_changed")
+
+    monkeypatch.setattr(
+        prepared_root, "load_required_context_runtime_v1", fail_load,
+    )
+    with pytest.raises(bootstrap.BirthBootstrapError) as failure:
+        bootstrap._required_context_runtime_for_bootstrap_v1()
+    assert failure.value.code == "birth_context_selection_changed"
+    assert failure.value.detail == ""
+
+
 def test_manifest_ref_targets_authoring_inventory_not_candidate_staging(monkeypatch, tmp_path: Path) -> None:
     contract_id = ContractId(ManifestOrigin.USER, "demo/manifest.toml")
     authoring = tmp_path / "authoring" / "demo"

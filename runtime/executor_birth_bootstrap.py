@@ -40,7 +40,10 @@ from manifest_inventory import ManifestRef
 
 
 class BirthBootstrapError(RuntimeError):
-    pass
+    def __init__(self, code: str, detail: str = "") -> None:
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}" if detail else code)
 
 
 @dataclass(frozen=True, slots=True)
@@ -552,15 +555,22 @@ def _required_context_runtime_for_bootstrap_v1():
         OwnershipChainError, VerifiedOwnershipChain,
         inspect_ownership_chain_state_v1,
     )
-    from executor_birth_prepared_root import load_required_context_runtime_v1
+    from executor_birth_prepared_root import (
+        PreparedRootError, load_required_context_runtime_v1,
+    )
 
     try:
         state = inspect_ownership_chain_state_v1()
-        if isinstance(state, VerifiedOwnershipChain):
-            return load_required_context_runtime_v1()
-        return None
     except OwnershipChainError as exc:
-        raise BirthBootstrapError("birth_ownership_chain_unavailable") from exc
+        raise BirthBootstrapError(exc.code, exc.detail) from exc
+    if not isinstance(state, VerifiedOwnershipChain):
+        return None
+    try:
+        return load_required_context_runtime_v1()
+    except OwnershipChainError as exc:
+        raise BirthBootstrapError(exc.code, exc.detail) from exc
+    except PreparedRootError as exc:
+        raise BirthBootstrapError(exc.code) from exc
 
 
 @dataclass(frozen=True, slots=True)
