@@ -543,6 +543,69 @@ def _build_id(value: Mapping[str, object]) -> str:
     return "sha256:" + hashlib.sha256(BUILD_ID_DOMAIN + _canonical(unsigned)).hexdigest()
 
 
+def build_distribution_manifest_v1(
+    *, previous_closed_build_id: str | None, release_sequence: int,
+    product_version: str, platform: str, architecture: str,
+    signing_key_id: str, installation_root: str,
+    boundary_inventory_path: str, boundary_inventory_hash: str,
+    boundary_guard_version: str, files: tuple[DistributionFile, ...],
+) -> bytes:
+    """Build one canonical manifest without acquiring signing authority.
+
+    The builder owns the fixed certificate and preflight locations and runs
+    the same strict parser used by verification before returning bytes.  It
+    deliberately does not sign: the installer-side release transaction is
+    the only component allowed to acquire the distribution signing authority.
+    """
+    if type(files) is not tuple or any(
+        type(item) is not DistributionFile for item in files
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "files",
+        )
+    ordered = tuple(sorted(files, key=lambda item: item.path.encode("utf-8")))
+    certificate_directory = {
+        "linux": "/var/lib/metnos/executor-birth",
+        "windows": r"C:\ProgramData\Metnos\ExecutorBirth",
+    }.get(platform)
+    if certificate_directory is None:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "platform",
+        )
+    document: dict[str, object] = {
+        "schema_version": 1,
+        "closed_build_id": None,
+        "previous_closed_build_id": previous_closed_build_id,
+        "release_sequence": release_sequence,
+        "product_version": product_version,
+        "platform": platform,
+        "architecture": architecture,
+        "signing_key_id": signing_key_id,
+        "installation_root": installation_root,
+        "certificate_directory": certificate_directory,
+        "boundary_inventory_path": boundary_inventory_path,
+        "boundary_inventory_hash": boundary_inventory_hash,
+        "boundary_guard_version": boundary_guard_version,
+        "preflight_entrypoint": _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1,
+        "files": [{
+            "path": item.path,
+            "size": item.size,
+            "content_hash": item.content_hash,
+            "role": item.role,
+        } for item in ordered],
+    }
+    document["closed_build_id"] = _build_id(document)
+    encoded = _canonical(document)
+    parsed, parsed_files = _parse(encoded)
+    if parsed["closed_build_id"] != document["closed_build_id"] or (
+        parsed_files != ordered
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "builder binding",
+        )
+    return encoded
+
+
 def _runtime_environment() -> _VerificationEnvironment:
     if sys.platform.startswith("linux"):
         target = "linux"
@@ -2115,7 +2178,7 @@ __all__ = [
     "SIGNATURE_DOMAIN", "AuthenticatedDistributionRecordV1",
     "DistributionFile", "DistributionKey",
     "DistributionManifestError", "DistributionRegistry", "VerifiedDistribution",
-    "authenticate_distribution_record_v1",
+    "authenticate_distribution_record_v1", "build_distribution_manifest_v1",
     "capture_current_deployment_descriptor_v1", "distribution_key_id",
     "file_content_hash", "installed_tree_hash_v1", "is_verified_distribution",
     "verify_current_installation_distribution_v1",

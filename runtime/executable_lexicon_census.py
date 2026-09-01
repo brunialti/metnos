@@ -233,7 +233,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_cutover.py': ('fb5ca85cfb383f269368281417e635be9c696be294a6e4ae1db7f0583f5ebd04', (('comparison', 3),)),
     'executor_birth_distribution_assembler.py': ('b236cdd040fe101b6950c920b14015fed10f71a67ea5e87601b8ce62292e843f', (('comparison', 11), ('helper-argument', 2))),
     'executor_birth_distribution_installer.py': ('3b8e2ea7272fecd3a52e45c12c1e69e8289c9e3651493500fa1be93a01af0cfb', (('prefix-suffix', 2),)),
-    'executor_birth_distribution_manifest.py': ('a3d7f1e6c898197b83754132e424f49ba3080d9e99f89229d8baadef5d7c44fb', (('comparison', 54), ('helper-argument', 4), ('membership', 1))),
+    'executor_birth_distribution_manifest.py': ('6794b8cfde22d91b8507247458e008b22277de3434513f1fa1fc475a667b71d6', (('comparison', 54), ('helper-argument', 4), ('literal-lookup', 1), ('membership', 1))),
     'executor_birth_dominant_startup.py': ('cf8d12a12cef117b16e780092702d40557a7c7fd7c39bf91e2b52f81e3fbfddd', (('comparison', 1), ('iteration', 1), ('prefix-suffix', 1))),
     'executor_birth_dominant_topology.py': ('0e5edc17db79dfaa23e65106962007aa6e00b15a7990d1d4db2f96198709738a', (('helper-argument', 1), ('iteration', 1), ('membership', 1), ('prefix-suffix', 3))),
     'executor_birth_enforcement_evidence.py': ('27da48ec1d3ffba70ec221916a7e3d465fce8fd55448a418b16f10a86a5df55d', (('comparison', 1),)),
