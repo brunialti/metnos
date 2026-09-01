@@ -82,7 +82,11 @@ def _observers(cell, *, bindings: dict[str, bytes] | None = None):
         return _digest_of("catalog-of-the-cell")
 
     def observe_identity():
-        return (_digest_of("request"), _digest_of("previous-head"))
+        return (
+            _digest_of("request"),
+            _digest_of("previous-head"),
+            _digest_of("context-transition"),
+        )
 
     def plan_and_retire() -> str:
         steps = retirement.plan_retirement_v1(legacy)
@@ -126,7 +130,7 @@ def test_the_five_pieces_compose_and_the_crossing_happens_once(cell) -> None:
         cross=crossed.append,
     )
 
-    assert crossed == [receipt.bindings_digest]
+    assert crossed == [receipt.dominant_startup_receipt]
     assert (units / "metnos-probe.service").read_bytes() == _UNIT
     retired = repository / "scripts" / (
         "legacy.sh" + neutralizer.RETIRED_EXTENSION_V1

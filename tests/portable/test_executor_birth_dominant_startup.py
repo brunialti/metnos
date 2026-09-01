@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import pickle
 
 import pytest
@@ -17,6 +18,7 @@ def _bindings(**overrides: str) -> dominant.DominantStartupBindingsV1:
     fields = {
         "request_id": _digest("1"),
         "previous_head_digest": _digest("2"),
+        "context_transition_id": _digest("7"),
         "catalog_id": _digest("3"),
         "effective_topology_hash": _digest("4"),
         "enforcement_evidence_digest": _digest("5"),
@@ -66,6 +68,25 @@ def test_the_framing_separates_neighbouring_fields() -> None:
         _bindings(request_id=_digest("2"), previous_head_digest=_digest("1")),
     )
     assert first != swapped
+
+
+def test_the_complete_receipt_uses_the_required_domain_and_order() -> None:
+    values = (_digest("1"), _digest("2"), _digest("3"))
+    independent = hashlib.sha256(
+        dominant.DOMINANT_STARTUP_RECEIPT_DOMAIN_V1,
+    )
+    for value in values:
+        encoded = value.encode("ascii")
+        independent.update(len(encoded).to_bytes(8, "big"))
+        independent.update(encoded)
+
+    observed = dominant.dominant_startup_receipt_v1(*values)
+
+    assert observed == "sha256:" + independent.hexdigest()
+    assert observed != values[0]
+    assert observed != dominant.dominant_startup_receipt_v1(
+        values[0], values[2], values[1],
+    )
 
 
 @pytest.mark.parametrize(("case", "code"), [
@@ -122,7 +143,8 @@ def test_the_capability_survives_neither_a_copy_nor_a_pickle() -> None:
 
 @pytest.mark.parametrize("field", [
     "request_id", "previous_head_digest", "catalog_id",
-    "effective_topology_hash", "enforcement_evidence_digest",
+    "context_transition_id", "effective_topology_hash",
+    "enforcement_evidence_digest",
 ])
 def test_every_binding_must_be_a_digest(field: str) -> None:
     """A name, a path or a truncated hash is not an identity."""
@@ -161,7 +183,7 @@ class _Observers:
 
     def identity(self):
         value = self._value("identity", _digest("1"), _digest("e"))
-        return (value, _digest("2"))
+        return (value, _digest("2"), _digest("7"))
 
     def topology(self) -> str:
         return self._value("topology", _digest("4"), _digest("a"))
@@ -197,7 +219,7 @@ def test_the_crossing_reads_everything_twice_before_it_runs() -> None:
     observers = _Observers()
     receipt = _complete(observers)
 
-    assert observers.crossed == [receipt.bindings_digest]
+    assert observers.crossed == [receipt.dominant_startup_receipt]
     assert receipt.retirement_plan_digest == _digest("6")
     assert receipt.enforcement_evidence_digest == _digest("5")
     # Every observer was consulted exactly twice: once to bind, once to agree.

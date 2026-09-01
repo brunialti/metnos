@@ -23,6 +23,9 @@ from dataclasses import dataclass
 
 
 DOMINANT_STARTUP_DOMAIN_V1 = b"metnos.executor-birth.dominant-startup/v1\0"
+DOMINANT_STARTUP_RECEIPT_DOMAIN_V1 = (
+    b"metnos.executor-birth.dominant-startup-receipt/v1\0"
+)
 
 _CAPABILITY_SEAL_V1 = object()
 _TEST_CAPABILITY_SEAL_V1 = object()
@@ -65,13 +68,15 @@ class DominantStartupBindingsV1:
 
     request_id: str
     previous_head_digest: str
+    context_transition_id: str
     catalog_id: str
     effective_topology_hash: str
     enforcement_evidence_digest: str
 
     def __post_init__(self) -> None:
         for field in (
-            "request_id", "previous_head_digest", "catalog_id",
+            "request_id", "previous_head_digest", "context_transition_id",
+            "catalog_id",
             "effective_topology_hash", "enforcement_evidence_digest",
         ):
             _require_digest_v1(getattr(self, field), field)
@@ -84,7 +89,8 @@ def bindings_digest_v1(bindings: DominantStartupBindingsV1) -> str:
     digest = hashlib.sha256(DOMINANT_STARTUP_DOMAIN_V1)
     for field in (
         bindings.request_id, bindings.previous_head_digest,
-        bindings.catalog_id, bindings.effective_topology_hash,
+        bindings.context_transition_id, bindings.catalog_id,
+        bindings.effective_topology_hash,
         bindings.enforcement_evidence_digest,
     ):
         encoded = field.encode("ascii")
@@ -194,9 +200,11 @@ def consume_v1(
 
 __all__ = [
     "DOMINANT_STARTUP_DOMAIN_V1",
+    "DOMINANT_STARTUP_RECEIPT_DOMAIN_V1",
     "DominantStartupBindingsV1",
     "DominantStartupError",
     "bindings_digest_v1",
+    "dominant_startup_receipt_v1",
 ]
 
 
@@ -207,6 +215,32 @@ class DominantStartupReceiptV1:
     bindings_digest: str
     retirement_plan_digest: str
     enforcement_evidence_digest: str
+    dominant_startup_receipt: str
+
+
+def dominant_startup_receipt_v1(
+    bindings_digest: str,
+    retirement_plan_digest: str,
+    enforcement_evidence_digest: str,
+) -> str:
+    """Frame the three complete crossing facts in their required order."""
+    values = (
+        _require_digest_v1(bindings_digest, "bindings_digest"),
+        _require_digest_v1(
+            retirement_plan_digest,
+            "retirement_plan_digest",
+        ),
+        _require_digest_v1(
+            enforcement_evidence_digest,
+            "enforcement_evidence_digest",
+        ),
+    )
+    digest = hashlib.sha256(DOMINANT_STARTUP_RECEIPT_DOMAIN_V1)
+    for value in values:
+        encoded = value.encode("ascii")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    return f"sha256:{digest.hexdigest()}"
 
 
 def complete_dominant_startup_v1(
@@ -248,13 +282,17 @@ def complete_dominant_startup_v1(
         observe_enforcement(), "enforcement_evidence_digest",
     )
     identity = observe_identity()
-    if type(identity) is not tuple or len(identity) != 2:
+    if type(identity) is not tuple or len(identity) != 3:
         raise _invalid("dominant_startup_binding_invalid", "identity")
-    request_id, previous_head = identity
+    request_id, previous_head, context_transition_id = identity
     bindings = DominantStartupBindingsV1(
         request_id=_require_digest_v1(request_id, "request_id"),
         previous_head_digest=_require_digest_v1(
             previous_head, "previous_head_digest",
+        ),
+        context_transition_id=_require_digest_v1(
+            context_transition_id,
+            "context_transition_id",
         ),
         catalog_id=catalog,
         effective_topology_hash=topology,
@@ -273,8 +311,18 @@ def complete_dominant_startup_v1(
         or observe_enforcement() != enforcement
     ):
         raise _invalid("dominant_startup_binding_drift", "second reading")
-    digest = consume_v1(capability, bindings)
+    bindings_digest = consume_v1(capability, bindings)
     if _crash_seam:
         _crash_seam("capability_consumed")
-    cross(digest)
-    return DominantStartupReceiptV1(digest, retirement, enforcement)
+    receipt = dominant_startup_receipt_v1(
+        bindings_digest,
+        retirement,
+        enforcement,
+    )
+    cross(receipt)
+    return DominantStartupReceiptV1(
+        bindings_digest,
+        retirement,
+        enforcement,
+        receipt,
+    )
