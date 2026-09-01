@@ -34,7 +34,11 @@ if str(_RUNTIME) not in sys.path:  # pragma: no cover - import bootstrap
     sys.path.insert(0, str(_RUNTIME))
 
 TRANSACTION_PROTOCOL_V1 = "birth-authority-provisioning-v1"
+TRANSACTION_PROTOCOL_V2 = "birth-authority-provisioning-v2"
 CHECKPOINT_DIGEST_DOMAIN_V1 = b"metnos.executor-birth.provisioning-checkpoint/v1\0"
+SOURCE_INVENTORY_DIGEST_DOMAIN_V2 = (
+    b"metnos.executor-birth.provisioning-source-inventory/v2\0"
+)
 TRANSACTION_HEADER_BASENAME_V1 = "transaction-v1.json"
 CHECKPOINTS_BASENAME_V1 = "checkpoints-v1"
 MAXIMUM_CHECKPOINT_SEQUENCE_V1 = 8191
@@ -359,6 +363,143 @@ def decode_transaction_header_v1(raw: bytes) -> TransactionHeaderV1:
     return TransactionHeaderV1(
         transaction_id=value["transaction_id"],
         provisioner_build_id=value["provisioner_build_id"],
+    )
+
+
+def _is_digest_v2(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 71
+        and value.startswith("sha256:")
+        and _is_hex(value[7:], 64)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class TransactionHeaderV2:
+    """Immutable identity of one transition provisioning transaction."""
+
+    transaction_id: str
+    provisioner_build_id: str
+    request_id: str
+    closed_build_id: str
+    previous_set_id: str
+    distribution_payload_hash: str
+    distribution_signature_hash: str
+    source_inventory_hash: str
+
+    def __post_init__(self) -> None:
+        if (
+            not _is_hex(self.transaction_id, 32)
+            or not isinstance(self.provisioner_build_id, str)
+            or not self.provisioner_build_id
+            or "\0" in self.provisioner_build_id
+            or not _is_hex(self.previous_set_id, 64)
+            or any(not _is_digest_v2(value) for value in (
+                self.request_id,
+                self.closed_build_id,
+                self.distribution_payload_hash,
+                self.distribution_signature_hash,
+                self.source_inventory_hash,
+            ))
+        ):
+            raise _conflict()
+
+    def to_document(self) -> dict[str, object]:
+        return {
+            "schema_version": 2,
+            "protocol": TRANSACTION_PROTOCOL_V2,
+            "transaction_id": self.transaction_id,
+            "provisioner_build_id": self.provisioner_build_id,
+            "request_id": self.request_id,
+            "closed_build_id": self.closed_build_id,
+            "previous_set_id": self.previous_set_id,
+            "distribution_payload_hash": self.distribution_payload_hash,
+            "distribution_signature_hash": self.distribution_signature_hash,
+            "source_inventory_hash": self.source_inventory_hash,
+        }
+
+    def encode(self) -> bytes:
+        return encode_canonical_document_v1(self.to_document())
+
+
+def decode_transaction_header_v2(raw: bytes) -> TransactionHeaderV2:
+    """Decode the closed V2 header without accepting a V1 interpretation."""
+    value = decode_canonical_document_v1(raw)
+    if set(value) != {
+        "schema_version", "protocol", "transaction_id",
+        "provisioner_build_id", "request_id", "closed_build_id",
+        "previous_set_id", "distribution_payload_hash",
+        "distribution_signature_hash", "source_inventory_hash",
+    } or value["schema_version"] != 2 or value["protocol"] != TRANSACTION_PROTOCOL_V2:
+        raise _conflict()
+    return TransactionHeaderV2(
+        transaction_id=value["transaction_id"],
+        provisioner_build_id=value["provisioner_build_id"],
+        request_id=value["request_id"],
+        closed_build_id=value["closed_build_id"],
+        previous_set_id=value["previous_set_id"],
+        distribution_payload_hash=value["distribution_payload_hash"],
+        distribution_signature_hash=value["distribution_signature_hash"],
+        source_inventory_hash=value["source_inventory_hash"],
+    )
+
+
+def provisioning_source_inventory_hash_v2(distribution: object) -> str:
+    """Bind the ordered authenticated file inventory of one distribution."""
+    from executor_birth_distribution_manifest import is_verified_distribution
+
+    if not is_verified_distribution(distribution):
+        raise _conflict()
+    files = tuple(sorted(
+        distribution.files, key=lambda item: item.path.encode("utf-8"),
+    ))
+    if len({item.path for item in files}) != len(files):
+        raise _conflict()
+    value = [{
+        "path": item.path,
+        "size": item.size,
+        "content_hash": item.content_hash,
+        "role": item.role,
+    } for item in files]
+    encoded = encode_canonical_document_v1({"files": value})
+    return "sha256:" + hashlib.sha256(
+        SOURCE_INVENTORY_DIGEST_DOMAIN_V2 + encoded,
+    ).hexdigest()
+
+
+def _build_transaction_header_v2(
+    *, transaction_id: str, provisioner_build_id: str,
+    claim: object, distribution: object, previous_set: object,
+) -> TransactionHeaderV2:
+    """Derive a V2 header only from nominally authenticated transition facts."""
+    from executor_birth_distribution_manifest import is_verified_distribution
+    from executor_birth_ownership_coordinator import SuccessorClaimV1
+    from executor_birth_prepared_set import is_prepared_set_v1
+
+    if (
+        not isinstance(claim, SuccessorClaimV1)
+        or not is_verified_distribution(distribution)
+        or not is_prepared_set_v1(previous_set)
+        or claim.closed_build_id != distribution.identity.closed_build_id
+        or claim.release_sequence != distribution.release_sequence
+    ):
+        raise _conflict()
+    return TransactionHeaderV2(
+        transaction_id=transaction_id,
+        provisioner_build_id=provisioner_build_id,
+        request_id=claim.request_id,
+        closed_build_id=distribution.identity.closed_build_id,
+        previous_set_id=previous_set.set_id,
+        distribution_payload_hash=(
+            "sha256:" + hashlib.sha256(distribution.encoded).hexdigest()
+        ),
+        distribution_signature_hash=(
+            "sha256:" + hashlib.sha256(distribution.signature).hexdigest()
+        ),
+        source_inventory_hash=provisioning_source_inventory_hash_v2(
+            distribution,
+        ),
     )
 
 
