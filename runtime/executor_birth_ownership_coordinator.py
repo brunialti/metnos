@@ -167,6 +167,37 @@ _WRAPPED_TYPED_DETAIL_CODES_V1 = {
     ("birth_context_transition_recovery_required", "record binding"):
         "record_binding",
 }
+_WRAPPED_CONTRACT_DETAIL_CODES_V1 = frozenset({
+    "birth_cutover_generation_invalid",
+    "birth_cutover_not_quiescent",
+    "birth_cutover_receipt_binding_invalid",
+    "birth_cutover_receipt_invalid",
+    "birth_cutover_receipt_missing",
+    "birth_cutover_receipt_not_durable",
+    "birth_cutover_reattestation_failed",
+    "birth_cutover_reattestation_missing",
+})
+_MAX_WRAPPED_CONTRACT_DETAIL_BYTES_V1 = 4096
+
+
+def _wrapped_contract_detail_v1(code: str, detail: object) -> str | None:
+    """Admit only one bounded, canonical contract identity as context."""
+    if (
+        code not in _WRAPPED_CONTRACT_DETAIL_CODES_V1
+        or type(detail) is not str or ":" not in detail
+        or not detail.isprintable()
+    ):
+        return None
+    try:
+        if len(detail.encode("utf-8")) > _MAX_WRAPPED_CONTRACT_DETAIL_BYTES_V1:
+            return None
+        origin, relative = detail.split(":", 1)
+        from manifest_inventory import ContractId, ManifestOrigin
+
+        canonical = ContractId(ManifestOrigin(origin), relative).value
+    except (TypeError, UnicodeError, ValueError):
+        return None
+    return detail if canonical == detail else None
 
 
 def _wrapped_cause_detail_v1(exc: BaseException) -> str:
@@ -180,7 +211,12 @@ def _wrapped_cause_detail_v1(exc: BaseException) -> str:
     typed_detail = _WRAPPED_TYPED_DETAIL_CODES_V1.get(
         (code, getattr(exc, "detail", None)),
     )
-    return f"{code}:{typed_detail}" if typed_detail is not None else code
+    if typed_detail is not None:
+        return f"{code}:{typed_detail}"
+    contract_detail = _wrapped_contract_detail_v1(
+        code, getattr(exc, "detail", None),
+    )
+    return f"{code}: {contract_detail}" if contract_detail is not None else code
 
 
 class OwnershipCoordinatorStateV1(str, Enum):

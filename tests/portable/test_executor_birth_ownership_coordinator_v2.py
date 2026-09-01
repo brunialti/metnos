@@ -2111,6 +2111,42 @@ def test_translated_reason_keeps_only_allowlisted_typed_components():
     assert coordinator_module._wrapped_cause_detail_v1(RuntimeError("opaque")) == ""
 
 
+@pytest.mark.parametrize("code", sorted(
+    coordinator_module._WRAPPED_CONTRACT_DETAIL_CODES_V1,
+))
+def test_translated_reason_preserves_a_canonical_contract_identity(code):
+    from executor_birth_cutover import BirthCutoverError
+
+    assert coordinator_module._wrapped_cause_detail_v1(
+        BirthCutoverError(code, "explicit:alpha/manifest.toml"),
+    ) == f"{code}: explicit:alpha/manifest.toml"
+
+
+@pytest.mark.parametrize("detail", [
+    "free text",
+    "explicit:/alpha/manifest.toml",
+    "explicit:../alpha/manifest.toml",
+    "explicit:alpha/manifest.toml\nsecond line",
+    "explicit:" + "a" * 4096 + "/manifest.toml",
+])
+def test_translated_reason_rejects_noncanonical_contract_context(detail):
+    from executor_birth_cutover import BirthCutoverError
+
+    code = "birth_cutover_reattestation_failed"
+    assert coordinator_module._wrapped_cause_detail_v1(
+        BirthCutoverError(code, detail),
+    ) == code
+
+
+def test_translated_reason_does_not_attach_contract_context_to_another_code():
+    from executor_birth_cutover import BirthCutoverError
+
+    code = "birth_cutover_inventory_changed"
+    assert coordinator_module._wrapped_cause_detail_v1(
+        BirthCutoverError(code, "explicit:alpha/manifest.toml"),
+    ) == code
+
+
 def test_completed_transition_selection_returns_only_the_exact_final_release():
     distribution = payload_bound_distribution_v2()
     claim = bound_claim(

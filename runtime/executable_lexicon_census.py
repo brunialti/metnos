@@ -248,7 +248,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_operational.py': ('0e78badc9ec9ba95d36ef3e1252bc6b9221cf439e9adab804d683d8d89c5a17c', (('comparison', 9), ('helper-argument', 2))),
     'executor_birth_ownership_authorities.py': ('331a28893150d14d8865420f54ed843bd3cc92f59a25dbe8b25235027e09ed60', (('comparison', 5), ('helper-argument', 1))),
     'executor_birth_ownership_chain.py': ('96f05b77e0a980ee1acdfbc6a9f071151b5554cc542d4b054b0c64d7554c8278', (('comparison', 10), ('helper-argument', 2), ('regex', 1))),
-    'executor_birth_ownership_coordinator.py': ('56c9f2e330302354459efd0410626d7b9db12bbc3720cb28b8c57f036a4da0c1', (('comparison', 16), ('helper-argument', 1), ('iteration', 3), ('prefix-suffix', 2), ('regex', 5))),
+    'executor_birth_ownership_coordinator.py': ('cb11fdd04944937735f33ca88e5a394269e2c9af691b31c01086e185b12dfb87', (('comparison', 16), ('helper-argument', 1), ('iteration', 3), ('prefix-suffix', 2), ('regex', 5))),
     'executor_birth_ownership_cutover.py': ('ae9323cfa2e23c8cef8df6a9257e0884617345082f8a6e8956bf4fb3c475ed32', (('comparison', 8), ('helper-argument', 1), ('iteration', 1))),
     'executor_birth_ownership_preflight.py': ('b83755c189489215c0ec3778a00852c850830c24f3889f588a5182969f5bd2d2', (('comparison', 1), ('helper-argument', 1))),
     'executor_birth_postcondition.py': ('bf51bc292082ab283b96151a28229d002f0c0342b332c0240fba5f6832c19c89', (('comparison', 1),)),
@@ -989,6 +989,8 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
 # relative path, lexical owner, symbol, container kind and complete payload;
 # the adjacent reason records why the value is not input-language authority.
 VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
+    "37224e13581c91540a97a59e21c04a51c83ca64d6be3c0c87cc36dcc19d7d4b8":
+        "closed cutover codes that may carry a canonical contract identity",
     "8b4e7d43512ccd9c70fc650e65693553bb0724cb6a28558e81faeef602d56a06":
         "closed retirement actions that neutralise a unit by masking",
     "f649f61d39230e50c7436e94b02efed460423fe0a1ff2163ebf167ba201159a8":
