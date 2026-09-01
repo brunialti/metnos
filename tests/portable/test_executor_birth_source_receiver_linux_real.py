@@ -449,7 +449,17 @@ def test_source_shape_is_bounded_under_descriptor_limit(
     child = os.fork()
     if child == 0:  # pragma: no cover - isolated resource-limit worker
         os.close(result_read)
-        resource.setrlimit(resource.RLIMIT_NOFILE, (64, hard))
+        # The budget must be headroom, not an absolute number: how many
+        # descriptors this process already holds depends on what ran before
+        # it, so a fixed 64 makes the walk stop at a different place when the
+        # whole suite runs than when this file runs alone — and the proof then
+        # observes the inventory bound instead of the depth bound it names.
+        try:
+            already_open = len(os.listdir("/proc/self/fd"))
+        except OSError:  # pragma: no cover - /proc unavailable
+            already_open = 0
+        budget = min(already_open + 64, hard)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (budget, hard))
         try:
             source_id = receiver._receive_source_for_test_v1(
                 str(source), "metnos", ownership,
