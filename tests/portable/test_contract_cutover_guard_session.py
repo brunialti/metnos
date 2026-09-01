@@ -62,3 +62,60 @@ def test_maintenance_session_rejects_a_look_alike() -> None:
     with pytest.raises(guard.ContractCutoverGuardError) as denied:
         guard._require_maintenance_session_v1(SimpleNamespace())
     assert denied.value.code == "cutover_session_invalid"
+
+
+def test_transition_guard_binds_user_scope_to_the_verified_account(
+    monkeypatch,
+) -> None:
+    import stack_reconcile
+
+    observed = []
+
+    class Systemctl:
+        def __init__(self, *, service_user: str) -> None:
+            observed.append(("account", service_user))
+
+        @staticmethod
+        def _service_uid() -> int:
+            return 1234
+
+        @staticmethod
+        def show(unit: str, scope: str) -> dict[str, object]:
+            observed.append((scope, unit))
+            return {
+                "LoadState": "loaded",
+                "ActiveState": "inactive",
+                "MainPID": 0,
+            }
+
+    class Reconciler:
+        def __init__(
+            self, *, systemctl: Systemctl, default_write_report: bool,
+        ) -> None:
+            assert default_write_report is False
+            self.systemctl = systemctl
+
+        @staticmethod
+        def require_quiescent() -> dict[str, str]:
+            return {"source": "inactive_http_and_inactive_sidecar"}
+
+    @contextmanager
+    def exclusion():
+        yield
+
+    monkeypatch.setattr(stack_reconcile, "Systemctl", Systemctl)
+    monkeypatch.setattr(stack_reconcile, "StackReconciler", Reconciler)
+    monkeypatch.setattr(
+        stack_reconcile, "catalog_reconcile_lock",
+        lambda wait_s: exclusion(),
+    )
+
+    with guard._contract_cutover_guard_for_service_user_v1(
+        "service-account",
+    ) as (session, _evidence):
+        guard._require_maintenance_session_v1(session)
+
+    assert observed[0] == ("account", "service-account")
+    assert all(
+        item[0] in {"account", "system", "user"} for item in observed
+    )

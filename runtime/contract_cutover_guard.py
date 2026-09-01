@@ -124,14 +124,14 @@ def _require_maintenance_session_v1(session: object) -> None:
 
 
 @contextmanager
-def contract_cutover_guard():
-    """Hold lifecycle exclusion while a stopped-stack proof remains valid."""
+def _contract_cutover_guard_core_v1(reconciler):
+    """Hold lifecycle exclusion for one already bound service observer."""
     if sys.platform != "linux":
         raise ContractCutoverGuardError(
             "cutover_platform_unsupported",
             "the managed Metnos server and its cutover require Linux/systemd",
         )
-    from stack_reconcile import StackReconciler, catalog_reconcile_lock
+    from stack_reconcile import catalog_reconcile_lock
 
     # Fixed order shared with publishers: global catalog admission first,
     # lifecycle/service exclusion second. This waits for an in-flight commit
@@ -145,7 +145,6 @@ def contract_cutover_guard():
             "cutover_lock_unavailable", str(exc),
         ) from exc
     try:
-        reconciler = StackReconciler(default_write_report=False)
         token = object()
         proof = _MaintenanceProofV1(
             reconciler, token, _MAINTENANCE_SESSION_SEAL_V1,
@@ -161,6 +160,40 @@ def contract_cutover_guard():
                 _ACTIVE_MAINTENANCE_SESSIONS_V1.pop(token, None)
     finally:
         guard.__exit__(None, None, None)
+
+
+@contextmanager
+def contract_cutover_guard():
+    """Hold lifecycle exclusion using the process's ordinary service identity."""
+    from stack_reconcile import StackReconciler
+
+    with _contract_cutover_guard_core_v1(
+        StackReconciler(default_write_report=False),
+    ) as boundary:
+        yield boundary
+
+
+@contextmanager
+def _contract_cutover_guard_for_service_user_v1(service_user: str):
+    """Bind user-scope observations to the verified deployment account."""
+    if (
+        type(service_user) is not str or not service_user
+        or service_user != service_user.strip()
+        or any(character in service_user for character in "\x00\r\n")
+    ):
+        raise ContractCutoverGuardError("service_user_invalid")
+    from stack_reconcile import StackReconciler, Systemctl
+
+    systemctl = Systemctl(service_user=service_user)
+    try:
+        systemctl._service_uid()
+    except Exception as exc:
+        raise ContractCutoverGuardError("service_user_invalid") from exc
+    reconciler = StackReconciler(
+        systemctl=systemctl, default_write_report=False,
+    )
+    with _contract_cutover_guard_core_v1(reconciler) as boundary:
+        yield boundary
 
 
 def _verify_store_only_catalog_locked() -> dict[str, int]:
