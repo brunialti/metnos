@@ -542,8 +542,8 @@ def _capture_live_bindings(
     preflight._service_source_identity_v1(
         autonomous_catalog, autonomous_descriptor,
     )
-    provisional = preflight._BoundPreflightMaterialsV1(
-        None, None, autonomous_catalog, autonomous_descriptor, None,
+    provisional = preflight._CandidateCutoverMaterialsV1(
+        None, None, None, autonomous_catalog, autonomous_descriptor,
         candidate, fixture.unit_fragments, "", "",
     )
     effective = preflight._capture_effective_systemd_units_core_v1(

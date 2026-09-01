@@ -786,7 +786,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:2a2038ab9d691b9b8d769a4fb6339c3d7dbce01349248a4fb77133ad037182ef"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:bef7d3fbf766b3a24580c60c9395fd2fa51f81bef84f984104193d89144c6a0c"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -1898,6 +1898,20 @@ class _BoundPreflightMaterialsV1(NamedTuple):
     catalog: _DecodedServiceCatalogV1
     descriptor: _DecodedDeploymentDescriptorV1
     prerequisite: _DecodedStartupPrerequisiteV1
+    candidate_units: _CandidateUnitsSnapshotV1
+    unit_fragments: tuple[tuple[str, bytes], ...]
+    administrative_bundle_hash: str
+    installed_tree_hash: str
+
+
+class _CandidateCutoverMaterialsV1(NamedTuple):
+    """Signed candidate facts available before the prerequisite is published."""
+
+    distribution: _AuthenticatedDistributionObjectV1
+    transaction: _DecodedCoordinatorRecordV2
+    predecessor: _DecodedPredecessorDescriptorV1
+    catalog: _DecodedServiceCatalogV1
+    descriptor: _DecodedDeploymentDescriptorV1
     candidate_units: _CandidateUnitsSnapshotV1
     unit_fragments: tuple[tuple[str, bytes], ...]
     administrative_bundle_hash: str
@@ -3772,13 +3786,13 @@ def _required_material_capture_paths_v1(
     return frozenset(paths)
 
 
-def _bind_preflight_materials_core_v1(
+def _bind_candidate_cutover_materials_core_v1(
     distribution: _AuthenticatedDistributionObjectV1,
     transaction: _DecodedCoordinatorRecordV2,
     predecessor: _DecodedPredecessorDescriptorV1,
-    captured: Mapping[str, bytes], prerequisite_encoded: bytes,
-) -> _BoundPreflightMaterialsV1:
-    """Cross-bind captured signed claims without granting live authority."""
+    captured: Mapping[str, bytes],
+) -> _CandidateCutoverMaterialsV1:
+    """Cross-bind the reusable signed candidate before its live measurement."""
     if (
         type(distribution) is not _AuthenticatedDistributionObjectV1
         or type(transaction) is not _DecodedCoordinatorRecordV2
@@ -3788,8 +3802,7 @@ def _bind_preflight_materials_core_v1(
             type(key) is not str or type(value) is not bytes
             for key, value in captured.items()
         )
-        or type(prerequisite_encoded) is not bytes
-        or transaction.sequence < 2
+        or transaction.sequence < 1
     ):
         raise _invalid("preflight material arguments")
     manifest_value, manifest_files = _parse_distribution_manifest_v1(
@@ -3810,7 +3823,6 @@ def _bind_preflight_materials_core_v1(
         raise _invalid("preflight material capture")
     catalog = _decode_service_catalog_v1(catalog_encoded)
     descriptor = _decode_deployment_descriptor_v1(descriptor_encoded)
-    prerequisite = _decode_startup_prerequisite_v1(prerequisite_encoded)
     candidate = _compile_candidate_units_v1(catalog)
     _service_source_identity_v1(catalog, descriptor)
     bundle_hash = _administrative_bundle_hash_v1(descriptor)
@@ -3836,11 +3848,6 @@ def _bind_preflight_materials_core_v1(
         or descriptor.service_coverage_hash != catalog.service_coverage_hash
         or transaction.service_coverage_hash != catalog.service_coverage_hash
         or transaction.administrative_bundle_hash != bundle_hash
-        or prerequisite.request_id != transaction.request_id
-        or prerequisite.closed_build_id != transaction.closed_build_id
-        or prerequisite.release_sequence != transaction.release_sequence
-        or prerequisite.deployment_descriptor_id != descriptor.descriptor_id
-        or prerequisite.predecessor_id != predecessor.predecessor_id
         or predecessor.administrative_bundle_hash != bundle_hash
         or (
             transaction.release_sequence == 1
@@ -3850,14 +3857,6 @@ def _bind_preflight_materials_core_v1(
                 != catalog.service_coverage_hash
             )
         )
-        or prerequisite.administrative_bundle_hash != bundle_hash
-        or prerequisite.service_catalog_id != catalog.catalog_id
-        or prerequisite.service_coverage_hash != catalog.service_coverage_hash
-        or prerequisite.candidate_units_hash != candidate.candidate_units_hash
-        or prerequisite.systemd_manager_version not in SUPPORTED_SYSTEMD_VERSIONS
-        or transaction.startup_prerequisite_id != prerequisite.prerequisite_id
-        or transaction.startup_prerequisite_digest
-        != _startup_prerequisite_digest_v1(prerequisite_encoded)
         or (
             transaction.sequence >= 4
             and transaction.installed_tree_hash != installed_tree_hash
@@ -3980,9 +3979,49 @@ def _bind_preflight_materials_core_v1(
     ) | frozenset(item.source_path for item in descriptor.artifacts)
     if any(path not in captured for path in required_paths):
         raise _invalid("preflight captured material coverage")
-    return _BoundPreflightMaterialsV1(
-        distribution, transaction, catalog, descriptor, prerequisite,
+    return _CandidateCutoverMaterialsV1(
+        distribution, transaction, predecessor, catalog, descriptor,
         candidate, tuple(sorted(fragments)), bundle_hash, installed_tree_hash,
+    )
+
+
+def _bind_preflight_materials_core_v1(
+    distribution: _AuthenticatedDistributionObjectV1,
+    transaction: _DecodedCoordinatorRecordV2,
+    predecessor: _DecodedPredecessorDescriptorV1,
+    captured: Mapping[str, bytes], prerequisite_encoded: bytes,
+) -> _BoundPreflightMaterialsV1:
+    """Add the published prerequisite to one reusable signed candidate."""
+    if type(prerequisite_encoded) is not bytes or transaction.sequence < 2:
+        raise _invalid("preflight material arguments")
+    candidate = _bind_candidate_cutover_materials_core_v1(
+        distribution, transaction, predecessor, captured,
+    )
+    prerequisite = _decode_startup_prerequisite_v1(prerequisite_encoded)
+    if (
+        prerequisite.request_id != transaction.request_id
+        or prerequisite.closed_build_id != transaction.closed_build_id
+        or prerequisite.release_sequence != transaction.release_sequence
+        or prerequisite.deployment_descriptor_id
+        != candidate.descriptor.descriptor_id
+        or prerequisite.predecessor_id != predecessor.predecessor_id
+        or prerequisite.administrative_bundle_hash
+        != candidate.administrative_bundle_hash
+        or prerequisite.service_catalog_id != candidate.catalog.catalog_id
+        or prerequisite.service_coverage_hash
+        != candidate.catalog.service_coverage_hash
+        or prerequisite.candidate_units_hash
+        != candidate.candidate_units.candidate_units_hash
+        or prerequisite.systemd_manager_version not in SUPPORTED_SYSTEMD_VERSIONS
+        or transaction.startup_prerequisite_id != prerequisite.prerequisite_id
+        or transaction.startup_prerequisite_digest
+        != _startup_prerequisite_digest_v1(prerequisite_encoded)
+    ):
+        raise _invalid("preflight material cross binding")
+    return _BoundPreflightMaterialsV1(
+        distribution, transaction, candidate.catalog, candidate.descriptor,
+        prerequisite, candidate.candidate_units, candidate.unit_fragments,
+        candidate.administrative_bundle_hash, candidate.installed_tree_hash,
     )
 
 
@@ -13256,12 +13295,15 @@ def _capture_systemd_origin_v1(
 
 
 def _capture_effective_systemd_units_core_v1(
-    materials: _BoundPreflightMaterialsV1, *, systemctl_executable: str,
+    materials: _BoundPreflightMaterialsV1 | _CandidateCutoverMaterialsV1, *,
+    systemctl_executable: str,
     live_root: Path, uid: int, gid: int,
 ) -> _CapturedEffectiveSystemdUnitsV1:
     """Build one complete, non-authorizing effective-systemd observation."""
     if (
-        type(materials) is not _BoundPreflightMaterialsV1
+        type(materials) not in {
+            _BoundPreflightMaterialsV1, _CandidateCutoverMaterialsV1,
+        }
         or type(uid) is not int or type(gid) is not int
         or systemctl_executable != materials.descriptor.systemctl_executable
     ):

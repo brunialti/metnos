@@ -1075,6 +1075,36 @@ def test_pure_material_binder_accepts_one_fully_rebound_product_graph() -> None:
     )
 
 
+def test_candidate_binder_is_available_at_receipts_complete() -> None:
+    graph = _bound_graph()
+    transaction = graph["transaction"]._replace(
+        sequence=1,
+        state="RECEIPTS_COMPLETE",
+        startup_prerequisite_id=None,
+        startup_prerequisite_digest=None,
+        cutover_id=None,
+        catalog_id=None,
+        certificate_payload_hash=None,
+        certificate_signature_hash=None,
+        dominant_startup_receipt=None,
+        installed_tree_hash=None,
+    )
+
+    candidate = preflight._bind_candidate_cutover_materials_core_v1(
+        graph["distribution"], transaction, graph["predecessor"],
+        graph["captured"],
+    )
+
+    assert type(candidate) is preflight._CandidateCutoverMaterialsV1
+    assert candidate.transaction is transaction
+    assert candidate.predecessor is graph["predecessor"]
+    assert candidate.candidate_units.candidate_units_hash == (
+        assembler.decode_startup_prerequisite_v1(
+            graph["prerequisite_encoded"],
+        ).candidate_units_hash
+    )
+
+
 @pytest.mark.parametrize(
     ("mutation", "detail"),
     (
