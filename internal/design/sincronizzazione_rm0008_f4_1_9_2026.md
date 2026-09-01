@@ -144,3 +144,31 @@ Il documento `76d88192` resta in coda e non riceve altro lavoro finché questa
 barriera non converge. A può iniziare i propri interventi correttivi senza
 attendere B; nessun nuovo candidato viene però dichiarato prima di integrare o
 risolvere il riscontro B sui suoi due gruppi.
+
+## 8. Primo incremento convergente
+
+B ha accettato la coda unica in `4eb01338`. In `c808d604` ha poi ricondotto i
+cinque casi amministrativi a un solo requisito misurabile: la possibilità di
+creare un oggetto posseduto da un UID diverso. I cinque casi attraversano lo
+stesso aiuto; questo host non offre né `sudo -n chown` né gli strumenti per
+applicare l'intervallo `subuid` già configurato.
+
+Decisione tecnica A sul perimetro corrente:
+
+- non installare pacchetti e non ampliare privilegi durante l'incremento;
+- conservare le cinque prove senza `skip` e registrarle come requisito
+  dell'ambiente certificato finale;
+- B procede ora sul solo caso dipendente dall'ordine, senza attendere altro.
+
+A ha pubblicato `e24fd7e1`, ancorato al riscontro B `4f1d5302`:
+
+- ricetta delle sorgenti: `32 passed`;
+- profilo autonomo e sigilli: `185 passed`, con il solo caso `/run` attribuito
+  all'ambiente locale;
+- predispositore V2 e gruppo collegato: `107 passed`;
+- inventario Python: 1.933 percorsi, validazione verde;
+- radice indipendente delle sorgenti e guardia chiusa: verdi.
+
+`e24fd7e1` è un incremento correttivo, non un candidato `PRONTA`. B usa questa
+testa per il proprio residuo; la selezione larga parte soltanto quando il suo
+commit è pubblicato e integrato.
