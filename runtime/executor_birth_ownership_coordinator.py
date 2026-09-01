@@ -30,6 +30,7 @@ from executor_birth_dominant_startup import is_dominant_startup_receipt_v1
 from executor_birth_distribution_manifest import (
     VerifiedDistribution, is_verified_distribution,
     _verified_distribution_matches_payload_v1,
+    installed_tree_hash_v1,
     verify_current_installation_distribution_v1,
 )
 from executor_birth_ownership_authorities import (
@@ -3628,6 +3629,143 @@ def _certificate_published_record_v2(
         sequence=3,
         state=OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED,
         previous_record_sha256=_record_hash_v2(ready.encode()),
+    )
+
+
+def _build_verified_record_v2(
+    published: object, distribution: object,
+) -> OwnershipCoordinatorRecordV2:
+    """Bind one fully verified live tree after certificate publication."""
+    if (
+        type(published) is not OwnershipCoordinatorRecordV2
+        or published.sequence != 3
+        or published.state
+        is not OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+        or not _verified_distribution_matches_payload_v1(distribution)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "build verification",
+        )
+    assert isinstance(distribution, VerifiedDistribution)
+    if (
+        distribution.identity.closed_build_id != published.closed_build_id
+        or distribution.previous_closed_build_id
+        != published.previous_closed_build_id
+        or distribution.release_sequence != published.release_sequence
+        or _digest(distribution.encoded)
+        != published.distribution_payload_hash
+        or _digest(distribution.signature)
+        != published.distribution_signature_hash
+        or distribution.identity.boundary_inventory_hash
+        != published.boundary_inventory_hash
+        or distribution.identity.boundary_guard_version
+        != published.boundary_guard_version
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "build binding",
+        )
+    try:
+        tree_hash = installed_tree_hash_v1(distribution.files)
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "installed tree",
+        ) from exc
+    return replace(
+        published,
+        sequence=4,
+        state=OwnershipCoordinatorStateV1.BUILD_VERIFIED,
+        previous_record_sha256=_record_hash_v2(published.encode()),
+        installed_tree_hash=tree_hash,
+    )
+
+
+_HEAD_REQUIRED_MATERIAL_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _HeadRequiredMaterialV2:
+    record: OwnershipCoordinatorRecordV2
+    encoded: bytes
+    signature: bytes
+    head: object
+    frame: bytes
+    _seal: object
+
+    def __post_init__(self) -> None:
+        from executor_birth_ownership_chain import OwnershipHead
+
+        if (
+            self._seal is not _HEAD_REQUIRED_MATERIAL_SEAL_V2
+            or type(self.record) is not OwnershipCoordinatorRecordV2
+            or self.record.sequence != 5
+            or self.record.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED
+            or type(self.encoded) is not bytes
+            or type(self.signature) is not bytes
+            or type(self.head) is not OwnershipHead
+            or type(self.frame) is not bytes
+            or self.record.head_id != self.head.head_id
+            or self.record.head_payload_hash != _digest(self.encoded)
+            or self.record.head_signature_hash != _digest(self.signature)
+            or self.record.required_head_frame_hash != _digest(self.frame)
+            or self.record.verified_chain_head_id != self.head.head_id
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "head material",
+            )
+
+
+def _single_head_key(authorities: RootOwnershipAuthoritiesV1) -> str:
+    if not is_root_ownership_authorities_v1(authorities):
+        raise OwnershipCoordinatorError("birth_ownership_authority_untrusted")
+    keys = tuple(authorities.public.head.keys)
+    if len(keys) != 1:
+        raise OwnershipCoordinatorError("birth_ownership_authority_untrusted")
+    return keys[0]
+
+
+def _head_required_material_v2(
+    build_verified: object, *, authorities: object,
+) -> _HeadRequiredMaterialV2:
+    """Issue deterministic head bytes and bind the future atomic pointer."""
+    from executor_birth_ownership_chain import (
+        encode_required_head, issue_ownership_head, verify_ownership_head,
+    )
+
+    if (
+        type(build_verified) is not OwnershipCoordinatorRecordV2
+        or build_verified.sequence != 4
+        or build_verified.state is not OwnershipCoordinatorStateV1.BUILD_VERIFIED
+        or not is_root_ownership_authorities_v1(authorities)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "build verified record",
+        )
+    encoded, signature = issue_ownership_head(
+        release_sequence=build_verified.release_sequence,
+        cutover_id=build_verified.cutover_id,
+        closed_build_id=build_verified.closed_build_id,
+        previous_head_id=build_verified.previous_head_id,
+        signing_key_id=_single_head_key(authorities),
+        private_key=authorities.head_private,
+    )
+    head = verify_ownership_head(
+        encoded, signature, registry=authorities.public.head,
+    )
+    frame = encode_required_head(head)
+    record = replace(
+        build_verified,
+        sequence=5,
+        state=OwnershipCoordinatorStateV1.HEAD_REQUIRED,
+        previous_record_sha256=_record_hash_v2(build_verified.encode()),
+        head_id=head.head_id,
+        head_payload_hash=_digest(encoded),
+        head_signature_hash=_digest(signature),
+        required_head_frame_hash=_digest(frame),
+        verified_chain_head_id=head.head_id,
+    )
+    return _HeadRequiredMaterialV2(
+        record, encoded, signature, head, frame,
+        _HEAD_REQUIRED_MATERIAL_SEAL_V2,
     )
 
 

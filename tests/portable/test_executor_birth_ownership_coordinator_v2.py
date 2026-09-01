@@ -29,7 +29,8 @@ from executor_birth_distribution_assembler import (
     build_startup_prerequisite_v1, encode_startup_prerequisite_v1,
 )
 from executor_birth_distribution_manifest import (
-    _verified_distribution_for_test,
+    BUILD_ID_DOMAIN, DistributionFile, _verified_distribution_for_test,
+    installed_tree_hash_v1,
 )
 from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 from executor_birth_ownership_coordinator import (
@@ -44,6 +45,7 @@ from executor_birth_ownership_coordinator import (
     _legacy_disposition_id_v2, _legacy_journal_hash_v2, _record_basename_v2,
     _record_hash, _record_hash_v2, _successor_claim_basename_v1,
     _prepared_record_v2, _append_prepared_transition_locked_for_test_v2,
+    _build_verified_record_v2, _head_required_material_v2,
     _certificate_published_record_v2, _certificate_ready_material_v2,
     _cross_certificate_boundary_locked_for_test_v2,
     _receipts_complete_record_v2, _startup_prerequisite_for_test,
@@ -68,6 +70,10 @@ from executor_birth_ownership_preflight import (
     _sealed_build_identity_for_test, canonical_maintenance_proof,
     maintenance_evidence_hash,
 )
+from executor_birth_admin_preflight import (
+    DistributionFileV1 as PreflightDistributionFileV1,
+    _installed_tree_hash_v1 as preflight_installed_tree_hash_v1,
+)
 from executor_birth_prepared_set import (
     PREPARED_STATE_V1, PreparedAuthoritySetV2, PreparedSetV1,
 )
@@ -83,6 +89,83 @@ def canonical(value: object) -> bytes:
         value, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
         allow_nan=False,
     ).encode("ascii")
+
+
+def payload_bound_distribution_v2():
+    path_roles = {
+        "deployment/admin/preflight.py": "preflight",
+        "deployment/executor-birth-deployment-v1.json": (
+            "deployment_descriptor"
+        ),
+        "deployment/executor-birth-service-catalog-v1.json": (
+            "service_catalog"
+        ),
+        "requirements.lock": "dependency_lock",
+        "runtime/__version__.py": "product_version",
+        "runtime/contract_boundary_guard.py": "boundary_guard",
+        "runtime/contract_store.py": "runtime_code",
+        "runtime/executor_birth.py": "runtime_code",
+        "runtime/executor_birth_distribution_manifest.py": "preflight",
+        "runtime/executor_birth_ownership_preflight.py": "preflight",
+        "runtime/sign.py": "runtime_code",
+        "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json": (
+            "boundary_inventory"
+        ),
+        "systemd/metnos-http-birth-closed.conf": "service_unit",
+    }
+    files = tuple(
+        DistributionFile(path, 1, D("f"), role)
+        for path, role in sorted(
+            path_roles.items(), key=lambda item: item[0].encode("utf-8"),
+        )
+    )
+    value = {
+        "schema_version": 1,
+        "closed_build_id": None,
+        "previous_closed_build_id": None,
+        "release_sequence": 1,
+        "product_version": "1.0.0",
+        "platform": "linux",
+        "architecture": "x86_64",
+        "signing_key_id": "distribution-ed25519-v1-sha256-" + "1" * 64,
+        "installation_root": "/opt/metnos",
+        "certificate_directory": "/var/lib/metnos/executor-birth",
+        "boundary_inventory_path": (
+            "share/metnos/executor-birth/"
+            "birth-closed-boundary-inventory-v1.json"
+        ),
+        "boundary_inventory_hash": D("e"),
+        "boundary_guard_version": "guard-v2",
+        "preflight_entrypoint": "deployment/admin/preflight.py",
+        "files": [{
+            "path": file.path,
+            "size": file.size,
+            "content_hash": file.content_hash,
+            "role": file.role,
+        } for file in files],
+    }
+    value["closed_build_id"] = digest(
+        BUILD_ID_DOMAIN + canonical({
+            key: item for key, item in value.items()
+            if key != "closed_build_id"
+        }),
+    )
+    encoded = canonical(value)
+    distribution = _verified_distribution_for_test(
+        _sealed_build_identity_for_test(
+            value["closed_build_id"], value["boundary_inventory_hash"],
+            value["boundary_guard_version"],
+        ),
+        previous_closed_build_id=None,
+        release_sequence=1,
+        encoded=encoded,
+        signature=b"s" * 64,
+    )
+    return replace(
+        distribution,
+        files=files,
+        preflight_entrypoint="deployment/admin/preflight.py",
+    )
 
 
 def digest(payload: bytes) -> str:
@@ -625,6 +708,106 @@ def test_certificate_ready_v2_rejects_unsealed_or_drifting_evidence():
                 ),
             },
         )
+
+
+def test_build_and_head_records_bind_exact_verified_material():
+    distribution = payload_bound_distribution_v2()
+    claim = bound_claim(
+        release_sequence=1,
+        previous_head_id=None,
+        closed_build_id=distribution.identity.closed_build_id,
+        source_id=D("2"),
+        previous_closed_build_id=None,
+        previous_cutover_id=None,
+    )
+    published = transaction_records(
+        claim,
+        end_sequence=3,
+        previous_closed_build_id=None,
+        previous_cutover_id=None,
+        cutover_id=D("3"),
+        head_id=D("4"),
+    )[-1]
+    published = replace(
+        published,
+        distribution_payload_hash=digest(distribution.encoded),
+        distribution_signature_hash=digest(distribution.signature),
+        boundary_inventory_hash=(
+            distribution.identity.boundary_inventory_hash
+        ),
+        boundary_guard_version=(
+            distribution.identity.boundary_guard_version
+        ),
+    )
+
+    verified = _build_verified_record_v2(published, distribution)
+    assert verified.state is OwnershipCoordinatorStateV1.BUILD_VERIFIED
+    assert verified.previous_record_sha256 == _record_hash_v2(
+        published.encode(),
+    )
+    assert verified.installed_tree_hash == installed_tree_hash_v1(
+        distribution.files,
+    )
+    assert verified.installed_tree_hash == preflight_installed_tree_hash_v1(
+        tuple(
+            PreflightDistributionFileV1(
+                item.path, item.size, item.content_hash, item.role,
+            )
+            for item in distribution.files
+        ),
+    )
+    assert _decode_record_v2(verified.encode()) == verified
+
+    material = _head_required_material_v2(
+        verified, authorities=portable_authorities(),
+    )
+    assert material.record.state is OwnershipCoordinatorStateV1.HEAD_REQUIRED
+    assert material.head.release_sequence == 1
+    assert material.head.cutover_id == published.cutover_id
+    assert material.head.closed_build_id == published.closed_build_id
+    assert material.head.previous_head_id is None
+    assert material.record.head_payload_hash == digest(material.encoded)
+    assert material.record.head_signature_hash == digest(material.signature)
+    assert material.record.required_head_frame_hash == digest(material.frame)
+    assert material.record.verified_chain_head_id == material.head.head_id
+    assert _decode_record_v2(material.record.encode()) == material.record
+
+
+@pytest.mark.parametrize("mutation", (
+    lambda record: replace(record, previous_closed_build_id=D("0")),
+    lambda record: replace(record, distribution_payload_hash=D("0")),
+    lambda record: replace(record, boundary_inventory_hash=D("0")),
+))
+def test_build_verified_record_rejects_distribution_drift(mutation):
+    distribution = payload_bound_distribution_v2()
+    claim = bound_claim(
+        release_sequence=1,
+        previous_head_id=None,
+        closed_build_id=distribution.identity.closed_build_id,
+        source_id=D("2"),
+        previous_closed_build_id=None,
+        previous_cutover_id=None,
+    )
+    published = transaction_records(
+        claim,
+        end_sequence=3,
+        previous_closed_build_id=None,
+        previous_cutover_id=None,
+        cutover_id=D("3"),
+        head_id=D("4"),
+    )[-1]
+    published = replace(
+        published,
+        distribution_payload_hash=digest(distribution.encoded),
+        distribution_signature_hash=digest(distribution.signature),
+        boundary_inventory_hash=distribution.identity.boundary_inventory_hash,
+        boundary_guard_version=distribution.identity.boundary_guard_version,
+    )
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="birth_ownership_recovery_required",
+    ):
+        _build_verified_record_v2(mutation(published), distribution)
 
 
 @LINUX_ONLY

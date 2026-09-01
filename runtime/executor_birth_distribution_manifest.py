@@ -41,6 +41,7 @@ from contract_boundary_guard import (
 SIGNATURE_DOMAIN = b"metnos.executor-birth.closed-build/v1\0"
 BUILD_ID_DOMAIN = b"metnos.executor-birth.closed-build-id/v1\0"
 FILE_HASH_DOMAIN = b"metnos.executor-birth.closed-build-file/v1\0"
+INSTALLED_TREE_DOMAIN = b"metnos.executor-birth.installed-tree/v1\0"
 BOUNDARY_INVENTORY_DOMAIN = b"metnos.executor-birth.boundary-inventory/v1\0"
 PURPOSE = "closed_distribution_v1"
 MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
@@ -179,6 +180,49 @@ class DistributionFile:
     size: int
     content_hash: str
     role: str
+
+
+def installed_tree_hash_v1(files: tuple[DistributionFile, ...]) -> str:
+    """Bind the exact ordered manifest tree after live verification."""
+    if (
+        type(files) is not tuple or not files
+        or any(type(item) is not DistributionFile for item in files)
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "installed tree files",
+        )
+    paths = tuple(item.path for item in files)
+    if (
+        paths != tuple(sorted(paths, key=lambda item: item.encode("utf-8")))
+        or len(paths) != len(set(paths))
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "installed tree order",
+        )
+    material = bytearray(len(files).to_bytes(8, "big"))
+    try:
+        for item in files:
+            if (
+                type(item.path) is not str or not item.path
+                or type(item.size) is not int or item.size < 0
+                or type(item.content_hash) is not str
+                or _DIGEST_RE.fullmatch(item.content_hash) is None
+            ):
+                raise ValueError("invalid installed tree item")
+            encoded_path = item.path.encode("utf-8")
+            material.extend(len(encoded_path).to_bytes(8, "big"))
+            material.extend(encoded_path)
+            material.extend(item.size.to_bytes(8, "big"))
+            material.extend(bytes.fromhex(
+                item.content_hash.removeprefix("sha256:"),
+            ))
+    except (AttributeError, OverflowError, UnicodeEncodeError, ValueError) as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "installed tree material",
+        ) from exc
+    return "sha256:" + hashlib.sha256(
+        INSTALLED_TREE_DOMAIN + bytes(material),
+    ).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -2066,13 +2110,14 @@ def _verified_distribution_for_test(
 
 __all__ = [
     "BOUNDARY_INVENTORY_DOMAIN", "BUILD_ID_DOMAIN", "FILE_HASH_DOMAIN",
+    "INSTALLED_TREE_DOMAIN",
     "DEFAULT_RELEASE_DIRECTORY_V1", "MAX_PAYLOAD_BYTES", "PURPOSE",
     "SIGNATURE_DOMAIN", "AuthenticatedDistributionRecordV1",
     "DistributionFile", "DistributionKey",
     "DistributionManifestError", "DistributionRegistry", "VerifiedDistribution",
     "authenticate_distribution_record_v1",
     "capture_current_deployment_descriptor_v1", "distribution_key_id",
-    "file_content_hash", "is_verified_distribution",
+    "file_content_hash", "installed_tree_hash_v1", "is_verified_distribution",
     "verify_current_installation_distribution_v1",
     "verify_installed_distribution_record_v1",
 ]
