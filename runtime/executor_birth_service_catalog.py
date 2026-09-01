@@ -2341,39 +2341,20 @@ def _source_identity(
         )
 
 
-def load_service_catalog_v1(record: object) -> LoadedServiceCatalogV1:
-    """Reattest the fixed live release and reread its catalog and units.
-
-    The result is deliberately observational.  G6-C must add the prerequisite,
-    executable and effective-systemd checks before it can authorize a launch.
-    """
-    import sys
-
-    if not sys.platform.startswith("linux"):
-        raise ServiceCatalogError("birth_ownership_platform_unsupported")
+def _load_verified_service_catalog_v1(verified: object) -> LoadedServiceCatalogV1:
+    """Reread the catalog and every fragment from one verified fixed release."""
     from executor_birth_distribution_manifest import (
-        AuthenticatedDistributionRecordV1,
         DistributionFile,
         VerifiedDistribution,
         _secure_read,
         file_content_hash,
-        verify_installed_distribution_record_v1,
     )
 
-    if type(record) is not AuthenticatedDistributionRecordV1:
-        raise ServiceCatalogError(
-            "birth_ownership_service_catalog_invalid", "authenticated record",
-        )
-    verified = verify_installed_distribution_record_v1(record)
     if type(verified) is not VerifiedDistribution:
         raise ServiceCatalogError(
             "birth_ownership_service_catalog_invalid", "verified distribution",
         )
     root = PurePosixPath(verified.installation_root)
-    if root.as_posix() != record.installation_root:
-        raise ServiceCatalogError(
-            "birth_ownership_service_catalog_invalid", "installation root",
-        )
     catalog_files = [
         item for item in verified.files
         if item.path == CATALOG_PATH_V1 and item.role == "service_catalog"
@@ -2427,7 +2408,71 @@ def load_service_catalog_v1(record: object) -> LoadedServiceCatalogV1:
     )
 
 
+def load_service_catalog_v1(record: object) -> LoadedServiceCatalogV1:
+    """Reattest an authenticated record and reread its catalog and units."""
+    import sys
+
+    if not sys.platform.startswith("linux"):
+        raise ServiceCatalogError("birth_ownership_platform_unsupported")
+    from executor_birth_distribution_manifest import (
+        AuthenticatedDistributionRecordV1, VerifiedDistribution,
+        verify_installed_distribution_record_v1,
+    )
+
+    if type(record) is not AuthenticatedDistributionRecordV1:
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "authenticated record",
+        )
+    verified = verify_installed_distribution_record_v1(record)
+    if (
+        type(verified) is not VerifiedDistribution
+        or verified.installation_root != record.installation_root
+    ):
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "installation root",
+        )
+    return _load_verified_service_catalog_v1(verified)
+
+
+def capture_current_service_catalog_v1(
+    distribution: object,
+) -> LoadedServiceCatalogV1:
+    """Reverify one sealed current release around an exact catalog capture."""
+    import sys
+
+    if not sys.platform.startswith("linux"):
+        raise ServiceCatalogError("birth_ownership_platform_unsupported")
+    from executor_birth_distribution_manifest import (
+        is_verified_distribution,
+        verify_current_installation_distribution_v1,
+    )
+
+    if not is_verified_distribution(distribution):
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "verified artifact",
+        )
+    verified = verify_current_installation_distribution_v1(
+        distribution.encoded, distribution.signature,
+    )
+    if verified != distribution:
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "distribution changed",
+        )
+    loaded = _load_verified_service_catalog_v1(verified)
+    repeated = verify_current_installation_distribution_v1(
+        verified.encoded, verified.signature,
+    )
+    if repeated != verified:
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "distribution changed",
+        )
+    return loaded
+
+
 _validate_service_source_v1()
 
 
-__all__ = ["load_service_catalog_v1"]
+__all__ = [
+    "capture_current_service_catalog_v1",
+    "load_service_catalog_v1",
+]

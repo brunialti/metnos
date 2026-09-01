@@ -688,7 +688,10 @@ def test_source_identity_rejects_target_recipe_change() -> None:
 
 
 def test_public_surface_contains_only_product_loader() -> None:
-    assert catalog.__all__ == ["load_service_catalog_v1"]
+    assert catalog.__all__ == [
+        "capture_current_service_catalog_v1",
+        "load_service_catalog_v1",
+    ]
 
 
 def test_target_change_changes_catalog_but_not_unit_fragments() -> None:
@@ -787,6 +790,51 @@ def test_product_loader_reattests_fixed_record_and_rereads_bound_units(monkeypat
     )
     with pytest.raises(catalog.ServiceCatalogError, match="artifact hash"):
         catalog.load_service_catalog_v1(record)
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="productive loader is Linux-only")
+def test_current_loader_reverifies_the_sealed_release_around_capture(
+    monkeypatch,
+) -> None:
+    _record, verified, content = _nominal_live_record(monkeypatch)
+    import executor_birth_distribution_manifest as distribution
+
+    calls = []
+
+    def verify(encoded, signature):
+        calls.append((encoded, signature))
+        return verified
+
+    monkeypatch.setattr(
+        distribution, "verify_current_installation_distribution_v1", verify,
+    )
+    loaded = catalog.capture_current_service_catalog_v1(verified)
+
+    assert calls == [
+        (verified.encoded, verified.signature),
+        (verified.encoded, verified.signature),
+    ]
+    assert loaded.catalog.encoded == content[catalog.CATALOG_PATH_V1]
+    assert dict(loaded.unit_fragments) == {
+        path.removeprefix("deployment/systemd/"): value
+        for path, value in content.items() if path != catalog.CATALOG_PATH_V1
+    }
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="productive loader is Linux-only")
+def test_current_loader_rejects_an_unsealed_distribution_before_verification(
+    monkeypatch,
+) -> None:
+    import executor_birth_distribution_manifest as distribution
+
+    called = []
+    monkeypatch.setattr(
+        distribution, "verify_current_installation_distribution_v1",
+        lambda *_args: called.append(True),
+    )
+    with pytest.raises(catalog.ServiceCatalogError, match="verified artifact"):
+        catalog.capture_current_service_catalog_v1(object())
+    assert called == []
 
 
 def test_product_loader_rejects_wrong_type_or_off_linux_before_authority(monkeypatch) -> None:
