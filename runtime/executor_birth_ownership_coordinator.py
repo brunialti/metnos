@@ -2947,6 +2947,169 @@ def _prepared_record(
     )
 
 
+def _prepared_record_v2(
+    *, claim: object, distribution: object, predecessor: object,
+    previous_context: object, prepared_authority_set: object,
+    current_inventory: object, deployment_descriptor: object,
+) -> tuple[OwnershipCoordinatorRecordV2, object]:
+    """Bind one exact staged set and frozen inventory before publication."""
+    from executor_birth_admin_preflight import _administrative_bundle_hash_v1
+    from executor_birth_context_selection import is_context_selection_v1
+    from executor_birth_context_transition import issue_context_transition_v1
+    from executor_birth_cutover import CurrentInventoryV1
+    from executor_birth_distribution_assembler import DeploymentDescriptorV1
+    from executor_birth_prepared_set import (
+        is_prepared_authority_set_v2, is_prepared_set_v1,
+    )
+
+    if (
+        type(claim) is not SuccessorClaimV1
+        or not is_verified_distribution(distribution)
+        or not is_prepared_authority_set_v2(prepared_authority_set)
+        or type(current_inventory) is not CurrentInventoryV1
+        or type(deployment_descriptor) is not DeploymentDescriptorV1
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    target = prepared_authority_set
+    descriptor = deployment_descriptor
+    payload_hash = _digest(distribution.encoded)
+    signature_hash = _digest(distribution.signature)
+    if (
+        claim.closed_build_id != distribution.identity.closed_build_id
+        or claim.release_sequence != distribution.release_sequence
+        or target.request_id != claim.request_id
+        or target.closed_build_id != claim.closed_build_id
+        or target.distribution_payload_hash != payload_hash
+        or target.distribution_signature_hash != signature_hash
+        or descriptor.release_sequence != claim.release_sequence
+        or descriptor.installation_root != distribution.installation_root
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+
+    if predecessor is None:
+        if (
+            claim.release_sequence != 1
+            or claim.previous_head_id is not None
+            or distribution.previous_closed_build_id is not None
+            or not is_prepared_set_v1(previous_context)
+        ):
+            raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+        previous_cutover_id = None
+        previous_closed_build_id = None
+        previous_set_id = previous_context.set_id
+        previous_admission_context_id = (
+            previous_context.prepared_admission_context_id
+        )
+        previous_context_epoch = previous_context.prepared_context_epoch
+    else:
+        if (
+            type(predecessor) is not OwnershipCoordinatorRecordV2
+            or predecessor.state
+            is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            or predecessor.release_sequence + 1 != claim.release_sequence
+            or predecessor.head_id != claim.previous_head_id
+            or predecessor.closed_build_id
+            != distribution.previous_closed_build_id
+            or not is_context_selection_v1(previous_context)
+            or previous_context.distribution.identity.closed_build_id
+            != predecessor.closed_build_id
+        ):
+            raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+        previous_cutover_id = predecessor.cutover_id
+        previous_closed_build_id = predecessor.closed_build_id
+        previous_set_id = previous_context.set_id
+        previous_admission_context_id = previous_context.admission_context_id
+        previous_context_epoch = previous_context.context_epoch
+
+    expected_request_id = _coordinator_request_id_v1(
+        claim.closed_build_id,
+        previous_closed_build_id,
+        previous_cutover_id,
+    )
+    if (
+        claim.request_id != expected_request_id
+        or target.previous_set_id != previous_set_id
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    try:
+        transition_encoded, transition = issue_context_transition_v1(
+            request_id=claim.request_id,
+            closed_build_id=claim.closed_build_id,
+            previous_cutover_id=previous_cutover_id,
+            previous_set_id=previous_set_id,
+            previous_admission_context_id=previous_admission_context_id,
+            previous_context_epoch=previous_context_epoch,
+            set_id=target.target_set_id,
+            prepared_admission_context_id=(
+                target.target_admission_context_id
+            ),
+            prepared_context_epoch=target.target_context_epoch,
+            context_material_sha256=(
+                target.target_context_material_sha256
+            ),
+            set_json_sha256=target.target_set_json_sha256,
+            current_inventory=current_inventory,
+        )
+        administrative_bundle_hash = _administrative_bundle_hash_v1(
+            descriptor,
+        )
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_request_conflict",
+        ) from exc
+    if transition.encoded != transition_encoded:
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    install_value = {
+        "schema_version": 1,
+        "request_id": claim.request_id,
+        "source_id": claim.source_id,
+        "closed_build_id": claim.closed_build_id,
+        "release_sequence": claim.release_sequence,
+        "previous_head_id": claim.previous_head_id,
+        "successor_claim_id": claim.claim_id,
+        "deployment_descriptor_id": descriptor.descriptor_id,
+        "service_coverage_hash": descriptor.service_coverage_hash,
+        "administrative_bundle_hash": administrative_bundle_hash,
+    }
+    record = OwnershipCoordinatorRecordV2(
+        sequence=0,
+        state=OwnershipCoordinatorStateV1.PREPARED,
+        previous_record_sha256=None,
+        request_id=claim.request_id,
+        previous_closed_build_id=previous_closed_build_id,
+        previous_cutover_id=previous_cutover_id,
+        closed_build_id=claim.closed_build_id,
+        distribution_payload_hash=payload_hash,
+        distribution_signature_hash=signature_hash,
+        boundary_inventory_hash=(
+            distribution.identity.boundary_inventory_hash
+        ),
+        boundary_guard_version=distribution.identity.boundary_guard_version,
+        source_id=claim.source_id,
+        successor_claim_id=claim.claim_id,
+        deployment_descriptor_id=descriptor.descriptor_id,
+        install_transaction_id=_install_transaction_id_v1(install_value),
+        release_sequence=claim.release_sequence,
+        previous_head_id=claim.previous_head_id,
+        service_coverage_hash=descriptor.service_coverage_hash,
+        administrative_bundle_hash=administrative_bundle_hash,
+        provisioning_transaction_id=target.transaction_id,
+        previous_set_id=previous_set_id,
+        previous_admission_context_id=previous_admission_context_id,
+        previous_context_epoch=previous_context_epoch,
+        target_set_id=target.target_set_id,
+        target_admission_context_id=target.target_admission_context_id,
+        target_context_epoch=target.target_context_epoch,
+        target_context_material_sha256=(
+            target.target_context_material_sha256
+        ),
+        target_set_json_sha256=target.target_set_json_sha256,
+        context_transition_id=transition.transition_id,
+        current_inventory_hash=transition.current_inventory_hash,
+    )
+    return record, transition
+
+
 def _same_distribution(
     record: OwnershipCoordinatorRecordV1, distribution: VerifiedDistribution,
 ) -> bool:

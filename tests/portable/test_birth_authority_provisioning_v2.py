@@ -19,7 +19,9 @@ from executor_birth_ownership_coordinator import (
 from executor_birth_ownership_preflight import (
     _sealed_build_identity_for_test,
 )
-from executor_birth_prepared_set import PREPARED_STATE_V1, PreparedSetV1
+from executor_birth_prepared_set import (
+    PREPARED_STATE_V1, PreparedSetError, PreparedSetV1,
+)
 from install.birth_authority_provisioner import (
     BirthProvisioningError, CheckpointV1, ProvisioningStateV1,
     MaterialPlanEntryV2, MaterialPlanV2, PayloadConfidentialityV1,
@@ -654,7 +656,7 @@ def test_v2_fixed_entry_returns_the_same_sealed_prepared_set_on_resume(
         ".birth-provisioning-v2.txn.*",
     ))) == 1
     assert (base / "birth" / "prepared-v1.json").read_bytes() == marker_before
-    with pytest.raises(BirthProvisioningError):
+    with pytest.raises(PreparedSetError):
         replace(first, target_set_id="0" * 64)
     claim = _claim()
     changed_request = D("4")

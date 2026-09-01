@@ -3444,9 +3444,18 @@ def _startup_prerequisite_digest_v1(encoded: bytes) -> str:
 
 
 def _administrative_bundle_hash_v1(
-    descriptor: _DecodedDeploymentDescriptorV1,
+    descriptor: object,
 ) -> str:
-    if type(descriptor) is not _DecodedDeploymentDescriptorV1:
+    from executor_birth_distribution_assembler import (
+        DeploymentDescriptorV1, encode_deployment_descriptor_v1,
+    )
+
+    if type(descriptor) is DeploymentDescriptorV1:
+        try:
+            encode_deployment_descriptor_v1(descriptor)
+        except Exception as exc:
+            raise _invalid("administrative bundle descriptor") from exc
+    elif type(descriptor) is not _DecodedDeploymentDescriptorV1:
         raise _invalid("administrative bundle descriptor")
     material = bytearray(_u64be_v1(len(descriptor.artifacts)))
     for artifact in descriptor.artifacts:

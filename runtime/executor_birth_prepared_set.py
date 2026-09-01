@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping
 
@@ -42,6 +43,19 @@ _PREPARED_SET_BINDING_FIELDS_V1 = (
     "set_json_sha256",
     "provisioning_transaction_id",
     "provisioner_build_id",
+)
+_PREPARED_AUTHORITY_SET_DIGEST_DOMAIN_V2 = (
+    b"metnos.executor-birth.prepared-authority-set/v2\0"
+)
+_PREPARED_AUTHORITY_SET_SEAL_V2 = object()
+_PREPARED_AUTHORITY_SET_FIELDS_V2 = (
+    "transaction_id", "provisioner_build_id", "request_id",
+    "closed_build_id", "distribution_payload_hash",
+    "distribution_signature_hash", "previous_set_id", "target_set_id",
+    "target_admission_context_id", "target_context_epoch",
+    "target_context_material_sha256", "target_set_json_sha256",
+    "source_inventory_hash", "material_plan_sha256",
+    "verified_checkpoint_sha256",
 )
 
 MARKER_FIELDS_V1 = frozenset({
@@ -80,6 +94,108 @@ class PreparedSetError(RuntimeError):
     def __cause__(self, value: BaseException | None) -> None:
         if value is not None and self._internal_cause is None:
             self._internal_cause = value
+
+
+def _prepared_authority_digest_v2(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
+    )
+
+
+def _prepared_authority_hex_v2(value: object, length: int) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == length
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedAuthoritySetV2:
+    """Public identities of one exact, verified and still staged V2 set."""
+
+    transaction_id: str
+    provisioner_build_id: str
+    request_id: str
+    closed_build_id: str
+    distribution_payload_hash: str
+    distribution_signature_hash: str
+    previous_set_id: str
+    target_set_id: str
+    target_admission_context_id: str
+    target_context_epoch: str
+    target_context_material_sha256: str
+    target_set_json_sha256: str
+    source_inventory_hash: str
+    material_plan_sha256: str
+    verified_checkpoint_sha256: str
+    _artifact_binding: bytes = field(repr=False)
+    _seal: object = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _PREPARED_AUTHORITY_SET_SEAL_V2
+            or not _prepared_authority_hex_v2(self.transaction_id, 32)
+            or not isinstance(self.provisioner_build_id, str)
+            or not self.provisioner_build_id
+            or any(not _prepared_authority_digest_v2(value) for value in (
+                self.request_id, self.closed_build_id,
+                self.distribution_payload_hash,
+                self.distribution_signature_hash,
+                self.target_admission_context_id, self.target_context_epoch,
+                self.source_inventory_hash,
+            ))
+            or any(not _prepared_authority_hex_v2(value, 64) for value in (
+                self.previous_set_id, self.target_set_id,
+                self.target_context_material_sha256,
+                self.target_set_json_sha256, self.material_plan_sha256,
+                self.verified_checkpoint_sha256,
+            ))
+            or self._artifact_binding
+            != _prepared_authority_set_binding_v2(self)
+        ):
+            raise PreparedSetError("birth_provisioning_transaction_conflict")
+
+
+def _prepared_authority_set_binding_v2(
+    value: PreparedAuthoritySetV2 | Mapping[str, object],
+) -> bytes:
+    document = {
+        field_name: (
+            value[field_name]
+            if isinstance(value, Mapping)
+            else getattr(value, field_name)
+        )
+        for field_name in _PREPARED_AUTHORITY_SET_FIELDS_V2
+    }
+    try:
+        encoded = json.dumps(
+            document, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"), allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise PreparedSetError(
+            "birth_provisioning_transaction_conflict", exc,
+        ) from None
+    return hashlib.sha256(
+        _PREPARED_AUTHORITY_SET_DIGEST_DOMAIN_V2 + encoded,
+    ).digest()
+
+
+def is_prepared_authority_set_v2(value: object) -> bool:
+    """Recognize only a result minted after complete staged read-back."""
+    if (
+        not isinstance(value, PreparedAuthoritySetV2)
+        or value._seal is not _PREPARED_AUTHORITY_SET_SEAL_V2
+    ):
+        return False
+    try:
+        return value._artifact_binding == _prepared_authority_set_binding_v2(
+            value,
+        )
+    except PreparedSetError:
+        return False
 
 
 @dataclass(frozen=True, slots=True)

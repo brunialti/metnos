@@ -33,6 +33,11 @@ _RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
 if str(_RUNTIME) not in sys.path:  # pragma: no cover - import bootstrap
     sys.path.insert(0, str(_RUNTIME))
 
+from executor_birth_prepared_set import (
+    PreparedAuthoritySetV2, _PREPARED_AUTHORITY_SET_SEAL_V2,
+    _prepared_authority_set_binding_v2, is_prepared_authority_set_v2,
+)
+
 TRANSACTION_PROTOCOL_V1 = "birth-authority-provisioning-v1"
 TRANSACTION_PROTOCOL_V2 = "birth-authority-provisioning-v2"
 CHECKPOINT_DIGEST_DOMAIN_V1 = b"metnos.executor-birth.provisioning-checkpoint/v1\0"
@@ -41,9 +46,6 @@ SOURCE_INVENTORY_DIGEST_DOMAIN_V2 = (
 )
 MATERIAL_PLAN_DIGEST_DOMAIN_V2 = (
     b"metnos.executor-birth.provisioning-material-plan/v2\0"
-)
-PREPARED_AUTHORITY_SET_DIGEST_DOMAIN_V2 = (
-    b"metnos.executor-birth.prepared-authority-set/v2\0"
 )
 TRANSACTION_HEADER_BASENAME_V1 = "transaction-v1.json"
 TRANSACTION_HEADER_BASENAME_V2 = "transaction-v2.json"
@@ -287,93 +289,6 @@ def decode_material_plan_v2(raw: bytes) -> MaterialPlanV2:
     if value["material_plan_sha256"] != plan.digest() or plan.encode() != raw:
         raise _conflict()
     return plan
-
-
-_PREPARED_AUTHORITY_SET_SEAL_V2 = object()
-_PREPARED_AUTHORITY_SET_FIELDS_V2 = (
-    "transaction_id", "provisioner_build_id", "request_id",
-    "closed_build_id", "distribution_payload_hash",
-    "distribution_signature_hash", "previous_set_id", "target_set_id",
-    "target_admission_context_id", "target_context_epoch",
-    "target_context_material_sha256", "target_set_json_sha256",
-    "source_inventory_hash", "material_plan_sha256",
-    "verified_checkpoint_sha256",
-)
-
-
-@dataclass(frozen=True, slots=True)
-class PreparedAuthoritySetV2:
-    """Public identities of one exact, verified and still staged V2 set."""
-
-    transaction_id: str
-    provisioner_build_id: str
-    request_id: str
-    closed_build_id: str
-    distribution_payload_hash: str
-    distribution_signature_hash: str
-    previous_set_id: str
-    target_set_id: str
-    target_admission_context_id: str
-    target_context_epoch: str
-    target_context_material_sha256: str
-    target_set_json_sha256: str
-    source_inventory_hash: str
-    material_plan_sha256: str
-    verified_checkpoint_sha256: str
-    _artifact_binding: bytes = field(repr=False)
-    _seal: object = field(repr=False)
-
-    def __post_init__(self) -> None:
-        if (
-            self._seal is not _PREPARED_AUTHORITY_SET_SEAL_V2
-            or not _is_hex(self.transaction_id, 32)
-            or not isinstance(self.provisioner_build_id, str)
-            or not self.provisioner_build_id
-            or any(not _is_digest_v2(value) for value in (
-                self.request_id, self.closed_build_id,
-                self.distribution_payload_hash,
-                self.distribution_signature_hash,
-                self.target_admission_context_id, self.target_context_epoch,
-                self.source_inventory_hash,
-            ))
-            or any(not _is_hex(value, 64) for value in (
-                self.previous_set_id, self.target_set_id,
-                self.target_context_material_sha256,
-                self.target_set_json_sha256, self.material_plan_sha256,
-                self.verified_checkpoint_sha256,
-            ))
-            or self._artifact_binding != _prepared_authority_set_binding_v2(self)
-        ):
-            raise _conflict()
-
-
-def _prepared_authority_set_binding_v2(
-    value: PreparedAuthoritySetV2 | Mapping[str, object],
-) -> bytes:
-    document = {
-        field_name: (
-            value[field_name]
-            if isinstance(value, Mapping)
-            else getattr(value, field_name)
-        )
-        for field_name in _PREPARED_AUTHORITY_SET_FIELDS_V2
-    }
-    return hashlib.sha256(
-        PREPARED_AUTHORITY_SET_DIGEST_DOMAIN_V2
-        + encode_canonical_document_v1(document)
-    ).digest()
-
-
-def is_prepared_authority_set_v2(value: object) -> bool:
-    if (
-        not isinstance(value, PreparedAuthoritySetV2)
-        or value._seal is not _PREPARED_AUTHORITY_SET_SEAL_V2
-    ):
-        return False
-    try:
-        return value._artifact_binding == _prepared_authority_set_binding_v2(value)
-    except BirthProvisioningError:
-        return False
 
 
 def _reject(code: str, cause: BaseException | None = None) -> BirthProvisioningError:
