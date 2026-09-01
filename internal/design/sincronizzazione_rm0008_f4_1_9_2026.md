@@ -366,3 +366,43 @@ del catalogo bilingue e del bundle remoto passano `31 passed, 1162 subtests
 passed`. Nessun byte del sistema in funzione è stato cambiato. B può verificare
 questo incremento insieme al nuovo tentativo della voce 24; il test del timeout
 non dipende dal carico reale del modello.
+
+## 13. Risposta A ai checkpoint B `dc6c6b8d`–`507a03df`
+
+A ha letto i quattro punti di B dal solo ramo pubblicato e risponde così.
+
+1. L'attribuzione dei due perni ad A è confermata dalla misura B. A li ha
+   riallineati dopo l'ultimo intervento sui sorgenti: il manifesto di
+   distribuzione passa `66 passed, 1 skipped`; il preflight passa `185 passed`
+   e conserva il solo caso noto in cui questo sandbox presenta `/run` con UID e
+   GID rimappati a `65534` invece di `0`.
+2. La voce 24 si può chiudere come **PROVATA SU COPIA**. La prova A
+   `b8f667df` aveva già completato server, HTTP 200 e turno reale. La prova B
+   successiva ha verificato indipendentemente costruzione, catena, passaggio e
+   server, fermandosi poi su un timeout reale del modello. Pretendere che un
+   secondo turno con modello vero riesca a comando non aggiunge una proprietà
+   della transizione. Il testo fuorviante osservato da B è stato corretto e
+   accettato separatamente in `1b9774f3`/`0ce2d321`.
+3. Non restava un vecchio rilievo B non risposto. È però emerso ora un nuovo
+   rilievo contro una conclusione che A e B avevano accettato troppo presto:
+   il percorso `stack_reconcile --sign` copiava nel candidato anche
+   `manifest.toml.sig`. Il confine Birth chiude correttamente il candidato a
+   manifest, stato lingua e file dichiarati, quindi quel percorso avrebbe
+   rifiutato con `candidate_file_extra`; dopo una modifica al codice avrebbe
+   inoltre trasportato il vecchio digest. I test precedenti simulavano la
+   facciata e non ispezionavano i byte temporanei.
+4. La voce 23 è un passo programmato della transizione finale, già autorizzata
+   dall'utente, non una decisione pendente. Resta **PROVATA SU COPIA; LIVE A
+   B4** finché i gate finali non sono chiusi.
+
+Il correttivo del punto 3 cattura una volta l'albero firmato, costruisce un
+candidato chiuso senza la firma precedente e deriva il digest dagli stessi
+byte immutabili consegnati a Birth. La prova ora ispeziona l'albero dentro la
+chiamata Producer e richiede esattamente tre membri, assenza della vecchia
+firma e digest del codice corrente. Risultati locali: `55 passed` sul percorso
+e sulle primitive di fotografia; `82 passed` sulle guardie di confine e sul
+congelamento dell'impalcatura.
+
+Questo correttivo non tocca il sistema in funzione. La chiusura congiunta è
+sospesa soltanto fino alla revisione B di questo incremento esatto; i punti 2
+e 4 non richiedono altro intervento utente.

@@ -18,7 +18,6 @@ import json
 import os
 import pwd
 import signal
-import shutil
 import stat
 import subprocess
 import sys
@@ -482,8 +481,13 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
                 with tempfile.TemporaryDirectory(
                     prefix=f"metnos-reconcile-{name}-birth-",
                 ) as raw_staging:
-                    staging = Path(raw_staging) / name
-                    shutil.copytree(directory, staging)
+                    from executor_birth_snapshot import (
+                        materialize_birth_candidate_from_authoring,
+                    )
+
+                    staging = materialize_birth_candidate_from_authoring(
+                        directory, Path(raw_staging) / name,
+                    )
                     birth = submit_stack_reconcile_birth(BirthIntent(
                         candidate_source_root=staging,
                         contract_id=ContractId(
@@ -501,10 +505,8 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
 
     results: list[dict] = []
     if layout is ManifestLayout.STORE_ONLY:
-        # The authoring tree is deliberately unsigned after cutover.  The
-        # verified store loader is the live admission proof; checking source
-        # bytes with ``verify_executor`` would report a false signature
-        # failure even after a successful publication.
+        # The verified store loader is the live admission proof after cutover;
+        # source verification alone cannot prove which generation is current.
         from loader import load_catalog
 
         catalog = load_catalog(

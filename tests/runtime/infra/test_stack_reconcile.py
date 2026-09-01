@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import subprocess
@@ -99,6 +100,21 @@ def _composite(*, names=None, quiescent=True, sidecar_ok=True):
         },
         "catalog": {"names": names or ["delete_files", "read_sites"]},
     }
+
+
+def _signed_authoring_executor(directory: Path, name: str) -> None:
+    directory.mkdir(parents=True)
+    (directory / "manifest.toml").write_text(
+        f'name = "{name}"\n'
+        '[code]\nfiles = ["main.py"]\n'
+        f'digest = "sha256:{"0" * 64}"\n',
+        encoding="utf-8",
+    )
+    (directory / "manifest.lang_state.json").write_text(
+        '{"version":1}\n', encoding="utf-8",
+    )
+    (directory / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    (directory / "manifest.toml.sig").write_bytes(b"previous-signature")
 
 
 def _wire(monkeypatch, composite):
@@ -634,8 +650,7 @@ def test_named_executor_store_verification_uses_live_catalog(
     import executor_birth_intent
 
     directory = tmp_path / "executors" / "read_files"
-    directory.mkdir(parents=True)
-    (directory / "manifest.toml").write_text("name = 'read_files'\n")
+    _signed_authoring_executor(directory, "read_files")
     monkeypatch.setattr(sr, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(
         manifest_inventory,
@@ -643,15 +658,24 @@ def test_named_executor_store_verification_uses_live_catalog(
         lambda: manifest_inventory.ManifestLayout.STORE_ONLY,
     )
     published = []
+
+    def accept_birth(intent):
+        candidate = intent.candidate_source_root
+        published.append({
+            "root": candidate,
+            "files": sorted(
+                path.relative_to(candidate).as_posix()
+                for path in candidate.rglob("*") if path.is_file()
+            ),
+            "manifest": (candidate / "manifest.toml").read_text(encoding="utf-8"),
+        })
+        return SimpleNamespace(
+            error_code=None,
+            publication=SimpleNamespace(operation="publish"),
+        )
+
     monkeypatch.setattr(
-            executor_birth_intent, "submit_stack_reconcile_birth",
-        lambda intent: (
-            published.append(intent.candidate_source_root)
-            or SimpleNamespace(
-                error_code=None,
-                publication=SimpleNamespace(operation="publish"),
-            )
-        ),
+        executor_birth_intent, "submit_stack_reconcile_birth", accept_birth,
     )
     monkeypatch.setattr(
         sign,
@@ -671,7 +695,12 @@ def test_named_executor_store_verification_uses_live_catalog(
     result = sr.verify_named_executors(["read_files"], sign_first=True)
 
     assert len(published) == 1
-    assert published[0] != directory
+    assert published[0]["root"] != directory
+    assert published[0]["files"] == [
+        "main.py", "manifest.lang_state.json", "manifest.toml",
+    ]
+    expected = "sha256:" + hashlib.sha256(b"print('ok')\n").hexdigest()
+    assert f'digest = "{expected}"' in published[0]["manifest"]
     assert result == [{
         "name": "read_files", "ok": True, "digest": "sha256:live",
     }]
@@ -684,8 +713,7 @@ def test_named_executor_legacy_verification_keeps_signature_boundary(
     import executor_birth_intent
 
     directory = tmp_path / "executors" / "read_files"
-    directory.mkdir(parents=True)
-    (directory / "manifest.toml").write_text("name = 'read_files'\n")
+    _signed_authoring_executor(directory, "read_files")
     monkeypatch.setattr(sr, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(
         manifest_inventory,

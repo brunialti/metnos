@@ -10,7 +10,9 @@ import executor_birth_snapshot as snapshot_module
 from executor_birth_snapshot import (
     CandidateSnapshotError,
     acquire_candidate_snapshot,
+    materialize_birth_candidate_from_authoring,
 )
+from manifest_code_digest import code_digest_of_payloads
 
 
 def _candidate(root: Path, *, files: tuple[str, ...] = ("main.py", "pkg/helper.py")) -> Path:
@@ -50,6 +52,37 @@ def test_snapshot_owns_exact_immutable_bytes_and_cleans_up(tmp_path: Path) -> No
             assert private.stat().st_mode & 0o777 == 0o500
             assert (private / "main.py").stat().st_mode & 0o777 == 0o400
     assert not private.exists()
+
+
+def test_signed_authoring_tree_becomes_exact_candidate_with_fresh_digest(
+    tmp_path: Path,
+) -> None:
+    source = _candidate(tmp_path / "source")
+    manifest = (source / "manifest.toml").read_text(encoding="utf-8")
+    manifest = manifest.replace(
+        '[code]\n',
+        '[code]\ndigest = "sha256:' + ('0' * 64) + '"\n',
+    )
+    (source / "manifest.toml").write_text(manifest, encoding="utf-8")
+    (source / "manifest.toml.sig").write_bytes(b"previous-signature")
+
+    target = materialize_birth_candidate_from_authoring(
+        source, tmp_path / "candidate",
+    )
+
+    expected_digest = code_digest_of_payloads(
+        ("main.py", "pkg/helper.py"),
+        {
+            "main.py": b"# main.py\n",
+            "pkg/helper.py": b"# pkg/helper.py\n",
+        },
+    )
+    assert f'digest = "{expected_digest}"' in (
+        target / "manifest.toml"
+    ).read_text(encoding="utf-8")
+    assert not (target / "manifest.toml.sig").exists()
+    with acquire_candidate_snapshot(target) as captured:
+        assert tuple(captured.code_files) == ("main.py", "pkg/helper.py")
 
 
 @pytest.mark.parametrize("extra", ["extra.txt", "pkg/extra.py", "manifest.toml.sig"])

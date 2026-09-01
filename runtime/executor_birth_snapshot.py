@@ -355,6 +355,44 @@ def acquire_candidate_snapshot(
     return snapshot
 
 
+def materialize_birth_candidate_from_authoring(
+    source_root: Path | str,
+    destination: Path | str,
+) -> Path:
+    """Create an exact Birth candidate from a signed authoring tree.
+
+    The current signature is evidence for the installed source, not an input
+    to a new admission.  This function captures the complete signed envelope,
+    removes that derived evidence from the candidate, and derives the code
+    digest from the same immutable bytes that it writes to staging.
+    """
+    from manifest_code_digest import prepare_manifest_digest_v1
+
+    target = Path(destination)
+    if os.path.lexists(target):
+        raise CandidateSnapshotError("candidate_destination_invalid", str(target))
+    snapshot, _signature = _acquire_authenticated_current_snapshot(source_root)
+    try:
+        manifest = prepare_manifest_digest_v1(
+            snapshot.manifest_bytes, snapshot.code_files,
+        )
+        target.mkdir(mode=0o700)
+        _write_private(target, MANIFEST_FILE, manifest)
+        _write_private(
+            target, LANGUAGE_STATE_FILE, snapshot.language_state_bytes,
+        )
+        for relative, payload in snapshot.code_files.items():
+            _write_private(target, relative, payload)
+        expected = _expected_entries(tuple(snapshot.code_files))
+        _check_closed_tree(_tree_state(target), expected)
+        return target
+    except Exception:
+        _remove_private(target)
+        raise
+    finally:
+        snapshot.close()
+
+
 def _acquire_authenticated_current_snapshot(
     source_root: Path | str,
     *, private_parent: Path | str | None = None,
