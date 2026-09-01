@@ -506,6 +506,23 @@ def test_transition_maintenance_rejects_inventory_drift_on_exit(
             pass
 
 
+def test_transition_maintenance_preserves_the_body_failure(
+    monkeypatch, tmp_path,
+):
+    install_maintenance_fixture(monkeypatch, tmp_path, drift=True)
+    body_failure = OwnershipCoordinatorError(
+        "birth_cutover_reattestation_failed", "contract-alpha",
+    )
+
+    with pytest.raises(OwnershipCoordinatorError) as failed:
+        with coordinator_module._transition_maintenance_inventory_v2():
+            raise body_failure
+
+    assert failed.value is body_failure
+    assert failed.value.code == "birth_cutover_reattestation_failed"
+    assert failed.value.detail == "contract-alpha"
+
+
 def record_v2(sequence: int) -> OwnershipCoordinatorRecordV2:
     install_value = {
         "schema_version": 1,

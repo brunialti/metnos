@@ -4901,7 +4901,9 @@ def _transition_inventory_under_maintenance_v2(maintenance, evidence):
         )
     try:
         yield maintenance, inventory, initial
-    finally:
+    except BaseException:
+        raise
+    else:
         _verify_store_only_catalog_locked()
         final_inventory = freeze_current_inventory_v1(
             port.enumerate_current(),
