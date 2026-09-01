@@ -3798,6 +3798,59 @@ def _head_required_material_v2(
     )
 
 
+def _preflight_verified_record_v2(
+    head_required: object, encoded_attestation: object,
+) -> OwnershipCoordinatorRecordV2:
+    """Bind the exact, self-authenticating operational preflight document."""
+    from executor_birth_admin_preflight import (
+        _DecodedPreflightAttestationV1,
+        _decode_preflight_attestation_record_v1,
+    )
+
+    if (
+        type(head_required) is not OwnershipCoordinatorRecordV2
+        or head_required.sequence != 5
+        or head_required.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED
+        or type(encoded_attestation) is not bytes
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight input",
+    )
+    try:
+        attestation, attestation_hash = (
+            _decode_preflight_attestation_record_v1(encoded_attestation)
+        )
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight attestation",
+        ) from exc
+    if (
+        type(attestation) is not _DecodedPreflightAttestationV1
+        or attestation.request_id != head_required.request_id
+        or attestation.closed_build_id != head_required.closed_build_id
+        or attestation.release_sequence != head_required.release_sequence
+        or attestation.head_id != head_required.head_id
+        or attestation.required_head_frame_hash
+        != head_required.required_head_frame_hash
+        or attestation.deployment_descriptor_id
+        != head_required.deployment_descriptor_id
+        or attestation.service_coverage_hash
+        != head_required.service_coverage_hash
+        or attestation.administrative_bundle_hash
+        != head_required.administrative_bundle_hash
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight binding",
+        )
+    return replace(
+        head_required,
+        sequence=6,
+        state=OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED,
+        previous_record_sha256=_record_hash_v2(head_required.encode()),
+        preflight_attestation_hash=attestation_hash,
+    )
+
+
 def _path_present_v2(path: Path) -> bool:
     try:
         path.lstat()
@@ -4395,6 +4448,211 @@ def _cross_head_boundary_locked_for_test_v2(
         verify_installation=lambda: distribution,
         verify_required_chain=lambda certificate: chain_store.read_required_chain(
             anchor=certificate, builds=builds,
+        ),
+        require_sessions=require,
+        _crash_seam=_crash_seam,
+    )
+
+
+def _cross_preflight_boundary_core_v2(
+    *, head_required: object, append_record: object, observe_graph: object,
+    publish_attestation: object, reread_attestation: object,
+    require_sessions: object,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Advance sequence 5 to 6 only around one exact durable attestation."""
+    if (
+        type(head_required) is not OwnershipCoordinatorRecordV2
+        or head_required.sequence != 5
+        or head_required.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED
+        or not callable(append_record)
+        or not callable(observe_graph)
+        or not callable(publish_attestation)
+        or not callable(reread_attestation)
+        or not callable(require_sessions)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight crossing input",
+        )
+
+    def require() -> None:
+        require_sessions()
+
+    def graph_transaction():
+        require()
+        graph = observe_graph()
+        if type(graph) is not _ObservedOwnershipCoordinatorGraphV2:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "preflight graph",
+            )
+        matches = tuple(
+            item for item in graph.transactions
+            if item.claim.request_id == head_required.request_id
+        )
+        if (
+            len(matches) != 1 or len(matches[0].records) < 6
+            or matches[0].records[5] != head_required
+            or matches[0].latest.sequence not in {5, 6}
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "preflight predecessor",
+            )
+        return matches[0]
+
+    transaction = graph_transaction()
+    require()
+    try:
+        encoded = publish_attestation()
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight publication",
+        ) from exc
+    require()
+    verified_record = _preflight_verified_record_v2(
+        head_required, encoded,
+    )
+    if _crash_seam is not None:
+        _crash_seam("preflight_attestation_published")
+
+    transaction = graph_transaction()
+    if transaction.latest.sequence == 5:
+        persisted = append_record(verified_record)
+        _require_transaction_record_reread_v2(
+            observe_graph(), persisted, detail="preflight verified reread",
+        )
+        require()
+        if _crash_seam is not None:
+            _crash_seam("preflight_verified")
+    elif transaction.latest.sequence == 6:
+        persisted = transaction.latest
+        if persisted != verified_record:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "preflight record binding",
+            )
+    else:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight journal order",
+        )
+
+    require()
+    try:
+        observed = reread_attestation()
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight final reread",
+        ) from exc
+    require()
+    if (
+        observed != encoded
+        or _preflight_verified_record_v2(head_required, observed) != persisted
+        or graph_transaction().latest != persisted
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight final binding",
+        )
+    return persisted
+
+
+def _cross_preflight_boundary_locked_v2(
+    sessions: tuple[object, ...], head_required: object, *,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Product crossing with fixed-root preflight and all sessions retained."""
+    from executor_birth_admin_preflight import (
+        _attest_operational_preflight_v1,
+        _publish_preflight_attestation_v1,
+        _read_preflight_attestation_v1,
+    )
+    from executor_birth_dominant_startup import _require_product_sessions_v1
+
+    held = _require_product_sessions_v1(sessions)
+
+    def observe_graph():
+        snapshot = _resolve_ownership_coordinator_locked_v2(held[0])
+        return _require_locked_coordinator_graph_snapshot_v2(
+            snapshot, held[0],
+        )
+
+    return _cross_preflight_boundary_core_v2(
+        head_required=head_required,
+        append_record=lambda record: _append_ownership_transaction_locked_v2(
+            held[0], record,
+        ),
+        observe_graph=observe_graph,
+        publish_attestation=lambda: _publish_preflight_attestation_v1(
+            _attest_operational_preflight_v1(),
+        ),
+        reread_attestation=lambda: _read_preflight_attestation_v1(
+            head_required.request_id,
+        ),
+        require_sessions=lambda: _require_product_sessions_v1(held),
+        _crash_seam=_crash_seam,
+    )
+
+
+def _cross_preflight_boundary_locked_for_test_v2(
+    deployment_session: object, startup_session: object, *,
+    ownership_root: Path, gate_path: Path, attestation_root: Path,
+    head_required: object, encoded_attestation: bytes,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Portable nominal seam; productive sessions and roots cannot enter it."""
+    from executor_birth_admin_preflight import (
+        _decode_preflight_attestation_v1,
+        _publish_preflight_attestation_core_v1,
+        _read_preflight_attestation_for_test_v1,
+    )
+    from executor_birth_startup_gate import (
+        _require_exclusive_startup_gate_session_for_test_v1,
+    )
+
+    ownership_root = Path(ownership_root)
+    gate_path = Path(gate_path)
+    attestation_root = Path(attestation_root)
+    if (
+        type(encoded_attestation) is not bytes
+        or not attestation_root.is_absolute()
+        or attestation_root.parent != ownership_root
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "test preflight crossing",
+        )
+
+    def require() -> None:
+        _require_test_deployment_lock_session_v1(
+            deployment_session, ownership_root,
+        )
+        _require_exclusive_startup_gate_session_for_test_v1(
+            startup_session, gate_path,
+        )
+
+    def publish() -> bytes:
+        decoded = _decode_preflight_attestation_v1(encoded_attestation)
+        _publish_preflight_attestation_core_v1(
+            encoded_attestation, decoded.request_id,
+            root=attestation_root, uid=os.getuid(), gid=os.getgid(),
+            chain_stop=ownership_root.parent,
+        )
+        return _read_preflight_attestation_for_test_v1(
+            decoded.request_id, attestation_root,
+        )
+
+    require()
+    return _cross_preflight_boundary_core_v2(
+        head_required=head_required,
+        append_record=lambda record: (
+            _append_ownership_transaction_locked_for_test_v2(
+                deployment_session, ownership_root, record,
+            )
+        ),
+        observe_graph=lambda: (
+            _resolve_ownership_coordinator_locked_for_test_v2(
+                deployment_session, ownership_root,
+            ).observation
+        ),
+        publish_attestation=publish,
+        reread_attestation=lambda: _read_preflight_attestation_for_test_v1(
+            head_required.request_id, attestation_root,
         ),
         require_sessions=require,
         _crash_seam=_crash_seam,

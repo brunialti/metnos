@@ -47,6 +47,8 @@ from executor_birth_ownership_coordinator import (
     _prepared_record_v2, _append_prepared_transition_locked_for_test_v2,
     _build_verified_record_v2, _head_required_material_v2,
     _cross_head_boundary_locked_for_test_v2,
+    _preflight_verified_record_v2,
+    _cross_preflight_boundary_locked_for_test_v2,
     _certificate_published_record_v2, _certificate_ready_material_v2,
     _cross_certificate_boundary_locked_for_test_v2,
     _receipts_complete_record_v2, _startup_prerequisite_for_test,
@@ -76,8 +78,8 @@ from executor_birth_ownership_preflight import (
 from executor_birth_admin_preflight import (
     DistributionFileV1 as PreflightDistributionFileV1,
     HEAD_PAYLOAD_HASH_DOMAIN_V2, HEAD_SIGNATURE_HASH_DOMAIN_V2,
-    REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2,
-    _framed_sha256_v1,
+    REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, PREFLIGHT_ATTESTATION_DOMAIN_V1,
+    _framed_sha256_v1, _preflight_attestation_record_hash_v1,
     _installed_tree_hash_v1 as preflight_installed_tree_hash_v1,
 )
 from executor_birth_prepared_set import (
@@ -383,6 +385,39 @@ def portable_authorities():
 
 def proof_catalog_id() -> str:
     return _catalog_id(_binding_values(_bindings_from_proof(proof())))
+
+
+def preflight_attestation(
+    head_required: OwnershipCoordinatorRecordV2, **replacements,
+) -> bytes:
+    value: dict[str, object] = {
+        "schema_version": 1,
+        "attestation_id": None,
+        "request_id": head_required.request_id,
+        "closed_build_id": head_required.closed_build_id,
+        "release_sequence": head_required.release_sequence,
+        "head_id": head_required.head_id,
+        "required_head_frame_hash": head_required.required_head_frame_hash,
+        "deployment_descriptor_id": head_required.deployment_descriptor_id,
+        "service_catalog_id": D("1"),
+        "service_coverage_hash": head_required.service_coverage_hash,
+        "candidate_units_hash": D("2"),
+        "administrative_bundle_hash": head_required.administrative_bundle_hash,
+        "python_binary_hash": D("3"),
+        "openssl_binary_hash": D("4"),
+        "openssl_tcb_hash": D("5"),
+        "systemctl_binary_hash": D("6"),
+        "systemd_analyze_binary_hash": D("7"),
+        "effective_units_hash": D("8"),
+        "checked_entry_ids": ["probe-target"],
+    }
+    value.update(replacements)
+    unsigned = dict(value)
+    unsigned.pop("attestation_id")
+    value["attestation_id"] = digest(
+        PREFLIGHT_ATTESTATION_DOMAIN_V1 + canonical(unsigned),
+    )
+    return canonical(value)
 
 
 def current_generation(tmp_path):
@@ -966,6 +1001,145 @@ def test_head_crossing_converges_across_every_durable_boundary(
     assert result == repeated == graph.transactions[-1].latest
     assert result.state is OwnershipCoordinatorStateV1.HEAD_REQUIRED
     assert required.head_id == result.head_id
+
+
+def _complete_initial_preflight_crossing_v2(tmp_path, interruption_stage):
+    head_required, _repeat, _graph, _required, _distribution, _certificate = (
+        _complete_initial_head_crossing_v2(tmp_path, None)
+    )
+    ownership_root = tmp_path / "ownership"
+    gate_path = tmp_path / "runtime" / "startup-v1.lock"
+    attestation_root = ownership_root / "preflight-attestations-v1"
+    attestation_root.mkdir(mode=0o755)
+    encoded = preflight_attestation(head_required)
+    arguments = dict(
+        ownership_root=ownership_root,
+        gate_path=gate_path,
+        attestation_root=attestation_root,
+        head_required=head_required,
+        encoded_attestation=encoded,
+    )
+    with _deployment_lock_for_test_v1(ownership_root) as deployment_session:
+        with _exclusive_startup_gate_for_test_v1(gate_path) as startup_session:
+            if interruption_stage is not None:
+                def interrupt(stage):
+                    if stage == interruption_stage:
+                        raise _OwnershipChainCrashForTest(stage)
+
+                with pytest.raises(
+                    _OwnershipChainCrashForTest,
+                    match=interruption_stage,
+                ):
+                    _cross_preflight_boundary_locked_for_test_v2(
+                        deployment_session, startup_session, **arguments,
+                        _crash_seam=interrupt,
+                    )
+            result = _cross_preflight_boundary_locked_for_test_v2(
+                deployment_session, startup_session, **arguments,
+            )
+            before_repeat = tree_snapshot(ownership_root)
+            repeated = _cross_preflight_boundary_locked_for_test_v2(
+                deployment_session, startup_session, **arguments,
+            )
+            assert tree_snapshot(ownership_root) == before_repeat
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            deployment_session, ownership_root,
+        ).observation
+    return result, repeated, graph, encoded
+
+
+@LINUX_ONLY
+def test_preflight_crossing_publishes_exact_attestation_and_final_record(
+    tmp_path,
+):
+    result, repeated, graph, encoded = _complete_initial_preflight_crossing_v2(
+        tmp_path, None,
+    )
+    assert result == repeated == graph.transactions[-1].latest
+    assert result.state is OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+    assert result.preflight_attestation_hash == (
+        _preflight_attestation_record_hash_v1(encoded)
+    )
+    assert len(graph.transactions[-1].records) == 7
+    assert (
+        tmp_path / "ownership" / "preflight-attestations-v1"
+        / f"{result.request_id}.json"
+    ).read_bytes() == encoded
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("interruption_stage", (
+    "preflight_attestation_published", "preflight_verified",
+))
+def test_preflight_crossing_converges_across_durable_boundaries(
+    tmp_path, interruption_stage,
+):
+    result, repeated, graph, _encoded = _complete_initial_preflight_crossing_v2(
+        tmp_path, interruption_stage,
+    )
+    assert result == repeated == graph.transactions[-1].latest
+    assert result.state is OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+
+
+@pytest.mark.parametrize(("field", "replacement"), (
+    ("request_id", D("f")),
+    ("closed_build_id", D("f")),
+    ("release_sequence", 3),
+    ("head_id", D("f")),
+    ("required_head_frame_hash", D("f")),
+    ("deployment_descriptor_id", D("f")),
+    ("service_coverage_hash", D("f")),
+    ("administrative_bundle_hash", D("f")),
+))
+def test_preflight_record_rejects_every_foreign_journal_binding(
+    field, replacement,
+):
+    head_required = record_v2(5)
+    with pytest.raises(
+        OwnershipCoordinatorError, match="preflight binding",
+    ):
+        _preflight_verified_record_v2(
+            head_required,
+            preflight_attestation(head_required, **{field: replacement}),
+        )
+
+
+@LINUX_ONLY
+def test_preflight_crossing_refuses_conflicting_durable_attestation(tmp_path):
+    head_required, _repeat, _graph, _required, _distribution, _certificate = (
+        _complete_initial_head_crossing_v2(tmp_path, None)
+    )
+    ownership_root = tmp_path / "ownership"
+    gate_path = tmp_path / "runtime" / "startup-v1.lock"
+    attestation_root = ownership_root / "preflight-attestations-v1"
+    attestation_root.mkdir(mode=0o755)
+    expected = preflight_attestation(head_required)
+    foreign = preflight_attestation(
+        head_required, effective_units_hash=D("f"),
+    )
+    (attestation_root / f"{head_required.request_id}.json").write_bytes(
+        foreign,
+    )
+
+    with _deployment_lock_for_test_v1(ownership_root) as deployment_session:
+        with _exclusive_startup_gate_for_test_v1(gate_path) as startup_session:
+            with pytest.raises(
+                OwnershipCoordinatorError, match="preflight publication",
+            ):
+                _cross_preflight_boundary_locked_for_test_v2(
+                    deployment_session, startup_session,
+                    ownership_root=ownership_root, gate_path=gate_path,
+                    attestation_root=attestation_root,
+                    head_required=head_required,
+                    encoded_attestation=expected,
+                )
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            deployment_session, ownership_root,
+        ).observation
+    assert graph.transactions[-1].latest == head_required
+    assert (
+        attestation_root / f"{head_required.request_id}.json"
+    ).read_bytes() == foreign
 
 
 @LINUX_ONLY

@@ -832,6 +832,7 @@ def _bound_graph(
         catalog_id=decoded_catalog.catalog_id,
         certificate_payload_hash=D("d"),
         certificate_signature_hash=D("e"),
+        dominant_startup_receipt=D("0"),
         source_id=D("f"),
         successor_claim_id=D("1"),
         deployment_descriptor_id=descriptor_record.descriptor_id,
@@ -847,6 +848,19 @@ def _bound_graph(
         preflight_attestation_hash=None,
         service_coverage_hash=decoded_catalog.service_coverage_hash,
         administrative_bundle_hash=bundle_hash,
+        provisioning_transaction_id="0" * 32,
+        previous_set_id="1" * 64,
+        previous_admission_context_id=D("2"),
+        previous_context_epoch=D("3"),
+        target_set_id="4" * 64,
+        target_admission_context_id=D("5"),
+        target_context_epoch=D("6"),
+        target_context_material_sha256="7" * 64,
+        target_set_json_sha256="8" * 64,
+        context_transition_id=D("9"),
+        current_inventory_hash=(
+            preflight._current_inventory_hash_from_receipts_v1(())
+        ),
     )
     captured = {
         "deployment/admin/preflight.py": contents[

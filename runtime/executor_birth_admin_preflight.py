@@ -81,6 +81,9 @@ MAX_PREDECESSOR_FILES_V1 = 20_000
 MAX_PREDECESSOR_SERVICE_COMMANDS_V1 = 20_000
 MAX_PREDECESSOR_PATH_DEPTH_V1 = 32
 MAX_AUTHORITY_CHECKPOINT_BYTES_V1 = 4096
+MAX_PREFLIGHT_ATTESTATIONS_V1 = 20_000
+MAX_CONTEXT_TRANSITION_BYTES_V1 = 64 * 1024
+MAX_CONTEXT_TRANSITIONS_V1 = 20_000
 RECEIVED_SOURCE_DESCRIPTOR_BASENAME_V1 = "received-source-v1.json"
 MAX_OPENSSL_STREAM_BYTES = 4096
 OPENSSL_TIMEOUT_SECONDS = 5.0
@@ -150,6 +153,9 @@ CANDIDATE_UNITS_DOMAIN_V1 = b"metnos.executor-birth.candidate-units/v1\0"
 INSTALLED_TREE_DOMAIN_V1 = b"metnos.executor-birth.installed-tree/v1\0"
 CURRENT_INVENTORY_DOMAIN_V1 = (
     b"metnos.executor-birth.current-inventory/v1\0"
+)
+CONTEXT_TRANSITION_ID_DOMAIN_V1 = (
+    b"metnos.executor-birth.context-transition-id/v1\0"
 )
 ADMINISTRATIVE_EXECUTABLE_DOMAIN_V1 = (
     b"metnos.executor-birth.administrative-executable/v1\0"
@@ -329,6 +335,10 @@ _SUCCESSOR_CLAIM_BASENAME_RE_V1 = re.compile(
 )
 _TRANSACTION_DIRECTORY_RE_V2 = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _TRANSACTION_RECORD_RE_V2 = re.compile(r"record-([0-9]{3})-v2\.json\Z")
+_PREFLIGHT_ATTESTATION_BASENAME_RE_V1 = re.compile(
+    r"(sha256:[0-9a-f]{64})\.json\Z"
+)
+_CONTEXT_TRANSITION_BASENAME_RE_V1 = re.compile(r"([0-9a-f]{64})\.json\Z")
 _HEX_SHA256_RE_V2 = re.compile(r"[0-9a-f]{64}\Z")
 _PROVISIONING_TRANSACTION_RE_V2 = re.compile(r"[0-9a-f]{32}\Z")
 _LEGACY_RECORD_RE_V1 = re.compile(r"record-([0-9]{3})-v1\.json\Z")
@@ -482,6 +492,23 @@ _COORDINATOR_THRESHOLD_KEYS_V2 = (
     })),
     (6, frozenset({"preflight_attestation_hash"})),
 )
+_PREFLIGHT_ATTESTATION_KEYS_V1 = frozenset({
+    "schema_version", "attestation_id", "request_id", "closed_build_id",
+    "release_sequence", "head_id", "required_head_frame_hash",
+    "deployment_descriptor_id", "service_catalog_id",
+    "service_coverage_hash", "candidate_units_hash",
+    "administrative_bundle_hash", "python_binary_hash",
+    "openssl_binary_hash", "openssl_tcb_hash", "systemctl_binary_hash",
+    "systemd_analyze_binary_hash", "effective_units_hash",
+    "checked_entry_ids",
+})
+_CONTEXT_TRANSITION_KEYS_V1 = frozenset({
+    "schema_version", "transition_id", "request_id", "closed_build_id",
+    "previous_cutover_id", "previous_set_id",
+    "previous_admission_context_id", "previous_context_epoch", "set_id",
+    "prepared_admission_context_id", "prepared_context_epoch",
+    "context_material_sha256", "set_json_sha256", "current_inventory_hash",
+})
 _PREDECESSOR_KEYS_V1 = frozenset({
     "schema_version", "predecessor_id", "transaction_id",
     "installation_root", "files", "service_commands",
@@ -1227,6 +1254,66 @@ class _DecodedLegacyCoordinatorPrefixV1(NamedTuple):
     encoded_records: tuple[bytes, ...]
 
 
+class _DecodedPreflightAttestationV1(NamedTuple):
+    attestation_id: str
+    request_id: str
+    closed_build_id: str
+    release_sequence: int
+    head_id: str
+    required_head_frame_hash: str
+    deployment_descriptor_id: str
+    service_catalog_id: str
+    service_coverage_hash: str
+    candidate_units_hash: str
+    administrative_bundle_hash: str
+    python_binary_hash: str
+    openssl_binary_hash: str
+    openssl_tcb_hash: str
+    systemctl_binary_hash: str
+    systemd_analyze_binary_hash: str
+    effective_units_hash: str
+    checked_entry_ids: tuple[str, ...]
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "attestation_id": self.attestation_id,
+            "request_id": self.request_id,
+            "closed_build_id": self.closed_build_id,
+            "release_sequence": self.release_sequence,
+            "head_id": self.head_id,
+            "required_head_frame_hash": self.required_head_frame_hash,
+            "deployment_descriptor_id": self.deployment_descriptor_id,
+            "service_catalog_id": self.service_catalog_id,
+            "service_coverage_hash": self.service_coverage_hash,
+            "candidate_units_hash": self.candidate_units_hash,
+            "administrative_bundle_hash": self.administrative_bundle_hash,
+            "python_binary_hash": self.python_binary_hash,
+            "openssl_binary_hash": self.openssl_binary_hash,
+            "openssl_tcb_hash": self.openssl_tcb_hash,
+            "systemctl_binary_hash": self.systemctl_binary_hash,
+            "systemd_analyze_binary_hash": self.systemd_analyze_binary_hash,
+            "effective_units_hash": self.effective_units_hash,
+            "checked_entry_ids": list(self.checked_entry_ids),
+        }
+
+
+class _DecodedContextTransitionV1(NamedTuple):
+    transition_id: str
+    request_id: str
+    closed_build_id: str
+    previous_cutover_id: str | None
+    previous_set_id: str
+    previous_admission_context_id: str
+    previous_context_epoch: str
+    set_id: str
+    prepared_admission_context_id: str
+    prepared_context_epoch: str
+    context_material_sha256: str
+    set_json_sha256: str
+    current_inventory_hash: str
+
+
 class _DecodedPredecessorFileV1(NamedTuple):
     path: str
     size: int
@@ -1307,6 +1394,16 @@ class _CapturedTransactionCandidateV2(NamedTuple):
     decoded_prefix: _DecodedCoordinatorPrefixV2 | None
 
 
+class _CapturedPreflightAttestationCandidateV1(NamedTuple):
+    basename: str
+    encoded: bytes
+
+
+class _CapturedContextTransitionCandidateV1(NamedTuple):
+    basename: str
+    encoded: bytes
+
+
 class _CapturedFixedOwnershipStateCandidateV1(NamedTuple):
     """One coherent fixed-store observation; it grants no authority."""
 
@@ -1322,6 +1419,10 @@ class _CapturedFixedOwnershipStateCandidateV1(NamedTuple):
     heads: tuple[_CapturedSignedObjectCandidateV1, ...]
     claims: tuple[_CapturedClaimCandidateV1, ...]
     transactions: tuple[_CapturedTransactionCandidateV2, ...]
+    context_transitions: tuple[_CapturedContextTransitionCandidateV1, ...]
+    preflight_attestations: tuple[
+        _CapturedPreflightAttestationCandidateV1, ...
+    ]
     legacy_records: tuple[tuple[str, bytes], ...]
     legacy_disposition: bytes | None
     predecessor: _DecodedPredecessorDescriptorV1 | None
@@ -5992,7 +6093,7 @@ def _capture_fixed_ownership_state_core_v1(
         relevant_root_names = frozenset({
             "authorities-v1", "chain-v1", "coordinator-v1",
             "ownership-cutover-v1.json", "ownership-cutover-v1.sig",
-            "predecessor-v1.json",
+            "predecessor-v1.json", "preflight-attestations-v1",
         })
         anchor_like_names = tuple(
             name for name in root_names
@@ -6043,10 +6144,14 @@ def _capture_fixed_ownership_state_core_v1(
         )
         allowed_chain_names = frozenset({
             "builds-v1", "cutovers-v1", "heads-v1",
+            "context-transitions-v1",
             "required-head-v1.bin", ".required-head-v1.lock",
         })
         if (
-            not {"builds-v1", "cutovers-v1", "heads-v1"}.issubset(chain_names)
+            not {
+                "builds-v1", "cutovers-v1", "heads-v1",
+                "context-transitions-v1",
+            }.issubset(chain_names)
             or any(name not in allowed_chain_names for name in chain_names)
         ):
             raise _recovery("chain inventory")
@@ -6059,6 +6164,24 @@ def _capture_fixed_ownership_state_core_v1(
         head_fd, head_names = add_directory(
             chain_fd, "heads-v1", "chain-v1/heads-v1",
         )
+        context_transition_fd, context_transition_names = add_directory(
+            chain_fd, "context-transitions-v1",
+            "chain-v1/context-transitions-v1",
+        )
+        if (
+            len(context_transition_names) > MAX_CONTEXT_TRANSITIONS_V1
+            or any(
+                _CONTEXT_TRANSITION_BASENAME_RE_V1.fullmatch(name) is None
+                for name in context_transition_names
+            )
+        ):
+            raise _recovery("context transition inventory")
+        for name in context_transition_names:
+            add_file(
+                context_transition_fd, name,
+                "chain-v1/context-transitions-v1/" + name,
+                maximum=MAX_CONTEXT_TRANSITION_BYTES_V1,
+            )
         build_stems = _paired_control_stems_v1(
             build_names, pattern=_ARCHIVED_DIGEST_STEM_RE_V1, label="build",
         )
@@ -6118,6 +6241,29 @@ def _capture_fixed_ownership_state_core_v1(
                 root_descriptor, "predecessor-v1.json", "predecessor-v1.json",
                 maximum=MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1,
             )
+
+        preflight_attestation_names: tuple[str, ...] = ()
+        if "preflight-attestations-v1" in tracked_root_names:
+            attestation_fd, preflight_attestation_names = add_directory(
+                root_descriptor, "preflight-attestations-v1",
+                "preflight-attestations-v1",
+            )
+            if (
+                len(preflight_attestation_names)
+                > MAX_PREFLIGHT_ATTESTATIONS_V1
+                or any(
+                    _PREFLIGHT_ATTESTATION_BASENAME_RE_V1.fullmatch(name)
+                    is None
+                    for name in preflight_attestation_names
+                )
+            ):
+                raise _recovery("preflight attestation inventory")
+            for name in preflight_attestation_names:
+                add_file(
+                    attestation_fd, name,
+                    "preflight-attestations-v1/" + name,
+                    maximum=MAX_PREFLIGHT_ATTESTATION_BYTES_V1,
+                )
 
         coordinator_fd, coordinator_names = add_directory(
             root_descriptor, "coordinator-v1", "coordinator-v1",
@@ -6367,6 +6513,22 @@ def _capture_fixed_ownership_state_core_v1(
             )
             if "predecessor-v1.json" in files else None
         )
+        context_transitions = tuple(
+            _CapturedContextTransitionCandidateV1(
+                name, _read_control_file_v1(
+                    files["chain-v1/context-transitions-v1/" + name],
+                ),
+            )
+            for name in context_transition_names
+        )
+        preflight_attestations = tuple(
+            _CapturedPreflightAttestationCandidateV1(
+                name, _read_control_file_v1(
+                    files["preflight-attestations-v1/" + name],
+                ),
+            )
+            for name in preflight_attestation_names
+        )
 
         if between_for_test is not None:
             between_for_test()
@@ -6423,8 +6585,10 @@ def _capture_fixed_ownership_state_core_v1(
 
         return _CapturedFixedOwnershipStateCandidateV1(
             registries, anchor, required_head, tuple(builds), tuple(cutovers),
-            tuple(heads), tuple(claims), tuple(transactions), legacy_records,
-            legacy_disposition, predecessor,
+            tuple(heads), tuple(claims), tuple(transactions),
+            context_transitions,
+            preflight_attestations, legacy_records, legacy_disposition,
+            predecessor,
         )
     except PreflightError as exc:
         if exc.code == CODE_RECOVERY:
@@ -6473,8 +6637,9 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
 
     The candidate bytes are the only authority input.  In particular this
     function never reopens a registry or ownership object by pathname.  The
-    result intentionally does not attest installed-tree, systemd or the
-    preflight-attestation document referenced by record 006.
+    The result intentionally does not attest installed-tree or live systemd.
+    It does authenticate every durable preflight document and its record-006
+    reference; the later operational pass independently repeats live checks.
     """
     if type(candidate) is not _CapturedFixedOwnershipStateCandidateV1:
         raise _invalid("fixed ownership candidate type")
@@ -6866,6 +7031,109 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
                         "transaction head binding " + ",".join(disagreed)
                     )
                 completed_by_sequence[first.release_sequence] = transaction
+
+        transitions_by_id: dict[str, _DecodedContextTransitionV1] = {}
+        for captured in candidate.context_transitions:
+            decoded = durable(_decode_context_transition_v1, captured.encoded)
+            expected_basename = (
+                decoded.transition_id.removeprefix("sha256:") + ".json"
+            )
+            if (
+                captured.basename != expected_basename
+                or decoded.transition_id in transitions_by_id
+            ):
+                raise _recovery("context transition name binding")
+            transitions_by_id[decoded.transition_id] = decoded
+
+        for transaction in transactions:
+            first = transaction.prefix.records[0]
+            latest = transaction.prefix.records[-1]
+            transition = transitions_by_id.pop(
+                first.context_transition_id, None,
+            )
+            if latest.sequence >= 2 and transition is None:
+                raise _recovery("context transition missing")
+            if transition is None:
+                continue
+            if (
+                transition.request_id != first.request_id
+                or transition.closed_build_id != first.closed_build_id
+                or transition.previous_cutover_id != first.previous_cutover_id
+                or transition.previous_set_id != first.previous_set_id
+                or transition.previous_admission_context_id
+                != first.previous_admission_context_id
+                or transition.previous_context_epoch
+                != first.previous_context_epoch
+                or transition.set_id != first.target_set_id
+                or transition.prepared_admission_context_id
+                != first.target_admission_context_id
+                or transition.prepared_context_epoch
+                != first.target_context_epoch
+                or transition.context_material_sha256
+                != first.target_context_material_sha256
+                or transition.set_json_sha256 != first.target_set_json_sha256
+                or transition.current_inventory_hash
+                != first.current_inventory_hash
+            ):
+                raise _recovery("context transition journal binding")
+        if transitions_by_id:
+            raise _recovery("orphan context transition")
+
+        attestations_by_request: dict[
+            str, tuple[_DecodedPreflightAttestationV1, bytes]
+        ] = {}
+        for captured in candidate.preflight_attestations:
+            decoded = durable(
+                _decode_preflight_attestation_v1, captured.encoded,
+            )
+            expected_basename = decoded.request_id + ".json"
+            if (
+                captured.basename != expected_basename
+                or decoded.request_id in attestations_by_request
+            ):
+                raise _recovery("preflight attestation name binding")
+            attestations_by_request[decoded.request_id] = (
+                decoded, captured.encoded,
+            )
+
+        for transaction in transactions:
+            first = transaction.prefix.records[0]
+            latest = transaction.prefix.records[-1]
+            captured_attestation = attestations_by_request.pop(
+                first.request_id, None,
+            )
+            if latest.sequence == 6 and captured_attestation is None:
+                raise _recovery("preflight attestation missing")
+            if captured_attestation is None:
+                continue
+            if latest.sequence not in {5, 6}:
+                raise _recovery("preflight attestation order")
+            attestation, encoded_attestation = captured_attestation
+            if (
+                attestation.request_id != first.request_id
+                or attestation.closed_build_id != first.closed_build_id
+                or attestation.release_sequence != first.release_sequence
+                or attestation.head_id != latest.head_id
+                or attestation.required_head_frame_hash
+                != latest.required_head_frame_hash
+                or attestation.deployment_descriptor_id
+                != first.deployment_descriptor_id
+                or attestation.service_coverage_hash
+                != first.service_coverage_hash
+                or attestation.administrative_bundle_hash
+                != first.administrative_bundle_hash
+                or (
+                    latest.sequence == 6
+                    and latest.preflight_attestation_hash
+                    != _digest(
+                        PREFLIGHT_ATTESTATION_RECORD_DOMAIN_V1,
+                        encoded_attestation,
+                    )
+                )
+            ):
+                raise _recovery("preflight attestation journal binding")
+        if attestations_by_request:
+            raise _recovery("orphan preflight attestation")
 
         transactions_by_build = {
             transaction.prefix.records[0].closed_build_id: transaction
@@ -13378,6 +13646,157 @@ def _observe_effective_systemd_for_test_v1(
     return _ObservedEffectiveSystemdForTestV1(result)
 
 
+def _decode_context_transition_v1(
+    encoded: bytes,
+) -> _DecodedContextTransitionV1:
+    """Decode one exact content-addressed authority-context transition."""
+    value = decode_canonical_json_v1(encoded, MAX_CONTEXT_TRANSITION_BYTES_V1)
+    if (
+        type(value) is not dict
+        or set(value) != _CONTEXT_TRANSITION_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("context transition schema")
+    transition_id = _require_digest(
+        value.get("transition_id"), "context transition_id",
+    )
+    request_id = _require_digest(
+        value.get("request_id"), "context request_id",
+    )
+    closed_build_id = _require_digest(
+        value.get("closed_build_id"), "context closed_build_id",
+    )
+    previous_cutover_id = _nullable_digest_v1(
+        value.get("previous_cutover_id"), "context previous_cutover_id",
+    )
+    previous_admission_context_id = _require_digest(
+        value.get("previous_admission_context_id"),
+        "context previous_admission_context_id",
+    )
+    previous_context_epoch = _require_digest(
+        value.get("previous_context_epoch"), "context previous_context_epoch",
+    )
+    prepared_admission_context_id = _require_digest(
+        value.get("prepared_admission_context_id"),
+        "context prepared_admission_context_id",
+    )
+    prepared_context_epoch = _require_digest(
+        value.get("prepared_context_epoch"), "context prepared_context_epoch",
+    )
+    current_inventory_hash = _require_digest(
+        value.get("current_inventory_hash"), "context current_inventory_hash",
+    )
+    hex_fields = {}
+    for field in (
+        "previous_set_id", "set_id", "context_material_sha256",
+        "set_json_sha256",
+    ):
+        item = value.get(field)
+        if type(item) is not str or _HEX_SHA256_RE_V2.fullmatch(item) is None:
+            raise _invalid("context " + field)
+        hex_fields[field] = item
+    expected_id = _digest(
+        CONTEXT_TRANSITION_ID_DOMAIN_V1,
+        _canonical_json({
+            key: item for key, item in value.items()
+            if key != "transition_id"
+        }),
+    )
+    if transition_id != expected_id:
+        raise _invalid("context transition_id binding")
+    return _DecodedContextTransitionV1(
+        transition_id, request_id, closed_build_id, previous_cutover_id,
+        hex_fields["previous_set_id"], previous_admission_context_id,
+        previous_context_epoch, hex_fields["set_id"],
+        prepared_admission_context_id, prepared_context_epoch,
+        hex_fields["context_material_sha256"],
+        hex_fields["set_json_sha256"], current_inventory_hash,
+    )
+
+
+def _decode_preflight_attestation_v1(
+    encoded: bytes,
+) -> _DecodedPreflightAttestationV1:
+    """Decode the exact durable attestation consumed by journal record 006."""
+    value = decode_canonical_json_v1(
+        encoded, MAX_PREFLIGHT_ATTESTATION_BYTES_V1,
+    )
+    if (
+        type(value) is not dict
+        or set(value) != _PREFLIGHT_ATTESTATION_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("preflight attestation schema")
+    digest_fields = {}
+    for field in (
+        "attestation_id", "request_id", "closed_build_id", "head_id",
+        "required_head_frame_hash", "deployment_descriptor_id",
+        "service_catalog_id", "service_coverage_hash",
+        "candidate_units_hash", "administrative_bundle_hash",
+        "python_binary_hash", "openssl_binary_hash", "openssl_tcb_hash",
+        "systemctl_binary_hash", "systemd_analyze_binary_hash",
+        "effective_units_hash",
+    ):
+        digest_fields[field] = _require_digest(
+            value.get(field), "preflight attestation " + field,
+        )
+    release_sequence = _positive_release_sequence_v1(
+        value.get("release_sequence"),
+    )
+    raw_entry_ids = value.get("checked_entry_ids")
+    if type(raw_entry_ids) is not list or not raw_entry_ids:
+        raise _invalid("preflight attestation coverage")
+    checked_entry_ids = tuple(
+        validate_entry_id_v1(item) for item in raw_entry_ids
+    )
+    if (
+        len(checked_entry_ids) != len(set(checked_entry_ids))
+        or checked_entry_ids != tuple(sorted(
+            checked_entry_ids, key=lambda item: item.encode("utf-8"),
+        ))
+    ):
+        raise _invalid("preflight attestation coverage")
+    decoded = _DecodedPreflightAttestationV1(
+        digest_fields["attestation_id"], digest_fields["request_id"],
+        digest_fields["closed_build_id"], release_sequence,
+        digest_fields["head_id"], digest_fields["required_head_frame_hash"],
+        digest_fields["deployment_descriptor_id"],
+        digest_fields["service_catalog_id"],
+        digest_fields["service_coverage_hash"],
+        digest_fields["candidate_units_hash"],
+        digest_fields["administrative_bundle_hash"],
+        digest_fields["python_binary_hash"],
+        digest_fields["openssl_binary_hash"],
+        digest_fields["openssl_tcb_hash"],
+        digest_fields["systemctl_binary_hash"],
+        digest_fields["systemd_analyze_binary_hash"],
+        digest_fields["effective_units_hash"], checked_entry_ids,
+    )
+    if (
+        decoded.as_value() != value
+        or decoded.attestation_id != _deployment_document_id_v1(
+            PREFLIGHT_ATTESTATION_DOMAIN_V1, value, "attestation_id",
+        )
+    ):
+        raise _invalid("preflight attestation binding")
+    return decoded
+
+
+def _decode_preflight_attestation_record_v1(
+    encoded: bytes,
+) -> tuple[_DecodedPreflightAttestationV1, str]:
+    """Decode once and return the exact digest carried by record 006."""
+    decoded = _decode_preflight_attestation_v1(encoded)
+    return decoded, _digest(PREFLIGHT_ATTESTATION_RECORD_DOMAIN_V1, encoded)
+
+
+def _preflight_attestation_record_hash_v1(encoded: bytes) -> str:
+    """Return the domain-separated digest carried by journal record 006."""
+    return _decode_preflight_attestation_record_v1(encoded)[1]
+
+
 def _preflight_attestation_bytes_v1(
     selected: _SelectedOwnershipEpochV1,
     observation: _ObservedEffectiveSystemdV1,
@@ -13465,8 +13884,8 @@ def _publish_preflight_attestation_core_v1(
         or not isinstance(root, Path) or not root.is_absolute()
     ):
         raise _invalid("preflight attestation publication")
-    value = decode_canonical_json_v1(encoded, MAX_PREFLIGHT_ATTESTATION_BYTES_V1)
-    if not isinstance(value, dict) or value.get("request_id") != request_id:
+    decoded = _decode_preflight_attestation_v1(encoded)
+    if decoded.request_id != request_id:
         raise _invalid("preflight attestation publication")
     _require_safe_directory_chain_v1(root, uid=uid, gid=gid, stop=chain_stop)
     try:
@@ -13565,6 +13984,51 @@ def _publish_preflight_attestation_core_v1(
             os.close(directory)
 
 
+def _read_preflight_attestation_core_v1(
+    request_id: str, *, root: Path, uid: int, gid: int,
+    chain_stop: Path | None,
+) -> bytes:
+    """Reread one exact published attestation through trusted path checks."""
+    if (
+        _require_digest(request_id, "preflight request") != request_id
+        or not isinstance(root, Path) or not root.is_absolute()
+    ):
+        raise _invalid("preflight attestation reread")
+    try:
+        encoded = _read_bounded_regular_v1(
+            root / (request_id + ".json"),
+            MAX_PREFLIGHT_ATTESTATION_BYTES_V1,
+            uid=uid, gid=gid, mode=0o644, chain_stop=chain_stop,
+        )
+        decoded = _decode_preflight_attestation_v1(encoded)
+    except PreflightError as exc:
+        if exc.code == CODE_RECOVERY:
+            raise
+        raise _recovery("preflight attestation durable state") from exc
+    if decoded.request_id != request_id:
+        raise _recovery("preflight attestation request binding")
+    return encoded
+
+
+def _read_preflight_attestation_v1(request_id: str) -> bytes:
+    """Product reread from the single fixed root-owned attestation store."""
+    return _read_preflight_attestation_core_v1(
+        request_id, root=PREFLIGHT_ATTESTATION_ROOT_V1,
+        uid=0, gid=0, chain_stop=None,
+    )
+
+
+def _read_preflight_attestation_for_test_v1(
+    request_id: str, root: Path,
+) -> bytes:
+    """Portable nominal reread; it cannot select the productive root."""
+    root = Path(root)
+    return _read_preflight_attestation_core_v1(
+        request_id, root=root, uid=os.getuid(), gid=os.getgid(),
+        chain_stop=root.parent,
+    )
+
+
 def _publish_preflight_attestation_v1(
     operational: _OperationalPreflightV1,
 ) -> bytes:
@@ -13577,7 +14041,13 @@ def _publish_preflight_attestation_v1(
         encoded, operational.selected.transaction.prefix.records[-1].request_id,
         root=PREFLIGHT_ATTESTATION_ROOT_V1, uid=0, gid=0, chain_stop=None,
     )
-    return encoded
+    observed = _read_preflight_attestation_core_v1(
+        operational.selected.transaction.prefix.records[-1].request_id,
+        root=PREFLIGHT_ATTESTATION_ROOT_V1, uid=0, gid=0, chain_stop=None,
+    )
+    if observed != encoded:
+        raise _recovery("preflight attestation publication reread")
+    return observed
 
 
 def _publish_preflight_attestation_for_test_v1(
@@ -13592,7 +14062,13 @@ def _publish_preflight_attestation_for_test_v1(
         encoded, operational.selected.transaction.prefix.records[-1].request_id,
         root=root, uid=os.getuid(), gid=os.getgid(), chain_stop=root.parent,
     )
-    return encoded
+    observed = _read_preflight_attestation_core_v1(
+        operational.selected.transaction.prefix.records[-1].request_id,
+        root=root, uid=os.getuid(), gid=os.getgid(), chain_stop=root.parent,
+    )
+    if observed != encoded:
+        raise _recovery("preflight attestation publication reread")
+    return observed
 
 
 def _attest_operational_preflight_v1() -> _OperationalPreflightV1:
