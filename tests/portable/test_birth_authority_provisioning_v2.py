@@ -410,6 +410,61 @@ def test_v2_material_plan_replaces_only_an_incomplete_pending(
 
 
 @pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_material_plan_preserves_a_complete_foreign_pending(
+    tmp_path, monkeypatch,
+):
+    from executor_birth_secure_fs import _BirthObjectRole
+    from install import birth_authority_provisioner as provisioning
+
+    base = support.make_config(tmp_path)
+    transaction_id = "0" * 32
+    header = _build_transaction_header_v2(
+        transaction_id=transaction_id,
+        provisioner_build_id="build-v2",
+        claim=_claim(),
+        distribution=_distribution(),
+        previous_set=_prepared(),
+    )
+    foreign_header = _build_transaction_header_v2(
+        transaction_id=transaction_id,
+        provisioner_build_id="another-build-v2",
+        claim=_claim(),
+        distribution=_distribution(),
+        previous_set=_prepared(),
+    )
+    foreign_plan = _material_plan(foreign_header)
+    layout = support.open_layout(monkeypatch, base)
+    with layout.birth_session as session:
+        with session.global_lock(exclusive=True, create=True):
+            journal = provisioning._TransactionJournalV1.transition_v2(
+                session, transaction_id,
+            )
+            journal.create_root()
+            journal.write_header(header)
+            pending = f".material-plan-v2.pending.{transaction_id}"
+            session.create_file_exclusive(
+                journal.root_components + (pending,),
+                foreign_plan.encode(), role=_BirthObjectRole.birth_confidential,
+            )
+
+            with pytest.raises(
+                BirthProvisioningError,
+                match="birth_provisioning_transaction_conflict",
+            ):
+                journal.ensure_material_plan_v2(
+                    lambda: pytest.fail("a foreign plan must stop recovery"),
+                )
+            assert set(session.inventory(journal.root_components)) == {
+                "transaction-v2.json", pending,
+            }
+            assert session.read_file(
+                journal.root_components + (pending,),
+                maximum=len(foreign_plan.encode()),
+                role=_BirthObjectRole.birth_confidential,
+            ) == foreign_plan.encode()
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
 def test_v2_material_plan_expansion_resumes_without_replacing_exact_bytes(
     tmp_path, monkeypatch,
 ):

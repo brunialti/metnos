@@ -1090,13 +1090,15 @@ class _TransactionJournalV1:
                     self._root + (pending,),
                     role=self._confidential_role(),
                 ))
-                self._require_plan_header_v2(plan, header)
             except BirthProvisioningError:
                 self._discard_pending_by_name(
                     self._root, pending, role=self._confidential_role(),
                     maximum=MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1,
                 )
             else:
+                # A complete plan bound to another header is conflicting
+                # evidence, not an interrupted write that may be discarded.
+                self._require_plan_header_v2(plan, header)
                 with _translated():
                     self._session.rename_no_replace(
                         self._root + (pending,), self._root + (final,),
