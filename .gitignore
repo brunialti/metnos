@@ -86,8 +86,14 @@ docs/*
 !docs/en/
 docs/it/*
 docs/en/*
+!docs/it/roadmap.html
+!docs/en/roadmap.html
+!docs/it/domains.html
+!docs/en/domains.html
 !docs/it/Metnos_QuickTour.html
 !docs/en/Metnos_QuickTour.html
+!docs/it/Metnos_QuickTour.pdf
+!docs/en/Metnos_QuickTour.pdf
 !docs/it/architecture/
 !docs/en/architecture/
 !docs/it/system/
@@ -116,6 +122,7 @@ docs/assets/*
 docs/assets/images/*
 !docs/assets/images/system-*-ui-it.png
 !docs/assets/architecture-flow.png
+!docs/assets/metnos-quicktour-cover.png
 !docs/assets/metnos.css
 !docs/assets/quicktour-print.css
 !docs/assets/wiki-shell.js
