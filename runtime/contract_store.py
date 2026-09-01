@@ -3741,6 +3741,282 @@ def read_current_birth_receipt(
             return _read_regular_file(path, code="birth_receipt_invalid")
 
 
+# ---------------------------------------------------------------------------
+# V2 admission receipts: one receipt per (contract, generation, context).
+#
+# The V1 path stays exactly what it was: the historical act of the previous
+# context, immutable and never rewritten here.  From the epoch transition
+# onwards a current generation also carries a V2 receipt bound to the selected
+# context, so a second epoch can add a receipt for the same generation without
+# replacing the first one.  Coexistence is the normal case, not a conflict.
+#
+# There is deliberately no automatic fallback from V2 to V1.  A reader that
+# wants the historical act asks for it by name; a reader that wants the current
+# act gets None when it is absent, which is a fact the caller must handle
+# rather than a gap to paper over with the older receipt.
+# ---------------------------------------------------------------------------
+
+_ADMISSION_RECEIPTS_V2 = "admission-receipts-v2"
+
+
+def admission_receipt_hash(encoded: bytes) -> str:
+    """Canonical hash of the exact receipt bytes on the wire."""
+    if not isinstance(encoded, bytes) or not encoded:
+        raise ContractStoreError("birth_receipt_invalid", "encoded bytes")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _context_directory_name(identifier: str) -> str:
+    """Physical directory name of an admission context identity."""
+    if not isinstance(identifier, str) or not _DIGEST_RE.fullmatch(identifier):
+        raise ContractStoreError("admission_context_id_invalid", str(identifier))
+    physical = identifier.removeprefix("sha256:")
+    if not _PHYSICAL_ID_RE.fullmatch(physical):
+        raise ContractStoreError("admission_context_id_invalid", identifier)
+    return physical
+
+
+def _birth_receipt_path_v2(
+    contract_dir: Path, generation_identifier: str, admission_context_id: str,
+) -> Path:
+    return (
+        contract_dir
+        / _ADMISSION_RECEIPTS_V2
+        / generation_directory_name(generation_identifier)
+        / (_context_directory_name(admission_context_id) + ".json")
+    )
+
+
+def _sealed_v2_triple(ref: ManifestRef, request: object) -> tuple[str, str]:
+    """Read the receipt identity from the sealed request, never from a caller.
+
+    The triple (contract, generation, context) is the identity of one V2
+    receipt.  It arrives only inside ``ProducerRequestV2``, which can be built
+    solely from a context selection the F4 head has already sealed, so no
+    public entry point of this module accepts a context or a path as a free
+    selector.
+    """
+    from executor_birth_producer_context import ProducerRequestV2
+
+    if not isinstance(request, ProducerRequestV2):
+        raise ContractStoreError("birth_receipt_v2_request_untrusted")
+    if request.contract_id != ref.contract_id.value:
+        raise ContractStoreError("birth_receipt_v2_request_mismatch", "contract_id")
+    return request.generation_id, request.admission_context_id
+
+
+def persist_current_reattestation_receipt_v2(
+    ref: ManifestRef,
+    encoded: bytes,
+    *,
+    request: object,
+    authorization: BirthCommitAuthorization,
+    verifier: Callable[[bytes], object],
+    expected_bindings: Mapping[str, object],
+    trusted_publics: Iterable[TrustedPublic],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+    replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
+) -> bytes:
+    """Persist one V2 receipt for the exact current generation and context.
+
+    An identical authenticated receipt for the same triple is an idempotent
+    success.  Different bytes for the same triple are a conflict and the stored
+    receipt is preserved.  A different context is a different triple and lands
+    beside this one: it is never overwritten, merged, or forced to agree.
+
+    This function can neither create a generation nor move the current pointer,
+    and it never reads or writes the historical V1 path.
+    """
+    generation_identifier, context_identifier = _sealed_v2_triple(ref, request)
+    if not isinstance(authorization, BirthCommitAuthorization):
+        raise ContractStoreError("birth_reattestation_authorization_invalid")
+    # One selector only: the sealed authorization and the sealed request must
+    # name the same context, so no combination of an F4 head with a foreign
+    # context can reach the filesystem.
+    if authorization.admission_context_id != context_identifier:
+        raise ContractStoreError("birth_receipt_v2_context_conflict")
+    if not isinstance(encoded, bytes) or not encoded:
+        raise ContractStoreError("birth_receipt_invalid", "empty wire receipt")
+    if not callable(verifier) or not isinstance(expected_bindings, Mapping):
+        raise ContractStoreError("birth_reattestation_authorization_invalid")
+    _validate_manifest_ref(ref)
+    trusted = _trusted_public_tuple(trusted_publics)
+    root = _store_root(store_root)
+    if _is_productive_store_root(root):
+        _require_productive_installation_source()
+
+    def verified(candidate: bytes) -> object:
+        try:
+            receipt = verifier(candidate)
+        except Exception as exc:
+            raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
+        for field, wanted in expected_bindings.items():
+            actual = getattr(receipt, field, object())
+            if getattr(actual, "value", actual) != getattr(wanted, "value", wanted):
+                raise ContractStoreError("birth_receipt_binding_invalid", field)
+        observed = getattr(receipt, "admission_context_id", None)
+        if getattr(observed, "value", observed) != context_identifier:
+            raise ContractStoreError("birth_receipt_v2_context_conflict")
+        return receipt
+
+    verified(encoded)
+    with catalog_admission_lock(store_root=root, timeout=lock_timeout):
+        with _writer_lock(ref.contract_id, store_root=root, timeout=lock_timeout):
+            contract_dir = _existing_contract_directory(ref.contract_id, store_root=root)
+            if _read_current_optional(contract_dir) != generation_identifier:
+                raise ContractStoreError("birth_reattestation_current_changed")
+            current = _load_revision(
+                ref, generation_identifier, trusted_publics=trusted, store_root=root,
+            )
+            if not isinstance(current, VerifiedManifest):
+                raise ContractStoreError("birth_reattestation_current_invalid")
+            receipt_path = _birth_receipt_path_v2(
+                contract_dir, generation_identifier, context_identifier,
+            )
+            if receipt_path.exists() or _is_link_like(receipt_path):
+                existing = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+                verified(existing)
+                if existing != encoded:
+                    raise ContractStoreError("birth_reattestation_receipt_conflict")
+                return existing
+            _record_productive_audit(root, _auditable_event({
+                "event": "contract_reattestation_receipt_v2_authorized",
+                "operation": "persist_current_reattestation_receipt_v2",
+                "contract_id": ref.contract_id.value,
+                "generation_id": generation_identifier,
+                "admission_context_id": context_identifier,
+            }))
+            for directory in (receipt_path.parent.parent, receipt_path.parent):
+                if directory.exists():
+                    _require_plain_directory(
+                        directory, code="birth_receipt_store_invalid",
+                    )
+                    _require_no_link_components(
+                        directory, code="birth_receipt_store_invalid",
+                    )
+                else:
+                    directory.mkdir(mode=0o700)
+                    _sync_directory(directory.parent)
+            _atomic_replace_file(
+                receipt_path, encoded, replace_timeout=replace_timeout, mode=0o600,
+            )
+            reread = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+            if reread != encoded:
+                raise ContractStoreError("birth_receipt_reread_mismatch")
+            verified(reread)
+            if _read_current_optional(contract_dir) != generation_identifier:
+                raise ContractStoreError("birth_reattestation_current_changed")
+            return reread
+
+
+def read_current_birth_receipt_v2(
+    ref: ManifestRef,
+    *,
+    request: object,
+    trusted_publics: Iterable[TrustedPublic],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+) -> bytes | None:
+    """Read the V2 receipt for one exact triple, with no fallback to V1.
+
+    ``None`` means this generation has no receipt in the selected context.  It
+    never means "use the historical one": the V1 reader stays separate and is
+    reached only by asking for it.
+    """
+    generation_identifier, context_identifier = _sealed_v2_triple(ref, request)
+    _validate_manifest_ref(ref)
+    trusted = _trusted_public_tuple(trusted_publics)
+    root = _store_root(store_root)
+    with catalog_admission_lock(store_root=root, timeout=lock_timeout):
+        with _writer_lock(ref.contract_id, store_root=root, timeout=lock_timeout):
+            contract_dir = _existing_contract_directory(ref.contract_id, store_root=root)
+            if _read_current_optional(contract_dir) != generation_identifier:
+                raise ContractStoreError("birth_reattestation_current_changed")
+            current = _load_revision(
+                ref, generation_identifier, trusted_publics=trusted, store_root=root,
+            )
+            if not isinstance(current, VerifiedManifest):
+                raise ContractStoreError("birth_reattestation_current_invalid")
+            path = _birth_receipt_path_v2(
+                contract_dir, generation_identifier, context_identifier,
+            )
+            if not path.exists() and not _is_link_like(path):
+                return None
+            return _read_regular_file(path, code="birth_receipt_invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class CurrentReceiptEntry:
+    contract_id: str
+    generation_id: str
+    receipt_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class CurrentReceiptProof:
+    """Ordered identities and hashes of every current V2 receipt.
+
+    The coordinator binds these in the F4 certificate, so a count alone is not
+    a proof: each identity travels with the hash of the exact bytes that were
+    read back.  ``admission_context_id`` is a single value because a transition
+    has exactly one selected context.
+    """
+
+    admission_context_id: str
+    entries: tuple[CurrentReceiptEntry, ...]
+
+
+def current_receipt_proof(
+    pairs: Iterable[tuple[ManifestRef, object]],
+    *,
+    trusted_publics: Iterable[TrustedPublic],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+) -> CurrentReceiptProof:
+    """Read back every current V2 receipt and order the proof deterministically.
+
+    A generation without a receipt in the selected context is an error, not an
+    empty success: the transition must have reattested every current
+    generation.  Every pair must name the same context, which is the single
+    selector rule stated by the protocol.
+    """
+    collected: dict[tuple[str, str], CurrentReceiptEntry] = {}
+    context: str | None = None
+    for ref, request in pairs:
+        generation_identifier, context_identifier = _sealed_v2_triple(ref, request)
+        if context is None:
+            context = context_identifier
+        elif context != context_identifier:
+            raise ContractStoreError("birth_receipt_v2_context_conflict", "proof")
+        encoded = read_current_birth_receipt_v2(
+            ref, request=request, trusted_publics=trusted_publics,
+            store_root=store_root, lock_timeout=lock_timeout,
+        )
+        if encoded is None:
+            raise ContractStoreError(
+                "birth_receipt_v2_missing", ref.contract_id.value,
+            )
+        key = (ref.contract_id.value, generation_identifier)
+        entry = CurrentReceiptEntry(
+            key[0], key[1], admission_receipt_hash(encoded),
+        )
+        previous = collected.get(key)
+        if previous is not None and previous != entry:
+            raise ContractStoreError("birth_receipt_v2_duplicate", key[0])
+        collected[key] = entry
+    if context is None:
+        raise ContractStoreError("birth_receipt_v2_missing", "empty inventory")
+    ordered = tuple(
+        collected[key] for key in sorted(
+            collected, key=lambda item: (
+                item[0].encode("utf-8"), item[1].encode("utf-8"),
+            ),
+        )
+    )
+    return CurrentReceiptProof(context, ordered)
+
+
 def authenticate_execution_binding(
     contract_id: ContractId,
     generation_identifier: str,
