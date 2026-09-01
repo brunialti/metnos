@@ -3,6 +3,8 @@
 The V2 coordinator must never expose an empty committed transaction directory.
 This probe interrupts its unpublished staging directory before the first
 record, then measures whether the resolver and the writer agree on recovery.
+Case 3 guards the shape of the remedy: an empty published directory must stay
+refused by both halves, so the window is never closed by relaxing the reader.
 
 Exit codes: 0 the window is closed, 1 the asymmetry is present, 2 the probe
 could not run and says why.
@@ -118,11 +120,40 @@ def principale() -> int:
         presa2.__exit__(None, None, None)
 
         print()
+        print("caso 3 — cartella pubblicata ma vuota, fatta a mano")
+        presa3, sessione3, radice3, cartella3, rivendicazione3, atto3 = _scena(
+            base / "c",
+        )
+        finta = cartella3 / "transactions-v2" / rivendicazione3.request_id
+        finta.mkdir(mode=0o755, parents=True)
+        os.chmod(finta.parent, 0o755)
+        lettore3 = _misura(
+            "lettore            ",
+            lambda: _resolve_ownership_coordinator_locked_for_test_v2(
+                sessione3, radice3,
+            ),
+        )
+        scrittore3 = _misura(
+            "scrittore          ",
+            lambda: _append_ownership_transaction_locked_for_test_v2(
+                sessione3, radice3, atto3,
+            ),
+        )
+        presa3.__exit__(None, None, None)
+
+        print()
+        if lettore3 != "rifiuta" or scrittore3 != "rifiuta":
+            print("ESITO: una cartella pubblicata e vuota non e' piu' rifiutata")
+            print("da entrambe le meta'. La finestra e' stata chiusa cedendo sul")
+            print("lettore invece che sulla pubblicazione: uno svuotamento dopo")
+            print("il fatto tornerebbe indistinguibile da un inizio mai avvenuto.")
+            return 1
         if comune != "accetta":
             print("ESITO: anche la cartella comune vuota blocca il lettore.")
             return 1
         if lettore == "accetta" and scrittore == "accetta" and dopo == "accetta":
-            print("ESITO: finestra chiusa — staging e pubblicazione concordano.")
+            print("ESITO: finestra chiusa — staging e pubblicazione concordano,")
+            print("e una cartella pubblicata e vuota resta rifiutata da entrambi.")
             return 0
         if lettore == "rifiuta" and scrittore == "accetta" and dopo == "accetta":
             print("ESITO: ASIMMETRIA — il lettore rifiuta uno stato che lo")
