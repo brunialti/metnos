@@ -6,11 +6,14 @@ without importing the runtime that wrote it. The two copies must therefore
 agree exactly — the preflight demands set equality on the keys.
 
 This probe encodes real records with the runtime and offers them to the
-preflight decoder. The named guard test for this property currently dies with
-a TypeError before it can judge, so nothing else measures it.
+preflight decoder, then tampers one field at a time and requires the two
+decoders to give the SAME verdict. Matching key sets are not enough: a gate
+that accepts a field without checking it is worse than one that rejects it,
+and a gate that is stricter than the runtime refuses journals the runtime
+considers valid.
 
-Exit codes: 0 the preflight reads every record, 1 it rejects one, 2 the probe
-could not run and says why.
+Exit codes: 0 the two agree everywhere, 1 they disagree, 2 the probe could not
+run and says why.
 """
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ os.environ.setdefault("METNOS_INSTALL_ROOT", str(RADICE))
 
 try:
     import executor_birth_admin_preflight as PREVOLO
+    import executor_birth_ownership_coordinator as COORDINATORE
     import test_executor_birth_ownership_coordinator_v2 as AIUTI
     from executor_birth_ownership_coordinator import _RECORD_KEYS_V2
 except Exception as errore:  # noqa: BLE001
@@ -70,7 +74,52 @@ def principale() -> int:
             rifiutati.append(atto.sequence)
             continue
         print(f"  atto {atto.sequence}  letto")
+    # Same record, one field falsified at a time: the two must agree.
+    import json
+
     print()
+    print("stesso atto, un campo falsificato per volta:")
+    discordi = []
+    atto = atti[-1]
+    valore = json.loads(atto.encode().decode("ascii"))
+    for campo, falso in (
+        ("target_set_id", "z" * 64),
+        ("target_context_epoch", "non-un-digest"),
+        ("provisioning_transaction_id", "0" * 31),
+        ("current_inventory_hash", "sha256:" + "0" * 64),
+        ("context_transition_id", "sha256:" + "e" * 64),
+        ("previous_set_id", "1" * 63),
+        ("target_admission_context_id", ""),
+        ("previous_context_epoch", None),
+    ):
+        modificato = dict(valore)
+        modificato[campo] = falso
+        try:
+            codificato = COORDINATORE._canonical(modificato)
+        except Exception:  # noqa: BLE001 - a value the encoder cannot frame
+            print(f"  {campo:30} non codificabile, salto")
+            continue
+        esiti = []
+        for decodifica in (
+            COORDINATORE._decode_record_v2, PREVOLO._decode_coordinator_record_v2,
+        ):
+            try:
+                decodifica(codificato)
+                esiti.append("accetta")
+            except Exception:  # noqa: BLE001
+                esiti.append("rifiuta")
+        concordi = esiti[0] == esiti[1]
+        print(f"  {campo:30} runtime {esiti[0]}, preflight {esiti[1]}"
+              f"{'' if concordi else '   DISCORDI'}")
+        if not concordi:
+            discordi.append(campo)
+
+    print()
+    if discordi:
+        print("ESITO: i due giudici non concordano su:", ", ".join(discordi))
+        print("Il cancello autonomo deve dire quello che dice il runtime, non")
+        print("di piu' e non di meno.")
+        return 1
     if rifiutati:
         print(f"ESITO: il preflight rifiuta {len(rifiutati)} atti su {len(atti)}")
         print("che il runtime scrive davvero. Le due copie dello schema si")
