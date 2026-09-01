@@ -295,6 +295,16 @@ class LoadedServiceCatalogV1:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class _BuiltServiceCatalogV1:
+    """Canonical catalog bytes and the unit fragments derived from them."""
+
+    encoded: bytes
+    catalog_id: str
+    service_coverage_hash: str
+    unit_fragments: tuple[tuple[str, bytes], ...]
+
+
 def _user_unit(legacy_id: str, locator: str) -> LegacySourceBindingV1:
     return LegacySourceBindingV1(legacy_id, "user_unit", "user", locator)
 
@@ -347,6 +357,7 @@ _TARGET_DATA_ENVIRONMENT_V1 = _target_environment(
     ("METNOS_USER_CONFIG", "@service_config@"),
     ("METNOS_USER_DATA", "@service_data@"),
     ("METNOS_USER_STATE", "@service_state@"),
+    ("METNOS_WORKSPACE", "@service_data@/workspace"),
 )
 
 
@@ -2292,11 +2303,19 @@ def _source_identity(
         for environment in observed_by_id[source.entry_id].target_environment
         if environment.name == "METNOS_USER_DATA"
     }
+    workspace_paths = {
+        environment.value
+        for source in SERVICE_SOURCE_V1
+        for environment in observed_by_id[source.entry_id].target_environment
+        if environment.name == "METNOS_WORKSPACE"
+    }
     data_suffix = "/.local/share/metnos"
     if (
         len(data_paths) != 1
         or not next(iter(data_paths)).endswith(data_suffix)
         or next(iter(data_paths)) == data_suffix
+        or workspace_paths
+        != {next(iter(data_paths)) + "/workspace"}
     ):
         raise ServiceCatalogError(
             "birth_ownership_service_catalog_invalid", "service home binding",
@@ -2341,39 +2360,100 @@ def _source_identity(
         )
 
 
-def load_service_catalog_v1(record: object) -> LoadedServiceCatalogV1:
-    """Reattest the fixed live release and reread its catalog and units.
+def _build_service_catalog_v1(
+    *, installation_root: str, python_executable: str, service_user: str,
+    service_gid: int, service_supplementary_gids: tuple[int, ...],
+    service_home: str, systemctl_executable: str,
+    target_executables: tuple[tuple[str, bytes], ...],
+) -> _BuiltServiceCatalogV1:
+    """Compile the fixed service source against exact executable bytes.
 
-    The result is deliberately observational.  G6-C must add the prerequisite,
-    executable and effective-systemd checks before it can authorize a launch.
+    Callers supply only the closed runtime facts.  Entry coverage, legacy
+    bindings, unit fragments and target identities remain derived here from
+    ``SERVICE_SOURCE_V1``; no caller can add or remove a catalog entry.
     """
-    import sys
+    if type(target_executables) is not tuple or any(
+        type(item) is not tuple or len(item) != 2
+        or type(item[0]) is not str or type(item[1]) is not bytes
+        for item in target_executables
+    ):
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "target bytes",
+        )
+    target_content = dict(target_executables)
+    if len(target_content) != len(target_executables):
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "target coverage",
+        )
+    base_context = _SourceCompileContextV1(
+        installation_root, python_executable, service_user, service_gid,
+        service_supplementary_gids, service_home, systemctl_executable, (),
+    )
+    by_id = {item.entry_id: item for item in SERVICE_SOURCE_V1}
+    resolved_targets: list[tuple[str, str]] = []
+    expected_paths: set[str] = set()
+    for source in SERVICE_SOURCE_V1:
+        recipe = source.target_recipe
+        if recipe.execution_kind == "none":
+            continue
+        if recipe.target_executable is None:
+            raise ServiceCatalogError(
+                "birth_ownership_service_catalog_invalid", "source target",
+            )
+        executable = _resolve_recipe_value_v1(
+            recipe.target_executable, base_context, by_id,
+        )
+        expected_paths.add(executable)
+        try:
+            content = target_content[executable]
+        except KeyError as exc:
+            raise ServiceCatalogError(
+                "birth_ownership_service_catalog_invalid", "target coverage",
+            ) from exc
+        resolved_targets.append((
+            source.entry_id, target_executable_hash_v1(executable, content),
+        ))
+    if set(target_content) != expected_paths:
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "target coverage",
+        )
+    entries = _compile_service_source_v1(_SourceCompileContextV1(
+        installation_root, python_executable, service_user, service_gid,
+        service_supplementary_gids, service_home, systemctl_executable,
+        tuple(resolved_targets),
+    ))
+    legacy = tuple(ServiceLegacyBindingV1(
+        str(item["legacy_id"]), str(item["entry_id"]), str(item["kind"]),
+        str(item["scope"]), str(item["locator"]), str(item["disposition"]),
+    ) for item in legacy_bindings_from_source_v1())
+    encoded = _encode_service_catalog_v1(entries, legacy)
+    decoded = decode_service_catalog_v1(encoded)
+    _source_identity(decoded, installation_root)
+    fragments = tuple(sorted((
+        (str(item.unit_name), render_unit_spec_v1(
+            str(item.unit_name), item.unit_spec,
+        ))
+        for item in decoded.entries if item.unit_spec is not None
+    ), key=lambda item: item[0].encode("utf-8")))
+    return _BuiltServiceCatalogV1(
+        encoded, decoded.catalog_id, decoded.service_coverage_hash, fragments,
+    )
 
-    if not sys.platform.startswith("linux"):
-        raise ServiceCatalogError("birth_ownership_platform_unsupported")
+
+def _load_verified_service_catalog_v1(verified: object) -> LoadedServiceCatalogV1:
+    """Reread the catalog and every fragment from one verified fixed release."""
     from executor_birth_distribution_manifest import (
-        AuthenticatedDistributionRecordV1,
         DistributionFile,
         VerifiedDistribution,
         _secure_read,
         file_content_hash,
-        verify_installed_distribution_record_v1,
     )
 
-    if type(record) is not AuthenticatedDistributionRecordV1:
-        raise ServiceCatalogError(
-            "birth_ownership_service_catalog_invalid", "authenticated record",
-        )
-    verified = verify_installed_distribution_record_v1(record)
     if type(verified) is not VerifiedDistribution:
         raise ServiceCatalogError(
             "birth_ownership_service_catalog_invalid", "verified distribution",
         )
     root = PurePosixPath(verified.installation_root)
-    if root.as_posix() != record.installation_root:
-        raise ServiceCatalogError(
-            "birth_ownership_service_catalog_invalid", "installation root",
-        )
     catalog_files = [
         item for item in verified.files
         if item.path == CATALOG_PATH_V1 and item.role == "service_catalog"
@@ -2427,7 +2507,71 @@ def load_service_catalog_v1(record: object) -> LoadedServiceCatalogV1:
     )
 
 
+def load_service_catalog_v1(record: object) -> LoadedServiceCatalogV1:
+    """Reattest an authenticated record and reread its catalog and units."""
+    import sys
+
+    if not sys.platform.startswith("linux"):
+        raise ServiceCatalogError("birth_ownership_platform_unsupported")
+    from executor_birth_distribution_manifest import (
+        AuthenticatedDistributionRecordV1, VerifiedDistribution,
+        verify_installed_distribution_record_v1,
+    )
+
+    if type(record) is not AuthenticatedDistributionRecordV1:
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "authenticated record",
+        )
+    verified = verify_installed_distribution_record_v1(record)
+    if (
+        type(verified) is not VerifiedDistribution
+        or verified.installation_root != record.installation_root
+    ):
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "installation root",
+        )
+    return _load_verified_service_catalog_v1(verified)
+
+
+def capture_current_service_catalog_v1(
+    distribution: object,
+) -> LoadedServiceCatalogV1:
+    """Reverify one sealed current release around an exact catalog capture."""
+    import sys
+
+    if not sys.platform.startswith("linux"):
+        raise ServiceCatalogError("birth_ownership_platform_unsupported")
+    from executor_birth_distribution_manifest import (
+        is_verified_distribution,
+        verify_current_installation_distribution_v1,
+    )
+
+    if not is_verified_distribution(distribution):
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "verified artifact",
+        )
+    verified = verify_current_installation_distribution_v1(
+        distribution.encoded, distribution.signature,
+    )
+    if verified != distribution:
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "distribution changed",
+        )
+    loaded = _load_verified_service_catalog_v1(verified)
+    repeated = verify_current_installation_distribution_v1(
+        verified.encoded, verified.signature,
+    )
+    if repeated != verified:
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "distribution changed",
+        )
+    return loaded
+
+
 _validate_service_source_v1()
 
 
-__all__ = ["load_service_catalog_v1"]
+__all__ = [
+    "capture_current_service_catalog_v1",
+    "load_service_catalog_v1",
+]

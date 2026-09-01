@@ -279,6 +279,26 @@ def test_distribution_signing_surface_remains_private():
     } & set(authority_module.__all__)
 
 
+def test_root_authority_recognizer_rejects_subclasses_and_rebound_keys():
+    keys = tuple(Ed25519PrivateKey.generate() for _ in range(3))
+    authorities = authority_module._root_ownership_authorities_for_test(*keys)
+    assert authority_module.is_root_ownership_authorities_v1(authorities)
+
+    class LookAlike(authority_module.RootOwnershipAuthoritiesV1):
+        def __post_init__(self) -> None:
+            return None
+
+    look_alike = LookAlike(
+        authorities.public, *keys, None,
+    )
+    assert not authority_module.is_root_ownership_authorities_v1(look_alike)
+
+    object.__setattr__(
+        authorities, "cutover_private", Ed25519PrivateKey.generate(),
+    )
+    assert not authority_module.is_root_ownership_authorities_v1(authorities)
+
+
 @pytest.mark.parametrize("kind", ["distribution", "cutover", "head"])
 def test_registry_codec_is_canonical_single_purpose_and_derived(kind):
     private = Ed25519PrivateKey.generate()

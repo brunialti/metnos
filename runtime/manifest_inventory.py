@@ -47,6 +47,15 @@ class ManifestLayout(str, Enum):
     STORE_ONLY = "store_only"
 
 
+_REPOSITORY_AUTHORING_ORIGINS = frozenset({
+    ManifestOrigin.CORE,
+    ManifestOrigin.BUILTIN,
+    ManifestOrigin.BUILTIN_SKILL,
+    ManifestOrigin.RETIRED,
+})
+_STORE_AUTHORING_RELATIVE = Path("contract-authoring") / "v1"
+
+
 class ManifestBootstrapError(RuntimeError):
     """Fail-closed error at the irreversible publication boundary."""
 
@@ -224,6 +233,38 @@ def default_manifest_sources() -> tuple[ManifestSource, ...]:
             allowed_code_roots=(_C.PATH_EXECUTORS / "_retired",),
         ),
     )
+
+
+def _store_authoring_sources(
+    sources: Iterable[ManifestSource],
+) -> tuple[ManifestSource, ...]:
+    """Rebase repository-owned authoring outside the immutable release.
+
+    Store-only readers authenticate code through the current generation, but
+    technical updates still need a recoverable canonical authoring tree.  A
+    closed release cannot be that tree: changing it would invalidate the
+    distribution at the next preflight.  User-owned origins are already
+    outside the release and retain their existing roots.
+    """
+    result: list[ManifestSource] = []
+    for source in sources:
+        if source.origin not in _REPOSITORY_AUTHORING_ORIGINS:
+            result.append(source)
+            continue
+        root = (
+            _C.PATH_USER_STATE / _STORE_AUTHORING_RELATIVE
+            / source.origin.value
+        )
+        result.append(ManifestSource(
+            source.origin,
+            root,
+            min_depth=source.min_depth,
+            max_depth=source.max_depth,
+            default_status=source.default_status,
+            skill_scoped=source.skill_scoped,
+            allowed_code_roots=(root,),
+        ))
+    return tuple(result)
 
 
 def _publication_paths(
@@ -516,7 +557,8 @@ def inventory_store_manifests(
     manifest content after cutover.
     """
     selected_sources = (
-        default_manifest_sources() if sources is None else tuple(sources)
+        _store_authoring_sources(default_manifest_sources())
+        if sources is None else tuple(sources)
     )
     if binding_reader is None:
         from contract_store import read_binding as binding_reader

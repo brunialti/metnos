@@ -1799,6 +1799,110 @@ def _receive_source_with_test_session_v1(
     )
 
 
+def _load_received_source_locked_core_v1(
+    source_id: object, session: object, *,
+    test_ownership_root: Path | None = None,
+) -> ReceivedSourceV1:
+    """Reread one exact received source while the deployment lock is held."""
+    _require_linux_v1()
+    from executor_birth_ownership_coordinator import (
+        _DeploymentLockSessionForTestV1, _DeploymentLockSessionV1,
+        _require_deployment_lock_session_v1,
+        _require_test_deployment_lock_session_v1,
+    )
+
+    if type(source_id) is not str or _SOURCE_ID_RE.fullmatch(source_id) is None:
+        raise _fail("birth_ownership_deployment_invalid", "source id")
+    if type(session) is _DeploymentLockSessionV1:
+        if test_ownership_root is not None:
+            raise _fail("birth_ownership_deployment_unsafe", "productive root")
+        ownership_root = DEFAULT_OWNERSHIP_ROOT_V1
+        owner = (0, 0)
+
+        def require_session() -> None:
+            _require_deployment_lock_session_v1(session)
+    elif type(session) is _DeploymentLockSessionForTestV1:
+        if not isinstance(test_ownership_root, Path):
+            raise _fail("birth_ownership_deployment_unsafe", "test root")
+        ownership_root = test_ownership_root
+        owner = (os.geteuid(), os.getegid())
+
+        def require_session() -> None:
+            _require_test_deployment_lock_session_v1(session, ownership_root)
+    else:
+        _require_deployment_lock_session_v1(session)
+        raise AssertionError("unreachable")
+
+    require_session()
+    ownership_descriptors: list[int] = []
+    incoming_fd: int | None = None
+    sources_fd: int | None = None
+    source_fd: int | None = None
+    try:
+        try:
+            ownership_descriptors, ownership_parts = _open_absolute_directory_v1(
+                _source_path_grammar_v1(str(ownership_root)),
+            )
+        except DistributionAssemblerError as exc:
+            raise _fail(
+                "birth_ownership_recovery_required", "ownership root",
+            ) from exc
+        ownership_fd = ownership_descriptors[-1]
+        _require_plain_directory_fd_v1(ownership_fd, owner=owner, mode=0o755)
+        _require_absolute_chain_bound_v1(
+            ownership_descriptors, ownership_parts, detail="ownership root",
+        )
+        incoming_fd = _open_child_directory_v1(
+            ownership_fd, INCOMING_DIRECTORY_BASENAME_V1,
+        )
+        _require_plain_directory_fd_v1(incoming_fd, owner=owner, mode=0o755)
+        sources_fd = _open_child_directory_v1(
+            incoming_fd, SOURCES_DIRECTORY_BASENAME_V1,
+        )
+        _require_plain_directory_fd_v1(sources_fd, owner=owner, mode=0o755)
+        _require_initial_namespaces_v1(incoming_fd, sources_fd, owner=owner)
+        source_fd, record, _identity_value = _open_received_tree_at_v1(
+            sources_fd, source_id, owner=owner, expected_record=None,
+        )
+        if record.source_id != source_id:
+            raise _fail("birth_ownership_recovery_required", "source binding")
+        require_session()
+        _require_absolute_chain_bound_v1(
+            ownership_descriptors, ownership_parts, detail="ownership root",
+        )
+        return record
+    except DistributionAssemblerError:
+        raise
+    except OSError as exc:
+        raise _fail(
+            "birth_ownership_recovery_required", "received source",
+        ) from exc
+    finally:
+        if source_fd is not None:
+            os.close(source_fd)
+        if sources_fd is not None:
+            os.close(sources_fd)
+        if incoming_fd is not None:
+            os.close(incoming_fd)
+        for descriptor in reversed(ownership_descriptors):
+            os.close(descriptor)
+
+
+def _load_received_source_with_product_session_v1(
+    source_id: object, session: object,
+) -> ReceivedSourceV1:
+    return _load_received_source_locked_core_v1(source_id, session)
+
+
+def _load_received_source_with_test_session_v1(
+    source_id: object, ownership_root: Path, session: object,
+) -> ReceivedSourceV1:
+    root = Path(ownership_root)
+    return _load_received_source_locked_core_v1(
+        source_id, session, test_ownership_root=root,
+    )
+
+
 def _receive_source_v1(source: object, service_user: object) -> str:
     """Receive one source into the fixed productive content-addressed root."""
     _require_linux_v1()

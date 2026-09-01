@@ -118,6 +118,75 @@ def _encoded(*, installation_root: str = "/opt/metnos") -> bytes:
     )
 
 
+def _target_bytes(installation_root: str = "/opt/metnos"):
+    paths = (
+        _PYTHON, _SYSTEMCTL, "/usr/bin/java", "/usr/bin/Xvfb",
+        installation_root + "/runtime/bin/llama-server",
+    )
+    return tuple((path, ("target:" + path).encode("ascii")) for path in paths)
+
+
+def test_public_builder_derives_the_fixed_catalog_and_all_unit_fragments() -> None:
+    installation_root = "/opt/metnos"
+    target_bytes = _target_bytes(installation_root)
+    built = catalog._build_service_catalog_v1(
+        installation_root=installation_root, python_executable=_PYTHON,
+        service_user="metnos", service_gid=1000,
+        service_supplementary_gids=(1000,), service_home="/srv/metnos",
+        systemctl_executable=_SYSTEMCTL, target_executables=target_bytes,
+    )
+    content = dict(target_bytes)
+    context = _context(
+        installation_root=installation_root, supplementary_gids=(1000,),
+    )
+    by_id = {item.entry_id: item for item in catalog.SERVICE_SOURCE_V1}
+    hashes = []
+    for source in catalog.SERVICE_SOURCE_V1:
+        recipe = source.target_recipe
+        if recipe.execution_kind == "none":
+            continue
+        path = catalog._resolve_recipe_value_v1(
+            str(recipe.target_executable), context, by_id,
+        )
+        hashes.append((
+            source.entry_id,
+            catalog.target_executable_hash_v1(path, content[path]),
+        ))
+    expected_entries = catalog._compile_service_source_v1(
+        catalog._SourceCompileContextV1(
+            installation_root, _PYTHON, "metnos", 1000, (1000,),
+            "/srv/metnos", _SYSTEMCTL, tuple(hashes),
+        )
+    )
+    expected_encoded = catalog._encode_service_catalog_v1(
+        expected_entries, _legacy(),
+    )
+    assert built.encoded == expected_encoded
+    decoded = catalog.decode_service_catalog_v1(built.encoded)
+    assert built.catalog_id == decoded.catalog_id
+    assert built.service_coverage_hash == decoded.service_coverage_hash
+    assert dict(built.unit_fragments) == {
+        str(item.unit_name): catalog.render_unit_spec_v1(
+            str(item.unit_name), item.unit_spec,
+        )
+        for item in decoded.entries if item.unit_spec is not None
+    }
+
+
+@pytest.mark.parametrize("targets", (
+    _target_bytes()[:-1],
+    _target_bytes() + (("/usr/bin/unexpected", b"extra"),),
+))
+def test_public_builder_refuses_incomplete_or_extra_target_bytes(targets) -> None:
+    with pytest.raises(catalog.ServiceCatalogError, match="target coverage"):
+        catalog._build_service_catalog_v1(
+            installation_root="/opt/metnos", python_executable=_PYTHON,
+            service_user="metnos", service_gid=1000,
+            service_supplementary_gids=(1000,), service_home="/srv/metnos",
+            systemctl_executable=_SYSTEMCTL, target_executables=targets,
+        )
+
+
 def _reidentify(value: dict[str, object]) -> bytes:
     value["catalog_id"] = catalog._catalog_id(value)
     return catalog._canonical(value)
@@ -212,6 +281,7 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
     }
     assert discovered_entrypoints & store_entrypoints == {
         "install/executor_birth_source_receiver.py",
+        "install/executor_birth_transition.py",
     }
     assert discovered_entrypoints <= repository_bindings | store_entrypoints
     assert repository_bindings - discovered_entrypoints == (
@@ -418,6 +488,7 @@ def test_source_compiler_binds_targets_environment_and_supplementary_groups() ->
         "METNOS_USER_CONFIG": "/srv/metnos/.config/metnos",
         "METNOS_USER_DATA": "/srv/metnos/.local/share/metnos",
         "METNOS_USER_STATE": "/srv/metnos/.local/state/metnos",
+        "METNOS_WORKSPACE": "/srv/metnos/.local/share/metnos/workspace",
         "PLAYWRIGHT_BROWSERS_PATH": (
             "/srv/metnos/.local/share/metnos/playwright-browsers"
         ),
@@ -688,7 +759,10 @@ def test_source_identity_rejects_target_recipe_change() -> None:
 
 
 def test_public_surface_contains_only_product_loader() -> None:
-    assert catalog.__all__ == ["load_service_catalog_v1"]
+    assert catalog.__all__ == [
+        "capture_current_service_catalog_v1",
+        "load_service_catalog_v1",
+    ]
 
 
 def test_target_change_changes_catalog_but_not_unit_fragments() -> None:
@@ -787,6 +861,51 @@ def test_product_loader_reattests_fixed_record_and_rereads_bound_units(monkeypat
     )
     with pytest.raises(catalog.ServiceCatalogError, match="artifact hash"):
         catalog.load_service_catalog_v1(record)
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="productive loader is Linux-only")
+def test_current_loader_reverifies_the_sealed_release_around_capture(
+    monkeypatch,
+) -> None:
+    _record, verified, content = _nominal_live_record(monkeypatch)
+    import executor_birth_distribution_manifest as distribution
+
+    calls = []
+
+    def verify(encoded, signature):
+        calls.append((encoded, signature))
+        return verified
+
+    monkeypatch.setattr(
+        distribution, "verify_current_installation_distribution_v1", verify,
+    )
+    loaded = catalog.capture_current_service_catalog_v1(verified)
+
+    assert calls == [
+        (verified.encoded, verified.signature),
+        (verified.encoded, verified.signature),
+    ]
+    assert loaded.catalog.encoded == content[catalog.CATALOG_PATH_V1]
+    assert dict(loaded.unit_fragments) == {
+        path.removeprefix("deployment/systemd/"): value
+        for path, value in content.items() if path != catalog.CATALOG_PATH_V1
+    }
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="productive loader is Linux-only")
+def test_current_loader_rejects_an_unsealed_distribution_before_verification(
+    monkeypatch,
+) -> None:
+    import executor_birth_distribution_manifest as distribution
+
+    called = []
+    monkeypatch.setattr(
+        distribution, "verify_current_installation_distribution_v1",
+        lambda *_args: called.append(True),
+    )
+    with pytest.raises(catalog.ServiceCatalogError, match="verified artifact"):
+        catalog.capture_current_service_catalog_v1(object())
+    assert called == []
 
 
 def test_product_loader_rejects_wrong_type_or_off_linux_before_authority(monkeypatch) -> None:

@@ -19,15 +19,20 @@ from __future__ import annotations
 
 import hashlib
 import threading
-from dataclasses import dataclass
+import weakref
+from dataclasses import dataclass, field
 
 
 DOMINANT_STARTUP_DOMAIN_V1 = b"metnos.executor-birth.dominant-startup/v1\0"
+DOMINANT_STARTUP_RECEIPT_DOMAIN_V1 = (
+    b"metnos.executor-birth.dominant-startup-receipt/v1\0"
+)
 
 _CAPABILITY_SEAL_V1 = object()
 _TEST_CAPABILITY_SEAL_V1 = object()
+_RECEIPT_SEAL_V1 = object()
 _CONSUMED_GUARD_V1 = threading.Lock()
-_CONSUMED_CAPABILITIES_V1: set[int] = set()
+_CONSUMED_CAPABILITIES_V1: weakref.WeakSet[object] = weakref.WeakSet()
 
 
 class DominantStartupError(RuntimeError):
@@ -65,13 +70,15 @@ class DominantStartupBindingsV1:
 
     request_id: str
     previous_head_digest: str
+    context_transition_id: str
     catalog_id: str
     effective_topology_hash: str
     enforcement_evidence_digest: str
 
     def __post_init__(self) -> None:
         for field in (
-            "request_id", "previous_head_digest", "catalog_id",
+            "request_id", "previous_head_digest", "context_transition_id",
+            "catalog_id",
             "effective_topology_hash", "enforcement_evidence_digest",
         ):
             _require_digest_v1(getattr(self, field), field)
@@ -84,7 +91,8 @@ def bindings_digest_v1(bindings: DominantStartupBindingsV1) -> str:
     digest = hashlib.sha256(DOMINANT_STARTUP_DOMAIN_V1)
     for field in (
         bindings.request_id, bindings.previous_head_digest,
-        bindings.catalog_id, bindings.effective_topology_hash,
+        bindings.context_transition_id, bindings.catalog_id,
+        bindings.effective_topology_hash,
         bindings.enforcement_evidence_digest,
     ):
         encoded = field.encode("ascii")
@@ -101,7 +109,9 @@ class _DominantStartupInstalledV1:
     process performing it.
     """
 
-    __slots__ = ("_bindings", "_digest", "_sessions", "_seal")
+    __slots__ = (
+        "_bindings", "_digest", "_sessions", "_seal", "__weakref__",
+    )
 
     def __init__(
         self, bindings: object, sessions: object, seal: object,
@@ -186,17 +196,19 @@ def consume_v1(
         raise _invalid("dominant_startup_binding_drift")
     _require_live_sessions_v1(capability._sessions)
     with _CONSUMED_GUARD_V1:
-        if id(capability) in _CONSUMED_CAPABILITIES_V1:
+        if capability in _CONSUMED_CAPABILITIES_V1:
             raise _invalid("dominant_startup_capability_spent")
-        _CONSUMED_CAPABILITIES_V1.add(id(capability))
+        _CONSUMED_CAPABILITIES_V1.add(capability)
     return capability._digest
 
 
 __all__ = [
     "DOMINANT_STARTUP_DOMAIN_V1",
+    "DOMINANT_STARTUP_RECEIPT_DOMAIN_V1",
     "DominantStartupBindingsV1",
     "DominantStartupError",
     "bindings_digest_v1",
+    "dominant_startup_receipt_v1",
 ]
 
 
@@ -204,12 +216,96 @@ __all__ = [
 class DominantStartupReceiptV1:
     """What the crossing actually consumed, re-read and agreed twice."""
 
+    bindings: DominantStartupBindingsV1
     bindings_digest: str
     retirement_plan_digest: str
     enforcement_evidence_digest: str
+    dominant_startup_receipt: str
+    _seal: object = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _RECEIPT_SEAL_V1
+            or type(self.bindings) is not DominantStartupBindingsV1
+            or self.bindings_digest != bindings_digest_v1(self.bindings)
+            or self.enforcement_evidence_digest
+            != self.bindings.enforcement_evidence_digest
+            or self.dominant_startup_receipt != dominant_startup_receipt_v1(
+                self.bindings_digest,
+                self.retirement_plan_digest,
+                self.enforcement_evidence_digest,
+            )
+        ):
+            raise _invalid("dominant_startup_receipt_invalid")
 
 
-def complete_dominant_startup_v1(
+def dominant_startup_receipt_v1(
+    bindings_digest: str,
+    retirement_plan_digest: str,
+    enforcement_evidence_digest: str,
+) -> str:
+    """Frame the three complete crossing facts in their required order."""
+    values = (
+        _require_digest_v1(bindings_digest, "bindings_digest"),
+        _require_digest_v1(
+            retirement_plan_digest,
+            "retirement_plan_digest",
+        ),
+        _require_digest_v1(
+            enforcement_evidence_digest,
+            "enforcement_evidence_digest",
+        ),
+    )
+    digest = hashlib.sha256(DOMINANT_STARTUP_RECEIPT_DOMAIN_V1)
+    for value in values:
+        encoded = value.encode("ascii")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def is_dominant_startup_receipt_v1(value: object) -> bool:
+    """Recognize only receipts minted after the private capability was spent."""
+    if type(value) is not DominantStartupReceiptV1:
+        return False
+    try:
+        return (
+            value._seal is _RECEIPT_SEAL_V1
+            and type(value.bindings) is DominantStartupBindingsV1
+            and value.bindings_digest == bindings_digest_v1(value.bindings)
+            and value.enforcement_evidence_digest
+            == value.bindings.enforcement_evidence_digest
+            and value.dominant_startup_receipt
+            == dominant_startup_receipt_v1(
+                value.bindings_digest,
+                value.retirement_plan_digest,
+                value.enforcement_evidence_digest,
+            )
+        )
+    except (AttributeError, DominantStartupError):
+        return False
+
+
+def _require_product_sessions_v1(sessions: object) -> tuple[object, ...]:
+    held = _require_live_sessions_v1(sessions)
+    from contract_cutover_guard import _require_maintenance_session_v1
+    from executor_birth_ownership_coordinator import (
+        _require_deployment_lock_session_v1,
+    )
+    from executor_birth_startup_gate import (
+        _require_exclusive_startup_gate_session_v1,
+    )
+
+    try:
+        _require_deployment_lock_session_v1(held[0])
+        _require_exclusive_startup_gate_session_v1(held[1])
+        _require_maintenance_session_v1(held[2])
+    except Exception as exc:
+        raise _invalid("dominant_startup_sessions_invalid", "product") from exc
+    return held
+
+
+def _complete_dominant_startup_core_v1(
     *,
     sessions: tuple[object, ...],
     observe_identity,
@@ -218,6 +314,7 @@ def complete_dominant_startup_v1(
     plan_retirement,
     observe_enforcement,
     cross,
+    require_sessions,
     _crash_seam=None,
 ) -> DominantStartupReceiptV1:
     """Compose the whole crossing in ONE call that never releases the locks.
@@ -235,26 +332,34 @@ def complete_dominant_startup_v1(
     """
     for observer in (
         observe_identity, observe_topology, observe_catalog, plan_retirement,
-        observe_enforcement, cross,
+        observe_enforcement, cross, require_sessions,
     ):
         if not callable(observer):
             raise _invalid("dominant_startup_observer_invalid")
-    held = _require_live_sessions_v1(sessions)
+    held = require_sessions(sessions)
 
-    topology = _require_digest_v1(observe_topology(), "effective_topology_hash")
+    identity = observe_identity()
+    if type(identity) is not tuple or len(identity) != 3:
+        raise _invalid("dominant_startup_binding_invalid", "identity")
     catalog = _require_digest_v1(observe_catalog(), "catalog_id")
-    retirement = _require_digest_v1(plan_retirement(), "retirement_plan_digest")
     enforcement = _require_digest_v1(
         observe_enforcement(), "enforcement_evidence_digest",
     )
-    identity = observe_identity()
-    if type(identity) is not tuple or len(identity) != 2:
-        raise _invalid("dominant_startup_binding_invalid", "identity")
-    request_id, previous_head = identity
+    retirement = _require_digest_v1(
+        plan_retirement(), "retirement_plan_digest",
+    )
+    topology = _require_digest_v1(
+        observe_topology(), "effective_topology_hash",
+    )
+    request_id, previous_head, context_transition_id = identity
     bindings = DominantStartupBindingsV1(
         request_id=_require_digest_v1(request_id, "request_id"),
         previous_head_digest=_require_digest_v1(
             previous_head, "previous_head_digest",
+        ),
+        context_transition_id=_require_digest_v1(
+            context_transition_id,
+            "context_transition_id",
         ),
         catalog_id=catalog,
         effective_topology_hash=topology,
@@ -265,16 +370,80 @@ def complete_dominant_startup_v1(
         _crash_seam("capability_minted")
 
     # The second reading. Same observers, same locks, no cached value.
+    require_sessions(held)
     if (
         observe_identity() != identity
-        or observe_topology() != topology
         or observe_catalog() != catalog
-        or plan_retirement() != retirement
         or observe_enforcement() != enforcement
+        or plan_retirement() != retirement
+        or observe_topology() != topology
     ):
         raise _invalid("dominant_startup_binding_drift", "second reading")
-    digest = consume_v1(capability, bindings)
+    require_sessions(held)
+    bindings_digest = consume_v1(capability, bindings)
     if _crash_seam:
         _crash_seam("capability_consumed")
-    cross(digest)
-    return DominantStartupReceiptV1(digest, retirement, enforcement)
+    receipt = DominantStartupReceiptV1(
+        bindings,
+        bindings_digest,
+        retirement,
+        enforcement,
+        dominant_startup_receipt_v1(
+            bindings_digest,
+            retirement,
+            enforcement,
+        ),
+        _RECEIPT_SEAL_V1,
+    )
+    cross(receipt)
+    return receipt
+
+
+def complete_dominant_startup_v1(
+    *,
+    sessions: tuple[object, ...],
+    observe_identity,
+    observe_topology,
+    observe_catalog,
+    plan_retirement,
+    observe_enforcement,
+    cross,
+    _crash_seam=None,
+) -> DominantStartupReceiptV1:
+    """Cross only while the three exact productive sessions remain live."""
+    return _complete_dominant_startup_core_v1(
+        sessions=sessions,
+        observe_identity=observe_identity,
+        observe_topology=observe_topology,
+        observe_catalog=observe_catalog,
+        plan_retirement=plan_retirement,
+        observe_enforcement=observe_enforcement,
+        cross=cross,
+        require_sessions=_require_product_sessions_v1,
+        _crash_seam=_crash_seam,
+    )
+
+
+def _complete_dominant_startup_for_test_v1(
+    *,
+    sessions: tuple[object, ...],
+    observe_identity,
+    observe_topology,
+    observe_catalog,
+    plan_retirement,
+    observe_enforcement,
+    cross,
+    _crash_seam=None,
+) -> DominantStartupReceiptV1:
+    """Nominal portable seam; it never accepts productive lock authority."""
+    return _complete_dominant_startup_core_v1(
+        sessions=sessions,
+        observe_identity=observe_identity,
+        observe_topology=observe_topology,
+        observe_catalog=observe_catalog,
+        plan_retirement=plan_retirement,
+        observe_enforcement=observe_enforcement,
+        cross=cross,
+        require_sessions=_require_live_sessions_v1,
+        _crash_seam=_crash_seam,
+    )

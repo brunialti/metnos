@@ -8,7 +8,9 @@ verified store-only catalog load.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import os
 import sys
+import threading
 
 
 class ContractCutoverGuardError(RuntimeError):
@@ -19,10 +21,14 @@ class ContractCutoverGuardError(RuntimeError):
 
 
 _QUIESCENT_STATES = frozenset({"inactive", "failed"})
+_TRANSITION_LOAD_STATES_V1 = frozenset({"loaded", "masked"})
+_MAINTENANCE_SESSION_SEAL_V1 = object()
+_MAINTENANCE_SESSION_GUARD_V1 = threading.Lock()
+_ACTIVE_MAINTENANCE_SESSIONS_V1: dict[object, object] = {}
 
 
-def prove_stack_stopped(reconciler) -> dict:
-    """Prove that every catalog consumer/writer and browser ingress is idle."""
+def _prove_stack_stopped_v1(reconciler, *, load_states: frozenset[str]) -> dict:
+    """Prove every catalog consumer and browser ingress remains idle."""
     from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 
     observations: list[dict[str, object]] = []
@@ -34,7 +40,7 @@ def prove_stack_stopped(reconciler) -> dict:
             main_pid = int(state.get("MainPID") or 0)
         except (TypeError, ValueError):
             main_pid = -1
-        if load_state != "loaded" or state.get("ManagerError"):
+        if load_state not in load_states or state.get("ManagerError"):
             raise ContractCutoverGuardError(
                 "quiescence_unknown", f"cannot inspect {scope} unit {unit}",
             )
@@ -66,15 +72,53 @@ def prove_stack_stopped(reconciler) -> dict:
     return {"source": browser["source"], "units": observations}
 
 
+def prove_stack_stopped(reconciler) -> dict:
+    """Prove the complete pre-transition unit catalog is loaded and idle."""
+    return _prove_stack_stopped_v1(
+        reconciler, load_states=frozenset({"loaded"}),
+    )
+
+
+def _prove_transition_stack_stopped_v1(reconciler) -> dict:
+    """Accept only named quiescent load states while topology is replaced."""
+    return _prove_stack_stopped_v1(
+        reconciler, load_states=_TRANSITION_LOAD_STATES_V1,
+    )
+
+
 class _MaintenanceProofV1:
     """Preserve the legacy boolean guard and expose fresh canonical evidence."""
 
-    __slots__ = ("_reconciler",)
+    __slots__ = (
+        "_reconciler", "_token", "_owner_process", "_active", "_seal",
+        "_transition_evidence",
+    )
 
-    def __init__(self, reconciler) -> None:
+    def __init__(self, reconciler, token: object, seal: object) -> None:
+        if seal is not _MAINTENANCE_SESSION_SEAL_V1:
+            raise ContractCutoverGuardError("cutover_session_invalid")
         self._reconciler = reconciler
+        self._token = token
+        self._owner_process = os.getpid()
+        self._active = True
+        self._seal = seal
+        self._transition_evidence = None
+
+    def __copy__(self):
+        raise TypeError("maintenance sessions cannot be copied")
+
+    def __deepcopy__(self, _memo):
+        raise TypeError("maintenance sessions cannot be copied")
+
+    def __reduce__(self):
+        raise TypeError("maintenance sessions cannot be serialized")
+
+    def __reduce_ex__(self, _protocol):
+        raise TypeError("maintenance sessions cannot be serialized")
 
     def observe(self) -> dict:
+        if self._transition_evidence is not None:
+            return _prove_transition_stack_stopped_v1(self._reconciler)
         return prove_stack_stopped(self._reconciler)
 
     def __call__(self) -> bool:
@@ -82,15 +126,68 @@ class _MaintenanceProofV1:
         return True
 
 
+def _require_maintenance_session_v1(session: object) -> None:
+    """Require the exact live proof yielded while lifecycle exclusion is held."""
+    if type(session) is not _MaintenanceProofV1:
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    with _MAINTENANCE_SESSION_GUARD_V1:
+        registered = _ACTIVE_MAINTENANCE_SESSIONS_V1.get(session._token)
+    if (
+        session._seal is not _MAINTENANCE_SESSION_SEAL_V1
+        or registered is not session
+        or not session._active
+        or session._owner_process != os.getpid()
+    ):
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    session.observe()
+
+
+def _begin_topology_transition_v1(
+    session: object, expected_evidence: bytes,
+) -> None:
+    """Keep the same live lock while admitted unit load states change."""
+    from executor_birth_ownership_preflight import canonical_maintenance_proof
+
+    if (
+        type(session) is not _MaintenanceProofV1
+        or type(expected_evidence) is not bytes
+    ):
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    _require_maintenance_session_v1(session)
+    observed = session.observe()
+    current = canonical_maintenance_proof(
+        source=observed["source"], units=observed["units"],
+    )
+    if current != expected_evidence:
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    session._transition_evidence = expected_evidence
+    _require_maintenance_session_v1(session)
+
+
+def _maintenance_evidence_under_transition_v1(session: object) -> bytes:
+    """Return the initial proof only after fresh transition quiescence."""
+    from executor_birth_ownership_preflight import canonical_maintenance_proof
+
+    _require_maintenance_session_v1(session)
+    if type(session) is not _MaintenanceProofV1:
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    if session._transition_evidence is not None:
+        return session._transition_evidence
+    observed = session.observe()
+    return canonical_maintenance_proof(
+        source=observed["source"], units=observed["units"],
+    )
+
+
 @contextmanager
-def contract_cutover_guard():
-    """Hold lifecycle exclusion while a stopped-stack proof remains valid."""
+def _contract_cutover_guard_core_v1(reconciler):
+    """Hold lifecycle exclusion for one already bound service observer."""
     if sys.platform != "linux":
         raise ContractCutoverGuardError(
             "cutover_platform_unsupported",
             "the managed Metnos server and its cutover require Linux/systemd",
         )
-    from stack_reconcile import StackReconciler, catalog_reconcile_lock
+    from stack_reconcile import catalog_reconcile_lock
 
     # Fixed order shared with publishers: global catalog admission first,
     # lifecycle/service exclusion second. This waits for an in-flight commit
@@ -104,12 +201,55 @@ def contract_cutover_guard():
             "cutover_lock_unavailable", str(exc),
         ) from exc
     try:
-        reconciler = StackReconciler(default_write_report=False)
-        proof = _MaintenanceProofV1(reconciler)
-        evidence = proof.observe()
-        yield proof, evidence
+        token = object()
+        proof = _MaintenanceProofV1(
+            reconciler, token, _MAINTENANCE_SESSION_SEAL_V1,
+        )
+        with _MAINTENANCE_SESSION_GUARD_V1:
+            _ACTIVE_MAINTENANCE_SESSIONS_V1[token] = proof
+        try:
+            evidence = proof.observe()
+            yield proof, evidence
+        finally:
+            with _MAINTENANCE_SESSION_GUARD_V1:
+                proof._active = False
+                _ACTIVE_MAINTENANCE_SESSIONS_V1.pop(token, None)
     finally:
         guard.__exit__(None, None, None)
+
+
+@contextmanager
+def contract_cutover_guard():
+    """Hold lifecycle exclusion using the process's ordinary service identity."""
+    from stack_reconcile import StackReconciler
+
+    with _contract_cutover_guard_core_v1(
+        StackReconciler(default_write_report=False),
+    ) as boundary:
+        yield boundary
+
+
+@contextmanager
+def _contract_cutover_guard_for_service_user_v1(service_user: str):
+    """Bind user-scope observations to the verified deployment account."""
+    if (
+        type(service_user) is not str or not service_user
+        or service_user != service_user.strip()
+        or any(character in service_user for character in "\x00\r\n")
+    ):
+        raise ContractCutoverGuardError("service_user_invalid")
+    from stack_reconcile import StackReconciler, Systemctl
+
+    systemctl = Systemctl(service_user=service_user)
+    try:
+        systemctl._service_uid()
+    except Exception as exc:
+        raise ContractCutoverGuardError("service_user_invalid") from exc
+    reconciler = StackReconciler(
+        systemctl=systemctl, default_write_report=False,
+    )
+    with _contract_cutover_guard_core_v1(reconciler) as boundary:
+        yield boundary
 
 
 def _verify_store_only_catalog_locked() -> dict[str, int]:

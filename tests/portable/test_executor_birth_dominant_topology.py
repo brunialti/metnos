@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,6 +21,15 @@ _TIMER = b"[Unit]\nDescription=probe timer\n[Timer]\nOnActiveSec=1s\n"
 
 def _capability(root: Path):
     return topology._TestOnlyTopologyCapabilityV1(root)
+
+
+def _link(unit_name: str = "metnos-probe.service") -> SimpleNamespace:
+    return SimpleNamespace(
+        path=(
+            "/etc/systemd/system/metnos.target.wants/" + unit_name
+        ),
+        target="../" + unit_name,
+    )
 
 
 @POSIX_ONLY
@@ -53,6 +63,61 @@ def test_installing_the_same_topology_again_is_idempotent(tmp_path: Path) -> Non
 
 
 @POSIX_ONLY
+@pytest.mark.parametrize(
+    "stage", ["dominant_fragment_staged", "dominant_fragment_published"],
+)
+def test_declared_fragment_interruptions_converge(
+    tmp_path: Path, stage: str,
+) -> None:
+    class Interrupted(Exception):
+        pass
+
+    def interrupt(observed: str) -> None:
+        if observed == stage:
+            raise Interrupted
+
+    fragments = {"metnos-probe.service": _UNIT}
+    with pytest.raises(Interrupted):
+        topology.install_for_test_v1(
+            _capability(tmp_path), fragments, _crash_seam=interrupt,
+        )
+    resumed = topology.install_for_test_v1(
+        _capability(tmp_path), fragments,
+    )
+    assert resumed[0].repeated is (stage == "dominant_fragment_published")
+    assert (tmp_path / "metnos-probe.service").read_bytes() == _UNIT
+    assert not (tmp_path / ".metnos-probe.service.installing").exists()
+
+
+@POSIX_ONLY
+def test_fragment_staging_resumes_only_from_an_exact_prefix(tmp_path: Path) -> None:
+    temporary = tmp_path / ".metnos-probe.service.installing"
+    temporary.write_bytes(_UNIT[:11])
+    installed = topology.install_for_test_v1(
+        _capability(tmp_path), {"metnos-probe.service": _UNIT},
+    )
+    assert installed[0].repeated is False
+    assert (tmp_path / "metnos-probe.service").read_bytes() == _UNIT
+    assert not temporary.exists()
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("with_final", [False, True])
+def test_undeclared_fragment_staging_state_is_refused(
+    tmp_path: Path, with_final: bool,
+) -> None:
+    temporary = tmp_path / ".metnos-probe.service.installing"
+    temporary.write_bytes(b"different")
+    if with_final:
+        (tmp_path / "metnos-probe.service").write_bytes(_UNIT)
+    with pytest.raises(topology.DominantTopologyError) as captured:
+        topology.install_for_test_v1(
+            _capability(tmp_path), {"metnos-probe.service": _UNIT},
+        )
+    assert captured.value.code == "topology_temporary_conflict"
+
+
+@POSIX_ONLY
 def test_a_name_holding_other_bytes_is_a_collision(tmp_path: Path) -> None:
     """Never an overwrite: those bytes are a topology nobody declared."""
     existing = tmp_path / "metnos-probe.service"
@@ -77,6 +142,54 @@ def test_the_digest_covers_the_observed_topology(tmp_path: Path) -> None:
         _capability(other), {"metnos-probe.service": _UNIT + b"\n"},
     )
     assert topology.topology_digest_v1(first) != topology.topology_digest_v1(second)
+
+
+@POSIX_ONLY
+def test_enablement_links_are_reread_and_idempotent(tmp_path: Path) -> None:
+    tmp_path.chmod(0o755)
+    links = (_link(),)
+
+    first = topology.install_links_for_test_v1(_capability(tmp_path), links)
+    second = topology.install_links_for_test_v1(_capability(tmp_path), links)
+
+    installed = tmp_path / "metnos.target.wants" / "metnos-probe.service"
+    assert installed.readlink().as_posix() == "../metnos-probe.service"
+    assert first[0].repeated is False
+    assert second[0].repeated is True
+    assert first[0].logical_path == links[0].path
+
+
+@POSIX_ONLY
+def test_enablement_link_interruption_converges(tmp_path: Path) -> None:
+    tmp_path.chmod(0o755)
+
+    def interrupt(stage: str) -> None:
+        if stage == "dominant_enablement_link_published":
+            raise RuntimeError("interrupted")
+
+    with pytest.raises(RuntimeError, match="interrupted"):
+        topology.install_links_for_test_v1(
+            _capability(tmp_path), (_link(),), _crash_seam=interrupt,
+        )
+    resumed = topology.install_links_for_test_v1(
+        _capability(tmp_path), (_link(),),
+    )
+    assert resumed[0].repeated is True
+
+
+@POSIX_ONLY
+def test_enablement_link_collision_is_never_replaced(tmp_path: Path) -> None:
+    tmp_path.chmod(0o755)
+    parent = tmp_path / "metnos.target.wants"
+    parent.mkdir(mode=0o755)
+    occupied = parent / "metnos-probe.service"
+    occupied.write_bytes(b"kept")
+
+    with pytest.raises(topology.DominantTopologyError) as denied:
+        topology.install_links_for_test_v1(_capability(tmp_path), (_link(),))
+
+    assert denied.value.code == "topology_link_collision"
+    assert occupied.read_bytes() == b"kept"
 
 
 @POSIX_ONLY

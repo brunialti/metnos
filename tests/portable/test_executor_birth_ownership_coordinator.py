@@ -54,6 +54,7 @@ def D(character: str) -> str:
 # twice under the three locks. These proofs are about the journal, not
 # about the wrapper, so a fixed value stands in for a real receipt.
 _CROSSING_RECEIPT = "sha256:" + "7" * 64
+_CONTEXT_TRANSITION_ID = "sha256:" + "8" * 64
 
 
 def _canonical(value) -> bytes:
@@ -354,6 +355,7 @@ def _crash_publish(journal_path, certificate_path, authority_path, point):
         authorities=authorities, prerequisite=prerequisite,
         observe_maintenance=_maintenance,
         _crash_seam=crash,
+        context_transition_id=_CONTEXT_TRANSITION_ID,
         crossing_receipt=_CROSSING_RECEIPT,
     )
 
@@ -368,6 +370,7 @@ def _resume_publish(journal_path, certificate_path, authority_path, queue):
             authorities=_load_private_at_v1(authority_path, root_owned=False),
             prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
             observe_maintenance=_maintenance,
+            context_transition_id=_CONTEXT_TRANSITION_ID,
             crossing_receipt=_CROSSING_RECEIPT,
         )
         queue.put(result.state.value)
@@ -421,6 +424,7 @@ def test_signature_without_certificate_ready_is_never_adopted(tmp_path):
             authorities=authorities,
             prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
             observe_maintenance=_maintenance,
+            context_transition_id=_CONTEXT_TRANSITION_ID,
             crossing_receipt=_CROSSING_RECEIPT,
         )
 
@@ -438,6 +442,7 @@ def test_fresh_maintenance_is_required_before_certificate_ready(tmp_path):
             observe_maintenance=lambda: _maintenance(
                 "inactive_http_and_sidecar_broker",
             ),
+            context_transition_id=_CONTEXT_TRANSITION_ID,
             crossing_receipt=_CROSSING_RECEIPT,
         )
     assert [record.state for record in journal.load()] == [
@@ -461,6 +466,8 @@ def test_partial_certificate_temporary_is_rebuilt_before_publication(tmp_path):
         boundary_inventory_hash=latest.boundary_inventory_hash,
         boundary_guard_version=latest.boundary_guard_version,
         closed_build_id=latest.closed_build_id,
+        context_transition_id=_CONTEXT_TRANSITION_ID,
+        dominant_startup_receipt=_CROSSING_RECEIPT,
         private_key=authorities.cutover_private,
     )
     certificate = tmp_path / "certificate"
@@ -475,6 +482,7 @@ def test_partial_certificate_temporary_is_rebuilt_before_publication(tmp_path):
         authorities=authorities,
         prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
         observe_maintenance=_maintenance,
+        context_transition_id=_CONTEXT_TRANSITION_ID,
         crossing_receipt=_CROSSING_RECEIPT,
     )
     assert published.state is OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
@@ -765,6 +773,7 @@ def _reach_certificate_published(tmp_path):
         authorities=authorities,
         prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
         observe_maintenance=_maintenance,
+        context_transition_id=_CONTEXT_TRANSITION_ID,
         crossing_receipt=_CROSSING_RECEIPT,
     )
     assert published.state is OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
@@ -934,6 +943,7 @@ def test_the_crossing_refuses_without_a_group7_receipt(tmp_path, receipt) -> Non
             authorities=_portable_authorities(),
             prerequisite=_startup_prerequisite_for_test(D("5"), D("6")),
             observe_maintenance=_maintenance,
+            context_transition_id=_CONTEXT_TRANSITION_ID,
             crossing_receipt=receipt,
         )
     assert denied.value.code == "birth_ownership_prerequisite_untrusted"

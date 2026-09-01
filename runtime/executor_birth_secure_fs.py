@@ -171,7 +171,10 @@ class _ResolvedBirthRoleBindingV1:
 
 
 _TRANSACTION_PREFIX = ".birth-provisioning-v1.txn."
+_TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.txn."
 _HEADER_PENDING_PREFIX = ".transaction-v1.pending."
+_HEADER_PENDING_PREFIX_V2 = ".transaction-v2.pending."
+_MATERIAL_PLAN_PENDING_PREFIX_V2 = ".material-plan-v2.pending."
 _CHECKPOINT_PENDING_PREFIX = ".checkpoint-pending-"
 _PAYLOAD_PENDING_PREFIX = ".payload-pending-"
 _KEY_PREFIX = "birth-ed25519-v1-sha256-"
@@ -210,10 +213,38 @@ def _is_catalogued_name(value: str, suffix: str) -> bool:
 
 def _transaction_id(components: tuple[str, ...]) -> str | None:
     """Return the nonce when ``components`` starts with a transaction root."""
-    if not components or not components[0].startswith(_TRANSACTION_PREFIX):
+    version = _transaction_version(components)
+    if version is None:
         return None
-    nonce = components[0][len(_TRANSACTION_PREFIX):]
+    prefix = _TRANSACTION_PREFIX if version == 1 else _TRANSACTION_PREFIX_V2
+    nonce = components[0][len(prefix):]
     return nonce if _is_hex(nonce, 32) else None
+
+
+def _transaction_version(components: tuple[str, ...]) -> int | None:
+    if not components:
+        return None
+    if components[0].startswith(_TRANSACTION_PREFIX):
+        return 1
+    if components[0].startswith(_TRANSACTION_PREFIX_V2):
+        return 2
+    return None
+
+
+def _transaction_header_basename(components: tuple[str, ...]) -> str | None:
+    version = _transaction_version(components)
+    return None if version is None else f"transaction-v{version}.json"
+
+
+def _transaction_header_pending(
+    components: tuple[str, ...], nonce: str,
+) -> str | None:
+    version = _transaction_version(components)
+    if version == 1:
+        return _HEADER_PENDING_PREFIX + nonce
+    if version == 2:
+        return _HEADER_PENDING_PREFIX_V2 + nonce
+    return None
 
 
 def _authority_set_tail(
@@ -247,6 +278,7 @@ def _keystore_tail(components: tuple[str, ...]) -> tuple[str, ...] | None:
     if (
         len(components) >= 2
         and _transaction_id(components[:1]) is not None
+        and _transaction_version(components[:1]) == 1
         and components[1] == "author-root-v1"
     ):
         return components[2:]
@@ -330,11 +362,20 @@ def _transaction_row(
     components: tuple[str, ...], nonce: str,
 ) -> tuple[_ObjectKind, _BirthObjectRole] | None:
     tail = components[1:]
+    version = _transaction_version(components)
+    header = _transaction_header_basename(components)
+    pending = _transaction_header_pending(components, nonce)
     if not tail:
         return (_DIRECTORY, _INTEGRITY)
-    if tail in {("transaction-v1.json",), ("prepared-v1.json",)}:
+    if tail == (header,) or (
+        version == 1 and tail == ("prepared-v1.json",)
+    ):
         return (_FILE, _INTEGRITY)
-    if tail == (_HEADER_PENDING_PREFIX + nonce,):
+    if version == 2 and tail == ("material-plan-v2.json",):
+        return (_FILE, _CONFIDENTIAL)
+    if version == 2 and tail == (_MATERIAL_PLAN_PENDING_PREFIX_V2 + nonce,):
+        return (_FILE, _CONFIDENTIAL)
+    if tail == (pending,):
         return (_FILE, _INTEGRITY)
     if tail == ("checkpoints-v1",):
         return (_DIRECTORY, _INTEGRITY)
@@ -348,7 +389,7 @@ def _transaction_row(
             middle = name[len(_CHECKPOINT_PENDING_PREFIX): -len("-" + nonce)]
             if _is_sequence_component(middle):
                 return (_FILE, _INTEGRITY)
-    if tail == ("author-root-v1",):
+    if version == 1 and tail == ("author-root-v1",):
         return (_DIRECTORY, _CONFIDENTIAL)
     if tail == ("authority-set",):
         return (_DIRECTORY, _INTEGRITY)
@@ -466,11 +507,15 @@ def _matching_rows(
             tail = components[1:]
             if not tail:
                 add(P.transaction_root, kind, role)
-            elif tail == ("transaction-v1.json",):
+            elif tail == (_transaction_header_basename(components),):
                 add(P.transaction_header, kind, role)
             elif tail == ("prepared-v1.json",):
                 add(P.transaction_prepared, kind, role)
-            elif tail == (_HEADER_PENDING_PREFIX + nonce,):
+            elif tail == ("material-plan-v2.json",):
+                add(P.transaction_prepared, kind, role)
+            elif tail == (_MATERIAL_PLAN_PENDING_PREFIX_V2 + nonce,):
+                add(P.transaction_prepared, kind, role)
+            elif tail == (_transaction_header_pending(components, nonce),):
                 add(P.transaction_header_pending, kind, role)
             elif tail == ("checkpoints-v1",):
                 add(P.transaction_checkpoints, kind, role)

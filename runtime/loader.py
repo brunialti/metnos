@@ -22,13 +22,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from sign import list_trusted_publics, verify_executor
 from manifest_inventory import (
+    ContractId,
     ManifestLayout,
     ManifestOrigin,
     ManifestStatus,
-    default_manifest_sources,
     inventory_manifests,
     manifest_name_collisions,
-    manifest_ref_for_source_path,
     resolve_manifest_layout,
 )
 from executor_metadata import (
@@ -314,7 +313,10 @@ def _load_builtin_contract(
     path = directory / "manifest.toml"
     if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
         try:
-            ref = manifest_ref_for_source_path(inventory_manifests(), path)
+            contract_id = ContractId(
+                ManifestOrigin.BUILTIN, f"{name}/manifest.toml",
+            )
+            ref = inventory_manifests().by_id()[contract_id]
             if ref.origin is not ManifestOrigin.BUILTIN:
                 raise ValueError("builtin contract has a non-builtin binding")
             from contract_store import current_manifest
@@ -1156,7 +1158,7 @@ def _load_catalog_under_catalog_lock(
         # bounded retry prevents caching a mixed catalog and fails explicitly
         # if the store never settles.
         for attempt in range(_STORE_SNAPSHOT_ATTEMPTS):
-            inventory = inventory_manifests(default_manifest_sources())
+            inventory = inventory_manifests()
             trusted = tuple(list_trusted_publics())
             expected_revisions = _store_revision_ids(
                 inventory,
@@ -1196,7 +1198,7 @@ def _load_catalog_under_catalog_lock(
                         "contract revision changed while authenticating it",
                     ) from exc
                 continue
-            after_inventory = inventory_manifests(default_manifest_sources())
+            after_inventory = inventory_manifests()
             after_trusted = tuple(list_trusted_publics())
             after_revisions = _store_revision_ids(
                 after_inventory,
@@ -2092,7 +2094,7 @@ def _load_store_into_catalog(
 ) -> None:
     """Load only bound, generation-verified contracts after cutover."""
     if inventory is None:
-        inventory = inventory_manifests(default_manifest_sources())
+        inventory = inventory_manifests()
     if inventory.problems:
         from manifest_inventory import ManifestBootstrapError
 

@@ -1,6 +1,8 @@
 """G7-B: the retirement plan is a decision, and the proof that precedes it."""
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 import executor_birth_legacy_retirement as retirement
@@ -20,14 +22,88 @@ def _binding(**overrides: object) -> dict[str, object]:
     return value
 
 
+def _product_catalog() -> catalog.DecodedServiceCatalogV1:
+    hashes = tuple(
+        (item.entry_id, "sha256:" + "1" * 64)
+        for item in catalog.SERVICE_SOURCE_V1
+        if item.target_recipe.execution_kind != "none"
+    )
+    context = catalog._SourceCompileContextV1(
+        "/opt/metnos", "/usr/bin/python3", "metnos", 1000, (),
+        "/srv/metnos", "/usr/bin/systemctl", hashes,
+    )
+    entries = catalog._compile_service_source_v1(context)
+    legacy = tuple(catalog.ServiceLegacyBindingV1(
+        str(item["legacy_id"]), str(item["entry_id"]), str(item["kind"]),
+        str(item["scope"]), str(item["locator"]), str(item["disposition"]),
+    ) for item in catalog.legacy_bindings_from_source_v1())
+    return catalog.decode_service_catalog_v1(
+        catalog._encode_service_catalog_v1(entries, legacy),
+    )
+
+
 def test_every_real_binding_receives_exactly_one_action() -> None:
     """The product's own bindings plan without a single unknown pair."""
-    steps = retirement.plan_retirement_v1(catalog.legacy_bindings_from_source_v1())
-    assert len(steps) == 39
+    plan = retirement.plan_catalog_retirement_v1(_product_catalog())
+    steps = plan.steps
+    assert (
+        plan.dominant_unit_count,
+        plan.legacy_binding_count,
+        plan.cross_scope_match_count,
+        plan.same_destination_overlap_count,
+    ) == (15, 39, 16, 1)
     assert {step.action for step in steps} == {
         "mask_user_unit", "mask_system_unit", "revoke_repository_entrypoint",
+        "preserve_replaced_system_unit",
     }
+    assert [
+        step.legacy_id for step in steps
+        if step.action == "preserve_replaced_system_unit"
+    ] == ["legacy-service-http-system"]
     assert len({step.legacy_id for step in steps}) == len(steps)
+
+
+def test_a_second_same_destination_overlap_is_refused() -> None:
+    product = _product_catalog()
+    second = catalog.ServiceLegacyBindingV1(
+        "legacy-second-system-overlap", "service-llm", "system_unit",
+        "system", "metnos-llm.service", "retire_in_group7",
+    )
+    with pytest.raises(retirement.LegacyRetirementError) as denied:
+        retirement.plan_catalog_retirement_v1(replace(
+            product,
+            legacy_bindings=tuple(sorted(
+                (*product.legacy_bindings, second),
+                key=lambda item: item.legacy_id.encode("utf-8"),
+            )),
+        ))
+    assert denied.value.code == "legacy_retirement_overlap"
+
+
+def test_a_future_catalog_can_grow_without_weakening_overlap_detection() -> None:
+    product = _product_catalog()
+    prototype = next(
+        item for item in product.entries if item.unit_name is not None
+    )
+    future = replace(
+        prototype,
+        entry_id="service-future",
+        unit_name="metnos-future.service",
+        readiness_owner=False,
+    )
+    plan = retirement.plan_catalog_retirement_v1(replace(
+        product,
+        entries=tuple(sorted(
+            (*product.entries, future),
+            key=lambda item: item.entry_id.encode("utf-8"),
+        )),
+    ))
+    assert (
+        plan.dominant_unit_count,
+        plan.legacy_binding_count,
+        plan.cross_scope_match_count,
+        plan.same_destination_overlap_count,
+    ) == (16, 39, 16, 1)
 
 
 def test_the_plan_does_not_depend_on_the_order_it_was_given() -> None:
@@ -80,11 +156,11 @@ def test_an_entry_still_running_stops_the_retirement() -> None:
     """Retiring a live entry leaves a process no identity can address."""
     steps = retirement.plan_retirement_v1([_binding()])
     retirement.require_no_legacy_in_flight_v1(
-        steps, {"metnos-probe.service": "inactive"},
+        steps, {("user", "metnos-probe.service"): "inactive"},
     )
     with pytest.raises(retirement.LegacyRetirementError) as running:
         retirement.require_no_legacy_in_flight_v1(
-            steps, {"metnos-probe.service": "active"},
+            steps, {("user", "metnos-probe.service"): "active"},
         )
     assert running.value.code == "legacy_retirement_in_flight"
 

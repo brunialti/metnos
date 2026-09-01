@@ -43,29 +43,62 @@ class CurrentGeneration:
 
 
 @dataclass(frozen=True, slots=True)
+class CurrentInventoryV1:
+    identities: tuple[tuple[str, str], ...]
+
+    def __post_init__(self) -> None:
+        try:
+            identities = tuple(self.identities)
+            ordered = tuple(sorted(identities))
+            unique = len(identities) == len(set(identities))
+        except (TypeError, ValueError) as exc:
+            raise BirthCutoverError("birth_cutover_inventory_invalid") from exc
+        if identities != ordered or not unique:
+            raise BirthCutoverError("birth_cutover_inventory_invalid")
+        for identity in identities:
+            if not isinstance(identity, tuple) or len(identity) != 2:
+                raise BirthCutoverError("birth_cutover_inventory_invalid")
+            contract_id, generation_id = identity
+            if (
+                not isinstance(contract_id, str) or not contract_id or "\x00" in contract_id
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", generation_id) is None
+            ):
+                raise BirthCutoverError("birth_cutover_inventory_invalid")
+        object.__setattr__(self, "identities", identities)
+
+
+@dataclass(frozen=True, slots=True)
 class CurrentReceiptProof:
     identities: tuple[tuple[str, str], ...]
     receipt_hashes: Mapping[tuple[str, str], str]
 
     def __post_init__(self) -> None:
-        identities = tuple(self.identities)
-        if identities != tuple(sorted(identities)) or len(identities) != len(set(identities)):
-            raise BirthCutoverError("birth_cutover_inventory_invalid")
-        hashes = dict(self.receipt_hashes)
-        if set(hashes) != set(identities):
+        inventory = CurrentInventoryV1(self.identities)
+        try:
+            hashes = dict(self.receipt_hashes)
+            matching_keys = set(hashes) == set(inventory.identities)
+        except (TypeError, ValueError) as exc:
+            raise BirthCutoverError(
+                "birth_cutover_receipt_binding_invalid",
+            ) from exc
+        if not matching_keys:
             raise BirthCutoverError("birth_cutover_receipt_binding_invalid")
-        for identity in identities:
-            contract_id, generation_id = identity
+        for identity in inventory.identities:
             if (
-                not isinstance(contract_id, str) or not contract_id or "\x00" in contract_id
-                or re.fullmatch(r"sha256:[0-9a-f]{64}", generation_id) is None
-                or re.fullmatch(r"sha256:[0-9a-f]{64}", hashes[identity]) is None
+                not isinstance(hashes[identity], str)
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", hashes[identity],
+                ) is None
             ):
                 raise BirthCutoverError("birth_cutover_receipt_binding_invalid")
-        object.__setattr__(self, "identities", identities)
+        object.__setattr__(self, "identities", inventory.identities)
         object.__setattr__(
             self, "receipt_hashes", MappingProxyType(dict(sorted(hashes.items()))),
         )
+
+    @property
+    def inventory(self) -> CurrentInventoryV1:
+        return CurrentInventoryV1(self.identities)
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +124,13 @@ def _census(items: Iterable[CurrentGeneration]) -> tuple[CurrentGeneration, ...]
     if len(identities) != len(set(identities)):
         raise BirthCutoverError("birth_cutover_inventory_duplicate")
     return result
+
+
+def freeze_current_inventory_v1(
+    items: Iterable[CurrentGeneration],
+) -> CurrentInventoryV1:
+    """Freeze only authenticated current identities, before receipts exist."""
+    return CurrentInventoryV1(tuple(item.identity for item in _census(items)))
 
 
 def _verified_receipt(
@@ -252,6 +292,7 @@ def enumerate_authenticated_current_generations(
 
 __all__ = [
     "BirthCutoverError", "BirthCutoverReport", "CurrentGeneration",
-    "CurrentReceiptProof", "cutover_current_generations",
+    "CurrentInventoryV1", "CurrentReceiptProof", "cutover_current_generations",
     "enumerate_authenticated_current_generations", "prepare_current_receipt_proof",
+    "freeze_current_inventory_v1",
 ]

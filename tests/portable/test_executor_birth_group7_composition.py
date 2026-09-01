@@ -82,15 +82,22 @@ def _observers(cell, *, bindings: dict[str, bytes] | None = None):
         return _digest_of("catalog-of-the-cell")
 
     def observe_identity():
-        return (_digest_of("request"), _digest_of("previous-head"))
+        return (
+            _digest_of("request"),
+            _digest_of("previous-head"),
+            _digest_of("context-transition"),
+        )
 
     def plan_and_retire() -> str:
         steps = retirement.plan_retirement_v1(legacy)
         retirement.require_no_legacy_in_flight_v1(
-            steps, {step.locator: "inactive" for step in steps},
+            steps, {
+                (step.scope, step.locator): "inactive" for step in steps
+            },
         )
         neutralizer.neutralize_for_test_v1(
             neutralizer._TestOnlyNeutralizationCapabilityV1(repository), steps,
+            replacement_fragments={},
         )
         return retirement.plan_digest_v1(steps)
 
@@ -114,9 +121,9 @@ def test_the_five_pieces_compose_and_the_crossing_happens_once(cell) -> None:
     """
     units, repository, _gate = cell
     identity, unit_topology, catalog, retire, enforce = _observers(cell)
-    crossed: list[str] = []
+    crossed: list[startup.DominantStartupReceiptV1] = []
 
-    receipt = startup.complete_dominant_startup_v1(
+    receipt = startup._complete_dominant_startup_for_test_v1(
         sessions=(_Session(), _Session(), _Session()),
         observe_identity=identity,
         observe_topology=unit_topology,
@@ -126,7 +133,7 @@ def test_the_five_pieces_compose_and_the_crossing_happens_once(cell) -> None:
         cross=crossed.append,
     )
 
-    assert crossed == [receipt.bindings_digest]
+    assert crossed == [receipt]
     assert (units / "metnos-probe.service").read_bytes() == _UNIT
     retired = repository / "scripts" / (
         "legacy.sh" + neutralizer.RETIRED_EXTENSION_V1
@@ -155,7 +162,7 @@ def test_a_topology_that_changes_between_the_readings_stops_everything(
 
     crossed: list[str] = []
     with pytest.raises(startup.DominantStartupError) as drifted:
-        startup.complete_dominant_startup_v1(
+        startup._complete_dominant_startup_for_test_v1(
             sessions=(_Session(), _Session(), _Session()),
             observe_identity=identity,
             observe_topology=drifting_topology,
@@ -177,7 +184,7 @@ def test_an_open_gate_stops_the_composition_at_its_own_step(cell) -> None:
 
     crossed: list[str] = []
     with pytest.raises(enforcement.EnforcementEvidenceError) as denied:
-        startup.complete_dominant_startup_v1(
+        startup._complete_dominant_startup_for_test_v1(
             sessions=(_Session(), _Session(), _Session()),
             observe_identity=identity,
             observe_topology=unit_topology,
@@ -188,3 +195,5 @@ def test_an_open_gate_stops_the_composition_at_its_own_step(cell) -> None:
         )
     assert denied.value.code == "enforcement_not_closed"
     assert crossed == []
+    assert not any(units.iterdir())
+    assert (cell[1] / "scripts" / "legacy.sh").is_file()

@@ -129,7 +129,8 @@ class _BirthCommitPublisher:
 
     __slots__ = (
         "_author_private", "_author_ring", "_admission_private",
-        "_admission_key_id", "_admission_verifiers", "_epoch",
+        "_admission_key_id", "_admission_verifiers",
+        "_admission_context_id", "_epoch",
         "_primitive", "_registry_reconciler", "_store_root", "_seal",
     )
 
@@ -150,6 +151,7 @@ class _BirthCommitPublisher:
         # that the same function rejects is not a default — it is a trap for
         # the next caller, and it cost twenty red tests before it was seen.
         registry_reconciler,
+        prepared_admission_context_id: str | None = None,
     ) -> None:
         if token is not _PUBLISHER_TOKEN:
             raise BirthCommitLinkError("birth_commit_publisher_private")
@@ -161,6 +163,17 @@ class _BirthCommitPublisher:
             not admission_verifiers
             or not isinstance(prepared_context_epoch, str)
             or not callable(registry_reconciler)
+            or (
+                prepared_admission_context_id is not None
+                and (
+                    len(prepared_admission_context_id) != 71
+                    or not prepared_admission_context_id.startswith("sha256:")
+                    or any(
+                        character not in "0123456789abcdef"
+                        for character in prepared_admission_context_id[7:]
+                    )
+                )
+            )
         ):
             raise BirthCommitLinkError("birth_commit_publisher_invalid")
         self._author_private = author_private
@@ -168,6 +181,7 @@ class _BirthCommitPublisher:
         self._admission_private = admission_private
         self._admission_key_id = admission_key_id
         self._admission_verifiers = MappingProxyType(dict(admission_verifiers))
+        self._admission_context_id = prepared_admission_context_id
         self._epoch = prepared_context_epoch
         self._primitive = primitive
         self._registry_reconciler = registry_reconciler
@@ -310,6 +324,86 @@ class _BirthCommitPublisher:
             store_root=self._store_root,
         )
 
+    def _require_v2_request(self, current, request):
+        """Require a request minted for this publisher's prepared context."""
+        from executor_birth_producer_context import ProducerRequestV2
+
+        current_ref = getattr(current, "ref", None)
+        current_contract = getattr(
+            getattr(current_ref, "contract_id", None), "value", None,
+        )
+        if (
+            type(request) is not ProducerRequestV2
+            or self._admission_context_id is None
+            or request.admission_context_id != self._admission_context_id
+            or request.context_epoch != self._epoch
+            or request.contract_id != current_contract
+            or request.generation_id != getattr(current, "generation_id", None)
+        ):
+            raise BirthCommitLinkError("birth_reattestation_v2_context_invalid")
+        return request
+
+    def _persist_current_reattestation_v2(
+        self, current, encoded: bytes, expected: Mapping[str, object], request,
+    ) -> bytes:
+        """Persist one V2 receipt through this publisher's fixed authority."""
+        from contract_store import (
+            BirthCommitAuthorization,
+            persist_current_reattestation_receipt_v2,
+        )
+        from executor_birth_receipts import verify_admission_receipt
+
+        sealed = self._require_v2_request(current, request)
+        try:
+            candidate_id = expected["candidate_id"]
+            semantic_core_id = expected["semantic_core_id"]
+            predecessor_id = expected["predecessor_id"]
+        except (KeyError, TypeError) as exc:
+            raise BirthCommitLinkError(
+                "birth_reattestation_v2_bindings_invalid",
+            ) from exc
+
+        def verifier(wire: bytes):
+            return verify_admission_receipt(
+                wire, verifier_keys=self._admission_verifiers,
+            )
+
+        def issuer(*_args, **_kwargs):
+            raise BirthCommitLinkError("birth_reattestation_v2_issuer_unavailable")
+
+        authorization = BirthCommitAuthorization(
+            candidate_id=candidate_id,
+            semantic_core_id=semantic_core_id,
+            admission_context_id=sealed.admission_context_id,
+            predecessor_id=predecessor_id,
+            issuer=issuer,
+            verifier=verifier,
+            context_epoch=sealed.context_epoch,
+            context_epoch_resolver=self._resolve_epoch,
+        )
+        return persist_current_reattestation_receipt_v2(
+            current.ref,
+            encoded,
+            request=sealed,
+            authorization=authorization,
+            verifier=verifier,
+            expected_bindings=expected,
+            trusted_publics=self._author_ring,
+            store_root=self._store_root,
+        )
+
+    def _read_current_reattestation_v2(self, current, request) -> bytes | None:
+        """Read only the V2 receipt in this publisher's prepared context."""
+        from contract_store import read_current_birth_receipt_v2
+
+        sealed = self._require_v2_request(current, request)
+        return read_current_birth_receipt_v2(
+            current.ref,
+            request=sealed,
+            trusted_publics=self._author_ring,
+            store_root=self._store_root,
+        )
+
     def _enumerate_current_reattestation(self):
         from executor_birth_cutover import enumerate_authenticated_current_generations
 
@@ -353,6 +447,16 @@ class _BirthReattestationPort:
 
     def read(self, current) -> bytes | None:
         return self._owner._read_current_reattestation(current)
+
+    def persist_v2(
+        self, current, encoded: bytes, expected: Mapping[str, object], request,
+    ) -> bytes:
+        return self._owner._persist_current_reattestation_v2(
+            current, encoded, expected, request,
+        )
+
+    def read_v2(self, current, request) -> bytes | None:
+        return self._owner._read_current_reattestation_v2(current, request)
 
     def enumerate_current(self):
         return self._owner._enumerate_current_reattestation()
@@ -417,6 +521,7 @@ def _build_prepared_bundle_v1(
         admission_private=admission.active_private_key,
         admission_key_id=admission.active_key_id,
         admission_verifiers=admission.verifier_keys,
+        prepared_admission_context_id=prepared_admission_context_id,
         prepared_context_epoch=prepared_context_epoch,
         primitive=commit_birth_snapshot,
         store_root=store_root,

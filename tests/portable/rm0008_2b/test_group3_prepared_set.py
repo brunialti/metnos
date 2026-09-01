@@ -14,7 +14,8 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from executor_birth_prepared_set import (
-    PREPARED_STATE_V1, PreparedSetError, load_prepared_set_v1,
+    PREPARED_STATE_V1, PreparedSetError, load_authority_set_v1,
+    load_prepared_set_v1,
 )
 
 from . import support
@@ -59,15 +60,36 @@ def test_a_prepared_set_reads_back_and_stays_inactive(
     assert observed.state == PREPARED_STATE_V1
     assert observed.author_active_key_id == document["author_active_key_id"]
     assert observed.admission_active_key_id == document["admission_active_key_id"]
+    assert observed.set_json_sha256 == marker["set_json_sha256"]
+    assert observed.provisioning_transaction_id == marker["transaction_id"]
     assert len(observed.producer_keys) == 11
     assert observed.prepared_admission_context_id.startswith("sha256:")
     with pytest.raises(TypeError):
         observed.producer_keys["x"] = None
 
 
+def test_an_exact_set_read_does_not_consult_the_historical_marker(
+    tmp_path: Path, monkeypatch,
+):
+    base = _prepared(tmp_path, monkeypatch)
+    marker_path = support.installed_marker(base)
+    marker = json.loads(marker_path.read_bytes())
+    set_id = marker["set_id"]
+    set_sha256 = marker["set_json_sha256"]
+    _rewrite(marker_path, lambda value: value.update(set_id="f" * 64))
+
+    session = support.open_layout(monkeypatch, base).birth_session
+    with session:
+        with session.global_lock(exclusive=False, create=False):
+            observed = load_authority_set_v1(
+                session, set_id, expected_set_json_sha256=set_sha256,
+            )
+    assert observed.set_id == set_id
+
+
 @pytest.mark.parametrize("case", [
     "marker-set-id", "marker-digest", "marker-state", "set-author-key",
-    "set-context-digest",
+    "set-context-digest", "transaction-id",
 ])
 def test_a_set_that_disagrees_with_itself_is_refused(
     tmp_path: Path, monkeypatch, case: str,
@@ -84,6 +106,8 @@ def test_a_set_that_disagrees_with_itself_is_refused(
         _rewrite(marker, lambda item: item.update(state="active"))
     elif case == "set-author-key":
         _rewrite(document, lambda item: item.update(author_active_key_id="other"))
+    elif case == "transaction-id":
+        _rewrite(marker, lambda item: item.update(transaction_id="0" * 32))
     else:
         _rewrite(
             document, lambda item: item.update(context_material_sha256="0" * 64)

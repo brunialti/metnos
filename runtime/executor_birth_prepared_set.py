@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping
 
@@ -22,8 +23,40 @@ AUTHORITY_SETS_BASENAME_V1 = "authority-sets"
 SET_DOCUMENT_BASENAME_V1 = "set.json"
 CONTEXT_CONTAINER_BASENAME_V1 = "context"
 CONTEXT_MATERIAL_BASENAME_V1 = "material-v1.json"
+SET_ID_DIGEST_DOMAIN_V1 = b"metnos.executor-birth.authority-set/v1\0"
 PREPARED_STATE_V1 = "prepared_not_active"
 MAXIMUM_DOCUMENT_BYTES_V1 = 1024 * 1024
+_PREPARED_SET_SEAL_V1 = object()
+_PREPARED_SET_BINDING_DOMAIN_V1 = (
+    b"metnos.executor-birth.prepared-set-readback/v1\0"
+)
+_PREPARED_SET_BINDING_FIELDS_V1 = (
+    "set_id",
+    "state",
+    "author_active_key_id",
+    "author_verifier_key_ids",
+    "admission_active_key_id",
+    "producer_keys",
+    "prepared_admission_context_id",
+    "prepared_context_epoch",
+    "context_material_sha256",
+    "set_json_sha256",
+    "provisioning_transaction_id",
+    "provisioner_build_id",
+)
+_PREPARED_AUTHORITY_SET_DIGEST_DOMAIN_V2 = (
+    b"metnos.executor-birth.prepared-authority-set/v2\0"
+)
+_PREPARED_AUTHORITY_SET_SEAL_V2 = object()
+_PREPARED_AUTHORITY_SET_FIELDS_V2 = (
+    "transaction_id", "provisioner_build_id", "request_id",
+    "closed_build_id", "distribution_payload_hash",
+    "distribution_signature_hash", "previous_set_id", "target_set_id",
+    "target_admission_context_id", "target_context_epoch",
+    "target_context_material_sha256", "target_set_json_sha256",
+    "source_inventory_hash", "material_plan_sha256",
+    "verified_checkpoint_sha256",
+)
 
 MARKER_FIELDS_V1 = frozenset({
     "schema_version", "state", "set_id", "authority_set", "author_store",
@@ -63,6 +96,108 @@ class PreparedSetError(RuntimeError):
             self._internal_cause = value
 
 
+def _prepared_authority_digest_v2(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
+    )
+
+
+def _prepared_authority_hex_v2(value: object, length: int) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == length
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedAuthoritySetV2:
+    """Public identities of one exact, verified and still staged V2 set."""
+
+    transaction_id: str
+    provisioner_build_id: str
+    request_id: str
+    closed_build_id: str
+    distribution_payload_hash: str
+    distribution_signature_hash: str
+    previous_set_id: str
+    target_set_id: str
+    target_admission_context_id: str
+    target_context_epoch: str
+    target_context_material_sha256: str
+    target_set_json_sha256: str
+    source_inventory_hash: str
+    material_plan_sha256: str
+    verified_checkpoint_sha256: str
+    _artifact_binding: bytes = field(repr=False)
+    _seal: object = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _PREPARED_AUTHORITY_SET_SEAL_V2
+            or not _prepared_authority_hex_v2(self.transaction_id, 32)
+            or not isinstance(self.provisioner_build_id, str)
+            or not self.provisioner_build_id
+            or any(not _prepared_authority_digest_v2(value) for value in (
+                self.request_id, self.closed_build_id,
+                self.distribution_payload_hash,
+                self.distribution_signature_hash,
+                self.target_admission_context_id, self.target_context_epoch,
+                self.source_inventory_hash,
+            ))
+            or any(not _prepared_authority_hex_v2(value, 64) for value in (
+                self.previous_set_id, self.target_set_id,
+                self.target_context_material_sha256,
+                self.target_set_json_sha256, self.material_plan_sha256,
+                self.verified_checkpoint_sha256,
+            ))
+            or self._artifact_binding
+            != _prepared_authority_set_binding_v2(self)
+        ):
+            raise PreparedSetError("birth_provisioning_transaction_conflict")
+
+
+def _prepared_authority_set_binding_v2(
+    value: PreparedAuthoritySetV2 | Mapping[str, object],
+) -> bytes:
+    document = {
+        field_name: (
+            value[field_name]
+            if isinstance(value, Mapping)
+            else getattr(value, field_name)
+        )
+        for field_name in _PREPARED_AUTHORITY_SET_FIELDS_V2
+    }
+    try:
+        encoded = json.dumps(
+            document, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"), allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise PreparedSetError(
+            "birth_provisioning_transaction_conflict", exc,
+        ) from None
+    return hashlib.sha256(
+        _PREPARED_AUTHORITY_SET_DIGEST_DOMAIN_V2 + encoded,
+    ).digest()
+
+
+def is_prepared_authority_set_v2(value: object) -> bool:
+    """Recognize only a result minted after complete staged read-back."""
+    if (
+        not isinstance(value, PreparedAuthoritySetV2)
+        or value._seal is not _PREPARED_AUTHORITY_SET_SEAL_V2
+    ):
+        return False
+    try:
+        return value._artifact_binding == _prepared_authority_set_binding_v2(
+            value,
+        )
+    except PreparedSetError:
+        return False
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedSetV1:
     """What one verified, still inactive authority set declares."""
@@ -76,10 +211,21 @@ class PreparedSetV1:
     prepared_admission_context_id: str
     prepared_context_epoch: str
     context_material_sha256: str
+    set_json_sha256: str
+    provisioning_transaction_id: str
     provisioner_build_id: str
+    _artifact_binding: bytes
+    _seal: object
 
     def __post_init__(self) -> None:
-        if self.state != PREPARED_STATE_V1:
+        if (
+            self._seal is not _PREPARED_SET_SEAL_V1
+            or self.state != PREPARED_STATE_V1
+            or self._artifact_binding != _prepared_set_artifact_binding_v1({
+                field: getattr(self, field)
+                for field in _PREPARED_SET_BINDING_FIELDS_V1
+            })
+        ):
             raise PreparedSetError("birth_prepared_set_invalid")
         object.__setattr__(
             self, "producer_keys", MappingProxyType(dict(self.producer_keys))
@@ -100,46 +246,69 @@ def _decode(raw: bytes) -> dict[str, object]:
     return value
 
 
-def load_prepared_set_v1(session) -> PreparedSetV1:
-    """Reopen everything the marker names and compare it with the set.
+def _read_integrity_document_v1(session, components: tuple[str, ...]) -> bytes:
+    from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
 
-    A coherent marker does not make an incoherent set authoritative, so the
-    marker is only the starting point: what decides is the agreement between
-    the bytes on disk and what the set itself declares.
-    """
+    try:
+        return session.read_file(
+            components,
+            maximum=MAXIMUM_DOCUMENT_BYTES_V1,
+            role=_BirthObjectRole.birth_integrity_only,
+        )
+    except BirthSecureFSError as exc:
+        raise PreparedSetError("birth_prepared_set_unavailable", exc) from None
+
+
+def load_authority_set_v1(
+    session,
+    set_id: str,
+    *,
+    expected_set_json_sha256: str | None = None,
+    expected_transaction_id: str | None = None,
+    expected_context_material_sha256: str | None = None,
+    expected_author_inventory_sha256: str | None = None,
+) -> PreparedSetV1:
+    """Read back one exact immutable set without consulting the V1 marker."""
     from executor_birth_keystore import (
         BirthKeyStoreError, _load_birth_keystore_in_session, raw_public_key,
     )
-    from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+    from executor_birth_secure_fs import BirthSecureFSError
 
-    def read(components: tuple[str, ...]) -> bytes:
-        try:
-            return session.read_file(
-                components,
-                maximum=MAXIMUM_DOCUMENT_BYTES_V1,
-                role=_BirthObjectRole.birth_integrity_only,
-            )
-        except BirthSecureFSError as exc:
-            raise PreparedSetError("birth_prepared_set_unavailable", exc) from None
-
-    marker = _decode(read((MARKER_BASENAME_V1,)))
-    if set(marker) != MARKER_FIELDS_V1 or marker["schema_version"] != 1:
+    if (
+        not isinstance(set_id, str)
+        or len(set_id) != 64
+        or any(character not in "0123456789abcdef" for character in set_id)
+    ):
         raise PreparedSetError("birth_prepared_set_invalid")
-    if marker["state"] != PREPARED_STATE_V1:
-        raise PreparedSetError("birth_prepared_set_invalid")
-    if marker["author_store"] != AUTHOR_STORE_BASENAME_V1:
-        raise PreparedSetError("birth_prepared_set_invalid")
-    location = (AUTHORITY_SETS_BASENAME_V1, marker["set_id"])
-    if marker["authority_set"] != "/".join(location):
-        raise PreparedSetError("birth_prepared_set_invalid")
-
-    payload = read(location + (SET_DOCUMENT_BASENAME_V1,))
-    if hashlib.sha256(payload).hexdigest() != marker["set_json_sha256"]:
+    location = (AUTHORITY_SETS_BASENAME_V1, set_id)
+    payload = _read_integrity_document_v1(
+        session, location + (SET_DOCUMENT_BASENAME_V1,),
+    )
+    payload_sha256 = hashlib.sha256(payload).hexdigest()
+    if (
+        expected_set_json_sha256 is not None
+        and payload_sha256 != expected_set_json_sha256
+    ):
         raise PreparedSetError("birth_prepared_set_mismatch")
     document = _decode(payload)
     if set(document) != SET_FIELDS_V1 or document["schema_version"] != 1:
         raise PreparedSetError("birth_prepared_set_invalid")
-    if document["set_id"] != marker["set_id"] or document["state"] != "complete":
+    if document["set_id"] != set_id or document["state"] != "complete":
+        raise PreparedSetError("birth_prepared_set_mismatch")
+    unsigned = dict(document)
+    unsigned.pop("set_id")
+    calculated_set_id = hashlib.sha256(
+        SET_ID_DIGEST_DOMAIN_V1 + json.dumps(
+            unsigned, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    if calculated_set_id != set_id:
+        raise PreparedSetError("birth_prepared_set_mismatch")
+    if (
+        expected_transaction_id is not None
+        and document["provisioning_transaction_id"] != expected_transaction_id
+    ):
         raise PreparedSetError("birth_prepared_set_mismatch")
 
     try:
@@ -155,20 +324,31 @@ def load_prepared_set_v1(session) -> PreparedSetV1:
         author.active_key_id != document["author_active_key_id"]
         or sorted(author.verifier_keys) != document["author_verifier_key_ids"]
         or admission.active_key_id != document["admission_active_key_id"]
+        or sorted(admission.verifier_keys)
+        != document["admission_verifier_key_ids"]
     ):
         raise PreparedSetError("birth_prepared_set_mismatch")
-    if _public_inventory_sha256_v1({
+    author_inventory_sha256 = _public_inventory_sha256_v1({
         key_id: raw_public_key(key)
         for key_id, key in author.verifier_keys.items()
-    }) != marker["author_store_public_inventory_sha256"]:
+    })
+    if (
+        expected_author_inventory_sha256 is not None
+        and author_inventory_sha256 != expected_author_inventory_sha256
+    ):
         raise PreparedSetError("birth_prepared_set_mismatch")
 
-    material = read(
+    material = _read_integrity_document_v1(
+        session,
         location + (CONTEXT_CONTAINER_BASENAME_V1, CONTEXT_MATERIAL_BASENAME_V1)
     )
     if hashlib.sha256(material).hexdigest() != document["context_material_sha256"]:
         raise PreparedSetError("birth_prepared_set_mismatch")
-    if marker["context_material_sha256"] != document["context_material_sha256"]:
+    if (
+        expected_context_material_sha256 is not None
+        and expected_context_material_sha256
+        != document["context_material_sha256"]
+    ):
         raise PreparedSetError("birth_prepared_set_mismatch")
     context = _decode(material)
     if (
@@ -192,11 +372,11 @@ def load_prepared_set_v1(session) -> PreparedSetV1:
         ),
     ):
         if hashlib.sha256(
-            read(location + registry)
+            _read_integrity_document_v1(session, location + registry)
         ).hexdigest() != document[digest]:
             raise PreparedSetError("birth_prepared_set_mismatch")
 
-    return PreparedSetV1(
+    prepared_values = dict(
         set_id=document["set_id"],
         state=PREPARED_STATE_V1,
         author_active_key_id=document["author_active_key_id"],
@@ -206,8 +386,86 @@ def load_prepared_set_v1(session) -> PreparedSetV1:
         prepared_admission_context_id=document["prepared_admission_context_id"],
         prepared_context_epoch=document["prepared_context_epoch"],
         context_material_sha256=document["context_material_sha256"],
+        set_json_sha256=payload_sha256,
+        provisioning_transaction_id=document["provisioning_transaction_id"],
         provisioner_build_id=document["provisioner_build_id"],
     )
+    return PreparedSetV1(
+        **prepared_values,
+        _artifact_binding=_prepared_set_artifact_binding_v1(prepared_values),
+        _seal=_PREPARED_SET_SEAL_V1,
+    )
+
+
+def load_prepared_set_v1(session) -> PreparedSetV1:
+    """Reopen the exact set selected by the historical V1 marker."""
+    marker = _decode(
+        _read_integrity_document_v1(session, (MARKER_BASENAME_V1,)),
+    )
+    if (
+        set(marker) != MARKER_FIELDS_V1
+        or marker["schema_version"] != 1
+        or marker["state"] != PREPARED_STATE_V1
+        or marker["author_store"] != AUTHOR_STORE_BASENAME_V1
+    ):
+        raise PreparedSetError("birth_prepared_set_invalid")
+    location = (AUTHORITY_SETS_BASENAME_V1, marker["set_id"])
+    if marker["authority_set"] != "/".join(location):
+        raise PreparedSetError("birth_prepared_set_invalid")
+    return load_authority_set_v1(
+        session,
+        marker["set_id"],
+        expected_set_json_sha256=marker["set_json_sha256"],
+        expected_transaction_id=marker["transaction_id"],
+        expected_context_material_sha256=marker["context_material_sha256"],
+        expected_author_inventory_sha256=(
+            marker["author_store_public_inventory_sha256"]
+        ),
+    )
+
+
+def is_prepared_set_v1(value: object) -> bool:
+    """Recognize only a set emitted after the complete read-back above."""
+    if (
+        not isinstance(value, PreparedSetV1)
+        or value._seal is not _PREPARED_SET_SEAL_V1
+    ):
+        return False
+    try:
+        expected = _prepared_set_artifact_binding_v1({
+            field: getattr(value, field)
+            for field in _PREPARED_SET_BINDING_FIELDS_V1
+        })
+    except PreparedSetError:
+        return False
+    return value._artifact_binding == expected
+
+
+def _prepared_set_artifact_binding_v1(values: Mapping[str, object]) -> bytes:
+    """Bind the complete result so copied seals cannot bless altered fields."""
+    if set(values) != set(_PREPARED_SET_BINDING_FIELDS_V1):
+        raise PreparedSetError("birth_prepared_set_invalid")
+
+    def plain(item: object) -> object:
+        if isinstance(item, Mapping):
+            return {key: plain(child) for key, child in item.items()}
+        if isinstance(item, tuple):
+            return [plain(child) for child in item]
+        return item
+
+    try:
+        encoded = json.dumps(
+            plain(values),
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("ascii")
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise PreparedSetError("birth_prepared_set_invalid", exc) from None
+    return hashlib.sha256(
+        _PREPARED_SET_BINDING_DOMAIN_V1 + encoded,
+    ).digest()
 
 
 AUTHOR_STORE_DIGEST_DOMAIN_V1 = (

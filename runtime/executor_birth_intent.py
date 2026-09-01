@@ -134,11 +134,11 @@ def _submit_birth_intent_for_test(
     intent: BirthIntent, *, request_factory: RequestFactory, _core: object,
 ) -> "BirthResult":
     """Local test hook; cannot read or replace productive runtime state."""
-    from executor_birth_operational import BirthRequest, _BirthCore, _execute
+    from executor_birth_operational import BirthRequest, _execute, _is_birth_core
     request = request_factory(intent)
     if not isinstance(request, BirthRequest):
         raise ValueError("birth_request_invalid")
-    if not isinstance(_core, _BirthCore):
+    if not _is_birth_core(_core):
         raise ValueError("birth_core_untrusted")
     return _execute(request, _core)
 

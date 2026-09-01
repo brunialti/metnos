@@ -16,6 +16,10 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from executor_birth_cutover import CurrentReceiptProof
+from executor_birth_context_transition import (
+    context_transition_basename_v1,
+    issue_context_transition_v1,
+)
 import executor_birth_ownership_chain as chain_module
 import executor_birth_distribution_manifest as distribution_module
 import executor_birth_ownership_authorities as authority_module
@@ -123,16 +127,80 @@ def open_test_store(root, authority):
     return _OwnershipChainStoreForTest(root, authority.public)
 
 
-def cutover(authority, *, previous, build, request):
+def cutover(
+    authority, *, previous, build, request,
+    previous_transition=None,
+):
+    proof = CurrentReceiptProof((), {})
+    encoded_transition, transition = issue_context_transition_v1(
+        request_id=request,
+        closed_build_id=build,
+        previous_cutover_id=previous,
+        previous_set_id=(
+            previous_transition.set_id
+            if previous_transition is not None else "7" * 64
+        ),
+        previous_admission_context_id=(
+            previous_transition.prepared_admission_context_id
+            if previous_transition is not None else D("8")
+        ),
+        previous_context_epoch=(
+            previous_transition.prepared_context_epoch
+            if previous_transition is not None else D("9")
+        ),
+        set_id=hashlib.sha256(b"set\0" + request.encode("ascii")).hexdigest(),
+        prepared_admission_context_id=(
+            "sha256:" + hashlib.sha256(
+                b"context\0" + request.encode("ascii"),
+            ).hexdigest()
+        ),
+        prepared_context_epoch=(
+            "sha256:" + hashlib.sha256(
+                b"epoch\0" + request.encode("ascii"),
+            ).hexdigest()
+        ),
+        context_material_sha256=hashlib.sha256(
+            b"material\0" + request.encode("ascii"),
+        ).hexdigest(),
+        set_json_sha256=hashlib.sha256(
+            b"set-json\0" + request.encode("ascii"),
+        ).hexdigest(),
+        current_inventory=proof.inventory,
+    )
+    assert encoded_transition == transition.encoded
     encoded, signature = issue_ownership_cutover_certificate(
-        proof=CurrentReceiptProof((), {}), previous_cutover_id=previous,
+        proof=proof, previous_cutover_id=previous,
         request_id=request, signing_key_id=authority.cutover_key_id,
         maintenance_evidence_hash=D("1"), boundary_inventory_hash=D("2"),
         boundary_guard_version="closed-v1", closed_build_id=build,
+        context_transition_id=transition.transition_id,
+        dominant_startup_receipt=D("9"),
         private_key=authority.cutover_private,
     )
-    return encoded, signature, verify_ownership_cutover_certificate(
-        encoded, signature, registry=authority.cutover_registry,
+    return (
+        encoded,
+        signature,
+        verify_ownership_cutover_certificate(
+            encoded, signature, registry=authority.cutover_registry,
+        ),
+        transition,
+    )
+
+
+def context_transition(*, proof=None, request="5"):
+    return issue_context_transition_v1(
+        request_id=D(request),
+        closed_build_id=D("6"),
+        previous_cutover_id=None,
+        previous_set_id="7" * 64,
+        previous_admission_context_id=D("8"),
+        previous_context_epoch=D("9"),
+        set_id="a" * 64,
+        prepared_admission_context_id=D("b"),
+        prepared_context_epoch=D("c"),
+        context_material_sha256="d" * 64,
+        set_json_sha256="e" * 64,
+        current_inventory=(proof or CurrentReceiptProof((), {})).inventory,
     )
 
 
@@ -347,13 +415,14 @@ def test_chain_requires_unique_contiguous_required_head(authority):
     build2 = build_material(
         sequence=2, previous=build1.identity.closed_build_id,
     )
-    c1b, c1s, c1 = cutover(
+    c1b, c1s, c1, t1 = cutover(
         authority, previous=None, build=build1.identity.closed_build_id,
         request=D("5"),
     )
-    c2b, c2s, c2 = cutover(
+    c2b, c2s, c2, t2 = cutover(
         authority, previous=c1.cutover_id,
         build=build2.identity.closed_build_id, request=D("7"),
+        previous_transition=t1,
     )
     h1b, h1s = issue_ownership_head(
         release_sequence=1, cutover_id=c1.cutover_id,
@@ -374,22 +443,36 @@ def test_chain_requires_unique_contiguous_required_head(authority):
     verified = verify_contiguous_chain(
         anchor=c1, heads=(h1, h2), required_head=h2,
         cutovers={c1.cutover_id: c1, c2.cutover_id: c2}, builds=builds,
+        transitions={t1.transition_id: t1, t2.transition_id: t2},
     )
     assert verified.required_head == h2
+    assert verified.context_transitions == (t1, t2)
+    with pytest.raises(OwnershipChainError, match="missing object"):
+        verify_contiguous_chain(
+            anchor=c1,
+            heads=(h1, h2),
+            required_head=h2,
+            cutovers={c1.cutover_id: c1, c2.cutover_id: c2},
+            builds=builds,
+            transitions={t1.transition_id: t1},
+        )
     with pytest.raises(OwnershipChainError, match="downgrade"):
         verify_contiguous_chain(
             anchor=c1, heads=(h1, h2), required_head=h1,
             cutovers={c1.cutover_id: c1, c2.cutover_id: c2}, builds=builds,
+            transitions={t1.transition_id: t1, t2.transition_id: t2},
         )
     with pytest.raises(OwnershipChainError, match="recovery_required"):
         verify_contiguous_chain(
             anchor=c1, heads=(h2,), required_head=h2,
             cutovers={c1.cutover_id: c1, c2.cutover_id: c2}, builds=builds,
+            transitions={t1.transition_id: t1, t2.transition_id: t2},
         )
     wrong_build2 = build_material(sequence=2, previous=None)
-    wrong_cutover_bytes, wrong_cutover_sig, wrong_cutover = cutover(
+    wrong_cutover_bytes, wrong_cutover_sig, wrong_cutover, wrong_transition = cutover(
         authority, previous=c1.cutover_id,
         build=wrong_build2.identity.closed_build_id, request=D("8"),
+        previous_transition=t1,
     )
     wrong_head_bytes, wrong_head_sig = issue_ownership_head(
         release_sequence=2, cutover_id=wrong_cutover.cutover_id,
@@ -407,6 +490,46 @@ def test_chain_requires_unique_contiguous_required_head(authority):
                 build1.identity.closed_build_id: build1,
                 wrong_build2.identity.closed_build_id: wrong_build2,
             },
+            transitions={
+                t1.transition_id: t1,
+                wrong_transition.transition_id: wrong_transition,
+            },
+        )
+
+    unlinked_bytes, unlinked_signature, unlinked, unlinked_transition = cutover(
+        authority,
+        previous=c1.cutover_id,
+        build=build2.identity.closed_build_id,
+        request=D("a"),
+    )
+    unlinked_head_bytes, unlinked_head_signature = issue_ownership_head(
+        release_sequence=2,
+        cutover_id=unlinked.cutover_id,
+        closed_build_id=build2.identity.closed_build_id,
+        previous_head_id=h1.head_id,
+        signing_key_id=key_id,
+        private_key=private,
+    )
+    unlinked_head = verify_ownership_head(
+        unlinked_head_bytes,
+        unlinked_head_signature,
+        registry=registry,
+    )
+    assert unlinked_bytes and unlinked_signature
+    with pytest.raises(OwnershipChainError, match="context transition binding"):
+        verify_contiguous_chain(
+            anchor=c1,
+            heads=(h1, unlinked_head),
+            required_head=unlinked_head,
+            cutovers={
+                c1.cutover_id: c1,
+                unlinked.cutover_id: unlinked,
+            },
+            builds=builds,
+            transitions={
+                t1.transition_id: t1,
+                unlinked_transition.transition_id: unlinked_transition,
+            },
         )
 
 
@@ -417,10 +540,14 @@ def test_portable_store_is_no_replace_and_exact_retry(authority, tmp_path):
     distribution = build_material()
     store.append_authenticated_build(distribution)
     store.append_authenticated_build(distribution)
-    cbytes, csig, certificate = cutover(
+    cbytes, csig, certificate, transition = cutover(
         authority, previous=None, build=D("4"), request=D("5"),
     )
     store.append_cutover(cbytes, csig)
+    store.append_context_transition(
+        transition.encoded,
+        expected_proof=certificate.as_proof(),
+    )
     hbytes, hsig = issue_ownership_head(
         release_sequence=1, cutover_id=certificate.cutover_id,
         closed_build_id=D("4"), previous_head_id=None,
@@ -447,10 +574,14 @@ def test_store_reads_only_required_contiguous_prefix(authority, tmp_path):
     distribution = build_material()
     identity = distribution.identity
     store.append_authenticated_build(distribution)
-    cutover_bytes, cutover_signature, certificate = cutover(
+    cutover_bytes, cutover_signature, certificate, transition = cutover(
         authority, previous=None, build=identity.closed_build_id, request=D("5"),
     )
     store.append_cutover(cutover_bytes, cutover_signature)
+    store.append_context_transition(
+        transition.encoded,
+        expected_proof=certificate.as_proof(),
+    )
     head_bytes, head_signature = issue_ownership_head(
         release_sequence=1, cutover_id=certificate.cutover_id,
         closed_build_id=identity.closed_build_id, previous_head_id=None,
@@ -481,14 +612,16 @@ def test_store_rejects_fork_at_same_sequence(authority, tmp_path):
     distribution = build_material()
     identity = distribution.identity
     store.append_authenticated_build(distribution)
-    c1b, c1s, c1 = cutover(
+    c1b, c1s, c1, t1 = cutover(
         authority, previous=None, build=identity.closed_build_id, request=D("5"),
     )
-    c2b, c2s, c2 = cutover(
+    c2b, c2s, c2, t2 = cutover(
         authority, previous=None, build=identity.closed_build_id, request=D("6"),
     )
     store.append_cutover(c1b, c1s)
     store.append_cutover(c2b, c2s)
+    store.append_context_transition(t1.encoded, expected_proof=c1.as_proof())
+    store.append_context_transition(t2.encoded, expected_proof=c2.as_proof())
     first_bytes, first_signature = issue_ownership_head(
         release_sequence=1, cutover_id=c1.cutover_id,
         closed_build_id=identity.closed_build_id, previous_head_id=None,
@@ -640,6 +773,150 @@ def test_read_only_open_never_creates_missing_store(authority, tmp_path):
     assert not (tmp_path / "absent-store").exists()
 
 
+def test_context_transition_store_is_initialized_and_exact_retries_converge(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    assert directory.is_dir()
+    assert directory.stat().st_mode & 0o777 == 0o755
+
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    first = store.append_context_transition(encoded, expected_proof=proof)
+    second = store.append_context_transition(encoded, expected_proof=proof)
+
+    assert first == second == expected
+    assert tuple(item.name for item in directory.iterdir()) == (
+        context_transition_basename_v1(expected.transition_id),
+    )
+    initial = _inspect_ownership_chain_state_for_test_v1(store)
+    assert isinstance(initial, _InitialOwnershipChainStateForTestV1)
+
+
+def test_context_transition_append_recovers_an_exact_temporary_prefix(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    basename = context_transition_basename_v1(expected.transition_id)
+    temporary = directory / f".{basename}.tmp"
+    temporary.write_bytes(encoded[:17])
+    temporary.chmod(0o644)
+
+    observed = store.append_context_transition(encoded, expected_proof=proof)
+
+    assert observed == expected
+    assert not temporary.exists()
+
+
+def test_context_transition_collision_inventory_and_proof_mismatch_stop(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    destination = directory / context_transition_basename_v1(
+        expected.transition_id,
+    )
+    destination.write_bytes(b"{}")
+    destination.chmod(0o644)
+
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.append_context_transition(encoded, expected_proof=proof)
+
+    destination.write_bytes(encoded)
+    destination.chmod(0o644)
+    identity = (("explicit:alpha/manifest.toml", D("f")),)
+    other = CurrentReceiptProof(identity, {identity[0]: D("0")})
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.read_context_transition(
+            expected.transition_id,
+            expected_proof=other,
+        )
+
+    (directory / "unexpected").write_bytes(b"")
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.read_context_transition(expected.transition_id)
+
+
+def test_context_transition_post_publication_retry_is_idempotent(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+
+    def interrupt(boundary):
+        if boundary == "after_context_transition_record":
+            raise _OwnershipChainCrashForTest(boundary)
+
+    with pytest.raises(_OwnershipChainCrashForTest):
+        store.append_context_transition(
+            encoded,
+            expected_proof=proof,
+            _crash_seam=interrupt,
+        )
+
+    assert store.append_context_transition(
+        encoded,
+        expected_proof=proof,
+    ) == expected
+
+
+def test_context_transition_prepublication_retry_keeps_exact_temporary(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    basename = context_transition_basename_v1(expected.transition_id)
+    temporary = directory / f".{basename}.tmp"
+
+    def interrupt(boundary):
+        if boundary == "after_context_transition_temporary":
+            raise _OwnershipChainCrashForTest(boundary)
+
+    with pytest.raises(_OwnershipChainCrashForTest):
+        store.append_context_transition(
+            encoded,
+            expected_proof=proof,
+            _crash_seam=interrupt,
+        )
+
+    assert temporary.read_bytes() == encoded
+    assert store.append_context_transition(
+        encoded,
+        expected_proof=proof,
+    ) == expected
+    assert not temporary.exists()
+
+
+def test_context_transition_reader_rejects_a_second_file_name(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    store.append_context_transition(encoded, expected_proof=proof)
+    path = (
+        store.root
+        / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+        / context_transition_basename_v1(expected.transition_id)
+    )
+    try:
+        os.link(path, tmp_path / "second-name")
+    except OSError:
+        pytest.skip("hard links unavailable")
+
+    with pytest.raises(OwnershipChainError, match="context_transition"):
+        store.read_context_transition(expected.transition_id)
+
+
 def test_product_store_constructors_do_not_accept_authority_injection():
     assert tuple(inspect.signature(OwnershipChainStore).parameters) == ()
     assert tuple(inspect.signature(OwnershipChainStore.initialize).parameters) == ()
@@ -774,16 +1051,25 @@ def test_cold_two_release_chain_reopens_from_disk(
     store.append_authenticated_build(first)
     store.append_authenticated_build(second)
 
-    first_cutover_bytes, first_cutover_signature, first_cutover = cutover(
+    first_cutover_bytes, first_cutover_signature, first_cutover, first_transition = cutover(
         authority, previous=None, build=first.identity.closed_build_id,
         request=D("5"),
     )
-    second_cutover_bytes, second_cutover_signature, second_cutover = cutover(
+    second_cutover_bytes, second_cutover_signature, second_cutover, second_transition = cutover(
         authority, previous=first_cutover.cutover_id,
         build=second.identity.closed_build_id, request=D("7"),
+        previous_transition=first_transition,
     )
     store.append_cutover(first_cutover_bytes, first_cutover_signature)
     store.append_cutover(second_cutover_bytes, second_cutover_signature)
+    store.append_context_transition(
+        first_transition.encoded,
+        expected_proof=first_cutover.as_proof(),
+    )
+    store.append_context_transition(
+        second_transition.encoded,
+        expected_proof=second_cutover.as_proof(),
+    )
     (ownership_root / "ownership-cutover-v1.json").write_bytes(
         first_cutover_bytes
     )
@@ -835,11 +1121,16 @@ def test_cold_two_release_chain_reopens_from_disk(
         store.append_authenticated_build(duplicate)
         shutil.rmtree(duplicate_root)
     elif mutation == "fork":
-        fork_cutover_bytes, fork_cutover_signature, fork_cutover = cutover(
+        fork_cutover_bytes, fork_cutover_signature, fork_cutover, fork_transition = cutover(
             authority, previous=first_cutover.cutover_id,
             build=second.identity.closed_build_id, request=D("8"),
+            previous_transition=first_transition,
         )
         store.append_cutover(fork_cutover_bytes, fork_cutover_signature)
+        store.append_context_transition(
+            fork_transition.encoded,
+            expected_proof=fork_cutover.as_proof(),
+        )
         fork_head_bytes, fork_head_signature = issue_ownership_head(
             release_sequence=2, cutover_id=fork_cutover.cutover_id,
             closed_build_id=second.identity.closed_build_id,

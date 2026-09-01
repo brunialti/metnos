@@ -583,3 +583,125 @@ def consume_producer_receipt(encoded: bytes, *, registry: IssuerRegistry, bindin
     finalize_producer_receipt(encoded, registry=registry, binding=binding, request_id=request_id,
                               now=now, db_path=db_path, rejection_code="legacy_consume_without_result_binding")
     return claim.receipt
+
+
+# ---------------------------------------------------------------------------
+# V2 registrations bound to a birth context.
+#
+# The durable transaction is keyed by an identity that already carries the
+# context selection, so a request minted for V1 or for another epoch is not a
+# request that can be presented here: it hashes to a different key and never
+# reaches the row.  These entry points refuse a free ``request_id`` outright,
+# which is what keeps that property from depending on caller discipline.
+# ---------------------------------------------------------------------------
+
+
+def _sealed_request_v2(request: object, binding: ProducerReceiptBinding):
+    from executor_birth_producer_context import ProducerRequestV2
+
+    # Exact type: a subclass would skip the sealed constructor entirely.
+    if type(request) is not ProducerRequestV2:
+        raise ReceiptError("producer_request_v2_untrusted", "request")
+    if not isinstance(binding, ProducerReceiptBinding):
+        raise ReceiptError("producer_receipt_binding_invalid", "binding")
+    # The objective is where the context enters the durable record, so a
+    # binding that names a different objective is not this act.
+    if binding.objective_hash != request.objective_hash:
+        raise ReceiptError("producer_request_v2_objective_conflict", "binding")
+    # Section 9 binds the source identity into the act; a binding that carries
+    # a different source is a different act wearing this one's identity.
+    if binding.candidate_source_id != request.candidate_source_id:
+        raise ReceiptError("producer_request_v2_source_conflict", "binding")
+    return request
+
+
+def get_or_issue_and_claim_producer_receipt_v2(
+    *, request: object, issuer_id: str, capability_id: str,
+    binding: ProducerReceiptBinding, registry: IssuerRegistry, now: datetime,
+    db_path: Path, issue: Callable[[], bytes], lease_seconds: int = 300,
+) -> bytes:
+    """Issue and claim the V2 registration for one sealed context request.
+
+    Identical to the V1 entry point in every durable property; it differs only
+    in refusing to take the request identity and the contract from the caller.
+    Both come from the sealed request, so an identical retry after an
+    interruption renews the same transaction instead of opening a second one.
+    """
+    sealed = _sealed_request_v2(request, binding)
+    return get_or_issue_and_claim_producer_receipt(
+        request_id=sealed.request_id, issuer_id=issuer_id,
+        capability_id=capability_id, contract_id=sealed.contract_id,
+        binding=binding, registry=registry, now=now, db_path=db_path,
+        issue=issue, lease_seconds=lease_seconds,
+    )
+
+
+def verify_terminal_registration_v2(
+    encoded: bytes, *, request: object, registry: IssuerRegistry,
+    binding: ProducerReceiptBinding, now: datetime, db_path: Path,
+    authenticate_terminal: Callable[[bytes, bytes], str],
+) -> ProducerReceiptClaim:
+    """Verify that the registration reached an authenticated terminal state.
+
+    The receipt and the V2 admission receipt are two representations of one
+    act, so this checks the durable record against the sealed request on every
+    axis that can disagree: the issuance identity, the objective that carries
+    the context, the terminal state, and the context declared by the
+    authenticated terminal envelope itself.
+
+    ``authenticate_terminal`` verifies the envelope signature with the sealed
+    Birth core and returns the admission context it declares.  This module
+    deliberately does not hold that key.
+    """
+    sealed = _sealed_request_v2(request, binding)
+    if not callable(authenticate_terminal):
+        raise ReceiptError("producer_receipt_invalid", "authenticate_terminal")
+    instant = _utc(now)
+    receipt = _verify_claimed(
+        encoded, registry=registry, now=instant, db_path=db_path,
+    )
+    _require_binding(receipt, binding)
+    db = _open(db_path)
+    try:
+        issuance = db.execute(
+            "SELECT contract_id,objective_hash FROM birth_producer_issuance "
+            "WHERE request_id=?",
+            (sealed.request_id,),
+        ).fetchone()
+        if issuance is None:
+            raise ReceiptError("producer_request_v2_unregistered", sealed.request_id)
+        if (issuance["contract_id"], issuance["objective_hash"]) != (
+            sealed.contract_id, sealed.objective_hash,
+        ):
+            raise ReceiptError("producer_request_v2_binding_conflict", "issuance")
+        row = _row(db, receipt, encoded)
+        if row["request_id"] != sealed.request_id:
+            raise ReceiptError("producer_receipt_replay", "owned_by_other_request")
+        if row["state"] != "committed":
+            raise ReceiptError("producer_request_v2_not_terminal", str(row["state"]))
+        envelope = row["terminal_envelope"]
+        auth = row["terminal_auth"]
+        if envelope is None or auth is None:
+            raise ReceiptError("producer_request_v2_not_terminal", "envelope_missing")
+        envelope = bytes(envelope)
+        auth = bytes(auth)
+        # Read every value out before the connection closes: a Row must not
+        # outlive its cursor just because it usually does.
+        result_binding = row["result_binding"]
+        rejection_code = row["rejection_code"]
+    finally:
+        if db.in_transaction:
+            db.rollback()
+        db.close()
+    try:
+        context = authenticate_terminal(envelope, auth)
+    except ReceiptError:
+        raise
+    except Exception as exc:
+        raise ReceiptError("producer_request_v2_terminal_unauthenticated", str(exc)) from exc
+    if context != sealed.admission_context_id:
+        raise ReceiptError("producer_request_v2_context_conflict", "terminal")
+    return ProducerReceiptClaim(
+        receipt, sealed.request_id, "committed", None,
+        result_binding, rejection_code, envelope, auth,
+    )

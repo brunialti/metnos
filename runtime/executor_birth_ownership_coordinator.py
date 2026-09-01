@@ -8,6 +8,8 @@ productive Group-5 entry cannot create.
 from __future__ import annotations
 
 import base64
+import ctypes
+import errno
 import hashlib
 import json
 import os
@@ -17,26 +19,32 @@ import sys
 import threading
 import weakref
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Callable, Iterator, Mapping
 
 from executor_birth_cutover import CurrentReceiptProof
+from executor_birth_dominant_startup import is_dominant_startup_receipt_v1
 from executor_birth_distribution_manifest import (
     VerifiedDistribution, is_verified_distribution,
+    _verified_distribution_matches_payload_v1,
+    installed_tree_hash_v1,
     verify_current_installation_distribution_v1,
 )
 from executor_birth_ownership_authorities import (
     DEFAULT_OWNERSHIP_ROOT_V1, RootOwnershipAuthoritiesV1,
+    is_root_ownership_authorities_v1,
 )
 from executor_birth_ownership_cutover import (
     MAX_PAYLOAD_BYTES, PAYLOAD_BASENAME, SIGNATURE_BASENAME,
-    OwnershipCutoverRegistry, install_ownership_cutover_certificate,
+    OwnershipCutoverCertificate, OwnershipCutoverError,
+    OwnershipCutoverRegistry,
+    install_ownership_cutover_certificate,
     issue_ownership_cutover_certificate, read_ownership_cutover_certificate,
-    verify_ownership_cutover_certificate, _publish_no_replace, _safe_read,
-    _sync_directory, _write_temporary,
+    verify_ownership_cutover_certificate, _prepare_recoverable_temporary,
+    _publish_no_replace, _safe_read, _sync_directory, _write_temporary,
 )
 
 
@@ -51,11 +59,19 @@ DEPLOYMENT_LOCK_BASENAME_V1 = "ownership-deployment-v1.lock"
 MAX_RECORD_BYTES_V1 = 8 * 1024 * 1024
 MAX_COORDINATOR_CONTROL_BYTES_V2 = 16 * 1024
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_HEX_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+_PROVISIONING_TRANSACTION_RE = re.compile(r"[0-9a-f]{32}\Z")
 _TEMPORARY_RECORD_RE = re.compile(
     r"\.record-([0-9]{3})-v1\.json\.([0-9a-f]{64})\.tmp\Z"
 )
 _LEGACY_RECORD_RE_V1 = re.compile(r"record-([0-9]{3})-v1\.json\Z")
 _TRANSACTION_RECORD_RE_V2 = re.compile(r"record-([0-9]{3})-v2\.json\Z")
+_TEMPORARY_TRANSACTION_RECORD_RE_V2 = re.compile(
+    r"\.record-([0-9]{3})-v2\.json\.([0-9a-f]{64})\.tmp\Z"
+)
+_TEMPORARY_TRANSACTION_DIRECTORY_RE_V2 = re.compile(
+    r"\.([0-9a-f]{64})\.v2\.tmp\Z"
+)
 _SUCCESSOR_CLAIM_BASENAME_RE_V1 = re.compile(
     r"(?:initial|[0-9a-f]{64})\.json\Z"
 )
@@ -69,6 +85,15 @@ _LEGACY_DISPOSITION_DOMAIN_V2 = (
 )
 _INSTALL_TRANSACTION_DOMAIN_V1 = (
     b"metnos.executor-birth.install-transaction/v1\0"
+)
+_HEAD_PAYLOAD_HASH_DOMAIN_V2 = (
+    b"metnos.executor-birth.head-payload-hash/v2\0"
+)
+_HEAD_SIGNATURE_HASH_DOMAIN_V2 = (
+    b"metnos.executor-birth.head-signature-hash/v2\0"
+)
+_REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2 = (
+    b"metnos.executor-birth.required-head-frame-hash/v2\0"
 )
 _RECORD_KEYS = frozenset({
     "schema_version", "sequence", "state", "previous_record_sha256",
@@ -103,6 +128,12 @@ _RECORD_KEYS_V2 = _RECORD_KEYS | frozenset({
     "head_signature_hash", "required_head_frame_hash",
     "verified_chain_head_id", "preflight_attestation_hash",
     "service_coverage_hash", "administrative_bundle_hash",
+    "provisioning_transaction_id", "previous_set_id",
+    "previous_admission_context_id", "previous_context_epoch",
+    "target_set_id", "target_admission_context_id", "target_context_epoch",
+    "target_context_material_sha256", "target_set_json_sha256",
+    "context_transition_id", "current_inventory_hash",
+    "dominant_startup_receipt",
 })
 _LEGACY_DISPOSITION_REASON_V2 = "superseded_before_certificate"
 
@@ -112,6 +143,80 @@ class OwnershipCoordinatorError(RuntimeError):
         self.code = code
         self.detail = detail
         super().__init__(f"{code}: {detail}" if detail else code)
+
+
+_WRAPPED_TYPED_DETAIL_CODES_V1 = {
+    ("birth_context_transition_recovery_required", "record"):
+        "record_invalid",
+    ("birth_context_transition_recovery_required", "record publication"):
+        "record_publication",
+    ("birth_context_transition_recovery_required", "record inventory"):
+        "record_inventory",
+    ("birth_context_transition_recovery_required", "unexpected record object"):
+        "unexpected_record_object",
+    ("birth_context_transition_recovery_required", "record object"):
+        "record_object",
+    ("birth_context_transition_recovery_required", "record name"):
+        "record_name",
+    ("birth_context_transition_recovery_required", "record duplicate"):
+        "record_duplicate",
+    ("birth_context_transition_recovery_required", "transition_id"):
+        "transition_id",
+    ("birth_context_transition_recovery_required", "record missing"):
+        "record_missing",
+    ("birth_context_transition_recovery_required", "record binding"):
+        "record_binding",
+}
+_WRAPPED_CONTRACT_DETAIL_CODES_V1 = frozenset({
+    "birth_cutover_generation_invalid",
+    "birth_cutover_not_quiescent",
+    "birth_cutover_receipt_binding_invalid",
+    "birth_cutover_receipt_invalid",
+    "birth_cutover_receipt_missing",
+    "birth_cutover_receipt_not_durable",
+    "birth_cutover_reattestation_failed",
+    "birth_cutover_reattestation_missing",
+})
+_MAX_WRAPPED_CONTRACT_DETAIL_BYTES_V1 = 4096
+
+
+def _wrapped_contract_detail_v1(code: str, detail: object) -> str | None:
+    """Admit only one bounded, canonical contract identity as context."""
+    if (
+        code not in _WRAPPED_CONTRACT_DETAIL_CODES_V1
+        or type(detail) is not str or ":" not in detail
+        or not detail.isprintable()
+    ):
+        return None
+    try:
+        if len(detail.encode("utf-8")) > _MAX_WRAPPED_CONTRACT_DETAIL_BYTES_V1:
+            return None
+        origin, relative = detail.split(":", 1)
+        from manifest_inventory import ContractId, ManifestOrigin
+
+        canonical = ContractId(ManifestOrigin(origin), relative).value
+    except (TypeError, UnicodeError, ValueError):
+        return None
+    return detail if canonical == detail else None
+
+
+def _wrapped_cause_detail_v1(exc: BaseException) -> str:
+    """Keep only allowlisted typed reason components from a known error."""
+    code = getattr(exc, "code", None)
+    if (
+        not isinstance(code, str)
+        or re.fullmatch(r"[a-z][a-z0-9_]{0,127}", code) is None
+    ):
+        return ""
+    typed_detail = _WRAPPED_TYPED_DETAIL_CODES_V1.get(
+        (code, getattr(exc, "detail", None)),
+    )
+    if typed_detail is not None:
+        return f"{code}:{typed_detail}"
+    contract_detail = _wrapped_contract_detail_v1(
+        code, getattr(exc, "detail", None),
+    )
+    return f"{code}: {contract_detail}" if contract_detail is not None else code
 
 
 class OwnershipCoordinatorStateV1(str, Enum):
@@ -137,11 +242,36 @@ def _digest(encoded: bytes) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _framed_digest_v2(domain: bytes, encoded: bytes) -> str:
+    if type(domain) is not bytes or not domain or type(encoded) is not bytes:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "framed digest",
+        )
+    return _digest(domain + len(encoded).to_bytes(8, "big") + encoded)
+
+
 def _require_digest(value: object, field: str, *, nullable: bool = False):
     if nullable and value is None:
         return None
     if not isinstance(value, str) or _DIGEST_RE.fullmatch(value) is None:
         raise OwnershipCoordinatorError("birth_ownership_journal_invalid", field)
+    return value
+
+
+def _require_hex_sha256(value: object, field: str) -> str:
+    if not isinstance(value, str) or _HEX_SHA256_RE.fullmatch(value) is None:
+        raise OwnershipCoordinatorError("birth_ownership_journal_invalid", field)
+    return value
+
+
+def _require_provisioning_transaction_id(value: object) -> str:
+    if (
+        not isinstance(value, str)
+        or _PROVISIONING_TRANSACTION_RE.fullmatch(value) is None
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "provisioning_transaction_id",
+        )
     return value
 
 
@@ -680,6 +810,17 @@ class OwnershipCoordinatorRecordV2:
     previous_head_id: str | None
     service_coverage_hash: str
     administrative_bundle_hash: str
+    provisioning_transaction_id: str
+    previous_set_id: str
+    previous_admission_context_id: str
+    previous_context_epoch: str
+    target_set_id: str
+    target_admission_context_id: str
+    target_context_epoch: str
+    target_context_material_sha256: str
+    target_set_json_sha256: str
+    context_transition_id: str
+    current_inventory_hash: str
     current_proof: CurrentReceiptProof | None = None
     maintenance_before_hash: str | None = None
     maintenance_after_hash: str | None = None
@@ -690,6 +831,7 @@ class OwnershipCoordinatorRecordV2:
     catalog_id: str | None = None
     certificate_payload_hash: str | None = None
     certificate_signature_hash: str | None = None
+    dominant_startup_receipt: str | None = None
     installed_tree_hash: str | None = None
     head_id: str | None = None
     head_payload_hash: str | None = None
@@ -712,7 +854,10 @@ class OwnershipCoordinatorRecordV2:
             "distribution_signature_hash", "boundary_inventory_hash",
             "source_id", "successor_claim_id", "deployment_descriptor_id",
             "install_transaction_id", "service_coverage_hash",
-            "administrative_bundle_hash",
+            "administrative_bundle_hash", "previous_admission_context_id",
+            "previous_context_epoch", "target_admission_context_id",
+            "target_context_epoch", "context_transition_id",
+            "current_inventory_hash",
         ):
             _require_digest(getattr(self, field), field)
         for field in (
@@ -721,11 +866,18 @@ class OwnershipCoordinatorRecordV2:
             "maintenance_after_hash", "startup_prerequisite_id",
             "startup_prerequisite_digest", "cutover_id", "catalog_id",
             "certificate_payload_hash", "certificate_signature_hash",
+            "dominant_startup_receipt",
             "installed_tree_hash", "head_id", "head_payload_hash",
             "head_signature_hash", "required_head_frame_hash",
             "verified_chain_head_id", "preflight_attestation_hash",
         ):
             _require_digest(getattr(self, field), field, nullable=True)
+        _require_provisioning_transaction_id(self.provisioning_transaction_id)
+        for field in (
+            "previous_set_id", "target_set_id",
+            "target_context_material_sha256", "target_set_json_sha256",
+        ):
+            _require_hex_sha256(getattr(self, field), field)
         if (self.sequence == 0) is not (self.previous_record_sha256 is None):
             raise OwnershipCoordinatorError(
                 "birth_ownership_journal_invalid", "previous_record_sha256",
@@ -772,10 +924,18 @@ class OwnershipCoordinatorRecordV2:
                 raise OwnershipCoordinatorError(
                     "birth_ownership_journal_invalid", "maintenance binding",
                 )
+            from executor_birth_context_transition import current_inventory_hash_v1
+
+            if self.current_inventory_hash != current_inventory_hash_v1(
+                self.current_proof.inventory,
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_journal_invalid", "current inventory binding",
+                )
         certificate_fields = (
             self.startup_prerequisite_id, self.startup_prerequisite_digest,
             self.cutover_id, self.catalog_id, self.certificate_payload_hash,
-            self.certificate_signature_hash,
+            self.certificate_signature_hash, self.dominant_startup_receipt,
         )
         if (
             self.sequence >= 2 and any(value is None for value in certificate_fields)
@@ -875,6 +1035,22 @@ class OwnershipCoordinatorRecordV2:
             "preflight_attestation_hash": self.preflight_attestation_hash,
             "service_coverage_hash": self.service_coverage_hash,
             "administrative_bundle_hash": self.administrative_bundle_hash,
+            "provisioning_transaction_id": self.provisioning_transaction_id,
+            "previous_set_id": self.previous_set_id,
+            "previous_admission_context_id": (
+                self.previous_admission_context_id
+            ),
+            "previous_context_epoch": self.previous_context_epoch,
+            "target_set_id": self.target_set_id,
+            "target_admission_context_id": self.target_admission_context_id,
+            "target_context_epoch": self.target_context_epoch,
+            "target_context_material_sha256": (
+                self.target_context_material_sha256
+            ),
+            "target_set_json_sha256": self.target_set_json_sha256,
+            "context_transition_id": self.context_transition_id,
+            "current_inventory_hash": self.current_inventory_hash,
+            "dominant_startup_receipt": self.dominant_startup_receipt,
         }
 
     def encode(self) -> bytes:
@@ -945,6 +1121,21 @@ def _decode_record_v2(encoded: bytes) -> OwnershipCoordinatorRecordV2:
         previous_head_id=value.get("previous_head_id"),
         service_coverage_hash=value.get("service_coverage_hash"),
         administrative_bundle_hash=value.get("administrative_bundle_hash"),
+        provisioning_transaction_id=value.get("provisioning_transaction_id"),
+        previous_set_id=value.get("previous_set_id"),
+        previous_admission_context_id=value.get(
+            "previous_admission_context_id",
+        ),
+        previous_context_epoch=value.get("previous_context_epoch"),
+        target_set_id=value.get("target_set_id"),
+        target_admission_context_id=value.get("target_admission_context_id"),
+        target_context_epoch=value.get("target_context_epoch"),
+        target_context_material_sha256=value.get(
+            "target_context_material_sha256",
+        ),
+        target_set_json_sha256=value.get("target_set_json_sha256"),
+        context_transition_id=value.get("context_transition_id"),
+        current_inventory_hash=value.get("current_inventory_hash"),
         current_proof=proof,
         maintenance_before_hash=value.get("maintenance_before_hash"),
         maintenance_after_hash=value.get("maintenance_after_hash"),
@@ -955,6 +1146,7 @@ def _decode_record_v2(encoded: bytes) -> OwnershipCoordinatorRecordV2:
         catalog_id=value.get("catalog_id"),
         certificate_payload_hash=value.get("certificate_payload_hash"),
         certificate_signature_hash=value.get("certificate_signature_hash"),
+        dominant_startup_receipt=value.get("dominant_startup_receipt"),
         installed_tree_hash=value.get("installed_tree_hash"),
         head_id=value.get("head_id"),
         head_payload_hash=value.get("head_payload_hash"),
@@ -1132,6 +1324,11 @@ _TRANSACTION_CARRY_KEYS_V2 = _LEGACY_CARRY_KEYS_V1 | frozenset({
     "source_id", "successor_claim_id", "deployment_descriptor_id",
     "install_transaction_id", "release_sequence", "previous_head_id",
     "service_coverage_hash", "administrative_bundle_hash",
+    "provisioning_transaction_id", "previous_set_id",
+    "previous_admission_context_id", "previous_context_epoch",
+    "target_set_id", "target_admission_context_id", "target_context_epoch",
+    "target_context_material_sha256", "target_set_json_sha256",
+    "context_transition_id", "current_inventory_hash",
 })
 _TRANSACTION_THRESHOLD_KEYS_V2 = (
     (1, frozenset({
@@ -1141,7 +1338,7 @@ _TRANSACTION_THRESHOLD_KEYS_V2 = (
     (2, frozenset({
         "startup_prerequisite_id", "startup_prerequisite_digest",
         "cutover_id", "catalog_id", "certificate_payload_hash",
-        "certificate_signature_hash",
+        "certificate_signature_hash", "dominant_startup_receipt",
     })),
     (4, frozenset({"installed_tree_hash"})),
     (5, frozenset({
@@ -1282,36 +1479,625 @@ def _read_transaction_directory_v2(
             raise OwnershipCoordinatorError(
                 "birth_ownership_recovery_required", "transaction record",
             ) from exc
-        if (
-            record.sequence != sequence
-            or record.request_id != request_id
-            or record.previous_record_sha256 != previous_hash
-        ):
-            raise OwnershipCoordinatorError(
-                "birth_ownership_recovery_required", "transaction chain",
-            )
-        if records:
-            first_value = records[0].as_value()
-            value = record.as_value()
-            if any(
-                value[key] != first_value[key]
-                for key in _TRANSACTION_CARRY_KEYS_V2
-            ):
-                raise OwnershipCoordinatorError(
-                    "birth_ownership_recovery_required", "transaction carry",
-                )
-            for threshold, keys in _TRANSACTION_THRESHOLD_KEYS_V2:
-                if sequence > threshold:
-                    threshold_value = records[threshold].as_value()
-                    if any(value[key] != threshold_value[key] for key in keys):
-                        raise OwnershipCoordinatorError(
-                            "birth_ownership_recovery_required",
-                            "transaction threshold carry",
-                        )
+        _require_transaction_record_link_v2(
+            tuple(records), record, sequence=sequence,
+            request_id=request_id, previous_hash=previous_hash,
+        )
         records.append(record)
         encoded_records.append(encoded)
         previous_hash = _record_hash_v2(encoded)
     return tuple(records), tuple(encoded_records)
+
+
+def _require_transaction_record_link_v2(
+    records: tuple[OwnershipCoordinatorRecordV2, ...],
+    record: OwnershipCoordinatorRecordV2, *, sequence: int,
+    request_id: str, previous_hash: str | None,
+) -> None:
+    if (
+        type(record) is not OwnershipCoordinatorRecordV2
+        or record.sequence != sequence
+        or record.request_id != request_id
+        or record.previous_record_sha256 != previous_hash
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "transaction chain",
+        )
+    if not records:
+        return
+    first_value = records[0].as_value()
+    value = record.as_value()
+    if any(
+        value[key] != first_value[key]
+        for key in _TRANSACTION_CARRY_KEYS_V2
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "transaction carry",
+        )
+    for threshold, keys in _TRANSACTION_THRESHOLD_KEYS_V2:
+        if sequence > threshold:
+            threshold_value = records[threshold].as_value()
+            if any(value[key] != threshold_value[key] for key in keys):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "transaction threshold carry",
+                )
+
+
+def _ensure_coordinator_child_directory_v2(
+    parent: Path, basename: str, *, root_owned: bool,
+) -> tuple[Path, bool]:
+    _require_read_only_directory_v2(parent, root_owned=root_owned)
+    child = parent / basename
+    created = False
+    try:
+        child.mkdir(mode=0o755)
+        created = True
+        if os.name != "nt":
+            child.chmod(0o755)
+    except FileExistsError:
+        pass
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "transaction directory",
+        ) from exc
+    _require_read_only_directory_v2(child, root_owned=root_owned)
+    if created:
+        try:
+            _sync_directory(parent)
+        except OSError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction directory sync",
+            ) from exc
+    return child, created
+
+
+def _publish_control_no_replace_v2(
+    parent: Path, basename: str, encoded: bytes, *, maximum: int,
+    root_owned: bool,
+) -> bytes:
+    """Publish and reread one immutable control file without replacement."""
+    if (
+        not sys.platform.startswith("linux")
+        or type(basename) is not str or not basename
+        or "/" in basename or "\\" in basename
+        or type(encoded) is not bytes or not 0 < len(encoded) <= maximum
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "control publication",
+        )
+    _require_read_only_directory_v2(parent, root_owned=root_owned)
+    destination = parent / basename
+    flags = (
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = None
+    try:
+        try:
+            descriptor = os.open(destination, flags, 0o600)
+        except FileExistsError:
+            observed = _read_control_file_v2(
+                destination, maximum, root_owned=root_owned,
+            )
+            if observed != encoded:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_journal_conflict", basename,
+                )
+            return observed
+        offset = 0
+        while offset < len(encoded):
+            written = os.write(descriptor, encoded[offset:])
+            if written <= 0:
+                raise OSError(errno.EIO, "short control write")
+            offset += written
+        os.fsync(descriptor)
+        os.fchmod(descriptor, 0o644)
+        os.fsync(descriptor)
+    except OwnershipCoordinatorError:
+        raise
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "control publication",
+        ) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    try:
+        _sync_directory(parent)
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "control publication sync",
+        ) from exc
+    observed = _read_control_file_v2(
+        destination, maximum, root_owned=root_owned,
+    )
+    if observed != encoded:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "control publication reread",
+        )
+    return observed
+
+
+def _temporary_transaction_directory_v2(
+    transactions: Path, request_id: str,
+) -> Path:
+    _require_digest(request_id, "request_id")
+    return transactions / f".{request_id[7:]}.v2.tmp"
+
+
+def _require_staged_transaction_directory_v2(
+    directory: Path, *, root_owned: bool,
+) -> os.stat_result:
+    """Accept only a private subset of the final directory mode."""
+    try:
+        info = directory.lstat()
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "staged transaction directory",
+        ) from exc
+    invalid = (
+        not stat.S_ISDIR(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+    )
+    if os.name != "nt":
+        expected_owner = (
+            (0, 0) if root_owned else (os.geteuid(), os.getegid())
+        )
+        mode = stat.S_IMODE(info.st_mode)
+        invalid = invalid or (
+            (info.st_uid, info.st_gid) != expected_owner
+            or mode & ~0o755 != 0
+            or mode & 0o700 != 0o700
+        )
+    if invalid:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "staged transaction directory",
+        )
+    return info
+
+
+def _read_staged_control_file_v2(
+    path: Path, maximum: int, *, root_owned: bool,
+) -> bytes:
+    """Read a stable unpublished file, including a recoverable strict prefix."""
+    flags = (
+        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = None
+    try:
+        descriptor = os.open(path, flags)
+        before = os.fstat(descriptor)
+        path_before = path.lstat()
+        expected_owner = (
+            (0, 0) if root_owned else (os.geteuid(), os.getegid())
+        )
+        invalid = (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size < 0
+            or before.st_size > maximum
+            or stat.S_ISLNK(path_before.st_mode)
+            or bool(getattr(path_before, "st_file_attributes", 0) & 0x400)
+            or (before.st_dev, before.st_ino)
+            != (path_before.st_dev, path_before.st_ino)
+        )
+        if os.name != "nt":
+            invalid = invalid or (
+                stat.S_IMODE(before.st_mode) not in {0o600, 0o644}
+                or (before.st_uid, before.st_gid) != expected_owner
+            )
+        if invalid:
+            raise ValueError("staged control file metadata")
+        chunks = bytearray()
+        while len(chunks) < before.st_size:
+            chunk = os.read(descriptor, before.st_size - len(chunks))
+            if not chunk:
+                break
+            chunks.extend(chunk)
+        after = os.fstat(descriptor)
+        path_after = path.lstat()
+        identity = lambda info: (
+            info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+            info.st_uid, info.st_gid, info.st_size,
+            getattr(info, "st_file_attributes", 0),
+        )
+        if (
+            identity(after) != identity(before)
+            or identity(path_after) != identity(path_before)
+            or len(chunks) != before.st_size
+        ):
+            raise ValueError("staged control file changed")
+        return bytes(chunks)
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "staged control file metadata",
+        ) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _read_staged_transaction_directory_v2(
+    directory: Path, *, request_id: str, root_owned: bool,
+) -> bytes | None:
+    """Validate one unpublished directory without treating it as committed."""
+    _require_staged_transaction_directory_v2(
+        directory, root_owned=root_owned,
+    )
+    paths = _read_directory_entries_v2(directory)
+    if not paths:
+        return None
+    if len(paths) != 1 or paths[0].name != _record_basename_v2(0):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "staged transaction inventory",
+        )
+    encoded = _read_staged_control_file_v2(
+        paths[0], MAX_RECORD_BYTES_V1, root_owned=root_owned,
+    )
+    try:
+        record = _decode_record_v2(encoded)
+        _require_transaction_record_link_v2(
+            (), record, sequence=0, request_id=request_id,
+            previous_hash=None,
+        )
+    except Exception:
+        # A power loss may leave a strict prefix in this unpublished location.
+        # The writer compares it with the exact record before replacing it.
+        return encoded
+    return encoded
+
+
+def _publish_transaction_directory_no_replace_v2(
+    temporary: Path, destination: Path,
+) -> bool:
+    """Atomically publish a complete transaction directory on Linux."""
+    if not sys.platform.startswith("linux"):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_platform_unsupported",
+        )
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "directory rename support",
+        )
+    renameat2.argtypes = (
+        ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    result = renameat2(
+        -100, os.fsencode(temporary), -100, os.fsencode(destination), 1,
+    )
+    if result != 0:
+        number = ctypes.get_errno()
+        if number == errno.EEXIST:
+            return False
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", destination.name,
+        ) from OSError(number, os.strerror(number), destination)
+    try:
+        _sync_directory(destination.parent)
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "transaction directory sync",
+        ) from exc
+    return True
+
+
+class _OwnershipCoordinatorTransactionJournalV2:
+    """Append and recover one exact V2 transaction under the outer lock."""
+
+    __slots__ = (
+        "coordinator_directory", "directory", "request_id", "_root_owned",
+    )
+
+    def __init__(
+        self, coordinator_directory: Path,
+        record: OwnershipCoordinatorRecordV2, *, root_owned: bool,
+    ) -> None:
+        if type(record) is not OwnershipCoordinatorRecordV2:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "transaction record",
+            )
+        self.coordinator_directory = Path(coordinator_directory)
+        self.request_id = record.request_id
+        claims = _read_successor_claims_snapshot_v1(
+            self.coordinator_directory
+            / SUCCESSOR_CLAIMS_DIRECTORY_BASENAME_V1,
+            root_owned=root_owned,
+        )
+        matching_claims = tuple(
+            claim for claim in claims if claim.request_id == record.request_id
+        )
+        if len(matching_claims) != 1:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "claim transaction binding",
+            )
+        claim = matching_claims[0]
+        if (
+            claim.claim_id != record.successor_claim_id
+            or claim.source_id != record.source_id
+            or claim.closed_build_id != record.closed_build_id
+            or claim.release_sequence != record.release_sequence
+            or claim.previous_head_id != record.previous_head_id
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "claim transaction binding",
+            )
+        transactions = (
+            self.coordinator_directory / TRANSACTIONS_DIRECTORY_BASENAME_V2
+        )
+        try:
+            transactions.lstat()
+            transactions_exists = True
+        except FileNotFoundError:
+            transactions_exists = False
+        except OSError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction directory",
+            ) from exc
+        if not transactions_exists and record.sequence != 0:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction gap",
+            )
+        if transactions_exists:
+            _require_read_only_directory_v2(
+                transactions, root_owned=root_owned,
+            )
+        else:
+            transactions, _ = _ensure_coordinator_child_directory_v2(
+                self.coordinator_directory,
+                TRANSACTIONS_DIRECTORY_BASENAME_V2,
+                root_owned=root_owned,
+            )
+        candidate = transactions / self.request_id
+        try:
+            candidate.lstat()
+            candidate_exists = True
+        except FileNotFoundError:
+            candidate_exists = False
+        except OSError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction directory",
+            ) from exc
+        if not candidate_exists and record.sequence != 0:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction gap",
+            )
+        if candidate_exists:
+            _require_read_only_directory_v2(
+                candidate, root_owned=root_owned,
+            )
+            if not _read_directory_entries_v2(candidate):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "transaction cardinality",
+                )
+        self.directory = candidate
+        self._root_owned = root_owned
+
+    def _append_initial(
+        self, record: OwnershipCoordinatorRecordV2, *,
+        _crash_seam: Callable[[str], None] | None,
+    ) -> OwnershipCoordinatorRecordV2:
+        transactions = self.directory.parent
+        temporary = _temporary_transaction_directory_v2(
+            transactions, self.request_id,
+        )
+        try:
+            temporary.mkdir(mode=0o755)
+        except FileExistsError:
+            pass
+        except OSError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required",
+                "staged transaction directory",
+            ) from exc
+        temporary_info = _require_staged_transaction_directory_v2(
+            temporary, root_owned=self._root_owned,
+        )
+        if (
+            os.name != "nt"
+            and stat.S_IMODE(temporary_info.st_mode) != 0o755
+        ):
+            try:
+                temporary.chmod(0o755)
+                _sync_directory(transactions)
+            except OSError as exc:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "staged transaction directory",
+                ) from exc
+            _require_read_only_directory_v2(
+                temporary, root_owned=self._root_owned,
+            )
+        if _crash_seam is not None:
+            _crash_seam("transaction_directory_staged")
+
+        encoded = record.encode()
+        staged_record = temporary / _record_basename_v2(0)
+        observed = _read_staged_transaction_directory_v2(
+            temporary, request_id=self.request_id,
+            root_owned=self._root_owned,
+        )
+        try:
+            if observed is not None and observed != encoded:
+                if len(observed) >= len(encoded) or not encoded.startswith(observed):
+                    raise OwnershipCoordinatorError(
+                        "birth_ownership_journal_conflict", staged_record.name,
+                    )
+                staged_record.unlink()
+                _sync_directory(temporary)
+                observed = None
+            if observed is None:
+                _write_temporary(staged_record, encoded)
+                _sync_directory(temporary)
+            if _crash_seam is not None:
+                _crash_seam("transaction_record_staged")
+            published = _publish_transaction_directory_no_replace_v2(
+                temporary, self.directory,
+            )
+        except (OwnershipCoordinatorError, InterruptedError):
+            raise
+        except OSError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "staged transaction",
+            ) from exc
+        if not published:
+            loaded, _ = _read_transaction_directory_v2(
+                self.directory, request_id=self.request_id,
+                root_owned=self._root_owned,
+            )
+            if len(loaded) != 1 or loaded[0] != record:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_journal_conflict",
+                    _record_basename_v2(0),
+                )
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required",
+                "staged transaction collision",
+            )
+        if _crash_seam is not None:
+            _crash_seam("transaction_record_published")
+        loaded, _ = _read_transaction_directory_v2(
+            self.directory, request_id=self.request_id,
+            root_owned=self._root_owned,
+        )
+        if len(loaded) != 1 or loaded[0] != record:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction reread",
+            )
+        return loaded[0]
+
+    def _inventory(
+        self,
+    ) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+        committed: list[Path] = []
+        temporary: list[Path] = []
+        for path in _read_directory_entries_v2(self.directory):
+            if _TRANSACTION_RECORD_RE_V2.fullmatch(path.name):
+                committed.append(path)
+            elif _TEMPORARY_TRANSACTION_RECORD_RE_V2.fullmatch(path.name):
+                temporary.append(path)
+            else:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "transaction inventory",
+                )
+        return (
+            tuple(sorted(committed, key=lambda item: item.name)),
+            tuple(sorted(temporary, key=lambda item: item.name)),
+        )
+
+    def _committed(
+        self, paths: tuple[Path, ...],
+    ) -> tuple[OwnershipCoordinatorRecordV2, ...]:
+        if not paths:
+            return ()
+        records: list[OwnershipCoordinatorRecordV2] = []
+        previous_hash = None
+        for sequence, path in enumerate(paths):
+            if path.name != _record_basename_v2(sequence):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "transaction inventory",
+                )
+            encoded = _read_control_file_v2(
+                path, MAX_RECORD_BYTES_V1, root_owned=self._root_owned,
+            )
+            record = _decode_record_v2(encoded)
+            _require_transaction_record_link_v2(
+                tuple(records), record, sequence=sequence,
+                request_id=self.request_id, previous_hash=previous_hash,
+            )
+            records.append(record)
+            previous_hash = _record_hash_v2(encoded)
+        return tuple(records)
+
+    def append_transaction_record(
+        self, record: OwnershipCoordinatorRecordV2, *,
+        _crash_seam: Callable[[str], None] | None = None,
+    ) -> OwnershipCoordinatorRecordV2:
+        if type(record) is not OwnershipCoordinatorRecordV2:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "transaction record",
+            )
+        if record.request_id != self.request_id:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "claim transaction binding",
+            )
+        if not self.directory.exists():
+            _require_transaction_record_link_v2(
+                (), record, sequence=0, request_id=self.request_id,
+                previous_hash=None,
+            )
+            return self._append_initial(record, _crash_seam=_crash_seam)
+        committed_paths, temporary_paths = self._inventory()
+        records = self._committed(committed_paths)
+        sequence = len(records)
+        expected_temporary_name = (
+            f".{_record_basename_v2(record.sequence)}."
+            f"{record.request_id[7:]}.tmp"
+        )
+        if temporary_paths and (
+            len(temporary_paths) != 1
+            or temporary_paths[0].name != expected_temporary_name
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required",
+                "transaction temporary inventory",
+            )
+        if record.sequence < sequence:
+            if temporary_paths or records[record.sequence] != record:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_journal_conflict",
+                    _record_basename_v2(record.sequence),
+                )
+            return records[record.sequence]
+        previous_hash = (
+            _record_hash_v2(records[-1].encode()) if records else None
+        )
+        _require_transaction_record_link_v2(
+            records, record, sequence=sequence,
+            request_id=self.request_id, previous_hash=previous_hash,
+        )
+        encoded = record.encode()
+        destination = self.directory / _record_basename_v2(sequence)
+        temporary = self.directory / expected_temporary_name
+        try:
+            publish = _prepare_recoverable_temporary(
+                temporary, destination, encoded,
+            )
+            if publish and _crash_seam is not None:
+                _crash_seam("transaction_record_staged")
+            if publish:
+                _publish_no_replace(temporary, destination, encoded)
+            if _crash_seam is not None:
+                _crash_seam("transaction_record_published")
+        except OwnershipCutoverError as exc:
+            code = (
+                "birth_ownership_journal_conflict"
+                if exc.code == "birth_ownership_cutover_conflict"
+                else "birth_ownership_recovery_required"
+            )
+            raise OwnershipCoordinatorError(code, exc.detail) from exc
+        loaded, _ = _read_transaction_directory_v2(
+            self.directory, request_id=self.request_id,
+            root_owned=self._root_owned,
+        )
+        if len(loaded) != sequence + 1 or loaded[-1] != record:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction reread",
+            )
+        return loaded[-1]
 
 
 def _read_transactions_snapshot_v2(
@@ -1322,7 +2108,24 @@ def _read_transactions_snapshot_v2(
     _require_read_only_directory_v2(directory, root_owned=root_owned)
     transactions: list[tuple[OwnershipCoordinatorRecordV2, ...]] = []
     encoded_transactions: list[tuple[bytes, ...]] = []
+    committed_request_ids: set[str] = set()
+    staged_request_ids: set[str] = set()
     for path in _read_directory_entries_v2(directory):
+        staged_match = _TEMPORARY_TRANSACTION_DIRECTORY_RE_V2.fullmatch(
+            path.name,
+        )
+        if staged_match is not None:
+            request_id = "sha256:" + staged_match.group(1)
+            if request_id in staged_request_ids:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "staged transaction duplicate",
+                )
+            _read_staged_transaction_directory_v2(
+                path, request_id=request_id, root_owned=root_owned,
+            )
+            staged_request_ids.add(request_id)
+            continue
         if _DIGEST_RE.fullmatch(path.name) is None:
             raise OwnershipCoordinatorError(
                 "birth_ownership_recovery_required", "transaction directory",
@@ -1330,8 +2133,14 @@ def _read_transactions_snapshot_v2(
         records, encoded = _read_transaction_directory_v2(
             path, request_id=path.name, root_owned=root_owned,
         )
+        committed_request_ids.add(path.name)
         transactions.append(records)
         encoded_transactions.append(encoded)
+    if committed_request_ids & staged_request_ids:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "transaction publication ambiguity",
+        )
     return tuple(transactions), tuple(encoded_transactions)
 
 
@@ -2239,6 +3048,46 @@ def _resolve_ownership_coordinator_locked_for_test_v2(
     )
 
 
+def _append_ownership_transaction_locked_v2(
+    session: _DeploymentLockSessionV1,
+    record: OwnershipCoordinatorRecordV2,
+) -> OwnershipCoordinatorRecordV2:
+    _require_deployment_lock_session_v1(session)
+    if type(record) is not OwnershipCoordinatorRecordV2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "transaction record",
+        )
+    journal = _OwnershipCoordinatorTransactionJournalV2(
+        DEFAULT_COORDINATOR_DIRECTORY_V1, record, root_owned=True,
+    )
+    result = journal.append_transaction_record(record)
+    _require_deployment_lock_session_v1(session)
+    return result
+
+
+def _append_ownership_transaction_locked_for_test_v2(
+    session: _DeploymentLockSessionForTestV1, ownership_root: Path,
+    record: OwnershipCoordinatorRecordV2, *,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Portable persistence seam; never accepts a productive lock session."""
+    ownership_root = Path(ownership_root)
+    _require_test_deployment_lock_session_v1(session, ownership_root)
+    if type(record) is not OwnershipCoordinatorRecordV2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "transaction record",
+        )
+    journal = _OwnershipCoordinatorTransactionJournalV2(
+        ownership_root / COORDINATOR_DIRECTORY_BASENAME_V1,
+        record, root_owned=False,
+    )
+    result = journal.append_transaction_record(
+        record, _crash_seam=_crash_seam,
+    )
+    _require_test_deployment_lock_session_v1(session, ownership_root)
+    return result
+
+
 def _request_id(
     distribution: VerifiedDistribution, previous_cutover_id: str | None,
 ) -> str:
@@ -2261,6 +3110,672 @@ def _prepared_record(
         distribution.identity.boundary_inventory_hash,
         distribution.identity.boundary_guard_version,
     )
+
+
+def _prepared_record_v2(
+    *, claim: object, distribution: object, predecessor: object,
+    previous_context: object, prepared_authority_set: object,
+    current_inventory: object, deployment_descriptor: object,
+) -> tuple[OwnershipCoordinatorRecordV2, object]:
+    """Bind one exact staged set and frozen inventory before publication."""
+    from executor_birth_admin_preflight import (
+        PreflightError, _administrative_bundle_hash_v1,
+    )
+    from executor_birth_context_selection import is_context_selection_v1
+    from executor_birth_context_transition import (
+        ContextTransitionError, issue_context_transition_v1,
+    )
+    from executor_birth_cutover import CurrentInventoryV1
+    from executor_birth_distribution_assembler import DeploymentDescriptorV1
+    from executor_birth_prepared_set import (
+        is_prepared_authority_set_v2, is_prepared_set_v1,
+    )
+
+    if (
+        type(claim) is not SuccessorClaimV1
+        or not is_verified_distribution(distribution)
+        or not is_prepared_authority_set_v2(prepared_authority_set)
+        or type(current_inventory) is not CurrentInventoryV1
+        or type(deployment_descriptor) is not DeploymentDescriptorV1
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    target = prepared_authority_set
+    descriptor = deployment_descriptor
+    payload_hash = _digest(distribution.encoded)
+    signature_hash = _digest(distribution.signature)
+    if (
+        claim.closed_build_id != distribution.identity.closed_build_id
+        or claim.release_sequence != distribution.release_sequence
+        or target.request_id != claim.request_id
+        or target.closed_build_id != claim.closed_build_id
+        or target.distribution_payload_hash != payload_hash
+        or target.distribution_signature_hash != signature_hash
+        or descriptor.release_sequence != claim.release_sequence
+        or descriptor.installation_root != distribution.installation_root
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+
+    if predecessor is None:
+        if (
+            claim.release_sequence != 1
+            or claim.previous_head_id is not None
+            or distribution.previous_closed_build_id is not None
+            or not is_prepared_set_v1(previous_context)
+        ):
+            raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+        previous_cutover_id = None
+        previous_closed_build_id = None
+        previous_set_id = previous_context.set_id
+        previous_admission_context_id = (
+            previous_context.prepared_admission_context_id
+        )
+        previous_context_epoch = previous_context.prepared_context_epoch
+    else:
+        if (
+            type(predecessor) is not OwnershipCoordinatorRecordV2
+            or predecessor.state
+            is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            or predecessor.release_sequence + 1 != claim.release_sequence
+            or predecessor.head_id != claim.previous_head_id
+            or predecessor.closed_build_id
+            != distribution.previous_closed_build_id
+            or not is_context_selection_v1(previous_context)
+            or previous_context.distribution.identity.closed_build_id
+            != predecessor.closed_build_id
+        ):
+            raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+        previous_cutover_id = predecessor.cutover_id
+        previous_closed_build_id = predecessor.closed_build_id
+        previous_set_id = previous_context.set_id
+        previous_admission_context_id = previous_context.admission_context_id
+        previous_context_epoch = previous_context.context_epoch
+
+    expected_request_id = _coordinator_request_id_v1(
+        claim.closed_build_id,
+        previous_closed_build_id,
+        previous_cutover_id,
+    )
+    if (
+        claim.request_id != expected_request_id
+        or target.previous_set_id != previous_set_id
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    try:
+        transition_encoded, transition = issue_context_transition_v1(
+            request_id=claim.request_id,
+            closed_build_id=claim.closed_build_id,
+            previous_cutover_id=previous_cutover_id,
+            previous_set_id=previous_set_id,
+            previous_admission_context_id=previous_admission_context_id,
+            previous_context_epoch=previous_context_epoch,
+            set_id=target.target_set_id,
+            prepared_admission_context_id=(
+                target.target_admission_context_id
+            ),
+            prepared_context_epoch=target.target_context_epoch,
+            context_material_sha256=(
+                target.target_context_material_sha256
+            ),
+            set_json_sha256=target.target_set_json_sha256,
+            current_inventory=current_inventory,
+        )
+        administrative_bundle_hash = _administrative_bundle_hash_v1(
+            descriptor,
+        )
+    except (ContextTransitionError, PreflightError) as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_request_conflict",
+            _wrapped_cause_detail_v1(exc),
+        ) from exc
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_request_conflict",
+        ) from exc
+    if transition.encoded != transition_encoded:
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    install_value = {
+        "schema_version": 1,
+        "request_id": claim.request_id,
+        "source_id": claim.source_id,
+        "closed_build_id": claim.closed_build_id,
+        "release_sequence": claim.release_sequence,
+        "previous_head_id": claim.previous_head_id,
+        "successor_claim_id": claim.claim_id,
+        "deployment_descriptor_id": descriptor.descriptor_id,
+        "service_coverage_hash": descriptor.service_coverage_hash,
+        "administrative_bundle_hash": administrative_bundle_hash,
+    }
+    record = OwnershipCoordinatorRecordV2(
+        sequence=0,
+        state=OwnershipCoordinatorStateV1.PREPARED,
+        previous_record_sha256=None,
+        request_id=claim.request_id,
+        previous_closed_build_id=previous_closed_build_id,
+        previous_cutover_id=previous_cutover_id,
+        closed_build_id=claim.closed_build_id,
+        distribution_payload_hash=payload_hash,
+        distribution_signature_hash=signature_hash,
+        boundary_inventory_hash=(
+            distribution.identity.boundary_inventory_hash
+        ),
+        boundary_guard_version=distribution.identity.boundary_guard_version,
+        source_id=claim.source_id,
+        successor_claim_id=claim.claim_id,
+        deployment_descriptor_id=descriptor.descriptor_id,
+        install_transaction_id=_install_transaction_id_v1(install_value),
+        release_sequence=claim.release_sequence,
+        previous_head_id=claim.previous_head_id,
+        service_coverage_hash=descriptor.service_coverage_hash,
+        administrative_bundle_hash=administrative_bundle_hash,
+        provisioning_transaction_id=target.transaction_id,
+        previous_set_id=previous_set_id,
+        previous_admission_context_id=previous_admission_context_id,
+        previous_context_epoch=previous_context_epoch,
+        target_set_id=target.target_set_id,
+        target_admission_context_id=target.target_admission_context_id,
+        target_context_epoch=target.target_context_epoch,
+        target_context_material_sha256=(
+            target.target_context_material_sha256
+        ),
+        target_set_json_sha256=target.target_set_json_sha256,
+        context_transition_id=transition.transition_id,
+        current_inventory_hash=transition.current_inventory_hash,
+    )
+    return record, transition
+
+
+_PREPARED_TRANSITION_PUBLICATION_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedTransitionPublicationV2:
+    """Exact artifacts available after PREPARED and set publication."""
+
+    record: OwnershipCoordinatorRecordV2
+    transition: object
+    prepared_authority_set: object
+    distribution: VerifiedDistribution
+    deployment_descriptor: object
+    current_inventory: object
+    _seal: object
+
+    def __post_init__(self) -> None:
+        from executor_birth_context_transition import (
+            ContextTransitionError, ContextTransitionV1,
+            current_inventory_hash_v1,
+            verify_context_transition_v1,
+        )
+        from executor_birth_cutover import CurrentInventoryV1
+        from executor_birth_distribution_assembler import DeploymentDescriptorV1
+        from executor_birth_prepared_set import is_prepared_authority_set_v2
+
+        if (
+            self._seal is not _PREPARED_TRANSITION_PUBLICATION_SEAL_V2
+            or type(self.record) is not OwnershipCoordinatorRecordV2
+            or self.record.state is not OwnershipCoordinatorStateV1.PREPARED
+            or type(self.transition) is not ContextTransitionV1
+            or type(self.deployment_descriptor) is not DeploymentDescriptorV1
+            or type(self.current_inventory) is not CurrentInventoryV1
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_request_conflict",
+            )
+        try:
+            verified_transition = verify_context_transition_v1(
+                self.transition.encoded,
+                expected_transition_id=self.record.context_transition_id,
+                expected_inventory=self.current_inventory,
+            )
+        except ContextTransitionError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_request_conflict",
+                _wrapped_cause_detail_v1(exc),
+            ) from exc
+        except Exception as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_request_conflict",
+            ) from exc
+        target = self.prepared_authority_set
+        if (
+            verified_transition != self.transition
+            or not is_prepared_authority_set_v2(target)
+            or not _verified_distribution_matches_payload_v1(
+                self.distribution,
+            )
+            or self.record.request_id != target.request_id
+            or self.record.closed_build_id
+            != self.distribution.identity.closed_build_id
+            or self.record.provisioning_transaction_id
+            != target.transaction_id
+            or self.record.target_set_id != target.target_set_id
+            or self.record.target_admission_context_id
+            != target.target_admission_context_id
+            or self.record.target_context_epoch != target.target_context_epoch
+            or self.record.deployment_descriptor_id
+            != self.deployment_descriptor.descriptor_id
+            or self.record.context_transition_id
+            != self.transition.transition_id
+            or self.record.current_inventory_hash
+            != current_inventory_hash_v1(self.current_inventory)
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_request_conflict",
+            )
+
+
+def _prepared_transition_publication_v2(
+    record: OwnershipCoordinatorRecordV2, transition: object, *,
+    prepared_authority_set: object, distribution: VerifiedDistribution,
+    deployment_descriptor: object, current_inventory: object,
+) -> PreparedTransitionPublicationV2:
+    return PreparedTransitionPublicationV2(
+        record, transition, prepared_authority_set, distribution,
+        deployment_descriptor, current_inventory,
+        _PREPARED_TRANSITION_PUBLICATION_SEAL_V2,
+    )
+
+
+def _transition_edge_from_graph_v2(
+    graph: object, distribution: object,
+) -> tuple[SuccessorClaimV1, OwnershipCoordinatorRecordV2 | None]:
+    """Select only the terminal claim and its completed predecessor."""
+    if (
+        type(graph) is not _ObservedOwnershipCoordinatorGraphV2
+        or not is_verified_distribution(distribution)
+        or len(graph.pending_claims) > 1
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    active = graph.transactions[-1] if graph.transactions else None
+    if graph.pending_claims:
+        claim = graph.pending_claims[0]
+        if active is not None and active.claim.release_sequence >= claim.release_sequence:
+            raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+        current = None
+    elif active is not None:
+        claim = active.claim
+        current = active
+    else:
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    if (
+        claim is not graph.claims[-1]
+        or claim.closed_build_id != distribution.identity.closed_build_id
+        or claim.release_sequence != distribution.release_sequence
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    predecessor = None
+    if claim.release_sequence > 1:
+        predecessor_offset = -2 if current is not None else -1
+        try:
+            predecessor_transaction = graph.transactions[predecessor_offset]
+        except IndexError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_request_conflict",
+                "predecessor_transaction_missing",
+            ) from exc
+        predecessor = predecessor_transaction.latest
+        if (
+            predecessor.state
+            is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            or predecessor.release_sequence + 1 != claim.release_sequence
+            or predecessor.head_id != claim.previous_head_id
+        ):
+            raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    return claim, predecessor
+
+
+def _successor_claim_for_transition_v2(
+    graph: object, distribution: object, source_id: object,
+) -> SuccessorClaimV1:
+    """Derive the only claim that can extend one verified durable graph."""
+    if (
+        type(graph) is not _ObservedOwnershipCoordinatorGraphV2
+        or not is_verified_distribution(distribution)
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    source = _require_digest(source_id, "source_id")
+    if graph.pending_claims:
+        existing = graph.pending_claims[0]
+        if (
+            existing.release_sequence != distribution.release_sequence
+            or existing.closed_build_id
+            != distribution.identity.closed_build_id
+            or existing.source_id != source
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_successor_conflict",
+            )
+        return existing
+    if graph.claims:
+        current = graph.transactions[-1]
+        latest = current.latest
+        existing = current.claim
+        if (
+            existing.release_sequence == distribution.release_sequence
+            and existing.closed_build_id
+            == distribution.identity.closed_build_id
+        ):
+            if existing.source_id != source:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_successor_conflict",
+                )
+            return existing
+        if (
+            latest.state
+            is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            or latest.sequence != 6
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_successor_conflict",
+            )
+        release_sequence = latest.release_sequence + 1
+        previous_head_id = latest.head_id
+        previous_closed_build_id = latest.closed_build_id
+        previous_cutover_id = latest.cutover_id
+    else:
+        if graph.transactions:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction without claim",
+            )
+        release_sequence = 1
+        previous_head_id = None
+        previous_closed_build_id = None
+        previous_cutover_id = None
+    if (
+        distribution.release_sequence != release_sequence
+        or distribution.previous_closed_build_id != previous_closed_build_id
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_successor_conflict",
+        )
+    value: dict[str, object] = {
+        "schema_version": 1,
+        "previous_head_id": previous_head_id,
+        "release_sequence": release_sequence,
+        "request_id": _coordinator_request_id_v1(
+            distribution.identity.closed_build_id,
+            previous_closed_build_id,
+            previous_cutover_id,
+        ),
+        "source_id": source,
+        "closed_build_id": distribution.identity.closed_build_id,
+    }
+    return SuccessorClaimV1(
+        claim_id=_successor_claim_id_v1(value),
+        previous_head_id=previous_head_id,
+        release_sequence=release_sequence,
+        request_id=value["request_id"],
+        source_id=source,
+        closed_build_id=distribution.identity.closed_build_id,
+    )
+
+
+def _legacy_disposition_for_claim_v2(
+    graph: _ObservedOwnershipCoordinatorGraphV2,
+    claim: SuccessorClaimV1,
+) -> LegacyDispositionV2 | None:
+    if not graph.legacy_records:
+        return None
+    if graph.legacy_disposition is not None:
+        if graph.legacy_disposition.successor_request_id != claim.request_id:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_successor_conflict",
+            )
+        return graph.legacy_disposition
+    latest = graph.legacy_records[-1]
+    value: dict[str, object] = {
+        "schema_version": 2,
+        "legacy_journal_hash": _legacy_journal_hash_v2(
+            graph.legacy_record_bytes,
+        ),
+        "legacy_request_id": latest.request_id,
+        "legacy_state": latest.state.value,
+        "successor_request_id": claim.request_id,
+        "reason": _LEGACY_DISPOSITION_REASON_V2,
+    }
+    return LegacyDispositionV2(
+        disposition_id=_legacy_disposition_id_v2(value),
+        legacy_journal_hash=value["legacy_journal_hash"],
+        legacy_request_id=latest.request_id,
+        legacy_state=latest.state,
+        successor_request_id=claim.request_id,
+    )
+
+
+def _reserve_transition_edge_core_v2(
+    session: object, ownership_root: Path, *, root_owned: bool,
+    distribution: object, source_id: object,
+    require_session: Callable[[], None],
+) -> SuccessorClaimV1:
+    """Publish claim and any V1 disposition, then reread the exact edge."""
+    require_session()
+    coordinator, _created = _ensure_coordinator_child_directory_v2(
+        ownership_root, COORDINATOR_DIRECTORY_BASENAME_V1,
+        root_owned=root_owned,
+    )
+    require_session()
+    graph = _resolve_ownership_coordinator_at_v2(
+        coordinator, root_owned=root_owned,
+    )
+    claim = _successor_claim_for_transition_v2(
+        graph, distribution, source_id,
+    )
+    if claim not in graph.claims:
+        claims, _created = _ensure_coordinator_child_directory_v2(
+            coordinator, SUCCESSOR_CLAIMS_DIRECTORY_BASENAME_V1,
+            root_owned=root_owned,
+        )
+        _publish_control_no_replace_v2(
+            claims,
+            _successor_claim_basename_v1(
+                claim.release_sequence, claim.previous_head_id,
+            ),
+            claim.encode(), maximum=MAX_COORDINATOR_CONTROL_BYTES_V2,
+            root_owned=root_owned,
+        )
+        require_session()
+        graph = _resolve_ownership_coordinator_at_v2(
+            coordinator, root_owned=root_owned,
+        )
+    disposition = _legacy_disposition_for_claim_v2(graph, claim)
+    if disposition is not None and graph.legacy_disposition is None:
+        _publish_control_no_replace_v2(
+            coordinator, LEGACY_DISPOSITION_BASENAME_V2,
+            disposition.encode(), maximum=MAX_COORDINATOR_CONTROL_BYTES_V2,
+            root_owned=root_owned,
+        )
+    require_session()
+    reread = _resolve_ownership_coordinator_at_v2(
+        coordinator, root_owned=root_owned,
+    )
+    matches = tuple(item for item in reread.claims if item == claim)
+    if len(matches) != 1:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "successor claim reread",
+        )
+    if disposition is not None and reread.legacy_disposition != disposition:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "legacy disposition reread",
+        )
+    return matches[0]
+
+
+def _reserve_transition_edge_locked_v2(
+    session: _DeploymentLockSessionV1, *, distribution: object,
+    source_id: object,
+) -> SuccessorClaimV1:
+    """Reserve the productive edge under the fixed root and live lock."""
+    return _reserve_transition_edge_core_v2(
+        session, DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True,
+        distribution=distribution, source_id=source_id,
+        require_session=lambda: _require_deployment_lock_session_v1(session),
+    )
+
+
+def _reserve_transition_edge_locked_for_test_v2(
+    session: _DeploymentLockSessionForTestV1, ownership_root: Path, *,
+    distribution: object, source_id: object,
+) -> SuccessorClaimV1:
+    """Portable reservation seam with a nominally separate lock session."""
+    root = Path(ownership_root)
+    return _reserve_transition_edge_core_v2(
+        session, root, root_owned=False,
+        distribution=distribution, source_id=source_id,
+        require_session=lambda: _require_test_deployment_lock_session_v1(
+            session, root,
+        ),
+    )
+
+
+def _transition_edge_locked_v2(
+    session: _DeploymentLockSessionV1, distribution: object,
+) -> tuple[SuccessorClaimV1, OwnershipCoordinatorRecordV2 | None]:
+    """Resolve the productive transition edge under the fixed outer lock."""
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    return _transition_edge_from_graph_v2(graph, distribution)
+
+
+def _completed_transition_from_graph_v2(
+    graph: object, distribution: object,
+) -> OwnershipCoordinatorRecordV2 | None:
+    """Return only the final transaction for the exact current release."""
+    if (
+        type(graph) is not _ObservedOwnershipCoordinatorGraphV2
+        or not is_verified_distribution(distribution)
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    matches = tuple(
+        transaction for transaction in graph.transactions
+        if transaction.claim.closed_build_id
+        == distribution.identity.closed_build_id
+        and transaction.claim.release_sequence == distribution.release_sequence
+    )
+    if not matches:
+        return None
+    transaction = matches[0] if len(matches) == 1 else None
+    if (
+        transaction is None
+        or transaction is not graph.transactions[-1]
+        or transaction.claim is not graph.claims[-1]
+        or graph.pending_claims
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    latest = transaction.latest
+    if latest.sequence != 6:
+        return None
+    if (
+        latest.state is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+        or latest.distribution_payload_hash != _digest(distribution.encoded)
+        or latest.distribution_signature_hash != _digest(distribution.signature)
+        or latest.previous_closed_build_id
+        != distribution.previous_closed_build_id
+        or latest.boundary_inventory_hash
+        != distribution.identity.boundary_inventory_hash
+        or latest.boundary_guard_version
+        != distribution.identity.boundary_guard_version
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    return latest
+
+
+def _completed_transition_locked_v2(
+    session: _DeploymentLockSessionV1, distribution: object,
+) -> OwnershipCoordinatorRecordV2 | None:
+    """Reread an exact completed transition under the productive lock."""
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    completed = _completed_transition_from_graph_v2(graph, distribution)
+    _require_deployment_lock_session_v1(session)
+    return completed
+
+
+def _prepared_transition_from_graph_v2(
+    graph: object, *, distribution: object, previous_context: object,
+    prepared_authority_set: object, current_inventory: object,
+    deployment_descriptor: object,
+) -> tuple[OwnershipCoordinatorRecordV2, object]:
+    """Derive PREPARED only from the terminal edge of one locked graph."""
+    claim, predecessor = _transition_edge_from_graph_v2(graph, distribution)
+    return _prepared_record_v2(
+        claim=claim,
+        distribution=distribution,
+        predecessor=predecessor,
+        previous_context=previous_context,
+        prepared_authority_set=prepared_authority_set,
+        current_inventory=current_inventory,
+        deployment_descriptor=deployment_descriptor,
+    )
+
+
+def _require_prepared_transition_reread_v2(
+    graph: _ObservedOwnershipCoordinatorGraphV2,
+    record: OwnershipCoordinatorRecordV2,
+) -> None:
+    matches = tuple(
+        transaction for transaction in graph.transactions
+        if transaction.claim.request_id == record.request_id
+    )
+    if (
+        len(matches) != 1
+        or not matches[0].records
+        or matches[0].records[0] != record
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "prepared reread",
+        )
+
+
+def _append_prepared_transition_locked_v2(
+    session: _DeploymentLockSessionV1, *, distribution: object,
+    previous_context: object, prepared_authority_set: object,
+    current_inventory: object, deployment_descriptor: object,
+) -> tuple[OwnershipCoordinatorRecordV2, object]:
+    """Append and reread one productive PREPARED record under the fixed lock."""
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    record, transition = _prepared_transition_from_graph_v2(
+        graph,
+        distribution=distribution,
+        previous_context=previous_context,
+        prepared_authority_set=prepared_authority_set,
+        current_inventory=current_inventory,
+        deployment_descriptor=deployment_descriptor,
+    )
+    persisted = _append_ownership_transaction_locked_v2(session, record)
+    reread_snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    reread = _require_locked_coordinator_graph_snapshot_v2(
+        reread_snapshot, session,
+    )
+    _require_prepared_transition_reread_v2(reread, persisted)
+    return persisted, transition
+
+
+def _append_prepared_transition_locked_for_test_v2(
+    session: _DeploymentLockSessionForTestV1, ownership_root: Path, *,
+    distribution: object, previous_context: object,
+    prepared_authority_set: object, current_inventory: object,
+    deployment_descriptor: object,
+) -> tuple[OwnershipCoordinatorRecordV2, object]:
+    """Portable proof seam kept nominally separate from the productive lock."""
+    snapshot = _resolve_ownership_coordinator_locked_for_test_v2(
+        session, ownership_root,
+    )
+    record, transition = _prepared_transition_from_graph_v2(
+        snapshot.observation,
+        distribution=distribution,
+        previous_context=previous_context,
+        prepared_authority_set=prepared_authority_set,
+        current_inventory=current_inventory,
+        deployment_descriptor=deployment_descriptor,
+    )
+    persisted = _append_ownership_transaction_locked_for_test_v2(
+        session, ownership_root, record,
+    )
+    reread = _resolve_ownership_coordinator_locked_for_test_v2(
+        session, ownership_root,
+    ).observation
+    _require_prepared_transition_reread_v2(reread, persisted)
+    return persisted, transition
 
 
 def _same_distribution(
@@ -2300,6 +3815,1412 @@ def _append_receipts_complete(
     ))
 
 
+def _receipts_complete_record_v2(
+    prepared: object, *, proof: object,
+    maintenance_before: bytes, maintenance_after: bytes,
+) -> OwnershipCoordinatorRecordV2:
+    """Carry every PREPARED binding into exact receipt completeness."""
+    from executor_birth_context_transition import current_inventory_hash_v1
+    from executor_birth_ownership_preflight import maintenance_evidence_hash
+
+    if (
+        type(prepared) is not OwnershipCoordinatorRecordV2
+        or prepared.sequence != 0
+        or prepared.state is not OwnershipCoordinatorStateV1.PREPARED
+        or type(proof) is not CurrentReceiptProof
+        or proof.inventory.identities != proof.identities
+        or current_inventory_hash_v1(proof.inventory)
+        != prepared.current_inventory_hash
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_receipt_proof_invalid",
+        )
+    before_hash = maintenance_evidence_hash(maintenance_before)
+    after_hash = maintenance_evidence_hash(maintenance_after)
+    if maintenance_before != maintenance_after or before_hash != after_hash:
+        raise OwnershipCoordinatorError("birth_ownership_maintenance_changed")
+    return replace(
+        prepared,
+        sequence=1,
+        state=OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE,
+        previous_record_sha256=_record_hash_v2(prepared.encode()),
+        current_proof=proof,
+        maintenance_before_hash=before_hash,
+        maintenance_after_hash=after_hash,
+        maintenance_proof=maintenance_after,
+    )
+
+
+def _append_receipts_complete_locked_v2(
+    session: _DeploymentLockSessionV1,
+    publication: object, *, proof: object,
+    maintenance_before: bytes, maintenance_after: bytes,
+) -> OwnershipCoordinatorRecordV2:
+    """Append receipt completeness only for a sealed published transition."""
+    if (
+        type(publication) is not PreparedTransitionPublicationV2
+        or publication._seal
+        is not _PREPARED_TRANSITION_PUBLICATION_SEAL_V2
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_request_conflict",
+        )
+    record = _receipts_complete_record_v2(
+        publication.record,
+        proof=proof,
+        maintenance_before=maintenance_before,
+        maintenance_after=maintenance_after,
+    )
+    persisted = _append_ownership_transaction_locked_v2(session, record)
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    _require_transaction_record_reread_v2(
+        graph, persisted, detail="receipt reread",
+    )
+    return persisted
+
+
+def _require_transaction_record_reread_v2(
+    graph: object, record: object, *, detail: str,
+) -> None:
+    """Require one exact record at its durable transaction sequence."""
+    if (
+        type(graph) is not _ObservedOwnershipCoordinatorGraphV2
+        or type(record) is not OwnershipCoordinatorRecordV2
+        or type(detail) is not str
+        or not detail
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", detail or "record reread",
+        )
+    matches = tuple(
+        transaction for transaction in graph.transactions
+        if transaction.claim.request_id == record.request_id
+    )
+    if (
+        len(matches) != 1
+        or len(matches[0].records) <= record.sequence
+        or matches[0].records[record.sequence] != record
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", detail,
+        )
+
+
+_CERTIFICATE_READY_MATERIAL_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _CertificateReadyMaterialV2:
+    """Exact authenticated bytes bound by one CERTIFICATE_READY record."""
+
+    record: OwnershipCoordinatorRecordV2
+    payload: bytes
+    signature: bytes
+    certificate: OwnershipCutoverCertificate
+    _seal: object
+
+    def __post_init__(self) -> None:
+        record = self.record
+        certificate = self.certificate
+        proof = (
+            record.current_proof
+            if type(record) is OwnershipCoordinatorRecordV2 else None
+        )
+        if (
+            self._seal is not _CERTIFICATE_READY_MATERIAL_SEAL_V2
+            or type(record) is not OwnershipCoordinatorRecordV2
+            or record.state is not OwnershipCoordinatorStateV1.CERTIFICATE_READY
+            or type(self.payload) is not bytes
+            or type(self.signature) is not bytes
+            or type(certificate) is not OwnershipCutoverCertificate
+            or record.certificate_payload_hash != _digest(self.payload)
+            or record.certificate_signature_hash != _digest(self.signature)
+            or record.cutover_id != certificate.cutover_id
+            or record.catalog_id != certificate.catalog_id
+            or record.request_id != certificate.request_id
+            or record.previous_cutover_id != certificate.previous_cutover_id
+            or record.closed_build_id != certificate.closed_build_id
+            or record.boundary_inventory_hash
+            != certificate.boundary_inventory_hash
+            or record.boundary_guard_version
+            != certificate.boundary_guard_version
+            or record.maintenance_after_hash
+            != certificate.maintenance_evidence_hash
+            or record.context_transition_id
+            != certificate.context_transition_id
+            or record.dominant_startup_receipt
+            != certificate.dominant_startup_receipt
+            or proof is None
+            or certificate.as_proof() != proof
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required",
+                "certificate ready material",
+            )
+
+
+def _certificate_ready_material_v2(
+    complete: object, *, authorities: object,
+    prerequisite: object, observe_maintenance: object,
+    crossing_receipt: object,
+) -> _CertificateReadyMaterialV2:
+    """Issue and bind exact certificate bytes after a sealed dominant crossing."""
+    if (
+        type(complete) is not OwnershipCoordinatorRecordV2
+        or complete.sequence != 1
+        or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+        or not is_root_ownership_authorities_v1(authorities)
+        or not isinstance(prerequisite, _StartupPrerequisiteV1)
+        or prerequisite._seal is not _PREREQUISITE_SEAL
+        or not callable(observe_maintenance)
+        or not is_dominant_startup_receipt_v1(crossing_receipt)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        )
+    proof = complete.current_proof
+    assert proof is not None and complete.maintenance_after_hash is not None
+    if observe_maintenance() != complete.maintenance_proof:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "maintenance drift",
+        )
+    receipt_digest = crossing_receipt.dominant_startup_receipt
+    payload, signature = issue_ownership_cutover_certificate(
+        proof=proof,
+        previous_cutover_id=complete.previous_cutover_id,
+        request_id=complete.request_id,
+        signing_key_id=_single_cutover_key(authorities),
+        maintenance_evidence_hash=complete.maintenance_after_hash,
+        boundary_inventory_hash=complete.boundary_inventory_hash,
+        boundary_guard_version=complete.boundary_guard_version,
+        closed_build_id=complete.closed_build_id,
+        context_transition_id=complete.context_transition_id,
+        dominant_startup_receipt=receipt_digest,
+        private_key=authorities.cutover_private,
+    )
+    certificate = verify_ownership_cutover_certificate(
+        payload,
+        signature,
+        registry=authorities.public.cutover,
+        expected_proof=proof,
+        expected_previous_cutover_id=complete.previous_cutover_id,
+        expected_context_transition_id=complete.context_transition_id,
+        expected_dominant_startup_receipt=receipt_digest,
+    )
+    if (
+        certificate.request_id != complete.request_id
+        or certificate.closed_build_id != complete.closed_build_id
+        or certificate.maintenance_evidence_hash
+        != complete.maintenance_after_hash
+        or certificate.boundary_inventory_hash
+        != complete.boundary_inventory_hash
+        or certificate.boundary_guard_version
+        != complete.boundary_guard_version
+        or crossing_receipt.bindings.request_id != complete.request_id
+        or crossing_receipt.bindings.context_transition_id
+        != complete.context_transition_id
+        or crossing_receipt.bindings.catalog_id != certificate.catalog_id
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "certificate ready binding",
+        )
+    record = replace(
+        complete,
+        sequence=2,
+        state=OwnershipCoordinatorStateV1.CERTIFICATE_READY,
+        previous_record_sha256=_record_hash_v2(complete.encode()),
+        startup_prerequisite_id=prerequisite.prerequisite_id,
+        startup_prerequisite_digest=prerequisite.evidence_digest,
+        cutover_id=certificate.cutover_id,
+        catalog_id=certificate.catalog_id,
+        certificate_payload_hash=_digest(payload),
+        certificate_signature_hash=_digest(signature),
+        dominant_startup_receipt=receipt_digest,
+    )
+    return _CertificateReadyMaterialV2(
+        record, payload, signature, certificate,
+        _CERTIFICATE_READY_MATERIAL_SEAL_V2,
+    )
+
+
+def _certificate_published_record_v2(
+    ready: object,
+) -> OwnershipCoordinatorRecordV2:
+    """Carry exact ready bindings across the certificate publication boundary."""
+    if (
+        type(ready) is not OwnershipCoordinatorRecordV2
+        or ready.sequence != 2
+        or ready.state is not OwnershipCoordinatorStateV1.CERTIFICATE_READY
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "certificate ready record",
+        )
+    return replace(
+        ready,
+        sequence=3,
+        state=OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED,
+        previous_record_sha256=_record_hash_v2(ready.encode()),
+    )
+
+
+def _build_verified_record_v2(
+    published: object, distribution: object,
+) -> OwnershipCoordinatorRecordV2:
+    """Bind one fully verified live tree after certificate publication."""
+    if (
+        type(published) is not OwnershipCoordinatorRecordV2
+        or published.sequence != 3
+        or published.state
+        is not OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+        or type(distribution) is not VerifiedDistribution
+        or not _verified_distribution_matches_payload_v1(distribution)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "build verification",
+        )
+    if (
+        distribution.identity.closed_build_id != published.closed_build_id
+        or distribution.previous_closed_build_id
+        != published.previous_closed_build_id
+        or distribution.release_sequence != published.release_sequence
+        or _digest(distribution.encoded)
+        != published.distribution_payload_hash
+        or _digest(distribution.signature)
+        != published.distribution_signature_hash
+        or distribution.identity.boundary_inventory_hash
+        != published.boundary_inventory_hash
+        or distribution.identity.boundary_guard_version
+        != published.boundary_guard_version
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "build binding",
+        )
+    try:
+        tree_hash = installed_tree_hash_v1(distribution.files)
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "installed tree",
+        ) from exc
+    return replace(
+        published,
+        sequence=4,
+        state=OwnershipCoordinatorStateV1.BUILD_VERIFIED,
+        previous_record_sha256=_record_hash_v2(published.encode()),
+        installed_tree_hash=tree_hash,
+    )
+
+
+_HEAD_REQUIRED_MATERIAL_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _HeadRequiredMaterialV2:
+    record: OwnershipCoordinatorRecordV2
+    encoded: bytes
+    signature: bytes
+    head: object
+    frame: bytes
+    _seal: object
+
+    def __post_init__(self) -> None:
+        from executor_birth_ownership_chain import OwnershipHead
+
+        if (
+            self._seal is not _HEAD_REQUIRED_MATERIAL_SEAL_V2
+            or type(self.record) is not OwnershipCoordinatorRecordV2
+            or self.record.sequence != 5
+            or self.record.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED
+            or type(self.encoded) is not bytes
+            or type(self.signature) is not bytes
+            or type(self.head) is not OwnershipHead
+            or type(self.frame) is not bytes
+            or self.record.head_id != self.head.head_id
+            or self.record.head_payload_hash != _framed_digest_v2(
+                _HEAD_PAYLOAD_HASH_DOMAIN_V2, self.encoded,
+            )
+            or self.record.head_signature_hash != _framed_digest_v2(
+                _HEAD_SIGNATURE_HASH_DOMAIN_V2, self.signature,
+            )
+            or self.record.required_head_frame_hash != _framed_digest_v2(
+                _REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, self.frame,
+            )
+            or self.record.verified_chain_head_id != self.head.head_id
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "head material",
+            )
+
+
+def _single_head_key(authorities: RootOwnershipAuthoritiesV1) -> str:
+    if not is_root_ownership_authorities_v1(authorities):
+        raise OwnershipCoordinatorError("birth_ownership_authority_untrusted")
+    keys = tuple(authorities.public.head.keys)
+    if len(keys) != 1:
+        raise OwnershipCoordinatorError("birth_ownership_authority_untrusted")
+    return keys[0]
+
+
+def _head_required_material_v2(
+    build_verified: object, *, authorities: object,
+) -> _HeadRequiredMaterialV2:
+    """Issue deterministic head bytes and bind the future atomic pointer."""
+    from executor_birth_ownership_chain import (
+        encode_required_head, issue_ownership_head, verify_ownership_head,
+    )
+
+    if (
+        type(build_verified) is not OwnershipCoordinatorRecordV2
+        or build_verified.sequence != 4
+        or build_verified.state is not OwnershipCoordinatorStateV1.BUILD_VERIFIED
+        or not is_root_ownership_authorities_v1(authorities)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "build verified record",
+        )
+    encoded, signature = issue_ownership_head(
+        release_sequence=build_verified.release_sequence,
+        cutover_id=build_verified.cutover_id,
+        closed_build_id=build_verified.closed_build_id,
+        previous_head_id=build_verified.previous_head_id,
+        signing_key_id=_single_head_key(authorities),
+        private_key=authorities.head_private,
+    )
+    head = verify_ownership_head(
+        encoded, signature, registry=authorities.public.head,
+    )
+    frame = encode_required_head(head)
+    record = replace(
+        build_verified,
+        sequence=5,
+        state=OwnershipCoordinatorStateV1.HEAD_REQUIRED,
+        previous_record_sha256=_record_hash_v2(build_verified.encode()),
+        head_id=head.head_id,
+        head_payload_hash=_framed_digest_v2(
+            _HEAD_PAYLOAD_HASH_DOMAIN_V2, encoded,
+        ),
+        head_signature_hash=_framed_digest_v2(
+            _HEAD_SIGNATURE_HASH_DOMAIN_V2, signature,
+        ),
+        required_head_frame_hash=_framed_digest_v2(
+            _REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, frame,
+        ),
+        verified_chain_head_id=head.head_id,
+    )
+    return _HeadRequiredMaterialV2(
+        record, encoded, signature, head, frame,
+        _HEAD_REQUIRED_MATERIAL_SEAL_V2,
+    )
+
+
+def _preflight_verified_record_v2(
+    head_required: object, encoded_attestation: object,
+) -> OwnershipCoordinatorRecordV2:
+    """Bind the exact, self-authenticating operational preflight document."""
+    from executor_birth_admin_preflight import (
+        _DecodedPreflightAttestationV1,
+        _decode_preflight_attestation_record_v1,
+    )
+
+    if (
+        type(head_required) is not OwnershipCoordinatorRecordV2
+        or head_required.sequence != 5
+        or head_required.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED
+        or type(encoded_attestation) is not bytes
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight input",
+    )
+    try:
+        attestation, attestation_hash = (
+            _decode_preflight_attestation_record_v1(encoded_attestation)
+        )
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight attestation",
+        ) from exc
+    if (
+        type(attestation) is not _DecodedPreflightAttestationV1
+        or attestation.request_id != head_required.request_id
+        or attestation.closed_build_id != head_required.closed_build_id
+        or attestation.release_sequence != head_required.release_sequence
+        or attestation.head_id != head_required.head_id
+        or attestation.required_head_frame_hash
+        != head_required.required_head_frame_hash
+        or attestation.deployment_descriptor_id
+        != head_required.deployment_descriptor_id
+        or attestation.service_coverage_hash
+        != head_required.service_coverage_hash
+        or attestation.administrative_bundle_hash
+        != head_required.administrative_bundle_hash
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight binding",
+        )
+    return replace(
+        head_required,
+        sequence=6,
+        state=OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED,
+        previous_record_sha256=_record_hash_v2(head_required.encode()),
+        preflight_attestation_hash=attestation_hash,
+    )
+
+
+def _path_present_v2(path: Path) -> bool:
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "certificate inventory",
+        ) from exc
+    return True
+
+
+def _certificate_target_paths_v2(
+    material: _CertificateReadyMaterialV2,
+    certificate_directory: Path, chain_store: object | None,
+) -> tuple[Path, Path]:
+    if material.record.release_sequence == 1:
+        return (
+            certificate_directory / PAYLOAD_BASENAME,
+            certificate_directory / SIGNATURE_BASENAME,
+        )
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    if not isinstance(chain_store, OwnershipChainStore):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "ownership chain store",
+        )
+    stem = material.certificate.cutover_id.removeprefix("sha256:")
+    return (
+        chain_store.root / "cutovers-v1" / f"{stem}.json",
+        chain_store.root / "cutovers-v1" / f"{stem}.sig",
+    )
+
+
+def _require_unpublished_certificate_target_v2(
+    material: _CertificateReadyMaterialV2,
+    certificate_directory: Path, chain_store: object | None,
+) -> None:
+    if any(_path_present_v2(path) for path in _certificate_target_paths_v2(
+        material, certificate_directory, chain_store,
+    )):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "certificate exists before ready",
+        )
+
+
+def _publish_certificate_material_v2(
+    material: object, *, certificate_directory: Path,
+    authorities: object, chain_store: object | None,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Publish and reread the exact bytes already committed by READY."""
+    if (
+        type(material) is not _CertificateReadyMaterialV2
+        or material._seal is not _CERTIFICATE_READY_MATERIAL_SEAL_V2
+        or not is_root_ownership_authorities_v1(authorities)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        )
+    record = material.record
+    proof = record.current_proof
+    assert proof is not None
+    if record.release_sequence == 1:
+        observed = install_ownership_cutover_certificate(
+            certificate_directory,
+            material.payload,
+            material.signature,
+            registry=authorities.public.cutover,
+            expected_proof=proof,
+            expected_context_transition_id=record.context_transition_id,
+            expected_dominant_startup_receipt=(
+                record.dominant_startup_receipt
+            ),
+            _crash_seam=_crash_seam,
+        )
+        reread = read_ownership_cutover_certificate(
+            certificate_directory,
+            registry=authorities.public.cutover,
+            expected_proof=proof,
+            expected_context_transition_id=record.context_transition_id,
+            expected_dominant_startup_receipt=(
+                record.dominant_startup_receipt
+            ),
+        )
+    else:
+        from executor_birth_ownership_chain import OwnershipChainStore
+
+        if not isinstance(chain_store, OwnershipChainStore):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "ownership chain store",
+            )
+        observed = chain_store.append_cutover(
+            material.payload, material.signature, _crash_seam=_crash_seam,
+        )
+        stem = material.certificate.cutover_id.removeprefix("sha256:")
+        encoded, signature = chain_store._read_pair(
+            chain_store.root / "cutovers-v1", stem,
+            maximum=MAX_PAYLOAD_BYTES,
+        )
+        if encoded != material.payload or signature != material.signature:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "certificate reread",
+            )
+        reread = verify_ownership_cutover_certificate(
+            encoded,
+            signature,
+            registry=authorities.public.cutover,
+            expected_proof=proof,
+            expected_previous_cutover_id=record.previous_cutover_id,
+            expected_context_transition_id=record.context_transition_id,
+            expected_dominant_startup_receipt=(
+                record.dominant_startup_receipt
+            ),
+        )
+    if observed != material.certificate or reread != material.certificate:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "certificate reread",
+        )
+    return _certificate_published_record_v2(record)
+
+
+def _cross_certificate_boundary_core_v2(
+    *, material: object, authorities: object,
+    certificate_directory: Path, chain_store: object | None,
+    append_record: object, observe_graph: object,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Share exact ordering; wrappers retain nominal lock authority."""
+    if (
+        type(material) is not _CertificateReadyMaterialV2
+        or material._seal is not _CERTIFICATE_READY_MATERIAL_SEAL_V2
+        or not is_root_ownership_authorities_v1(authorities)
+        or not callable(append_record)
+        or not callable(observe_graph)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        )
+    before = observe_graph()
+    if type(before) is not _ObservedOwnershipCoordinatorGraphV2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "coordinator graph",
+        )
+    matches = tuple(
+        item for item in before.transactions
+        if item.claim.request_id == material.record.request_id
+    )
+    if len(matches) != 1 or len(matches[0].records) < 2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "receipt reread",
+        )
+    complete = matches[0].records[1]
+    if material.record.previous_record_sha256 != _record_hash_v2(
+        complete.encode(),
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "certificate predecessor",
+        )
+    if matches[0].latest.sequence == 1:
+        _require_unpublished_certificate_target_v2(
+            material, certificate_directory, chain_store,
+        )
+    ready = append_record(material.record)
+    reread_graph = observe_graph()
+    _require_transaction_record_reread_v2(
+        reread_graph, ready, detail="certificate ready reread",
+    )
+    if _crash_seam is not None:
+        _crash_seam("certificate_ready")
+    published_record = _publish_certificate_material_v2(
+        material,
+        certificate_directory=certificate_directory,
+        authorities=authorities,
+        chain_store=chain_store,
+        _crash_seam=_crash_seam,
+    )
+    published = append_record(published_record)
+    final_graph = observe_graph()
+    _require_transaction_record_reread_v2(
+        final_graph, published, detail="certificate published reread",
+    )
+    return published
+
+
+def _cross_certificate_boundary_locked_v2(
+    session: _DeploymentLockSessionV1, material: object, *,
+    authorities: object,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Productive READY-to-PUBLISHED crossing under the fixed outer lock."""
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    if type(material) is not _CertificateReadyMaterialV2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        )
+    chain_store = (
+        None if material.record.release_sequence == 1
+        else OwnershipChainStore()
+    )
+
+    def observe_certificate_graph():
+        snapshot = _resolve_ownership_coordinator_locked_v2(session)
+        return _require_locked_coordinator_graph_snapshot_v2(
+            snapshot, session,
+        )
+
+    return _cross_certificate_boundary_core_v2(
+        material=material,
+        authorities=authorities,
+        certificate_directory=DEFAULT_OWNERSHIP_ROOT_V1,
+        chain_store=chain_store,
+        append_record=lambda record: _append_ownership_transaction_locked_v2(
+            session, record,
+        ),
+        observe_graph=observe_certificate_graph,
+        _crash_seam=_crash_seam,
+    )
+
+
+def _cross_certificate_boundary_locked_for_test_v2(
+    session: _DeploymentLockSessionForTestV1, ownership_root: Path,
+    material: object, *, authorities: object, chain_store: object | None = None,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Portable proof seam; it never accepts the productive lock session."""
+    ownership_root = Path(ownership_root)
+    _require_test_deployment_lock_session_v1(session, ownership_root)
+    return _cross_certificate_boundary_core_v2(
+        material=material,
+        authorities=authorities,
+        certificate_directory=ownership_root,
+        chain_store=chain_store,
+        append_record=lambda record: (
+            _append_ownership_transaction_locked_for_test_v2(
+                session, ownership_root, record,
+            )
+        ),
+        observe_graph=lambda: (
+            _resolve_ownership_coordinator_locked_for_test_v2(
+                session, ownership_root,
+            ).observation
+        ),
+        _crash_seam=_crash_seam,
+    )
+
+
+def _certificate_material_for_head_v2(
+    record: OwnershipCoordinatorRecordV2, *, certificate_directory: Path,
+    chain_store: object, authorities: RootOwnershipAuthoritiesV1,
+) -> tuple[bytes, bytes, OwnershipCutoverCertificate]:
+    """Reread the exact published certificate before archiving its head."""
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    if (
+        type(record) is not OwnershipCoordinatorRecordV2
+        or record.sequence != 4
+        or record.state is not OwnershipCoordinatorStateV1.BUILD_VERIFIED
+        or not isinstance(chain_store, OwnershipChainStore)
+        or not is_root_ownership_authorities_v1(authorities)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head certificate input",
+        )
+    try:
+        if record.release_sequence == 1:
+            encoded = _safe_read(
+                Path(certificate_directory) / PAYLOAD_BASENAME,
+                MAX_PAYLOAD_BYTES,
+            )
+            signature = _safe_read(
+                Path(certificate_directory) / SIGNATURE_BASENAME, 64,
+            )
+        else:
+            encoded, signature = chain_store._read_pair(
+                chain_store.root / "cutovers-v1",
+                record.cutover_id.removeprefix("sha256:"),
+                maximum=MAX_PAYLOAD_BYTES,
+            )
+        proof = record.current_proof
+        assert proof is not None
+        certificate = verify_ownership_cutover_certificate(
+            encoded,
+            signature,
+            registry=authorities.public.cutover,
+            expected_proof=proof,
+            expected_previous_cutover_id=record.previous_cutover_id,
+            expected_context_transition_id=record.context_transition_id,
+            expected_dominant_startup_receipt=(
+                record.dominant_startup_receipt
+            ),
+        )
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head certificate reread",
+        ) from exc
+    if (
+        _digest(encoded) != record.certificate_payload_hash
+        or _digest(signature) != record.certificate_signature_hash
+        or certificate.cutover_id != record.cutover_id
+        or certificate.catalog_id != record.catalog_id
+        or certificate.request_id != record.request_id
+        or certificate.closed_build_id != record.closed_build_id
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head certificate binding",
+        )
+    return encoded, signature, certificate
+
+
+def _cross_head_boundary_core_v2(
+    *, published: object, distribution: object, authorities: object,
+    certificate_directory: Path, chain_store: object,
+    append_record: object, observe_graph: object,
+    verify_installation: object, verify_required_chain: object,
+    require_sessions: object,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Advance sequence 3 to 5 around one recoverable required-head CAS."""
+    from executor_birth_ownership_chain import (
+        OwnershipChainStore, OwnershipHead, VerifiedOwnershipChain,
+    )
+
+    if (
+        type(published) is not OwnershipCoordinatorRecordV2
+        or published.sequence != 3
+        or published.state
+        is not OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+        or not _verified_distribution_matches_payload_v1(distribution)
+        or not is_root_ownership_authorities_v1(authorities)
+        or not isinstance(chain_store, OwnershipChainStore)
+        or not callable(append_record)
+        or not callable(observe_graph)
+        or not callable(verify_installation)
+        or not callable(verify_required_chain)
+        or not callable(require_sessions)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head crossing input",
+        )
+
+    def require() -> None:
+        require_sessions()
+
+    def head_transaction():
+        require()
+        graph = observe_graph()
+        if type(graph) is not _ObservedOwnershipCoordinatorGraphV2:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "head graph",
+            )
+        matches = tuple(
+            item for item in graph.transactions
+            if item.claim.request_id == published.request_id
+        )
+        if (
+            len(matches) != 1 or len(matches[0].records) < 4
+            or matches[0].records[3] != published
+            or matches[0].latest.sequence not in {3, 4, 5}
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "head predecessor",
+            )
+        return matches[0]
+
+    transaction = head_transaction()
+    require()
+    observed_distribution = verify_installation()
+    require()
+    if (
+        type(observed_distribution) is not VerifiedDistribution
+        or observed_distribution != distribution
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "installed distribution",
+        )
+    build_record = _build_verified_record_v2(
+        published, observed_distribution,
+    )
+    if transaction.latest.sequence == 3:
+        build_record = append_record(build_record)
+        _require_transaction_record_reread_v2(
+            observe_graph(), build_record, detail="build verified reread",
+        )
+        require()
+        if _crash_seam is not None:
+            _crash_seam("build_verified")
+    elif transaction.records[4] != build_record:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "build verified binding",
+        )
+
+    encoded_certificate, certificate_signature, certificate = (
+        _certificate_material_for_head_v2(
+            build_record,
+            certificate_directory=Path(certificate_directory),
+            chain_store=chain_store,
+            authorities=authorities,
+        )
+    )
+    require()
+    archived_certificate = chain_store.append_cutover(
+        encoded_certificate,
+        certificate_signature,
+        _crash_seam=(
+            (lambda point: _crash_seam("cutover_" + point))
+            if _crash_seam is not None else None
+        ),
+    )
+    require()
+    if archived_certificate != certificate:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "cutover archive reread",
+        )
+    if _crash_seam is not None:
+        _crash_seam("cutover_archived")
+
+    chain_store.append_authenticated_build(
+        observed_distribution,
+        _crash_seam=(
+            (lambda point: _crash_seam("build_" + point))
+            if _crash_seam is not None else None
+        ),
+    )
+    require()
+    if _crash_seam is not None:
+        _crash_seam("build_archived")
+
+    material = _head_required_material_v2(
+        build_record, authorities=authorities,
+    )
+    archived_head = chain_store.append_head(
+        material.encoded,
+        material.signature,
+        _crash_seam=(
+            (lambda point: _crash_seam("head_" + point))
+            if _crash_seam is not None else None
+        ),
+    )
+    require()
+    if archived_head != material.head:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head archive reread",
+        )
+    if _crash_seam is not None:
+        _crash_seam("head_archived")
+
+    required = chain_store.update_required_head(
+        material.encoded,
+        material.signature,
+        expected_head_id=build_record.previous_head_id,
+        _crash_seam=(
+            (lambda point: _crash_seam("required_" + point))
+            if _crash_seam is not None else None
+        ),
+    )
+    require()
+    if required != material.head:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "required head reread",
+        )
+    verified_chain = verify_required_chain(certificate)
+    require()
+    if (
+        type(verified_chain) is not VerifiedOwnershipChain
+        or type(verified_chain.required_head) is not OwnershipHead
+        or verified_chain.required_head != material.head
+        or (
+            verified_chain.required_distribution is not None
+            and verified_chain.required_distribution != observed_distribution
+        )
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "required chain reread",
+        )
+    if _crash_seam is not None:
+        _crash_seam("required_chain_verified")
+
+    transaction = head_transaction()
+    if transaction.latest.sequence == 4:
+        persisted = append_record(material.record)
+        _require_transaction_record_reread_v2(
+            observe_graph(), persisted, detail="head required reread",
+        )
+        require()
+        if _crash_seam is not None:
+            _crash_seam("head_required")
+    elif transaction.latest.sequence == 5:
+        persisted = transaction.latest
+        if persisted != material.record:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "head required binding",
+            )
+    else:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head journal order",
+        )
+    final = head_transaction().latest
+    if final != persisted:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "head final reread",
+        )
+    return final
+
+
+def _cross_head_boundary_locked_v2(
+    sessions: tuple[object, ...], published: object, distribution: object, *,
+    authorities: object,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Product crossing with all three live sessions continuously held."""
+    from executor_birth_dominant_startup import _require_product_sessions_v1
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    held = _require_product_sessions_v1(sessions)
+    store = OwnershipChainStore()
+
+    def observe_head_graph():
+        snapshot = _resolve_ownership_coordinator_locked_v2(held[0])
+        return _require_locked_coordinator_graph_snapshot_v2(
+            snapshot, held[0],
+        )
+
+    return _cross_head_boundary_core_v2(
+        published=published,
+        distribution=distribution,
+        authorities=authorities,
+        certificate_directory=DEFAULT_OWNERSHIP_ROOT_V1,
+        chain_store=store,
+        append_record=lambda record: _append_ownership_transaction_locked_v2(
+            held[0], record,
+        ),
+        observe_graph=observe_head_graph,
+        verify_installation=lambda: verify_current_installation_distribution_v1(
+            distribution.encoded, distribution.signature,
+        ),
+        verify_required_chain=lambda _certificate: (
+            store.read_required_chain_cold_v1()
+        ),
+        require_sessions=lambda: _require_product_sessions_v1(held),
+        _crash_seam=_crash_seam,
+    )
+
+
+def _cross_head_boundary_locked_for_test_v2(
+    deployment_session: object, startup_session: object, *,
+    ownership_root: Path, gate_path: Path, published: object,
+    distribution: object, authorities: object, chain_store: object,
+    builds: Mapping[str, VerifiedDistribution],
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Portable nominal seam; productive sessions cannot enter it."""
+    from executor_birth_ownership_chain import _OwnershipChainStoreForTest
+    from executor_birth_startup_gate import (
+        _require_exclusive_startup_gate_session_for_test_v1,
+    )
+
+    ownership_root = Path(ownership_root)
+    gate_path = Path(gate_path)
+    if (
+        type(chain_store) is not _OwnershipChainStoreForTest
+        or type(builds) is not dict
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "test head crossing",
+        )
+
+    def require() -> None:
+        _require_test_deployment_lock_session_v1(
+            deployment_session, ownership_root,
+        )
+        _require_exclusive_startup_gate_session_for_test_v1(
+            startup_session, gate_path,
+        )
+
+    require()
+    return _cross_head_boundary_core_v2(
+        published=published,
+        distribution=distribution,
+        authorities=authorities,
+        certificate_directory=ownership_root,
+        chain_store=chain_store,
+        append_record=lambda record: (
+            _append_ownership_transaction_locked_for_test_v2(
+                deployment_session, ownership_root, record,
+            )
+        ),
+        observe_graph=lambda: (
+            _resolve_ownership_coordinator_locked_for_test_v2(
+                deployment_session, ownership_root,
+            ).observation
+        ),
+        verify_installation=lambda: distribution,
+        verify_required_chain=lambda certificate: chain_store.read_required_chain(
+            anchor=certificate, builds=builds,
+        ),
+        require_sessions=require,
+        _crash_seam=_crash_seam,
+    )
+
+
+def _cross_preflight_boundary_core_v2(
+    *, head_required: object, append_record: object, observe_graph: object,
+    publish_attestation: object, reread_attestation: object,
+    require_sessions: object,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Advance sequence 5 to 6 only around one exact durable attestation."""
+    if (
+        type(head_required) is not OwnershipCoordinatorRecordV2
+        or head_required.sequence != 5
+        or head_required.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED
+        or not callable(append_record)
+        or not callable(observe_graph)
+        or not callable(publish_attestation)
+        or not callable(reread_attestation)
+        or not callable(require_sessions)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight crossing input",
+        )
+
+    def require() -> None:
+        require_sessions()
+
+    def preflight_transaction():
+        require()
+        graph = observe_graph()
+        if type(graph) is not _ObservedOwnershipCoordinatorGraphV2:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "preflight graph",
+            )
+        matches = tuple(
+            item for item in graph.transactions
+            if item.claim.request_id == head_required.request_id
+        )
+        if (
+            len(matches) != 1 or len(matches[0].records) < 6
+            or matches[0].records[5] != head_required
+            or matches[0].latest.sequence not in {5, 6}
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "preflight predecessor",
+            )
+        return matches[0]
+
+    transaction = preflight_transaction()
+    require()
+    try:
+        encoded = publish_attestation()
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight publication",
+        ) from exc
+    require()
+    verified_record = _preflight_verified_record_v2(
+        head_required, encoded,
+    )
+    if _crash_seam is not None:
+        _crash_seam("preflight_attestation_published")
+
+    transaction = preflight_transaction()
+    if transaction.latest.sequence == 5:
+        persisted = append_record(verified_record)
+        _require_transaction_record_reread_v2(
+            observe_graph(), persisted, detail="preflight verified reread",
+        )
+        require()
+        if _crash_seam is not None:
+            _crash_seam("preflight_verified")
+    elif transaction.latest.sequence == 6:
+        persisted = transaction.latest
+        if persisted != verified_record:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "preflight record binding",
+            )
+    else:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight journal order",
+        )
+
+    require()
+    try:
+        observed = reread_attestation()
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight final reread",
+        ) from exc
+    require()
+    if (
+        observed != encoded
+        or _preflight_verified_record_v2(head_required, observed) != persisted
+        or preflight_transaction().latest != persisted
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight final binding",
+        )
+    return persisted
+
+
+def _cross_preflight_boundary_locked_v2(
+    sessions: tuple[object, ...], head_required: object, *,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Product crossing with fixed-root preflight and all sessions retained."""
+    from executor_birth_admin_preflight import (
+        _attest_operational_preflight_v1,
+        _publish_preflight_attestation_v1,
+        _read_preflight_attestation_v1,
+    )
+    from executor_birth_dominant_startup import _require_product_sessions_v1
+
+    held = _require_product_sessions_v1(sessions)
+
+    def observe_preflight_graph():
+        snapshot = _resolve_ownership_coordinator_locked_v2(held[0])
+        return _require_locked_coordinator_graph_snapshot_v2(
+            snapshot, held[0],
+        )
+
+    return _cross_preflight_boundary_core_v2(
+        head_required=head_required,
+        append_record=lambda record: _append_ownership_transaction_locked_v2(
+            held[0], record,
+        ),
+        observe_graph=observe_preflight_graph,
+        publish_attestation=lambda: _publish_preflight_attestation_v1(
+            _attest_operational_preflight_v1(),
+        ),
+        reread_attestation=lambda: _read_preflight_attestation_v1(
+            head_required.request_id,
+        ),
+        require_sessions=lambda: _require_product_sessions_v1(held),
+        _crash_seam=_crash_seam,
+    )
+
+
+def _cross_preflight_boundary_locked_for_test_v2(
+    deployment_session: object, startup_session: object, *,
+    ownership_root: Path, gate_path: Path, attestation_root: Path,
+    head_required: object, encoded_attestation: bytes,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Portable nominal seam; productive sessions and roots cannot enter it."""
+    from executor_birth_admin_preflight import (
+        _decode_preflight_attestation_v1,
+        _publish_preflight_attestation_core_v1,
+        _read_preflight_attestation_for_test_v1,
+    )
+    from executor_birth_startup_gate import (
+        _require_exclusive_startup_gate_session_for_test_v1,
+    )
+
+    ownership_root = Path(ownership_root)
+    gate_path = Path(gate_path)
+    attestation_root = Path(attestation_root)
+    if (
+        type(encoded_attestation) is not bytes
+        or not attestation_root.is_absolute()
+        or attestation_root.parent != ownership_root
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "test preflight crossing",
+        )
+
+    def require() -> None:
+        _require_test_deployment_lock_session_v1(
+            deployment_session, ownership_root,
+        )
+        _require_exclusive_startup_gate_session_for_test_v1(
+            startup_session, gate_path,
+        )
+
+    def publish() -> bytes:
+        decoded = _decode_preflight_attestation_v1(encoded_attestation)
+        _publish_preflight_attestation_core_v1(
+            encoded_attestation, decoded.request_id,
+            root=attestation_root, uid=os.getuid(), gid=os.getgid(),
+            chain_stop=ownership_root.parent,
+        )
+        return _read_preflight_attestation_for_test_v1(
+            decoded.request_id, attestation_root,
+        )
+
+    require()
+    return _cross_preflight_boundary_core_v2(
+        head_required=head_required,
+        append_record=lambda record: (
+            _append_ownership_transaction_locked_for_test_v2(
+                deployment_session, ownership_root, record,
+            )
+        ),
+        observe_graph=lambda: (
+            _resolve_ownership_coordinator_locked_for_test_v2(
+                deployment_session, ownership_root,
+            ).observation
+        ),
+        publish_attestation=publish,
+        reread_attestation=lambda: _read_preflight_attestation_for_test_v1(
+            head_required.request_id, attestation_root,
+        ),
+        require_sessions=require,
+        _crash_seam=_crash_seam,
+    )
+
+
+def _publish_context_transition_locked_v2(
+    session: _DeploymentLockSessionV1,
+    publication: object,
+    complete: object,
+):
+    """Publish the transition only after exact receipt completeness reread."""
+    if (
+        type(publication) is not PreparedTransitionPublicationV2
+        or publication._seal
+        is not _PREPARED_TRANSITION_PUBLICATION_SEAL_V2
+        or type(complete) is not OwnershipCoordinatorRecordV2
+        or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+        or complete.sequence != 1
+        or complete.request_id != publication.record.request_id
+        or complete.context_transition_id
+        != publication.transition.transition_id
+        or complete.current_proof is None
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_receipt_proof_invalid",
+        )
+    _require_deployment_lock_session_v1(session)
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    matches = tuple(
+        transaction for transaction in graph.transactions
+        if transaction.claim.request_id == complete.request_id
+    )
+    if (
+        len(matches) != 1
+        or len(matches[0].records) < 2
+        or matches[0].records[1] != complete
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "receipt reread",
+        )
+    from executor_birth_ownership_chain import (
+        OwnershipChainError, OwnershipChainStore,
+    )
+
+    try:
+        observed = OwnershipChainStore().append_context_transition(
+            publication.transition.encoded,
+            expected_proof=complete.current_proof,
+        )
+    except OwnershipChainError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
+            _wrapped_cause_detail_v1(exc),
+        ) from exc
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
+        ) from exc
+    _require_deployment_lock_session_v1(session)
+    if observed != publication.transition:
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
+        )
+    return observed
+
+
+def _observe_dominant_identity_core_v2(
+    graph: object, complete: object, read_transition: object,
+) -> tuple[str, str, str]:
+    """Reread the exact request, predecessor anchor and context transition."""
+    from executor_birth_context_transition import ContextTransitionV1
+    from executor_birth_ownership_chain import OwnershipChainError
+
+    if (
+        type(graph) is not _ObservedOwnershipCoordinatorGraphV2
+        or type(complete) is not OwnershipCoordinatorRecordV2
+        or complete.sequence != 1
+        or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+        or not callable(read_transition)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "dominant identity input",
+        )
+    matches = tuple(
+        item for item in graph.transactions
+        if item.claim.request_id == complete.request_id
+    )
+    if (
+        len(matches) != 1
+        or len(matches[0].records) < 2
+        or matches[0].records[1] != complete
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "dominant identity record",
+        )
+    proof = complete.current_proof
+    if proof is None:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "dominant identity proof",
+        )
+    try:
+        transition = read_transition(complete.context_transition_id, proof)
+    except OwnershipChainError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
+            _wrapped_cause_detail_v1(exc),
+        ) from exc
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
+        ) from exc
+    if (
+        type(transition) is not ContextTransitionV1
+        or transition.request_id != complete.request_id
+        or transition.closed_build_id != complete.closed_build_id
+        or transition.previous_cutover_id != complete.previous_cutover_id
+        or transition.previous_set_id != complete.previous_set_id
+        or transition.set_id != complete.target_set_id
+        or transition.transition_id != complete.context_transition_id
+        or transition.current_inventory_hash != complete.current_inventory_hash
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
+        )
+    predecessor = complete.previous_head_id
+    if predecessor is None:
+        predecessor = "sha256:" + complete.previous_set_id
+    _require_digest(predecessor, "dominant predecessor")
+    return complete.request_id, predecessor, transition.transition_id
+
+
+def _observe_dominant_identity_locked_v2(
+    session: _DeploymentLockSessionV1, complete: object,
+) -> tuple[str, str, str]:
+    """Product identity observer under the fixed deployment session."""
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    store = OwnershipChainStore()
+    observed = _observe_dominant_identity_core_v2(
+        graph, complete,
+        lambda transition_id, proof: store.read_context_transition(
+            transition_id, expected_proof=proof,
+        ),
+    )
+    _require_deployment_lock_session_v1(session)
+    return observed
+
+
 @dataclass(frozen=True, slots=True)
 class OwnershipCoordinatorResultV1:
     state: OwnershipCoordinatorStateV1
@@ -2308,7 +5229,9 @@ class OwnershipCoordinatorResultV1:
     cutover_id: str | None
 
 
-def _result(record: OwnershipCoordinatorRecordV1) -> OwnershipCoordinatorResultV1:
+def _result(
+    record: OwnershipCoordinatorRecordV1 | OwnershipCoordinatorRecordV2,
+) -> OwnershipCoordinatorResultV1:
     return OwnershipCoordinatorResultV1(
         record.state, record.request_id,
         len(record.current_proof.identities) if record.current_proof else 0,
@@ -2363,6 +5286,181 @@ def _prepare_under_maintenance_v1(
     return _result(complete)
 
 
+def _prepare_staged_current_receipts_v2(
+    staged_runtime: object, *, prove_quiescent: Callable[[], bool],
+    expected_inventory: object,
+) -> CurrentReceiptProof:
+    """Build a V2-only receipt proof for one frozen transition inventory."""
+    from executor_birth_bootstrap import _is_staged_reattestation_runtime_v2
+    from executor_birth_cutover import (
+        BirthCutoverError, CurrentInventoryV1, prepare_current_receipt_proof,
+    )
+
+    if (
+        not _is_staged_reattestation_runtime_v2(staged_runtime)
+        or not callable(prove_quiescent)
+        or not isinstance(expected_inventory, CurrentInventoryV1)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_birth_runtime_unavailable",
+        )
+    prepared_by_identity: dict[tuple[str, str], object] = {}
+
+    def prepared_for(current):
+        identity = current.identity
+        prepared = prepared_by_identity.get(identity)
+        if prepared is None:
+            prepared = staged_runtime.prepare(current)
+            prepared_by_identity[identity] = prepared
+        elif prepared.current != current:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required",
+                "current inventory changed",
+            )
+        return prepared
+
+    try:
+        report = prepare_current_receipt_proof(
+            prove_quiescent=prove_quiescent,
+            enumerate_current=staged_runtime.enumerate_current,
+            read_receipt=lambda current: staged_runtime.read_receipt(
+                prepared_for(current),
+            ),
+            reattest_via_birth=lambda current: staged_runtime.reattest(
+                prepared_for(current),
+            ),
+            verify_receipt=staged_runtime.verify_receipt,
+        )
+    except BirthCutoverError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_receipt_proof_invalid",
+            _wrapped_cause_detail_v1(exc),
+        ) from exc
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_receipt_proof_invalid",
+        ) from exc
+    if (
+        not isinstance(report.proof, CurrentReceiptProof)
+        or report.proof.inventory != expected_inventory
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "current inventory changed",
+        )
+    return report.proof
+
+
+def _build_staged_current_receipts_v2(
+    staged_context: object, *, now: Callable[[], datetime],
+    prove_quiescent: Callable[[], bool], expected_inventory: object,
+) -> CurrentReceiptProof:
+    """Own staged-runtime composition at the receipt-proof boundary."""
+    from executor_birth_bootstrap import (
+        _build_staged_reattestation_runtime_v2,
+    )
+
+    staged_runtime = _build_staged_reattestation_runtime_v2(
+        staged_context, now=now,
+    )
+    return _prepare_staged_current_receipts_v2(
+        staged_runtime,
+        prove_quiescent=prove_quiescent,
+        expected_inventory=expected_inventory,
+    )
+
+
+def _current_reattestation_port_v1():
+    """Load the sole fixed Birth port that can enumerate current generations."""
+    from executor_birth_bootstrap import BirthBootstrapError, bootstrap_birth_runtime
+    from executor_birth_commit_publisher import _is_birth_reattestation_port
+    from executor_birth_operational import _runtime_bundle_snapshot
+
+    bundle = _runtime_bundle_snapshot()
+    if bundle is None:
+        try:
+            bundle = bootstrap_birth_runtime()
+        except BirthBootstrapError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_birth_runtime_unavailable",
+                _wrapped_cause_detail_v1(exc),
+            ) from exc
+        except Exception as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_birth_runtime_unavailable",
+            ) from exc
+    port_factory = getattr(
+        getattr(bundle, "core", None), "commit_publisher", None,
+    )
+    port_factory = getattr(port_factory, "reattestation_port", None)
+    port = port_factory() if callable(port_factory) else None
+    if not _is_birth_reattestation_port(port):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_birth_runtime_unavailable",
+        )
+    return port
+
+
+@contextmanager
+def _transition_inventory_under_maintenance_v2(maintenance, evidence):
+    """Freeze exact current identities under an already held maintenance guard."""
+    from contract_cutover_guard import (
+        _maintenance_evidence_under_transition_v1,
+        _verify_store_only_catalog_locked,
+    )
+    from executor_birth_cutover import freeze_current_inventory_v1
+    from executor_birth_ownership_preflight import canonical_maintenance_proof
+
+    port = _current_reattestation_port_v1()
+    initial = _maintenance_evidence_under_transition_v1(maintenance)
+    supplied = canonical_maintenance_proof(
+        source=evidence["source"], units=evidence["units"],
+    )
+    if supplied != initial or maintenance() is not True:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_maintenance_changed",
+        )
+    inventory = freeze_current_inventory_v1(port.enumerate_current())
+    _verify_store_only_catalog_locked()
+    if (
+        _maintenance_evidence_under_transition_v1(maintenance) != initial
+        or maintenance() is not True
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_maintenance_changed",
+        )
+    try:
+        yield maintenance, inventory, initial
+    except BaseException:
+        raise
+    else:
+        _verify_store_only_catalog_locked()
+        final_inventory = freeze_current_inventory_v1(
+            port.enumerate_current(),
+        )
+        if (
+            final_inventory != inventory
+            or _maintenance_evidence_under_transition_v1(maintenance)
+            != initial
+            or maintenance() is not True
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required",
+                "current inventory or maintenance changed",
+            )
+
+
+@contextmanager
+def _transition_maintenance_inventory_v2():
+    """Acquire the ordinary guard and freeze the exact current identities."""
+    from contract_cutover_guard import contract_cutover_guard
+
+    with contract_cutover_guard() as (maintenance, evidence):
+        with _transition_inventory_under_maintenance_v2(
+            maintenance, evidence,
+        ) as frozen:
+            yield frozen
+
+
 def prepare_ownership_cutover_v1(
     distribution: VerifiedDistribution,
 ) -> OwnershipCoordinatorResultV1:
@@ -2382,26 +5480,9 @@ def prepare_ownership_cutover_v1(
         )
         from executor_birth_cutover import prepare_current_receipt_proof
         from executor_birth_ownership_preflight import canonical_maintenance_proof
-        from executor_birth_bootstrap import bootstrap_birth_runtime
-        from executor_birth_operational import _runtime_bundle_snapshot
         from executor_birth_reattestation import reattest_current_generation
-        from executor_birth_commit_publisher import _is_birth_reattestation_port
 
-        bundle = _runtime_bundle_snapshot()
-        if bundle is None:
-            try:
-                bundle = bootstrap_birth_runtime()
-            except Exception as exc:
-                raise OwnershipCoordinatorError(
-                    "birth_ownership_birth_runtime_unavailable",
-                ) from exc
-        port_factory = getattr(
-            getattr(bundle, "core", None), "commit_publisher", None,
-        )
-        port_factory = getattr(port_factory, "reattestation_port", None)
-        port = port_factory() if callable(port_factory) else None
-        if not _is_birth_reattestation_port(port):
-            raise OwnershipCoordinatorError("birth_ownership_birth_runtime_unavailable")
+        port = _current_reattestation_port_v1()
         journal = OwnershipCoordinatorJournalV1(
             DEFAULT_COORDINATOR_DIRECTORY_V1, root_owned=True,
         )
@@ -2449,6 +5530,64 @@ class _StartupPrerequisiteV1:
         _require_digest(self.evidence_digest, "startup_prerequisite_digest")
 
 
+def _startup_prerequisite_from_record_v2(
+    prerequisite: object, complete: object,
+) -> _StartupPrerequisiteV1:
+    """Seal canonical prerequisite bytes bound to the complete V2 request."""
+    from executor_birth_distribution_assembler import (
+        DistributionAssemblerError, StartupPrerequisiteV1,
+        decode_startup_prerequisite_v1,
+        encode_startup_prerequisite_v1,
+    )
+
+    if (
+        type(prerequisite) is not StartupPrerequisiteV1
+        or type(complete) is not OwnershipCoordinatorRecordV2
+        or complete.sequence != 1
+        or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        )
+    if (
+        prerequisite.request_id != complete.request_id
+        or prerequisite.closed_build_id != complete.closed_build_id
+        or prerequisite.release_sequence != complete.release_sequence
+        or prerequisite.deployment_descriptor_id
+        != complete.deployment_descriptor_id
+        or prerequisite.administrative_bundle_hash
+        != complete.administrative_bundle_hash
+        or prerequisite.service_coverage_hash
+        != complete.service_coverage_hash
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "startup prerequisite binding",
+        )
+    try:
+        encoded = encode_startup_prerequisite_v1(prerequisite)
+        decoded = decode_startup_prerequisite_v1(encoded)
+    except DistributionAssemblerError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+            _wrapped_cause_detail_v1(exc),
+        ) from exc
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        ) from exc
+    if (
+        decoded != prerequisite
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "startup prerequisite binding",
+        )
+    return _StartupPrerequisiteV1(
+        prerequisite.prerequisite_id, _digest(encoded), _PREREQUISITE_SEAL,
+    )
+
+
 def _startup_prerequisite_for_test(
     prerequisite_id: str, evidence_digest: str,
 ) -> _StartupPrerequisiteV1:
@@ -2458,7 +5597,7 @@ def _startup_prerequisite_for_test(
 
 
 def _single_cutover_key(authorities: RootOwnershipAuthoritiesV1) -> str:
-    if not isinstance(authorities, RootOwnershipAuthoritiesV1):
+    if not is_root_ownership_authorities_v1(authorities):
         raise OwnershipCoordinatorError("birth_ownership_authority_untrusted")
     keys = tuple(authorities.public.cutover.keys)
     if len(keys) != 1:
@@ -2491,6 +5630,7 @@ def _publish_certificate_with_prerequisite_v1(
     authorities: RootOwnershipAuthoritiesV1,
     prerequisite: _StartupPrerequisiteV1,
     observe_maintenance: Callable[[], bytes],
+    context_transition_id: str,
     crossing_receipt: str,
     _crash_seam: Callable[[str], None] | None = None,
 ) -> OwnershipCoordinatorResultV1:
@@ -2508,6 +5648,8 @@ def _publish_certificate_with_prerequisite_v1(
         not isinstance(prerequisite, _StartupPrerequisiteV1)
         or prerequisite._seal is not _PREREQUISITE_SEAL
         or not callable(observe_maintenance)
+        or type(context_transition_id) is not str
+        or _DIGEST_RE.fullmatch(context_transition_id) is None
         or type(crossing_receipt) is not str
         or _DIGEST_RE.fullmatch(crossing_receipt) is None
     ):
@@ -2533,11 +5675,15 @@ def _publish_certificate_with_prerequisite_v1(
         boundary_inventory_hash=latest.boundary_inventory_hash,
         boundary_guard_version=latest.boundary_guard_version,
         closed_build_id=latest.closed_build_id,
+        context_transition_id=context_transition_id,
+        dominant_startup_receipt=crossing_receipt,
         private_key=authorities.cutover_private,
     )
     certificate = verify_ownership_cutover_certificate(
         payload, signature, registry=authorities.public.cutover,
         expected_proof=proof,
+        expected_context_transition_id=context_transition_id,
+        expected_dominant_startup_receipt=crossing_receipt,
     )
     payload_hash = _digest(payload)
     signature_hash = _digest(signature)
@@ -2572,6 +5718,8 @@ def _publish_certificate_with_prerequisite_v1(
         installed = install_ownership_cutover_certificate(
             certificate_directory, payload, signature,
             registry=authorities.public.cutover, expected_proof=proof,
+            expected_context_transition_id=context_transition_id,
+            expected_dominant_startup_receipt=crossing_receipt,
             _crash_seam=_crash_seam,
         )
         if installed.cutover_id != certificate.cutover_id:
@@ -2588,6 +5736,8 @@ def _publish_certificate_with_prerequisite_v1(
         reread = read_ownership_cutover_certificate(
             certificate_directory, registry=authorities.public.cutover,
             expected_proof=proof,
+            expected_context_transition_id=context_transition_id,
+            expected_dominant_startup_receipt=crossing_receipt,
         )
         if reread.cutover_id != latest.cutover_id:
             raise OwnershipCoordinatorError("birth_ownership_recovery_required")
@@ -2707,5 +5857,6 @@ def _advance_to_preflight_verified_v1(
 
 __all__ = [
     "OwnershipCoordinatorError", "OwnershipCoordinatorResultV1",
+    "PreparedTransitionPublicationV2",
     "OwnershipCoordinatorStateV1", "prepare_ownership_cutover_v1",
 ]

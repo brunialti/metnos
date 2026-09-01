@@ -18,7 +18,6 @@ import json
 import os
 import pwd
 import signal
-import shutil
 import stat
 import subprocess
 import sys
@@ -458,32 +457,57 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
     means admission through the sealed Executor Birth service; it never
     selects a technical publisher.
     """
-    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    from manifest_inventory import (
+        ContractId, ManifestLayout, ManifestOrigin, inventory_manifests,
+        resolve_manifest_layout,
+    )
     from sign import verify_executor
 
-    root = (_repo_root() / "executors").resolve()
     layout = resolve_manifest_layout()
-    directories: list[tuple[str, Path]] = []
+    root = (_repo_root() / "executors").resolve()
+    store_refs = (
+        inventory_manifests().by_id()
+        if layout is ManifestLayout.STORE_ONLY else {}
+    )
+    selected: list[tuple[str, Path | None, object | None]] = []
     for name in names:
         if not name or name in {".", ".."} or "/" in name or "\\" in name:
             raise StackFailure("invalid_executor", "executor name is not canonical")
-        directory = (root / name).resolve()
-        try:
-            directory.relative_to(root)
-        except ValueError as exc:
-            raise StackFailure("invalid_executor", "executor escapes the catalog root") from exc
-        if not (directory / "manifest.toml").is_file():
+        contract_id = ContractId(ManifestOrigin.CORE, f"{name}/manifest.toml")
+        if layout is ManifestLayout.STORE_ONLY:
+            ref = store_refs.get(contract_id)
+            if ref is None:
+                raise StackFailure("unknown_executor", f"executor {name!r} is not installed")
+            directory = None
+        else:
+            ref = None
+            directory = (root / name).resolve()
+            try:
+                directory.relative_to(root)
+            except ValueError as exc:
+                raise StackFailure("invalid_executor", "executor escapes the catalog root") from exc
+        if directory is not None and not (directory / "manifest.toml").is_file():
             raise StackFailure("unknown_executor", f"executor {name!r} is not installed")
-        directories.append((name, directory))
+        selected.append((name, directory, ref))
         if sign_first:
             try:
                 from executor_birth_intent import BirthIntent, submit_stack_reconcile_birth
-                from manifest_inventory import ContractId, ManifestOrigin
                 with tempfile.TemporaryDirectory(
                     prefix=f"metnos-reconcile-{name}-birth-",
                 ) as raw_staging:
-                    staging = Path(raw_staging) / name
-                    shutil.copytree(directory, staging)
+                    from executor_birth_snapshot import (
+                        materialize_birth_candidate_from_authoring,
+                        materialize_birth_candidate_from_manifest_ref,
+                    )
+
+                    staging = (
+                        materialize_birth_candidate_from_manifest_ref(
+                            ref, Path(raw_staging) / name,
+                        ) if ref is not None else
+                        materialize_birth_candidate_from_authoring(
+                            directory, Path(raw_staging) / name,
+                        )
+                    )
                     birth = submit_stack_reconcile_birth(BirthIntent(
                         candidate_source_root=staging,
                         contract_id=ContractId(
@@ -501,17 +525,15 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
 
     results: list[dict] = []
     if layout is ManifestLayout.STORE_ONLY:
-        # The authoring tree is deliberately unsigned after cutover.  The
-        # verified store loader is the live admission proof; checking source
-        # bytes with ``verify_executor`` would report a false signature
-        # failure even after a successful publication.
+        # The verified store loader is the live admission proof after cutover;
+        # source verification alone cannot prove which generation is current.
         from loader import load_catalog
 
         catalog = load_catalog(
             include_synth=True,
             include_verb_unique=False,
         )
-        for name, _directory in directories:
+        for name, _directory, _ref in selected:
             executor = catalog.executors.get(name)
             row = {"name": name, "ok": executor is not None}
             if executor is None:
@@ -520,7 +542,8 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
                 row["digest"] = executor.digest
             results.append(row)
     else:
-        for name, directory in directories:
+        for name, directory, _ref in selected:
+            assert directory is not None
             ok, info = verify_executor(directory)
             row = {"name": name, "ok": bool(ok)}
             if ok:

@@ -201,10 +201,19 @@ def test_the_derivation_is_a_fixed_function_of_its_inputs():
 
 def test_the_provisioner_never_uses_the_previous_decoder():
     """Section 10.4: the old free-form builder stays, unused by this path."""
+    import ast
     import inspect
 
     source = inspect.getsource(provisioning)
-    assert "executor_birth_bootstrap" not in source
+    tree = ast.parse(source)
+    bootstrap_imports = {
+        imported.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "executor_birth_bootstrap"
+        for imported in node.names
+    }
+    assert bootstrap_imports == {"verify_initial_installer_store_v1"}
     assert "_context_builder" not in source
     assert "build_admission_context" not in source
     assert "MaterialFile" not in source

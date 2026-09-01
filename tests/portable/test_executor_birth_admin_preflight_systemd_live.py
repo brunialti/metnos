@@ -195,6 +195,13 @@ def test_check_all_attestation_is_exact_idempotent_and_no_replace(
         preflight.PREFLIGHT_ATTESTATION_DOMAIN_V1,
         preflight._canonical_json(unsigned),
     )
+    decoded = preflight._decode_preflight_attestation_v1(encoded)
+    assert decoded.request_id == materials.prerequisite.request_id
+    assert preflight._preflight_attestation_record_hash_v1(encoded) == (
+        preflight._digest(
+            preflight.PREFLIGHT_ATTESTATION_RECORD_DOMAIN_V1, encoded,
+        )
+    )
     destination = root / f"{materials.prerequisite.request_id}.json"
     assert destination.read_bytes() == encoded
     assert stat.S_IMODE(destination.stat().st_mode) == 0o644
@@ -209,6 +216,16 @@ def test_check_all_attestation_is_exact_idempotent_and_no_replace(
             operational, root,
         )
     assert conflict.value.code == preflight.CODE_RECOVERY
+
+    for mutation in (
+        {**value, "unexpected": None},
+        {**value, "attestation_id": D("f")},
+        {**value, "checked_entry_ids": ["probe-target", "probe-target"]},
+    ):
+        _assert_invalid(
+            preflight._decode_preflight_attestation_v1,
+            preflight._canonical_json(mutation),
+        )
 
 
 @LINUX_ONLY

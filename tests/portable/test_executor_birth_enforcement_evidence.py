@@ -49,14 +49,14 @@ def test_the_bit_survives_windows_line_endings(tmp_path: Path) -> None:
     assert unix.module_digest != windows.module_digest
 
 
-def test_the_product_gate_reads_as_open_today() -> None:
-    """The bit is still false, and the evidence says so rather than guessing."""
+def test_the_product_gate_is_closed_and_bound_to_its_current_bytes() -> None:
+    """The release candidate carries the closed bit as measurable evidence."""
     observed = evidence.observe_enforcement_v1(GATE)
-    assert observed.enforced is False
+    assert observed.enforced is True
     assert observed.module_bytes == GATE.stat().st_size
-    with pytest.raises(evidence.EnforcementEvidenceError) as denied:
-        evidence.require_enforced_v1(observed)
-    assert denied.value.code == "enforcement_not_closed"
+    assert evidence.require_enforced_v1(observed) == (
+        evidence.evidence_digest_v1(observed)
+    )
 
 
 def test_a_closed_artefact_yields_a_digest(tmp_path: Path) -> None:

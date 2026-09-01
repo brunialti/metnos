@@ -12,10 +12,16 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from . import support
 
 
-pytestmark = pytest.mark.skipif(
-    os.name == "nt",
-    reason="the managed phase-3 cutover is a Linux/systemd operation",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        os.name == "nt",
+        reason="the managed phase-3 cutover is a Linux/systemd operation",
+    ),
+    pytest.mark.skipif(
+        not Path("/var/lib/metnos").is_dir(),
+        reason="requires the installed fixed Birth product root",
+    ),
+]
 
 
 def test_initial_catalog_is_birth_published_and_replay_verifiable(

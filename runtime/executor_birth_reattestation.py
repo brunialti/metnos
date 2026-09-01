@@ -23,7 +23,7 @@ from executor_birth_identity import (
 )
 from executor_birth_operational import (
     _BirthCore, _BorrowedObserved, _candidate_source_id_from_snapshot,
-    _receipt_checks,
+    _is_birth_core, _receipt_checks,
 )
 from executor_birth_predecessor import AdmissionContextPin
 from executor_birth_producer_store import (
@@ -63,6 +63,9 @@ class ReattestationRequest:
     reason: str
     producer_binding: ProducerReceiptBinding
     _seal: object
+    # Present only for a transition reattestation.  Its presence selects the
+    # context-bound path; it is never a fallback in either direction.
+    producer_request: object | None = None
 
     def __post_init__(self) -> None:
         if self._seal is not _REQUEST_SEAL:
@@ -79,6 +82,22 @@ class ReattestationRequest:
             raise BirthReattestationError(
                 "birth_reattestation_request_invalid", "producer_binding",
             )
+        if self.producer_request is not None:
+            from executor_birth_producer_context import ProducerRequestV2
+
+            if type(self.producer_request) is not ProducerRequestV2:
+                raise BirthReattestationError(
+                    "birth_reattestation_request_invalid", "producer_request",
+                )
+            if self.producer_request.request_id != self.request_id:
+                raise BirthReattestationError(
+                    "birth_reattestation_request_invalid", "request_id",
+                )
+            if (self.producer_request.candidate_source_id
+                    != self.producer_binding.candidate_source_id):
+                raise BirthReattestationError(
+                    "birth_reattestation_request_invalid", "candidate_source_id",
+                )
 
     @property
     def manifest_ref(self):
@@ -99,13 +118,44 @@ def _sealed_reattestation_request(
     )
 
 
+def _sealed_reattestation_request_v2(
+    current: CurrentGeneration, producer_receipt: bytes, actor: str,
+    reason: str, producer_binding: ProducerReceiptBinding,
+    producer_request: object,
+) -> ReattestationRequest:
+    """Mint a context-bound reattestation request.
+
+    There is no ``request_id`` parameter: the identity is the one the sealed
+    Producer request already derived, so the two cannot disagree.  A caller
+    that wants the V1 path calls the other constructor; the choice is a named
+    act, never a default that silently decides which epoch is being written.
+    """
+    from executor_birth_producer_context import ProducerRequestV2
+
+    if type(producer_request) is not ProducerRequestV2:
+        raise BirthReattestationError(
+            "birth_reattestation_request_invalid", "producer_request",
+        )
+    return ReattestationRequest(
+        producer_request.request_id, current, producer_receipt, actor, reason,
+        producer_binding, _REQUEST_SEAL, producer_request,
+    )
+
+
 def _reattestation_request_for_test(
     request_id: str, current: CurrentGeneration, producer_receipt: bytes,
     actor: str, reason: str, producer_binding: ProducerReceiptBinding,
+    producer_request: object | None = None,
 ) -> ReattestationRequest:
-    """Private test seam; productive callers cannot select these authorities."""
-    return _sealed_reattestation_request(
+    """Private test seam; productive callers cannot select these authorities.
+
+    The optional sealed request exists so a proof can build a deliberately
+    inconsistent pair, which the productive V2 constructor makes impossible by
+    deriving the identity itself.
+    """
+    return ReattestationRequest(
         request_id, current, producer_receipt, actor, reason, producer_binding,
+        _REQUEST_SEAL, producer_request,
     )
 
 
@@ -131,12 +181,38 @@ class _ReattestationCore:
     persist: Persist
     read_receipt: ReadReceipt
     _seal: object
+    persist_v2: object | None = None
+    read_v2: object | None = None
 
     def __post_init__(self) -> None:
-        if self._seal is not _SEAL or not isinstance(self.birth, _BirthCore):
+        if self._seal is not _SEAL or not _is_birth_core(self.birth):
             raise BirthReattestationError("birth_reattestation_core_untrusted")
         if any(not callable(value) for value in (self.capture, self.persist, self.read_receipt)):
             raise BirthReattestationError("birth_reattestation_core_invalid")
+        if (self.persist_v2 is None) != (self.read_v2 is None):
+            raise BirthReattestationError("birth_reattestation_core_invalid", "v2 pair")
+        if self.persist_v2 is not None and any(
+            not callable(value) for value in (self.persist_v2, self.read_v2)
+        ):
+            raise BirthReattestationError("birth_reattestation_core_invalid", "v2")
+
+    def persist_receipt(self, request: "ReattestationRequest", encoded, expected):
+        """Route to the context-bound writer when the request carries one."""
+        if request.producer_request is None:
+            return self.persist(request.current, encoded, expected)
+        if self.persist_v2 is None:
+            raise BirthReattestationError("birth_reattestation_v2_port_missing")
+        return self.persist_v2(
+            request.current, encoded, expected, request.producer_request,
+        )
+
+    def read_existing(self, request: "ReattestationRequest"):
+        """Read on the same path the write would use; never the other one."""
+        if request.producer_request is None:
+            return self.read_receipt(request.current)
+        if self.read_v2 is None:
+            raise BirthReattestationError("birth_reattestation_v2_port_missing")
+        return self.read_v2(request.current, request.producer_request)
 
 
 def _digest(value: object, field: str) -> str:
@@ -157,9 +233,12 @@ def _hash(domain: bytes, *values: bytes) -> str:
 
 def _sealed_reattestation_core_for_test(
     *, birth: _BirthCore, capture: Capture, persist: Persist,
-    read_receipt: ReadReceipt,
+    read_receipt: ReadReceipt, persist_v2: object | None = None,
+    read_v2: object | None = None,
 ) -> _ReattestationCore:
-    return _ReattestationCore(birth, capture, persist, read_receipt, _SEAL)
+    return _ReattestationCore(
+        birth, capture, persist, read_receipt, _SEAL, persist_v2, read_v2,
+    )
 
 
 def _assemble_reattestation_core(birth: _BirthCore) -> _ReattestationCore:
@@ -170,7 +249,13 @@ def _assemble_reattestation_core(birth: _BirthCore) -> _ReattestationCore:
     port = factory() if callable(factory) else None
     if not _is_birth_reattestation_port(port):
         raise BirthReattestationError("birth_reattestation_trust_missing")
-    return _ReattestationCore(birth, port.capture, port.persist, port.read, _SEAL)
+    persist_v2 = getattr(port, "persist_v2", None)
+    read_v2 = getattr(port, "read_v2", None)
+    if (persist_v2 is None) != (read_v2 is None):
+        raise BirthReattestationError("birth_reattestation_trust_missing", "v2 pair")
+    return _ReattestationCore(
+        birth, port.capture, port.persist, port.read, _SEAL, persist_v2, read_v2,
+    )
 
 
 def _expected(request: ReattestationRequest, observed: ObservedCandidate,
@@ -265,7 +350,7 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             raise BirthReattestationError(
                 claim.rejection_code or "birth_reattestation_previously_rejected",
             )
-        existing = core.read_receipt(request.current)
+        existing = core.read_existing(request)
         if claim.state == "committed":
             if existing is None:
                 raise BirthReattestationError("birth_reattestation_receipt_not_durable")
@@ -386,7 +471,7 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             db_path=birth.producer_db,
         )
         persistence_started = True
-        durable = core.persist(request.current, encoded, expected)
+        durable = core.persist_receipt(request, encoded, expected)
         if durable != encoded:
             raise BirthReattestationError("birth_reattestation_receipt_not_durable")
         result_binding = _hash(
@@ -403,7 +488,7 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             binding=binding, request_id=request.request_id, now=finish,
             db_path=birth.producer_db, result_binding=result_binding,
         )
-        reread = core.read_receipt(request.current)
+        reread = core.read_existing(request)
         if reread != durable:
             raise BirthReattestationError("birth_reattestation_receipt_not_durable")
         _verify_existing(reread, request, observed, core)

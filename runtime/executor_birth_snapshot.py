@@ -355,6 +355,89 @@ def acquire_candidate_snapshot(
     return snapshot
 
 
+def materialize_birth_candidate_from_authoring(
+    source_root: Path | str,
+    destination: Path | str,
+) -> Path:
+    """Create an exact Birth candidate from a signed authoring tree.
+
+    The current signature is evidence for the installed source, not an input
+    to a new admission.  This function captures the complete signed envelope,
+    removes that derived evidence from the candidate, and derives the code
+    digest from the same immutable bytes that it writes to staging.
+    """
+    from manifest_code_digest import prepare_manifest_digest_v1
+
+    target = Path(destination)
+    if os.path.lexists(target):
+        raise CandidateSnapshotError("candidate_destination_invalid", str(target))
+    snapshot, _signature = _acquire_authenticated_current_snapshot(source_root)
+    try:
+        manifest = prepare_manifest_digest_v1(
+            snapshot.manifest_bytes, snapshot.code_files,
+        )
+        target.mkdir(mode=0o700)
+        _write_private(target, MANIFEST_FILE, manifest)
+        _write_private(
+            target, LANGUAGE_STATE_FILE, snapshot.language_state_bytes,
+        )
+        for relative, payload in snapshot.code_files.items():
+            _write_private(target, relative, payload)
+        expected = _expected_entries(tuple(snapshot.code_files))
+        _check_closed_tree(_tree_state(target), expected)
+        return target
+    except Exception:
+        _remove_private(target)
+        raise
+    finally:
+        snapshot.close()
+
+
+def materialize_birth_candidate_from_manifest_ref(
+    ref: object,
+    destination: Path | str,
+    *,
+    timeout: float = 30.0,
+) -> Path:
+    """Create a Birth candidate from one versioned opaque authoring ref."""
+    from executor_birth_authoring import (
+        AuthoringInstallError, read_manifest_ref_tree_versioned,
+    )
+    from manifest_code_digest import prepare_manifest_digest_v1
+
+    target = Path(destination)
+    if os.path.lexists(target):
+        raise CandidateSnapshotError("candidate_destination_invalid", str(target))
+    try:
+        payloads = read_manifest_ref_tree_versioned(ref, timeout=timeout)
+    except AuthoringInstallError as exc:
+        raise CandidateSnapshotError(exc.code, exc.detail) from exc
+    manifest_bytes = payloads.get(MANIFEST_FILE)
+    language_state_bytes = payloads.get(LANGUAGE_STATE_FILE)
+    signature_bytes = payloads.get("manifest.toml.sig")
+    if not all(isinstance(item, bytes) for item in (
+        manifest_bytes, language_state_bytes, signature_bytes,
+    )):
+        raise CandidateSnapshotError("candidate_file_missing", str(target))
+    code_paths = _declared_code_files(manifest_bytes)
+    expected = {MANIFEST_FILE, LANGUAGE_STATE_FILE, "manifest.toml.sig", *code_paths}
+    if set(payloads) != expected:
+        raise CandidateSnapshotError("candidate_entry_unexpected", str(target))
+    code_files = {name: payloads[name] for name in code_paths}
+    try:
+        manifest = prepare_manifest_digest_v1(manifest_bytes, code_files)
+        target.mkdir(mode=0o700)
+        _write_private(target, MANIFEST_FILE, manifest)
+        _write_private(target, LANGUAGE_STATE_FILE, language_state_bytes)
+        for relative, payload in code_files.items():
+            _write_private(target, relative, payload)
+        _check_closed_tree(_tree_state(target), _expected_entries(code_paths))
+        return target
+    except Exception:
+        _remove_private(target)
+        raise
+
+
 def _acquire_authenticated_current_snapshot(
     source_root: Path | str,
     *, private_parent: Path | str | None = None,

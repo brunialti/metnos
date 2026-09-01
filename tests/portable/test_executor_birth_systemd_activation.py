@@ -37,6 +37,7 @@ from contract_boundary_guard import (
     discover as discover_boundary_scopes,
 )
 from executor_birth_cutover import CurrentReceiptProof
+from executor_birth_context_transition import current_inventory_hash_v1
 from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 from executor_birth_ownership_authorities import (
     decode_ownership_registry_v1,
@@ -541,8 +542,8 @@ def _capture_live_bindings(
     preflight._service_source_identity_v1(
         autonomous_catalog, autonomous_descriptor,
     )
-    provisional = preflight._BoundPreflightMaterialsV1(
-        None, None, autonomous_catalog, autonomous_descriptor, None,
+    provisional = preflight._CandidateCutoverMaterialsV1(
+        None, None, None, autonomous_catalog, autonomous_descriptor,
         candidate, fixture.unit_fragments, "", "",
     )
     effective = preflight._capture_effective_systemd_units_core_v1(
@@ -614,6 +615,8 @@ def _build_prerequisite_and_graph(
         boundary_inventory_hash=manifest_value["boundary_inventory_hash"],
         boundary_guard_version=manifest_value["boundary_guard_version"],
         closed_build_id=closed_build_id,
+        context_transition_id="sha256:" + "8" * 64,
+        dominant_startup_receipt="sha256:" + "9" * 64,
         private_key=fixture.private_keys["cutover"],
     )
     cutover = verify_ownership_cutover_certificate(
@@ -748,6 +751,17 @@ def _build_prerequisite_and_graph(
             previous_head_id=None,
             service_coverage_hash=decoded_catalog.service_coverage_hash,
             administrative_bundle_hash=bundle_hash,
+            provisioning_transaction_id="0" * 32,
+            previous_set_id="1" * 64,
+            previous_admission_context_id="sha256:" + "2" * 64,
+            previous_context_epoch="sha256:" + "3" * 64,
+            target_set_id="4" * 64,
+            target_admission_context_id="sha256:" + "5" * 64,
+            target_context_epoch="sha256:" + "6" * 64,
+            target_context_material_sha256="7" * 64,
+            target_set_json_sha256="8" * 64,
+            context_transition_id=cutover.context_transition_id,
+            current_inventory_hash=current_inventory_hash_v1(proof.inventory),
             current_proof=proof if sequence >= 1 else None,
             maintenance_before_hash=(maintenance_hash if sequence >= 1 else None),
             maintenance_after_hash=(maintenance_hash if sequence >= 1 else None),
@@ -765,6 +779,9 @@ def _build_prerequisite_and_graph(
             ),
             certificate_signature_hash=(
                 _raw_digest(cutover_signature) if sequence >= 2 else None
+            ),
+            dominant_startup_receipt=(
+                cutover.dominant_startup_receipt if sequence >= 2 else None
             ),
             installed_tree_hash=installed_tree_hash if sequence >= 4 else None,
             head_id=head.head_id if sequence >= 5 else None,
@@ -1178,4 +1195,3 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         if fixture.marker_root.exists():
             assert tuple(fixture.marker_root.iterdir()) == ()
             fixture.marker_root.rmdir()
-

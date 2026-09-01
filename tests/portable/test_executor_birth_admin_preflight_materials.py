@@ -12,6 +12,7 @@ import dataclasses
 import hashlib
 import json
 from collections.abc import Mapping
+from types import SimpleNamespace
 from typing import Callable
 
 import pytest
@@ -832,6 +833,7 @@ def _bound_graph(
         catalog_id=decoded_catalog.catalog_id,
         certificate_payload_hash=D("d"),
         certificate_signature_hash=D("e"),
+        dominant_startup_receipt=D("0"),
         source_id=D("f"),
         successor_claim_id=D("1"),
         deployment_descriptor_id=descriptor_record.descriptor_id,
@@ -847,6 +849,19 @@ def _bound_graph(
         preflight_attestation_hash=None,
         service_coverage_hash=decoded_catalog.service_coverage_hash,
         administrative_bundle_hash=bundle_hash,
+        provisioning_transaction_id="0" * 32,
+        previous_set_id="1" * 64,
+        previous_admission_context_id=D("2"),
+        previous_context_epoch=D("3"),
+        target_set_id="4" * 64,
+        target_admission_context_id=D("5"),
+        target_context_epoch=D("6"),
+        target_context_material_sha256="7" * 64,
+        target_set_json_sha256="8" * 64,
+        context_transition_id=D("9"),
+        current_inventory_hash=(
+            preflight._current_inventory_hash_from_receipts_v1(())
+        ),
     )
     captured = {
         "deployment/admin/preflight.py": contents[
@@ -1036,6 +1051,21 @@ def _bind_graph(graph: Mapping[str, object]) -> object:
     )
 
 
+def _receipts_complete_transaction(graph: Mapping[str, object]):
+    return graph["transaction"]._replace(
+        sequence=1,
+        state="RECEIPTS_COMPLETE",
+        startup_prerequisite_id=None,
+        startup_prerequisite_digest=None,
+        cutover_id=None,
+        catalog_id=None,
+        certificate_payload_hash=None,
+        certificate_signature_hash=None,
+        dominant_startup_receipt=None,
+        installed_tree_hash=None,
+    )
+
+
 def test_pure_material_binder_accepts_one_fully_rebound_product_graph() -> None:
     graph = _bound_graph()
     decoded_catalog = graph["decoded_catalog"]
@@ -1059,6 +1089,115 @@ def test_pure_material_binder_accepts_one_fully_rebound_product_graph() -> None:
     assert materials.prerequisite.candidate_units_hash == (
         materials.candidate_units.candidate_units_hash
     )
+
+
+def test_candidate_binder_is_available_at_receipts_complete() -> None:
+    graph = _bound_graph()
+    transaction = _receipts_complete_transaction(graph)
+
+    candidate = preflight._bind_candidate_cutover_materials_core_v1(
+        graph["distribution"], transaction, graph["predecessor"],
+        graph["captured"],
+    )
+
+    assert type(candidate) is preflight._CandidateCutoverMaterialsV1
+    assert candidate.transaction is transaction
+    assert candidate.predecessor is graph["predecessor"]
+    assert candidate.candidate_units.candidate_units_hash == (
+        assembler.decode_startup_prerequisite_v1(
+            graph["prerequisite_encoded"],
+        ).candidate_units_hash
+    )
+
+
+def test_pending_cutover_selection_uses_exact_authenticated_bytes() -> None:
+    graph = _bound_graph()
+    transaction = _receipts_complete_transaction(graph)
+    encoded = preflight._canonical_json(transaction.as_value())
+    prepared = transaction._replace(sequence=0, state="PREPARED")
+    verified = transaction._replace(sequence=6, state="PREFLIGHT_VERIFIED")
+    claim = preflight._DecodedSuccessorClaimV1(
+        transaction.successor_claim_id,
+        transaction.previous_head_id,
+        transaction.release_sequence,
+        transaction.request_id,
+        transaction.source_id,
+        transaction.closed_build_id,
+    )
+    authenticated_transaction = preflight._AuthenticatedTransactionSnapshotV2(
+        claim,
+        preflight._DecodedCoordinatorPrefixV2(
+            (prepared, transaction, verified),
+            (b"prepared", encoded, b"verified"),
+        ),
+    )
+    snapshot = preflight._ReconciledFixedOwnershipSnapshotV1(
+        (), None, None, (graph["distribution"],), (), (), (claim,),
+        (authenticated_transaction,), (), None, None, graph["predecessor"],
+    )
+
+    build, selected, predecessor = (
+        preflight._select_cutover_candidate_from_snapshot_v2(
+            snapshot,
+            complete_encoded=encoded,
+            request_id=transaction.request_id,
+            closed_build_id=transaction.closed_build_id,
+            release_sequence=transaction.release_sequence,
+            distribution_encoded=graph["distribution"].encoded,
+            distribution_signature=graph["distribution"].signature,
+        )
+    )
+
+    assert build is graph["distribution"]
+    assert selected is transaction
+    assert predecessor is graph["predecessor"]
+
+
+def test_cutover_prerequisite_is_derived_from_captured_facts(monkeypatch) -> None:
+    graph = _bound_graph()
+    transaction = _receipts_complete_transaction(graph)
+    candidate = preflight._bind_candidate_cutover_materials_core_v1(
+        graph["distribution"], transaction, graph["predecessor"],
+        graph["captured"],
+    )
+    tcb = preflight._CapturedAdministrativeTcbV1(
+        SimpleNamespace(
+            python_binary_hash=D("1"),
+            openssl_binary_hash=D("2"),
+            systemctl_binary_hash=D("3"),
+            systemd_analyze_binary_hash=D("4"),
+        ),
+        SimpleNamespace(openssl_tcb_hash=D("5")),
+    )
+    prepared = preflight._PreparedCutoverCandidateV2(
+        candidate, tcb, preflight._PREPARED_CUTOVER_CANDIDATE_SEAL_V2,
+    )
+    effective = preflight._CapturedEffectiveSystemdUnitsV1(
+        "255.4-1ubuntu8.17",
+        preflight._EffectiveSystemdUnitsSnapshotV1((), b"effective", D("6")),
+        (), (),
+    )
+    revalidated = []
+    monkeypatch.setattr(
+        preflight, "_revalidate_captured_administrative_tcb_v1",
+        lambda *args, **kwargs: revalidated.append("tcb"),
+    )
+    monkeypatch.setattr(
+        preflight, "_revalidate_captured_effective_systemd_v1",
+        lambda *args, **kwargs: revalidated.append("systemd"),
+    )
+
+    prerequisite = preflight._build_startup_prerequisite_for_cutover_v2(
+        prepared, effective,
+    )
+
+    assert prerequisite.request_id == transaction.request_id
+    assert prerequisite.predecessor_id == graph["predecessor"].predecessor_id
+    assert prerequisite.candidate_units_hash == (
+        candidate.candidate_units.candidate_units_hash
+    )
+    assert prerequisite.effective_units_hash == D("6")
+    assert revalidated == ["tcb", "systemd", "tcb", "systemd"]
 
 
 @pytest.mark.parametrize(

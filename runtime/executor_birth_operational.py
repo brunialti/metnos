@@ -320,6 +320,10 @@ class _BirthCore:
         object.__setattr__(self, "admission_verifier_keys", MappingProxyType(verifiers))
 
 
+def _is_birth_core(value: object) -> bool:
+    """Recognize only the exact core built behind this module's seal."""
+    return type(value) is _BirthCore and value._seal is _CORE_SEAL
+
 
 def _sealed_core_for_test(**values: object) -> _BirthCore:
     """Test-only trust-core constructor; the public API never accepts it."""
@@ -808,3 +812,98 @@ def birth_executor(request: BirthRequest) -> BirthResult:
 
 def _birth_executor_for_test(request: BirthRequest, *, _core: _BirthCore) -> BirthResult:
     return _execute(request, _core)
+
+
+# ---------------------------------------------------------------------------
+# V2 reattestation postcondition.
+#
+# One reattestation produces two objects: the V2 admission receipt in the
+# contract store and the terminal Producer registration.  They are two
+# representations of a single act, so the postcondition is not "both exist" but
+# "both name the same act": same contract, same generation, same admission
+# context, read back from the durable stores rather than from what the caller
+# believed it wrote.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ReattestationPostconditionV2:
+    contract_id: str
+    generation_id: str
+    admission_context_id: str
+    admission_receipt_hash: str
+    producer_receipt_hash: str
+
+
+def verify_reattestation_postcondition_v2(
+    ref,
+    *,
+    request: object,
+    producer_receipt: bytes,
+    verify_admission: Callable[[bytes], object],
+    authenticate_terminal: Callable[[bytes, bytes], str],
+    registry: object,
+    binding: object,
+    now: datetime,
+    producer_db_path: Path,
+    trusted_publics,
+    store_root=None,
+    lock_timeout: float | None = None,
+) -> ReattestationPostconditionV2:
+    """Read both representations back and require them to name one act.
+
+    Nothing here trusts what the writer reported.  The admission receipt is
+    re-read from the store and re-verified, the Producer registration is
+    re-read from its durable transaction and its terminal envelope
+    re-authenticated, and only then are the two compared against the sealed
+    request and against each other.
+    """
+    from contract_store import (
+        admission_receipt_hash, read_current_birth_receipt_v2,
+    )
+    from executor_birth_producer_context import ProducerRequestV2
+    from executor_birth_producer_store import (
+        producer_receipt_hash, verify_terminal_registration_v2,
+    )
+
+    # Exact type: a subclass would skip the sealed constructor entirely.
+    if type(request) is not ProducerRequestV2:
+        raise ValueError("birth_postcondition_request_untrusted")
+    if not callable(verify_admission):
+        raise ValueError("birth_postcondition_verifier_invalid")
+
+    read_kwargs = {"trusted_publics": trusted_publics, "store_root": store_root}
+    if lock_timeout is not None:
+        read_kwargs["lock_timeout"] = lock_timeout
+    encoded = read_current_birth_receipt_v2(ref, request=request, **read_kwargs)
+    if encoded is None:
+        raise ValueError("birth_postcondition_admission_missing")
+
+    try:
+        receipt = verify_admission(encoded)
+    except Exception as exc:
+        raise ValueError("birth_postcondition_admission_unauthenticated") from exc
+    for field, wanted in (
+        ("contract_id", request.contract_id),
+        ("generation_id", request.generation_id),
+        ("admission_context_id", request.admission_context_id),
+    ):
+        actual = getattr(receipt, field, None)
+        if getattr(actual, "value", actual) != wanted:
+            raise ValueError(f"birth_postcondition_admission_binding: {field}")
+
+    claim = verify_terminal_registration_v2(
+        producer_receipt, request=request, registry=registry, binding=binding,
+        now=now, db_path=producer_db_path,
+        authenticate_terminal=authenticate_terminal,
+    )
+    if claim.request_id != request.request_id:
+        raise ValueError("birth_postcondition_producer_binding")
+
+    return ReattestationPostconditionV2(
+        request.contract_id,
+        request.generation_id,
+        request.admission_context_id,
+        admission_receipt_hash(encoded),
+        producer_receipt_hash(producer_receipt),
+    )

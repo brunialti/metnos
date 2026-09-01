@@ -34,6 +34,24 @@ LINUX_ONLY = pytest.mark.skipif(
 )
 
 
+def _epoch_record_fields_v2(proof, *, context_transition_id: str):
+    from executor_birth_context_transition import current_inventory_hash_v1
+
+    return {
+        "provisioning_transaction_id": "0" * 32,
+        "previous_set_id": "1" * 64,
+        "previous_admission_context_id": "sha256:" + "2" * 64,
+        "previous_context_epoch": "sha256:" + "3" * 64,
+        "target_set_id": "4" * 64,
+        "target_admission_context_id": "sha256:" + "5" * 64,
+        "target_context_epoch": "sha256:" + "6" * 64,
+        "target_context_material_sha256": "7" * 64,
+        "target_set_json_sha256": "8" * 64,
+        "context_transition_id": context_transition_id,
+        "current_inventory_hash": current_inventory_hash_v1(proof.inventory),
+    }
+
+
 def test_installed_preflight_rejects_candidate_self_attestation() -> None:
     root = Path(__file__).resolve().parents[2]
     sources = canonical_guard.closed_python_sources_from_root(root)
@@ -268,6 +286,7 @@ def _fixed_ownership_fixture(
         canonical_maintenance_proof,
         maintenance_evidence_hash,
     )
+    from executor_birth_context_transition import issue_context_transition_v1
 
     source_fixture = tmp_path / "distribution-fixture"
     source_fixture.mkdir(mode=0o700)
@@ -317,7 +336,9 @@ def _fixed_ownership_fixture(
 
     chain = root / "chain-v1"
     chain.mkdir(mode=0o755)
-    for name in ("builds-v1", "cutovers-v1", "heads-v1"):
+    for name in (
+        "builds-v1", "cutovers-v1", "heads-v1", "context-transitions-v1",
+    ):
         (chain / name).mkdir(mode=0o755)
     coordinator = root / "coordinator-v1"
     coordinator.mkdir(mode=0o755)
@@ -339,6 +360,21 @@ def _fixed_ownership_fixture(
             (("fixture.contract", digest("2")),),
             {("fixture.contract", digest("2")): digest("3")},
         )
+        transition_encoded, transition = issue_context_transition_v1(
+            request_id=digest("4"), closed_build_id=closed_build_id,
+            previous_cutover_id=None, previous_set_id="1" * 64,
+            previous_admission_context_id=digest("2"),
+            previous_context_epoch=digest("3"), set_id="4" * 64,
+            prepared_admission_context_id=digest("5"),
+            prepared_context_epoch=digest("6"),
+            context_material_sha256="7" * 64,
+            set_json_sha256="8" * 64, current_inventory=proof.inventory,
+        )
+        _write_control_file(
+            chain / "context-transitions-v1"
+            / f"{transition.transition_id.removeprefix('sha256:')}.json",
+            transition_encoded,
+        )
         cutover_encoded, cutover_signature = issue_ownership_cutover_certificate(
             proof=proof, previous_cutover_id=None, request_id=digest("4"),
             signing_key_id=preflight._decode_ownership_registry_v1(
@@ -347,7 +383,10 @@ def _fixed_ownership_fixture(
             maintenance_evidence_hash=digest("5"),
             boundary_inventory_hash=distribution_value["boundary_inventory_hash"],
             boundary_guard_version=distribution_value["boundary_guard_version"],
-            closed_build_id=closed_build_id, private_key=private["cutover"],
+            closed_build_id=closed_build_id,
+            context_transition_id=transition.transition_id,
+            dominant_startup_receipt=digest("7"),
+            private_key=private["cutover"],
         )
         from executor_birth_ownership_authorities import decode_ownership_registry_v1
         cutover_registry = decode_ownership_registry_v1(
@@ -442,6 +481,10 @@ def _fixed_ownership_fixture(
                 administrative_bundle_hash=install_value[
                     "administrative_bundle_hash"
                 ],
+                **_epoch_record_fields_v2(
+                    proof,
+                    context_transition_id=transition.transition_id,
+                ),
                 current_proof=proof if sequence >= 1 else None,
                 maintenance_before_hash=(
                     maintenance_hash if sequence >= 1 else None
@@ -459,6 +502,10 @@ def _fixed_ownership_fixture(
                 certificate_payload_hash=(digest("e") if sequence >= 2 else None),
                 certificate_signature_hash=(
                     digest("f") if sequence >= 2 else None
+                ),
+                dominant_startup_receipt=(
+                    cutover.dominant_startup_receipt
+                    if sequence >= 2 else None
                 ),
                 installed_tree_hash=digest("1") if sequence >= 4 else None,
                 head_id=head.head_id if sequence >= 5 else None,
@@ -534,6 +581,7 @@ def _authenticated_fixed_ownership_fixture(
         canonical_maintenance_proof,
         maintenance_evidence_hash,
     )
+    from executor_birth_context_transition import issue_context_transition_v1
 
     if (
         release_count not in (1, 2)
@@ -650,6 +698,24 @@ def _authenticated_fixed_ownership_fixture(
             closed_build_id, distribution["previous_closed_build_id"],
             transaction_previous_cutover_id,
         )
+        transition_encoded, transition = issue_context_transition_v1(
+            request_id=request_id, closed_build_id=closed_build_id,
+            previous_cutover_id=transaction_previous_cutover_id,
+            previous_set_id="1" * 64,
+            previous_admission_context_id="sha256:" + "2" * 64,
+            previous_context_epoch="sha256:" + "3" * 64,
+            set_id="4" * 64,
+            prepared_admission_context_id="sha256:" + "5" * 64,
+            prepared_context_epoch="sha256:" + "6" * 64,
+            context_material_sha256="7" * 64,
+            set_json_sha256="8" * 64,
+            current_inventory=proof.inventory,
+        )
+        _write_control_file(
+            chain / "context-transitions-v1"
+            / f"{transition.transition_id.removeprefix('sha256:')}.json",
+            transition_encoded,
+        )
         cutover_encoded, cutover_signature = issue_ownership_cutover_certificate(
             proof=proof, previous_cutover_id=transaction_previous_cutover_id,
             request_id=request_id,
@@ -657,7 +723,12 @@ def _authenticated_fixed_ownership_fixture(
             maintenance_evidence_hash=maintenance_hash,
             boundary_inventory_hash=distribution["boundary_inventory_hash"],
             boundary_guard_version=distribution["boundary_guard_version"],
-            closed_build_id=closed_build_id, private_key=private["cutover"],
+            closed_build_id=closed_build_id,
+            context_transition_id=transition.transition_id,
+            dominant_startup_receipt=preflight._raw_sha256_v1(
+                f"dominant-startup-{release_sequence}".encode("ascii"),
+            ),
+            private_key=private["cutover"],
         )
         cutover = verify_ownership_cutover_certificate(
             cutover_encoded, cutover_signature,
@@ -743,6 +814,57 @@ def _authenticated_fixed_ownership_fixture(
         transaction = transactions / request_id
         transaction.mkdir(mode=0o755)
         terminal = 6 if release_sequence < release_count else final_record_sequence
+        required_head_frame_hash = preflight._framed_sha256_v1(
+            preflight.REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, required_frame,
+        )
+        preflight_attestation_hash = None
+        if terminal >= 6:
+            attestation_value = {
+                "schema_version": 1,
+                "attestation_id": None,
+                "request_id": request_id,
+                "closed_build_id": closed_build_id,
+                "release_sequence": release_sequence,
+                "head_id": head.head_id,
+                "required_head_frame_hash": required_head_frame_hash,
+                "deployment_descriptor_id": deployment_id,
+                "service_catalog_id": preflight._raw_sha256_v1(
+                    f"service-catalog-{release_sequence}".encode("ascii"),
+                ),
+                "service_coverage_hash": coverage_hash,
+                "candidate_units_hash": preflight._raw_sha256_v1(
+                    f"candidate-units-{release_sequence}".encode("ascii"),
+                ),
+                "administrative_bundle_hash": bundle_hash,
+                "python_binary_hash": preflight._raw_sha256_v1(b"python"),
+                "openssl_binary_hash": preflight._raw_sha256_v1(b"openssl"),
+                "openssl_tcb_hash": preflight._raw_sha256_v1(b"openssl-tcb"),
+                "systemctl_binary_hash": preflight._raw_sha256_v1(b"systemctl"),
+                "systemd_analyze_binary_hash": preflight._raw_sha256_v1(
+                    b"systemd-analyze",
+                ),
+                "effective_units_hash": preflight._raw_sha256_v1(
+                    f"effective-units-{release_sequence}".encode("ascii"),
+                ),
+                "checked_entry_ids": ["probe-target"],
+            }
+            attestation_value["attestation_id"] = (
+                preflight._deployment_document_id_v1(
+                    preflight.PREFLIGHT_ATTESTATION_DOMAIN_V1,
+                    attestation_value, "attestation_id",
+                )
+            )
+            encoded_attestation = preflight._canonical_json(attestation_value)
+            attestation_root = root / "preflight-attestations-v1"
+            attestation_root.mkdir(mode=0o755, exist_ok=True)
+            _write_control_file(
+                attestation_root / f"{request_id}.json",
+                encoded_attestation,
+            )
+            preflight_attestation_hash = preflight._digest(
+                preflight.PREFLIGHT_ATTESTATION_RECORD_DOMAIN_V1,
+                encoded_attestation,
+            )
         previous_record_hash = None
         for record_sequence in range(terminal + 1):
             record = OwnershipCoordinatorRecordV2(
@@ -770,6 +892,10 @@ def _authenticated_fixed_ownership_fixture(
                 previous_head_id=transaction_previous_head_id,
                 service_coverage_hash=coverage_hash,
                 administrative_bundle_hash=bundle_hash,
+                **_epoch_record_fields_v2(
+                    proof,
+                    context_transition_id=transition.transition_id,
+                ),
                 current_proof=proof if record_sequence >= 1 else None,
                 maintenance_before_hash=(
                     maintenance_hash if record_sequence >= 1 else None
@@ -800,6 +926,10 @@ def _authenticated_fixed_ownership_fixture(
                     preflight._raw_sha256_v1(cutover_signature)
                     if record_sequence >= 2 else None
                 ),
+                dominant_startup_receipt=(
+                    cutover.dominant_startup_receipt
+                    if record_sequence >= 2 else None
+                ),
                 installed_tree_hash=(
                     preflight._raw_sha256_v1(b"installed-tree")
                     if record_sequence >= 4 else None
@@ -816,16 +946,13 @@ def _authenticated_fixed_ownership_fixture(
                     ) if record_sequence >= 5 else None
                 ),
                 required_head_frame_hash=(
-                    preflight._framed_sha256_v1(
-                        preflight.REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2,
-                        required_frame,
-                    ) if record_sequence >= 5 else None
+                    required_head_frame_hash if record_sequence >= 5 else None
                 ),
                 verified_chain_head_id=(
                     head.head_id if record_sequence >= 5 else None
                 ),
                 preflight_attestation_hash=(
-                    preflight._raw_sha256_v1(b"structural-attestation-reference")
+                    preflight_attestation_hash
                     if record_sequence >= 6 else None
                 ),
             )
@@ -894,6 +1021,9 @@ def _rewrite_v2_transactions(root: Path, mutate) -> None:
 def _truncate_to_pre_chain_prefix(root: Path, terminal: int) -> None:
     for directory_name in ("builds-v1", "cutovers-v1", "heads-v1"):
         for path in (root / "chain-v1" / directory_name).iterdir():
+            path.unlink()
+    if terminal < 1:
+        for path in (root / "chain-v1/context-transitions-v1").iterdir():
             path.unlink()
     for path in (
         root / "ownership-cutover-v1.json",
@@ -988,6 +1118,79 @@ def test_fixed_ownership_authentication_accepts_coherent_durable_graphs(
     assert len(snapshot.transactions) == release_count
     assert snapshot.transactions[-1].prefix.records[-1].sequence == (
         final_record_sequence
+    )
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("mutation", ("missing", "changed"))
+def test_fixed_ownership_authentication_requires_bound_context_transition(
+    tmp_path: Path, mutation: str,
+) -> None:
+    root, temporary = _authenticated_fixed_ownership_fixture(tmp_path)
+    transition = next((root / "chain-v1/context-transitions-v1").iterdir())
+    if mutation == "missing":
+        transition.unlink()
+    else:
+        _write_control_file(transition, transition.read_bytes() + b" ")
+
+    _recovery(
+        preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
+        root, openssl_executable=Path("/usr/bin/openssl"),
+        temporary_root=temporary,
+    )
+
+
+@LINUX_ONLY
+def test_fixed_ownership_authentication_requires_record_006_attestation(
+    tmp_path: Path,
+) -> None:
+    root, temporary = _authenticated_fixed_ownership_fixture(
+        tmp_path, final_record_sequence=6,
+    )
+    next((root / "preflight-attestations-v1").iterdir()).unlink()
+
+    _recovery(
+        preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
+        root, openssl_executable=Path("/usr/bin/openssl"),
+        temporary_root=temporary,
+    )
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("mutation", ("record_hash", "journal_binding"))
+def test_fixed_ownership_authentication_binds_record_006_attestation(
+    tmp_path: Path, mutation: str,
+) -> None:
+    root, temporary = _authenticated_fixed_ownership_fixture(
+        tmp_path, final_record_sequence=6,
+    )
+    attestation_path = next((root / "preflight-attestations-v1").iterdir())
+    value = json.loads(attestation_path.read_bytes())
+    value[
+        "effective_units_hash" if mutation == "record_hash"
+        else "service_coverage_hash"
+    ] = preflight._raw_sha256_v1(mutation.encode("ascii"))
+    value["attestation_id"] = preflight._deployment_document_id_v1(
+        preflight.PREFLIGHT_ATTESTATION_DOMAIN_V1,
+        value, "attestation_id",
+    )
+    encoded = preflight._canonical_json(value)
+    _write_control_file(attestation_path, encoded)
+    if mutation == "journal_binding":
+        attestation_hash = preflight._digest(
+            preflight.PREFLIGHT_ATTESTATION_RECORD_DOMAIN_V1, encoded,
+        )
+
+        def mutate(record):
+            if record["sequence"] == 6:
+                record["preflight_attestation_hash"] = attestation_hash
+
+        _rewrite_v2_transactions(root, mutate)
+
+    _recovery(
+        preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
+        root, openssl_executable=Path("/usr/bin/openssl"),
+        temporary_root=temporary,
     )
 
 
@@ -1337,6 +1540,12 @@ def test_fixed_ownership_authentication_rejects_isolated_orphan_archives(
                 path.unlink()
             transaction.rmdir()
             break
+    release_two_transition = next(
+        path for path in (root / "chain-v1/context-transitions-v1").iterdir()
+        if json.loads(path.read_bytes())["closed_build_id"]
+        == release_two_build_id
+    )
+    release_two_transition.unlink()
 
     release_two_head.with_suffix(".sig").unlink()
     release_two_head.unlink()
@@ -1665,6 +1874,8 @@ def test_autonomous_ownership_registry_cutover_and_head_codecs_match_runtime() -
         boundary_inventory_hash="sha256:" + "5" * 64,
         boundary_guard_version="fixture/1",
         closed_build_id="sha256:" + "6" * 64,
+        context_transition_id="sha256:" + "7" * 64,
+        dominant_startup_receipt="sha256:" + "8" * 64,
         private_key=private_keys["cutover"],
     )
     runtime_cutover = verify_ownership_cutover_certificate(
@@ -1674,7 +1885,7 @@ def test_autonomous_ownership_registry_cutover_and_head_codecs_match_runtime() -
     autonomous_cutover = preflight._decode_ownership_cutover_v1(
         cutover_encoded, cutover_signature,
     )
-    assert autonomous_cutover[:10] == (
+    assert autonomous_cutover[:12] == (
         runtime_cutover.cutover_id,
         runtime_cutover.previous_cutover_id,
         runtime_cutover.request_id,
@@ -1690,6 +1901,8 @@ def test_autonomous_ownership_registry_cutover_and_head_codecs_match_runtime() -
         runtime_cutover.boundary_inventory_hash,
         runtime_cutover.boundary_guard_version,
         runtime_cutover.closed_build_id,
+        runtime_cutover.context_transition_id,
+        runtime_cutover.dominant_startup_receipt,
     )
 
     head_encoded, head_signature = issue_ownership_head(
@@ -1898,6 +2111,9 @@ def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None
             administrative_bundle_hash=install_value[
                 "administrative_bundle_hash"
             ],
+            **_epoch_record_fields_v2(
+                proof, context_transition_id=digest("9"),
+            ),
             current_proof=proof if sequence >= 1 else None,
             maintenance_before_hash=(maintenance_hash if sequence >= 1 else None),
             maintenance_after_hash=(maintenance_hash if sequence >= 1 else None),
@@ -1908,6 +2124,7 @@ def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None
             catalog_id=digest("4") if sequence >= 2 else None,
             certificate_payload_hash=digest("5") if sequence >= 2 else None,
             certificate_signature_hash=digest("6") if sequence >= 2 else None,
+            dominant_startup_receipt=digest("e") if sequence >= 2 else None,
             installed_tree_hash=digest("7") if sequence >= 4 else None,
             head_id=digest("8") if sequence >= 5 else None,
             head_payload_hash=digest("9") if sequence >= 5 else None,
@@ -1930,6 +2147,13 @@ def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None
         "contract_id": f"executor:{index:05d}",
         "generation_id": digest("7"), "receipt_hash": digest("8"),
     } for index in range(30_000)]
+    large_value["current_inventory_hash"] = (
+        preflight._current_inventory_hash_from_receipts_v1(
+            preflight._decode_current_receipts_v1(
+                large_value["current_receipts"],
+            ),
+        )
+    )
     large_record = preflight._canonical_json(large_value)
     assert len(large_record) < preflight.MAX_COORDINATOR_RECORD_BYTES_V2
     assert _decode_record_v2(large_record).as_value() == large_value
@@ -1942,6 +2166,8 @@ def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None
         (1, "previous_record_sha256", digest("f")),
         (3, "boundary_guard_version", "changed-guard"),
         (3, "catalog_id", digest("f")),
+        (3, "provisioning_transaction_id", "f" * 32),
+        (3, "target_set_id", "f" * 64),
     ):
         changed = list(encoded_records)
         value = json.loads(changed[index])
@@ -1955,11 +2181,16 @@ def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None
         (0, "startup_prerequisite_id", digest("f")),
         (1, "maintenance_proof_b64", "not-base64"),
         (1, "maintenance_after_hash", digest("f")),
+        (1, "current_inventory_hash", digest("f")),
+        (1, "dominant_startup_receipt", digest("f")),
         (2, "catalog_id", None),
+        (2, "dominant_startup_receipt", None),
         (3, "installed_tree_hash", digest("f")),
         (5, "verified_chain_head_id", digest("f")),
         (5, "preflight_attestation_hash", digest("f")),
         (5, "install_transaction_id", digest("f")),
+        (5, "previous_set_id", digest("f")),
+        (5, "target_context_material_sha256", "f" * 63),
     )
     for index, field, replacement in direct_mutants:
         value = json.loads(encoded_records[index])
@@ -3273,7 +3504,7 @@ def test_real_boundary_policy_snapshot_is_exact_and_entry_schema_is_closed() -> 
     raw = _compiled_boundary_inventory_fixture()
     encoded = preflight._canonical_json(raw)
     parsed = preflight._validate_boundary_inventory_v1(encoded)
-    assert len(parsed["birth_closed"]["coordinator_store_owners"]) == 76
+    assert len(parsed["birth_closed"]["coordinator_store_owners"]) == 126
     assert len(parsed["birth_closed"]["exceptions"]) == 16
     for mutate in ("owners", "exceptions", "entry"):
         mutant = json.loads(encoded)
@@ -3993,11 +4224,22 @@ def test_a_shared_lock_directory_is_refused_by_the_chain_rule() -> None:
         pytest.skip("this system has no shared FHS lock directory")
     assert shared.stat().st_mode & 0o022
 
+    runtime_parent = Path("/run")
+    runtime_parent_info = runtime_parent.stat()
+    assert not runtime_parent_info.st_mode & 0o022
     preflight._require_safe_directory_chain_v1(
-        Path("/run"), uid=0, gid=0, stop=None,
+        runtime_parent,
+        uid=runtime_parent_info.st_uid,
+        gid=runtime_parent_info.st_gid,
+        stop=None,
     )
     with pytest.raises(preflight.PreflightError) as refused:
-        preflight._require_safe_directory_chain_v1(shared, uid=0, gid=0, stop=None)
+        preflight._require_safe_directory_chain_v1(
+            shared,
+            uid=runtime_parent_info.st_uid,
+            gid=runtime_parent_info.st_gid,
+            stop=None,
+        )
     assert refused.value.code == preflight.CODE_INVALID
 
 
@@ -4050,4 +4292,3 @@ def test_the_shared_gate_is_acquired_without_asking_for_write_access(
         fcntl.flock(descriptor, fcntl.LOCK_UN)
     finally:
         os.close(descriptor)
-

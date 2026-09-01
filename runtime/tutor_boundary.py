@@ -28,6 +28,7 @@ class BoundaryUnavailable:
     card_ids: tuple[str, ...] = ()
     pending_dialog_id: str = ""
     handoff_query: str = ""
+    elapsed_ms: int = 0
 
 
 def unavailable_answer(*, has_pending: bool = False):

@@ -115,6 +115,7 @@ def test_the_publisher_cannot_be_built_from_outside():
             prepared_context_epoch=DIGEST,
             primitive=None,
             store_root=None,
+            registry_reconciler=lambda _revision: None,
         )
     assert error.value.args == ("birth_commit_publisher_private",)
 

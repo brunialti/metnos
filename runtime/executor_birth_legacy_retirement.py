@@ -30,6 +30,7 @@ _RETIREMENT_ACTIONS_V1: Mapping[tuple[str, str], str] = {
     ("script", "repository"): "revoke_repository_entrypoint",
     ("python_module", "repository"): "revoke_repository_entrypoint",
 }
+_PRESERVE_REPLACED_SYSTEM_UNIT_V1 = "preserve_replaced_system_unit"
 
 _IN_FLIGHT_STATES_V1 = frozenset({
     "activating", "active", "deactivating", "reloading", "running",
@@ -61,6 +62,18 @@ class LegacyRetirementStepV1:
     action: str
 
 
+@dataclass(frozen=True, slots=True)
+class CatalogRetirementPlanV1:
+    """One plan and the census derived from the same decoded catalog."""
+
+    catalog_id: str
+    steps: tuple[LegacyRetirementStepV1, ...]
+    dominant_unit_count: int
+    legacy_binding_count: int
+    cross_scope_match_count: int
+    same_destination_overlap_count: int
+
+
 def _require_text_v1(value: object, field: str) -> str:
     if (
         type(value) is not str or not value or value != value.strip()
@@ -70,8 +83,9 @@ def _require_text_v1(value: object, field: str) -> str:
     return value
 
 
-def plan_retirement_v1(
+def _plan_retirement_v1(
     bindings: Sequence[Mapping[str, object]],
+    dominant_units: frozenset[str],
 ) -> tuple[LegacyRetirementStepV1, ...]:
     """Decide one action per binding, in an order that does not depend on input.
 
@@ -95,18 +109,71 @@ def plan_retirement_v1(
         action = _RETIREMENT_ACTIONS_V1.get((kind, scope))
         if action is None:
             raise _invalid("legacy_retirement_unknown_kind", f"{kind}/{scope}")
+        locator = _require_text_v1(binding.get("locator"), "locator")
+        if kind == "system_unit" and locator in dominant_units:
+            action = _PRESERVE_REPLACED_SYSTEM_UNIT_V1
         if binding.get("disposition") != "retire_in_group7":
             raise _invalid("legacy_retirement_disposition", legacy_id)
         steps.append(LegacyRetirementStepV1(
             legacy_id,
             _require_text_v1(binding.get("entry_id"), "entry_id"),
             kind, scope,
-            _require_text_v1(binding.get("locator"), "locator"),
+            locator,
             action,
         ))
     if not steps:
         raise _invalid("legacy_retirement_empty")
-    return tuple(sorted(steps, key=lambda step: step.legacy_id.encode("utf-8")))
+    ordered = tuple(sorted(
+        steps, key=lambda step: step.legacy_id.encode("utf-8"),
+    ))
+    if sum(
+        step.action == _PRESERVE_REPLACED_SYSTEM_UNIT_V1 for step in ordered
+    ) > 1:
+        raise _invalid("legacy_retirement_overlap", "multiple destinations")
+    return ordered
+
+
+def plan_retirement_v1(
+    bindings: Sequence[Mapping[str, object]],
+) -> tuple[LegacyRetirementStepV1, ...]:
+    """Plan an isolated set with no dominant destination information."""
+    return _plan_retirement_v1(bindings, frozenset())
+
+
+def plan_catalog_retirement_v1(catalog: object) -> CatalogRetirementPlanV1:
+    """Derive both sides of the overlap decision from one decoded catalog."""
+    from executor_birth_service_catalog import DecodedServiceCatalogV1
+
+    if type(catalog) is not DecodedServiceCatalogV1:
+        raise _invalid("legacy_retirement_catalog_invalid", "type")
+    dominant_units = frozenset(
+        str(entry.unit_name)
+        for entry in catalog.entries if entry.unit_name is not None
+    )
+    bindings = tuple({
+        "legacy_id": binding.legacy_id,
+        "entry_id": binding.entry_id,
+        "kind": binding.kind,
+        "scope": binding.scope,
+        "locator": binding.locator,
+        "disposition": binding.disposition,
+    } for binding in catalog.legacy_bindings)
+    steps = _plan_retirement_v1(bindings, dominant_units)
+    cross_scope_matches = sum(
+        step.kind in {"user_unit", "system_unit"}
+        and step.locator in dominant_units
+        for step in steps
+    )
+    same_destination_overlaps = sum(
+        step.action == _PRESERVE_REPLACED_SYSTEM_UNIT_V1 for step in steps
+    )
+    census = (
+        len(dominant_units), len(steps),
+        cross_scope_matches, same_destination_overlaps,
+    )
+    return CatalogRetirementPlanV1(
+        catalog.catalog_id, steps, *census,
+    )
 
 
 def plan_digest_v1(steps: Sequence[LegacyRetirementStepV1]) -> str:
@@ -128,7 +195,7 @@ def plan_digest_v1(steps: Sequence[LegacyRetirementStepV1]) -> str:
 
 def require_no_legacy_in_flight_v1(
     steps: Sequence[LegacyRetirementStepV1],
-    observed_states: Mapping[str, str],
+    observed_states: Mapping[tuple[str, str], str],
 ) -> None:
     """Refuse while any legacy entry point is still running.
 
@@ -145,9 +212,10 @@ def require_no_legacy_in_flight_v1(
     in_flight: list[str] = []
     unobserved: list[str] = []
     for step in steps:
-        state = observed_states.get(step.locator)
+        identity = (step.scope, step.locator)
+        state = observed_states.get(identity)
         if state is None:
-            unobserved.append(step.locator)
+            unobserved.append(f"{step.scope}/{step.locator}")
             continue
         if _require_text_v1(state, "state") in _IN_FLIGHT_STATES_V1:
             in_flight.append(step.locator)
@@ -160,7 +228,9 @@ def require_no_legacy_in_flight_v1(
 __all__ = [
     "LEGACY_RETIREMENT_DOMAIN_V1",
     "LegacyRetirementError",
+    "CatalogRetirementPlanV1",
     "LegacyRetirementStepV1",
+    "plan_catalog_retirement_v1",
     "plan_digest_v1",
     "plan_retirement_v1",
     "require_no_legacy_in_flight_v1",

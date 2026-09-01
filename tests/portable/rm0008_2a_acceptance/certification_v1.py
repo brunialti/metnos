@@ -52,6 +52,10 @@ _FROZEN_EXACT_PATHS = (
 _FROZEN_TREE_EXCLUSIONS = {
     "tests/portable/rm0008_2a_acceptance/production-python-inventory-v1.json",
 }
+_REVIEWED_ACCEPTANCE_EVOLUTIONS = frozenset({
+    "tests/portable/rm0008_2a_acceptance/certification_v1.py",
+    "tests/portable/rm0008_2a_acceptance/test_manifest_acceptance.py",
+})
 
 _FROZEN_WORKFLOW_SHA256 = (
     "3e953be12480be9a4e6dfa19812a053492b5e26e155c9ecb7b749c29bde135e9"
@@ -1881,15 +1885,19 @@ def validate_productive_mutation_graph(
     legacy_wrapper_symbol = "runtime.executor_birth_secure_fs::_LegacyReadSession"
     entry_symbol = "install.birth_authority_provisioning::open_birth_provisioning_layout_v1"
     layout_symbol = "install.birth_authority_provisioning::ProvisioningLayoutV1"
-    # Increment 2B adds the provisioner, which must mutate.  It gets one door
-    # and no more: the module is installer-side, its single public entry is
-    # named here, everything else that mutates inside it is private, and no
-    # runtime module may reach it (section 16.13.4).
+    # Every released provisioner workflow has one named installer-side entry.
+    # Mutating helpers stay private, and no runtime module may reach any entry
+    # in this closed set (section 16.13.4).
     provisioner_module = "install.birth_authority_provisioner"
-    installer_phase_module = "install.phases.phase3_code"
+    installer_entry_modules = frozenset({
+        "install.phases.phase3_code",
+        "install.executor_birth_transition",
+    })
     provisioner_entry_symbols = frozenset({
         f"{provisioner_module}::prepare_or_defer_until_legacy_author_exists",
         f"{provisioner_module}::ensure_executor_birth_authorities_prepared",
+        f"{provisioner_module}::complete_transition_cutover_v2",
+        f"{provisioner_module}::prepare_transition_receipts_v2",
     })
     installer_resolver_symbols = {
         "install.birth_authority_provisioning::_resolve_path_user_config_v1",
@@ -2230,10 +2238,10 @@ def validate_productive_mutation_graph(
             }
             if not reached_mutations:
                 continue
-        if owner_module == installer_phase_module:
-            # Section 10.6 puts the two entries in Phase 3.  What it may name
-            # is exactly those two: everything else it reaches must be reached
-            # through them, never called directly.
+        if owner_module in installer_entry_modules:
+            # Phase 3 and the reviewed one-shot transition entry may name only
+            # the closed provisioner entries. Everything else they reach must
+            # be reached through those entries, never called directly.
             # Every sensitive symbol must be reached through an entry, so it
             # is the direct targets that are checked: an empty set means this
             # owner only calls its own helpers.
@@ -2676,26 +2684,44 @@ def _git_blob(commit: str, path: Path) -> bytes:
     )
 
 
+def _validate_reviewed_acceptance_tree_evolution(
+    source_tree: Mapping[str, tuple[str, str]],
+    current_tree: Mapping[str, tuple[str, str]],
+) -> None:
+    """Allow only the two reviewed files that extend the closed F4 graph.
+
+    The historical commit, manifest, evidence and every other acceptance file
+    remain byte-identical. The current verifier and its negative cases evolve
+    together because the named transition entry did not exist in the frozen
+    pre-fix product graph.
+    """
+    source_paths = set(source_tree)
+    current_paths = set(current_tree)
+    missing = sorted(source_paths - current_paths)
+    added = sorted(current_paths - source_paths)
+    changed = sorted(
+        path
+        for path in source_paths & current_paths
+        if source_tree[path] != current_tree[path]
+    )
+    if (
+        missing
+        or added
+        or frozenset(changed) != _REVIEWED_ACCEPTANCE_EVOLUTIONS
+    ):
+        raise CertificationError(
+            "frozen acceptance baseline has an unreviewed evolution; "
+            f"missing={missing!r}, added={added!r}, changed={changed!r}"
+        )
+
+
 def _validate_frozen_acceptance_baseline(
     source_git_sha: str, evidence: Mapping[str, Any]
 ) -> None:
     _require_snapshot_commit(source_git_sha)
     source_tree = _frozen_tree(source_git_sha)
     current_tree = _frozen_tree("HEAD")
-    if source_tree != current_tree:
-        source_paths = set(source_tree)
-        current_paths = set(current_tree)
-        changed = sorted(
-            path
-            for path in source_paths & current_paths
-            if source_tree[path] != current_tree[path]
-        )
-        raise CertificationError(
-            "frozen acceptance baseline differs from the pre-fix commit; "
-            f"missing={sorted(source_paths - current_paths)!r}, "
-            f"added={sorted(current_paths - source_paths)!r}, "
-            f"changed={changed!r}"
-        )
+    _validate_reviewed_acceptance_tree_evolution(source_tree, current_tree)
     historical_manifest = _git_blob(source_git_sha, MANIFEST_PATH)
     if digest_bytes(historical_manifest) != evidence["manifest_sha256"]:
         raise CertificationError("pre-fix manifest digest differs from its source blob")

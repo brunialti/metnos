@@ -211,6 +211,127 @@ def test_signed_manifest_produces_only_sealed_preflight_identity(tmp_path):
         result.encoded = b"replacement"
 
 
+def test_manifest_builder_reconstructs_the_verified_canonical_payload(
+    tmp_path,
+):
+    private, key_id, _registry = _authority(distribution.PURPOSE)
+    value, expected, _signature = _manifest(tmp_path, private, key_id)
+    files = tuple(distribution.DistributionFile(
+        item["path"], item["size"], item["content_hash"], item["role"],
+    ) for item in value["files"])
+
+    observed = distribution.build_distribution_manifest_v1(
+        previous_closed_build_id=value["previous_closed_build_id"],
+        release_sequence=value["release_sequence"],
+        product_version=value["product_version"],
+        platform=value["platform"], architecture=value["architecture"],
+        signing_key_id=value["signing_key_id"],
+        installation_root=value["installation_root"],
+        boundary_inventory_path=value["boundary_inventory_path"],
+        boundary_inventory_hash=value["boundary_inventory_hash"],
+        boundary_guard_version=value["boundary_guard_version"],
+        files=tuple(reversed(files)),
+    )
+
+    assert observed == expected
+
+
+def test_manifest_builder_rejects_duplicate_release_paths(tmp_path):
+    private, key_id, _registry = _authority(distribution.PURPOSE)
+    value, _encoded, _signature = _manifest(tmp_path, private, key_id)
+    files = tuple(distribution.DistributionFile(
+        item["path"], item["size"], item["content_hash"], item["role"],
+    ) for item in value["files"])
+
+    with pytest.raises(
+        distribution.DistributionManifestError,
+        match="birth_ownership_distribution_invalid",
+    ):
+        distribution.build_distribution_manifest_v1(
+            previous_closed_build_id=None, release_sequence=1,
+            product_version=value["product_version"],
+            platform=value["platform"], architecture=value["architecture"],
+            signing_key_id=key_id,
+            installation_root=value["installation_root"],
+            boundary_inventory_path=value["boundary_inventory_path"],
+            boundary_inventory_hash=value["boundary_inventory_hash"],
+            boundary_guard_version=value["boundary_guard_version"],
+            files=files + (files[0],),
+        )
+
+
+def test_descriptor_capture_is_anchored_and_bound_to_the_verified_payload(
+    tmp_path,
+):
+    import executor_birth_distribution_assembler as assembler
+
+    descriptor = assembler.build_deployment_descriptor_v1(
+        release_sequence=1, service_user="metnos", service_uid=991,
+        service_gid=991, service_supplementary_gids=(44, 991),
+        service_home="/var/lib/metnos", service_shell="/usr/sbin/nologin",
+        artifacts=(
+            assembler.DeploymentArtifactV1(
+                "deployment/admin/preflight.py",
+                "/usr/libexec/metnos/executor-birth-v1/preflight.py",
+                "administrative_program", "group6_admin", 3,
+                "sha256:" + "a" * 64, 0o755, 0, 0,
+            ),
+            assembler.DeploymentArtifactV1(
+                "deployment/systemd/metnos.target",
+                "/etc/systemd/system/metnos.target",
+                "target_unit", "group7_cutover", 4,
+                "sha256:" + "b" * 64, 0o644, 0, 0,
+            ),
+        ),
+        service_catalog_id="sha256:" + "c" * 64,
+        service_coverage_hash="sha256:" + "d" * 64,
+        python_executable="/usr/bin/python3.12",
+        openssl_executable="/usr/bin/openssl",
+        systemctl_executable="/usr/bin/systemctl",
+        systemd_analyze_executable="/usr/bin/systemd-analyze",
+    )
+    encoded_descriptor = assembler.encode_deployment_descriptor_v1(descriptor)
+    private, key_id, registry = _authority(distribution.PURPOSE)
+
+    def replace_descriptor(files, root):
+        _replace_declared_file(
+            files, root,
+            "deployment/executor-birth-deployment-v1.json",
+            encoded_descriptor,
+        )
+
+    _value, encoded, signature = _manifest(
+        tmp_path, private, key_id,
+        mutate=lambda value: value.update(
+            installation_root=descriptor.installation_root,
+        ),
+        files_mutate=replace_descriptor,
+    )
+    verified = distribution._verify_distribution_manifest_for_test(
+        encoded, signature, registry=registry,
+        _environment=distribution._environment_for_test(
+            "windows" if os.name == "nt" else "linux", "x86_64", tmp_path,
+            claimed_installation_root=descriptor.installation_root,
+        ),
+    )
+
+    assert distribution._capture_deployment_descriptor_for_test_v1(
+        verified, tmp_path,
+    ) == descriptor
+    with pytest.raises(distribution.DistributionManifestError):
+        distribution._capture_deployment_descriptor_for_test_v1(
+            replace(verified, installation_root="/opt/other"), tmp_path,
+        )
+    descriptor_path = (
+        tmp_path / "deployment/executor-birth-deployment-v1.json"
+    )
+    descriptor_path.write_bytes(b"x" * len(encoded_descriptor))
+    with pytest.raises(distribution.DistributionManifestError):
+        distribution._capture_deployment_descriptor_for_test_v1(
+            verified, tmp_path,
+        )
+
+
 def test_relative_path_depth_is_normative_and_existing_manifest_is_compatible(
     tmp_path: Path,
 ) -> None:

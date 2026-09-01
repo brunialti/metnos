@@ -28,7 +28,7 @@ BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/2"
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:2f7b5b572b298f1f8d2326d8e56b0f797129a92d44d3467b0a0ac3cf770ebdbc"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:414d407771d6e4be5c328e95a6f45d186a9715149db9bf4433b93e821b3e2699"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
 MAX_BOUNDARY_SOURCE_FILES = 2_048
@@ -160,6 +160,10 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_deployment_lock_for_test_v1": ("store_write",),
         "_deployment_lock_v1": ("store_write",),
         "_publish_certificate_with_prerequisite_v1": ("store_write",),
+        "_publish_control_no_replace_v2": ("store_write",),
+        "_reserve_transition_edge_core_v2": ("store_write",),
+        "_reserve_transition_edge_locked_for_test_v2": ("store_write",),
+        "_reserve_transition_edge_locked_v2": ("store_write",),
         "_LockedOwnershipCoordinatorGraphSnapshotV2": ("store_write",),
         "_require_locked_coordinator_graph_snapshot_v2": ("store_write",),
         "_require_locked_coordinator_graph_issued_v2": ("store_write",),
@@ -187,6 +191,9 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_create_source_directories_v1": ("store_write",),
         "_ensure_child_directory_v1": ("store_write",),
         "_open_received_tree_at_v1": ("store_write",),
+        "_load_received_source_locked_core_v1": ("store_write",),
+        "_load_received_source_with_product_session_v1": ("store_write",),
+        "_load_received_source_with_test_session_v1": ("store_write",),
         "_receive_source_for_test_v1": ("store_write",),
         "_receive_source_locked_core_v1": ("store_write",),
         "_receive_source_v1": ("store_write",),
@@ -199,6 +206,11 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_write_all_v1": ("store_write",),
         "_write_descriptor_v1": ("store_write",),
         "copied_chunks": ("store_write",),
+        "main": ("store_write",),
+    },
+    "executor_birth_transition": {
+        "<module>": ("store_write",),
+        "deploy_source_v1": ("store_write",),
         "main": ("store_write",),
     },
     "executor_birth_systemd": {
@@ -264,6 +276,9 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth_source_receiver": frozenset({
         "install.executor_birth_source_receiver",
     }),
+    "executor_birth_transition": frozenset({
+        "install.executor_birth_transition",
+    }),
     "executor_birth_systemd": frozenset({
         "install.executor_birth_systemd",
     }),
@@ -294,6 +309,7 @@ BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "install/executor_birth_source_receiver.py": (
         "executor_birth_source_receiver"
     ),
+    "install/executor_birth_transition.py": "executor_birth_transition",
     "install/executor_birth_systemd.py": "executor_birth_systemd",
     "runtime/executor_birth_admin_preflight.py": (
         "executor_birth_admin_preflight"
@@ -435,6 +451,8 @@ BIRTH_CLOSED_SEALED_MODULES = (
 )
 BIRTH_CLOSED_OWNER = "runtime/executor_birth_operational.py:birth_executor"
 BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
+    "install/birth_authority_provisioner.py:complete_transition_cutover_v2",
+    "install/birth_authority_provisioner.py:prepare_transition_receipts_v2",
     "install/birth_ownership_authority_provisioner.py:_discard_temporary",
     "install/birth_ownership_authority_provisioner.py:_load_or_create_pair",
     "install/birth_ownership_authority_provisioner.py:_publish_no_replace",
@@ -444,6 +462,7 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "install/birth_ownership_authority_provisioner.py:_sync_directory",
     "install/birth_ownership_authority_provisioner.py:_write_exclusive",
     "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
+    "install/executor_birth_distribution_release.py:build_and_install_received_source_v1",
     "install/executor_birth_source_receiver.py:<module>",
     "install/executor_birth_source_receiver.py:_copy_source_file_v1",
     "install/executor_birth_source_receiver.py:_copy_source_file_v1.copied_chunks",
@@ -451,6 +470,9 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "install/executor_birth_source_receiver.py:_create_source_directories_v1",
     "install/executor_birth_source_receiver.py:_ensure_child_directory_v1",
     "install/executor_birth_source_receiver.py:_open_received_tree_at_v1",
+    "install/executor_birth_source_receiver.py:_load_received_source_locked_core_v1",
+    "install/executor_birth_source_receiver.py:_load_received_source_with_product_session_v1",
+    "install/executor_birth_source_receiver.py:_load_received_source_with_test_session_v1",
     "install/executor_birth_source_receiver.py:_receive_source_for_test_v1",
     "install/executor_birth_source_receiver.py:_receive_source_locked_core_v1",
     "install/executor_birth_source_receiver.py:_receive_source_v1",
@@ -463,6 +485,20 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "install/executor_birth_source_receiver.py:_write_all_v1",
     "install/executor_birth_source_receiver.py:_write_descriptor_v1",
     "install/executor_birth_source_receiver.py:main",
+    "install/executor_birth_transition.py:<module>",
+    "install/executor_birth_transition.py:deploy_source_v1",
+    "install/executor_birth_transition.py:main",
+    "runtime/executor_birth_ownership_coordinator.py:_publish_control_no_replace_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_core_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_v2",
+    "install/executor_birth_startup_gate.py:_install_startup_gate_core_v1",
+    "install/executor_birth_startup_gate.py:_install_startup_gate_for_test_v1",
+    "install/executor_birth_startup_gate.py:install_startup_gate_v1",
+    "install/executor_birth_startup_prerequisite.py:_finish_temporary_v1",
+    "install/executor_birth_startup_prerequisite.py:_publish_core_v1",
+    "install/executor_birth_startup_prerequisite.py:_publish_startup_prerequisite_for_test_v2",
+    "install/executor_birth_startup_prerequisite.py:_publish_startup_prerequisite_locked_v2",
     "install/executor_birth_systemd.py:_install_group6_administrative_for_test_v1",
     "install/executor_birth_systemd.py:_install_locked_core_v1",
     "install/executor_birth_systemd.py:_install_signed_isolated_systemd_for_test_v1",
@@ -486,6 +522,7 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_cutover",
+    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_context_transition",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_head",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.initialize",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.update_required_head",
@@ -497,20 +534,49 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",
     "runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1",
     "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete",
+    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.__init__",
+    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._append_initial",
+    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._committed",
+    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._inventory",
+    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.append_transaction_record",
     "runtime/executor_birth_ownership_coordinator.py:_DeploymentLockLeaseV1",
     "runtime/executor_birth_ownership_coordinator.py:_LockedOwnershipCoordinatorGraphSnapshotV2",
     "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.require_issued",
     "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.resolve_issued",
+    "runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_append_prepared_transition_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_append_prepared_transition_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_completed_transition_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_core_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_v2.observe_certificate_graph",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2.observe_head_graph",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2.publish",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2.observe_preflight_graph",
     "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_at_v1",
     "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_for_test_v1",
     "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_v1",
     "runtime/executor_birth_ownership_coordinator.py:_decode_record",
     "runtime/executor_birth_ownership_coordinator.py:_decode_record_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_ensure_coordinator_child_directory_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_observe_dominant_identity_locked_v2",
     "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
     "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",
     "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1",
+    "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_material_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_publish_context_transition_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_publish_transaction_directory_no_replace_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_read_staged_transaction_directory_v2",
     "runtime/executor_birth_ownership_coordinator.py:_require_locked_coordinator_graph_snapshot_v2",
     "runtime/executor_birth_ownership_coordinator.py:_resolve_ownership_coordinator_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_transition_edge_locked_v2",
 })
 BIRTH_CLOSED_LEGACY_CAPABILITIES = frozenset({
     "publish_localization", "publish_technical", "reactivate", "retire",
@@ -1825,7 +1891,11 @@ def _analyse_scope(
         if not separator:
             canonical = aliases.get(leaf, leaf)
         api = canonical.rsplit(".", 1)[-1]
-        if canonical in local_callables:
+        if canonical in local_callables and (
+            isinstance(item.func, ast.Name)
+            or isinstance(item.func, ast.Attribute)
+            and isinstance(item.func.value, ast.Name)
+        ):
             calls.add(canonical.rsplit(".", 1)[-1])
         elif (
             isinstance(item.func, ast.Name)

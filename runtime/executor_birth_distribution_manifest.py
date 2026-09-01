@@ -41,6 +41,7 @@ from contract_boundary_guard import (
 SIGNATURE_DOMAIN = b"metnos.executor-birth.closed-build/v1\0"
 BUILD_ID_DOMAIN = b"metnos.executor-birth.closed-build-id/v1\0"
 FILE_HASH_DOMAIN = b"metnos.executor-birth.closed-build-file/v1\0"
+INSTALLED_TREE_DOMAIN = b"metnos.executor-birth.installed-tree/v1\0"
 BOUNDARY_INVENTORY_DOMAIN = b"metnos.executor-birth.boundary-inventory/v1\0"
 PURPOSE = "closed_distribution_v1"
 MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
@@ -73,7 +74,7 @@ _FILE_KEYS = frozenset({"path", "size", "content_hash", "role"})
 _ROLES = frozenset({
     "runtime_code", "preflight", "boundary_guard", "boundary_inventory",
     "service_unit", "service_catalog", "deployment_descriptor",
-    "product_version", "dependency_lock",
+    "product_version", "dependency_lock", "public_document", "tutor_material",
 })
 _PLATFORMS = frozenset({"linux", "windows"})
 _ARCHITECTURES = frozenset({"x86_64", "aarch64"})
@@ -179,6 +180,49 @@ class DistributionFile:
     size: int
     content_hash: str
     role: str
+
+
+def installed_tree_hash_v1(files: tuple[DistributionFile, ...]) -> str:
+    """Bind the exact ordered manifest tree after live verification."""
+    if (
+        type(files) is not tuple or not files
+        or any(type(item) is not DistributionFile for item in files)
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "installed tree files",
+        )
+    paths = tuple(item.path for item in files)
+    if (
+        paths != tuple(sorted(paths, key=lambda item: item.encode("utf-8")))
+        or len(paths) != len(set(paths))
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "installed tree order",
+        )
+    material = bytearray(len(files).to_bytes(8, "big"))
+    try:
+        for item in files:
+            if (
+                type(item.path) is not str or not item.path
+                or type(item.size) is not int or item.size < 0
+                or type(item.content_hash) is not str
+                or _DIGEST_RE.fullmatch(item.content_hash) is None
+            ):
+                raise ValueError("invalid installed tree item")
+            encoded_path = item.path.encode("utf-8")
+            material.extend(len(encoded_path).to_bytes(8, "big"))
+            material.extend(encoded_path)
+            material.extend(item.size.to_bytes(8, "big"))
+            material.extend(bytes.fromhex(
+                item.content_hash.removeprefix("sha256:"),
+            ))
+    except (AttributeError, OverflowError, UnicodeEncodeError, ValueError) as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "installed tree material",
+        ) from exc
+    return "sha256:" + hashlib.sha256(
+        INSTALLED_TREE_DOMAIN + bytes(material),
+    ).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -497,6 +541,69 @@ def file_content_hash(path: str, content: bytes) -> str:
 def _build_id(value: Mapping[str, object]) -> str:
     unsigned = {key: item for key, item in value.items() if key != "closed_build_id"}
     return "sha256:" + hashlib.sha256(BUILD_ID_DOMAIN + _canonical(unsigned)).hexdigest()
+
+
+def build_distribution_manifest_v1(
+    *, previous_closed_build_id: str | None, release_sequence: int,
+    product_version: str, platform: str, architecture: str,
+    signing_key_id: str, installation_root: str,
+    boundary_inventory_path: str, boundary_inventory_hash: str,
+    boundary_guard_version: str, files: tuple[DistributionFile, ...],
+) -> bytes:
+    """Build one canonical manifest without acquiring signing authority.
+
+    The builder owns the fixed certificate and preflight locations and runs
+    the same strict parser used by verification before returning bytes.  It
+    deliberately does not sign: the installer-side release transaction is
+    the only component allowed to acquire the distribution signing authority.
+    """
+    if type(files) is not tuple or any(
+        type(item) is not DistributionFile for item in files
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "files",
+        )
+    ordered = tuple(sorted(files, key=lambda item: item.path.encode("utf-8")))
+    certificate_directory = {
+        "linux": "/var/lib/metnos/executor-birth",
+        "windows": r"C:\ProgramData\Metnos\ExecutorBirth",
+    }.get(platform)
+    if certificate_directory is None:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "platform",
+        )
+    document: dict[str, object] = {
+        "schema_version": 1,
+        "closed_build_id": None,
+        "previous_closed_build_id": previous_closed_build_id,
+        "release_sequence": release_sequence,
+        "product_version": product_version,
+        "platform": platform,
+        "architecture": architecture,
+        "signing_key_id": signing_key_id,
+        "installation_root": installation_root,
+        "certificate_directory": certificate_directory,
+        "boundary_inventory_path": boundary_inventory_path,
+        "boundary_inventory_hash": boundary_inventory_hash,
+        "boundary_guard_version": boundary_guard_version,
+        "preflight_entrypoint": _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1,
+        "files": [{
+            "path": item.path,
+            "size": item.size,
+            "content_hash": item.content_hash,
+            "role": item.role,
+        } for item in ordered],
+    }
+    document["closed_build_id"] = _build_id(document)
+    encoded = _canonical(document)
+    parsed, parsed_files = _parse(encoded)
+    if parsed["closed_build_id"] != document["closed_build_id"] or (
+        parsed_files != ordered
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "builder binding",
+        )
+    return encoded
 
 
 def _runtime_environment() -> _VerificationEnvironment:
@@ -1885,6 +1992,162 @@ def _verify_distribution_manifest_for_test(
     )
 
 
+def _verified_distribution_matches_payload_v1(value: object) -> bool:
+    if (
+        type(value) is not VerifiedDistribution
+        or value._seal is not _VERIFIED_DISTRIBUTION_SEAL
+        or value._artifact_binding != _distribution_artifact_binding(
+            value.encoded, value.signature,
+        )
+    ):
+        return False
+    try:
+        document, files = _parse(value.encoded)
+    except DistributionManifestError:
+        return False
+    return (
+        value.identity.closed_build_id == document["closed_build_id"]
+        and value.identity.boundary_inventory_hash
+        == document["boundary_inventory_hash"]
+        and value.identity.boundary_guard_version
+        == document["boundary_guard_version"]
+        and value.previous_closed_build_id
+        == document["previous_closed_build_id"]
+        and value.release_sequence == document["release_sequence"]
+        and value.product_version == document["product_version"]
+        and value.platform == document["platform"]
+        and value.architecture == document["architecture"]
+        and value.installation_root == document["installation_root"]
+        and value.certificate_directory == document["certificate_directory"]
+        and value.preflight_entrypoint == document["preflight_entrypoint"]
+        and value.files == files
+    )
+
+
+def _capture_distribution_file_at_v1(
+    verified: object, root: Path, *, expected_path: str, expected_role: str,
+    administrative: bool,
+) -> bytes:
+    """Read one signed file through an exact-tree anchored observation."""
+    if (
+        not _verified_distribution_matches_payload_v1(verified)
+        or not isinstance(root, Path)
+        or type(expected_path) is not str
+        or type(expected_role) is not str
+        or type(administrative) is not bool
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "verified artifact",
+        )
+    matching = tuple(
+        item for item in verified.files
+        if item.path == expected_path and item.role == expected_role
+    )
+    if len(matching) != 1:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", expected_role,
+        )
+    item = matching[0]
+    tree = _closed_distribution_tree_v1(verified.files)
+    anchor = _open_distribution_tree_anchor_v1(
+        root, administrative=administrative,
+    )
+    try:
+        before = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        content = _read_anchored_distribution_file_v1(
+            anchor, item, before,
+        )
+        after = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        if (
+            before != after
+            or file_content_hash(item.path, content) != item.content_hash
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", item.path,
+            )
+        _require_distribution_root_binding_v1(anchor, after[""])
+        return content
+    finally:
+        _close_distribution_tree_anchor_v1(anchor)
+
+
+def _decode_bound_deployment_descriptor_v1(
+    verified: VerifiedDistribution, encoded: bytes,
+):
+    from executor_birth_distribution_assembler import (
+        DEPLOYMENT_DESCRIPTOR_PATH_V1, DistributionAssemblerError,
+        decode_deployment_descriptor_v1,
+    )
+
+    try:
+        descriptor = decode_deployment_descriptor_v1(encoded)
+    except DistributionAssemblerError as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch",
+            DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        ) from exc
+    if (
+        descriptor.release_sequence != verified.release_sequence
+        or descriptor.installation_root != verified.installation_root
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch",
+            DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        )
+    return descriptor
+
+
+def capture_current_deployment_descriptor_v1(
+    distribution: object,
+) -> tuple[VerifiedDistribution, object]:
+    """Reverify the fixed release around one exact descriptor capture."""
+    if not _verified_distribution_matches_payload_v1(distribution):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "verified artifact",
+        )
+    verified = verify_current_installation_distribution_v1(
+        distribution.encoded, distribution.signature,
+    )
+    if verified != distribution:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "distribution",
+        )
+    from executor_birth_distribution_assembler import (
+        DEPLOYMENT_DESCRIPTOR_PATH_V1,
+    )
+
+    encoded = _capture_distribution_file_at_v1(
+        verified, Path(verified.installation_root),
+        expected_path=DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        expected_role="deployment_descriptor", administrative=True,
+    )
+    descriptor = _decode_bound_deployment_descriptor_v1(verified, encoded)
+    reread = verify_current_installation_distribution_v1(
+        verified.encoded, verified.signature,
+    )
+    if reread != verified:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "distribution",
+        )
+    return reread, descriptor
+
+
+def _capture_deployment_descriptor_for_test_v1(
+    distribution: object, actual_root: Path,
+):
+    """Portable seam; productive capture always derives the fixed root."""
+    from executor_birth_distribution_assembler import (
+        DEPLOYMENT_DESCRIPTOR_PATH_V1,
+    )
+
+    encoded = _capture_distribution_file_at_v1(
+        distribution, actual_root,
+        expected_path=DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        expected_role="deployment_descriptor", administrative=False,
+    )
+    return _decode_bound_deployment_descriptor_v1(distribution, encoded)
+
+
 def is_verified_distribution(value: object) -> bool:
     """Recognize only an artifact emitted after full manifest verification."""
     return (
@@ -1910,12 +2173,14 @@ def _verified_distribution_for_test(
 
 __all__ = [
     "BOUNDARY_INVENTORY_DOMAIN", "BUILD_ID_DOMAIN", "FILE_HASH_DOMAIN",
+    "INSTALLED_TREE_DOMAIN",
     "DEFAULT_RELEASE_DIRECTORY_V1", "MAX_PAYLOAD_BYTES", "PURPOSE",
     "SIGNATURE_DOMAIN", "AuthenticatedDistributionRecordV1",
     "DistributionFile", "DistributionKey",
     "DistributionManifestError", "DistributionRegistry", "VerifiedDistribution",
-    "authenticate_distribution_record_v1", "distribution_key_id",
-    "file_content_hash", "is_verified_distribution",
+    "authenticate_distribution_record_v1", "build_distribution_manifest_v1",
+    "capture_current_deployment_descriptor_v1", "distribution_key_id",
+    "file_content_hash", "installed_tree_hash_v1", "is_verified_distribution",
     "verify_current_installation_distribution_v1",
     "verify_installed_distribution_record_v1",
 ]

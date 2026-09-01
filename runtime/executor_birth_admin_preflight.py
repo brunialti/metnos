@@ -81,6 +81,9 @@ MAX_PREDECESSOR_FILES_V1 = 20_000
 MAX_PREDECESSOR_SERVICE_COMMANDS_V1 = 20_000
 MAX_PREDECESSOR_PATH_DEPTH_V1 = 32
 MAX_AUTHORITY_CHECKPOINT_BYTES_V1 = 4096
+MAX_PREFLIGHT_ATTESTATIONS_V1 = 20_000
+MAX_CONTEXT_TRANSITION_BYTES_V1 = 64 * 1024
+MAX_CONTEXT_TRANSITIONS_V1 = 20_000
 RECEIVED_SOURCE_DESCRIPTOR_BASENAME_V1 = "received-source-v1.json"
 MAX_OPENSSL_STREAM_BYTES = 4096
 OPENSSL_TIMEOUT_SECONDS = 5.0
@@ -148,6 +151,12 @@ ADMINISTRATIVE_BUNDLE_DOMAIN_V1 = (
 )
 CANDIDATE_UNITS_DOMAIN_V1 = b"metnos.executor-birth.candidate-units/v1\0"
 INSTALLED_TREE_DOMAIN_V1 = b"metnos.executor-birth.installed-tree/v1\0"
+CURRENT_INVENTORY_DOMAIN_V1 = (
+    b"metnos.executor-birth.current-inventory/v1\0"
+)
+CONTEXT_TRANSITION_ID_DOMAIN_V1 = (
+    b"metnos.executor-birth.context-transition-id/v1\0"
+)
 ADMINISTRATIVE_EXECUTABLE_DOMAIN_V1 = (
     b"metnos.executor-birth.administrative-executable/v1\0"
 )
@@ -206,7 +215,7 @@ _PR_CAP_AMBIENT_V1 = 47
 _PR_CAP_AMBIENT_CLEAR_ALL_V1 = 4
 _LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:62e8f65ed8b8704750869ad2d557bc00797a6dbd22189565992749419fc5dd63"
+    "sha256:7727bc054bb411bfdd853148ac1a4c06945a710234d2db7fdb84d5e1851a2765"
 )
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -326,6 +335,12 @@ _SUCCESSOR_CLAIM_BASENAME_RE_V1 = re.compile(
 )
 _TRANSACTION_DIRECTORY_RE_V2 = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _TRANSACTION_RECORD_RE_V2 = re.compile(r"record-([0-9]{3})-v2\.json\Z")
+_PREFLIGHT_ATTESTATION_BASENAME_RE_V1 = re.compile(
+    r"(sha256:[0-9a-f]{64})\.json\Z"
+)
+_CONTEXT_TRANSITION_BASENAME_RE_V1 = re.compile(r"([0-9a-f]{64})\.json\Z")
+_HEX_SHA256_RE_V2 = re.compile(r"[0-9a-f]{64}\Z")
+_PROVISIONING_TRANSACTION_RE_V2 = re.compile(r"[0-9a-f]{32}\Z")
 _LEGACY_RECORD_RE_V1 = re.compile(r"record-([0-9]{3})-v1\.json\Z")
 
 _AUTHORITY_KINDS_V1 = ("distribution", "cutover", "head")
@@ -347,7 +362,8 @@ _CUTOVER_KEYS_V1 = frozenset({
     "schema_version", "cutover_id", "previous_cutover_id", "request_id",
     "signing_key_id", "catalog_id", "current_count", "current_receipts",
     "maintenance_evidence_hash", "boundary_inventory_hash",
-    "boundary_guard_version", "closed_build_id",
+    "boundary_guard_version", "closed_build_id", "context_transition_id",
+    "dominant_startup_receipt",
 })
 _CUTOVER_RECEIPT_KEYS_V1 = frozenset({
     "contract_id", "generation_id", "receipt_hash",
@@ -376,6 +392,12 @@ _COORDINATOR_RECORD_KEYS_V2 = frozenset({
     "head_signature_hash", "required_head_frame_hash",
     "verified_chain_head_id", "preflight_attestation_hash",
     "service_coverage_hash", "administrative_bundle_hash",
+    "provisioning_transaction_id", "previous_set_id",
+    "previous_admission_context_id", "previous_context_epoch",
+    "target_set_id", "target_admission_context_id", "target_context_epoch",
+    "target_context_material_sha256", "target_set_json_sha256",
+    "context_transition_id", "current_inventory_hash",
+    "dominant_startup_receipt",
 })
 _LEGACY_COORDINATOR_RECORD_KEYS_V1 = frozenset({
     "schema_version", "sequence", "state", "previous_record_sha256",
@@ -441,6 +463,11 @@ _COORDINATOR_CARRY_KEYS_V2 = frozenset({
     "boundary_guard_version", "source_id", "successor_claim_id",
     "deployment_descriptor_id", "install_transaction_id", "release_sequence",
     "previous_head_id", "service_coverage_hash", "administrative_bundle_hash",
+    "provisioning_transaction_id", "previous_set_id",
+    "previous_admission_context_id", "previous_context_epoch",
+    "target_set_id", "target_admission_context_id", "target_context_epoch",
+    "target_context_material_sha256", "target_set_json_sha256",
+    "context_transition_id", "current_inventory_hash",
 })
 _LEGACY_COORDINATOR_CARRY_KEYS_V1 = frozenset({
     "request_id", "previous_closed_build_id", "previous_cutover_id",
@@ -456,7 +483,7 @@ _COORDINATOR_THRESHOLD_KEYS_V2 = (
     (2, frozenset({
         "startup_prerequisite_id", "startup_prerequisite_digest",
         "cutover_id", "catalog_id", "certificate_payload_hash",
-        "certificate_signature_hash",
+        "certificate_signature_hash", "dominant_startup_receipt",
     })),
     (4, frozenset({"installed_tree_hash"})),
     (5, frozenset({
@@ -465,6 +492,23 @@ _COORDINATOR_THRESHOLD_KEYS_V2 = (
     })),
     (6, frozenset({"preflight_attestation_hash"})),
 )
+_PREFLIGHT_ATTESTATION_KEYS_V1 = frozenset({
+    "schema_version", "attestation_id", "request_id", "closed_build_id",
+    "release_sequence", "head_id", "required_head_frame_hash",
+    "deployment_descriptor_id", "service_catalog_id",
+    "service_coverage_hash", "candidate_units_hash",
+    "administrative_bundle_hash", "python_binary_hash",
+    "openssl_binary_hash", "openssl_tcb_hash", "systemctl_binary_hash",
+    "systemd_analyze_binary_hash", "effective_units_hash",
+    "checked_entry_ids",
+})
+_CONTEXT_TRANSITION_KEYS_V1 = frozenset({
+    "schema_version", "transition_id", "request_id", "closed_build_id",
+    "previous_cutover_id", "previous_set_id",
+    "previous_admission_context_id", "previous_context_epoch", "set_id",
+    "prepared_admission_context_id", "prepared_context_epoch",
+    "context_material_sha256", "set_json_sha256", "current_inventory_hash",
+})
 _PREDECESSOR_KEYS_V1 = frozenset({
     "schema_version", "predecessor_id", "transaction_id",
     "installation_root", "files", "service_commands",
@@ -742,7 +786,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:2f7b5b572b298f1f8d2326d8e56b0f797129a92d44d3467b0a0ac3cf770ebdbc"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:414d407771d6e4be5c328e95a6f45d186a9715149db9bf4433b93e821b3e2699"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -762,7 +806,11 @@ _BIRTH_CLOSED_SEALED_MODULES = (
     "runtime/executor_birth_reattestation.py",
     "runtime/sign.py",
 )
-_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
+# Keep membership independently compiled while matching the canonical JSON
+# ordering without relying on insertion position in this frozen snapshot.
+_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = tuple(sorted((
+    "install/birth_authority_provisioner.py:complete_transition_cutover_v2",
+    "install/birth_authority_provisioner.py:prepare_transition_receipts_v2",
     "install/birth_ownership_authority_provisioner.py:_discard_temporary",
     "install/birth_ownership_authority_provisioner.py:_load_or_create_pair",
     "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_at_v1",
@@ -772,6 +820,7 @@ _BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
     "install/birth_ownership_authority_provisioner.py:_sync_directory",
     "install/birth_ownership_authority_provisioner.py:_write_exclusive",
     "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
+    "install/executor_birth_distribution_release.py:build_and_install_received_source_v1",
     "install/executor_birth_source_receiver.py:<module>",
     "install/executor_birth_source_receiver.py:_copy_source_file_v1",
     "install/executor_birth_source_receiver.py:_copy_source_file_v1.copied_chunks",
@@ -779,6 +828,9 @@ _BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
     "install/executor_birth_source_receiver.py:_create_source_directories_v1",
     "install/executor_birth_source_receiver.py:_ensure_child_directory_v1",
     "install/executor_birth_source_receiver.py:_open_received_tree_at_v1",
+    "install/executor_birth_source_receiver.py:_load_received_source_locked_core_v1",
+    "install/executor_birth_source_receiver.py:_load_received_source_with_product_session_v1",
+    "install/executor_birth_source_receiver.py:_load_received_source_with_test_session_v1",
     "install/executor_birth_source_receiver.py:_receive_source_for_test_v1",
     "install/executor_birth_source_receiver.py:_receive_source_locked_core_v1",
     "install/executor_birth_source_receiver.py:_receive_source_v1",
@@ -791,6 +843,20 @@ _BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
     "install/executor_birth_source_receiver.py:_write_all_v1",
     "install/executor_birth_source_receiver.py:_write_descriptor_v1",
     "install/executor_birth_source_receiver.py:main",
+    "install/executor_birth_transition.py:<module>",
+    "install/executor_birth_transition.py:deploy_source_v1",
+    "install/executor_birth_transition.py:main",
+    "runtime/executor_birth_ownership_coordinator.py:_publish_control_no_replace_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_core_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_v2",
+    "install/executor_birth_startup_gate.py:_install_startup_gate_core_v1",
+    "install/executor_birth_startup_gate.py:_install_startup_gate_for_test_v1",
+    "install/executor_birth_startup_gate.py:install_startup_gate_v1",
+    "install/executor_birth_startup_prerequisite.py:_finish_temporary_v1",
+    "install/executor_birth_startup_prerequisite.py:_publish_core_v1",
+    "install/executor_birth_startup_prerequisite.py:_publish_startup_prerequisite_for_test_v2",
+    "install/executor_birth_startup_prerequisite.py:_publish_startup_prerequisite_locked_v2",
     "install/executor_birth_systemd.py:_install_group6_administrative_for_test_v1",
     "install/executor_birth_systemd.py:_install_locked_core_v1",
     "install/executor_birth_systemd.py:_install_signed_isolated_systemd_for_test_v1",
@@ -809,6 +875,7 @@ _BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",
+    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_context_transition",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_cutover",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_head",
     "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.initialize",
@@ -825,21 +892,50 @@ _BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
     "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",
     "runtime/executor_birth_ownership_coordinator.py:_DeploymentLockLeaseV1",
     "runtime/executor_birth_ownership_coordinator.py:_LockedOwnershipCoordinatorGraphSnapshotV2",
+    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.__init__",
+    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._append_initial",
+    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._committed",
+    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._inventory",
+    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.append_transaction_record",
     "runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1",
+    "runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_append_prepared_transition_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_append_prepared_transition_locked_v2",
     "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete",
+    "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete_locked_v2",
     "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.require_issued",
     "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.resolve_issued",
+    "runtime/executor_birth_ownership_coordinator.py:_completed_transition_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_core_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_v2.observe_certificate_graph",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2.observe_head_graph",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2.publish",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2.observe_preflight_graph",
     "runtime/executor_birth_ownership_coordinator.py:_decode_record",
     "runtime/executor_birth_ownership_coordinator.py:_decode_record_v2",
     "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_at_v1",
     "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_for_test_v1",
     "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_v1",
+    "runtime/executor_birth_ownership_coordinator.py:_ensure_coordinator_child_directory_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_observe_dominant_identity_locked_v2",
     "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
     "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",
+    "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_material_v2",
     "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1",
+    "runtime/executor_birth_ownership_coordinator.py:_publish_context_transition_locked_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_publish_transaction_directory_no_replace_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_read_staged_transaction_directory_v2",
     "runtime/executor_birth_ownership_coordinator.py:_require_locked_coordinator_graph_snapshot_v2",
     "runtime/executor_birth_ownership_coordinator.py:_resolve_ownership_coordinator_locked_v2",
-)
+    "runtime/executor_birth_ownership_coordinator.py:_transition_edge_locked_v2",
+)))
 _BIRTH_CLOSED_EXCEPTION_SCOPES = (
     ("runtime/admin/manifest_refactor.py:<module>", "offline_nonproductive_authoring"),
     ("runtime/admin/manifest_refactor.py:main", "offline_nonproductive_authoring"),
@@ -995,6 +1091,8 @@ class _DecodedOwnershipCutoverV1(NamedTuple):
     boundary_inventory_hash: str
     boundary_guard_version: str
     closed_build_id: str
+    context_transition_id: str
+    dominant_startup_receipt: str
     encoded: bytes
     signature: bytes
 
@@ -1041,6 +1139,7 @@ class _DecodedCoordinatorRecordV2(NamedTuple):
     catalog_id: str | None
     certificate_payload_hash: str | None
     certificate_signature_hash: str | None
+    dominant_startup_receipt: str | None
     source_id: str
     successor_claim_id: str
     deployment_descriptor_id: str
@@ -1056,6 +1155,17 @@ class _DecodedCoordinatorRecordV2(NamedTuple):
     preflight_attestation_hash: str | None
     service_coverage_hash: str
     administrative_bundle_hash: str
+    provisioning_transaction_id: str
+    previous_set_id: str
+    previous_admission_context_id: str
+    previous_context_epoch: str
+    target_set_id: str
+    target_admission_context_id: str
+    target_context_epoch: str
+    target_context_material_sha256: str
+    target_set_json_sha256: str
+    context_transition_id: str
+    current_inventory_hash: str
 
     def as_value(self) -> dict[str, object]:
         return {
@@ -1087,6 +1197,7 @@ class _DecodedCoordinatorRecordV2(NamedTuple):
             "catalog_id": self.catalog_id,
             "certificate_payload_hash": self.certificate_payload_hash,
             "certificate_signature_hash": self.certificate_signature_hash,
+            "dominant_startup_receipt": self.dominant_startup_receipt,
             "source_id": self.source_id,
             "successor_claim_id": self.successor_claim_id,
             "deployment_descriptor_id": self.deployment_descriptor_id,
@@ -1102,6 +1213,21 @@ class _DecodedCoordinatorRecordV2(NamedTuple):
             "preflight_attestation_hash": self.preflight_attestation_hash,
             "service_coverage_hash": self.service_coverage_hash,
             "administrative_bundle_hash": self.administrative_bundle_hash,
+            "provisioning_transaction_id": self.provisioning_transaction_id,
+            "previous_set_id": self.previous_set_id,
+            "previous_admission_context_id": (
+                self.previous_admission_context_id
+            ),
+            "previous_context_epoch": self.previous_context_epoch,
+            "target_set_id": self.target_set_id,
+            "target_admission_context_id": self.target_admission_context_id,
+            "target_context_epoch": self.target_context_epoch,
+            "target_context_material_sha256": (
+                self.target_context_material_sha256
+            ),
+            "target_set_json_sha256": self.target_set_json_sha256,
+            "context_transition_id": self.context_transition_id,
+            "current_inventory_hash": self.current_inventory_hash,
         }
 
 
@@ -1178,6 +1304,66 @@ class _DecodedLegacyDispositionV2(NamedTuple):
 class _DecodedLegacyCoordinatorPrefixV1(NamedTuple):
     records: tuple[_DecodedLegacyCoordinatorRecordV1, ...]
     encoded_records: tuple[bytes, ...]
+
+
+class _DecodedPreflightAttestationV1(NamedTuple):
+    attestation_id: str
+    request_id: str
+    closed_build_id: str
+    release_sequence: int
+    head_id: str
+    required_head_frame_hash: str
+    deployment_descriptor_id: str
+    service_catalog_id: str
+    service_coverage_hash: str
+    candidate_units_hash: str
+    administrative_bundle_hash: str
+    python_binary_hash: str
+    openssl_binary_hash: str
+    openssl_tcb_hash: str
+    systemctl_binary_hash: str
+    systemd_analyze_binary_hash: str
+    effective_units_hash: str
+    checked_entry_ids: tuple[str, ...]
+
+    def as_value(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "attestation_id": self.attestation_id,
+            "request_id": self.request_id,
+            "closed_build_id": self.closed_build_id,
+            "release_sequence": self.release_sequence,
+            "head_id": self.head_id,
+            "required_head_frame_hash": self.required_head_frame_hash,
+            "deployment_descriptor_id": self.deployment_descriptor_id,
+            "service_catalog_id": self.service_catalog_id,
+            "service_coverage_hash": self.service_coverage_hash,
+            "candidate_units_hash": self.candidate_units_hash,
+            "administrative_bundle_hash": self.administrative_bundle_hash,
+            "python_binary_hash": self.python_binary_hash,
+            "openssl_binary_hash": self.openssl_binary_hash,
+            "openssl_tcb_hash": self.openssl_tcb_hash,
+            "systemctl_binary_hash": self.systemctl_binary_hash,
+            "systemd_analyze_binary_hash": self.systemd_analyze_binary_hash,
+            "effective_units_hash": self.effective_units_hash,
+            "checked_entry_ids": list(self.checked_entry_ids),
+        }
+
+
+class _DecodedContextTransitionV1(NamedTuple):
+    transition_id: str
+    request_id: str
+    closed_build_id: str
+    previous_cutover_id: str | None
+    previous_set_id: str
+    previous_admission_context_id: str
+    previous_context_epoch: str
+    set_id: str
+    prepared_admission_context_id: str
+    prepared_context_epoch: str
+    context_material_sha256: str
+    set_json_sha256: str
+    current_inventory_hash: str
 
 
 class _DecodedPredecessorFileV1(NamedTuple):
@@ -1260,6 +1446,16 @@ class _CapturedTransactionCandidateV2(NamedTuple):
     decoded_prefix: _DecodedCoordinatorPrefixV2 | None
 
 
+class _CapturedPreflightAttestationCandidateV1(NamedTuple):
+    basename: str
+    encoded: bytes
+
+
+class _CapturedContextTransitionCandidateV1(NamedTuple):
+    basename: str
+    encoded: bytes
+
+
 class _CapturedFixedOwnershipStateCandidateV1(NamedTuple):
     """One coherent fixed-store observation; it grants no authority."""
 
@@ -1275,6 +1471,10 @@ class _CapturedFixedOwnershipStateCandidateV1(NamedTuple):
     heads: tuple[_CapturedSignedObjectCandidateV1, ...]
     claims: tuple[_CapturedClaimCandidateV1, ...]
     transactions: tuple[_CapturedTransactionCandidateV2, ...]
+    context_transitions: tuple[_CapturedContextTransitionCandidateV1, ...]
+    preflight_attestations: tuple[
+        _CapturedPreflightAttestationCandidateV1, ...
+    ]
     legacy_records: tuple[tuple[str, bytes], ...]
     legacy_disposition: bytes | None
     predecessor: _DecodedPredecessorDescriptorV1 | None
@@ -1754,6 +1954,38 @@ class _BoundPreflightMaterialsV1(NamedTuple):
     unit_fragments: tuple[tuple[str, bytes], ...]
     administrative_bundle_hash: str
     installed_tree_hash: str
+
+
+class _CandidateCutoverMaterialsV1(NamedTuple):
+    """Signed candidate facts available before the prerequisite is published."""
+
+    distribution: _AuthenticatedDistributionObjectV1
+    transaction: _DecodedCoordinatorRecordV2
+    predecessor: _DecodedPredecessorDescriptorV1
+    catalog: _DecodedServiceCatalogV1
+    descriptor: _DecodedDeploymentDescriptorV1
+    candidate_units: _CandidateUnitsSnapshotV1
+    unit_fragments: tuple[tuple[str, bytes], ...]
+    administrative_bundle_hash: str
+    installed_tree_hash: str
+
+
+_PREPARED_CUTOVER_CANDIDATE_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedCutoverCandidateV2:
+    materials: _CandidateCutoverMaterialsV1
+    administrative_tcb: _CapturedAdministrativeTcbV1
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _PREPARED_CUTOVER_CANDIDATE_SEAL_V2
+            or type(self.materials) is not _CandidateCutoverMaterialsV1
+            or type(self.administrative_tcb) is not _CapturedAdministrativeTcbV1
+        ):
+            raise _invalid("prepared cutover candidate")
 
 
 class _BoundPreflightMaterialsForTestV1(NamedTuple):
@@ -3441,9 +3673,18 @@ def _startup_prerequisite_digest_v1(encoded: bytes) -> str:
 
 
 def _administrative_bundle_hash_v1(
-    descriptor: _DecodedDeploymentDescriptorV1,
+    descriptor: object,
 ) -> str:
-    if type(descriptor) is not _DecodedDeploymentDescriptorV1:
+    from executor_birth_distribution_assembler import (
+        DeploymentDescriptorV1, encode_deployment_descriptor_v1,
+    )
+
+    if type(descriptor) is DeploymentDescriptorV1:
+        try:
+            encode_deployment_descriptor_v1(descriptor)
+        except Exception as exc:
+            raise _invalid("administrative bundle descriptor") from exc
+    elif type(descriptor) is not _DecodedDeploymentDescriptorV1:
         raise _invalid("administrative bundle descriptor")
     material = bytearray(_u64be_v1(len(descriptor.artifacts)))
     for artifact in descriptor.artifacts:
@@ -3615,13 +3856,13 @@ def _required_material_capture_paths_v1(
     return frozenset(paths)
 
 
-def _bind_preflight_materials_core_v1(
+def _bind_candidate_cutover_materials_core_v1(
     distribution: _AuthenticatedDistributionObjectV1,
     transaction: _DecodedCoordinatorRecordV2,
     predecessor: _DecodedPredecessorDescriptorV1,
-    captured: Mapping[str, bytes], prerequisite_encoded: bytes,
-) -> _BoundPreflightMaterialsV1:
-    """Cross-bind captured signed claims without granting live authority."""
+    captured: Mapping[str, bytes],
+) -> _CandidateCutoverMaterialsV1:
+    """Cross-bind the reusable signed candidate before its live measurement."""
     if (
         type(distribution) is not _AuthenticatedDistributionObjectV1
         or type(transaction) is not _DecodedCoordinatorRecordV2
@@ -3631,8 +3872,7 @@ def _bind_preflight_materials_core_v1(
             type(key) is not str or type(value) is not bytes
             for key, value in captured.items()
         )
-        or type(prerequisite_encoded) is not bytes
-        or transaction.sequence < 2
+        or transaction.sequence < 1
     ):
         raise _invalid("preflight material arguments")
     manifest_value, manifest_files = _parse_distribution_manifest_v1(
@@ -3653,7 +3893,6 @@ def _bind_preflight_materials_core_v1(
         raise _invalid("preflight material capture")
     catalog = _decode_service_catalog_v1(catalog_encoded)
     descriptor = _decode_deployment_descriptor_v1(descriptor_encoded)
-    prerequisite = _decode_startup_prerequisite_v1(prerequisite_encoded)
     candidate = _compile_candidate_units_v1(catalog)
     _service_source_identity_v1(catalog, descriptor)
     bundle_hash = _administrative_bundle_hash_v1(descriptor)
@@ -3679,11 +3918,6 @@ def _bind_preflight_materials_core_v1(
         or descriptor.service_coverage_hash != catalog.service_coverage_hash
         or transaction.service_coverage_hash != catalog.service_coverage_hash
         or transaction.administrative_bundle_hash != bundle_hash
-        or prerequisite.request_id != transaction.request_id
-        or prerequisite.closed_build_id != transaction.closed_build_id
-        or prerequisite.release_sequence != transaction.release_sequence
-        or prerequisite.deployment_descriptor_id != descriptor.descriptor_id
-        or prerequisite.predecessor_id != predecessor.predecessor_id
         or predecessor.administrative_bundle_hash != bundle_hash
         or (
             transaction.release_sequence == 1
@@ -3693,14 +3927,6 @@ def _bind_preflight_materials_core_v1(
                 != catalog.service_coverage_hash
             )
         )
-        or prerequisite.administrative_bundle_hash != bundle_hash
-        or prerequisite.service_catalog_id != catalog.catalog_id
-        or prerequisite.service_coverage_hash != catalog.service_coverage_hash
-        or prerequisite.candidate_units_hash != candidate.candidate_units_hash
-        or prerequisite.systemd_manager_version not in SUPPORTED_SYSTEMD_VERSIONS
-        or transaction.startup_prerequisite_id != prerequisite.prerequisite_id
-        or transaction.startup_prerequisite_digest
-        != _startup_prerequisite_digest_v1(prerequisite_encoded)
         or (
             transaction.sequence >= 4
             and transaction.installed_tree_hash != installed_tree_hash
@@ -3823,9 +4049,49 @@ def _bind_preflight_materials_core_v1(
     ) | frozenset(item.source_path for item in descriptor.artifacts)
     if any(path not in captured for path in required_paths):
         raise _invalid("preflight captured material coverage")
-    return _BoundPreflightMaterialsV1(
-        distribution, transaction, catalog, descriptor, prerequisite,
+    return _CandidateCutoverMaterialsV1(
+        distribution, transaction, predecessor, catalog, descriptor,
         candidate, tuple(sorted(fragments)), bundle_hash, installed_tree_hash,
+    )
+
+
+def _bind_preflight_materials_core_v1(
+    distribution: _AuthenticatedDistributionObjectV1,
+    transaction: _DecodedCoordinatorRecordV2,
+    predecessor: _DecodedPredecessorDescriptorV1,
+    captured: Mapping[str, bytes], prerequisite_encoded: bytes,
+) -> _BoundPreflightMaterialsV1:
+    """Add the published prerequisite to one reusable signed candidate."""
+    if type(prerequisite_encoded) is not bytes or transaction.sequence < 2:
+        raise _invalid("preflight material arguments")
+    candidate = _bind_candidate_cutover_materials_core_v1(
+        distribution, transaction, predecessor, captured,
+    )
+    prerequisite = _decode_startup_prerequisite_v1(prerequisite_encoded)
+    if (
+        prerequisite.request_id != transaction.request_id
+        or prerequisite.closed_build_id != transaction.closed_build_id
+        or prerequisite.release_sequence != transaction.release_sequence
+        or prerequisite.deployment_descriptor_id
+        != candidate.descriptor.descriptor_id
+        or prerequisite.predecessor_id != predecessor.predecessor_id
+        or prerequisite.administrative_bundle_hash
+        != candidate.administrative_bundle_hash
+        or prerequisite.service_catalog_id != candidate.catalog.catalog_id
+        or prerequisite.service_coverage_hash
+        != candidate.catalog.service_coverage_hash
+        or prerequisite.candidate_units_hash
+        != candidate.candidate_units.candidate_units_hash
+        or prerequisite.systemd_manager_version not in SUPPORTED_SYSTEMD_VERSIONS
+        or transaction.startup_prerequisite_id != prerequisite.prerequisite_id
+        or transaction.startup_prerequisite_digest
+        != _startup_prerequisite_digest_v1(prerequisite_encoded)
+    ):
+        raise _invalid("preflight material cross binding")
+    return _BoundPreflightMaterialsV1(
+        distribution, transaction, candidate.catalog, candidate.descriptor,
+        prerequisite, candidate.candidate_units, candidate.unit_fragments,
+        candidate.administrative_bundle_hash, candidate.installed_tree_hash,
     )
 
 
@@ -3842,6 +4108,217 @@ def _bind_preflight_materials_for_test_v1(
             prerequisite_encoded,
         )
     )
+
+
+def _select_cutover_candidate_from_snapshot_v2(
+    snapshot: _ReconciledFixedOwnershipSnapshotV1, *,
+    complete_encoded: bytes, request_id: str, closed_build_id: str,
+    release_sequence: int, distribution_encoded: bytes,
+    distribution_signature: bytes,
+) -> tuple[
+    _AuthenticatedDistributionObjectV1,
+    _DecodedCoordinatorRecordV2,
+    _DecodedPredecessorDescriptorV1,
+]:
+    """Select the exact pending transaction without consulting required-head."""
+    if (
+        type(snapshot) is not _ReconciledFixedOwnershipSnapshotV1
+        or type(complete_encoded) is not bytes
+        or type(request_id) is not str
+        or type(closed_build_id) is not str
+        or type(release_sequence) is not int
+        or type(distribution_encoded) is not bytes
+        or type(distribution_signature) is not bytes
+    ):
+        raise _invalid("cutover candidate selection")
+    transactions = tuple(
+        item for item in snapshot.transactions
+        if item.claim.request_id == request_id
+    )
+    builds = tuple(
+        item for item in snapshot.builds
+        if item.facts.closed_build_id == closed_build_id
+        and item.facts.release_sequence == release_sequence
+    )
+    predecessor = snapshot.predecessor
+    if (
+        len(transactions) != 1
+        or len(builds) != 1
+        or type(predecessor) is not _DecodedPredecessorDescriptorV1
+    ):
+        raise _recovery("cutover candidate selection")
+    transaction = transactions[0]
+    if len(transaction.prefix.records) < 2:
+        raise _recovery("cutover candidate binding")
+    complete = transaction.prefix.records[1]
+    build = builds[0]
+    if (
+        transaction.prefix.encoded_records[1] != complete_encoded
+        or complete.sequence != 1
+        or complete.state != "RECEIPTS_COMPLETE"
+        or transaction.claim.closed_build_id != closed_build_id
+        or transaction.claim.release_sequence != release_sequence
+        or complete.request_id != request_id
+        or complete.closed_build_id != closed_build_id
+        or complete.release_sequence != release_sequence
+        or build.encoded != distribution_encoded
+        or build.signature != distribution_signature
+    ):
+        raise _recovery("cutover candidate binding")
+    return build, complete, predecessor
+
+
+def _prepare_cutover_candidate_v2(
+    complete: object, distribution: object,
+) -> _PreparedCutoverCandidateV2:
+    """Capture one signed candidate and the TCB before live topology changes."""
+    from executor_birth_distribution_manifest import (
+        VerifiedDistribution,
+        verify_current_installation_distribution_v1,
+    )
+    from executor_birth_ownership_coordinator import (
+        OwnershipCoordinatorRecordV2,
+        OwnershipCoordinatorStateV1,
+    )
+
+    if (
+        type(complete) is not OwnershipCoordinatorRecordV2
+        or complete.sequence != 1
+        or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+        or type(distribution) is not VerifiedDistribution
+    ):
+        raise _invalid("cutover candidate input")
+    verified = verify_current_installation_distribution_v1(
+        distribution.encoded, distribution.signature,
+    )
+    if verified != distribution:
+        raise _recovery("cutover distribution changed")
+    authenticated = _authenticate_fixed_ownership_snapshot_v1()
+    build, transaction, predecessor = _select_cutover_candidate_from_snapshot_v2(
+        authenticated.snapshot,
+        complete_encoded=complete.encode(),
+        request_id=complete.request_id,
+        closed_build_id=complete.closed_build_id,
+        release_sequence=complete.release_sequence,
+        distribution_encoded=distribution.encoded,
+        distribution_signature=distribution.signature,
+    )
+    root = RELEASE_ROOT / f"{complete.release_sequence:020d}"
+    if build.facts.installation_root != root.as_posix():
+        raise _invalid("cutover installation root")
+    probe_paths = frozenset({
+        SERVICE_CATALOG_PATH_V1, DEPLOYMENT_DESCRIPTOR_PATH_V1,
+    })
+    probe = _snapshot_exact_distribution_tree_v1(
+        root, build.files, uid=0, gid=0, chain_stop=None,
+        capture_paths=probe_paths,
+    )
+    catalog = _decode_service_catalog_v1(probe[SERVICE_CATALOG_PATH_V1])
+    descriptor = _decode_deployment_descriptor_v1(
+        probe[DEPLOYMENT_DESCRIPTOR_PATH_V1],
+    )
+    capture_paths = (
+        _required_material_capture_paths_v1(build, catalog)
+        | frozenset(item.source_path for item in descriptor.artifacts)
+    )
+    captured = _capture_verified_distribution_tree_v1(
+        build.facts, build.files, root,
+        expected_type=_AuthenticatedDistributionObjectV1,
+        uid=0, gid=0, chain_stop=None,
+        extra_capture_paths=capture_paths, require_compiled_review=True,
+    )
+    materials = _bind_candidate_cutover_materials_core_v1(
+        build, transaction, predecessor, captured,
+    )
+    _revalidate_captured_administrative_tcb_v1(
+        authenticated.administrative_tcb.capture,
+        _administrative_links_v1(), uid=0, gid=0, chain_stop=None,
+    )
+    repeated = _authenticate_fixed_ownership_snapshot_v1()
+    if repeated.snapshot != authenticated.snapshot:
+        raise _recovery("fixed ownership changed")
+    repeated_distribution = verify_current_installation_distribution_v1(
+        distribution.encoded, distribution.signature,
+    )
+    if repeated_distribution != distribution:
+        raise _recovery("cutover distribution changed")
+    return _PreparedCutoverCandidateV2(
+        materials, authenticated.administrative_tcb.capture,
+        _PREPARED_CUTOVER_CANDIDATE_SEAL_V2,
+    )
+
+
+def _capture_cutover_effective_systemd_v2(
+    prepared: _PreparedCutoverCandidateV2,
+) -> _CapturedEffectiveSystemdUnitsV1:
+    """Measure the installed candidate through the fixed product manager."""
+    if (
+        type(prepared) is not _PreparedCutoverCandidateV2
+        or prepared._seal is not _PREPARED_CUTOVER_CANDIDATE_SEAL_V2
+    ):
+        raise _invalid("prepared cutover candidate")
+    materials = prepared.materials
+    captured = _capture_effective_systemd_units_core_v1(
+        materials,
+        systemctl_executable=materials.descriptor.systemctl_executable,
+        live_root=Path("/"), uid=0, gid=0,
+    )
+    _revalidate_captured_effective_systemd_v1(
+        captured, live_root=Path("/"), uid=0, gid=0,
+    )
+    return captured
+
+
+def _build_startup_prerequisite_for_cutover_v2(
+    prepared: _PreparedCutoverCandidateV2,
+    effective: _CapturedEffectiveSystemdUnitsV1,
+):
+    """Build the prerequisite only from authenticated and freshly read facts."""
+    from executor_birth_distribution_assembler import (
+        build_startup_prerequisite_v1,
+    )
+
+    if (
+        type(prepared) is not _PreparedCutoverCandidateV2
+        or prepared._seal is not _PREPARED_CUTOVER_CANDIDATE_SEAL_V2
+        or type(effective) is not _CapturedEffectiveSystemdUnitsV1
+    ):
+        raise _invalid("cutover prerequisite input")
+    materials = prepared.materials
+    tcb = prepared.administrative_tcb
+    _revalidate_captured_administrative_tcb_v1(
+        tcb, _administrative_links_v1(), uid=0, gid=0, chain_stop=None,
+    )
+    _revalidate_captured_effective_systemd_v1(
+        effective, live_root=Path("/"), uid=0, gid=0,
+    )
+    prerequisite = build_startup_prerequisite_v1(
+        request_id=materials.transaction.request_id,
+        closed_build_id=materials.transaction.closed_build_id,
+        release_sequence=materials.transaction.release_sequence,
+        deployment_descriptor_id=materials.descriptor.descriptor_id,
+        predecessor_id=materials.predecessor.predecessor_id,
+        administrative_bundle_hash=materials.administrative_bundle_hash,
+        python_binary_hash=tcb.executables.python_binary_hash,
+        openssl_binary_hash=tcb.executables.openssl_binary_hash,
+        openssl_tcb_hash=tcb.openssl_tcb.openssl_tcb_hash,
+        systemctl_binary_hash=tcb.executables.systemctl_binary_hash,
+        systemd_analyze_binary_hash=(
+            tcb.executables.systemd_analyze_binary_hash
+        ),
+        service_catalog_id=materials.catalog.catalog_id,
+        service_coverage_hash=materials.catalog.service_coverage_hash,
+        systemd_manager_version=effective.manager_version,
+        candidate_units_hash=materials.candidate_units.candidate_units_hash,
+        effective_units_hash=effective.snapshot.effective_units_hash,
+    )
+    _revalidate_captured_administrative_tcb_v1(
+        tcb, _administrative_links_v1(), uid=0, gid=0, chain_stop=None,
+    )
+    _revalidate_captured_effective_systemd_v1(
+        effective, live_root=Path("/"), uid=0, gid=0,
+    )
+    return prerequisite
 
 
 def _decode_ownership_cutover_v1(
@@ -3905,6 +4382,12 @@ def _decode_ownership_cutover_v1(
     closed_build_id = _require_digest(
         value.get("closed_build_id"), "closed_build_id",
     )
+    context_transition_id = _require_digest(
+        value.get("context_transition_id"), "context_transition_id",
+    )
+    dominant_startup_receipt = _require_digest(
+        value.get("dominant_startup_receipt"), "dominant_startup_receipt",
+    )
     guard_version = value.get("boundary_guard_version")
     if (
         not isinstance(guard_version, str) or not guard_version
@@ -3928,7 +4411,8 @@ def _decode_ownership_cutover_v1(
     return _DecodedOwnershipCutoverV1(
         cutover_id, previous_cutover_id, request_id, key_id, catalog_id,
         tuple(receipts), maintenance_evidence_hash, boundary_inventory_hash,
-        guard_version, closed_build_id, bytes(encoded), bytes(signature),
+        guard_version, closed_build_id, context_transition_id,
+        dominant_startup_receipt, bytes(encoded), bytes(signature),
     )
 
 
@@ -4078,6 +4562,21 @@ def _decode_current_receipts_v1(
     return tuple(receipts)
 
 
+def _current_inventory_hash_from_receipts_v1(
+    receipts: tuple[OwnershipReceiptFactsV1, ...],
+) -> str:
+    if (
+        type(receipts) is not tuple
+        or any(type(item) is not OwnershipReceiptFactsV1 for item in receipts)
+    ):
+        raise _invalid("coordinator current inventory")
+    encoded = _canonical_json([{
+        "contract_id": item.contract_id,
+        "generation_id": item.generation_id,
+    } for item in receipts])
+    return _digest(CURRENT_INVENTORY_DOMAIN_V1, encoded)
+
+
 def _maintenance_evidence_hash_v1(encoded: bytes) -> str:
     value = decode_canonical_json_v1(encoded, MAX_CUTOVER_BYTES_V1)
     source = value.get("source") if isinstance(value, dict) else None
@@ -4153,7 +4652,10 @@ def _decode_coordinator_record_v2(
         "distribution_signature_hash", "boundary_inventory_hash", "source_id",
         "successor_claim_id", "deployment_descriptor_id",
         "install_transaction_id", "service_coverage_hash",
-        "administrative_bundle_hash",
+        "administrative_bundle_hash", "previous_admission_context_id",
+        "previous_context_epoch", "target_admission_context_id",
+        "target_context_epoch", "context_transition_id",
+        "current_inventory_hash",
     ):
         required_digests[field] = _require_digest(
             value.get(field), "coordinator " + field,
@@ -4168,6 +4670,7 @@ def _decode_coordinator_record_v2(
         "installed_tree_hash", "previous_head_id", "head_id", "head_payload_hash",
         "head_signature_hash", "required_head_frame_hash",
         "verified_chain_head_id", "preflight_attestation_hash",
+        "dominant_startup_receipt",
     ):
         nullable_digests[field] = _nullable_digest_v1(
             value.get(field), "coordinator " + field,
@@ -4188,6 +4691,23 @@ def _decode_coordinator_record_v2(
         or "\0" in guard_version
     ):
         raise _invalid("coordinator boundary_guard_version")
+    provisioning_transaction_id = value.get("provisioning_transaction_id")
+    if (
+        type(provisioning_transaction_id) is not str
+        or _PROVISIONING_TRANSACTION_RE_V2.fullmatch(
+            provisioning_transaction_id,
+        ) is None
+    ):
+        raise _invalid("coordinator provisioning_transaction_id")
+    hex_fields = {}
+    for field in (
+        "previous_set_id", "target_set_id", "target_context_material_sha256",
+        "target_set_json_sha256",
+    ):
+        item = value.get(field)
+        if type(item) is not str or _HEX_SHA256_RE_V2.fullmatch(item) is None:
+            raise _invalid("coordinator " + field)
+        hex_fields[field] = item
 
     raw_proof = value.get("maintenance_proof_b64")
     if sequence == 0:
@@ -4222,11 +4742,15 @@ def _decode_coordinator_record_v2(
             or nullable_digests["maintenance_after_hash"] != observed_hash
         ):
             raise _invalid("coordinator maintenance binding")
+        if required_digests["current_inventory_hash"] != (
+            _current_inventory_hash_from_receipts_v1(receipts)
+        ):
+            raise _invalid("coordinator current inventory binding")
 
     certificate_fields = (
         "startup_prerequisite_id", "startup_prerequisite_digest",
         "cutover_id", "catalog_id", "certificate_payload_hash",
-        "certificate_signature_hash",
+        "certificate_signature_hash", "dominant_startup_receipt",
     )
     if (
         sequence >= 2
@@ -4298,6 +4822,7 @@ def _decode_coordinator_record_v2(
         nullable_digests["cutover_id"], nullable_digests["catalog_id"],
         nullable_digests["certificate_payload_hash"],
         nullable_digests["certificate_signature_hash"],
+        nullable_digests["dominant_startup_receipt"],
         required_digests["source_id"], required_digests["successor_claim_id"],
         required_digests["deployment_descriptor_id"],
         required_digests["install_transaction_id"],
@@ -4310,6 +4835,17 @@ def _decode_coordinator_record_v2(
         nullable_digests["preflight_attestation_hash"],
         required_digests["service_coverage_hash"],
         required_digests["administrative_bundle_hash"],
+        provisioning_transaction_id,
+        hex_fields["previous_set_id"],
+        required_digests["previous_admission_context_id"],
+        required_digests["previous_context_epoch"],
+        hex_fields["target_set_id"],
+        required_digests["target_admission_context_id"],
+        required_digests["target_context_epoch"],
+        hex_fields["target_context_material_sha256"],
+        hex_fields["target_set_json_sha256"],
+        required_digests["context_transition_id"],
+        required_digests["current_inventory_hash"],
     )
     if decoded.as_value() != value:
         raise _invalid("coordinator record binding")
@@ -5877,7 +6413,7 @@ def _capture_fixed_ownership_state_core_v1(
         relevant_root_names = frozenset({
             "authorities-v1", "chain-v1", "coordinator-v1",
             "ownership-cutover-v1.json", "ownership-cutover-v1.sig",
-            "predecessor-v1.json",
+            "predecessor-v1.json", "preflight-attestations-v1",
         })
         anchor_like_names = tuple(
             name for name in root_names
@@ -5928,10 +6464,14 @@ def _capture_fixed_ownership_state_core_v1(
         )
         allowed_chain_names = frozenset({
             "builds-v1", "cutovers-v1", "heads-v1",
+            "context-transitions-v1",
             "required-head-v1.bin", ".required-head-v1.lock",
         })
         if (
-            not {"builds-v1", "cutovers-v1", "heads-v1"}.issubset(chain_names)
+            not {
+                "builds-v1", "cutovers-v1", "heads-v1",
+                "context-transitions-v1",
+            }.issubset(chain_names)
             or any(name not in allowed_chain_names for name in chain_names)
         ):
             raise _recovery("chain inventory")
@@ -5944,6 +6484,24 @@ def _capture_fixed_ownership_state_core_v1(
         head_fd, head_names = add_directory(
             chain_fd, "heads-v1", "chain-v1/heads-v1",
         )
+        context_transition_fd, context_transition_names = add_directory(
+            chain_fd, "context-transitions-v1",
+            "chain-v1/context-transitions-v1",
+        )
+        if (
+            len(context_transition_names) > MAX_CONTEXT_TRANSITIONS_V1
+            or any(
+                _CONTEXT_TRANSITION_BASENAME_RE_V1.fullmatch(name) is None
+                for name in context_transition_names
+            )
+        ):
+            raise _recovery("context transition inventory")
+        for name in context_transition_names:
+            add_file(
+                context_transition_fd, name,
+                "chain-v1/context-transitions-v1/" + name,
+                maximum=MAX_CONTEXT_TRANSITION_BYTES_V1,
+            )
         build_stems = _paired_control_stems_v1(
             build_names, pattern=_ARCHIVED_DIGEST_STEM_RE_V1, label="build",
         )
@@ -6003,6 +6561,29 @@ def _capture_fixed_ownership_state_core_v1(
                 root_descriptor, "predecessor-v1.json", "predecessor-v1.json",
                 maximum=MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1,
             )
+
+        preflight_attestation_names: tuple[str, ...] = ()
+        if "preflight-attestations-v1" in tracked_root_names:
+            attestation_fd, preflight_attestation_names = add_directory(
+                root_descriptor, "preflight-attestations-v1",
+                "preflight-attestations-v1",
+            )
+            if (
+                len(preflight_attestation_names)
+                > MAX_PREFLIGHT_ATTESTATIONS_V1
+                or any(
+                    _PREFLIGHT_ATTESTATION_BASENAME_RE_V1.fullmatch(name)
+                    is None
+                    for name in preflight_attestation_names
+                )
+            ):
+                raise _recovery("preflight attestation inventory")
+            for name in preflight_attestation_names:
+                add_file(
+                    attestation_fd, name,
+                    "preflight-attestations-v1/" + name,
+                    maximum=MAX_PREFLIGHT_ATTESTATION_BYTES_V1,
+                )
 
         coordinator_fd, coordinator_names = add_directory(
             root_descriptor, "coordinator-v1", "coordinator-v1",
@@ -6252,6 +6833,22 @@ def _capture_fixed_ownership_state_core_v1(
             )
             if "predecessor-v1.json" in files else None
         )
+        context_transitions = tuple(
+            _CapturedContextTransitionCandidateV1(
+                name, _read_control_file_v1(
+                    files["chain-v1/context-transitions-v1/" + name],
+                ),
+            )
+            for name in context_transition_names
+        )
+        preflight_attestations = tuple(
+            _CapturedPreflightAttestationCandidateV1(
+                name, _read_control_file_v1(
+                    files["preflight-attestations-v1/" + name],
+                ),
+            )
+            for name in preflight_attestation_names
+        )
 
         if between_for_test is not None:
             between_for_test()
@@ -6308,8 +6905,10 @@ def _capture_fixed_ownership_state_core_v1(
 
         return _CapturedFixedOwnershipStateCandidateV1(
             registries, anchor, required_head, tuple(builds), tuple(cutovers),
-            tuple(heads), tuple(claims), tuple(transactions), legacy_records,
-            legacy_disposition, predecessor,
+            tuple(heads), tuple(claims), tuple(transactions),
+            context_transitions,
+            preflight_attestations, legacy_records, legacy_disposition,
+            predecessor,
         )
     except PreflightError as exc:
         if exc.code == CODE_RECOVERY:
@@ -6358,8 +6957,9 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
 
     The candidate bytes are the only authority input.  In particular this
     function never reopens a registry or ownership object by pathname.  The
-    result intentionally does not attest installed-tree, systemd or the
-    preflight-attestation document referenced by record 006.
+    The result intentionally does not attest installed-tree or live systemd.
+    It does authenticate every durable preflight document and its record-006
+    reference; the later operational pass independently repeats live checks.
     """
     if type(candidate) is not _CapturedFixedOwnershipStateCandidateV1:
         raise _invalid("fixed ownership candidate type")
@@ -6702,6 +7302,10 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
                     != first.boundary_inventory_hash
                     or cutover.boundary_guard_version
                     != first.boundary_guard_version
+                    or cutover.context_transition_id
+                    != first.context_transition_id
+                    or cutover.dominant_startup_receipt
+                    != latest.dominant_startup_receipt
                     or latest.certificate_payload_hash
                     != _raw_sha256_v1(cutover.encoded)
                     or latest.certificate_signature_hash
@@ -6747,6 +7351,109 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
                         "transaction head binding " + ",".join(disagreed)
                     )
                 completed_by_sequence[first.release_sequence] = transaction
+
+        transitions_by_id: dict[str, _DecodedContextTransitionV1] = {}
+        for captured in candidate.context_transitions:
+            decoded = durable(_decode_context_transition_v1, captured.encoded)
+            expected_basename = (
+                decoded.transition_id.removeprefix("sha256:") + ".json"
+            )
+            if (
+                captured.basename != expected_basename
+                or decoded.transition_id in transitions_by_id
+            ):
+                raise _recovery("context transition name binding")
+            transitions_by_id[decoded.transition_id] = decoded
+
+        for transaction in transactions:
+            first = transaction.prefix.records[0]
+            latest = transaction.prefix.records[-1]
+            transition = transitions_by_id.pop(
+                first.context_transition_id, None,
+            )
+            if latest.sequence >= 2 and transition is None:
+                raise _recovery("context transition missing")
+            if transition is None:
+                continue
+            if (
+                transition.request_id != first.request_id
+                or transition.closed_build_id != first.closed_build_id
+                or transition.previous_cutover_id != first.previous_cutover_id
+                or transition.previous_set_id != first.previous_set_id
+                or transition.previous_admission_context_id
+                != first.previous_admission_context_id
+                or transition.previous_context_epoch
+                != first.previous_context_epoch
+                or transition.set_id != first.target_set_id
+                or transition.prepared_admission_context_id
+                != first.target_admission_context_id
+                or transition.prepared_context_epoch
+                != first.target_context_epoch
+                or transition.context_material_sha256
+                != first.target_context_material_sha256
+                or transition.set_json_sha256 != first.target_set_json_sha256
+                or transition.current_inventory_hash
+                != first.current_inventory_hash
+            ):
+                raise _recovery("context transition journal binding")
+        if transitions_by_id:
+            raise _recovery("orphan context transition")
+
+        attestations_by_request: dict[
+            str, tuple[_DecodedPreflightAttestationV1, bytes]
+        ] = {}
+        for captured in candidate.preflight_attestations:
+            decoded = durable(
+                _decode_preflight_attestation_v1, captured.encoded,
+            )
+            expected_basename = decoded.request_id + ".json"
+            if (
+                captured.basename != expected_basename
+                or decoded.request_id in attestations_by_request
+            ):
+                raise _recovery("preflight attestation name binding")
+            attestations_by_request[decoded.request_id] = (
+                decoded, captured.encoded,
+            )
+
+        for transaction in transactions:
+            first = transaction.prefix.records[0]
+            latest = transaction.prefix.records[-1]
+            captured_attestation = attestations_by_request.pop(
+                first.request_id, None,
+            )
+            if latest.sequence == 6 and captured_attestation is None:
+                raise _recovery("preflight attestation missing")
+            if captured_attestation is None:
+                continue
+            if latest.sequence not in {5, 6}:
+                raise _recovery("preflight attestation order")
+            attestation, encoded_attestation = captured_attestation
+            if (
+                attestation.request_id != first.request_id
+                or attestation.closed_build_id != first.closed_build_id
+                or attestation.release_sequence != first.release_sequence
+                or attestation.head_id != latest.head_id
+                or attestation.required_head_frame_hash
+                != latest.required_head_frame_hash
+                or attestation.deployment_descriptor_id
+                != first.deployment_descriptor_id
+                or attestation.service_coverage_hash
+                != first.service_coverage_hash
+                or attestation.administrative_bundle_hash
+                != first.administrative_bundle_hash
+                or (
+                    latest.sequence == 6
+                    and latest.preflight_attestation_hash
+                    != _digest(
+                        PREFLIGHT_ATTESTATION_RECORD_DOMAIN_V1,
+                        encoded_attestation,
+                    )
+                )
+            ):
+                raise _recovery("preflight attestation journal binding")
+        if attestations_by_request:
+            raise _recovery("orphan preflight attestation")
 
         transactions_by_build = {
             transaction.prefix.records[0].closed_build_id: transaction
@@ -8297,6 +9004,10 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_deployment_lock_for_test_v1": ("store_write",),
         "_deployment_lock_v1": ("store_write",),
         "_publish_certificate_with_prerequisite_v1": ("store_write",),
+        "_publish_control_no_replace_v2": ("store_write",),
+        "_reserve_transition_edge_core_v2": ("store_write",),
+        "_reserve_transition_edge_locked_for_test_v2": ("store_write",),
+        "_reserve_transition_edge_locked_v2": ("store_write",),
         "_LockedOwnershipCoordinatorGraphSnapshotV2": ("store_write",),
         "_require_locked_coordinator_graph_snapshot_v2": ("store_write",),
         "_require_locked_coordinator_graph_issued_v2": ("store_write",),
@@ -8324,6 +9035,9 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_create_source_directories_v1": ("store_write",),
         "_ensure_child_directory_v1": ("store_write",),
         "_open_received_tree_at_v1": ("store_write",),
+        "_load_received_source_locked_core_v1": ("store_write",),
+        "_load_received_source_with_product_session_v1": ("store_write",),
+        "_load_received_source_with_test_session_v1": ("store_write",),
         "_receive_source_for_test_v1": ("store_write",),
         "_receive_source_locked_core_v1": ("store_write",),
         "_receive_source_v1": ("store_write",),
@@ -8336,6 +9050,11 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_write_all_v1": ("store_write",),
         "_write_descriptor_v1": ("store_write",),
         "copied_chunks": ("store_write",),
+        "main": ("store_write",),
+    },
+    "executor_birth_transition": {
+        "<module>": ("store_write",),
+        "deploy_source_v1": ("store_write",),
         "main": ("store_write",),
     },
     "executor_birth_systemd": {
@@ -8401,6 +9120,9 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth_source_receiver": frozenset({
         "install.executor_birth_source_receiver",
     }),
+    "executor_birth_transition": frozenset({
+        "install.executor_birth_transition",
+    }),
     "executor_birth_systemd": frozenset({
         "install.executor_birth_systemd",
     }),
@@ -8431,6 +9153,7 @@ BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "install/executor_birth_source_receiver.py": (
         "executor_birth_source_receiver"
     ),
+    "install/executor_birth_transition.py": "executor_birth_transition",
     "install/executor_birth_systemd.py": "executor_birth_systemd",
     "runtime/executor_birth_admin_preflight.py": (
         "executor_birth_admin_preflight"
@@ -9766,7 +10489,11 @@ def _analyse_scope(
         if not separator:
             canonical = aliases.get(leaf, leaf)
         api = canonical.rsplit(".", 1)[-1]
-        if canonical in local_callables:
+        if canonical in local_callables and (
+            isinstance(item.func, ast.Name)
+            or isinstance(item.func, ast.Attribute)
+            and isinstance(item.func.value, ast.Name)
+        ):
             calls.add(canonical.rsplit(".", 1)[-1])
         elif (
             isinstance(item.func, ast.Name)
@@ -12869,12 +13596,15 @@ def _capture_systemd_origin_v1(
 
 
 def _capture_effective_systemd_units_core_v1(
-    materials: _BoundPreflightMaterialsV1, *, systemctl_executable: str,
+    materials: _BoundPreflightMaterialsV1 | _CandidateCutoverMaterialsV1, *,
+    systemctl_executable: str,
     live_root: Path, uid: int, gid: int,
 ) -> _CapturedEffectiveSystemdUnitsV1:
     """Build one complete, non-authorizing effective-systemd observation."""
     if (
-        type(materials) is not _BoundPreflightMaterialsV1
+        type(materials) not in {
+            _BoundPreflightMaterialsV1, _CandidateCutoverMaterialsV1,
+        }
         or type(uid) is not int or type(gid) is not int
         or systemctl_executable != materials.descriptor.systemctl_executable
     ):
@@ -13259,6 +13989,157 @@ def _observe_effective_systemd_for_test_v1(
     return _ObservedEffectiveSystemdForTestV1(result)
 
 
+def _decode_context_transition_v1(
+    encoded: bytes,
+) -> _DecodedContextTransitionV1:
+    """Decode one exact content-addressed authority-context transition."""
+    value = decode_canonical_json_v1(encoded, MAX_CONTEXT_TRANSITION_BYTES_V1)
+    if (
+        type(value) is not dict
+        or set(value) != _CONTEXT_TRANSITION_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("context transition schema")
+    transition_id = _require_digest(
+        value.get("transition_id"), "context transition_id",
+    )
+    request_id = _require_digest(
+        value.get("request_id"), "context request_id",
+    )
+    closed_build_id = _require_digest(
+        value.get("closed_build_id"), "context closed_build_id",
+    )
+    previous_cutover_id = _nullable_digest_v1(
+        value.get("previous_cutover_id"), "context previous_cutover_id",
+    )
+    previous_admission_context_id = _require_digest(
+        value.get("previous_admission_context_id"),
+        "context previous_admission_context_id",
+    )
+    previous_context_epoch = _require_digest(
+        value.get("previous_context_epoch"), "context previous_context_epoch",
+    )
+    prepared_admission_context_id = _require_digest(
+        value.get("prepared_admission_context_id"),
+        "context prepared_admission_context_id",
+    )
+    prepared_context_epoch = _require_digest(
+        value.get("prepared_context_epoch"), "context prepared_context_epoch",
+    )
+    current_inventory_hash = _require_digest(
+        value.get("current_inventory_hash"), "context current_inventory_hash",
+    )
+    hex_fields = {}
+    for field in (
+        "previous_set_id", "set_id", "context_material_sha256",
+        "set_json_sha256",
+    ):
+        item = value.get(field)
+        if type(item) is not str or _HEX_SHA256_RE_V2.fullmatch(item) is None:
+            raise _invalid("context " + field)
+        hex_fields[field] = item
+    expected_id = _digest(
+        CONTEXT_TRANSITION_ID_DOMAIN_V1,
+        _canonical_json({
+            key: item for key, item in value.items()
+            if key != "transition_id"
+        }),
+    )
+    if transition_id != expected_id:
+        raise _invalid("context transition_id binding")
+    return _DecodedContextTransitionV1(
+        transition_id, request_id, closed_build_id, previous_cutover_id,
+        hex_fields["previous_set_id"], previous_admission_context_id,
+        previous_context_epoch, hex_fields["set_id"],
+        prepared_admission_context_id, prepared_context_epoch,
+        hex_fields["context_material_sha256"],
+        hex_fields["set_json_sha256"], current_inventory_hash,
+    )
+
+
+def _decode_preflight_attestation_v1(
+    encoded: bytes,
+) -> _DecodedPreflightAttestationV1:
+    """Decode the exact durable attestation consumed by journal record 006."""
+    value = decode_canonical_json_v1(
+        encoded, MAX_PREFLIGHT_ATTESTATION_BYTES_V1,
+    )
+    if (
+        type(value) is not dict
+        or set(value) != _PREFLIGHT_ATTESTATION_KEYS_V1
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+    ):
+        raise _invalid("preflight attestation schema")
+    digest_fields = {}
+    for field in (
+        "attestation_id", "request_id", "closed_build_id", "head_id",
+        "required_head_frame_hash", "deployment_descriptor_id",
+        "service_catalog_id", "service_coverage_hash",
+        "candidate_units_hash", "administrative_bundle_hash",
+        "python_binary_hash", "openssl_binary_hash", "openssl_tcb_hash",
+        "systemctl_binary_hash", "systemd_analyze_binary_hash",
+        "effective_units_hash",
+    ):
+        digest_fields[field] = _require_digest(
+            value.get(field), "preflight attestation " + field,
+        )
+    release_sequence = _positive_release_sequence_v1(
+        value.get("release_sequence"),
+    )
+    raw_entry_ids = value.get("checked_entry_ids")
+    if type(raw_entry_ids) is not list or not raw_entry_ids:
+        raise _invalid("preflight attestation coverage")
+    checked_entry_ids = tuple(
+        validate_entry_id_v1(item) for item in raw_entry_ids
+    )
+    if (
+        len(checked_entry_ids) != len(set(checked_entry_ids))
+        or checked_entry_ids != tuple(sorted(
+            checked_entry_ids, key=lambda item: item.encode("utf-8"),
+        ))
+    ):
+        raise _invalid("preflight attestation coverage")
+    decoded = _DecodedPreflightAttestationV1(
+        digest_fields["attestation_id"], digest_fields["request_id"],
+        digest_fields["closed_build_id"], release_sequence,
+        digest_fields["head_id"], digest_fields["required_head_frame_hash"],
+        digest_fields["deployment_descriptor_id"],
+        digest_fields["service_catalog_id"],
+        digest_fields["service_coverage_hash"],
+        digest_fields["candidate_units_hash"],
+        digest_fields["administrative_bundle_hash"],
+        digest_fields["python_binary_hash"],
+        digest_fields["openssl_binary_hash"],
+        digest_fields["openssl_tcb_hash"],
+        digest_fields["systemctl_binary_hash"],
+        digest_fields["systemd_analyze_binary_hash"],
+        digest_fields["effective_units_hash"], checked_entry_ids,
+    )
+    if (
+        decoded.as_value() != value
+        or decoded.attestation_id != _deployment_document_id_v1(
+            PREFLIGHT_ATTESTATION_DOMAIN_V1, value, "attestation_id",
+        )
+    ):
+        raise _invalid("preflight attestation binding")
+    return decoded
+
+
+def _decode_preflight_attestation_record_v1(
+    encoded: bytes,
+) -> tuple[_DecodedPreflightAttestationV1, str]:
+    """Decode once and return the exact digest carried by record 006."""
+    decoded = _decode_preflight_attestation_v1(encoded)
+    return decoded, _digest(PREFLIGHT_ATTESTATION_RECORD_DOMAIN_V1, encoded)
+
+
+def _preflight_attestation_record_hash_v1(encoded: bytes) -> str:
+    """Return the domain-separated digest carried by journal record 006."""
+    return _decode_preflight_attestation_record_v1(encoded)[1]
+
+
 def _preflight_attestation_bytes_v1(
     selected: _SelectedOwnershipEpochV1,
     observation: _ObservedEffectiveSystemdV1,
@@ -13346,8 +14227,8 @@ def _publish_preflight_attestation_core_v1(
         or not isinstance(root, Path) or not root.is_absolute()
     ):
         raise _invalid("preflight attestation publication")
-    value = decode_canonical_json_v1(encoded, MAX_PREFLIGHT_ATTESTATION_BYTES_V1)
-    if not isinstance(value, dict) or value.get("request_id") != request_id:
+    decoded = _decode_preflight_attestation_v1(encoded)
+    if decoded.request_id != request_id:
         raise _invalid("preflight attestation publication")
     _require_safe_directory_chain_v1(root, uid=uid, gid=gid, stop=chain_stop)
     try:
@@ -13446,6 +14327,51 @@ def _publish_preflight_attestation_core_v1(
             os.close(directory)
 
 
+def _read_preflight_attestation_core_v1(
+    request_id: str, *, root: Path, uid: int, gid: int,
+    chain_stop: Path | None,
+) -> bytes:
+    """Reread one exact published attestation through trusted path checks."""
+    if (
+        _require_digest(request_id, "preflight request") != request_id
+        or not isinstance(root, Path) or not root.is_absolute()
+    ):
+        raise _invalid("preflight attestation reread")
+    try:
+        encoded = _read_bounded_regular_v1(
+            root / (request_id + ".json"),
+            MAX_PREFLIGHT_ATTESTATION_BYTES_V1,
+            uid=uid, gid=gid, mode=0o644, chain_stop=chain_stop,
+        )
+        decoded = _decode_preflight_attestation_v1(encoded)
+    except PreflightError as exc:
+        if exc.code == CODE_RECOVERY:
+            raise
+        raise _recovery("preflight attestation durable state") from exc
+    if decoded.request_id != request_id:
+        raise _recovery("preflight attestation request binding")
+    return encoded
+
+
+def _read_preflight_attestation_v1(request_id: str) -> bytes:
+    """Product reread from the single fixed root-owned attestation store."""
+    return _read_preflight_attestation_core_v1(
+        request_id, root=PREFLIGHT_ATTESTATION_ROOT_V1,
+        uid=0, gid=0, chain_stop=None,
+    )
+
+
+def _read_preflight_attestation_for_test_v1(
+    request_id: str, root: Path,
+) -> bytes:
+    """Portable nominal reread; it cannot select the productive root."""
+    root = Path(root)
+    return _read_preflight_attestation_core_v1(
+        request_id, root=root, uid=os.getuid(), gid=os.getgid(),
+        chain_stop=root.parent,
+    )
+
+
 def _publish_preflight_attestation_v1(
     operational: _OperationalPreflightV1,
 ) -> bytes:
@@ -13458,7 +14384,13 @@ def _publish_preflight_attestation_v1(
         encoded, operational.selected.transaction.prefix.records[-1].request_id,
         root=PREFLIGHT_ATTESTATION_ROOT_V1, uid=0, gid=0, chain_stop=None,
     )
-    return encoded
+    observed = _read_preflight_attestation_core_v1(
+        operational.selected.transaction.prefix.records[-1].request_id,
+        root=PREFLIGHT_ATTESTATION_ROOT_V1, uid=0, gid=0, chain_stop=None,
+    )
+    if observed != encoded:
+        raise _recovery("preflight attestation publication reread")
+    return observed
 
 
 def _publish_preflight_attestation_for_test_v1(
@@ -13473,7 +14405,13 @@ def _publish_preflight_attestation_for_test_v1(
         encoded, operational.selected.transaction.prefix.records[-1].request_id,
         root=root, uid=os.getuid(), gid=os.getgid(), chain_stop=root.parent,
     )
-    return encoded
+    observed = _read_preflight_attestation_core_v1(
+        operational.selected.transaction.prefix.records[-1].request_id,
+        root=root, uid=os.getuid(), gid=os.getgid(), chain_stop=root.parent,
+    )
+    if observed != encoded:
+        raise _recovery("preflight attestation publication reread")
+    return observed
 
 
 def _attest_operational_preflight_v1() -> _OperationalPreflightV1:

@@ -10,6 +10,12 @@ from pathlib import Path
 
 import pytest
 
+if os.name != "nt":
+    pytest.skip(
+        "the real-identity oracle is owned by the Windows certification job",
+        allow_module_level=True,
+    )
+
 import win32_identity_oracle as oracle
 
 
@@ -340,5 +346,4 @@ def test_oracle_source_is_independent_from_product_security_helpers() -> None:
     assert "GetSecurityInfo" in source
     assert "GetAce" in source
     assert "EqualSid" in source
-
 

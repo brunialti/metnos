@@ -21,21 +21,38 @@ import hmac
 import json
 import os
 import secrets
+import stat
+import subprocess
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 import sys
 
 _RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
 if str(_RUNTIME) not in sys.path:  # pragma: no cover - import bootstrap
     sys.path.insert(0, str(_RUNTIME))
 
+from executor_birth_prepared_set import (
+    PreparedAuthoritySetV2, _PREPARED_AUTHORITY_SET_SEAL_V2,
+    _prepared_authority_set_binding_v2, is_prepared_authority_set_v2,
+)
+
 TRANSACTION_PROTOCOL_V1 = "birth-authority-provisioning-v1"
+TRANSACTION_PROTOCOL_V2 = "birth-authority-provisioning-v2"
 CHECKPOINT_DIGEST_DOMAIN_V1 = b"metnos.executor-birth.provisioning-checkpoint/v1\0"
+SOURCE_INVENTORY_DIGEST_DOMAIN_V2 = (
+    b"metnos.executor-birth.provisioning-source-inventory/v2\0"
+)
+MATERIAL_PLAN_DIGEST_DOMAIN_V2 = (
+    b"metnos.executor-birth.provisioning-material-plan/v2\0"
+)
 TRANSACTION_HEADER_BASENAME_V1 = "transaction-v1.json"
+TRANSACTION_HEADER_BASENAME_V2 = "transaction-v2.json"
+MATERIAL_PLAN_BASENAME_V2 = "material-plan-v2.json"
+MATERIAL_PLAN_PENDING_PREFIX_V2 = ".material-plan-v2.pending."
 CHECKPOINTS_BASENAME_V1 = "checkpoints-v1"
 MAXIMUM_CHECKPOINT_SEQUENCE_V1 = 8191
 MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1 = 1024 * 1024
@@ -113,6 +130,167 @@ class PayloadObjectTypeV1(str, Enum):
 class PayloadConfidentialityV1(str, Enum):
     confidential = "confidential"
     integrity_only = "integrity_only"
+
+
+@dataclass(frozen=True, slots=True)
+class MaterialPlanEntryV2:
+    """One exact object that a recoverable V2 staging pass must produce."""
+
+    relative_path: str
+    object_type: PayloadObjectTypeV1
+    confidentiality: PayloadConfidentialityV1
+    payload: bytes | None = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if (
+            not _is_canonical_relative_path(self.relative_path)
+            or not (
+                self.relative_path == "authority-set"
+                or self.relative_path.startswith("authority-set/")
+            )
+            or not isinstance(self.object_type, PayloadObjectTypeV1)
+            or not isinstance(self.confidentiality, PayloadConfidentialityV1)
+        ):
+            raise _conflict()
+        if self.object_type is PayloadObjectTypeV1.directory:
+            if self.payload is not None:
+                raise _conflict()
+        elif not isinstance(self.payload, bytes):
+            raise _conflict()
+
+    @property
+    def sort_key(self) -> bytes:
+        return self.relative_path.encode("utf-8")
+
+    def to_document(self) -> dict[str, object]:
+        payload = self.payload
+        return {
+            "relative_path": self.relative_path,
+            "object_type": self.object_type.value,
+            "confidentiality": self.confidentiality.value,
+            "size": None if payload is None else len(payload),
+            "sha256": (
+                None if payload is None else hashlib.sha256(payload).hexdigest()
+            ),
+            "payload_hex": None if payload is None else payload.hex(),
+        }
+
+    @staticmethod
+    def from_document(value: object) -> "MaterialPlanEntryV2":
+        if not isinstance(value, dict) or set(value) != {
+            "relative_path", "object_type", "confidentiality", "size",
+            "sha256", "payload_hex",
+        }:
+            raise _conflict()
+        try:
+            object_type = PayloadObjectTypeV1(value["object_type"])
+            confidentiality = PayloadConfidentialityV1(value["confidentiality"])
+        except ValueError as exc:
+            raise _conflict(exc) from None
+        if object_type is PayloadObjectTypeV1.directory:
+            if any(value[field] is not None for field in (
+                "size", "sha256", "payload_hex",
+            )):
+                raise _conflict()
+            payload = None
+        else:
+            encoded = value["payload_hex"]
+            if (
+                not isinstance(encoded, str)
+                or len(encoded) % 2
+                or set(encoded) - _HEX_DIGITS
+            ):
+                raise _conflict()
+            payload = bytes.fromhex(encoded)
+            if (
+                value["size"] != len(payload)
+                or value["sha256"] != hashlib.sha256(payload).hexdigest()
+            ):
+                raise _conflict()
+        return MaterialPlanEntryV2(
+            relative_path=value["relative_path"],
+            object_type=object_type,
+            confidentiality=confidentiality,
+            payload=payload,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MaterialPlanV2:
+    """Closed confidential inventory that makes V2 staging restartable."""
+
+    transaction_id: str
+    transaction_header_sha256: str
+    entries: tuple[MaterialPlanEntryV2, ...]
+
+    def __post_init__(self) -> None:
+        ordered = tuple(sorted(self.entries, key=lambda item: item.sort_key))
+        paths = {entry.relative_path for entry in ordered}
+        if (
+            not _is_hex(self.transaction_id, 32)
+            or not _is_hex(self.transaction_header_sha256, 64)
+            or not ordered
+            or ordered != self.entries
+            or len(paths) != len(ordered)
+            or "authority-set" not in paths
+        ):
+            raise _conflict()
+        kinds = {entry.relative_path: entry.object_type for entry in ordered}
+        if kinds["authority-set"] is not PayloadObjectTypeV1.directory:
+            raise _conflict()
+        for entry in ordered:
+            parts = entry.relative_path.split("/")
+            for index in range(1, len(parts)):
+                parent = "/".join(parts[:index])
+                if kinds.get(parent) is not PayloadObjectTypeV1.directory:
+                    raise _conflict()
+
+    def _document(self) -> dict[str, object]:
+        return {
+            "schema_version": 2,
+            "protocol": TRANSACTION_PROTOCOL_V2,
+            "transaction_id": self.transaction_id,
+            "transaction_header_sha256": self.transaction_header_sha256,
+            "objects": [entry.to_document() for entry in self.entries],
+        }
+
+    def digest(self) -> str:
+        return hashlib.sha256(
+            MATERIAL_PLAN_DIGEST_DOMAIN_V2
+            + encode_canonical_document_v1(self._document())
+        ).hexdigest()
+
+    def encode(self) -> bytes:
+        value = self._document()
+        value["material_plan_sha256"] = self.digest()
+        encoded = encode_canonical_document_v1(value)
+        if len(encoded) > MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1:
+            raise _conflict()
+        return encoded
+
+
+def decode_material_plan_v2(raw: bytes) -> MaterialPlanV2:
+    """Decode one exact V2 plan and verify its closed object inventory."""
+    value = decode_canonical_document_v1(raw)
+    if set(value) != {
+        "schema_version", "protocol", "transaction_id",
+        "transaction_header_sha256", "objects", "material_plan_sha256",
+    } or (
+        value["schema_version"] != 2
+        or value["protocol"] != TRANSACTION_PROTOCOL_V2
+    ):
+        raise _conflict()
+    objects = value["objects"]
+    if not isinstance(objects, list):
+        raise _conflict()
+    plan = MaterialPlanV2(
+        transaction_id=value["transaction_id"],
+        transaction_header_sha256=value["transaction_header_sha256"],
+        entries=tuple(MaterialPlanEntryV2.from_document(item) for item in objects),
+    )
+    if value["material_plan_sha256"] != plan.digest() or plan.encode() != raw:
+        raise _conflict()
+    return plan
 
 
 def _reject(code: str, cause: BaseException | None = None) -> BirthProvisioningError:
@@ -362,6 +540,171 @@ def decode_transaction_header_v1(raw: bytes) -> TransactionHeaderV1:
     )
 
 
+def _is_digest_v2(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 71
+        and value.startswith("sha256:")
+        and _is_hex(value[7:], 64)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class TransactionHeaderV2:
+    """Immutable identity of one transition provisioning transaction."""
+
+    transaction_id: str
+    provisioner_build_id: str
+    request_id: str
+    closed_build_id: str
+    previous_set_id: str
+    distribution_payload_hash: str
+    distribution_signature_hash: str
+    source_inventory_hash: str
+
+    def __post_init__(self) -> None:
+        if (
+            not _is_hex(self.transaction_id, 32)
+            or not isinstance(self.provisioner_build_id, str)
+            or not self.provisioner_build_id
+            or "\0" in self.provisioner_build_id
+            or not _is_hex(self.previous_set_id, 64)
+            or any(not _is_digest_v2(value) for value in (
+                self.request_id,
+                self.closed_build_id,
+                self.distribution_payload_hash,
+                self.distribution_signature_hash,
+                self.source_inventory_hash,
+            ))
+        ):
+            raise _conflict()
+
+    def to_document(self) -> dict[str, object]:
+        return {
+            "schema_version": 2,
+            "protocol": TRANSACTION_PROTOCOL_V2,
+            "transaction_id": self.transaction_id,
+            "provisioner_build_id": self.provisioner_build_id,
+            "request_id": self.request_id,
+            "closed_build_id": self.closed_build_id,
+            "previous_set_id": self.previous_set_id,
+            "distribution_payload_hash": self.distribution_payload_hash,
+            "distribution_signature_hash": self.distribution_signature_hash,
+            "source_inventory_hash": self.source_inventory_hash,
+        }
+
+    def encode(self) -> bytes:
+        return encode_canonical_document_v1(self.to_document())
+
+
+def decode_transaction_header_v2(raw: bytes) -> TransactionHeaderV2:
+    """Decode the closed V2 header without accepting a V1 interpretation."""
+    value = decode_canonical_document_v1(raw)
+    if set(value) != {
+        "schema_version", "protocol", "transaction_id",
+        "provisioner_build_id", "request_id", "closed_build_id",
+        "previous_set_id", "distribution_payload_hash",
+        "distribution_signature_hash", "source_inventory_hash",
+    } or value["schema_version"] != 2 or value["protocol"] != TRANSACTION_PROTOCOL_V2:
+        raise _conflict()
+    return TransactionHeaderV2(
+        transaction_id=value["transaction_id"],
+        provisioner_build_id=value["provisioner_build_id"],
+        request_id=value["request_id"],
+        closed_build_id=value["closed_build_id"],
+        previous_set_id=value["previous_set_id"],
+        distribution_payload_hash=value["distribution_payload_hash"],
+        distribution_signature_hash=value["distribution_signature_hash"],
+        source_inventory_hash=value["source_inventory_hash"],
+    )
+
+
+def provisioning_source_inventory_hash_v2(distribution: object) -> str:
+    """Bind the ordered authenticated file inventory of one distribution."""
+    from executor_birth_distribution_manifest import is_verified_distribution
+
+    if not is_verified_distribution(distribution):
+        raise _conflict()
+    files = tuple(sorted(
+        distribution.files, key=lambda item: item.path.encode("utf-8"),
+    ))
+    if len({item.path for item in files}) != len(files):
+        raise _conflict()
+    value = [{
+        "path": item.path,
+        "size": item.size,
+        "content_hash": item.content_hash,
+        "role": item.role,
+    } for item in files]
+    encoded = encode_canonical_document_v1({"files": value})
+    return "sha256:" + hashlib.sha256(
+        SOURCE_INVENTORY_DIGEST_DOMAIN_V2 + encoded,
+    ).hexdigest()
+
+
+def _build_transaction_header_v2(
+    *, transaction_id: str, provisioner_build_id: str,
+    claim: object, distribution: object, previous_set: object,
+) -> TransactionHeaderV2:
+    """Derive a V2 header only from nominally authenticated transition facts."""
+    from executor_birth_distribution_manifest import is_verified_distribution
+    from executor_birth_ownership_coordinator import SuccessorClaimV1
+    from executor_birth_prepared_set import is_prepared_set_v1
+
+    if (
+        not isinstance(claim, SuccessorClaimV1)
+        or not is_verified_distribution(distribution)
+        or not is_prepared_set_v1(previous_set)
+        or claim.closed_build_id != distribution.identity.closed_build_id
+        or claim.release_sequence != distribution.release_sequence
+    ):
+        raise _conflict()
+    return TransactionHeaderV2(
+        transaction_id=transaction_id,
+        provisioner_build_id=provisioner_build_id,
+        request_id=claim.request_id,
+        closed_build_id=distribution.identity.closed_build_id,
+        previous_set_id=previous_set.set_id,
+        distribution_payload_hash=(
+            "sha256:" + hashlib.sha256(distribution.encoded).hexdigest()
+        ),
+        distribution_signature_hash=(
+            "sha256:" + hashlib.sha256(distribution.signature).hexdigest()
+        ),
+        source_inventory_hash=provisioning_source_inventory_hash_v2(
+            distribution,
+        ),
+    )
+
+
+_JOURNAL_FORMAT_SEAL = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _TransactionJournalFormat:
+    root_prefix: str
+    header_basename: str
+    header_pending_prefix: str
+    decode_header: Callable[[bytes], object]
+    material_plan_basename: str | None
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _JOURNAL_FORMAT_SEAL
+            or not self.root_prefix.startswith(".birth-provisioning-")
+            or not self.header_basename.startswith("transaction-v")
+            or not self.header_basename.endswith(".json")
+            or not self.header_pending_prefix.startswith(".transaction-v")
+            or not callable(self.decode_header)
+            or (
+                self.material_plan_basename is not None
+                and self.material_plan_basename != MATERIAL_PLAN_BASENAME_V2
+            )
+        ):
+            raise _conflict()
+
+
 _ACQUIRED_DIGEST_FIELDS_V1 = (
     "author_source_public_inventory_sha256",
     "approval_input_sha256",
@@ -529,7 +872,9 @@ def decode_checkpoint_v1(raw: bytes) -> CheckpointV1:
 
 
 TRANSACTION_PREFIX_V1 = ".birth-provisioning-v1.txn."
+TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.txn."
 HEADER_PENDING_PREFIX_V1 = ".transaction-v1.pending."
+HEADER_PENDING_PREFIX_V2 = ".transaction-v2.pending."
 CHECKPOINT_PENDING_PREFIX_V1 = ".checkpoint-pending-"
 
 
@@ -538,6 +883,31 @@ def transaction_root_name_v1(transaction_id: str) -> str:
     if not _is_hex(transaction_id, 32):
         raise _conflict()
     return TRANSACTION_PREFIX_V1 + transaction_id
+
+
+def transaction_root_name_v2(transaction_id: str) -> str:
+    """The only admitted name of one transition transaction directory."""
+    if not _is_hex(transaction_id, 32):
+        raise _conflict()
+    return TRANSACTION_PREFIX_V2 + transaction_id
+
+
+_JOURNAL_FORMAT_V1 = _TransactionJournalFormat(
+    TRANSACTION_PREFIX_V1,
+    TRANSACTION_HEADER_BASENAME_V1,
+    HEADER_PENDING_PREFIX_V1,
+    decode_transaction_header_v1,
+    None,
+    _JOURNAL_FORMAT_SEAL,
+)
+_JOURNAL_FORMAT_V2 = _TransactionJournalFormat(
+    TRANSACTION_PREFIX_V2,
+    TRANSACTION_HEADER_BASENAME_V2,
+    HEADER_PENDING_PREFIX_V2,
+    decode_transaction_header_v2,
+    MATERIAL_PLAN_BASENAME_V2,
+    _JOURNAL_FORMAT_SEAL,
+)
 
 
 def new_transaction_id_v1() -> str:
@@ -589,7 +959,7 @@ def _is_checkpoint_name_v1(name: str) -> int | None:
 class TransactionStateV1:
     """What one transaction directory holds right now."""
 
-    header: TransactionHeaderV1 | None
+    header: TransactionHeaderV1 | TransactionHeaderV2 | None
     chain: tuple[CheckpointV1, ...]
     header_pending: bool
     pending_checkpoint_sequence: int | None
@@ -608,13 +978,30 @@ class _TransactionJournalV1:
     The journal records; it decides nothing about authority.
     """
 
-    __slots__ = ("_session", "_transaction_id", "_root", "_checkpoints")
+    __slots__ = (
+        "_session", "_transaction_id", "_root", "_checkpoints", "_format",
+    )
 
-    def __init__(self, session, transaction_id: str) -> None:
+    def __init__(
+        self, session, transaction_id: str,
+        *, _format: _TransactionJournalFormat = _JOURNAL_FORMAT_V1,
+    ) -> None:
+        if (
+            not _is_hex(transaction_id, 32)
+            or not isinstance(_format, _TransactionJournalFormat)
+            or _format._seal is not _JOURNAL_FORMAT_SEAL
+        ):
+            raise _conflict()
         self._session = session
         self._transaction_id = transaction_id
-        self._root = (transaction_root_name_v1(transaction_id),)
+        self._format = _format
+        self._root = (_format.root_prefix + transaction_id,)
         self._checkpoints = self._root + (CHECKPOINTS_BASENAME_V1,)
+
+    @classmethod
+    def transition_v2(cls, session, transaction_id: str):
+        """Create the same journal discipline with the closed V2 header."""
+        return cls(session, transaction_id, _format=_JOURNAL_FORMAT_V2)
 
     @property
     def transaction_id(self) -> str:
@@ -627,6 +1014,10 @@ class _TransactionJournalV1:
     @property
     def checkpoints_components(self) -> tuple[str, ...]:
         return self._checkpoints
+
+    @property
+    def header_basename(self) -> str:
+        return self._format.header_basename
 
     # -- writing ---------------------------------------------------------
 
@@ -652,13 +1043,13 @@ class _TransactionJournalV1:
                 self._checkpoints, role=_integrity_role(),
             )
 
-    def write_header(self, header: TransactionHeaderV1) -> None:
+    def write_header(self, header: object) -> None:
         if header.transaction_id != self._transaction_id:
             raise _conflict()
         self._publish(
             self._root,
-            HEADER_PENDING_PREFIX_V1 + self._transaction_id,
-            TRANSACTION_HEADER_BASENAME_V1,
+            self._format.header_pending_prefix + self._transaction_id,
+            self._format.header_basename,
             header.encode(),
         )
 
@@ -674,6 +1065,109 @@ class _TransactionJournalV1:
             checkpoint.name(),
             checkpoint.encode(),
         )
+
+    def ensure_material_plan_v2(
+        self, factory: Callable[[], MaterialPlanV2],
+    ) -> MaterialPlanV2:
+        """Recover or create the one confidential plan committed by V2 staging."""
+        if self._format.material_plan_basename != MATERIAL_PLAN_BASENAME_V2:
+            raise _conflict()
+        state = self.read_state()
+        header = state.header
+        if not isinstance(header, TransactionHeaderV2):
+            raise _conflict()
+        with _translated():
+            names = set(self._session.inventory(self._root))
+        final = MATERIAL_PLAN_BASENAME_V2
+        pending = MATERIAL_PLAN_PENDING_PREFIX_V2 + self._transaction_id
+        if final in names:
+            if pending in names:
+                raise _reject("birth_provisioning_recovery_ambiguous")
+            return self._read_material_plan_v2(header)
+        if AUTHORITY_SET_BASENAME_V1 in names:
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        if pending in names:
+            try:
+                plan = decode_material_plan_v2(self._read_payload(
+                    self._root + (pending,),
+                    role=self._confidential_role(),
+                ))
+            except BirthProvisioningError:
+                self._discard_pending_by_name(
+                    self._root, pending, role=self._confidential_role(),
+                    maximum=MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1,
+                )
+            else:
+                # A complete plan bound to another header is conflicting
+                # evidence, not an interrupted write that may be discarded.
+                self._require_plan_header_v2(plan, header)
+                with _translated():
+                    self._session.rename_no_replace(
+                        self._root + (pending,), self._root + (final,),
+                        directory=False,
+                    )
+                return self._read_material_plan_v2(header)
+        plan = factory()
+        if not isinstance(plan, MaterialPlanV2):
+            raise _conflict()
+        self._require_plan_header_v2(plan, header)
+        self._publish(
+            self._root, pending, final, plan.encode(),
+            role=self._confidential_role(),
+        )
+        return self._read_material_plan_v2(header)
+
+    def _read_material_plan_v2(
+        self, header: TransactionHeaderV2,
+    ) -> MaterialPlanV2:
+        plan = decode_material_plan_v2(self._read_payload(
+            self._root + (MATERIAL_PLAN_BASENAME_V2,),
+            role=self._confidential_role(),
+        ))
+        self._require_plan_header_v2(plan, header)
+        return plan
+
+    def _require_plan_header_v2(
+        self, plan: MaterialPlanV2, header: TransactionHeaderV2,
+    ) -> None:
+        if (
+            plan.transaction_id != self._transaction_id
+            or plan.transaction_header_sha256
+            != hashlib.sha256(header.encode()).hexdigest()
+        ):
+            raise _conflict()
+        from executor_birth_secure_fs import (
+            _BirthObjectRole, _ObjectKind, _matching_rows,
+        )
+
+        kinds = {
+            PayloadObjectTypeV1.directory: _ObjectKind.directory,
+            PayloadObjectTypeV1.file: _ObjectKind.regular_file,
+        }
+        roles = {
+            PayloadConfidentialityV1.confidential: (
+                _BirthObjectRole.birth_confidential
+            ),
+            PayloadConfidentialityV1.integrity_only: (
+                _BirthObjectRole.birth_integrity_only
+            ),
+        }
+        for entry in plan.entries:
+            components = self._root + tuple(entry.relative_path.split("/"))
+            observed = {
+                (kind, role) for _pattern, kind, role in _matching_rows(components)
+            }
+            expected = {
+                (kinds[entry.object_type], roles[entry.confidentiality])
+            }
+            if observed != expected:
+                raise _conflict()
+
+    @staticmethod
+    def _confidential_role():
+        from executor_birth_secure_fs import _BirthObjectRole
+
+        return _BirthObjectRole.birth_confidential
 
     def publish_payload(
         self,
@@ -749,7 +1243,7 @@ class _TransactionJournalV1:
     # -- recovery --------------------------------------------------------
 
     def recover_header(
-        self, header: TransactionHeaderV1, state: "TransactionStateV1",
+        self, header: object, state: "TransactionStateV1",
     ) -> "TransactionStateV1":
         """Bring the header into existence from whatever the stop left behind.
 
@@ -765,7 +1259,7 @@ class _TransactionJournalV1:
         # calls any other child ambiguous.
         with _translated():
             names = set(self._session.inventory(self._root))
-        pending = HEADER_PENDING_PREFIX_V1 + self._transaction_id
+        pending = self._format.header_pending_prefix + self._transaction_id
         if names - ({pending} if state.header_pending else set()):
             raise _reject("birth_provisioning_recovery_ambiguous")
         if state.header_pending:
@@ -780,9 +1274,9 @@ class _TransactionJournalV1:
 
     def _promote_pending_header(self) -> bool:
         """Promote the header pending when it is already whole and coherent."""
-        pending = HEADER_PENDING_PREFIX_V1 + self._transaction_id
+        pending = self._format.header_pending_prefix + self._transaction_id
         try:
-            observed = decode_transaction_header_v1(
+            observed = self._format.decode_header(
                 self._read(self._root + (pending,))
             )
         except BirthProvisioningError:
@@ -792,7 +1286,7 @@ class _TransactionJournalV1:
         with _translated():
             self._session.rename_no_replace(
                 self._root + (pending,),
-                self._root + (TRANSACTION_HEADER_BASENAME_V1,),
+                self._root + (self._format.header_basename,),
                 directory=False,
             )
         return True
@@ -876,14 +1370,21 @@ class _TransactionJournalV1:
         """Classify the whole transaction directory before trusting any of it."""
         with _translated():
             names = set(self._session.inventory(self._root))
-        header_pending = HEADER_PENDING_PREFIX_V1 + self._transaction_id
+        header_pending = self._format.header_pending_prefix + self._transaction_id
         chain, pending = ((), None)
         if CHECKPOINTS_BASENAME_V1 in names:
             chain, pending = self._read_chain()
         admitted = {
-            TRANSACTION_HEADER_BASENAME_V1, CHECKPOINTS_BASENAME_V1,
+            self._format.header_basename, CHECKPOINTS_BASENAME_V1,
             header_pending,
         }
+        if self._format.material_plan_basename is not None:
+            admitted.update({
+                self._format.material_plan_basename,
+                MATERIAL_PLAN_PENDING_PREFIX_V2 + self._transaction_id,
+            })
+            if self._format.material_plan_basename in names:
+                admitted.add(AUTHORITY_SET_BASENAME_V1)
         # A payload is admitted only where the most recent checkpoint declares
         # it: the journal is the authority on what may exist, and anything
         # else asks for a human rather than a guess (sections 4.3 and 7.6).
@@ -899,7 +1400,7 @@ class _TransactionJournalV1:
         if len(payload_pendings) > 1 or (names - admitted) - payload_pendings:
             raise _reject("birth_provisioning_recovery_ambiguous")
         header = None
-        if TRANSACTION_HEADER_BASENAME_V1 in names:
+        if self._format.header_basename in names:
             header = self.read_header()
             if header.transaction_id != self._transaction_id:
                 raise _conflict()
@@ -910,9 +1411,9 @@ class _TransactionJournalV1:
             pending_checkpoint_sequence=pending,
         )
 
-    def read_header(self) -> TransactionHeaderV1:
-        return decode_transaction_header_v1(
-            self._read(self._root + (TRANSACTION_HEADER_BASENAME_V1,))
+    def read_header(self) -> TransactionHeaderV1 | TransactionHeaderV2:
+        return self._format.decode_header(
+            self._read(self._root + (self._format.header_basename,))
         )
 
     def _read_chain(self) -> tuple[tuple[CheckpointV1, ...], int | None]:
@@ -964,11 +1465,14 @@ class _TransactionJournalV1:
         return tuple(chain), (pendings[0] if pendings else None)
 
     def _read(self, components: tuple[str, ...]) -> bytes:
+        return self._read_payload(components, role=_integrity_role())
+
+    def _read_payload(self, components: tuple[str, ...], *, role) -> bytes:
         with _translated():
             return self._session.read_file(
                 components,
                 maximum=MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1,
-                role=_integrity_role(),
+                role=role,
             )
 
 
@@ -976,6 +1480,539 @@ def _integrity_role():
     from executor_birth_secure_fs import _BirthObjectRole
 
     return _BirthObjectRole.birth_integrity_only
+
+
+def _material_plan_role_v2(confidentiality: PayloadConfidentialityV1):
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    if confidentiality is PayloadConfidentialityV1.confidential:
+        return _BirthObjectRole.birth_confidential
+    if confidentiality is PayloadConfidentialityV1.integrity_only:
+        return _BirthObjectRole.birth_integrity_only
+    raise _conflict()
+
+
+def _materialize_material_plan_v2(
+    session, journal: _TransactionJournalV1, plan: MaterialPlanV2,
+) -> tuple[PayloadRecordV1, ...]:
+    """Expand one committed plan exactly, reusing every matching object."""
+    header = journal.read_state().header
+    if not isinstance(header, TransactionHeaderV2):
+        raise _conflict()
+    journal._require_plan_header_v2(plan, header)
+    committed = journal._read_material_plan_v2(header)
+    if plan != committed:
+        raise _conflict()
+    records: list[PayloadRecordV1] = []
+    file_sequence = 1
+    for entry in plan.entries:
+        components = journal.root_components + tuple(
+            entry.relative_path.split("/")
+        )
+        role = _material_plan_role_v2(entry.confidentiality)
+        if entry.object_type is PayloadObjectTypeV1.directory:
+            _ensure_material_plan_directory_v2(session, components, role)
+            size = None
+            digest = None
+        else:
+            payload = entry.payload
+            if payload is None:
+                raise _conflict()
+            _ensure_material_plan_file_v2(
+                session, journal, components, payload, role,
+                object_sequence=file_sequence,
+            )
+            file_sequence += 1
+            size = len(payload)
+            digest = hashlib.sha256(payload).hexdigest()
+        records.append(PayloadRecordV1(
+            relative_path=entry.relative_path,
+            object_type=entry.object_type,
+            confidentiality=entry.confidentiality,
+            size=size,
+            sha256=digest,
+            platform_identity=_platform_identity_v1(
+                _identity_v1(session, components)
+            ),
+        ))
+    _require_material_plan_inventory_v2(session, journal, plan)
+    return _ordered_payload_records(records)
+
+
+def _ensure_material_plan_directory_v2(session, components, role) -> None:
+    name = components[-1]
+    with _translated():
+        present = {entry.name for entry in session._inventory_state(components[:-1])}
+        if name not in present:
+            session.create_directory_exclusive(components, role=role)
+
+
+def _ensure_material_plan_file_v2(
+    session, journal: _TransactionJournalV1, components: tuple[str, ...],
+    payload: bytes, role, *, object_sequence: int,
+) -> None:
+    parent = components[:-1]
+    final = components[-1]
+    pending = _payload_pending_name_v1(
+        object_sequence, journal.transaction_id,
+    )
+    with _translated():
+        names = set(session.inventory(parent))
+    if final in names and pending in names:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    if final not in names and pending in names:
+        try:
+            with _translated():
+                observed = session.read_file(
+                    parent + (pending,), maximum=len(payload), role=role,
+                )
+        except BirthProvisioningError:
+            # A file that does not fit the exact bound is not a torn prefix.
+            raise _conflict() from None
+        if observed == payload:
+            with _translated():
+                session.rename_no_replace(
+                    parent + (pending,), components, directory=False,
+                )
+        elif len(observed) < len(payload) and payload.startswith(observed):
+            journal._discard_pending_by_name(
+                parent, pending, role=role, maximum=len(payload),
+            )
+        else:
+            # Preserve complete conflicting evidence.
+            raise _conflict()
+    with _translated():
+        names = set(session.inventory(parent))
+    if final not in names:
+        journal.publish_payload(
+            parent, final, payload, role=role,
+            object_sequence=object_sequence,
+        )
+    with _translated():
+        observed = session.read_file(
+            components, maximum=len(payload), role=role,
+        )
+    if observed != payload:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+
+
+def _require_material_plan_inventory_v2(
+    session, journal: _TransactionJournalV1, plan: MaterialPlanV2,
+) -> None:
+    children: dict[str, set[str]] = {}
+    directories = {
+        entry.relative_path
+        for entry in plan.entries
+        if entry.object_type is PayloadObjectTypeV1.directory
+    }
+    for entry in plan.entries:
+        if "/" not in entry.relative_path:
+            continue
+        parent, name = entry.relative_path.rsplit("/", 1)
+        children.setdefault(parent, set()).add(name)
+    for relative in directories:
+        components = journal.root_components + tuple(relative.split("/"))
+        with _translated():
+            observed = set(session.inventory(components))
+        if observed != children.get(relative, set()):
+            raise _reject("birth_provisioning_recovery_ambiguous")
+
+
+def _build_material_plan_v2(
+    session, journal: _TransactionJournalV1, layout,
+    previous_set: object, distribution: object,
+) -> MaterialPlanV2:
+    """Freeze a complete new set from the installed author and target release."""
+    from executor_birth_distribution_manifest import is_verified_distribution
+    from executor_birth_keystore import raw_public_key
+    from executor_birth_prepared_set import is_prepared_set_v1
+
+    header = journal.read_state().header
+    if (
+        not isinstance(header, TransactionHeaderV2)
+        or not is_prepared_set_v1(previous_set)
+        or not is_verified_distribution(distribution)
+        or header.previous_set_id != previous_set.set_id
+        or header.closed_build_id != distribution.identity.closed_build_id
+        or header.distribution_payload_hash
+        != "sha256:" + hashlib.sha256(distribution.encoded).hexdigest()
+        or header.distribution_signature_hash
+        != "sha256:" + hashlib.sha256(distribution.signature).hexdigest()
+        or header.source_inventory_hash
+        != provisioning_source_inventory_hash_v2(distribution)
+    ):
+        raise _conflict()
+    author = verify_author_store_v1(
+        session, (AUTHOR_STORE_BASENAME_V1,), None,
+    )
+    author_publics = {
+        key_id: raw_public_key(key)
+        for key_id, key in author.verifier_keys.items()
+    }
+    if (
+        author.active_key_id != previous_set.author_active_key_id
+        or tuple(sorted(author_publics))
+        != previous_set.author_verifier_key_ids
+    ):
+        raise _reject("birth_author_keystore_existing_invalid")
+    inputs = acquire_operator_inputs_v1(layout.operator_input)
+    catalog = producer_catalog_v1()
+    admission_key_id, admission_private, admission_publics = _generate_keypair_v1()
+    producer_material: dict[str, tuple[str, bytes, dict[str, bytes]]] = {}
+    generated = list(admission_publics.values())
+    for producer_id, operation in catalog:
+        name = producer_store_name_v1(producer_id, operation)
+        if name in producer_material:
+            raise _conflict()
+        material = _generate_keypair_v1()
+        producer_material[name] = material
+        generated.extend(material[2].values())
+    _require_separated_authority_keys_v1(
+        author_publics=author_publics, generated=generated, inputs=inputs,
+    )
+    registry = _planned_authority_registry_v2(
+        inputs, admission_key_id, admission_publics, producer_material,
+    )
+    prepared = _prepare_verified_admission_context_v2(
+        distribution, registry,
+    )
+    sandbox_document = measure_sandbox_backend_v1()
+    digests = empty_digests_v1()
+    digests.update({
+        "approval_input_sha256": inputs.approval_sha256,
+        "semantic_input_sha256": inputs.semantic_sha256,
+        "producer_catalog_sha256": producer_catalog_sha256_v1(catalog),
+        "context_source_inventory_sha256": prepared.source_inventory_sha256,
+        "author_store_public_inventory_sha256": (
+            author_store_public_inventory_sha256_v1(author_publics)
+        ),
+        "context_material_sha256": prepared.material_sha256,
+    })
+    set_document, _set_id = build_set_document_v1(
+        transaction_id=journal.transaction_id,
+        provisioner_build_id=header.provisioner_build_id,
+        author={
+            "active_key_id": author.active_key_id,
+            "verifier_key_ids": sorted(author_publics),
+        },
+        registry=registry,
+        catalog=catalog,
+        digests=digests,
+        prepared=prepared,
+        approval_document=inputs.approval_document,
+        semantic_document=inputs.semantic_document,
+        sandbox_document=sandbox_document,
+    )
+    digests["set_json_sha256"] = hashlib.sha256(set_document).hexdigest()
+    entries: list[MaterialPlanEntryV2] = []
+
+    def directory(relative: str, confidentiality) -> None:
+        entries.append(MaterialPlanEntryV2(
+            relative, PayloadObjectTypeV1.directory, confidentiality, None,
+        ))
+
+    def file(relative: str, confidentiality, payload: bytes) -> None:
+        entries.append(MaterialPlanEntryV2(
+            relative, PayloadObjectTypeV1.file, confidentiality, payload,
+        ))
+
+    integrity = PayloadConfidentialityV1.integrity_only
+    confidential = PayloadConfidentialityV1.confidential
+    directory(AUTHORITY_SET_BASENAME_V1, integrity)
+    directory(f"{AUTHORITY_SET_BASENAME_V1}/producers", integrity)
+    directory(f"{AUTHORITY_SET_BASENAME_V1}/approval", integrity)
+    directory(f"{AUTHORITY_SET_BASENAME_V1}/semantic", integrity)
+    directory(f"{AUTHORITY_SET_BASENAME_V1}/semantic/public", integrity)
+    directory(f"{AUTHORITY_SET_BASENAME_V1}/semantic/evidence", integrity)
+    directory(
+        f"{AUTHORITY_SET_BASENAME_V1}/{SANDBOX_CONTAINER_BASENAME_V1}",
+        integrity,
+    )
+    directory(
+        f"{AUTHORITY_SET_BASENAME_V1}/{CONTEXT_CONTAINER_BASENAME_V1}",
+        integrity,
+    )
+    _add_planned_keystore_v2(
+        entries, f"{AUTHORITY_SET_BASENAME_V1}/admission",
+        admission_key_id, admission_private, admission_publics,
+    )
+    for name, (key_id, private_raw, publics) in producer_material.items():
+        _add_planned_keystore_v2(
+            entries, f"{AUTHORITY_SET_BASENAME_V1}/producers/{name}",
+            key_id, private_raw, publics,
+        )
+    file(
+        f"{AUTHORITY_SET_BASENAME_V1}/approval/authority.json", integrity,
+        inputs.approval_document,
+    )
+    file(
+        f"{AUTHORITY_SET_BASENAME_V1}/semantic/authority.json", integrity,
+        inputs.semantic_document,
+    )
+    for name, public in inputs.semantic_publics.items():
+        file(
+            f"{AUTHORITY_SET_BASENAME_V1}/semantic/public/{name}",
+            integrity, public,
+        )
+    file(
+        f"{AUTHORITY_SET_BASENAME_V1}/{SANDBOX_CONTAINER_BASENAME_V1}/"
+        f"{SANDBOX_REGISTRY_BASENAME_V1}",
+        integrity, sandbox_document,
+    )
+    file(
+        f"{AUTHORITY_SET_BASENAME_V1}/{CONTEXT_CONTAINER_BASENAME_V1}/"
+        f"{CONTEXT_MATERIAL_BASENAME_V1}",
+        integrity, prepared.document,
+    )
+    file(
+        f"{AUTHORITY_SET_BASENAME_V1}/{SET_DOCUMENT_BASENAME_V1}",
+        integrity, set_document,
+    )
+    return MaterialPlanV2(
+        transaction_id=journal.transaction_id,
+        transaction_header_sha256=hashlib.sha256(header.encode()).hexdigest(),
+        entries=tuple(sorted(entries, key=lambda item: item.sort_key)),
+    )
+
+
+def _add_planned_keystore_v2(
+    entries: list[MaterialPlanEntryV2], base: str, active_key_id: str,
+    active_private: bytes, publics: Mapping[str, bytes],
+) -> None:
+    confidential = PayloadConfidentialityV1.confidential
+    integrity = PayloadConfidentialityV1.integrity_only
+    entries.extend((
+        MaterialPlanEntryV2(
+            base, PayloadObjectTypeV1.directory, confidential, None,
+        ),
+        MaterialPlanEntryV2(
+            f"{base}/private", PayloadObjectTypeV1.directory,
+            confidential, None,
+        ),
+        MaterialPlanEntryV2(
+            f"{base}/public", PayloadObjectTypeV1.directory,
+            integrity, None,
+        ),
+        MaterialPlanEntryV2(
+            f"{base}/birth-keystore.lock", PayloadObjectTypeV1.file,
+            confidential, b"0",
+        ),
+        MaterialPlanEntryV2(
+            f"{base}/keystore.json", PayloadObjectTypeV1.file,
+            confidential, keystore_config_v1(active_key_id, publics),
+        ),
+        MaterialPlanEntryV2(
+            f"{base}/private/{active_key_id}.key", PayloadObjectTypeV1.file,
+            confidential, active_private,
+        ),
+    ))
+    entries.extend(
+        MaterialPlanEntryV2(
+            f"{base}/public/{key_id}.pub", PayloadObjectTypeV1.file,
+            integrity, publics[key_id],
+        )
+        for key_id in sorted(publics)
+    )
+
+
+def _planned_authority_registry_v2(
+    inputs: OperatorInputsV1, admission_key_id: str,
+    admission_publics: Mapping[str, bytes],
+    producer_material: Mapping[str, tuple[str, bytes, Mapping[str, bytes]]],
+) -> dict[str, object]:
+    from executor_birth_approval_authority import _decode_approval_authority
+    from executor_birth_keystore import raw_public_key
+
+    def store(active_key_id: str, publics: Mapping[str, bytes]):
+        return {
+            "active_key_id": active_key_id,
+            "verifier_key_ids": sorted(publics),
+            "public_keys": {
+                key_id: publics[key_id].hex() for key_id in sorted(publics)
+            },
+        }
+
+    approval = _decode_approval_authority(inputs.approval_document)
+    semantic = decode_canonical_document_v1(inputs.semantic_document)
+    return {
+        "admission": store(admission_key_id, admission_publics),
+        "producers": {
+            name: store(key_id, publics)
+            for name, (key_id, _private, publics) in producer_material.items()
+        },
+        "approval": {
+            "revision": approval.revision,
+            "keys": {
+                key_id: raw_public_key(key).hex()
+                for key_id, key in sorted(approval.keys.items())
+            },
+            "actors": {
+                actor: {
+                    "key_ids": sorted(entry["key_ids"]),
+                    "scopes": sorted(entry["scopes"]),
+                }
+                for actor, entry in sorted(approval.actors.items())
+            },
+        },
+        "semantic": {
+            key_id: spec["status"]
+            for key_id, spec in sorted(semantic["verifiers"].items())
+        },
+    }
+
+
+def _prepare_verified_admission_context_v2(
+    distribution: object, authority_registry: Mapping[str, object],
+) -> PreparedContextMaterialV1:
+    from executor_birth_prepared_root import (
+        PreparedRootError, _open_distribution_sources_for_verified_v1,
+    )
+
+    try:
+        sources = _open_distribution_sources_for_verified_v1(distribution)
+    except PreparedRootError as exc:
+        raise BirthProvisioningError(exc.code, exc) from None
+    try:
+        return prepare_context_material_v1(sources, authority_registry)
+    except ContextMaterialError as exc:
+        raise BirthProvisioningError(exc.code, exc) from None
+    finally:
+        sources.close()
+
+
+def _prepare_staged_authority_set_v2(
+    session, layout, expected_header: TransactionHeaderV2,
+    previous_set: object, distribution: object,
+) -> CheckpointV1:
+    """Converge one V2 transaction on a verified staged authority set."""
+    journal = _TransactionJournalV1.transition_v2(
+        session, expected_header.transaction_id,
+    )
+    state = journal.recover_header(expected_header, journal.read_state())
+    if state.header != expected_header:
+        raise _conflict()
+    journal.ensure_checkpoints()
+    state = journal.recover_checkpoint_pending(journal.read_state())
+    zero = CheckpointV1(
+        expected_header.transaction_id, 0, None, ProvisioningStateV1.created,
+        (), empty_digests_v1(), None,
+    )
+    last = state.last
+    if last is None:
+        journal.append(zero)
+        last = zero
+    elif last != zero and last.state is not ProvisioningStateV1.verified:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    plan = journal.ensure_material_plan_v2(lambda: _build_material_plan_v2(
+        session, journal, layout, previous_set, distribution,
+    ))
+    records = _materialize_material_plan_v2(session, journal, plan)
+    digests, set_id = _staged_material_digests_v2(
+        session, journal, previous_set,
+    )
+    candidate = CheckpointV1(
+        expected_header.transaction_id, 1, zero.digest(),
+        ProvisioningStateV1.verified, records, digests, set_id,
+    )
+    if last.state is ProvisioningStateV1.verified:
+        if last != candidate or len(state.chain) != 2:
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        return last
+    journal.append(candidate)
+    committed = journal.read_state()
+    if committed.last != candidate or len(committed.chain) != 2:
+        raise _reject("birth_provisioning_io_unavailable")
+    return candidate
+
+
+def _staged_material_digests_v2(
+    session, journal: _TransactionJournalV1, previous_set: object,
+) -> tuple[dict[str, str | None], str]:
+    from executor_birth_keystore import raw_public_key
+    from executor_birth_prepared_set import SET_FIELDS_V1, is_prepared_set_v1
+
+    if not is_prepared_set_v1(previous_set):
+        raise _conflict()
+    base = journal.root_components + (AUTHORITY_SET_BASENAME_V1,)
+    set_payload = _read_set_document_v1(
+        session, base + (SET_DOCUMENT_BASENAME_V1,),
+    )
+    set_document = decode_canonical_document_v1(set_payload)
+    context_payload = _read_set_document_v1(
+        session,
+        base + (CONTEXT_CONTAINER_BASENAME_V1, CONTEXT_MATERIAL_BASENAME_V1),
+    )
+    author = verify_author_store_v1(
+        session, (AUTHOR_STORE_BASENAME_V1,), None,
+    )
+    author_publics = {
+        key_id: raw_public_key(key)
+        for key_id, key in author.verifier_keys.items()
+    }
+    set_id = set_document.get("set_id")
+    unsigned = dict(set_document)
+    unsigned.pop("set_id", None)
+    if (
+        set(set_document) != SET_FIELDS_V1
+        or set_document["schema_version"] != 1
+        or set_document["state"] != "complete"
+        or not _is_hex(set_id, 64)
+        or set_id != hashlib.sha256(
+            SET_ID_DIGEST_DOMAIN_V1
+            + encode_canonical_document_v1(unsigned)
+        ).hexdigest()
+        or set_document["provisioning_transaction_id"]
+        != journal.transaction_id
+        or set_document["author_active_key_id"]
+        != previous_set.author_active_key_id
+        or tuple(set_document["author_verifier_key_ids"])
+        != previous_set.author_verifier_key_ids
+        or set_document["context_material_sha256"]
+        != hashlib.sha256(context_payload).hexdigest()
+    ):
+        raise _reject("birth_authority_set_conflict")
+    producer_keys = set_document["producer_keys"]
+    if (
+        not isinstance(producer_keys, dict)
+        or any(
+            not isinstance(entry, dict)
+            or set(entry) != {
+                "store_name", "active_key_id", "verifier_key_ids",
+            }
+            or not isinstance(entry["store_name"], str)
+            or not isinstance(entry["active_key_id"], str)
+            or not isinstance(entry["verifier_key_ids"], list)
+            for entry in producer_keys.values()
+        )
+    ):
+        raise _reject("birth_authority_set_conflict")
+    staged = StagedAuthoritySetV1(
+        payload_inventory=(),
+        admission_key_id=set_document["admission_active_key_id"],
+        producer_key_ids={
+            entry["store_name"]: entry["active_key_id"]
+            for entry in producer_keys.values()
+        },
+        next_object_sequence=0,
+    )
+    if len(staged.producer_key_ids) != len(producer_keys):
+        raise _reject("birth_authority_set_conflict")
+    verify_authority_set_v1(session, base, staged)
+    digests = empty_digests_v1()
+    digests.update({
+        "approval_input_sha256": set_document["approval_input_sha256"],
+        "semantic_input_sha256": set_document["semantic_input_sha256"],
+        "producer_catalog_sha256": set_document["producer_catalog_sha256"],
+        "context_source_inventory_sha256": (
+            set_document["context_source_inventory_sha256"]
+        ),
+        "author_store_public_inventory_sha256": (
+            author_store_public_inventory_sha256_v1(author_publics)
+        ),
+        "set_json_sha256": hashlib.sha256(set_payload).hexdigest(),
+        "context_material_sha256": set_document["context_material_sha256"],
+    })
+    return digests, set_id
 
 
 @contextmanager
@@ -2642,7 +3679,7 @@ def _remove_transaction_v1(session, journal: "_TransactionJournalV1") -> None:
             for entry in session._inventory_state(components[:-1]):
                 if entry.name != components[-1]:
                     continue
-                if entry.name == TRANSACTION_HEADER_BASENAME_V1:
+                if entry.name == journal.header_basename:
                     continue
                 session.dispose_transaction_object(_DisposalExpectation(
                     components=components,
@@ -2665,9 +3702,9 @@ def _dispose_header_v1(session, journal: "_TransactionJournalV1") -> None:
         _DisposalClass, _DisposalExpectation, _ObjectKind,
     )
 
-    components = journal.root_components + (TRANSACTION_HEADER_BASENAME_V1,)
+    components = journal.root_components + (journal.header_basename,)
     for entry in session._inventory_state(journal.root_components):
-        if entry.name != TRANSACTION_HEADER_BASENAME_V1:
+        if entry.name != journal.header_basename:
             continue
         payload = session.read_file(
             components,
@@ -2691,6 +3728,9 @@ def _dispose_header_v1(session, journal: "_TransactionJournalV1") -> None:
 PROVISIONER_BUILD_DIGEST_DOMAIN_V1 = (
     b"metnos.executor-birth.provisioner-build/v1\0"
 )
+PROVISIONER_BUILD_DIGEST_DOMAIN_V2 = (
+    b"metnos.executor-birth.provisioner-build/v2\0"
+)
 
 
 def _provisioner_build_id_v1() -> str:
@@ -2712,6 +3752,22 @@ def _provisioner_build_id_v1() -> str:
     return "birth-provisioner-v1-" + hashlib.sha256(body).hexdigest()
 
 
+def _provisioner_build_id_v2() -> str:
+    """Identify the exact transition provisioner loaded for this process."""
+    import inspect
+
+    import executor_birth_commit_publisher
+
+    body = bytearray(PROVISIONER_BUILD_DIGEST_DOMAIN_V2)
+    for module in (
+        inspect.getmodule(_provisioner_build_id_v2),
+        executor_birth_commit_publisher,
+    ):
+        source = inspect.getsource(module).encode("utf-8")
+        body += len(source).to_bytes(8, "big") + source
+    return "birth-provisioner-v2-" + hashlib.sha256(body).hexdigest()
+
+
 def _open_installer_layout_v1():
     """Take the one layout the installer knows how to build."""
     from install.birth_authority_provisioning import (
@@ -2720,6 +3776,920 @@ def _open_installer_layout_v1():
 
     with _translated():
         return open_birth_provisioning_layout_v1()
+
+
+def _prepare_transition_authority_set_v2(
+    claim: object, distribution: object, previous_set: object,
+) -> PreparedAuthoritySetV2:
+    """Prepare or resume the sole V2 set transaction at the fixed Birth root."""
+    from executor_birth_distribution_manifest import is_verified_distribution
+    from executor_birth_ownership_coordinator import SuccessorClaimV1
+    from executor_birth_prepared_set import is_prepared_set_v1
+
+    if (
+        not isinstance(claim, SuccessorClaimV1)
+        or not is_verified_distribution(distribution)
+        or not is_prepared_set_v1(previous_set)
+    ):
+        raise _conflict()
+    layout = _open_installer_layout_v1()
+    result = None
+    published = False
+    try:
+        session = layout.birth_session
+        with _translated():
+            lock = session.global_lock(exclusive=True, create=True)
+        with lock:
+            with _translated():
+                names = set(session.inventory(()))
+            legacy = {
+                name for name in names if name.startswith(TRANSACTION_PREFIX_V1)
+            }
+            transitions = sorted(
+                name for name in names if name.startswith(TRANSACTION_PREFIX_V2)
+            )
+            if legacy or len(transitions) > 1:
+                raise _reject("birth_provisioning_recovery_ambiguous")
+            if transitions:
+                transaction_id = transitions[0][len(TRANSACTION_PREFIX_V2):]
+                if not _is_hex(transaction_id, 32):
+                    raise _reject("birth_provisioning_recovery_ambiguous")
+            else:
+                transaction_id = new_transaction_id_v1()
+            header = _build_transaction_header_v2(
+                transaction_id=transaction_id,
+                provisioner_build_id=_provisioner_build_id_v2(),
+                claim=claim,
+                distribution=distribution,
+                previous_set=previous_set,
+            )
+            journal = _TransactionJournalV1.transition_v2(
+                session, transaction_id,
+            )
+            if not transitions:
+                journal.create_root()
+            if transitions:
+                result = _resume_published_authority_set_v2(
+                    session, journal, header,
+                )
+                published = result is not None
+            if result is None:
+                checkpoint = _prepare_staged_authority_set_v2(
+                    session, layout, header, previous_set, distribution,
+                )
+                plan = journal._read_material_plan_v2(header)
+                set_payload = _read_set_document_v1(
+                    session,
+                    journal.root_components
+                    + (AUTHORITY_SET_BASENAME_V1, SET_DOCUMENT_BASENAME_V1),
+                )
+                set_document = decode_canonical_document_v1(set_payload)
+                result = _prepared_authority_set_result_v2(
+                    header, checkpoint, plan, set_document,
+                )
+    finally:
+        layout.birth_session.close()
+    assert result is not None
+    if published:
+        _verify_published_authority_set_v2(result)
+    return result
+
+
+def _resume_published_authority_set_v2(
+    session, journal: _TransactionJournalV1, expected_header: TransactionHeaderV2,
+) -> PreparedAuthoritySetV2 | None:
+    """Recover only the exact final set moved by a verified V2 transaction."""
+    state = journal.read_state()
+    if state.header is None and state.last is None:
+        return None
+    if state.header != expected_header:
+        raise _conflict()
+    with _translated():
+        transaction_names = set(session.inventory(journal.root_components))
+    staged = AUTHORITY_SET_BASENAME_V1 in transaction_names
+    if state.last is None or state.last.state is not ProvisioningStateV1.verified:
+        return None
+    if len(state.chain) != 2:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    checkpoint = state.last
+    assert checkpoint.set_id is not None
+    with _translated():
+        published_names = set(session.inventory(
+            (AUTHORITY_SETS_BASENAME_V1,),
+        ))
+    final = checkpoint.set_id in published_names
+    if staged == final:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    if staged:
+        return None
+    plan = journal._read_material_plan_v2(expected_header)
+    set_payload = _read_set_document_v1(
+        session,
+        (AUTHORITY_SETS_BASENAME_V1, checkpoint.set_id,
+         SET_DOCUMENT_BASENAME_V1),
+    )
+    result = _prepared_authority_set_result_v2(
+        expected_header, checkpoint, plan,
+        decode_canonical_document_v1(set_payload),
+    )
+    _validate_prepared_authority_set_v2(session, result)
+    return result
+
+
+def _prepared_authority_set_result_v2(
+    header: TransactionHeaderV2, checkpoint: CheckpointV1,
+    plan: MaterialPlanV2, set_document: Mapping[str, object],
+) -> PreparedAuthoritySetV2:
+    values = dict(
+        transaction_id=header.transaction_id,
+        provisioner_build_id=header.provisioner_build_id,
+        request_id=header.request_id,
+        closed_build_id=header.closed_build_id,
+        distribution_payload_hash=header.distribution_payload_hash,
+        distribution_signature_hash=header.distribution_signature_hash,
+        previous_set_id=header.previous_set_id,
+        target_set_id=checkpoint.set_id,
+        target_admission_context_id=(
+            set_document["prepared_admission_context_id"]
+        ),
+        target_context_epoch=set_document["prepared_context_epoch"],
+        target_context_material_sha256=(
+            checkpoint.digests["context_material_sha256"]
+        ),
+        target_set_json_sha256=checkpoint.digests["set_json_sha256"],
+        source_inventory_hash=header.source_inventory_hash,
+        material_plan_sha256=plan.digest(),
+        verified_checkpoint_sha256=checkpoint.digest(),
+    )
+    binding = _prepared_authority_set_binding_v2(values)
+    return PreparedAuthoritySetV2(
+        **values, _artifact_binding=binding,
+        _seal=_PREPARED_AUTHORITY_SET_SEAL_V2,
+    )
+
+
+def _publish_prepared_authority_set_v2(
+    prepared: object,
+) -> PreparedAuthoritySetV2:
+    """Publish one authorized staged set without changing the context selector."""
+    if not is_prepared_authority_set_v2(prepared):
+        raise _conflict()
+    layout = _open_installer_layout_v1()
+    try:
+        session = layout.birth_session
+        with _translated():
+            lock = session.global_lock(exclusive=True, create=True)
+        with lock:
+            journal = _validate_prepared_authority_set_v2(session, prepared)
+            with _translated():
+                root_names = set(session.inventory(()))
+                transaction_names = set(session.inventory(
+                    journal.root_components,
+                ))
+                published = set(session.inventory(
+                    (AUTHORITY_SETS_BASENAME_V1,),
+                ))
+            staged = AUTHORITY_SET_BASENAME_V1 in transaction_names
+            final = prepared.target_set_id in published
+            if PREPARED_MARKER_BASENAME_V1 not in root_names:
+                raise _reject("birth_provisioning_recovery_ambiguous")
+            if staged and final:
+                raise _reject("birth_provisioning_recovery_ambiguous")
+            if staged:
+                with _translated():
+                    session.rename_no_replace(
+                        journal.root_components + (AUTHORITY_SET_BASENAME_V1,),
+                        (AUTHORITY_SETS_BASENAME_V1, prepared.target_set_id),
+                        directory=True,
+                    )
+            elif not final:
+                raise _reject("birth_provisioning_recovery_ambiguous")
+    finally:
+        layout.birth_session.close()
+    _verify_published_authority_set_v2(prepared)
+    return prepared
+
+
+def _validate_prepared_authority_set_v2(
+    session, prepared: PreparedAuthoritySetV2,
+) -> _TransactionJournalV1:
+    journal = _TransactionJournalV1.transition_v2(
+        session, prepared.transaction_id,
+    )
+    state = journal.read_state()
+    header = state.header
+    if (
+        not isinstance(header, TransactionHeaderV2)
+        or len(state.chain) != 2
+        or state.last is None
+        or state.last.state is not ProvisioningStateV1.verified
+        or state.last.digest() != prepared.verified_checkpoint_sha256
+        or state.last.set_id != prepared.target_set_id
+        or state.last.digests["context_material_sha256"]
+        != prepared.target_context_material_sha256
+        or state.last.digests["set_json_sha256"]
+        != prepared.target_set_json_sha256
+        or header.transaction_id != prepared.transaction_id
+        or header.provisioner_build_id != prepared.provisioner_build_id
+        or header.request_id != prepared.request_id
+        or header.closed_build_id != prepared.closed_build_id
+        or header.distribution_payload_hash
+        != prepared.distribution_payload_hash
+        or header.distribution_signature_hash
+        != prepared.distribution_signature_hash
+        or header.previous_set_id != prepared.previous_set_id
+        or header.source_inventory_hash != prepared.source_inventory_hash
+    ):
+        raise _conflict()
+    plan = journal._read_material_plan_v2(header)
+    if plan.digest() != prepared.material_plan_sha256:
+        raise _conflict()
+    return journal
+
+
+def _verify_published_authority_set_v2(
+    prepared: PreparedAuthoritySetV2,
+) -> None:
+    from executor_birth_prepared_set import (
+        PreparedSetError, load_authority_set_v1,
+    )
+
+    layout = _open_installer_layout_v1()
+    try:
+        session = layout.birth_session
+        with _translated():
+            lock = session.global_lock(exclusive=False, create=False)
+        with lock:
+            try:
+                observed = load_authority_set_v1(
+                    session, prepared.target_set_id,
+                    expected_set_json_sha256=prepared.target_set_json_sha256,
+                    expected_transaction_id=prepared.transaction_id,
+                    expected_context_material_sha256=(
+                        prepared.target_context_material_sha256
+                    ),
+                )
+            except PreparedSetError as exc:
+                raise BirthProvisioningError(exc.code, exc) from None
+            if (
+                observed.set_id != prepared.target_set_id
+                or observed.prepared_admission_context_id
+                != prepared.target_admission_context_id
+                or observed.prepared_context_epoch
+                != prepared.target_context_epoch
+                or observed.provisioner_build_id
+                != prepared.provisioner_build_id
+            ):
+                raise _reject("birth_authority_set_conflict")
+    finally:
+        layout.birth_session.close()
+
+
+_TRANSITION_RECEIPT_PREPARATION_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _TransitionReceiptPreparationV2:
+    distribution: object
+    descriptor: object
+    previous_context: object
+    prepared_authority_set: PreparedAuthoritySetV2
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _TRANSITION_RECEIPT_PREPARATION_SEAL_V2
+            or not is_prepared_authority_set_v2(self.prepared_authority_set)
+        ):
+            raise _conflict()
+
+
+def _prepare_transition_receipt_material_locked_v2(
+    session: object, distribution: object,
+) -> _TransitionReceiptPreparationV2:
+    """Complete reversible preparation before entering maintenance."""
+    from executor_birth_distribution_manifest import (
+        capture_current_deployment_descriptor_v1,
+    )
+    from executor_birth_ownership_coordinator import (
+        _require_deployment_lock_session_v1, _transition_edge_locked_v2,
+    )
+    from executor_birth_prepared_root import (
+        _load_historical_transition_anchor_v1,
+        load_required_context_runtime_v1,
+    )
+
+    _require_deployment_lock_session_v1(session)
+    verified, descriptor = capture_current_deployment_descriptor_v1(
+        distribution,
+    )
+    claim, predecessor = _transition_edge_locked_v2(session, verified)
+    if predecessor is None:
+        if claim.release_sequence != 1:
+            raise _conflict()
+        previous_set = _load_historical_transition_anchor_v1()
+        previous_context = previous_set
+    else:
+        required = load_required_context_runtime_v1()
+        if (
+            required.required_head_id != claim.previous_head_id
+            or required.required_head_id != predecessor.head_id
+        ):
+            raise _conflict()
+        previous_context = required.selection
+        previous_set = required.authorities.prepared
+    prepared = _prepare_transition_authority_set_v2(
+        claim, verified, previous_set,
+    )
+    return _TransitionReceiptPreparationV2(
+        verified, descriptor, previous_context, prepared,
+        _TRANSITION_RECEIPT_PREPARATION_SEAL_V2,
+    )
+
+
+def _complete_transition_receipts_locked_v2(
+    session: object, preparation: object, frozen: object,
+) -> object:
+    """Reach receipt completeness under caller-held deployment and maintenance."""
+    from datetime import datetime, timezone
+
+    from executor_birth_distribution_manifest import (
+        capture_current_deployment_descriptor_v1,
+    )
+    from executor_birth_ownership_coordinator import (
+        _append_prepared_transition_locked_v2,
+        _append_receipts_complete_locked_v2,
+        _build_staged_current_receipts_v2,
+        _prepared_transition_publication_v2,
+        _publish_context_transition_locked_v2,
+        _require_deployment_lock_session_v1,
+    )
+    from executor_birth_prepared_root import (
+        _load_staged_reattestation_context_v1,
+    )
+    from executor_birth_ownership_preflight import (
+        canonical_maintenance_proof,
+    )
+
+    _require_deployment_lock_session_v1(session)
+    if (
+        type(preparation) is not _TransitionReceiptPreparationV2
+        or preparation._seal is not _TRANSITION_RECEIPT_PREPARATION_SEAL_V2
+        or type(frozen) is not tuple or len(frozen) != 3
+    ):
+        raise _conflict()
+    distribution = preparation.distribution
+    descriptor = preparation.descriptor
+    verified, repeated_descriptor = capture_current_deployment_descriptor_v1(
+        distribution,
+    )
+    if verified != distribution or repeated_descriptor != descriptor:
+        raise _conflict()
+    maintenance, current_inventory, evidence = frozen
+    if not callable(maintenance):
+        raise _conflict()
+    previous_context = preparation.previous_context
+    prepared = preparation.prepared_authority_set
+    record, transition = _append_prepared_transition_locked_v2(
+        session,
+        distribution=verified,
+        previous_context=previous_context,
+        prepared_authority_set=prepared,
+        current_inventory=current_inventory,
+        deployment_descriptor=descriptor,
+    )
+    _publish_prepared_authority_set_v2(prepared)
+    publication = _prepared_transition_publication_v2(
+        record, transition,
+        prepared_authority_set=prepared,
+        distribution=verified,
+        deployment_descriptor=descriptor,
+        current_inventory=current_inventory,
+    )
+    staged_context = _load_staged_reattestation_context_v1(
+        transition, verified, current_inventory,
+    )
+    proof = _build_staged_current_receipts_v2(
+        staged_context,
+        now=lambda: datetime.now(timezone.utc),
+        prove_quiescent=maintenance,
+        expected_inventory=current_inventory,
+    )
+    observed = maintenance.observe()
+    final_evidence = canonical_maintenance_proof(
+        source=observed["source"], units=observed["units"],
+    )
+    complete = _append_receipts_complete_locked_v2(
+        session, publication,
+        proof=proof,
+        maintenance_before=evidence,
+        maintenance_after=final_evidence,
+    )
+    _publish_context_transition_locked_v2(
+        session, publication, complete,
+    )
+    return complete
+
+
+def _require_transition_directory_v2(
+    path: Path, *, owner: tuple[int, int],
+) -> Path:
+    """Bind a transition root to one non-writable directory identity."""
+    if not isinstance(path, Path) or not path.is_absolute():
+        raise _reject("birth_transition_root_invalid")
+    try:
+        info = path.lstat()
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise _reject("birth_transition_root_invalid", exc) from None
+    if (
+        resolved != path
+        or not stat.S_ISDIR(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or (info.st_uid, info.st_gid) != owner
+        or stat.S_IMODE(info.st_mode) & 0o022
+    ):
+        raise _reject("birth_transition_root_invalid")
+    return path
+
+
+def _path_is_within_v2(path: str, root: Path) -> bool:
+    if not path.startswith("/"):
+        return False
+    candidate = Path(path.removesuffix(" (deleted)"))
+    return candidate == root or root in candidate.parents
+
+
+def _process_tree_references_root_v2(
+    root: Path, *, proc_root: Path = Path("/proc"),
+) -> bool:
+    """Observe executable, working, mapped and open paths under one root."""
+    if (
+        not isinstance(root, Path) or not root.is_absolute()
+        or not isinstance(proc_root, Path) or not proc_root.is_absolute()
+    ):
+        raise _reject("birth_transition_process_observation_invalid")
+    try:
+        resolved_root = root.resolve(strict=True)
+        processes = tuple(sorted(
+            (item for item in proc_root.iterdir() if item.name.isdecimal()),
+            key=lambda item: int(item.name),
+        ))
+    except OSError as exc:
+        raise _reject(
+            "birth_transition_process_observation_invalid", exc,
+        ) from None
+    for process in processes:
+        try:
+            for name in ("cwd", "exe"):
+                try:
+                    target = os.readlink(process / name)
+                except FileNotFoundError:
+                    continue
+                if _path_is_within_v2(target, resolved_root):
+                    return True
+            descriptors = process / "fd"
+            try:
+                entries = tuple(descriptors.iterdir())
+            except FileNotFoundError:
+                entries = ()
+            for entry in entries:
+                try:
+                    target = os.readlink(entry)
+                except FileNotFoundError:
+                    continue
+                if _path_is_within_v2(target, resolved_root):
+                    return True
+            try:
+                mappings = (process / "maps").read_text(
+                    encoding="utf-8", errors="strict",
+                )
+            except FileNotFoundError:
+                mappings = ""
+            for line in mappings.splitlines():
+                fields = line.split(maxsplit=5)
+                if len(fields) == 6 and _path_is_within_v2(
+                    fields[5], resolved_root,
+                ):
+                    return True
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        except (OSError, UnicodeError) as exc:
+            raise _reject(
+                "birth_transition_process_observation_invalid", exc,
+            ) from None
+    return False
+
+
+def _capture_bound_transition_catalog_v2(
+    distribution: object, prepared: object,
+):
+    """Reread the signed catalog and bind it to the prepared candidate."""
+    from executor_birth_service_catalog import (
+        capture_current_service_catalog_v1,
+    )
+
+    loaded = capture_current_service_catalog_v1(distribution)
+    materials = getattr(prepared, "materials", None)
+    expected = getattr(materials, "catalog", None)
+    expected_fragments = getattr(materials, "unit_fragments", None)
+    if (
+        expected is None
+        or loaded.catalog.catalog_id != expected.catalog_id
+        or loaded.catalog.service_coverage_hash
+        != expected.service_coverage_hash
+        or loaded.catalog.encoded != expected.encoded
+        or loaded.unit_fragments != expected_fragments
+    ):
+        raise _reject("birth_transition_catalog_changed")
+    return loaded
+
+
+def _observe_bound_enforcement_v2(prepared: object) -> str:
+    """Bind the closed-bit observation to the signed candidate file bytes."""
+    from executor_birth_distribution_manifest import file_content_hash
+    from executor_birth_enforcement_evidence import (
+        observe_enforcement_v1, require_enforced_v1,
+    )
+
+    materials = getattr(prepared, "materials", None)
+    distribution = getattr(materials, "distribution", None)
+    facts = getattr(distribution, "facts", None)
+    files = getattr(distribution, "files", ())
+    relative = "runtime/executor_birth_legacy_gate.py"
+    matches = tuple(item for item in files if item.path == relative)
+    if facts is None or len(matches) != 1:
+        raise _reject("birth_transition_enforcement_invalid")
+    gate = Path(facts.installation_root) / relative
+    evidence = observe_enforcement_v1(gate)
+    try:
+        payload = gate.read_bytes()
+    except OSError as exc:
+        raise _reject("birth_transition_enforcement_invalid", exc) from None
+    expected = matches[0]
+    if (
+        len(payload) != evidence.module_bytes
+        or "sha256:" + hashlib.sha256(payload).hexdigest()
+        != evidence.module_digest
+        or len(payload) != expected.size
+        or file_content_hash(relative, payload) != expected.content_hash
+    ):
+        raise _reject("birth_transition_enforcement_invalid")
+    return require_enforced_v1(evidence)
+
+
+def _transition_roots_v2(prepared: object) -> Mapping[str, Path]:
+    """Derive every mutable root only from the authenticated candidate."""
+    materials = getattr(prepared, "materials", None)
+    descriptor = getattr(materials, "descriptor", None)
+    predecessor = getattr(materials, "predecessor", None)
+    if descriptor is None or predecessor is None:
+        raise _reject("birth_transition_root_invalid")
+    roots = {
+        "system": _require_transition_directory_v2(
+            Path(descriptor.system_unit_root), owner=(0, 0),
+        ),
+        "user": _require_transition_directory_v2(
+            Path(descriptor.service_home) / ".config/systemd/user",
+            owner=(descriptor.service_uid, descriptor.service_gid),
+        ),
+        "repository": _require_transition_directory_v2(
+            Path(predecessor.installation_root), owner=(0, 0),
+        ),
+    }
+    return MappingProxyType(roots)
+
+
+def _retire_bound_catalog_v2(
+    distribution: object, prepared: object, maintenance: object,
+) -> str:
+    """Prove quiescence, apply the signed plan and return its stable digest."""
+    from executor_birth_legacy_neutralizer import _neutralize_core_v1
+    from executor_birth_legacy_retirement import (
+        plan_catalog_retirement_v1, plan_digest_v1,
+        require_no_legacy_in_flight_v1,
+    )
+    loaded = _capture_bound_transition_catalog_v2(distribution, prepared)
+    plan = plan_catalog_retirement_v1(loaded.catalog)
+    roots = _transition_roots_v2(prepared)
+    observed = maintenance.observe()
+    unit_states = {
+        (item["scope"], item["unit"]): item["active_state"]
+        for item in observed["units"]
+    }
+    repository_steps = tuple(
+        step for step in plan.steps if step.scope == "repository"
+    )
+    if repository_steps and _process_tree_references_root_v2(
+        roots["repository"],
+    ):
+        raise _reject("birth_transition_repository_in_use")
+    states = {
+        (step.scope, step.locator): "inactive"
+        for step in plan.steps if step.scope == "repository"
+    }
+    states.update({
+        (step.scope, step.locator): unit_states[(step.scope, step.locator)]
+        for step in plan.steps
+        if step.scope != "repository"
+        and (step.scope, step.locator) in unit_states
+    })
+    require_no_legacy_in_flight_v1(plan.steps, states)
+
+    preserve_action = "preserve_replaced_system_unit"
+    ordinary = tuple(
+        step for step in plan.steps if step.action != preserve_action
+    )
+    preserved = tuple(
+        step for step in plan.steps if step.action == preserve_action
+    )
+    for scope in ("repository", "user", "system"):
+        scoped = tuple(step for step in ordinary if step.scope == scope)
+        if scoped:
+            _neutralize_core_v1(roots[scope], scoped, {})
+    fragments = dict(loaded.unit_fragments)
+    replacements = {
+        (step.scope, step.locator): fragments.get(step.locator, b"")
+        for step in preserved
+    }
+    if preserved:
+        _neutralize_core_v1(roots["system"], preserved, replacements)
+    return plan_digest_v1(plan.steps)
+
+
+def _install_bound_topology_v2(
+    distribution: object, prepared: object,
+):
+    """Install, reload and measure the exact signed dominant topology."""
+    from executor_birth_admin_preflight import (
+        _capture_cutover_effective_systemd_v2,
+    )
+    from executor_birth_dominant_topology import (
+        _install_core_v1, _install_enablement_links_core_v1,
+    )
+
+    loaded = _capture_bound_transition_catalog_v2(distribution, prepared)
+    roots = _transition_roots_v2(prepared)
+    fragments = dict(loaded.unit_fragments)
+    if len(fragments) != len(loaded.unit_fragments):
+        raise _reject("birth_transition_topology_invalid")
+    materials = prepared.materials
+    expected_units = tuple(
+        item.unit_name for item in materials.candidate_units.entries
+    )
+    if tuple(sorted(fragments)) != tuple(sorted(expected_units)):
+        raise _reject("birth_transition_topology_invalid")
+    _install_core_v1(roots["system"], fragments)
+    links = tuple(sorted(
+        (
+            link for entry in materials.candidate_units.entries
+            for link in entry.enablement_links
+        ),
+        key=lambda link: link.path.encode("utf-8"),
+    ))
+    if links:
+        _install_enablement_links_core_v1(
+            roots["system"], links, owner=(0, 0),
+        )
+    environment = {
+        "LANG": "C", "LC_ALL": "C",
+        "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+    }
+    try:
+        result = subprocess.run(
+            [materials.descriptor.systemctl_executable, "daemon-reload"],
+            capture_output=True, check=False, close_fds=True,
+            env=environment, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise _reject("birth_transition_manager_reload_failed", exc) from None
+    if result.returncode != 0:
+        raise _reject("birth_transition_manager_reload_failed")
+    _capture_bound_transition_catalog_v2(distribution, prepared)
+    return _capture_cutover_effective_systemd_v2(prepared)
+
+
+def complete_transition_cutover_v2(
+    distribution: object, source_id: object, *, service_state_root: object,
+):
+    """Complete one reserved V2 crossing while retaining all three locks."""
+    from contract_cutover_guard import (
+        _begin_topology_transition_v1,
+        _contract_cutover_guard_for_service_user_v1,
+        _maintenance_evidence_under_transition_v1,
+    )
+    from executor_birth_admin_preflight import (
+        _attest_operational_preflight_v1,
+        _build_startup_prerequisite_for_cutover_v2,
+        _prepare_cutover_candidate_v2,
+    )
+    from executor_birth_distribution_manifest import (
+        capture_current_deployment_descriptor_v1,
+        verify_current_installation_distribution_v1,
+    )
+    from executor_birth_bootstrap import verify_initial_installer_store_v1
+    from executor_birth_dominant_startup import complete_dominant_startup_v1
+    from executor_birth_ownership_authorities import (
+        load_root_ownership_authorities_v1,
+    )
+    from executor_birth_ownership_coordinator import (
+        _certificate_ready_material_v2, _completed_transition_locked_v2,
+        _cross_certificate_boundary_locked_v2,
+        _cross_head_boundary_locked_v2,
+        _cross_preflight_boundary_locked_v2, _deployment_lock_v1,
+        _observe_dominant_identity_locked_v2, _result,
+        _reserve_transition_edge_locked_v2,
+        _transition_inventory_under_maintenance_v2,
+    )
+    from executor_birth_legacy_gate import closed_build_enforcement
+    from executor_birth_startup_gate import _exclusive_startup_gate_v1
+    from install.executor_birth_source_receiver import (
+        _load_received_source_with_product_session_v1,
+    )
+    from install.executor_birth_startup_prerequisite import (
+        _publish_startup_prerequisite_locked_v2,
+    )
+
+    if closed_build_enforcement() is not True:
+        raise _reject("birth_ownership_closed_enforcement_required")
+    try:
+        selected_state_root = Path(os.fspath(service_state_root))
+    except TypeError as exc:
+        raise _reject("birth_transition_service_identity_changed", exc) from None
+    if not selected_state_root.is_absolute() or selected_state_root == Path("/"):
+        raise _reject("birth_transition_service_identity_changed")
+    selected_state_root = Path(os.path.abspath(selected_state_root))
+    with _deployment_lock_v1() as deployment_session:
+        verified = verify_current_installation_distribution_v1(
+            distribution.encoded, distribution.signature,
+        )
+        if verified != distribution:
+            raise _reject("birth_transition_distribution_changed")
+        verified, signed_descriptor = (
+            capture_current_deployment_descriptor_v1(verified)
+        )
+        from config import PATH_USER_STATE
+
+        signed_state_root = Path(os.path.abspath(
+            Path(signed_descriptor.service_home)
+            / ".local" / "state" / "metnos"
+        ))
+        configured_state_root = Path(os.path.abspath(PATH_USER_STATE))
+        if not (
+            selected_state_root == signed_state_root == configured_state_root
+        ):
+            raise _reject("birth_transition_service_identity_changed")
+        received = _load_received_source_with_product_session_v1(
+            source_id, deployment_session,
+        )
+        _reserve_transition_edge_locked_v2(
+            deployment_session, distribution=verified,
+            source_id=received.source_id,
+        )
+        completed = _completed_transition_locked_v2(
+            deployment_session, verified,
+        )
+        if completed is not None:
+            _attest_operational_preflight_v1()
+            repeated = _completed_transition_locked_v2(
+                deployment_session, verified,
+            )
+            if repeated != completed:
+                raise _reject("birth_transition_final_state_changed")
+            return _result(completed)
+
+        preparation = _prepare_transition_receipt_material_locked_v2(
+            deployment_session, verified,
+        )
+        descriptor = preparation.descriptor
+        if descriptor != signed_descriptor:
+            raise _reject("birth_transition_service_identity_changed")
+        with _exclusive_startup_gate_v1() as startup_session:
+            with _contract_cutover_guard_for_service_user_v1(
+                descriptor.service_user,
+            ) as (maintenance, evidence):
+                if verified.release_sequence == 1:
+                    verify_initial_installer_store_v1(
+                        prove_quiescent=maintenance,
+                        authoring_owner=(
+                            descriptor.service_uid,
+                            descriptor.service_gid,
+                        ),
+                    )
+                with _transition_inventory_under_maintenance_v2(
+                    maintenance, evidence,
+                ) as frozen:
+                    complete = _complete_transition_receipts_locked_v2(
+                        deployment_session, preparation, frozen,
+                    )
+                    prepared = _prepare_cutover_candidate_v2(
+                        complete, verified,
+                    )
+                    _begin_topology_transition_v1(
+                        maintenance, complete.maintenance_proof,
+                    )
+                    sessions = (
+                        deployment_session, startup_session, maintenance,
+                    )
+                    effective_observations: list[object] = []
+                    final_records: list[object] = []
+
+                    def observe_identity():
+                        return _observe_dominant_identity_locked_v2(
+                            deployment_session, complete,
+                        )
+
+                    def observe_catalog() -> str:
+                        return _capture_bound_transition_catalog_v2(
+                            verified, prepared,
+                        ).catalog.catalog_id
+
+                    def observe_enforcement() -> str:
+                        return _observe_bound_enforcement_v2(prepared)
+
+                    def plan_retirement() -> str:
+                        return _retire_bound_catalog_v2(
+                            verified, prepared, maintenance,
+                        )
+
+                    def observe_topology() -> str:
+                        observed = _install_bound_topology_v2(
+                            verified, prepared,
+                        )
+                        effective_observations.append(observed)
+                        return observed.snapshot.effective_units_hash
+
+                    def observe_maintenance() -> bytes:
+                        return _maintenance_evidence_under_transition_v1(
+                            maintenance,
+                        )
+
+                    def cross(receipt) -> None:
+                        if len(effective_observations) < 2:
+                            raise _reject(
+                                "birth_transition_topology_unconfirmed",
+                            )
+                        prerequisite = (
+                            _build_startup_prerequisite_for_cutover_v2(
+                                prepared, effective_observations[-1],
+                            )
+                        )
+                        sealed = _publish_startup_prerequisite_locked_v2(
+                            prerequisite, complete, sessions,
+                        )
+                        authorities = load_root_ownership_authorities_v1()
+                        material = _certificate_ready_material_v2(
+                            complete,
+                            authorities=authorities,
+                            prerequisite=sealed,
+                            observe_maintenance=observe_maintenance,
+                            crossing_receipt=receipt,
+                        )
+                        published = _cross_certificate_boundary_locked_v2(
+                            deployment_session, material,
+                            authorities=authorities,
+                        )
+                        head = _cross_head_boundary_locked_v2(
+                            sessions, published, verified,
+                            authorities=authorities,
+                        )
+                        final_records.append(
+                            _cross_preflight_boundary_locked_v2(
+                                sessions, head,
+                            )
+                        )
+
+                    complete_dominant_startup_v1(
+                        sessions=sessions,
+                        observe_identity=observe_identity,
+                        observe_topology=observe_topology,
+                        observe_catalog=observe_catalog,
+                        plan_retirement=plan_retirement,
+                        observe_enforcement=observe_enforcement,
+                        cross=cross,
+                    )
+                    if len(final_records) != 1:
+                        raise _reject("birth_transition_final_state_missing")
+                    return _result(final_records[0])
+
+
+def prepare_transition_receipts_v2(
+    distribution: object,
+):
+    """Reach V2 receipt completeness without exposing a partial product door."""
+    from executor_birth_ownership_coordinator import (
+        _deployment_lock_v1, _result, _transition_maintenance_inventory_v2,
+    )
+
+    with _deployment_lock_v1() as session:
+        preparation = _prepare_transition_receipt_material_locked_v2(
+            session, distribution,
+        )
+        with _transition_maintenance_inventory_v2() as frozen:
+            complete = _complete_transition_receipts_locked_v2(
+                session, preparation, frozen,
+            )
+        return _result(complete)
 
 
 def _run_provisioning_entry_v1(

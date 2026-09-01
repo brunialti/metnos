@@ -3070,6 +3070,338 @@ def _move_activation_container(source: Path, destination: Path) -> None:
     _sync_directory(destination.parent)
 
 
+def _seed_repository_authoring_locked_v1(
+    expected: Mapping[ContractId, str],
+    *,
+    shadow_root: Path,
+    trusted: tuple[TrustedPublic, ...],
+    authoring_owner: tuple[int, int] | None = None,
+) -> None:
+    """Install authenticated mutable authoring outside the closed release.
+
+    The distribution tree is an exact restart-time identity and must never be
+    the canonical target of a later Birth commit.  Before the one-way store
+    activation, copy each repository-owned current contract into a dedicated
+    user-state tree.  The store-only inventory resolves those same ContractIds
+    there, while user-owned origins keep their pre-existing external roots.
+
+    Each seed is deterministic and recoverable before the activation marker:
+    an interrupted exact staging tree is reused, an exact canonical tree is an
+    idempotent success, and any unrelated entry fails closed.
+    """
+    from executor_birth_authoring import (
+        AuthoringInstallError, AuthoringInstallJournalV1, advance_version,
+        authoring_paths, authoring_token, authoring_tree_id,
+        materialize_staging, observe_tree,
+    )
+    from executor_birth_snapshot import _acquire_authenticated_current_snapshot
+    from manifest_inventory import (
+        inventory_authoring_manifests, inventory_store_manifests,
+    )
+
+    source_inventory = inventory_authoring_manifests()
+    target_inventory = inventory_store_manifests(store_root=shadow_root)
+    if authoring_owner is not None and (
+        type(authoring_owner) is not tuple
+        or len(authoring_owner) != 2
+        or any(type(value) is not int or value < 0 for value in authoring_owner)
+    ):
+        raise ContractStoreError("authoring_seed_owner_invalid")
+    if source_inventory.problems or target_inventory.problems:
+        raise ContractStoreError("authoring_seed_inventory_invalid")
+    source_refs = source_inventory.by_id()
+    target_refs = target_inventory.by_id()
+    if not set(expected).issubset(source_refs) or set(target_refs) != set(expected):
+        raise ContractStoreError("authoring_seed_catalog_mismatch")
+
+    external_root = Path(
+        os.path.abspath(
+            _C.PATH_USER_STATE / "contract-authoring" / "v1"
+        )
+    )
+    _ensure_directory_chain(external_root, code="authoring_seed_invalid")
+    expected_files: set[str] = set()
+    expected_directories: set[str] = set()
+
+    def remember(path: Path, *, directory: bool) -> None:
+        try:
+            relative = path.relative_to(external_root).as_posix()
+        except ValueError as exc:
+            raise ContractStoreError("authoring_seed_invalid", str(path)) from exc
+        if relative == ".":
+            return
+        (expected_directories if directory else expected_files).add(relative)
+        parent = path.parent
+        while parent != external_root:
+            try:
+                expected_directories.add(parent.relative_to(external_root).as_posix())
+            except ValueError as exc:
+                raise ContractStoreError("authoring_seed_invalid", str(parent)) from exc
+            parent = parent.parent
+
+    try:
+        for contract_id in sorted(expected, key=lambda item: item.value):
+            source_ref = source_refs[contract_id]
+            target_ref = target_refs[contract_id]
+            target_root = Path(os.path.abspath(target_ref.source_root))
+            if not _inside(target_root, external_root):
+                continue
+
+            generation_identifier = expected[contract_id]
+            current = _load_generation(
+                source_ref,
+                generation_identifier,
+                trusted_publics=trusted,
+                store_root=shadow_root,
+            )
+            snapshot, source_signature = _acquire_authenticated_current_snapshot(
+                source_ref.manifest_dir,
+            )
+            try:
+                if (
+                    snapshot.manifest_bytes != current.manifest_bytes
+                    or snapshot.language_state_bytes != current.language_state_bytes
+                    or source_signature != current.signature_bytes
+                ):
+                    raise ContractStoreError("authoring_seed_source_changed")
+                code = current.parsed.get("code")
+                declared = code.get("files") if isinstance(code, Mapping) else None
+                if not isinstance(declared, (list, tuple)) or any(
+                    not isinstance(name, str) or name not in snapshot.code_files
+                    for name in declared
+                ):
+                    raise ContractStoreError("authoring_seed_source_changed")
+                digest = hashlib.sha256()
+                for name in declared:
+                    digest.update(snapshot.code_files[name])
+                if "sha256:" + digest.hexdigest() != current.declared_code_digest:
+                    raise ContractStoreError("authoring_seed_source_changed")
+
+                payloads = {
+                    "manifest.toml": current.manifest_bytes,
+                    "manifest.toml.sig": current.signature_bytes,
+                    "manifest.lang_state.json": current.language_state_bytes,
+                }
+                final_files = dict(snapshot.code_files)
+                final_files.update(payloads)
+                tree_id = authoring_tree_id(final_files)
+                paths = authoring_paths(
+                    target_ref.manifest_dir, contract_id.value,
+                )
+                _ensure_directory_chain(
+                    paths.canonical.parent, code="authoring_seed_invalid",
+                )
+                request_id = "sha256:" + hashlib.sha256(
+                    b"metnos.executor-birth.authoring-seed/v1\0"
+                    + contract_id.value.encode("utf-8")
+                    + generation_identifier.encode("ascii")
+                ).hexdigest()
+                suffix = request_id.removeprefix("sha256:")
+                journal = AuthoringInstallJournalV1(
+                    request_id=request_id,
+                    contract_id=contract_id.value,
+                    source_origin=contract_id.origin.value,
+                    canonical_tree_id=tree_id,
+                    old_tree_id=None,
+                    new_tree_id=tree_id,
+                    candidate_id=tree_id,
+                    semantic_core_id=tree_id,
+                    admission_context_id=tree_id,
+                    predecessor_generation_id=generation_identifier,
+                    new_generation_id=generation_identifier,
+                    staging_basename=f".birth-stage-{suffix}",
+                    backup_basename=f".birth-backup-{suffix}",
+                )
+                staging, backup = paths.transaction_paths(journal)
+                if backup.exists() or _is_link_like(backup):
+                    raise ContractStoreError("authoring_seed_invalid", str(backup))
+                if paths.canonical.exists() or _is_link_like(paths.canonical):
+                    if (
+                        _is_link_like(paths.canonical)
+                        or authoring_tree_id(observe_tree(paths.canonical)) != tree_id
+                    ):
+                        raise ContractStoreError(
+                            "authoring_seed_conflict", contract_id.value,
+                        )
+                else:
+                    if staging.exists() or _is_link_like(staging):
+                        if (
+                            _is_link_like(staging)
+                            or authoring_tree_id(observe_tree(staging)) != tree_id
+                        ):
+                            raise ContractStoreError(
+                                "authoring_seed_invalid", str(staging),
+                            )
+                    else:
+                        staging = materialize_staging(paths, journal, final_files)
+                    try:
+                        _rename_no_replace(staging, paths.canonical)
+                    except FileExistsError:
+                        if authoring_tree_id(observe_tree(paths.canonical)) != tree_id:
+                            raise ContractStoreError(
+                                "authoring_seed_conflict", contract_id.value,
+                            )
+                        shutil.rmtree(staging)
+                    _sync_directory(paths.canonical.parent)
+
+                with authoring_token(
+                    paths.lock, exclusive=True, timeout=DEFAULT_LOCK_TIMEOUT,
+                ):
+                    if authoring_tree_id(observe_tree(paths.canonical)) != tree_id:
+                        raise ContractStoreError(
+                            "authoring_seed_source_changed", contract_id.value,
+                        )
+                    advance_version(paths, contract_id.value, tree_id)
+                _verify_payloads(
+                    target_ref,
+                    payloads,
+                    trusted_publics=trusted,
+                    identifier=generation_identifier,
+                    require_inventory_hash=False,
+                )
+
+                for relative in final_files:
+                    remember(paths.canonical / relative, directory=False)
+                remember(paths.canonical, directory=True)
+                remember(paths.control, directory=True)
+                remember(paths.lock, directory=False)
+                remember(paths.version, directory=False)
+            finally:
+                snapshot.close()
+
+        for entry in external_root.rglob("*"):
+            relative = entry.relative_to(external_root).as_posix()
+            if _is_link_like(entry):
+                raise ContractStoreError("authoring_seed_invalid", relative)
+            if entry.is_dir():
+                if relative not in expected_directories:
+                    raise ContractStoreError("authoring_seed_invalid", relative)
+            elif entry.is_file():
+                if relative not in expected_files:
+                    raise ContractStoreError("authoring_seed_invalid", relative)
+            else:
+                raise ContractStoreError("authoring_seed_invalid", relative)
+
+        if authoring_owner is not None:
+            # The transition runs with administrative privileges, while later
+            # Birth updates run as the signed service account. Transfer only
+            # the dedicated, fully inventoried authoring tree after every byte
+            # has been authenticated and no unexpected entry remains.
+            owner_uid, owner_gid = authoring_owner
+            ownership_paths = (
+                external_root.parent,
+                external_root,
+                *sorted(
+                    external_root.rglob("*"),
+                    key=lambda item: item.as_posix().encode("utf-8"),
+                ),
+            )
+            for path in reversed(ownership_paths):
+                try:
+                    status = path.lstat()
+                    if stat.S_ISLNK(status.st_mode) or not (
+                        stat.S_ISDIR(status.st_mode)
+                        or stat.S_ISREG(status.st_mode)
+                    ):
+                        raise ContractStoreError(
+                            "authoring_seed_invalid", str(path),
+                        )
+                    flags = (
+                        os.O_RDONLY
+                        | getattr(os, "O_NOFOLLOW", 0)
+                        | getattr(os, "O_CLOEXEC", 0)
+                    )
+                    if stat.S_ISDIR(status.st_mode):
+                        flags |= getattr(os, "O_DIRECTORY", 0)
+                    elif status.st_nlink != 1:
+                        raise ContractStoreError(
+                            "authoring_seed_invalid", str(path),
+                        )
+                    descriptor = os.open(path, flags)
+                    try:
+                        opened = os.fstat(descriptor)
+                        if (
+                            opened.st_dev != status.st_dev
+                            or opened.st_ino != status.st_ino
+                            or opened.st_mode != status.st_mode
+                        ):
+                            raise ContractStoreError(
+                                "authoring_seed_source_changed", str(path),
+                            )
+                        os.fchown(descriptor, owner_uid, owner_gid)
+                        os.fsync(descriptor)
+                        rebound = os.fstat(descriptor)
+                        if (rebound.st_uid, rebound.st_gid) != (
+                            owner_uid, owner_gid,
+                        ):
+                            raise ContractStoreError(
+                                "authoring_seed_owner_invalid", str(path),
+                            )
+                    finally:
+                        os.close(descriptor)
+                except ContractStoreError:
+                    raise
+                except OSError as exc:
+                    raise ContractStoreError(
+                        "authoring_seed_owner_invalid", str(path),
+                    ) from exc
+    except AuthoringInstallError as exc:
+        raise ContractStoreError(exc.code, exc.detail) from exc
+
+
+def materialize_repository_authoring_for_transition_v1(
+    *,
+    trusted_publics: Iterable[TrustedPublic],
+    authoring_owner: tuple[int, int] | None = None,
+) -> int:
+    """Materialize the current closed-build authoring before ownership cutover.
+
+    This narrow migration step cannot publish a contract or move a pointer. It
+    is available only while the productive store is active and no ownership
+    certificate or required head exists.  An exact retry is idempotent; after
+    ownership cutover the entry is permanently closed.
+    """
+    from executor_birth_ownership_authorities import DEFAULT_OWNERSHIP_ROOT_V1
+    from executor_birth_ownership_chain import (
+        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1, REQUIRED_HEAD_BASENAME,
+    )
+    from executor_birth_ownership_cutover import (
+        PAYLOAD_BASENAME, SIGNATURE_BASENAME,
+    )
+    from manifest_inventory import inventory_store_manifests
+
+    _require_productive_installation_source()
+    if production_store_mode() not in {
+        ProductionStoreMode.ACTIVE, ProductionStoreMode.STORE_ONLY,
+    }:
+        raise ContractStoreError("authoring_seed_store_unavailable")
+    closed_paths = (
+        DEFAULT_OWNERSHIP_ROOT_V1 / PAYLOAD_BASENAME,
+        DEFAULT_OWNERSHIP_ROOT_V1 / SIGNATURE_BASENAME,
+        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1 / REQUIRED_HEAD_BASENAME,
+    )
+    if any(os.path.lexists(os.fspath(path)) for path in closed_paths):
+        raise ContractStoreError("authoring_seed_transition_closed")
+
+    trusted = _trusted_public_tuple(trusted_publics)
+    _container, root, _marker = _production_paths()
+    with catalog_admission_lock(store_root=root):
+        inventory = inventory_store_manifests(store_root=root)
+        if inventory.problems or not inventory.manifests:
+            raise ContractStoreError("authoring_seed_inventory_invalid")
+        expected = {
+            ref.contract_id: current_revision_id(ref, store_root=root)
+            for ref in inventory.manifests
+        }
+        _seed_repository_authoring_locked_v1(
+            expected,
+            shadow_root=root,
+            trusted=trusted,
+            authoring_owner=authoring_owner,
+        )
+    return len(expected)
+
+
 def _activate_store_locked(
     expected: Mapping[ContractId, str],
     *,
@@ -3106,6 +3438,11 @@ def _activate_store_locked(
         shadow_v1,
         expected,
         trusted_publics=trusted,
+    )
+    _seed_repository_authoring_locked_v1(
+        expected,
+        shadow_root=shadow_v1,
+        trusted=trusted,
     )
     try:
         if shadow_container.stat().st_dev != marker.parent.stat().st_dev:
@@ -3736,6 +4073,213 @@ def read_current_birth_receipt(
             if not isinstance(current, VerifiedManifest):
                 raise ContractStoreError("birth_reattestation_current_invalid")
             path = _birth_receipt_path(contract_dir, generation_identifier)
+            if not path.exists() and not _is_link_like(path):
+                return None
+            return _read_regular_file(path, code="birth_receipt_invalid")
+
+
+# ---------------------------------------------------------------------------
+# V2 admission receipts: one receipt per (contract, generation, context).
+#
+# The V1 path stays exactly what it was: the historical act of the previous
+# context, immutable and never rewritten here.  From the epoch transition
+# onwards a current generation also carries a V2 receipt bound to the selected
+# context, so a second epoch can add a receipt for the same generation without
+# replacing the first one.  Coexistence is the normal case, not a conflict.
+#
+# There is deliberately no automatic fallback from V2 to V1.  A reader that
+# wants the historical act asks for it by name; a reader that wants the current
+# act gets None when it is absent, which is a fact the caller must handle
+# rather than a gap to paper over with the older receipt.
+# ---------------------------------------------------------------------------
+
+_ADMISSION_RECEIPTS_V2 = "admission-receipts-v2"
+
+
+def admission_receipt_hash(encoded: bytes) -> str:
+    """Canonical hash of the exact receipt bytes on the wire."""
+    if not isinstance(encoded, bytes) or not encoded:
+        raise ContractStoreError("birth_receipt_invalid", "encoded bytes")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _context_directory_name(identifier: str) -> str:
+    """Physical directory name of an admission context identity."""
+    if not isinstance(identifier, str) or not _DIGEST_RE.fullmatch(identifier):
+        raise ContractStoreError("admission_context_id_invalid", str(identifier))
+    physical = identifier.removeprefix("sha256:")
+    if not _PHYSICAL_ID_RE.fullmatch(physical):
+        raise ContractStoreError("admission_context_id_invalid", identifier)
+    return physical
+
+
+def _birth_receipt_path_v2(
+    contract_dir: Path, generation_identifier: str, admission_context_id: str,
+) -> Path:
+    return (
+        contract_dir
+        / _ADMISSION_RECEIPTS_V2
+        / generation_directory_name(generation_identifier)
+        / (_context_directory_name(admission_context_id) + ".json")
+    )
+
+
+def _sealed_v2_triple(ref: ManifestRef, request: object) -> tuple[str, str]:
+    """Read the receipt identity from the sealed request, never from a caller.
+
+    The triple (contract, generation, context) is the identity of one V2
+    receipt.  It arrives only inside ``ProducerRequestV2``, which can be built
+    solely from a context selection the F4 head has already sealed, so no
+    public entry point of this module accepts a context or a path as a free
+    selector.
+    """
+    from executor_birth_producer_context import ProducerRequestV2
+
+    # Exact type, not isinstance: a subclass with an empty __post_init__
+    # satisfies isinstance and never runs the seal check.
+    if type(request) is not ProducerRequestV2:
+        raise ContractStoreError("birth_receipt_v2_request_untrusted")
+    if request.contract_id != ref.contract_id.value:
+        raise ContractStoreError("birth_receipt_v2_request_mismatch", "contract_id")
+    return request.generation_id, request.admission_context_id
+
+
+def persist_current_reattestation_receipt_v2(
+    ref: ManifestRef,
+    encoded: bytes,
+    *,
+    request: object,
+    authorization: BirthCommitAuthorization,
+    verifier: Callable[[bytes], object],
+    expected_bindings: Mapping[str, object],
+    trusted_publics: Iterable[TrustedPublic],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+    replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
+) -> bytes:
+    """Persist one V2 receipt for the exact current generation and context.
+
+    An identical authenticated receipt for the same triple is an idempotent
+    success.  Different bytes for the same triple are a conflict and the stored
+    receipt is preserved.  A different context is a different triple and lands
+    beside this one: it is never overwritten, merged, or forced to agree.
+
+    This function can neither create a generation nor move the current pointer,
+    and it never reads or writes the historical V1 path.
+    """
+    generation_identifier, context_identifier = _sealed_v2_triple(ref, request)
+    if not isinstance(authorization, BirthCommitAuthorization):
+        raise ContractStoreError("birth_reattestation_authorization_invalid")
+    # One selector only: the sealed authorization and the sealed request must
+    # name the same context, so no combination of an F4 head with a foreign
+    # context can reach the filesystem.
+    if authorization.admission_context_id != context_identifier:
+        raise ContractStoreError("birth_receipt_v2_context_conflict")
+    if not isinstance(encoded, bytes) or not encoded:
+        raise ContractStoreError("birth_receipt_invalid", "empty wire receipt")
+    if not callable(verifier) or not isinstance(expected_bindings, Mapping):
+        raise ContractStoreError("birth_reattestation_authorization_invalid")
+    _validate_manifest_ref(ref)
+    trusted = _trusted_public_tuple(trusted_publics)
+    root = _store_root(store_root)
+    if _is_productive_store_root(root):
+        _require_productive_installation_source()
+
+    def verified(candidate: bytes) -> object:
+        try:
+            receipt = verifier(candidate)
+        except Exception as exc:
+            raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
+        for field, wanted in expected_bindings.items():
+            actual = getattr(receipt, field, object())
+            if getattr(actual, "value", actual) != getattr(wanted, "value", wanted):
+                raise ContractStoreError("birth_receipt_binding_invalid", field)
+        observed = getattr(receipt, "admission_context_id", None)
+        if getattr(observed, "value", observed) != context_identifier:
+            raise ContractStoreError("birth_receipt_v2_context_conflict")
+        return receipt
+
+    verified(encoded)
+    with catalog_admission_lock(store_root=root, timeout=lock_timeout):
+        with _writer_lock(ref.contract_id, store_root=root, timeout=lock_timeout):
+            contract_dir = _existing_contract_directory(ref.contract_id, store_root=root)
+            if _read_current_optional(contract_dir) != generation_identifier:
+                raise ContractStoreError("birth_reattestation_current_changed")
+            current = _load_revision(
+                ref, generation_identifier, trusted_publics=trusted, store_root=root,
+            )
+            if not isinstance(current, VerifiedManifest):
+                raise ContractStoreError("birth_reattestation_current_invalid")
+            receipt_path = _birth_receipt_path_v2(
+                contract_dir, generation_identifier, context_identifier,
+            )
+            if receipt_path.exists() or _is_link_like(receipt_path):
+                existing = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+                verified(existing)
+                if existing != encoded:
+                    raise ContractStoreError("birth_reattestation_receipt_conflict")
+                return existing
+            _record_productive_audit(root, _auditable_event({
+                "event": "contract_reattestation_receipt_v2_authorized",
+                "operation": "persist_current_reattestation_receipt_v2",
+                "contract_id": ref.contract_id.value,
+                "generation_id": generation_identifier,
+                "admission_context_id": context_identifier,
+            }))
+            for directory in (receipt_path.parent.parent, receipt_path.parent):
+                if directory.exists():
+                    _require_plain_directory(
+                        directory, code="birth_receipt_store_invalid",
+                    )
+                    _require_no_link_components(
+                        directory, code="birth_receipt_store_invalid",
+                    )
+                else:
+                    directory.mkdir(mode=0o700)
+                    _sync_directory(directory.parent)
+            _atomic_replace_file(
+                receipt_path, encoded, replace_timeout=replace_timeout, mode=0o600,
+            )
+            reread = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+            if reread != encoded:
+                raise ContractStoreError("birth_receipt_reread_mismatch")
+            verified(reread)
+            if _read_current_optional(contract_dir) != generation_identifier:
+                raise ContractStoreError("birth_reattestation_current_changed")
+            return reread
+
+
+def read_current_birth_receipt_v2(
+    ref: ManifestRef,
+    *,
+    request: object,
+    trusted_publics: Iterable[TrustedPublic],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+) -> bytes | None:
+    """Read the V2 receipt for one exact triple, with no fallback to V1.
+
+    ``None`` means this generation has no receipt in the selected context.  It
+    never means "use the historical one": the V1 reader stays separate and is
+    reached only by asking for it.
+    """
+    generation_identifier, context_identifier = _sealed_v2_triple(ref, request)
+    _validate_manifest_ref(ref)
+    trusted = _trusted_public_tuple(trusted_publics)
+    root = _store_root(store_root)
+    with catalog_admission_lock(store_root=root, timeout=lock_timeout):
+        with _writer_lock(ref.contract_id, store_root=root, timeout=lock_timeout):
+            contract_dir = _existing_contract_directory(ref.contract_id, store_root=root)
+            if _read_current_optional(contract_dir) != generation_identifier:
+                raise ContractStoreError("birth_reattestation_current_changed")
+            current = _load_revision(
+                ref, generation_identifier, trusted_publics=trusted, store_root=root,
+            )
+            if not isinstance(current, VerifiedManifest):
+                raise ContractStoreError("birth_reattestation_current_invalid")
+            path = _birth_receipt_path_v2(
+                contract_dir, generation_identifier, context_identifier,
+            )
             if not path.exists() and not _is_link_like(path):
                 return None
             return _read_regular_file(path, code="birth_receipt_invalid")

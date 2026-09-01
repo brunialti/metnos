@@ -6208,26 +6208,43 @@ ENGINE_WISE_LLM_TIMEOUT_S = _bounded_engine_llm_timeout(
     "METNOS_ENGINE_WISE_LLM_TIMEOUT_S", 90.0)
 
 
-def _llm_dependency_failure(exc: Exception) -> bool:
-    """Recognise transport/provider outages, including wrapped timeouts."""
+def _llm_dependency_failure_kind(exc: Exception) -> str | None:
+    """Classify wrapped timeouts separately from provider unavailability."""
     current = exc
     seen = set()
+    timed_out = False
+    unavailable = False
     while current is not None and id(current) not in seen:
         seen.add(id(current))
         name = type(current).__name__.lower()
         text = str(current).lower()
         if (
-            isinstance(current, (TimeoutError, ConnectionError))
-            or any(token in name for token in (
-                "timeout", "urlerror", "providererror"))
+            isinstance(current, TimeoutError)
+            or "timeout" in name
             or any(token in text for token in (
-                "timed out", "unreachable", "connection refused",
-                "request deadline exhausted",
+                "timed out", "request deadline exhausted",
             ))
         ):
-            return True
+            timed_out = True
+        if (
+            isinstance(current, ConnectionError)
+            or any(token in name for token in ("urlerror", "providererror"))
+            or any(token in text for token in (
+                "unreachable", "connection refused",
+            ))
+        ):
+            unavailable = True
         current = getattr(current, "__cause__", None)
-    return False
+    if timed_out:
+        return "provider_timeout"
+    if unavailable:
+        return "provider_unavailable"
+    return None
+
+
+def _llm_dependency_failure(exc: Exception) -> bool:
+    """Return whether an exception is a known dependency failure."""
+    return _llm_dependency_failure_kind(exc) is not None
 
 
 def _run_engine(
@@ -6274,11 +6291,16 @@ def _run_engine(
         log.warning("engine v2 import failed: %r", ex)
         return None
 
-    _llm_state = {"unavailable": False, "reported": False}
+    _llm_state = {"failure_kind": None, "reported": False}
 
-    def _report_llm_unavailable() -> str:
-        message = msg("ERR_LLM_UNAVAILABLE_ACTION")
-        _llm_state["unavailable"] = True
+    def _report_llm_failure(failure_kind: str) -> str:
+        key = (
+            "ERR_LLM_TIMEOUT_ACTION"
+            if failure_kind == "provider_timeout"
+            else "ERR_LLM_UNAVAILABLE_ACTION"
+        )
+        message = msg(key)
+        _llm_state["failure_kind"] = failure_kind
         if progress is not None and not _llm_state["reported"]:
             try:
                 progress.update_free(message)
@@ -6287,18 +6309,23 @@ def _run_engine(
         _llm_state["reported"] = True
         return message
 
-    def _unavailable_result():
+    def _dependency_failure_result():
+        failure_kind = _llm_state["failure_kind"] or "provider_unavailable"
         return {
             "steps": [],
-            "final_text": _report_llm_unavailable(),
+            "final_text": _report_llm_failure(failure_kind),
             "final_kind": "error",
             "framework_hash": "",
             "verb": "",
             "object": "",
             "keywords": [],
-            "match_source": "llm_unavailable",
+            "match_source": (
+                "llm_timeout"
+                if failure_kind == "provider_timeout"
+                else "llm_unavailable"
+            ),
             "elapsed_ms": 0,
-            "error_class": "provider_unavailable",
+            "error_class": failure_kind,
             "needs_inputs_obs": None,
             "gate_obs": None,
         }
@@ -6311,7 +6338,7 @@ def _run_engine(
         # declino intermittente → legacy). Ora: log + UN retry su errore
         # transitorio; su fallimento persistente ritorna "" e il chiamante
         # procede con intent VUOTO (non declina — vedi sotto).
-        if _llm_state["unavailable"]:
+        if _llm_state["failure_kind"]:
             return ""
         for _attempt in (1, 2):
             try:
@@ -6332,14 +6359,15 @@ def _run_engine(
                 # A full timeout or a known provider outage is not transient
                 # within this turn.  Retrying used to multiply an outage into
                 # 40 minutes of silence; surface it once and stop immediately.
-                if _llm_dependency_failure(_e):
-                    _report_llm_unavailable()
+                failure_kind = _llm_dependency_failure_kind(_e)
+                if failure_kind:
+                    _report_llm_failure(failure_kind)
                     break
         return ""
 
     # Provider LLM wise (per Proposer)
     def _llm_call_wise(sys_msg, user_msg, *, max_tokens=2048, **kw):
-        if _llm_state["unavailable"]:
+        if _llm_state["failure_kind"]:
             return ""
         try:
             from llm_router import LLMRouter
@@ -6361,14 +6389,15 @@ def _run_engine(
             return (getattr(res, "text", res) or "").strip()
         except Exception as ex:
             log.warning("engine v2 _llm_call_wise: %r", ex)
-            if _llm_dependency_failure(ex):
-                _report_llm_unavailable()
+            failure_kind = _llm_dependency_failure_kind(ex)
+            if failure_kind:
+                _report_llm_failure(failure_kind)
             return ""
 
     # Intent extraction
     intent_raw = extract_intent(query, _llm_call_fast)
-    if _llm_state["unavailable"]:
-        return _unavailable_result()
+    if _llm_state["failure_kind"]:
+        return _dependency_failure_result()
     if not intent_raw:
         # ROBUSTEZZA (ADR 0181-ext, causa-radice del declino intermittente):
         # intent VUOTO NON è fatale. `extract_intent`→None sia su query davvero
@@ -6964,21 +6993,36 @@ def _run_engine(
     # call) must not be rewritten as "query not understood".  Preserve any
     # real tool observations, but when no step ran, make the dependency and
     # user action visible.
-    _outage_without_steps = _llm_state["unavailable"] and not steps_out
+    _dependency_failure_without_steps = (
+        bool(_llm_state["failure_kind"]) and not steps_out
+    )
+    _failure_kind = _llm_state["failure_kind"] or "provider_unavailable"
+    _failure_message_key = (
+        "ERR_LLM_TIMEOUT_ACTION"
+        if _failure_kind == "provider_timeout"
+        else "ERR_LLM_UNAVAILABLE_ACTION"
+    )
+    _failure_match_source = (
+        "llm_timeout"
+        if _failure_kind == "provider_timeout"
+        else "llm_unavailable"
+    )
     return {
         "steps": steps_out,
-        "final_text": (msg("ERR_LLM_UNAVAILABLE_ACTION")
-                       if _outage_without_steps
+        "final_text": (msg(_failure_message_key)
+                       if _dependency_failure_without_steps
                        else result.final_text),
-        "final_kind": ("error" if _outage_without_steps
+        "final_kind": ("error" if _dependency_failure_without_steps
                        else result.final_kind),
         "framework_hash": result.framework_hash,
         "verb": intent.verb,
         "object": intent.object,
         "keywords": intent.keywords,
-        "match_source": result.match_source,
+        "match_source": (_failure_match_source
+                         if _dependency_failure_without_steps
+                         else result.match_source),
         "elapsed_ms": result.elapsed_ms,
-        "error_class": ("provider_unavailable" if _outage_without_steps
+        "error_class": (_failure_kind if _dependency_failure_without_steps
                         else result.error_class),
         "needs_inputs_obs": needs_inputs_obs,
         "gate_obs": gate_obs,
