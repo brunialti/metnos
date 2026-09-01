@@ -46,6 +46,7 @@ from executor_birth_context_transition import (
     MAX_CONTEXT_TRANSITION_BYTES_V1,
     ContextTransitionV1,
     context_transition_basename_v1,
+    current_inventory_hash_v1,
     verify_context_transition_v1,
 )
 from executor_birth_cutover import CurrentReceiptProof
@@ -114,6 +115,7 @@ class VerifiedOwnershipChain:
         | _AuthenticatedDistributionRecordForTestV1, ...
     ] = ()
     required_distribution: VerifiedDistribution | None = None
+    context_transitions: tuple[ContextTransitionV1, ...] = ()
 
     @property
     def required_head(self) -> OwnershipHead:
@@ -391,6 +393,7 @@ def verify_contiguous_chain(
     heads: Iterable[OwnershipHead], required_head: OwnershipHead,
     cutovers: Mapping[str, OwnershipCutoverCertificate],
     builds: Mapping[str, VerifiedDistribution],
+    transitions: Mapping[str, ContextTransitionV1],
 ) -> VerifiedOwnershipChain:
     """Verify exactly the supplied chain; never select a maximum or fallback."""
     if not isinstance(anchor, OwnershipCutoverCertificate):
@@ -406,6 +409,8 @@ def verify_contiguous_chain(
         raise OwnershipChainError("birth_ownership_distribution_recovery_required", "gap or extra head")
     seen_ids: set[str] = set()
     previous: OwnershipHead | None = None
+    previous_transition: ContextTransitionV1 | None = None
+    selected_transitions: list[ContextTransitionV1] = []
     for expected_sequence, head in enumerate(materialized, 1):
         if not isinstance(head, OwnershipHead) or head.release_sequence != expected_sequence:
             raise OwnershipChainError("birth_ownership_distribution_recovery_required", "head gap")
@@ -421,8 +426,17 @@ def verify_contiguous_chain(
             raise OwnershipChainError("birth_ownership_distribution_recovery_required", "predecessor")
         cutover = cutovers.get(head.cutover_id)
         build = builds.get(head.closed_build_id)
-        if cutover is None or build is None:
+        transition = (
+            transitions.get(cutover.context_transition_id)
+            if cutover is not None else None
+        )
+        if cutover is None or build is None or transition is None:
             raise OwnershipChainError("birth_ownership_distribution_recovery_required", "missing object")
+        _require_context_transition_binding_v1(
+            cutover,
+            transition,
+            previous_transition,
+        )
         if cutover.closed_build_id != head.closed_build_id:
             raise OwnershipChainError("birth_ownership_distribution_chain_invalid", "object binding")
         if previous is not None and cutover.previous_cutover_id != previous.cutover_id:
@@ -443,6 +457,8 @@ def verify_contiguous_chain(
                 "birth_ownership_distribution_chain_invalid", "build predecessor",
             )
         previous = head
+        previous_transition = transition
+        selected_transitions.append(transition)
     final = materialized[-1]
     if (
         final.head_id != required_head.head_id
@@ -450,7 +466,69 @@ def verify_contiguous_chain(
         or final.signature != required_head.signature
     ):
         raise OwnershipChainError("birth_ownership_downgrade", "required head mismatch")
-    return VerifiedOwnershipChain(anchor.cutover_id, materialized)
+    return VerifiedOwnershipChain(
+        anchor.cutover_id,
+        materialized,
+        context_transitions=tuple(selected_transitions),
+    )
+
+
+def _require_context_transition_binding_v1(
+    cutover: OwnershipCutoverCertificate,
+    transition: ContextTransitionV1,
+    previous: ContextTransitionV1 | None,
+) -> None:
+    if (
+        not isinstance(cutover, OwnershipCutoverCertificate)
+        or not isinstance(transition, ContextTransitionV1)
+    ):
+        raise OwnershipChainError(
+            "birth_ownership_distribution_chain_invalid",
+            "context transition authority",
+        )
+    try:
+        verified = verify_context_transition_v1(
+            transition.encoded,
+            expected_transition_id=cutover.context_transition_id,
+            expected_proof=cutover.as_proof(),
+        )
+    except Exception as exc:
+        raise OwnershipChainError(
+            "birth_ownership_distribution_chain_invalid",
+            "context transition authority",
+        ) from exc
+    if verified != transition:
+        raise OwnershipChainError(
+            "birth_ownership_distribution_chain_invalid",
+            "context transition authority",
+        )
+    expected_previous_set = previous.set_id if previous is not None else None
+    expected_previous_context = (
+        previous.prepared_admission_context_id if previous is not None else None
+    )
+    expected_previous_epoch = (
+        previous.prepared_context_epoch if previous is not None else None
+    )
+    if (
+        transition.request_id != cutover.request_id
+        or transition.closed_build_id != cutover.closed_build_id
+        or transition.previous_cutover_id != cutover.previous_cutover_id
+        or transition.current_inventory_hash
+        != current_inventory_hash_v1(cutover.as_proof())
+        or (
+            previous is not None
+            and (
+                transition.previous_set_id != expected_previous_set
+                or transition.previous_admission_context_id
+                != expected_previous_context
+                or transition.previous_context_epoch != expected_previous_epoch
+            )
+        )
+    ):
+        raise OwnershipChainError(
+            "birth_ownership_distribution_chain_invalid",
+            "context transition binding",
+        )
 
 
 def _verify_contiguous_authenticated_chain_v1(
@@ -461,6 +539,7 @@ def _verify_contiguous_authenticated_chain_v1(
         str, AuthenticatedDistributionRecordV1
         | _AuthenticatedDistributionRecordForTestV1
     ],
+    transitions: Mapping[str, ContextTransitionV1],
     required_distribution: VerifiedDistribution, for_test: bool,
 ) -> VerifiedOwnershipChain:
     """Verify historical signed records, with live bytes only for the head."""
@@ -490,6 +569,8 @@ def _verify_contiguous_authenticated_chain_v1(
         | _AuthenticatedDistributionRecordForTestV1
         | None
     ) = None
+    previous_transition: ContextTransitionV1 | None = None
+    selected_transitions: list[ContextTransitionV1] = []
     for expected_sequence, head in enumerate(materialized, 1):
         if not isinstance(head, OwnershipHead) or head.release_sequence != expected_sequence:
             raise OwnershipChainError(
@@ -516,10 +597,19 @@ def _verify_contiguous_authenticated_chain_v1(
 
         cutover = cutovers.get(head.cutover_id)
         record = records.get(head.closed_build_id)
-        if cutover is None or record is None:
+        transition = (
+            transitions.get(cutover.context_transition_id)
+            if cutover is not None else None
+        )
+        if cutover is None or record is None or transition is None:
             raise OwnershipChainError(
                 "birth_ownership_distribution_recovery_required", "missing object",
             )
+        _require_context_transition_binding_v1(
+            cutover,
+            transition,
+            previous_transition,
+        )
         if not _is_authenticated_distribution_record_v1(
             record, for_test=for_test,
         ):
@@ -557,6 +647,8 @@ def _verify_contiguous_authenticated_chain_v1(
         ordered_records.append(record)
         previous_head = head
         previous_record = record
+        previous_transition = transition
+        selected_transitions.append(transition)
 
     final = materialized[-1]
     if (
@@ -580,7 +672,7 @@ def _verify_contiguous_authenticated_chain_v1(
         )
     return VerifiedOwnershipChain(
         anchor.cutover_id, materialized, tuple(ordered_records),
-        required_distribution,
+        required_distribution, tuple(selected_transitions),
     )
 
 
@@ -1250,7 +1342,7 @@ class OwnershipChainStore:
         but are never selected.  The required pointer, not directory order or
         a maximum filename, determines the accepted prefix.
         """
-        self._read_context_transition_inventory_v1()
+        transitions = self._read_context_transition_inventory_v1()
         required = self.read_required_head()
         heads_by_sequence: dict[int, OwnershipHead] = {}
         head_directory = self.root / "heads-v1"
@@ -1320,6 +1412,7 @@ class OwnershipChainStore:
         return verify_contiguous_chain(
             anchor=anchor, heads=selected, required_head=required,
             cutovers=cutovers, builds=selected_builds,
+            transitions=transitions,
         )
 
     @staticmethod
@@ -1360,7 +1453,7 @@ class OwnershipChainStore:
     def _read_required_chain_cold_core_v1(
         self, *, authenticate_record, verify_live_record, for_test: bool,
     ) -> VerifiedOwnershipChain:
-        self._read_context_transition_inventory_v1()
+        transitions = self._read_context_transition_inventory_v1()
         if not for_test:
             _require_product_file_metadata_v1(
                 self.root / REQUIRED_HEAD_BASENAME,
@@ -1572,6 +1665,7 @@ class OwnershipChainStore:
         return _verify_contiguous_authenticated_chain_v1(
             anchor=anchor, heads=selected, required_head=required,
             cutovers=cutovers, records=selected_records,
+            transitions=transitions,
             required_distribution=required_distribution, for_test=for_test,
         )
 
