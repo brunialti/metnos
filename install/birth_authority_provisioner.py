@@ -4039,20 +4039,30 @@ def _verify_published_authority_set_v2(
         layout.birth_session.close()
 
 
-def prepare_transition_publication_v2(
+def prepare_transition_receipts_v2(
     distribution: object,
 ):
-    """Publish one exact V2 set only after its PREPARED record is durable."""
+    """Reach V2 receipt completeness without exposing a partial product door."""
+    from datetime import datetime, timezone
+
+    from executor_birth_bootstrap import _build_staged_reattestation_runtime_v2
     from executor_birth_distribution_manifest import (
         capture_current_deployment_descriptor_v1,
     )
     from executor_birth_ownership_coordinator import (
-        _append_prepared_transition_locked_v2, _deployment_lock_v1,
+        _append_prepared_transition_locked_v2,
+        _append_receipts_complete_locked_v2, _deployment_lock_v1,
+        _prepare_staged_current_receipts_v2,
         _prepared_transition_publication_v2,
+        _result,
         _transition_edge_locked_v2, _transition_maintenance_inventory_v2,
     )
     from executor_birth_prepared_root import (
+        _load_staged_reattestation_context_v1,
         load_required_context_runtime_v1, load_sealed_authorities_v1,
+    )
+    from executor_birth_ownership_preflight import (
+        canonical_maintenance_proof,
     )
 
     with _deployment_lock_v1() as session:
@@ -4079,7 +4089,7 @@ def prepare_transition_publication_v2(
             claim, verified, previous_set,
         )
         with _transition_maintenance_inventory_v2() as frozen:
-            _maintenance, current_inventory, _evidence = frozen
+            maintenance, current_inventory, evidence = frozen
             record, transition = _append_prepared_transition_locked_v2(
                 session,
                 distribution=verified,
@@ -4089,14 +4099,36 @@ def prepare_transition_publication_v2(
                 deployment_descriptor=descriptor,
             )
             _publish_prepared_authority_set_v2(prepared)
-            result = _prepared_transition_publication_v2(
+            publication = _prepared_transition_publication_v2(
                 record, transition,
                 prepared_authority_set=prepared,
                 distribution=verified,
                 deployment_descriptor=descriptor,
                 current_inventory=current_inventory,
             )
-        return result
+            staged_context = _load_staged_reattestation_context_v1(
+                transition, verified, current_inventory,
+            )
+            staged_runtime = _build_staged_reattestation_runtime_v2(
+                staged_context,
+                now=lambda: datetime.now(timezone.utc),
+            )
+            proof = _prepare_staged_current_receipts_v2(
+                staged_runtime,
+                prove_quiescent=maintenance,
+                expected_inventory=current_inventory,
+            )
+            observed = maintenance.observe()
+            final_evidence = canonical_maintenance_proof(
+                source=observed["source"], units=observed["units"],
+            )
+            complete = _append_receipts_complete_locked_v2(
+                session, publication,
+                proof=proof,
+                maintenance_before=evidence,
+                maintenance_after=final_evidence,
+            )
+        return _result(complete)
 
 
 def _run_provisioning_entry_v1(

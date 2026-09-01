@@ -15,7 +15,7 @@ import executor_birth_prepared_set as prepared_module
 from executor_birth_distribution_manifest import (
     DistributionFile, _verified_distribution_for_test,
 )
-from executor_birth_cutover import CurrentInventoryV1
+from executor_birth_cutover import CurrentInventoryV1, CurrentReceiptProof
 from executor_birth_ownership_coordinator import (
     SuccessorClaimV1, _successor_claim_id_v1,
 )
@@ -34,7 +34,7 @@ from install.birth_authority_provisioner import (
     decode_transaction_header_v2,
     decode_material_plan_v2, empty_digests_v1,
     is_prepared_authority_set_v2, prepare_transition_authority_set_v2,
-    prepare_transition_publication_v2,
+    prepare_transition_receipts_v2,
     provisioning_source_inventory_hash_v2,
 )
 from rm0008_2b import support
@@ -721,12 +721,14 @@ def test_v2_publication_moves_the_exact_set_and_preserves_the_v1_anchor(
 
 
 @pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
-def test_v2_product_composition_records_prepared_before_set_publication(
+def test_v2_product_composition_reaches_receipts_after_set_publication(
     tmp_path, monkeypatch,
 ):
     from install import birth_authority_provisioner as provisioning
     import executor_birth_distribution_manifest as distribution_module
+    import executor_birth_bootstrap as bootstrap_module
     import executor_birth_ownership_coordinator as coordinator_module
+    import executor_birth_ownership_preflight as preflight_module
     import executor_birth_prepared_root as prepared_root_module
 
     base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
@@ -736,6 +738,11 @@ def test_v2_product_composition_records_prepared_before_set_publication(
     order = []
     session = object()
     result = object()
+    publication = object()
+    complete = SimpleNamespace(
+        state="RECEIPTS_COMPLETE", request_id=claim.request_id,
+        current_proof=None, cutover_id=None,
+    )
 
     monkeypatch.setattr(
         distribution_module, "capture_current_deployment_descriptor_v1",
@@ -777,9 +784,19 @@ def test_v2_product_composition_records_prepared_before_set_publication(
 
     @contextmanager
     def maintenance_inventory():
+        class Maintenance:
+            def __call__(self):
+                return True
+
+            def observe(self):
+                return {
+                    "source": "inactive_http_and_inactive_sidecar",
+                    "units": [],
+                }
+
         order.append("maintenance-enter")
         try:
-            yield lambda: True, inventory, b"maintenance"
+            yield Maintenance(), inventory, b"maintenance"
         finally:
             order.append("maintenance-exit")
 
@@ -807,14 +824,41 @@ def test_v2_product_composition_records_prepared_before_set_publication(
     )
     monkeypatch.setattr(
         coordinator_module, "_prepared_transition_publication_v2",
-        lambda *args, **kwargs: order.append("result") or result,
+        lambda *args, **kwargs: order.append("publication") or publication,
+    )
+    monkeypatch.setattr(
+        prepared_root_module, "_load_staged_reattestation_context_v1",
+        lambda *args: order.append("staged-context") or "context",
+    )
+    monkeypatch.setattr(
+        bootstrap_module, "_build_staged_reattestation_runtime_v2",
+        lambda *args, **kwargs: order.append("staged-runtime") or "runtime",
+    )
+    monkeypatch.setattr(
+        coordinator_module, "_prepare_staged_current_receipts_v2",
+        lambda *args, **kwargs: order.append("receipts") or CurrentReceiptProof(
+            (), {},
+        ),
+    )
+    monkeypatch.setattr(
+        preflight_module, "canonical_maintenance_proof",
+        lambda **_values: b"maintenance",
+    )
+    monkeypatch.setattr(
+        coordinator_module, "_append_receipts_complete_locked_v2",
+        lambda *args, **kwargs: order.append("receipts-complete") or complete,
+    )
+    monkeypatch.setattr(
+        coordinator_module, "_result",
+        lambda record: order.append("result") or result,
     )
 
-    assert prepare_transition_publication_v2(distribution) is result
+    assert prepare_transition_receipts_v2(distribution) is result
     assert order == [
         "deployment-lock", "distribution", "graph", "previous", "stage",
-        "maintenance-enter", "prepared", "publish", "result",
-        "maintenance-exit",
+        "maintenance-enter", "prepared", "publish", "publication",
+        "staged-context", "staged-runtime", "receipts",
+        "receipts-complete", "maintenance-exit", "result",
     ]
     assert any(
         item.name == "set.json"

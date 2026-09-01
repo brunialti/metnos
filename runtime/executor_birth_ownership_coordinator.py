@@ -19,7 +19,7 @@ import sys
 import threading
 import weakref
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -3378,6 +3378,80 @@ def _append_receipts_complete(
     ))
 
 
+def _receipts_complete_record_v2(
+    prepared: object, *, proof: object,
+    maintenance_before: bytes, maintenance_after: bytes,
+) -> OwnershipCoordinatorRecordV2:
+    """Carry every PREPARED binding into exact receipt completeness."""
+    from executor_birth_context_transition import current_inventory_hash_v1
+    from executor_birth_ownership_preflight import maintenance_evidence_hash
+
+    if (
+        type(prepared) is not OwnershipCoordinatorRecordV2
+        or prepared.sequence != 0
+        or prepared.state is not OwnershipCoordinatorStateV1.PREPARED
+        or type(proof) is not CurrentReceiptProof
+        or proof.inventory.identities != proof.identities
+        or current_inventory_hash_v1(proof.inventory)
+        != prepared.current_inventory_hash
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_receipt_proof_invalid",
+        )
+    before_hash = maintenance_evidence_hash(maintenance_before)
+    after_hash = maintenance_evidence_hash(maintenance_after)
+    if maintenance_before != maintenance_after or before_hash != after_hash:
+        raise OwnershipCoordinatorError("birth_ownership_maintenance_changed")
+    return replace(
+        prepared,
+        sequence=1,
+        state=OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE,
+        previous_record_sha256=_record_hash_v2(prepared.encode()),
+        current_proof=proof,
+        maintenance_before_hash=before_hash,
+        maintenance_after_hash=after_hash,
+        maintenance_proof=maintenance_after,
+    )
+
+
+def _append_receipts_complete_locked_v2(
+    session: _DeploymentLockSessionV1,
+    publication: object, *, proof: object,
+    maintenance_before: bytes, maintenance_after: bytes,
+) -> OwnershipCoordinatorRecordV2:
+    """Append receipt completeness only for a sealed published transition."""
+    if (
+        type(publication) is not PreparedTransitionPublicationV2
+        or publication._seal
+        is not _PREPARED_TRANSITION_PUBLICATION_SEAL_V2
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_request_conflict",
+        )
+    record = _receipts_complete_record_v2(
+        publication.record,
+        proof=proof,
+        maintenance_before=maintenance_before,
+        maintenance_after=maintenance_after,
+    )
+    persisted = _append_ownership_transaction_locked_v2(session, record)
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    matches = tuple(
+        transaction for transaction in graph.transactions
+        if transaction.claim.request_id == record.request_id
+    )
+    if (
+        len(matches) != 1
+        or len(matches[0].records) < 2
+        or matches[0].records[1] != persisted
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "receipt reread",
+        )
+    return persisted
+
+
 @dataclass(frozen=True, slots=True)
 class OwnershipCoordinatorResultV1:
     state: OwnershipCoordinatorStateV1
@@ -3386,7 +3460,9 @@ class OwnershipCoordinatorResultV1:
     cutover_id: str | None
 
 
-def _result(record: OwnershipCoordinatorRecordV1) -> OwnershipCoordinatorResultV1:
+def _result(
+    record: OwnershipCoordinatorRecordV1 | OwnershipCoordinatorRecordV2,
+) -> OwnershipCoordinatorResultV1:
     return OwnershipCoordinatorResultV1(
         record.state, record.request_id,
         len(record.current_proof.identities) if record.current_proof else 0,

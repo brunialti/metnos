@@ -42,6 +42,7 @@ from executor_birth_ownership_coordinator import (
     _legacy_disposition_id_v2, _legacy_journal_hash_v2, _record_basename_v2,
     _record_hash, _record_hash_v2, _successor_claim_basename_v1,
     _prepared_record_v2, _append_prepared_transition_locked_for_test_v2,
+    _receipts_complete_record_v2,
     _successor_claim_id_v1, _deployment_lock_for_test_v1,
     _append_ownership_transaction_locked_for_test_v2,
     _resolve_ownership_coordinator_locked_v2,
@@ -407,6 +408,35 @@ def test_v2_codec_state_threshold_table(sequence):
         record.install_transaction_value(),
     ) == record.install_transaction_id
     assert _record_hash_v2(encoded) != _record_hash(encoded)
+
+
+def test_receipts_complete_v2_carries_prepared_and_requires_exact_inventory():
+    prepared = record_v2(0)
+    complete = _receipts_complete_record_v2(
+        prepared,
+        proof=proof(),
+        maintenance_before=maintenance(),
+        maintenance_after=maintenance(),
+    )
+
+    assert complete.sequence == 1
+    assert complete.state is OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+    assert complete.previous_record_sha256 == _record_hash_v2(
+        prepared.encode(),
+    )
+    assert complete.current_proof == proof()
+    assert complete.context_transition_id == prepared.context_transition_id
+    assert _decode_record_v2(complete.encode()) == complete
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="birth_ownership_receipt_proof_invalid",
+    ):
+        _receipts_complete_record_v2(
+            prepared,
+            proof=CurrentReceiptProof((), {}),
+            maintenance_before=maintenance(),
+            maintenance_after=maintenance(),
+        )
 
 
 @pytest.mark.parametrize(("sequence", "field", "replacement"), (
