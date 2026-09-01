@@ -4043,10 +4043,72 @@ def _verify_published_authority_set_v2(
         layout.birth_session.close()
 
 
-def prepare_transition_receipts_v2(
-    distribution: object,
-):
-    """Reach V2 receipt completeness without exposing a partial product door."""
+_TRANSITION_RECEIPT_PREPARATION_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _TransitionReceiptPreparationV2:
+    distribution: object
+    descriptor: object
+    previous_context: object
+    prepared_authority_set: PreparedAuthoritySetV2
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _TRANSITION_RECEIPT_PREPARATION_SEAL_V2
+            or not is_prepared_authority_set_v2(self.prepared_authority_set)
+        ):
+            raise _conflict()
+
+
+def _prepare_transition_receipt_material_locked_v2(
+    session: object, distribution: object,
+) -> _TransitionReceiptPreparationV2:
+    """Complete reversible preparation before entering maintenance."""
+    from executor_birth_distribution_manifest import (
+        capture_current_deployment_descriptor_v1,
+    )
+    from executor_birth_ownership_coordinator import (
+        _require_deployment_lock_session_v1, _transition_edge_locked_v2,
+    )
+    from executor_birth_prepared_root import (
+        load_required_context_runtime_v1, load_sealed_authorities_v1,
+    )
+
+    _require_deployment_lock_session_v1(session)
+    verified, descriptor = capture_current_deployment_descriptor_v1(
+        distribution,
+    )
+    claim, predecessor = _transition_edge_locked_v2(session, verified)
+    if predecessor is None:
+        if claim.release_sequence != 1:
+            raise _conflict()
+        previous_authorities = load_sealed_authorities_v1()
+        previous_context = previous_authorities.prepared
+        previous_set = previous_authorities.prepared
+    else:
+        required = load_required_context_runtime_v1()
+        if (
+            required.required_head_id != claim.previous_head_id
+            or required.required_head_id != predecessor.head_id
+        ):
+            raise _conflict()
+        previous_context = required.selection
+        previous_set = required.authorities.prepared
+    prepared = prepare_transition_authority_set_v2(
+        claim, verified, previous_set,
+    )
+    return _TransitionReceiptPreparationV2(
+        verified, descriptor, previous_context, prepared,
+        _TRANSITION_RECEIPT_PREPARATION_SEAL_V2,
+    )
+
+
+def _complete_transition_receipts_locked_v2(
+    session: object, preparation: object, frozen: object,
+) -> object:
+    """Reach receipt completeness under caller-held deployment and maintenance."""
     from datetime import datetime, timezone
 
     from executor_birth_bootstrap import _build_staged_reattestation_runtime_v2
@@ -4055,86 +4117,97 @@ def prepare_transition_receipts_v2(
     )
     from executor_birth_ownership_coordinator import (
         _append_prepared_transition_locked_v2,
-        _append_receipts_complete_locked_v2, _deployment_lock_v1,
+        _append_receipts_complete_locked_v2,
         _prepare_staged_current_receipts_v2,
         _prepared_transition_publication_v2,
         _publish_context_transition_locked_v2,
-        _result,
-        _transition_edge_locked_v2, _transition_maintenance_inventory_v2,
+        _require_deployment_lock_session_v1,
     )
     from executor_birth_prepared_root import (
         _load_staged_reattestation_context_v1,
-        load_required_context_runtime_v1, load_sealed_authorities_v1,
     )
     from executor_birth_ownership_preflight import (
         canonical_maintenance_proof,
     )
 
+    _require_deployment_lock_session_v1(session)
+    if (
+        type(preparation) is not _TransitionReceiptPreparationV2
+        or preparation._seal is not _TRANSITION_RECEIPT_PREPARATION_SEAL_V2
+        or type(frozen) is not tuple or len(frozen) != 3
+    ):
+        raise _conflict()
+    distribution = preparation.distribution
+    descriptor = preparation.descriptor
+    verified, repeated_descriptor = capture_current_deployment_descriptor_v1(
+        distribution,
+    )
+    if verified != distribution or repeated_descriptor != descriptor:
+        raise _conflict()
+    maintenance, current_inventory, evidence = frozen
+    if not callable(maintenance):
+        raise _conflict()
+    previous_context = preparation.previous_context
+    prepared = preparation.prepared_authority_set
+    record, transition = _append_prepared_transition_locked_v2(
+        session,
+        distribution=verified,
+        previous_context=previous_context,
+        prepared_authority_set=prepared,
+        current_inventory=current_inventory,
+        deployment_descriptor=descriptor,
+    )
+    _publish_prepared_authority_set_v2(prepared)
+    publication = _prepared_transition_publication_v2(
+        record, transition,
+        prepared_authority_set=prepared,
+        distribution=verified,
+        deployment_descriptor=descriptor,
+        current_inventory=current_inventory,
+    )
+    staged_context = _load_staged_reattestation_context_v1(
+        transition, verified, current_inventory,
+    )
+    staged_runtime = _build_staged_reattestation_runtime_v2(
+        staged_context,
+        now=lambda: datetime.now(timezone.utc),
+    )
+    proof = _prepare_staged_current_receipts_v2(
+        staged_runtime,
+        prove_quiescent=maintenance,
+        expected_inventory=current_inventory,
+    )
+    observed = maintenance.observe()
+    final_evidence = canonical_maintenance_proof(
+        source=observed["source"], units=observed["units"],
+    )
+    complete = _append_receipts_complete_locked_v2(
+        session, publication,
+        proof=proof,
+        maintenance_before=evidence,
+        maintenance_after=final_evidence,
+    )
+    _publish_context_transition_locked_v2(
+        session, publication, complete,
+    )
+    return complete
+
+
+def prepare_transition_receipts_v2(
+    distribution: object,
+):
+    """Reach V2 receipt completeness without exposing a partial product door."""
+    from executor_birth_ownership_coordinator import (
+        _deployment_lock_v1, _result, _transition_maintenance_inventory_v2,
+    )
+
     with _deployment_lock_v1() as session:
-        verified, descriptor = capture_current_deployment_descriptor_v1(
-            distribution,
-        )
-        claim, predecessor = _transition_edge_locked_v2(session, verified)
-        if predecessor is None:
-            if claim.release_sequence != 1:
-                raise _conflict()
-            previous_authorities = load_sealed_authorities_v1()
-            previous_context = previous_authorities.prepared
-            previous_set = previous_authorities.prepared
-        else:
-            required = load_required_context_runtime_v1()
-            if (
-                required.required_head_id != claim.previous_head_id
-                or required.required_head_id != predecessor.head_id
-            ):
-                raise _conflict()
-            previous_context = required.selection
-            previous_set = required.authorities.prepared
-        prepared = prepare_transition_authority_set_v2(
-            claim, verified, previous_set,
+        preparation = _prepare_transition_receipt_material_locked_v2(
+            session, distribution,
         )
         with _transition_maintenance_inventory_v2() as frozen:
-            maintenance, current_inventory, evidence = frozen
-            record, transition = _append_prepared_transition_locked_v2(
-                session,
-                distribution=verified,
-                previous_context=previous_context,
-                prepared_authority_set=prepared,
-                current_inventory=current_inventory,
-                deployment_descriptor=descriptor,
-            )
-            _publish_prepared_authority_set_v2(prepared)
-            publication = _prepared_transition_publication_v2(
-                record, transition,
-                prepared_authority_set=prepared,
-                distribution=verified,
-                deployment_descriptor=descriptor,
-                current_inventory=current_inventory,
-            )
-            staged_context = _load_staged_reattestation_context_v1(
-                transition, verified, current_inventory,
-            )
-            staged_runtime = _build_staged_reattestation_runtime_v2(
-                staged_context,
-                now=lambda: datetime.now(timezone.utc),
-            )
-            proof = _prepare_staged_current_receipts_v2(
-                staged_runtime,
-                prove_quiescent=maintenance,
-                expected_inventory=current_inventory,
-            )
-            observed = maintenance.observe()
-            final_evidence = canonical_maintenance_proof(
-                source=observed["source"], units=observed["units"],
-            )
-            complete = _append_receipts_complete_locked_v2(
-                session, publication,
-                proof=proof,
-                maintenance_before=evidence,
-                maintenance_after=final_evidence,
-            )
-            _publish_context_transition_locked_v2(
-                session, publication, complete,
+            complete = _complete_transition_receipts_locked_v2(
+                session, preparation, frozen,
             )
         return _result(complete)
 

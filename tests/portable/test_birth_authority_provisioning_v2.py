@@ -830,6 +830,12 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
         coordinator_module, "_deployment_lock_v1", deployment_lock,
     )
     monkeypatch.setattr(
+        coordinator_module, "_require_deployment_lock_session_v1",
+        lambda observed: None if observed is session else pytest.fail(
+            "wrong deployment session",
+        ),
+    )
+    monkeypatch.setattr(
         coordinator_module, "_transition_edge_locked_v2",
         lambda observed_session, verified: (
             order.append("graph") or claim,
@@ -929,7 +935,7 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
     assert prepare_transition_receipts_v2(distribution) is result
     assert order == [
         "deployment-lock", "distribution", "graph", "previous", "stage",
-        "maintenance-enter", "prepared", "publish", "publication",
+        "maintenance-enter", "distribution", "prepared", "publish", "publication",
         "staged-context", "staged-runtime", "receipts",
         "receipts-complete", "transition-record", "maintenance-exit",
         "result",

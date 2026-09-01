@@ -4871,54 +4871,65 @@ def _current_reattestation_port_v1():
 
 
 @contextmanager
-def _transition_maintenance_inventory_v2():
-    """Freeze exact current identities inside the fixed maintenance guard."""
+def _transition_inventory_under_maintenance_v2(maintenance, evidence):
+    """Freeze exact current identities under an already held maintenance guard."""
     from contract_cutover_guard import (
-        _verify_store_only_catalog_locked, contract_cutover_guard,
+        _verify_store_only_catalog_locked,
     )
     from executor_birth_cutover import freeze_current_inventory_v1
     from executor_birth_ownership_preflight import canonical_maintenance_proof
 
     port = _current_reattestation_port_v1()
-    with contract_cutover_guard() as (maintenance, evidence):
-        initial = canonical_maintenance_proof(
-            source=evidence["source"], units=evidence["units"],
+    initial = canonical_maintenance_proof(
+        source=evidence["source"], units=evidence["units"],
+    )
+    if maintenance() is not True:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_maintenance_changed",
         )
-        if maintenance() is not True:
-            raise OwnershipCoordinatorError(
-                "birth_ownership_maintenance_changed",
-            )
-        inventory = freeze_current_inventory_v1(port.enumerate_current())
+    inventory = freeze_current_inventory_v1(port.enumerate_current())
+    _verify_store_only_catalog_locked()
+    fresh = maintenance.observe()
+    if (
+        canonical_maintenance_proof(
+            source=fresh["source"], units=fresh["units"],
+        ) != initial
+        or maintenance() is not True
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_maintenance_changed",
+        )
+    try:
+        yield maintenance, inventory, initial
+    finally:
         _verify_store_only_catalog_locked()
-        fresh = maintenance.observe()
+        final_inventory = freeze_current_inventory_v1(
+            port.enumerate_current(),
+        )
+        final = maintenance.observe()
         if (
-            canonical_maintenance_proof(
-                source=fresh["source"], units=fresh["units"],
+            final_inventory != inventory
+            or canonical_maintenance_proof(
+                source=final["source"], units=final["units"],
             ) != initial
             or maintenance() is not True
         ):
             raise OwnershipCoordinatorError(
-                "birth_ownership_maintenance_changed",
+                "birth_ownership_recovery_required",
+                "current inventory or maintenance changed",
             )
-        try:
-            yield maintenance, inventory, initial
-        finally:
-            _verify_store_only_catalog_locked()
-            final_inventory = freeze_current_inventory_v1(
-                port.enumerate_current(),
-            )
-            final = maintenance.observe()
-            if (
-                final_inventory != inventory
-                or canonical_maintenance_proof(
-                    source=final["source"], units=final["units"],
-                ) != initial
-                or maintenance() is not True
-            ):
-                raise OwnershipCoordinatorError(
-                    "birth_ownership_recovery_required",
-                    "current inventory or maintenance changed",
-                )
+
+
+@contextmanager
+def _transition_maintenance_inventory_v2():
+    """Acquire the ordinary guard and freeze the exact current identities."""
+    from contract_cutover_guard import contract_cutover_guard
+
+    with contract_cutover_guard() as (maintenance, evidence):
+        with _transition_inventory_under_maintenance_v2(
+            maintenance, evidence,
+        ) as frozen:
+            yield frozen
 
 
 def prepare_ownership_cutover_v1(
