@@ -1885,6 +1885,162 @@ def _verify_distribution_manifest_for_test(
     )
 
 
+def _verified_distribution_matches_payload_v1(value: object) -> bool:
+    if (
+        type(value) is not VerifiedDistribution
+        or value._seal is not _VERIFIED_DISTRIBUTION_SEAL
+        or value._artifact_binding != _distribution_artifact_binding(
+            value.encoded, value.signature,
+        )
+    ):
+        return False
+    try:
+        document, files = _parse(value.encoded)
+    except DistributionManifestError:
+        return False
+    return (
+        value.identity.closed_build_id == document["closed_build_id"]
+        and value.identity.boundary_inventory_hash
+        == document["boundary_inventory_hash"]
+        and value.identity.boundary_guard_version
+        == document["boundary_guard_version"]
+        and value.previous_closed_build_id
+        == document["previous_closed_build_id"]
+        and value.release_sequence == document["release_sequence"]
+        and value.product_version == document["product_version"]
+        and value.platform == document["platform"]
+        and value.architecture == document["architecture"]
+        and value.installation_root == document["installation_root"]
+        and value.certificate_directory == document["certificate_directory"]
+        and value.preflight_entrypoint == document["preflight_entrypoint"]
+        and value.files == files
+    )
+
+
+def _capture_distribution_file_at_v1(
+    verified: object, root: Path, *, expected_path: str, expected_role: str,
+    administrative: bool,
+) -> bytes:
+    """Read one signed file through an exact-tree anchored observation."""
+    if (
+        not _verified_distribution_matches_payload_v1(verified)
+        or not isinstance(root, Path)
+        or type(expected_path) is not str
+        or type(expected_role) is not str
+        or type(administrative) is not bool
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "verified artifact",
+        )
+    matching = tuple(
+        item for item in verified.files
+        if item.path == expected_path and item.role == expected_role
+    )
+    if len(matching) != 1:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", expected_role,
+        )
+    item = matching[0]
+    tree = _closed_distribution_tree_v1(verified.files)
+    anchor = _open_distribution_tree_anchor_v1(
+        root, administrative=administrative,
+    )
+    try:
+        before = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        content = _read_anchored_distribution_file_v1(
+            anchor, item, before,
+        )
+        after = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        if (
+            before != after
+            or file_content_hash(item.path, content) != item.content_hash
+        ):
+            raise DistributionManifestError(
+                "birth_ownership_distribution_file_mismatch", item.path,
+            )
+        _require_distribution_root_binding_v1(anchor, after[""])
+        return content
+    finally:
+        _close_distribution_tree_anchor_v1(anchor)
+
+
+def _decode_bound_deployment_descriptor_v1(
+    verified: VerifiedDistribution, encoded: bytes,
+):
+    from executor_birth_distribution_assembler import (
+        DEPLOYMENT_DESCRIPTOR_PATH_V1, DistributionAssemblerError,
+        decode_deployment_descriptor_v1,
+    )
+
+    try:
+        descriptor = decode_deployment_descriptor_v1(encoded)
+    except DistributionAssemblerError as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch",
+            DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        ) from exc
+    if (
+        descriptor.release_sequence != verified.release_sequence
+        or descriptor.installation_root != verified.installation_root
+    ):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch",
+            DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        )
+    return descriptor
+
+
+def capture_current_deployment_descriptor_v1(
+    distribution: object,
+) -> tuple[VerifiedDistribution, object]:
+    """Reverify the fixed release around one exact descriptor capture."""
+    if not _verified_distribution_matches_payload_v1(distribution):
+        raise DistributionManifestError(
+            "birth_ownership_distribution_invalid", "verified artifact",
+        )
+    verified = verify_current_installation_distribution_v1(
+        distribution.encoded, distribution.signature,
+    )
+    if verified != distribution:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "distribution",
+        )
+    from executor_birth_distribution_assembler import (
+        DEPLOYMENT_DESCRIPTOR_PATH_V1,
+    )
+
+    encoded = _capture_distribution_file_at_v1(
+        verified, Path(verified.installation_root),
+        expected_path=DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        expected_role="deployment_descriptor", administrative=True,
+    )
+    descriptor = _decode_bound_deployment_descriptor_v1(verified, encoded)
+    reread = verify_current_installation_distribution_v1(
+        verified.encoded, verified.signature,
+    )
+    if reread != verified:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "distribution",
+        )
+    return reread, descriptor
+
+
+def _capture_deployment_descriptor_for_test_v1(
+    distribution: object, actual_root: Path,
+):
+    """Portable seam; productive capture always derives the fixed root."""
+    from executor_birth_distribution_assembler import (
+        DEPLOYMENT_DESCRIPTOR_PATH_V1,
+    )
+
+    encoded = _capture_distribution_file_at_v1(
+        distribution, actual_root,
+        expected_path=DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        expected_role="deployment_descriptor", administrative=False,
+    )
+    return _decode_bound_deployment_descriptor_v1(distribution, encoded)
+
+
 def is_verified_distribution(value: object) -> bool:
     """Recognize only an artifact emitted after full manifest verification."""
     return (
@@ -1914,7 +2070,8 @@ __all__ = [
     "SIGNATURE_DOMAIN", "AuthenticatedDistributionRecordV1",
     "DistributionFile", "DistributionKey",
     "DistributionManifestError", "DistributionRegistry", "VerifiedDistribution",
-    "authenticate_distribution_record_v1", "distribution_key_id",
+    "authenticate_distribution_record_v1",
+    "capture_current_deployment_descriptor_v1", "distribution_key_id",
     "file_content_hash", "is_verified_distribution",
     "verify_current_installation_distribution_v1",
     "verify_installed_distribution_record_v1",
