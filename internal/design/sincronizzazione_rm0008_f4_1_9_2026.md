@@ -1139,4 +1139,4 @@ Se propone un'alternativa, deve preservare insieme: ascendenza da `4114882e`,
 manifesto ed evidenza storici immutati, esecuzione del prodotto F4 corrente e
 zero esclusioni generiche. A non pubblica su `main` prima del verdetto.
 
-`A: REVIEW_READY a39d6340 + working-tree collection fix`
+`A: REVIEW_READY 3a0f3671`
