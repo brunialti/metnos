@@ -3439,19 +3439,37 @@ def _append_receipts_complete_locked_v2(
     persisted = _append_ownership_transaction_locked_v2(session, record)
     snapshot = _resolve_ownership_coordinator_locked_v2(session)
     graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    _require_transaction_record_reread_v2(
+        graph, persisted, detail="receipt reread",
+    )
+    return persisted
+
+
+def _require_transaction_record_reread_v2(
+    graph: object, record: object, *, detail: str,
+) -> None:
+    """Require one exact record at its durable transaction sequence."""
+    if (
+        type(graph) is not _ObservedOwnershipCoordinatorGraphV2
+        or type(record) is not OwnershipCoordinatorRecordV2
+        or type(detail) is not str
+        or not detail
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", detail or "record reread",
+        )
     matches = tuple(
         transaction for transaction in graph.transactions
         if transaction.claim.request_id == record.request_id
     )
     if (
         len(matches) != 1
-        or len(matches[0].records) < 2
-        or matches[0].records[1] != persisted
+        or len(matches[0].records) <= record.sequence
+        or matches[0].records[record.sequence] != record
     ):
         raise OwnershipCoordinatorError(
-            "birth_ownership_recovery_required", "receipt reread",
+            "birth_ownership_recovery_required", detail,
         )
-    return persisted
 
 
 _CERTIFICATE_READY_MATERIAL_SEAL_V2 = object()
@@ -3609,6 +3627,255 @@ def _certificate_published_record_v2(
         sequence=3,
         state=OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED,
         previous_record_sha256=_record_hash_v2(ready.encode()),
+    )
+
+
+def _path_present_v2(path: Path) -> bool:
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "certificate inventory",
+        ) from exc
+    return True
+
+
+def _certificate_target_paths_v2(
+    material: _CertificateReadyMaterialV2,
+    certificate_directory: Path, chain_store: object | None,
+) -> tuple[Path, Path]:
+    if material.record.release_sequence == 1:
+        return (
+            certificate_directory / PAYLOAD_BASENAME,
+            certificate_directory / SIGNATURE_BASENAME,
+        )
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    if not isinstance(chain_store, OwnershipChainStore):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "ownership chain store",
+        )
+    stem = material.certificate.cutover_id.removeprefix("sha256:")
+    return (
+        chain_store.root / "cutovers-v1" / f"{stem}.json",
+        chain_store.root / "cutovers-v1" / f"{stem}.sig",
+    )
+
+
+def _require_unpublished_certificate_target_v2(
+    material: _CertificateReadyMaterialV2,
+    certificate_directory: Path, chain_store: object | None,
+) -> None:
+    if any(_path_present_v2(path) for path in _certificate_target_paths_v2(
+        material, certificate_directory, chain_store,
+    )):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "certificate exists before ready",
+        )
+
+
+def _publish_certificate_material_v2(
+    material: object, *, certificate_directory: Path,
+    authorities: object, chain_store: object | None,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Publish and reread the exact bytes already committed by READY."""
+    if (
+        type(material) is not _CertificateReadyMaterialV2
+        or material._seal is not _CERTIFICATE_READY_MATERIAL_SEAL_V2
+        or not isinstance(authorities, RootOwnershipAuthoritiesV1)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        )
+    record = material.record
+    proof = record.current_proof
+    assert proof is not None
+    if record.release_sequence == 1:
+        observed = install_ownership_cutover_certificate(
+            certificate_directory,
+            material.payload,
+            material.signature,
+            registry=authorities.public.cutover,
+            expected_proof=proof,
+            expected_context_transition_id=record.context_transition_id,
+            expected_dominant_startup_receipt=(
+                record.dominant_startup_receipt
+            ),
+            _crash_seam=_crash_seam,
+        )
+        reread = read_ownership_cutover_certificate(
+            certificate_directory,
+            registry=authorities.public.cutover,
+            expected_proof=proof,
+            expected_context_transition_id=record.context_transition_id,
+            expected_dominant_startup_receipt=(
+                record.dominant_startup_receipt
+            ),
+        )
+    else:
+        from executor_birth_ownership_chain import OwnershipChainStore
+
+        if not isinstance(chain_store, OwnershipChainStore):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "ownership chain store",
+            )
+        observed = chain_store.append_cutover(
+            material.payload, material.signature, _crash_seam=_crash_seam,
+        )
+        stem = material.certificate.cutover_id.removeprefix("sha256:")
+        encoded, signature = chain_store._read_pair(
+            chain_store.root / "cutovers-v1", stem,
+            maximum=MAX_PAYLOAD_BYTES,
+        )
+        if encoded != material.payload or signature != material.signature:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "certificate reread",
+            )
+        reread = verify_ownership_cutover_certificate(
+            encoded,
+            signature,
+            registry=authorities.public.cutover,
+            expected_proof=proof,
+            expected_previous_cutover_id=record.previous_cutover_id,
+            expected_context_transition_id=record.context_transition_id,
+            expected_dominant_startup_receipt=(
+                record.dominant_startup_receipt
+            ),
+        )
+    if observed != material.certificate or reread != material.certificate:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "certificate reread",
+        )
+    return _certificate_published_record_v2(record)
+
+
+def _cross_certificate_boundary_core_v2(
+    *, material: object, authorities: object,
+    certificate_directory: Path, chain_store: object | None,
+    append_record: object, observe_graph: object,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Share exact ordering; wrappers retain nominal lock authority."""
+    if (
+        type(material) is not _CertificateReadyMaterialV2
+        or material._seal is not _CERTIFICATE_READY_MATERIAL_SEAL_V2
+        or not isinstance(authorities, RootOwnershipAuthoritiesV1)
+        or not callable(append_record)
+        or not callable(observe_graph)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        )
+    before = observe_graph()
+    if type(before) is not _ObservedOwnershipCoordinatorGraphV2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "coordinator graph",
+        )
+    matches = tuple(
+        item for item in before.transactions
+        if item.claim.request_id == material.record.request_id
+    )
+    if len(matches) != 1 or len(matches[0].records) < 2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "receipt reread",
+        )
+    complete = matches[0].records[1]
+    if material.record.previous_record_sha256 != _record_hash_v2(
+        complete.encode(),
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "certificate predecessor",
+        )
+    if matches[0].latest.sequence == 1:
+        _require_unpublished_certificate_target_v2(
+            material, certificate_directory, chain_store,
+        )
+    ready = append_record(material.record)
+    reread_graph = observe_graph()
+    _require_transaction_record_reread_v2(
+        reread_graph, ready, detail="certificate ready reread",
+    )
+    if _crash_seam is not None:
+        _crash_seam("certificate_ready")
+    published_record = _publish_certificate_material_v2(
+        material,
+        certificate_directory=certificate_directory,
+        authorities=authorities,
+        chain_store=chain_store,
+        _crash_seam=_crash_seam,
+    )
+    published = append_record(published_record)
+    final_graph = observe_graph()
+    _require_transaction_record_reread_v2(
+        final_graph, published, detail="certificate published reread",
+    )
+    return published
+
+
+def _cross_certificate_boundary_locked_v2(
+    session: _DeploymentLockSessionV1, material: object, *,
+    authorities: object,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Productive READY-to-PUBLISHED crossing under the fixed outer lock."""
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    if type(material) is not _CertificateReadyMaterialV2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        )
+    chain_store = (
+        None if material.record.release_sequence == 1
+        else OwnershipChainStore()
+    )
+
+    def observe_graph():
+        snapshot = _resolve_ownership_coordinator_locked_v2(session)
+        return _require_locked_coordinator_graph_snapshot_v2(
+            snapshot, session,
+        )
+
+    return _cross_certificate_boundary_core_v2(
+        material=material,
+        authorities=authorities,
+        certificate_directory=DEFAULT_OWNERSHIP_ROOT_V1,
+        chain_store=chain_store,
+        append_record=lambda record: _append_ownership_transaction_locked_v2(
+            session, record,
+        ),
+        observe_graph=observe_graph,
+        _crash_seam=_crash_seam,
+    )
+
+
+def _cross_certificate_boundary_locked_for_test_v2(
+    session: _DeploymentLockSessionForTestV1, ownership_root: Path,
+    material: object, *, authorities: object, chain_store: object | None = None,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Portable proof seam; it never accepts the productive lock session."""
+    ownership_root = Path(ownership_root)
+    _require_test_deployment_lock_session_v1(session, ownership_root)
+    return _cross_certificate_boundary_core_v2(
+        material=material,
+        authorities=authorities,
+        certificate_directory=ownership_root,
+        chain_store=chain_store,
+        append_record=lambda record: (
+            _append_ownership_transaction_locked_for_test_v2(
+                session, ownership_root, record,
+            )
+        ),
+        observe_graph=lambda: (
+            _resolve_ownership_coordinator_locked_for_test_v2(
+                session, ownership_root,
+            ).observation
+        ),
+        _crash_seam=_crash_seam,
     )
 
 

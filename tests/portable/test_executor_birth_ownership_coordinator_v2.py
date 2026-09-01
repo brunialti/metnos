@@ -44,6 +44,7 @@ from executor_birth_ownership_coordinator import (
     _record_hash, _record_hash_v2, _successor_claim_basename_v1,
     _prepared_record_v2, _append_prepared_transition_locked_for_test_v2,
     _certificate_published_record_v2, _certificate_ready_material_v2,
+    _cross_certificate_boundary_locked_for_test_v2,
     _receipts_complete_record_v2, _startup_prerequisite_for_test,
     _successor_claim_id_v1, _deployment_lock_for_test_v1,
     _append_ownership_transaction_locked_for_test_v2,
@@ -58,6 +59,7 @@ from executor_birth_ownership_authorities import (
 from executor_birth_ownership_cutover import (
     _binding_values, _bindings_from_proof, _catalog_id,
 )
+from executor_birth_ownership_chain import _OwnershipChainStoreForTest
 from executor_birth_ownership_preflight import (
     _sealed_build_identity_for_test, canonical_maintenance_proof,
     maintenance_evidence_hash,
@@ -251,9 +253,15 @@ class _StartupSession:
         raise TypeError("startup lock sessions are not transferable")
 
 
-def dominant_receipt(*, catalog_id: str):
+def dominant_receipt(
+    complete: OwnershipCoordinatorRecordV2, *, catalog_id: str,
+):
     values = {
-        "identity": (D("1"), D("4"), D("9")),
+        "identity": (
+            complete.request_id,
+            complete.previous_head_id or D("4"),
+            complete.context_transition_id,
+        ),
         "topology": D("a"),
         "catalog": catalog_id,
         "retirement": D("c"),
@@ -488,7 +496,7 @@ def test_receipts_complete_v2_carries_prepared_and_requires_exact_inventory():
 def test_certificate_ready_v2_requires_a_sealed_crossing_and_exact_bytes():
     complete = record_v2(1)
     prerequisite = _startup_prerequisite_for_test(D("1"), D("2"))
-    receipt = dominant_receipt(catalog_id=proof_catalog_id())
+    receipt = dominant_receipt(complete, catalog_id=proof_catalog_id())
     material = _certificate_ready_material_v2(
         complete,
         authorities=portable_authorities(),
@@ -522,7 +530,9 @@ def test_certificate_ready_v2_rejects_unsealed_or_drifting_evidence():
         "authorities": portable_authorities(),
         "prerequisite": _startup_prerequisite_for_test(D("1"), D("2")),
         "observe_maintenance": maintenance,
-        "crossing_receipt": dominant_receipt(catalog_id=proof_catalog_id()),
+        "crossing_receipt": dominant_receipt(
+            complete, catalog_id=proof_catalog_id(),
+        ),
     }
     with pytest.raises(
         OwnershipCoordinatorError,
@@ -550,8 +560,218 @@ def test_certificate_ready_v2_rejects_unsealed_or_drifting_evidence():
             complete,
             **{
                 **arguments,
-                "crossing_receipt": dominant_receipt(catalog_id=D("f")),
+                "crossing_receipt": dominant_receipt(
+                    complete, catalog_id=D("f"),
+                ),
             },
+        )
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize(
+    "interruption_stage", ("certificate_ready", "certificate_signature"),
+)
+def test_certificate_boundary_v2_recovers_only_after_durable_ready(
+    tmp_path, interruption_stage,
+):
+    ownership_root = tmp_path / "ownership"
+    authorities = portable_authorities()
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory = make_coordinator_root(ownership_root)
+        claim = bound_claim(
+            release_sequence=1,
+            previous_head_id=None,
+            closed_build_id=D("3"),
+            source_id=D("2"),
+            previous_closed_build_id=None,
+            previous_cutover_id=None,
+        )
+        records = transaction_records(
+            claim,
+            end_sequence=1,
+            previous_closed_build_id=None,
+            previous_cutover_id=None,
+            cutover_id=D("4"),
+            head_id=D("5"),
+        )
+        write_claim(directory, claim)
+        write_transaction(directory, claim, records)
+        complete = records[-1]
+        material = _certificate_ready_material_v2(
+            complete,
+            authorities=authorities,
+            prerequisite=_startup_prerequisite_for_test(D("1"), D("2")),
+            observe_maintenance=lambda: complete.maintenance_proof,
+            crossing_receipt=dominant_receipt(
+                complete, catalog_id=proof_catalog_id(),
+            ),
+        )
+
+        class Interrupted(Exception):
+            pass
+
+        def interrupt(stage):
+            if stage == interruption_stage:
+                raise Interrupted
+
+        with pytest.raises(Interrupted):
+            _cross_certificate_boundary_locked_for_test_v2(
+                session,
+                ownership_root,
+                material,
+                authorities=authorities,
+                _crash_seam=interrupt,
+            )
+        interrupted = _resolve_ownership_coordinator_locked_for_test_v2(
+            session, ownership_root,
+        ).observation.transactions[-1]
+        assert interrupted.latest.state is (
+            OwnershipCoordinatorStateV1.CERTIFICATE_READY
+        )
+
+        published = _cross_certificate_boundary_locked_for_test_v2(
+            session, ownership_root, material, authorities=authorities,
+        )
+        assert published.state is (
+            OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+        )
+        final = _resolve_ownership_coordinator_locked_for_test_v2(
+            session, ownership_root,
+        ).observation.transactions[-1]
+        assert final.records == records + (material.record, published)
+        assert (ownership_root / "ownership-cutover-v1.json").read_bytes() == (
+            material.payload
+        )
+        assert (ownership_root / "ownership-cutover-v1.sig").read_bytes() == (
+            material.signature
+        )
+
+
+@LINUX_ONLY
+def test_certificate_boundary_v2_never_adopts_bytes_before_ready(tmp_path):
+    ownership_root = tmp_path / "ownership"
+    authorities = portable_authorities()
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory = make_coordinator_root(ownership_root)
+        claim = bound_claim(
+            release_sequence=1,
+            previous_head_id=None,
+            closed_build_id=D("3"),
+            source_id=D("2"),
+            previous_closed_build_id=None,
+            previous_cutover_id=None,
+        )
+        records = transaction_records(
+            claim,
+            end_sequence=1,
+            previous_closed_build_id=None,
+            previous_cutover_id=None,
+            cutover_id=D("4"),
+            head_id=D("5"),
+        )
+        write_claim(directory, claim)
+        write_transaction(directory, claim, records)
+        complete = records[-1]
+        material = _certificate_ready_material_v2(
+            complete,
+            authorities=authorities,
+            prerequisite=_startup_prerequisite_for_test(D("1"), D("2")),
+            observe_maintenance=lambda: complete.maintenance_proof,
+            crossing_receipt=dominant_receipt(
+                complete, catalog_id=proof_catalog_id(),
+            ),
+        )
+        (ownership_root / "ownership-cutover-v1.sig").write_bytes(b"x" * 64)
+
+        with pytest.raises(
+            OwnershipCoordinatorError,
+            match="certificate exists before ready",
+        ):
+            _cross_certificate_boundary_locked_for_test_v2(
+                session, ownership_root, material, authorities=authorities,
+            )
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            session, ownership_root,
+        ).observation
+        assert graph.transactions[-1].records == records
+
+
+@LINUX_ONLY
+def test_later_certificate_v2_is_appended_to_the_chain_not_the_anchor(
+    tmp_path,
+):
+    ownership_root = tmp_path / "ownership"
+    authorities = portable_authorities()
+    chain_store = _OwnershipChainStoreForTest._initialize_with_authorities(
+        tmp_path / "chain-v1", authorities.public,
+    )
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory = make_coordinator_root(ownership_root)
+        first_claim = bound_claim(
+            release_sequence=1,
+            previous_head_id=None,
+            closed_build_id=D("3"),
+            source_id=D("2"),
+            previous_closed_build_id=None,
+            previous_cutover_id=None,
+        )
+        first_records = transaction_records(
+            first_claim,
+            end_sequence=6,
+            previous_closed_build_id=None,
+            previous_cutover_id=None,
+            cutover_id=D("4"),
+            head_id=D("5"),
+        )
+        write_claim(directory, first_claim)
+        write_transaction(directory, first_claim, first_records)
+        claim = bound_claim(
+            release_sequence=2,
+            previous_head_id=first_records[-1].head_id,
+            closed_build_id=D("a"),
+            source_id=D("b"),
+            previous_closed_build_id=first_records[-1].closed_build_id,
+            previous_cutover_id=first_records[-1].cutover_id,
+        )
+        records = transaction_records(
+            claim,
+            end_sequence=1,
+            previous_closed_build_id=first_records[-1].closed_build_id,
+            previous_cutover_id=first_records[-1].cutover_id,
+            cutover_id=D("6"),
+            head_id=D("7"),
+        )
+        write_claim(directory, claim)
+        write_transaction(directory, claim, records)
+        complete = records[-1]
+        material = _certificate_ready_material_v2(
+            complete,
+            authorities=authorities,
+            prerequisite=_startup_prerequisite_for_test(D("1"), D("2")),
+            observe_maintenance=lambda: complete.maintenance_proof,
+            crossing_receipt=dominant_receipt(
+                complete, catalog_id=proof_catalog_id(),
+            ),
+        )
+
+        published = _cross_certificate_boundary_locked_for_test_v2(
+            session,
+            ownership_root,
+            material,
+            authorities=authorities,
+            chain_store=chain_store,
+        )
+
+        stem = material.certificate.cutover_id.removeprefix("sha256:")
+        assert published.state is (
+            OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+        )
+        assert not (ownership_root / "ownership-cutover-v1.json").exists()
+        assert (chain_store.root / "cutovers-v1" / f"{stem}.json").read_bytes() == (
+            material.payload
+        )
+        assert (chain_store.root / "cutovers-v1" / f"{stem}.sig").read_bytes() == (
+            material.signature
         )
 
 
