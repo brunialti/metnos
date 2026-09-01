@@ -7,6 +7,7 @@ import os
 from dataclasses import replace
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import executor_birth_prepared_set as prepared_module
 from executor_birth_distribution_manifest import (
@@ -522,3 +523,90 @@ def test_v2_material_plan_expansion_recovers_its_next_pending(
                 base_components + ("admission", "birth-keystore.lock"),
                 maximum=1, role=_BirthObjectRole.birth_confidential,
             ) == b"0"
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_builds_a_new_set_without_copying_or_replacing_the_author_root(
+    tmp_path, monkeypatch,
+):
+    import config as runtime_config
+    from executor_birth_prepared_set import load_prepared_set_v1
+    from install import birth_authority_provisioner as provisioning
+
+    base = support.make_config(
+        tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
+    )
+    support.provision(monkeypatch, base)
+    marker_before = (base / "birth" / "prepared-v1.json").read_bytes()
+    author_before = {
+        item.relative_to(base / "birth" / "author-root-v1").as_posix(): (
+            item.read_bytes()
+        )
+        for item in (base / "birth" / "author-root-v1").rglob("*")
+        if item.is_file()
+    }
+    layout = support.open_layout(monkeypatch, base)
+    target_root = runtime_config.PATH_RUNTIME
+    distribution = replace(
+        _distribution(), installation_root=str(target_root),
+    )
+    monkeypatch.setattr(
+        runtime_config, "PATH_RUNTIME", tmp_path / "must-not-be-opened",
+    )
+    transaction_id = "0" * 32
+    with layout.birth_session as session:
+        with session.global_lock(exclusive=True, create=True):
+            previous = load_prepared_set_v1(session)
+            header = _build_transaction_header_v2(
+                transaction_id=transaction_id,
+                provisioner_build_id="build-v2",
+                claim=_claim(),
+                distribution=distribution,
+                previous_set=previous,
+            )
+            journal = provisioning._TransactionJournalV1.transition_v2(
+                session, transaction_id,
+            )
+            journal.create_root()
+            journal.write_header(header)
+            checkpoint = provisioning._prepare_staged_authority_set_v2(
+                session, layout, header, previous, distribution,
+            )
+            repeated = provisioning._prepare_staged_authority_set_v2(
+                session, layout, header, previous, distribution,
+            )
+            plan = journal._read_material_plan_v2(header)
+            staged = journal.root_components + ("authority-set",)
+            registry = provisioning._authority_registry_v1(session, staged)
+            set_document = json.loads(session.read_file(
+                staged + ("set.json",), maximum=1024 * 1024,
+            ))
+
+            assert registry["admission"]["active_key_id"] != (
+                previous.admission_active_key_id
+            )
+            assert set_document["author_active_key_id"] == (
+                previous.author_active_key_id
+            )
+            assert set_document["author_verifier_key_ids"] == list(
+                previous.author_verifier_key_ids
+            )
+            assert set_document["provisioning_transaction_id"] == transaction_id
+            assert checkpoint == repeated
+            assert checkpoint.state is ProvisioningStateV1.verified
+            assert len(journal.read_state().chain) == 2
+            assert {record.relative_path for record in checkpoint.payload_inventory} == {
+                entry.relative_path for entry in plan.entries
+            }
+            assert "author-root-v1" not in session.inventory(
+                journal.root_components
+            )
+
+    assert (base / "birth" / "prepared-v1.json").read_bytes() == marker_before
+    assert {
+        item.relative_to(base / "birth" / "author-root-v1").as_posix(): (
+            item.read_bytes()
+        )
+        for item in (base / "birth" / "author-root-v1").rglob("*")
+        if item.is_file()
+    } == author_before

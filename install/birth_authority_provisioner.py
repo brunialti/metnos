@@ -1607,6 +1607,403 @@ def _require_material_plan_inventory_v2(
             raise _reject("birth_provisioning_recovery_ambiguous")
 
 
+def _build_material_plan_v2(
+    session, journal: _TransactionJournalV1, layout,
+    previous_set: object, distribution: object,
+) -> MaterialPlanV2:
+    """Freeze a complete new set from the installed author and target release."""
+    from executor_birth_distribution_manifest import is_verified_distribution
+    from executor_birth_keystore import raw_public_key
+    from executor_birth_prepared_set import is_prepared_set_v1
+
+    header = journal.read_state().header
+    if (
+        not isinstance(header, TransactionHeaderV2)
+        or not is_prepared_set_v1(previous_set)
+        or not is_verified_distribution(distribution)
+        or header.previous_set_id != previous_set.set_id
+        or header.closed_build_id != distribution.identity.closed_build_id
+        or header.distribution_payload_hash
+        != "sha256:" + hashlib.sha256(distribution.encoded).hexdigest()
+        or header.distribution_signature_hash
+        != "sha256:" + hashlib.sha256(distribution.signature).hexdigest()
+        or header.source_inventory_hash
+        != provisioning_source_inventory_hash_v2(distribution)
+    ):
+        raise _conflict()
+    author = verify_author_store_v1(
+        session, (AUTHOR_STORE_BASENAME_V1,), None,
+    )
+    author_publics = {
+        key_id: raw_public_key(key)
+        for key_id, key in author.verifier_keys.items()
+    }
+    if (
+        author.active_key_id != previous_set.author_active_key_id
+        or tuple(sorted(author_publics))
+        != previous_set.author_verifier_key_ids
+    ):
+        raise _reject("birth_author_keystore_existing_invalid")
+    inputs = acquire_operator_inputs_v1(layout.operator_input)
+    catalog = producer_catalog_v1()
+    admission_key_id, admission_private, admission_publics = _generate_keypair_v1()
+    producer_material: dict[str, tuple[str, bytes, dict[str, bytes]]] = {}
+    generated = list(admission_publics.values())
+    for producer_id, operation in catalog:
+        name = producer_store_name_v1(producer_id, operation)
+        if name in producer_material:
+            raise _conflict()
+        material = _generate_keypair_v1()
+        producer_material[name] = material
+        generated.extend(material[2].values())
+    _require_separated_authority_keys_v1(
+        author_publics=author_publics, generated=generated, inputs=inputs,
+    )
+    registry = _planned_authority_registry_v2(
+        inputs, admission_key_id, admission_publics, producer_material,
+    )
+    prepared = _prepare_verified_admission_context_v2(
+        distribution, registry,
+    )
+    sandbox_document = measure_sandbox_backend_v1()
+    digests = empty_digests_v1()
+    digests.update({
+        "approval_input_sha256": inputs.approval_sha256,
+        "semantic_input_sha256": inputs.semantic_sha256,
+        "producer_catalog_sha256": producer_catalog_sha256_v1(catalog),
+        "context_source_inventory_sha256": prepared.source_inventory_sha256,
+        "author_store_public_inventory_sha256": (
+            author_store_public_inventory_sha256_v1(author_publics)
+        ),
+        "context_material_sha256": prepared.material_sha256,
+    })
+    set_document, _set_id = build_set_document_v1(
+        transaction_id=journal.transaction_id,
+        provisioner_build_id=header.provisioner_build_id,
+        author={
+            "active_key_id": author.active_key_id,
+            "verifier_key_ids": sorted(author_publics),
+        },
+        registry=registry,
+        catalog=catalog,
+        digests=digests,
+        prepared=prepared,
+        approval_document=inputs.approval_document,
+        semantic_document=inputs.semantic_document,
+        sandbox_document=sandbox_document,
+    )
+    digests["set_json_sha256"] = hashlib.sha256(set_document).hexdigest()
+    entries: list[MaterialPlanEntryV2] = []
+
+    def directory(relative: str, confidentiality) -> None:
+        entries.append(MaterialPlanEntryV2(
+            relative, PayloadObjectTypeV1.directory, confidentiality, None,
+        ))
+
+    def file(relative: str, confidentiality, payload: bytes) -> None:
+        entries.append(MaterialPlanEntryV2(
+            relative, PayloadObjectTypeV1.file, confidentiality, payload,
+        ))
+
+    integrity = PayloadConfidentialityV1.integrity_only
+    confidential = PayloadConfidentialityV1.confidential
+    directory(AUTHORITY_SET_BASENAME_V1, integrity)
+    directory(f"{AUTHORITY_SET_BASENAME_V1}/producers", integrity)
+    directory(f"{AUTHORITY_SET_BASENAME_V1}/approval", integrity)
+    directory(f"{AUTHORITY_SET_BASENAME_V1}/semantic", integrity)
+    directory(f"{AUTHORITY_SET_BASENAME_V1}/semantic/public", integrity)
+    directory(f"{AUTHORITY_SET_BASENAME_V1}/semantic/evidence", integrity)
+    directory(
+        f"{AUTHORITY_SET_BASENAME_V1}/{SANDBOX_CONTAINER_BASENAME_V1}",
+        integrity,
+    )
+    directory(
+        f"{AUTHORITY_SET_BASENAME_V1}/{CONTEXT_CONTAINER_BASENAME_V1}",
+        integrity,
+    )
+    _add_planned_keystore_v2(
+        entries, f"{AUTHORITY_SET_BASENAME_V1}/admission",
+        admission_key_id, admission_private, admission_publics,
+    )
+    for name, (key_id, private_raw, publics) in producer_material.items():
+        _add_planned_keystore_v2(
+            entries, f"{AUTHORITY_SET_BASENAME_V1}/producers/{name}",
+            key_id, private_raw, publics,
+        )
+    file(
+        f"{AUTHORITY_SET_BASENAME_V1}/approval/authority.json", integrity,
+        inputs.approval_document,
+    )
+    file(
+        f"{AUTHORITY_SET_BASENAME_V1}/semantic/authority.json", integrity,
+        inputs.semantic_document,
+    )
+    for name, public in inputs.semantic_publics.items():
+        file(
+            f"{AUTHORITY_SET_BASENAME_V1}/semantic/public/{name}",
+            integrity, public,
+        )
+    file(
+        f"{AUTHORITY_SET_BASENAME_V1}/{SANDBOX_CONTAINER_BASENAME_V1}/"
+        f"{SANDBOX_REGISTRY_BASENAME_V1}",
+        integrity, sandbox_document,
+    )
+    file(
+        f"{AUTHORITY_SET_BASENAME_V1}/{CONTEXT_CONTAINER_BASENAME_V1}/"
+        f"{CONTEXT_MATERIAL_BASENAME_V1}",
+        integrity, prepared.document,
+    )
+    file(
+        f"{AUTHORITY_SET_BASENAME_V1}/{SET_DOCUMENT_BASENAME_V1}",
+        integrity, set_document,
+    )
+    return MaterialPlanV2(
+        transaction_id=journal.transaction_id,
+        transaction_header_sha256=hashlib.sha256(header.encode()).hexdigest(),
+        entries=tuple(sorted(entries, key=lambda item: item.sort_key)),
+    )
+
+
+def _add_planned_keystore_v2(
+    entries: list[MaterialPlanEntryV2], base: str, active_key_id: str,
+    active_private: bytes, publics: Mapping[str, bytes],
+) -> None:
+    confidential = PayloadConfidentialityV1.confidential
+    integrity = PayloadConfidentialityV1.integrity_only
+    entries.extend((
+        MaterialPlanEntryV2(
+            base, PayloadObjectTypeV1.directory, confidential, None,
+        ),
+        MaterialPlanEntryV2(
+            f"{base}/private", PayloadObjectTypeV1.directory,
+            confidential, None,
+        ),
+        MaterialPlanEntryV2(
+            f"{base}/public", PayloadObjectTypeV1.directory,
+            integrity, None,
+        ),
+        MaterialPlanEntryV2(
+            f"{base}/birth-keystore.lock", PayloadObjectTypeV1.file,
+            confidential, b"0",
+        ),
+        MaterialPlanEntryV2(
+            f"{base}/keystore.json", PayloadObjectTypeV1.file,
+            confidential, keystore_config_v1(active_key_id, publics),
+        ),
+        MaterialPlanEntryV2(
+            f"{base}/private/{active_key_id}.key", PayloadObjectTypeV1.file,
+            confidential, active_private,
+        ),
+    ))
+    entries.extend(
+        MaterialPlanEntryV2(
+            f"{base}/public/{key_id}.pub", PayloadObjectTypeV1.file,
+            integrity, publics[key_id],
+        )
+        for key_id in sorted(publics)
+    )
+
+
+def _planned_authority_registry_v2(
+    inputs: OperatorInputsV1, admission_key_id: str,
+    admission_publics: Mapping[str, bytes],
+    producer_material: Mapping[str, tuple[str, bytes, Mapping[str, bytes]]],
+) -> dict[str, object]:
+    from executor_birth_approval_authority import _decode_approval_authority
+    from executor_birth_keystore import raw_public_key
+
+    def store(active_key_id: str, publics: Mapping[str, bytes]):
+        return {
+            "active_key_id": active_key_id,
+            "verifier_key_ids": sorted(publics),
+            "public_keys": {
+                key_id: publics[key_id].hex() for key_id in sorted(publics)
+            },
+        }
+
+    approval = _decode_approval_authority(inputs.approval_document)
+    semantic = decode_canonical_document_v1(inputs.semantic_document)
+    return {
+        "admission": store(admission_key_id, admission_publics),
+        "producers": {
+            name: store(key_id, publics)
+            for name, (key_id, _private, publics) in producer_material.items()
+        },
+        "approval": {
+            "revision": approval.revision,
+            "keys": {
+                key_id: raw_public_key(key).hex()
+                for key_id, key in sorted(approval.keys.items())
+            },
+            "actors": {
+                actor: {
+                    "key_ids": sorted(entry["key_ids"]),
+                    "scopes": sorted(entry["scopes"]),
+                }
+                for actor, entry in sorted(approval.actors.items())
+            },
+        },
+        "semantic": {
+            key_id: spec["status"]
+            for key_id, spec in sorted(semantic["verifiers"].items())
+        },
+    }
+
+
+def _prepare_verified_admission_context_v2(
+    distribution: object, authority_registry: Mapping[str, object],
+) -> PreparedContextMaterialV1:
+    from executor_birth_prepared_root import (
+        PreparedRootError, _open_distribution_sources_for_verified_v1,
+    )
+
+    try:
+        sources = _open_distribution_sources_for_verified_v1(distribution)
+    except PreparedRootError as exc:
+        raise BirthProvisioningError(exc.code, exc) from None
+    try:
+        return prepare_context_material_v1(sources, authority_registry)
+    except ContextMaterialError as exc:
+        raise BirthProvisioningError(exc.code, exc) from None
+    finally:
+        sources.close()
+
+
+def _prepare_staged_authority_set_v2(
+    session, layout, expected_header: TransactionHeaderV2,
+    previous_set: object, distribution: object,
+) -> CheckpointV1:
+    """Converge one V2 transaction on a verified staged authority set."""
+    journal = _TransactionJournalV1.transition_v2(
+        session, expected_header.transaction_id,
+    )
+    state = journal.recover_header(expected_header, journal.read_state())
+    if state.header != expected_header:
+        raise _conflict()
+    journal.ensure_checkpoints()
+    state = journal.recover_checkpoint_pending(journal.read_state())
+    zero = CheckpointV1(
+        expected_header.transaction_id, 0, None, ProvisioningStateV1.created,
+        (), empty_digests_v1(), None,
+    )
+    last = state.last
+    if last is None:
+        journal.append(zero)
+        last = zero
+    elif last != zero and last.state is not ProvisioningStateV1.verified:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    plan = journal.ensure_material_plan_v2(lambda: _build_material_plan_v2(
+        session, journal, layout, previous_set, distribution,
+    ))
+    records = _materialize_material_plan_v2(session, journal, plan)
+    digests, set_id = _staged_material_digests_v2(
+        session, journal, previous_set,
+    )
+    candidate = CheckpointV1(
+        expected_header.transaction_id, 1, zero.digest(),
+        ProvisioningStateV1.verified, records, digests, set_id,
+    )
+    if last.state is ProvisioningStateV1.verified:
+        if last != candidate or len(state.chain) != 2:
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        return last
+    journal.append(candidate)
+    committed = journal.read_state()
+    if committed.last != candidate or len(committed.chain) != 2:
+        raise _reject("birth_provisioning_io_unavailable")
+    return candidate
+
+
+def _staged_material_digests_v2(
+    session, journal: _TransactionJournalV1, previous_set: object,
+) -> tuple[dict[str, str | None], str]:
+    from executor_birth_keystore import raw_public_key
+    from executor_birth_prepared_set import SET_FIELDS_V1, is_prepared_set_v1
+
+    if not is_prepared_set_v1(previous_set):
+        raise _conflict()
+    base = journal.root_components + (AUTHORITY_SET_BASENAME_V1,)
+    set_payload = _read_set_document_v1(
+        session, base + (SET_DOCUMENT_BASENAME_V1,),
+    )
+    set_document = decode_canonical_document_v1(set_payload)
+    context_payload = _read_set_document_v1(
+        session,
+        base + (CONTEXT_CONTAINER_BASENAME_V1, CONTEXT_MATERIAL_BASENAME_V1),
+    )
+    author = verify_author_store_v1(
+        session, (AUTHOR_STORE_BASENAME_V1,), None,
+    )
+    author_publics = {
+        key_id: raw_public_key(key)
+        for key_id, key in author.verifier_keys.items()
+    }
+    set_id = set_document.get("set_id")
+    unsigned = dict(set_document)
+    unsigned.pop("set_id", None)
+    if (
+        set(set_document) != SET_FIELDS_V1
+        or set_document["schema_version"] != 1
+        or set_document["state"] != "complete"
+        or not _is_hex(set_id, 64)
+        or set_id != hashlib.sha256(
+            SET_ID_DIGEST_DOMAIN_V1
+            + encode_canonical_document_v1(unsigned)
+        ).hexdigest()
+        or set_document["provisioning_transaction_id"]
+        != journal.transaction_id
+        or set_document["author_active_key_id"]
+        != previous_set.author_active_key_id
+        or tuple(set_document["author_verifier_key_ids"])
+        != previous_set.author_verifier_key_ids
+        or set_document["context_material_sha256"]
+        != hashlib.sha256(context_payload).hexdigest()
+    ):
+        raise _reject("birth_authority_set_conflict")
+    producer_keys = set_document["producer_keys"]
+    if (
+        not isinstance(producer_keys, dict)
+        or any(
+            not isinstance(entry, dict)
+            or set(entry) != {
+                "store_name", "active_key_id", "verifier_key_ids",
+            }
+            or not isinstance(entry["store_name"], str)
+            or not isinstance(entry["active_key_id"], str)
+            or not isinstance(entry["verifier_key_ids"], list)
+            for entry in producer_keys.values()
+        )
+    ):
+        raise _reject("birth_authority_set_conflict")
+    staged = StagedAuthoritySetV1(
+        payload_inventory=(),
+        admission_key_id=set_document["admission_active_key_id"],
+        producer_key_ids={
+            entry["store_name"]: entry["active_key_id"]
+            for entry in producer_keys.values()
+        },
+        next_object_sequence=0,
+    )
+    if len(staged.producer_key_ids) != len(producer_keys):
+        raise _reject("birth_authority_set_conflict")
+    verify_authority_set_v1(session, base, staged)
+    digests = empty_digests_v1()
+    digests.update({
+        "approval_input_sha256": set_document["approval_input_sha256"],
+        "semantic_input_sha256": set_document["semantic_input_sha256"],
+        "producer_catalog_sha256": set_document["producer_catalog_sha256"],
+        "context_source_inventory_sha256": (
+            set_document["context_source_inventory_sha256"]
+        ),
+        "author_store_public_inventory_sha256": (
+            author_store_public_inventory_sha256_v1(author_publics)
+        ),
+        "set_json_sha256": hashlib.sha256(set_payload).hexdigest(),
+        "context_material_sha256": set_document["context_material_sha256"],
+    })
+    return digests, set_id
+
+
 @contextmanager
 def _translated():
     """Present a filesystem refusal under the single public provisioning type.
