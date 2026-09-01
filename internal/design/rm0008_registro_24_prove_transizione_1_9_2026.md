@@ -49,7 +49,7 @@ sola esecuzione a B3, dopo l'accettazione R3 del candidato.
 | 21 | V1 e V2 coesistono; la stessa tripla discordante e' rifiutata | `prova_ricevute_v2.py`, casi 4-7-bis; `prova_classifica_legami_epoca.py`, caso V1/V2 distinti; `prova_accettazione_v2.py`, casi 1-4 | `PROVATA` |
 | 22 | problema d'inventario, proprieta', alias o file non regolare bloccano | `test_read_only_resolver_rejects_invalid_inventory_and_cardinality`; `test_fixed_ownership_capture_rejects_unsafe_metadata_and_inventory`; casi negativi di `prova_classifica_legami_epoca.py` e `prova_ricevute_v2.py` | `PROVATA` |
 | 23 | recupero del contenitore incompleto solo nella forma esatta; secondo uso innocuo | `prova_recupero_pubblicazione.py` (28 casi); `prova_robustezza_recupero_pubblicazione_a.py` (5 controlli) | `PROVATA SU COPIA; LIVE A B4` |
-| 24 | server completo e turni reali in copia dopo la transizione | `prova_accettazione_v2.py` prova la composizione reale dei due perimetri, ma dichiara esplicitamente di non provare server e turni | `APERTA A B3` |
+| 24 | server completo e turni reali in copia dopo la transizione | `prova_b3_server_post_transizione.py`: transizione completa da predecessore immutabile, release firmata, server HTTP completo e turno C1 reale su un contratto incorporato rappresentativo; `steps_summary` contiene `get_preferences` con `ok=true`, chiusura senza processi superstiti | `PROVATA` |
 
 ## 3. Verifiche mirate rieseguite sul candidato
 
@@ -65,6 +65,12 @@ perimetri e hanno concluso con esito positivo:
 - `tests/portable/test_executor_birth_ownership_coordinator_v2.py`: 125 prove.
 - `tests/portable/test_executor_birth_enforcement_evidence.py` e
   `tests/runtime/contracts/test_executor_birth_legacy_gate.py`: 32 prove.
+- `internal/tools/prova_b3_server_post_transizione.py`: release costruita dai
+  sorgenti ricevuti, transizione dalla build precedente `641c5095`, insieme e
+  testa V2 riletti, server pronto, risposta HTTP 200 e passo reale
+  `get_preferences` concluso con `ok=true`; arresto ordinato e zero processi
+  superstiti. La sonda usa un contratto incorporato firmato rappresentativo;
+  non sostituisce le prove mirate sull'invariante dell'intero catalogo.
 
 Questi risultati non sostituiscono il confronto della suite totale a B3.
 
@@ -80,8 +86,9 @@ il risultato.
 
 ## 5. Condizione di avanzamento
 
-R3 puo' accettare il codice e il piano con i punti 23-live e 24 dichiarati
-aperti. B3 puo' iniziare soltanto dopo la prova 24 in copia. B4 applica il
+R3 puo' accettare il codice e il piano con il solo punto 23-live dichiarato
+aperto. La condizione di ingresso di B3, cioe' la prova 24 in copia, e'
+soddisfatta. B4 applica il
 recupero mirato al negozio in esercizio soltanto dopo le riletture e le
 autorizzazioni gia' registrate; nessuna pulizia generica o selezione manuale del
 percorso e' ammessa.
@@ -89,5 +96,5 @@ percorso e' ammessa.
 Il riscontro indipendente dell'agente B al commit `52307e5e` e' stato
 incrociato riga per riga. In particolare, la sua osservazione sulla voce 14 e'
 chiusa dalla prova che legge il file reale della build e diventa rossa se il
-letterale torna aperto; le voci 23-live e 24 restano invece esplicitamente
-aperte, come misurato da B.
+letterale torna aperto; la voce 23-live resta esplicitamente aperta, mentre la
+24 e' stata chiusa dalla successiva prova integrata in copia.

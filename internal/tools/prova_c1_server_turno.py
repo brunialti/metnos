@@ -90,6 +90,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--interprete", default="/opt/metnos/.venv/bin/python")
     ap.add_argument("--query", default="che ore sono")
     ap.add_argument("--attesa-avvio", type=float, default=180.0)
+    ap.add_argument(
+        "--outer-sandbox", action="store_true",
+        help="the whole server already runs inside an isolated namespace",
+    )
     args = ap.parse_args(argv)
 
     replica = Path(args.replica).resolve()
@@ -110,17 +114,24 @@ def main(argv: list[str] | None = None) -> int:
     ambiente = dict(os.environ)
     ambiente.update({
         "PYTHONPATH": str(replica),
+        "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONUNBUFFERED": "1",
         "METNOS_INSTALL_ROOT": str(replica),
         "METNOS_USER_CONFIG": str(radici / "cfg"),
         "METNOS_USER_STATE": str(radici / "state"),
         "METNOS_USER_DATA": str(radici / "data"),
+        "METNOS_WORKSPACE": str(radici / "workspace"),
         "METNOS_LOG_FILE": str(radici / "prova.log"),
         "METNOS_HTTP_HOST": "127.0.0.1",
         "METNOS_HTTP_PORT": str(porta),
         "METNOS_LANG": "it",
         "METNOS_ENGINE": "metis",
     })
+    if args.outer_sandbox:
+        # The enclosing namespace already isolates every server child. A
+        # second user namespace is not available on every kernel and would
+        # measure nesting support instead of the HTTP turn.
+        ambiente["METNOS_SANDBOX"] = "0"
 
     print("== CHE COSA STO MISURANDO ==")
     print(f"  distribuzione : {replica}")
@@ -197,6 +208,13 @@ def main(argv: list[str] | None = None) -> int:
             # called "il catalogo degli executor e' vuoto" a green C1.
             if str(risposta.get("final_kind")) == "error":
                 print("ESITO: IL MOTORE HA DICHIARATO UN ERRORE")
+                return EXIT_TURNO
+            steps = risposta.get("steps_summary")
+            if not isinstance(steps, list) or not steps or any(
+                not isinstance(step, dict) or step.get("ok") is not True
+                for step in steps
+            ):
+                print("ESITO: ALMENO UN PASSO DEL TURNO NON E' RIUSCITO")
                 return EXIT_TURNO
         finally:
             esito = server.chiudi(grazia=15)
