@@ -120,7 +120,7 @@ def test_the_five_pieces_compose_and_the_crossing_happens_once(cell) -> None:
     identity, unit_topology, catalog, retire, enforce = _observers(cell)
     crossed: list[startup.DominantStartupReceiptV1] = []
 
-    receipt = startup.complete_dominant_startup_v1(
+    receipt = startup._complete_dominant_startup_for_test_v1(
         sessions=(_Session(), _Session(), _Session()),
         observe_identity=identity,
         observe_topology=unit_topology,
@@ -159,7 +159,7 @@ def test_a_topology_that_changes_between_the_readings_stops_everything(
 
     crossed: list[str] = []
     with pytest.raises(startup.DominantStartupError) as drifted:
-        startup.complete_dominant_startup_v1(
+        startup._complete_dominant_startup_for_test_v1(
             sessions=(_Session(), _Session(), _Session()),
             observe_identity=identity,
             observe_topology=drifting_topology,
@@ -181,7 +181,7 @@ def test_an_open_gate_stops_the_composition_at_its_own_step(cell) -> None:
 
     crossed: list[str] = []
     with pytest.raises(enforcement.EnforcementEvidenceError) as denied:
-        startup.complete_dominant_startup_v1(
+        startup._complete_dominant_startup_for_test_v1(
             sessions=(_Session(), _Session(), _Session()),
             observe_identity=identity,
             observe_topology=unit_topology,

@@ -202,7 +202,7 @@ class _Observers:
 
 
 def _complete(observers: _Observers, **extra):
-    return dominant.complete_dominant_startup_v1(
+    return dominant._complete_dominant_startup_for_test_v1(
         sessions=_sessions(),
         observe_identity=observers.identity,
         observe_topology=observers.topology,
@@ -225,6 +225,22 @@ def test_the_crossing_reads_everything_twice_before_it_runs() -> None:
     assert receipt.enforcement_evidence_digest == _digest("5")
     # Every observer was consulted exactly twice: once to bind, once to agree.
     assert set(observers.reads.values()) == {2}
+
+
+def test_the_product_crossing_rejects_portable_session_stand_ins() -> None:
+    observers = _Observers()
+    with pytest.raises(dominant.DominantStartupError) as denied:
+        dominant.complete_dominant_startup_v1(
+            sessions=_sessions(),
+            observe_identity=observers.identity,
+            observe_topology=observers.topology,
+            observe_catalog=observers.catalog,
+            plan_retirement=observers.retirement,
+            observe_enforcement=observers.enforcement,
+            cross=observers.cross,
+        )
+    assert denied.value.code == "dominant_startup_sessions_invalid"
+    assert observers.crossed == []
 
 
 @pytest.mark.parametrize(
@@ -265,7 +281,7 @@ def test_an_observer_that_is_a_value_is_refused() -> None:
     """
     observers = _Observers()
     with pytest.raises(dominant.DominantStartupError) as denied:
-        dominant.complete_dominant_startup_v1(
+        dominant._complete_dominant_startup_for_test_v1(
             sessions=_sessions(),
             observe_identity=observers.identity,
             observe_topology=_digest("4"),

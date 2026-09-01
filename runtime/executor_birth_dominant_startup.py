@@ -286,7 +286,26 @@ def is_dominant_startup_receipt_v1(value: object) -> bool:
         return False
 
 
-def complete_dominant_startup_v1(
+def _require_product_sessions_v1(sessions: object) -> tuple[object, ...]:
+    held = _require_live_sessions_v1(sessions)
+    from contract_cutover_guard import _require_maintenance_session_v1
+    from executor_birth_ownership_coordinator import (
+        _require_deployment_lock_session_v1,
+    )
+    from executor_birth_startup_gate import (
+        _require_exclusive_startup_gate_session_v1,
+    )
+
+    try:
+        _require_deployment_lock_session_v1(held[0])
+        _require_exclusive_startup_gate_session_v1(held[1])
+        _require_maintenance_session_v1(held[2])
+    except Exception as exc:
+        raise _invalid("dominant_startup_sessions_invalid", "product") from exc
+    return held
+
+
+def _complete_dominant_startup_core_v1(
     *,
     sessions: tuple[object, ...],
     observe_identity,
@@ -295,6 +314,7 @@ def complete_dominant_startup_v1(
     plan_retirement,
     observe_enforcement,
     cross,
+    require_sessions,
     _crash_seam=None,
 ) -> DominantStartupReceiptV1:
     """Compose the whole crossing in ONE call that never releases the locks.
@@ -312,11 +332,11 @@ def complete_dominant_startup_v1(
     """
     for observer in (
         observe_identity, observe_topology, observe_catalog, plan_retirement,
-        observe_enforcement, cross,
+        observe_enforcement, cross, require_sessions,
     ):
         if not callable(observer):
             raise _invalid("dominant_startup_observer_invalid")
-    held = _require_live_sessions_v1(sessions)
+    held = require_sessions(sessions)
 
     topology = _require_digest_v1(observe_topology(), "effective_topology_hash")
     catalog = _require_digest_v1(observe_catalog(), "catalog_id")
@@ -346,6 +366,7 @@ def complete_dominant_startup_v1(
         _crash_seam("capability_minted")
 
     # The second reading. Same observers, same locks, no cached value.
+    require_sessions(held)
     if (
         observe_identity() != identity
         or observe_topology() != topology
@@ -354,6 +375,7 @@ def complete_dominant_startup_v1(
         or observe_enforcement() != enforcement
     ):
         raise _invalid("dominant_startup_binding_drift", "second reading")
+    require_sessions(held)
     bindings_digest = consume_v1(capability, bindings)
     if _crash_seam:
         _crash_seam("capability_consumed")
@@ -371,3 +393,53 @@ def complete_dominant_startup_v1(
     )
     cross(receipt)
     return receipt
+
+
+def complete_dominant_startup_v1(
+    *,
+    sessions: tuple[object, ...],
+    observe_identity,
+    observe_topology,
+    observe_catalog,
+    plan_retirement,
+    observe_enforcement,
+    cross,
+    _crash_seam=None,
+) -> DominantStartupReceiptV1:
+    """Cross only while the three exact productive sessions remain live."""
+    return _complete_dominant_startup_core_v1(
+        sessions=sessions,
+        observe_identity=observe_identity,
+        observe_topology=observe_topology,
+        observe_catalog=observe_catalog,
+        plan_retirement=plan_retirement,
+        observe_enforcement=observe_enforcement,
+        cross=cross,
+        require_sessions=_require_product_sessions_v1,
+        _crash_seam=_crash_seam,
+    )
+
+
+def _complete_dominant_startup_for_test_v1(
+    *,
+    sessions: tuple[object, ...],
+    observe_identity,
+    observe_topology,
+    observe_catalog,
+    plan_retirement,
+    observe_enforcement,
+    cross,
+    _crash_seam=None,
+) -> DominantStartupReceiptV1:
+    """Nominal portable seam; it never accepts productive lock authority."""
+    return _complete_dominant_startup_core_v1(
+        sessions=sessions,
+        observe_identity=observe_identity,
+        observe_topology=observe_topology,
+        observe_catalog=observe_catalog,
+        plan_retirement=plan_retirement,
+        observe_enforcement=observe_enforcement,
+        cross=cross,
+        require_sessions=_require_live_sessions_v1,
+        _crash_seam=_crash_seam,
+    )

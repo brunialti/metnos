@@ -54,7 +54,9 @@ from executor_birth_ownership_coordinator import (
     _resolve_ownership_coordinator_locked_for_test_v2,
     _require_locked_coordinator_graph_snapshot_v2,
 )
-from executor_birth_dominant_startup import complete_dominant_startup_v1
+from executor_birth_dominant_startup import (
+    _complete_dominant_startup_for_test_v1,
+)
 from executor_birth_ownership_authorities import (
     _root_ownership_authorities_for_test,
 )
@@ -269,7 +271,7 @@ def dominant_receipt(
         "retirement": D("c"),
         "enforcement": D("d"),
     }
-    return complete_dominant_startup_v1(
+    return _complete_dominant_startup_for_test_v1(
         sessions=(_StartupSession(), _StartupSession(), _StartupSession()),
         observe_identity=lambda: values["identity"],
         observe_topology=lambda: values["topology"],

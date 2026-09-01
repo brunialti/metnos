@@ -8,7 +8,9 @@ verified store-only catalog load.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import os
 import sys
+import threading
 
 
 class ContractCutoverGuardError(RuntimeError):
@@ -19,6 +21,9 @@ class ContractCutoverGuardError(RuntimeError):
 
 
 _QUIESCENT_STATES = frozenset({"inactive", "failed"})
+_MAINTENANCE_SESSION_SEAL_V1 = object()
+_MAINTENANCE_SESSION_GUARD_V1 = threading.Lock()
+_ACTIVE_MAINTENANCE_SESSIONS_V1: dict[object, object] = {}
 
 
 def prove_stack_stopped(reconciler) -> dict:
@@ -69,10 +74,30 @@ def prove_stack_stopped(reconciler) -> dict:
 class _MaintenanceProofV1:
     """Preserve the legacy boolean guard and expose fresh canonical evidence."""
 
-    __slots__ = ("_reconciler",)
+    __slots__ = (
+        "_reconciler", "_token", "_owner_process", "_active", "_seal",
+    )
 
-    def __init__(self, reconciler) -> None:
+    def __init__(self, reconciler, token: object, seal: object) -> None:
+        if seal is not _MAINTENANCE_SESSION_SEAL_V1:
+            raise ContractCutoverGuardError("cutover_session_invalid")
         self._reconciler = reconciler
+        self._token = token
+        self._owner_process = os.getpid()
+        self._active = True
+        self._seal = seal
+
+    def __copy__(self):
+        raise TypeError("maintenance sessions cannot be copied")
+
+    def __deepcopy__(self, _memo):
+        raise TypeError("maintenance sessions cannot be copied")
+
+    def __reduce__(self):
+        raise TypeError("maintenance sessions cannot be serialized")
+
+    def __reduce_ex__(self, _protocol):
+        raise TypeError("maintenance sessions cannot be serialized")
 
     def observe(self) -> dict:
         return prove_stack_stopped(self._reconciler)
@@ -80,6 +105,22 @@ class _MaintenanceProofV1:
     def __call__(self) -> bool:
         self.observe()
         return True
+
+
+def _require_maintenance_session_v1(session: object) -> None:
+    """Require the exact live proof yielded while lifecycle exclusion is held."""
+    if type(session) is not _MaintenanceProofV1:
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    with _MAINTENANCE_SESSION_GUARD_V1:
+        registered = _ACTIVE_MAINTENANCE_SESSIONS_V1.get(session._token)
+    if (
+        session._seal is not _MAINTENANCE_SESSION_SEAL_V1
+        or registered is not session
+        or not session._active
+        or session._owner_process != os.getpid()
+    ):
+        raise ContractCutoverGuardError("cutover_session_invalid")
+    session.observe()
 
 
 @contextmanager
@@ -105,9 +146,19 @@ def contract_cutover_guard():
         ) from exc
     try:
         reconciler = StackReconciler(default_write_report=False)
-        proof = _MaintenanceProofV1(reconciler)
-        evidence = proof.observe()
-        yield proof, evidence
+        token = object()
+        proof = _MaintenanceProofV1(
+            reconciler, token, _MAINTENANCE_SESSION_SEAL_V1,
+        )
+        with _MAINTENANCE_SESSION_GUARD_V1:
+            _ACTIVE_MAINTENANCE_SESSIONS_V1[token] = proof
+        try:
+            evidence = proof.observe()
+            yield proof, evidence
+        finally:
+            with _MAINTENANCE_SESSION_GUARD_V1:
+                proof._active = False
+                _ACTIVE_MAINTENANCE_SESSIONS_V1.pop(token, None)
     finally:
         guard.__exit__(None, None, None)
 
