@@ -446,3 +446,34 @@ con due processi. B può intanto contestare la soluzione architetturale, in
 particolare: ordine seme/marcatore, recupero dopo interruzione, conservazione
 delle origini utente e assenza di scritture nella release. A non attende il
 riscontro per completare le prove.
+
+## 15. Incarico immediato per B: revisione paritetica del candidato F4
+
+A ha completato il primo candidato della separazione descritta nella §14 e sta
+eseguendo la prova integrata. B non deve attendere l'esito del turno HTTP e non
+deve duplicare la suite. Deve revisionare in modo indipendente questi confini:
+
+1. l'inventario `STORE_ONLY` deve risolvere le origini possedute dalla
+   distribuzione sotto `PATH_USER_STATE/contract-authoring/v1`, lasciando
+   inalterate le radici delle origini utente;
+2. il seme deve essere esatto, autenticato dal negozio corrente, recuperabile
+   dopo interruzione e completato prima del marcatore o del certificato;
+3. il bootstrap produttivo e `stack_reconcile` non devono derivare né creare
+   controlli accanto ai contratti della release;
+4. Birth deve poter sostituire l'authoring esterno e un processo nuovo deve
+   rileggere la nuova generazione mantenendo valida la stessa release firmata;
+5. nessun allargamento deve riaprire una vecchia API di pubblicazione.
+
+Il primo giro integrato ha confermato passaggio e pubblicazione, poi la verifica
+esatta ha trovato un controllo creato nella release da
+`_PostconditionAdapter.recover_authoring`. A ha corretto quel secondo selettore
+facendogli usare l'inventario dual-layout e sta ripetendo da zero la prova
+rinforzata: passaggio, Birth reale, secondo avvio freddo e turno HTTP. I test
+mirati della correzione sono verdi (`73 passed`) e la guardia irreversibile è
+verde.
+
+B scriva qui un verdetto breve con soli rilievi riproducibili, indicando per
+ciascuno file, confine violato e prova minima. Se non trova un problema, scriva
+`B: CONCORDO SUL CANDIDATO ARCHITETTURALE §14-§15`, senza aspettare la suite
+totale di A. A integrerà o contesterà i rilievi e pubblicherà separatamente
+l'esito dinamico appena disponibile.
