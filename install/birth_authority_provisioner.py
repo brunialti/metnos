@@ -22,7 +22,7 @@ import json
 import os
 import secrets
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -39,8 +39,13 @@ CHECKPOINT_DIGEST_DOMAIN_V1 = b"metnos.executor-birth.provisioning-checkpoint/v1
 SOURCE_INVENTORY_DIGEST_DOMAIN_V2 = (
     b"metnos.executor-birth.provisioning-source-inventory/v2\0"
 )
+MATERIAL_PLAN_DIGEST_DOMAIN_V2 = (
+    b"metnos.executor-birth.provisioning-material-plan/v2\0"
+)
 TRANSACTION_HEADER_BASENAME_V1 = "transaction-v1.json"
 TRANSACTION_HEADER_BASENAME_V2 = "transaction-v2.json"
+MATERIAL_PLAN_BASENAME_V2 = "material-plan-v2.json"
+MATERIAL_PLAN_PENDING_PREFIX_V2 = ".material-plan-v2.pending."
 CHECKPOINTS_BASENAME_V1 = "checkpoints-v1"
 MAXIMUM_CHECKPOINT_SEQUENCE_V1 = 8191
 MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1 = 1024 * 1024
@@ -118,6 +123,167 @@ class PayloadObjectTypeV1(str, Enum):
 class PayloadConfidentialityV1(str, Enum):
     confidential = "confidential"
     integrity_only = "integrity_only"
+
+
+@dataclass(frozen=True, slots=True)
+class MaterialPlanEntryV2:
+    """One exact object that a recoverable V2 staging pass must produce."""
+
+    relative_path: str
+    object_type: PayloadObjectTypeV1
+    confidentiality: PayloadConfidentialityV1
+    payload: bytes | None = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if (
+            not _is_canonical_relative_path(self.relative_path)
+            or not (
+                self.relative_path == "authority-set"
+                or self.relative_path.startswith("authority-set/")
+            )
+            or not isinstance(self.object_type, PayloadObjectTypeV1)
+            or not isinstance(self.confidentiality, PayloadConfidentialityV1)
+        ):
+            raise _conflict()
+        if self.object_type is PayloadObjectTypeV1.directory:
+            if self.payload is not None:
+                raise _conflict()
+        elif not isinstance(self.payload, bytes):
+            raise _conflict()
+
+    @property
+    def sort_key(self) -> bytes:
+        return self.relative_path.encode("utf-8")
+
+    def to_document(self) -> dict[str, object]:
+        payload = self.payload
+        return {
+            "relative_path": self.relative_path,
+            "object_type": self.object_type.value,
+            "confidentiality": self.confidentiality.value,
+            "size": None if payload is None else len(payload),
+            "sha256": (
+                None if payload is None else hashlib.sha256(payload).hexdigest()
+            ),
+            "payload_hex": None if payload is None else payload.hex(),
+        }
+
+    @staticmethod
+    def from_document(value: object) -> "MaterialPlanEntryV2":
+        if not isinstance(value, dict) or set(value) != {
+            "relative_path", "object_type", "confidentiality", "size",
+            "sha256", "payload_hex",
+        }:
+            raise _conflict()
+        try:
+            object_type = PayloadObjectTypeV1(value["object_type"])
+            confidentiality = PayloadConfidentialityV1(value["confidentiality"])
+        except ValueError as exc:
+            raise _conflict(exc) from None
+        if object_type is PayloadObjectTypeV1.directory:
+            if any(value[field] is not None for field in (
+                "size", "sha256", "payload_hex",
+            )):
+                raise _conflict()
+            payload = None
+        else:
+            encoded = value["payload_hex"]
+            if (
+                not isinstance(encoded, str)
+                or len(encoded) % 2
+                or set(encoded) - _HEX_DIGITS
+            ):
+                raise _conflict()
+            payload = bytes.fromhex(encoded)
+            if (
+                value["size"] != len(payload)
+                or value["sha256"] != hashlib.sha256(payload).hexdigest()
+            ):
+                raise _conflict()
+        return MaterialPlanEntryV2(
+            relative_path=value["relative_path"],
+            object_type=object_type,
+            confidentiality=confidentiality,
+            payload=payload,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MaterialPlanV2:
+    """Closed confidential inventory that makes V2 staging restartable."""
+
+    transaction_id: str
+    transaction_header_sha256: str
+    entries: tuple[MaterialPlanEntryV2, ...]
+
+    def __post_init__(self) -> None:
+        ordered = tuple(sorted(self.entries, key=lambda item: item.sort_key))
+        paths = {entry.relative_path for entry in ordered}
+        if (
+            not _is_hex(self.transaction_id, 32)
+            or not _is_hex(self.transaction_header_sha256, 64)
+            or not ordered
+            or ordered != self.entries
+            or len(paths) != len(ordered)
+            or "authority-set" not in paths
+        ):
+            raise _conflict()
+        kinds = {entry.relative_path: entry.object_type for entry in ordered}
+        if kinds["authority-set"] is not PayloadObjectTypeV1.directory:
+            raise _conflict()
+        for entry in ordered:
+            parts = entry.relative_path.split("/")
+            for index in range(1, len(parts)):
+                parent = "/".join(parts[:index])
+                if kinds.get(parent) is not PayloadObjectTypeV1.directory:
+                    raise _conflict()
+
+    def _document(self) -> dict[str, object]:
+        return {
+            "schema_version": 2,
+            "protocol": TRANSACTION_PROTOCOL_V2,
+            "transaction_id": self.transaction_id,
+            "transaction_header_sha256": self.transaction_header_sha256,
+            "objects": [entry.to_document() for entry in self.entries],
+        }
+
+    def digest(self) -> str:
+        return hashlib.sha256(
+            MATERIAL_PLAN_DIGEST_DOMAIN_V2
+            + encode_canonical_document_v1(self._document())
+        ).hexdigest()
+
+    def encode(self) -> bytes:
+        value = self._document()
+        value["material_plan_sha256"] = self.digest()
+        encoded = encode_canonical_document_v1(value)
+        if len(encoded) > MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1:
+            raise _conflict()
+        return encoded
+
+
+def decode_material_plan_v2(raw: bytes) -> MaterialPlanV2:
+    """Decode one exact V2 plan and verify its closed object inventory."""
+    value = decode_canonical_document_v1(raw)
+    if set(value) != {
+        "schema_version", "protocol", "transaction_id",
+        "transaction_header_sha256", "objects", "material_plan_sha256",
+    } or (
+        value["schema_version"] != 2
+        or value["protocol"] != TRANSACTION_PROTOCOL_V2
+    ):
+        raise _conflict()
+    objects = value["objects"]
+    if not isinstance(objects, list):
+        raise _conflict()
+    plan = MaterialPlanV2(
+        transaction_id=value["transaction_id"],
+        transaction_header_sha256=value["transaction_header_sha256"],
+        entries=tuple(MaterialPlanEntryV2.from_document(item) for item in objects),
+    )
+    if value["material_plan_sha256"] != plan.digest() or plan.encode() != raw:
+        raise _conflict()
+    return plan
 
 
 def _reject(code: str, cause: BaseException | None = None) -> BirthProvisioningError:
@@ -513,6 +679,7 @@ class _TransactionJournalFormat:
     header_basename: str
     header_pending_prefix: str
     decode_header: Callable[[bytes], object]
+    material_plan_basename: str | None
     _seal: object
 
     def __post_init__(self) -> None:
@@ -523,6 +690,10 @@ class _TransactionJournalFormat:
             or not self.header_basename.endswith(".json")
             or not self.header_pending_prefix.startswith(".transaction-v")
             or not callable(self.decode_header)
+            or (
+                self.material_plan_basename is not None
+                and self.material_plan_basename != MATERIAL_PLAN_BASENAME_V2
+            )
         ):
             raise _conflict()
 
@@ -719,6 +890,7 @@ _JOURNAL_FORMAT_V1 = _TransactionJournalFormat(
     TRANSACTION_HEADER_BASENAME_V1,
     HEADER_PENDING_PREFIX_V1,
     decode_transaction_header_v1,
+    None,
     _JOURNAL_FORMAT_SEAL,
 )
 _JOURNAL_FORMAT_V2 = _TransactionJournalFormat(
@@ -726,6 +898,7 @@ _JOURNAL_FORMAT_V2 = _TransactionJournalFormat(
     TRANSACTION_HEADER_BASENAME_V2,
     HEADER_PENDING_PREFIX_V2,
     decode_transaction_header_v2,
+    MATERIAL_PLAN_BASENAME_V2,
     _JOURNAL_FORMAT_SEAL,
 )
 
@@ -885,6 +1058,107 @@ class _TransactionJournalV1:
             checkpoint.name(),
             checkpoint.encode(),
         )
+
+    def ensure_material_plan_v2(
+        self, factory: Callable[[], MaterialPlanV2],
+    ) -> MaterialPlanV2:
+        """Recover or create the one confidential plan committed by V2 staging."""
+        if self._format.material_plan_basename != MATERIAL_PLAN_BASENAME_V2:
+            raise _conflict()
+        state = self.read_state()
+        header = state.header
+        if not isinstance(header, TransactionHeaderV2):
+            raise _conflict()
+        with _translated():
+            names = set(self._session.inventory(self._root))
+        final = MATERIAL_PLAN_BASENAME_V2
+        pending = MATERIAL_PLAN_PENDING_PREFIX_V2 + self._transaction_id
+        if final in names:
+            if pending in names:
+                raise _reject("birth_provisioning_recovery_ambiguous")
+            return self._read_material_plan_v2(header)
+        if AUTHORITY_SET_BASENAME_V1 in names:
+            raise _reject("birth_provisioning_recovery_ambiguous")
+        if pending in names:
+            try:
+                plan = decode_material_plan_v2(self._read_payload(
+                    self._root + (pending,),
+                    role=self._confidential_role(),
+                ))
+                self._require_plan_header_v2(plan, header)
+            except BirthProvisioningError:
+                self._discard_pending_by_name(
+                    self._root, pending, role=self._confidential_role(),
+                    maximum=MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1,
+                )
+            else:
+                with _translated():
+                    self._session.rename_no_replace(
+                        self._root + (pending,), self._root + (final,),
+                        directory=False,
+                    )
+                return self._read_material_plan_v2(header)
+        plan = factory()
+        if not isinstance(plan, MaterialPlanV2):
+            raise _conflict()
+        self._require_plan_header_v2(plan, header)
+        self._publish(
+            self._root, pending, final, plan.encode(),
+            role=self._confidential_role(),
+        )
+        return self._read_material_plan_v2(header)
+
+    def _read_material_plan_v2(
+        self, header: TransactionHeaderV2,
+    ) -> MaterialPlanV2:
+        plan = decode_material_plan_v2(self._read_payload(
+            self._root + (MATERIAL_PLAN_BASENAME_V2,),
+            role=self._confidential_role(),
+        ))
+        self._require_plan_header_v2(plan, header)
+        return plan
+
+    def _require_plan_header_v2(
+        self, plan: MaterialPlanV2, header: TransactionHeaderV2,
+    ) -> None:
+        if (
+            plan.transaction_id != self._transaction_id
+            or plan.transaction_header_sha256
+            != hashlib.sha256(header.encode()).hexdigest()
+        ):
+            raise _conflict()
+        from executor_birth_secure_fs import (
+            _BirthObjectRole, _ObjectKind, _matching_rows,
+        )
+
+        kinds = {
+            PayloadObjectTypeV1.directory: _ObjectKind.directory,
+            PayloadObjectTypeV1.file: _ObjectKind.regular_file,
+        }
+        roles = {
+            PayloadConfidentialityV1.confidential: (
+                _BirthObjectRole.birth_confidential
+            ),
+            PayloadConfidentialityV1.integrity_only: (
+                _BirthObjectRole.birth_integrity_only
+            ),
+        }
+        for entry in plan.entries:
+            components = self._root + tuple(entry.relative_path.split("/"))
+            observed = {
+                (kind, role) for _pattern, kind, role in _matching_rows(components)
+            }
+            expected = {
+                (kinds[entry.object_type], roles[entry.confidentiality])
+            }
+            if observed != expected:
+                raise _conflict()
+
+    @staticmethod
+    def _confidential_role():
+        from executor_birth_secure_fs import _BirthObjectRole
+
+        return _BirthObjectRole.birth_confidential
 
     def publish_payload(
         self,
@@ -1095,6 +1369,13 @@ class _TransactionJournalV1:
             self._format.header_basename, CHECKPOINTS_BASENAME_V1,
             header_pending,
         }
+        if self._format.material_plan_basename is not None:
+            admitted.update({
+                self._format.material_plan_basename,
+                MATERIAL_PLAN_PENDING_PREFIX_V2 + self._transaction_id,
+            })
+            if self._format.material_plan_basename in names:
+                admitted.add(AUTHORITY_SET_BASENAME_V1)
         # A payload is admitted only where the most recent checkpoint declares
         # it: the journal is the authority on what may exist, and anything
         # else asks for a human rather than a guess (sections 4.3 and 7.6).
@@ -1175,11 +1456,14 @@ class _TransactionJournalV1:
         return tuple(chain), (pendings[0] if pendings else None)
 
     def _read(self, components: tuple[str, ...]) -> bytes:
+        return self._read_payload(components, role=_integrity_role())
+
+    def _read_payload(self, components: tuple[str, ...], *, role) -> bytes:
         with _translated():
             return self._session.read_file(
                 components,
                 maximum=MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1,
-                role=_integrity_role(),
+                role=role,
             )
 
 

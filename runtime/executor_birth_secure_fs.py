@@ -174,6 +174,7 @@ _TRANSACTION_PREFIX = ".birth-provisioning-v1.txn."
 _TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.txn."
 _HEADER_PENDING_PREFIX = ".transaction-v1.pending."
 _HEADER_PENDING_PREFIX_V2 = ".transaction-v2.pending."
+_MATERIAL_PLAN_PENDING_PREFIX_V2 = ".material-plan-v2.pending."
 _CHECKPOINT_PENDING_PREFIX = ".checkpoint-pending-"
 _PAYLOAD_PENDING_PREFIX = ".payload-pending-"
 _KEY_PREFIX = "birth-ed25519-v1-sha256-"
@@ -370,6 +371,10 @@ def _transaction_row(
         version == 1 and tail == ("prepared-v1.json",)
     ):
         return (_FILE, _INTEGRITY)
+    if version == 2 and tail == ("material-plan-v2.json",):
+        return (_FILE, _CONFIDENTIAL)
+    if version == 2 and tail == (_MATERIAL_PLAN_PENDING_PREFIX_V2 + nonce,):
+        return (_FILE, _CONFIDENTIAL)
     if tail == (pending,):
         return (_FILE, _INTEGRITY)
     if tail == ("checkpoints-v1",):
@@ -505,6 +510,10 @@ def _matching_rows(
             elif tail == (_transaction_header_basename(components),):
                 add(P.transaction_header, kind, role)
             elif tail == ("prepared-v1.json",):
+                add(P.transaction_prepared, kind, role)
+            elif tail == ("material-plan-v2.json",):
+                add(P.transaction_prepared, kind, role)
+            elif tail == (_MATERIAL_PLAN_PENDING_PREFIX_V2 + nonce,):
                 add(P.transaction_prepared, kind, role)
             elif tail == (_transaction_header_pending(components, nonce),):
                 add(P.transaction_header_pending, kind, role)

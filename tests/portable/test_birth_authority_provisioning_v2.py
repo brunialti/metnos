@@ -1,6 +1,7 @@
 """Focused checks for the F4 transition provisioning header."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import replace
@@ -20,9 +21,11 @@ from executor_birth_ownership_preflight import (
 from executor_birth_prepared_set import PREPARED_STATE_V1, PreparedSetV1
 from install.birth_authority_provisioner import (
     BirthProvisioningError, CheckpointV1, ProvisioningStateV1,
-    TransactionHeaderV2,
+    MaterialPlanEntryV2, MaterialPlanV2, PayloadConfidentialityV1,
+    PayloadObjectTypeV1, TransactionHeaderV2,
     _build_transaction_header_v2, decode_transaction_header_v2,
-    empty_digests_v1, provisioning_source_inventory_hash_v2,
+    decode_material_plan_v2, empty_digests_v1,
+    provisioning_source_inventory_hash_v2,
 )
 from rm0008_2b import support
 
@@ -86,6 +89,29 @@ def _claim() -> SuccessorClaimV1:
         request_id=D("1"),
         source_id=D("3"),
         closed_build_id=D("2"),
+    )
+
+
+def _material_plan(header: TransactionHeaderV2) -> MaterialPlanV2:
+    entries = (
+        MaterialPlanEntryV2(
+            "authority-set", PayloadObjectTypeV1.directory,
+            PayloadConfidentialityV1.integrity_only, None,
+        ),
+        MaterialPlanEntryV2(
+            "authority-set/admission", PayloadObjectTypeV1.directory,
+            PayloadConfidentialityV1.confidential, None,
+        ),
+        MaterialPlanEntryV2(
+            "authority-set/admission/keystore.json",
+            PayloadObjectTypeV1.file,
+            PayloadConfidentialityV1.confidential, b"sealed-plan",
+        ),
+    )
+    return MaterialPlanV2(
+        transaction_id=header.transaction_id,
+        transaction_header_sha256=hashlib.sha256(header.encode()).hexdigest(),
+        entries=entries,
     )
 
 
@@ -205,6 +231,8 @@ def test_v2_filesystem_grammar_is_versioned_and_does_not_admit_v1_finals():
         root,
         root + ("transaction-v2.json",),
         root + (f".transaction-v2.pending.{transaction_id}",),
+        root + ("material-plan-v2.json",),
+        root + (f".material-plan-v2.pending.{transaction_id}",),
         root + ("checkpoints-v1",),
         root + ("authority-set",),
     ):
@@ -216,3 +244,135 @@ def test_v2_filesystem_grammar_is_versioned_and_does_not_admit_v1_finals():
         root + ("author-root-v1",),
     ):
         assert secure_fs._matching_rows(components) == ()
+
+
+def test_v2_material_plan_is_closed_ordered_and_self_authenticating():
+    header = _build_transaction_header_v2(
+        transaction_id="0" * 32,
+        provisioner_build_id="build-v2",
+        claim=_claim(),
+        distribution=_distribution(),
+        previous_set=_prepared(),
+    )
+    plan = _material_plan(header)
+
+    assert decode_material_plan_v2(plan.encode()) == plan
+    value = json.loads(plan.encode())
+    value["objects"][2]["payload_hex"] = "00"
+    encoded = json.dumps(
+        value, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")
+    with pytest.raises(BirthProvisioningError):
+        decode_material_plan_v2(encoded)
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_material_plan_is_reused_after_a_real_reopen(tmp_path, monkeypatch):
+    from install import birth_authority_provisioner as provisioning
+
+    base = support.make_config(tmp_path)
+    transaction_id = "0" * 32
+    header = _build_transaction_header_v2(
+        transaction_id=transaction_id,
+        provisioner_build_id="build-v2",
+        claim=_claim(),
+        distribution=_distribution(),
+        previous_set=_prepared(),
+    )
+    layout = support.open_layout(monkeypatch, base)
+    with layout.birth_session as session:
+        with session.global_lock(exclusive=True, create=True):
+            journal = provisioning._TransactionJournalV1.transition_v2(
+                session, transaction_id,
+            )
+            journal.create_root()
+            journal.write_header(header)
+            assert journal.ensure_material_plan_v2(
+                lambda: _material_plan(header),
+            ) == _material_plan(header)
+
+    reopened = support.open_layout(monkeypatch, base).birth_session
+    with reopened:
+        with reopened.global_lock(exclusive=True, create=True):
+            journal = provisioning._TransactionJournalV1.transition_v2(
+                reopened, transaction_id,
+            )
+            assert journal.ensure_material_plan_v2(
+                lambda: pytest.fail("the committed plan must be reused"),
+            ) == _material_plan(header)
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_material_plan_recovers_a_complete_pending(tmp_path, monkeypatch):
+    from executor_birth_secure_fs import _BirthObjectRole
+    from install import birth_authority_provisioner as provisioning
+
+    base = support.make_config(tmp_path)
+    transaction_id = "0" * 32
+    header = _build_transaction_header_v2(
+        transaction_id=transaction_id,
+        provisioner_build_id="build-v2",
+        claim=_claim(),
+        distribution=_distribution(),
+        previous_set=_prepared(),
+    )
+    plan = _material_plan(header)
+    layout = support.open_layout(monkeypatch, base)
+    with layout.birth_session as session:
+        with session.global_lock(exclusive=True, create=True):
+            journal = provisioning._TransactionJournalV1.transition_v2(
+                session, transaction_id,
+            )
+            journal.create_root()
+            journal.write_header(header)
+            session.create_file_exclusive(
+                journal.root_components + (
+                    f".material-plan-v2.pending.{transaction_id}",
+                ),
+                plan.encode(), role=_BirthObjectRole.birth_confidential,
+            )
+
+            assert journal.ensure_material_plan_v2(
+                lambda: pytest.fail("the complete pending must be promoted"),
+            ) == plan
+            assert set(session.inventory(journal.root_components)) == {
+                "transaction-v2.json", "material-plan-v2.json",
+            }
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_material_plan_replaces_only_an_incomplete_pending(
+    tmp_path, monkeypatch,
+):
+    from executor_birth_secure_fs import _BirthObjectRole
+    from install import birth_authority_provisioner as provisioning
+
+    base = support.make_config(tmp_path)
+    transaction_id = "0" * 32
+    header = _build_transaction_header_v2(
+        transaction_id=transaction_id,
+        provisioner_build_id="build-v2",
+        claim=_claim(),
+        distribution=_distribution(),
+        previous_set=_prepared(),
+    )
+    plan = _material_plan(header)
+    layout = support.open_layout(monkeypatch, base)
+    with layout.birth_session as session:
+        with session.global_lock(exclusive=True, create=True):
+            journal = provisioning._TransactionJournalV1.transition_v2(
+                session, transaction_id,
+            )
+            journal.create_root()
+            journal.write_header(header)
+            session.create_file_exclusive(
+                journal.root_components + (
+                    f".material-plan-v2.pending.{transaction_id}",
+                ),
+                plan.encode()[:31], role=_BirthObjectRole.birth_confidential,
+            )
+
+            assert journal.ensure_material_plan_v2(lambda: plan) == plan
+            assert set(session.inventory(journal.root_components)) == {
+                "transaction-v2.json", "material-plan-v2.json",
+            }
