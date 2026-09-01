@@ -1219,6 +1219,11 @@ _TRANSACTION_CARRY_KEYS_V2 = _LEGACY_CARRY_KEYS_V1 | frozenset({
     "source_id", "successor_claim_id", "deployment_descriptor_id",
     "install_transaction_id", "release_sequence", "previous_head_id",
     "service_coverage_hash", "administrative_bundle_hash",
+    "provisioning_transaction_id", "previous_set_id",
+    "previous_admission_context_id", "previous_context_epoch",
+    "target_set_id", "target_admission_context_id", "target_context_epoch",
+    "target_context_material_sha256", "target_set_json_sha256",
+    "context_transition_id", "current_inventory_hash",
 })
 _TRANSACTION_THRESHOLD_KEYS_V2 = (
     (1, frozenset({
@@ -1228,7 +1233,7 @@ _TRANSACTION_THRESHOLD_KEYS_V2 = (
     (2, frozenset({
         "startup_prerequisite_id", "startup_prerequisite_digest",
         "cutover_id", "catalog_id", "certificate_payload_hash",
-        "certificate_signature_hash",
+        "certificate_signature_hash", "dominant_startup_receipt",
     })),
     (4, frozenset({"installed_tree_hash"})),
     (5, frozenset({

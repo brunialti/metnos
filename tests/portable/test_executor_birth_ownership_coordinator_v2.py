@@ -836,8 +836,21 @@ def test_read_only_resolver_rejects_invalid_inventory_and_cardinality(
         assert failure.value.code == "birth_ownership_recovery_required"
 
 
+@pytest.mark.parametrize(
+    ("sequence", "field", "replacement", "detail"),
+    (
+        (1, "distribution_payload_hash", D("f"), "transaction carry"),
+        (1, "target_set_id", "f" * 64, "transaction carry"),
+        (
+            3, "dominant_startup_receipt", D("f"),
+            "transaction threshold carry",
+        ),
+    ),
+)
 @LINUX_ONLY
-def test_read_only_resolver_rejects_rehashed_carry_mutation(tmp_path):
+def test_read_only_resolver_rejects_rehashed_carry_mutation(
+    tmp_path, sequence, field, replacement, detail,
+):
     ownership_root = tmp_path / "ownership"
     with _deployment_lock_for_test_v1(ownership_root) as session:
         directory = make_coordinator_root(ownership_root)
@@ -847,13 +860,17 @@ def test_read_only_resolver_rejects_rehashed_carry_mutation(tmp_path):
             previous_closed_build_id=None, previous_cutover_id=None,
         )
         records = list(transaction_records(
-            claim, end_sequence=2, previous_closed_build_id=None,
+            claim, end_sequence=max(2, sequence), previous_closed_build_id=None,
             previous_cutover_id=None, cutover_id=D("4"), head_id=D("5"),
         ))
-        records[1] = replace(records[1], distribution_payload_hash=D("f"))
-        records[2] = replace(
-            records[2], previous_record_sha256=_record_hash_v2(records[1].encode()),
-        )
+        records[sequence] = replace(records[sequence], **{field: replacement})
+        for successor in range(sequence + 1, len(records)):
+            records[successor] = replace(
+                records[successor],
+                previous_record_sha256=_record_hash_v2(
+                    records[successor - 1].encode(),
+                ),
+            )
         write_claim(directory, claim)
         write_transaction(directory, claim, tuple(records))
 
@@ -861,7 +878,7 @@ def test_read_only_resolver_rejects_rehashed_carry_mutation(tmp_path):
             _resolve_ownership_coordinator_locked_for_test_v2(
                 session, ownership_root,
             )
-        assert failure.value.detail == "transaction carry"
+        assert failure.value.detail == detail
 
 
 @LINUX_ONLY
