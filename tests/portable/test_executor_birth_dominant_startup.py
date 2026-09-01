@@ -172,9 +172,11 @@ class _Observers:
     def __init__(self, drift: str | None = None) -> None:
         self.drift = drift
         self.reads: dict[str, int] = {}
+        self.order: list[str] = []
         self.crossed: list[str] = []
 
     def _value(self, name: str, first: str, second: str) -> str:
+        self.order.append(name)
         count = self.reads.get(name, 0) + 1
         self.reads[name] = count
         if count == 1 or self.drift != name:
@@ -225,6 +227,10 @@ def test_the_crossing_reads_everything_twice_before_it_runs() -> None:
     assert receipt.enforcement_evidence_digest == _digest("5")
     # Every observer was consulted exactly twice: once to bind, once to agree.
     assert set(observers.reads.values()) == {2}
+    assert observers.order == [
+        "identity", "catalog", "enforcement", "retirement", "topology",
+        "identity", "catalog", "enforcement", "retirement", "topology",
+    ]
 
 
 def test_the_product_crossing_rejects_portable_session_stand_ins() -> None:

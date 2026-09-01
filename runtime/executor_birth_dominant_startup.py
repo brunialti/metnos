@@ -338,15 +338,19 @@ def _complete_dominant_startup_core_v1(
             raise _invalid("dominant_startup_observer_invalid")
     held = require_sessions(sessions)
 
-    topology = _require_digest_v1(observe_topology(), "effective_topology_hash")
-    catalog = _require_digest_v1(observe_catalog(), "catalog_id")
-    retirement = _require_digest_v1(plan_retirement(), "retirement_plan_digest")
-    enforcement = _require_digest_v1(
-        observe_enforcement(), "enforcement_evidence_digest",
-    )
     identity = observe_identity()
     if type(identity) is not tuple or len(identity) != 3:
         raise _invalid("dominant_startup_binding_invalid", "identity")
+    catalog = _require_digest_v1(observe_catalog(), "catalog_id")
+    enforcement = _require_digest_v1(
+        observe_enforcement(), "enforcement_evidence_digest",
+    )
+    retirement = _require_digest_v1(
+        plan_retirement(), "retirement_plan_digest",
+    )
+    topology = _require_digest_v1(
+        observe_topology(), "effective_topology_hash",
+    )
     request_id, previous_head, context_transition_id = identity
     bindings = DominantStartupBindingsV1(
         request_id=_require_digest_v1(request_id, "request_id"),
@@ -369,10 +373,10 @@ def _complete_dominant_startup_core_v1(
     require_sessions(held)
     if (
         observe_identity() != identity
-        or observe_topology() != topology
         or observe_catalog() != catalog
-        or plan_retirement() != retirement
         or observe_enforcement() != enforcement
+        or plan_retirement() != retirement
+        or observe_topology() != topology
     ):
         raise _invalid("dominant_startup_binding_drift", "second reading")
     require_sessions(held)

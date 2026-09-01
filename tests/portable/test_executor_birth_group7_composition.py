@@ -195,3 +195,5 @@ def test_an_open_gate_stops_the_composition_at_its_own_step(cell) -> None:
         )
     assert denied.value.code == "enforcement_not_closed"
     assert crossed == []
+    assert not any(units.iterdir())
+    assert (cell[1] / "scripts" / "legacy.sh").is_file()
