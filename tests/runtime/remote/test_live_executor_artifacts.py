@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import shutil
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -147,6 +148,10 @@ en = "Requested sensor types."
     production = state / "contract-publications"
     production.mkdir(parents=True)
     shadow.rename(production / "v1")
+    (state / "contract-publications.ACTIVE").write_bytes(b"v1\n")
+    external = state / "contract-authoring" / "v1" / "core" / "get_processes"
+    external.parent.mkdir(parents=True)
+    shutil.copytree(directory, external)
 
     # Sentinel: every attempted authoring-manifest read now fails, while the
     # structural parent and its code remain available to the live generation.
@@ -239,7 +244,11 @@ def test_store_artifact_fails_closed_on_code_drift(
     sentinel, _code_bytes, _generation, _private = _live_executor(
         tmp_path, monkeypatch
     )
-    (sentinel.parent / "get_processes.py").write_bytes(b"changed after publish\n")
+    live_code = (
+        loader._C.PATH_USER_STATE / "contract-authoring" / "v1"
+        / "core" / "get_processes" / "get_processes.py"
+    )
+    live_code.write_bytes(b"changed after publish\n")
     loader.invalidate_catalog_cache()
 
     with pytest.raises(invocations.InvocationError):

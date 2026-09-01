@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import config
@@ -70,12 +71,20 @@ def test_store_corpus_identity_ignores_authoring_and_tracks_publication(
         sign_manifest_bytes(manifest_path.read_bytes(), private_key=private_key),
     )
     refreshed = inventory_authoring_manifests((source,)).admitted()[0]
+    isolated_store = tmp_path / "isolated-publications" / "v1"
+    shutil.copytree(version_root, isolated_store)
     publication = publish_signed_source(
         refreshed,
         expected_generation_id=initial.current_generation_id,
         trusted_publics=trusted,
-        registry_reconciler=lambda _snapshot: None,
+        store_root=isolated_store,
     )
 
     assert publication.current_generation_id != initial.current_generation_id
+    updated_state = tmp_path / "updated-state"
+    updated_root = updated_state / "contract-publications" / "v1"
+    updated_root.parent.mkdir(parents=True)
+    shutil.copytree(isolated_store, updated_root)
+    (updated_state / "contract-publications.ACTIVE").write_bytes(b"v1\n")
+    monkeypatch.setattr(config, "PATH_USER_STATE", updated_state)
     assert config.localization_corpus_version() != before

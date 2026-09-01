@@ -346,7 +346,7 @@ def test_delete_with_backup_purges_crops_and_reverse_restores(tmp_path, monkeypa
 
 def test_delete_persons_round_trip_through_undo_executor(
         isolated_db, tmp_path, monkeypatch):
-    """Il pattern legacy del manifest deve raggiungere module.reverse()."""
+    """An unknown declared pattern must reach the authenticated reverse hook."""
     monkeypatch.setenv("METNOS_HISTORY_DIR", str(tmp_path / "history"))
     monkeypatch.setenv("METNOS_TURN_ID", "turn-persons")
     monkeypatch.delenv("METNOS_USER_DATA", raising=False)
@@ -366,6 +366,14 @@ def test_delete_persons_round_trip_through_undo_executor(
     sys.path.insert(0, str(_RUNTIME.parent / "executors" / "undo_last_turn"))
     try:
         import undo_last_turn as ult
+        executor = type("Executor", (), {
+            "revertible": True,
+            "reverse_pattern": "restore_person",
+        })()
+        monkeypatch.setattr(
+            ult, "load_catalog", lambda: {"delete_persons": executor},
+        )
+        monkeypatch.setattr(ult, "_load_module", lambda _executor: dp)
         undone = ult.invoke({"log_path": str(log_path), "_actor": "host"})
     finally:
         sys.path.pop(0)

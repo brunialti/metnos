@@ -10,6 +10,7 @@ import pytest
 
 import config
 import contract_store
+import executor_birth_legacy_gate
 import manifest_inventory
 import sign
 from admin.i18n_migrate_manifests import (
@@ -331,6 +332,14 @@ def test_activation_retry_after_swap_reconciles_without_shadow(
 ) -> None:
     import i18n_pipeline
 
+    # Exercise the recovery code carried by the pre-certificate installer.
+    # The released F4 build keeps this policy bit compiled to True.
+    monkeypatch.setattr(
+        executor_birth_legacy_gate,
+        "closed_build_enforcement",
+        lambda: False,
+    )
+
     ref, _private_key, state_root, report = _prepared_activation_fixture(
         tmp_path, monkeypatch,
     )
@@ -380,6 +389,14 @@ def test_post_swap_retry_rejects_report_from_another_catalog(
     tmp_path: Path, monkeypatch,
 ) -> None:
     import i18n_pipeline
+
+    # Exercise the recovery code carried by the pre-certificate installer.
+    # The released F4 build keeps this policy bit compiled to True.
+    monkeypatch.setattr(
+        executor_birth_legacy_gate,
+        "closed_build_enforcement",
+        lambda: False,
+    )
 
     _ref, _private_key, _state_root, report = _prepared_activation_fixture(
         tmp_path, monkeypatch,
