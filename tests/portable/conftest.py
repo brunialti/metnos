@@ -54,7 +54,18 @@ def _bind_runtime_modules_by_name() -> None:
             raise
 
 
-_bind_runtime_modules_by_name()
+@pytest.hookimpl(trylast=True)
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Bind shadowed modules only after the repository sandbox is active.
+
+    The repository-wide session hook redirects every mutable Metnos root.
+    Running this binding while conftest files are still being imported would
+    let product modules freeze the caller's live paths before that redirect.
+    ``pytest_sessionstart`` still precedes test collection, while ``trylast``
+    makes the ordering against the sandbox hook explicit.
+    """
+    del session
+    _bind_runtime_modules_by_name()
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:
