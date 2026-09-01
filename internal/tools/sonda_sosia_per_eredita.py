@@ -166,6 +166,63 @@ def _riconoscitori():
     )
 
 
+def _tipi_sigillati() -> dict[str, list[str]]:
+    """Every sealed dataclass of the unit, read from the sources themselves.
+
+    A fixed list would go stale the moment a new sealed type is added, which
+    is the very shape this probe exists to catch.
+    """
+    import re
+
+    tipi: dict[str, list[str]] = {}
+    for modulo in sorted((RADICE / "runtime").glob("*.py")):
+        righe = modulo.read_text().splitlines()
+        for indice, riga in enumerate(righe):
+            trovato = re.match(r"class ([A-Za-z_][A-Za-z0-9_]*)", riga)
+            if trovato is None:
+                continue
+            corpo = righe[indice + 1: indice + 60]
+            for successiva in corpo:
+                if re.match(r"^class |^def ", successiva):
+                    break
+                if re.match(r"\s+_seal: object", successiva):
+                    tipi.setdefault(trovato.group(1), []).append(modulo.name)
+                    break
+    return tipi
+
+
+def _ammissioni_deboli() -> list[str]:
+    """Sealed types admitted by isinstance with no seal check beside it."""
+    import re
+
+    deboli: list[str] = []
+    sorgenti = {
+        percorso.name: percorso.read_text().splitlines()
+        for percorso in (RADICE / "runtime").glob("*.py")
+    }
+    for nome in sorted(_tipi_sigillati()):
+        debole = False
+        for righe in sorgenti.values():
+            for indice, riga in enumerate(righe):
+                if re.search(rf"isinstance\([^,]+,\s*{nome}\)", riga) is None:
+                    continue
+                vicino = righe[max(0, indice - 4): indice + 5]
+                if not any("_seal" in item for item in vicino):
+                    debole = True
+        if debole:
+            deboli.append(nome)
+    return deboli
+
+
+# What hand inspection found about each type the heuristic flags. The scan
+# cannot see a guard that is not the seal, so an unexplained name here is a
+# question, not a verdict.
+NOTE_SUI_DEBOLI = {
+    "_PreparedReattestationV2": "protetto: i cancelli confrontano la fabbrica",
+    "VerifiedDistribution": "un solo sito, ed e' un assert (sparisce con -O)",
+    "_BirthCore": "DEBOLE davvero: intent.py, reattestation.py, bootstrap.py",
+}
+
 NON_MISURATI = (
     ("executor_birth_commit_publisher.py", "isinstance(request, ProducerRequestV2)"),
     ("executor_birth_bootstrap.py", "isinstance(self.producer_request, ProducerRequestV2)"),
@@ -212,6 +269,19 @@ def principale() -> int:
             print(f"  {nome} RIFIUTA  {codice}")
         else:
             print(f"  {nome} RIFIUTA")
+    print()
+    tipi = _tipi_sigillati()
+    deboli = _ammissioni_deboli()
+    print(f"tipi sigillati letti dai sorgenti: {len(tipi)}")
+    if deboli:
+        print("da guardare a mano — ammessi per isinstance senza sigillo")
+        print("accanto (euristica: puo' segnalare chi e' protetto altrove):")
+        for nome in deboli:
+            nota = NOTE_SUI_DEBOLI.get(nome, "non ancora esaminato")
+            print(f"  {nome:28} {nota}")
+    else:
+        print("nessuno ammesso per isinstance senza il sigillo accanto")
+
     print()
     print("non misurati qui, trovati leggendo (stessa forma, perimetro di A):")
     for percorso, frammento in NON_MISURATI:
