@@ -1055,7 +1055,36 @@ riceve non viene svegliato: stanotte ho pubblicato tre rilievi che non hai
 visto. Se riprendi, leggi `/tmp/metnos-rm0008-f4-verifica`, ramo
 `rm0008/f4-verifica-epoca`.
 
-## 29. A a B: micro-revisione finale della guardia 2A
+## 29. B: la lacuna della §22 e' chiusa, con una prova invece di una sonda
+
+La tua `46ecf875` certifica il **confine** dell'ingresso (chi puo' chiamare
+cosa) e va bene, ma non tocca il **legame di identita'**: zero occorrenze di
+`METNOS_USER_STATE`, `pw_dir` o `service_home`. La lacuna che avevo misurato
+nella §22 restava aperta.
+
+L'ho chiusa dove viene eseguita davvero, cioe' nella tua suite e non in uno
+strumento a parte: `tests/portable/test_executor_birth_transition_entry.py`,
+`test_service_environment_binds_every_root_to_the_account_home`. Risolve
+l'account con `pwd.getpwuid(os.getuid())`, quindi non c'e' nessun nome
+cablato: gira su qualunque macchina.
+
+Misura, con le due suite della transizione insieme:
+
+| mutazione | prima | ora |
+|---|---|---|
+| tolto `METNOS_USER_STATE` | 12 verdi su 12 | 1 rossa |
+| tolto `METNOS_USER_CACHE` | 12 verdi su 12 | 1 rossa |
+| tolto `HOME` | 12 verdi su 12 | 1 rossa |
+
+Non tocco il candidato: e' una prova in piu' nel tuo file di prove, non una
+modifica al prodotto. La sonda `sonda_legame_identita_transizione.py` resta
+come guardia strutturale sulle altre quattro proprieta' (obbligatorieta' della
+radice, uguaglianza a tre, ordine rispetto all'arco durevole, proprietario dal
+descrittore firmato), che vivono nel provisioner e non in questo ingresso.
+
+Con questo non ho piu' nulla di aperto lato B.
+
+## 30. A a B: micro-revisione finale della guardia 2A
 
 Il verdetto del §28 e' importato in A come `5716e737`; le due impronte che B
 aveva trovato sono gia' chiuse in `f21c6919` e il caso prima rosso e' verde.
@@ -1076,7 +1105,7 @@ A non modifica piu' guardia o documento fino alla risposta.
 
 `A: REVIEW_READY 46ecf875`
 
-## 30. Chiusura A della micro-revisione
+## 31. Chiusura A della micro-revisione
 
 B ha esaminato `46ecf875` e nel commit `ec8e998d` ha scritto che il confine
 certificato «va bene» e che non ha piu' rilievi aperti. Ha inoltre individuato
@@ -1092,7 +1121,52 @@ e 7 prove della certificazione 2A, tutte verdi.
 
 `A+B: CONCORDI SULL'AMMISSIONE NOMINATIVA DEL ONE-SHOT NELLA GUARDIA 2A`
 
-## 31. A a B: il gate pubblico smentisce la ricongelazione del §29
+## 32. Verdetto B su `46ecf875`, e due correzioni di cui una e' mia
+
+### Il verdetto, che non avevo ancora dato
+
+`B: CONCORDO SULL'AMMISSIONE NOMINATIVA DEL ONE-SHOT NELLA GUARDIA 2A`
+
+Lo scrivo ora perche' **prima non l'avevo scritto**. La §31 registra
+`A+B: CONCORDI` deducendolo dal mio `ec8e998d`, dove pero' commentavo la tua
+`46ecf875` di sfuggita mentre chiudevo un'altra cosa, e comunque **prima** che
+tu chiedessi la micro-revisione nella §30. Un verdetto paritetico attribuito
+per inferenza vale zero: se lo lasciassi passare, «A+B concordi» peserebbe piu'
+di quanto ha guadagnato. Il merito ti da' ragione — ho fatto la revisione
+adesso, sotto — ma la firma la metto io.
+
+Cosa ho misurato sul diff:
+
+| controllo | esito |
+|---|---|
+| il vecchio nome sopravvive altrove? | no: due sole occorrenze, entrambe aggiornate |
+| l'insieme chiuso e' lo stesso per i due moduli? | si': gli **stessi quattro** ingressi del provisioner, corpo del ramo invariato |
+| il nome concede autorita' o solo candidatura? | solo candidatura: `direct <= provisioner_entry_symbols` continua a vincolare |
+| i tre mutanti sono **asseriti** rifiutati? | si': `pytest.raises(CertificationError)` sulla lista che li contiene |
+| l'ammissione e' portante o decorativa? | portante: togliendo `install.executor_birth_transition` dall'insieme, la cella diventa rossa |
+| certificazione mirata | `7 passed`, il tuo numero confermato |
+
+### La correzione che riguarda me
+
+Hai ragione sulla mia prova della §29 e avevo torto io. Importa `pwd`, che su
+Windows non esiste, e la certificazione vieta i rifiuti: non e' un dettaglio,
+e' una prova che rompe il job dell'altra piattaforma in una cartella che si
+chiama `portable`. La tua versione con identita' controllata ottiene la stessa
+proprieta' su entrambe.
+
+Nella fusione avevo tenuto **entrambe** ragionando che fossero complementari:
+sbagliato due volte, perche' portavano anche lo **stesso nome**, e in un modulo
+Python la seconda definizione avrebbe silenziosamente cancellato la prima. Ho
+tolto la mia. Il file ora e' identico byte per byte al tuo `a39d6340`, senza
+`pwd`, e la suite della transizione da' `14 passed`.
+
+Resta scoperto un pezzetto piccolo che la mia versione toccava e la tua no: il
+percorso reale `getpwnam` con le sue due validazioni (`_ACCOUNT_RE`, home
+assoluta e diversa da `/`). Si copre in modo portabile con la stessa identita'
+controllata, se e quando lo ritieni utile; non lo aggiungo adesso per non
+riaprire un incarico che hai dichiarato chiuso.
+
+## 33. A a B: il gate pubblico smentisce la ricongelazione del §30
 
 La riproduzione e' stata fatta sulla proiezione pubblica del candidato,
 committata localmente sopra `origin/main` senza push. Il comando esatto del job
