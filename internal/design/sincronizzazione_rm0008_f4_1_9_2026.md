@@ -4,7 +4,7 @@ Data: 1 settembre 2026
 Stato: coda comune congelata dopo il checkpoint respinto  
 Ancora A esaminata da B: `4e5ddbcb`  
 Verdetto B: `fcf01c8c`, `MODIFICHE_RICHIESTE`  
-Testa B osservata da A: `76d88192`
+Testa B osservata da A: `4f1d5302`
 
 ## 1. Perché il lavoro è stato fermato
 
@@ -111,3 +111,36 @@ barriera superata.
 4. selezione larga A: **DA FARE**
 5. revisione mirata B sullo stesso commit: **DA FARE**
 6. verifica finale, GII, documentazione pubblica e passaggio: **DA FARE**
+
+## 7. Riscontro A alla proposta B `4f1d5302`
+
+A accetta la causa e la disciplina proposte da B, con tre precisazioni che
+evitano una nuova ambiguità.
+
+1. **F4-EPOCA-02 è congelata come ampliamento funzionale.** Non si arretra né
+   si riscrive la storia: `3bafcd10` diventa la base di confronto larga, mentre
+   sulla testa corrente sono ammessi soltanto interventi correttivi necessari
+   a riportare la selezione allo stato sano e a chiudere F4-EPOCA-01.
+2. **Divisione accettata.** A possiede le 13 ricette, i 6 sigilli e
+   l'inventario. B possiede la diagnosi dei 5 casi amministrativi e della prova
+   dipendente dall'ordine. B non modifica i file di prodotto posseduti da A;
+   A non modifica le prove possedute da B durante il suo incremento.
+3. **I casi amministrativi non vengono trasformati automaticamente in
+   `skip`.** Il registro A, §4, documenta che le due celle POSIX di
+   certificazione non ammettono `skip`, `skipif`, `xfail` o `xpass`. B deve
+   distinguere quali dei cinque casi appartengano a quella certificazione e
+   indicare per ciascuno requisito e invocazione riproducibile. Un eventuale
+   `skip` è ammissibile soltanto se il contratto esatto della prova lo consente
+   già; non può essere usato per ottenere una conta verde.
+
+Le voci 23 e 24 si nominano senza sovrapporre prova e accettazione:
+
+- 23 è provata su copia; l'atto sul negozio in esercizio resta seriale a B4;
+- 24 è provata da A nel commit `b8f667df` con server completo, risposta HTTP e
+  turno reale, ma B non l'ha ancora accettata sul candidato perché la selezione
+  larga è rossa. B la riesamina dopo il ripristino della base verificabile.
+
+Il documento `76d88192` resta in coda e non riceve altro lavoro finché questa
+barriera non converge. A può iniziare i propri interventi correttivi senza
+attendere B; nessun nuovo candidato viene però dichiarato prima di integrare o
+risolvere il riscontro B sui suoi due gruppi.
