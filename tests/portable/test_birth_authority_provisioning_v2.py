@@ -25,6 +25,7 @@ from install.birth_authority_provisioner import (
     MaterialPlanEntryV2, MaterialPlanV2, PayloadConfidentialityV1,
     PayloadObjectTypeV1, PreparedAuthoritySetV2, TransactionHeaderV2,
     _build_transaction_header_v2, _materialize_material_plan_v2,
+    _publish_prepared_authority_set_v2,
     decode_transaction_header_v2,
     decode_material_plan_v2, empty_digests_v1,
     is_prepared_authority_set_v2, prepare_transition_authority_set_v2,
@@ -93,6 +94,22 @@ def _claim() -> SuccessorClaimV1:
         source_id=D("3"),
         closed_build_id=D("2"),
     )
+
+
+def _transition_inputs(tmp_path, monkeypatch):
+    import config as runtime_config
+    from executor_birth_prepared_root import read_prepared_set_v1
+
+    base = support.make_config(
+        tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
+    )
+    support.provision(monkeypatch, base)
+    support.use_config(monkeypatch, base)
+    previous = read_prepared_set_v1()
+    distribution = replace(
+        _distribution(), installation_root=str(runtime_config.PATH_RUNTIME),
+    )
+    return base, previous, distribution
 
 
 def _material_plan(header: TransactionHeaderV2) -> MaterialPlanV2:
@@ -617,18 +634,7 @@ def test_v2_builds_a_new_set_without_copying_or_replacing_the_author_root(
 def test_v2_fixed_entry_returns_the_same_sealed_prepared_set_on_resume(
     tmp_path, monkeypatch,
 ):
-    import config as runtime_config
-    from executor_birth_prepared_root import read_prepared_set_v1
-
-    base = support.make_config(
-        tmp_path, author=Ed25519PrivateKey.generate(), operator=True,
-    )
-    support.provision(monkeypatch, base)
-    support.use_config(monkeypatch, base)
-    previous = read_prepared_set_v1()
-    distribution = replace(
-        _distribution(), installation_root=str(runtime_config.PATH_RUNTIME),
-    )
+    base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
     marker_before = (base / "birth" / "prepared-v1.json").read_bytes()
 
     first = prepare_transition_authority_set_v2(
@@ -667,3 +673,97 @@ def test_v2_fixed_entry_returns_the_same_sealed_prepared_set_on_resume(
     assert prepare_transition_authority_set_v2(
         _claim(), distribution, previous,
     ) == first
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_publication_moves_the_exact_set_and_preserves_the_v1_anchor(
+    tmp_path, monkeypatch,
+):
+    base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
+    marker = base / "birth" / "prepared-v1.json"
+    marker_before = marker.read_bytes()
+    author_root = base / "birth" / "author-root-v1"
+    author_before = {
+        item.relative_to(author_root).as_posix(): item.read_bytes()
+        for item in author_root.rglob("*") if item.is_file()
+    }
+    prepared = prepare_transition_authority_set_v2(
+        _claim(), distribution, previous,
+    )
+    transaction = (
+        base / "birth"
+        / f".birth-provisioning-v2.txn.{prepared.transaction_id}"
+    )
+    staged = transaction / "authority-set"
+    staged_identity = staged.stat().st_ino
+
+    assert _publish_prepared_authority_set_v2(prepared) is prepared
+
+    published = base / "birth" / "authority-sets" / prepared.target_set_id
+    assert published.stat().st_ino == staged_identity
+    assert not staged.exists()
+    assert marker.read_bytes() == marker_before
+    assert {
+        item.relative_to(author_root).as_posix(): item.read_bytes()
+        for item in author_root.rglob("*") if item.is_file()
+    } == author_before
+    assert _publish_prepared_authority_set_v2(prepared) is prepared
+    assert published.stat().st_ino == staged_identity
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_publication_refuses_a_collision_without_moving_staging(
+    tmp_path, monkeypatch,
+):
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
+    prepared = prepare_transition_authority_set_v2(
+        _claim(), distribution, previous,
+    )
+    transaction = (
+        base / "birth"
+        / f".birth-provisioning-v2.txn.{prepared.transaction_id}"
+    )
+    layout = support.open_layout(monkeypatch, base)
+    with layout.birth_session as session:
+        with session.global_lock(exclusive=True, create=True):
+            session.create_directory_exclusive(
+                ("authority-sets", prepared.target_set_id),
+                role=_BirthObjectRole.birth_integrity_only,
+            )
+
+    with pytest.raises(
+        BirthProvisioningError,
+        match="birth_provisioning_recovery_ambiguous",
+    ):
+        _publish_prepared_authority_set_v2(prepared)
+
+    assert (transaction / "authority-set").is_dir()
+    assert (base / "birth" / "authority-sets" / prepared.target_set_id).is_dir()
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_publication_requires_the_historical_marker_before_the_move(
+    tmp_path, monkeypatch,
+):
+    base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
+    prepared = prepare_transition_authority_set_v2(
+        _claim(), distribution, previous,
+    )
+    transaction = (
+        base / "birth"
+        / f".birth-provisioning-v2.txn.{prepared.transaction_id}"
+    )
+    (base / "birth" / "prepared-v1.json").unlink()
+
+    with pytest.raises(
+        BirthProvisioningError,
+        match="birth_provisioning_recovery_ambiguous",
+    ):
+        _publish_prepared_authority_set_v2(prepared)
+
+    assert (transaction / "authority-set").is_dir()
+    assert not (
+        base / "birth" / "authority-sets" / prepared.target_set_id
+    ).exists()

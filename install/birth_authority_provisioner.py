@@ -292,7 +292,8 @@ def decode_material_plan_v2(raw: bytes) -> MaterialPlanV2:
 _PREPARED_AUTHORITY_SET_SEAL_V2 = object()
 _PREPARED_AUTHORITY_SET_FIELDS_V2 = (
     "transaction_id", "provisioner_build_id", "request_id",
-    "closed_build_id", "previous_set_id", "target_set_id",
+    "closed_build_id", "distribution_payload_hash",
+    "distribution_signature_hash", "previous_set_id", "target_set_id",
     "target_admission_context_id", "target_context_epoch",
     "target_context_material_sha256", "target_set_json_sha256",
     "source_inventory_hash", "material_plan_sha256",
@@ -308,6 +309,8 @@ class PreparedAuthoritySetV2:
     provisioner_build_id: str
     request_id: str
     closed_build_id: str
+    distribution_payload_hash: str
+    distribution_signature_hash: str
     previous_set_id: str
     target_set_id: str
     target_admission_context_id: str
@@ -328,6 +331,8 @@ class PreparedAuthoritySetV2:
             or not self.provisioner_build_id
             or any(not _is_digest_v2(value) for value in (
                 self.request_id, self.closed_build_id,
+                self.distribution_payload_hash,
+                self.distribution_signature_hash,
                 self.target_admission_context_id, self.target_context_epoch,
                 self.source_inventory_hash,
             ))
@@ -3926,6 +3931,8 @@ def _prepared_authority_set_result_v2(
         provisioner_build_id=header.provisioner_build_id,
         request_id=header.request_id,
         closed_build_id=header.closed_build_id,
+        distribution_payload_hash=header.distribution_payload_hash,
+        distribution_signature_hash=header.distribution_signature_hash,
         previous_set_id=header.previous_set_id,
         target_set_id=checkpoint.set_id,
         target_admission_context_id=(
@@ -3945,6 +3952,123 @@ def _prepared_authority_set_result_v2(
         **values, _artifact_binding=binding,
         _seal=_PREPARED_AUTHORITY_SET_SEAL_V2,
     )
+
+
+def _publish_prepared_authority_set_v2(
+    prepared: object,
+) -> PreparedAuthoritySetV2:
+    """Publish one authorized staged set without changing the context selector."""
+    if not is_prepared_authority_set_v2(prepared):
+        raise _conflict()
+    layout = _open_installer_layout_v1()
+    try:
+        session = layout.birth_session
+        with _translated():
+            lock = session.global_lock(exclusive=True, create=True)
+        with lock:
+            journal = _validate_prepared_authority_set_v2(session, prepared)
+            with _translated():
+                root_names = set(session.inventory(()))
+                transaction_names = set(session.inventory(
+                    journal.root_components,
+                ))
+                published = set(session.inventory(
+                    (AUTHORITY_SETS_BASENAME_V1,),
+                ))
+            staged = AUTHORITY_SET_BASENAME_V1 in transaction_names
+            final = prepared.target_set_id in published
+            if PREPARED_MARKER_BASENAME_V1 not in root_names:
+                raise _reject("birth_provisioning_recovery_ambiguous")
+            if staged and final:
+                raise _reject("birth_provisioning_recovery_ambiguous")
+            if staged:
+                with _translated():
+                    session.rename_no_replace(
+                        journal.root_components + (AUTHORITY_SET_BASENAME_V1,),
+                        (AUTHORITY_SETS_BASENAME_V1, prepared.target_set_id),
+                        directory=True,
+                    )
+            elif not final:
+                raise _reject("birth_provisioning_recovery_ambiguous")
+    finally:
+        layout.birth_session.close()
+    _verify_published_authority_set_v2(prepared)
+    return prepared
+
+
+def _validate_prepared_authority_set_v2(
+    session, prepared: PreparedAuthoritySetV2,
+) -> _TransactionJournalV1:
+    journal = _TransactionJournalV1.transition_v2(
+        session, prepared.transaction_id,
+    )
+    state = journal.read_state()
+    header = state.header
+    if (
+        not isinstance(header, TransactionHeaderV2)
+        or len(state.chain) != 2
+        or state.last is None
+        or state.last.state is not ProvisioningStateV1.verified
+        or state.last.digest() != prepared.verified_checkpoint_sha256
+        or state.last.set_id != prepared.target_set_id
+        or state.last.digests["context_material_sha256"]
+        != prepared.target_context_material_sha256
+        or state.last.digests["set_json_sha256"]
+        != prepared.target_set_json_sha256
+        or header.transaction_id != prepared.transaction_id
+        or header.provisioner_build_id != prepared.provisioner_build_id
+        or header.request_id != prepared.request_id
+        or header.closed_build_id != prepared.closed_build_id
+        or header.distribution_payload_hash
+        != prepared.distribution_payload_hash
+        or header.distribution_signature_hash
+        != prepared.distribution_signature_hash
+        or header.previous_set_id != prepared.previous_set_id
+        or header.source_inventory_hash != prepared.source_inventory_hash
+    ):
+        raise _conflict()
+    plan = journal._read_material_plan_v2(header)
+    if plan.digest() != prepared.material_plan_sha256:
+        raise _conflict()
+    return journal
+
+
+def _verify_published_authority_set_v2(
+    prepared: PreparedAuthoritySetV2,
+) -> None:
+    from executor_birth_prepared_set import (
+        PreparedSetError, load_authority_set_v1,
+    )
+
+    layout = _open_installer_layout_v1()
+    try:
+        session = layout.birth_session
+        with _translated():
+            lock = session.global_lock(exclusive=False, create=False)
+        with lock:
+            try:
+                observed = load_authority_set_v1(
+                    session, prepared.target_set_id,
+                    expected_set_json_sha256=prepared.target_set_json_sha256,
+                    expected_transaction_id=prepared.transaction_id,
+                    expected_context_material_sha256=(
+                        prepared.target_context_material_sha256
+                    ),
+                )
+            except PreparedSetError as exc:
+                raise BirthProvisioningError(exc.code, exc) from None
+            if (
+                observed.set_id != prepared.target_set_id
+                or observed.prepared_admission_context_id
+                != prepared.target_admission_context_id
+                or observed.prepared_context_epoch
+                != prepared.target_context_epoch
+                or observed.provisioner_build_id
+                != prepared.provisioner_build_id
+            ):
+                raise _reject("birth_authority_set_conflict")
+    finally:
+        layout.birth_session.close()
 
 
 def _run_provisioning_entry_v1(
