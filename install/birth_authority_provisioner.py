@@ -4473,8 +4473,8 @@ def _install_bound_topology_v2(
     return _capture_cutover_effective_systemd_v2(prepared)
 
 
-def complete_transition_cutover_v2(distribution: object):
-    """Complete the productive V2 crossing while retaining all three locks."""
+def complete_transition_cutover_v2(distribution: object, source_id: object):
+    """Complete one reserved V2 crossing while retaining all three locks."""
     from contract_cutover_guard import (
         _begin_topology_transition_v1,
         _contract_cutover_guard_for_service_user_v1,
@@ -4498,19 +4498,33 @@ def complete_transition_cutover_v2(distribution: object):
         _cross_head_boundary_locked_v2,
         _cross_preflight_boundary_locked_v2, _deployment_lock_v1,
         _observe_dominant_identity_locked_v2, _result,
+        _reserve_transition_edge_locked_v2,
         _transition_inventory_under_maintenance_v2,
     )
+    from executor_birth_legacy_gate import closed_build_enforcement
     from executor_birth_startup_gate import _exclusive_startup_gate_v1
+    from install.executor_birth_source_receiver import (
+        _load_received_source_with_product_session_v1,
+    )
     from install.executor_birth_startup_prerequisite import (
         _publish_startup_prerequisite_locked_v2,
     )
 
+    if closed_build_enforcement() is not True:
+        raise _reject("birth_ownership_closed_enforcement_required")
     with _deployment_lock_v1() as deployment_session:
         verified = verify_current_installation_distribution_v1(
             distribution.encoded, distribution.signature,
         )
         if verified != distribution:
             raise _reject("birth_transition_distribution_changed")
+        received = _load_received_source_with_product_session_v1(
+            source_id, deployment_session,
+        )
+        _reserve_transition_edge_locked_v2(
+            deployment_session, distribution=verified,
+            source_id=received.source_id,
+        )
         completed = _completed_transition_locked_v2(
             deployment_session, verified,
         )

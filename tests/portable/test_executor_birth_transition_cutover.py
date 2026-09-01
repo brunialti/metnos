@@ -229,6 +229,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     import executor_birth_ownership_coordinator as coordinator
     import executor_birth_ownership_preflight as ownership_preflight
     import executor_birth_startup_gate as startup_gate
+    import install.executor_birth_source_receiver as source_receiver
     import install.executor_birth_startup_prerequisite as prerequisite_module
 
     events: list[str] = []
@@ -270,6 +271,13 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
     monkeypatch.setattr(manifest, "verify_current_installation_distribution_v1", lambda *_: distribution)
     monkeypatch.setattr(coordinator, "_deployment_lock_v1", deployment_lock)
+    monkeypatch.setattr(
+        source_receiver, "_load_received_source_with_product_session_v1",
+        lambda *_: SimpleNamespace(source_id=D("a")),
+    )
+    monkeypatch.setattr(
+        coordinator, "_reserve_transition_edge_locked_v2", lambda *_args, **_kwargs: object(),
+    )
     monkeypatch.setattr(coordinator, "_completed_transition_locked_v2", lambda *_: None)
     monkeypatch.setattr(startup_gate, "_exclusive_startup_gate_v1", startup_lock)
     monkeypatch.setattr(contract_cutover_guard, "_contract_cutover_guard_for_service_user_v1", maintenance_guard)
@@ -310,12 +318,34 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
 
     monkeypatch.setattr(dominant, "complete_dominant_startup_v1", complete_startup)
 
-    assert provisioner.complete_transition_cutover_v2(distribution) is result
+    assert provisioner.complete_transition_cutover_v2(
+        distribution, D("a"),
+    ) is result
     assert events == [
         "deployment-enter", "startup-enter", "maintenance-enter",
         "inventory-enter", "composition", "inventory-exit",
         "maintenance-exit", "startup-exit", "deployment-exit",
     ]
+
+
+def test_product_wrapper_denies_before_lock_when_closed_policy_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import executor_birth_legacy_gate as legacy_gate
+    import executor_birth_ownership_coordinator as coordinator
+
+    monkeypatch.setattr(legacy_gate, "closed_build_enforcement", lambda: False)
+    monkeypatch.setattr(
+        coordinator, "_deployment_lock_v1",
+        lambda: pytest.fail("deployment lock must remain unopened"),
+    )
+    distribution = SimpleNamespace(encoded=b"distribution", signature=b"s" * 64)
+
+    with pytest.raises(
+        provisioner.BirthProvisioningError,
+        match="birth_ownership_closed_enforcement_required",
+    ):
+        provisioner.complete_transition_cutover_v2(distribution, D("a"))
 
 
 def test_maintenance_session_retains_quiescence_across_named_load_states(

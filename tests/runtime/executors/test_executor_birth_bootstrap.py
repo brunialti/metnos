@@ -92,6 +92,43 @@ def test_required_context_preserves_chain_inspection_failure(monkeypatch) -> Non
     assert failure.value.detail == "productive store"
 
 
+def test_closed_bootstrap_refuses_the_historical_context_without_a_head(
+    monkeypatch,
+) -> None:
+    import executor_birth_legacy_gate as legacy_gate
+    import executor_birth_ownership_chain as ownership_chain
+    import executor_birth_prepared_root as prepared_root
+
+    monkeypatch.setattr(
+        ownership_chain, "inspect_ownership_chain_state_v1", lambda: object(),
+    )
+    monkeypatch.setattr(legacy_gate, "closed_build_enforcement", lambda: True)
+    monkeypatch.setattr(
+        prepared_root, "load_required_context_runtime_v1",
+        lambda: pytest.fail("loaded a required context without a head"),
+    )
+
+    with pytest.raises(
+        bootstrap.BirthBootstrapError,
+        match="birth_context_transition_required",
+    ):
+        bootstrap._required_context_runtime_for_bootstrap_v1()
+
+
+def test_open_bootstrap_retains_the_initial_context_before_transition(
+    monkeypatch,
+) -> None:
+    import executor_birth_legacy_gate as legacy_gate
+    import executor_birth_ownership_chain as ownership_chain
+
+    monkeypatch.setattr(
+        ownership_chain, "inspect_ownership_chain_state_v1", lambda: object(),
+    )
+    monkeypatch.setattr(legacy_gate, "closed_build_enforcement", lambda: False)
+
+    assert bootstrap._required_context_runtime_for_bootstrap_v1() is None
+
+
 def test_required_context_preserves_context_load_failure(monkeypatch) -> None:
     import executor_birth_ownership_chain as ownership_chain
     import executor_birth_prepared_root as prepared_root

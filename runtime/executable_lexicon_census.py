@@ -174,7 +174,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'compare_entries.py': ('ffc00edddb2c8ac4f9cc9227a90b824db0aec4a0af6e290eda791a2891414cbb', (('comparison', 1),)),
     'compound_decomposer.py': ('256070a1b292e58eb3ba1d63283a77bb11f9c20c836c4c574aeeefb60a88a178', (('comparison', 4),)),
     'config.py': ('257caa81f45083ad220824046694021f44f75a2f60e718374cbe80ebc9dee8ee', (('comparison', 13), ('helper-argument', 1))),
-    'contract_boundary_guard.py': ('24ec119914479e5c145d791fedcec85e20fdda06ecb0eacad4d4f3ee7e9e8020', (('comparison', 86),)),
+    'contract_boundary_guard.py': ('c0e94cc27f12574af9c1ce4f4869572df44e1b561ae018bd0a0f530773c8b4fc', (('comparison', 86),)),
     'contract_cutover_guard.py': ('9d58e1bf255fc1d9c2524d957bce732c593bc58d422022b4362d5871ece4b158', (('comparison', 1), ('helper-argument', 1))),
     'contract_store.py': ('85208b2e6a253448b7d86eb994ad0f75d34ef5c91846624e82827f9bc3284e92', (('comparison', 32), ('helper-argument', 3))),
     'credential_mandates.py': ('6f52143c2c23ef03146e16bb988c49b32745aee2e82ace13c7d2ff3f27be02a7', (('comparison', 5),)),
@@ -220,11 +220,11 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_aging.py': ('a23b3323659557c5e7eaf77fa6fc9a14637582a3ed69d86160605840048ad959', (('comparison', 5),)),
     'executor_birth_activation_probe.py': ('4f4dee67e65a43ea550f7e14894f407fde8509c531b66e7ada5233201c7c0d89', (('comparison', 1), ('helper-argument', 1), ('regex', 1))),
     'executor_birth_admin_operations.py': ('75fedbf55e79076fdbbbd2e87025e73971c10214696d3651f9be6a11a9cd77e9', (('comparison', 1),)),
-    'executor_birth_admin_preflight.py': ('042854b3e0d5de01223ff0ef7e495ccf84f841d847efa1f6fa3d7c051f48f583', (('comparison', 329), ('helper-argument', 20), ('iteration', 6), ('membership', 7), ('prefix-suffix', 5), ('regex', 4))),
+    'executor_birth_admin_preflight.py': ('fe8f4d739c44c33e7ce66c6b06e600ebf55037e3c73345a15161510c357a9ddd', (('comparison', 329), ('helper-argument', 20), ('iteration', 6), ('membership', 7), ('prefix-suffix', 5), ('regex', 4))),
     'executor_birth_approval_authority.py': ('64fdddee16f9ae109ff75b33d98008710d963b7cee4ad2e883598b27575e17d4', (('comparison', 3), ('helper-argument', 1))),
     'executor_birth_approval_store.py': ('49c7f9e7d9f6a4912b4f11e351fa6820aa6ffd635134ec364b1f877f52badce8', (('comparison', 2),)),
     'executor_birth_authoring.py': ('fa7d739a561fe9014fa80ca50d086ec55ae91d038fb3971332be208d38284ecf', (('comparison', 6), ('helper-argument', 1))),
-    'executor_birth_bootstrap.py': ('0f0584a886b352af7da18ebbdc8179f09fe86a47ee9c2027361b596cb473aebc', (('comparison', 4),)),
+    'executor_birth_bootstrap.py': ('9d681529a350e1a3a212e868f4300f162a774db69a16e726e4f1663de35f291b', (('comparison', 4),)),
     'executor_birth_commit_publisher.py': ('c09875ae79034679a49d483cbfa3419d3e3e99ca974b1c1d0e1c47afad71bf23', (('comparison', 1), ('prefix-suffix', 1))),
     'executor_birth_context_selection.py': ('c05030379a87996280dfd0f19a5a6659edca5c2871a12d6d4c6aec579ce8adf6', (('regex', 2),)),
     'executor_birth_context_transition.py': ('1ef3da42f537abd10e898deefcc5acae51579460181478e2468579c4e421f955', (('comparison', 1), ('helper-argument', 1), ('regex', 2))),
@@ -248,7 +248,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_operational.py': ('0e78badc9ec9ba95d36ef3e1252bc6b9221cf439e9adab804d683d8d89c5a17c', (('comparison', 9), ('helper-argument', 2))),
     'executor_birth_ownership_authorities.py': ('331a28893150d14d8865420f54ed843bd3cc92f59a25dbe8b25235027e09ed60', (('comparison', 5), ('helper-argument', 1))),
     'executor_birth_ownership_chain.py': ('96f05b77e0a980ee1acdfbc6a9f071151b5554cc542d4b054b0c64d7554c8278', (('comparison', 10), ('helper-argument', 2), ('regex', 1))),
-    'executor_birth_ownership_coordinator.py': ('c58c13fdd889d36e76a3855494a1d3c908c9588da836eaef80245ad037f11486', (('comparison', 16), ('helper-argument', 1), ('iteration', 3), ('prefix-suffix', 1), ('regex', 5))),
+    'executor_birth_ownership_coordinator.py': ('56c9f2e330302354459efd0410626d7b9db12bbc3720cb28b8c57f036a4da0c1', (('comparison', 16), ('helper-argument', 1), ('iteration', 3), ('prefix-suffix', 2), ('regex', 5))),
     'executor_birth_ownership_cutover.py': ('ae9323cfa2e23c8cef8df6a9257e0884617345082f8a6e8956bf4fb3c475ed32', (('comparison', 8), ('helper-argument', 1), ('iteration', 1))),
     'executor_birth_ownership_preflight.py': ('b83755c189489215c0ec3778a00852c850830c24f3889f588a5182969f5bd2d2', (('comparison', 1), ('helper-argument', 1))),
     'executor_birth_postcondition.py': ('bf51bc292082ab283b96151a28229d002f0c0342b332c0240fba5f6832c19c89', (('comparison', 1),)),
@@ -997,7 +997,7 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "closed systemd unit states that count as still in flight",
     "717600791b5dbe036580683e37250568bbb77fb7cfd7d392a8586d5efd677a23":
         "closed set of systemd directives a gated unit must declare",
-    "0e98a95a3c159358e36866a9e7219eee5a2701a2ceae92727ae5cadbec6166a9":
+    "12e2e955e210cc8b92bc001f76a3b163f07cc43a33b3787c300e0ee7413fd0cc":
         "closed boundary API registry mirrored inside the signed preflight",
     "1723360c898511beb5fe3d17010b9470470fb684d6807600f723b4c385279aba":
         "closed boundary module registry: import names owned by each boundary",
@@ -1005,7 +1005,7 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "closed boundary source-owner map: repository paths to owning boundary",
     "2b1befd1bf1ebfbc2d732e86a323f02f538d56f8fe0671da65ae6e29d1e0f4bf":
         "closed paired-device identity projections declared by the manifest",
-    "48a7f1b6265f07d93c17c77313ee726ac77de45f523eafc77e4388e53500aec6":
+    "53494dda88c76e47c6d0c33a1e4a3f36ad625b333eaaced0e015a785d062c388":
         "closed boundary API registry: module names and their exported symbols",
     "4bf749f996ba74ec59487843dc8aefeef4e000c3cd001375e121934374459933":
         "exact source path and symbol of the sole authenticated launch scope",
@@ -1019,13 +1019,13 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "closed set of systemd unit relation names added by the manager",
     "a67585e0d3fcd9216f6bf120de4ef638d5b0768eecf2792aa1612de4ba6c39f1":
         "closed contract-store failure codes for an absent code payload",
-    "a625c0766ff1b63012bac4d0d5baa2e100ca90e08ad2b847eb999a1e42899af2":
+    "b3680432206b24fcbd0b8170ca915547f6926ade029b8f9c4dead0127f59c86a":
         "closed coordinator store owners, addressed as file and function",
     "dd841db9c1e52aea3a221382c420196f53f973d7d131d3e7433af473626f6b92":
         "authenticated launch scope mirrored inside the signed preflight",
     "e247f4933aff9080b927dffd83ddd1a00e8141c55c29533f84ba0f92f507a336":
         "closed boundary module registry mirrored inside the signed preflight",
-    "e4aa6b8bf77496083883e6dc9b6ba715dd5b1394bfded3e2983da7517e12f0f8":
+    "e4c75941181d7315d48a8b36c1d900f3436a20e25cdaa2c65901c82bab0f4ab4":
         "closed coordinator store owners mirrored inside the signed preflight",
     "5b8160bd736d40166b6ae4443dd2ebb99fafdef5aa0dfd2c7b01703a0f4f9c29":
         "closed systemd origin-property protocol requested from the manager",

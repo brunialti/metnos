@@ -87,6 +87,10 @@ def test_receive_is_content_addressed_idempotent_and_confined(tmp_path: Path) ->
         (final / "received-source-v1.json").read_bytes(),
     )
     assert record.source_id == source_id
+    with _deployment_lock_for_test_v1(ownership) as session:
+        assert receiver._load_received_source_with_test_session_v1(
+            source_id, ownership, session,
+        ) == record
     assert [(item.path, item.mode) for item in record.files] == [
         ("README.md", 0o644), ("pkg/run.py", 0o755),
     ]

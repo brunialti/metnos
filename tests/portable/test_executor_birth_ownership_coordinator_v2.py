@@ -58,6 +58,7 @@ from executor_birth_ownership_coordinator import (
     _resolve_ownership_coordinator_locked_v2,
     _resolve_ownership_coordinator_locked_for_test_v2,
     _require_locked_coordinator_graph_snapshot_v2,
+    _reserve_transition_edge_locked_for_test_v2,
 )
 from executor_birth_dominant_startup import (
     _complete_dominant_startup_for_test_v1,
@@ -2607,6 +2608,169 @@ def test_transaction_writer_requires_exact_durable_claim_before_writing(tmp_path
             )
         assert failure.value.detail == "claim transaction binding"
         assert tree_snapshot(directory) == before
+
+
+@LINUX_ONLY
+def test_transition_reservation_publishes_and_rereads_one_idempotent_claim(
+    tmp_path,
+):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory = make_coordinator_root(ownership_root)
+        expected = bound_claim(
+            release_sequence=1, previous_head_id=None,
+            closed_build_id=D("3"), source_id=D("2"),
+            previous_closed_build_id=None, previous_cutover_id=None,
+        )
+        distribution = verified_distribution(
+            expected, deployment_descriptor(1),
+            previous_closed_build_id=None,
+        )
+        first = _reserve_transition_edge_locked_for_test_v2(
+            session, ownership_root, distribution=distribution,
+            source_id=expected.source_id,
+        )
+        snapshot = tree_snapshot(directory)
+        second = _reserve_transition_edge_locked_for_test_v2(
+            session, ownership_root, distribution=distribution,
+            source_id=expected.source_id,
+        )
+
+        assert first == second == expected
+        assert tree_snapshot(directory) == snapshot
+        assert (
+            directory / "successor-claims-v1/initial.json"
+        ).read_bytes() == expected.encode()
+
+
+@LINUX_ONLY
+def test_initial_transition_reservation_creates_its_coordinator_namespace(
+    tmp_path,
+):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        expected = bound_claim(
+            release_sequence=1, previous_head_id=None,
+            closed_build_id=D("3"), source_id=D("2"),
+            previous_closed_build_id=None, previous_cutover_id=None,
+        )
+        distribution = verified_distribution(
+            expected, deployment_descriptor(1),
+            previous_closed_build_id=None,
+        )
+
+        assert _reserve_transition_edge_locked_for_test_v2(
+            session, ownership_root, distribution=distribution,
+            source_id=expected.source_id,
+        ) == expected
+        coordinator = ownership_root / "coordinator-v1"
+        assert stat.S_IMODE(coordinator.stat().st_mode) == 0o755
+        assert (
+            coordinator / "successor-claims-v1/initial.json"
+        ).read_bytes() == expected.encode()
+
+
+@LINUX_ONLY
+def test_transition_reservation_refuses_a_competing_source_without_writes(
+    tmp_path,
+):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory = make_coordinator_root(ownership_root)
+        expected = bound_claim(
+            release_sequence=1, previous_head_id=None,
+            closed_build_id=D("3"), source_id=D("2"),
+            previous_closed_build_id=None, previous_cutover_id=None,
+        )
+        distribution = verified_distribution(
+            expected, deployment_descriptor(1),
+            previous_closed_build_id=None,
+        )
+        _reserve_transition_edge_locked_for_test_v2(
+            session, ownership_root, distribution=distribution,
+            source_id=expected.source_id,
+        )
+        before = tree_snapshot(directory)
+
+        with pytest.raises(OwnershipCoordinatorError) as failure:
+            _reserve_transition_edge_locked_for_test_v2(
+                session, ownership_root, distribution=distribution,
+                source_id=D("9"),
+            )
+        assert failure.value.code == "birth_ownership_successor_conflict"
+        assert tree_snapshot(directory) == before
+
+
+@LINUX_ONLY
+def test_transition_reservation_disposes_the_exact_legacy_prefix(tmp_path):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory = make_coordinator_root(ownership_root)
+        legacy = legacy_records(end_sequence=1, closed_build_id=D("8"))
+        encoded_legacy = write_legacy(directory, legacy)
+        expected = bound_claim(
+            release_sequence=1, previous_head_id=None,
+            closed_build_id=D("3"), source_id=D("2"),
+            previous_closed_build_id=None, previous_cutover_id=None,
+        )
+        distribution = verified_distribution(
+            expected, deployment_descriptor(1),
+            previous_closed_build_id=None,
+        )
+
+        assert _reserve_transition_edge_locked_for_test_v2(
+            session, ownership_root, distribution=distribution,
+            source_id=expected.source_id,
+        ) == expected
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            session, ownership_root,
+        ).observation
+        assert graph.legacy_disposition is not None
+        assert graph.legacy_disposition.legacy_journal_hash == (
+            _legacy_journal_hash_v2(encoded_legacy)
+        )
+        assert graph.legacy_disposition.successor_request_id == (
+            expected.request_id
+        )
+
+
+@LINUX_ONLY
+def test_transition_reservation_extends_only_a_completed_head(tmp_path):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory = make_coordinator_root(ownership_root)
+        first = bound_claim(
+            release_sequence=1, previous_head_id=None,
+            closed_build_id=D("3"), source_id=D("2"),
+            previous_closed_build_id=None, previous_cutover_id=None,
+        )
+        write_claim(directory, first)
+        write_transaction(
+            directory, first,
+            transaction_records(
+                first, end_sequence=6, previous_closed_build_id=None,
+                previous_cutover_id=None, cutover_id=D("4"), head_id=D("5"),
+            ),
+        )
+        expected = bound_claim(
+            release_sequence=2, previous_head_id=D("5"),
+            closed_build_id=D("6"), source_id=D("7"),
+            previous_closed_build_id=first.closed_build_id,
+            previous_cutover_id=D("4"),
+        )
+        distribution = verified_distribution(
+            expected, deployment_descriptor(2),
+            previous_closed_build_id=first.closed_build_id,
+        )
+
+        assert _reserve_transition_edge_locked_for_test_v2(
+            session, ownership_root, distribution=distribution,
+            source_id=expected.source_id,
+        ) == expected
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            session, ownership_root,
+        ).observation
+        assert graph.pending_claims == (expected,)
 
 
 @LINUX_ONLY

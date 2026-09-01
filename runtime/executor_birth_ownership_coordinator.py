@@ -1516,6 +1516,73 @@ def _ensure_coordinator_child_directory_v2(
     return child, created
 
 
+def _publish_control_no_replace_v2(
+    parent: Path, basename: str, encoded: bytes, *, maximum: int,
+    root_owned: bool,
+) -> bytes:
+    """Publish and reread one immutable control file without replacement."""
+    if (
+        not sys.platform.startswith("linux")
+        or type(basename) is not str or not basename
+        or "/" in basename or "\\" in basename
+        or type(encoded) is not bytes or not 0 < len(encoded) <= maximum
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "control publication",
+        )
+    _require_read_only_directory_v2(parent, root_owned=root_owned)
+    destination = parent / basename
+    flags = (
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = None
+    try:
+        try:
+            descriptor = os.open(destination, flags, 0o600)
+        except FileExistsError:
+            observed = _read_control_file_v2(
+                destination, maximum, root_owned=root_owned,
+            )
+            if observed != encoded:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_journal_conflict", basename,
+                )
+            return observed
+        offset = 0
+        while offset < len(encoded):
+            written = os.write(descriptor, encoded[offset:])
+            if written <= 0:
+                raise OSError(errno.EIO, "short control write")
+            offset += written
+        os.fsync(descriptor)
+        os.fchmod(descriptor, 0o644)
+        os.fsync(descriptor)
+    except OwnershipCoordinatorError:
+        raise
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "control publication",
+        ) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    try:
+        _sync_directory(parent)
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "control publication sync",
+        ) from exc
+    observed = _read_control_file_v2(
+        destination, maximum, root_owned=root_owned,
+    )
+    if observed != encoded:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "control publication reread",
+        )
+    return observed
+
+
 def _temporary_transaction_directory_v2(
     transactions: Path, request_id: str,
 ) -> Path:
@@ -3318,6 +3385,209 @@ def _transition_edge_from_graph_v2(
         ):
             raise OwnershipCoordinatorError("birth_ownership_request_conflict")
     return claim, predecessor
+
+
+def _successor_claim_for_transition_v2(
+    graph: object, distribution: object, source_id: object,
+) -> SuccessorClaimV1:
+    """Derive the only claim that can extend one verified durable graph."""
+    if (
+        type(graph) is not _ObservedOwnershipCoordinatorGraphV2
+        or not is_verified_distribution(distribution)
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    source = _require_digest(source_id, "source_id")
+    if graph.pending_claims:
+        existing = graph.pending_claims[0]
+        if (
+            existing.release_sequence != distribution.release_sequence
+            or existing.closed_build_id
+            != distribution.identity.closed_build_id
+            or existing.source_id != source
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_successor_conflict",
+            )
+        return existing
+    if graph.claims:
+        current = graph.transactions[-1]
+        latest = current.latest
+        existing = current.claim
+        if (
+            existing.release_sequence == distribution.release_sequence
+            and existing.closed_build_id
+            == distribution.identity.closed_build_id
+        ):
+            if existing.source_id != source:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_successor_conflict",
+                )
+            return existing
+        if (
+            latest.state
+            is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            or latest.sequence != 6
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_successor_conflict",
+            )
+        release_sequence = latest.release_sequence + 1
+        previous_head_id = latest.head_id
+        previous_closed_build_id = latest.closed_build_id
+        previous_cutover_id = latest.cutover_id
+    else:
+        if graph.transactions:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction without claim",
+            )
+        release_sequence = 1
+        previous_head_id = None
+        previous_closed_build_id = None
+        previous_cutover_id = None
+    if (
+        distribution.release_sequence != release_sequence
+        or distribution.previous_closed_build_id != previous_closed_build_id
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_successor_conflict",
+        )
+    value: dict[str, object] = {
+        "schema_version": 1,
+        "previous_head_id": previous_head_id,
+        "release_sequence": release_sequence,
+        "request_id": _coordinator_request_id_v1(
+            distribution.identity.closed_build_id,
+            previous_closed_build_id,
+            previous_cutover_id,
+        ),
+        "source_id": source,
+        "closed_build_id": distribution.identity.closed_build_id,
+    }
+    return SuccessorClaimV1(
+        claim_id=_successor_claim_id_v1(value),
+        previous_head_id=previous_head_id,
+        release_sequence=release_sequence,
+        request_id=value["request_id"],
+        source_id=source,
+        closed_build_id=distribution.identity.closed_build_id,
+    )
+
+
+def _legacy_disposition_for_claim_v2(
+    graph: _ObservedOwnershipCoordinatorGraphV2,
+    claim: SuccessorClaimV1,
+) -> LegacyDispositionV2 | None:
+    if not graph.legacy_records:
+        return None
+    if graph.legacy_disposition is not None:
+        if graph.legacy_disposition.successor_request_id != claim.request_id:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_successor_conflict",
+            )
+        return graph.legacy_disposition
+    latest = graph.legacy_records[-1]
+    value: dict[str, object] = {
+        "schema_version": 2,
+        "legacy_journal_hash": _legacy_journal_hash_v2(
+            graph.legacy_record_bytes,
+        ),
+        "legacy_request_id": latest.request_id,
+        "legacy_state": latest.state.value,
+        "successor_request_id": claim.request_id,
+        "reason": _LEGACY_DISPOSITION_REASON_V2,
+    }
+    return LegacyDispositionV2(
+        disposition_id=_legacy_disposition_id_v2(value),
+        legacy_journal_hash=value["legacy_journal_hash"],
+        legacy_request_id=latest.request_id,
+        legacy_state=latest.state,
+        successor_request_id=claim.request_id,
+    )
+
+
+def _reserve_transition_edge_core_v2(
+    session: object, ownership_root: Path, *, root_owned: bool,
+    distribution: object, source_id: object,
+    require_session: Callable[[], None],
+) -> SuccessorClaimV1:
+    """Publish claim and any V1 disposition, then reread the exact edge."""
+    require_session()
+    coordinator, _created = _ensure_coordinator_child_directory_v2(
+        ownership_root, COORDINATOR_DIRECTORY_BASENAME_V1,
+        root_owned=root_owned,
+    )
+    require_session()
+    graph = _resolve_ownership_coordinator_at_v2(
+        coordinator, root_owned=root_owned,
+    )
+    claim = _successor_claim_for_transition_v2(
+        graph, distribution, source_id,
+    )
+    if claim not in graph.claims:
+        claims, _created = _ensure_coordinator_child_directory_v2(
+            coordinator, SUCCESSOR_CLAIMS_DIRECTORY_BASENAME_V1,
+            root_owned=root_owned,
+        )
+        _publish_control_no_replace_v2(
+            claims,
+            _successor_claim_basename_v1(
+                claim.release_sequence, claim.previous_head_id,
+            ),
+            claim.encode(), maximum=MAX_COORDINATOR_CONTROL_BYTES_V2,
+            root_owned=root_owned,
+        )
+        require_session()
+        graph = _resolve_ownership_coordinator_at_v2(
+            coordinator, root_owned=root_owned,
+        )
+    disposition = _legacy_disposition_for_claim_v2(graph, claim)
+    if disposition is not None and graph.legacy_disposition is None:
+        _publish_control_no_replace_v2(
+            coordinator, LEGACY_DISPOSITION_BASENAME_V2,
+            disposition.encode(), maximum=MAX_COORDINATOR_CONTROL_BYTES_V2,
+            root_owned=root_owned,
+        )
+    require_session()
+    reread = _resolve_ownership_coordinator_at_v2(
+        coordinator, root_owned=root_owned,
+    )
+    matches = tuple(item for item in reread.claims if item == claim)
+    if len(matches) != 1:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "successor claim reread",
+        )
+    if disposition is not None and reread.legacy_disposition != disposition:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "legacy disposition reread",
+        )
+    return matches[0]
+
+
+def _reserve_transition_edge_locked_v2(
+    session: _DeploymentLockSessionV1, *, distribution: object,
+    source_id: object,
+) -> SuccessorClaimV1:
+    """Reserve the productive edge under the fixed root and live lock."""
+    return _reserve_transition_edge_core_v2(
+        session, DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True,
+        distribution=distribution, source_id=source_id,
+        require_session=lambda: _require_deployment_lock_session_v1(session),
+    )
+
+
+def _reserve_transition_edge_locked_for_test_v2(
+    session: _DeploymentLockSessionForTestV1, ownership_root: Path, *,
+    distribution: object, source_id: object,
+) -> SuccessorClaimV1:
+    """Portable reservation seam with a nominally separate lock session."""
+    root = Path(ownership_root)
+    return _reserve_transition_edge_core_v2(
+        session, root, root_owned=False,
+        distribution=distribution, source_id=source_id,
+        require_session=lambda: _require_test_deployment_lock_session_v1(
+            session, root,
+        ),
+    )
 
 
 def _transition_edge_locked_v2(

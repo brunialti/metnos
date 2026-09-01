@@ -28,7 +28,7 @@ BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/2"
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:33fa8088350868bec3ec0ac85368fb3772b476462fc3b065f167707c9c45d924"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:ede891a2a00ac54bd59d8883d95c23fd645e83fc750b6d3ebd9ceb717c5cb2b4"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
 MAX_BOUNDARY_SOURCE_FILES = 2_048
@@ -160,6 +160,10 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_deployment_lock_for_test_v1": ("store_write",),
         "_deployment_lock_v1": ("store_write",),
         "_publish_certificate_with_prerequisite_v1": ("store_write",),
+        "_publish_control_no_replace_v2": ("store_write",),
+        "_reserve_transition_edge_core_v2": ("store_write",),
+        "_reserve_transition_edge_locked_for_test_v2": ("store_write",),
+        "_reserve_transition_edge_locked_v2": ("store_write",),
         "_LockedOwnershipCoordinatorGraphSnapshotV2": ("store_write",),
         "_require_locked_coordinator_graph_snapshot_v2": ("store_write",),
         "_require_locked_coordinator_graph_issued_v2": ("store_write",),
@@ -187,6 +191,9 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "_create_source_directories_v1": ("store_write",),
         "_ensure_child_directory_v1": ("store_write",),
         "_open_received_tree_at_v1": ("store_write",),
+        "_load_received_source_locked_core_v1": ("store_write",),
+        "_load_received_source_with_product_session_v1": ("store_write",),
+        "_load_received_source_with_test_session_v1": ("store_write",),
         "_receive_source_for_test_v1": ("store_write",),
         "_receive_source_locked_core_v1": ("store_write",),
         "_receive_source_v1": ("store_write",),
@@ -453,6 +460,9 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "install/executor_birth_source_receiver.py:_create_source_directories_v1",
     "install/executor_birth_source_receiver.py:_ensure_child_directory_v1",
     "install/executor_birth_source_receiver.py:_open_received_tree_at_v1",
+    "install/executor_birth_source_receiver.py:_load_received_source_locked_core_v1",
+    "install/executor_birth_source_receiver.py:_load_received_source_with_product_session_v1",
+    "install/executor_birth_source_receiver.py:_load_received_source_with_test_session_v1",
     "install/executor_birth_source_receiver.py:_receive_source_for_test_v1",
     "install/executor_birth_source_receiver.py:_receive_source_locked_core_v1",
     "install/executor_birth_source_receiver.py:_receive_source_v1",
@@ -465,6 +475,10 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "install/executor_birth_source_receiver.py:_write_all_v1",
     "install/executor_birth_source_receiver.py:_write_descriptor_v1",
     "install/executor_birth_source_receiver.py:main",
+    "runtime/executor_birth_ownership_coordinator.py:_publish_control_no_replace_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_core_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_for_test_v2",
+    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_v2",
     "install/executor_birth_startup_gate.py:_install_startup_gate_core_v1",
     "install/executor_birth_startup_gate.py:_install_startup_gate_for_test_v1",
     "install/executor_birth_startup_gate.py:install_startup_gate_v1",

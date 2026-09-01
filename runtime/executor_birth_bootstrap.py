@@ -551,6 +551,7 @@ def _sealed_authorities(sealed):
 
 def _required_context_runtime_for_bootstrap_v1():
     """Select the new context only when the fixed chain already requires it."""
+    from executor_birth_legacy_gate import closed_build_enforcement
     from executor_birth_ownership_chain import (
         OwnershipChainError, VerifiedOwnershipChain,
         inspect_ownership_chain_state_v1,
@@ -564,6 +565,8 @@ def _required_context_runtime_for_bootstrap_v1():
     except OwnershipChainError as exc:
         raise BirthBootstrapError(exc.code, exc.detail) from exc
     if not isinstance(state, VerifiedOwnershipChain):
+        if closed_build_enforcement() is True:
+            raise BirthBootstrapError("birth_context_transition_required")
         return None
     try:
         return load_required_context_runtime_v1()
