@@ -1111,6 +1111,7 @@ def prepare_initial_installer_catalog_v1(*, prove_quiescent: object) -> dict:
 
 def _verify_initial_catalog_v1(
     *, report: Mapping[str, object] | None, prove_quiescent: object,
+    authoring_owner: tuple[int, int] | None = None,
 ) -> dict[str, int]:
     from contract_bootstrap import ProductionStoreMode
     from contract_store import current_manifest, production_store_mode
@@ -1135,6 +1136,7 @@ def _verify_initial_catalog_v1(
 
         materialize_repository_authoring_for_transition_v1(
             trusted_publics=trusted,
+            authoring_owner=authoring_owner,
         )
         store_root = None
         inventory = inventory_store_manifests()
@@ -1198,10 +1200,14 @@ def verify_initial_installer_report_v1(
     )
 
 
-def verify_initial_installer_store_v1(*, prove_quiescent: object) -> dict[str, int]:
-    """Authenticate every Birth receipt in a root-only recovery store."""
+def verify_initial_installer_store_v1(
+    *, prove_quiescent: object,
+    authoring_owner: tuple[int, int] | None = None,
+) -> dict[str, int]:
+    """Authenticate the store and bind mutable sources to the service owner."""
     return _verify_initial_catalog_v1(
         report=None, prove_quiescent=prove_quiescent,
+        authoring_owner=authoring_owner,
     )
 
 

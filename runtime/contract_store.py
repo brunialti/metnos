@@ -3075,6 +3075,7 @@ def _seed_repository_authoring_locked_v1(
     *,
     shadow_root: Path,
     trusted: tuple[TrustedPublic, ...],
+    authoring_owner: tuple[int, int] | None = None,
 ) -> None:
     """Install authenticated mutable authoring outside the closed release.
 
@@ -3100,6 +3101,12 @@ def _seed_repository_authoring_locked_v1(
 
     source_inventory = inventory_authoring_manifests()
     target_inventory = inventory_store_manifests(store_root=shadow_root)
+    if authoring_owner is not None and (
+        type(authoring_owner) is not tuple
+        or len(authoring_owner) != 2
+        or any(type(value) is not int or value < 0 for value in authoring_owner)
+    ):
+        raise ContractStoreError("authoring_seed_owner_invalid")
     if source_inventory.problems or target_inventory.problems:
         raise ContractStoreError("authoring_seed_inventory_invalid")
     source_refs = source_inventory.by_id()
@@ -3274,6 +3281,70 @@ def _seed_repository_authoring_locked_v1(
                     raise ContractStoreError("authoring_seed_invalid", relative)
             else:
                 raise ContractStoreError("authoring_seed_invalid", relative)
+
+        if authoring_owner is not None:
+            # The transition runs with administrative privileges, while later
+            # Birth updates run as the signed service account. Transfer only
+            # the dedicated, fully inventoried authoring tree after every byte
+            # has been authenticated and no unexpected entry remains.
+            owner_uid, owner_gid = authoring_owner
+            ownership_paths = (
+                external_root.parent,
+                external_root,
+                *sorted(
+                    external_root.rglob("*"),
+                    key=lambda item: item.as_posix().encode("utf-8"),
+                ),
+            )
+            for path in reversed(ownership_paths):
+                try:
+                    status = path.lstat()
+                    if stat.S_ISLNK(status.st_mode) or not (
+                        stat.S_ISDIR(status.st_mode)
+                        or stat.S_ISREG(status.st_mode)
+                    ):
+                        raise ContractStoreError(
+                            "authoring_seed_invalid", str(path),
+                        )
+                    flags = (
+                        os.O_RDONLY
+                        | getattr(os, "O_NOFOLLOW", 0)
+                        | getattr(os, "O_CLOEXEC", 0)
+                    )
+                    if stat.S_ISDIR(status.st_mode):
+                        flags |= getattr(os, "O_DIRECTORY", 0)
+                    elif status.st_nlink != 1:
+                        raise ContractStoreError(
+                            "authoring_seed_invalid", str(path),
+                        )
+                    descriptor = os.open(path, flags)
+                    try:
+                        opened = os.fstat(descriptor)
+                        if (
+                            opened.st_dev != status.st_dev
+                            or opened.st_ino != status.st_ino
+                            or opened.st_mode != status.st_mode
+                        ):
+                            raise ContractStoreError(
+                                "authoring_seed_source_changed", str(path),
+                            )
+                        os.fchown(descriptor, owner_uid, owner_gid)
+                        os.fsync(descriptor)
+                        rebound = os.fstat(descriptor)
+                        if (rebound.st_uid, rebound.st_gid) != (
+                            owner_uid, owner_gid,
+                        ):
+                            raise ContractStoreError(
+                                "authoring_seed_owner_invalid", str(path),
+                            )
+                    finally:
+                        os.close(descriptor)
+                except ContractStoreError:
+                    raise
+                except OSError as exc:
+                    raise ContractStoreError(
+                        "authoring_seed_owner_invalid", str(path),
+                    ) from exc
     except AuthoringInstallError as exc:
         raise ContractStoreError(exc.code, exc.detail) from exc
 
@@ -3281,6 +3352,7 @@ def _seed_repository_authoring_locked_v1(
 def materialize_repository_authoring_for_transition_v1(
     *,
     trusted_publics: Iterable[TrustedPublic],
+    authoring_owner: tuple[int, int] | None = None,
 ) -> int:
     """Materialize the current closed-build authoring before ownership cutover.
 
@@ -3325,6 +3397,7 @@ def materialize_repository_authoring_for_transition_v1(
             expected,
             shadow_root=root,
             trusted=trusted,
+            authoring_owner=authoring_owner,
         )
     return len(expected)
 

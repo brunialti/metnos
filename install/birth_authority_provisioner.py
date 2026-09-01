@@ -4484,6 +4484,7 @@ def complete_transition_cutover_v2(distribution: object, source_id: object):
     from executor_birth_distribution_manifest import (
         verify_current_installation_distribution_v1,
     )
+    from executor_birth_bootstrap import verify_initial_installer_store_v1
     from executor_birth_dominant_startup import complete_dominant_startup_v1
     from executor_birth_ownership_authorities import (
         load_root_ownership_authorities_v1,
@@ -4541,6 +4542,14 @@ def complete_transition_cutover_v2(distribution: object, source_id: object):
             with _contract_cutover_guard_for_service_user_v1(
                 descriptor.service_user,
             ) as (maintenance, evidence):
+                if verified.release_sequence == 1:
+                    verify_initial_installer_store_v1(
+                        prove_quiescent=maintenance,
+                        authoring_owner=(
+                            descriptor.service_uid,
+                            descriptor.service_gid,
+                        ),
+                    )
                 with _transition_inventory_under_maintenance_v2(
                     maintenance, evidence,
                 ) as frozen:

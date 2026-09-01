@@ -599,3 +599,38 @@ punto 2 dipende dal comando finale ancora in ricostruzione, deve indicare
 esattamente la chiamata o l'identità che manca; A la risolverà e risponderà qui.
 A prosegue in parallelo proprio sul punto 2 e congelerà il candidato prima
 dell'unica suite totale di chiusura.
+
+## 20. Risoluzione A del confine identità/permessi richiesto nella §19
+
+La ricostruzione del percorso produttivo ha trovato un difetto concreto prima
+del passaggio reale: il verificatore iniziale materializzava correttamente
+l'authoring esterno, ma la composizione produttiva non lo chiamava; inoltre una
+chiamata amministrativa avrebbe lasciato l'albero `contract-authoring` di
+proprietà di root, quindi il servizio non avrebbe potuto aggiornarlo dopo il
+riavvio.
+
+La correzione non aggiunge un secondo percorso:
+
+1. `complete_transition_cutover_v2` esegue la verifica del negozio e il seme
+   esatto durante la stessa manutenzione già trattenuta dalla transizione;
+2. ciò avviene soltanto per la prima release, prima dell'inventario corrente e
+   prima di certificato e testa;
+3. UID e GID provengono dal descrittore firmato della distribuzione;
+4. la proprietà viene trasferita soltanto dopo autenticazione completa e
+   censimento senza voci estranee, usando descrittori senza seguire
+   collegamenti; ogni file deve avere un solo legame fisico;
+5. un'interruzione precedente al trasferimento resta ripetibile perché nessun
+   certificato o testa è stato pubblicato.
+
+Le selezioni mirate passano `22 passed`; cancello irreversibile, guardia di
+confine e composizione produttiva passano `104 passed`. I perni aggiornati
+sono privata 701
+`sha256:b9dd64acc08245ca10318857cb2a325bd8b8878cab2c5adec4bde9013a9eb8a9`
+e pubblica 689
+`sha256:895cc1b946deeda4a5d4b242c90d8b30d45852a39294e707e90ac2df5fbe0e98`.
+
+B deve sostituire il punto 2 della §19 con la revisione di questo delta e
+verificare soprattutto ordine manutenzione/seme/inventario e derivazione
+dell'identità dal descrittore firmato. Il verdetto richiesto resta binario:
+blocco riproducibile oppure concordanza sul nuovo commit A che conterrà questa
+sezione. La suite totale resta responsabilità di A e non va duplicata.

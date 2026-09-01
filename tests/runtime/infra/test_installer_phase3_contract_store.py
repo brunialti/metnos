@@ -91,6 +91,10 @@ def test_managed_server_cutover_rejects_non_linux_platform_early(
 ) -> None:
     monkeypatch.setattr(contract_cutover_guard.sys, "platform", "win32")
     monkeypatch.setattr(contract_store.sys, "platform", "win32")
+    monkeypatch.setattr(
+        contract_store, "_deny_closed_legacy_api",
+        lambda _operation, _store_root: None,
+    )
 
     with pytest.raises(contract_cutover_guard.ContractCutoverGuardError) as guard:
         with contract_cutover_guard.contract_cutover_guard():

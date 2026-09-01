@@ -3888,6 +3888,81 @@ def test_cutover_resumes_an_exact_external_authoring_seed_before_marker(
     assert not tuple(seed_root.rglob(".birth-stage-*"))
 
 
+def test_transition_rebinds_the_exact_authoring_tree_to_the_service_owner(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    monkeypatch.setattr(
+        contract_store_module, "_deny_closed_legacy_api",
+        lambda _operation, _store_root: None,
+    )
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    observed: list[Path] = []
+    real_fchown = os.fchown
+
+    def record_owner(descriptor: int, uid: int, gid: int) -> None:
+        assert (uid, gid) == (os.getuid(), os.getgid())
+        target = Path(f"/proc/self/fd/{descriptor}").resolve()
+        observed.append(target)
+        real_fchown(descriptor, uid, gid)
+
+    monkeypatch.setattr(contract_store_module.os, "fchown", record_owner)
+    assert contract_store_module.materialize_repository_authoring_for_transition_v1(
+        trusted_publics=trusted,
+        authoring_owner=(os.getuid(), os.getgid()),
+    ) == 1
+
+    authoring_root = (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-authoring" / "v1"
+    )
+    assert authoring_root.parent in observed
+    assert authoring_root in observed
+    assert set(authoring_root.rglob("*")).issubset(observed)
+
+
+def test_transition_owner_binding_rejects_a_linked_authoring_inode(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    monkeypatch.setattr(
+        contract_store_module, "_deny_closed_legacy_api",
+        lambda _operation, _store_root: None,
+    )
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    manifest = (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-authoring" / "v1" / "core" / "sample"
+        / "manifest.toml"
+    )
+    linked = tmp_path / "linked-manifest.toml"
+    linked.write_bytes(manifest.read_bytes())
+    manifest.unlink()
+    os.link(linked, manifest)
+
+    with pytest.raises(ContractStoreError, match="authoring_tree_invalid"):
+        contract_store_module.materialize_repository_authoring_for_transition_v1(
+            trusted_publics=trusted,
+            authoring_owner=(os.getuid(), os.getgid()),
+        )
+
+
 def test_activation_owns_catalog_locks_in_production_then_shadow_order(
     tmp_path: Path,
     monkeypatch,

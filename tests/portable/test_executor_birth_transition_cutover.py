@@ -222,6 +222,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     monkeypatch: pytest.MonkeyPatch,
 ):
     import contract_cutover_guard
+    import executor_birth_bootstrap as bootstrap
     import executor_birth_admin_preflight as admin
     import executor_birth_distribution_manifest as manifest
     import executor_birth_dominant_startup as dominant
@@ -233,7 +234,9 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     import install.executor_birth_startup_prerequisite as prerequisite_module
 
     events: list[str] = []
-    distribution = SimpleNamespace(encoded=b"distribution", signature=b"s" * 64)
+    distribution = SimpleNamespace(
+        encoded=b"distribution", signature=b"s" * 64, release_sequence=1,
+    )
     complete = SimpleNamespace(name="complete", maintenance_proof=b"maintenance")
     prepared = SimpleNamespace(name="prepared")
     effective = SimpleNamespace(snapshot=SimpleNamespace(effective_units_hash=D("5")))
@@ -266,9 +269,9 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         yield (maintenance, object(), b"evidence")
         events.append("inventory-exit")
 
-    preparation = SimpleNamespace(
-        descriptor=SimpleNamespace(service_user="metnos"),
-    )
+    preparation = SimpleNamespace(descriptor=SimpleNamespace(
+        service_user="metnos", service_uid=41, service_gid=42,
+    ))
     monkeypatch.setattr(manifest, "verify_current_installation_distribution_v1", lambda *_: distribution)
     monkeypatch.setattr(coordinator, "_deployment_lock_v1", deployment_lock)
     monkeypatch.setattr(
@@ -284,6 +287,13 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     monkeypatch.setattr(contract_cutover_guard, "_begin_topology_transition_v1", lambda *_: None)
     monkeypatch.setattr(contract_cutover_guard, "_maintenance_evidence_under_transition_v1", lambda *_: b"maintenance")
     monkeypatch.setattr(coordinator, "_transition_inventory_under_maintenance_v2", inventory)
+    monkeypatch.setattr(
+        bootstrap, "verify_initial_installer_store_v1",
+        lambda *, prove_quiescent, authoring_owner:
+        events.append("authoring-seed")
+        if prove_quiescent is maintenance and authoring_owner == (41, 42)
+        else pytest.fail("authoring seed lost its maintenance or owner binding"),
+    )
     monkeypatch.setattr(provisioner, "_prepare_transition_receipt_material_locked_v2", lambda *_: preparation)
     monkeypatch.setattr(provisioner, "_complete_transition_receipts_locked_v2", lambda *_: complete)
     monkeypatch.setattr(admin, "_prepare_cutover_candidate_v2", lambda *_: prepared)
@@ -323,7 +333,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     ) is result
     assert events == [
         "deployment-enter", "startup-enter", "maintenance-enter",
-        "inventory-enter", "composition", "inventory-exit",
+        "authoring-seed", "inventory-enter", "composition", "inventory-exit",
         "maintenance-exit", "startup-exit", "deployment-exit",
     ]
 
