@@ -327,6 +327,89 @@ class RequiredContextRuntimeV1:
             raise PreparedRootError("birth_context_selection_invalid")
 
 
+@dataclass(frozen=True, slots=True)
+class StagedReattestationContextV1:
+    """Authorities for one verified transition, scoped to reattestation."""
+
+    selection: object
+    authorities: SealedAuthoritiesV1
+
+    def __post_init__(self) -> None:
+        from executor_birth_context_selection import is_context_selection_v1
+
+        if (
+            not is_context_selection_v1(self.selection, allow_staged=True)
+            or not self.selection.staged_reattestation_only
+            or not isinstance(self.authorities, SealedAuthoritiesV1)
+            or self.selection.set_id != self.authorities.prepared.set_id
+            or self.selection.admission_context_id
+            != self.authorities.prepared.prepared_admission_context_id
+            or self.selection.context_epoch
+            != self.authorities.prepared.prepared_context_epoch
+        ):
+            raise PreparedRootError("birth_context_selection_invalid")
+
+
+def _load_staged_reattestation_context_v1(
+    transition, distribution, expected_inventory,
+) -> StagedReattestationContextV1:
+    """Read one unpublished context without making it runtime-selected."""
+    from executor_birth_context_selection import (
+        _context_selection_for_staged_reattestation_v1,
+    )
+    from executor_birth_context_transition import (
+        ContextTransitionError, ContextTransitionV1,
+        verify_context_transition_v1,
+    )
+    from executor_birth_cutover import CurrentInventoryV1
+    from executor_birth_distribution_manifest import is_verified_distribution
+    from executor_birth_prepared_set import load_authority_set_v1
+
+    if (
+        not isinstance(transition, ContextTransitionV1)
+        or not is_verified_distribution(distribution)
+        or not isinstance(expected_inventory, CurrentInventoryV1)
+    ):
+        raise PreparedRootError("birth_context_selection_invalid")
+    try:
+        verified_transition = verify_context_transition_v1(
+            transition.encoded,
+            expected_transition_id=transition.transition_id,
+            expected_inventory=expected_inventory,
+        )
+    except ContextTransitionError as exc:
+        raise PreparedRootError(exc.code, exc) from None
+    if (
+        verified_transition != transition
+        or transition.closed_build_id
+        != distribution.identity.closed_build_id
+    ):
+        raise PreparedRootError("birth_context_selection_invalid")
+
+    session = open_prepared_root_session_v1()
+    with session:
+        with session.global_lock(exclusive=False, create=False):
+            prepared = load_authority_set_v1(
+                session,
+                transition.set_id,
+                expected_set_json_sha256=transition.set_json_sha256,
+                expected_context_material_sha256=(
+                    transition.context_material_sha256
+                ),
+            )
+            authorities = _load_sealed_authorities_from_set_v1(
+                session,
+                prepared,
+                lambda: _open_distribution_sources_for_verified_v1(
+                    distribution,
+                ),
+            )
+            selection = _context_selection_for_staged_reattestation_v1(
+                transition, prepared, distribution,
+            )
+    return StagedReattestationContextV1(selection, authorities)
+
+
 def _load_context_runtime_from_chain_v1(chain) -> RequiredContextRuntimeV1:
     """Load the exact set and distribution already selected by one chain."""
     from executor_birth_context_selection import (

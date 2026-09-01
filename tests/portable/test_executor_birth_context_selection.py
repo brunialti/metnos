@@ -1,6 +1,7 @@
 """Portable checks for the nominal F4 context selection."""
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -210,6 +211,76 @@ def test_required_and_staged_producers_preserve_scope():
     assert is_context_selection_v1(required)
     assert not is_context_selection_v1(staged)
     assert is_context_selection_v1(staged, allow_staged=True)
+
+
+def test_staged_runtime_reverifies_inventory_and_cannot_become_required(
+    monkeypatch,
+):
+    import executor_birth_prepared_root as prepared_root
+    from executor_birth_cutover import CurrentInventoryV1
+    from executor_birth_prepared_root import (
+        PreparedRootError, SealedAuthoritiesV1,
+        StagedReattestationContextV1,
+        _load_staged_reattestation_context_v1,
+    )
+
+    transition, prepared, distribution = _evidence()
+    authorities = SealedAuthoritiesV1(
+        prepared=prepared,
+        author=object(),
+        admission=object(),
+        producers={},
+        approval=object(),
+        semantic=object(),
+        sandbox=None,
+        context_epoch=prepared.prepared_context_epoch,
+        material=object(),
+    )
+
+    class Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def global_lock(self, **_kwargs):
+            return nullcontext()
+
+    monkeypatch.setattr(
+        prepared_root, "open_prepared_root_session_v1", lambda: Session(),
+    )
+    monkeypatch.setattr(
+        prepared_module, "load_authority_set_v1",
+        lambda *_args, **_kwargs: prepared,
+    )
+    monkeypatch.setattr(
+        prepared_root, "_load_sealed_authorities_from_set_v1",
+        lambda *_args, **_kwargs: authorities,
+    )
+
+    staged = _load_staged_reattestation_context_v1(
+        transition, distribution, CurrentInventoryV1(()),
+    )
+    assert isinstance(staged, StagedReattestationContextV1)
+    assert staged.selection.staged_reattestation_only
+
+    required = _context_selection_from_required_chain_v1(
+        transition, prepared, distribution,
+    )
+    with pytest.raises(
+        PreparedRootError, match="birth_context_selection_invalid",
+    ):
+        StagedReattestationContextV1(required, authorities)
+
+    with pytest.raises(
+        PreparedRootError, match="birth_context_transition_binding_invalid",
+    ):
+        _load_staged_reattestation_context_v1(
+            transition,
+            distribution,
+            CurrentInventoryV1((("explicit:alpha/manifest.toml", D("e")),)),
+        )
 
 
 def test_direct_construction_cannot_create_a_selection():
