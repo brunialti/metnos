@@ -91,7 +91,9 @@ def _observers(cell, *, bindings: dict[str, bytes] | None = None):
     def plan_and_retire() -> str:
         steps = retirement.plan_retirement_v1(legacy)
         retirement.require_no_legacy_in_flight_v1(
-            steps, {step.locator: "inactive" for step in steps},
+            steps, {
+                (step.scope, step.locator): "inactive" for step in steps
+            },
         )
         neutralizer.neutralize_for_test_v1(
             neutralizer._TestOnlyNeutralizationCapabilityV1(repository), steps,
