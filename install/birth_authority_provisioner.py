@@ -4039,6 +4039,66 @@ def _verify_published_authority_set_v2(
         layout.birth_session.close()
 
 
+def prepare_transition_publication_v2(
+    distribution: object,
+):
+    """Publish one exact V2 set only after its PREPARED record is durable."""
+    from executor_birth_distribution_manifest import (
+        capture_current_deployment_descriptor_v1,
+    )
+    from executor_birth_ownership_coordinator import (
+        _append_prepared_transition_locked_v2, _deployment_lock_v1,
+        _prepared_transition_publication_v2,
+        _transition_edge_locked_v2, _transition_maintenance_inventory_v2,
+    )
+    from executor_birth_prepared_root import (
+        load_required_context_runtime_v1, load_sealed_authorities_v1,
+    )
+
+    with _deployment_lock_v1() as session:
+        verified, descriptor = capture_current_deployment_descriptor_v1(
+            distribution,
+        )
+        claim, predecessor = _transition_edge_locked_v2(session, verified)
+        if predecessor is None:
+            if claim.release_sequence != 1:
+                raise _conflict()
+            previous_authorities = load_sealed_authorities_v1()
+            previous_context = previous_authorities.prepared
+            previous_set = previous_authorities.prepared
+        else:
+            required = load_required_context_runtime_v1()
+            if (
+                required.required_head_id != claim.previous_head_id
+                or required.required_head_id != predecessor.head_id
+            ):
+                raise _conflict()
+            previous_context = required.selection
+            previous_set = required.authorities.prepared
+        prepared = prepare_transition_authority_set_v2(
+            claim, verified, previous_set,
+        )
+        with _transition_maintenance_inventory_v2() as frozen:
+            _maintenance, current_inventory, _evidence = frozen
+            record, transition = _append_prepared_transition_locked_v2(
+                session,
+                distribution=verified,
+                previous_context=previous_context,
+                prepared_authority_set=prepared,
+                current_inventory=current_inventory,
+                deployment_descriptor=descriptor,
+            )
+            _publish_prepared_authority_set_v2(prepared)
+            result = _prepared_transition_publication_v2(
+                record, transition,
+                prepared_authority_set=prepared,
+                distribution=verified,
+                deployment_descriptor=descriptor,
+                current_inventory=current_inventory,
+            )
+        return result
+
+
 def _run_provisioning_entry_v1(
     *, preflight_operator_inputs: bool,
 ) -> AuthorProvisioningResultV1:

@@ -4,7 +4,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from contextlib import contextmanager
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -13,6 +15,7 @@ import executor_birth_prepared_set as prepared_module
 from executor_birth_distribution_manifest import (
     DistributionFile, _verified_distribution_for_test,
 )
+from executor_birth_cutover import CurrentInventoryV1
 from executor_birth_ownership_coordinator import (
     SuccessorClaimV1, _successor_claim_id_v1,
 )
@@ -31,6 +34,7 @@ from install.birth_authority_provisioner import (
     decode_transaction_header_v2,
     decode_material_plan_v2, empty_digests_v1,
     is_prepared_authority_set_v2, prepare_transition_authority_set_v2,
+    prepare_transition_publication_v2,
     provisioning_source_inventory_hash_v2,
 )
 from rm0008_2b import support
@@ -714,6 +718,110 @@ def test_v2_publication_moves_the_exact_set_and_preserves_the_v1_anchor(
     } == author_before
     assert _publish_prepared_authority_set_v2(prepared) is prepared
     assert published.stat().st_ino == staged_identity
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_product_composition_records_prepared_before_set_publication(
+    tmp_path, monkeypatch,
+):
+    from install import birth_authority_provisioner as provisioning
+    import executor_birth_distribution_manifest as distribution_module
+    import executor_birth_ownership_coordinator as coordinator_module
+    import executor_birth_prepared_root as prepared_root_module
+
+    base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
+    claim = _claim()
+    descriptor = SimpleNamespace(descriptor_id=D("9"))
+    inventory = CurrentInventoryV1(())
+    order = []
+    session = object()
+    result = object()
+
+    monkeypatch.setattr(
+        distribution_module, "capture_current_deployment_descriptor_v1",
+        lambda value: (
+            order.append("distribution") or value,
+            descriptor,
+        ),
+    )
+
+    @contextmanager
+    def deployment_lock():
+        order.append("deployment-lock")
+        yield session
+
+    monkeypatch.setattr(
+        coordinator_module, "_deployment_lock_v1", deployment_lock,
+    )
+    monkeypatch.setattr(
+        coordinator_module, "_transition_edge_locked_v2",
+        lambda observed_session, verified: (
+            order.append("graph") or claim,
+            None,
+        ) if observed_session is session and verified is distribution else None,
+    )
+    monkeypatch.setattr(
+        prepared_root_module, "load_sealed_authorities_v1",
+        lambda: order.append("previous") or SimpleNamespace(prepared=previous),
+    )
+
+    original_prepare = provisioning.prepare_transition_authority_set_v2
+
+    def prepare(*args):
+        order.append("stage")
+        return original_prepare(*args)
+
+    monkeypatch.setattr(
+        provisioning, "prepare_transition_authority_set_v2", prepare,
+    )
+
+    @contextmanager
+    def maintenance_inventory():
+        order.append("maintenance-enter")
+        try:
+            yield lambda: True, inventory, b"maintenance"
+        finally:
+            order.append("maintenance-exit")
+
+    monkeypatch.setattr(
+        coordinator_module, "_transition_maintenance_inventory_v2",
+        maintenance_inventory,
+    )
+    monkeypatch.setattr(
+        coordinator_module, "_append_prepared_transition_locked_v2",
+        lambda observed_session, **values: (
+            order.append("prepared") or "record", "transition",
+        ) if (
+            observed_session is session
+            and values["current_inventory"] == inventory
+        ) else None,
+    )
+    original_publish = provisioning._publish_prepared_authority_set_v2
+
+    def publish(prepared):
+        order.append("publish")
+        return original_publish(prepared)
+
+    monkeypatch.setattr(
+        provisioning, "_publish_prepared_authority_set_v2", publish,
+    )
+    monkeypatch.setattr(
+        coordinator_module, "_prepared_transition_publication_v2",
+        lambda *args, **kwargs: order.append("result") or result,
+    )
+
+    assert prepare_transition_publication_v2(distribution) is result
+    assert order == [
+        "deployment-lock", "distribution", "graph", "previous", "stage",
+        "maintenance-enter", "prepared", "publish", "result",
+        "maintenance-exit",
+    ]
+    assert any(
+        item.name == "set.json"
+        for item in (
+            base / "birth" / "authority-sets"
+        ).rglob("set.json")
+    )
 
 
 @pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)

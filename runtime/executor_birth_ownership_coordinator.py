@@ -28,6 +28,7 @@ from typing import Callable, Iterator, Mapping
 from executor_birth_cutover import CurrentReceiptProof
 from executor_birth_distribution_manifest import (
     VerifiedDistribution, is_verified_distribution,
+    _verified_distribution_matches_payload_v1,
     verify_current_installation_distribution_v1,
 )
 from executor_birth_ownership_authorities import (
@@ -3110,12 +3111,95 @@ def _prepared_record_v2(
     return record, transition
 
 
-def _prepared_transition_from_graph_v2(
-    graph: object, *, distribution: object, previous_context: object,
-    prepared_authority_set: object, current_inventory: object,
-    deployment_descriptor: object,
-) -> tuple[OwnershipCoordinatorRecordV2, object]:
-    """Derive PREPARED only from the terminal edge of one locked graph."""
+_PREPARED_TRANSITION_PUBLICATION_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedTransitionPublicationV2:
+    """Exact artifacts available after PREPARED and set publication."""
+
+    record: OwnershipCoordinatorRecordV2
+    transition: object
+    prepared_authority_set: object
+    distribution: VerifiedDistribution
+    deployment_descriptor: object
+    current_inventory: object
+    _seal: object
+
+    def __post_init__(self) -> None:
+        from executor_birth_context_transition import (
+            ContextTransitionV1, current_inventory_hash_v1,
+            verify_context_transition_v1,
+        )
+        from executor_birth_cutover import CurrentInventoryV1
+        from executor_birth_distribution_assembler import DeploymentDescriptorV1
+        from executor_birth_prepared_set import is_prepared_authority_set_v2
+
+        if (
+            self._seal is not _PREPARED_TRANSITION_PUBLICATION_SEAL_V2
+            or type(self.record) is not OwnershipCoordinatorRecordV2
+            or self.record.state is not OwnershipCoordinatorStateV1.PREPARED
+            or type(self.transition) is not ContextTransitionV1
+            or type(self.deployment_descriptor) is not DeploymentDescriptorV1
+            or type(self.current_inventory) is not CurrentInventoryV1
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_request_conflict",
+            )
+        try:
+            verified_transition = verify_context_transition_v1(
+                self.transition.encoded,
+                expected_transition_id=self.record.context_transition_id,
+                expected_inventory=self.current_inventory,
+            )
+        except Exception as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_request_conflict",
+            ) from exc
+        target = self.prepared_authority_set
+        if (
+            verified_transition != self.transition
+            or not is_prepared_authority_set_v2(target)
+            or not _verified_distribution_matches_payload_v1(
+                self.distribution,
+            )
+            or self.record.request_id != target.request_id
+            or self.record.closed_build_id
+            != self.distribution.identity.closed_build_id
+            or self.record.provisioning_transaction_id
+            != target.transaction_id
+            or self.record.target_set_id != target.target_set_id
+            or self.record.target_admission_context_id
+            != target.target_admission_context_id
+            or self.record.target_context_epoch != target.target_context_epoch
+            or self.record.deployment_descriptor_id
+            != self.deployment_descriptor.descriptor_id
+            or self.record.context_transition_id
+            != self.transition.transition_id
+            or self.record.current_inventory_hash
+            != current_inventory_hash_v1(self.current_inventory)
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_request_conflict",
+            )
+
+
+def _prepared_transition_publication_v2(
+    record: OwnershipCoordinatorRecordV2, transition: object, *,
+    prepared_authority_set: object, distribution: VerifiedDistribution,
+    deployment_descriptor: object, current_inventory: object,
+) -> PreparedTransitionPublicationV2:
+    return PreparedTransitionPublicationV2(
+        record, transition, prepared_authority_set, distribution,
+        deployment_descriptor, current_inventory,
+        _PREPARED_TRANSITION_PUBLICATION_SEAL_V2,
+    )
+
+
+def _transition_edge_from_graph_v2(
+    graph: object, distribution: object,
+) -> tuple[SuccessorClaimV1, OwnershipCoordinatorRecordV2 | None]:
+    """Select only the terminal claim and its completed predecessor."""
     if (
         type(graph) is not _ObservedOwnershipCoordinatorGraphV2
         or not is_verified_distribution(distribution)
@@ -3156,6 +3240,25 @@ def _prepared_transition_from_graph_v2(
             or predecessor.head_id != claim.previous_head_id
         ):
             raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    return claim, predecessor
+
+
+def _transition_edge_locked_v2(
+    session: _DeploymentLockSessionV1, distribution: object,
+) -> tuple[SuccessorClaimV1, OwnershipCoordinatorRecordV2 | None]:
+    """Resolve the productive transition edge under the fixed outer lock."""
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    return _transition_edge_from_graph_v2(graph, distribution)
+
+
+def _prepared_transition_from_graph_v2(
+    graph: object, *, distribution: object, previous_context: object,
+    prepared_authority_set: object, current_inventory: object,
+    deployment_descriptor: object,
+) -> tuple[OwnershipCoordinatorRecordV2, object]:
+    """Derive PREPARED only from the terminal edge of one locked graph."""
+    claim, predecessor = _transition_edge_from_graph_v2(graph, distribution)
     return _prepared_record_v2(
         claim=claim,
         distribution=distribution,
@@ -3403,6 +3506,83 @@ def _prepare_staged_current_receipts_v2(
     return report.proof
 
 
+def _current_reattestation_port_v1():
+    """Load the sole fixed Birth port that can enumerate current generations."""
+    from executor_birth_bootstrap import bootstrap_birth_runtime
+    from executor_birth_commit_publisher import _is_birth_reattestation_port
+    from executor_birth_operational import _runtime_bundle_snapshot
+
+    bundle = _runtime_bundle_snapshot()
+    if bundle is None:
+        try:
+            bundle = bootstrap_birth_runtime()
+        except Exception as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_birth_runtime_unavailable",
+            ) from exc
+    port_factory = getattr(
+        getattr(bundle, "core", None), "commit_publisher", None,
+    )
+    port_factory = getattr(port_factory, "reattestation_port", None)
+    port = port_factory() if callable(port_factory) else None
+    if not _is_birth_reattestation_port(port):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_birth_runtime_unavailable",
+        )
+    return port
+
+
+@contextmanager
+def _transition_maintenance_inventory_v2():
+    """Freeze exact current identities inside the fixed maintenance guard."""
+    from contract_cutover_guard import (
+        _verify_store_only_catalog_locked, contract_cutover_guard,
+    )
+    from executor_birth_cutover import freeze_current_inventory_v1
+    from executor_birth_ownership_preflight import canonical_maintenance_proof
+
+    port = _current_reattestation_port_v1()
+    with contract_cutover_guard() as (maintenance, evidence):
+        initial = canonical_maintenance_proof(
+            source=evidence["source"], units=evidence["units"],
+        )
+        if maintenance() is not True:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_maintenance_changed",
+            )
+        inventory = freeze_current_inventory_v1(port.enumerate_current())
+        _verify_store_only_catalog_locked()
+        fresh = maintenance.observe()
+        if (
+            canonical_maintenance_proof(
+                source=fresh["source"], units=fresh["units"],
+            ) != initial
+            or maintenance() is not True
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_maintenance_changed",
+            )
+        try:
+            yield maintenance, inventory, initial
+        finally:
+            _verify_store_only_catalog_locked()
+            final_inventory = freeze_current_inventory_v1(
+                port.enumerate_current(),
+            )
+            final = maintenance.observe()
+            if (
+                final_inventory != inventory
+                or canonical_maintenance_proof(
+                    source=final["source"], units=final["units"],
+                ) != initial
+                or maintenance() is not True
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "current inventory or maintenance changed",
+                )
+
+
 def prepare_ownership_cutover_v1(
     distribution: VerifiedDistribution,
 ) -> OwnershipCoordinatorResultV1:
@@ -3422,26 +3602,9 @@ def prepare_ownership_cutover_v1(
         )
         from executor_birth_cutover import prepare_current_receipt_proof
         from executor_birth_ownership_preflight import canonical_maintenance_proof
-        from executor_birth_bootstrap import bootstrap_birth_runtime
-        from executor_birth_operational import _runtime_bundle_snapshot
         from executor_birth_reattestation import reattest_current_generation
-        from executor_birth_commit_publisher import _is_birth_reattestation_port
 
-        bundle = _runtime_bundle_snapshot()
-        if bundle is None:
-            try:
-                bundle = bootstrap_birth_runtime()
-            except Exception as exc:
-                raise OwnershipCoordinatorError(
-                    "birth_ownership_birth_runtime_unavailable",
-                ) from exc
-        port_factory = getattr(
-            getattr(bundle, "core", None), "commit_publisher", None,
-        )
-        port_factory = getattr(port_factory, "reattestation_port", None)
-        port = port_factory() if callable(port_factory) else None
-        if not _is_birth_reattestation_port(port):
-            raise OwnershipCoordinatorError("birth_ownership_birth_runtime_unavailable")
+        port = _current_reattestation_port_v1()
         journal = OwnershipCoordinatorJournalV1(
             DEFAULT_COORDINATOR_DIRECTORY_V1, root_owned=True,
         )
@@ -3758,5 +3921,6 @@ def _advance_to_preflight_verified_v1(
 
 __all__ = [
     "OwnershipCoordinatorError", "OwnershipCoordinatorResultV1",
+    "PreparedTransitionPublicationV2",
     "OwnershipCoordinatorStateV1", "prepare_ownership_cutover_v1",
 ]

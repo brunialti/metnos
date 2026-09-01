@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import copy
+from contextlib import contextmanager
 from dataclasses import replace
 import hashlib
 import json
@@ -32,7 +33,7 @@ from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 from executor_birth_ownership_coordinator import (
     LegacyDispositionV2, OwnershipCoordinatorError,
     OwnershipCoordinatorRecordV1, OwnershipCoordinatorRecordV2,
-    OwnershipCoordinatorStateV1,
+    OwnershipCoordinatorStateV1, PreparedTransitionPublicationV2,
     _LockedOwnershipCoordinatorGraphSnapshotV2,
     _ObservedOwnershipCoordinatorGraphV2,
     _OwnershipCoordinatorGraphSnapshotForTestV2,
@@ -233,6 +234,92 @@ def maintenance() -> bytes:
 def proof() -> CurrentReceiptProof:
     identities = (("executor:alpha", D("7")),)
     return CurrentReceiptProof(identities, {identities[0]: D("8")})
+
+
+def current_generation(tmp_path):
+    from executor_birth_cutover import CurrentGeneration
+    from manifest_inventory import (
+        ContractId, ManifestOrigin, ManifestRef, ManifestStatus,
+    )
+
+    relative = "alpha/manifest.toml"
+    contract_id = ContractId(ManifestOrigin.EXPLICIT, relative)
+    manifest = tmp_path / relative
+    return CurrentGeneration(
+        ManifestRef(
+            contract_id, ManifestOrigin.EXPLICIT, ManifestStatus.ADMITTED,
+            tmp_path, manifest, relative, (manifest.parent,),
+        ),
+        D("7"),
+    )
+
+
+def install_maintenance_fixture(monkeypatch, tmp_path, *, drift: bool):
+    import contract_cutover_guard as guard_module
+
+    evidence = json.loads(maintenance())
+
+    class Maintenance:
+        def __call__(self):
+            return True
+
+        def observe(self):
+            return evidence
+
+    @contextmanager
+    def guard():
+        yield Maintenance(), evidence
+
+    item = current_generation(tmp_path)
+
+    class Port:
+        calls = 0
+
+        def enumerate_current(self):
+            self.calls += 1
+            return () if drift and self.calls > 1 else (item,)
+
+    verified = []
+    monkeypatch.setattr(guard_module, "contract_cutover_guard", guard)
+    monkeypatch.setattr(
+        guard_module, "_verify_store_only_catalog_locked",
+        lambda: verified.append(True),
+    )
+    port = Port()
+    monkeypatch.setattr(
+        coordinator_module, "_current_reattestation_port_v1", lambda: port,
+    )
+    return port, verified, item
+
+
+def test_transition_maintenance_freezes_and_rechecks_the_exact_inventory(
+    monkeypatch, tmp_path,
+):
+    port, verified, item = install_maintenance_fixture(
+        monkeypatch, tmp_path, drift=False,
+    )
+
+    with coordinator_module._transition_maintenance_inventory_v2() as frozen:
+        prove_quiescent, inventory, evidence = frozen
+        assert prove_quiescent() is True
+        assert inventory.identities == (item.identity,)
+        assert evidence == maintenance()
+
+    assert port.calls == 2
+    assert verified == [True, True]
+
+
+def test_transition_maintenance_rejects_inventory_drift_on_exit(
+    monkeypatch, tmp_path,
+):
+    install_maintenance_fixture(monkeypatch, tmp_path, drift=True)
+
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="birth_ownership_recovery_required",
+    ):
+        with coordinator_module._transition_maintenance_inventory_v2():
+            pass
 
 
 def record_v2(sequence: int) -> OwnershipCoordinatorRecordV2:
@@ -617,6 +704,16 @@ def test_prepared_v2_record_binds_first_transition_before_publication():
         descriptor,
     )
     assert _decode_record_v2(record.encode()) == record
+
+
+def test_prepared_publication_artifact_normalizes_unsealed_inputs():
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="birth_ownership_request_conflict",
+    ):
+        PreparedTransitionPublicationV2(
+            None, None, None, None, None, None, object(),
+        )
 
 
 def test_prepared_v2_record_binds_a_completed_predecessor_selection():
