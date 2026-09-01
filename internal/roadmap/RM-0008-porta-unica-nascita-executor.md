@@ -1371,6 +1371,7 @@ sviluppo.
 | 2026-09-01 | `active` | RM-VARIAZIONE-02 offerta alla revisione incrociata: il piano corrente maschera `metnos-http.service` nello stesso spazio in cui il catalogo firmato deve pubblicare il frammento dominante. Il codice dipendente resta fermo fino ad accettazione e decisione; il lavoro indipendente di F4 continua. |
 | 2026-09-01 | `active` | RM-VARIAZIONE-02 corretta dopo il secondo giro B: rimossa la premessa errata sulla proprieta' del file di sistema, dichiarato il cambio del servizio vivo dallo spazio utente a quello di sistema e aggiunta una sonda committata che riproduce 15/39/16/1. La proposta non presume la decisione dell'autorita': il codice dipendente attende ancora l'accettazione B sul commit corretto e il successivo verbale separato. |
 | 2026-09-01 | `done` | RM-VARIAZIONE-02 approvata: proposta A `5a323981`, allineamento di stato `efe999e2`, accettazione B `3541d675` e decisione dell'autorita' in `internal/design/decisione_rm0008_variazione_02_1_9_2026.md`. Il codice del gruppo 7 puo' applicare la regola; il sistema vivo resta invariato fino alla chiusura di tutti i gate. |
+| 2026-09-01 | `active` | Il rilievo B `de054b93` sulla provenienza della decisione e' stato recepito riportando nel verbale i tre input testuali ricevuti direttamente nella task Codex principale RM-0008. Il verbale non attribuisce piu' i messaggi alla task separata di B ed e' offerto alla nuova revisione incrociata. |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 

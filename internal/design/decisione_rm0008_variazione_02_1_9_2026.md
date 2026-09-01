@@ -15,12 +15,22 @@ dall'unita' utente al frammento dominante nello spazio di sistema, la finestra
 di indisponibilita' misurabile ai due estremi e la conservazione senza
 sostituzione dell'unico frammento di sistema preesistente.
 
-Roberto ha confermato nella task dell'agente A di avere gia' autorizzato
-l'agente B ad accettare la variazione. Ha inoltre approvato il passaggio in
-produzione quando tutti i gate saranno chiusi e il blocco che impedisce il
-ritorno automatico al passaggio precedente. Queste conferme costituiscono la
-decisione dell'autorita' richiesta dal protocollo dopo la revisione
-incrociata.
+Il verbale registra questi tre input diretti di Roberto nella task Codex
+principale RM-0008 del 1 settembre 2026, riportati testualmente e nello stesso
+ordine in cui sono stati ricevuti dall'agente A:
+
+```text
+ho gia autorizzato claude ad accettare variazione
+approvo passaggio in produzione quando avete finito
+approvo il blocco che impedisce il ritorno al vecchio passaggio
+```
+
+Il primo input usa il nome «claude» per l'agente B. Il verbale non afferma che
+questi messaggi siano comparsi anche nella task separata di B: ne registra la
+provenienza dalla task principale dell'autorita', che A ha ricevuto
+direttamente. Presi insieme dopo la descrizione completa dell'effetto sul
+servizio vivo e dopo l'accettazione tecnica B, costituiscono la decisione
+dell'autorita' richiesta dal protocollo.
 
 ## Effetto della decisione
 
@@ -50,5 +60,5 @@ RM0008-Ruolo: autorita
 RM0008-Stato: APPROVATA  
 RM0008-Ancora: 5a323981  
 RM0008-Percorsi: internal/design/decisione_rm0008_variazione_02_1_9_2026.md; internal/design/rm0008_variazione_02_sovrapposizione_unita_1_9_2026.md; internal/roadmap/RM-0008-porta-unica-nascita-executor.md  
-RM0008-Prova: 3541d675; conferme esplicite di Roberto del 1 settembre 2026  
+RM0008-Prova: 3541d675; tre input diretti di Roberto riportati testualmente dal 1 settembre 2026
 RM0008-Ambito: roadmap
