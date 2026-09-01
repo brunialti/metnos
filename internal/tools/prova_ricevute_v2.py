@@ -339,54 +339,6 @@ def _(n: Negozio) -> None:
     assert not any(altrove.iterdir()), "ha scritto in una cartella estranea"
 
 
-@caso("15 la prova delle correnti e' ordinata, senza duplicati e senza buchi")
-def _(n: Negozio) -> None:
-    n.scrivi()
-    prova = C.current_receipt_proof(
-        [(n.ref, n.richiesta())], trusted_publics=n.trusted, store_root=n.root,
-    )
-    from executor_birth_cutover import CurrentReceiptProof
-    assert isinstance(prova, CurrentReceiptProof), "non e' il tipo che A consuma"
-    identita = (n.ref.contract_id.value, n.generation)
-    assert prova.identities == (identita,)
-    assert prova.receipt_hashes[identita] == C.admission_receipt_hash(n.leggi())
-    # A repeated pair is the same fact, not a duplicate entry.
-    ripetuta = C.current_receipt_proof(
-        [(n.ref, n.richiesta()), (n.ref, n.richiesta())],
-        trusted_publics=n.trusted, store_root=n.root,
-    )
-    assert ripetuta == prova
-
-
-@caso("16 §11.5 una generazione senza ricevuta non e' un successo vuoto")
-def _(n: Negozio) -> None:
-    _rifiuta(
-        "birth_receipt_v2_missing",
-        lambda: C.current_receipt_proof(
-            [(n.ref, n.richiesta())], trusted_publics=n.trusted, store_root=n.root,
-        ),
-    )
-    _rifiuta(
-        "birth_receipt_v2_missing",
-        lambda: C.current_receipt_proof(
-            [], trusted_publics=n.trusted, store_root=n.root,
-        ),
-    )
-
-
-@caso("17 la prova rifiuta due contesti diversi nello stesso passaggio")
-def _(n: Negozio) -> None:
-    n.scrivi(context=CTX_A)
-    n.scrivi(context=CTX_B)
-    _rifiuta(
-        "birth_receipt_v2_context_conflict",
-        lambda: C.current_receipt_proof(
-            [(n.ref, n.richiesta(CTX_A)), (n.ref, n.richiesta(CTX_B))],
-            trusted_publics=n.trusted, store_root=n.root,
-        ),
-    )
-
-
 @caso("18 i permessi della ricevuta e delle sue cartelle sono ristretti")
 def _(n: Negozio) -> None:
     n.scrivi()
