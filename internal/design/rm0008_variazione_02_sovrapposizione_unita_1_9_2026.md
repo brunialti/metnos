@@ -1,7 +1,7 @@
 # RM-0008 — RM-VARIAZIONE-02: sovrapposizione fra unita' conservata e dominante
 
 Data: 1 settembre 2026  
-Stato: proposta A corretta per secondo giro di revisione incrociata
+Stato: proposta A corretta per terzo giro di revisione incrociata
 Unita': `RM-VARIAZIONE-02`
 
 ## 1. Fatto che impone la variazione
@@ -52,13 +52,13 @@ firmato decodificato e pretendere identico risultato prima di applicare il
 piano; il sorgente committato rende revisionabile la premessa prima che
 l'artefatto installato esista.
 
-## 2. Effetto operativo approvato in linea di principio
+## 2. Effetto operativo sottoposto alla decisione dell'autorita'
 
-Roberto ha autorizzato l'agente B ad accettare questa variazione e ha
-autorizzato il passaggio produttivo quando tutti i gate saranno chiusi. Questa
-autorita' comprende il cambio da unita' utente a unita' di sistema e il blocco
-anti-ritorno gia' approvato, ma diventa normativa nel protocollo soltanto dopo
-che B accetta il commit corretto.
+Questa proposta presenta per intero l'effetto sul servizio vivo che la
+decisione dell'autorita' deve approvare dopo le due accettazioni tecniche. Il
+verbale della decisione resta separato dalla proposta, come richiede il
+protocollo: questo documento non attribuisce a B la verifica di messaggi
+ricevuti da A e non presume l'esito della decisione.
 
 La finestra di indisponibilita' comincia quando il piano ferma e maschera
 l'unita' utente attiva e termina soltanto quando il nuovo servizio di sistema
@@ -171,5 +171,5 @@ RM0008-Ruolo: agente-a
 RM0008-Stato: PRONTA
 RM0008-Ancora: 7aa688e9
 RM0008-Percorsi: internal/design/rm0008_variazione_02_sovrapposizione_unita_1_9_2026.md; internal/tools/sonda_sovrapposizione_unita_rm0008.py; internal/roadmap/RM-0008-porta-unica-nascita-executor.md
-RM0008-Prova: sonda deterministica committata; osservazioni in sola lettura di entrambe le unita'; autorizzazioni esplicite di Roberto
+RM0008-Prova: sonda deterministica committata; osservazioni in sola lettura di entrambe le unita'; decisione dell'autorita' separata dopo le due accettazioni
 RM0008-Ambito: roadmap
