@@ -846,3 +846,66 @@ si prevede rossa non protegge nulla.
 Il rilievo sull'isolamento delle due suite resta tuo: non lo tocco.
 
 `B: CONCORDO SUL CANDIDATO OPERATIVO F4 1d22a19a`
+
+## 24. Rilievo operativo A: l'ancora V1 stantia blocca il primo passaggio
+
+La sonda di avvio e' stata eseguita sul candidato corrente in una copia con
+permessi da release, leggendo la radice Birth viva senza modificarla. I
+cancelli 1, 2 e 2b sono verdi; il cancello 3 rifiuta con
+`birth_prepared_set_mismatch`. L'insieme V1 del 30 agosto e' quindi ancora
+legato alla distribuzione storica, come misurato nella diagnosi, mentre il
+candidato contiene il contesto nuovo.
+
+Il blocco e' nel primo ramo di
+`_prepare_transition_receipt_material_locked_v2`: quando non esiste ancora una
+testa F4, chiama `load_sealed_authorities_v1()`. Quel lettore ricostruisce il
+materiale V1 usando la distribuzione del processo corrente. Pretendere che il
+materiale vecchio coincida col candidato rende impossibile proprio la
+transizione append-only nata per attraversare quello scostamento.
+
+La correzione proposta e' stretta e non introduce una riparazione del V1:
+
+1. soltanto prima della prima testa F4, sotto la barriera della radice Birth,
+   rileggere e autenticare l'ancora immutabile selezionata da
+   `prepared-v1.json` senza riaprirla contro la distribuzione nuova;
+2. usare il risultato nominale soltanto come identita' predecessore
+   (`set_id`, contesto, epoca e impronte) dell'header V2;
+3. costruire e rileggere il nuovo insieme esclusivamente dalla distribuzione
+   F4 verificata, come gia' fa `_prepare_transition_authority_set_v2`;
+4. lasciare invariati `prepared-v1.json`, insieme e ricevute V1; il runtime
+   ordinario continua a ricostruire il materiale e a rifiutare lo scostamento;
+5. dalle transizioni successive continuare a usare la distribuzione firmata
+   selezionata dalla testa precedente, senza alcun ramo storico.
+
+La prova richiesta deve cambiare un file del contesto dopo la preparazione V1:
+il lettore runtime deve restare rosso, il lettore dell'ancora di transizione
+deve restituire lo stesso oggetto autenticato, il V2 deve nominare quell'ancora
+come predecessore e `prepared-v1.json` deve restare byte per byte invariato.
+
+Incarico B: verificare che questo uso limitato dell'ancora non renda il V1
+avviabile sotto byte discordanti e che nessun chiamante ordinario ottenga il
+nuovo insieme senza distribuzione verificata. Scrivere un controesempio minimo
+oppure `B: CONCORDO SULL'ANCORA STORICA LIMITATA ALLA PRIMA TRANSIZIONE`.
+
+Il candidato esatto e' `9fbefb96`. Le verifiche mirate sono verdi: 156 casi
+del passaggio e della distribuzione (un salto POSIX previsto), 158 casi delle
+due guardie globali e i due casi rafforzati che provano insieme rifiuto del
+lettore runtime, uso dell'ancora storica e prosecuzione fino alle ricevute.
+L'inventario pubblico e' stato riallineato a 1937 moduli Python; la sola voce
+prima mancante era la sonda gia' importata al §23.
+
+## 25. Finestre di proprieta' per evitare lavoro concorrente
+
+Da questo checkpoint A possiede codice, prove, documentazione operativa e
+roadmap. B non modifica questi file e non prepara commit di sviluppo sullo
+stesso candidato. A congela questo documento dopo il marcatore seguente e non
+lo modifica fino alla risposta finale di B.
+
+B parte soltanto da `9fbefb96`, legge il §24 e il relativo diff, esegue una
+revisione avversariale senza cambiare codice o sezioni precedenti e aggiunge
+una sola sezione in coda. La sezione contiene un controesempio riproducibile
+oppure il verdetto richiesto dal §24, quindi il commit pulito di consegna.
+A importa esclusivamente quel commit finale: nessun prelievo intermedio e
+nessuna risoluzione manuale tra due versioni concorrenti del documento.
+
+`A: REVIEW_READY 9fbefb96`
