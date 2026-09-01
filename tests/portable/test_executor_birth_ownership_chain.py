@@ -867,6 +867,35 @@ def test_context_transition_post_publication_retry_is_idempotent(
     ) == expected
 
 
+def test_context_transition_prepublication_retry_keeps_exact_temporary(
+    authority, tmp_path,
+):
+    store = initialize_test_store(tmp_path / "chain-v1", authority)
+    proof = CurrentReceiptProof((), {})
+    encoded, expected = context_transition(proof=proof)
+    directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
+    basename = context_transition_basename_v1(expected.transition_id)
+    temporary = directory / f".{basename}.tmp"
+
+    def interrupt(boundary):
+        if boundary == "after_context_transition_temporary":
+            raise _OwnershipChainCrashForTest(boundary)
+
+    with pytest.raises(_OwnershipChainCrashForTest):
+        store.append_context_transition(
+            encoded,
+            expected_proof=proof,
+            _crash_seam=interrupt,
+        )
+
+    assert temporary.read_bytes() == encoded
+    assert store.append_context_transition(
+        encoded,
+        expected_proof=proof,
+    ) == expected
+    assert not temporary.exists()
+
+
 def test_context_transition_reader_rejects_a_second_file_name(
     authority, tmp_path,
 ):

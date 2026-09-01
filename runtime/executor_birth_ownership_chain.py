@@ -1073,11 +1073,6 @@ class OwnershipChainStore:
                 "birth_context_transition_recovery_required",
                 "record publication",
             ) from exc
-        finally:
-            try:
-                temporary.unlink()
-            except FileNotFoundError:
-                pass
         return self.read_context_transition(
             transition.transition_id,
             expected_proof=expected_proof,
