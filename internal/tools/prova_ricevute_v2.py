@@ -237,6 +237,24 @@ def _(n: Negozio) -> None:
     assert n.leggi() is None, "la lettura V2 e' ripiegata sulla V1"
 
 
+@caso("7-bis §11.12 la vecchia epoca resta LEGGIBILE, non solo intatta")
+def _(n: Negozio) -> None:
+    # Immutability is half the requirement: the historical reader must still
+    # work after the new epoch has written beside it.
+    storica = b"{\"storica\": true}"
+    v1 = n.percorso_v1()
+    v1.parent.mkdir(mode=0o700, parents=True)
+    v1.write_bytes(storica)
+    n.scrivi(context=CTX_A)
+    n.scrivi(context=CTX_B)
+    riletta = C.read_current_birth_receipt(
+        n.ref, n.generation, trusted_publics=n.trusted, store_root=n.root,
+        lock_timeout=5.0,
+    )
+    assert riletta == storica, "il lettore storico non restituisce piu' l'atto storico"
+    assert v1.read_bytes() == storica
+
+
 @caso("8 una richiesta forgiata non e' una richiesta")
 def _(n: Negozio) -> None:
     @dataclass(frozen=True, slots=True)
