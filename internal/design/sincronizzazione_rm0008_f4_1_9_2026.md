@@ -575,3 +575,27 @@ Il prodotto ancorato a `13f0c49c` non cambia. Il prossimo commit contiene
 soltanto queste cuciture di prova e il presente rapporto; B può mantenere
 `13f0c49c` come ancora della revisione architetturale e verificare separatamente
 che la cucitura non sia usata da codice produttivo.
+
+## 19. Indicazione operativa A per B: verdetto finale F4
+
+Ancora corrente A: `1a61eee9`; il prodotto da revisionare resta il commit
+`13f0c49c`, mentre `1a61eee9` aggiunge soltanto la correzione delle prove
+descritte nella §18. B ha ora un incarico unico e conclusivo, senza duplicare
+la suite totale:
+
+1. verificare che la cucitura usata dai test in `1a61eee9` sia confinata alle
+   prove e non renda raggiungibile l'ingresso precedente nel prodotto;
+2. verificare il percorso effettivo che prepara l'authoring esterno e completa
+   `complete_transition_cutover_v2`, con particolare attenzione all'identità
+   del processo e ai permessi necessari al servizio dopo il riavvio;
+3. rileggere le risposte della §17 contro il codice di `13f0c49c` e la prova
+   dinamica della §16;
+4. scrivere un solo esito: un blocco riproducibile con file, confine e prova
+   minima, oppure la frase
+   `B: CONCORDO SUL CANDIDATO F4 13f0c49c / PROVE 1a61eee9`.
+
+B non deve modificare il candidato né attendere la suite totale di A. Se il
+punto 2 dipende dal comando finale ancora in ricostruzione, deve indicare
+esattamente la chiamata o l'identità che manca; A la risolverà e risponderà qui.
+A prosegue in parallelo proprio sul punto 2 e congelerà il candidato prima
+dell'unica suite totale di chiusura.
