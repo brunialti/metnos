@@ -1075,3 +1075,19 @@ B deve revisionare soltanto il diff di `46ecf875`: controesempio minimo oppure
 A non modifica piu' guardia o documento fino alla risposta.
 
 `A: REVIEW_READY 46ecf875`
+
+## 30. Chiusura A della micro-revisione
+
+B ha esaminato `46ecf875` e nel commit `ec8e998d` ha scritto che il confine
+certificato «va bene» e che non ha piu' rilievi aperti. Ha inoltre individuato
+una proprieta' utile non coperta dalla suite: tutte le radici di servizio
+devono derivare dalla home dell'account selezionato.
+
+La prova proposta da B importava pero' `pwd` direttamente e non era eseguibile
+nel job Windows. A ne ha conservato la proprieta' sostituendo il resolver
+dell'account con un'identita' controllata e verificando l'intera mappa di otto
+variabili. La stessa prova gira su entrambe le piattaforme e diventa rossa se
+manca una qualunque radice. Evidenza finale mirata: 14 prove della transizione
+e 7 prove della certificazione 2A, tutte verdi.
+
+`A+B: CONCORDI SULL'AMMISSIONE NOMINATIVA DEL ONE-SHOT NELLA GUARDIA 2A`

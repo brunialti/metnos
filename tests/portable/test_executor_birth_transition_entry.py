@@ -233,3 +233,28 @@ def test_activation_uses_only_target_and_readiness_from_signed_catalog(
             "metnos-stack-ready.service",
         ],
     ]
+
+
+def test_service_environment_binds_every_root_to_the_account_home(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All service roots follow the selected account on every platform."""
+    account = SimpleNamespace(pw_dir="/srv/metnos")
+    monkeypatch.setattr(
+        transition, "pwd",
+        SimpleNamespace(getpwnam=lambda name: account if name == "metnos" else None),
+    )
+
+    selected, environment = transition._service_environment_v1("metnos")
+
+    assert selected == "metnos"
+    assert environment == {
+        "HOME": "/srv/metnos",
+        "LOGNAME": "metnos",
+        "USER": "metnos",
+        "METNOS_USER_DATA": "/srv/metnos/.local/share/metnos",
+        "METNOS_USER_STATE": "/srv/metnos/.local/state/metnos",
+        "METNOS_USER_CONFIG": "/srv/metnos/.config/metnos",
+        "METNOS_USER_CACHE": "/srv/metnos/.cache/metnos",
+        "METNOS_WORKSPACE": "/srv/metnos/.local/share/metnos/workspace",
+    }
