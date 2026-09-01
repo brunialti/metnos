@@ -280,6 +280,25 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
             expected_inventory=CurrentInventoryV1(()),
         )
 
+    def unavailable(**_kwargs):
+        raise cutover_module.BirthCutoverError(
+            "birth_cutover_not_quiescent", current.identity[0],
+        )
+
+    monkeypatch.setattr(
+        cutover_module, "prepare_current_receipt_proof", unavailable,
+    )
+    with pytest.raises(OwnershipCoordinatorError) as failure:
+        _prepare_staged_current_receipts_v2(
+            runtime,
+            prove_quiescent=lambda: False,
+            expected_inventory=CurrentInventoryV1((current.identity,)),
+        )
+    assert failure.value.code == "birth_ownership_receipt_proof_invalid"
+    assert failure.value.detail == (
+        f"birth_cutover_not_quiescent: {current.identity[0]}"
+    )
+
 
 def test_required_and_staged_producers_preserve_scope():
     transition, prepared, distribution = _evidence()

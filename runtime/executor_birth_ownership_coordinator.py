@@ -3093,8 +3093,14 @@ def _prepare_staged_current_receipts_v2(
             verify_receipt=staged_runtime.verify_receipt,
         )
     except Exception as exc:
+        code = getattr(exc, "code", "")
+        detail = getattr(exc, "detail", "")
+        cause = ": ".join(
+            value for value in (code, detail)
+            if isinstance(value, str) and value
+        )
         raise OwnershipCoordinatorError(
-            "birth_ownership_receipt_proof_invalid",
+            "birth_ownership_receipt_proof_invalid", cause,
         ) from exc
     if (
         not isinstance(report.proof, CurrentReceiptProof)
