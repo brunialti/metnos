@@ -301,8 +301,25 @@ class _CutoverReattestationFactoryV2(_CutoverReattestationFactoryV1):
             raise BirthBootstrapError("birth_context_selection_invalid")
         self._selection = selection
 
-    def __call__(self, current: object):
+    def _context_facts(self, current: object):
         from executor_birth_producer_context import build_producer_request_v2
+
+        authority, origin, source_id, instant, expires = self._producer_facts(
+            current,
+        )
+        request = build_producer_request_v2(
+            self._selection,
+            contract_id=current.ref.contract_id,
+            generation_id=current.generation_id,
+            candidate_source_id=source_id,
+        )
+        return authority, origin, source_id, instant, expires, request
+
+    def producer_request(self, current: object):
+        """Derive the sealed V2 identity without issuing a Producer receipt."""
+        return self._context_facts(current)[-1]
+
+    def __call__(self, current: object):
         from executor_birth_producer_store import (
             get_or_issue_and_claim_producer_receipt_v2,
         )
@@ -310,14 +327,10 @@ class _CutoverReattestationFactoryV2(_CutoverReattestationFactoryV1):
             _sealed_reattestation_request_v2,
         )
 
-        authority, origin, source_id, instant, expires = self._producer_facts(
+        (
+            authority, origin, source_id, instant, expires, producer_request,
+        ) = self._context_facts(
             current,
-        )
-        producer_request = build_producer_request_v2(
-            self._selection,
-            contract_id=current.ref.contract_id,
-            generation_id=current.generation_id,
-            candidate_source_id=source_id,
         )
         objective = producer_request.objective_hash
         request_id = producer_request.request_id
@@ -346,6 +359,16 @@ class _CutoverReattestationFactoryV2(_CutoverReattestationFactoryV1):
             binding,
             producer_request,
         )
+
+
+def _is_cutover_reattestation_factory_v2(value: object) -> bool:
+    from executor_birth_context_selection import is_context_selection_v1
+
+    return (
+        isinstance(value, _CutoverReattestationFactoryV2)
+        and value._seal is _REATTESTATION_FACTORY_TOKEN
+        and is_context_selection_v1(value._selection, allow_staged=True)
+    )
 
 
 class _PostconditionAdapter:

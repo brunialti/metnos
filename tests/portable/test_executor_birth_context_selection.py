@@ -172,7 +172,10 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
         now=lambda: datetime(2026, 9, 1, tzinfo=timezone.utc),
     )
 
+    preview = factory.producer_request(current)
+    assert observed == {}
     request = factory(current)
+    assert preview == request.producer_request
     assert request.producer_request is observed["request"]
     assert request.request_id == request.producer_request.request_id
     assert request.producer_binding.objective_hash == (
