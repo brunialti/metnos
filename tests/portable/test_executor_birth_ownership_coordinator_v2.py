@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import executor_birth_ownership_coordinator as coordinator_module
 from contract_boundary_guard import BOUNDARY_APIS
@@ -42,12 +43,20 @@ from executor_birth_ownership_coordinator import (
     _legacy_disposition_id_v2, _legacy_journal_hash_v2, _record_basename_v2,
     _record_hash, _record_hash_v2, _successor_claim_basename_v1,
     _prepared_record_v2, _append_prepared_transition_locked_for_test_v2,
-    _receipts_complete_record_v2,
+    _certificate_published_record_v2, _certificate_ready_material_v2,
+    _receipts_complete_record_v2, _startup_prerequisite_for_test,
     _successor_claim_id_v1, _deployment_lock_for_test_v1,
     _append_ownership_transaction_locked_for_test_v2,
     _resolve_ownership_coordinator_locked_v2,
     _resolve_ownership_coordinator_locked_for_test_v2,
     _require_locked_coordinator_graph_snapshot_v2,
+)
+from executor_birth_dominant_startup import complete_dominant_startup_v1
+from executor_birth_ownership_authorities import (
+    _root_ownership_authorities_for_test,
+)
+from executor_birth_ownership_cutover import (
+    _binding_values, _bindings_from_proof, _catalog_id,
 )
 from executor_birth_ownership_preflight import (
     _sealed_build_identity_for_test, canonical_maintenance_proof,
@@ -235,6 +244,43 @@ def maintenance() -> bytes:
 def proof() -> CurrentReceiptProof:
     identities = (("executor:alpha", D("7")),)
     return CurrentReceiptProof(identities, {identities[0]: D("8")})
+
+
+class _StartupSession:
+    def __reduce__(self):
+        raise TypeError("startup lock sessions are not transferable")
+
+
+def dominant_receipt(*, catalog_id: str):
+    values = {
+        "identity": (D("1"), D("4"), D("9")),
+        "topology": D("a"),
+        "catalog": catalog_id,
+        "retirement": D("c"),
+        "enforcement": D("d"),
+    }
+    return complete_dominant_startup_v1(
+        sessions=(_StartupSession(), _StartupSession(), _StartupSession()),
+        observe_identity=lambda: values["identity"],
+        observe_topology=lambda: values["topology"],
+        observe_catalog=lambda: values["catalog"],
+        plan_retirement=lambda: values["retirement"],
+        observe_enforcement=lambda: values["enforcement"],
+        cross=lambda _receipt: None,
+    )
+
+
+def portable_authorities():
+    return _root_ownership_authorities_for_test(*(
+        Ed25519PrivateKey.from_private_bytes(
+            hashlib.sha256(name.encode("ascii")).digest()
+        )
+        for name in ("v2-distribution", "v2-cutover", "v2-head")
+    ))
+
+
+def proof_catalog_id() -> str:
+    return _catalog_id(_binding_values(_bindings_from_proof(proof())))
 
 
 def current_generation(tmp_path):
@@ -436,6 +482,76 @@ def test_receipts_complete_v2_carries_prepared_and_requires_exact_inventory():
             proof=CurrentReceiptProof((), {}),
             maintenance_before=maintenance(),
             maintenance_after=maintenance(),
+        )
+
+
+def test_certificate_ready_v2_requires_a_sealed_crossing_and_exact_bytes():
+    complete = record_v2(1)
+    prerequisite = _startup_prerequisite_for_test(D("1"), D("2"))
+    receipt = dominant_receipt(catalog_id=proof_catalog_id())
+    material = _certificate_ready_material_v2(
+        complete,
+        authorities=portable_authorities(),
+        prerequisite=prerequisite,
+        observe_maintenance=maintenance,
+        crossing_receipt=receipt,
+    )
+
+    ready = material.record
+    assert ready.sequence == 2
+    assert ready.state is OwnershipCoordinatorStateV1.CERTIFICATE_READY
+    assert ready.previous_record_sha256 == _record_hash_v2(complete.encode())
+    assert ready.startup_prerequisite_id == prerequisite.prerequisite_id
+    assert ready.startup_prerequisite_digest == prerequisite.evidence_digest
+    assert ready.dominant_startup_receipt == receipt.dominant_startup_receipt
+    assert ready.certificate_payload_hash == digest(material.payload)
+    assert ready.certificate_signature_hash == digest(material.signature)
+    assert material.certificate.as_proof() == proof()
+    assert _decode_record_v2(ready.encode()) == ready
+
+    published = _certificate_published_record_v2(ready)
+    assert published.state is OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+    assert published.previous_record_sha256 == _record_hash_v2(ready.encode())
+    assert published.dominant_startup_receipt == receipt.dominant_startup_receipt
+    assert _decode_record_v2(published.encode()) == published
+
+
+def test_certificate_ready_v2_rejects_unsealed_or_drifting_evidence():
+    complete = record_v2(1)
+    arguments = {
+        "authorities": portable_authorities(),
+        "prerequisite": _startup_prerequisite_for_test(D("1"), D("2")),
+        "observe_maintenance": maintenance,
+        "crossing_receipt": dominant_receipt(catalog_id=proof_catalog_id()),
+    }
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="birth_ownership_prerequisite_untrusted",
+    ):
+        _certificate_ready_material_v2(
+            complete, **{**arguments, "crossing_receipt": D("e")},
+        )
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="maintenance drift",
+    ):
+        _certificate_ready_material_v2(
+            complete,
+            **{
+                **arguments,
+                "observe_maintenance": lambda: maintenance() + b" ",
+            },
+        )
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="certificate ready binding",
+    ):
+        _certificate_ready_material_v2(
+            complete,
+            **{
+                **arguments,
+                "crossing_receipt": dominant_receipt(catalog_id=D("f")),
+            },
         )
 
 

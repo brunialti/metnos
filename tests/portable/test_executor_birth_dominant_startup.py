@@ -280,9 +280,19 @@ def test_an_observer_that_is_a_value_is_refused() -> None:
 def test_a_caller_cannot_construct_or_relabel_a_crossing_receipt() -> None:
     values = tuple(_digest(character) for character in "123")
     expected = dominant.dominant_startup_receipt_v1(*values)
+    bindings = dominant.DominantStartupBindingsV1(
+        request_id=_digest("4"),
+        previous_head_digest=_digest("5"),
+        context_transition_id=_digest("6"),
+        catalog_id=_digest("7"),
+        effective_topology_hash=_digest("8"),
+        enforcement_evidence_digest=values[2],
+    )
 
     with pytest.raises(dominant.DominantStartupError) as unsealed:
-        dominant.DominantStartupReceiptV1(*values, expected, object())
+        dominant.DominantStartupReceiptV1(
+            bindings, *values, expected, object(),
+        )
     assert unsealed.value.code == "dominant_startup_receipt_invalid"
 
     receipt = _complete(_Observers())

@@ -26,6 +26,7 @@ from types import MappingProxyType
 from typing import Callable, Iterator, Mapping
 
 from executor_birth_cutover import CurrentReceiptProof
+from executor_birth_dominant_startup import is_dominant_startup_receipt_v1
 from executor_birth_distribution_manifest import (
     VerifiedDistribution, is_verified_distribution,
     _verified_distribution_matches_payload_v1,
@@ -36,7 +37,8 @@ from executor_birth_ownership_authorities import (
 )
 from executor_birth_ownership_cutover import (
     MAX_PAYLOAD_BYTES, PAYLOAD_BASENAME, SIGNATURE_BASENAME,
-    OwnershipCutoverError, OwnershipCutoverRegistry,
+    OwnershipCutoverCertificate, OwnershipCutoverError,
+    OwnershipCutoverRegistry,
     install_ownership_cutover_certificate,
     issue_ownership_cutover_certificate, read_ownership_cutover_certificate,
     verify_ownership_cutover_certificate, _prepare_recoverable_temporary,
@@ -3450,6 +3452,164 @@ def _append_receipts_complete_locked_v2(
             "birth_ownership_recovery_required", "receipt reread",
         )
     return persisted
+
+
+_CERTIFICATE_READY_MATERIAL_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _CertificateReadyMaterialV2:
+    """Exact authenticated bytes bound by one CERTIFICATE_READY record."""
+
+    record: OwnershipCoordinatorRecordV2
+    payload: bytes
+    signature: bytes
+    certificate: OwnershipCutoverCertificate
+    _seal: object
+
+    def __post_init__(self) -> None:
+        record = self.record
+        certificate = self.certificate
+        proof = (
+            record.current_proof
+            if type(record) is OwnershipCoordinatorRecordV2 else None
+        )
+        if (
+            self._seal is not _CERTIFICATE_READY_MATERIAL_SEAL_V2
+            or type(record) is not OwnershipCoordinatorRecordV2
+            or record.state is not OwnershipCoordinatorStateV1.CERTIFICATE_READY
+            or type(self.payload) is not bytes
+            or type(self.signature) is not bytes
+            or type(certificate) is not OwnershipCutoverCertificate
+            or record.certificate_payload_hash != _digest(self.payload)
+            or record.certificate_signature_hash != _digest(self.signature)
+            or record.cutover_id != certificate.cutover_id
+            or record.catalog_id != certificate.catalog_id
+            or record.request_id != certificate.request_id
+            or record.previous_cutover_id != certificate.previous_cutover_id
+            or record.closed_build_id != certificate.closed_build_id
+            or record.boundary_inventory_hash
+            != certificate.boundary_inventory_hash
+            or record.boundary_guard_version
+            != certificate.boundary_guard_version
+            or record.maintenance_after_hash
+            != certificate.maintenance_evidence_hash
+            or record.context_transition_id
+            != certificate.context_transition_id
+            or record.dominant_startup_receipt
+            != certificate.dominant_startup_receipt
+            or proof is None
+            or certificate.as_proof() != proof
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required",
+                "certificate ready material",
+            )
+
+
+def _certificate_ready_material_v2(
+    complete: object, *, authorities: object,
+    prerequisite: object, observe_maintenance: object,
+    crossing_receipt: object,
+) -> _CertificateReadyMaterialV2:
+    """Issue and bind exact certificate bytes after a sealed dominant crossing."""
+    if (
+        type(complete) is not OwnershipCoordinatorRecordV2
+        or complete.sequence != 1
+        or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+        or not isinstance(authorities, RootOwnershipAuthoritiesV1)
+        or not isinstance(prerequisite, _StartupPrerequisiteV1)
+        or prerequisite._seal is not _PREREQUISITE_SEAL
+        or not callable(observe_maintenance)
+        or not is_dominant_startup_receipt_v1(crossing_receipt)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        )
+    proof = complete.current_proof
+    assert proof is not None and complete.maintenance_after_hash is not None
+    if observe_maintenance() != complete.maintenance_proof:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "maintenance drift",
+        )
+    receipt_digest = crossing_receipt.dominant_startup_receipt
+    payload, signature = issue_ownership_cutover_certificate(
+        proof=proof,
+        previous_cutover_id=complete.previous_cutover_id,
+        request_id=complete.request_id,
+        signing_key_id=_single_cutover_key(authorities),
+        maintenance_evidence_hash=complete.maintenance_after_hash,
+        boundary_inventory_hash=complete.boundary_inventory_hash,
+        boundary_guard_version=complete.boundary_guard_version,
+        closed_build_id=complete.closed_build_id,
+        context_transition_id=complete.context_transition_id,
+        dominant_startup_receipt=receipt_digest,
+        private_key=authorities.cutover_private,
+    )
+    certificate = verify_ownership_cutover_certificate(
+        payload,
+        signature,
+        registry=authorities.public.cutover,
+        expected_proof=proof,
+        expected_previous_cutover_id=complete.previous_cutover_id,
+        expected_context_transition_id=complete.context_transition_id,
+        expected_dominant_startup_receipt=receipt_digest,
+    )
+    if (
+        certificate.request_id != complete.request_id
+        or certificate.closed_build_id != complete.closed_build_id
+        or certificate.maintenance_evidence_hash
+        != complete.maintenance_after_hash
+        or certificate.boundary_inventory_hash
+        != complete.boundary_inventory_hash
+        or certificate.boundary_guard_version
+        != complete.boundary_guard_version
+        or crossing_receipt.bindings.request_id != complete.request_id
+        or crossing_receipt.bindings.context_transition_id
+        != complete.context_transition_id
+        or crossing_receipt.bindings.catalog_id != certificate.catalog_id
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "certificate ready binding",
+        )
+    record = replace(
+        complete,
+        sequence=2,
+        state=OwnershipCoordinatorStateV1.CERTIFICATE_READY,
+        previous_record_sha256=_record_hash_v2(complete.encode()),
+        startup_prerequisite_id=prerequisite.prerequisite_id,
+        startup_prerequisite_digest=prerequisite.evidence_digest,
+        cutover_id=certificate.cutover_id,
+        catalog_id=certificate.catalog_id,
+        certificate_payload_hash=_digest(payload),
+        certificate_signature_hash=_digest(signature),
+        dominant_startup_receipt=receipt_digest,
+    )
+    return _CertificateReadyMaterialV2(
+        record, payload, signature, certificate,
+        _CERTIFICATE_READY_MATERIAL_SEAL_V2,
+    )
+
+
+def _certificate_published_record_v2(
+    ready: object,
+) -> OwnershipCoordinatorRecordV2:
+    """Carry exact ready bindings across the certificate publication boundary."""
+    if (
+        type(ready) is not OwnershipCoordinatorRecordV2
+        or ready.sequence != 2
+        or ready.state is not OwnershipCoordinatorStateV1.CERTIFICATE_READY
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "certificate ready record",
+        )
+    return replace(
+        ready,
+        sequence=3,
+        state=OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED,
+        previous_record_sha256=_record_hash_v2(ready.encode()),
+    )
 
 
 def _publish_context_transition_locked_v2(

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+import weakref
 from dataclasses import dataclass, field
 
 
@@ -31,7 +32,7 @@ _CAPABILITY_SEAL_V1 = object()
 _TEST_CAPABILITY_SEAL_V1 = object()
 _RECEIPT_SEAL_V1 = object()
 _CONSUMED_GUARD_V1 = threading.Lock()
-_CONSUMED_CAPABILITIES_V1: set[int] = set()
+_CONSUMED_CAPABILITIES_V1: weakref.WeakSet[object] = weakref.WeakSet()
 
 
 class DominantStartupError(RuntimeError):
@@ -108,7 +109,9 @@ class _DominantStartupInstalledV1:
     process performing it.
     """
 
-    __slots__ = ("_bindings", "_digest", "_sessions", "_seal")
+    __slots__ = (
+        "_bindings", "_digest", "_sessions", "_seal", "__weakref__",
+    )
 
     def __init__(
         self, bindings: object, sessions: object, seal: object,
@@ -193,9 +196,9 @@ def consume_v1(
         raise _invalid("dominant_startup_binding_drift")
     _require_live_sessions_v1(capability._sessions)
     with _CONSUMED_GUARD_V1:
-        if id(capability) in _CONSUMED_CAPABILITIES_V1:
+        if capability in _CONSUMED_CAPABILITIES_V1:
             raise _invalid("dominant_startup_capability_spent")
-        _CONSUMED_CAPABILITIES_V1.add(id(capability))
+        _CONSUMED_CAPABILITIES_V1.add(capability)
     return capability._digest
 
 
@@ -213,6 +216,7 @@ __all__ = [
 class DominantStartupReceiptV1:
     """What the crossing actually consumed, re-read and agreed twice."""
 
+    bindings: DominantStartupBindingsV1
     bindings_digest: str
     retirement_plan_digest: str
     enforcement_evidence_digest: str
@@ -222,6 +226,10 @@ class DominantStartupReceiptV1:
     def __post_init__(self) -> None:
         if (
             self._seal is not _RECEIPT_SEAL_V1
+            or type(self.bindings) is not DominantStartupBindingsV1
+            or self.bindings_digest != bindings_digest_v1(self.bindings)
+            or self.enforcement_evidence_digest
+            != self.bindings.enforcement_evidence_digest
             or self.dominant_startup_receipt != dominant_startup_receipt_v1(
                 self.bindings_digest,
                 self.retirement_plan_digest,
@@ -263,6 +271,10 @@ def is_dominant_startup_receipt_v1(value: object) -> bool:
     try:
         return (
             value._seal is _RECEIPT_SEAL_V1
+            and type(value.bindings) is DominantStartupBindingsV1
+            and value.bindings_digest == bindings_digest_v1(value.bindings)
+            and value.enforcement_evidence_digest
+            == value.bindings.enforcement_evidence_digest
             and value.dominant_startup_receipt
             == dominant_startup_receipt_v1(
                 value.bindings_digest,
@@ -346,6 +358,7 @@ def complete_dominant_startup_v1(
     if _crash_seam:
         _crash_seam("capability_consumed")
     receipt = DominantStartupReceiptV1(
+        bindings,
         bindings_digest,
         retirement,
         enforcement,
