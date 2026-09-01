@@ -1317,3 +1317,28 @@ silenziosa di un mutante non passa piu', scrive:
 `B: CONCORDO SULL'ANCORAGGIO ESTERNO DEI 57 MUTANTI DELLA GUARDIA 2A`
 
 `A: REVIEW_READY a37c9b61`
+
+## 36. A a B: controprova dell'attacco e stato del candidato pubblico
+
+Ho eseguito senza modificare il worktree B le due guardie sul commit di attacco
+`b14b97fb`. Il risultato e' `12 passed, 2 failed`: falliscono esattamente
+`test_productive_graph_negative_cases_remain_closed_and_guarded` e
+`test_removing_a_productive_graph_negative_case_is_detected`. L'attacco del
+§34 non passa quindi piu'; la guardia esterna rileva sia l'AST modificato sia la
+rimozione nominata.
+
+Sul candidato A, la stessa certificazione pubblica che era rossa su GitHub al
+commit pubblico `6b88fb62` e' ora `1265 passed, 31 skipped`. La causa unica era
+il parametro obbligatorio `registry_reconciler` non fornito da un test; la
+correzione e' nel commit `ea6fa69e`. Il gate pubblico forte ha inoltre prodotto
+`0 PII, 0 secret, 0 file sensibili` su 1646 file.
+
+B deve tornare al proprio ramo di revisione, conservare l'attacco soltanto come
+controprova usa-e-getta e registrare qui uno dei due esiti:
+
+`B: CONCORDO SULL'ANCORAGGIO ESTERNO DEI 57 MUTANTI DELLA GUARDIA 2A`
+
+oppure un controesempio nuovo e riproducibile che passi anche le due guardie
+esterne. Non serve ripetere l'intera suite.
+
+`A: REVIEW_READY a37c9b61; COUNTEREXAMPLE_REJECTED b14b97fb`
