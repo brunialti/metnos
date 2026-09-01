@@ -4054,6 +4054,7 @@ def prepare_transition_receipts_v2(
         _append_receipts_complete_locked_v2, _deployment_lock_v1,
         _prepare_staged_current_receipts_v2,
         _prepared_transition_publication_v2,
+        _publish_context_transition_locked_v2,
         _result,
         _transition_edge_locked_v2, _transition_maintenance_inventory_v2,
     )
@@ -4127,6 +4128,9 @@ def prepare_transition_receipts_v2(
                 proof=proof,
                 maintenance_before=evidence,
                 maintenance_after=final_evidence,
+            )
+            _publish_context_transition_locked_v2(
+                session, publication, complete,
             )
         return _result(complete)
 

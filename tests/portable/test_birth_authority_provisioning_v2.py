@@ -849,6 +849,10 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
         lambda *args, **kwargs: order.append("receipts-complete") or complete,
     )
     monkeypatch.setattr(
+        coordinator_module, "_publish_context_transition_locked_v2",
+        lambda *args: order.append("transition-record") or "transition",
+    )
+    monkeypatch.setattr(
         coordinator_module, "_result",
         lambda record: order.append("result") or result,
     )
@@ -858,7 +862,8 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
         "deployment-lock", "distribution", "graph", "previous", "stage",
         "maintenance-enter", "prepared", "publish", "publication",
         "staged-context", "staged-runtime", "receipts",
-        "receipts-complete", "maintenance-exit", "result",
+        "receipts-complete", "transition-record", "maintenance-exit",
+        "result",
     ]
     assert any(
         item.name == "set.json"

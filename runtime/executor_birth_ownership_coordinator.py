@@ -3452,6 +3452,61 @@ def _append_receipts_complete_locked_v2(
     return persisted
 
 
+def _publish_context_transition_locked_v2(
+    session: _DeploymentLockSessionV1,
+    publication: object,
+    complete: object,
+):
+    """Publish the transition only after exact receipt completeness reread."""
+    if (
+        type(publication) is not PreparedTransitionPublicationV2
+        or publication._seal
+        is not _PREPARED_TRANSITION_PUBLICATION_SEAL_V2
+        or type(complete) is not OwnershipCoordinatorRecordV2
+        or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+        or complete.sequence != 1
+        or complete.request_id != publication.record.request_id
+        or complete.context_transition_id
+        != publication.transition.transition_id
+        or complete.current_proof is None
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_receipt_proof_invalid",
+        )
+    _require_deployment_lock_session_v1(session)
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    matches = tuple(
+        transaction for transaction in graph.transactions
+        if transaction.claim.request_id == complete.request_id
+    )
+    if (
+        len(matches) != 1
+        or len(matches[0].records) < 2
+        or matches[0].records[1] != complete
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "receipt reread",
+        )
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    try:
+        observed = OwnershipChainStore().append_context_transition(
+            publication.transition.encoded,
+            expected_proof=complete.current_proof,
+        )
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
+        ) from exc
+    _require_deployment_lock_session_v1(session)
+    if observed != publication.transition:
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
+        )
+    return observed
+
+
 @dataclass(frozen=True, slots=True)
 class OwnershipCoordinatorResultV1:
     state: OwnershipCoordinatorStateV1
