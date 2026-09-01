@@ -88,7 +88,7 @@ def test_running_the_same_plan_again_is_idempotent(tmp_path: Path) -> None:
 
 @POSIX_ONLY
 @pytest.mark.parametrize(("case", "code"), [
-    ("occupied_unit", "neutralizer_mask_occupied"),
+    ("occupied_unit_link", "neutralizer_mask_occupied"),
     ("occupied_retired", "neutralizer_entrypoint_occupied"),
     ("absolute_locator", "neutralizer_locator_invalid"),
     ("escape", "neutralizer_locator_escape"),
@@ -99,8 +99,8 @@ def test_running_the_same_plan_again_is_idempotent(tmp_path: Path) -> None:
 def test_neutralization_denials(tmp_path: Path, case: str, code: str) -> None:
     """Every denial is one row of one table, not one apparatus each."""
     root = _tree(tmp_path)
-    if case == "occupied_unit":
-        (root / "systemd" / "taken.service").write_text("[Unit]\n", encoding="utf-8")
+    if case == "occupied_unit_link":
+        (root / "systemd" / "taken.service").symlink_to("elsewhere.service")
         step = _Step("legacy", "mask_system_unit", "systemd/taken.service")
     elif case == "occupied_retired":
         (root / "scripts" / ("legacy.sh" + neutralizer.RETIRED_EXTENSION_V1)).write_text(
@@ -124,16 +124,61 @@ def test_neutralization_denials(tmp_path: Path, case: str, code: str) -> None:
 
 
 @POSIX_ONLY
-def test_an_occupied_name_is_never_replaced(tmp_path: Path) -> None:
-    """Refusing is the point: that file holds state nobody told us about."""
+def test_an_occupied_legacy_unit_is_preserved_before_masking(
+    tmp_path: Path,
+) -> None:
+    """The old bytes remain inspectable after their name becomes a mask."""
     root = _tree(tmp_path)
     taken = root / "systemd" / "taken.service"
     taken.write_text("[Unit]\n", encoding="utf-8")
-    with pytest.raises(neutralizer.LegacyNeutralizerError):
-        _apply(root, [
-            _Step("legacy", "mask_system_unit", "systemd/taken.service"),
-        ])
-    assert taken.read_text(encoding="utf-8") == "[Unit]\n"
+    step = _Step("legacy", "mask_system_unit", "systemd/taken.service")
+
+    first = _apply(root, [step])
+    repeated = _apply(root, [step])
+
+    preserved = taken.with_name(
+        taken.name + neutralizer.PRESERVED_EXTENSION_V1,
+    )
+    assert taken.is_symlink() and os.readlink(taken) == neutralizer.MASK_TARGET_V1
+    assert preserved.read_text(encoding="utf-8") == "[Unit]\n"
+    assert first[0].repeated is False
+    assert repeated[0].repeated is True
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize(
+    "stage", [
+        "legacy_unit_record_published", "legacy_unit_preserved",
+        "legacy_unit_masked",
+    ],
+)
+def test_declared_masking_interruptions_converge(
+    tmp_path: Path, stage: str,
+) -> None:
+    root = _tree(tmp_path)
+    unit = root / "systemd" / "taken.service"
+    unit.write_bytes(b"previous")
+    step = _Step("legacy", "mask_user_unit", "systemd/taken.service")
+
+    class Interrupted(Exception):
+        pass
+
+    def interrupt(observed: str) -> None:
+        if observed == stage:
+            raise Interrupted
+
+    with pytest.raises(Interrupted):
+        neutralizer.neutralize_for_test_v1(
+            _capability(root), [step], replacement_fragments={},
+            _crash_seam=interrupt,
+        )
+    resumed = _apply(root, [step])
+    preserved = unit.with_name(
+        unit.name + neutralizer.PRESERVED_EXTENSION_V1,
+    )
+    assert unit.is_symlink() and os.readlink(unit) == neutralizer.MASK_TARGET_V1
+    assert preserved.read_bytes() == b"previous"
+    assert resumed[0].repeated is (stage == "legacy_unit_masked")
 
 
 @POSIX_ONLY

@@ -16,7 +16,6 @@ running system while proving something about a fixture.
 """
 from __future__ import annotations
 
-import errno
 import hashlib
 import json
 import os
@@ -110,21 +109,6 @@ def _require_contained_v1(root: Path, locator: str) -> Path:
     if not resolved_parent.is_relative_to(root.resolve(strict=True)):
         raise _invalid("neutralizer_locator_escape", locator)
     return resolved_parent / candidate.name
-
-
-def _mask_v1(path: Path) -> tuple[str, bool]:
-    """Point the name at /dev/null, or agree that it already does."""
-    try:
-        os.symlink(MASK_TARGET_V1, path)
-    except OSError as exc:
-        if exc.errno != errno.EEXIST:
-            raise _invalid("neutralizer_mask_failed", str(exc)) from exc
-        if not path.is_symlink() or os.readlink(path) != MASK_TARGET_V1:
-            # Something else holds the name. Replacing it silently would
-            # destroy state this module was never told about.
-            raise _invalid("neutralizer_mask_occupied", path.name) from exc
-        return MASK_TARGET_V1, True
-    return MASK_TARGET_V1, False
 
 
 def _rename_sibling_no_replace_v1(source: Path, destination: Path) -> None:
@@ -305,13 +289,19 @@ def _publish_preservation_record_v1(
     return record
 
 
-def _preserve_replaced_unit_v1(
-    legacy_id: str, path: Path, replacement: bytes, *,
+@dataclass(frozen=True, slots=True)
+class _PreservedRegularNameV1:
+    preserved: Path
+    expected: _FileEvidenceV1
+    current_exists: bool
+    moved_now: bool
+
+
+def _preserve_regular_name_v1(
+    legacy_id: str, path: Path, *, record_stage: str, moved_stage: str,
     _crash_seam: Callable[[str], None] | None = None,
-) -> tuple[str, bool]:
-    """Preserve one occupied unit and recognize only the four named states."""
-    if type(replacement) is not bytes or not replacement:
-        raise _invalid("neutralizer_replacement_invalid", path.name)
+) -> _PreservedRegularNameV1:
+    """Preserve one regular name and return only durable observed state."""
     preserved = path.with_name(path.name + PRESERVED_EXTENSION_V1)
     record = path.with_name(path.name + PRESERVED_EXTENSION_V1 + ".receipt.json")
     current_exists = os.path.lexists(path)
@@ -332,7 +322,7 @@ def _preserve_replaced_unit_v1(
         )
         _publish_preservation_record_v1(path, encoded)
     if _crash_seam is not None:
-        _crash_seam("preservation_record_published")
+        _crash_seam(record_stage)
     if current_exists and not preserved_exists:
         if _regular_file_evidence_v1(path) != expected:
             raise _invalid("neutralizer_preservation_conflict", path.name)
@@ -340,15 +330,33 @@ def _preserve_replaced_unit_v1(
         if _regular_file_evidence_v1(preserved) != expected:
             raise _invalid("neutralizer_preservation_unconfirmed", path.name)
         if _crash_seam is not None:
-            _crash_seam("replaced_system_unit_preserved")
-        return preserved.name, False
+            _crash_seam(moved_stage)
+        return _PreservedRegularNameV1(preserved, expected, False, True)
     if not current_exists and preserved_exists:
         if _regular_file_evidence_v1(preserved) != expected:
             raise _invalid("neutralizer_preservation_conflict", path.name)
-        return preserved.name, True
+        return _PreservedRegularNameV1(preserved, expected, False, False)
     if current_exists and preserved_exists:
         if _regular_file_evidence_v1(preserved) != expected:
             raise _invalid("neutralizer_preservation_conflict", path.name)
+        return _PreservedRegularNameV1(preserved, expected, True, False)
+    raise _invalid("neutralizer_preservation_missing", path.name)
+
+
+def _preserve_replaced_unit_v1(
+    legacy_id: str, path: Path, replacement: bytes, *,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> tuple[str, bool]:
+    """Preserve one occupied unit and recognize only the four named states."""
+    if type(replacement) is not bytes or not replacement:
+        raise _invalid("neutralizer_replacement_invalid", path.name)
+    state = _preserve_regular_name_v1(
+        legacy_id, path,
+        record_stage="preservation_record_published",
+        moved_stage="replaced_system_unit_preserved",
+        _crash_seam=_crash_seam,
+    )
+    if state.current_exists:
         replacement_hash = f"sha256:{hashlib.sha256(replacement).hexdigest()}"
         observed_replacement = _regular_file_evidence_v1(path)
         if (
@@ -356,8 +364,47 @@ def _preserve_replaced_unit_v1(
             or observed_replacement.size != len(replacement)
         ):
             raise _invalid("neutralizer_preservation_conflict", path.name)
-        return preserved.name, True
-    raise _invalid("neutralizer_preservation_missing", path.name)
+        return state.preserved.name, True
+    return state.preserved.name, not state.moved_now
+
+
+def _mask_v1(
+    legacy_id: str, path: Path, *,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> tuple[str, bool]:
+    """Preserve an occupied regular unit, then bind its name to /dev/null."""
+    preserved = path.with_name(path.name + PRESERVED_EXTENSION_V1)
+    record = path.with_name(path.name + PRESERVED_EXTENSION_V1 + ".receipt.json")
+    has_history = os.path.lexists(preserved) or os.path.lexists(record)
+    if path.is_symlink():
+        if os.readlink(path) != MASK_TARGET_V1:
+            raise _invalid("neutralizer_mask_occupied", path.name)
+        if has_history:
+            state = _preserve_regular_name_v1(
+                legacy_id, path,
+                record_stage="legacy_unit_record_published",
+                moved_stage="legacy_unit_preserved",
+                _crash_seam=_crash_seam,
+            )
+            if not state.current_exists:
+                raise _invalid("neutralizer_mask_occupied", path.name)
+        return MASK_TARGET_V1, True
+    if os.path.lexists(path) or has_history:
+        state = _preserve_regular_name_v1(
+            legacy_id, path,
+            record_stage="legacy_unit_record_published",
+            moved_stage="legacy_unit_preserved",
+            _crash_seam=_crash_seam,
+        )
+        if state.current_exists:
+            raise _invalid("neutralizer_mask_occupied", path.name)
+    try:
+        os.symlink(MASK_TARGET_V1, path)
+    except OSError as exc:
+        raise _invalid("neutralizer_mask_failed", str(exc)) from exc
+    if _crash_seam is not None:
+        _crash_seam("legacy_unit_masked")
+    return MASK_TARGET_V1, False
 
 
 def _neutralize_core_v1(
@@ -391,7 +438,9 @@ def _neutralize_core_v1(
             raise _invalid("neutralizer_step_invalid", "legacy_id")
         path = _require_contained_v1(root, locator)
         if action in _MASK_ACTIONS_V1:
-            observed, repeated = _mask_v1(path)
+            observed, repeated = _mask_v1(
+                legacy_id, path, _crash_seam=_crash_seam,
+            )
             if not path.is_symlink() or os.readlink(path) != MASK_TARGET_V1:
                 raise _invalid("neutralizer_mask_unconfirmed", legacy_id)
         elif action in _REVOKE_ACTIONS_V1:
