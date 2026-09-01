@@ -41,6 +41,7 @@ A = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(A)
 
 GEN = "sha256:" + "9" * 64
+SORGENTE = "sha256:" + "5" * 64
 
 
 class _Contract:
@@ -78,6 +79,7 @@ def _() -> None:
     assert isinstance(selezione, ContextSelectionV1)
     r = P.build_producer_request_v2(
         selezione, contract_id=_Contract("origin/manifest.toml"), generation_id=GEN,
+        candidate_source_id=SORGENTE,
     )
     assert r.admission_context_id == selezione.admission_context_id
     assert r.transition_id == selezione.transition_id
@@ -90,9 +92,11 @@ def _() -> None:
 def _() -> None:
     a = P.build_producer_request_v2(
         _selezione_vera(), contract_id=_Contract("o/m.toml"), generation_id=GEN,
+        candidate_source_id=SORGENTE,
     )
     b = P.build_producer_request_v2(
         _selezione_vera(), contract_id=_Contract("o/m.toml"), generation_id=GEN,
+        candidate_source_id=SORGENTE,
     )
     assert a.request_id == b.request_id and a.objective_hash == b.objective_hash
 
@@ -105,9 +109,11 @@ def _() -> None:
     assert staged.staged_reattestation_only
     a = P.build_producer_request_v2(
         richiesta, contract_id=_Contract("o/m.toml"), generation_id=GEN,
+        candidate_source_id=SORGENTE,
     )
     b = P.build_producer_request_v2(
         staged, contract_id=_Contract("o/m.toml"), generation_id=GEN,
+        candidate_source_id=SORGENTE,
     )
     # Same authenticated facts: the derivation must agree, because the mode is
     # an authority marker and not part of the act's identity.
@@ -131,6 +137,7 @@ def _() -> None:
     try:
         P.build_producer_request_v2(
             sosia, contract_id=_Contract("o/m.toml"), generation_id=GEN,
+            candidate_source_id=SORGENTE,
         )
     except P.ProducerContextError as exc:
         assert exc.code == "producer_request_v2_invalid"

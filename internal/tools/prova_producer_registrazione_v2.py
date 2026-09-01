@@ -75,11 +75,12 @@ EPOCA_3 = "sha256:" + "f" * 64
 
 
 def _richiesta(context: str = CTX_A, epoca: str = EPOCA_2,
-               contratto: str = CONTRACT):
+               contratto: str = CONTRACT, sorgente: str = D2):
     # set_id bare hex, context_epoch a digest: the delivered forms.
     return P.build_producer_request_v2(
         _StandInSelection("sha256:" + "1" * 64, "3" * 64, context, epoca),
         contract_id=_Contract(contratto), generation_id=GEN,
+        candidate_source_id=sorgente,
     )
 
 
@@ -191,6 +192,22 @@ def _(b: Banco) -> None:
         "producer_request_v2_objective_conflict",
         lambda: S.get_or_issue_and_claim_producer_receipt_v2(
             request=r, issuer_id="synt", capability_id=CAPABILITY, binding=altro,
+            registry=b.registro, now=ISSUED, db_path=b.db, issue=lambda: b"x",
+        ),
+    )
+
+
+@caso("3-bis §9 un legame con un'altra sorgente e' rifiutato")
+def _(b: Banco) -> None:
+    r = _richiesta()
+    altra = S.ProducerReceiptBinding(
+        r.objective_hash, "sha256:" + "8" * 64,
+        ExecutorOrigin.SYNTHESIZED, RevisionAuthor.MODEL,
+    )
+    _rifiuta(
+        "producer_request_v2_source_conflict",
+        lambda: S.get_or_issue_and_claim_producer_receipt_v2(
+            request=r, issuer_id="synt", capability_id=CAPABILITY, binding=altra,
             registry=b.registro, now=ISSUED, db_path=b.db, issue=lambda: b"x",
         ),
     )

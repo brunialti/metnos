@@ -607,6 +607,10 @@ def _sealed_request_v2(request: object, binding: ProducerReceiptBinding):
     # binding that names a different objective is not this act.
     if binding.objective_hash != request.objective_hash:
         raise ReceiptError("producer_request_v2_objective_conflict", "binding")
+    # Section 9 binds the source identity into the act; a binding that carries
+    # a different source is a different act wearing this one's identity.
+    if binding.candidate_source_id != request.candidate_source_id:
+        raise ReceiptError("producer_request_v2_source_conflict", "binding")
     return request
 
 

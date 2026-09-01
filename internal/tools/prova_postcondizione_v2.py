@@ -35,7 +35,9 @@ class Insieme:
     def __init__(self, base: Path) -> None:
         self.negozio = RV.Negozio(base)
         self.banco = PR.Banco(base)
-        self.richiesta = self.negozio.richiesta(CTX_A)
+        # One source identity across both halves: the Producer binding and
+        # the sealed request must name the same act.
+        self.richiesta = self.negozio.richiesta(CTX_A, sorgente=PR.D2)
 
     def scrivi_ammissione(self, *, context: str = CTX_A) -> bytes:
         return self.negozio.scrivi(context=context)

@@ -19,6 +19,9 @@ Three properties are structural rather than checked downstream:
 * a request minted for one epoch cannot be reused in another.  Every field of
   the selection enters the framed pre-image, so a different transition, epoch,
   target set or admission context yields a different ``request_id``.
+* two acts that differ only in the authenticated candidate source are two
+  acts.  The source identity is part of the derivation, so it cannot be
+  changed while keeping the same durable transaction.
 
 The identity is a pure function of (contract, generation, selection): a retry
 after an interruption derives the same request and therefore renews the same
@@ -70,6 +73,7 @@ class ProducerRequestV2:
     transition_id: str
     context_epoch: str
     set_id: str
+    candidate_source_id: str
     _seal: object
 
     def __post_init__(self) -> None:
@@ -146,6 +150,7 @@ def build_producer_request_v2(
     *,
     contract_id: object,
     generation_id: str,
+    candidate_source_id: str,
 ) -> ProducerRequestV2:
     """Derive the one V2 Producer request identity for this target and context.
 
@@ -153,6 +158,10 @@ def build_producer_request_v2(
     loader.  Nothing about the context can be supplied by the caller, and the
     result is a pure function of the arguments, so an identical retry after an
     interruption reproduces it exactly.
+
+    ``candidate_source_id`` is the authenticated source identity of the act.
+    Section 9 requires it in both derivations: without it two reattestations
+    that differ only in what they attest would share one durable transaction.
     """
     if not isinstance(selection, _selection_class()):
         raise ProducerContextError("producer_request_v2_invalid", "selection")
@@ -167,6 +176,7 @@ def build_producer_request_v2(
     )
     contract_value = _contract_value(contract_id)
     generation = _digest(generation_id, "generation_id")
+    source = _digest(candidate_source_id, "candidate_source_id")
 
     # Every authenticated fact of the selection enters the pre-image, so a
     # request cannot survive a change of transition, epoch, target set or
@@ -178,6 +188,7 @@ def build_producer_request_v2(
         transition_id.encode("ascii"),
         set_id.encode("ascii"),
         context_epoch.encode("ascii"),
+        source.encode("ascii"),
     )
     return ProducerRequestV2(
         _hash(_REQUEST_DOMAIN, *fields),
@@ -188,5 +199,6 @@ def build_producer_request_v2(
         transition_id,
         context_epoch,
         set_id,
+        source,
         _REQUEST_SEAL,
     )

@@ -95,11 +95,20 @@ def _selection(**over):
     return _StandInSelection(**base)
 
 
-def _build(selection=None, contract="origin/manifest.toml", generation=None):
+_DIFETTO = object()
+
+
+def _build(selection=None, contract="origin/manifest.toml", generation=None,
+           sorgente=_DIFETTO):
+    # A sentinel, not None: a helper that reads None as "use the default"
+    # cannot test what happens when None is genuinely passed.
     return P.build_producer_request_v2(
         selection if selection is not None else _selection(),
         contract_id=_Contract(contract),
         generation_id=generation if generation is not None else _sha("generation"),
+        candidate_source_id=(
+            _sha("sorgente") if sorgente is _DIFETTO else sorgente
+        ),
     )
 
 
@@ -184,6 +193,7 @@ def _() -> None:
         _sha("transition").encode(),
         _hex("set").encode(),
         _sha("epoca-2").encode(),
+        _sha("sorgente").encode(),
     )
     v1 = P._hash(b"metnos.executor-birth.producer-request/v1\0", *campi)
     assert r.request_id != v1, "un dominio V1 collide con il V2"
@@ -224,8 +234,26 @@ def _() -> None:
         P._REQUEST_DOMAIN, b"origin/manifest.toml", _sha("generation").encode(),
         _sha("context").encode(), _sha("transition").encode(),
         _hex("set").encode(), _sha("epoca-2").encode(),
+        _sha("sorgente").encode(),
     )
     assert r.request_id == atteso, "il pre-immagine non usa il valore del contratto"
+
+
+@prova("12-bis §9 la sola identita' di sorgente cambia entrambe le impronte")
+def _() -> None:
+    a, b = _build(), _build(sorgente=_sha("altra-sorgente"))
+    assert a.request_id != b.request_id, "due atti diversi, una sola identita'"
+    assert a.objective_hash != b.objective_hash
+    assert a.candidate_source_id == _sha("sorgente")
+
+
+@prova("12-ter la sorgente e' un'impronta canonica o niente")
+def _() -> None:
+    for guasta in ("sha256:" + "A" * 64, "abc", None, 2, "8" * 64):
+        _rifiuta(
+            "producer_request_v2_invalid",
+            lambda g=guasta: _build(sorgente=g),
+        )
 
 
 @prova("13 impronte non canoniche rifiutate")
@@ -257,6 +285,7 @@ def _() -> None:
         "producer_request_v2_invalid",
         lambda: P.build_producer_request_v2(
             _selection(), contract_id=Senza(), generation_id=_sha("g"),
+            candidate_source_id=_sha("sorgente"),
         ),
     )
 
@@ -266,7 +295,7 @@ def _() -> None:
     try:
         P.ProducerRequestV2(
             _sha("r"), _sha("o"), "o/m.toml", _sha("g"), _sha("c"),
-            _sha("t"), _sha("e"), _hex("s"), object(),
+            _sha("t"), _sha("e"), _hex("s"), _sha("src"), object(),
         )
     except P.ProducerContextError as exc:
         assert exc.code == "producer_request_v2_untrusted"

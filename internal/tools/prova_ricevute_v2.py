@@ -60,6 +60,7 @@ CTX_B = "sha256:" + "b" * 64
 
 
 EPOCA = "sha256:" + "e" * 64
+SORGENTE = "sha256:" + "5" * 64
 
 
 def _selection(context: str = CTX_A, epoca: str = EPOCA) -> _StandInSelection:
@@ -115,11 +116,13 @@ class Negozio:
         self.generation = risultato.current_generation_id
         self.dir = self.root / C.contract_storage_key(ref.contract_id)
 
-    def richiesta(self, context: str = CTX_A, epoca: str = EPOCA):
+    def richiesta(self, context: str = CTX_A, epoca: str = EPOCA,
+                  sorgente: str = SORGENTE):
         return P.build_producer_request_v2(
             _selection(context, epoca),
             contract_id=self.ref.contract_id,
             generation_id=self.generation,
+            candidate_source_id=sorgente,
         )
 
     def scrivi(self, *, context: str = CTX_A, nota: str = "", corpo: bytes | None = None,
@@ -277,7 +280,7 @@ def _(n: Negozio) -> None:
 def _(n: Negozio) -> None:
     altra = P.build_producer_request_v2(
         _selection(), contract_id=type("X", (), {"value": "altro/manifest.toml"})(),
-        generation_id=n.generation,
+        generation_id=n.generation, candidate_source_id=SORGENTE,
     )
     _rifiuta("birth_receipt_v2_request_mismatch", lambda: n.scrivi(richiesta=altra))
 
