@@ -2491,6 +2491,7 @@ def _publish_certificate_with_prerequisite_v1(
     authorities: RootOwnershipAuthoritiesV1,
     prerequisite: _StartupPrerequisiteV1,
     observe_maintenance: Callable[[], bytes],
+    context_transition_id: str,
     crossing_receipt: str,
     _crash_seam: Callable[[str], None] | None = None,
 ) -> OwnershipCoordinatorResultV1:
@@ -2508,6 +2509,8 @@ def _publish_certificate_with_prerequisite_v1(
         not isinstance(prerequisite, _StartupPrerequisiteV1)
         or prerequisite._seal is not _PREREQUISITE_SEAL
         or not callable(observe_maintenance)
+        or type(context_transition_id) is not str
+        or _DIGEST_RE.fullmatch(context_transition_id) is None
         or type(crossing_receipt) is not str
         or _DIGEST_RE.fullmatch(crossing_receipt) is None
     ):
@@ -2533,11 +2536,15 @@ def _publish_certificate_with_prerequisite_v1(
         boundary_inventory_hash=latest.boundary_inventory_hash,
         boundary_guard_version=latest.boundary_guard_version,
         closed_build_id=latest.closed_build_id,
+        context_transition_id=context_transition_id,
+        dominant_startup_receipt=crossing_receipt,
         private_key=authorities.cutover_private,
     )
     certificate = verify_ownership_cutover_certificate(
         payload, signature, registry=authorities.public.cutover,
         expected_proof=proof,
+        expected_context_transition_id=context_transition_id,
+        expected_dominant_startup_receipt=crossing_receipt,
     )
     payload_hash = _digest(payload)
     signature_hash = _digest(signature)
@@ -2572,6 +2579,8 @@ def _publish_certificate_with_prerequisite_v1(
         installed = install_ownership_cutover_certificate(
             certificate_directory, payload, signature,
             registry=authorities.public.cutover, expected_proof=proof,
+            expected_context_transition_id=context_transition_id,
+            expected_dominant_startup_receipt=crossing_receipt,
             _crash_seam=_crash_seam,
         )
         if installed.cutover_id != certificate.cutover_id:
@@ -2588,6 +2597,8 @@ def _publish_certificate_with_prerequisite_v1(
         reread = read_ownership_cutover_certificate(
             certificate_directory, registry=authorities.public.cutover,
             expected_proof=proof,
+            expected_context_transition_id=context_transition_id,
+            expected_dominant_startup_receipt=crossing_receipt,
         )
         if reread.cutover_id != latest.cutover_id:
             raise OwnershipCoordinatorError("birth_ownership_recovery_required")

@@ -347,7 +347,10 @@ def _fixed_ownership_fixture(
             maintenance_evidence_hash=digest("5"),
             boundary_inventory_hash=distribution_value["boundary_inventory_hash"],
             boundary_guard_version=distribution_value["boundary_guard_version"],
-            closed_build_id=closed_build_id, private_key=private["cutover"],
+            closed_build_id=closed_build_id,
+            context_transition_id=digest("6"),
+            dominant_startup_receipt=digest("7"),
+            private_key=private["cutover"],
         )
         from executor_birth_ownership_authorities import decode_ownership_registry_v1
         cutover_registry = decode_ownership_registry_v1(
@@ -657,7 +660,14 @@ def _authenticated_fixed_ownership_fixture(
             maintenance_evidence_hash=maintenance_hash,
             boundary_inventory_hash=distribution["boundary_inventory_hash"],
             boundary_guard_version=distribution["boundary_guard_version"],
-            closed_build_id=closed_build_id, private_key=private["cutover"],
+            closed_build_id=closed_build_id,
+            context_transition_id=preflight._raw_sha256_v1(
+                f"context-transition-{release_sequence}".encode("ascii"),
+            ),
+            dominant_startup_receipt=preflight._raw_sha256_v1(
+                f"dominant-startup-{release_sequence}".encode("ascii"),
+            ),
+            private_key=private["cutover"],
         )
         cutover = verify_ownership_cutover_certificate(
             cutover_encoded, cutover_signature,
@@ -1665,6 +1675,8 @@ def test_autonomous_ownership_registry_cutover_and_head_codecs_match_runtime() -
         boundary_inventory_hash="sha256:" + "5" * 64,
         boundary_guard_version="fixture/1",
         closed_build_id="sha256:" + "6" * 64,
+        context_transition_id="sha256:" + "7" * 64,
+        dominant_startup_receipt="sha256:" + "8" * 64,
         private_key=private_keys["cutover"],
     )
     runtime_cutover = verify_ownership_cutover_certificate(
@@ -1674,7 +1686,7 @@ def test_autonomous_ownership_registry_cutover_and_head_codecs_match_runtime() -
     autonomous_cutover = preflight._decode_ownership_cutover_v1(
         cutover_encoded, cutover_signature,
     )
-    assert autonomous_cutover[:10] == (
+    assert autonomous_cutover[:12] == (
         runtime_cutover.cutover_id,
         runtime_cutover.previous_cutover_id,
         runtime_cutover.request_id,
@@ -1690,6 +1702,8 @@ def test_autonomous_ownership_registry_cutover_and_head_codecs_match_runtime() -
         runtime_cutover.boundary_inventory_hash,
         runtime_cutover.boundary_guard_version,
         runtime_cutover.closed_build_id,
+        runtime_cutover.context_transition_id,
+        runtime_cutover.dominant_startup_receipt,
     )
 
     head_encoded, head_signature = issue_ownership_head(
@@ -4050,4 +4064,3 @@ def test_the_shared_gate_is_acquired_without_asking_for_write_access(
         fcntl.flock(descriptor, fcntl.LOCK_UN)
     finally:
         os.close(descriptor)
-

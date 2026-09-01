@@ -133,6 +133,7 @@ def cutover(authority, *, previous, build, request):
         request_id=request, signing_key_id=authority.cutover_key_id,
         maintenance_evidence_hash=D("1"), boundary_inventory_hash=D("2"),
         boundary_guard_version="closed-v1", closed_build_id=build,
+        context_transition_id=D("8"), dominant_startup_receipt=D("9"),
         private_key=authority.cutover_private,
     )
     return encoded, signature, verify_ownership_cutover_certificate(

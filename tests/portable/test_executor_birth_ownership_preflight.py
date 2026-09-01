@@ -79,10 +79,13 @@ def _installed(tmp_path: Path):
         signing_key_id=key_id,
         maintenance_evidence_hash=preflight.maintenance_evidence_hash(maintenance),
         boundary_inventory_hash=D("4"), boundary_guard_version="closed-v1",
-        closed_build_id=D("5"), private_key=private,
+        closed_build_id=D("5"), context_transition_id=D("6"),
+        dominant_startup_receipt=D("7"), private_key=private,
     )
     install_ownership_cutover_certificate(
         tmp_path, encoded, signature, registry=registry, expected_proof=proof,
+        expected_context_transition_id=D("6"),
+        expected_dominant_startup_receipt=D("7"),
     )
     build = preflight._sealed_build_identity_for_test(D("5"), D("4"), "closed-v1")
     return registry, proof, maintenance, build

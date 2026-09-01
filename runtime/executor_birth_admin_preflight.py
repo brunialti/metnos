@@ -347,7 +347,8 @@ _CUTOVER_KEYS_V1 = frozenset({
     "schema_version", "cutover_id", "previous_cutover_id", "request_id",
     "signing_key_id", "catalog_id", "current_count", "current_receipts",
     "maintenance_evidence_hash", "boundary_inventory_hash",
-    "boundary_guard_version", "closed_build_id",
+    "boundary_guard_version", "closed_build_id", "context_transition_id",
+    "dominant_startup_receipt",
 })
 _CUTOVER_RECEIPT_KEYS_V1 = frozenset({
     "contract_id", "generation_id", "receipt_hash",
@@ -995,6 +996,8 @@ class _DecodedOwnershipCutoverV1(NamedTuple):
     boundary_inventory_hash: str
     boundary_guard_version: str
     closed_build_id: str
+    context_transition_id: str
+    dominant_startup_receipt: str
     encoded: bytes
     signature: bytes
 
@@ -3905,6 +3908,12 @@ def _decode_ownership_cutover_v1(
     closed_build_id = _require_digest(
         value.get("closed_build_id"), "closed_build_id",
     )
+    context_transition_id = _require_digest(
+        value.get("context_transition_id"), "context_transition_id",
+    )
+    dominant_startup_receipt = _require_digest(
+        value.get("dominant_startup_receipt"), "dominant_startup_receipt",
+    )
     guard_version = value.get("boundary_guard_version")
     if (
         not isinstance(guard_version, str) or not guard_version
@@ -3928,7 +3937,8 @@ def _decode_ownership_cutover_v1(
     return _DecodedOwnershipCutoverV1(
         cutover_id, previous_cutover_id, request_id, key_id, catalog_id,
         tuple(receipts), maintenance_evidence_hash, boundary_inventory_hash,
-        guard_version, closed_build_id, bytes(encoded), bytes(signature),
+        guard_version, closed_build_id, context_transition_id,
+        dominant_startup_receipt, bytes(encoded), bytes(signature),
     )
 
 

@@ -614,6 +614,8 @@ def _build_prerequisite_and_graph(
         boundary_inventory_hash=manifest_value["boundary_inventory_hash"],
         boundary_guard_version=manifest_value["boundary_guard_version"],
         closed_build_id=closed_build_id,
+        context_transition_id="sha256:" + "8" * 64,
+        dominant_startup_receipt="sha256:" + "9" * 64,
         private_key=fixture.private_keys["cutover"],
     )
     cutover = verify_ownership_cutover_certificate(
@@ -1178,4 +1180,3 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         if fixture.marker_root.exists():
             assert tuple(fixture.marker_root.iterdir()) == ()
             fixture.marker_root.rmdir()
-
