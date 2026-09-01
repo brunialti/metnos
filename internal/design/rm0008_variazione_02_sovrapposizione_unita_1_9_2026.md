@@ -1,7 +1,7 @@
 # RM-0008 — RM-VARIAZIONE-02: sovrapposizione fra unita' conservata e dominante
 
 Data: 1 settembre 2026  
-Stato: proposta A corretta per terzo giro di revisione incrociata
+Stato: normativa; correzione fattuale offerta alla revisione incrociata
 Unita': `RM-VARIAZIONE-02`
 
 ## 1. Fatto che impone la variazione
@@ -60,14 +60,22 @@ verbale della decisione resta separato dalla proposta, come richiede il
 protocollo: questo documento non attribuisce a B la verifica di messaggi
 ricevuti da A e non presume l'esito della decisione.
 
-La finestra di indisponibilita' comincia quando il piano ferma e maschera
-l'unita' utente attiva e termina soltanto quando il nuovo servizio di sistema
-supera il proprio cancello e viene osservato attivo. La checklist B4 deve
-misurare e registrare entrambi gli estremi; non puo' dichiarare successo fra i
-due. Un'interruzione nella finestra lascia gli ingressi precedenti chiusi e la
-ripresa completa lo stesso passaggio. Dopo il punto di non ritorno, un ritorno
-funzionale richiede una nuova epoca e non riabilita automaticamente l'unita'
-utente.
+La misura in sola lettura del piano completo trova 17 nomi occupati: cinque
+nello spazio di sistema e dodici nello spazio utente. Tutti i dodici nomi
+utente hanno un successore nel catalogo dominante; non viene ritirato un
+servizio senza sostituto. Il passaggio ferma e maschera quindi l'intera pila
+utente, compresi `metnos.target`, prontezza, quarantena e guardiano, e la
+ripubblica nello spazio di sistema.
+
+La finestra di indisponibilita' comincia con il ritiro di questa pila e termina
+soltanto quando la nuova pila di sistema supera i propri cancelli e viene
+osservata attiva. Dentro la finestra prontezza, quarantena e guardiano
+precedenti sono chiusi intenzionalmente, perche' altrimenti potrebbero
+riattivare ingressi gia' ritirati; il recupero e' quindi manuale e consiste
+soltanto nel completare la stessa transizione. La checklist B4 deve misurare e
+registrare entrambi gli estremi e non puo' dichiarare successo fra i due.
+Dopo il punto di non ritorno, un ritorno funzionale richiede una nuova epoca e
+non riabilita automaticamente la pila utente.
 
 ## 3. Regola minima proposta
 
@@ -85,6 +93,14 @@ firmato:
 5. una seconda sovrapposizione, una coppia sconosciuta o una copertura non
    completa arrestano il passaggio. Non nasce un comportamento generico di
    sostituzione.
+
+Per ogni azione `mask_user_unit` o `mask_system_unit`, un nome assente riceve
+direttamente la maschera. Un nome occupato da un file ordinario dichiarato dal
+piano viene invece prima conservato con ricevuta durevole e rinomina atomica
+senza sostituzione, poi riceve la maschera. Un collegamento differente, un
+contenuto storico discordante o una doppia presenza non concordante restano un
+conflitto. Questa regola rende eseguibili i 17 casi misurati senza eliminare i
+byte precedenti e senza ammettere una sostituzione silenziosa.
 
 `preserve_replaced_system_unit` rinomina senza sostituzione il file ordinario
 precedente in un nome storico deterministico, nella stessa directory, e ne
@@ -134,6 +150,12 @@ La ripresa accetta soltanto quattro stati nominati:
 - qualunque altro contenuto, collegamento, doppia presenza non concordante o
   metadato mosso: conflitto, senza sostituzione.
 
+La mascheratura applica la stessa disciplina a ciascuno dei 17 nomi occupati:
+ricevuta pubblicata, file precedente conservato e maschera pubblicata sono tre
+confini durevoli distinti. La ripresa verifica storico e ricevuta prima di
+completare il confine successivo; un nome originariamente assente non produce
+uno storico artificiale.
+
 Una seconda esecuzione produce lo stesso piano e le stesse identita'. Il
 carattere `repeated` puo' cambiare nella ricevuta operativa, ma non cambia
 l'impronta normativa del piano ne' la topologia osservata.
@@ -155,6 +177,8 @@ La barriera B2 aggiunge:
    sovrapposizione;
 7. prova che nessun passo maschera il nuovo frammento;
 8. prova di convergenza fra esecuzione intera e ogni interruzione durevole.
+9. censimento in sola lettura di 17 nomi occupati e prova che i dodici nomi
+   utente possiedono tutti un successore dominante.
 
 Le prove restano mirate. La suite completa gira una volta sola a B3.
 
@@ -169,7 +193,7 @@ dell'autorita' prevista dal protocollo.
 RM0008-Unita: RM-VARIAZIONE-02  
 RM0008-Ruolo: agente-a  
 RM0008-Stato: PRONTA
-RM0008-Ancora: 7aa688e9
+RM0008-Ancora: c44ece77
 RM0008-Percorsi: internal/design/rm0008_variazione_02_sovrapposizione_unita_1_9_2026.md; internal/tools/sonda_sovrapposizione_unita_rm0008.py; internal/roadmap/RM-0008-porta-unica-nascita-executor.md
-RM0008-Prova: sonda deterministica committata; osservazioni in sola lettura di entrambe le unita'; decisione dell'autorita' separata dopo le due accettazioni
+RM0008-Prova: 17 nomi occupati misurati in sola lettura; 12 successori utente su 12; 16 giunture convergenti nella sonda B
 RM0008-Ambito: roadmap
