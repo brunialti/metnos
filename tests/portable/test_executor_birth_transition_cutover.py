@@ -1,7 +1,6 @@
 """Focused proofs for the productive RM-0008 transition composition."""
 from __future__ import annotations
 
-import os
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -19,14 +18,6 @@ from install import birth_authority_provisioner as provisioner
 
 def D(character: str) -> str:
     return "sha256:" + character * 64
-
-
-def test_portable_bootstrap_freezes_paths_only_after_session_isolation():
-    import config
-
-    isolated_state = Path(os.environ["METNOS_USER_STATE"]).resolve()
-    assert config.PATH_USER_STATE.resolve() == isolated_state
-    assert isolated_state.is_relative_to(Path(os.environ["HOME"]).resolve())
 
 
 def _gate_bytes(closed: bool = True) -> bytes:

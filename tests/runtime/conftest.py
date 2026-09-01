@@ -287,7 +287,6 @@ def _full_suite_environment_issues(
     return issues
 
 
-@pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session) -> None:
     """Fail once as infrastructure error instead of emitting false reds.
 

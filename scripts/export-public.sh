@@ -99,6 +99,10 @@ BIN_RE='\.(gguf|onnx|safetensors|sqlite|sqlite-journal|env|key|pem|p12|db)$'
 # continuano ad applicarsi al loro contenuto.
 PUBLIC_TEST_RE='^tests/(portable|windows_identity)/'
 
+# The closed release builder consumes this reviewed, non-personal inventory.
+# It is the only public exception to the otherwise private `internal/` tree.
+PUBLIC_BOUNDARY_EVIDENCE_RE='^internal/reports/rm0007-m4-boundary-inventory\.json$'
+
 # Eccezione binari: seed RUN-ESSENTIAL all'install (i18n) che NON e' stato/modello
 # scaricabile a parte. Incluso, ma SANIFICATO via SQL piu' sotto (sed lo
 # corromperebbe: le sostituzioni cambiano la lunghezza delle stringhe).
@@ -167,7 +171,9 @@ for f in "${ALL[@]}"; do
   fi
   if [[ "$f" =~ $BIN_RE ]]; then
     DROP+=("$f")
-  elif [[ "$f" =~ $EXCLUDE_RE ]] && [[ ! "$f" =~ $PUBLIC_TEST_RE ]]; then
+  elif [[ "$f" =~ $EXCLUDE_RE ]] \
+    && [[ ! "$f" =~ $PUBLIC_TEST_RE ]] \
+    && [[ ! "$f" =~ $PUBLIC_BOUNDARY_EVIDENCE_RE ]]; then
     DROP+=("$f")
   else
     KEEP+=("$f")

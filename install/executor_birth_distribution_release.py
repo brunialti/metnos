@@ -72,7 +72,7 @@ from executor_birth_service_catalog import (
     _build_service_catalog_v1, decode_service_catalog_v1,
 )
 
-from executor_birth_source_receiver import (
+from install.executor_birth_source_receiver import (
     INCOMING_DIRECTORY_BASENAME_V1,
     SOURCES_DIRECTORY_BASENAME_V1,
     _ServiceAccountV1,

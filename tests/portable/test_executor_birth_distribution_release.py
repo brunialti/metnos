@@ -12,13 +12,13 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
 ROOT = Path(__file__).resolve().parents[2]
-for directory in (ROOT / "runtime", ROOT / "install"):
-    if str(directory) not in sys.path:
-        sys.path.insert(0, str(directory))
+runtime_root = ROOT / "runtime"
+if str(runtime_root) not in sys.path:
+    sys.path.insert(0, str(runtime_root))
 
 import executor_birth_distribution_assembler as assembler
 import executor_birth_distribution_manifest as manifest
-import executor_birth_distribution_release as release
+from install import executor_birth_distribution_release as release
 
 
 def _source_tree(tmp_path: Path):

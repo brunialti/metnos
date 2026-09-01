@@ -137,6 +137,38 @@ def _literal(tree: Path, path: Path, name: bytes) -> str:
     return matches[0].group("value").decode("ascii")
 
 
+def _refresh_public_boundary_inventory(tree: Path) -> None:
+    """Materialize and verify the closed inventory for the exported profile."""
+    guard = tree / "runtime/contract_boundary_guard.py"
+    inventory = tree / "internal/reports/rm0007-m4-boundary-inventory.json"
+    if not guard.is_file() or not inventory.is_file():
+        _fail("public boundary guard or inventory is absent")
+    base = (
+        sys.executable,
+        str(guard),
+        "--birth-closed",
+        "--repository-root",
+        str(tree),
+        "--inventory",
+        str(inventory),
+    )
+    rendered = subprocess.run(
+        (*base, "--render"), check=False, capture_output=True,
+    )
+    if rendered.returncode != 0 or not rendered.stdout:
+        _fail("cannot render the public boundary inventory")
+    try:
+        parsed = json.loads(rendered.stdout)
+    except json.JSONDecodeError:
+        _fail("rendered public boundary inventory is not JSON")
+    if parsed.get("schema") != "metnos.contract-boundary-inventory/2":
+        _fail("rendered public boundary inventory has the wrong schema")
+    inventory.write_bytes(rendered.stdout)
+    verified = subprocess.run(base, check=False, capture_output=True)
+    if verified.returncode != 0:
+        _fail("rendered public boundary inventory does not verify")
+
+
 def _main() -> None:
     if len(sys.argv) not in {5, 6}:
         _fail("usage: MODE TREE EXPECTED COUNT [INPUT_PIN]")
@@ -202,6 +234,7 @@ def _main() -> None:
                     f"{path.relative_to(tree)}"
                 )
             path.write_bytes(updated)
+        _refresh_public_boundary_inventory(tree)
         _require_root(
             _filesystem_sources(tree), expected, expected_count,
             "public filesystem after pinning",

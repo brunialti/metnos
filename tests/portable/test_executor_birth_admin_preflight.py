@@ -3504,7 +3504,7 @@ def test_real_boundary_policy_snapshot_is_exact_and_entry_schema_is_closed() -> 
     raw = _compiled_boundary_inventory_fixture()
     encoded = preflight._canonical_json(raw)
     parsed = preflight._validate_boundary_inventory_v1(encoded)
-    assert len(parsed["birth_closed"]["coordinator_store_owners"]) == 123
+    assert len(parsed["birth_closed"]["coordinator_store_owners"]) == 126
     assert len(parsed["birth_closed"]["exceptions"]) == 16
     for mutate in ("owners", "exceptions", "entry"):
         mutant = json.loads(encoded)
@@ -4224,11 +4224,22 @@ def test_a_shared_lock_directory_is_refused_by_the_chain_rule() -> None:
         pytest.skip("this system has no shared FHS lock directory")
     assert shared.stat().st_mode & 0o022
 
+    runtime_parent = Path("/run")
+    runtime_parent_info = runtime_parent.stat()
+    assert not runtime_parent_info.st_mode & 0o022
     preflight._require_safe_directory_chain_v1(
-        Path("/run"), uid=0, gid=0, stop=None,
+        runtime_parent,
+        uid=runtime_parent_info.st_uid,
+        gid=runtime_parent_info.st_gid,
+        stop=None,
     )
     with pytest.raises(preflight.PreflightError) as refused:
-        preflight._require_safe_directory_chain_v1(shared, uid=0, gid=0, stop=None)
+        preflight._require_safe_directory_chain_v1(
+            shared,
+            uid=runtime_parent_info.st_uid,
+            gid=runtime_parent_info.st_gid,
+            stop=None,
+        )
     assert refused.value.code == preflight.CODE_INVALID
 
 

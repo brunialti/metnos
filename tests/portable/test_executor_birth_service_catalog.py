@@ -281,6 +281,7 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
     }
     assert discovered_entrypoints & store_entrypoints == {
         "install/executor_birth_source_receiver.py",
+        "install/executor_birth_transition.py",
     }
     assert discovered_entrypoints <= repository_bindings | store_entrypoints
     assert repository_bindings - discovered_entrypoints == (

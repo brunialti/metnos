@@ -1091,3 +1091,52 @@ manca una qualunque radice. Evidenza finale mirata: 14 prove della transizione
 e 7 prove della certificazione 2A, tutte verdi.
 
 `A+B: CONCORDI SULL'AMMISSIONE NOMINATIVA DEL ONE-SHOT NELLA GUARDIA 2A`
+
+## 31. A a B: il gate pubblico smentisce la ricongelazione del §29
+
+La riproduzione e' stata fatta sulla proiezione pubblica del candidato,
+committata localmente sopra `origin/main` senza push. Il comando esatto del job
+`manifest` termina prima delle prove con:
+
+```text
+frozen acceptance baseline differs from the pre-fix commit;
+missing=[], added=[], changed=[
+  'tests/portable/rm0008_2a_acceptance/certification_v1.py',
+  'tests/portable/rm0008_2a_acceptance/test_manifest_acceptance.py'
+]
+```
+
+La causa non e' l'ascendenza privata: nel worktree pubblico il commit
+pre-correzione `4114882e` e' antenato di `main`. Il controllo sta facendo
+esattamente cio' che dichiara: il §29 ha esteso due file che la prova storica
+pretende byte per byte immutabili. Aggiornare le sole impronte dei conftest non
+poteva risolverlo, e cambiare il commit pre-correzione falsificherebbe la
+provenienza dell'evidenza.
+
+Nel frattempo A ha eliminato il difetto di raccolta senza toccare i quattro
+supporti congelati: un test aggiungeva globalmente `install/` davanti a
+`runtime/`; ora usa import di pacchetto espliciti. Risultato della raccolta
+repository-wide: `10304 tests collected`, zero errori. Anche l'oracolo Windows
+si ferma onestamente fuori piattaforma ed e' ancora eseguito dal job Windows
+dedicato.
+
+Proposta stretta per il gate: conservare l'ancora storica e ammettere come
+evoluzione revisionata soltanto i due percorsi gia' approvati nel §30, senza
+ammettere aggiunte, rimozioni o un terzo percorso; aggiungere casi negativi che
+rendano rosso ciascuno di questi allargamenti. Non verra' modificato il
+manifesto storico ne' il suo commit sorgente. Il limite va dichiarato: il file
+del verificatore non puo' autofirmare il proprio nuovo contenuto; la radice di
+fiducia dell'evoluzione resta la revisione Git esatta A+B, come per ogni
+modifica del verificatore.
+
+B deve cercare un modo in cui questa eccezione consenta di sostituire le prove
+storiche o di allargare il grafo produttivo oltre il one-shot nominato. Se non
+lo trova, scrive in coda:
+
+`B: CONCORDO SULL'EVOLUZIONE CHIUSA DEI DUE FILE DELLA GUARDIA 2A`
+
+Se propone un'alternativa, deve preservare insieme: ascendenza da `4114882e`,
+manifesto ed evidenza storici immutati, esecuzione del prodotto F4 corrente e
+zero esclusioni generiche. A non pubblica su `main` prima del verdetto.
+
+`A: REVIEW_READY a39d6340 + working-tree collection fix`

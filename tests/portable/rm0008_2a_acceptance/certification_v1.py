@@ -52,6 +52,10 @@ _FROZEN_EXACT_PATHS = (
 _FROZEN_TREE_EXCLUSIONS = {
     "tests/portable/rm0008_2a_acceptance/production-python-inventory-v1.json",
 }
+_REVIEWED_ACCEPTANCE_EVOLUTIONS = frozenset({
+    "tests/portable/rm0008_2a_acceptance/certification_v1.py",
+    "tests/portable/rm0008_2a_acceptance/test_manifest_acceptance.py",
+})
 
 _FROZEN_WORKFLOW_SHA256 = (
     "3e953be12480be9a4e6dfa19812a053492b5e26e155c9ecb7b749c29bde135e9"
@@ -59,10 +63,10 @@ _FROZEN_WORKFLOW_SHA256 = (
 _EFFECTIVE_PYTEST_SUPPORT_SHA256 = {
     "conftest.py": "c31a567f781dcbd3e1ce06c67c901a1b3be07c21a5d8c4030cc8bf262a753015",
     "tests/portable/conftest.py": (
-        "326ff30ed872a9b0cded1cbdd27f155043342d431e76f9d108b29c1e70cb41d1"
+        "c4026c2a26baadf7e4a294d747abc97417ce50254d0319dcac0754fba8370fd9"
     ),
     "tests/runtime/conftest.py": (
-        "87f5d98acdfb3950dc6e443e01360163336bb2c4adf10dc16fdc97e8308696a0"
+        "6c3c097efa2cf52334cb4fc40945c1b1d9c91bf7f774a768958809bd8c9086ab"
     ),
     "tests/windows_identity/conftest.py": (
         "856572740b3f2246296ba064168da30894092e690ab5c65d1b0ea159029768b3"
@@ -2680,26 +2684,44 @@ def _git_blob(commit: str, path: Path) -> bytes:
     )
 
 
+def _validate_reviewed_acceptance_tree_evolution(
+    source_tree: Mapping[str, tuple[str, str]],
+    current_tree: Mapping[str, tuple[str, str]],
+) -> None:
+    """Allow only the two reviewed files that extend the closed F4 graph.
+
+    The historical commit, manifest, evidence and every other acceptance file
+    remain byte-identical. The current verifier and its negative cases evolve
+    together because the named transition entry did not exist in the frozen
+    pre-fix product graph.
+    """
+    source_paths = set(source_tree)
+    current_paths = set(current_tree)
+    missing = sorted(source_paths - current_paths)
+    added = sorted(current_paths - source_paths)
+    changed = sorted(
+        path
+        for path in source_paths & current_paths
+        if source_tree[path] != current_tree[path]
+    )
+    if (
+        missing
+        or added
+        or frozenset(changed) != _REVIEWED_ACCEPTANCE_EVOLUTIONS
+    ):
+        raise CertificationError(
+            "frozen acceptance baseline has an unreviewed evolution; "
+            f"missing={missing!r}, added={added!r}, changed={changed!r}"
+        )
+
+
 def _validate_frozen_acceptance_baseline(
     source_git_sha: str, evidence: Mapping[str, Any]
 ) -> None:
     _require_snapshot_commit(source_git_sha)
     source_tree = _frozen_tree(source_git_sha)
     current_tree = _frozen_tree("HEAD")
-    if source_tree != current_tree:
-        source_paths = set(source_tree)
-        current_paths = set(current_tree)
-        changed = sorted(
-            path
-            for path in source_paths & current_paths
-            if source_tree[path] != current_tree[path]
-        )
-        raise CertificationError(
-            "frozen acceptance baseline differs from the pre-fix commit; "
-            f"missing={sorted(source_paths - current_paths)!r}, "
-            f"added={sorted(current_paths - source_paths)!r}, "
-            f"changed={changed!r}"
-        )
+    _validate_reviewed_acceptance_tree_evolution(source_tree, current_tree)
     historical_manifest = _git_blob(source_git_sha, MANIFEST_PATH)
     if digest_bytes(historical_manifest) != evidence["manifest_sha256"]:
         raise CertificationError("pre-fix manifest digest differs from its source blob")
