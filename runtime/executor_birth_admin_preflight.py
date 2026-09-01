@@ -786,7 +786,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:bef7d3fbf766b3a24580c60c9395fd2fa51f81bef84f984104193d89144c6a0c"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:f4c1f35719aba0aecfdba825a90ff7042757ccdade13deaa52d152000edd47d7"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -1916,6 +1916,24 @@ class _CandidateCutoverMaterialsV1(NamedTuple):
     unit_fragments: tuple[tuple[str, bytes], ...]
     administrative_bundle_hash: str
     installed_tree_hash: str
+
+
+_PREPARED_CUTOVER_CANDIDATE_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedCutoverCandidateV2:
+    materials: _CandidateCutoverMaterialsV1
+    administrative_tcb: _CapturedAdministrativeTcbV1
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _PREPARED_CUTOVER_CANDIDATE_SEAL_V2
+            or type(self.materials) is not _CandidateCutoverMaterialsV1
+            or type(self.administrative_tcb) is not _CapturedAdministrativeTcbV1
+        ):
+            raise _invalid("prepared cutover candidate")
 
 
 class _BoundPreflightMaterialsForTestV1(NamedTuple):
@@ -4037,6 +4055,142 @@ def _bind_preflight_materials_for_test_v1(
             distribution, transaction, predecessor, captured,
             prerequisite_encoded,
         )
+    )
+
+
+def _select_cutover_candidate_from_snapshot_v2(
+    snapshot: _ReconciledFixedOwnershipSnapshotV1, *,
+    complete_encoded: bytes, request_id: str, closed_build_id: str,
+    release_sequence: int, distribution_encoded: bytes,
+    distribution_signature: bytes,
+) -> tuple[
+    _AuthenticatedDistributionObjectV1,
+    _DecodedCoordinatorRecordV2,
+    _DecodedPredecessorDescriptorV1,
+]:
+    """Select the exact pending transaction without consulting required-head."""
+    if (
+        type(snapshot) is not _ReconciledFixedOwnershipSnapshotV1
+        or type(complete_encoded) is not bytes
+        or type(request_id) is not str
+        or type(closed_build_id) is not str
+        or type(release_sequence) is not int
+        or type(distribution_encoded) is not bytes
+        or type(distribution_signature) is not bytes
+    ):
+        raise _invalid("cutover candidate selection")
+    transactions = tuple(
+        item for item in snapshot.transactions
+        if item.claim.request_id == request_id
+    )
+    builds = tuple(
+        item for item in snapshot.builds
+        if item.facts.closed_build_id == closed_build_id
+        and item.facts.release_sequence == release_sequence
+    )
+    predecessor = snapshot.predecessor
+    if (
+        len(transactions) != 1
+        or len(builds) != 1
+        or type(predecessor) is not _DecodedPredecessorDescriptorV1
+    ):
+        raise _recovery("cutover candidate selection")
+    transaction = transactions[0]
+    latest = transaction.prefix.records[-1]
+    build = builds[0]
+    if (
+        transaction.prefix.encoded_records[-1] != complete_encoded
+        or latest.sequence != 1
+        or latest.state != "RECEIPTS_COMPLETE"
+        or transaction.claim.closed_build_id != closed_build_id
+        or transaction.claim.release_sequence != release_sequence
+        or latest.request_id != request_id
+        or latest.closed_build_id != closed_build_id
+        or latest.release_sequence != release_sequence
+        or build.encoded != distribution_encoded
+        or build.signature != distribution_signature
+    ):
+        raise _recovery("cutover candidate binding")
+    return build, latest, predecessor
+
+
+def _prepare_cutover_candidate_v2(
+    complete: object, distribution: object,
+) -> _PreparedCutoverCandidateV2:
+    """Capture one signed candidate and the TCB before live topology changes."""
+    from executor_birth_distribution_manifest import (
+        VerifiedDistribution,
+        verify_current_installation_distribution_v1,
+    )
+    from executor_birth_ownership_coordinator import (
+        OwnershipCoordinatorRecordV2,
+        OwnershipCoordinatorStateV1,
+    )
+
+    if (
+        type(complete) is not OwnershipCoordinatorRecordV2
+        or complete.sequence != 1
+        or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+        or type(distribution) is not VerifiedDistribution
+    ):
+        raise _invalid("cutover candidate input")
+    verified = verify_current_installation_distribution_v1(
+        distribution.encoded, distribution.signature,
+    )
+    if verified != distribution:
+        raise _recovery("cutover distribution changed")
+    authenticated = _authenticate_fixed_ownership_snapshot_v1()
+    build, transaction, predecessor = _select_cutover_candidate_from_snapshot_v2(
+        authenticated.snapshot,
+        complete_encoded=complete.encode(),
+        request_id=complete.request_id,
+        closed_build_id=complete.closed_build_id,
+        release_sequence=complete.release_sequence,
+        distribution_encoded=distribution.encoded,
+        distribution_signature=distribution.signature,
+    )
+    root = RELEASE_ROOT / f"{complete.release_sequence:020d}"
+    if build.facts.installation_root != root.as_posix():
+        raise _invalid("cutover installation root")
+    probe_paths = frozenset({
+        SERVICE_CATALOG_PATH_V1, DEPLOYMENT_DESCRIPTOR_PATH_V1,
+    })
+    probe = _snapshot_exact_distribution_tree_v1(
+        root, build.files, uid=0, gid=0, chain_stop=None,
+        capture_paths=probe_paths,
+    )
+    catalog = _decode_service_catalog_v1(probe[SERVICE_CATALOG_PATH_V1])
+    descriptor = _decode_deployment_descriptor_v1(
+        probe[DEPLOYMENT_DESCRIPTOR_PATH_V1],
+    )
+    capture_paths = (
+        _required_material_capture_paths_v1(build, catalog)
+        | frozenset(item.source_path for item in descriptor.artifacts)
+    )
+    captured = _capture_verified_distribution_tree_v1(
+        build.facts, build.files, root,
+        expected_type=_AuthenticatedDistributionObjectV1,
+        uid=0, gid=0, chain_stop=None,
+        extra_capture_paths=capture_paths, require_compiled_review=True,
+    )
+    materials = _bind_candidate_cutover_materials_core_v1(
+        build, transaction, predecessor, captured,
+    )
+    _revalidate_captured_administrative_tcb_v1(
+        authenticated.administrative_tcb.capture,
+        _administrative_links_v1(), uid=0, gid=0, chain_stop=None,
+    )
+    repeated = _authenticate_fixed_ownership_snapshot_v1()
+    if repeated.snapshot != authenticated.snapshot:
+        raise _recovery("fixed ownership changed")
+    repeated_distribution = verify_current_installation_distribution_v1(
+        distribution.encoded, distribution.signature,
+    )
+    if repeated_distribution != distribution:
+        raise _recovery("cutover distribution changed")
+    return _PreparedCutoverCandidateV2(
+        materials, authenticated.administrative_tcb.capture,
+        _PREPARED_CUTOVER_CANDIDATE_SEAL_V2,
     )
 
 

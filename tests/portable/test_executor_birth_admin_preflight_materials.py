@@ -1050,6 +1050,21 @@ def _bind_graph(graph: Mapping[str, object]) -> object:
     )
 
 
+def _receipts_complete_transaction(graph: Mapping[str, object]):
+    return graph["transaction"]._replace(
+        sequence=1,
+        state="RECEIPTS_COMPLETE",
+        startup_prerequisite_id=None,
+        startup_prerequisite_digest=None,
+        cutover_id=None,
+        catalog_id=None,
+        certificate_payload_hash=None,
+        certificate_signature_hash=None,
+        dominant_startup_receipt=None,
+        installed_tree_hash=None,
+    )
+
+
 def test_pure_material_binder_accepts_one_fully_rebound_product_graph() -> None:
     graph = _bound_graph()
     decoded_catalog = graph["decoded_catalog"]
@@ -1077,18 +1092,7 @@ def test_pure_material_binder_accepts_one_fully_rebound_product_graph() -> None:
 
 def test_candidate_binder_is_available_at_receipts_complete() -> None:
     graph = _bound_graph()
-    transaction = graph["transaction"]._replace(
-        sequence=1,
-        state="RECEIPTS_COMPLETE",
-        startup_prerequisite_id=None,
-        startup_prerequisite_digest=None,
-        cutover_id=None,
-        catalog_id=None,
-        certificate_payload_hash=None,
-        certificate_signature_hash=None,
-        dominant_startup_receipt=None,
-        installed_tree_hash=None,
-    )
+    transaction = _receipts_complete_transaction(graph)
 
     candidate = preflight._bind_candidate_cutover_materials_core_v1(
         graph["distribution"], transaction, graph["predecessor"],
@@ -1103,6 +1107,44 @@ def test_candidate_binder_is_available_at_receipts_complete() -> None:
             graph["prerequisite_encoded"],
         ).candidate_units_hash
     )
+
+
+def test_pending_cutover_selection_uses_exact_authenticated_bytes() -> None:
+    graph = _bound_graph()
+    transaction = _receipts_complete_transaction(graph)
+    encoded = preflight._canonical_json(transaction.as_value())
+    claim = preflight._DecodedSuccessorClaimV1(
+        transaction.successor_claim_id,
+        transaction.previous_head_id,
+        transaction.release_sequence,
+        transaction.request_id,
+        transaction.source_id,
+        transaction.closed_build_id,
+    )
+    authenticated_transaction = preflight._AuthenticatedTransactionSnapshotV2(
+        claim,
+        preflight._DecodedCoordinatorPrefixV2((transaction,), (encoded,)),
+    )
+    snapshot = preflight._ReconciledFixedOwnershipSnapshotV1(
+        (), None, None, (graph["distribution"],), (), (), (claim,),
+        (authenticated_transaction,), (), None, None, graph["predecessor"],
+    )
+
+    build, selected, predecessor = (
+        preflight._select_cutover_candidate_from_snapshot_v2(
+            snapshot,
+            complete_encoded=encoded,
+            request_id=transaction.request_id,
+            closed_build_id=transaction.closed_build_id,
+            release_sequence=transaction.release_sequence,
+            distribution_encoded=graph["distribution"].encoded,
+            distribution_signature=graph["distribution"].signature,
+        )
+    )
+
+    assert build is graph["distribution"]
+    assert selected is transaction
+    assert predecessor is graph["predecessor"]
 
 
 @pytest.mark.parametrize(
