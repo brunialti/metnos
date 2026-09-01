@@ -26,6 +26,7 @@ from executor_birth_context_transition import (
 )
 from executor_birth_distribution_assembler import (
     DeploymentArtifactV1, build_deployment_descriptor_v1,
+    build_startup_prerequisite_v1, encode_startup_prerequisite_v1,
 )
 from executor_birth_distribution_manifest import (
     _verified_distribution_for_test,
@@ -46,6 +47,7 @@ from executor_birth_ownership_coordinator import (
     _certificate_published_record_v2, _certificate_ready_material_v2,
     _cross_certificate_boundary_locked_for_test_v2,
     _receipts_complete_record_v2, _startup_prerequisite_for_test,
+    _startup_prerequisite_from_record_v2,
     _successor_claim_id_v1, _deployment_lock_for_test_v1,
     _append_ownership_transaction_locked_for_test_v2,
     _resolve_ownership_coordinator_locked_v2,
@@ -491,6 +493,62 @@ def test_receipts_complete_v2_carries_prepared_and_requires_exact_inventory():
             maintenance_before=maintenance(),
             maintenance_after=maintenance(),
         )
+
+
+def startup_prerequisite(complete: OwnershipCoordinatorRecordV2):
+    return build_startup_prerequisite_v1(
+        request_id=complete.request_id,
+        closed_build_id=complete.closed_build_id,
+        release_sequence=complete.release_sequence,
+        deployment_descriptor_id=complete.deployment_descriptor_id,
+        predecessor_id=D("a"),
+        administrative_bundle_hash=complete.administrative_bundle_hash,
+        python_binary_hash=D("b"),
+        openssl_binary_hash=D("c"),
+        openssl_tcb_hash=D("d"),
+        systemctl_binary_hash=D("e"),
+        systemd_analyze_binary_hash=D("f"),
+        service_catalog_id=D("1"),
+        service_coverage_hash=complete.service_coverage_hash,
+        systemd_manager_version="255.4",
+        candidate_units_hash=D("2"),
+        effective_units_hash=D("3"),
+    )
+
+
+def test_product_prerequisite_seal_binds_canonical_bytes_to_complete_v2():
+    complete = record_v2(1)
+    record = startup_prerequisite(complete)
+    sealed = _startup_prerequisite_from_record_v2(record, complete)
+
+    assert sealed.prerequisite_id == record.prerequisite_id
+    assert sealed.evidence_digest == digest(
+        encode_startup_prerequisite_v1(record),
+    )
+
+
+@pytest.mark.parametrize("field", (
+    "request_id", "closed_build_id", "release_sequence",
+    "deployment_descriptor_id", "administrative_bundle_hash",
+    "service_coverage_hash",
+))
+def test_product_prerequisite_seal_rejects_crossed_v2_bindings(field):
+    complete = record_v2(1)
+    record = startup_prerequisite(complete)
+    replacement = complete.release_sequence + 1 if field == "release_sequence" else D("0")
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="startup prerequisite binding",
+    ):
+        _startup_prerequisite_from_record_v2(
+            replace(record, **{field: replacement}), complete,
+        )
+
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="birth_ownership_prerequisite_untrusted",
+    ):
+        _startup_prerequisite_from_record_v2(record, record_v2(0))
 
 
 def test_certificate_ready_v2_requires_a_sealed_crossing_and_exact_bytes():

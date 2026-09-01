@@ -4210,6 +4210,59 @@ class _StartupPrerequisiteV1:
         _require_digest(self.evidence_digest, "startup_prerequisite_digest")
 
 
+def _startup_prerequisite_from_record_v2(
+    prerequisite: object, complete: object,
+) -> _StartupPrerequisiteV1:
+    """Seal canonical prerequisite bytes bound to the complete V2 request."""
+    from executor_birth_distribution_assembler import (
+        StartupPrerequisiteV1,
+        decode_startup_prerequisite_v1,
+        encode_startup_prerequisite_v1,
+    )
+
+    if (
+        type(prerequisite) is not StartupPrerequisiteV1
+        or type(complete) is not OwnershipCoordinatorRecordV2
+        or complete.sequence != 1
+        or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        )
+    if (
+        prerequisite.request_id != complete.request_id
+        or prerequisite.closed_build_id != complete.closed_build_id
+        or prerequisite.release_sequence != complete.release_sequence
+        or prerequisite.deployment_descriptor_id
+        != complete.deployment_descriptor_id
+        or prerequisite.administrative_bundle_hash
+        != complete.administrative_bundle_hash
+        or prerequisite.service_coverage_hash
+        != complete.service_coverage_hash
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "startup prerequisite binding",
+        )
+    try:
+        encoded = encode_startup_prerequisite_v1(prerequisite)
+        decoded = decode_startup_prerequisite_v1(encoded)
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+        ) from exc
+    if (
+        decoded != prerequisite
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "startup prerequisite binding",
+        )
+    return _StartupPrerequisiteV1(
+        prerequisite.prerequisite_id, _digest(encoded), _PREREQUISITE_SEAL,
+    )
+
+
 def _startup_prerequisite_for_test(
     prerequisite_id: str, evidence_digest: str,
 ) -> _StartupPrerequisiteV1:
