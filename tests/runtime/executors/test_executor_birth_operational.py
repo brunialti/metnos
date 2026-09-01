@@ -81,7 +81,8 @@ def _context() -> AdmissionContextV1:
 
 
 def _candidate(tmp_path: Path) -> Path:
-    source = Path("dist/metnos-public/executors/consult_frontier")
+    # Tests consume the tracked source tree, never an optional build artifact.
+    source = Path("executors/consult_frontier")
     destination = tmp_path / "candidate"
     destination.mkdir()
     manifest = tomllib.loads((source / "manifest.toml").read_text())
