@@ -47,6 +47,22 @@ except Exception as errore:  # noqa: BLE001
 
 D = AIUTI.D
 
+# Every seam any scene actually reached, so the probe can say plainly which
+# declared seams no scene covers instead of implying it covers them all.
+ATTRAVERSATE: set[str] = set()
+
+# Who covers a seam this probe's scenes never reach. Silence here would read
+# as an alarm, and an alarm nobody can act on is the noise this unit fights.
+ALTROVE = {
+    "transaction_directory_staged": "sonda_finestra_transazione_v2",
+    "transaction_record_staged": "sonda_finestra_transazione_v2",
+    "transaction_record_published": "sonda_finestra_transazione_v2",
+    "after_context_transition_temporary": "sonda_giuntura_temporanea",
+    "after_context_transition_record": "sonda_giuntura_temporanea",
+    "capability_minted": "in memoria: una caduta non consuma nulla",
+    "capability_consumed": "in memoria: una caduta non consuma nulla",
+}
+
 
 # The chain module converts any other exception raised inside its publication
 # into an ordinary error, so an interruption must speak its own language or it
@@ -217,6 +233,7 @@ def _misura(nome: str, scena, base: Path) -> tuple[int, list[str]]:
         if esito is None:
             continue
         attraversate += 1
+        ATTRAVERSATE.add(giuntura)
         if fotografia == riferimento and esito.state is atteso.state:
             print(f"  {giuntura:34} converge")
             continue
@@ -264,6 +281,7 @@ def _misura_testa(base: Path) -> tuple[int, list[str]]:
             divergenti.append(f"testa/{giuntura}")
             continue
         attraversate += 1
+        ATTRAVERSATE.add(giuntura)
         coerente = (
             esito == ripetuto == grafo.transactions[-1].latest
             and esito.state is OwnershipCoordinatorStateV1.HEAD_REQUIRED
@@ -352,6 +370,7 @@ def _misura_topologia(base: Path) -> tuple[int, list[str]]:
             if osservato is None:
                 continue
             attraversate += 1
+            ATTRAVERSATE.add(giuntura)
             sotto += 1
             if osservato == riferimento:
                 print(f"  {etichetta} {giuntura:30} converge")
@@ -361,6 +380,90 @@ def _misura_topologia(base: Path) -> tuple[int, list[str]]:
         if not sotto:
             # A sub-scene that crosses nothing is not a pass: it means the
             # probe stopped seeing the seams it claims to read.
+            print(f"  {etichetta}: NESSUNA giuntura attraversata")
+            divergenti.append(f"{etichetta.strip()}/nessuna-giuntura")
+    print(f"  giunture attraversate qui: {attraversate}")
+    return attraversate, divergenti
+
+
+def _misura_topologia_dominante(base: Path) -> tuple[int, list[str]]:
+    """Drive the dominant fragment and its enablement link through each point."""
+    try:
+        import test_executor_birth_dominant_topology as VICINI
+        import executor_birth_dominant_topology as TOPOLOGIA
+    except Exception as errore:  # noqa: BLE001
+        print(f"scena «topologia dominante»: impalcatura assente ({errore})")
+        return 0, []
+
+    print("scena «topologia dominante»")
+
+    class _Caduta(Exception):
+        pass
+
+    def _giro(giuntura, collegamenti: bool):
+        cartella = Path(tempfile.mkdtemp(dir=base))
+        cartella.chmod(0o755)
+        raggiunta = False
+
+        def esegui(seam):
+            if collegamenti:
+                return TOPOLOGIA.install_links_for_test_v1(
+                    VICINI._capability(cartella), (VICINI._link(),),
+                    _crash_seam=seam,
+                )
+            return TOPOLOGIA.install_for_test_v1(
+                VICINI._capability(cartella),
+                {"metnos-probe.service": VICINI._UNIT}, _crash_seam=seam,
+            )
+
+        if giuntura is not None:
+            def interrompi(osservata):
+                nonlocal raggiunta
+                if osservata == giuntura:
+                    raggiunta = True
+                    raise _Caduta(osservata)
+
+            try:
+                esegui(interrompi)
+            except _Caduta:
+                pass
+            if not raggiunta:
+                return None
+        esegui(None)
+        return tuple(sorted(
+            (str(item.relative_to(cartella)),
+             item.readlink().as_posix() if item.is_symlink()
+             else item.read_bytes())
+            for item in cartella.rglob("*") if not item.is_dir()
+        ))
+
+    divergenti: list[str] = []
+    attraversate = 0
+    for collegamenti, etichetta in ((False, "frammento   "), (True, "collegamento")):
+        sotto = 0
+        riferimento = _giro(None, collegamenti)
+        if riferimento is None:
+            print(f"  {etichetta}: il giro intero non arriva in fondo")
+            continue
+        for giuntura in _giunture():
+            try:
+                osservato = _giro(giuntura, collegamenti)
+            except Exception as errore:  # noqa: BLE001
+                print(f"  {etichetta} {giuntura:30} NON RIPRENDE: "
+                      f"{type(errore).__name__} {str(errore)[:24]}")
+                divergenti.append(f"{etichetta.strip()}/{giuntura}")
+                continue
+            if osservato is None:
+                continue
+            attraversate += 1
+            ATTRAVERSATE.add(giuntura)
+            sotto += 1
+            if osservato == riferimento:
+                print(f"  {etichetta} {giuntura:30} converge")
+                continue
+            print(f"  {etichetta} {giuntura:30} DIVERGE")
+            divergenti.append(f"{etichetta.strip()}/{giuntura}")
+        if not sotto:
             print(f"  {etichetta}: NESSUNA giuntura attraversata")
             divergenti.append(f"{etichetta.strip()}/nessuna-giuntura")
     print(f"  giunture attraversate qui: {attraversate}")
@@ -392,13 +495,26 @@ def principale() -> int:
         print()
         totale += attraversate
         divergenti.extend(guasti)
+        cartella = base / "dominante"
+        cartella.mkdir(mode=0o755, parents=True, exist_ok=True)
+        attraversate, guasti = _misura_topologia_dominante(cartella)
+        print()
+        totale += attraversate
+        divergenti.extend(guasti)
         if divergenti:
             print("ESITO: non convergono:", ", ".join(divergenti))
             return 1
         if not totale:
             print("ESITO: nessuna giuntura attraversata: la sonda non misura.")
             return 2
-        print(f"ESITO: le {totale} giunture attraversate nelle quattro scene")
+        scoperte = sorted(set(_giunture()) - ATTRAVERSATE)
+        if scoperte:
+            print(f"fuori dalle scene di questa sonda: {len(scoperte)}")
+            print("(non vuol dire senza prova: dice solo chi copre cosa)")
+            for giuntura in scoperte:
+                print(f"  {giuntura:34} {ALTROVE.get(giuntura, 'prove di A')}")
+            print()
+        print(f"ESITO: le {totale} giunture attraversate nelle cinque scene")
         print("convergono tutte allo stesso mondo dell'attraversamento intero.")
         return 0
     finally:
