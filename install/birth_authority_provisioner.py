@@ -4469,7 +4469,9 @@ def _install_bound_topology_v2(
     return _capture_cutover_effective_systemd_v2(prepared)
 
 
-def complete_transition_cutover_v2(distribution: object, source_id: object):
+def complete_transition_cutover_v2(
+    distribution: object, source_id: object, *, service_state_root: object,
+):
     """Complete one reserved V2 crossing while retaining all three locks."""
     from contract_cutover_guard import (
         _begin_topology_transition_v1,
@@ -4482,6 +4484,7 @@ def complete_transition_cutover_v2(distribution: object, source_id: object):
         _prepare_cutover_candidate_v2,
     )
     from executor_birth_distribution_manifest import (
+        capture_current_deployment_descriptor_v1,
         verify_current_installation_distribution_v1,
     )
     from executor_birth_bootstrap import verify_initial_installer_store_v1
@@ -4509,12 +4512,33 @@ def complete_transition_cutover_v2(distribution: object, source_id: object):
 
     if closed_build_enforcement() is not True:
         raise _reject("birth_ownership_closed_enforcement_required")
+    try:
+        selected_state_root = Path(os.fspath(service_state_root))
+    except TypeError as exc:
+        raise _reject("birth_transition_service_identity_changed", exc) from None
+    if not selected_state_root.is_absolute() or selected_state_root == Path("/"):
+        raise _reject("birth_transition_service_identity_changed")
+    selected_state_root = Path(os.path.abspath(selected_state_root))
     with _deployment_lock_v1() as deployment_session:
         verified = verify_current_installation_distribution_v1(
             distribution.encoded, distribution.signature,
         )
         if verified != distribution:
             raise _reject("birth_transition_distribution_changed")
+        verified, signed_descriptor = (
+            capture_current_deployment_descriptor_v1(verified)
+        )
+        from config import PATH_USER_STATE
+
+        signed_state_root = Path(os.path.abspath(
+            Path(signed_descriptor.service_home)
+            / ".local" / "state" / "metnos"
+        ))
+        configured_state_root = Path(os.path.abspath(PATH_USER_STATE))
+        if not (
+            selected_state_root == signed_state_root == configured_state_root
+        ):
+            raise _reject("birth_transition_service_identity_changed")
         received = _load_received_source_with_product_session_v1(
             source_id, deployment_session,
         )
@@ -4538,6 +4562,8 @@ def complete_transition_cutover_v2(distribution: object, source_id: object):
             deployment_session, verified,
         )
         descriptor = preparation.descriptor
+        if descriptor != signed_descriptor:
+            raise _reject("birth_transition_service_identity_changed")
         with _exclusive_startup_gate_v1() as startup_session:
             with _contract_cutover_guard_for_service_user_v1(
                 descriptor.service_user,

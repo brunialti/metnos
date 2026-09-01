@@ -49,6 +49,9 @@
       "install/executor_birth_systemd.py:_publish_administrative_tree_v1",
       "install/executor_birth_systemd.py:_publish_isolated_units_for_test_v1",
       "install/executor_birth_systemd.py:install_group6_administrative_v1",
+      "install/executor_birth_transition.py:<module>",
+      "install/executor_birth_transition.py:deploy_source_v1",
+      "install/executor_birth_transition.py:main",
       "runtime/executor_birth_admin_preflight.py:<module>",
       "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_core_v1",
       "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_for_test_v1",
@@ -552,6 +555,36 @@
       ],
       "destination": "sealed root-owned ownership cutover coordinator",
       "path": "install/executor_birth_source_receiver.py",
+      "phase": "M4",
+      "role": "store_owner",
+      "scope": "main"
+    },
+    {
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "one-shot handoff to the verified release and signed topology activation",
+      "path": "install/executor_birth_transition.py",
+      "phase": "M4",
+      "role": "store_owner",
+      "scope": "<module>"
+    },
+    {
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "one-shot handoff to the verified release and signed topology activation",
+      "path": "install/executor_birth_transition.py",
+      "phase": "M4",
+      "role": "store_owner",
+      "scope": "deploy_source_v1"
+    },
+    {
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "one-shot handoff to the verified release and signed topology activation",
+      "path": "install/executor_birth_transition.py",
       "phase": "M4",
       "role": "store_owner",
       "scope": "main"
@@ -4511,5 +4544,5 @@
     "executors"
   ],
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:b9dd64acc08245ca10318857cb2a325bd8b8878cab2c5adec4bde9013a9eb8a9"
+  "source_census": "sha256:fee8f8d38e6183b6450a679504ae3c44d22c657a79b0c8c12ef07a418cf3e11a"
 }

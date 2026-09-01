@@ -786,7 +786,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:b9dd64acc08245ca10318857cb2a325bd8b8878cab2c5adec4bde9013a9eb8a9"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:fee8f8d38e6183b6450a679504ae3c44d22c657a79b0c8c12ef07a418cf3e11a"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -843,6 +843,9 @@ _BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = tuple(sorted((
     "install/executor_birth_source_receiver.py:_write_all_v1",
     "install/executor_birth_source_receiver.py:_write_descriptor_v1",
     "install/executor_birth_source_receiver.py:main",
+    "install/executor_birth_transition.py:<module>",
+    "install/executor_birth_transition.py:deploy_source_v1",
+    "install/executor_birth_transition.py:main",
     "runtime/executor_birth_ownership_coordinator.py:_publish_control_no_replace_v2",
     "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_core_v2",
     "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_for_test_v2",
@@ -9049,6 +9052,11 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "copied_chunks": ("store_write",),
         "main": ("store_write",),
     },
+    "executor_birth_transition": {
+        "<module>": ("store_write",),
+        "deploy_source_v1": ("store_write",),
+        "main": ("store_write",),
+    },
     "executor_birth_systemd": {
         "_install_group6_administrative_for_test_v1": ("store_write",),
         "_install_locked_core_v1": ("store_write",),
@@ -9112,6 +9120,9 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth_source_receiver": frozenset({
         "install.executor_birth_source_receiver",
     }),
+    "executor_birth_transition": frozenset({
+        "install.executor_birth_transition",
+    }),
     "executor_birth_systemd": frozenset({
         "install.executor_birth_systemd",
     }),
@@ -9142,6 +9153,7 @@ BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "install/executor_birth_source_receiver.py": (
         "executor_birth_source_receiver"
     ),
+    "install/executor_birth_transition.py": "executor_birth_transition",
     "install/executor_birth_systemd.py": "executor_birth_systemd",
     "runtime/executor_birth_admin_preflight.py": (
         "executor_birth_admin_preflight"

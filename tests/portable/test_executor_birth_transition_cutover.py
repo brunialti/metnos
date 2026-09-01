@@ -221,6 +221,7 @@ def test_topology_helper_installs_reloads_and_returns_the_live_measurement(
 def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     monkeypatch: pytest.MonkeyPatch,
 ):
+    import config
     import contract_cutover_guard
     import executor_birth_bootstrap as bootstrap
     import executor_birth_admin_preflight as admin
@@ -269,10 +270,18 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         yield (maintenance, object(), b"evidence")
         events.append("inventory-exit")
 
-    preparation = SimpleNamespace(descriptor=SimpleNamespace(
+    descriptor = SimpleNamespace(
         service_user="metnos", service_uid=41, service_gid=42,
-    ))
+        service_home="/srv/metnos",
+    )
+    preparation = SimpleNamespace(descriptor=descriptor)
+    service_state_root = Path("/srv/metnos/.local/state/metnos")
+    monkeypatch.setattr(config, "PATH_USER_STATE", service_state_root)
     monkeypatch.setattr(manifest, "verify_current_installation_distribution_v1", lambda *_: distribution)
+    monkeypatch.setattr(
+        manifest, "capture_current_deployment_descriptor_v1",
+        lambda candidate: (candidate, descriptor),
+    )
     monkeypatch.setattr(coordinator, "_deployment_lock_v1", deployment_lock)
     monkeypatch.setattr(
         source_receiver, "_load_received_source_with_product_session_v1",
@@ -329,7 +338,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     monkeypatch.setattr(dominant, "complete_dominant_startup_v1", complete_startup)
 
     assert provisioner.complete_transition_cutover_v2(
-        distribution, D("a"),
+        distribution, D("a"), service_state_root=service_state_root,
     ) is result
     assert events == [
         "deployment-enter", "startup-enter", "maintenance-enter",
@@ -355,7 +364,10 @@ def test_product_wrapper_denies_before_lock_when_closed_policy_is_absent(
         provisioner.BirthProvisioningError,
         match="birth_ownership_closed_enforcement_required",
     ):
-        provisioner.complete_transition_cutover_v2(distribution, D("a"))
+        provisioner.complete_transition_cutover_v2(
+            distribution, D("a"),
+            service_state_root=Path("/srv/metnos/.local/state/metnos"),
+        )
 
 
 def test_maintenance_session_retains_quiescence_across_named_load_states(
