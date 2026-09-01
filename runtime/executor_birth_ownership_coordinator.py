@@ -51,6 +51,8 @@ DEPLOYMENT_LOCK_BASENAME_V1 = "ownership-deployment-v1.lock"
 MAX_RECORD_BYTES_V1 = 8 * 1024 * 1024
 MAX_COORDINATOR_CONTROL_BYTES_V2 = 16 * 1024
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_HEX_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+_PROVISIONING_TRANSACTION_RE = re.compile(r"[0-9a-f]{32}\Z")
 _TEMPORARY_RECORD_RE = re.compile(
     r"\.record-([0-9]{3})-v1\.json\.([0-9a-f]{64})\.tmp\Z"
 )
@@ -103,6 +105,12 @@ _RECORD_KEYS_V2 = _RECORD_KEYS | frozenset({
     "head_signature_hash", "required_head_frame_hash",
     "verified_chain_head_id", "preflight_attestation_hash",
     "service_coverage_hash", "administrative_bundle_hash",
+    "provisioning_transaction_id", "previous_set_id",
+    "previous_admission_context_id", "previous_context_epoch",
+    "target_set_id", "target_admission_context_id", "target_context_epoch",
+    "target_context_material_sha256", "target_set_json_sha256",
+    "context_transition_id", "current_inventory_hash",
+    "dominant_startup_receipt",
 })
 _LEGACY_DISPOSITION_REASON_V2 = "superseded_before_certificate"
 
@@ -142,6 +150,23 @@ def _require_digest(value: object, field: str, *, nullable: bool = False):
         return None
     if not isinstance(value, str) or _DIGEST_RE.fullmatch(value) is None:
         raise OwnershipCoordinatorError("birth_ownership_journal_invalid", field)
+    return value
+
+
+def _require_hex_sha256(value: object, field: str) -> str:
+    if not isinstance(value, str) or _HEX_SHA256_RE.fullmatch(value) is None:
+        raise OwnershipCoordinatorError("birth_ownership_journal_invalid", field)
+    return value
+
+
+def _require_provisioning_transaction_id(value: object) -> str:
+    if (
+        not isinstance(value, str)
+        or _PROVISIONING_TRANSACTION_RE.fullmatch(value) is None
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "provisioning_transaction_id",
+        )
     return value
 
 
@@ -680,6 +705,17 @@ class OwnershipCoordinatorRecordV2:
     previous_head_id: str | None
     service_coverage_hash: str
     administrative_bundle_hash: str
+    provisioning_transaction_id: str
+    previous_set_id: str
+    previous_admission_context_id: str
+    previous_context_epoch: str
+    target_set_id: str
+    target_admission_context_id: str
+    target_context_epoch: str
+    target_context_material_sha256: str
+    target_set_json_sha256: str
+    context_transition_id: str
+    current_inventory_hash: str
     current_proof: CurrentReceiptProof | None = None
     maintenance_before_hash: str | None = None
     maintenance_after_hash: str | None = None
@@ -690,6 +726,7 @@ class OwnershipCoordinatorRecordV2:
     catalog_id: str | None = None
     certificate_payload_hash: str | None = None
     certificate_signature_hash: str | None = None
+    dominant_startup_receipt: str | None = None
     installed_tree_hash: str | None = None
     head_id: str | None = None
     head_payload_hash: str | None = None
@@ -712,7 +749,10 @@ class OwnershipCoordinatorRecordV2:
             "distribution_signature_hash", "boundary_inventory_hash",
             "source_id", "successor_claim_id", "deployment_descriptor_id",
             "install_transaction_id", "service_coverage_hash",
-            "administrative_bundle_hash",
+            "administrative_bundle_hash", "previous_admission_context_id",
+            "previous_context_epoch", "target_admission_context_id",
+            "target_context_epoch", "context_transition_id",
+            "current_inventory_hash",
         ):
             _require_digest(getattr(self, field), field)
         for field in (
@@ -721,11 +761,18 @@ class OwnershipCoordinatorRecordV2:
             "maintenance_after_hash", "startup_prerequisite_id",
             "startup_prerequisite_digest", "cutover_id", "catalog_id",
             "certificate_payload_hash", "certificate_signature_hash",
+            "dominant_startup_receipt",
             "installed_tree_hash", "head_id", "head_payload_hash",
             "head_signature_hash", "required_head_frame_hash",
             "verified_chain_head_id", "preflight_attestation_hash",
         ):
             _require_digest(getattr(self, field), field, nullable=True)
+        _require_provisioning_transaction_id(self.provisioning_transaction_id)
+        for field in (
+            "previous_set_id", "target_set_id",
+            "target_context_material_sha256", "target_set_json_sha256",
+        ):
+            _require_hex_sha256(getattr(self, field), field)
         if (self.sequence == 0) is not (self.previous_record_sha256 is None):
             raise OwnershipCoordinatorError(
                 "birth_ownership_journal_invalid", "previous_record_sha256",
@@ -772,10 +819,18 @@ class OwnershipCoordinatorRecordV2:
                 raise OwnershipCoordinatorError(
                     "birth_ownership_journal_invalid", "maintenance binding",
                 )
+            from executor_birth_context_transition import current_inventory_hash_v1
+
+            if self.current_inventory_hash != current_inventory_hash_v1(
+                self.current_proof.inventory,
+            ):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_journal_invalid", "current inventory binding",
+                )
         certificate_fields = (
             self.startup_prerequisite_id, self.startup_prerequisite_digest,
             self.cutover_id, self.catalog_id, self.certificate_payload_hash,
-            self.certificate_signature_hash,
+            self.certificate_signature_hash, self.dominant_startup_receipt,
         )
         if (
             self.sequence >= 2 and any(value is None for value in certificate_fields)
@@ -875,6 +930,22 @@ class OwnershipCoordinatorRecordV2:
             "preflight_attestation_hash": self.preflight_attestation_hash,
             "service_coverage_hash": self.service_coverage_hash,
             "administrative_bundle_hash": self.administrative_bundle_hash,
+            "provisioning_transaction_id": self.provisioning_transaction_id,
+            "previous_set_id": self.previous_set_id,
+            "previous_admission_context_id": (
+                self.previous_admission_context_id
+            ),
+            "previous_context_epoch": self.previous_context_epoch,
+            "target_set_id": self.target_set_id,
+            "target_admission_context_id": self.target_admission_context_id,
+            "target_context_epoch": self.target_context_epoch,
+            "target_context_material_sha256": (
+                self.target_context_material_sha256
+            ),
+            "target_set_json_sha256": self.target_set_json_sha256,
+            "context_transition_id": self.context_transition_id,
+            "current_inventory_hash": self.current_inventory_hash,
+            "dominant_startup_receipt": self.dominant_startup_receipt,
         }
 
     def encode(self) -> bytes:
@@ -945,6 +1016,21 @@ def _decode_record_v2(encoded: bytes) -> OwnershipCoordinatorRecordV2:
         previous_head_id=value.get("previous_head_id"),
         service_coverage_hash=value.get("service_coverage_hash"),
         administrative_bundle_hash=value.get("administrative_bundle_hash"),
+        provisioning_transaction_id=value.get("provisioning_transaction_id"),
+        previous_set_id=value.get("previous_set_id"),
+        previous_admission_context_id=value.get(
+            "previous_admission_context_id",
+        ),
+        previous_context_epoch=value.get("previous_context_epoch"),
+        target_set_id=value.get("target_set_id"),
+        target_admission_context_id=value.get("target_admission_context_id"),
+        target_context_epoch=value.get("target_context_epoch"),
+        target_context_material_sha256=value.get(
+            "target_context_material_sha256",
+        ),
+        target_set_json_sha256=value.get("target_set_json_sha256"),
+        context_transition_id=value.get("context_transition_id"),
+        current_inventory_hash=value.get("current_inventory_hash"),
         current_proof=proof,
         maintenance_before_hash=value.get("maintenance_before_hash"),
         maintenance_after_hash=value.get("maintenance_after_hash"),
@@ -955,6 +1041,7 @@ def _decode_record_v2(encoded: bytes) -> OwnershipCoordinatorRecordV2:
         catalog_id=value.get("catalog_id"),
         certificate_payload_hash=value.get("certificate_payload_hash"),
         certificate_signature_hash=value.get("certificate_signature_hash"),
+        dominant_startup_receipt=value.get("dominant_startup_receipt"),
         installed_tree_hash=value.get("installed_tree_hash"),
         head_id=value.get("head_id"),
         head_payload_hash=value.get("head_payload_hash"),

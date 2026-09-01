@@ -6,7 +6,7 @@ import pytest
 
 from executor_birth_cutover import (
     BirthCutoverError, CurrentGeneration, cutover_current_generations,
-    prepare_current_receipt_proof,
+    freeze_current_inventory_v1, prepare_current_receipt_proof,
 )
 from manifest_inventory import ContractId, ManifestOrigin, ManifestRef, ManifestStatus
 
@@ -78,6 +78,15 @@ def test_zero_current_generations_closes_with_empty_complete_proof():
     assert (result.current_count, result.already_receipted, result.reattested) == (0, 0, 0)
     assert result.proof.identities == ()
     assert len(rig.closed) == 1
+
+
+def test_current_inventory_freezes_before_any_receipt_exists():
+    alpha, bravo = _item("alpha"), _item("bravo")
+    inventory = freeze_current_inventory_v1((bravo, alpha))
+    assert inventory.identities == tuple(sorted((alpha.identity, bravo.identity)))
+
+    with pytest.raises(BirthCutoverError, match="birth_cutover_inventory_duplicate"):
+        freeze_current_inventory_v1((alpha, alpha))
 
 
 def test_one_current_generation_is_reattested_durably_before_close():

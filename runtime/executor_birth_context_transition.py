@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from typing import Mapping
 
-from executor_birth_cutover import CurrentReceiptProof
+from executor_birth_cutover import CurrentInventoryV1
 
 
 TRANSITION_ID_DOMAIN_V1 = b"metnos.executor-birth.context-transition-id/v1\0"
@@ -107,16 +107,18 @@ def _hex_sha256(value: object, field: str) -> str:
     return value
 
 
-def _inventory_values(proof: CurrentReceiptProof) -> list[dict[str, str]]:
-    if not isinstance(proof, CurrentReceiptProof):
+def _inventory_values(
+    inventory: CurrentInventoryV1,
+) -> list[dict[str, str]]:
+    if not isinstance(inventory, CurrentInventoryV1):
         raise ContextTransitionError(
-            "birth_context_transition_inventory_invalid", "proof type",
+            "birth_context_transition_inventory_invalid", "inventory type",
         )
     try:
-        verified = CurrentReceiptProof(proof.identities, proof.receipt_hashes)
+        verified = CurrentInventoryV1(inventory.identities)
     except Exception as exc:
         raise ContextTransitionError(
-            "birth_context_transition_inventory_invalid", "proof",
+            "birth_context_transition_inventory_invalid", "inventory",
         ) from exc
     return [
         {"contract_id": contract_id, "generation_id": generation_id}
@@ -124,9 +126,9 @@ def _inventory_values(proof: CurrentReceiptProof) -> list[dict[str, str]]:
     ]
 
 
-def current_inventory_hash_v1(proof: CurrentReceiptProof) -> str:
+def current_inventory_hash_v1(inventory: CurrentInventoryV1) -> str:
     """Bind the ordered unique current identities, never their receipt count."""
-    encoded = _canonical(_inventory_values(proof))
+    encoded = _canonical(_inventory_values(inventory))
     return "sha256:" + hashlib.sha256(
         CURRENT_INVENTORY_DOMAIN_V1 + encoded,
     ).hexdigest()
@@ -154,10 +156,10 @@ def issue_context_transition_v1(
     prepared_context_epoch: str,
     context_material_sha256: str,
     set_json_sha256: str,
-    current_proof: CurrentReceiptProof,
+    current_inventory: CurrentInventoryV1,
 ) -> tuple[bytes, ContextTransitionV1]:
     """Create and immediately verify the exact canonical transition bytes."""
-    inventory_hash = current_inventory_hash_v1(current_proof)
+    inventory_hash = current_inventory_hash_v1(current_inventory)
     value: dict[str, object] = {
         "schema_version": 1,
         "transition_id": None,
@@ -180,7 +182,7 @@ def issue_context_transition_v1(
     encoded = _canonical(value)
     return encoded, verify_context_transition_v1(
         encoded,
-        expected_proof=current_proof,
+        expected_inventory=current_inventory,
     )
 
 
@@ -188,7 +190,7 @@ def verify_context_transition_v1(
     encoded: bytes,
     *,
     expected_transition_id: str | None = None,
-    expected_proof: CurrentReceiptProof | None = None,
+    expected_inventory: CurrentInventoryV1 | None = None,
 ) -> ContextTransitionV1:
     """Decode canonical bytes and verify all intrinsic and supplied bindings."""
     if (
@@ -259,8 +261,8 @@ def verify_context_transition_v1(
                 "birth_context_transition_binding_invalid", "transition_id",
             )
     if (
-        expected_proof is not None
-        and inventory_hash != current_inventory_hash_v1(expected_proof)
+        expected_inventory is not None
+        and inventory_hash != current_inventory_hash_v1(expected_inventory)
     ):
         raise ContextTransitionError(
             "birth_context_transition_binding_invalid", "current inventory",

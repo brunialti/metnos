@@ -15,6 +15,7 @@ import pytest
 import executor_birth_ownership_coordinator as coordinator_module
 from contract_boundary_guard import BOUNDARY_APIS
 from executor_birth_cutover import CurrentReceiptProof
+from executor_birth_context_transition import current_inventory_hash_v1
 from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 from executor_birth_ownership_coordinator import (
     LegacyDispositionV2, OwnershipCoordinatorError,
@@ -234,6 +235,7 @@ def record_v2(sequence: int) -> OwnershipCoordinatorRecordV2:
     )
     evidence = maintenance() if sequence >= 1 else None
     evidence_hash = maintenance_evidence_hash(evidence) if evidence else None
+    current = proof()
     return OwnershipCoordinatorRecordV2(
         sequence=sequence,
         state=tuple(OwnershipCoordinatorStateV1)[sequence],
@@ -254,7 +256,18 @@ def record_v2(sequence: int) -> OwnershipCoordinatorRecordV2:
         previous_head_id=install_value["previous_head_id"],
         service_coverage_hash=install_value["service_coverage_hash"],
         administrative_bundle_hash=install_value["administrative_bundle_hash"],
-        current_proof=proof() if sequence >= 1 else None,
+        provisioning_transaction_id="0" * 32,
+        previous_set_id="1" * 64,
+        previous_admission_context_id=D("2"),
+        previous_context_epoch=D("3"),
+        target_set_id="4" * 64,
+        target_admission_context_id=D("5"),
+        target_context_epoch=D("6"),
+        target_context_material_sha256="7" * 64,
+        target_set_json_sha256="8" * 64,
+        context_transition_id=D("9"),
+        current_inventory_hash=current_inventory_hash_v1(current.inventory),
+        current_proof=current if sequence >= 1 else None,
         maintenance_before_hash=evidence_hash,
         maintenance_after_hash=evidence_hash,
         maintenance_proof=evidence,
@@ -264,6 +277,7 @@ def record_v2(sequence: int) -> OwnershipCoordinatorRecordV2:
         catalog_id=D("4") if sequence >= 2 else None,
         certificate_payload_hash=D("5") if sequence >= 2 else None,
         certificate_signature_hash=D("6") if sequence >= 2 else None,
+        dominant_startup_receipt=D("e") if sequence >= 2 else None,
         installed_tree_hash=D("7") if sequence >= 4 else None,
         head_id=D("8") if sequence >= 5 else None,
         head_payload_hash=D("9") if sequence >= 5 else None,
@@ -280,7 +294,7 @@ def test_v2_codec_state_threshold_table(sequence):
     encoded = record.encode()
     value = json.loads(encoded)
 
-    assert len(value) == 37
+    assert len(value) == 49
     assert _decode_record_v2(encoded) == record
     assert _record_basename_v2(sequence) == f"record-{sequence:03d}-v2.json"
     assert _install_transaction_id_v1(
@@ -295,6 +309,11 @@ def test_v2_codec_state_threshold_table(sequence):
     (0, "current_receipts", [{"unexpected": "receipt"}]),
     (0, "previous_record_sha256", D("1")),
     (0, "install_transaction_id", D("f")),
+    (0, "provisioning_transaction_id", "f" * 31),
+    (0, "target_set_id", D("f")),
+    (1, "current_inventory_hash", D("f")),
+    (1, "dominant_startup_receipt", D("f")),
+    (2, "dominant_startup_receipt", None),
     (3, "installed_tree_hash", D("1")),
     (4, "installed_tree_hash", None),
     (4, "head_id", D("1")),
@@ -383,6 +402,8 @@ def transaction_records(
     install_transaction_id = _install_transaction_id_v1(install_value)
     evidence = maintenance()
     evidence_hash = maintenance_evidence_hash(evidence)
+    current = proof()
+    inventory_hash = current_inventory_hash_v1(current.inventory)
     records: list[OwnershipCoordinatorRecordV2] = []
     previous_hash = None
     for sequence in range(end_sequence + 1):
@@ -408,7 +429,18 @@ def transaction_records(
             administrative_bundle_hash=(
                 install_value["administrative_bundle_hash"]
             ),
-            current_proof=proof() if sequence >= 1 else None,
+            provisioning_transaction_id="0" * 32,
+            previous_set_id="1" * 64,
+            previous_admission_context_id=D("2"),
+            previous_context_epoch=D("3"),
+            target_set_id="4" * 64,
+            target_admission_context_id=D("5"),
+            target_context_epoch=D("6"),
+            target_context_material_sha256="7" * 64,
+            target_set_json_sha256="8" * 64,
+            context_transition_id=D("9"),
+            current_inventory_hash=inventory_hash,
+            current_proof=current if sequence >= 1 else None,
             maintenance_before_hash=evidence_hash if sequence >= 1 else None,
             maintenance_after_hash=evidence_hash if sequence >= 1 else None,
             maintenance_proof=evidence if sequence >= 1 else None,
@@ -418,6 +450,7 @@ def transaction_records(
             catalog_id=D("4") if sequence >= 2 else None,
             certificate_payload_hash=D("5") if sequence >= 2 else None,
             certificate_signature_hash=D("6") if sequence >= 2 else None,
+            dominant_startup_receipt=D("e") if sequence >= 2 else None,
             installed_tree_hash=D("7") if sequence >= 4 else None,
             head_id=head_id if sequence >= 5 else None,
             head_payload_hash=D("9") if sequence >= 5 else None,

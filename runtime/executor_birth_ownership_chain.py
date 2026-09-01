@@ -490,7 +490,7 @@ def _require_context_transition_binding_v1(
         verified = verify_context_transition_v1(
             transition.encoded,
             expected_transition_id=cutover.context_transition_id,
-            expected_proof=cutover.as_proof(),
+            expected_inventory=cutover.as_proof().inventory,
         )
     except Exception as exc:
         raise OwnershipChainError(
@@ -514,7 +514,7 @@ def _require_context_transition_binding_v1(
         or transition.closed_build_id != cutover.closed_build_id
         or transition.previous_cutover_id != cutover.previous_cutover_id
         or transition.current_inventory_hash
-        != current_inventory_hash_v1(cutover.as_proof())
+        != current_inventory_hash_v1(cutover.as_proof().inventory)
         or (
             previous is not None
             and (
@@ -1037,7 +1037,7 @@ class OwnershipChainStore:
         try:
             transition = verify_context_transition_v1(
                 encoded,
-                expected_proof=expected_proof,
+                expected_inventory=expected_proof.inventory,
             )
             basename = context_transition_basename_v1(
                 transition.transition_id,
@@ -1154,7 +1154,7 @@ class OwnershipChainStore:
                 record = verify_context_transition_v1(
                     record.encoded,
                     expected_transition_id=transition_id,
-                    expected_proof=expected_proof,
+                    expected_inventory=expected_proof.inventory,
                 )
             except Exception as exc:
                 raise OwnershipChainError(

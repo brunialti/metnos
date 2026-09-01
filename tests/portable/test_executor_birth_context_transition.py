@@ -16,7 +16,7 @@ from executor_birth_context_transition import (
     issue_context_transition_v1,
     verify_context_transition_v1,
 )
-from executor_birth_cutover import CurrentReceiptProof
+from executor_birth_cutover import CurrentInventoryV1, CurrentReceiptProof
 
 
 def D(character: str) -> str:
@@ -44,7 +44,11 @@ def _proof(*names: str) -> CurrentReceiptProof:
     )
 
 
-def _issue(proof: CurrentReceiptProof | None = None):
+def _inventory(*names: str) -> CurrentInventoryV1:
+    return _proof(*names).inventory
+
+
+def _issue(inventory: CurrentInventoryV1 | None = None):
     return issue_context_transition_v1(
         request_id=D("1"),
         closed_build_id=D("2"),
@@ -57,17 +61,17 @@ def _issue(proof: CurrentReceiptProof | None = None):
         prepared_context_epoch=D("8"),
         context_material_sha256="9" * 64,
         set_json_sha256="a" * 64,
-        current_proof=proof or _proof("alpha"),
+        current_inventory=inventory or _inventory("alpha"),
     )
 
 
 @pytest.mark.parametrize("names", [(), ("alpha",), ("charlie", "alpha", "bravo")])
 def test_zero_one_many_inventory_and_transition_are_independently_reproducible(names):
-    proof = _proof(*names)
-    encoded, transition = _issue(proof)
+    inventory_snapshot = _inventory(*names)
+    encoded, transition = _issue(inventory_snapshot)
     inventory = [
         {"contract_id": contract_id, "generation_id": generation_id}
-        for contract_id, generation_id in proof.identities
+        for contract_id, generation_id in inventory_snapshot.identities
     ]
     expected_inventory = "sha256:" + hashlib.sha256(
         CURRENT_INVENTORY_DOMAIN_V1 + _canonical(inventory),
@@ -79,13 +83,13 @@ def test_zero_one_many_inventory_and_transition_are_independently_reproducible(n
     ).hexdigest()
 
     assert transition.current_inventory_hash == expected_inventory
-    assert current_inventory_hash_v1(proof) == expected_inventory
+    assert current_inventory_hash_v1(inventory_snapshot) == expected_inventory
     assert transition.transition_id == expected_transition
     assert transition.encoded == encoded == _canonical(value)
     assert verify_context_transition_v1(
         encoded,
         expected_transition_id=expected_transition,
-        expected_proof=proof,
+        expected_inventory=inventory_snapshot,
     ) == transition
     assert context_transition_basename_v1(expected_transition) == (
         expected_transition.removeprefix("sha256:") + ".json"
@@ -120,9 +124,11 @@ def test_duplicate_noncanonical_and_oversized_records_are_rejected():
 
 
 def test_recomputed_record_still_refuses_wrong_external_bindings():
-    encoded, transition = _issue(_proof("alpha", "bravo"))
+    encoded, transition = _issue(_inventory("alpha", "bravo"))
     value = json.loads(encoded)
-    value["current_inventory_hash"] = current_inventory_hash_v1(_proof("alpha"))
+    value["current_inventory_hash"] = current_inventory_hash_v1(
+        _inventory("alpha"),
+    )
     unsigned = {key: item for key, item in value.items() if key != "transition_id"}
     value["transition_id"] = "sha256:" + hashlib.sha256(
         TRANSITION_ID_DOMAIN_V1 + _canonical(unsigned),
@@ -135,7 +141,7 @@ def test_recomputed_record_still_refuses_wrong_external_bindings():
     ):
         verify_context_transition_v1(
             changed,
-            expected_proof=_proof("alpha", "bravo"),
+            expected_inventory=_inventory("alpha", "bravo"),
         )
     with pytest.raises(
         ContextTransitionError,
@@ -156,5 +162,6 @@ def test_receipt_hashes_do_not_change_the_identity_inventory():
         proof.identities,
         {identity: D("0") for identity in proof.identities},
     )
-    assert current_inventory_hash_v1(changed) == current_inventory_hash_v1(proof)
-
+    assert current_inventory_hash_v1(changed.inventory) == current_inventory_hash_v1(
+        proof.inventory,
+    )

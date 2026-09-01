@@ -165,7 +165,7 @@ def cutover(
         set_json_sha256=hashlib.sha256(
             b"set-json\0" + request.encode("ascii"),
         ).hexdigest(),
-        current_proof=proof,
+        current_inventory=proof.inventory,
     )
     assert encoded_transition == transition.encoded
     encoded, signature = issue_ownership_cutover_certificate(
@@ -200,7 +200,7 @@ def context_transition(*, proof=None, request="5"):
         prepared_context_epoch=D("c"),
         context_material_sha256="d" * 64,
         set_json_sha256="e" * 64,
-        current_proof=proof or CurrentReceiptProof((), {}),
+        current_inventory=(proof or CurrentReceiptProof((), {})).inventory,
     )
 
 

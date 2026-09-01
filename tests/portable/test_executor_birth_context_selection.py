@@ -42,7 +42,7 @@ def _evidence():
         prepared_context_epoch=D("8"),
         context_material_sha256="9" * 64,
         set_json_sha256="a" * 64,
-        current_proof=proof,
+        current_inventory=proof.inventory,
     )
     assert encoded == transition.encoded
     prepared_values = dict(
