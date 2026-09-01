@@ -59,6 +59,8 @@ def test_a_prepared_set_reads_back_and_stays_inactive(
     assert observed.state == PREPARED_STATE_V1
     assert observed.author_active_key_id == document["author_active_key_id"]
     assert observed.admission_active_key_id == document["admission_active_key_id"]
+    assert observed.set_json_sha256 == marker["set_json_sha256"]
+    assert observed.provisioning_transaction_id == marker["transaction_id"]
     assert len(observed.producer_keys) == 11
     assert observed.prepared_admission_context_id.startswith("sha256:")
     with pytest.raises(TypeError):
@@ -67,7 +69,7 @@ def test_a_prepared_set_reads_back_and_stays_inactive(
 
 @pytest.mark.parametrize("case", [
     "marker-set-id", "marker-digest", "marker-state", "set-author-key",
-    "set-context-digest",
+    "set-context-digest", "transaction-id",
 ])
 def test_a_set_that_disagrees_with_itself_is_refused(
     tmp_path: Path, monkeypatch, case: str,
@@ -84,6 +86,8 @@ def test_a_set_that_disagrees_with_itself_is_refused(
         _rewrite(marker, lambda item: item.update(state="active"))
     elif case == "set-author-key":
         _rewrite(document, lambda item: item.update(author_active_key_id="other"))
+    elif case == "transaction-id":
+        _rewrite(marker, lambda item: item.update(transaction_id="0" * 32))
     else:
         _rewrite(
             document, lambda item: item.update(context_material_sha256="0" * 64)

@@ -24,6 +24,24 @@ CONTEXT_CONTAINER_BASENAME_V1 = "context"
 CONTEXT_MATERIAL_BASENAME_V1 = "material-v1.json"
 PREPARED_STATE_V1 = "prepared_not_active"
 MAXIMUM_DOCUMENT_BYTES_V1 = 1024 * 1024
+_PREPARED_SET_SEAL_V1 = object()
+_PREPARED_SET_BINDING_DOMAIN_V1 = (
+    b"metnos.executor-birth.prepared-set-readback/v1\0"
+)
+_PREPARED_SET_BINDING_FIELDS_V1 = (
+    "set_id",
+    "state",
+    "author_active_key_id",
+    "author_verifier_key_ids",
+    "admission_active_key_id",
+    "producer_keys",
+    "prepared_admission_context_id",
+    "prepared_context_epoch",
+    "context_material_sha256",
+    "set_json_sha256",
+    "provisioning_transaction_id",
+    "provisioner_build_id",
+)
 
 MARKER_FIELDS_V1 = frozenset({
     "schema_version", "state", "set_id", "authority_set", "author_store",
@@ -76,10 +94,21 @@ class PreparedSetV1:
     prepared_admission_context_id: str
     prepared_context_epoch: str
     context_material_sha256: str
+    set_json_sha256: str
+    provisioning_transaction_id: str
     provisioner_build_id: str
+    _artifact_binding: bytes
+    _seal: object
 
     def __post_init__(self) -> None:
-        if self.state != PREPARED_STATE_V1:
+        if (
+            self._seal is not _PREPARED_SET_SEAL_V1
+            or self.state != PREPARED_STATE_V1
+            or self._artifact_binding != _prepared_set_artifact_binding_v1({
+                field: getattr(self, field)
+                for field in _PREPARED_SET_BINDING_FIELDS_V1
+            })
+        ):
             raise PreparedSetError("birth_prepared_set_invalid")
         object.__setattr__(
             self, "producer_keys", MappingProxyType(dict(self.producer_keys))
@@ -141,6 +170,8 @@ def load_prepared_set_v1(session) -> PreparedSetV1:
         raise PreparedSetError("birth_prepared_set_invalid")
     if document["set_id"] != marker["set_id"] or document["state"] != "complete":
         raise PreparedSetError("birth_prepared_set_mismatch")
+    if document["provisioning_transaction_id"] != marker["transaction_id"]:
+        raise PreparedSetError("birth_prepared_set_mismatch")
 
     try:
         author = _load_birth_keystore_in_session(
@@ -196,7 +227,7 @@ def load_prepared_set_v1(session) -> PreparedSetV1:
         ).hexdigest() != document[digest]:
             raise PreparedSetError("birth_prepared_set_mismatch")
 
-    return PreparedSetV1(
+    prepared_values = dict(
         set_id=document["set_id"],
         state=PREPARED_STATE_V1,
         author_active_key_id=document["author_active_key_id"],
@@ -206,8 +237,59 @@ def load_prepared_set_v1(session) -> PreparedSetV1:
         prepared_admission_context_id=document["prepared_admission_context_id"],
         prepared_context_epoch=document["prepared_context_epoch"],
         context_material_sha256=document["context_material_sha256"],
+        set_json_sha256=marker["set_json_sha256"],
+        provisioning_transaction_id=document["provisioning_transaction_id"],
         provisioner_build_id=document["provisioner_build_id"],
     )
+    return PreparedSetV1(
+        **prepared_values,
+        _artifact_binding=_prepared_set_artifact_binding_v1(prepared_values),
+        _seal=_PREPARED_SET_SEAL_V1,
+    )
+
+
+def is_prepared_set_v1(value: object) -> bool:
+    """Recognize only a set emitted after the complete read-back above."""
+    if (
+        not isinstance(value, PreparedSetV1)
+        or value._seal is not _PREPARED_SET_SEAL_V1
+    ):
+        return False
+    try:
+        expected = _prepared_set_artifact_binding_v1({
+            field: getattr(value, field)
+            for field in _PREPARED_SET_BINDING_FIELDS_V1
+        })
+    except PreparedSetError:
+        return False
+    return value._artifact_binding == expected
+
+
+def _prepared_set_artifact_binding_v1(values: Mapping[str, object]) -> bytes:
+    """Bind the complete result so copied seals cannot bless altered fields."""
+    if set(values) != set(_PREPARED_SET_BINDING_FIELDS_V1):
+        raise PreparedSetError("birth_prepared_set_invalid")
+
+    def plain(item: object) -> object:
+        if isinstance(item, Mapping):
+            return {key: plain(child) for key, child in item.items()}
+        if isinstance(item, tuple):
+            return [plain(child) for child in item]
+        return item
+
+    try:
+        encoded = json.dumps(
+            plain(values),
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("ascii")
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise PreparedSetError("birth_prepared_set_invalid", exc) from None
+    return hashlib.sha256(
+        _PREPARED_SET_BINDING_DOMAIN_V1 + encoded,
+    ).digest()
 
 
 AUTHOR_STORE_DIGEST_DOMAIN_V1 = (
