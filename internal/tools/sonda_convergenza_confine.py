@@ -274,6 +274,82 @@ def _misura_testa(base: Path) -> tuple[int, list[str]]:
     return attraversate, divergenti
 
 
+def _misura_topologia(base: Path) -> tuple[int, list[str]]:
+    """Drive the preservation of a replaced unit through every declared point."""
+    try:
+        import test_executor_birth_legacy_neutralizer as VICINI
+        import executor_birth_legacy_neutralizer as NEUTRALIZZATORE
+    except Exception as errore:  # noqa: BLE001
+        print(f"scena «conservazione»: impalcatura assente ({errore})")
+        return 0, []
+
+    print("scena «conservazione dell'unita' sostituita»")
+
+    class _Caduta(Exception):
+        pass
+
+    def _giro(giuntura):
+        radice = VICINI._tree(Path(tempfile.mkdtemp(dir=base)))
+        unita = radice / "systemd" / "metnos-http.service"
+        unita.write_bytes(b"precedente")
+        passo = VICINI._Step(
+            "legacy-service-http-system", "preserve_replaced_system_unit",
+            "systemd/metnos-http.service",
+        )
+        sostituzione = {("system", passo.locator): b"frammento firmato"}
+        raggiunta = False
+        if giuntura is not None:
+            def interrompi(osservata):
+                nonlocal raggiunta
+                if osservata == giuntura:
+                    raggiunta = True
+                    raise _Caduta(osservata)
+
+            try:
+                NEUTRALIZZATORE.neutralize_for_test_v1(
+                    VICINI._capability(radice), [passo],
+                    replacement_fragments=sostituzione,
+                    _crash_seam=interrompi,
+                )
+            except _Caduta:
+                pass
+            if not raggiunta:
+                return None
+        VICINI._apply(radice, [passo], sostituzione)
+        conservata = unita.with_name(
+            unita.name + NEUTRALIZZATORE.PRESERVED_EXTENSION_V1,
+        )
+        return (
+            unita.exists(),
+            conservata.read_bytes() if conservata.exists() else None,
+        )
+
+    riferimento = _giro(None)
+    if riferimento is None:
+        print("  il giro senza interruzioni non arriva in fondo")
+        return 0, []
+    divergenti: list[str] = []
+    attraversate = 0
+    for giuntura in _giunture():
+        try:
+            osservato = _giro(giuntura)
+        except Exception as errore:  # noqa: BLE001
+            print(f"  {giuntura:32} NON RIPRENDE: "
+                  f"{type(errore).__name__} {str(errore)[:30]}")
+            divergenti.append(f"conservazione/{giuntura}")
+            continue
+        if osservato is None:
+            continue
+        attraversate += 1
+        if osservato == riferimento:
+            print(f"  {giuntura:32} converge")
+            continue
+        print(f"  {giuntura:32} DIVERGE  {osservato} invece di {riferimento}")
+        divergenti.append(f"conservazione/{giuntura}")
+    print(f"  giunture attraversate qui: {attraversate}")
+    return attraversate, divergenti
+
+
 def principale() -> int:
     base = Path(tempfile.mkdtemp(prefix="sonda-convergenza-"))
     try:
@@ -293,13 +369,19 @@ def principale() -> int:
         print()
         totale += attraversate
         divergenti.extend(guasti)
+        cartella = base / "topologia"
+        cartella.mkdir(mode=0o755, parents=True, exist_ok=True)
+        attraversate, guasti = _misura_topologia(cartella)
+        print()
+        totale += attraversate
+        divergenti.extend(guasti)
         if divergenti:
             print("ESITO: non convergono:", ", ".join(divergenti))
             return 1
         if not totale:
             print("ESITO: nessuna giuntura attraversata: la sonda non misura.")
             return 2
-        print(f"ESITO: le {totale} giunture attraversate nelle tre scene")
+        print(f"ESITO: le {totale} giunture attraversate nelle quattro scene")
         print("convergono tutte allo stesso mondo dell'attraversamento intero.")
         return 0
     finally:
