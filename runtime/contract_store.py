@@ -3946,54 +3946,6 @@ def read_current_birth_receipt_v2(
             return _read_regular_file(path, code="birth_receipt_invalid")
 
 
-def current_receipt_proof(
-    pairs: Iterable[tuple[ManifestRef, object]],
-    *,
-    trusted_publics: Iterable[TrustedPublic],
-    store_root: Path | str | None = None,
-    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
-):
-    """Read back every current V2 receipt and order the proof deterministically.
-
-    Returns the existing ``executor_birth_cutover.CurrentReceiptProof``, which
-    is the shape the F4 certificate already consumes: sorted unique identities
-    plus the hash of the exact bytes read back for each.  A generation without
-    a receipt in the selected context is an error, not an empty success, and
-    every pair must name the same context, which is the single selector rule.
-    """
-    from executor_birth_cutover import CurrentReceiptProof
-
-    collected: dict[tuple[str, str], str] = {}
-    context: str | None = None
-    for ref, request in pairs:
-        generation_identifier, context_identifier = _sealed_v2_triple(ref, request)
-        if context is None:
-            context = context_identifier
-        elif context != context_identifier:
-            raise ContractStoreError("birth_receipt_v2_context_conflict", "proof")
-        encoded = read_current_birth_receipt_v2(
-            ref, request=request, trusted_publics=trusted_publics,
-            store_root=store_root, lock_timeout=lock_timeout,
-        )
-        if encoded is None:
-            raise ContractStoreError(
-                "birth_receipt_v2_missing", ref.contract_id.value,
-            )
-        key = (ref.contract_id.value, generation_identifier)
-        digest = admission_receipt_hash(encoded)
-        previous = collected.get(key)
-        if previous is not None and previous != digest:
-            raise ContractStoreError("birth_receipt_v2_duplicate", key[0])
-        collected[key] = digest
-    if context is None:
-        raise ContractStoreError("birth_receipt_v2_missing", "empty inventory")
-    # Python orders strings by code point, which for UTF-8 is the same order as
-    # the encoded bytes, so this satisfies both the certificate's stated byte
-    # ordering and the sorted-tuple invariant of the proof type.
-    identities = tuple(sorted(collected))
-    return CurrentReceiptProof(identities, {k: collected[k] for k in identities})
-
-
 def authenticate_execution_binding(
     contract_id: ContractId,
     generation_identifier: str,

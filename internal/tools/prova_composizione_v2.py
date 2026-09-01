@@ -145,14 +145,19 @@ def _() -> None:
     raise AssertionError("un sosia e' stato accettato")
 
 
-@caso("5 la prova delle correnti restituisce il tipo che A consuma")
+@caso("5 un solo produttore della prova delle correnti, e non e' mio")
 def _() -> None:
+    # The orchestrator in executor_birth_cutover already does everything a V2
+    # proof builder would do, and more: quiescence, census before and after,
+    # durability reread.  A second producer beside it would be a second place
+    # where the certificate's evidence is assembled.
     import contract_store as C
-    import inspect
-    from executor_birth_cutover import CurrentReceiptProof
-    sorgente = inspect.getsource(C.current_receipt_proof)
-    assert "from executor_birth_cutover import CurrentReceiptProof" in sorgente
-    assert not hasattr(C, "CurrentReceiptEntry"), "tipo duplicato ancora presente"
+    from executor_birth_cutover import (
+        CurrentReceiptProof, prepare_current_receipt_proof,
+    )
+    assert not hasattr(C, "current_receipt_proof"), "produttore duplicato"
+    assert not hasattr(C, "CurrentReceiptEntry"), "tipo duplicato"
+    assert callable(prepare_current_receipt_proof)
     assert CurrentReceiptProof.__module__ == "executor_birth_cutover"
 
 
