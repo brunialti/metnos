@@ -1,9 +1,8 @@
-"""Probe the window between transaction-directory creation and record staging.
+"""Probe transaction-directory publication around first-record staging.
 
-The V2 coordinator journal creates ``transactions-v2/<request_id>/`` and makes
-it durable before the first record is staged. This probe measures what an
-interruption inside that window leaves behind: whether the resolver can still
-read the coordinator, and whether the writer can still heal it.
+The V2 coordinator must never expose an empty committed transaction directory.
+This probe interrupts its unpublished staging directory before the first
+record, then measures whether the resolver and the writer agree on recovery.
 
 Exit codes: 0 the window is closed, 1 the asymmetry is present, 2 the probe
 could not run and says why.
@@ -73,11 +72,23 @@ def _misura(etichetta, azione):
 def principale() -> int:
     base = Path(tempfile.mkdtemp(prefix="sonda-finestra-transazione-"))
     try:
-        print("caso 1 — la cartella della singola transazione resta vuota")
+        print("caso 1 — la cartella staged resta vuota prima del primo atto")
         presa, sessione, radice, cartella, rivendicazione, atto = _scena(base / "a")
-        vuota = cartella / "transactions-v2" / rivendicazione.request_id
-        vuota.mkdir(mode=0o755, parents=True)
-        os.chmod(vuota.parent, 0o755)
+
+        def interrompi(stadio):
+            if stadio == "transaction_directory_staged":
+                raise InterruptedError(stadio)
+
+        try:
+            _append_ownership_transaction_locked_for_test_v2(
+                sessione, radice, atto, _crash_seam=interrompi,
+            )
+        except InterruptedError:
+            pass
+        else:
+            print("  la frontiera staged non e' stata attraversata")
+            presa.__exit__(None, None, None)
+            return 2
         lettore = _misura(
             "lettore            ",
             lambda: _resolve_ownership_coordinator_locked_for_test_v2(sessione, radice),
@@ -110,8 +121,8 @@ def principale() -> int:
         if comune != "accetta":
             print("ESITO: anche la cartella comune vuota blocca il lettore.")
             return 1
-        if lettore == "accetta":
-            print("ESITO: finestra chiusa — il lettore attraversa la cartella vuota.")
+        if lettore == "accetta" and scrittore == "accetta" and dopo == "accetta":
+            print("ESITO: finestra chiusa — staging e pubblicazione concordano.")
             return 0
         if lettore == "rifiuta" and scrittore == "accetta" and dopo == "accetta":
             print("ESITO: ASIMMETRIA — il lettore rifiuta uno stato che lo")

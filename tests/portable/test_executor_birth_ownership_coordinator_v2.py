@@ -616,7 +616,11 @@ def test_transaction_writer_persists_rereads_and_resolves_all_states(tmp_path):
 @LINUX_ONLY
 @pytest.mark.parametrize(
     "interruption_stage",
-    ("transaction_record_staged", "transaction_record_published"),
+    (
+        "transaction_directory_staged",
+        "transaction_record_staged",
+        "transaction_record_published",
+    ),
 )
 def test_transaction_writer_recovers_staged_record_and_rejects_conflict(
     tmp_path, interruption_stage,
@@ -643,13 +647,26 @@ def test_transaction_writer_recovers_staged_record_and_rejects_conflict(
             _append_ownership_transaction_locked_for_test_v2(
                 session, ownership_root, record, _crash_seam=interrupt,
             )
-        transaction = directory / "transactions-v2" / claim.request_id
-        expected_name = (
-            f".record-000-v2.json.{claim.request_id[7:]}.tmp"
-            if interruption_stage == "transaction_record_staged"
-            else "record-000-v2.json"
-        )
-        assert tuple(path.name for path in transaction.iterdir()) == (expected_name,)
+        transactions = directory / "transactions-v2"
+        transaction = transactions / claim.request_id
+        staged = transactions / f".{claim.request_id[7:]}.v2.tmp"
+        if interruption_stage == "transaction_record_published":
+            assert not staged.exists()
+            assert tuple(path.name for path in transaction.iterdir()) == (
+                "record-000-v2.json",
+            )
+        else:
+            assert not transaction.exists()
+            expected = (
+                () if interruption_stage == "transaction_directory_staged"
+                else ("record-000-v2.json",)
+            )
+            assert tuple(path.name for path in staged.iterdir()) == expected
+            graph = _resolve_ownership_coordinator_locked_for_test_v2(
+                session, ownership_root,
+            ).observation
+            assert graph.transactions == ()
+            assert graph.pending_claims == (claim,)
 
         assert _append_ownership_transaction_locked_for_test_v2(
             session, ownership_root, record,
@@ -662,6 +679,83 @@ def test_transaction_writer_recovers_staged_record_and_rejects_conflict(
             )
         assert failure.value.code == "birth_ownership_journal_conflict"
         assert tree_snapshot(directory) == before_conflict
+
+
+@LINUX_ONLY
+def test_resolver_keeps_rejecting_an_empty_committed_transaction(tmp_path):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory = make_coordinator_root(ownership_root)
+        claim = bound_claim(
+            release_sequence=1, previous_head_id=None,
+            closed_build_id=D("3"), source_id=D("2"),
+            previous_closed_build_id=None, previous_cutover_id=None,
+        )
+        record = transaction_records(
+            claim, end_sequence=0, previous_closed_build_id=None,
+            previous_cutover_id=None, cutover_id=D("4"), head_id=D("5"),
+        )[0]
+        write_claim(directory, claim)
+        transactions = directory / "transactions-v2"
+        transactions.mkdir(mode=0o755)
+        transactions.chmod(0o755)
+        transaction = transactions / claim.request_id
+        transaction.mkdir(mode=0o755)
+        transaction.chmod(0o755)
+        before = tree_snapshot(directory)
+
+        with pytest.raises(OwnershipCoordinatorError) as failure:
+            _resolve_ownership_coordinator_locked_for_test_v2(
+                session, ownership_root,
+            )
+        assert failure.value.detail == "transaction cardinality"
+        assert tree_snapshot(directory) == before
+        with pytest.raises(OwnershipCoordinatorError) as writer_failure:
+            _append_ownership_transaction_locked_for_test_v2(
+                session, ownership_root, record,
+            )
+        assert writer_failure.value.detail == "transaction cardinality"
+        assert tree_snapshot(directory) == before
+
+
+@LINUX_ONLY
+def test_initial_transaction_recovers_a_partial_unpublished_record(tmp_path):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory = make_coordinator_root(ownership_root)
+        claim = bound_claim(
+            release_sequence=1, previous_head_id=None,
+            closed_build_id=D("3"), source_id=D("2"),
+            previous_closed_build_id=None, previous_cutover_id=None,
+        )
+        record = transaction_records(
+            claim, end_sequence=0, previous_closed_build_id=None,
+            previous_cutover_id=None, cutover_id=D("4"), head_id=D("5"),
+        )[0]
+        write_claim(directory, claim)
+        transactions = directory / "transactions-v2"
+        transactions.mkdir(mode=0o755)
+        transactions.chmod(0o755)
+        staged = transactions / f".{claim.request_id[7:]}.v2.tmp"
+        staged.mkdir(mode=0o755)
+        staged.chmod(0o700)
+        partial = staged / "record-000-v2.json"
+        encoded = record.encode()
+        partial.write_bytes(encoded[: len(encoded) // 2])
+        partial.chmod(0o600)
+
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            session, ownership_root,
+        ).observation
+        assert graph.transactions == ()
+        assert graph.pending_claims == (claim,)
+        assert _append_ownership_transaction_locked_for_test_v2(
+            session, ownership_root, record,
+        ) == record
+        assert not staged.exists()
+        assert (
+            transactions / claim.request_id / "record-000-v2.json"
+        ).read_bytes() == encoded
 
 
 @LINUX_ONLY

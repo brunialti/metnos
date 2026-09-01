@@ -8,6 +8,8 @@ productive Group-5 entry cannot create.
 from __future__ import annotations
 
 import base64
+import ctypes
+import errno
 import hashlib
 import json
 import os
@@ -61,6 +63,9 @@ _LEGACY_RECORD_RE_V1 = re.compile(r"record-([0-9]{3})-v1\.json\Z")
 _TRANSACTION_RECORD_RE_V2 = re.compile(r"record-([0-9]{3})-v2\.json\Z")
 _TEMPORARY_TRANSACTION_RECORD_RE_V2 = re.compile(
     r"\.record-([0-9]{3})-v2\.json\.([0-9a-f]{64})\.tmp\Z"
+)
+_TEMPORARY_TRANSACTION_DIRECTORY_RE_V2 = re.compile(
+    r"\.([0-9a-f]{64})\.v2\.tmp\Z"
 )
 _SUCCESSOR_CLAIM_BASENAME_RE_V1 = re.compile(
     r"(?:initial|[0-9a-f]{64})\.json\Z"
@@ -1451,6 +1456,179 @@ def _ensure_coordinator_child_directory_v2(
     return child, created
 
 
+def _temporary_transaction_directory_v2(
+    transactions: Path, request_id: str,
+) -> Path:
+    _require_digest(request_id, "request_id")
+    return transactions / f".{request_id[7:]}.v2.tmp"
+
+
+def _require_staged_transaction_directory_v2(
+    directory: Path, *, root_owned: bool,
+) -> os.stat_result:
+    """Accept only a private subset of the final directory mode."""
+    try:
+        info = directory.lstat()
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "staged transaction directory",
+        ) from exc
+    invalid = (
+        not stat.S_ISDIR(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+    )
+    if os.name != "nt":
+        expected_owner = (
+            (0, 0) if root_owned else (os.geteuid(), os.getegid())
+        )
+        mode = stat.S_IMODE(info.st_mode)
+        invalid = invalid or (
+            (info.st_uid, info.st_gid) != expected_owner
+            or mode & ~0o755 != 0
+            or mode & 0o700 != 0o700
+        )
+    if invalid:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "staged transaction directory",
+        )
+    return info
+
+
+def _read_staged_control_file_v2(
+    path: Path, maximum: int, *, root_owned: bool,
+) -> bytes:
+    """Read a stable unpublished file, including a recoverable strict prefix."""
+    flags = (
+        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = None
+    try:
+        descriptor = os.open(path, flags)
+        before = os.fstat(descriptor)
+        path_before = path.lstat()
+        expected_owner = (
+            (0, 0) if root_owned else (os.geteuid(), os.getegid())
+        )
+        invalid = (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size < 0
+            or before.st_size > maximum
+            or stat.S_ISLNK(path_before.st_mode)
+            or bool(getattr(path_before, "st_file_attributes", 0) & 0x400)
+            or (before.st_dev, before.st_ino)
+            != (path_before.st_dev, path_before.st_ino)
+        )
+        if os.name != "nt":
+            invalid = invalid or (
+                stat.S_IMODE(before.st_mode) not in {0o600, 0o644}
+                or (before.st_uid, before.st_gid) != expected_owner
+            )
+        if invalid:
+            raise ValueError("staged control file metadata")
+        chunks = bytearray()
+        while len(chunks) < before.st_size:
+            chunk = os.read(descriptor, before.st_size - len(chunks))
+            if not chunk:
+                break
+            chunks.extend(chunk)
+        after = os.fstat(descriptor)
+        path_after = path.lstat()
+        identity = lambda info: (
+            info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+            info.st_uid, info.st_gid, info.st_size,
+            getattr(info, "st_file_attributes", 0),
+        )
+        if (
+            identity(after) != identity(before)
+            or identity(path_after) != identity(path_before)
+            or len(chunks) != before.st_size
+        ):
+            raise ValueError("staged control file changed")
+        return bytes(chunks)
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "staged control file metadata",
+        ) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _read_staged_transaction_directory_v2(
+    directory: Path, *, request_id: str, root_owned: bool,
+) -> bytes | None:
+    """Validate one unpublished directory without treating it as committed."""
+    _require_staged_transaction_directory_v2(
+        directory, root_owned=root_owned,
+    )
+    paths = _read_directory_entries_v2(directory)
+    if not paths:
+        return None
+    if len(paths) != 1 or paths[0].name != _record_basename_v2(0):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "staged transaction inventory",
+        )
+    encoded = _read_staged_control_file_v2(
+        paths[0], MAX_RECORD_BYTES_V1, root_owned=root_owned,
+    )
+    try:
+        record = _decode_record_v2(encoded)
+        _require_transaction_record_link_v2(
+            (), record, sequence=0, request_id=request_id,
+            previous_hash=None,
+        )
+    except Exception:
+        # A power loss may leave a strict prefix in this unpublished location.
+        # The writer compares it with the exact record before replacing it.
+        return encoded
+    return encoded
+
+
+def _publish_transaction_directory_no_replace_v2(
+    temporary: Path, destination: Path,
+) -> bool:
+    """Atomically publish a complete transaction directory on Linux."""
+    if not sys.platform.startswith("linux"):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_platform_unsupported",
+        )
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "directory rename support",
+        )
+    renameat2.argtypes = (
+        ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    result = renameat2(
+        -100, os.fsencode(temporary), -100, os.fsencode(destination), 1,
+    )
+    if result != 0:
+        number = ctypes.get_errno()
+        if number == errno.EEXIST:
+            return False
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", destination.name,
+        ) from OSError(number, os.strerror(number), destination)
+    try:
+        _sync_directory(destination.parent)
+    except OSError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "transaction directory sync",
+        ) from exc
+    return True
+
+
 class _OwnershipCoordinatorTransactionJournalV2:
     """Append and recover one exact V2 transaction under the outer lock."""
 
@@ -1491,22 +1669,150 @@ class _OwnershipCoordinatorTransactionJournalV2:
             raise OwnershipCoordinatorError(
                 "birth_ownership_recovery_required", "claim transaction binding",
             )
-        candidate = (
+        transactions = (
             self.coordinator_directory / TRANSACTIONS_DIRECTORY_BASENAME_V2
-            / self.request_id
         )
-        if not candidate.exists() and record.sequence != 0:
+        try:
+            transactions.lstat()
+            transactions_exists = True
+        except FileNotFoundError:
+            transactions_exists = False
+        except OSError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction directory",
+            ) from exc
+        if not transactions_exists and record.sequence != 0:
             raise OwnershipCoordinatorError(
                 "birth_ownership_recovery_required", "transaction gap",
             )
-        transactions, _ = _ensure_coordinator_child_directory_v2(
-            self.coordinator_directory, TRANSACTIONS_DIRECTORY_BASENAME_V2,
-            root_owned=root_owned,
-        )
-        self.directory, _ = _ensure_coordinator_child_directory_v2(
-            transactions, self.request_id, root_owned=root_owned,
-        )
+        if transactions_exists:
+            _require_read_only_directory_v2(
+                transactions, root_owned=root_owned,
+            )
+        else:
+            transactions, _ = _ensure_coordinator_child_directory_v2(
+                self.coordinator_directory,
+                TRANSACTIONS_DIRECTORY_BASENAME_V2,
+                root_owned=root_owned,
+            )
+        candidate = transactions / self.request_id
+        try:
+            candidate.lstat()
+            candidate_exists = True
+        except FileNotFoundError:
+            candidate_exists = False
+        except OSError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction directory",
+            ) from exc
+        if not candidate_exists and record.sequence != 0:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction gap",
+            )
+        if candidate_exists:
+            _require_read_only_directory_v2(
+                candidate, root_owned=root_owned,
+            )
+            if not _read_directory_entries_v2(candidate):
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "transaction cardinality",
+                )
+        self.directory = candidate
         self._root_owned = root_owned
+
+    def _append_initial(
+        self, record: OwnershipCoordinatorRecordV2, *,
+        _crash_seam: Callable[[str], None] | None,
+    ) -> OwnershipCoordinatorRecordV2:
+        transactions = self.directory.parent
+        temporary = _temporary_transaction_directory_v2(
+            transactions, self.request_id,
+        )
+        try:
+            temporary.mkdir(mode=0o755)
+        except FileExistsError:
+            pass
+        except OSError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required",
+                "staged transaction directory",
+            ) from exc
+        temporary_info = _require_staged_transaction_directory_v2(
+            temporary, root_owned=self._root_owned,
+        )
+        if (
+            os.name != "nt"
+            and stat.S_IMODE(temporary_info.st_mode) != 0o755
+        ):
+            try:
+                temporary.chmod(0o755)
+                _sync_directory(transactions)
+            except OSError as exc:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "staged transaction directory",
+                ) from exc
+            _require_read_only_directory_v2(
+                temporary, root_owned=self._root_owned,
+            )
+        if _crash_seam is not None:
+            _crash_seam("transaction_directory_staged")
+
+        encoded = record.encode()
+        staged_record = temporary / _record_basename_v2(0)
+        observed = _read_staged_transaction_directory_v2(
+            temporary, request_id=self.request_id,
+            root_owned=self._root_owned,
+        )
+        try:
+            if observed is not None and observed != encoded:
+                if len(observed) >= len(encoded) or not encoded.startswith(observed):
+                    raise OwnershipCoordinatorError(
+                        "birth_ownership_journal_conflict", staged_record.name,
+                    )
+                staged_record.unlink()
+                _sync_directory(temporary)
+                observed = None
+            if observed is None:
+                _write_temporary(staged_record, encoded)
+                _sync_directory(temporary)
+            if _crash_seam is not None:
+                _crash_seam("transaction_record_staged")
+            published = _publish_transaction_directory_no_replace_v2(
+                temporary, self.directory,
+            )
+        except (OwnershipCoordinatorError, InterruptedError):
+            raise
+        except OSError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "staged transaction",
+            ) from exc
+        if not published:
+            loaded, _ = _read_transaction_directory_v2(
+                self.directory, request_id=self.request_id,
+                root_owned=self._root_owned,
+            )
+            if len(loaded) != 1 or loaded[0] != record:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_journal_conflict",
+                    _record_basename_v2(0),
+                )
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required",
+                "staged transaction collision",
+            )
+        if _crash_seam is not None:
+            _crash_seam("transaction_record_published")
+        loaded, _ = _read_transaction_directory_v2(
+            self.directory, request_id=self.request_id,
+            root_owned=self._root_owned,
+        )
+        if len(loaded) != 1 or loaded[0] != record:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "transaction reread",
+            )
+        return loaded[0]
 
     def _inventory(
         self,
@@ -1565,6 +1871,12 @@ class _OwnershipCoordinatorTransactionJournalV2:
             raise OwnershipCoordinatorError(
                 "birth_ownership_recovery_required", "claim transaction binding",
             )
+        if not self.directory.exists():
+            _require_transaction_record_link_v2(
+                (), record, sequence=0, request_id=self.request_id,
+                previous_hash=None,
+            )
+            return self._append_initial(record, _crash_seam=_crash_seam)
         committed_paths, temporary_paths = self._inventory()
         records = self._committed(committed_paths)
         sequence = len(records)
@@ -1633,7 +1945,24 @@ def _read_transactions_snapshot_v2(
     _require_read_only_directory_v2(directory, root_owned=root_owned)
     transactions: list[tuple[OwnershipCoordinatorRecordV2, ...]] = []
     encoded_transactions: list[tuple[bytes, ...]] = []
+    committed_request_ids: set[str] = set()
+    staged_request_ids: set[str] = set()
     for path in _read_directory_entries_v2(directory):
+        staged_match = _TEMPORARY_TRANSACTION_DIRECTORY_RE_V2.fullmatch(
+            path.name,
+        )
+        if staged_match is not None:
+            request_id = "sha256:" + staged_match.group(1)
+            if request_id in staged_request_ids:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required",
+                    "staged transaction duplicate",
+                )
+            _read_staged_transaction_directory_v2(
+                path, request_id=request_id, root_owned=root_owned,
+            )
+            staged_request_ids.add(request_id)
+            continue
         if _DIGEST_RE.fullmatch(path.name) is None:
             raise OwnershipCoordinatorError(
                 "birth_ownership_recovery_required", "transaction directory",
@@ -1641,8 +1970,14 @@ def _read_transactions_snapshot_v2(
         records, encoded = _read_transaction_directory_v2(
             path, request_id=path.name, root_owned=root_owned,
         )
+        committed_request_ids.add(path.name)
         transactions.append(records)
         encoded_transactions.append(encoded)
+    if committed_request_ids & staged_request_ids:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required",
+            "transaction publication ambiguity",
+        )
     return tuple(transactions), tuple(encoded_transactions)
 
 
