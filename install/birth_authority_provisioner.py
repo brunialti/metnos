@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 import sys
 
 _RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
@@ -40,6 +40,7 @@ SOURCE_INVENTORY_DIGEST_DOMAIN_V2 = (
     b"metnos.executor-birth.provisioning-source-inventory/v2\0"
 )
 TRANSACTION_HEADER_BASENAME_V1 = "transaction-v1.json"
+TRANSACTION_HEADER_BASENAME_V2 = "transaction-v2.json"
 CHECKPOINTS_BASENAME_V1 = "checkpoints-v1"
 MAXIMUM_CHECKPOINT_SEQUENCE_V1 = 8191
 MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1 = 1024 * 1024
@@ -503,6 +504,29 @@ def _build_transaction_header_v2(
     )
 
 
+_JOURNAL_FORMAT_SEAL = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _TransactionJournalFormat:
+    root_prefix: str
+    header_basename: str
+    header_pending_prefix: str
+    decode_header: Callable[[bytes], object]
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _JOURNAL_FORMAT_SEAL
+            or not self.root_prefix.startswith(".birth-provisioning-")
+            or not self.header_basename.startswith("transaction-v")
+            or not self.header_basename.endswith(".json")
+            or not self.header_pending_prefix.startswith(".transaction-v")
+            or not callable(self.decode_header)
+        ):
+            raise _conflict()
+
+
 _ACQUIRED_DIGEST_FIELDS_V1 = (
     "author_source_public_inventory_sha256",
     "approval_input_sha256",
@@ -670,7 +694,9 @@ def decode_checkpoint_v1(raw: bytes) -> CheckpointV1:
 
 
 TRANSACTION_PREFIX_V1 = ".birth-provisioning-v1.txn."
+TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.txn."
 HEADER_PENDING_PREFIX_V1 = ".transaction-v1.pending."
+HEADER_PENDING_PREFIX_V2 = ".transaction-v2.pending."
 CHECKPOINT_PENDING_PREFIX_V1 = ".checkpoint-pending-"
 
 
@@ -679,6 +705,29 @@ def transaction_root_name_v1(transaction_id: str) -> str:
     if not _is_hex(transaction_id, 32):
         raise _conflict()
     return TRANSACTION_PREFIX_V1 + transaction_id
+
+
+def transaction_root_name_v2(transaction_id: str) -> str:
+    """The only admitted name of one transition transaction directory."""
+    if not _is_hex(transaction_id, 32):
+        raise _conflict()
+    return TRANSACTION_PREFIX_V2 + transaction_id
+
+
+_JOURNAL_FORMAT_V1 = _TransactionJournalFormat(
+    TRANSACTION_PREFIX_V1,
+    TRANSACTION_HEADER_BASENAME_V1,
+    HEADER_PENDING_PREFIX_V1,
+    decode_transaction_header_v1,
+    _JOURNAL_FORMAT_SEAL,
+)
+_JOURNAL_FORMAT_V2 = _TransactionJournalFormat(
+    TRANSACTION_PREFIX_V2,
+    TRANSACTION_HEADER_BASENAME_V2,
+    HEADER_PENDING_PREFIX_V2,
+    decode_transaction_header_v2,
+    _JOURNAL_FORMAT_SEAL,
+)
 
 
 def new_transaction_id_v1() -> str:
@@ -730,7 +779,7 @@ def _is_checkpoint_name_v1(name: str) -> int | None:
 class TransactionStateV1:
     """What one transaction directory holds right now."""
 
-    header: TransactionHeaderV1 | None
+    header: TransactionHeaderV1 | TransactionHeaderV2 | None
     chain: tuple[CheckpointV1, ...]
     header_pending: bool
     pending_checkpoint_sequence: int | None
@@ -749,13 +798,30 @@ class _TransactionJournalV1:
     The journal records; it decides nothing about authority.
     """
 
-    __slots__ = ("_session", "_transaction_id", "_root", "_checkpoints")
+    __slots__ = (
+        "_session", "_transaction_id", "_root", "_checkpoints", "_format",
+    )
 
-    def __init__(self, session, transaction_id: str) -> None:
+    def __init__(
+        self, session, transaction_id: str,
+        *, _format: _TransactionJournalFormat = _JOURNAL_FORMAT_V1,
+    ) -> None:
+        if (
+            not _is_hex(transaction_id, 32)
+            or not isinstance(_format, _TransactionJournalFormat)
+            or _format._seal is not _JOURNAL_FORMAT_SEAL
+        ):
+            raise _conflict()
         self._session = session
         self._transaction_id = transaction_id
-        self._root = (transaction_root_name_v1(transaction_id),)
+        self._format = _format
+        self._root = (_format.root_prefix + transaction_id,)
         self._checkpoints = self._root + (CHECKPOINTS_BASENAME_V1,)
+
+    @classmethod
+    def transition_v2(cls, session, transaction_id: str):
+        """Create the same journal discipline with the closed V2 header."""
+        return cls(session, transaction_id, _format=_JOURNAL_FORMAT_V2)
 
     @property
     def transaction_id(self) -> str:
@@ -768,6 +834,10 @@ class _TransactionJournalV1:
     @property
     def checkpoints_components(self) -> tuple[str, ...]:
         return self._checkpoints
+
+    @property
+    def header_basename(self) -> str:
+        return self._format.header_basename
 
     # -- writing ---------------------------------------------------------
 
@@ -793,13 +863,13 @@ class _TransactionJournalV1:
                 self._checkpoints, role=_integrity_role(),
             )
 
-    def write_header(self, header: TransactionHeaderV1) -> None:
+    def write_header(self, header: object) -> None:
         if header.transaction_id != self._transaction_id:
             raise _conflict()
         self._publish(
             self._root,
-            HEADER_PENDING_PREFIX_V1 + self._transaction_id,
-            TRANSACTION_HEADER_BASENAME_V1,
+            self._format.header_pending_prefix + self._transaction_id,
+            self._format.header_basename,
             header.encode(),
         )
 
@@ -890,7 +960,7 @@ class _TransactionJournalV1:
     # -- recovery --------------------------------------------------------
 
     def recover_header(
-        self, header: TransactionHeaderV1, state: "TransactionStateV1",
+        self, header: object, state: "TransactionStateV1",
     ) -> "TransactionStateV1":
         """Bring the header into existence from whatever the stop left behind.
 
@@ -906,7 +976,7 @@ class _TransactionJournalV1:
         # calls any other child ambiguous.
         with _translated():
             names = set(self._session.inventory(self._root))
-        pending = HEADER_PENDING_PREFIX_V1 + self._transaction_id
+        pending = self._format.header_pending_prefix + self._transaction_id
         if names - ({pending} if state.header_pending else set()):
             raise _reject("birth_provisioning_recovery_ambiguous")
         if state.header_pending:
@@ -921,9 +991,9 @@ class _TransactionJournalV1:
 
     def _promote_pending_header(self) -> bool:
         """Promote the header pending when it is already whole and coherent."""
-        pending = HEADER_PENDING_PREFIX_V1 + self._transaction_id
+        pending = self._format.header_pending_prefix + self._transaction_id
         try:
-            observed = decode_transaction_header_v1(
+            observed = self._format.decode_header(
                 self._read(self._root + (pending,))
             )
         except BirthProvisioningError:
@@ -933,7 +1003,7 @@ class _TransactionJournalV1:
         with _translated():
             self._session.rename_no_replace(
                 self._root + (pending,),
-                self._root + (TRANSACTION_HEADER_BASENAME_V1,),
+                self._root + (self._format.header_basename,),
                 directory=False,
             )
         return True
@@ -1017,12 +1087,12 @@ class _TransactionJournalV1:
         """Classify the whole transaction directory before trusting any of it."""
         with _translated():
             names = set(self._session.inventory(self._root))
-        header_pending = HEADER_PENDING_PREFIX_V1 + self._transaction_id
+        header_pending = self._format.header_pending_prefix + self._transaction_id
         chain, pending = ((), None)
         if CHECKPOINTS_BASENAME_V1 in names:
             chain, pending = self._read_chain()
         admitted = {
-            TRANSACTION_HEADER_BASENAME_V1, CHECKPOINTS_BASENAME_V1,
+            self._format.header_basename, CHECKPOINTS_BASENAME_V1,
             header_pending,
         }
         # A payload is admitted only where the most recent checkpoint declares
@@ -1040,7 +1110,7 @@ class _TransactionJournalV1:
         if len(payload_pendings) > 1 or (names - admitted) - payload_pendings:
             raise _reject("birth_provisioning_recovery_ambiguous")
         header = None
-        if TRANSACTION_HEADER_BASENAME_V1 in names:
+        if self._format.header_basename in names:
             header = self.read_header()
             if header.transaction_id != self._transaction_id:
                 raise _conflict()
@@ -1051,9 +1121,9 @@ class _TransactionJournalV1:
             pending_checkpoint_sequence=pending,
         )
 
-    def read_header(self) -> TransactionHeaderV1:
-        return decode_transaction_header_v1(
-            self._read(self._root + (TRANSACTION_HEADER_BASENAME_V1,))
+    def read_header(self) -> TransactionHeaderV1 | TransactionHeaderV2:
+        return self._format.decode_header(
+            self._read(self._root + (self._format.header_basename,))
         )
 
     def _read_chain(self) -> tuple[tuple[CheckpointV1, ...], int | None]:
@@ -2783,7 +2853,7 @@ def _remove_transaction_v1(session, journal: "_TransactionJournalV1") -> None:
             for entry in session._inventory_state(components[:-1]):
                 if entry.name != components[-1]:
                     continue
-                if entry.name == TRANSACTION_HEADER_BASENAME_V1:
+                if entry.name == journal.header_basename:
                     continue
                 session.dispose_transaction_object(_DisposalExpectation(
                     components=components,
@@ -2806,9 +2876,9 @@ def _dispose_header_v1(session, journal: "_TransactionJournalV1") -> None:
         _DisposalClass, _DisposalExpectation, _ObjectKind,
     )
 
-    components = journal.root_components + (TRANSACTION_HEADER_BASENAME_V1,)
+    components = journal.root_components + (journal.header_basename,)
     for entry in session._inventory_state(journal.root_components):
-        if entry.name != TRANSACTION_HEADER_BASENAME_V1:
+        if entry.name != journal.header_basename:
             continue
         payload = session.read_file(
             components,

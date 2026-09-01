@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import replace
 
 import pytest
@@ -18,10 +19,12 @@ from executor_birth_ownership_preflight import (
 )
 from executor_birth_prepared_set import PREPARED_STATE_V1, PreparedSetV1
 from install.birth_authority_provisioner import (
-    BirthProvisioningError, TransactionHeaderV2,
+    BirthProvisioningError, CheckpointV1, ProvisioningStateV1,
+    TransactionHeaderV2,
     _build_transaction_header_v2, decode_transaction_header_v2,
-    provisioning_source_inventory_hash_v2,
+    empty_digests_v1, provisioning_source_inventory_hash_v2,
 )
+from rm0008_2b import support
 
 
 def D(character: str) -> str:
@@ -152,3 +155,64 @@ def test_v2_header_rejects_a_claim_for_another_verified_build():
             distribution=_distribution(),
             previous_set=_prepared(),
         )
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_header_and_checkpoint_survive_a_real_reopen(tmp_path, monkeypatch):
+    from install import birth_authority_provisioner as provisioning
+
+    base = support.make_config(tmp_path)
+    layout = support.open_layout(monkeypatch, base)
+    transaction_id = "0" * 32
+    header = _build_transaction_header_v2(
+        transaction_id=transaction_id,
+        provisioner_build_id="build-v2",
+        claim=_claim(),
+        distribution=_distribution(),
+        previous_set=_prepared(),
+    )
+    with layout.birth_session as session:
+        with session.global_lock(exclusive=True, create=True):
+            journal = provisioning._TransactionJournalV1.transition_v2(
+                session, transaction_id,
+            )
+            journal.create_root()
+            journal.write_header(header)
+            journal.ensure_checkpoints()
+            journal.append(CheckpointV1(
+                transaction_id, 0, None, ProvisioningStateV1.created, (),
+                empty_digests_v1(), None,
+            ))
+
+    reopened = support.open_layout(monkeypatch, base).birth_session
+    with reopened:
+        with reopened.global_lock(exclusive=True, create=True):
+            state = provisioning._TransactionJournalV1.transition_v2(
+                reopened, transaction_id,
+            ).read_state()
+    assert state.header == header
+    assert state.last.state is ProvisioningStateV1.created
+    assert state.pending_checkpoint_sequence is None
+    assert not state.header_pending
+
+
+def test_v2_filesystem_grammar_is_versioned_and_does_not_admit_v1_finals():
+    import executor_birth_secure_fs as secure_fs
+
+    transaction_id = "0" * 32
+    root = (f".birth-provisioning-v2.txn.{transaction_id}",)
+    for components in (
+        root,
+        root + ("transaction-v2.json",),
+        root + (f".transaction-v2.pending.{transaction_id}",),
+        root + ("checkpoints-v1",),
+        root + ("authority-set",),
+    ):
+        assert secure_fs._matching_rows(components)
+    for components in (
+        root + ("transaction-v1.json",),
+        root + (f".transaction-v1.pending.{transaction_id}",),
+        root + ("prepared-v1.json",),
+        root + ("author-root-v1",),
+    ):
+        assert secure_fs._matching_rows(components) == ()
