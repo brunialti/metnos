@@ -3778,7 +3778,7 @@ def _open_installer_layout_v1():
         return open_birth_provisioning_layout_v1()
 
 
-def prepare_transition_authority_set_v2(
+def _prepare_transition_authority_set_v2(
     claim: object, distribution: object, previous_set: object,
 ) -> PreparedAuthoritySetV2:
     """Prepare or resume the sole V2 set transaction at the fixed Birth root."""
@@ -4098,7 +4098,7 @@ def _prepare_transition_receipt_material_locked_v2(
             raise _conflict()
         previous_context = required.selection
         previous_set = required.authorities.prepared
-    prepared = prepare_transition_authority_set_v2(
+    prepared = _prepare_transition_authority_set_v2(
         claim, verified, previous_set,
     )
     return _TransitionReceiptPreparationV2(

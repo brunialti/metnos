@@ -1881,15 +1881,16 @@ def validate_productive_mutation_graph(
     legacy_wrapper_symbol = "runtime.executor_birth_secure_fs::_LegacyReadSession"
     entry_symbol = "install.birth_authority_provisioning::open_birth_provisioning_layout_v1"
     layout_symbol = "install.birth_authority_provisioning::ProvisioningLayoutV1"
-    # Increment 2B adds the provisioner, which must mutate.  It gets one door
-    # and no more: the module is installer-side, its single public entry is
-    # named here, everything else that mutates inside it is private, and no
-    # runtime module may reach it (section 16.13.4).
+    # Every released provisioner workflow has one named installer-side entry.
+    # Mutating helpers stay private, and no runtime module may reach any entry
+    # in this closed set (section 16.13.4).
     provisioner_module = "install.birth_authority_provisioner"
     installer_phase_module = "install.phases.phase3_code"
     provisioner_entry_symbols = frozenset({
         f"{provisioner_module}::prepare_or_defer_until_legacy_author_exists",
         f"{provisioner_module}::ensure_executor_birth_authorities_prepared",
+        f"{provisioner_module}::complete_transition_cutover_v2",
+        f"{provisioner_module}::prepare_transition_receipts_v2",
     })
     installer_resolver_symbols = {
         "install.birth_authority_provisioning::_resolve_path_user_config_v1",

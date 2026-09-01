@@ -215,7 +215,7 @@ _PR_CAP_AMBIENT_V1 = 47
 _PR_CAP_AMBIENT_CLEAR_ALL_V1 = 4
 _LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:62e8f65ed8b8704750869ad2d557bc00797a6dbd22189565992749419fc5dd63"
+    "sha256:7727bc054bb411bfdd853148ac1a4c06945a710234d2db7fdb84d5e1851a2765"
 )
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -786,7 +786,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:3f636549ef3bd50c17bd4240e4525cd71f2121d4c96e995eb0607e756ed45a40"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:a071db0dca998217ea3da857bf100151d4e5740d30f3d581216f303651f94313"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -806,7 +806,9 @@ _BIRTH_CLOSED_SEALED_MODULES = (
     "runtime/executor_birth_reattestation.py",
     "runtime/sign.py",
 )
-_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
+# Keep membership independently compiled while matching the canonical JSON
+# ordering without relying on insertion position in this frozen snapshot.
+_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = tuple(sorted((
     "install/birth_authority_provisioner.py:complete_transition_cutover_v2",
     "install/birth_authority_provisioner.py:prepare_transition_receipts_v2",
     "install/birth_ownership_authority_provisioner.py:_discard_temporary",
@@ -818,6 +820,7 @@ _BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
     "install/birth_ownership_authority_provisioner.py:_sync_directory",
     "install/birth_ownership_authority_provisioner.py:_write_exclusive",
     "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
+    "install/executor_birth_distribution_release.py:build_and_install_received_source_v1",
     "install/executor_birth_source_receiver.py:<module>",
     "install/executor_birth_source_receiver.py:_copy_source_file_v1",
     "install/executor_birth_source_receiver.py:_copy_source_file_v1.copied_chunks",
@@ -929,7 +932,7 @@ _BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
     "runtime/executor_birth_ownership_coordinator.py:_require_locked_coordinator_graph_snapshot_v2",
     "runtime/executor_birth_ownership_coordinator.py:_resolve_ownership_coordinator_locked_v2",
     "runtime/executor_birth_ownership_coordinator.py:_transition_edge_locked_v2",
-)
+)))
 _BIRTH_CLOSED_EXCEPTION_SCOPES = (
     ("runtime/admin/manifest_refactor.py:<module>", "offline_nonproductive_authoring"),
     ("runtime/admin/manifest_refactor.py:main", "offline_nonproductive_authoring"),

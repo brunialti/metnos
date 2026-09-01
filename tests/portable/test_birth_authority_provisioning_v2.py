@@ -34,7 +34,7 @@ from install.birth_authority_provisioner import (
     _publish_prepared_authority_set_v2,
     decode_transaction_header_v2,
     decode_material_plan_v2, empty_digests_v1,
-    is_prepared_authority_set_v2, prepare_transition_authority_set_v2,
+    _prepare_transition_authority_set_v2, is_prepared_authority_set_v2,
     prepare_transition_receipts_v2,
     provisioning_source_inventory_hash_v2,
 )
@@ -714,10 +714,10 @@ def test_v2_fixed_entry_returns_the_same_sealed_prepared_set_on_resume(
     base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
     marker_before = (base / "birth" / "prepared-v1.json").read_bytes()
 
-    first = prepare_transition_authority_set_v2(
+    first = _prepare_transition_authority_set_v2(
         _claim(), distribution, previous,
     )
-    second = prepare_transition_authority_set_v2(
+    second = _prepare_transition_authority_set_v2(
         _claim(), distribution, previous,
     )
 
@@ -744,10 +744,10 @@ def test_v2_fixed_entry_returns_the_same_sealed_prepared_set_on_resume(
         }),
     )
     with pytest.raises(BirthProvisioningError):
-        prepare_transition_authority_set_v2(
+        _prepare_transition_authority_set_v2(
             changed_claim, distribution, previous,
         )
-    assert prepare_transition_authority_set_v2(
+    assert _prepare_transition_authority_set_v2(
         _claim(), distribution, previous,
     ) == first
 
@@ -764,7 +764,7 @@ def test_v2_publication_moves_the_exact_set_and_preserves_the_v1_anchor(
         item.relative_to(author_root).as_posix(): item.read_bytes()
         for item in author_root.rglob("*") if item.is_file()
     }
-    prepared = prepare_transition_authority_set_v2(
+    prepared = _prepare_transition_authority_set_v2(
         _claim(), distribution, previous,
     )
     transaction = (
@@ -778,7 +778,7 @@ def test_v2_publication_moves_the_exact_set_and_preserves_the_v1_anchor(
 
     published = base / "birth" / "authority-sets" / prepared.target_set_id
     assert published.stat().st_ino == staged_identity
-    assert prepare_transition_authority_set_v2(
+    assert _prepare_transition_authority_set_v2(
         _claim(), distribution, previous,
     ) == prepared
     assert not staged.exists()
@@ -848,14 +848,14 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
         lambda: order.append("previous") or SimpleNamespace(prepared=previous),
     )
 
-    original_prepare = provisioning.prepare_transition_authority_set_v2
+    original_prepare = provisioning._prepare_transition_authority_set_v2
 
     def prepare(*args):
         order.append("stage")
         return original_prepare(*args)
 
     monkeypatch.setattr(
-        provisioning, "prepare_transition_authority_set_v2", prepare,
+        provisioning, "_prepare_transition_authority_set_v2", prepare,
     )
 
     @contextmanager
@@ -954,7 +954,7 @@ def test_v2_publication_refuses_a_collision_without_moving_staging(
     from executor_birth_secure_fs import _BirthObjectRole
 
     base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
-    prepared = prepare_transition_authority_set_v2(
+    prepared = _prepare_transition_authority_set_v2(
         _claim(), distribution, previous,
     )
     transaction = (
@@ -984,7 +984,7 @@ def test_v2_publication_requires_the_historical_marker_before_the_move(
     tmp_path, monkeypatch,
 ):
     base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
-    prepared = prepare_transition_authority_set_v2(
+    prepared = _prepare_transition_authority_set_v2(
         _claim(), distribution, previous,
     )
     transaction = (

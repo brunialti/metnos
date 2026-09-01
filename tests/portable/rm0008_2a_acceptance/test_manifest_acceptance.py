@@ -2081,8 +2081,8 @@ def open_birth_provisioning_layout_v1():
         service_identity=identity,
     )
 """,
-        # Increment 2B adds the second and last installer-side door.  The
-        # baseline carries it so a mutant can prove the door stays single.
+        # The baseline carries every named installer-side workflow so the
+        # negative cases can prove that the admitted set stays closed.
         # Group 3 adds the read-only runtime door; the baseline carries it so
         # a mutant can prove it stays read-only and stays alone.
         "runtime/executor_birth_prepared_root.py": """
@@ -2124,6 +2124,10 @@ def _provision_prepared_authorities_v1(layout):
 def prepare_or_defer_until_legacy_author_exists():
     return _provision_prepared_authorities_v1(None)
 def ensure_executor_birth_authorities_prepared():
+    return _provision_prepared_authorities_v1(None)
+def complete_transition_cutover_v2():
+    return _provision_prepared_authorities_v1(None)
+def prepare_transition_receipts_v2():
     return _provision_prepared_authorities_v1(None)
 """,
     }
