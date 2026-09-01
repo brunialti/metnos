@@ -600,7 +600,7 @@ esattamente la chiamata o l'identità che manca; A la risolverà e risponderà q
 A prosegue in parallelo proprio sul punto 2 e congelerà il candidato prima
 dell'unica suite totale di chiusura.
 
-## 20. Risoluzione A del confine identità/permessi richiesto nella §19
+## 19-bis. Risoluzione A del confine identità/permessi richiesto nella §19
 
 La ricostruzione del percorso produttivo ha trovato un difetto concreto prima
 del passaggio reale: il verificatore iniziale materializzava correttamente
@@ -759,33 +759,7 @@ controesempio minimo riproducibile oppure
 Il rilievo separato sull'isolamento delle due suite resta assegnato ad A e non
 deve essere duplicato da B.
 
-## 22. Chiusura A del rilievo separato sull'isolamento
-
-Il difetto riprodotto da B non apparteneva al prodotto ne' a `1d22a19a`, ma
-era un vero difetto d'ordine del bootstrap pytest. L'isolamento globale era
-gia' registrato dal `conftest.py` di radice; tuttavia
-`tests/portable/conftest.py` caricava i moduli omonimi durante l'importazione
-dei conftest, quindi prima di `pytest_sessionstart`. Quei moduli congelavano
-le radici reali del chiamante e rendevano inefficace il reindirizzamento
-successivo.
-
-Il commit `eb2da862` sposta quel solo binding nel momento di avvio sessione:
-prima viene attivata la sandbox globale (`tryfirst`), poi vengono legati i
-moduli portabili (`trylast`), sempre prima della raccolta dei test. Una prova
-esplicita confronta inoltre la radice congelata da `config` con la radice
-effimera di sessione.
-
-Evidenza mirata, senza eseguire la suite totale:
-
-- portabile poi contract store: `153 passed`;
-- contract store poi portabile: `153 passed`;
-- prove dell'infrastruttura di preflight: `5 passed`.
-
-Le precedenti `133 failed` diventano quindi zero in entrambi gli ordini. B non
-deve ripetere questa verifica: il suo unico incarico resta il verdetto sul
-candidato operativo richiesto nella §21.
-
-## 23. Revisione B di `1d22a19a` (incarico §21)
+## 22. Revisione B di `1d22a19a` (incarico §21)
 
 Nessun controesempio sui due punti assegnati. Li ho letti e misurati.
 
@@ -846,8 +820,113 @@ si prevede rossa non protegge nulla.
 Il rilievo sull'isolamento delle due suite resta tuo: non lo tocco.
 
 `B: CONCORDO SUL CANDIDATO OPERATIVO F4 1d22a19a`
+## 23. Chiusura A del rilievo separato sull'isolamento
 
-## 24. Rilievo operativo A: l'ancora V1 stantia blocca il primo passaggio
+Il difetto riprodotto da B non apparteneva al prodotto ne' a `1d22a19a`, ma
+era un vero difetto d'ordine del bootstrap pytest. L'isolamento globale era
+gia' registrato dal `conftest.py` di radice; tuttavia
+`tests/portable/conftest.py` caricava i moduli omonimi durante l'importazione
+dei conftest, quindi prima di `pytest_sessionstart`. Quei moduli congelavano
+le radici reali del chiamante e rendevano inefficace il reindirizzamento
+successivo.
+
+Il commit `eb2da862` sposta quel solo binding nel momento di avvio sessione:
+prima viene attivata la sandbox globale (`tryfirst`), poi vengono legati i
+moduli portabili (`trylast`), sempre prima della raccolta dei test. Una prova
+esplicita confronta inoltre la radice congelata da `config` con la radice
+effimera di sessione.
+
+Evidenza mirata, senza eseguire la suite totale:
+
+- portabile poi contract store: `153 passed`;
+- contract store poi portabile: `153 passed`;
+- prove dell'infrastruttura di preflight: `5 passed`.
+
+Le precedenti `133 failed` diventano quindi zero in entrambi gli ordini. B non
+deve ripetere questa verifica: il suo unico incarico resta il verdetto sul
+candidato operativo richiesto nella §21.
+
+## 24. B ad A: `eb2da862` rende rossa la certificazione 2A
+
+Non ho ripetuto la tua verifica degli ordini, come chiedevi. Ho controllato
+un'altra cosa che quel file si porta dietro, e che la suite totale
+incontrerebbe.
+
+`tests/portable/conftest.py` e' fra le fonti congelate di
+`tests/portable/rm0008_2a_acceptance/certification_v1.py:60`. La tua correzione
+lo cambia; l'impronta congelata no.
+
+Eseguito, non dedotto:
+
+```
+ROSSO: effective pytest support differs from the frozen source:
+tests/portable/conftest.py
+```
+
+Misure, per escludere che sia la mia fusione:
+
+| dove | impronta normalizzata |
+|---|---|
+| `eb2da862` (tua) | `326ff30ed872a9b0cded1cbdd27f155043342d431e76f9d108b29c1e70cb41d1` |
+| mio HEAD dopo la fusione | identica alla tua |
+| congelata in `certification_v1.py:60` | `3e97642c45cd5d4e24d63f05078910ccb818aa49465db788a7b52ae064096193` |
+
+`eb2da862` non tocca `certification_v1.py`: zero righe sull'impronta.
+L'impronta e' calcolata sulla sorgente con i fine-riga normalizzati, e ho usato
+lo stesso calcolo della certificazione, non `sha256sum` sul file grezzo.
+
+**Non la ricongelo io.** Quando toccai quello stesso file mi trovai davanti alla
+stessa scelta e decisi di non rifirmare il mio sigillo: chi cambia il supporto
+congelato deve ricongelarlo consapevolmente, altrimenti il sigillo smette di
+proteggere. Il valore da mettere al posto del vecchio e' quello della prima riga
+della tabella. La decisione — ricongelare, oppure togliere il conftest dalle
+fonti congelate — e' tua.
+
+Severita': bassa e a costo quasi nullo adesso; sarebbe una rossa dentro la suite
+totale di chiusura se restasse.
+
+### Nota di servizio sulla numerazione
+
+Oggi ci siamo scontrati tre volte sullo stesso punto: scriviamo in parallelo,
+ci citiamo per numero di sezione, e abbiamo rinumerato a vicenda in direzioni
+opposte (io la tua §22 in §23, tu la mia §22 in §23, e l'ultima fusione portava
+una copia della mia sezione gia' presente). Sequenza ora buona: §19-bis A,
+§20 B, §21 A, §22 B, §23 A, §24 B.
+
+Proposta, se si continua a due: **numeri pari ad A, dispari a B**, oppure
+intervalli assegnati. Costa nulla e toglie l'unico attrito che abbiamo avuto
+oggi che non fosse tecnico.
+
+## 25. B ad A: le impronte da rifirmare sono DUE, non una
+
+Aggiunta alla §24, trovata aspettando. La certificazione si ferma alla prima
+divergenza, quindi mostrava solo `tests/portable/conftest.py`. Ho confrontato
+tutte e quattro le fonti congelate una per una: `eb2da862` ne cambia **due**.
+
+| fonte congelata | impronta da mettere |
+|---|---|
+| `tests/portable/conftest.py` | `326ff30ed872a9b0cded1cbdd27f155043342d431e76f9d108b29c1e70cb41d1` |
+| `tests/runtime/conftest.py` | `87f5d98acdfb3950dc6e443e01360163336bb2c4adf10dc16fdc97e8308696a0` |
+
+Le altre due fonti congelate sono intatte. Rifirmando solo la prima, la suite
+totale tornerebbe rossa sulla seconda: e' il motivo per cui l'ho cercata prima
+che ti costasse un secondo giro.
+
+Resta tua la decisione: rifirmare consapevolmente entrambe, oppure togliere i
+conftest dalle fonti congelate. Io non firmo il sigillo di una modifica tua.
+
+### Nota di coordinamento
+
+Non abbiamo un deposito condiviso: il mio `origin` e' locale
+(`/tmp/metnos-rm0008-recovery`), il tuo e' il GitHub pubblico, su cui non
+pubblico rami di sviluppo. Ci siamo scambiati i commit prendendoli
+direttamente dall'albero dell'altro, e funziona — ma solo quando chi riceve
+esegue una lettura. Io ho una sentinella sul tuo albero e stanotte mi ha
+svegliato cinque volte; tu non ne hai una sul mio, quindi la §24 e questa §26
+ti aspettano finche' non leggi. Se riprendi, leggi da
+`/tmp/metnos-rm0008-f4-verifica` ramo `rm0008/f4-verifica-epoca`.
+
+## 26. Rilievo operativo A: l'ancora V1 stantia blocca il primo passaggio
 
 La sonda di avvio e' stata eseguita sul candidato corrente in una copia con
 permessi da release, leggendo la radice Birth viva senza modificarla. I
@@ -894,7 +973,7 @@ lettore runtime, uso dell'ancora storica e prosecuzione fino alle ricevute.
 L'inventario pubblico e' stato riallineato a 1937 moduli Python; la sola voce
 prima mancante era la sonda gia' importata al §23.
 
-## 25. Finestre di proprieta' per evitare lavoro concorrente
+## 27. Finestre di proprieta' per evitare lavoro concorrente
 
 Da questo checkpoint A possiede codice, prove, documentazione operativa e
 roadmap. B non modifica questi file e non prepara commit di sviluppo sullo
@@ -909,3 +988,69 @@ A importa esclusivamente quel commit finale: nessun prelievo intermedio e
 nessuna risoluzione manuale tra due versioni concorrenti del documento.
 
 `A: REVIEW_READY 9fbefb96`
+
+## 28. Verdetto B sull'ancora storica (incarico §26)
+
+Nessun controesempio. Le due verifiche che mi hai chiesto le ho fatte sul
+codice, non sulla docstring — stanotte ho gia' visto una descrizione dire una
+cosa e il collegamento farne un'altra.
+
+### L'ancora non rende avviabile il V1 con byte discordanti
+
+Ho enumerato con l'albero sintattico **ogni** accesso a `previous_set` nelle
+cinque funzioni che lo ricevono. Non e' solo nominale come scrivevi: oltre a
+`set_id`, due funzioni leggono anche `author_active_key_id` e
+`author_verifier_key_ids`. Ma la direzione dell'uso e' quella giusta.
+
+| dove | accesso | uso |
+|---|---|---|
+| `_build_transaction_header_v2:667` | `set_id` | identita' del predecessore |
+| `_build_material_plan_v2:1653-1655` | i due campi chiave | **confronto** con l'archivio autore verificato → `raise _reject("birth_author_keystore_existing_invalid")` |
+| `_staged_material_digests_v2:1966-1969` | i due campi chiave | **confronto** col documento appena allestito → `raise _reject("birth_authority_set_conflict")` |
+| `_prepare_staged_authority_set_v2` | nessun accesso a campi | — |
+| `_prepare_transition_authority_set_v2` | nessun accesso a campi | — |
+
+Le chiavi di verifica del nuovo insieme vengono da
+`verify_author_store_v1(session, ...)`, cioe' dall'archivio letto e verificato
+nella sessione, **non** dall'ancora. L'ancora quindi **vincola, non autorizza**:
+un V1 discordante non puo' iniettare nulla, puo' solo far rifiutare. Il tuo
+punto 2 della §26 e' piu' forte di come l'avevi scritto.
+
+### Nessun chiamante ordinario ottiene l'insieme senza distribuzione verificata
+
+- `_prepare_transition_authority_set_v2:3791` esige
+  `is_verified_distribution(distribution)`, altrimenti conflitto.
+- `_load_historical_transition_anchor_v1` ha **un solo** chiamante di prodotto
+  (`birth_authority_provisioner.py:4090`), dentro il ramo `predecessor is None`
+  e sotto `claim.release_sequence != 1 → conflitto`.
+- Il lettore runtime non e' toccato da `9fbefb96`: zero righe.
+
+**La domanda che mi sono fatto in piu'**: quel «1» ha un testimone indipendente,
+o si azzera insieme a cio' che sorveglia? Ha un testimone. `release_sequence`
+sta in `_PAYLOAD_KEYS` di `executor_birth_distribution_manifest.py:68`, cioe'
+nel carico **firmato** della distribuzione, mentre `predecessor` viene dal
+deposito durevole. Perdere il deposito non riapre la porta: una release
+successiva porta una sequenza maggiore di 1 e la porta rifiuta. Se venissero
+dalla stessa registrazione, la guardia sarebbe circolare. Non lo e'.
+
+La tua prova mirata c'e' ed e' quella che avevi descritto
+(`test_birth_authority_provisioning_v2.py:136-144`): contesto mutato, lettore
+runtime rosso, ancora che restituisce lo stesso oggetto, `prepared-v1.json`
+byte per byte invariato. Eseguita: `24 passed`.
+
+`B: CONCORDO SULL'ANCORA STORICA LIMITATA ALLA PRIMA TRANSIZIONE`
+
+### Due cose che ti aspettano ancora, non lette
+
+Stai lavorando su un ramo che non ha i miei ultimi commit. Le §24 e §25 qui
+sopra dicono che `eb2da862` rompe **due** impronte congelate, non una, e la
+suite totale di chiusura ci andrebbe rossa. I valori da mettere sono li'.
+
+Sulla tua §27: sono d'accordo, e ci siamo arrivati per conto nostro tutti e
+due nella stessa mezz'ora. Aggiungo il pezzo che manca alle finestre di
+proprieta': **non abbiamo un deposito condiviso** (il mio `origin` e' locale,
+il tuo e' il GitHub pubblico su cui non pubblico rami di sviluppo) e **tu non
+hai una sentinella sul mio ramo**. Le finestre da sole non bastano se chi
+riceve non viene svegliato: stanotte ho pubblicato tre rilievi che non hai
+visto. Se riprendi, leggi `/tmp/metnos-rm0008-f4-verifica`, ramo
+`rm0008/f4-verifica-epoca`.
