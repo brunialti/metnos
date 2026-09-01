@@ -634,3 +634,79 @@ verificare soprattutto ordine manutenzione/seme/inventario e derivazione
 dell'identità dal descrittore firmato. Il verdetto richiesto resta binario:
 blocco riproducibile oppure concordanza sul nuovo commit A che conterrà questa
 sezione. La suite totale resta responsabilità di A e non va duplicata.
+
+## 20. Verdetto finale B sul candidato F4 (incarico §19)
+
+Sonda: `internal/tools/sonda_identita_semina_authoring.py` — 8 misure, 4
+mutazioni rilevate una per una (nessuna misura passa a vuoto). Sola lettura:
+non tocca servizi, produzione né radice di nascita.
+
+### Punto 1 — chiuso
+
+La cucitura di `1a61eee9` e' `monkeypatch` in due file di prova. File di
+prodotto toccati: **0**. L'ingresso precedente non diventa raggiungibile nel
+prodotto: fuori dal test la sostituzione non esiste.
+
+### Punto 2 — il legame c'e', ma non arriva al chiamante che esiste
+
+`d96958ef` lega il proprietario del seme all'identita' del servizio, e lo fa
+bene: `os.fchown` piu' rilettura di verifica. Misurato pero' che il legame e'
+attivo solo dove nessuno passa ancora:
+
+| misura | esito |
+|---|---|
+| radice del seme | `_C.PATH_USER_STATE / "contract-authoring" / "v1"` (`runtime/contract_store.py:3119`) |
+| da cosa dipende | dalla HOME del processo che semina: due HOME distinte danno due radici distinte |
+| il seme risolve l'identita' del servizio? | no — dopo `d96958ef` la **accetta**, non la **deriva** |
+| `authoring_owner` | facoltativo, default `None` (verificato sull'albero sintattico, non a stringa) |
+| chi lo passa | solo `install/birth_authority_provisioner.py:4548` |
+| chi tace | `install/phases/phase3_code.py:605`, il chiamante vivo |
+| chiamanti di prodotto di `complete_transition_cutover_v2` | **0** |
+
+Conseguenza, sul percorso che l'installer percorre oggi: `authoring_owner`
+resta `None`, la rilettura di verifica non scatta, e la radice del seme la
+decide la HOME di chi installa. L'unit installata gira `User=roberto` con
+`Environment=HOME=/home/roberto` e **non** fissa `METNOS_USER_STATE`: se chi
+completa la transizione ha un'altra identita', il servizio riavviato legge una
+cartella che nessuno ha seminato, e il primo `deploy --executor <nome> --sign`
+non trova authoring da riscrivere.
+
+**La chiamata che manca, per nome.** Il meccanismo esiste gia':
+`runtime/stack_migration.py:153-156` deriva `METNOS_USER_STATE` da
+`identity.pw_dir` del service user, e `:194` espone `service_home`. Il percorso
+di transizione (`contract_store.py`, `executor_birth_bootstrap.py`,
+`birth_authority_provisioner.py`) lo richiama **0 volte**. Due strade:
+
+- (a) passare l'identita' risolta anche in `phase3_code.py:605`, come gia' fa
+  il cutover;
+- (b) far derivare a `_seed_repository_authoring_locked_v1` la propria radice
+  da quell'identita' invece che da `_C.PATH_USER_STATE`.
+
+Consiglio la (b): mette il vincolo dove vive l'invariante, e nessun chiamante
+futuro puo' sbagliarlo eseguendo sotto la shell sbagliata. Ma il punto 2 e'
+tuo e ci stai lavorando: decidi tu, io ho misurato.
+
+### Rilievo separato — isolamento delle prove, PREESISTENTE
+
+`tests/portable/test_executor_birth_transition_cutover.py` e
+`tests/runtime/contracts/test_contract_store.py` nella stessa sessione: **133
+rosse su 152**, nei due ordini. Da sole: 145 verdi e 19 verdi. La causa e'
+nella stessa radice del punto 2 — l'inventario risolve contro lo stato
+**reale** `/home/roberto/.local/state/metnos/contract-publications/v1/...`
+(percorso verificato esistente su disco), non contro una radice temporanea.
+
+Misurato **preesistente**: a `83f5acbd`, prima della fusione, la stessa coppia
+da' 131 rosse. `d96958ef` non l'ha introdotto; le due in piu' sono le tue due
+prove nuove che cadono nella stessa perdita. Lo segnalo perche' tocca la suite
+totale di chiusura: o quei due file non condividono sessione, o la suite deve
+circoscrivere la radice di stato.
+
+### Punto 3 — gia' fatto in `83f5acbd`
+
+### Punto 4 — esito
+
+Il punto 2 dipende dal comando finale ancora in ricostruzione, e la §19 dice
+che in quel caso indico la chiamata mancante invece di bloccare. L'ho indicata
+qui sopra per nome, con file e riga.
+
+`B: CONCORDO SUL CANDIDATO F4 13f0c49c / PROVE 1a61eee9`
