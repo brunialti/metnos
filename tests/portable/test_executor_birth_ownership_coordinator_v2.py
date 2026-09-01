@@ -40,7 +40,7 @@ from executor_birth_ownership_coordinator import (
     _decode_successor_claim_v1, _install_transaction_id_v1,
     _legacy_disposition_id_v2, _legacy_journal_hash_v2, _record_basename_v2,
     _record_hash, _record_hash_v2, _successor_claim_basename_v1,
-    _prepared_record_v2,
+    _prepared_record_v2, _append_prepared_transition_locked_for_test_v2,
     _successor_claim_id_v1, _deployment_lock_for_test_v1,
     _append_ownership_transaction_locked_for_test_v2,
     _resolve_ownership_coordinator_locked_v2,
@@ -525,6 +525,54 @@ def administrative_bundle_oracle(descriptor) -> str:
     )
 
 
+def required_selection_for_predecessor(
+    predecessor: OwnershipCoordinatorRecordV2, *, staged: bool = False,
+):
+    previous_prepared = prepared_set(
+        set_id=predecessor.target_set_id,
+        admission_context_id=predecessor.target_admission_context_id,
+        context_epoch=predecessor.target_context_epoch,
+        material_sha256=predecessor.target_context_material_sha256,
+        set_json_sha256=predecessor.target_set_json_sha256,
+    )
+    previous_distribution = _verified_distribution_for_test(
+        _sealed_build_identity_for_test(
+            predecessor.closed_build_id, D("e"), "guard-v2",
+        ),
+        previous_closed_build_id=predecessor.previous_closed_build_id,
+        release_sequence=predecessor.release_sequence,
+        encoded=b"previous-distribution",
+        signature=b"p" * 64,
+    )
+    _, previous_transition = issue_context_transition_v1(
+        request_id=predecessor.request_id,
+        closed_build_id=predecessor.closed_build_id,
+        previous_cutover_id=predecessor.previous_cutover_id,
+        previous_set_id=predecessor.previous_set_id,
+        previous_admission_context_id=(
+            predecessor.previous_admission_context_id
+        ),
+        previous_context_epoch=predecessor.previous_context_epoch,
+        set_id=predecessor.target_set_id,
+        prepared_admission_context_id=(
+            predecessor.target_admission_context_id
+        ),
+        prepared_context_epoch=predecessor.target_context_epoch,
+        context_material_sha256=(
+            predecessor.target_context_material_sha256
+        ),
+        set_json_sha256=predecessor.target_set_json_sha256,
+        current_inventory=proof().inventory,
+    )
+    producer = (
+        _context_selection_for_staged_reattestation_v1
+        if staged else _context_selection_from_required_chain_v1
+    )
+    return producer(
+        previous_transition, previous_prepared, previous_distribution,
+    )
+
+
 def test_prepared_v2_record_binds_first_transition_before_publication():
     claim = bound_claim(
         release_sequence=1,
@@ -586,47 +634,9 @@ def test_prepared_v2_record_binds_a_completed_predecessor_selection():
         claim, descriptor,
         previous_closed_build_id=predecessor.closed_build_id,
     )
-    previous_prepared = prepared_set(
-        set_id=predecessor.target_set_id,
-        admission_context_id=predecessor.target_admission_context_id,
-        context_epoch=predecessor.target_context_epoch,
-        material_sha256=predecessor.target_context_material_sha256,
-        set_json_sha256=predecessor.target_set_json_sha256,
-    )
-    previous_distribution = _verified_distribution_for_test(
-        _sealed_build_identity_for_test(
-            predecessor.closed_build_id, D("e"), "guard-v2",
-        ),
-        previous_closed_build_id=predecessor.previous_closed_build_id,
-        release_sequence=predecessor.release_sequence,
-        encoded=b"previous-distribution",
-        signature=b"p" * 64,
-    )
-    _, previous_transition = issue_context_transition_v1(
-        request_id=predecessor.request_id,
-        closed_build_id=predecessor.closed_build_id,
-        previous_cutover_id=predecessor.previous_cutover_id,
-        previous_set_id=predecessor.previous_set_id,
-        previous_admission_context_id=(
-            predecessor.previous_admission_context_id
-        ),
-        previous_context_epoch=predecessor.previous_context_epoch,
-        set_id=predecessor.target_set_id,
-        prepared_admission_context_id=(
-            predecessor.target_admission_context_id
-        ),
-        prepared_context_epoch=predecessor.target_context_epoch,
-        context_material_sha256=(
-            predecessor.target_context_material_sha256
-        ),
-        set_json_sha256=predecessor.target_set_json_sha256,
-        current_inventory=proof().inventory,
-    )
-    previous_selection = _context_selection_from_required_chain_v1(
-        previous_transition, previous_prepared, previous_distribution,
-    )
+    previous_selection = required_selection_for_predecessor(predecessor)
     target = prepared_target(
-        claim, distribution, previous_set_id=previous_prepared.set_id,
+        claim, distribution, previous_set_id=previous_selection.set_id,
     )
 
     record, transition = _prepared_record_v2(
@@ -643,9 +653,7 @@ def test_prepared_v2_record_binds_a_completed_predecessor_selection():
     assert record.previous_cutover_id == predecessor.cutover_id
     assert record.previous_head_id == predecessor.head_id
     assert transition.previous_set_id == previous_selection.set_id
-    staged = _context_selection_for_staged_reattestation_v1(
-        previous_transition, previous_prepared, previous_distribution,
-    )
+    staged = required_selection_for_predecessor(predecessor, staged=True)
     with pytest.raises(
         OwnershipCoordinatorError,
         match="birth_ownership_request_conflict",
@@ -994,6 +1002,121 @@ def test_transaction_writer_persists_rereads_and_resolves_all_states(tmp_path):
         assert graph.transactions[0].latest.state is (
             OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
         )
+
+
+@LINUX_ONLY
+def test_locked_prepared_checkpoint_selects_the_durable_pending_claim(tmp_path):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory = make_coordinator_root(ownership_root)
+        claim = bound_claim(
+            release_sequence=1, previous_head_id=None,
+            closed_build_id=D("3"), source_id=D("2"),
+            previous_closed_build_id=None, previous_cutover_id=None,
+        )
+        write_claim(directory, claim)
+        descriptor = deployment_descriptor(1)
+        distribution = verified_distribution(
+            claim, descriptor, previous_closed_build_id=None,
+        )
+        previous = prepared_set(
+            set_id="1" * 64,
+            admission_context_id=D("2"),
+            context_epoch=D("3"),
+        )
+        target = prepared_target(
+            claim, distribution, previous_set_id=previous.set_id,
+        )
+        values = dict(
+            distribution=distribution,
+            previous_context=previous,
+            prepared_authority_set=target,
+            current_inventory=CurrentInventoryV1(()),
+            deployment_descriptor=descriptor,
+        )
+
+        first, transition = _append_prepared_transition_locked_for_test_v2(
+            session, ownership_root, **values,
+        )
+        assert first.successor_claim_id == claim.claim_id
+        assert first.context_transition_id == transition.transition_id
+        before_retry = tree_snapshot(directory)
+        assert _append_prepared_transition_locked_for_test_v2(
+            session, ownership_root, **values,
+        ) == (first, transition)
+        assert tree_snapshot(directory) == before_retry
+
+        crossed_claim = bound_claim(
+            release_sequence=1, previous_head_id=None,
+            closed_build_id=D("4"), source_id=D("2"),
+            previous_closed_build_id=None, previous_cutover_id=None,
+        )
+        crossed_distribution = verified_distribution(
+            crossed_claim, descriptor, previous_closed_build_id=None,
+        )
+        with pytest.raises(
+            OwnershipCoordinatorError,
+            match="birth_ownership_request_conflict",
+        ):
+            _append_prepared_transition_locked_for_test_v2(
+                session, ownership_root,
+                **{**values, "distribution": crossed_distribution},
+            )
+        assert tree_snapshot(directory) == before_retry
+
+
+@LINUX_ONLY
+def test_locked_prepared_checkpoint_uses_only_the_completed_predecessor(tmp_path):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory = make_coordinator_root(ownership_root)
+        first_claim = bound_claim(
+            release_sequence=1, previous_head_id=None,
+            closed_build_id=D("3"), source_id=D("2"),
+            previous_closed_build_id=None, previous_cutover_id=None,
+        )
+        first_records = transaction_records(
+            first_claim, end_sequence=6, previous_closed_build_id=None,
+            previous_cutover_id=None, cutover_id=D("4"), head_id=D("5"),
+        )
+        write_claim(directory, first_claim)
+        write_transaction(directory, first_claim, first_records)
+        predecessor = first_records[-1]
+        claim = bound_claim(
+            release_sequence=2, previous_head_id=predecessor.head_id,
+            closed_build_id=D("a"), source_id=D("b"),
+            previous_closed_build_id=predecessor.closed_build_id,
+            previous_cutover_id=predecessor.cutover_id,
+        )
+        write_claim(directory, claim)
+        descriptor = deployment_descriptor(2)
+        distribution = verified_distribution(
+            claim, descriptor,
+            previous_closed_build_id=predecessor.closed_build_id,
+        )
+        previous = required_selection_for_predecessor(predecessor)
+        target = prepared_target(
+            claim, distribution, previous_set_id=previous.set_id,
+        )
+
+        record, transition = _append_prepared_transition_locked_for_test_v2(
+            session, ownership_root,
+            distribution=distribution,
+            previous_context=previous,
+            prepared_authority_set=target,
+            current_inventory=proof().inventory,
+            deployment_descriptor=descriptor,
+        )
+
+        assert record.release_sequence == 2
+        assert record.previous_head_id == predecessor.head_id
+        assert record.previous_cutover_id == predecessor.cutover_id
+        assert transition.previous_set_id == previous.set_id
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            session, ownership_root,
+        ).observation
+        assert graph.pending_claims == ()
+        assert graph.transactions[-1].records == (record,)
 
 
 @LINUX_ONLY

@@ -3110,6 +3110,134 @@ def _prepared_record_v2(
     return record, transition
 
 
+def _prepared_transition_from_graph_v2(
+    graph: object, *, distribution: object, previous_context: object,
+    prepared_authority_set: object, current_inventory: object,
+    deployment_descriptor: object,
+) -> tuple[OwnershipCoordinatorRecordV2, object]:
+    """Derive PREPARED only from the terminal edge of one locked graph."""
+    if (
+        type(graph) is not _ObservedOwnershipCoordinatorGraphV2
+        or not is_verified_distribution(distribution)
+        or len(graph.pending_claims) > 1
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    active = graph.transactions[-1] if graph.transactions else None
+    if graph.pending_claims:
+        claim = graph.pending_claims[0]
+        if active is not None and active.claim.release_sequence >= claim.release_sequence:
+            raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+        current = None
+    elif active is not None:
+        claim = active.claim
+        current = active
+    else:
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    if (
+        claim is not graph.claims[-1]
+        or claim.closed_build_id != distribution.identity.closed_build_id
+        or claim.release_sequence != distribution.release_sequence
+    ):
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    predecessor = None
+    if claim.release_sequence > 1:
+        predecessor_offset = -2 if current is not None else -1
+        try:
+            predecessor_transaction = graph.transactions[predecessor_offset]
+        except IndexError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_request_conflict",
+            ) from exc
+        predecessor = predecessor_transaction.latest
+        if (
+            predecessor.state
+            is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            or predecessor.release_sequence + 1 != claim.release_sequence
+            or predecessor.head_id != claim.previous_head_id
+        ):
+            raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    return _prepared_record_v2(
+        claim=claim,
+        distribution=distribution,
+        predecessor=predecessor,
+        previous_context=previous_context,
+        prepared_authority_set=prepared_authority_set,
+        current_inventory=current_inventory,
+        deployment_descriptor=deployment_descriptor,
+    )
+
+
+def _require_prepared_transition_reread_v2(
+    graph: _ObservedOwnershipCoordinatorGraphV2,
+    record: OwnershipCoordinatorRecordV2,
+) -> None:
+    matches = tuple(
+        transaction for transaction in graph.transactions
+        if transaction.claim.request_id == record.request_id
+    )
+    if (
+        len(matches) != 1
+        or not matches[0].records
+        or matches[0].records[0] != record
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "prepared reread",
+        )
+
+
+def _append_prepared_transition_locked_v2(
+    session: _DeploymentLockSessionV1, *, distribution: object,
+    previous_context: object, prepared_authority_set: object,
+    current_inventory: object, deployment_descriptor: object,
+) -> tuple[OwnershipCoordinatorRecordV2, object]:
+    """Append and reread one productive PREPARED record under the fixed lock."""
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    record, transition = _prepared_transition_from_graph_v2(
+        graph,
+        distribution=distribution,
+        previous_context=previous_context,
+        prepared_authority_set=prepared_authority_set,
+        current_inventory=current_inventory,
+        deployment_descriptor=deployment_descriptor,
+    )
+    persisted = _append_ownership_transaction_locked_v2(session, record)
+    reread_snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    reread = _require_locked_coordinator_graph_snapshot_v2(
+        reread_snapshot, session,
+    )
+    _require_prepared_transition_reread_v2(reread, persisted)
+    return persisted, transition
+
+
+def _append_prepared_transition_locked_for_test_v2(
+    session: _DeploymentLockSessionForTestV1, ownership_root: Path, *,
+    distribution: object, previous_context: object,
+    prepared_authority_set: object, current_inventory: object,
+    deployment_descriptor: object,
+) -> tuple[OwnershipCoordinatorRecordV2, object]:
+    """Portable proof seam kept nominally separate from the productive lock."""
+    snapshot = _resolve_ownership_coordinator_locked_for_test_v2(
+        session, ownership_root,
+    )
+    record, transition = _prepared_transition_from_graph_v2(
+        snapshot.observation,
+        distribution=distribution,
+        previous_context=previous_context,
+        prepared_authority_set=prepared_authority_set,
+        current_inventory=current_inventory,
+        deployment_descriptor=deployment_descriptor,
+    )
+    persisted = _append_ownership_transaction_locked_for_test_v2(
+        session, ownership_root, record,
+    )
+    reread = _resolve_ownership_coordinator_locked_for_test_v2(
+        session, ownership_root,
+    ).observation
+    _require_prepared_transition_reread_v2(reread, persisted)
+    return persisted, transition
+
+
 def _same_distribution(
     record: OwnershipCoordinatorRecordV1, distribution: VerifiedDistribution,
 ) -> bool:
