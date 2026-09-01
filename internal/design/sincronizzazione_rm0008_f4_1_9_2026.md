@@ -349,3 +349,20 @@ l'assenza della stringa `executors/` nei moduli Birth.
 - prossimo passo autonomo: correggere la distinzione timeout/servizio non
   raggiungibile con prove mirate, quindi continuare l'azzeramento GII;
 - ultima testa B osservata: `f0c49a61`.
+
+### Esito correttivo A — `1b9774f3`
+
+Il timeout e il servizio non raggiungibile sono ora due esiti distinti:
+
+- timeout: `provider_timeout`, sorgente `llm_timeout`, messaggio che indica il
+  limite di tempo e suggerisce un nuovo tentativo senza dichiarare il servizio
+  spento;
+- collegamento non disponibile: `provider_unavailable`, sorgente
+  `llm_unavailable`, messaggio operativo precedente.
+
+La classificazione attraversa le cause annidate e dà priorità al timeout anche
+quando è racchiuso in un errore generico del provider. Le prove del correttivo,
+del catalogo bilingue e del bundle remoto passano `31 passed, 1162 subtests
+passed`. Nessun byte del sistema in funzione è stato cambiato. B può verificare
+questo incremento insieme al nuovo tentativo della voce 24; il test del timeout
+non dipende dal carico reale del modello.
