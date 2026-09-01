@@ -1,7 +1,7 @@
 # RM-0008 — RM-VARIAZIONE-02: sovrapposizione fra unita' conservata e dominante
 
 Data: 1 settembre 2026  
-Stato: proposta A per revisione incrociata  
+Stato: proposta A corretta per secondo giro di revisione incrociata
 Unita': `RM-VARIAZIONE-02`
 
 ## 1. Fatto che impone la variazione
@@ -22,11 +22,54 @@ postcondizioni sono incompatibili: una destinazione non puo' essere insieme un
 collegamento a `/dev/null` e il frammento firmato dominante.
 
 La misura in sola lettura conferma inoltre che la destinazione corrente e' un
-file ordinario `0644`, non un collegamento. La sua proprieta' osservata non e'
-quella root richiesta dal nuovo frammento. Non puo' quindi essere adottato,
-ripuntato o sovrascritto in luogo della pubblicazione firmata.
+file ordinario `0644`, non un collegamento, di proprieta' `root:root`. Modo e
+proprieta' coincidono quindi con quelli richiesti dal nuovo frammento; la prima
+stesura dichiarava il contrario ed era fattualmente errata. Il file non e'
+comunque adottabile: i suoi byte e la sua identita' non sono quelli
+dell'artefatto del descrittore firmato, mentre la postcondizione richiede
+l'artefatto esatto e non un file che abbia soltanto metadati compatibili.
 
-## 2. Regola minima proposta
+Lo stesso controllo in sola lettura ha misurato che l'unita' di sistema e'
+inattiva e disabilitata, mentre `user/metnos-http.service` e' attiva e
+abilitata. La transizione maschera proprio questo ingresso utente e avvia il
+frammento dominante nello spazio di sistema: e' quindi un cambio esplicito di
+ambito del servizio vivo, non una conseguenza incidentale del piano.
+
+Il censimento e' ora riproducibile dal sorgente canonico che genera il catalogo:
+
+```text
+/opt/metnos/.venv/bin/python internal/tools/sonda_sovrapposizione_unita_rm0008.py
+dominant unit names:       15
+legacy bindings:           39
+cross-scope homonyms:      16
+same-destination overlaps: 1
+collision: legacy-service-http-system / service-http / system_unit / system / metnos-http.service
+RESULT: exact overlap confirmed
+```
+
+Il passaggio produttivo deve ripetere lo stesso censimento sul catalogo
+firmato decodificato e pretendere identico risultato prima di applicare il
+piano; il sorgente committato rende revisionabile la premessa prima che
+l'artefatto installato esista.
+
+## 2. Effetto operativo approvato in linea di principio
+
+Roberto ha autorizzato l'agente B ad accettare questa variazione e ha
+autorizzato il passaggio produttivo quando tutti i gate saranno chiusi. Questa
+autorita' comprende il cambio da unita' utente a unita' di sistema e il blocco
+anti-ritorno gia' approvato, ma diventa normativa nel protocollo soltanto dopo
+che B accetta il commit corretto.
+
+La finestra di indisponibilita' comincia quando il piano ferma e maschera
+l'unita' utente attiva e termina soltanto quando il nuovo servizio di sistema
+supera il proprio cancello e viene osservato attivo. La checklist B4 deve
+misurare e registrare entrambi gli estremi; non puo' dichiarare successo fra i
+due. Un'interruzione nella finestra lascia gli ingressi precedenti chiusi e la
+ripresa completa lo stesso passaggio. Dopo il punto di non ritorno, un ritorno
+funzionale richiede una nuova epoca e non riabilita automaticamente l'unita'
+utente.
+
+## 3. Regola minima proposta
 
 Il piano resta chiuso e senza azione di difetto, ma distingue il solo caso in
 cui un legame di sistema occupa una destinazione del catalogo dominante
@@ -55,7 +98,7 @@ dello stesso catalogo firmato. Il chiamante non passa un elenco indipendente.
 L'impronta del piano continua a coprire `legacy_id`, `entry_id`, tipo, ambito,
 locator e azione.
 
-## 3. Ordine non permutabile
+## 4. Ordine non permutabile
 
 Sotto deployment lock, gate di avvio esclusivo e manutenzione viva:
 
@@ -78,7 +121,7 @@ diventi richiesta. Se un'interruzione avviene dopo il punto 3, il sistema resta
 fermo e la ripresa usa la distribuzione immutabile selezionata: non riabilita
 gli ingressi precedenti per recuperare.
 
-## 4. Ripresa e conflitti
+## 5. Ripresa e conflitti
 
 La ripresa accetta soltanto quattro stati nominati:
 
@@ -95,12 +138,13 @@ Una seconda esecuzione produce lo stesso piano e le stesse identita'. Il
 carattere `repeated` puo' cambiare nella ricevuta operativa, ma non cambia
 l'impronta normativa del piano ne' la topologia osservata.
 
-## 5. Prove minime aggiuntive
+## 6. Prove minime aggiuntive
 
 La barriera B2 aggiunge:
 
-1. censimento che prova 15 unita', 39 legami, 16 omonimie fra spazi e una sola
-   collisione di destinazione;
+1. sonda committata e censimento sul catalogo firmato che provano entrambi 15
+   unita', 39 legami, 16 omonimie fra spazi e una sola collisione di
+   destinazione;
 2. distinzione fra `user/metnos-http.service` e
    `system/metnos-http.service` nell'osservazione di attivita';
 3. conservazione del file precedente byte per byte e pubblicazione del nuovo
@@ -114,7 +158,7 @@ La barriera B2 aggiunge:
 
 Le prove restano mirate. La suite completa gira una volta sola a B3.
 
-## 6. Limiti
+## 7. Limiti
 
 La proposta non autorizza modifiche a `/etc`, servizi, processi o stato vivo.
 Non modifica i sette stati V2, il certificato, il selettore della testa o la
@@ -124,8 +168,8 @@ dell'autorita' prevista dal protocollo.
 
 RM0008-Unita: RM-VARIAZIONE-02  
 RM0008-Ruolo: agente-a  
-RM0008-Stato: OFFERTA  
-RM0008-Ancora: d1a2da3f  
-RM0008-Percorsi: internal/design/rm0008_variazione_02_sovrapposizione_unita_1_9_2026.md; internal/roadmap/RM-0008-porta-unica-nascita-executor.md  
-RM0008-Prova: censimento deterministico catalogo/piano; stat in sola lettura della destinazione corrente  
+RM0008-Stato: PRONTA
+RM0008-Ancora: 7aa688e9
+RM0008-Percorsi: internal/design/rm0008_variazione_02_sovrapposizione_unita_1_9_2026.md; internal/tools/sonda_sovrapposizione_unita_rm0008.py; internal/roadmap/RM-0008-porta-unica-nascita-executor.md
+RM0008-Prova: sonda deterministica committata; osservazioni in sola lettura di entrambe le unita'; autorizzazioni esplicite di Roberto
 RM0008-Ambito: roadmap

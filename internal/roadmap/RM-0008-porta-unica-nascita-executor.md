@@ -1369,6 +1369,7 @@ sviluppo.
 | 2026-09-01 | `active` | F4-EPOCA-01 ha raggiunto la convergenza tecnica incrociata sui commit A `ba26f5cd` e B `df36c169`; il §23.49 registra la variazione normativa offerta alla revisione incrociata prima del codice di prodotto della transizione. La precondizione indipendente del contenitore incompleto può essere sviluppata e provata, ma non applicata automaticamente. |
 | 2026-09-01 | `active` | Roberto approva RM-VARIAZIONE-01 sul commit normativo `a782065e`, gia' accettato da B in `c656c241` e verificato nella composizione F4. Il codice di prodotto della transizione e' sbloccato; non sono autorizzati interventi sul negozio reale, servizi in esercizio o pubblicazione. |
 | 2026-09-01 | `active` | RM-VARIAZIONE-02 offerta alla revisione incrociata: il piano corrente maschera `metnos-http.service` nello stesso spazio in cui il catalogo firmato deve pubblicare il frammento dominante. Il codice dipendente resta fermo fino ad accettazione e decisione; il lavoro indipendente di F4 continua. |
+| 2026-09-01 | `active` | RM-VARIAZIONE-02 corretta dopo il primo giro B: rimossa la premessa errata sulla proprieta' del file di sistema, dichiarato il cambio del servizio vivo dallo spazio utente a quello di sistema e aggiunta una sonda committata che riproduce 15/39/16/1. Roberto ha autorizzato B ad accettare la variazione e il passaggio finale dopo tutti i gate; il codice dipendente attende ancora l'accettazione B sul commit corretto. |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 
@@ -3373,8 +3374,18 @@ occupato dalla mascheratura degli altri ingressi, lega la decisione allo stesso
 catalogo firmato e rende l'osservazione di attivita' sensibile alla coppia
 `(scope, locator)`.
 
+Il primo giro B ha corretto due fatti. Il file di sistema osservato e'
+`root:root 0644`, ma non e' adottabile perche' non e' l'artefatto firmato;
+l'unita' utente omonima e' invece il servizio vivo, quindi il passaggio la
+ferma e sposta esplicitamente il servizio nello spazio di sistema. La finestra
+di indisponibilita' e le sue postcondizioni sono ora parte della proposta. Il
+censimento e' riproducibile con
+`internal/tools/sonda_sovrapposizione_unita_rm0008.py` e deve essere ripetuto
+sul catalogo firmato dal passaggio produttivo.
+
 Questa sezione registra una proposta, non una regola gia' attiva. Il codice che
-dipende dalla variazione non viene anticipato. Servono prima l'accettazione
-incrociata sul commit esatto e la decisione dell'autorita' prevista dal
-protocollo; nessuna misura svolta per formulare la proposta ha modificato il
+dipende dalla variazione non viene anticipato. Roberto ha gia' autorizzato B ad
+accettarla e ha autorizzato il passaggio finale dopo la chiusura di tutti i
+gate; secondo il protocollo manca ancora l'accettazione B sul commit corretto.
+Nessuna misura svolta per formulare o correggere la proposta ha modificato il
 sistema in funzione.
