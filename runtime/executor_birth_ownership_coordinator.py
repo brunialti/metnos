@@ -145,12 +145,42 @@ class OwnershipCoordinatorError(RuntimeError):
         super().__init__(f"{code}: {detail}" if detail else code)
 
 
+_WRAPPED_TYPED_DETAIL_CODES_V1 = {
+    ("birth_context_transition_recovery_required", "record"):
+        "record_invalid",
+    ("birth_context_transition_recovery_required", "record publication"):
+        "record_publication",
+    ("birth_context_transition_recovery_required", "record inventory"):
+        "record_inventory",
+    ("birth_context_transition_recovery_required", "unexpected record object"):
+        "unexpected_record_object",
+    ("birth_context_transition_recovery_required", "record object"):
+        "record_object",
+    ("birth_context_transition_recovery_required", "record name"):
+        "record_name",
+    ("birth_context_transition_recovery_required", "record duplicate"):
+        "record_duplicate",
+    ("birth_context_transition_recovery_required", "transition_id"):
+        "transition_id",
+    ("birth_context_transition_recovery_required", "record missing"):
+        "record_missing",
+    ("birth_context_transition_recovery_required", "record binding"):
+        "record_binding",
+}
+
+
 def _wrapped_cause_detail_v1(exc: BaseException) -> str:
-    """Keep one bounded stable reason when translating a lower-level error."""
-    value = str(exc)
-    if "\x00" in value or "\n" in value or "\r" in value:
+    """Keep only allowlisted typed reason components from a known error."""
+    code = getattr(exc, "code", None)
+    if (
+        not isinstance(code, str)
+        or re.fullmatch(r"[a-z][a-z0-9_]{0,127}", code) is None
+    ):
         return ""
-    return value[:512]
+    typed_detail = _WRAPPED_TYPED_DETAIL_CODES_V1.get(
+        (code, getattr(exc, "detail", None)),
+    )
+    return f"{code}:{typed_detail}" if typed_detail is not None else code
 
 
 class OwnershipCoordinatorStateV1(str, Enum):
@@ -2985,9 +3015,13 @@ def _prepared_record_v2(
     current_inventory: object, deployment_descriptor: object,
 ) -> tuple[OwnershipCoordinatorRecordV2, object]:
     """Bind one exact staged set and frozen inventory before publication."""
-    from executor_birth_admin_preflight import _administrative_bundle_hash_v1
+    from executor_birth_admin_preflight import (
+        PreflightError, _administrative_bundle_hash_v1,
+    )
     from executor_birth_context_selection import is_context_selection_v1
-    from executor_birth_context_transition import issue_context_transition_v1
+    from executor_birth_context_transition import (
+        ContextTransitionError, issue_context_transition_v1,
+    )
     from executor_birth_cutover import CurrentInventoryV1
     from executor_birth_distribution_assembler import DeploymentDescriptorV1
     from executor_birth_prepared_set import (
@@ -3085,6 +3119,11 @@ def _prepared_record_v2(
         administrative_bundle_hash = _administrative_bundle_hash_v1(
             descriptor,
         )
+    except (ContextTransitionError, PreflightError) as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_request_conflict",
+            _wrapped_cause_detail_v1(exc),
+        ) from exc
     except Exception as exc:
         raise OwnershipCoordinatorError(
             "birth_ownership_request_conflict",
@@ -3159,7 +3198,8 @@ class PreparedTransitionPublicationV2:
 
     def __post_init__(self) -> None:
         from executor_birth_context_transition import (
-            ContextTransitionV1, current_inventory_hash_v1,
+            ContextTransitionError, ContextTransitionV1,
+            current_inventory_hash_v1,
             verify_context_transition_v1,
         )
         from executor_birth_cutover import CurrentInventoryV1
@@ -3183,6 +3223,11 @@ class PreparedTransitionPublicationV2:
                 expected_transition_id=self.record.context_transition_id,
                 expected_inventory=self.current_inventory,
             )
+        except ContextTransitionError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_request_conflict",
+                _wrapped_cause_detail_v1(exc),
+            ) from exc
         except Exception as exc:
             raise OwnershipCoordinatorError(
                 "birth_ownership_request_conflict",
@@ -3262,6 +3307,7 @@ def _transition_edge_from_graph_v2(
         except IndexError as exc:
             raise OwnershipCoordinatorError(
                 "birth_ownership_request_conflict",
+                "predecessor_transaction_missing",
             ) from exc
         predecessor = predecessor_transaction.latest
         if (
@@ -4759,17 +4805,23 @@ def _publish_context_transition_locked_v2(
         raise OwnershipCoordinatorError(
             "birth_ownership_recovery_required", "receipt reread",
         )
-    from executor_birth_ownership_chain import OwnershipChainStore
+    from executor_birth_ownership_chain import (
+        OwnershipChainError, OwnershipChainStore,
+    )
 
     try:
         observed = OwnershipChainStore().append_context_transition(
             publication.transition.encoded,
             expected_proof=complete.current_proof,
         )
-    except Exception as exc:
+    except OwnershipChainError as exc:
         raise OwnershipCoordinatorError(
             "birth_context_transition_recovery_required",
             _wrapped_cause_detail_v1(exc),
+        ) from exc
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
         ) from exc
     _require_deployment_lock_session_v1(session)
     if observed != publication.transition:
@@ -4784,6 +4836,7 @@ def _observe_dominant_identity_core_v2(
 ) -> tuple[str, str, str]:
     """Reread the exact request, predecessor anchor and context transition."""
     from executor_birth_context_transition import ContextTransitionV1
+    from executor_birth_ownership_chain import OwnershipChainError
 
     if (
         type(graph) is not _ObservedOwnershipCoordinatorGraphV2
@@ -4814,10 +4867,14 @@ def _observe_dominant_identity_core_v2(
         )
     try:
         transition = read_transition(complete.context_transition_id, proof)
-    except Exception as exc:
+    except OwnershipChainError as exc:
         raise OwnershipCoordinatorError(
             "birth_context_transition_recovery_required",
             _wrapped_cause_detail_v1(exc),
+        ) from exc
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
         ) from exc
     if (
         type(transition) is not ContextTransitionV1
@@ -4930,7 +4987,7 @@ def _prepare_staged_current_receipts_v2(
     """Build a V2-only receipt proof for one frozen transition inventory."""
     from executor_birth_bootstrap import _is_staged_reattestation_runtime_v2
     from executor_birth_cutover import (
-        CurrentInventoryV1, prepare_current_receipt_proof,
+        BirthCutoverError, CurrentInventoryV1, prepare_current_receipt_proof,
     )
 
     if (
@@ -4968,10 +5025,14 @@ def _prepare_staged_current_receipts_v2(
             ),
             verify_receipt=staged_runtime.verify_receipt,
         )
-    except Exception as exc:
+    except BirthCutoverError as exc:
         raise OwnershipCoordinatorError(
             "birth_ownership_receipt_proof_invalid",
             _wrapped_cause_detail_v1(exc),
+        ) from exc
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_receipt_proof_invalid",
         ) from exc
     if (
         not isinstance(report.proof, CurrentReceiptProof)
@@ -4985,7 +5046,7 @@ def _prepare_staged_current_receipts_v2(
 
 def _current_reattestation_port_v1():
     """Load the sole fixed Birth port that can enumerate current generations."""
-    from executor_birth_bootstrap import bootstrap_birth_runtime
+    from executor_birth_bootstrap import BirthBootstrapError, bootstrap_birth_runtime
     from executor_birth_commit_publisher import _is_birth_reattestation_port
     from executor_birth_operational import _runtime_bundle_snapshot
 
@@ -4993,6 +5054,11 @@ def _current_reattestation_port_v1():
     if bundle is None:
         try:
             bundle = bootstrap_birth_runtime()
+        except BirthBootstrapError as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_birth_runtime_unavailable",
+                _wrapped_cause_detail_v1(exc),
+            ) from exc
         except Exception as exc:
             raise OwnershipCoordinatorError(
                 "birth_ownership_birth_runtime_unavailable",
@@ -5144,7 +5210,7 @@ def _startup_prerequisite_from_record_v2(
 ) -> _StartupPrerequisiteV1:
     """Seal canonical prerequisite bytes bound to the complete V2 request."""
     from executor_birth_distribution_assembler import (
-        StartupPrerequisiteV1,
+        DistributionAssemblerError, StartupPrerequisiteV1,
         decode_startup_prerequisite_v1,
         encode_startup_prerequisite_v1,
     )
@@ -5176,6 +5242,11 @@ def _startup_prerequisite_from_record_v2(
     try:
         encoded = encode_startup_prerequisite_v1(prerequisite)
         decoded = decode_startup_prerequisite_v1(encoded)
+    except DistributionAssemblerError as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_prerequisite_untrusted",
+            _wrapped_cause_detail_v1(exc),
+        ) from exc
     except Exception as exc:
         raise OwnershipCoordinatorError(
             "birth_ownership_prerequisite_untrusted",

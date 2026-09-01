@@ -2087,8 +2087,27 @@ def test_dominant_identity_preserves_the_transition_read_reason(reason):
             graph, complete, read_transition,
         )
     assert failed.value.detail == (
-        "birth_context_transition_recovery_required: " + reason
+        "birth_context_transition_recovery_required:" + reason.replace(" ", "_")
     )
+
+
+def test_translated_reason_keeps_only_allowlisted_typed_components():
+    from executor_birth_ownership_chain import OwnershipChainError
+
+    stable = OwnershipChainError(
+        "birth_context_transition_recovery_required", "record missing",
+    )
+    free_text = OwnershipChainError(
+        "birth_context_transition_recovery_required", "customer name",
+    )
+
+    assert coordinator_module._wrapped_cause_detail_v1(stable) == (
+        "birth_context_transition_recovery_required:record_missing"
+    )
+    assert coordinator_module._wrapped_cause_detail_v1(free_text) == (
+        "birth_context_transition_recovery_required"
+    )
+    assert coordinator_module._wrapped_cause_detail_v1(RuntimeError("opaque")) == ""
 
 
 def test_completed_transition_selection_returns_only_the_exact_final_release():
