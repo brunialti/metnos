@@ -97,6 +97,7 @@ def _observers(cell, *, bindings: dict[str, bytes] | None = None):
         )
         neutralizer.neutralize_for_test_v1(
             neutralizer._TestOnlyNeutralizationCapabilityV1(repository), steps,
+            replacement_fragments={},
         )
         return retirement.plan_digest_v1(steps)
 
