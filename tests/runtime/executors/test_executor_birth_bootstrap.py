@@ -182,6 +182,11 @@ def test_manifest_ref_targets_authoring_inventory_not_candidate_staging(monkeypa
     import manifest_inventory
     monkeypatch.setattr(manifest_inventory, "inventory_authoring_manifests",
                         lambda: ManifestInventory((ref,), ()))
+    monkeypatch.setattr(
+        manifest_inventory,
+        "resolve_manifest_layout",
+        lambda: manifest_inventory.ManifestLayout.AUTHORING,
+    )
     resolved = bootstrap._manifest_ref(BirthIntent(staging, contract_id, "create"))
     assert resolved is ref
     assert resolved.manifest_dir != staging
@@ -291,7 +296,7 @@ def _recovery_fixture(monkeypatch, tmp_path: Path, *, current: str | None):
     )
     control = SimpleNamespace(canonical=canonical, lock=tmp_path / "lock")
     import manifest_inventory
-    monkeypatch.setattr(manifest_inventory, "inventory_authoring_manifests",
+    monkeypatch.setattr(manifest_inventory, "inventory_manifests",
                         lambda: ManifestInventory((ref,), ()))
     monkeypatch.setattr(authoring, "authoring_paths", lambda *_args: control)
     monkeypatch.setattr(authoring, "load_prepared_journal", lambda _control: pending)
@@ -336,7 +341,7 @@ def test_recovery_without_a_pending_journal_does_not_create_store_entries(
     )
     control = SimpleNamespace(canonical=canonical, lock=tmp_path / "lock")
     monkeypatch.setattr(
-        manifest_inventory, "inventory_authoring_manifests",
+        manifest_inventory, "inventory_manifests",
         lambda: ManifestInventory((ref,), ()),
     )
     monkeypatch.setattr(authoring, "authoring_paths", lambda *_args: control)

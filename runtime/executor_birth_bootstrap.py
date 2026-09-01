@@ -107,8 +107,15 @@ def _secure_state_db(state_dir: Path, basename: str) -> Path:
 
 
 def _manifest_ref(intent: BirthIntent) -> ManifestRef:
-    from manifest_inventory import inventory_authoring_manifests
-    inventory = inventory_authoring_manifests()
+    from manifest_inventory import (
+        ManifestLayout, inventory_authoring_manifests,
+        inventory_store_manifests, resolve_manifest_layout,
+    )
+    inventory = (
+        inventory_store_manifests()
+        if resolve_manifest_layout() is ManifestLayout.STORE_ONLY
+        else inventory_authoring_manifests()
+    )
     if inventory.problems:
         raise BirthBootstrapError("birth_authoring_inventory_invalid")
     matches = tuple(ref for ref in inventory.manifests if ref.contract_id == intent.contract_id)
@@ -451,7 +458,7 @@ class _PostconditionAdapter:
     def recover_authoring(self) -> None:
         # Execute the same closed recovery matrix as the publisher, under the
         # same lock order, before exposing any productive facade.
-        from manifest_inventory import inventory_authoring_manifests
+        from manifest_inventory import inventory_manifests
         from executor_birth_authoring import (
             advance_version, authoring_paths, authoring_token, authoring_tree_id,
             cleanup_transaction, load_prepared_journal, observe_tree, rollback_prepared,
@@ -462,7 +469,7 @@ class _PostconditionAdapter:
             catalog_admission_lock,
         )
         from executor_birth_receipts import verify_admission_receipt
-        inventory = inventory_authoring_manifests()
+        inventory = inventory_manifests()
         if inventory.problems:
             raise BirthBootstrapError("birth_authoring_inventory_invalid")
         for ref in inventory.manifests:
@@ -1122,6 +1129,13 @@ def _verify_initial_catalog_v1(
         store_root = Path(str(report.get("shadow_root", "")))
         inventory = inventory_authoring_manifests()
     elif mode in {ProductionStoreMode.STORE_ONLY, ProductionStoreMode.ACTIVE}:
+        from contract_store import (
+            materialize_repository_authoring_for_transition_v1,
+        )
+
+        materialize_repository_authoring_for_transition_v1(
+            trusted_publics=trusted,
+        )
         store_root = None
         inventory = inventory_store_manifests()
     else:

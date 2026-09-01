@@ -30,6 +30,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 
 
@@ -351,6 +352,33 @@ def _prepare_inside() -> int:
     return EXIT_OK
 
 
+def _load_current_distribution_inside() -> tuple[str, object]:
+    from executor_birth_distribution_manifest import (
+        authenticate_distribution_record_v1,
+        verify_current_installation_distribution_v1,
+    )
+
+    handoff = json.loads(
+        Path("/proof/release-handoff-v1.json").read_text(encoding="ascii")
+    )
+    if not isinstance(handoff, dict) or set(handoff) != {
+        "encoded", "signature", "source_id",
+    }:
+        raise RuntimeError("release handoff schema")
+    try:
+        encoded = base64.b64decode(handoff["encoded"], validate=True)
+        signature = base64.b64decode(handoff["signature"], validate=True)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("release handoff encoding") from exc
+    source_id = handoff["source_id"]
+    if not isinstance(source_id, str):
+        raise RuntimeError("release handoff source identity")
+    record = authenticate_distribution_record_v1(encoded, signature)
+    return source_id, verify_current_installation_distribution_v1(
+        record.encoded, record.signature,
+    )
+
+
 def _cross_inside() -> int:
     release_root = FIXED_RELEASE_ROOT
     _repository_imports(release_root)
@@ -360,10 +388,6 @@ def _cross_inside() -> int:
     )
     from executor_birth_context_transition import issue_context_transition_v1
     from executor_birth_cutover import CurrentReceiptProof
-    from executor_birth_distribution_manifest import (
-        authenticate_distribution_record_v1,
-        verify_current_installation_distribution_v1,
-    )
     from executor_birth_ownership_authorities import (
         load_root_ownership_authorities_v1,
     )
@@ -380,23 +404,7 @@ def _cross_inside() -> int:
     )
     from executor_birth_prepared_root import load_required_context_runtime_v1
 
-    handoff = json.loads(
-        Path("/proof/release-handoff-v1.json").read_text(encoding="ascii")
-    )
-    if not isinstance(handoff, dict) or set(handoff) != {
-        "encoded", "signature", "source_id",
-    }:
-        raise RuntimeError("release handoff schema")
-    try:
-        encoded = base64.b64decode(handoff["encoded"], validate=True)
-        signature = base64.b64decode(handoff["signature"], validate=True)
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError("release handoff encoding") from exc
-    source_id = handoff["source_id"]
-    record = authenticate_distribution_record_v1(encoded, signature)
-    distribution = verify_current_installation_distribution_v1(
-        record.encoded, record.signature,
-    )
+    source_id, distribution = _load_current_distribution_inside()
     proof_document = json.loads(Path(
         "/proof/current-receipt-proof-v1.json"
     ).read_text(encoding="ascii"))
@@ -485,6 +493,137 @@ def _cross_inside() -> int:
         "source_id": source_id,
         "target_set_id": target.target_set_id,
         "transition_id": transition.transition_id,
+    }, sort_keys=True))
+    return EXIT_OK
+
+
+def _birth_inside() -> int:
+    """Publish one technical Birth without changing the closed release."""
+    release_root = FIXED_RELEASE_ROOT
+    _repository_imports(release_root)
+    from contract_store import current_manifest
+    from executor_birth_intent import BirthIntent, submit_builtin_generation_birth
+    from executor_birth_prepared_root import load_sealed_authorities_v1
+    from executor_birth_snapshot import (
+        materialize_birth_candidate_from_manifest_ref,
+    )
+    from manifest_code_digest import prepare_manifest_digest_v1
+    from manifest_inventory import inventory_store_manifests
+
+    _source_id, before_distribution = _load_current_distribution_inside()
+    inventory = inventory_store_manifests()
+    selected = tuple(
+        ref for ref in inventory.manifests
+        if ref.contract_id.value == "builtin:get_preferences/manifest.toml"
+    )
+    if inventory.problems or len(selected) != 1:
+        raise RuntimeError("representative store contract is unavailable")
+    ref = selected[0]
+    sealed = load_sealed_authorities_v1()
+    trusted = tuple(sorted(sealed.author.verifier_keys.items()))
+    predecessor = current_manifest(ref, trusted_publics=trusted)
+
+    with tempfile.TemporaryDirectory(prefix="metnos-rm0008-birth-") as raw:
+        candidate = materialize_birth_candidate_from_manifest_ref(
+            ref, Path(raw) / "candidate",
+        )
+        manifest_path = candidate / "manifest.toml"
+        manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+        code = manifest.get("code")
+        files = code.get("files") if isinstance(code, dict) else None
+        if not isinstance(files, list) or not files or any(
+            not isinstance(name, str) for name in files
+        ):
+            raise RuntimeError("representative code declaration")
+        code_path = candidate.joinpath(*Path(files[0]).parts)
+        with code_path.open("ab") as handle:
+            handle.write(b"\n# RM-0008 copy transition restart proof.\n")
+        code_payloads = {
+            name: candidate.joinpath(*Path(name).parts).read_bytes()
+            for name in files
+        }
+        manifest_path.write_bytes(prepare_manifest_digest_v1(
+            manifest_path.read_bytes(), code_payloads,
+        ))
+        result = submit_builtin_generation_birth(BirthIntent(
+            candidate_source_root=candidate,
+            contract_id=ref.contract_id,
+            reason="verify post-transition authoring and restart",
+        ))
+    if result.error_code or result.publication is None:
+        raise RuntimeError(
+            "post-transition Birth failed: "
+            + (result.error_code or "publication missing")
+        )
+    current = current_manifest(ref, trusted_publics=trusted)
+    if (
+        result.publication.previous_generation_id != predecessor.generation_id
+        or result.publication.current_generation_id != current.generation_id
+        or current.generation_id == predecessor.generation_id
+    ):
+        raise RuntimeError("post-transition Birth readback mismatch")
+    _source_id, after_distribution = _load_current_distribution_inside()
+    if (
+        after_distribution.identity.closed_build_id
+        != before_distribution.identity.closed_build_id
+    ):
+        raise RuntimeError("closed release changed during Birth")
+    proof = {
+        "closed_build_id": after_distribution.identity.closed_build_id,
+        "contract_id": ref.contract_id.value,
+        "current_generation_id": current.generation_id,
+        "previous_generation_id": predecessor.generation_id,
+    }
+    Path("/proof/post-transition-birth-v1.json").write_text(
+        json.dumps(proof, sort_keys=True, separators=(",", ":")),
+        encoding="ascii",
+    )
+    print(json.dumps(proof, sort_keys=True))
+    return EXIT_OK
+
+
+def _restart_inside() -> int:
+    """Cold-start the sealed runtime and reread the generation just born."""
+    release_root = FIXED_RELEASE_ROOT
+    _repository_imports(release_root)
+    from contract_store import current_manifest
+    from executor_birth_bootstrap import bootstrap_birth_runtime
+    from executor_birth_prepared_root import load_sealed_authorities_v1
+    from loader import load_catalog
+    from manifest_inventory import inventory_store_manifests
+
+    proof = json.loads(Path(
+        "/proof/post-transition-birth-v1.json"
+    ).read_text(encoding="ascii"))
+    if not isinstance(proof, dict) or set(proof) != {
+        "closed_build_id", "contract_id", "current_generation_id",
+        "previous_generation_id",
+    }:
+        raise RuntimeError("post-transition Birth proof schema")
+    _source_id, distribution = _load_current_distribution_inside()
+    if distribution.identity.closed_build_id != proof["closed_build_id"]:
+        raise RuntimeError("restart distribution mismatch")
+    bootstrap_birth_runtime()
+    inventory = inventory_store_manifests()
+    refs = inventory.by_id()
+    selected = tuple(
+        ref for contract_id, ref in refs.items()
+        if contract_id.value == proof["contract_id"]
+    )
+    if inventory.problems or len(selected) != 1:
+        raise RuntimeError("restart contract inventory mismatch")
+    sealed = load_sealed_authorities_v1()
+    trusted = tuple(sorted(sealed.author.verifier_keys.items()))
+    current = current_manifest(selected[0], trusted_publics=trusted)
+    if current.generation_id != proof["current_generation_id"]:
+        raise RuntimeError("restart generation mismatch")
+    catalog = load_catalog(include_synth=True, include_verb_unique=False)
+    if catalog.executors.get("get_preferences") is None:
+        raise RuntimeError("restart verified catalog mismatch")
+    print(json.dumps({
+        "closed_build_id": distribution.identity.closed_build_id,
+        "current_generation_id": current.generation_id,
+        "executor": "get_preferences",
     }, sort_keys=True))
     return EXIT_OK
 
@@ -598,6 +737,44 @@ def _run_outer(args: argparse.Namespace) -> int:
             return EXIT_PREPARATION
         print("== VERIFIED POST-TRANSITION COPY ==")
         print(crossed.stdout.strip())
+        birth = _namespace_command(
+            repository=repository, scratch=scratch, from_release=True,
+            arguments=[
+                "/opt/metnos/.venv/bin/python",
+                "/work/internal/tools/prova_b3_server_post_transizione.py",
+                "--birth-inside",
+            ],
+        )
+        born = subprocess.run(
+            birth, text=True, capture_output=True, timeout=args.prepare_timeout,
+        )
+        if born.returncode != 0:
+            print(born.stdout, end="")
+            print(born.stderr, end="", file=sys.stderr)
+            print("B3 POST-TRANSITION BIRTH FAILED", file=sys.stderr)
+            return EXIT_PREPARATION
+        print("== POST-TRANSITION BIRTH ==")
+        print(born.stdout.strip())
+
+        restart = _namespace_command(
+            repository=repository, scratch=scratch, from_release=True,
+            arguments=[
+                "/opt/metnos/.venv/bin/python",
+                "/work/internal/tools/prova_b3_server_post_transizione.py",
+                "--restart-inside",
+            ],
+        )
+        restarted = subprocess.run(
+            restart, text=True, capture_output=True,
+            timeout=args.prepare_timeout,
+        )
+        if restarted.returncode != 0:
+            print(restarted.stdout, end="")
+            print(restarted.stderr, end="", file=sys.stderr)
+            print("B3 COLD RESTART FAILED", file=sys.stderr)
+            return EXIT_PREPARATION
+        print("== COLD RESTART AFTER BIRTH ==")
+        print(restarted.stdout.strip())
         print("== CONTRACT STORE BEFORE SERVER ==")
         print(json.dumps(
             _publication_store_shape(scratch / "user/state"),
@@ -650,6 +827,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--converge-inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--prepare-inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--cross-inside", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--birth-inside", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--restart-inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--repository")
     parser.add_argument("--pre-transition-repository")
     parser.add_argument("--llama-server")
@@ -664,6 +843,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     result = parser.parse_args(argv)
     if not (
         result.converge_inside or result.prepare_inside or result.cross_inside
+        or result.birth_inside or result.restart_inside
     ) and (
         result.repository is None
         or result.pre_transition_repository is None
@@ -685,6 +865,10 @@ def main(argv: list[str] | None = None) -> int:
         return _prepare_inside()
     if args.cross_inside:
         return _cross_inside()
+    if args.birth_inside:
+        return _birth_inside()
+    if args.restart_inside:
+        return _restart_inside()
     try:
         return _run_outer(args)
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:

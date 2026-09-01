@@ -649,13 +649,37 @@ def test_named_executor_store_verification_uses_live_catalog(
     import sign
     import executor_birth_intent
 
-    directory = tmp_path / "executors" / "read_files"
+    directory = tmp_path / "authoring" / "core" / "read_files"
     _signed_authoring_executor(directory, "read_files")
-    monkeypatch.setattr(sr, "_repo_root", lambda: tmp_path)
+    contract_id = manifest_inventory.ContractId(
+        manifest_inventory.ManifestOrigin.CORE, "read_files/manifest.toml",
+    )
+    ref = manifest_inventory.ManifestRef(
+        contract_id=contract_id,
+        origin=contract_id.origin,
+        status=manifest_inventory.ManifestStatus.ADMITTED,
+        source_root=directory.parent,
+        manifest_path=directory / "manifest.toml",
+        manifest_relative=contract_id.relative_manifest,
+        allowed_code_roots=(directory.parent,),
+    )
+    from executor_birth_authoring import (
+        advance_version, authoring_paths, authoring_tree_id, observe_tree,
+    )
+    paths = authoring_paths(directory, contract_id.value)
+    advance_version(
+        paths, contract_id.value, authoring_tree_id(observe_tree(directory)),
+    )
+    inventory = manifest_inventory.ManifestInventory((ref,), ())
     monkeypatch.setattr(
         manifest_inventory,
         "resolve_manifest_layout",
-        lambda: manifest_inventory.ManifestLayout.STORE_ONLY,
+        lambda **_kwargs: manifest_inventory.ManifestLayout.STORE_ONLY,
+    )
+    monkeypatch.setattr(
+        manifest_inventory,
+        "inventory_manifests",
+        lambda **_kwargs: inventory,
     )
     published = []
 

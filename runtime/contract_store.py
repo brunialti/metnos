@@ -3070,6 +3070,265 @@ def _move_activation_container(source: Path, destination: Path) -> None:
     _sync_directory(destination.parent)
 
 
+def _seed_repository_authoring_locked_v1(
+    expected: Mapping[ContractId, str],
+    *,
+    shadow_root: Path,
+    trusted: tuple[TrustedPublic, ...],
+) -> None:
+    """Install authenticated mutable authoring outside the closed release.
+
+    The distribution tree is an exact restart-time identity and must never be
+    the canonical target of a later Birth commit.  Before the one-way store
+    activation, copy each repository-owned current contract into a dedicated
+    user-state tree.  The store-only inventory resolves those same ContractIds
+    there, while user-owned origins keep their pre-existing external roots.
+
+    Each seed is deterministic and recoverable before the activation marker:
+    an interrupted exact staging tree is reused, an exact canonical tree is an
+    idempotent success, and any unrelated entry fails closed.
+    """
+    from executor_birth_authoring import (
+        AuthoringInstallError, AuthoringInstallJournalV1, advance_version,
+        authoring_paths, authoring_token, authoring_tree_id,
+        materialize_staging, observe_tree,
+    )
+    from executor_birth_snapshot import _acquire_authenticated_current_snapshot
+    from manifest_inventory import (
+        inventory_authoring_manifests, inventory_store_manifests,
+    )
+
+    source_inventory = inventory_authoring_manifests()
+    target_inventory = inventory_store_manifests(store_root=shadow_root)
+    if source_inventory.problems or target_inventory.problems:
+        raise ContractStoreError("authoring_seed_inventory_invalid")
+    source_refs = source_inventory.by_id()
+    target_refs = target_inventory.by_id()
+    if not set(expected).issubset(source_refs) or set(target_refs) != set(expected):
+        raise ContractStoreError("authoring_seed_catalog_mismatch")
+
+    external_root = Path(
+        os.path.abspath(
+            _C.PATH_USER_STATE / "contract-authoring" / "v1"
+        )
+    )
+    _ensure_directory_chain(external_root, code="authoring_seed_invalid")
+    expected_files: set[str] = set()
+    expected_directories: set[str] = set()
+
+    def remember(path: Path, *, directory: bool) -> None:
+        try:
+            relative = path.relative_to(external_root).as_posix()
+        except ValueError as exc:
+            raise ContractStoreError("authoring_seed_invalid", str(path)) from exc
+        if relative == ".":
+            return
+        (expected_directories if directory else expected_files).add(relative)
+        parent = path.parent
+        while parent != external_root:
+            try:
+                expected_directories.add(parent.relative_to(external_root).as_posix())
+            except ValueError as exc:
+                raise ContractStoreError("authoring_seed_invalid", str(parent)) from exc
+            parent = parent.parent
+
+    try:
+        for contract_id in sorted(expected, key=lambda item: item.value):
+            source_ref = source_refs[contract_id]
+            target_ref = target_refs[contract_id]
+            target_root = Path(os.path.abspath(target_ref.source_root))
+            if not _inside(target_root, external_root):
+                continue
+
+            generation_identifier = expected[contract_id]
+            current = _load_generation(
+                source_ref,
+                generation_identifier,
+                trusted_publics=trusted,
+                store_root=shadow_root,
+            )
+            snapshot, source_signature = _acquire_authenticated_current_snapshot(
+                source_ref.manifest_dir,
+            )
+            try:
+                if (
+                    snapshot.manifest_bytes != current.manifest_bytes
+                    or snapshot.language_state_bytes != current.language_state_bytes
+                    or source_signature != current.signature_bytes
+                ):
+                    raise ContractStoreError("authoring_seed_source_changed")
+                code = current.parsed.get("code")
+                declared = code.get("files") if isinstance(code, Mapping) else None
+                if not isinstance(declared, (list, tuple)) or any(
+                    not isinstance(name, str) or name not in snapshot.code_files
+                    for name in declared
+                ):
+                    raise ContractStoreError("authoring_seed_source_changed")
+                digest = hashlib.sha256()
+                for name in declared:
+                    digest.update(snapshot.code_files[name])
+                if "sha256:" + digest.hexdigest() != current.declared_code_digest:
+                    raise ContractStoreError("authoring_seed_source_changed")
+
+                payloads = {
+                    "manifest.toml": current.manifest_bytes,
+                    "manifest.toml.sig": current.signature_bytes,
+                    "manifest.lang_state.json": current.language_state_bytes,
+                }
+                final_files = dict(snapshot.code_files)
+                final_files.update(payloads)
+                tree_id = authoring_tree_id(final_files)
+                paths = authoring_paths(
+                    target_ref.manifest_dir, contract_id.value,
+                )
+                _ensure_directory_chain(
+                    paths.canonical.parent, code="authoring_seed_invalid",
+                )
+                request_id = "sha256:" + hashlib.sha256(
+                    b"metnos.executor-birth.authoring-seed/v1\0"
+                    + contract_id.value.encode("utf-8")
+                    + generation_identifier.encode("ascii")
+                ).hexdigest()
+                suffix = request_id.removeprefix("sha256:")
+                journal = AuthoringInstallJournalV1(
+                    request_id=request_id,
+                    contract_id=contract_id.value,
+                    source_origin=contract_id.origin.value,
+                    canonical_tree_id=tree_id,
+                    old_tree_id=None,
+                    new_tree_id=tree_id,
+                    candidate_id=tree_id,
+                    semantic_core_id=tree_id,
+                    admission_context_id=tree_id,
+                    predecessor_generation_id=generation_identifier,
+                    new_generation_id=generation_identifier,
+                    staging_basename=f".birth-stage-{suffix}",
+                    backup_basename=f".birth-backup-{suffix}",
+                )
+                staging, backup = paths.transaction_paths(journal)
+                if backup.exists() or _is_link_like(backup):
+                    raise ContractStoreError("authoring_seed_invalid", str(backup))
+                if paths.canonical.exists() or _is_link_like(paths.canonical):
+                    if (
+                        _is_link_like(paths.canonical)
+                        or authoring_tree_id(observe_tree(paths.canonical)) != tree_id
+                    ):
+                        raise ContractStoreError(
+                            "authoring_seed_conflict", contract_id.value,
+                        )
+                else:
+                    if staging.exists() or _is_link_like(staging):
+                        if (
+                            _is_link_like(staging)
+                            or authoring_tree_id(observe_tree(staging)) != tree_id
+                        ):
+                            raise ContractStoreError(
+                                "authoring_seed_invalid", str(staging),
+                            )
+                    else:
+                        staging = materialize_staging(paths, journal, final_files)
+                    try:
+                        _rename_no_replace(staging, paths.canonical)
+                    except FileExistsError:
+                        if authoring_tree_id(observe_tree(paths.canonical)) != tree_id:
+                            raise ContractStoreError(
+                                "authoring_seed_conflict", contract_id.value,
+                            )
+                        shutil.rmtree(staging)
+                    _sync_directory(paths.canonical.parent)
+
+                with authoring_token(
+                    paths.lock, exclusive=True, timeout=DEFAULT_LOCK_TIMEOUT,
+                ):
+                    if authoring_tree_id(observe_tree(paths.canonical)) != tree_id:
+                        raise ContractStoreError(
+                            "authoring_seed_source_changed", contract_id.value,
+                        )
+                    advance_version(paths, contract_id.value, tree_id)
+                _verify_payloads(
+                    target_ref,
+                    payloads,
+                    trusted_publics=trusted,
+                    identifier=generation_identifier,
+                    require_inventory_hash=False,
+                )
+
+                for relative in final_files:
+                    remember(paths.canonical / relative, directory=False)
+                remember(paths.canonical, directory=True)
+                remember(paths.control, directory=True)
+                remember(paths.lock, directory=False)
+                remember(paths.version, directory=False)
+            finally:
+                snapshot.close()
+
+        for entry in external_root.rglob("*"):
+            relative = entry.relative_to(external_root).as_posix()
+            if _is_link_like(entry):
+                raise ContractStoreError("authoring_seed_invalid", relative)
+            if entry.is_dir():
+                if relative not in expected_directories:
+                    raise ContractStoreError("authoring_seed_invalid", relative)
+            elif entry.is_file():
+                if relative not in expected_files:
+                    raise ContractStoreError("authoring_seed_invalid", relative)
+            else:
+                raise ContractStoreError("authoring_seed_invalid", relative)
+    except AuthoringInstallError as exc:
+        raise ContractStoreError(exc.code, exc.detail) from exc
+
+
+def materialize_repository_authoring_for_transition_v1(
+    *,
+    trusted_publics: Iterable[TrustedPublic],
+) -> int:
+    """Materialize the current closed-build authoring before ownership cutover.
+
+    This narrow migration step cannot publish a contract or move a pointer. It
+    is available only while the productive store is active and no ownership
+    certificate or required head exists.  An exact retry is idempotent; after
+    ownership cutover the entry is permanently closed.
+    """
+    from executor_birth_ownership_authorities import DEFAULT_OWNERSHIP_ROOT_V1
+    from executor_birth_ownership_chain import (
+        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1, REQUIRED_HEAD_BASENAME,
+    )
+    from executor_birth_ownership_cutover import (
+        PAYLOAD_BASENAME, SIGNATURE_BASENAME,
+    )
+    from manifest_inventory import inventory_store_manifests
+
+    _require_productive_installation_source()
+    if production_store_mode() not in {
+        ProductionStoreMode.ACTIVE, ProductionStoreMode.STORE_ONLY,
+    }:
+        raise ContractStoreError("authoring_seed_store_unavailable")
+    closed_paths = (
+        DEFAULT_OWNERSHIP_ROOT_V1 / PAYLOAD_BASENAME,
+        DEFAULT_OWNERSHIP_ROOT_V1 / SIGNATURE_BASENAME,
+        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1 / REQUIRED_HEAD_BASENAME,
+    )
+    if any(os.path.lexists(os.fspath(path)) for path in closed_paths):
+        raise ContractStoreError("authoring_seed_transition_closed")
+
+    trusted = _trusted_public_tuple(trusted_publics)
+    _container, root, _marker = _production_paths()
+    with catalog_admission_lock(store_root=root):
+        inventory = inventory_store_manifests(store_root=root)
+        if inventory.problems or not inventory.manifests:
+            raise ContractStoreError("authoring_seed_inventory_invalid")
+        expected = {
+            ref.contract_id: current_revision_id(ref, store_root=root)
+            for ref in inventory.manifests
+        }
+        _seed_repository_authoring_locked_v1(
+            expected,
+            shadow_root=root,
+            trusted=trusted,
+        )
+    return len(expected)
+
+
 def _activate_store_locked(
     expected: Mapping[ContractId, str],
     *,
@@ -3106,6 +3365,11 @@ def _activate_store_locked(
         shadow_v1,
         expected,
         trusted_publics=trusted,
+    )
+    _seed_repository_authoring_locked_v1(
+        expected,
+        shadow_root=shadow_v1,
+        trusted=trusted,
     )
     try:
         if shadow_container.stat().st_dev != marker.parent.stat().st_dev:

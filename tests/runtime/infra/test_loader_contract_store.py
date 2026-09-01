@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import tomllib
 from dataclasses import replace
 from pathlib import Path
@@ -139,6 +140,13 @@ def _activate_published_store(
     production = state / "contract-publications"
     production.mkdir(parents=True)
     shadow.rename(production / "v1")
+    relative = Path(ref.contract_id.relative_manifest).parent
+    external = (
+        state / "contract-authoring" / "v1"
+        / ref.contract_id.origin.value / relative
+    )
+    external.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(ref.manifest_dir, external)
     return state, result.current_generation_id
 
 
@@ -256,7 +264,10 @@ def test_store_loader_consumes_verified_parsed_with_unreadable_authoring_sentine
     assert executor.description.startswith("SCOPO: Reads a probe.")
     assert executor.manifest_path.is_file()
     assert "generations" in executor.manifest_path.parts
-    assert executor.authoring_manifest_path == ref.manifest_path
+    assert executor.authoring_manifest_path == (
+        state / "contract-authoring" / "v1" / "core"
+        / "read_files" / "manifest.toml"
+    )
     assert executor.generation_id == generation
 
 

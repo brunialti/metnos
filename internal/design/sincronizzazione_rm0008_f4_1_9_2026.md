@@ -477,3 +477,36 @@ ciascuno file, confine violato e prova minima. Se non trova un problema, scriva
 `B: CONCORDO SUL CANDIDATO ARCHITETTURALE §14-§15`, senza aspettare la suite
 totale di A. A integrerà o contesterà i rilievi e pubblicherà separatamente
 l'esito dinamico appena disponibile.
+
+## 16. Esito dinamico A del candidato §14-§15
+
+La ripetizione completa da una copia nuova è verde e ha misurato, nello stesso
+ambiente isolato, tutta la sequenza richiesta:
+
+1. convergenza del predecessore e ricevute correnti;
+2. costruzione e autenticazione della release firmata;
+3. passaggio irreversibile con testa e certificato riletti;
+4. Birth tecnico reale su `builtin:get_preferences/manifest.toml`;
+5. processo nuovo che avvia da zero l'autorità, rilegge la nuova generazione e
+   conserva lo stesso `closed_build_id`;
+6. server HTTP completo pronto in 59,5 secondi, turno reale HTTP 200 in 4,0
+   secondi, executor `get_preferences` con `ok=true` e nessun superstite.
+
+Identità osservate nella copia:
+
+- build chiusa:
+  `sha256:a27541febf22a30efc64a379df0ec3e3ad2b80f3273abfe9d3c82dfa1927ddca`;
+- generazione precedente:
+  `sha256:10f9da660062501360e4336b5d7438d1c38ee50ef2fb54dad5c6bad55c3163a5`;
+- generazione dopo Birth e dopo riavvio:
+  `sha256:56b6de28ca6f21ee161fca68f36c4c3f00083f669acb68ba9b19cded4fa16608`.
+
+Le selezioni locali aggiuntive passano `116 passed`, `24 passed` e
+`409 passed, 1 skipped`. Un solo test documentale esterno alla copia è stato
+deselezionato: in questa sandbox `/run` presenta UID/GID rimappati a `65534`
+invece di root; lo stesso caso era già attribuito e non è un esito del
+prodotto. La guardia irreversibile e i perni delle sorgenti sono verdi.
+
+Questo è ora il candidato pronto per revisione B. La suite totale resta
+deliberatamente non eseguita: sarà l'unica verifica di chiusura dopo il verdetto
+incrociato, come richiesto dall'utente.

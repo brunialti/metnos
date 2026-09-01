@@ -3717,6 +3717,159 @@ def test_activation_requires_quiescence_and_an_exact_verified_catalog(
     assert not marker.exists()
 
 
+def test_cutover_externalizes_repository_authoring_and_birth_keeps_release_unchanged(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root, ref, private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    monkeypatch.setattr(
+        contract_store_module, "_deny_closed_legacy_api",
+        lambda _operation, _store_root: None,
+    )
+    release_before = {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*") if path.is_file()
+    }
+
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+
+    productive = (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-publications" / "v1"
+    )
+    inventory = manifest_inventory_module.inventory_store_manifests(
+        store_root=productive,
+    )
+    assert not inventory.problems
+    live_ref = inventory.by_id()[ref.contract_id]
+    external = (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-authoring" / "v1" / "core" / "sample"
+    )
+    assert live_ref.manifest_dir == external
+    control_directories = tuple(external.parent.glob(".sample.birth-control-*"))
+    assert len(control_directories) == 1
+    assert (control_directories[0] / "authoring.lock").is_file()
+    assert (control_directories[0] / "version.json").is_file()
+    assert current_manifest(
+        live_ref, trusted_publics=trusted, store_root=productive,
+    ).generation_id == initial.current_generation_id
+
+    code = external / "sample.py"
+    code.write_text(
+        "def invoke(args):\n    return {'results': [], 'birth': 2}\n",
+        encoding="utf-8",
+    )
+    document = tomlkit.parse((external / "manifest.toml").read_text())
+    document["code"]["digest"] = (
+        "sha256:" + hashlib.sha256(code.read_bytes()).hexdigest()
+    )
+    (external / "manifest.toml").write_text(tomlkit.dumps(document))
+    candidate = tmp_path / "external-candidate"
+    candidate.mkdir()
+    for name in ("manifest.toml", "manifest.lang_state.json", "sample.py"):
+        (candidate / name).write_bytes((external / name).read_bytes())
+    snapshot = acquire_candidate_snapshot(candidate, private_parent=tmp_path)
+    authorization = _birth_authorization(
+        live_ref,
+        initial.current_generation_id,
+        Ed25519PrivateKey.generate(),
+    )
+    result = commit_birth_snapshot(
+        live_ref,
+        expected_generation_id=initial.current_generation_id,
+        snapshot=snapshot,
+        request_id="sha256:" + "9" * 64,
+        private_key=private,
+        trusted_publics=trusted,
+        birth_authorization=authorization,
+        registry_reconciler=lambda _snapshot: None,
+    )
+    snapshot.close()
+
+    restarted_inventory = manifest_inventory_module.inventory_store_manifests(
+        store_root=productive,
+    )
+    restarted_ref = restarted_inventory.by_id()[ref.contract_id]
+    restarted = current_manifest(
+        restarted_ref, trusted_publics=trusted, store_root=productive,
+    )
+    assert restarted.generation_id == result.current_generation_id
+    assert restarted.verified_code_digest == document["code"]["digest"]
+    assert {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*") if path.is_file()
+    } == release_before
+    assert not tuple(root.rglob("*.birth-control-*"))
+
+
+def test_cutover_resumes_an_exact_external_authoring_seed_before_marker(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    monkeypatch.setattr(
+        contract_store_module, "_deny_closed_legacy_api",
+        lambda _operation, _store_root: None,
+    )
+    marker = (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-publications.ACTIVE"
+    )
+    real_rename = contract_store_module._rename_no_replace
+    interrupted = False
+
+    def stop_once(source: Path, destination: Path) -> None:
+        nonlocal interrupted
+        if not interrupted and source.name.startswith(".birth-stage-"):
+            interrupted = True
+            raise ContractStoreError("simulated_authoring_seed_stop")
+        real_rename(source, destination)
+
+    monkeypatch.setattr(
+        contract_store_module, "_rename_no_replace", stop_once,
+    )
+    with pytest.raises(
+        ContractStoreError, match="simulated_authoring_seed_stop",
+    ):
+        activate_store(
+            {ref.contract_id: initial.current_generation_id},
+            shadow_root=shadow,
+            trusted_publics=trusted,
+            quiescence_guard=lambda: True,
+        )
+    assert interrupted
+    assert not marker.exists()
+    assert shadow.is_dir()
+    seed_root = (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-authoring" / "v1"
+    )
+    assert tuple(seed_root.rglob(".birth-stage-*"))
+
+    monkeypatch.setattr(
+        contract_store_module, "_rename_no_replace", real_rename,
+    )
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+
+    assert marker.read_bytes() == ACTIVE_BYTES
+    assert not tuple(seed_root.rglob(".birth-stage-*"))
+
+
 def test_activation_owns_catalog_locks_in_production_then_shadow_order(
     tmp_path: Path,
     monkeypatch,

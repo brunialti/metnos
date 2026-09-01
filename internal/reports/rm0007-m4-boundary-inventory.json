@@ -1504,6 +1504,18 @@
     },
     {
       "capabilities": [
+        "authoring_read",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "one-way exact authoring seed outside the immutable release before ownership cutover",
+      "path": "runtime/contract_store.py",
+      "phase": "M4",
+      "role": "store_owner",
+      "scope": "_seed_repository_authoring_locked_v1"
+    },
+    {
+      "capabilities": [
         "store_write"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
@@ -1702,6 +1714,17 @@
       "phase": "M4",
       "role": "store_owner",
       "scope": "current_revision_id"
+    },
+    {
+      "capabilities": [
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "one-way exact authoring seed outside the immutable release before ownership cutover",
+      "path": "runtime/contract_store.py",
+      "phase": "M4",
+      "role": "store_owner",
+      "scope": "materialize_repository_authoring_for_transition_v1"
     },
     {
       "capabilities": [
@@ -2042,7 +2065,8 @@
     },
     {
       "capabilities": [
-        "authoring_read"
+        "authoring_read",
+        "verified_store_read"
       ],
       "destination": "reviewed administrative read-only or authoring scope",
       "path": "runtime/executor_birth_bootstrap.py",
@@ -4105,7 +4129,8 @@
         "authoring_read",
         "authoring_verify",
         "birth",
-        "live_artifact_read"
+        "live_artifact_read",
+        "verified_store_read"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "path": "runtime/stack_reconcile.py",
@@ -4486,5 +4511,5 @@
     "executors"
   ],
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:d781a811bae880db22fc844445f643c9fbdf1b590e8c2057b761fd1525840786"
+  "source_census": "sha256:091df469b21e7c7279c5c75e77272b6c599d37cefea0e7a057264dbe9705991c"
 }
