@@ -307,6 +307,12 @@ def _create_productive_shadow(
     Path,
     Any,
 ]:
+    # These tests exercise the lower-level pre-cutover store invariants.  The
+    # compiled productive denial has its own closed-build test suite.
+    monkeypatch.setattr(
+        contract_store_module, "_deny_closed_legacy_api",
+        lambda _operation, _store_root: None,
+    )
     root, _explicit_ref, private, trusted = _create_source(tmp_path)
     ref = _inventory_ref(root, name="read_files", origin=ManifestOrigin.CORE)
     user_state = tmp_path / "user-state"
@@ -926,6 +932,10 @@ def test_m2_publish_requires_an_explicit_nonproduction_shadow_root(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    monkeypatch.setattr(
+        contract_store_module, "_deny_closed_legacy_api",
+        lambda _operation, _store_root: None,
+    )
     _root, ref, _private, trusted = _create_source(tmp_path)
     user_state = tmp_path / "user-state"
     module_root = Path(contract_store_module.__file__).resolve().parents[1]
@@ -967,6 +977,10 @@ def test_productive_publication_refuses_unselected_checkout_before_state_read(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    monkeypatch.setattr(
+        contract_store_module, "_deny_closed_legacy_api",
+        lambda _operation, _store_root: None,
+    )
     _root, ref, _private, trusted = _create_source(tmp_path)
     user_state = tmp_path / "shared-user-state"
     monkeypatch.setattr(contract_store_module._C, "PATH_USER_STATE", user_state)
@@ -999,6 +1013,10 @@ def test_productive_publication_refuses_different_configured_checkout(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    monkeypatch.setattr(
+        contract_store_module, "_deny_closed_legacy_api",
+        lambda _operation, _store_root: None,
+    )
     _root, ref, _private, trusted = _create_source(tmp_path)
     user_state = tmp_path / "shared-user-state"
     monkeypatch.setattr(contract_store_module._C, "PATH_USER_STATE", user_state)

@@ -12,6 +12,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import loader
+import contract_store as contract_store_module
 from contract_store import (
     ContractStoreError,
     encode_binding,
@@ -412,6 +413,12 @@ def test_store_cache_uses_generation_id_when_pointer_mtime_is_unchanged(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    # Cache invalidation is a lower-level store property.  Productive legacy
+    # entry-point denial is covered independently by the closed-build guards.
+    monkeypatch.setattr(
+        contract_store_module, "_deny_closed_legacy_api",
+        lambda _operation, _store_root: None,
+    )
     source_root, ref, original_trusted = _source(tmp_path)
     state, initial_generation = _activate_published_store(
         tmp_path, ref, original_trusted,
@@ -479,6 +486,10 @@ def test_store_cache_tracks_retirement_and_explicit_reactivation(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    monkeypatch.setattr(
+        contract_store_module, "_deny_closed_legacy_api",
+        lambda _operation, _store_root: None,
+    )
     source_root, ref, original_trusted = _source(tmp_path)
     state, generation = _activate_published_store(tmp_path, ref, original_trusted)
     authority = Ed25519PrivateKey.generate()

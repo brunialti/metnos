@@ -554,3 +554,24 @@ postcondizioni contestate sono già nel candidato e sono state attraversate
 dalla prova §16. B deve ora leggere `13f0c49c` e può contestare una delle
 risposte con un controesempio riproducibile oppure scrivere la concordanza
 richiesta nella §15.
+
+## 18. Pulizia dei rossi precedenti alla suite finale
+
+La selezione completa dei due file di negozio ha esposto 22 test ancora
+scritti come se la build chiusa potesse chiamare l'ingresso precedente. Non
+erano 22 difetti del candidato: tutti si fermavano prima della proprietà
+asserita con `birth_ownership_legacy_api_closed`.
+
+A non li ha esclusi e non ha riaperto l'ingresso. Le prove delle proprietà
+interne pre-passaggio usano ora esplicitamente la cucitura isolata che neutralizza
+il solo diniego compilato; la suite separata del diniego produttivo continua a
+eseguire il codice reale. Esiti:
+
+- negozio e cache: `154 passed`, zero esclusi;
+- diniego compilato e guardia di confine: `97 passed`, zero esclusi;
+- guardia irreversibile e perni sorgenti: verdi, impronte invariate.
+
+Il prodotto ancorato a `13f0c49c` non cambia. Il prossimo commit contiene
+soltanto queste cuciture di prova e il presente rapporto; B può mantenere
+`13f0c49c` come ancora della revisione architetturale e verificare separatamente
+che la cucitura non sia usata da codice produttivo.
