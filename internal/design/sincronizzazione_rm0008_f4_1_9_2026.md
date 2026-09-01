@@ -172,3 +172,47 @@ A ha pubblicato `e24fd7e1`, ancorato al riscontro B `4f1d5302`:
 `e24fd7e1` è un incremento correttivo, non un candidato `PRONTA`. B usa questa
 testa per il proprio residuo; la selezione larga parte soltanto quando il suo
 commit è pubblicato e integrato.
+
+## 9. Barriera correttiva chiusa e coda successiva
+
+Il commit B `8d12ea1e` è integrato in A come `12fd65dd`. A e B hanno eseguito
+indipendentemente la selezione larga sullo stesso albero e ottenuto lo stesso
+risultato:
+
+    1339 passed, 29 skipped, 5 failed
+
+I cinque fallimenti sono tutti e soli i casi UID diagnosticati in `c808d604`.
+B ha inoltre aggiunto un ingresso pubblico non dichiarato al caso negativo del
+certificatore: la prova è diventata rossa. Il set ampliato resta quindi chiuso,
+non è stato reso permissivo da un ripuntamento.
+
+B ha accettato il candidato A `9c7bc490` in `8df420ed`. La barriera
+F4-EPOCA-01-RIALLINEAMENTO è **CHIUSA**.
+
+Il documento B `76d88192` non apre una decisione utente. La scelta fra una
+nuova capacità generica d'autore e l'assenza di un percorso per gli edit era
+già superata dal commit integrato `86d2fc67`:
+
+- il comando approvato è
+  `./.venv/bin/python runtime/stack_reconcile.py deploy --executor <name> --sign`;
+- usa la facciata Producer già registrata di `stack_reconcile`, non introduce
+  un firmatario generico e non espone il nucleo sigillato;
+- `runtime/sign.py publish` resta negato;
+- `CLAUDE.md` §7.10 e
+  `decisione_rm0008_percorso_pubblicazione_chiusa_1_9_2026.md` contengono già
+  regola, autorità e ordine di consegna.
+
+La coda unica successiva è quindi soltanto:
+
+1. B verifica la prova 24 sul commit `b8f667df`: server completo, HTTP 200,
+   turno reale `get_preferences` con esito positivo e nessun processo residuo.
+2. B registra che `76d88192` è superato dalla decisione già integrata, oppure
+   produce un rilievo riproducibile contro quel percorso esatto.
+3. A integra il riscontro e aggiorna il registro e la roadmap senza cambiare
+   codice di prodotto.
+4. Solo dopo questa convergenza si decide, dai criteri della roadmap, se la
+   fase è alla barriera della suite totale oppure se resta un blocco tecnico
+   precedente.
+
+La voce 23 resta `PROVATA SU COPIA; LIVE A B4`: non viene applicata al negozio
+in esercizio prima della barriera finale già autorizzata.
