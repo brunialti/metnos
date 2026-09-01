@@ -60,9 +60,11 @@ def _giunture() -> tuple[str, ...]:
 
     nomi: set[str] = set()
     for modulo in sorted((RADICE / "runtime").glob("executor_birth_*.py")):
-        nomi.update(
-            re.findall(r'_crash_seam\("([a-z_]+)"\)', modulo.read_text()),
-        )
+        testo = modulo.read_text()
+        nomi.update(re.findall(r'_crash_seam\("([a-z_]+)"\)', testo))
+        # A seam name can reach _crash_seam through a parameter instead of a
+        # literal; reading only the direct calls loses those silently.
+        nomi.update(re.findall(r'[a-z_]*stage="([a-z_]+)"', testo))
     return tuple(sorted(nomi))
 
 
@@ -283,20 +285,24 @@ def _misura_topologia(base: Path) -> tuple[int, list[str]]:
         print(f"scena «conservazione»: impalcatura assente ({errore})")
         return 0, []
 
-    print("scena «conservazione dell'unita' sostituita»")
+    print("scena «conservazione: sostituzione e mascheratura»")
 
     class _Caduta(Exception):
         pass
 
-    def _giro(giuntura):
+    def _giro(giuntura, azione="preserve_replaced_system_unit"):
         radice = VICINI._tree(Path(tempfile.mkdtemp(dir=base)))
         unita = radice / "systemd" / "metnos-http.service"
         unita.write_bytes(b"precedente")
         passo = VICINI._Step(
-            "legacy-service-http-system", "preserve_replaced_system_unit",
+            "legacy-service-http-system", azione,
             "systemd/metnos-http.service",
+            "system" if azione != "mask_user_unit" else "user",
         )
-        sostituzione = {("system", passo.locator): b"frammento firmato"}
+        sostituzione = (
+            {("system", passo.locator): b"frammento firmato"}
+            if azione == "preserve_replaced_system_unit" else {}
+        )
         raggiunta = False
         if giuntura is not None:
             def interrompi(osservata):
@@ -324,28 +330,39 @@ def _misura_topologia(base: Path) -> tuple[int, list[str]]:
             conservata.read_bytes() if conservata.exists() else None,
         )
 
-    riferimento = _giro(None)
-    if riferimento is None:
-        print("  il giro senza interruzioni non arriva in fondo")
-        return 0, []
     divergenti: list[str] = []
     attraversate = 0
-    for giuntura in _giunture():
-        try:
-            osservato = _giro(giuntura)
-        except Exception as errore:  # noqa: BLE001
-            print(f"  {giuntura:32} NON RIPRENDE: "
-                  f"{type(errore).__name__} {str(errore)[:30]}")
-            divergenti.append(f"conservazione/{giuntura}")
+    for azione, etichetta in (
+        ("preserve_replaced_system_unit", "sostituzione"),
+        ("mask_user_unit", "mascheratura "),
+    ):
+        sotto = 0
+        riferimento = _giro(None, azione)
+        if riferimento is None:
+            print(f"  {etichetta}: il giro intero non arriva in fondo")
             continue
-        if osservato is None:
-            continue
-        attraversate += 1
-        if osservato == riferimento:
-            print(f"  {giuntura:32} converge")
-            continue
-        print(f"  {giuntura:32} DIVERGE  {osservato} invece di {riferimento}")
-        divergenti.append(f"conservazione/{giuntura}")
+        for giuntura in _giunture():
+            try:
+                osservato = _giro(giuntura, azione)
+            except Exception as errore:  # noqa: BLE001
+                print(f"  {etichetta} {giuntura:30} NON RIPRENDE: "
+                      f"{type(errore).__name__} {str(errore)[:26]}")
+                divergenti.append(f"{etichetta.strip()}/{giuntura}")
+                continue
+            if osservato is None:
+                continue
+            attraversate += 1
+            sotto += 1
+            if osservato == riferimento:
+                print(f"  {etichetta} {giuntura:30} converge")
+                continue
+            print(f"  {etichetta} {giuntura:30} DIVERGE")
+            divergenti.append(f"{etichetta.strip()}/{giuntura}")
+        if not sotto:
+            # A sub-scene that crosses nothing is not a pass: it means the
+            # probe stopped seeing the seams it claims to read.
+            print(f"  {etichetta}: NESSUNA giuntura attraversata")
+            divergenti.append(f"{etichetta.strip()}/nessuna-giuntura")
     print(f"  giunture attraversate qui: {attraversate}")
     return attraversate, divergenti
 
