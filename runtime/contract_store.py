@@ -3798,7 +3798,9 @@ def _sealed_v2_triple(ref: ManifestRef, request: object) -> tuple[str, str]:
     """
     from executor_birth_producer_context import ProducerRequestV2
 
-    if not isinstance(request, ProducerRequestV2):
+    # Exact type, not isinstance: a subclass with an empty __post_init__
+    # satisfies isinstance and never runs the seal check.
+    if type(request) is not ProducerRequestV2:
         raise ContractStoreError("birth_receipt_v2_request_untrusted")
     if request.contract_id != ref.contract_id.value:
         raise ContractStoreError("birth_receipt_v2_request_mismatch", "contract_id")

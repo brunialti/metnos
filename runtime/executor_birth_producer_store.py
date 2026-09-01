@@ -599,7 +599,8 @@ def consume_producer_receipt(encoded: bytes, *, registry: IssuerRegistry, bindin
 def _sealed_request_v2(request: object, binding: ProducerReceiptBinding):
     from executor_birth_producer_context import ProducerRequestV2
 
-    if not isinstance(request, ProducerRequestV2):
+    # Exact type: a subclass would skip the sealed constructor entirely.
+    if type(request) is not ProducerRequestV2:
         raise ReceiptError("producer_request_v2_untrusted", "request")
     if not isinstance(binding, ProducerReceiptBinding):
         raise ReceiptError("producer_receipt_binding_invalid", "binding")

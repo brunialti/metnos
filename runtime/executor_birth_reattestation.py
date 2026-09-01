@@ -85,7 +85,7 @@ class ReattestationRequest:
         if self.producer_request is not None:
             from executor_birth_producer_context import ProducerRequestV2
 
-            if not isinstance(self.producer_request, ProducerRequestV2):
+            if type(self.producer_request) is not ProducerRequestV2:
                 raise BirthReattestationError(
                     "birth_reattestation_request_invalid", "producer_request",
                 )
@@ -132,7 +132,7 @@ def _sealed_reattestation_request_v2(
     """
     from executor_birth_producer_context import ProducerRequestV2
 
-    if not isinstance(producer_request, ProducerRequestV2):
+    if type(producer_request) is not ProducerRequestV2:
         raise BirthReattestationError(
             "birth_reattestation_request_invalid", "producer_request",
         )

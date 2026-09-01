@@ -862,7 +862,8 @@ def verify_reattestation_postcondition_v2(
         producer_receipt_hash, verify_terminal_registration_v2,
     )
 
-    if not isinstance(request, ProducerRequestV2):
+    # Exact type: a subclass would skip the sealed constructor entirely.
+    if type(request) is not ProducerRequestV2:
         raise ValueError("birth_postcondition_request_untrusted")
     if not callable(verify_admission):
         raise ValueError("birth_postcondition_verifier_invalid")
