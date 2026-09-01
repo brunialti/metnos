@@ -5,7 +5,9 @@ two prefixes. The one failure that matters is a downgrade: a position that is
 confidential under V1 must never come back integrity-only under V2, where
 integrity-only means world-readable. This probe compares the two epochs
 position by position and fails on any downgrade, on any silently classified
-key material, and on a header crossing between epochs.
+key material, and on a header crossing between epochs. It also names the
+positions that hold secrets in each epoch, because a differential check is
+blind to a position that only one epoch has.
 
 Exit codes: 0 the epochs agree safely, 1 a downgrade or a crossing, 2 the probe
 could not run and says why.
@@ -55,11 +57,30 @@ CODE = (
     ("checkpoints-v1",),
     ("checkpoints-v1", "0" * 19 + "1.json"),
     ("prepared-v1.json",),
+    ("material-plan-v2.json",),
+    (".material-plan-v2.pending." + NONCE,),
     ("transaction-v1.json",),
     ("transaction-v2.json",),
     (".transaction-v1.pending." + NONCE,),
     (".transaction-v2.pending." + NONCE,),
 )
+
+
+# Positions that hold secrets. A differential check cannot see a position
+# that exists in one epoch only, so these are named: whatever else changes,
+# none of them may come back readable by anyone but its owner.
+SEGRETI = {
+    1: (
+        ("author-root-v1",),
+        ("author-root-v1", "keystore.json"),
+        ("author-root-v1", "private"),
+        ("author-root-v1", "private", FS._KEY_PREFIX + "a" * 64 + ".key"),
+    ),
+    2: (
+        ("material-plan-v2.json",),
+        (".material-plan-v2.pending." + NONCE,),
+    ),
+}
 
 
 def _ruoli(radice: str, coda: tuple[str, ...]) -> set:
@@ -96,6 +117,26 @@ def principale() -> int:
                 guasti.append(
                     f"CHIAVE PRIVATA leggibile da tutti in V2: {etichetta}"
                 )
+    print()
+    for epoca, code in sorted(SEGRETI.items()):
+        radice = V1 if epoca == 1 else V2
+        for coda in code:
+            ruoli = _ruoli(radice, coda)
+            etichetta = "/".join(coda)
+            print(f"  segreto V{epoca} {etichetta:44} {_nome(ruoli):14}")
+            if ruoli == {CONFIDENZIALE}:
+                continue
+            if INTEGRITA in ruoli:
+                guasti.append(
+                    f"SEGRETO SCOPERTO in V{epoca}: {etichetta} e' leggibile "
+                    "da tutti"
+                )
+            else:
+                guasti.append(
+                    f"SEGRETO NON PIU' RICONOSCIUTO in V{epoca}: {etichetta} "
+                    f"risulta {_nome(ruoli)}; non si apre, ma non si scrive"
+                )
+
     # A header must not be readable across its own epoch.
     incroci = (
         ("transaction-v2.json", V1, "un'intestazione V2 dentro una posa V1"),
@@ -116,7 +157,8 @@ def principale() -> int:
         for guasto in guasti:
             print("ESITO:", guasto)
         return 1
-    print("ESITO: nessun declassamento fra le due epoche, nessun incrocio.")
+    print("ESITO: nessun declassamento, nessun segreto scoperto, nessun")
+    print("incrocio fra le due epoche.")
     print("Le posizioni che V2 non conosce non vengono classificate, e una")
     print("posizione non classificata e' rifiutata, non lasciata libera.")
     return 0
