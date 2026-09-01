@@ -120,6 +120,30 @@ def _transition_inputs(tmp_path, monkeypatch):
     return base, previous, distribution
 
 
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_first_transition_reads_a_stale_v1_anchor_without_selecting_it(
+    tmp_path, monkeypatch,
+):
+    import config as runtime_config
+    from executor_birth_prepared_root import (
+        _load_historical_transition_anchor_v1,
+        read_prepared_set_v1,
+    )
+
+    base, previous, _distribution_value = _transition_inputs(
+        tmp_path, monkeypatch,
+    )
+    marker = base / "birth" / "prepared-v1.json"
+    marker_before = marker.read_bytes()
+    context_source = Path(runtime_config.PATH_RUNTIME) / "executor_standard.py"
+    context_source.write_bytes(context_source.read_bytes() + b"\n")
+
+    with pytest.raises(PreparedSetError, match="birth_prepared_set_mismatch"):
+        read_prepared_set_v1()
+    assert _load_historical_transition_anchor_v1() == previous
+    assert marker.read_bytes() == marker_before
+
+
 def _material_plan(header: TransactionHeaderV2) -> MaterialPlanV2:
     entries = (
         MaterialPlanEntryV2(
@@ -795,6 +819,7 @@ def test_v2_publication_moves_the_exact_set_and_preserves_the_v1_anchor(
 def test_v2_product_composition_reaches_receipts_after_set_publication(
     tmp_path, monkeypatch,
 ):
+    import config as runtime_config
     from install import birth_authority_provisioner as provisioning
     import executor_birth_distribution_manifest as distribution_module
     import executor_birth_ownership_coordinator as coordinator_module
@@ -802,6 +827,10 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
     import executor_birth_prepared_root as prepared_root_module
 
     base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
+    context_source = Path(runtime_config.PATH_RUNTIME) / "executor_standard.py"
+    context_source.write_bytes(context_source.read_bytes() + b"\n")
+    with pytest.raises(PreparedSetError, match="birth_prepared_set_mismatch"):
+        prepared_root_module.read_prepared_set_v1()
     claim = _claim()
     descriptor = SimpleNamespace(descriptor_id=D("9"))
     inventory = CurrentInventoryV1(())
@@ -843,14 +872,23 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
             None,
         ) if observed_session is session and verified is distribution else None,
     )
+    original_anchor = (
+        prepared_root_module._load_historical_transition_anchor_v1
+    )
+
+    def load_previous_anchor():
+        order.append("previous")
+        return original_anchor()
+
     monkeypatch.setattr(
-        prepared_root_module, "load_sealed_authorities_v1",
-        lambda: order.append("previous") or SimpleNamespace(prepared=previous),
+        prepared_root_module, "_load_historical_transition_anchor_v1",
+        load_previous_anchor,
     )
 
     original_prepare = provisioning._prepare_transition_authority_set_v2
 
     def prepare(*args):
+        assert args[2] == previous
         order.append("stage")
         return original_prepare(*args)
 

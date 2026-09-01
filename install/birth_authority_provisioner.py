@@ -4075,7 +4075,8 @@ def _prepare_transition_receipt_material_locked_v2(
         _require_deployment_lock_session_v1, _transition_edge_locked_v2,
     )
     from executor_birth_prepared_root import (
-        load_required_context_runtime_v1, load_sealed_authorities_v1,
+        _load_historical_transition_anchor_v1,
+        load_required_context_runtime_v1,
     )
 
     _require_deployment_lock_session_v1(session)
@@ -4086,9 +4087,8 @@ def _prepare_transition_receipt_material_locked_v2(
     if predecessor is None:
         if claim.release_sequence != 1:
             raise _conflict()
-        previous_authorities = load_sealed_authorities_v1()
-        previous_context = previous_authorities.prepared
-        previous_set = previous_authorities.prepared
+        previous_set = _load_historical_transition_anchor_v1()
+        previous_context = previous_set
     else:
         required = load_required_context_runtime_v1()
         if (

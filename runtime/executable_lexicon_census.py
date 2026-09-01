@@ -253,7 +253,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_ownership_preflight.py': ('b83755c189489215c0ec3778a00852c850830c24f3889f588a5182969f5bd2d2', (('comparison', 1), ('helper-argument', 1))),
     'executor_birth_postcondition.py': ('bf51bc292082ab283b96151a28229d002f0c0342b332c0240fba5f6832c19c89', (('comparison', 1),)),
     'executor_birth_predecessor.py': ('00b7e6f69ba50498b86eefd00e291aae79ee2e837809ad89e502f3a516826e65', (('comparison', 6), ('helper-argument', 1))),
-    'executor_birth_prepared_root.py': ('be34293221d16feb58f18189d1ee6319ec464d510df87493c4bab05c36fc2bef', (('comparison', 3), ('prefix-suffix', 1))),
+    'executor_birth_prepared_root.py': ('8b33cd7b1f3dc60ac8e9ee10446126924ed0699ca350a22f9ebc3a6b186a11a8', (('comparison', 3), ('prefix-suffix', 1))),
     'executor_birth_prepared_set.py': ('7ef58766ff1a2277e9825fec1651a6bda8108f6c3efe74d05e3ceaf016860670', (('comparison', 6), ('helper-argument', 5), ('regex', 1))),
     'executor_birth_producer_context.py': ('a6348c3b97e6ffd33aaa982994c3eafc5dde911e9b83540c4945ff6adfbbd8b1', (('comparison', 2), ('prefix-suffix', 1))),
     'executor_birth_primitive_table_v1.py': ('cc170dd27faf03bc2443a0ded4aa27281a91b1cc10b88c23d1b4e94287317d2f', (('helper-argument', 2),)),

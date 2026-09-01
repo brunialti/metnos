@@ -172,6 +172,24 @@ def read_prepared_set_v1():
     return prepared
 
 
+def _load_historical_transition_anchor_v1():
+    """Read the immutable V1 anchor without selecting it for runtime use.
+
+    The first F4 transition exists because the new verified distribution no
+    longer produces the V1 context.  Rebuilding the anchor with that new
+    distribution would therefore make the transition impossible.  This door
+    validates only the persisted marker, set, key inventories and material
+    digests under the Birth barrier.  It does not return runtime authorities
+    and it does not make mismatched V1 material executable.
+    """
+    from executor_birth_prepared_set import load_prepared_set_v1
+
+    session = open_prepared_root_session_v1()
+    with session:
+        with session.global_lock(exclusive=False, create=False):
+            return load_prepared_set_v1(session)
+
+
 def _load_sealed_authorities_from_set_v1(session, prepared, open_sources):
     """Load one already selected set while its root barrier is held."""
     from executor_birth_context import _context_epoch
