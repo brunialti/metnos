@@ -20,16 +20,33 @@ compute it, and reports both values so they can be recorded.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 
-PIN_BINDINGS = (
-    "runtime/executor_birth_admin_preflight.py",
-    "runtime/contract_boundary_guard.py",
-    "scripts/publish-public.sh",
-    "internal/reports/rm0007-m4-boundary-inventory.json",
+PRIVATE_PIN_BINDINGS = (
+    (
+        "runtime/executor_birth_admin_preflight.py",
+        r'(?m)^_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:[0-9a-f]{64}"$',
+        '_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "{root}"',
+    ),
+    (
+        "runtime/contract_boundary_guard.py",
+        r'(?m)^BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:[0-9a-f]{64}"$',
+        'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "{root}"',
+    ),
+    (
+        "scripts/publish-public.sh",
+        r'(?m)^PRIVATE_SOURCE_REVIEW_SHA256="sha256:[0-9a-f]{64}"$',
+        'PRIVATE_SOURCE_REVIEW_SHA256="{root}"',
+    ),
+    (
+        "internal/reports/rm0007-m4-boundary-inventory.json",
+        r'(?m)^  "source_census": "sha256:[0-9a-f]{64}"(?P<suffix>,?)$',
+        r'  "source_census": "{root}"\g<suffix>',
+    ),
 )
 
 
@@ -40,21 +57,18 @@ def _review_module(tree: Path):
     return review
 
 
-def _current_private_pin(tree: Path) -> str:
-    import re
-
-    text = (tree / "runtime/contract_boundary_guard.py").read_text("utf-8")
-    found = re.search(r"sha256:[0-9a-f]{64}", text)
-    if found is None:
-        raise SystemExit("no private pin found in the boundary guard")
-    return found.group(0)
-
-
-def _write_private_pin(tree: Path, old: str, new: str, count: int) -> None:
-    for relative in PIN_BINDINGS:
+def _write_private_pin(tree: Path, root: str, count: int) -> None:
+    for relative, pattern, replacement in PRIVATE_PIN_BINDINGS:
         path = tree / relative
         text = path.read_text("utf-8")
-        path.write_text(text.replace(old, new), encoding="utf-8")
+        updated, changes = re.subn(
+            pattern, replacement.format(root=root), text,
+        )
+        if changes != 1:
+            raise SystemExit(
+                f"expected one private pin binding in {relative}, found {changes}"
+            )
+        path.write_text(updated, encoding="utf-8")
     publisher = tree / "scripts/publish-public.sh"
     lines = []
     for line in publisher.read_text("utf-8").splitlines(keepends=True):
@@ -82,7 +96,7 @@ def main(argv: list[str]) -> int:
 
     sources = review._filesystem_sources(tree)
     private = review._source_root(sources)
-    _write_private_pin(tree, _current_private_pin(tree), private, len(sources))
+    _write_private_pin(tree, private, len(sources))
 
     export = tree / "dist/metnos-public"
     built = subprocess.run(
@@ -101,7 +115,7 @@ def main(argv: list[str]) -> int:
     # out of the census, so this second pass converges.
     sources = review._filesystem_sources(tree)
     private = review._source_root(sources)
-    _write_private_pin(tree, _current_private_pin(tree), private, len(sources))
+    _write_private_pin(tree, private, len(sources))
 
     review._require_root(sources, private, len(sources), "private filesystem")
     print(f"private {len(sources)} {private}")
