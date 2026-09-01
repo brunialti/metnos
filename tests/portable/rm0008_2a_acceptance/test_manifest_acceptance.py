@@ -1923,6 +1923,27 @@ from install.birth_authority_provisioning import (
 def run():
     return open_birth_provisioning_layout_v1()
 """
+    unreviewed_transition_entry = dict(baseline)
+    unreviewed_transition_entry["install/other_transition.py"] = """
+def deploy():
+    from install.birth_authority_provisioner import (
+        ensure_executor_birth_authorities_prepared,
+    )
+    return ensure_executor_birth_authorities_prepared()
+"""
+    transition_calls_the_layout = dict(baseline)
+    transition_calls_the_layout["install/executor_birth_transition.py"] = """
+def deploy():
+    from install.birth_authority_provisioning import (
+        open_birth_provisioning_layout_v1,
+    )
+    return open_birth_provisioning_layout_v1()
+"""
+    transition_calls_a_mutation = dict(baseline)
+    transition_calls_a_mutation["install/executor_birth_transition.py"] = """
+def deploy(session):
+    return session.rename_no_replace()
+"""
     public_provisioner_door = dict(baseline)
     public_provisioner_door["install/birth_authority_provisioner.py"] += """
 def stage_author_store_v1(session):
@@ -1946,6 +1967,9 @@ def exposed():
         third_construction_site,
         phase_calls_a_mutation,
         phase_calls_the_layout,
+        unreviewed_transition_entry,
+        transition_calls_the_layout,
+        transition_calls_a_mutation,
         public_provisioner_door,
         runtime_reaches_provisioner,
         absent_provisioner_entry,
@@ -2129,6 +2153,16 @@ def complete_transition_cutover_v2():
     return _provision_prepared_authorities_v1(None)
 def prepare_transition_receipts_v2():
     return _provision_prepared_authorities_v1(None)
+""",
+        "install/executor_birth_transition.py": """
+def deploy_source_v1():
+    from install.birth_authority_provisioner import (
+        ensure_executor_birth_authorities_prepared,
+    )
+    return ensure_executor_birth_authorities_prepared()
+def _complete_closed_v1():
+    from install.birth_authority_provisioner import complete_transition_cutover_v2
+    return complete_transition_cutover_v2()
 """,
     }
 

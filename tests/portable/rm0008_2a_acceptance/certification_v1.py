@@ -1885,7 +1885,10 @@ def validate_productive_mutation_graph(
     # Mutating helpers stay private, and no runtime module may reach any entry
     # in this closed set (section 16.13.4).
     provisioner_module = "install.birth_authority_provisioner"
-    installer_phase_module = "install.phases.phase3_code"
+    installer_entry_modules = frozenset({
+        "install.phases.phase3_code",
+        "install.executor_birth_transition",
+    })
     provisioner_entry_symbols = frozenset({
         f"{provisioner_module}::prepare_or_defer_until_legacy_author_exists",
         f"{provisioner_module}::ensure_executor_birth_authorities_prepared",
@@ -2231,10 +2234,10 @@ def validate_productive_mutation_graph(
             }
             if not reached_mutations:
                 continue
-        if owner_module == installer_phase_module:
-            # Section 10.6 puts the two entries in Phase 3.  What it may name
-            # is exactly those two: everything else it reaches must be reached
-            # through them, never called directly.
+        if owner_module in installer_entry_modules:
+            # Phase 3 and the reviewed one-shot transition entry may name only
+            # the closed provisioner entries. Everything else they reach must
+            # be reached through those entries, never called directly.
             # Every sensitive symbol must be reached through an entry, so it
             # is the direct targets that are checked: an empty set means this
             # owner only calls its own helpers.
