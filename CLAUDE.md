@@ -49,7 +49,7 @@ Vedi §2.1.
 Caccia ad anglicismi (peer, trigger, goal, plumbing, gate) e calchi (costosa/mordere/ci reagisce).
 
 ### 7.10 Pubblicazione executor dopo edit
-Edit di `<executor>.py` O del solo `manifest.toml` → OBBLIGATORIO `python3 runtime/sign.py publish executors/<name>` (dalla radice del repository; `python -m runtime.sign` NON funziona) + riavvio controllato del servizio; committare codice, manifest e firma INSIEME. `publish` ricalcola il digest, firma una nuova generazione immutabile e la rende attiva in un solo passaggio. `sign` serve soltanto alla preparazione offline: non aggiorna la generazione attiva e quindi non rende viva la modifica.
+Edit di `<executor>.py` O del solo `manifest.toml` → OBBLIGATORIO `./.venv/bin/python runtime/stack_reconcile.py deploy --executor <name> --sign` dalla radice del repository. Il comando consegna la sorgente candidata alla facciata Producer di Executor Birth e poi esegue il riavvio controllato; committare insieme codice, manifest e documentazione prima del passaggio. `runtime/sign.py publish` e le vecchie API di firma/pubblicazione sono intenzionalmente negate nella build chiusa. Un agente non chiama direttamente `commit_birth_snapshot`, chiavi, negozio o pubblicatore interno, e un semplice riavvio non pubblica una modifica.
 
 ### 7.11 No path assoluti hardcoded (rename-resilient)
 Niente `Path("/opt/...")` verso la install root nel codice attivo. Root auto-derivata in `runtime/config.py::PATH_ROOT`; ogni callsite usa `from runtime import config as C` → `C.PATH_*`. Override env `METNOS_INSTALL_ROOT`. ADR 0148.
