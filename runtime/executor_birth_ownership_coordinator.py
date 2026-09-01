@@ -3047,6 +3047,46 @@ def _prepare_under_maintenance_v1(
     return _result(complete)
 
 
+def _prepare_staged_current_receipts_v2(
+    staged_runtime: object, *, prove_quiescent: Callable[[], bool],
+    expected_inventory: object,
+) -> CurrentReceiptProof:
+    """Build a V2-only receipt proof for one frozen transition inventory."""
+    from executor_birth_bootstrap import _is_staged_reattestation_runtime_v2
+    from executor_birth_cutover import (
+        CurrentInventoryV1, prepare_current_receipt_proof,
+    )
+
+    if (
+        not _is_staged_reattestation_runtime_v2(staged_runtime)
+        or not callable(prove_quiescent)
+        or not isinstance(expected_inventory, CurrentInventoryV1)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_birth_runtime_unavailable",
+        )
+    try:
+        report = prepare_current_receipt_proof(
+            prove_quiescent=prove_quiescent,
+            enumerate_current=staged_runtime.enumerate_current,
+            read_receipt=staged_runtime.read_receipt,
+            reattest_via_birth=staged_runtime.reattest,
+            verify_receipt=staged_runtime.verify_receipt,
+        )
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_receipt_proof_invalid",
+        ) from exc
+    if (
+        not isinstance(report.proof, CurrentReceiptProof)
+        or report.proof.inventory != expected_inventory
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "current inventory changed",
+        )
+    return report.proof
+
+
 def prepare_ownership_cutover_v1(
     distribution: VerifiedDistribution,
 ) -> OwnershipCoordinatorResultV1:

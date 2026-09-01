@@ -110,12 +110,18 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
     from executor_birth_commit_publisher import (
         _BirthCommitPublisher, _PUBLISHER_TOKEN,
     )
-    from executor_birth_cutover import CurrentGeneration
+    import executor_birth_cutover as cutover_module
+    from executor_birth_cutover import (
+        CurrentGeneration, CurrentInventoryV1, CurrentReceiptProof,
+    )
     from executor_birth_identity import RevisionAuthor
     from executor_birth_intent import _INSTALLER
     from executor_birth_operational import _assemble_birth_core
     from executor_birth_receipts import IssuerRegistry
     from executor_birth_shadow import _sealed_dependencies_for_test
+    from executor_birth_ownership_coordinator import (
+        OwnershipCoordinatorError, _prepare_staged_current_receipts_v2,
+    )
     from manifest_inventory import (
         ContractId, ManifestOrigin, ManifestRef, ManifestStatus,
     )
@@ -214,6 +220,36 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
         request.producer_request.candidate_source_id
     )
     assert request.producer_request.transition_id == selection.transition_id
+
+    proof = CurrentReceiptProof((), {})
+    callbacks = {}
+
+    def prepare_proof(**kwargs):
+        callbacks.update(kwargs)
+        return SimpleNamespace(proof=proof)
+
+    monkeypatch.setattr(
+        cutover_module, "prepare_current_receipt_proof", prepare_proof,
+    )
+    assert _prepare_staged_current_receipts_v2(
+        runtime, prove_quiescent=lambda: True,
+        expected_inventory=CurrentInventoryV1(()),
+    ) is proof
+    for name in (
+        "enumerate_current", "read_receipt", "reattest_via_birth",
+        "verify_receipt",
+    ):
+        assert callbacks[name].__self__ is runtime
+    with pytest.raises(
+        OwnershipCoordinatorError, match="birth_ownership_recovery_required",
+    ):
+        _prepare_staged_current_receipts_v2(
+            runtime,
+            prove_quiescent=lambda: True,
+            expected_inventory=CurrentInventoryV1((
+                ("explicit:alpha/manifest.toml", D("f")),
+            )),
+        )
 
 
 def test_required_and_staged_producers_preserve_scope():
