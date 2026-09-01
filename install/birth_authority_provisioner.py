@@ -1559,24 +1559,26 @@ def _ensure_material_plan_file_v2(
     if final in names and pending in names:
         raise _reject("birth_provisioning_recovery_ambiguous")
     if final not in names and pending in names:
-        matching = False
         try:
             with _translated():
                 observed = session.read_file(
                     parent + (pending,), maximum=len(payload), role=role,
                 )
-            matching = observed == payload
         except BirthProvisioningError:
-            pass
-        if matching:
+            # A file that does not fit the exact bound is not a torn prefix.
+            raise _conflict() from None
+        if observed == payload:
             with _translated():
                 session.rename_no_replace(
                     parent + (pending,), components, directory=False,
                 )
-        else:
+        elif len(observed) < len(payload) and payload.startswith(observed):
             journal._discard_pending_by_name(
                 parent, pending, role=role, maximum=len(payload),
             )
+        else:
+            # Preserve complete conflicting evidence.
+            raise _conflict()
     with _translated():
         names = set(session.inventory(parent))
     if final not in names:

@@ -550,10 +550,11 @@ def test_v2_material_plan_expansion_resumes_without_replacing_exact_bytes(
 
 @pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
 @pytest.mark.parametrize(
-    "pending_payload", (b"0", b""),
+    ("pending_payload", "conflicts"),
+    ((b"0", False), (b"", False), (b"1", True)),
 )
 def test_v2_material_plan_expansion_recovers_its_next_pending(
-    tmp_path, monkeypatch, pending_payload,
+    tmp_path, monkeypatch, pending_payload, conflicts,
 ):
     from executor_birth_secure_fs import _BirthObjectRole
     from install import birth_authority_provisioner as provisioning
@@ -592,6 +593,19 @@ def test_v2_material_plan_expansion_recovers_its_next_pending(
                 base_components + ("admission", pending), pending_payload,
                 role=_BirthObjectRole.birth_confidential,
             )
+
+            if conflicts:
+                with pytest.raises(
+                    BirthProvisioningError,
+                    match="birth_provisioning_transaction_conflict",
+                ):
+                    _materialize_material_plan_v2(session, journal, plan)
+                assert session.read_file(
+                    base_components + ("admission", pending),
+                    maximum=len(pending_payload),
+                    role=_BirthObjectRole.birth_confidential,
+                ) == pending_payload
+                return
 
             _materialize_material_plan_v2(session, journal, plan)
 
