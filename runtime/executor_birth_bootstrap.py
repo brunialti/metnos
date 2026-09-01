@@ -301,7 +301,8 @@ class _CutoverReattestationFactoryV2(_CutoverReattestationFactoryV1):
             raise BirthBootstrapError("birth_context_selection_invalid")
         self._selection = selection
 
-    def _context_facts(self, current: object):
+    def prepare(self, current: object):
+        """Capture one exact source identity for later read and issue."""
         from executor_birth_producer_context import build_producer_request_v2
 
         authority, origin, source_id, instant, expires = self._producer_facts(
@@ -313,13 +314,23 @@ class _CutoverReattestationFactoryV2(_CutoverReattestationFactoryV1):
             generation_id=current.generation_id,
             candidate_source_id=source_id,
         )
-        return authority, origin, source_id, instant, expires, request
+        return _PreparedReattestationV2(
+            current=current,
+            authority=authority,
+            origin=origin,
+            source_id=source_id,
+            instant=instant,
+            expires=expires,
+            producer_request=request,
+            _factory=self,
+            _seal=_PREPARED_REATTESTATION_TOKEN_V2,
+        )
 
     def producer_request(self, current: object):
-        """Derive the sealed V2 identity without issuing a Producer receipt."""
-        return self._context_facts(current)[-1]
+        """Preview the current V2 identity without promising later freshness."""
+        return self.prepare(current).producer_request
 
-    def __call__(self, current: object):
+    def __call__(self, value: object):
         from executor_birth_producer_store import (
             get_or_issue_and_claim_producer_receipt_v2,
         )
@@ -327,11 +338,22 @@ class _CutoverReattestationFactoryV2(_CutoverReattestationFactoryV1):
             _sealed_reattestation_request_v2,
         )
 
-        (
-            authority, origin, source_id, instant, expires, producer_request,
-        ) = self._context_facts(
-            current,
+        prepared = (
+            value if isinstance(value, _PreparedReattestationV2)
+            else self.prepare(value)
         )
+        if (
+            prepared._seal is not _PREPARED_REATTESTATION_TOKEN_V2
+            or prepared._factory is not self
+        ):
+            raise BirthBootstrapError("birth_reattestation_request_invalid")
+        current = prepared.current
+        authority = prepared.authority
+        origin = prepared.origin
+        source_id = prepared.source_id
+        instant = prepared.instant
+        expires = prepared.expires
+        producer_request = prepared.producer_request
         objective = producer_request.objective_hash
         request_id = producer_request.request_id
         binding = ProducerReceiptBinding(
@@ -359,6 +381,44 @@ class _CutoverReattestationFactoryV2(_CutoverReattestationFactoryV1):
             binding,
             producer_request,
         )
+
+
+_PREPARED_REATTESTATION_TOKEN_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedReattestationV2:
+    """One factory-owned source capture reusable only by that factory."""
+
+    current: object
+    authority: _ProducerAuthority
+    origin: ExecutorOrigin
+    source_id: str
+    instant: datetime
+    expires: datetime
+    producer_request: object
+    _factory: object
+    _seal: object
+
+    def __post_init__(self) -> None:
+        from executor_birth_cutover import CurrentGeneration
+        from executor_birth_producer_context import ProducerRequestV2
+
+        if (
+            self._seal is not _PREPARED_REATTESTATION_TOKEN_V2
+            or not isinstance(self._factory, _CutoverReattestationFactoryV2)
+            or not isinstance(self.current, CurrentGeneration)
+            or not isinstance(self.authority, _ProducerAuthority)
+            or not isinstance(self.origin, ExecutorOrigin)
+            or not isinstance(self.producer_request, ProducerRequestV2)
+            or self.producer_request.contract_id
+            != self.current.ref.contract_id.value
+            or self.producer_request.generation_id
+            != self.current.generation_id
+            or self.producer_request.candidate_source_id != self.source_id
+            or self.expires <= self.instant
+        ):
+            raise BirthBootstrapError("birth_reattestation_request_invalid")
 
 
 def _is_cutover_reattestation_factory_v2(value: object) -> bool:
@@ -521,7 +581,12 @@ def _prepare_sealed_birth_assembly_v1(
     now: Callable[[], datetime],
     store_root: Path | None = None,
 ) -> _SealedBirthAssemblyV1:
-    """Build the shared sealed core without exposing productive factories."""
+    """Build one core from authorities read once under the root barrier.
+
+    The context is rebuilt from the authenticated distribution and no
+    configuration document may provide an authority or policy fact.
+    Productive factories remain outside this shared assembly.
+    """
     from executor_birth_commit_publisher import _build_prepared_bundle_v1
     from executor_birth_context import BuiltAdmissionContext
     from executor_birth_context_builder import ProductionContextBuilder
@@ -661,22 +726,33 @@ class _StagedReattestationRuntimeV2:
     def enumerate_current(self):
         return self._factory._port.enumerate_current()
 
-    def producer_request(self, current: object):
-        return self._factory.producer_request(current)
+    def prepare(self, current: object):
+        return self._factory.prepare(current)
 
-    def read_receipt(self, current: object) -> bytes | None:
-        request = self.producer_request(current)
-        return self._factory._port.read_v2(current, request)
+    def read_receipt(self, prepared: object) -> bytes | None:
+        if (
+            not isinstance(prepared, _PreparedReattestationV2)
+            or prepared._factory is not self._factory
+        ):
+            raise BirthBootstrapError("birth_reattestation_request_invalid")
+        return self._factory._port.read_v2(
+            prepared.current, prepared.producer_request,
+        )
 
     def verify_receipt(self, encoded: bytes):
         return self._factory._port.verify_receipt(encoded)
 
-    def reattest(self, current: object) -> bytes:
+    def reattest(self, prepared: object) -> bytes:
         from executor_birth_reattestation import (
             _assemble_reattestation_core, _execute,
         )
 
-        request = self._factory(current)
+        if (
+            not isinstance(prepared, _PreparedReattestationV2)
+            or prepared._factory is not self._factory
+        ):
+            raise BirthBootstrapError("birth_reattestation_request_invalid")
+        request = self._factory(prepared)
         return _execute(
             request, _assemble_reattestation_core(self._core),
         ).receipt

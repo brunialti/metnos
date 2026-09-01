@@ -3065,12 +3065,31 @@ def _prepare_staged_current_receipts_v2(
         raise OwnershipCoordinatorError(
             "birth_ownership_birth_runtime_unavailable",
         )
+    prepared_by_identity: dict[tuple[str, str], object] = {}
+
+    def prepared_for(current):
+        identity = current.identity
+        prepared = prepared_by_identity.get(identity)
+        if prepared is None:
+            prepared = staged_runtime.prepare(current)
+            prepared_by_identity[identity] = prepared
+        elif prepared.current != current:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required",
+                "current inventory changed",
+            )
+        return prepared
+
     try:
         report = prepare_current_receipt_proof(
             prove_quiescent=prove_quiescent,
             enumerate_current=staged_runtime.enumerate_current,
-            read_receipt=staged_runtime.read_receipt,
-            reattest_via_birth=staged_runtime.reattest,
+            read_receipt=lambda current: staged_runtime.read_receipt(
+                prepared_for(current),
+            ),
+            reattest_via_birth=lambda current: staged_runtime.reattest(
+                prepared_for(current),
+            ),
             verify_receipt=staged_runtime.verify_receipt,
         )
     except Exception as exc:

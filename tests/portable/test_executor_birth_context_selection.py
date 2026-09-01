@@ -160,9 +160,16 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
         manifest_bytes=b"manifest", language_state_bytes=b"language",
         code_files={"executor.py": b"code"},
     )
+    captures = []
+
+    def capture(*_args, **_kwargs):
+        if captures:
+            raise AssertionError("prepared reattestation recaptured its source")
+        captures.append(snapshot)
+        return snapshot
+
     monkeypatch.setattr(
-        contract_store, "acquire_current_reattestation_snapshot",
-        lambda *_args, **_kwargs: snapshot,
+        contract_store, "acquire_current_reattestation_snapshot", capture,
     )
     observed = {}
 
@@ -207,10 +214,12 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
     assert runtime.transition_id == selection.transition_id
     assert not hasattr(runtime, "producer_factories")
 
-    preview = factory.producer_request(current)
+    prepared_request = factory.prepare(current)
+    preview = prepared_request.producer_request
     assert observed == {}
-    request = factory(current)
+    request = factory(prepared_request)
     assert preview == request.producer_request
+    assert captures == [snapshot]
     assert request.producer_request is observed["request"]
     assert request.request_id == request.producer_request.request_id
     assert request.producer_binding.objective_hash == (
@@ -221,11 +230,33 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
     )
     assert request.producer_request.transition_id == selection.transition_id
 
-    proof = CurrentReceiptProof((), {})
+    proof = CurrentReceiptProof(
+        (current.identity,), {current.identity: D("e")},
+    )
     callbacks = {}
+    handles = []
+    prepared_handle = SimpleNamespace(current=current)
+
+    def prepare_once(_runtime, observed_current):
+        assert observed_current == current
+        handles.append(prepared_handle)
+        return prepared_handle
+
+    monkeypatch.setattr(type(runtime), "prepare", prepare_once)
+    monkeypatch.setattr(
+        type(runtime), "read_receipt",
+        lambda _runtime, handle: b"receipt" if handle is prepared_handle else None,
+    )
+    monkeypatch.setattr(
+        type(runtime), "reattest",
+        lambda _runtime, handle: b"receipt" if handle is prepared_handle else b"",
+    )
 
     def prepare_proof(**kwargs):
         callbacks.update(kwargs)
+        assert kwargs["read_receipt"](current) == b"receipt"
+        assert kwargs["reattest_via_birth"](current) == b"receipt"
+        assert kwargs["read_receipt"](current) == b"receipt"
         return SimpleNamespace(proof=proof)
 
     monkeypatch.setattr(
@@ -233,22 +264,20 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
     )
     assert _prepare_staged_current_receipts_v2(
         runtime, prove_quiescent=lambda: True,
-        expected_inventory=CurrentInventoryV1(()),
+        expected_inventory=CurrentInventoryV1((current.identity,)),
     ) is proof
-    for name in (
-        "enumerate_current", "read_receipt", "reattest_via_birth",
-        "verify_receipt",
-    ):
+    assert handles == [prepared_handle]
+    for name in ("enumerate_current", "verify_receipt"):
         assert callbacks[name].__self__ is runtime
+    assert callable(callbacks["read_receipt"])
+    assert callable(callbacks["reattest_via_birth"])
     with pytest.raises(
         OwnershipCoordinatorError, match="birth_ownership_recovery_required",
     ):
         _prepare_staged_current_receipts_v2(
             runtime,
             prove_quiescent=lambda: True,
-            expected_inventory=CurrentInventoryV1((
-                ("explicit:alpha/manifest.toml", D("f")),
-            )),
+            expected_inventory=CurrentInventoryV1(()),
         )
 
 
