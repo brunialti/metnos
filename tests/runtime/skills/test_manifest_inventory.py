@@ -174,9 +174,15 @@ def test_installed_census_includes_disabled_and_excludes_retired(
     assert [ref.name for ref in inventory.admitted()] == ["active"]
 
 
-def test_contract_id_rejects_noncanonical_paths() -> None:
+@pytest.mark.parametrize("relative", (
+    "../manifest.toml",
+    "/alpha/manifest.toml",
+    "alpha\\manifest.toml",
+    "alpha//manifest.toml",
+))
+def test_contract_id_rejects_noncanonical_paths(relative: str) -> None:
     try:
-        ContractId(ManifestOrigin.CORE, "../manifest.toml")
+        ContractId(ManifestOrigin.CORE, relative)
     except ValueError as exc:
         assert "canonical" in str(exc)
     else:  # pragma: no cover - assertion made explicit for readable failures

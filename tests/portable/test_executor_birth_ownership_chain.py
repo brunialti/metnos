@@ -779,7 +779,8 @@ def test_context_transition_store_is_initialized_and_exact_retries_converge(
     store = initialize_test_store(tmp_path / "chain-v1", authority)
     directory = store.root / chain_module.CONTEXT_TRANSITIONS_DIRECTORY_V1
     assert directory.is_dir()
-    assert directory.stat().st_mode & 0o777 == 0o755
+    if os.name != "nt":
+        assert directory.stat().st_mode & 0o777 == 0o755
 
     proof = CurrentReceiptProof((), {})
     encoded, expected = context_transition(proof=proof)

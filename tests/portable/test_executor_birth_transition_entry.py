@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 from types import SimpleNamespace
@@ -9,6 +10,12 @@ from types import SimpleNamespace
 import pytest
 
 from install import executor_birth_transition as transition
+
+
+LINUX_ONLY = pytest.mark.skipif(
+    os.name == "nt",
+    reason="the productive transition entry switches a Linux installation",
+)
 
 
 def D(character: str) -> str:
@@ -84,6 +91,7 @@ def test_source_process_invokes_only_the_verified_release_entry(
     assert observed["env"]["HOME"] == "/srv/metnos"
 
 
+@LINUX_ONLY
 def test_closed_process_binds_distribution_source_user_and_final_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -235,6 +243,7 @@ def test_activation_uses_only_target_and_readiness_from_signed_catalog(
     ]
 
 
+@LINUX_ONLY
 def test_service_environment_binds_every_root_to_the_account_home(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import copy
 from contextlib import contextmanager
+import os
 import pickle
 from types import SimpleNamespace
 
 import pytest
 
 import contract_cutover_guard as guard
+
+
+pytestmark = pytest.mark.skipif(
+    os.name == "nt",
+    reason="the maintenance guard controls the Linux systemd stack",
+)
 
 
 def test_maintenance_session_is_live_only_inside_the_held_guard(monkeypatch):

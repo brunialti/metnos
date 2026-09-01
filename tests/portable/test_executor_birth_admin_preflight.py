@@ -2340,7 +2340,7 @@ def test_script_loads_with_isolated_standard_library_only() -> None:
     inventory = json.dumps(_compiled_boundary_inventory_fixture(), sort_keys=True)
     probe = (
         f"import json,runpy; n=runpy.run_path({script!r},run_name='preflight_probe'); "
-        f"i=json.loads({inventory!r}); "
+        "i=json.load(__import__('sys').stdin); "
         "s=b'import importlib as il\\nname=\"runtime.sign\"\\n"
         "def probe():\\n return il.import_module(name)\\n'; "
         "f=n['_birth_closed_finding_tuples_v1']({'runtime/probe.py':s},i); "
@@ -2351,7 +2351,7 @@ def test_script_loads_with_isolated_standard_library_only() -> None:
             sys.executable, "-I", "-S", "-c",
             probe,
         ],
-        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        input=inventory.encode("utf-8"), stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, timeout=10, check=False,
     )
     assert completed.returncode == 0, completed.stderr.decode(

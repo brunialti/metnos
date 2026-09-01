@@ -21,6 +21,12 @@ import executor_birth_distribution_manifest as manifest
 from install import executor_birth_distribution_release as release
 
 
+LINUX_ONLY = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="the release assembler installs a Linux systemd distribution",
+)
+
+
 def _source_tree(tmp_path: Path):
     inventory = b'{"birth_closed":{},"entries":[],"scan_roots":[],"schema":"x","source_census":"x"}'
     values = {
@@ -65,6 +71,7 @@ def _account() -> release._ServiceAccountV1:
     )
 
 
+@LINUX_ONLY
 def test_assembly_derives_catalog_descriptor_manifest_and_exact_repetition(
     tmp_path, monkeypatch,
 ) -> None:
@@ -145,12 +152,14 @@ def test_release_edge_resumes_same_source_and_advances_only_after_completion() -
     ) == release._ReleaseEdgeV1(3, latest.closed_build_id)
 
 
+@LINUX_ONLY
 def test_product_entry_refuses_non_root_before_fixed_storage(monkeypatch) -> None:
     monkeypatch.setattr(release.os, "geteuid", lambda: 1000)
     with pytest.raises(assembler.DistributionAssemblerError, match="root required"):
         release.build_and_install_received_source_v1("sha256:" + "1" * 64)
 
 
+@LINUX_ONLY
 def test_current_reviewed_source_assembles_and_passes_static_verification(
     tmp_path, monkeypatch,
 ) -> None:

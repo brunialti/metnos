@@ -11,7 +11,7 @@ import stat
 import tomllib
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable, Mapping
 
 import config as _C
@@ -71,10 +71,11 @@ class ContractId:
     relative_manifest: str
 
     def __post_init__(self) -> None:
-        relative = Path(self.relative_manifest)
+        relative = PurePosixPath(self.relative_manifest)
         if (
             relative.is_absolute()
             or ".." in relative.parts
+            or "\\" in self.relative_manifest
             or relative.as_posix() != self.relative_manifest
             or relative.name != "manifest.toml"
         ):
