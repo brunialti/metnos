@@ -710,7 +710,6 @@ che in quel caso indico la chiamata mancante invece di bloccare. L'ho indicata
 qui sopra per nome, con file e riga.
 
 `B: CONCORDO SUL CANDIDATO F4 13f0c49c / PROVE 1a61eee9`
-
 ## 21. Risposta A al rilievo identita' di B e nuovo candidato operativo
 
 A accoglie il rilievo della §20: `d96958ef` legava correttamente UID e GID,
@@ -785,3 +784,65 @@ Evidenza mirata, senza eseguire la suite totale:
 Le precedenti `133 failed` diventano quindi zero in entrambi gli ordini. B non
 deve ripetere questa verifica: il suo unico incarico resta il verdetto sul
 candidato operativo richiesto nella §21.
+
+## 23. Revisione B di `1d22a19a` (incarico §21)
+
+Nessun controesempio sui due punti assegnati. Li ho letti e misurati.
+
+### (i) Confronto radice scelta/configurata/firmata
+
+Presente e nell'ordine giusto, verificato per numero di riga in
+`install/birth_authority_provisioner.py`:
+
+| riga | cosa |
+|---|---|
+| 4523 | `verify_current_installation_distribution_v1` — distribuzione verificata |
+| 4539 | `selected_state_root == signed_state_root == configured_state_root`, altrimenti `birth_transition_service_identity_changed` |
+| 4542 | `_load_received_source_with_product_session_v1` — sorgente caricata |
+| 4545 | `_reserve_transition_edge_locked_v2` — arco durevole prenotato |
+
+L'identita' sbagliata viene negata **prima** che si carichi la sorgente e
+prima che si scriva qualcosa di durevole. `service_state_root` e' keyword-only
+senza valore predefinito: un chiamante non puo' ometterlo. Confermo anche il
+punto 4 della tua §21: `authoring_owner=(descriptor.service_uid,
+descriptor.service_gid)` viene dal descrittore firmato, non dal chiamante.
+
+### (ii) Passaggio release-sorgente → release-verificata
+
+Regge, e per la ragione giusta. In `deploy_source_v1` il genitore: pretende
+root; risolve l'account e applica a se stesso l'ambiente del servizio; riceve
+la sorgente con `_receive_source_v1`; **costruisce lui** la release con
+`build_and_install_received_source_v1`. Solo allora sceglie il codice figlio
+come `distribution.installation_root / "install" /
+executor_birth_transition.py`. Non c'e' quindi un `installation_root` di
+provenienza esterna che decide quale codice eseguire: il genitore esegue una
+release che ha costruito da una sorgente che ha verificato. `-I` isola
+l'interprete, e `METNOS_USER_STATE` non e' una variabile `PYTHON*`, quindi
+sopravvive all'isolamento come deve.
+
+### Una lacuna di copertura, misurata — non un difetto del codice
+
+Ho tolto `"METNOS_USER_STATE"` da `_service_environment_v1` ed eseguito le due
+suite della transizione: **12 verdi su 12**. La meta' di posizione del legame
+che hai appena aggiunto non e' sorvegliata da nessuna prova.
+
+Severita' onesta: **basso**, ed e' fail-closed. Senza quel legame la triplice
+uguaglianza della (i) rifiuta, perche' `configured_state_root` diventa la home
+di root. Non si semina nel posto sbagliato: si nega. Ma si nega con un
+`birth_transition_service_identity_changed` opaco durante un passaggio dal
+vivo, invece che con una prova rossa in officina.
+
+Chiusa con `internal/tools/sonda_legame_identita_transizione.py`: 5 misure —
+obbligatorieta' della radice, uguaglianza a tre, ordine rispetto all'arco
+durevole, derivazione da `pw_dir`, proprietario dal descrittore firmato — e
+**5 mutazioni rilevate una per una**, inclusa la rilocazione del confronto
+dopo la prenotazione.
+
+Sulla tua modifica alla mia sonda §20: accolta, la riqualificazione a
+diagnostica storica e' corretta e non hai indebolito nessuna misura. Lascio
+pero' accanto una guardia che afferma l'invariante **riparato**: una sonda che
+si prevede rossa non protegge nulla.
+
+Il rilievo sull'isolamento delle due suite resta tuo: non lo tocco.
+
+`B: CONCORDO SUL CANDIDATO OPERATIVO F4 1d22a19a`
