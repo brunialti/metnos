@@ -1,6 +1,7 @@
 """Probe that every declared interruption point converges to the same world.
 
-Crossing the certificate boundary declares several interruption points. Two of
+Crossing the certificate boundary and the head boundary declare several
+interruption points. Two of
 them are exercised for recovery today; the rest are named by other tests but
 never resumed. This probe crosses the boundary once without interruption and
 keeps the resulting ownership tree, then crosses it again once per declared
@@ -231,6 +232,48 @@ def _misura(nome: str, scena, base: Path) -> tuple[int, list[str]]:
     return attraversate, divergenti
 
 
+def _misura_testa(base: Path) -> tuple[int, list[str]]:
+    """Drive the head crossing through every declared point, using its own scene."""
+    from executor_birth_ownership_coordinator import (
+        OwnershipCoordinatorStateV1,
+    )
+
+    print("scena «attraversamento della testa»")
+    if not hasattr(AIUTI, "_complete_initial_head_crossing_v2"):
+        print("  impalcatura assente: non misuro")
+        return 0, []
+    divergenti: list[str] = []
+    attraversate = 0
+    for giuntura in _giunture():
+        cartella = base / giuntura
+        cartella.mkdir(mode=0o755, parents=True, exist_ok=True)
+        try:
+            esito, ripetuto, grafo, testa, _distribuzione, _certificato = (
+                AIUTI._complete_initial_head_crossing_v2(cartella, giuntura)
+            )
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException as errore:  # noqa: BLE001 - pytest outcomes too
+            if "DID NOT RAISE" in str(errore):
+                # The point exists but this scene never reaches it.
+                continue
+            print(f"  {giuntura:28} NON RIPRENDE: "
+                  f"{type(errore).__name__} {str(errore)[:34]}")
+            divergenti.append(f"testa/{giuntura}")
+            continue
+        attraversate += 1
+        coerente = (
+            esito == ripetuto == grafo.transactions[-1].latest
+            and esito.state is OwnershipCoordinatorStateV1.HEAD_REQUIRED
+            and testa.head_id == esito.head_id
+        )
+        print(f"  {giuntura:28} {'converge' if coerente else 'DIVERGE'}")
+        if not coerente:
+            divergenti.append(f"testa/{giuntura}")
+    print(f"  giunture attraversate qui: {attraversate}")
+    return attraversate, divergenti
+
+
 def principale() -> int:
     base = Path(tempfile.mkdtemp(prefix="sonda-convergenza-"))
     try:
@@ -246,13 +289,17 @@ def principale() -> int:
                 return 2
             totale += attraversate
             divergenti.extend(guasti)
+        attraversate, guasti = _misura_testa(base / "testa")
+        print()
+        totale += attraversate
+        divergenti.extend(guasti)
         if divergenti:
             print("ESITO: non convergono:", ", ".join(divergenti))
             return 1
         if not totale:
             print("ESITO: nessuna giuntura attraversata: la sonda non misura.")
             return 2
-        print(f"ESITO: le {totale} giunture attraversate nelle due scene")
+        print(f"ESITO: le {totale} giunture attraversate nelle tre scene")
         print("convergono tutte allo stesso mondo dell'attraversamento intero.")
         return 0
     finally:
