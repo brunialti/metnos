@@ -44,13 +44,16 @@ from executor_birth_cutover import CurrentGeneration  # noqa: E402
 from executor_birth_identity import ExecutorOrigin, RevisionAuthor  # noqa: E402
 from executor_birth_producer_store import ProducerReceiptBinding  # noqa: E402
 
-# The operational fixture reads its sample executor from a build-artifact path
-# relative to the working directory.  Build that scene from this tree's own
-# source instead of depending on an artifact that may or may not be present.
+# The operational fixture reads its sample executor from a path relative to the
+# working directory.  Which path depends on the branch: it used to be a build
+# artifact and is now the tracked source.  Build the scene with BOTH so this
+# proof runs on either side and on their composition, without depending on an
+# artifact that may not exist in a fresh worktree.
 _SCENA = Path(tempfile.mkdtemp(prefix="scena-riatt-"))
-_DEST = _SCENA / "dist/metnos-public/executors/consult_frontier"
-_DEST.parent.mkdir(parents=True)
-shutil.copytree(ROOT / "executors/consult_frontier", _DEST)
+for _relativo in ("executors", "dist/metnos-public/executors"):
+    _dest = _SCENA / _relativo / "consult_frontier"
+    _dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(ROOT / "executors/consult_frontier", _dest)
 import os  # noqa: E402
 
 os.chdir(_SCENA)
