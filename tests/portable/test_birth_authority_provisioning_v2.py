@@ -23,7 +23,8 @@ from install.birth_authority_provisioner import (
     BirthProvisioningError, CheckpointV1, ProvisioningStateV1,
     MaterialPlanEntryV2, MaterialPlanV2, PayloadConfidentialityV1,
     PayloadObjectTypeV1, TransactionHeaderV2,
-    _build_transaction_header_v2, decode_transaction_header_v2,
+    _build_transaction_header_v2, _materialize_material_plan_v2,
+    decode_transaction_header_v2,
     decode_material_plan_v2, empty_digests_v1,
     provisioning_source_inventory_hash_v2,
 )
@@ -101,6 +102,11 @@ def _material_plan(header: TransactionHeaderV2) -> MaterialPlanV2:
         MaterialPlanEntryV2(
             "authority-set/admission", PayloadObjectTypeV1.directory,
             PayloadConfidentialityV1.confidential, None,
+        ),
+        MaterialPlanEntryV2(
+            "authority-set/admission/birth-keystore.lock",
+            PayloadObjectTypeV1.file,
+            PayloadConfidentialityV1.confidential, b"0",
         ),
         MaterialPlanEntryV2(
             "authority-set/admission/keystore.json",
@@ -258,7 +264,7 @@ def test_v2_material_plan_is_closed_ordered_and_self_authenticating():
 
     assert decode_material_plan_v2(plan.encode()) == plan
     value = json.loads(plan.encode())
-    value["objects"][2]["payload_hex"] = "00"
+    value["objects"][3]["payload_hex"] = "00"
     encoded = json.dumps(
         value, sort_keys=True, separators=(",", ":"),
     ).encode("utf-8")
@@ -376,3 +382,143 @@ def test_v2_material_plan_replaces_only_an_incomplete_pending(
             assert set(session.inventory(journal.root_components)) == {
                 "transaction-v2.json", "material-plan-v2.json",
             }
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_v2_material_plan_expansion_resumes_without_replacing_exact_bytes(
+    tmp_path, monkeypatch,
+):
+    from install import birth_authority_provisioner as provisioning
+
+    base = support.make_config(tmp_path)
+    transaction_id = "0" * 32
+    header = _build_transaction_header_v2(
+        transaction_id=transaction_id,
+        provisioner_build_id="build-v2",
+        claim=_claim(),
+        distribution=_distribution(),
+        previous_set=_prepared(),
+    )
+    plan = _material_plan(header)
+    layout = support.open_layout(monkeypatch, base)
+    with layout.birth_session as session:
+        with session.global_lock(exclusive=True, create=True):
+            journal = provisioning._TransactionJournalV1.transition_v2(
+                session, transaction_id,
+            )
+            journal.create_root()
+            journal.write_header(header)
+            plan = journal.ensure_material_plan_v2(lambda: plan)
+            original = provisioning._TransactionJournalV1.publish_payload
+            calls = 0
+
+            def interrupt_second_file(self, *args, **kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise RuntimeError("simulated stop")
+                return original(self, *args, **kwargs)
+
+            monkeypatch.setattr(
+                provisioning._TransactionJournalV1,
+                "publish_payload", interrupt_second_file,
+            )
+            with pytest.raises(RuntimeError, match="simulated stop"):
+                _materialize_material_plan_v2(session, journal, plan)
+            first_identity = next(
+                entry.identity
+                for entry in session._inventory_state(
+                    journal.root_components + ("authority-set", "admission")
+                )
+                if entry.name == "birth-keystore.lock"
+            )
+
+            monkeypatch.setattr(
+                provisioning._TransactionJournalV1,
+                "publish_payload", original,
+            )
+            recovered = _materialize_material_plan_v2(session, journal, plan)
+            repeated = _materialize_material_plan_v2(session, journal, plan)
+            second_identity = next(
+                entry.identity
+                for entry in session._inventory_state(
+                    journal.root_components + ("authority-set", "admission")
+                )
+                if entry.name == "birth-keystore.lock"
+            )
+
+            assert recovered == repeated
+            assert first_identity == second_identity
+            assert session.read_file(
+                journal.root_components + (
+                    "authority-set", "admission", "keystore.json",
+                ),
+                maximum=len(b"sealed-plan"),
+                role=provisioning._TransactionJournalV1._confidential_role(),
+            ) == b"sealed-plan"
+            changed_entries = list(plan.entries)
+            changed_entries[-1] = replace(
+                changed_entries[-1], payload=b"different-plan",
+            )
+            with pytest.raises(BirthProvisioningError):
+                _materialize_material_plan_v2(
+                    session, journal, replace(
+                        plan, entries=tuple(changed_entries),
+                    ),
+                )
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+@pytest.mark.parametrize(
+    "pending_payload", (b"0", b""),
+)
+def test_v2_material_plan_expansion_recovers_its_next_pending(
+    tmp_path, monkeypatch, pending_payload,
+):
+    from executor_birth_secure_fs import _BirthObjectRole
+    from install import birth_authority_provisioner as provisioning
+
+    base = support.make_config(tmp_path)
+    transaction_id = "0" * 32
+    header = _build_transaction_header_v2(
+        transaction_id=transaction_id,
+        provisioner_build_id="build-v2",
+        claim=_claim(),
+        distribution=_distribution(),
+        previous_set=_prepared(),
+    )
+    plan = _material_plan(header)
+    layout = support.open_layout(monkeypatch, base)
+    with layout.birth_session as session:
+        with session.global_lock(exclusive=True, create=True):
+            journal = provisioning._TransactionJournalV1.transition_v2(
+                session, transaction_id,
+            )
+            journal.create_root()
+            journal.write_header(header)
+            plan = journal.ensure_material_plan_v2(lambda: plan)
+            base_components = journal.root_components + ("authority-set",)
+            session.create_directory_exclusive(
+                base_components, role=_BirthObjectRole.birth_integrity_only,
+            )
+            session.create_directory_exclusive(
+                base_components + ("admission",),
+                role=_BirthObjectRole.birth_confidential,
+            )
+            pending = (
+                ".payload-pending-00000000000000000001-" + transaction_id
+            )
+            session.create_file_exclusive(
+                base_components + ("admission", pending), pending_payload,
+                role=_BirthObjectRole.birth_confidential,
+            )
+
+            _materialize_material_plan_v2(session, journal, plan)
+
+            assert pending not in session.inventory(
+                base_components + ("admission",)
+            )
+            assert session.read_file(
+                base_components + ("admission", "birth-keystore.lock"),
+                maximum=1, role=_BirthObjectRole.birth_confidential,
+            ) == b"0"

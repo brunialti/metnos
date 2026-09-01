@@ -1473,6 +1473,140 @@ def _integrity_role():
     return _BirthObjectRole.birth_integrity_only
 
 
+def _material_plan_role_v2(confidentiality: PayloadConfidentialityV1):
+    from executor_birth_secure_fs import _BirthObjectRole
+
+    if confidentiality is PayloadConfidentialityV1.confidential:
+        return _BirthObjectRole.birth_confidential
+    if confidentiality is PayloadConfidentialityV1.integrity_only:
+        return _BirthObjectRole.birth_integrity_only
+    raise _conflict()
+
+
+def _materialize_material_plan_v2(
+    session, journal: _TransactionJournalV1, plan: MaterialPlanV2,
+) -> tuple[PayloadRecordV1, ...]:
+    """Expand one committed plan exactly, reusing every matching object."""
+    header = journal.read_state().header
+    if not isinstance(header, TransactionHeaderV2):
+        raise _conflict()
+    journal._require_plan_header_v2(plan, header)
+    committed = journal._read_material_plan_v2(header)
+    if plan != committed:
+        raise _conflict()
+    records: list[PayloadRecordV1] = []
+    file_sequence = 1
+    for entry in plan.entries:
+        components = journal.root_components + tuple(
+            entry.relative_path.split("/")
+        )
+        role = _material_plan_role_v2(entry.confidentiality)
+        if entry.object_type is PayloadObjectTypeV1.directory:
+            _ensure_material_plan_directory_v2(session, components, role)
+            size = None
+            digest = None
+        else:
+            payload = entry.payload
+            if payload is None:
+                raise _conflict()
+            _ensure_material_plan_file_v2(
+                session, journal, components, payload, role,
+                object_sequence=file_sequence,
+            )
+            file_sequence += 1
+            size = len(payload)
+            digest = hashlib.sha256(payload).hexdigest()
+        records.append(PayloadRecordV1(
+            relative_path=entry.relative_path,
+            object_type=entry.object_type,
+            confidentiality=entry.confidentiality,
+            size=size,
+            sha256=digest,
+            platform_identity=_platform_identity_v1(
+                _identity_v1(session, components)
+            ),
+        ))
+    _require_material_plan_inventory_v2(session, journal, plan)
+    return _ordered_payload_records(records)
+
+
+def _ensure_material_plan_directory_v2(session, components, role) -> None:
+    name = components[-1]
+    with _translated():
+        present = {entry.name for entry in session._inventory_state(components[:-1])}
+        if name not in present:
+            session.create_directory_exclusive(components, role=role)
+
+
+def _ensure_material_plan_file_v2(
+    session, journal: _TransactionJournalV1, components: tuple[str, ...],
+    payload: bytes, role, *, object_sequence: int,
+) -> None:
+    parent = components[:-1]
+    final = components[-1]
+    pending = _payload_pending_name_v1(
+        object_sequence, journal.transaction_id,
+    )
+    with _translated():
+        names = set(session.inventory(parent))
+    if final in names and pending in names:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    if final not in names and pending in names:
+        matching = False
+        try:
+            with _translated():
+                observed = session.read_file(
+                    parent + (pending,), maximum=len(payload), role=role,
+                )
+            matching = observed == payload
+        except BirthProvisioningError:
+            pass
+        if matching:
+            with _translated():
+                session.rename_no_replace(
+                    parent + (pending,), components, directory=False,
+                )
+        else:
+            journal._discard_pending_by_name(
+                parent, pending, role=role, maximum=len(payload),
+            )
+    with _translated():
+        names = set(session.inventory(parent))
+    if final not in names:
+        journal.publish_payload(
+            parent, final, payload, role=role,
+            object_sequence=object_sequence,
+        )
+    with _translated():
+        observed = session.read_file(
+            components, maximum=len(payload), role=role,
+        )
+    if observed != payload:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+
+
+def _require_material_plan_inventory_v2(
+    session, journal: _TransactionJournalV1, plan: MaterialPlanV2,
+) -> None:
+    children: dict[str, set[str]] = {}
+    directories = {
+        entry.relative_path
+        for entry in plan.entries
+        if entry.object_type is PayloadObjectTypeV1.directory
+    }
+    for entry in plan.entries:
+        if "/" not in entry.relative_path:
+            continue
+        parent, name = entry.relative_path.rsplit("/", 1)
+        children.setdefault(parent, set()).add(name)
+    for relative in directories:
+        components = journal.root_components + tuple(relative.split("/"))
+        with _translated():
+            observed = set(session.inventory(components))
+        if observed != children.get(relative, set()):
+            raise _reject("birth_provisioning_recovery_ambiguous")
+
+
 @contextmanager
 def _translated():
     """Present a filesystem refusal under the single public provisioning type.
