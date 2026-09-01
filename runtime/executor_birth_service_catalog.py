@@ -295,6 +295,16 @@ class LoadedServiceCatalogV1:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class _BuiltServiceCatalogV1:
+    """Canonical catalog bytes and the unit fragments derived from them."""
+
+    encoded: bytes
+    catalog_id: str
+    service_coverage_hash: str
+    unit_fragments: tuple[tuple[str, bytes], ...]
+
+
 def _user_unit(legacy_id: str, locator: str) -> LegacySourceBindingV1:
     return LegacySourceBindingV1(legacy_id, "user_unit", "user", locator)
 
@@ -2339,6 +2349,86 @@ def _source_identity(
         raise ServiceCatalogError(
             "birth_ownership_service_catalog_invalid", "legacy coverage",
         )
+
+
+def _build_service_catalog_v1(
+    *, installation_root: str, python_executable: str, service_user: str,
+    service_gid: int, service_supplementary_gids: tuple[int, ...],
+    service_home: str, systemctl_executable: str,
+    target_executables: tuple[tuple[str, bytes], ...],
+) -> _BuiltServiceCatalogV1:
+    """Compile the fixed service source against exact executable bytes.
+
+    Callers supply only the closed runtime facts.  Entry coverage, legacy
+    bindings, unit fragments and target identities remain derived here from
+    ``SERVICE_SOURCE_V1``; no caller can add or remove a catalog entry.
+    """
+    if type(target_executables) is not tuple or any(
+        type(item) is not tuple or len(item) != 2
+        or type(item[0]) is not str or type(item[1]) is not bytes
+        for item in target_executables
+    ):
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "target bytes",
+        )
+    target_content = dict(target_executables)
+    if len(target_content) != len(target_executables):
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "target coverage",
+        )
+    base_context = _SourceCompileContextV1(
+        installation_root, python_executable, service_user, service_gid,
+        service_supplementary_gids, service_home, systemctl_executable, (),
+    )
+    by_id = {item.entry_id: item for item in SERVICE_SOURCE_V1}
+    resolved_targets: list[tuple[str, str]] = []
+    expected_paths: set[str] = set()
+    for source in SERVICE_SOURCE_V1:
+        recipe = source.target_recipe
+        if recipe.execution_kind == "none":
+            continue
+        if recipe.target_executable is None:
+            raise ServiceCatalogError(
+                "birth_ownership_service_catalog_invalid", "source target",
+            )
+        executable = _resolve_recipe_value_v1(
+            recipe.target_executable, base_context, by_id,
+        )
+        expected_paths.add(executable)
+        try:
+            content = target_content[executable]
+        except KeyError as exc:
+            raise ServiceCatalogError(
+                "birth_ownership_service_catalog_invalid", "target coverage",
+            ) from exc
+        resolved_targets.append((
+            source.entry_id, target_executable_hash_v1(executable, content),
+        ))
+    if set(target_content) != expected_paths:
+        raise ServiceCatalogError(
+            "birth_ownership_service_catalog_invalid", "target coverage",
+        )
+    entries = _compile_service_source_v1(_SourceCompileContextV1(
+        installation_root, python_executable, service_user, service_gid,
+        service_supplementary_gids, service_home, systemctl_executable,
+        tuple(resolved_targets),
+    ))
+    legacy = tuple(ServiceLegacyBindingV1(
+        str(item["legacy_id"]), str(item["entry_id"]), str(item["kind"]),
+        str(item["scope"]), str(item["locator"]), str(item["disposition"]),
+    ) for item in legacy_bindings_from_source_v1())
+    encoded = _encode_service_catalog_v1(entries, legacy)
+    decoded = decode_service_catalog_v1(encoded)
+    _source_identity(decoded, installation_root)
+    fragments = tuple(sorted((
+        (str(item.unit_name), render_unit_spec_v1(
+            str(item.unit_name), item.unit_spec,
+        ))
+        for item in decoded.entries if item.unit_spec is not None
+    ), key=lambda item: item[0].encode("utf-8")))
+    return _BuiltServiceCatalogV1(
+        encoded, decoded.catalog_id, decoded.service_coverage_hash, fragments,
+    )
 
 
 def _load_verified_service_catalog_v1(verified: object) -> LoadedServiceCatalogV1:

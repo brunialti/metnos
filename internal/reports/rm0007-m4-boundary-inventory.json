@@ -12,6 +12,7 @@
       "install/birth_ownership_authority_provisioner.py:_sync_directory",
       "install/birth_ownership_authority_provisioner.py:_write_exclusive",
       "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
+      "install/executor_birth_distribution_release.py:build_and_install_received_source_v1",
       "install/executor_birth_source_receiver.py:<module>",
       "install/executor_birth_source_receiver.py:_copy_source_file_v1",
       "install/executor_birth_source_receiver.py:_copy_source_file_v1.copied_chunks",
@@ -234,6 +235,16 @@
       "phase": "M4",
       "role": "store_owner",
       "scope": "prepare_transition_receipts_v2"
+    },
+    {
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "locked signed release publication from one received source",
+      "path": "install/executor_birth_distribution_release.py",
+      "phase": "M4",
+      "role": "store_owner",
+      "scope": "build_and_install_received_source_v1"
     },
     {
       "capabilities": [
@@ -4475,5 +4486,5 @@
     "executors"
   ],
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:543876a51d1011b151188922fd3a70a70f7ec0fde33dd4ee4a36f5118d1e5b21"
+  "source_census": "sha256:6ed8f5073446316925db6b68bc534a86022633abf04f6616c133b97b5465f946"
 }

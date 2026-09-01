@@ -28,7 +28,7 @@ BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/2"
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:543876a51d1011b151188922fd3a70a70f7ec0fde33dd4ee4a36f5118d1e5b21"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:6ed8f5073446316925db6b68bc534a86022633abf04f6616c133b97b5465f946"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
 MAX_BOUNDARY_SOURCE_FILES = 2_048
@@ -453,6 +453,7 @@ BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
     "install/birth_ownership_authority_provisioner.py:_sync_directory",
     "install/birth_ownership_authority_provisioner.py:_write_exclusive",
     "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
+    "install/executor_birth_distribution_release.py:build_and_install_received_source_v1",
     "install/executor_birth_source_receiver.py:<module>",
     "install/executor_birth_source_receiver.py:_copy_source_file_v1",
     "install/executor_birth_source_receiver.py:_copy_source_file_v1.copied_chunks",
