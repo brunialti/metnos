@@ -23,7 +23,7 @@ from executor_birth_identity import (
 )
 from executor_birth_operational import (
     _BirthCore, _BorrowedObserved, _candidate_source_id_from_snapshot,
-    _receipt_checks,
+    _is_birth_core, _receipt_checks,
 )
 from executor_birth_predecessor import AdmissionContextPin
 from executor_birth_producer_store import (
@@ -185,7 +185,7 @@ class _ReattestationCore:
     read_v2: object | None = None
 
     def __post_init__(self) -> None:
-        if self._seal is not _SEAL or not isinstance(self.birth, _BirthCore):
+        if self._seal is not _SEAL or not _is_birth_core(self.birth):
             raise BirthReattestationError("birth_reattestation_core_untrusted")
         if any(not callable(value) for value in (self.capture, self.persist, self.read_receipt)):
             raise BirthReattestationError("birth_reattestation_core_invalid")

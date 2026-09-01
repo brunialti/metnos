@@ -716,11 +716,11 @@ class _StagedReattestationRuntimeV2:
     __slots__ = ("_core", "_factory", "_seal")
 
     def __init__(self, token: object, *, core: object, factory: object) -> None:
-        from executor_birth_operational import _BirthCore
+        from executor_birth_operational import _is_birth_core
 
         if (
             token is not _STAGED_REATTESTATION_RUNTIME_TOKEN_V2
-            or not isinstance(core, _BirthCore)
+            or not _is_birth_core(core)
             or not _is_cutover_reattestation_factory_v2(factory)
             or factory._port._owner is not core.commit_publisher
         ):

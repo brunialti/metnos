@@ -3722,12 +3722,12 @@ def _build_verified_record_v2(
         or published.sequence != 3
         or published.state
         is not OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED
+        or type(distribution) is not VerifiedDistribution
         or not _verified_distribution_matches_payload_v1(distribution)
     ):
         raise OwnershipCoordinatorError(
             "birth_ownership_recovery_required", "build verification",
         )
-    assert isinstance(distribution, VerifiedDistribution)
     if (
         distribution.identity.closed_build_id != published.closed_build_id
         or distribution.previous_closed_build_id

@@ -320,6 +320,10 @@ class _BirthCore:
         object.__setattr__(self, "admission_verifier_keys", MappingProxyType(verifiers))
 
 
+def _is_birth_core(value: object) -> bool:
+    """Recognize only the exact core built behind this module's seal."""
+    return type(value) is _BirthCore and value._seal is _CORE_SEAL
+
 
 def _sealed_core_for_test(**values: object) -> _BirthCore:
     """Test-only trust-core constructor; the public API never accepts it."""

@@ -162,6 +162,23 @@ def test_public_request_cannot_supply_trust_or_publication_authorities():
     assert "_core" not in inspect.signature(birth_executor).parameters
 
 
+def test_birth_core_recognizer_rejects_a_subclass_with_the_genuine_fields(
+    tmp_path: Path,
+) -> None:
+    _, core = _fixture(tmp_path, lambda **_values: None)
+
+    class CoreLookalike(operational._BirthCore):
+        def __post_init__(self) -> None:
+            return None
+
+    lookalike = object.__new__(CoreLookalike)
+    for field in core.__dataclass_fields__:
+        object.__setattr__(lookalike, field, getattr(core, field))
+
+    assert operational._is_birth_core(core)
+    assert not operational._is_birth_core(lookalike)
+
+
 def test_approval_is_resolved_from_observed_facts_per_request(tmp_path):
     seen = []
     request, core = _fixture(tmp_path, lambda *_args, **_kwargs: None)
