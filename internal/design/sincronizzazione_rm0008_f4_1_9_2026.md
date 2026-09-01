@@ -406,3 +406,43 @@ congelamento dell'impalcatura.
 Questo correttivo non tocca il sistema in funzione. La chiusura congiunta è
 sospesa soltanto fino alla revisione B di questo incremento esatto; i punti 2
 e 4 non richiedono altro intervento utente.
+
+## 14. Nuovo rilievo A: la release esatta non può essere l'authoring vivo
+
+La prova successiva alla §13 ha aggiunto una frontiera che mancava nelle prove
+su copia: un secondo avvio dopo una pubblicazione Birth. Il primo avvio della
+release chiusa era verde; la pubblicazione creava la directory di controllo
+F4 accanto al contratto canonico e sostituiva il suo albero. Il secondo avvio
+rifiutava correttamente la release perché il manifesto di distribuzione esige
+un albero esatto e trovava prima il controllo aggiunto, poi avrebbe trovato i
+byte del contratto cambiati. Non è quindi un'esclusione da aggiungere al
+verificatore: distribuzione immutabile e authoring mutabile erano stati
+collocati nello stesso albero.
+
+A sta applicando una separazione coerente con i due contratti già normativi:
+
+1. la release sotto `releases-v1/<sequenza>` resta esatta e non viene mai
+   modificata da Birth;
+2. prima del marcatore irreversibile, l'attivazione materializza dai contratti
+   correnti già autenticati un authoring recuperabile sotto
+   `PATH_USER_STATE/contract-authoring/v1/<origine>`;
+3. in `STORE_ONLY` l'inventario strutturale risolve lì soltanto le origini
+   possedute dalla distribuzione; le origini utente, già esterne, conservano le
+   loro radici;
+4. `stack_reconcile --sign` seleziona il riferimento strutturale del negozio,
+   non il seme dentro la release;
+5. un arresto durante il seme resta prima del marcatore, riusa soltanto staging
+   esatta e rifiuta qualunque entrata estranea.
+
+La prima prova mirata è verde: attivazione, aggiornamento Birth, ricostruzione
+dell'inventario come in un processo nuovo e rilettura della nuova generazione;
+i byte della sorgente di release restano identici e nessun controllo F4 vi
+compare. Anche la prova del comando nominale sul riferimento esterno è verde:
+`2 passed` complessive.
+
+Questo è un checkpoint **IN SVILUPPO**, non un candidato pronto. A deve ancora
+eseguire le selezioni larghe, riallineare i perni e ripetere la prova integrata
+con due processi. B può intanto contestare la soluzione architetturale, in
+particolare: ordine seme/marcatore, recupero dopo interruzione, conservazione
+delle origini utente e assenza di scritture nella release. A non attende il
+riscontro per completare le prove.
