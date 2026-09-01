@@ -34,6 +34,7 @@ from executor_birth_distribution_manifest import (
 )
 from executor_birth_ownership_authorities import (
     DEFAULT_OWNERSHIP_ROOT_V1, RootOwnershipAuthoritiesV1,
+    is_root_ownership_authorities_v1,
 )
 from executor_birth_ownership_cutover import (
     MAX_PAYLOAD_BYTES, PAYLOAD_BASENAME, SIGNATURE_BASENAME,
@@ -3535,7 +3536,7 @@ def _certificate_ready_material_v2(
         type(complete) is not OwnershipCoordinatorRecordV2
         or complete.sequence != 1
         or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
-        or not isinstance(authorities, RootOwnershipAuthoritiesV1)
+        or not is_root_ownership_authorities_v1(authorities)
         or not isinstance(prerequisite, _StartupPrerequisiteV1)
         or prerequisite._seal is not _PREREQUISITE_SEAL
         or not callable(observe_maintenance)
@@ -3686,7 +3687,7 @@ def _publish_certificate_material_v2(
     if (
         type(material) is not _CertificateReadyMaterialV2
         or material._seal is not _CERTIFICATE_READY_MATERIAL_SEAL_V2
-        or not isinstance(authorities, RootOwnershipAuthoritiesV1)
+        or not is_root_ownership_authorities_v1(authorities)
     ):
         raise OwnershipCoordinatorError(
             "birth_ownership_prerequisite_untrusted",
@@ -3763,7 +3764,7 @@ def _cross_certificate_boundary_core_v2(
     if (
         type(material) is not _CertificateReadyMaterialV2
         or material._seal is not _CERTIFICATE_READY_MATERIAL_SEAL_V2
-        or not isinstance(authorities, RootOwnershipAuthoritiesV1)
+        or not is_root_ownership_authorities_v1(authorities)
         or not callable(append_record)
         or not callable(observe_graph)
     ):
@@ -4272,7 +4273,7 @@ def _startup_prerequisite_for_test(
 
 
 def _single_cutover_key(authorities: RootOwnershipAuthoritiesV1) -> str:
-    if not isinstance(authorities, RootOwnershipAuthoritiesV1):
+    if not is_root_ownership_authorities_v1(authorities):
         raise OwnershipCoordinatorError("birth_ownership_authority_untrusted")
     keys = tuple(authorities.public.cutover.keys)
     if len(keys) != 1:

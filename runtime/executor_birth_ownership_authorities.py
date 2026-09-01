@@ -413,6 +413,31 @@ class RootOwnershipAuthoritiesV1:
                 )
 
 
+def is_root_ownership_authorities_v1(value: object) -> bool:
+    """Recognize only the exact sealed root authority with matching key pairs."""
+    if (
+        type(value) is not RootOwnershipAuthoritiesV1
+        or value._seal is not _PRIVATE_SEAL
+        or type(value.public) is not OwnershipPublicRegistriesV1
+        or value.public._seal is not _PUBLIC_SEAL
+    ):
+        return False
+    pairs = (
+        (value.distribution_private, value.public.distribution),
+        (value.cutover_private, value.public.cutover),
+        (value.head_private, value.public.head),
+    )
+    try:
+        return all(
+            isinstance(private, Ed25519PrivateKey)
+            and _raw_public(private.public_key())
+            == _registry_public_bytes(registry)
+            for private, registry in pairs
+        )
+    except Exception:
+        return False
+
+
 _PUBLIC_SEAL = object()
 _PRIVATE_SEAL = object()
 
@@ -859,5 +884,5 @@ __all__ = [
     "OwnershipAuthorityError", "OwnershipPublicRegistriesV1",
     "RootOwnershipAuthoritiesV1", "decode_ownership_registry_v1",
     "encode_ownership_registry_v1", "load_ownership_public_registries_v1",
-    "load_root_ownership_authorities_v1",
+    "is_root_ownership_authorities_v1", "load_root_ownership_authorities_v1",
 ]

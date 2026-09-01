@@ -410,7 +410,7 @@ class _PreparedReattestationV2:
             or not isinstance(self.current, CurrentGeneration)
             or not isinstance(self.authority, _ProducerAuthority)
             or not isinstance(self.origin, ExecutorOrigin)
-            or not isinstance(self.producer_request, ProducerRequestV2)
+            or type(self.producer_request) is not ProducerRequestV2
             or self.producer_request.contract_id
             != self.current.ref.contract_id.value
             or self.producer_request.generation_id

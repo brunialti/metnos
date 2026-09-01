@@ -333,7 +333,7 @@ class _BirthCommitPublisher:
             getattr(current_ref, "contract_id", None), "value", None,
         )
         if (
-            not isinstance(request, ProducerRequestV2)
+            type(request) is not ProducerRequestV2
             or self._admission_context_id is None
             or request.admission_context_id != self._admission_context_id
             or request.context_epoch != self._epoch

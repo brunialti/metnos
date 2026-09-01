@@ -147,3 +147,27 @@ def test_legacy_publisher_without_context_cannot_use_the_v2_port(monkeypatch):
         _publisher(context=None).reattestation_port().read_v2(
             current, _request(),
         )
+
+
+def test_v2_port_rejects_a_request_subclass_that_skips_the_seal(monkeypatch):
+    class LookAlike(ProducerRequestV2):
+        def __post_init__(self) -> None:
+            return None
+
+    genuine = _request()
+    look_alike = LookAlike(
+        genuine.request_id, genuine.objective_hash, genuine.contract_id,
+        genuine.generation_id, genuine.admission_context_id,
+        genuine.transition_id, genuine.context_epoch, genuine.set_id,
+        genuine.candidate_source_id, None,
+    )
+    monkeypatch.setattr(
+        contract_store, "read_current_birth_receipt_v2",
+        lambda *_args, **_kwargs: pytest.fail("untrusted request reached storage"),
+    )
+    with pytest.raises(
+        BirthCommitLinkError, match="birth_reattestation_v2_context_invalid",
+    ):
+        _publisher().reattestation_port().read_v2(
+            _current(), look_alike,
+        )
