@@ -1367,6 +1367,7 @@ sviluppo.
 | 2026-08-28 | `active` | G4-A implementato e in certificazione locale: due dipendenze fra executor passano dalla porta autenticata e le revisioni sono state pubblicate da intenzioni Birth reali. Il riesame di velocizzazione conserva G4-A separato e unisce rimozione delle firme e congelamento dell'inventario in G4-B+C, risparmiando una matrice pubblica senza ridurre le prove. |
 | 2026-08-31 | `active` | **Gruppo 6 chiuso, `G6 complete`** (§23.32). C3 e C4 certificati su VM con systemd reale in quattro cicli pubblici consecutivi; suite a copertura totale con **zero regressioni** (74 rossi alla base pre-G6, 69 all'albero finale, 5 risolti); ciclo avversariale convergente su quattro giri per parte. Restano F4-F6 e il gruppo 7, di cui e' fatto il solo primo passo (§23.31). |
 | 2026-09-01 | `active` | F4-EPOCA-01 ha raggiunto la convergenza tecnica incrociata sui commit A `ba26f5cd` e B `df36c169`; il §23.49 registra la variazione normativa offerta alla revisione incrociata prima del codice di prodotto della transizione. La precondizione indipendente del contenitore incompleto può essere sviluppata e provata, ma non applicata automaticamente. |
+| 2026-09-01 | `active` | Roberto approva RM-VARIAZIONE-01 sul commit normativo `a782065e`, gia' accettato da B in `c656c241` e verificato nella composizione F4. Il codice di prodotto della transizione e' sbloccato; non sono autorizzati interventi sul negozio reale, servizi in esercizio o pubblicazione. |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 
@@ -3345,3 +3346,10 @@ sviluppata e provata prima, senza anticipare la transizione e senza autorizzare
 alcun uso sul negozio reale. La ripartizione dei file, le interfacce congelate e
 i 24 casi minimi di prova restano quelli della specifica convergente e non
 vengono duplicati qui.
+
+Il 1 settembre 2026 Roberto ha approvato RM-VARIAZIONE-01 sul commit esatto
+`a782065e`, dopo l'accettazione B `c656c241`. Da questa decisione il codice di
+prodotto della transizione e' autorizzato a iniziare entro il perimetro della
+specifica; restano esclusi interventi sul negozio reale, modifiche ai servizi
+in esercizio e pubblicazione. Il record della decisione e'
+`internal/design/decisione_rm0008_variazione_01_1_9_2026.md`.
