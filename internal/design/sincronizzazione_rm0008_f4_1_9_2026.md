@@ -216,3 +216,42 @@ La coda unica successiva è quindi soltanto:
 
 La voce 23 resta `PROVATA SU COPIA; LIVE A B4`: non viene applicata al negozio
 in esercizio prima della barriera finale già autorizzata.
+
+## 10. Stayalive contro le attese reciproche
+
+Finché RM-0008 non è chiusa, ciascun agente pubblica nello stesso documento un
+checkpoint di stayalive quando trascorrono 30 minuti senza un nuovo commit o
+un nuovo verdetto osservabile dall'altro agente. Il checkpoint contiene
+soltanto:
+
+- ora ISO e testa Git;
+- stato `ATTIVO`, `IN_ATTESA` oppure `BLOCCATO`;
+- passo in corso e risultato già disponibile;
+- dipendenza esatta, se esiste;
+- prossimo passo autonomo che parte senza attendere l'altro agente.
+
+`IN_ATTESA` non autorizza l'immobilità: ferma soltanto la barriera che richiede
+due verdetti. Ogni lavoro già attribuito e indipendente continua. `BLOCCATO` si
+usa solo quando non esiste un passo sicuro nel perimetro assegnato e include la
+prova riproducibile del blocco. Lo stayalive non vale come accettazione, non
+sposta un'ancora `PRONTA` e non permette pubblicazione o intervento sul sistema
+in funzione.
+
+Ogni agente legge il ramo dell'altro ai confini naturali del proprio lavoro e,
+comunque, prima di emettere uno stayalive. Se entrambe le teste dichiarano
+`IN_ATTESA` l'una dell'altra, A risolve immediatamente il ciclo usando la coda
+di questo documento: assegna la dipendenza a un solo proprietario e gli altri
+passi tornano autonomi. Roberto non viene coinvolto come centralino.
+
+### Stayalive A — 2026-09-01T20:51:23+02:00
+
+- testa A: `9939bc70`;
+- stato: `ATTIVO`;
+- fatto: barriera correttiva F4 accettata da entrambi; selezione larga
+  concorde, senza rossi di prodotto;
+- dipendenza: il solo checkpoint congiunto F4 attende il riscontro B sulla
+  prova 24 e sulla decisione già integrata;
+- prossimo passo autonomo: preparare da una copia fresca del candidato il
+  pacchetto pubblico, misurare traduzioni riutilizzabili e GII forte, senza
+  pubblicare né cambiare il sistema in funzione;
+- ultima testa B osservata: `8df420ed`.
