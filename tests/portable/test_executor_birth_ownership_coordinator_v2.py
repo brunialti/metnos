@@ -2053,6 +2053,44 @@ def test_dominant_identity_rejects_a_different_context_transition():
         )
 
 
+@pytest.mark.parametrize("reason", ("record missing", "record binding"))
+def test_dominant_identity_preserves_the_transition_read_reason(reason):
+    from executor_birth_ownership_chain import OwnershipChainError
+
+    complete = record_v2(1)
+    claim_value = successor_claim_value(
+        release_sequence=complete.release_sequence,
+        previous_head_id=complete.previous_head_id,
+    )
+    claim = claim_with_request(SuccessorClaimV1(
+        claim_id=claim_value["claim_id"],
+        previous_head_id=complete.previous_head_id,
+        release_sequence=complete.release_sequence,
+        request_id=claim_value["request_id"],
+        source_id=claim_value["source_id"],
+        closed_build_id=claim_value["closed_build_id"],
+    ), complete.request_id)
+    transaction = coordinator_module._ResolvedOwnershipTransactionV2(
+        claim, (record_v2(0), complete), (b"prepared", complete.encode()),
+    )
+    graph = _ObservedOwnershipCoordinatorGraphV2(
+        (claim,), (), (transaction,), (), (), None,
+    )
+
+    def read_transition(_transition_id, _proof):
+        raise OwnershipChainError(
+            "birth_context_transition_recovery_required", reason,
+        )
+
+    with pytest.raises(OwnershipCoordinatorError) as failed:
+        coordinator_module._observe_dominant_identity_core_v2(
+            graph, complete, read_transition,
+        )
+    assert failed.value.detail == (
+        "birth_context_transition_recovery_required: " + reason
+    )
+
+
 def test_completed_transition_selection_returns_only_the_exact_final_release():
     distribution = payload_bound_distribution_v2()
     claim = bound_claim(

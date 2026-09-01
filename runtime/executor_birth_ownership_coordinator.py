@@ -145,6 +145,19 @@ class OwnershipCoordinatorError(RuntimeError):
         super().__init__(f"{code}: {detail}" if detail else code)
 
 
+def _wrapped_cause_detail_v1(exc: BaseException) -> str:
+    """Keep one bounded stable reason when translating a lower-level error."""
+    values: list[str] = []
+    for field in ("code", "detail"):
+        value = getattr(exc, field, "")
+        if (
+            isinstance(value, str) and value
+            and "\x00" not in value and "\n" not in value and "\r" not in value
+        ):
+            values.append(value[:256])
+    return ": ".join(values)
+
+
 class OwnershipCoordinatorStateV1(str, Enum):
     PREPARED = "PREPARED"
     RECEIPTS_COMPLETE = "RECEIPTS_COMPLETE"
@@ -4759,6 +4772,7 @@ def _publish_context_transition_locked_v2(
     except Exception as exc:
         raise OwnershipCoordinatorError(
             "birth_context_transition_recovery_required",
+            _wrapped_cause_detail_v1(exc),
         ) from exc
     _require_deployment_lock_session_v1(session)
     if observed != publication.transition:
@@ -4806,6 +4820,7 @@ def _observe_dominant_identity_core_v2(
     except Exception as exc:
         raise OwnershipCoordinatorError(
             "birth_context_transition_recovery_required",
+            _wrapped_cause_detail_v1(exc),
         ) from exc
     if (
         type(transition) is not ContextTransitionV1
@@ -4957,14 +4972,9 @@ def _prepare_staged_current_receipts_v2(
             verify_receipt=staged_runtime.verify_receipt,
         )
     except Exception as exc:
-        code = getattr(exc, "code", "")
-        detail = getattr(exc, "detail", "")
-        cause = ": ".join(
-            value for value in (code, detail)
-            if isinstance(value, str) and value
-        )
         raise OwnershipCoordinatorError(
-            "birth_ownership_receipt_proof_invalid", cause,
+            "birth_ownership_receipt_proof_invalid",
+            _wrapped_cause_detail_v1(exc),
         ) from exc
     if (
         not isinstance(report.proof, CurrentReceiptProof)
