@@ -1368,6 +1368,7 @@ sviluppo.
 | 2026-08-31 | `active` | **Gruppo 6 chiuso, `G6 complete`** (§23.32). C3 e C4 certificati su VM con systemd reale in quattro cicli pubblici consecutivi; suite a copertura totale con **zero regressioni** (74 rossi alla base pre-G6, 69 all'albero finale, 5 risolti); ciclo avversariale convergente su quattro giri per parte. Restano F4-F6 e il gruppo 7, di cui e' fatto il solo primo passo (§23.31). |
 | 2026-09-01 | `active` | F4-EPOCA-01 ha raggiunto la convergenza tecnica incrociata sui commit A `ba26f5cd` e B `df36c169`; il §23.49 registra la variazione normativa offerta alla revisione incrociata prima del codice di prodotto della transizione. La precondizione indipendente del contenitore incompleto può essere sviluppata e provata, ma non applicata automaticamente. |
 | 2026-09-01 | `active` | Roberto approva RM-VARIAZIONE-01 sul commit normativo `a782065e`, gia' accettato da B in `c656c241` e verificato nella composizione F4. Il codice di prodotto della transizione e' sbloccato; non sono autorizzati interventi sul negozio reale, servizi in esercizio o pubblicazione. |
+| 2026-09-01 | `active` | RM-VARIAZIONE-02 offerta alla revisione incrociata: il piano corrente maschera `metnos-http.service` nello stesso spazio in cui il catalogo firmato deve pubblicare il frammento dominante. Il codice dipendente resta fermo fino ad accettazione e decisione; il lavoro indipendente di F4 continua. |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 
@@ -3353,3 +3354,27 @@ prodotto della transizione e' autorizzato a iniziare entro il perimetro della
 specifica; restano esclusi interventi sul negozio reale, modifiche ai servizi
 in esercizio e pubblicazione. Il record della decisione e'
 `internal/design/decisione_rm0008_variazione_01_1_9_2026.md`.
+
+
+### 23.50 RM-VARIAZIONE-02: un nome non puo' essere maschera e frammento firmato
+
+Il censimento deterministico della composizione finale ha trovato 15 unita'
+dominanti e 39 legami precedenti. Sedici condividono il testo del nome, ma
+quindici appartengono allo spazio utente e non collidono con la radice di
+sistema. Una sola coppia occupa la stessa destinazione:
+`legacy-service-http-system` e il nuovo `metnos-http.service`.
+
+Il §23.35 assegna oggi `mask_system_unit` al primo, mentre il descrittore
+firmato assegna al secondo `/etc/systemd/system/metnos-http.service`. Eseguire
+entrambi e' impossibile senza ridurre una delle due postcondizioni. La proposta
+`internal/design/rm0008_variazione_02_sovrapposizione_unita_1_9_2026.md`
+distingue quindi la conservazione senza sostituzione dell'unico frammento
+occupato dalla mascheratura degli altri ingressi, lega la decisione allo stesso
+catalogo firmato e rende l'osservazione di attivita' sensibile alla coppia
+`(scope, locator)`.
+
+Questa sezione registra una proposta, non una regola gia' attiva. Il codice che
+dipende dalla variazione non viene anticipato. Servono prima l'accettazione
+incrociata sul commit esatto e la decisione dell'autorita' prevista dal
+protocollo; nessuna misura svolta per formulare la proposta ha modificato il
+sistema in funzione.
