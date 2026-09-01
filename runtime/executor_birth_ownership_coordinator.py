@@ -86,6 +86,15 @@ _LEGACY_DISPOSITION_DOMAIN_V2 = (
 _INSTALL_TRANSACTION_DOMAIN_V1 = (
     b"metnos.executor-birth.install-transaction/v1\0"
 )
+_HEAD_PAYLOAD_HASH_DOMAIN_V2 = (
+    b"metnos.executor-birth.head-payload-hash/v2\0"
+)
+_HEAD_SIGNATURE_HASH_DOMAIN_V2 = (
+    b"metnos.executor-birth.head-signature-hash/v2\0"
+)
+_REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2 = (
+    b"metnos.executor-birth.required-head-frame-hash/v2\0"
+)
 _RECORD_KEYS = frozenset({
     "schema_version", "sequence", "state", "previous_record_sha256",
     "request_id", "previous_closed_build_id", "previous_cutover_id",
@@ -157,6 +166,14 @@ _POST_CERTIFICATE_STATES_V1 = frozenset({
 
 def _digest(encoded: bytes) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _framed_digest_v2(domain: bytes, encoded: bytes) -> str:
+    if type(domain) is not bytes or not domain or type(encoded) is not bytes:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "framed digest",
+        )
+    return _digest(domain + len(encoded).to_bytes(8, "big") + encoded)
 
 
 def _require_digest(value: object, field: str, *, nullable: bool = False):
@@ -3704,9 +3721,15 @@ class _HeadRequiredMaterialV2:
             or type(self.head) is not OwnershipHead
             or type(self.frame) is not bytes
             or self.record.head_id != self.head.head_id
-            or self.record.head_payload_hash != _digest(self.encoded)
-            or self.record.head_signature_hash != _digest(self.signature)
-            or self.record.required_head_frame_hash != _digest(self.frame)
+            or self.record.head_payload_hash != _framed_digest_v2(
+                _HEAD_PAYLOAD_HASH_DOMAIN_V2, self.encoded,
+            )
+            or self.record.head_signature_hash != _framed_digest_v2(
+                _HEAD_SIGNATURE_HASH_DOMAIN_V2, self.signature,
+            )
+            or self.record.required_head_frame_hash != _framed_digest_v2(
+                _REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, self.frame,
+            )
             or self.record.verified_chain_head_id != self.head.head_id
         ):
             raise OwnershipCoordinatorError(
@@ -3758,9 +3781,15 @@ def _head_required_material_v2(
         state=OwnershipCoordinatorStateV1.HEAD_REQUIRED,
         previous_record_sha256=_record_hash_v2(build_verified.encode()),
         head_id=head.head_id,
-        head_payload_hash=_digest(encoded),
-        head_signature_hash=_digest(signature),
-        required_head_frame_hash=_digest(frame),
+        head_payload_hash=_framed_digest_v2(
+            _HEAD_PAYLOAD_HASH_DOMAIN_V2, encoded,
+        ),
+        head_signature_hash=_framed_digest_v2(
+            _HEAD_SIGNATURE_HASH_DOMAIN_V2, signature,
+        ),
+        required_head_frame_hash=_framed_digest_v2(
+            _REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, frame,
+        ),
         verified_chain_head_id=head.head_id,
     )
     return _HeadRequiredMaterialV2(

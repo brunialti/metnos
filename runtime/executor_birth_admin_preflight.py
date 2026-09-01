@@ -148,6 +148,9 @@ ADMINISTRATIVE_BUNDLE_DOMAIN_V1 = (
 )
 CANDIDATE_UNITS_DOMAIN_V1 = b"metnos.executor-birth.candidate-units/v1\0"
 INSTALLED_TREE_DOMAIN_V1 = b"metnos.executor-birth.installed-tree/v1\0"
+CURRENT_INVENTORY_DOMAIN_V1 = (
+    b"metnos.executor-birth.current-inventory/v1\0"
+)
 ADMINISTRATIVE_EXECUTABLE_DOMAIN_V1 = (
     b"metnos.executor-birth.administrative-executable/v1\0"
 )
@@ -326,6 +329,8 @@ _SUCCESSOR_CLAIM_BASENAME_RE_V1 = re.compile(
 )
 _TRANSACTION_DIRECTORY_RE_V2 = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _TRANSACTION_RECORD_RE_V2 = re.compile(r"record-([0-9]{3})-v2\.json\Z")
+_HEX_SHA256_RE_V2 = re.compile(r"[0-9a-f]{64}\Z")
+_PROVISIONING_TRANSACTION_RE_V2 = re.compile(r"[0-9a-f]{32}\Z")
 _LEGACY_RECORD_RE_V1 = re.compile(r"record-([0-9]{3})-v1\.json\Z")
 
 _AUTHORITY_KINDS_V1 = ("distribution", "cutover", "head")
@@ -377,6 +382,12 @@ _COORDINATOR_RECORD_KEYS_V2 = frozenset({
     "head_signature_hash", "required_head_frame_hash",
     "verified_chain_head_id", "preflight_attestation_hash",
     "service_coverage_hash", "administrative_bundle_hash",
+    "provisioning_transaction_id", "previous_set_id",
+    "previous_admission_context_id", "previous_context_epoch",
+    "target_set_id", "target_admission_context_id", "target_context_epoch",
+    "target_context_material_sha256", "target_set_json_sha256",
+    "context_transition_id", "current_inventory_hash",
+    "dominant_startup_receipt",
 })
 _LEGACY_COORDINATOR_RECORD_KEYS_V1 = frozenset({
     "schema_version", "sequence", "state", "previous_record_sha256",
@@ -442,6 +453,11 @@ _COORDINATOR_CARRY_KEYS_V2 = frozenset({
     "boundary_guard_version", "source_id", "successor_claim_id",
     "deployment_descriptor_id", "install_transaction_id", "release_sequence",
     "previous_head_id", "service_coverage_hash", "administrative_bundle_hash",
+    "provisioning_transaction_id", "previous_set_id",
+    "previous_admission_context_id", "previous_context_epoch",
+    "target_set_id", "target_admission_context_id", "target_context_epoch",
+    "target_context_material_sha256", "target_set_json_sha256",
+    "context_transition_id", "current_inventory_hash",
 })
 _LEGACY_COORDINATOR_CARRY_KEYS_V1 = frozenset({
     "request_id", "previous_closed_build_id", "previous_cutover_id",
@@ -457,7 +473,7 @@ _COORDINATOR_THRESHOLD_KEYS_V2 = (
     (2, frozenset({
         "startup_prerequisite_id", "startup_prerequisite_digest",
         "cutover_id", "catalog_id", "certificate_payload_hash",
-        "certificate_signature_hash",
+        "certificate_signature_hash", "dominant_startup_receipt",
     })),
     (4, frozenset({"installed_tree_hash"})),
     (5, frozenset({
@@ -1044,6 +1060,7 @@ class _DecodedCoordinatorRecordV2(NamedTuple):
     catalog_id: str | None
     certificate_payload_hash: str | None
     certificate_signature_hash: str | None
+    dominant_startup_receipt: str | None
     source_id: str
     successor_claim_id: str
     deployment_descriptor_id: str
@@ -1059,6 +1076,17 @@ class _DecodedCoordinatorRecordV2(NamedTuple):
     preflight_attestation_hash: str | None
     service_coverage_hash: str
     administrative_bundle_hash: str
+    provisioning_transaction_id: str
+    previous_set_id: str
+    previous_admission_context_id: str
+    previous_context_epoch: str
+    target_set_id: str
+    target_admission_context_id: str
+    target_context_epoch: str
+    target_context_material_sha256: str
+    target_set_json_sha256: str
+    context_transition_id: str
+    current_inventory_hash: str
 
     def as_value(self) -> dict[str, object]:
         return {
@@ -1090,6 +1118,7 @@ class _DecodedCoordinatorRecordV2(NamedTuple):
             "catalog_id": self.catalog_id,
             "certificate_payload_hash": self.certificate_payload_hash,
             "certificate_signature_hash": self.certificate_signature_hash,
+            "dominant_startup_receipt": self.dominant_startup_receipt,
             "source_id": self.source_id,
             "successor_claim_id": self.successor_claim_id,
             "deployment_descriptor_id": self.deployment_descriptor_id,
@@ -1105,6 +1134,21 @@ class _DecodedCoordinatorRecordV2(NamedTuple):
             "preflight_attestation_hash": self.preflight_attestation_hash,
             "service_coverage_hash": self.service_coverage_hash,
             "administrative_bundle_hash": self.administrative_bundle_hash,
+            "provisioning_transaction_id": self.provisioning_transaction_id,
+            "previous_set_id": self.previous_set_id,
+            "previous_admission_context_id": (
+                self.previous_admission_context_id
+            ),
+            "previous_context_epoch": self.previous_context_epoch,
+            "target_set_id": self.target_set_id,
+            "target_admission_context_id": self.target_admission_context_id,
+            "target_context_epoch": self.target_context_epoch,
+            "target_context_material_sha256": (
+                self.target_context_material_sha256
+            ),
+            "target_set_json_sha256": self.target_set_json_sha256,
+            "context_transition_id": self.context_transition_id,
+            "current_inventory_hash": self.current_inventory_hash,
         }
 
 
@@ -4097,6 +4141,21 @@ def _decode_current_receipts_v1(
     return tuple(receipts)
 
 
+def _current_inventory_hash_from_receipts_v1(
+    receipts: tuple[OwnershipReceiptFactsV1, ...],
+) -> str:
+    if (
+        type(receipts) is not tuple
+        or any(type(item) is not OwnershipReceiptFactsV1 for item in receipts)
+    ):
+        raise _invalid("coordinator current inventory")
+    encoded = _canonical_json([{
+        "contract_id": item.contract_id,
+        "generation_id": item.generation_id,
+    } for item in receipts])
+    return _digest(CURRENT_INVENTORY_DOMAIN_V1, encoded)
+
+
 def _maintenance_evidence_hash_v1(encoded: bytes) -> str:
     value = decode_canonical_json_v1(encoded, MAX_CUTOVER_BYTES_V1)
     source = value.get("source") if isinstance(value, dict) else None
@@ -4172,7 +4231,10 @@ def _decode_coordinator_record_v2(
         "distribution_signature_hash", "boundary_inventory_hash", "source_id",
         "successor_claim_id", "deployment_descriptor_id",
         "install_transaction_id", "service_coverage_hash",
-        "administrative_bundle_hash",
+        "administrative_bundle_hash", "previous_admission_context_id",
+        "previous_context_epoch", "target_admission_context_id",
+        "target_context_epoch", "context_transition_id",
+        "current_inventory_hash",
     ):
         required_digests[field] = _require_digest(
             value.get(field), "coordinator " + field,
@@ -4187,6 +4249,7 @@ def _decode_coordinator_record_v2(
         "installed_tree_hash", "previous_head_id", "head_id", "head_payload_hash",
         "head_signature_hash", "required_head_frame_hash",
         "verified_chain_head_id", "preflight_attestation_hash",
+        "dominant_startup_receipt",
     ):
         nullable_digests[field] = _nullable_digest_v1(
             value.get(field), "coordinator " + field,
@@ -4207,6 +4270,23 @@ def _decode_coordinator_record_v2(
         or "\0" in guard_version
     ):
         raise _invalid("coordinator boundary_guard_version")
+    provisioning_transaction_id = value.get("provisioning_transaction_id")
+    if (
+        type(provisioning_transaction_id) is not str
+        or _PROVISIONING_TRANSACTION_RE_V2.fullmatch(
+            provisioning_transaction_id,
+        ) is None
+    ):
+        raise _invalid("coordinator provisioning_transaction_id")
+    hex_fields = {}
+    for field in (
+        "previous_set_id", "target_set_id", "target_context_material_sha256",
+        "target_set_json_sha256",
+    ):
+        item = value.get(field)
+        if type(item) is not str or _HEX_SHA256_RE_V2.fullmatch(item) is None:
+            raise _invalid("coordinator " + field)
+        hex_fields[field] = item
 
     raw_proof = value.get("maintenance_proof_b64")
     if sequence == 0:
@@ -4241,11 +4321,15 @@ def _decode_coordinator_record_v2(
             or nullable_digests["maintenance_after_hash"] != observed_hash
         ):
             raise _invalid("coordinator maintenance binding")
+        if required_digests["current_inventory_hash"] != (
+            _current_inventory_hash_from_receipts_v1(receipts)
+        ):
+            raise _invalid("coordinator current inventory binding")
 
     certificate_fields = (
         "startup_prerequisite_id", "startup_prerequisite_digest",
         "cutover_id", "catalog_id", "certificate_payload_hash",
-        "certificate_signature_hash",
+        "certificate_signature_hash", "dominant_startup_receipt",
     )
     if (
         sequence >= 2
@@ -4317,6 +4401,7 @@ def _decode_coordinator_record_v2(
         nullable_digests["cutover_id"], nullable_digests["catalog_id"],
         nullable_digests["certificate_payload_hash"],
         nullable_digests["certificate_signature_hash"],
+        nullable_digests["dominant_startup_receipt"],
         required_digests["source_id"], required_digests["successor_claim_id"],
         required_digests["deployment_descriptor_id"],
         required_digests["install_transaction_id"],
@@ -4329,6 +4414,17 @@ def _decode_coordinator_record_v2(
         nullable_digests["preflight_attestation_hash"],
         required_digests["service_coverage_hash"],
         required_digests["administrative_bundle_hash"],
+        provisioning_transaction_id,
+        hex_fields["previous_set_id"],
+        required_digests["previous_admission_context_id"],
+        required_digests["previous_context_epoch"],
+        hex_fields["target_set_id"],
+        required_digests["target_admission_context_id"],
+        required_digests["target_context_epoch"],
+        hex_fields["target_context_material_sha256"],
+        hex_fields["target_set_json_sha256"],
+        required_digests["context_transition_id"],
+        required_digests["current_inventory_hash"],
     )
     if decoded.as_value() != value:
         raise _invalid("coordinator record binding")
@@ -6721,6 +6817,10 @@ def _authenticate_fixed_ownership_snapshot_core_v1(
                     != first.boundary_inventory_hash
                     or cutover.boundary_guard_version
                     != first.boundary_guard_version
+                    or cutover.context_transition_id
+                    != first.context_transition_id
+                    or cutover.dominant_startup_receipt
+                    != latest.dominant_startup_receipt
                     or latest.certificate_payload_hash
                     != _raw_sha256_v1(cutover.encoded)
                     or latest.certificate_signature_hash

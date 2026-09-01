@@ -34,6 +34,24 @@ LINUX_ONLY = pytest.mark.skipif(
 )
 
 
+def _epoch_record_fields_v2(proof, *, context_transition_id: str):
+    from executor_birth_context_transition import current_inventory_hash_v1
+
+    return {
+        "provisioning_transaction_id": "0" * 32,
+        "previous_set_id": "1" * 64,
+        "previous_admission_context_id": "sha256:" + "2" * 64,
+        "previous_context_epoch": "sha256:" + "3" * 64,
+        "target_set_id": "4" * 64,
+        "target_admission_context_id": "sha256:" + "5" * 64,
+        "target_context_epoch": "sha256:" + "6" * 64,
+        "target_context_material_sha256": "7" * 64,
+        "target_set_json_sha256": "8" * 64,
+        "context_transition_id": context_transition_id,
+        "current_inventory_hash": current_inventory_hash_v1(proof.inventory),
+    }
+
+
 def test_installed_preflight_rejects_candidate_self_attestation() -> None:
     root = Path(__file__).resolve().parents[2]
     sources = canonical_guard.closed_python_sources_from_root(root)
@@ -445,6 +463,10 @@ def _fixed_ownership_fixture(
                 administrative_bundle_hash=install_value[
                     "administrative_bundle_hash"
                 ],
+                **_epoch_record_fields_v2(
+                    proof,
+                    context_transition_id=cutover.context_transition_id,
+                ),
                 current_proof=proof if sequence >= 1 else None,
                 maintenance_before_hash=(
                     maintenance_hash if sequence >= 1 else None
@@ -462,6 +484,10 @@ def _fixed_ownership_fixture(
                 certificate_payload_hash=(digest("e") if sequence >= 2 else None),
                 certificate_signature_hash=(
                     digest("f") if sequence >= 2 else None
+                ),
+                dominant_startup_receipt=(
+                    cutover.dominant_startup_receipt
+                    if sequence >= 2 else None
                 ),
                 installed_tree_hash=digest("1") if sequence >= 4 else None,
                 head_id=head.head_id if sequence >= 5 else None,
@@ -780,6 +806,10 @@ def _authenticated_fixed_ownership_fixture(
                 previous_head_id=transaction_previous_head_id,
                 service_coverage_hash=coverage_hash,
                 administrative_bundle_hash=bundle_hash,
+                **_epoch_record_fields_v2(
+                    proof,
+                    context_transition_id=cutover.context_transition_id,
+                ),
                 current_proof=proof if record_sequence >= 1 else None,
                 maintenance_before_hash=(
                     maintenance_hash if record_sequence >= 1 else None
@@ -808,6 +838,10 @@ def _authenticated_fixed_ownership_fixture(
                 ),
                 certificate_signature_hash=(
                     preflight._raw_sha256_v1(cutover_signature)
+                    if record_sequence >= 2 else None
+                ),
+                dominant_startup_receipt=(
+                    cutover.dominant_startup_receipt
                     if record_sequence >= 2 else None
                 ),
                 installed_tree_hash=(
@@ -1912,6 +1946,9 @@ def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None
             administrative_bundle_hash=install_value[
                 "administrative_bundle_hash"
             ],
+            **_epoch_record_fields_v2(
+                proof, context_transition_id=digest("9"),
+            ),
             current_proof=proof if sequence >= 1 else None,
             maintenance_before_hash=(maintenance_hash if sequence >= 1 else None),
             maintenance_after_hash=(maintenance_hash if sequence >= 1 else None),
@@ -1922,6 +1959,7 @@ def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None
             catalog_id=digest("4") if sequence >= 2 else None,
             certificate_payload_hash=digest("5") if sequence >= 2 else None,
             certificate_signature_hash=digest("6") if sequence >= 2 else None,
+            dominant_startup_receipt=digest("e") if sequence >= 2 else None,
             installed_tree_hash=digest("7") if sequence >= 4 else None,
             head_id=digest("8") if sequence >= 5 else None,
             head_payload_hash=digest("9") if sequence >= 5 else None,
@@ -1944,6 +1982,13 @@ def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None
         "contract_id": f"executor:{index:05d}",
         "generation_id": digest("7"), "receipt_hash": digest("8"),
     } for index in range(30_000)]
+    large_value["current_inventory_hash"] = (
+        preflight._current_inventory_hash_from_receipts_v1(
+            preflight._decode_current_receipts_v1(
+                large_value["current_receipts"],
+            ),
+        )
+    )
     large_record = preflight._canonical_json(large_value)
     assert len(large_record) < preflight.MAX_COORDINATOR_RECORD_BYTES_V2
     assert _decode_record_v2(large_record).as_value() == large_value
@@ -1956,6 +2001,8 @@ def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None
         (1, "previous_record_sha256", digest("f")),
         (3, "boundary_guard_version", "changed-guard"),
         (3, "catalog_id", digest("f")),
+        (3, "provisioning_transaction_id", "f" * 32),
+        (3, "target_set_id", "f" * 64),
     ):
         changed = list(encoded_records)
         value = json.loads(changed[index])
@@ -1969,11 +2016,16 @@ def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None
         (0, "startup_prerequisite_id", digest("f")),
         (1, "maintenance_proof_b64", "not-base64"),
         (1, "maintenance_after_hash", digest("f")),
+        (1, "current_inventory_hash", digest("f")),
+        (1, "dominant_startup_receipt", digest("f")),
         (2, "catalog_id", None),
+        (2, "dominant_startup_receipt", None),
         (3, "installed_tree_hash", digest("f")),
         (5, "verified_chain_head_id", digest("f")),
         (5, "preflight_attestation_hash", digest("f")),
         (5, "install_transaction_id", digest("f")),
+        (5, "previous_set_id", digest("f")),
+        (5, "target_context_material_sha256", "f" * 63),
     )
     for index, field, replacement in direct_mutants:
         value = json.loads(encoded_records[index])

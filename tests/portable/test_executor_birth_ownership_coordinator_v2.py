@@ -75,6 +75,9 @@ from executor_birth_ownership_preflight import (
 )
 from executor_birth_admin_preflight import (
     DistributionFileV1 as PreflightDistributionFileV1,
+    HEAD_PAYLOAD_HASH_DOMAIN_V2, HEAD_SIGNATURE_HASH_DOMAIN_V2,
+    REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2,
+    _framed_sha256_v1,
     _installed_tree_hash_v1 as preflight_installed_tree_hash_v1,
 )
 from executor_birth_prepared_set import (
@@ -770,9 +773,15 @@ def test_build_and_head_records_bind_exact_verified_material():
     assert material.head.cutover_id == published.cutover_id
     assert material.head.closed_build_id == published.closed_build_id
     assert material.head.previous_head_id is None
-    assert material.record.head_payload_hash == digest(material.encoded)
-    assert material.record.head_signature_hash == digest(material.signature)
-    assert material.record.required_head_frame_hash == digest(material.frame)
+    assert material.record.head_payload_hash == _framed_sha256_v1(
+        HEAD_PAYLOAD_HASH_DOMAIN_V2, material.encoded,
+    )
+    assert material.record.head_signature_hash == _framed_sha256_v1(
+        HEAD_SIGNATURE_HASH_DOMAIN_V2, material.signature,
+    )
+    assert material.record.required_head_frame_hash == _framed_sha256_v1(
+        REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, material.frame,
+    )
     assert material.record.verified_chain_head_id == material.head.head_id
     assert _decode_record_v2(material.record.encode()) == material.record
 
