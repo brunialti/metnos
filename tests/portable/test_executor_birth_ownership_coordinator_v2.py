@@ -1924,6 +1924,131 @@ def transaction_records(
     return tuple(records)
 
 
+@pytest.mark.parametrize(
+    ("release_sequence", "previous_head_id", "end_sequence"),
+    ((1, None, 1), (2, D("4"), 6)),
+)
+def test_dominant_identity_rereads_the_exact_transition_and_initial_anchor(
+    release_sequence, previous_head_id, end_sequence,
+):
+    previous_closed_build_id = None if release_sequence == 1 else D("a")
+    previous_cutover_id = None if release_sequence == 1 else D("b")
+    claim = bound_claim(
+        release_sequence=release_sequence,
+        previous_head_id=previous_head_id,
+        closed_build_id=D("3"),
+        source_id=D("2"),
+        previous_closed_build_id=previous_closed_build_id,
+        previous_cutover_id=previous_cutover_id,
+    )
+    _, transition = issue_context_transition_v1(
+        request_id=claim.request_id,
+        closed_build_id=claim.closed_build_id,
+        previous_cutover_id=previous_cutover_id,
+        previous_set_id="1" * 64,
+        previous_admission_context_id=D("2"),
+        previous_context_epoch=D("3"),
+        set_id="4" * 64,
+        prepared_admission_context_id=D("5"),
+        prepared_context_epoch=D("6"),
+        context_material_sha256="7" * 64,
+        set_json_sha256="8" * 64,
+        current_inventory=proof().inventory,
+    )
+    records = transaction_records(
+        claim,
+        end_sequence=end_sequence,
+        previous_closed_build_id=previous_closed_build_id,
+        previous_cutover_id=previous_cutover_id,
+        cutover_id=D("3"),
+        head_id=D("4"),
+        context_transition_id=transition.transition_id,
+    )
+    transaction = coordinator_module._ResolvedOwnershipTransactionV2(
+        claim, records, tuple(record.encode() for record in records),
+    )
+    graph = _ObservedOwnershipCoordinatorGraphV2(
+        (claim,), (), (transaction,), (), (), None,
+    )
+    reads = []
+
+    def read_transition(transition_id, expected_proof):
+        reads.append((transition_id, expected_proof))
+        return transition
+
+    observed = coordinator_module._observe_dominant_identity_core_v2(
+        graph, records[1], read_transition,
+    )
+
+    expected_anchor = previous_head_id or "sha256:" + records[1].previous_set_id
+    assert observed == (
+        claim.request_id, expected_anchor, transition.transition_id,
+    )
+    assert reads == [(transition.transition_id, records[1].current_proof)]
+
+
+def test_dominant_identity_rejects_a_different_context_transition():
+    claim = bound_claim(
+        release_sequence=1,
+        previous_head_id=None,
+        closed_build_id=D("3"),
+        source_id=D("2"),
+        previous_closed_build_id=None,
+        previous_cutover_id=None,
+    )
+    _, expected = issue_context_transition_v1(
+        request_id=claim.request_id,
+        closed_build_id=claim.closed_build_id,
+        previous_cutover_id=None,
+        previous_set_id="1" * 64,
+        previous_admission_context_id=D("2"),
+        previous_context_epoch=D("3"),
+        set_id="4" * 64,
+        prepared_admission_context_id=D("5"),
+        prepared_context_epoch=D("6"),
+        context_material_sha256="7" * 64,
+        set_json_sha256="8" * 64,
+        current_inventory=proof().inventory,
+    )
+    records = transaction_records(
+        claim,
+        end_sequence=1,
+        previous_closed_build_id=None,
+        previous_cutover_id=None,
+        cutover_id=D("3"),
+        head_id=D("4"),
+        context_transition_id=expected.transition_id,
+    )
+    transaction = coordinator_module._ResolvedOwnershipTransactionV2(
+        claim, records, tuple(record.encode() for record in records),
+    )
+    graph = _ObservedOwnershipCoordinatorGraphV2(
+        (claim,), (), (transaction,), (), (), None,
+    )
+    _, other = issue_context_transition_v1(
+        request_id=D("f"),
+        closed_build_id=claim.closed_build_id,
+        previous_cutover_id=None,
+        previous_set_id="1" * 64,
+        previous_admission_context_id=D("2"),
+        previous_context_epoch=D("3"),
+        set_id="4" * 64,
+        prepared_admission_context_id=D("5"),
+        prepared_context_epoch=D("6"),
+        context_material_sha256="7" * 64,
+        set_json_sha256="8" * 64,
+        current_inventory=proof().inventory,
+    )
+
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="birth_context_transition_recovery_required",
+    ):
+        coordinator_module._observe_dominant_identity_core_v2(
+            graph, records[1], lambda _transition_id, _proof: other,
+        )
+
+
 def legacy_records(
     *, end_sequence: int, closed_build_id: str,
 ) -> tuple[OwnershipCoordinatorRecordV1, ...]:

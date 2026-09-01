@@ -1114,6 +1114,8 @@ def test_pending_cutover_selection_uses_exact_authenticated_bytes() -> None:
     graph = _bound_graph()
     transaction = _receipts_complete_transaction(graph)
     encoded = preflight._canonical_json(transaction.as_value())
+    prepared = transaction._replace(sequence=0, state="PREPARED")
+    verified = transaction._replace(sequence=6, state="PREFLIGHT_VERIFIED")
     claim = preflight._DecodedSuccessorClaimV1(
         transaction.successor_claim_id,
         transaction.previous_head_id,
@@ -1124,7 +1126,10 @@ def test_pending_cutover_selection_uses_exact_authenticated_bytes() -> None:
     )
     authenticated_transaction = preflight._AuthenticatedTransactionSnapshotV2(
         claim,
-        preflight._DecodedCoordinatorPrefixV2((transaction,), (encoded,)),
+        preflight._DecodedCoordinatorPrefixV2(
+            (prepared, transaction, verified),
+            (b"prepared", encoded, b"verified"),
+        ),
     )
     snapshot = preflight._ReconciledFixedOwnershipSnapshotV1(
         (), None, None, (graph["distribution"],), (), (), (claim,),

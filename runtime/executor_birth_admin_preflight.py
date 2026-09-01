@@ -786,7 +786,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:8a527c99c37b3875cf0b93359b0a8a6be63f50e88ee9649c541e2d0fff18dd0a"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:2509445a5b61a6712ff0ad94ce7c03be9b822f789a0b95228e2dfec49d5a6481"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -4096,22 +4096,24 @@ def _select_cutover_candidate_from_snapshot_v2(
     ):
         raise _recovery("cutover candidate selection")
     transaction = transactions[0]
-    latest = transaction.prefix.records[-1]
+    if len(transaction.prefix.records) < 2:
+        raise _recovery("cutover candidate binding")
+    complete = transaction.prefix.records[1]
     build = builds[0]
     if (
-        transaction.prefix.encoded_records[-1] != complete_encoded
-        or latest.sequence != 1
-        or latest.state != "RECEIPTS_COMPLETE"
+        transaction.prefix.encoded_records[1] != complete_encoded
+        or complete.sequence != 1
+        or complete.state != "RECEIPTS_COMPLETE"
         or transaction.claim.closed_build_id != closed_build_id
         or transaction.claim.release_sequence != release_sequence
-        or latest.request_id != request_id
-        or latest.closed_build_id != closed_build_id
-        or latest.release_sequence != release_sequence
+        or complete.request_id != request_id
+        or complete.closed_build_id != closed_build_id
+        or complete.release_sequence != release_sequence
         or build.encoded != distribution_encoded
         or build.signature != distribution_signature
     ):
         raise _recovery("cutover candidate binding")
-    return build, latest, predecessor
+    return build, complete, predecessor
 
 
 def _prepare_cutover_candidate_v2(

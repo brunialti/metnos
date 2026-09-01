@@ -4714,6 +4714,84 @@ def _publish_context_transition_locked_v2(
     return observed
 
 
+def _observe_dominant_identity_core_v2(
+    graph: object, complete: object, read_transition: object,
+) -> tuple[str, str, str]:
+    """Reread the exact request, predecessor anchor and context transition."""
+    from executor_birth_context_transition import ContextTransitionV1
+
+    if (
+        type(graph) is not _ObservedOwnershipCoordinatorGraphV2
+        or type(complete) is not OwnershipCoordinatorRecordV2
+        or complete.sequence != 1
+        or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+        or not callable(read_transition)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "dominant identity input",
+        )
+    matches = tuple(
+        item for item in graph.transactions
+        if item.claim.request_id == complete.request_id
+    )
+    if (
+        len(matches) != 1
+        or len(matches[0].records) < 2
+        or matches[0].records[1] != complete
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "dominant identity record",
+        )
+    proof = complete.current_proof
+    if proof is None:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "dominant identity proof",
+        )
+    try:
+        transition = read_transition(complete.context_transition_id, proof)
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
+        ) from exc
+    if (
+        type(transition) is not ContextTransitionV1
+        or transition.request_id != complete.request_id
+        or transition.closed_build_id != complete.closed_build_id
+        or transition.previous_cutover_id != complete.previous_cutover_id
+        or transition.previous_set_id != complete.previous_set_id
+        or transition.set_id != complete.target_set_id
+        or transition.transition_id != complete.context_transition_id
+        or transition.current_inventory_hash != complete.current_inventory_hash
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_context_transition_recovery_required",
+        )
+    predecessor = complete.previous_head_id
+    if predecessor is None:
+        predecessor = "sha256:" + complete.previous_set_id
+    _require_digest(predecessor, "dominant predecessor")
+    return complete.request_id, predecessor, transition.transition_id
+
+
+def _observe_dominant_identity_locked_v2(
+    session: _DeploymentLockSessionV1, complete: object,
+) -> tuple[str, str, str]:
+    """Product identity observer under the fixed deployment session."""
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    store = OwnershipChainStore()
+    observed = _observe_dominant_identity_core_v2(
+        graph, complete,
+        lambda transition_id, proof: store.read_context_transition(
+            transition_id, expected_proof=proof,
+        ),
+    )
+    _require_deployment_lock_session_v1(session)
+    return observed
+
+
 @dataclass(frozen=True, slots=True)
 class OwnershipCoordinatorResultV1:
     state: OwnershipCoordinatorStateV1
