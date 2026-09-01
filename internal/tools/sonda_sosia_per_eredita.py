@@ -5,7 +5,9 @@ its seal, and the seal is checked in ``__post_init__``. A subclass that defines
 an empty ``__post_init__`` skips that check entirely and still satisfies
 ``isinstance``. Every gate that admits the type by ``isinstance`` therefore
 admits a request nobody derived. This probe builds exactly that object — no
-seal, a forged admission context — and offers it to each gate.
+seal, a forged admission context — and offers it to each gate. It then does
+the same for every other sealed type of the unit whose recognizer it can
+reach.
 
 Exit codes: 0 every measured gate refuses it, 1 at least one admits it, 2 the
 probe could not run and says why.
@@ -110,10 +112,68 @@ def _cancelli():
     )
 
 
+def _nudo(tipo, **attributi):
+    """A subclass instance built without ever running __post_init__."""
+    sosia = type(f"_Sosia{tipo.__name__}", (tipo,), {
+        "__post_init__": lambda self: None,
+    })
+    oggetto = object.__new__(sosia)
+    for nome, valore in attributi.items():
+        object.__setattr__(oggetto, nome, valore)
+    return oggetto
+
+
+def _riconoscitori():
+    """Every sealed type whose recognizer can be offered a look-alike."""
+    from types import SimpleNamespace
+
+    import executor_birth_context_selection as SELEZIONE
+    import executor_birth_ownership_coordinator as COORDINATORE
+    import executor_birth_prepared_set as INSIEME
+    from executor_birth_ownership_authorities import RootOwnershipAuthoritiesV1
+
+    def selezione():
+        if SELEZIONE.is_context_selection_v1(
+            _nudo(SELEZIONE.ContextSelectionV1, _seal=None), allow_staged=True,
+        ):
+            raise AssertionError("ammesso")
+
+    def insieme_v2():
+        if INSIEME.is_prepared_authority_set_v2(
+            _nudo(INSIEME.PreparedAuthoritySetV2, _seal=None),
+        ):
+            raise AssertionError("ammesso")
+
+    def insieme_v1():
+        if INSIEME.is_prepared_set_v1(_nudo(INSIEME.PreparedSetV1, _seal=None)):
+            raise AssertionError("ammesso")
+
+    def autorita():
+        falso = _nudo(
+            RootOwnershipAuthoritiesV1, _seal=None,
+            public=SimpleNamespace(
+                cutover=SimpleNamespace(keys=("chiave-dell-attaccante",)),
+            ),
+        )
+        chiave = COORDINATORE._single_cutover_key(falso)
+        raise AssertionError(f"ammesso, e restituisce {chiave!r}")
+
+    return (
+        ("ContextSelectionV1          ", selezione),
+        ("PreparedAuthoritySetV2      ", insieme_v2),
+        ("PreparedSetV1               ", insieme_v1),
+        ("RootOwnershipAuthoritiesV1  ", autorita),
+    )
+
+
 NON_MISURATI = (
     ("executor_birth_commit_publisher.py", "isinstance(request, ProducerRequestV2)"),
     ("executor_birth_bootstrap.py", "isinstance(self.producer_request, ProducerRequestV2)"),
 )
+
+# _PreparedReattestationV2 is not listed above: its gates compare the owning
+# factory by identity, which a look-alike cannot obtain without a genuine
+# instance. Read, not measured, and reported here so it is not re-opened.
 
 
 def principale() -> int:
@@ -139,6 +199,19 @@ def principale() -> int:
             continue
         print(f"  {nome} AMMETTE")
         ammessi.append(nome.strip())
+    print()
+    print("altri tipi sigillati: il riconoscitore rifiuta un sosia per eredita'?")
+    for nome, riconoscitore in _riconoscitori():
+        try:
+            riconoscitore()
+        except AssertionError as errore:
+            print(f"  {nome} AMMETTE  ({errore})")
+            ammessi.append(nome.strip())
+        except Exception as errore:  # noqa: BLE001
+            codice = getattr(errore, "code", "") or type(errore).__name__
+            print(f"  {nome} RIFIUTA  {codice}")
+        else:
+            print(f"  {nome} RIFIUTA")
     print()
     print("non misurati qui, trovati leggendo (stessa forma, perimetro di A):")
     for percorso, frammento in NON_MISURATI:
