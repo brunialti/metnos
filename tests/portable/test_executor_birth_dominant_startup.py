@@ -197,8 +197,8 @@ class _Observers:
     def enforcement(self) -> str:
         return self._value("enforcement", _digest("5"), _digest("d"))
 
-    def cross(self, digest: str) -> None:
-        self.crossed.append(digest)
+    def cross(self, receipt: dominant.DominantStartupReceiptV1) -> None:
+        self.crossed.append(receipt)
 
 
 def _complete(observers: _Observers, **extra):
@@ -219,7 +219,8 @@ def test_the_crossing_reads_everything_twice_before_it_runs() -> None:
     observers = _Observers()
     receipt = _complete(observers)
 
-    assert observers.crossed == [receipt.dominant_startup_receipt]
+    assert observers.crossed == [receipt]
+    assert dominant.is_dominant_startup_receipt_v1(receipt)
     assert receipt.retirement_plan_digest == _digest("6")
     assert receipt.enforcement_evidence_digest == _digest("5")
     # Every observer was consulted exactly twice: once to bind, once to agree.
@@ -274,3 +275,17 @@ def test_an_observer_that_is_a_value_is_refused() -> None:
             cross=observers.cross,
         )
     assert denied.value.code == "dominant_startup_observer_invalid"
+
+
+def test_a_caller_cannot_construct_or_relabel_a_crossing_receipt() -> None:
+    values = tuple(_digest(character) for character in "123")
+    expected = dominant.dominant_startup_receipt_v1(*values)
+
+    with pytest.raises(dominant.DominantStartupError) as unsealed:
+        dominant.DominantStartupReceiptV1(*values, expected, object())
+    assert unsealed.value.code == "dominant_startup_receipt_invalid"
+
+    receipt = _complete(_Observers())
+    assert not dominant.is_dominant_startup_receipt_v1(
+        object.__new__(dominant.DominantStartupReceiptV1)
+    )

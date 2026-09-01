@@ -118,7 +118,7 @@ def test_the_five_pieces_compose_and_the_crossing_happens_once(cell) -> None:
     """
     units, repository, _gate = cell
     identity, unit_topology, catalog, retire, enforce = _observers(cell)
-    crossed: list[str] = []
+    crossed: list[startup.DominantStartupReceiptV1] = []
 
     receipt = startup.complete_dominant_startup_v1(
         sessions=(_Session(), _Session(), _Session()),
@@ -130,7 +130,7 @@ def test_the_five_pieces_compose_and_the_crossing_happens_once(cell) -> None:
         cross=crossed.append,
     )
 
-    assert crossed == [receipt.dominant_startup_receipt]
+    assert crossed == [receipt]
     assert (units / "metnos-probe.service").read_bytes() == _UNIT
     retired = repository / "scripts" / (
         "legacy.sh" + neutralizer.RETIRED_EXTENSION_V1

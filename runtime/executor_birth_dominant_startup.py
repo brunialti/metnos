@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 DOMINANT_STARTUP_DOMAIN_V1 = b"metnos.executor-birth.dominant-startup/v1\0"
@@ -29,6 +29,7 @@ DOMINANT_STARTUP_RECEIPT_DOMAIN_V1 = (
 
 _CAPABILITY_SEAL_V1 = object()
 _TEST_CAPABILITY_SEAL_V1 = object()
+_RECEIPT_SEAL_V1 = object()
 _CONSUMED_GUARD_V1 = threading.Lock()
 _CONSUMED_CAPABILITIES_V1: set[int] = set()
 
@@ -216,6 +217,18 @@ class DominantStartupReceiptV1:
     retirement_plan_digest: str
     enforcement_evidence_digest: str
     dominant_startup_receipt: str
+    _seal: object = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _RECEIPT_SEAL_V1
+            or self.dominant_startup_receipt != dominant_startup_receipt_v1(
+                self.bindings_digest,
+                self.retirement_plan_digest,
+                self.enforcement_evidence_digest,
+            )
+        ):
+            raise _invalid("dominant_startup_receipt_invalid")
 
 
 def dominant_startup_receipt_v1(
@@ -241,6 +254,24 @@ def dominant_startup_receipt_v1(
         digest.update(len(encoded).to_bytes(8, "big"))
         digest.update(encoded)
     return f"sha256:{digest.hexdigest()}"
+
+
+def is_dominant_startup_receipt_v1(value: object) -> bool:
+    """Recognize only receipts minted after the private capability was spent."""
+    if type(value) is not DominantStartupReceiptV1:
+        return False
+    try:
+        return (
+            value._seal is _RECEIPT_SEAL_V1
+            and value.dominant_startup_receipt
+            == dominant_startup_receipt_v1(
+                value.bindings_digest,
+                value.retirement_plan_digest,
+                value.enforcement_evidence_digest,
+            )
+        )
+    except (AttributeError, DominantStartupError):
+        return False
 
 
 def complete_dominant_startup_v1(
@@ -314,15 +345,16 @@ def complete_dominant_startup_v1(
     bindings_digest = consume_v1(capability, bindings)
     if _crash_seam:
         _crash_seam("capability_consumed")
-    receipt = dominant_startup_receipt_v1(
+    receipt = DominantStartupReceiptV1(
         bindings_digest,
         retirement,
         enforcement,
+        dominant_startup_receipt_v1(
+            bindings_digest,
+            retirement,
+            enforcement,
+        ),
+        _RECEIPT_SEAL_V1,
     )
     cross(receipt)
-    return DominantStartupReceiptV1(
-        bindings_digest,
-        retirement,
-        enforcement,
-        receipt,
-    )
+    return receipt
