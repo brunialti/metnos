@@ -688,6 +688,23 @@ def test_ambiguous_same_named_helper_fails_closed(tmp_path: Path) -> None:
     assert "ambiguous_local_authority" in _codes(check(facts, inventory))
 
 
+def test_super_initializer_does_not_resolve_to_an_unrelated_local_method(
+    tmp_path: Path,
+) -> None:
+    facts = _scan(
+        tmp_path,
+        "class LocalError(RuntimeError):\n"
+        "    def __init__(self):\n"
+        "        super().__init__('local')\n"
+        "class Journal:\n"
+        "    def __init__(self, store_root):\n"
+        "        (store_root / 'record').write_text('value')\n",
+    )
+
+    assert all(fact.scope != "LocalError.__init__" for fact in facts)
+    assert _fact(facts, "Journal.__init__").capabilities == ("store_write",)
+
+
 def test_local_helper_alias_preserves_its_authority(tmp_path: Path) -> None:
     facts = _scan(
         tmp_path,

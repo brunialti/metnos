@@ -1,10 +1,9 @@
 """Compiled F4 denial for contract authorities superseded by Executor Birth.
 
 This module deliberately has no environment, configuration, user-state or
-caller-controlled activation switch.  A distribution becomes a *closed F4
-build* by changing the source literal in :func:`closed_build_enforcement` and
-authenticating that exact module in the signed distribution manifest.  Until
-that verifier exists, the literal remains false and the boundary is inert.
+caller-controlled activation switch.  The closed F4 distribution authenticates
+this exact source literal in its signed manifest, so an older build cannot
+claim the same policy state.
 
 The check still distinguishes the productive store from an explicitly
 supplied isolated root.  That distinction preserves non-productive offline
@@ -32,10 +31,10 @@ def closed_build_enforcement() -> bool:
     """Return the build-authenticated, compile-time policy bit.
 
     Do not replace this with an environment/configuration lookup.  The signed
-    build-manifest verifier will authenticate this file and is the only
-    remaining prerequisite for changing the literal to ``True``.
+    build-manifest verifier authenticates this file before the transition can
+    certify or select the release.
     """
-    return False
+    return True
 
 
 def deny_legacy_contract_api(

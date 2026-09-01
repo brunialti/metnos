@@ -73,7 +73,12 @@ def _prepared(tmp_path: Path):
 
 def _signed_target_only_lint_defect(tmp_path: Path, monkeypatch):
     """Build a real signed contract whose defect exists only in ``nl``."""
+    import executor_birth_legacy_gate as legacy_gate
     import sign
+
+    monkeypatch.setattr(
+        legacy_gate, "closed_build_enforcement", lambda: False,
+    )
 
     paths = replace(
         _fixture(tmp_path),

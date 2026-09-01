@@ -147,15 +147,10 @@ class OwnershipCoordinatorError(RuntimeError):
 
 def _wrapped_cause_detail_v1(exc: BaseException) -> str:
     """Keep one bounded stable reason when translating a lower-level error."""
-    values: list[str] = []
-    for field in ("code", "detail"):
-        value = getattr(exc, field, "")
-        if (
-            isinstance(value, str) and value
-            and "\x00" not in value and "\n" not in value and "\r" not in value
-        ):
-            values.append(value[:256])
-    return ": ".join(values)
+    value = str(exc)
+    if "\x00" in value or "\n" in value or "\r" in value:
+        return ""
+    return value[:512]
 
 
 class OwnershipCoordinatorStateV1(str, Enum):
@@ -1894,7 +1889,7 @@ class _OwnershipCoordinatorTransactionJournalV2:
             previous_hash = _record_hash_v2(encoded)
         return tuple(records)
 
-    def append(
+    def append_transaction_record(
         self, record: OwnershipCoordinatorRecordV2, *,
         _crash_seam: Callable[[str], None] | None = None,
     ) -> OwnershipCoordinatorRecordV2:
@@ -2932,7 +2927,7 @@ def _append_ownership_transaction_locked_v2(
     journal = _OwnershipCoordinatorTransactionJournalV2(
         DEFAULT_COORDINATOR_DIRECTORY_V1, record, root_owned=True,
     )
-    result = journal.append(record)
+    result = journal.append_transaction_record(record)
     _require_deployment_lock_session_v1(session)
     return result
 
@@ -2953,7 +2948,9 @@ def _append_ownership_transaction_locked_for_test_v2(
         ownership_root / COORDINATOR_DIRECTORY_BASENAME_V1,
         record, root_owned=False,
     )
-    result = journal.append(record, _crash_seam=_crash_seam)
+    result = journal.append_transaction_record(
+        record, _crash_seam=_crash_seam,
+    )
     _require_test_deployment_lock_session_v1(session, ownership_root)
     return result
 
@@ -4121,7 +4118,7 @@ def _cross_certificate_boundary_locked_v2(
         else OwnershipChainStore()
     )
 
-    def observe_graph():
+    def observe_certificate_graph():
         snapshot = _resolve_ownership_coordinator_locked_v2(session)
         return _require_locked_coordinator_graph_snapshot_v2(
             snapshot, session,
@@ -4135,7 +4132,7 @@ def _cross_certificate_boundary_locked_v2(
         append_record=lambda record: _append_ownership_transaction_locked_v2(
             session, record,
         ),
-        observe_graph=observe_graph,
+        observe_graph=observe_certificate_graph,
         _crash_seam=_crash_seam,
     )
 
@@ -4264,7 +4261,7 @@ def _cross_head_boundary_core_v2(
     def require() -> None:
         require_sessions()
 
-    def graph_transaction():
+    def head_transaction():
         require()
         graph = observe_graph()
         if type(graph) is not _ObservedOwnershipCoordinatorGraphV2:
@@ -4285,7 +4282,7 @@ def _cross_head_boundary_core_v2(
             )
         return matches[0]
 
-    transaction = graph_transaction()
+    transaction = head_transaction()
     require()
     observed_distribution = verify_installation()
     require()
@@ -4398,7 +4395,7 @@ def _cross_head_boundary_core_v2(
     if _crash_seam is not None:
         _crash_seam("required_chain_verified")
 
-    transaction = graph_transaction()
+    transaction = head_transaction()
     if transaction.latest.sequence == 4:
         persisted = append_record(material.record)
         _require_transaction_record_reread_v2(
@@ -4417,7 +4414,7 @@ def _cross_head_boundary_core_v2(
         raise OwnershipCoordinatorError(
             "birth_ownership_recovery_required", "head journal order",
         )
-    final = graph_transaction().latest
+    final = head_transaction().latest
     if final != persisted:
         raise OwnershipCoordinatorError(
             "birth_ownership_recovery_required", "head final reread",
@@ -4437,7 +4434,7 @@ def _cross_head_boundary_locked_v2(
     held = _require_product_sessions_v1(sessions)
     store = OwnershipChainStore()
 
-    def observe_graph():
+    def observe_head_graph():
         snapshot = _resolve_ownership_coordinator_locked_v2(held[0])
         return _require_locked_coordinator_graph_snapshot_v2(
             snapshot, held[0],
@@ -4452,7 +4449,7 @@ def _cross_head_boundary_locked_v2(
         append_record=lambda record: _append_ownership_transaction_locked_v2(
             held[0], record,
         ),
-        observe_graph=observe_graph,
+        observe_graph=observe_head_graph,
         verify_installation=lambda: verify_current_installation_distribution_v1(
             distribution.encoded, distribution.signature,
         ),
@@ -4545,7 +4542,7 @@ def _cross_preflight_boundary_core_v2(
     def require() -> None:
         require_sessions()
 
-    def graph_transaction():
+    def preflight_transaction():
         require()
         graph = observe_graph()
         if type(graph) is not _ObservedOwnershipCoordinatorGraphV2:
@@ -4566,7 +4563,7 @@ def _cross_preflight_boundary_core_v2(
             )
         return matches[0]
 
-    transaction = graph_transaction()
+    transaction = preflight_transaction()
     require()
     try:
         encoded = publish_attestation()
@@ -4581,7 +4578,7 @@ def _cross_preflight_boundary_core_v2(
     if _crash_seam is not None:
         _crash_seam("preflight_attestation_published")
 
-    transaction = graph_transaction()
+    transaction = preflight_transaction()
     if transaction.latest.sequence == 5:
         persisted = append_record(verified_record)
         _require_transaction_record_reread_v2(
@@ -4612,7 +4609,7 @@ def _cross_preflight_boundary_core_v2(
     if (
         observed != encoded
         or _preflight_verified_record_v2(head_required, observed) != persisted
-        or graph_transaction().latest != persisted
+        or preflight_transaction().latest != persisted
     ):
         raise OwnershipCoordinatorError(
             "birth_ownership_recovery_required", "preflight final binding",
@@ -4634,7 +4631,7 @@ def _cross_preflight_boundary_locked_v2(
 
     held = _require_product_sessions_v1(sessions)
 
-    def observe_graph():
+    def observe_preflight_graph():
         snapshot = _resolve_ownership_coordinator_locked_v2(held[0])
         return _require_locked_coordinator_graph_snapshot_v2(
             snapshot, held[0],
@@ -4645,7 +4642,7 @@ def _cross_preflight_boundary_locked_v2(
         append_record=lambda record: _append_ownership_transaction_locked_v2(
             held[0], record,
         ),
-        observe_graph=observe_graph,
+        observe_graph=observe_preflight_graph,
         publish_attestation=lambda: _publish_preflight_attestation_v1(
             _attest_operational_preflight_v1(),
         ),
