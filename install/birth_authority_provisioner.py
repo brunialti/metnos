@@ -3787,6 +3787,8 @@ def prepare_transition_authority_set_v2(
     ):
         raise _conflict()
     layout = _open_installer_layout_v1()
+    result = None
+    published = False
     try:
         session = layout.birth_session
         with _translated():
@@ -3820,21 +3822,72 @@ def prepare_transition_authority_set_v2(
             )
             if not transitions:
                 journal.create_root()
-            checkpoint = _prepare_staged_authority_set_v2(
-                session, layout, header, previous_set, distribution,
-            )
-            plan = journal._read_material_plan_v2(header)
-            set_payload = _read_set_document_v1(
-                session,
-                journal.root_components
-                + (AUTHORITY_SET_BASENAME_V1, SET_DOCUMENT_BASENAME_V1),
-            )
-            set_document = decode_canonical_document_v1(set_payload)
-            return _prepared_authority_set_result_v2(
-                header, checkpoint, plan, set_document,
-            )
+            if transitions:
+                result = _resume_published_authority_set_v2(
+                    session, journal, header,
+                )
+                published = result is not None
+            if result is None:
+                checkpoint = _prepare_staged_authority_set_v2(
+                    session, layout, header, previous_set, distribution,
+                )
+                plan = journal._read_material_plan_v2(header)
+                set_payload = _read_set_document_v1(
+                    session,
+                    journal.root_components
+                    + (AUTHORITY_SET_BASENAME_V1, SET_DOCUMENT_BASENAME_V1),
+                )
+                set_document = decode_canonical_document_v1(set_payload)
+                result = _prepared_authority_set_result_v2(
+                    header, checkpoint, plan, set_document,
+                )
     finally:
         layout.birth_session.close()
+    assert result is not None
+    if published:
+        _verify_published_authority_set_v2(result)
+    return result
+
+
+def _resume_published_authority_set_v2(
+    session, journal: _TransactionJournalV1, expected_header: TransactionHeaderV2,
+) -> PreparedAuthoritySetV2 | None:
+    """Recover only the exact final set moved by a verified V2 transaction."""
+    state = journal.read_state()
+    if state.header is None and state.last is None:
+        return None
+    if state.header != expected_header:
+        raise _conflict()
+    with _translated():
+        transaction_names = set(session.inventory(journal.root_components))
+    staged = AUTHORITY_SET_BASENAME_V1 in transaction_names
+    if state.last is None or state.last.state is not ProvisioningStateV1.verified:
+        return None
+    if len(state.chain) != 2:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    checkpoint = state.last
+    assert checkpoint.set_id is not None
+    with _translated():
+        published_names = set(session.inventory(
+            (AUTHORITY_SETS_BASENAME_V1,),
+        ))
+    final = checkpoint.set_id in published_names
+    if staged == final:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    if staged:
+        return None
+    plan = journal._read_material_plan_v2(expected_header)
+    set_payload = _read_set_document_v1(
+        session,
+        (AUTHORITY_SETS_BASENAME_V1, checkpoint.set_id,
+         SET_DOCUMENT_BASENAME_V1),
+    )
+    result = _prepared_authority_set_result_v2(
+        expected_header, checkpoint, plan,
+        decode_canonical_document_v1(set_payload),
+    )
+    _validate_prepared_authority_set_v2(session, result)
+    return result
 
 
 def _prepared_authority_set_result_v2(

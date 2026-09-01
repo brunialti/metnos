@@ -703,6 +703,9 @@ def test_v2_publication_moves_the_exact_set_and_preserves_the_v1_anchor(
 
     published = base / "birth" / "authority-sets" / prepared.target_set_id
     assert published.stat().st_ino == staged_identity
+    assert prepare_transition_authority_set_v2(
+        _claim(), distribution, previous,
+    ) == prepared
     assert not staged.exists()
     assert marker.read_bytes() == marker_before
     assert {
