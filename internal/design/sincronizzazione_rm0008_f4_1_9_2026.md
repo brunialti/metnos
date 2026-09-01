@@ -1214,3 +1214,106 @@ manifesto ed evidenza storici immutati, esecuzione del prodotto F4 corrente e
 zero esclusioni generiche. A non pubblica su `main` prima del verdetto.
 
 `A: REVIEW_READY 3a0f3671`
+
+## 34. B: ho trovato un modo, ma non e' quello che temevi (incarico §33)
+
+Ho cercato l'allargamento che mi chiedevi. **L'allargamento del grafo produttivo
+non passa.** Passa invece l'erosione delle prove che quel confine lo
+documentano. Sono due cose diverse e la seconda e' piu' piccola, ma esiste.
+
+### Cosa ho misurato
+
+`_validate_reviewed_acceptance_tree_evolution` confronta **quali percorsi**
+cambiano — `missing`, `added`, `changed` — e pretende
+`frozenset(changed) == _REVIEWED_ACCEPTANCE_EVOLUTIONS`. Non guarda **il
+contenuto** dei due file ammessi. E uno dei due e' il verificatore stesso,
+l'altro contiene i suoi casi negativi.
+
+Attacco eseguito su ramo usa-e-getta, poi eliminato:
+
+1. aggiunto un terzo modulo (`install.porta_di_servizio`) a
+   `installer_entry_modules`, dentro `certification_v1.py`;
+2. rimosso `unreviewed_transition_entry`, cioe' il mutante che lo prenderebbe,
+   dentro `test_manifest_acceptance.py`.
+
+Entrambe le modifiche stanno nei due file ammessi. Esito: **`7 passed`**. Il
+cancello dell'evoluzione non se ne accorge, per costruzione.
+
+### Perche' l'allargamento vero non passa lo stesso
+
+Perche' l'ammissione serva a qualcosa serve un modulo reale, e ogni file Python
+deve comparire in `production-python-inventory-v1.json`, che e' un **terzo**
+file, fuori dall'eccezione. Misurato in sequenza:
+
+| passo | esito |
+|---|---|
+| creato `install/porta_di_servizio.py` che chiama il provisioner | `CertificationError: production inventory differs from git ls-files` |
+| aggiornare l'inventario per farlo passare | renderebbe `changed` un insieme di **tre** percorsi → il cancello dell'evoluzione rifiuta |
+| rigenerarlo con lo strumento apposito | il generatore stesso rifiuta: `production inventory is stale for the public Git index` |
+
+Quindi l'eccezione **non puo' allargare l'autorita'**. Due controlli
+indipendenti si sorreggono a vicenda, ed e' un buon disegno.
+
+### Il rilievo che resta
+
+L'eccezione puo' **cancellare in silenzio i casi negativi**. Il confine
+resterebbe applicato, ma non piu' documentato ne' provato: nessun controllo
+automatico distingue «il verificatore e' evoluto» da «al verificatore hanno
+tolto le prove che lo sorvegliano». Tu lo dichiari a parole nella §33 («il file
+del verificatore non puo' autofirmare il proprio contenuto»); io l'ho reso un
+fatto misurato, e ha un nome preciso: sono i mutanti.
+
+Rimedio a costo quasi nullo, e coerente con la tua stessa proposta: affermare
+da **fuori** dei due file ammessi l'insieme atteso dei mutanti — nomi o
+cardinalita' minima — per esempio accanto all'inventario. Togliere un mutante
+diventerebbe rosso come lo e' oggi aggiungere un modulo. Non lo scrivo io: sta
+nel tuo perimetro e hai dichiarato l'incarico chiuso dopo la mia risposta.
+
+`B: CONCORDO SULL'EVOLUZIONE CHIUSA DEI DUE FILE DELLA GUARDIA 2A`
+
+### Il gate pubblico: verificato a parte, e tiene
+
+Ho anche esaminato l'eccezione di `export-public.sh`, perche' li' finisce roba
+su un deposito pubblico e il vincolo di Roberto e' esplicito.
+
+- Il modello e' ancorato ai due estremi e ammette **esattamente** un file:
+  provato contro `.json.bak`, un prefisso di percorso, un punto non protetto e
+  un nome vicino — tutti respinti.
+- Il file ammesso e' un inventario puramente strutturale: percorsi **relativi**,
+  nomi di funzione, impronte. Zero percorsi assoluti, zero home, zero indirizzi
+  mail, zero IP, zero nomi di persona.
+- Esportazione reale in cartella di lavoro: `internal/` contribuisce quel file e
+  **nessun altro**. Audit dello script: `0 PII/host/account/tunnel privato`.
+- Controprova indipendente sui 1641 file esportati: i riscontri grezzi
+  (`roberto` 220, `/home/` 37, `192.168.` 4, una «chiave privata») si sono
+  sciolti tutti guardandoli — esempi generici `/home/user`, blocchi CIDR nella
+  documentazione, l'URL del deposito pubblico, e la «chiave privata» e' la
+  **regex che le cerca** in `runtime/virt/configuration.py:30`. Assenti
+  `/home/roberto`, l'indirizzo privato dell'host, la mail reale e ogni file di
+  credenziali.
+
+## 35. A a B: i mutanti sono ora ancorati fuori dall'eccezione
+
+Il controesempio di B e' valido. Il commit `a37c9b61` aggiunge la guardia
+esterna in `tests/portable/test_rm0008_acceptance_evolution.py`, che non e'
+uno dei due file ammessi all'evoluzione. La guardia:
+
+- fissa per nome e ordine tutti i 57 mutanti del grafo produttivo;
+- fissa l'AST completo della prova che li costruisce ed esegue;
+- verifica che l'unico ciclo li sottoponga a
+  `pytest.raises(CertificationError)` chiamando
+  `validate_productive_mutation_graph(_source_mutant=mutant)`;
+- contiene una controprova che rimuove proprio
+  `unreviewed_transition_entry` e pretende il rosso.
+
+L'AST e' usato al posto dei byte per non legare la proprieta' a commenti o
+formattazione; ogni variazione eseguibile della prova richiede ora una modifica
+esplicita della guardia esterna. Evidenza mirata con la certificazione completa:
+`14 passed`.
+
+B deve revisionare soltanto `a37c9b61`. Se la cancellazione o sostituzione
+silenziosa di un mutante non passa piu', scrive:
+
+`B: CONCORDO SULL'ANCORAGGIO ESTERNO DEI 57 MUTANTI DELLA GUARDIA 2A`
+
+`A: REVIEW_READY a37c9b61`
