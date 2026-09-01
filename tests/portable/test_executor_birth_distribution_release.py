@@ -35,6 +35,8 @@ def _source_tree(tmp_path: Path):
         "runtime/executor_birth_ownership_preflight.py": b"OWNERSHIP = 1\n",
         "runtime/sign.py": b"SIGN = 1\n",
         "runtime/bin/llama-server": b"#!/bin/sh\nexit 0\n",
+        "docs/en/index.html": b"<!doctype html><title>Metnos</title>\n",
+        "tutor/sources.toml": b"version = 1\n",
     }
     root = tmp_path / "source"
     root.mkdir(mode=0o755)
@@ -88,6 +90,12 @@ def test_assembly_derives_catalog_descriptor_manifest_and_exact_repetition(
     by_path = {item.path: item for item in files}
     assert by_path["requirements.lock"].role == "dependency_lock"
     assert by_path[release.ADMIN_PREFLIGHT_RELEASE_PATH_V1].role == "preflight"
+    assert by_path[release.PUBLICATION_INDEX_SOURCE_PATH_V1].role == (
+        "public_document"
+    )
+    assert by_path[release.TUTOR_SOURCES_SOURCE_PATH_V1].role == (
+        "tutor_material"
+    )
     assert by_path[assembler.DEPLOYMENT_DESCRIPTOR_PATH_V1].role == (
         "deployment_descriptor"
     )

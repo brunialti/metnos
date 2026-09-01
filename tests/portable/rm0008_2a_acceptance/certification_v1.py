@@ -59,7 +59,7 @@ _FROZEN_WORKFLOW_SHA256 = (
 _EFFECTIVE_PYTEST_SUPPORT_SHA256 = {
     "conftest.py": "c31a567f781dcbd3e1ce06c67c901a1b3be07c21a5d8c4030cc8bf262a753015",
     "tests/portable/conftest.py": (
-        "c4026c2a26baadf7e4a294d747abc97417ce50254d0319dcac0754fba8370fd9"
+        "3e97642c45cd5d4e24d63f05078910ccb818aa49465db788a7b52ae064096193"
     ),
     "tests/runtime/conftest.py": (
         "6c3c097efa2cf52334cb4fc40945c1b1d9c91bf7f774a768958809bd8c9086ab"

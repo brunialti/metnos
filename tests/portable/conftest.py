@@ -31,17 +31,27 @@ def _bind_runtime_modules_by_name() -> None:
         if not (install_root / runtime_file.name).exists():
             continue
         name = runtime_file.stem
-        if name in sys.modules:
+        bound = sys.modules.get(name)
+        if bound is not None:
+            bound_file = getattr(bound, "__file__", None)
+            if (
+                not isinstance(bound_file, str)
+                or Path(bound_file).resolve() != runtime_file.resolve()
+            ):
+                raise RuntimeError(
+                    f"ambiguous portable module was already bound: {name}"
+                )
             continue
         spec = importlib.util.spec_from_file_location(name, runtime_file)
         if spec is None or spec.loader is None:  # pragma: no cover - defensive
-            continue
+            raise RuntimeError(f"cannot bind portable runtime module: {name}")
         module = importlib.util.module_from_spec(spec)
         sys.modules[name] = module
         try:
             spec.loader.exec_module(module)
-        except Exception:  # pragma: no cover - leave resolution to the import
+        except Exception:  # pragma: no cover - preserve the import failure
             del sys.modules[name]
+            raise
 
 
 _bind_runtime_modules_by_name()

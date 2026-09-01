@@ -357,6 +357,7 @@ _TARGET_DATA_ENVIRONMENT_V1 = _target_environment(
     ("METNOS_USER_CONFIG", "@service_config@"),
     ("METNOS_USER_DATA", "@service_data@"),
     ("METNOS_USER_STATE", "@service_state@"),
+    ("METNOS_WORKSPACE", "@service_data@/workspace"),
 )
 
 
@@ -2302,11 +2303,19 @@ def _source_identity(
         for environment in observed_by_id[source.entry_id].target_environment
         if environment.name == "METNOS_USER_DATA"
     }
+    workspace_paths = {
+        environment.value
+        for source in SERVICE_SOURCE_V1
+        for environment in observed_by_id[source.entry_id].target_environment
+        if environment.name == "METNOS_WORKSPACE"
+    }
     data_suffix = "/.local/share/metnos"
     if (
         len(data_paths) != 1
         or not next(iter(data_paths)).endswith(data_suffix)
         or next(iter(data_paths)) == data_suffix
+        or workspace_paths
+        != {next(iter(data_paths)) + "/workspace"}
     ):
         raise ServiceCatalogError(
             "birth_ownership_service_catalog_invalid", "service home binding",

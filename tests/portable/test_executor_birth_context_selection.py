@@ -325,6 +325,29 @@ def test_required_and_staged_producers_preserve_scope():
     assert is_context_selection_v1(staged, allow_staged=True)
 
 
+def test_verified_distribution_context_opens_only_its_runtime_tree(monkeypatch):
+    import executor_birth_prepared_root as prepared_root
+    import executor_birth_secure_fs as secure_fs
+
+    _transition, _prepared, distribution = _evidence()
+    sentinel = object()
+    observed = {}
+
+    def open_root(path, *, exact_private):
+        observed["path"] = path
+        observed["exact_private"] = exact_private
+        return sentinel
+
+    monkeypatch.setattr(secure_fs, "_open_legacy_root_session", open_root)
+    assert prepared_root._open_distribution_sources_for_verified_v1(
+        distribution,
+    ) is sentinel
+    assert observed == {
+        "path": Path(distribution.installation_root) / "runtime",
+        "exact_private": False,
+    }
+
+
 def test_staged_runtime_reverifies_inventory_and_cannot_become_required(
     monkeypatch,
 ):

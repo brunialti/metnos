@@ -122,7 +122,8 @@ def _open_distribution_sources_for_verified_v1(distribution):
         raise PreparedRootError("birth_context_selection_invalid")
     try:
         return _open_legacy_root_session(
-            Path(distribution.installation_root), exact_private=False,
+            Path(distribution.installation_root) / "runtime",
+            exact_private=False,
         )
     except BirthSecureFSError as exc:
         raise PreparedRootError(exc.code, exc) from None

@@ -4113,14 +4113,13 @@ def _complete_transition_receipts_locked_v2(
     """Reach receipt completeness under caller-held deployment and maintenance."""
     from datetime import datetime, timezone
 
-    from executor_birth_bootstrap import _build_staged_reattestation_runtime_v2
     from executor_birth_distribution_manifest import (
         capture_current_deployment_descriptor_v1,
     )
     from executor_birth_ownership_coordinator import (
         _append_prepared_transition_locked_v2,
         _append_receipts_complete_locked_v2,
-        _prepare_staged_current_receipts_v2,
+        _build_staged_current_receipts_v2,
         _prepared_transition_publication_v2,
         _publish_context_transition_locked_v2,
         _require_deployment_lock_session_v1,
@@ -4170,12 +4169,9 @@ def _complete_transition_receipts_locked_v2(
     staged_context = _load_staged_reattestation_context_v1(
         transition, verified, current_inventory,
     )
-    staged_runtime = _build_staged_reattestation_runtime_v2(
+    proof = _build_staged_current_receipts_v2(
         staged_context,
         now=lambda: datetime.now(timezone.utc),
-    )
-    proof = _prepare_staged_current_receipts_v2(
-        staged_runtime,
         prove_quiescent=maintenance,
         expected_inventory=current_inventory,
     )

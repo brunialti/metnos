@@ -320,6 +320,46 @@ def test_recovery_rolls_forward_committed_pointer(monkeypatch, tmp_path: Path) -
     assert calls == ["advance", "cleanup"]
 
 
+def test_recovery_without_a_pending_journal_does_not_create_store_entries(
+    monkeypatch, tmp_path: Path,
+) -> None:
+    import contract_store
+    import executor_birth_authoring as authoring
+    import manifest_inventory
+
+    contract_id = ContractId(ManifestOrigin.USER, "demo/manifest.toml")
+    canonical = tmp_path / "authoring" / "demo"
+    ref = ManifestRef(
+        contract_id, ManifestOrigin.USER, ManifestStatus.ADMITTED,
+        canonical.parent, canonical / "manifest.toml", "demo/manifest.toml",
+        (canonical,),
+    )
+    control = SimpleNamespace(canonical=canonical, lock=tmp_path / "lock")
+    monkeypatch.setattr(
+        manifest_inventory, "inventory_authoring_manifests",
+        lambda: ManifestInventory((ref,), ()),
+    )
+    monkeypatch.setattr(authoring, "authoring_paths", lambda *_args: control)
+    monkeypatch.setattr(authoring, "load_prepared_journal", lambda _control: None)
+    monkeypatch.setattr(
+        authoring, "authoring_token",
+        lambda *_args, **_kwargs: contextlib.nullcontext(),
+    )
+    monkeypatch.setattr(
+        contract_store, "catalog_admission_lock",
+        lambda **_kwargs: contextlib.nullcontext(),
+    )
+    monkeypatch.setattr(
+        contract_store, "_writer_lock",
+        lambda *_args, **_kwargs: pytest.fail("created an empty store entry"),
+    )
+
+    adapter = bootstrap._PostconditionAdapter(
+        trusted_publics=(), verifier_keys={},
+    )
+    adapter.recover_authoring()
+
+
 def test_recovery_rolls_back_predecessor_pointer(monkeypatch, tmp_path: Path) -> None:
     adapter, pending, calls = _recovery_fixture(
         monkeypatch, tmp_path, current="sha256:" + "2" * 64,

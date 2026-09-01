@@ -74,7 +74,7 @@ _FILE_KEYS = frozenset({"path", "size", "content_hash", "role"})
 _ROLES = frozenset({
     "runtime_code", "preflight", "boundary_guard", "boundary_inventory",
     "service_unit", "service_catalog", "deployment_descriptor",
-    "product_version", "dependency_lock",
+    "product_version", "dependency_lock", "public_document", "tutor_material",
 })
 _PLATFORMS = frozenset({"linux", "windows"})
 _ARCHITECTURES = frozenset({"x86_64", "aarch64"})

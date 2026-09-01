@@ -471,10 +471,10 @@ class _PostconditionAdapter:
                 with authoring_token(
                     control.lock, exclusive=True, timeout=DEFAULT_LOCK_TIMEOUT,
                 ):
+                    pending = load_prepared_journal(control)
+                    if pending is None:
+                        continue
                     with _writer_lock(ref.contract_id, store_root=self.store_root):
-                        pending = load_prepared_journal(control)
-                        if pending is None:
-                            continue
                         if pending.contract_id != ref.contract_id.value:
                             raise BirthBootstrapError("birth_authoring_recovery_ambiguous")
                         contract_dir, _generations, current, _payloads = _publication_base_locked(

@@ -261,7 +261,8 @@ def stage_runtime_sources(tmp_path: Path, monkeypatch) -> Path:
 
     catalog = importlib.import_module("executor_birth_context_v1")
     runtime_config = importlib.import_module("config")
-    stage = tmp_path / "distribution"
+    release = tmp_path / "distribution"
+    stage = release / "runtime"
     if not stage.is_dir():
         stage.mkdir(mode=0o755, parents=True)
         for _, _, files, _ in catalog.CONTEXT_CATALOG_V1:
@@ -273,6 +274,7 @@ def stage_runtime_sources(tmp_path: Path, monkeypatch) -> Path:
         # The container is sealed last: a protected descriptor applied first
         # would deny the very copies that have to go inside it.
         apply_profile(stage, directory=True, private=False)
+        apply_profile(release, directory=True, private=False)
     monkeypatch.setattr(runtime_config, "PATH_RUNTIME", stage)
     return stage
 

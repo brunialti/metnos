@@ -92,7 +92,11 @@ DEPENDENCY_RELEASE_PATH_V1 = "requirements.lock"
 ADMIN_PREFLIGHT_SOURCE_PATH_V1 = "runtime/executor_birth_admin_preflight.py"
 ADMIN_PREFLIGHT_RELEASE_PATH_V1 = "deployment/admin/preflight.py"
 LLAMA_SOURCE_PATH_V1 = "runtime/bin/llama-server"
-_SOURCE_ROOTS_V1 = frozenset({"runtime", "install", "scripts", "executors"})
+PUBLICATION_INDEX_SOURCE_PATH_V1 = "docs/en/index.html"
+TUTOR_SOURCES_SOURCE_PATH_V1 = "tutor/sources.toml"
+_SOURCE_ROOTS_V1 = frozenset({
+    "docs", "runtime", "install", "scripts", "executors", "tutor",
+})
 _EXCLUDED_SUFFIXES_V1 = (".pyc", ".pyo")
 _OPENSSL_V1 = "/usr/bin/openssl"
 _SYSTEMCTL_V1 = "/usr/bin/systemctl"
@@ -225,6 +229,8 @@ def _projected_source_path_v1(path: str) -> str | None:
         return None
     if path == DEPENDENCY_SOURCE_PATH_V1:
         return DEPENDENCY_RELEASE_PATH_V1
+    if parts[0] == "docs" and path.casefold().endswith(".py"):
+        return None
     if parts[0] in _SOURCE_ROOTS_V1:
         return path
     return None
@@ -371,6 +377,10 @@ def _release_file_role_v1(path: str) -> str:
     }
     if path.startswith("deployment/systemd/"):
         return "service_unit"
+    if path.startswith("docs/"):
+        return "public_document"
+    if path.startswith("tutor/"):
+        return "tutor_material"
     return fixed.get(path, "runtime_code")
 
 
@@ -435,6 +445,8 @@ def _assemble_staging_v1(
         DEPENDENCY_SOURCE_PATH_V1,
         ADMIN_PREFLIGHT_SOURCE_PATH_V1,
         LLAMA_SOURCE_PATH_V1,
+        PUBLICATION_INDEX_SOURCE_PATH_V1,
+        TUTOR_SOURCES_SOURCE_PATH_V1,
         "runtime/__version__.py",
     }
     if not required.issubset(by_source):

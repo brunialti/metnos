@@ -487,6 +487,7 @@ def test_source_compiler_binds_targets_environment_and_supplementary_groups() ->
         "METNOS_USER_CONFIG": "/srv/metnos/.config/metnos",
         "METNOS_USER_DATA": "/srv/metnos/.local/share/metnos",
         "METNOS_USER_STATE": "/srv/metnos/.local/state/metnos",
+        "METNOS_WORKSPACE": "/srv/metnos/.local/share/metnos/workspace",
         "PLAYWRIGHT_BROWSERS_PATH": (
             "/srv/metnos/.local/share/metnos/playwright-browsers"
         ),

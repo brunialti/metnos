@@ -5350,6 +5350,25 @@ def _prepare_staged_current_receipts_v2(
     return report.proof
 
 
+def _build_staged_current_receipts_v2(
+    staged_context: object, *, now: Callable[[], datetime],
+    prove_quiescent: Callable[[], bool], expected_inventory: object,
+) -> CurrentReceiptProof:
+    """Own staged-runtime composition at the receipt-proof boundary."""
+    from executor_birth_bootstrap import (
+        _build_staged_reattestation_runtime_v2,
+    )
+
+    staged_runtime = _build_staged_reattestation_runtime_v2(
+        staged_context, now=now,
+    )
+    return _prepare_staged_current_receipts_v2(
+        staged_runtime,
+        prove_quiescent=prove_quiescent,
+        expected_inventory=expected_inventory,
+    )
+
+
 def _current_reattestation_port_v1():
     """Load the sole fixed Birth port that can enumerate current generations."""
     from executor_birth_bootstrap import BirthBootstrapError, bootstrap_birth_runtime

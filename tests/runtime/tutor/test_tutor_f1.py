@@ -1892,6 +1892,7 @@ def test_tutor_declares_signed_bootstrap_localization_state(monkeypatch):
     assert tutor_boundary._declare_localization_state(result) == result
 
     unavailable = tutor_boundary.unavailable_answer()
+    assert unavailable.elapsed_ms == 0
     assert unavailable.answer_md.endswith(
         "`localization_state=bootstrap_english; requested_lang=nl`"
     )

@@ -6,6 +6,7 @@ import json
 import os
 from contextlib import contextmanager
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -113,7 +114,8 @@ def _transition_inputs(tmp_path, monkeypatch):
     support.use_config(monkeypatch, base)
     previous = read_prepared_set_v1()
     distribution = replace(
-        _distribution(), installation_root=str(runtime_config.PATH_RUNTIME),
+        _distribution(),
+        installation_root=str(Path(runtime_config.PATH_RUNTIME).parent),
     )
     return base, previous, distribution
 
@@ -641,7 +643,7 @@ def test_v2_builds_a_new_set_without_copying_or_replacing_the_author_root(
     layout = support.open_layout(monkeypatch, base)
     target_root = runtime_config.PATH_RUNTIME
     distribution = replace(
-        _distribution(), installation_root=str(target_root),
+        _distribution(), installation_root=str(Path(target_root).parent),
     )
     monkeypatch.setattr(
         runtime_config, "PATH_RUNTIME", tmp_path / "must-not-be-opened",
@@ -795,7 +797,6 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
 ):
     from install import birth_authority_provisioner as provisioning
     import executor_birth_distribution_manifest as distribution_module
-    import executor_birth_bootstrap as bootstrap_module
     import executor_birth_ownership_coordinator as coordinator_module
     import executor_birth_ownership_preflight as preflight_module
     import executor_birth_prepared_root as prepared_root_module
@@ -905,15 +906,13 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
         prepared_root_module, "_load_staged_reattestation_context_v1",
         lambda *args: order.append("staged-context") or "context",
     )
+    def build_staged_receipts(*_args, **_kwargs):
+        order.extend(("staged-runtime", "receipts"))
+        return CurrentReceiptProof((), {})
+
     monkeypatch.setattr(
-        bootstrap_module, "_build_staged_reattestation_runtime_v2",
-        lambda *args, **kwargs: order.append("staged-runtime") or "runtime",
-    )
-    monkeypatch.setattr(
-        coordinator_module, "_prepare_staged_current_receipts_v2",
-        lambda *args, **kwargs: order.append("receipts") or CurrentReceiptProof(
-            (), {},
-        ),
+        coordinator_module, "_build_staged_current_receipts_v2",
+        build_staged_receipts,
     )
     monkeypatch.setattr(
         preflight_module, "canonical_maintenance_proof",
