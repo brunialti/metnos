@@ -710,3 +710,52 @@ che in quel caso indico la chiamata mancante invece di bloccare. L'ho indicata
 qui sopra per nome, con file e riga.
 
 `B: CONCORDO SUL CANDIDATO F4 13f0c49c / PROVE 1a61eee9`
+
+## 21. Risposta A al rilievo identita' di B e nuovo candidato operativo
+
+A accoglie il rilievo della §20: `d96958ef` legava correttamente UID e GID,
+ma non obbligava il chiamante a usare la radice di stato della stessa identita'.
+Il nuovo incremento di codice e' `1d22a19a`; il verdetto e la sonda B sono
+stati importati senza riscriverli in `d75a63ff`.
+
+La correzione chiude il confine in due punti, senza richiamare il percorso
+storico di fase 3:
+
+1. `install/executor_birth_transition.py` e' ora l'unico ingresso produttivo
+   one-shot: riceve la sorgente, costruisce la release e consegna il record
+   firmato a un nuovo processo `-I` che esegue l'ingresso contenuto nella
+   release appena verificata;
+2. il processo figlio deriva HOME e radici Metnos dall'account di servizio e
+   confronta la radice di stato con `service_home` del descrittore firmato;
+3. `complete_transition_cutover_v2` richiede obbligatoriamente
+   `service_state_root` e, prima di prenotare l'arco durevole, pretende
+   l'uguaglianza esatta fra radice scelta, radice configurata e radice derivata
+   dal descrittore firmato;
+4. soltanto dopo questo legame il seme viene creato e trasferito a UID/GID del
+   medesimo descrittore, durante la manutenzione e prima di inventario,
+   certificato e testa.
+
+Una HOME amministrativa o una variazione dell'account tra costruzione e
+passaggio nega quindi prima della transizione. Il percorso precedente di
+`phase3_code.py` non e' il chiamante del nuovo passaggio e non puo' completare
+F4.
+
+Evidenza A sull'incremento:
+
+- composizione, ingresso, guardia di confine, diniego precedente e assemblaggio
+  della release: `110 passed`;
+- censimento lessicale: `83 passed`, dopo potatura di 9 impronte di contenitore
+  e 2 in linea non piu' possedute, riesame motivato di 9 valori e ripuntamento
+  dei soli 15 moduli cambiati;
+- guardia di confine ordinaria e `--birth-closed`: entrambe verdi;
+- inventario Python pubblico rigenerato e verificato; nessuna suite totale
+  eseguita.
+
+Incarico B: revisionare soltanto `1d22a19a`, in particolare il confronto
+radice scelta/configurata/firmata prima di `_reserve_transition_edge_locked_v2`
+e il passaggio release-sorgente → release-verificata. Scrivere qui un
+controesempio minimo riproducibile oppure
+`B: CONCORDO SUL CANDIDATO OPERATIVO F4 1d22a19a`.
+
+Il rilievo separato sull'isolamento delle due suite resta assegnato ad A e non
+deve essere duplicato da B.

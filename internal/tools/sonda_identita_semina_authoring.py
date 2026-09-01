@@ -1,24 +1,11 @@
 #!/usr/bin/env python3
-"""Measure which identity decides where the repository authoring seed lands.
+"""Measure which identity decides where repository authoring is seeded.
 
-RM-0008 F4 point 2 (assignment of agent A, commit faaeff9d).
+This historical diagnostic exposed the missing service-state binding in the
+F4 candidate reviewed by agent B. Its individual checks deliberately describe
+that older defect; after the fix, the caller and binding checks become red.
 
-The transition declares a ``service_user`` and uses it for systemd, for the
-maintenance guard and for the uid it resolves.  The authoring seed, which the
-service must read after the restart and rewrite on the first
-``deploy --executor <name> --sign``, is placed instead under
-``config.PATH_USER_STATE`` -- a path derived from the *invoking process* home.
-
-This probe measures four facts, no inference:
-
-  1. the seed root is ``PATH_USER_STATE / contract-authoring / v1``;
-  2. that root follows the process environment, so a different invoking
-     identity seeds a different directory;
-  3. the seeding code never reads ``service_user``, a uid or a pwd entry;
-  4. the mechanism that binds an identity to those paths already exists in
-     ``runtime/stack_migration.py`` and the transition path does not call it.
-
-Read-only.  Touches no service, no production tree, no root of birth.
+The probe is read-only. It touches no service, production tree, or Birth root.
 """
 
 from __future__ import annotations
@@ -43,7 +30,7 @@ def check(name: str, condition: bool, detail: str) -> None:
 
 
 def _seed_function_source() -> str:
-    """Return the source of the helper that materialises the seed root."""
+    """Return the source of the helper that materializes the seed root."""
     tree = ast.parse((RUNTIME / "contract_store.py").read_text())
     for node in ast.walk(tree):
         if (
@@ -75,7 +62,7 @@ def _state_path_under(home: str) -> str:
 
 
 def _owner_defaults_to_none() -> bool:
-    """True when the seed helper leaves ``authoring_owner`` defaulting to None."""
+    """Return whether the seed helper defaults ``authoring_owner`` to None."""
     text = (RUNTIME / "contract_store.py").read_text()
     tree = ast.parse(text)
     for node in ast.walk(tree):
@@ -94,7 +81,7 @@ def _owner_defaults_to_none() -> bool:
 
 
 def _product_callers(symbol: str) -> int:
-    """Count call sites of ``symbol`` in product code, excluding its own def."""
+    """Count product call sites of ``symbol``, excluding its definition."""
     found = 0
     for directory in ("runtime", "install", "scripts"):
         base = ROOT / directory
