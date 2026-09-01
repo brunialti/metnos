@@ -503,25 +503,37 @@ def _required_context_runtime_for_bootstrap_v1():
         raise BirthBootstrapError("birth_ownership_chain_unavailable") from exc
 
 
-def _build_sealed(
-    *, now: Callable[[], datetime], store_root: Path | None = None,
-) -> BirthRuntimeBundle:
-    """Assemble the runtime from the prepared authority set, and from nothing else.
+@dataclass(frozen=True, slots=True)
+class _SealedBirthAssemblyV1:
+    core: object
+    authorities: Mapping[object, _ProducerAuthority]
+    registry: IssuerRegistry
+    producer_db: Path
+    ttl_seconds: int
+    now: Callable[[], datetime]
+    context_builder: object
+    reattestation_port: object
 
-    Every authority is read once under the barrier of
-    ``executor_birth_prepared_root``, the context is the one rebuilt there from
-    the installed distribution, and the two policy facts come from the code.
-    No configuration document takes part.
-    """
+
+def _prepare_sealed_birth_assembly_v1(
+    sealed: object,
+    *,
+    now: Callable[[], datetime],
+    store_root: Path | None = None,
+) -> _SealedBirthAssemblyV1:
+    """Build the shared sealed core without exposing productive factories."""
     from executor_birth_commit_publisher import _build_prepared_bundle_v1
     from executor_birth_context import BuiltAdmissionContext
     from executor_birth_context_builder import ProductionContextBuilder
     from executor_birth_policy_v1 import (
         BIRTH_POLICY_VERSION_V1, birth_receipt_ttl_seconds_v1,
     )
-    from executor_birth_prepared_root import load_sealed_authorities_v1
+    from executor_birth_prepared_root import SealedAuthoritiesV1
     from executor_birth_approval_store import resolve_request_approval
     import config as _config
+
+    if not isinstance(sealed, SealedAuthoritiesV1):
+        raise BirthBootstrapError("birth_context_selection_invalid")
 
     def canonical_now() -> datetime:
         instant = now()
@@ -533,12 +545,6 @@ def _build_sealed(
             raise BirthBootstrapError("birth_clock_invalid")
         return instant.astimezone(timezone.utc).replace(microsecond=0)
 
-    required_context = _required_context_runtime_for_bootstrap_v1()
-    sealed = (
-        required_context.authorities
-        if required_context is not None
-        else load_sealed_authorities_v1()
-    )
     state_dir = _secure_state_dir(
         Path(_config.PATH_USER_STATE) / BIRTH_STATE_BASENAME_V1
     )
@@ -592,31 +598,159 @@ def _build_sealed(
         postcondition_verifier=verifier.verify,
     )
     ttl = birth_receipt_ttl_seconds_v1()
-    factories = {
-        cap: _request_factory(
-            auth, registry, producer_db, ttl, canonical_now, context_builder,
-        )
-        for cap, auth in authorities.items()
-    }
+    return _SealedBirthAssemblyV1(
+        core=core,
+        authorities=authorities,
+        registry=registry,
+        producer_db=producer_db,
+        ttl_seconds=ttl,
+        now=canonical_now,
+        context_builder=context_builder,
+        reattestation_port=bundle.publisher.reattestation_port(),
+    )
+
+
+def _reattestation_factory_for_assembly_v1(
+    assembly: _SealedBirthAssemblyV1, *, selection: object | None,
+):
     from executor_birth_intent import _INSTALLER
 
-    reattestation_options = dict(
-        port=bundle.publisher.reattestation_port(),
-        authority=authorities[_INSTALLER], registry=registry,
-        db_path=producer_db, ttl_seconds=ttl, now=canonical_now,
+    options = dict(
+        port=assembly.reattestation_port,
+        authority=assembly.authorities[_INSTALLER],
+        registry=assembly.registry,
+        db_path=assembly.producer_db,
+        ttl_seconds=assembly.ttl_seconds,
+        now=assembly.now,
     )
-    if required_context is None:
-        reattestation_factory = _CutoverReattestationFactoryV1(
-            _REATTESTATION_FACTORY_TOKEN, **reattestation_options,
+    if selection is None:
+        return _CutoverReattestationFactoryV1(
+            _REATTESTATION_FACTORY_TOKEN, **options,
         )
-    else:
-        reattestation_factory = _CutoverReattestationFactoryV2(
-            _REATTESTATION_FACTORY_TOKEN,
-            selection=required_context.selection,
-            **reattestation_options,
+    return _CutoverReattestationFactoryV2(
+        _REATTESTATION_FACTORY_TOKEN, selection=selection, **options,
+    )
+
+
+_STAGED_REATTESTATION_RUNTIME_TOKEN_V2 = object()
+
+
+class _StagedReattestationRuntimeV2:
+    """A sealed transition runtime with no ordinary Birth entry points."""
+
+    __slots__ = ("_core", "_factory", "_seal")
+
+    def __init__(self, token: object, *, core: object, factory: object) -> None:
+        from executor_birth_operational import _BirthCore
+
+        if (
+            token is not _STAGED_REATTESTATION_RUNTIME_TOKEN_V2
+            or not isinstance(core, _BirthCore)
+            or not _is_cutover_reattestation_factory_v2(factory)
+            or factory._port._owner is not core.commit_publisher
+        ):
+            raise BirthBootstrapError("birth_staged_reattestation_invalid")
+        self._core = core
+        self._factory = factory
+        self._seal = token
+
+    @property
+    def transition_id(self) -> str:
+        return self._factory._selection.transition_id
+
+    def enumerate_current(self):
+        return self._factory._port.enumerate_current()
+
+    def producer_request(self, current: object):
+        return self._factory.producer_request(current)
+
+    def read_receipt(self, current: object) -> bytes | None:
+        request = self.producer_request(current)
+        return self._factory._port.read_v2(current, request)
+
+    def verify_receipt(self, encoded: bytes):
+        return self._factory._port.verify_receipt(encoded)
+
+    def reattest(self, current: object) -> bytes:
+        from executor_birth_reattestation import (
+            _assemble_reattestation_core, _execute,
         )
+
+        request = self._factory(current)
+        return _execute(
+            request, _assemble_reattestation_core(self._core),
+        ).receipt
+
+
+def _is_staged_reattestation_runtime_v2(value: object) -> bool:
+    return (
+        isinstance(value, _StagedReattestationRuntimeV2)
+        and value._seal is _STAGED_REATTESTATION_RUNTIME_TOKEN_V2
+        and _is_cutover_reattestation_factory_v2(value._factory)
+        and value._factory._port._owner is value._core.commit_publisher
+    )
+
+
+def _build_staged_reattestation_runtime_v2(
+    staged_context: object,
+    *,
+    now: Callable[[], datetime],
+    store_root: Path | None = None,
+) -> _StagedReattestationRuntimeV2:
+    """Build, but never install, the runtime for one pending transition."""
+    from executor_birth_prepared_root import StagedReattestationContextV1
+
+    if not isinstance(staged_context, StagedReattestationContextV1):
+        raise BirthBootstrapError("birth_context_selection_invalid")
+    assembly = _prepare_sealed_birth_assembly_v1(
+        staged_context.authorities, now=now, store_root=store_root,
+    )
+    factory = _reattestation_factory_for_assembly_v1(
+        assembly, selection=staged_context.selection,
+    )
+    return _StagedReattestationRuntimeV2(
+        _STAGED_REATTESTATION_RUNTIME_TOKEN_V2,
+        core=assembly.core,
+        factory=factory,
+    )
+
+
+def _build_sealed(
+    *, now: Callable[[], datetime], store_root: Path | None = None,
+) -> BirthRuntimeBundle:
+    """Assemble the runtime from the selected authority set only."""
+    from executor_birth_prepared_root import (
+        load_sealed_authorities_v1,
+    )
+
+    required_context = _required_context_runtime_for_bootstrap_v1()
+    sealed = (
+        required_context.authorities
+        if required_context is not None
+        else load_sealed_authorities_v1()
+    )
+    assembly = _prepare_sealed_birth_assembly_v1(
+        sealed, now=now, store_root=store_root,
+    )
+    factories = {
+        cap: _request_factory(
+            auth,
+            assembly.registry,
+            assembly.producer_db,
+            assembly.ttl_seconds,
+            assembly.now,
+            assembly.context_builder,
+        )
+        for cap, auth in assembly.authorities.items()
+    }
+    reattestation_factory = _reattestation_factory_for_assembly_v1(
+        assembly,
+        selection=(
+            None if required_context is None else required_context.selection
+        ),
+    )
     return _assemble_birth_runtime_bundle(
-        core, factories, reattestation_factory,
+        assembly.core, factories, reattestation_factory,
     )
 
 

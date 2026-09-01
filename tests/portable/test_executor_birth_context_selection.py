@@ -103,6 +103,9 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
     from executor_birth_bootstrap import (
         _CutoverReattestationFactoryV2, _ProducerAuthority,
         _REATTESTATION_FACTORY_TOKEN,
+        _STAGED_REATTESTATION_RUNTIME_TOKEN_V2,
+        _StagedReattestationRuntimeV2,
+        _is_staged_reattestation_runtime_v2,
     )
     from executor_birth_commit_publisher import (
         _BirthCommitPublisher, _PUBLISHER_TOKEN,
@@ -110,7 +113,9 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
     from executor_birth_cutover import CurrentGeneration
     from executor_birth_identity import RevisionAuthor
     from executor_birth_intent import _INSTALLER
+    from executor_birth_operational import _assemble_birth_core
     from executor_birth_receipts import IssuerRegistry
+    from executor_birth_shadow import _sealed_dependencies_for_test
     from manifest_inventory import (
         ContractId, ManifestOrigin, ManifestRef, ManifestStatus,
     )
@@ -172,6 +177,29 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
         ttl_seconds=300,
         now=lambda: datetime(2026, 9, 1, tzinfo=timezone.utc),
     )
+    core = _assemble_birth_core(
+        producer_registry=IssuerRegistry({}),
+        producer_db=Path(tmp_path / "producer.sqlite"),
+        context_resolver=lambda _request: None,
+        context_epoch_resolver=lambda: selection.context_epoch,
+        approval_resolver=lambda *_args: (None, None),
+        shadow_dependencies=_sealed_dependencies_for_test(),
+        admission_private_key=admission,
+        admission_verifier_keys={"admission": admission.public_key()},
+        admission_key_id="admission",
+        policy_version="birth-policy-v1",
+        now=lambda: datetime(2026, 9, 1, tzinfo=timezone.utc),
+        commit_publisher=publisher,
+        postcondition_verifier=lambda *_args: None,
+    )
+    runtime = _StagedReattestationRuntimeV2(
+        _STAGED_REATTESTATION_RUNTIME_TOKEN_V2,
+        core=core,
+        factory=factory,
+    )
+    assert _is_staged_reattestation_runtime_v2(runtime)
+    assert runtime.transition_id == selection.transition_id
+    assert not hasattr(runtime, "producer_factories")
 
     preview = factory.producer_request(current)
     assert observed == {}
