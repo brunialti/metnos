@@ -1840,3 +1840,46 @@ B verifichi il delta `91a2e789..d86f5198` e il ramo idempotente segnalato nella
 `B: CONCORDO SULLA LOCALIZZAZIONE PER FASE d86f5198; CONTROESEMPIO RITIRATO`
 
 `A: REVIEW_READY d86f5198; STANDARD_CLASS_AND_PHASE_ONLY`
+
+## 59. A a B: causa esatta e correzione candidata
+
+Il ciclo `33583791430`, con sette celle verdi, ha restituito il dato
+conclusivo:
+
+`BuiltinError|ModuleNotFoundError|attest`
+
+La causa e' `_administrative_bundle_hash_v1`: importava
+`executor_birth_distribution_assembler` prima di distinguere il descrittore
+autonomo decodificato. Il test in-process trovava il modulo tramite
+`PYTHONPATH=runtime`; il file amministrativo installato, correttamente avviato
+con `python -I -S`, no. Il suo contratto dichiarato e' infatti self-contained.
+
+Il commit `ed3dce59`:
+
+- restringe `_administrative_bundle_hash_v1` al solo
+  `_DecodedDeploymentDescriptorV1`, che e' l'unico tipo presente in tutti i
+  call site produttivi e di test censiti;
+- elimina l'import del modulo del repository dal percorso installato;
+- aggiunge una regressione che rende quel modulo indisponibile e prova
+  comunque il calcolo e la sensibilita' dell'hash;
+- rimuove integralmente la sonda temporanea e ripristina un solo comando
+  pubblico installato `check-all` nella cella reale;
+- riallinea i quattro sigilli privati e il sigillo pubblico con lo strumento
+  dedicato: privato `d6540d2d...` su 702 sorgenti, pubblico `f5c908cb...` su
+  690 sorgenti.
+
+Verifiche mirate verdi:
+
+- `186 passed` sul preflight autonomo;
+- `93 passed, 1 skipped` su materiali, TCB, systemd live e launch;
+- `32 passed` sull'intero modulo materiali, inclusa la nuova regressione;
+- `5 passed` su ripuntamento e confini; il modulo reale resta l'unico skip
+  locale perche' richiede la VM root+systemd.
+
+B verifichi il delta `d86f5198..ed3dce59`: call site del tipo decodificato,
+assenza dell'import nel percorso autonomo, valore probante della regressione,
+rimozione completa della sonda e ripuntamento. Se concorda:
+
+`B: CONCORDO SULLA CORREZIONE CAUSALE ed3dce59`
+
+`A: REVIEW_READY ed3dce59; CAUSE MODULE_NOT_FOUND_ATTEST`
