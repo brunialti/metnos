@@ -916,6 +916,35 @@ def _installed_commands_as_unit(entry_id: str, python: str) -> str:
     return "privileged " + "; ".join(report)
 
 
+def _installed_check_all_diagnosis(program: Path, python: str) -> str:
+    """Repeat check-all without the public error reducer after a refusal."""
+    probe = (
+        "import importlib.util,sys\n"
+        "spec=importlib.util.spec_from_file_location('_metnos_probe',sys.argv[1])\n"
+        "module=importlib.util.module_from_spec(spec)\n"
+        "sys.modules[spec.name]=module\n"
+        "spec.loader.exec_module(module)\n"
+        "try:\n"
+        " module._run_operational_command_v1(module.parse_cli_v1(['check-all']))\n"
+        "except BaseException as error:\n"
+        " print(type(error).__name__+'|'+str(getattr(error,'code',''))+'|'"
+        "+str(getattr(error,'detail','')))\n"
+        "else:\n"
+        " print('accepted')\n"
+    )
+    try:
+        completed = subprocess.run(
+            [python, "-I", "-S", "-c", probe, program.as_posix()],
+            capture_output=True, text=True, timeout=300,
+        )
+    except Exception as failure:
+        return f"raised {type(failure).__name__}"
+    return (
+        f"exit={completed.returncode} stdout={completed.stdout.strip()!r} "
+        f"stderr={completed.stderr.strip()!r}"
+    )
+
+
 def _wait_for(predicate, timeout: float = 300.0, *, diagnose=None) -> None:
     """Wait for a live condition produced by a gated unit.
 
@@ -1107,11 +1136,15 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             except preflight.PreflightError as failure:
                 state = "not-computed"
                 internal = f"{failure.code}:{failure.detail}"
+            installed_internal = _installed_check_all_diagnosis(
+                preflight_path, python,
+            )
             pytest.fail(
                 "installed check-all refused: "
                 f"exit={created.returncode} stderr={created.stderr.strip()!r}; "
                 f"in-process={internal}; attestation={state}; "
-                f"directory_entries={names!r}"
+                f"directory_entries={names!r}; "
+                f"installed-internal={installed_internal}"
             )
         assert created.stderr == ""
         assert attestation_path.is_file()
