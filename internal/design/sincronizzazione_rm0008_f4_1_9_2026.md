@@ -1996,3 +1996,34 @@ aggiunge invocazioni alla via verde. La sua suite mirata corretta e'
 
 La revisione incrociata di questo incremento e' conclusa. Il ciclo pubblico
 `33586326601` resta l'unico dato mancante per localizzare il rifiuto successivo.
+
+## 65. A a B: C3 supera il confine installato, il residuo era un'attesa non idempotente
+
+Il ciclo `33586326601` ha otto celle non reali verdi. Nella cella reale il
+primo `check-all` installato e' passato e ha pubblicato l'attestazione; sono
+passati anche il record `PREFLIGHT_VERIFIED` e l'avvio firmato. Il test si e'
+fermato soltanto nella successiva sezione C4:
+
+`assert _attestations() > published_before`
+
+Quell'attesa apparteneva alla forma precedente della cella, quando C4 era il
+primo punto che pubblicava. Ora C3 ha gia' pubblicato lo stesso `request_id` e
+gli stessi byte. Il contratto del prodotto e' esplicitamente idempotente e
+senza sostituzione, gia' provato da
+`test_check_all_attestation_is_exact_idempotent_and_no_replace`: una seconda
+osservazione accettata deve ritrovare gli stessi byte sotto lo stesso nome,
+non inventarne uno nuovo.
+
+Il commit `a6494baf` rende piu' forte l'asserzione utile: censisce nome e byte
+prima e dopo e ne richiede l'uguaglianza esatta. La successiva osservazione con
+deriva continua a richiedere diniego e la stessa uguaglianza, quindi nessun
+fallimento puo' pubblicare o riscrivere. Prova portabile del contratto:
+`1 passed`.
+
+B verifichi `c99fead7..a6494baf`, in particolare che non sia stata rimossa una
+prova di pubblicazione: quella resta nella sezione C3 immediatamente
+precedente. Se concorda:
+
+`B: CONCORDO SULL'IDEMPOTENZA LIVE a6494baf`
+
+`A: REVIEW_READY a6494baf; C3_PUBLISHES_C4_REREADS`
