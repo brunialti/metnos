@@ -71,6 +71,26 @@ def test_maintenance_session_rejects_a_look_alike() -> None:
     assert denied.value.code == "cutover_session_invalid"
 
 
+def test_initial_maintenance_accepts_an_absent_legacy_unit() -> None:
+    class Systemctl:
+        @staticmethod
+        def show(_unit: str, _scope: str) -> dict[str, object]:
+            return {
+                "LoadState": "not-found",
+                "ActiveState": "inactive",
+                "MainPID": 0,
+            }
+
+    observed = guard.prove_stack_stopped(SimpleNamespace(
+        systemctl=Systemctl(),
+        require_quiescent=lambda: {
+            "source": "inactive_http_and_inactive_sidecar",
+        },
+    ))
+    assert observed["units"]
+    assert {item["load_state"] for item in observed["units"]} == {"not-found"}
+
+
 def test_transition_guard_binds_user_scope_to_the_verified_account(
     monkeypatch,
 ) -> None:

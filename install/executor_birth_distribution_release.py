@@ -91,7 +91,6 @@ DEPENDENCY_SOURCE_PATH_V1 = "requirements.txt"
 DEPENDENCY_RELEASE_PATH_V1 = "requirements.lock"
 ADMIN_PREFLIGHT_SOURCE_PATH_V1 = "runtime/executor_birth_admin_preflight.py"
 ADMIN_PREFLIGHT_RELEASE_PATH_V1 = "deployment/admin/preflight.py"
-LLAMA_SOURCE_PATH_V1 = "runtime/bin/llama-server"
 PUBLICATION_INDEX_SOURCE_PATH_V1 = "docs/en/index.html"
 TUTOR_SOURCES_SOURCE_PATH_V1 = "tutor/sources.toml"
 _SOURCE_ROOTS_V1 = frozenset({
@@ -101,7 +100,6 @@ _EXCLUDED_SUFFIXES_V1 = (".pyc", ".pyo")
 _OPENSSL_V1 = "/usr/bin/openssl"
 _SYSTEMCTL_V1 = "/usr/bin/systemctl"
 _SYSTEMD_ANALYZE_V1 = "/usr/bin/systemd-analyze"
-_JAVA_V1 = "/usr/bin/java"
 _XVFB_V1 = "/usr/bin/Xvfb"
 
 
@@ -444,7 +442,6 @@ def _assemble_staging_v1(
         BOUNDARY_INVENTORY_SOURCE_PATH_V1,
         DEPENDENCY_SOURCE_PATH_V1,
         ADMIN_PREFLIGHT_SOURCE_PATH_V1,
-        LLAMA_SOURCE_PATH_V1,
         PUBLICATION_INDEX_SOURCE_PATH_V1,
         TUTOR_SOURCES_SOURCE_PATH_V1,
         "runtime/__version__.py",
@@ -481,14 +478,11 @@ def _assemble_staging_v1(
         raise _fail("release path collision")
     content.update(generated)
 
-    python_executable = os.path.abspath(sys.executable)
-    llama_target = f"{final_root.as_posix()}/{LLAMA_SOURCE_PATH_V1}"
+    python_executable = os.path.realpath(sys.executable)
     target_executables = tuple((path, payload) for path, payload in (
         (python_executable, _read_executable_v1(python_executable)),
         (_SYSTEMCTL_V1, _read_executable_v1(_SYSTEMCTL_V1)),
-        (_JAVA_V1, _read_executable_v1(_JAVA_V1)),
         (_XVFB_V1, _read_executable_v1(_XVFB_V1)),
-        (llama_target, content[LLAMA_SOURCE_PATH_V1][0]),
     ))
     built_catalog = _build_service_catalog_v1(
         installation_root=final_root.as_posix(),

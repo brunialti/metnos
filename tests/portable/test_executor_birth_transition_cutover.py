@@ -66,6 +66,39 @@ def test_process_tree_observer_covers_open_and_mapped_paths(tmp_path: Path):
     )
 
 
+@LINUX_ONLY
+def test_entrypoint_observer_ignores_unrelated_work_in_the_same_tree(
+    tmp_path: Path,
+):
+    observed_root = tmp_path / "previous"
+    observed_root.mkdir()
+    entry = observed_root / "install" / "entry.py"
+    entry.parent.mkdir()
+    entry.write_bytes(b"pass\n")
+    unrelated = observed_root / "internal" / "helper.py"
+    unrelated.parent.mkdir()
+    unrelated.write_bytes(b"pass\n")
+    proc_root = tmp_path / "proc"
+    process = proc_root / "41"
+    (process / "fd").mkdir(parents=True)
+    (process / "cwd").symlink_to(observed_root)
+    (process / "exe").symlink_to("/usr/bin/python3")
+    (process / "maps").write_text("", encoding="utf-8")
+    (process / "cmdline").write_bytes(
+        b"python3\0internal/helper.py\0",
+    )
+
+    assert not provisioner._process_tree_references_entries_v2(
+        observed_root, ("install/entry.py",), proc_root=proc_root,
+    )
+    (process / "cmdline").write_bytes(
+        b"python3\0-m\0install.entry\0",
+    )
+    assert provisioner._process_tree_references_entries_v2(
+        observed_root, ("install/entry.py",), proc_root=proc_root,
+    )
+
+
 def test_enforcement_observation_is_bound_to_the_signed_file(tmp_path: Path):
     relative = "runtime/executor_birth_legacy_gate.py"
     gate = tmp_path / relative
@@ -116,6 +149,82 @@ def _minimal_catalog() -> DecodedServiceCatalogV1:
     return DecodedServiceCatalogV1(D("1"), (entry,), bindings, b"catalog", D("2"))
 
 
+@LINUX_ONLY
+def test_initial_predecessor_is_published_from_the_bound_legacy_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    import executor_birth_ownership_authorities as authorities
+    import executor_birth_ownership_coordinator as coordinator
+    import executor_birth_service_catalog as service_catalog
+    from executor_birth_distribution_assembler import (
+        decode_predecessor_descriptor_v1,
+    )
+
+    root = tmp_path / "legacy"
+    entry = root / "legacy.sh"
+    root.mkdir()
+    entry.write_bytes(b"#!/bin/sh\nexit 0\n")
+    catalog = _minimal_catalog()
+    complete = SimpleNamespace(
+        sequence=1,
+        state=coordinator.OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE,
+        release_sequence=1,
+        install_transaction_id=D("3"),
+        administrative_bundle_hash=D("4"),
+        service_coverage_hash=catalog.service_coverage_hash,
+    )
+    published = {}
+    monkeypatch.setattr(
+        coordinator, "OwnershipCoordinatorRecordV2", SimpleNamespace,
+    )
+    monkeypatch.setattr(authorities, "DEFAULT_OWNERSHIP_ROOT_V1", tmp_path)
+    monkeypatch.setattr(
+        provisioner, "_require_transition_directory_v2",
+        lambda path, *, owner: path
+        if path == root and owner == (0, 0)
+        else pytest.fail("legacy root binding changed"),
+    )
+    monkeypatch.setattr(
+        service_catalog, "capture_current_service_catalog_v1",
+        lambda distribution: SimpleNamespace(catalog=catalog)
+        if distribution == "distribution"
+        else pytest.fail("distribution binding changed"),
+    )
+    monkeypatch.setattr(
+        provisioner, "_capture_predecessor_file_v2",
+        lambda selected_root, locator: __import__(
+            "executor_birth_distribution_assembler"
+        ).PredecessorFileV1(locator, len(entry.read_bytes()), D("5"))
+        if selected_root == root and locator == "legacy.sh"
+        else pytest.fail("legacy entry binding changed"),
+    )
+    monkeypatch.setattr(
+        provisioner, "_predecessor_file_locators_v2",
+        lambda selected_root, selected_catalog: ("legacy.sh",)
+        if selected_root == root and selected_catalog is catalog
+        else pytest.fail("legacy inventory binding changed"),
+    )
+    monkeypatch.setattr(
+        coordinator, "_publish_control_no_replace_v2",
+        lambda selected_root, name, encoded, **kwargs: published.update({
+            "root": selected_root, "name": name, "encoded": encoded,
+            "options": kwargs,
+        }),
+    )
+
+    provisioner._publish_initial_predecessor_v2(
+        "distribution", complete, root,
+    )
+
+    decoded = decode_predecessor_descriptor_v1(published["encoded"])
+    assert published["root"] == tmp_path
+    assert published["name"] == "predecessor-v1.json"
+    assert decoded.transaction_id == D("3")
+    assert decoded.installation_root == root.as_posix()
+    assert decoded.files[0].path == "legacy.sh"
+    assert decoded.service_catalog_id == catalog.catalog_id
+
+
 class _Maintenance:
     def observe(self):
         return {
@@ -153,17 +262,17 @@ def test_retirement_preserves_the_occupied_fragment_before_replacement(
     )
     monkeypatch.setattr(
         provisioner, "_transition_roots_v2",
-        lambda _prepared: MappingProxyType({
+        lambda _prepared, _legacy_identity: MappingProxyType({
             "system": system, "user": user, "repository": repository,
         }),
     )
     monkeypatch.setattr(
-        provisioner, "_process_tree_references_root_v2",
-        lambda _root: False,
+        provisioner, "_process_tree_references_entries_v2",
+        lambda _root, _locators: False,
     )
 
     first = provisioner._retire_bound_catalog_v2(
-        object(), object(), _Maintenance(),
+        object(), object(), _Maintenance(), object(),
     )
     from executor_birth_legacy_neutralizer import PRESERVED_EXTENSION_V1
 
@@ -174,7 +283,7 @@ def test_retirement_preserves_the_occupied_fragment_before_replacement(
 
     (system / "metnos-http.service").write_bytes(signed_fragment)
     second = provisioner._retire_bound_catalog_v2(
-        object(), object(), _Maintenance(),
+        object(), object(), _Maintenance(), object(),
     )
     assert second == first
     assert preserved.read_bytes() == old_fragment
@@ -197,7 +306,10 @@ def test_topology_helper_installs_reloads_and_returns_the_live_measurement(
         candidate_units=SimpleNamespace(entries=(SimpleNamespace(
             unit_name="metnos-http.service", enablement_links=(),
         ),)),
-        descriptor=SimpleNamespace(systemctl_executable="/usr/bin/systemctl"),
+        descriptor=SimpleNamespace(
+            systemctl_executable="/usr/bin/systemctl",
+            system_unit_root=system.as_posix(),
+        ),
     ))
     measurement = SimpleNamespace(
         snapshot=SimpleNamespace(effective_units_hash=D("8")),
@@ -208,8 +320,10 @@ def test_topology_helper_installs_reloads_and_returns_the_live_measurement(
         lambda *_args: loaded,
     )
     monkeypatch.setattr(
-        provisioner, "_transition_roots_v2",
-        lambda _prepared: MappingProxyType({"system": system}),
+        provisioner, "_require_transition_directory_v2",
+        lambda path, *, owner: path
+        if path == system and owner == (0, 0)
+        else pytest.fail("system unit root binding changed"),
     )
     monkeypatch.setattr(
         provisioner.subprocess, "run",
@@ -288,6 +402,13 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     preparation = SimpleNamespace(descriptor=descriptor)
     service_state_root = Path("/srv/metnos/.local/state/metnos")
     monkeypatch.setattr(config, "PATH_USER_STATE", service_state_root)
+    legacy_identity = SimpleNamespace(name="legacy-metnos")
+    monkeypatch.setattr(
+        provisioner, "_resolve_legacy_service_identity_v2",
+        lambda name: legacy_identity
+        if name == "legacy-metnos"
+        else pytest.fail("legacy service identity changed"),
+    )
     monkeypatch.setattr(manifest, "verify_current_installation_distribution_v1", lambda *_: distribution)
     monkeypatch.setattr(
         manifest, "capture_current_deployment_descriptor_v1",
@@ -316,6 +437,15 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
     monkeypatch.setattr(provisioner, "_prepare_transition_receipt_material_locked_v2", lambda *_: preparation)
     monkeypatch.setattr(provisioner, "_complete_transition_receipts_locked_v2", lambda *_: complete)
+    monkeypatch.setattr(
+        provisioner, "_publish_initial_predecessor_v2",
+        lambda candidate, record, root: events.append("predecessor")
+        if (
+            candidate is distribution and record is complete
+            and root == "/opt/metnos"
+        )
+        else pytest.fail("predecessor binding changed"),
+    )
     monkeypatch.setattr(admin, "_prepare_cutover_candidate_v2", lambda *_: prepared)
     monkeypatch.setattr(coordinator, "_observe_dominant_identity_locked_v2", lambda *_: (D("1"), D("2"), D("3")))
     monkeypatch.setattr(provisioner, "_capture_bound_transition_catalog_v2", lambda *_: SimpleNamespace(catalog=SimpleNamespace(catalog_id=D("4"))))
@@ -350,10 +480,13 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
 
     assert provisioner.complete_transition_cutover_v2(
         distribution, D("a"), service_state_root=service_state_root,
+        legacy_service_user="legacy-metnos",
+        legacy_installation_root="/opt/metnos",
     ) is result
     assert events == [
         "deployment-enter", "startup-enter", "maintenance-enter",
-        "authoring-seed", "inventory-enter", "composition", "inventory-exit",
+        "authoring-seed", "inventory-enter", "predecessor", "composition",
+        "inventory-exit",
         "maintenance-exit", "startup-exit", "deployment-exit",
     ]
 
@@ -378,6 +511,8 @@ def test_product_wrapper_denies_before_lock_when_closed_policy_is_absent(
         provisioner.complete_transition_cutover_v2(
             distribution, D("a"),
             service_state_root=Path("/srv/metnos/.local/state/metnos"),
+            legacy_service_user="legacy-metnos",
+            legacy_installation_root="/opt/metnos",
         )
 
 

@@ -1,6 +1,7 @@
 {
   "birth_closed": {
     "coordinator_store_owners": [
+      "install/birth_authority_provisioner.py:_publish_initial_predecessor_v2",
       "install/birth_authority_provisioner.py:complete_transition_cutover_v2",
       "install/birth_authority_provisioner.py:prepare_transition_receipts_v2",
       "install/birth_ownership_authority_provisioner.py:_discard_temporary",
@@ -218,6 +219,16 @@
       "phase": "M4",
       "role": "live_reader",
       "scope": "invoke"
+    },
+    {
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed initial predecessor record under the deployment lock",
+      "path": "install/birth_authority_provisioner.py",
+      "phase": "M4",
+      "role": "store_owner",
+      "scope": "_publish_initial_predecessor_v2"
     },
     {
       "capabilities": [
@@ -4544,5 +4555,5 @@
     "executors"
   ],
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:64686860d90b4add555979ea61e362bbd9476bb05b9d18dac9d0891bd0026b9a"
+  "source_census": "sha256:94c72a7d56f9988ab198d772b30a45219befe54412ca9fc95594dcbf08a68005"
 }

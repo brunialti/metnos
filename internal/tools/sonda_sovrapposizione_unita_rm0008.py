@@ -55,9 +55,9 @@ def main() -> int:
         print("collision:", " / ".join(_binding_identity(item)))
 
     valid = (
-        len(unit_names) == 15
+        len(unit_names) == 12
         and len(bindings) == 39
-        and len(homonyms) == 16
+        and len(homonyms) == 13
         and tuple(map(_binding_identity, collisions)) == (EXPECTED_COLLISION,)
         and len(user_http) == 1
     )

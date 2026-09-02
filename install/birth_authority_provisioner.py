@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import stat
 import subprocess
@@ -58,6 +59,12 @@ MAXIMUM_CHECKPOINT_SEQUENCE_V1 = 8191
 MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1 = 1024 * 1024
 
 _HEX_DIGITS = frozenset("0123456789abcdef")
+_SERVICE_ACCOUNT_RE_V2 = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
+_PREDECESSOR_SOURCE_ROOTS_V2 = (
+    "deploy", "executors", "install", "runtime", "scripts", "tutor",
+)
+_MAX_PREDECESSOR_FILES_V2 = 4096
+_MAX_PREDECESSOR_BYTES_V2 = 512 * 1024 * 1024
 
 
 class BirthProvisioningError(RuntimeError):
@@ -4281,6 +4288,84 @@ def _process_tree_references_root_v2(
     return False
 
 
+def _process_tree_references_entries_v2(
+    root: Path, locators: tuple[str, ...], *, proc_root: Path = Path("/proc"),
+) -> bool:
+    """Observe only catalog-bound entry points, without blocking other tools."""
+    try:
+        resolved_root = root.resolve(strict=True)
+    except OSError as exc:
+        raise _reject("birth_transition_process_observation_invalid", exc) from None
+    if (
+        type(locators) is not tuple or not locators
+        or any(type(item) is not str or not item for item in locators)
+    ):
+        raise _reject("birth_transition_process_observation_invalid")
+    targets: set[Path] = set()
+    modules: set[str] = set()
+    for locator in locators:
+        candidate = root.joinpath(*locator.split("/"))
+        try:
+            parent = candidate.parent.resolve(strict=True)
+        except OSError as exc:
+            raise _reject(
+                "birth_transition_process_observation_invalid", exc,
+            ) from None
+        if not parent.is_relative_to(resolved_root):
+            raise _reject("birth_transition_process_observation_invalid")
+        targets.add(parent / candidate.name)
+        if locator.endswith(".py"):
+            parts = locator[:-3].split("/")
+            if parts[-1] == "__main__":
+                parts.pop()
+            modules.add(".".join(parts))
+    try:
+        processes = tuple(proc_root.iterdir())
+    except OSError as exc:
+        raise _reject("birth_transition_process_observation_invalid", exc) from None
+    for process in processes:
+        if not process.name.isdigit():
+            continue
+        try:
+            cwd = Path(os.readlink(process / "cwd"))
+            observed_paths = [cwd, Path(os.readlink(process / "exe"))]
+            for entry in (process / "fd").iterdir():
+                try:
+                    observed_paths.append(Path(os.readlink(entry)))
+                except FileNotFoundError:
+                    continue
+            if any(path in targets for path in observed_paths):
+                return True
+            mappings = (process / "maps").read_text(
+                encoding="utf-8", errors="strict",
+            )
+            for line in mappings.splitlines():
+                fields = line.split(maxsplit=5)
+                if len(fields) == 6 and Path(fields[5]) in targets:
+                    return True
+            command = (process / "cmdline").read_bytes().split(b"\0")
+            arguments = tuple(
+                item.decode("utf-8", errors="strict")
+                for item in command if item
+            )
+            for index, argument in enumerate(arguments):
+                if Path(argument) in targets:
+                    return True
+                if (
+                    cwd == resolved_root and argument in locators
+                    or index > 0 and arguments[index - 1] == "-m"
+                    and argument in modules
+                ):
+                    return True
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        except (OSError, UnicodeError) as exc:
+            raise _reject(
+                "birth_transition_process_observation_invalid", exc,
+            ) from None
+    return False
+
+
 def _capture_bound_transition_catalog_v2(
     distribution: object, prepared: object,
 ):
@@ -4303,6 +4388,259 @@ def _capture_bound_transition_catalog_v2(
     ):
         raise _reject("birth_transition_catalog_changed")
     return loaded
+
+
+def _capture_predecessor_file_v2(root: Path, locator: str):
+    """Capture one predecessor file through a stable regular-file handle."""
+    from executor_birth_distribution_assembler import PredecessorFileV1
+
+    candidate = root.joinpath(*locator.split("/"))
+    try:
+        resolved_root = root.resolve(strict=True)
+        resolved_parent = candidate.parent.resolve(strict=True)
+        if not resolved_parent.is_relative_to(resolved_root):
+            raise OSError("entry parent escaped predecessor root")
+        descriptor = os.open(
+            candidate,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as exc:
+        raise _reject("birth_transition_predecessor_invalid", exc) from None
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+            or (before.st_uid, before.st_gid) != (0, 0)
+            or stat.S_IMODE(before.st_mode) & 0o022
+            or before.st_size > 128 * 1024 * 1024
+        ):
+            raise _reject("birth_transition_predecessor_invalid")
+        digest = hashlib.sha256()
+        size = 0
+        while size <= before.st_size:
+            chunk = os.read(
+                descriptor, min(1024 * 1024, before.st_size + 1 - size),
+            )
+            if not chunk:
+                break
+            size += len(chunk)
+            digest.update(chunk)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    identity = lambda item: (
+        item.st_dev, item.st_ino, item.st_mode, item.st_nlink,
+        item.st_uid, item.st_gid, item.st_size,
+        item.st_mtime_ns, item.st_ctime_ns,
+    )
+    if size != before.st_size or identity(before) != identity(after):
+        raise _reject("birth_transition_predecessor_changed")
+    return PredecessorFileV1(
+        locator, size, "sha256:" + digest.hexdigest(),
+    )
+
+
+def _predecessor_file_locators_v2(root: Path, catalog: object) -> tuple[str, ...]:
+    """Over-approximate every local file loadable by a protected entry."""
+    required = {
+        item.locator for item in catalog.legacy_bindings
+        if item.scope == "repository"
+    }
+    discovered: set[str] = set()
+    total_bytes = 0
+    for base in _PREDECESSOR_SOURCE_ROOTS_V2:
+        base_path = root / base
+        try:
+            if not base_path.is_dir() or base_path.is_symlink():
+                raise OSError("predecessor source root is not a directory")
+            base_info = base_path.lstat()
+            if (
+                (base_info.st_uid, base_info.st_gid) != (0, 0)
+                or stat.S_IMODE(base_info.st_mode) & 0o022
+            ):
+                raise OSError("predecessor source root metadata changed")
+            paths = tuple(base_path.rglob("*"))
+        except OSError as exc:
+            raise _reject("birth_transition_predecessor_invalid", exc) from None
+        for path in paths:
+            relative = path.relative_to(root).as_posix()
+            if "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}:
+                continue
+            try:
+                info = path.lstat()
+            except OSError as exc:
+                raise _reject(
+                    "birth_transition_predecessor_invalid", exc,
+                ) from None
+            if stat.S_ISDIR(info.st_mode):
+                if (
+                    (info.st_uid, info.st_gid) != (0, 0)
+                    or stat.S_IMODE(info.st_mode) & 0o022
+                ):
+                    raise _reject("birth_transition_predecessor_invalid")
+                continue
+            if stat.S_ISLNK(info.st_mode):
+                try:
+                    target = path.resolve(strict=True)
+                    target_info = target.lstat()
+                except OSError as exc:
+                    raise _reject(
+                        "birth_transition_predecessor_invalid", exc,
+                    ) from None
+                if (
+                    not target.is_relative_to(root)
+                    or not stat.S_ISREG(target_info.st_mode)
+                ):
+                    raise _reject("birth_transition_predecessor_invalid")
+                relative = target.relative_to(root).as_posix()
+                info = target_info
+            elif not stat.S_ISREG(info.st_mode):
+                raise _reject("birth_transition_predecessor_invalid")
+            if (
+                (info.st_uid, info.st_gid) != (0, 0)
+                or info.st_nlink != 1
+                or stat.S_IMODE(info.st_mode) & 0o022
+            ):
+                raise _reject("birth_transition_predecessor_invalid")
+            if relative not in discovered:
+                discovered.add(relative)
+                total_bytes += info.st_size
+                if (
+                    len(discovered) > _MAX_PREDECESSOR_FILES_V2
+                    or total_bytes > _MAX_PREDECESSOR_BYTES_V2
+                ):
+                    raise _reject("birth_transition_predecessor_invalid")
+    if not required or not required.issubset(discovered):
+        raise _reject("birth_transition_predecessor_invalid")
+    return tuple(sorted(discovered, key=lambda item: item.encode("utf-8")))
+
+
+def _predecessor_service_commands_v2(catalog: object) -> tuple:
+    """Project the closed service recipes into the initial transition anchor."""
+    from executor_birth_distribution_assembler import (
+        PredecessorServiceCommandV1, ServiceCommandEnvironmentV1,
+    )
+
+    commands = []
+    for entry in catalog.entries:
+        commands.append(PredecessorServiceCommandV1(
+            entry.entry_id, entry.execution_kind,
+            entry.target_executable, entry.target_executable_hash,
+            entry.python_module, entry.target_args,
+            entry.target_working_directory,
+            tuple(ServiceCommandEnvironmentV1(item.name, item.value)
+                  for item in entry.target_environment),
+        ))
+    return tuple(commands)
+
+
+def _publish_initial_predecessor_v2(
+    distribution: object, complete: object, legacy_installation_root: object,
+) -> None:
+    """Publish the immutable first-transition anchor while maintenance is held."""
+    from executor_birth_distribution_assembler import (
+        MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1,
+        build_predecessor_descriptor_v1, encode_predecessor_descriptor_v1,
+    )
+    from executor_birth_ownership_authorities import DEFAULT_OWNERSHIP_ROOT_V1
+    from executor_birth_ownership_coordinator import (
+        OwnershipCoordinatorRecordV2, OwnershipCoordinatorStateV1,
+        _publish_control_no_replace_v2,
+    )
+
+    if (
+        type(complete) is not OwnershipCoordinatorRecordV2
+        or complete.sequence != 1
+        or complete.state is not OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE
+    ):
+        raise _reject("birth_transition_predecessor_invalid")
+    if complete.release_sequence != 1:
+        return
+    try:
+        root = Path(os.fspath(legacy_installation_root))
+    except TypeError as exc:
+        raise _reject("birth_transition_predecessor_invalid", exc) from None
+    root = _require_transition_directory_v2(root, owner=(0, 0))
+    from executor_birth_service_catalog import (
+        capture_current_service_catalog_v1,
+    )
+
+    loaded = capture_current_service_catalog_v1(distribution)
+    catalog = loaded.catalog
+    if catalog.service_coverage_hash != complete.service_coverage_hash:
+        raise _reject("birth_transition_predecessor_invalid")
+    locators = _predecessor_file_locators_v2(root, catalog)
+    files = tuple(_capture_predecessor_file_v2(root, item) for item in locators)
+    if _predecessor_file_locators_v2(root, catalog) != locators:
+        raise _reject("birth_transition_predecessor_changed")
+    predecessor = build_predecessor_descriptor_v1(
+        transaction_id=complete.install_transaction_id,
+        installation_root=root.as_posix(), files=files,
+        service_commands=_predecessor_service_commands_v2(catalog),
+        administrative_bundle_hash=complete.administrative_bundle_hash,
+        service_catalog_id=catalog.catalog_id,
+        service_coverage_hash=catalog.service_coverage_hash,
+    )
+    encoded = encode_predecessor_descriptor_v1(predecessor)
+    _publish_control_no_replace_v2(
+        DEFAULT_OWNERSHIP_ROOT_V1, "predecessor-v1.json", encoded,
+        maximum=MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1, root_owned=True,
+    )
+
+
+_LEGACY_SERVICE_IDENTITY_SEAL_V2 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _LegacyServiceIdentityV2:
+    name: str
+    uid: int
+    gid: int
+    home: Path
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if (
+            self._seal is not _LEGACY_SERVICE_IDENTITY_SEAL_V2
+            or _SERVICE_ACCOUNT_RE_V2.fullmatch(self.name) is None
+            or type(self.uid) is not int or self.uid <= 0
+            or type(self.gid) is not int or self.gid <= 0
+            or not isinstance(self.home, Path) or not self.home.is_absolute()
+            or self.home == Path("/")
+        ):
+            raise _reject("birth_transition_service_identity_changed")
+
+
+def _resolve_legacy_service_identity_v2(
+    service_user: object,
+) -> _LegacyServiceIdentityV2:
+    """Resolve the previous user-scoped stack without accepting its paths."""
+    if (
+        type(service_user) is not str
+        or _SERVICE_ACCOUNT_RE_V2.fullmatch(service_user) is None
+    ):
+        raise _reject("birth_transition_service_identity_changed")
+    try:
+        import pwd
+
+        account = pwd.getpwnam(service_user)
+        home = Path(account.pw_dir)
+    except (ImportError, KeyError, OSError, TypeError) as exc:
+        raise _reject(
+            "birth_transition_service_identity_changed", exc,
+        ) from None
+    if (
+        account.pw_name != service_user
+        or account.pw_uid <= 0 or account.pw_gid <= 0
+        or not home.is_absolute() or home == Path("/")
+        or Path(os.path.abspath(home)) != home
+    ):
+        raise _reject("birth_transition_service_identity_changed")
+    return _LegacyServiceIdentityV2(
+        service_user, account.pw_uid, account.pw_gid, home,
+        _LEGACY_SERVICE_IDENTITY_SEAL_V2,
+    )
 
 
 def _observe_bound_enforcement_v2(prepared: object) -> str:
@@ -4338,20 +4676,26 @@ def _observe_bound_enforcement_v2(prepared: object) -> str:
     return require_enforced_v1(evidence)
 
 
-def _transition_roots_v2(prepared: object) -> Mapping[str, Path]:
+def _transition_roots_v2(
+    prepared: object, legacy_identity: object,
+) -> Mapping[str, Path]:
     """Derive every mutable root only from the authenticated candidate."""
     materials = getattr(prepared, "materials", None)
     descriptor = getattr(materials, "descriptor", None)
     predecessor = getattr(materials, "predecessor", None)
-    if descriptor is None or predecessor is None:
+    if (
+        descriptor is None or predecessor is None
+        or type(legacy_identity) is not _LegacyServiceIdentityV2
+        or legacy_identity._seal is not _LEGACY_SERVICE_IDENTITY_SEAL_V2
+    ):
         raise _reject("birth_transition_root_invalid")
     roots = {
         "system": _require_transition_directory_v2(
             Path(descriptor.system_unit_root), owner=(0, 0),
         ),
         "user": _require_transition_directory_v2(
-            Path(descriptor.service_home) / ".config/systemd/user",
-            owner=(descriptor.service_uid, descriptor.service_gid),
+            legacy_identity.home / ".config/systemd/user",
+            owner=(legacy_identity.uid, legacy_identity.gid),
         ),
         "repository": _require_transition_directory_v2(
             Path(predecessor.installation_root), owner=(0, 0),
@@ -4362,6 +4706,7 @@ def _transition_roots_v2(prepared: object) -> Mapping[str, Path]:
 
 def _retire_bound_catalog_v2(
     distribution: object, prepared: object, maintenance: object,
+    legacy_identity: object,
 ) -> str:
     """Prove quiescence, apply the signed plan and return its stable digest."""
     from executor_birth_legacy_neutralizer import _neutralize_core_v1
@@ -4371,7 +4716,7 @@ def _retire_bound_catalog_v2(
     )
     loaded = _capture_bound_transition_catalog_v2(distribution, prepared)
     plan = plan_catalog_retirement_v1(loaded.catalog)
-    roots = _transition_roots_v2(prepared)
+    roots = _transition_roots_v2(prepared, legacy_identity)
     observed = maintenance.observe()
     unit_states = {
         (item["scope"], item["unit"]): item["active_state"]
@@ -4380,8 +4725,11 @@ def _retire_bound_catalog_v2(
     repository_steps = tuple(
         step for step in plan.steps if step.scope == "repository"
     )
-    if repository_steps and _process_tree_references_root_v2(
-        roots["repository"],
+    repository_locators = tuple(sorted({
+        step.locator for step in repository_steps
+    }, key=lambda item: item.encode("utf-8")))
+    if repository_steps and _process_tree_references_entries_v2(
+        roots["repository"], repository_locators,
     ):
         raise _reject("birth_transition_repository_in_use")
     states = {
@@ -4429,7 +4777,12 @@ def _install_bound_topology_v2(
     )
 
     loaded = _capture_bound_transition_catalog_v2(distribution, prepared)
-    roots = _transition_roots_v2(prepared)
+    descriptor = getattr(getattr(prepared, "materials", None), "descriptor", None)
+    if descriptor is None:
+        raise _reject("birth_transition_root_invalid")
+    system_root = _require_transition_directory_v2(
+        Path(descriptor.system_unit_root), owner=(0, 0),
+    )
     fragments = dict(loaded.unit_fragments)
     if len(fragments) != len(loaded.unit_fragments):
         raise _reject("birth_transition_topology_invalid")
@@ -4439,7 +4792,7 @@ def _install_bound_topology_v2(
     )
     if tuple(sorted(fragments)) != tuple(sorted(expected_units)):
         raise _reject("birth_transition_topology_invalid")
-    _install_core_v1(roots["system"], fragments)
+    _install_core_v1(system_root, fragments)
     links = tuple(sorted(
         (
             link for entry in materials.candidate_units.entries
@@ -4449,7 +4802,7 @@ def _install_bound_topology_v2(
     ))
     if links:
         _install_enablement_links_core_v1(
-            roots["system"], links, owner=(0, 0),
+            system_root, links, owner=(0, 0),
         )
     environment = {
         "LANG": "C", "LC_ALL": "C",
@@ -4471,6 +4824,7 @@ def _install_bound_topology_v2(
 
 def complete_transition_cutover_v2(
     distribution: object, source_id: object, *, service_state_root: object,
+    legacy_service_user: object, legacy_installation_root: object,
 ):
     """Complete one reserved V2 crossing while retaining all three locks."""
     from contract_cutover_guard import (
@@ -4512,6 +4866,9 @@ def complete_transition_cutover_v2(
 
     if closed_build_enforcement() is not True:
         raise _reject("birth_ownership_closed_enforcement_required")
+    legacy_identity = _resolve_legacy_service_identity_v2(
+        legacy_service_user,
+    )
     try:
         selected_state_root = Path(os.fspath(service_state_root))
     except TypeError as exc:
@@ -4566,8 +4923,13 @@ def complete_transition_cutover_v2(
             raise _reject("birth_transition_service_identity_changed")
         with _exclusive_startup_gate_v1() as startup_session:
             with _contract_cutover_guard_for_service_user_v1(
-                descriptor.service_user,
+                legacy_identity.name,
             ) as (maintenance, evidence):
+                if (
+                    _resolve_legacy_service_identity_v2(legacy_identity.name)
+                    != legacy_identity
+                ):
+                    raise _reject("birth_transition_service_identity_changed")
                 if verified.release_sequence == 1:
                     verify_initial_installer_store_v1(
                         prove_quiescent=maintenance,
@@ -4581,6 +4943,9 @@ def complete_transition_cutover_v2(
                 ) as frozen:
                     complete = _complete_transition_receipts_locked_v2(
                         deployment_session, preparation, frozen,
+                    )
+                    _publish_initial_predecessor_v2(
+                        verified, complete, legacy_installation_root,
                     )
                     prepared = _prepare_cutover_candidate_v2(
                         complete, verified,
@@ -4609,7 +4974,7 @@ def complete_transition_cutover_v2(
 
                     def plan_retirement() -> str:
                         return _retire_bound_catalog_v2(
-                            verified, prepared, maintenance,
+                            verified, prepared, maintenance, legacy_identity,
                         )
 
                     def observe_topology() -> str:

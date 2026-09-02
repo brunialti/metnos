@@ -477,6 +477,18 @@ def _entrypoint(
     )
 
 
+def _external_service(
+    entry_id: str, unit_name: str, legacy_unit_name: str,
+) -> ServiceSourceEntryV1:
+    """Bind an infrastructure service without creating a competing unit."""
+    return ServiceSourceEntryV1(
+        entry_id, "external_dependency", external_unit_name=unit_name,
+        legacy_bindings=(
+            _user_unit(f"legacy-{entry_id}-user", legacy_unit_name),
+        ),
+    )
+
+
 # The tuple below is the sole static topology source.  It is intentionally not
 # generated from host state or optional-file presence.  B3 will add authenticated
 # executable paths, hashes and per-release target values to these same entries;
@@ -573,7 +585,10 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             environment=_TARGET_DATA_ENVIRONMENT_V1,
         ),
         relations=(
-            _unit_relation("Requires", "service-http", "timer-i18n-translator"),
+            _unit_relation(
+                "Requires", "service-http", "timer-i18n-translator",
+                "service-llm", "service-searxng", "service-photon",
+            ),
             _unit_relation(
                 "After", "external-network-online", "service-http",
                 "service-side-display", "service-playwright",
@@ -732,68 +747,12 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             _source_directive("Service", "Type", "simple"),
         ),
     ),
-    _service(
-        "service-llm", "metnos-llm.service",
-        target_recipe=_native_target(
-            "@installation_root@/runtime/bin/llama-server", "-m",
-            "@service_data@/models/llm.gguf", "--host", "127.0.0.1",
-            "--port", "8080", "-ngl", "0", "-c", "8192",
-        ),
-        relations=(
-            _unit_relation("After", "external-network-online"),
-            _unit_relation("Before", "service-stack-ready"),
-            _unit_relation("PartOf", "target-stack"),
-            _install_relation("WantedBy", "target-stack"),
-        ),
-        settings=(
-            _source_directive("Service", "Nice", "5"),
-            _source_directive("Service", "Restart", "on-failure"),
-            _source_directive("Service", "Type", "simple"),
-        ),
+    _external_service("service-llm", "llama-server.service", "metnos-llm.service"),
+    _external_service(
+        "service-searxng", "searxng.service", "metnos-searxng.service",
     ),
-    _service(
-        "service-searxng", "metnos-searxng.service",
-        target_recipe=_python_target(
-            "searx.webapp",
-            working_directory="@installation_root@/runtime/vendor/searxng",
-            environment=_target_environment(
-                ("SEARXNG_SETTINGS_PATH", "@service_config@/searxng/settings.yml"),
-                ("TMPDIR", "@service_data@/sidecars/searxng/cache"),
-            ),
-        ),
-        relations=(
-            _unit_relation("After", "external-network"),
-            _unit_relation("Before", "service-stack-ready"),
-            _unit_relation("PartOf", "target-stack"),
-            _install_relation("WantedBy", "target-stack"),
-        ),
-        settings=(
-            _source_directive("Service", "Restart", "on-failure"),
-            _source_directive("Service", "RestartSec", "10s"),
-            _source_directive("Service", "Type", "simple"),
-        ),
-    ),
-    _service(
-        "service-photon", "metnos-photon.service",
-        target_recipe=_native_target(
-            "/usr/bin/java", "-jar", "@installation_root@/runtime/vendor/photon.jar",
-            "serve", "-data-dir", "@service_data@/sidecars/photon/current",
-            "-listen-ip", "127.0.0.1", "-listen-port", "2322", "-j", "4",
-            environment=_target_environment(
-                ("PHOTON_DATA_DIR", "@service_data@/sidecars/photon/current"),
-            ),
-        ),
-        relations=(
-            _unit_relation("After", "external-network"),
-            _unit_relation("Before", "service-stack-ready"),
-            _unit_relation("PartOf", "target-stack"),
-            _install_relation("WantedBy", "target-stack"),
-        ),
-        settings=(
-            _source_directive("Service", "Restart", "on-failure"),
-            _source_directive("Service", "RestartSec", "10s"),
-            _source_directive("Service", "Type", "simple"),
-        ),
+    _external_service(
+        "service-photon", "photon.service", "metnos-photon.service",
     ),
     _timer(
         "timer-i18n-translator", "metnos-i18n-translator.timer",
@@ -1036,13 +995,13 @@ _CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1 = MappingProxyType({
     ("metnos-i18n-translator.service", "Service", "Environment"):
         "move_to_signed_target_or_minimum_environment",
     ("metnos-photon.service", "Service", "Environment"):
-        "move_to_signed_target_environment",
+        "retained_by_external_system_service",
     ("metnos-playwright.service", "Service", "Environment"):
         "move_to_signed_target_environment",
     ("metnos-playwright.service", "Unit", "Documentation"):
         "drop_nonoperational_legacy_metadata",
     ("metnos-searxng.service", "Service", "Environment"):
-        "move_to_signed_target_environment",
+        "retained_by_external_system_service",
     ("metnos-side-display.service", "Service", "Environment"):
         "drop_unused_xvfb_display_environment",
     ("metnos-side-display.service", "Unit", "Documentation"):

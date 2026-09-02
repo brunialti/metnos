@@ -73,9 +73,9 @@ def _prove_stack_stopped_v1(reconciler, *, load_states: frozenset[str]) -> dict:
 
 
 def prove_stack_stopped(reconciler) -> dict:
-    """Prove the complete pre-transition unit catalog is loaded and idle."""
+    """Prove each pre-transition unit is either absent or loaded and idle."""
     return _prove_stack_stopped_v1(
-        reconciler, load_states=frozenset({"loaded"}),
+        reconciler, load_states=frozenset({"loaded", "not-found"}),
     )
 
 

@@ -15,7 +15,8 @@ are destroyed with that scratch tree when the probe exits.
 
 Usage:
     python3 internal/tools/prova_b3_server_post_transizione.py \
-        --repository DIR --pre-transition-repository DIR --llama-server FILE
+        --repository DIR --pre-transition-repository DIR \
+        --authority-inputs DIR
 """
 from __future__ import annotations
 
@@ -62,9 +63,7 @@ def _copy_regular(source: Path, destination: Path, mode: int | None = None) -> N
     destination.chmod(mode if mode is not None else (info.st_mode & 0o777))
 
 
-def _copy_reviewed_source(
-    repository: Path, destination: Path, llama_server: Path,
-) -> None:
+def _copy_reviewed_source(repository: Path, destination: Path) -> None:
     _repository_imports(repository)
     import executor_birth_distribution_release as release
 
@@ -94,12 +93,6 @@ def _copy_reviewed_source(
             0o644,
         )
         selected.add(relative)
-    _copy_regular(
-        llama_server,
-        destination.joinpath(*release.LLAMA_SOURCE_PATH_V1.split("/")),
-        0o755,
-    )
-    selected.add(release.LLAMA_SOURCE_PATH_V1)
     if not selected:
         raise RuntimeError("reviewed source selection is empty")
     for directory in sorted(
@@ -172,6 +165,7 @@ def _namespace_command(
     options = [
         "bwrap", "--unshare-user", "--uid", "0", "--gid", "0",
         "--unshare-pid", "--unshare-ipc", "--unshare-uts",
+        "--share-net",
         "--tmpfs", "/", "--proc", "/proc", "--dev", "/dev",
         "--ro-bind", "/usr", "/usr",
         "--ro-bind", "/lib", "/lib",
@@ -633,7 +627,6 @@ def _run_outer(args: argparse.Namespace) -> int:
     baseline_repository = Path(
         args.pre_transition_repository
     ).resolve(strict=True)
-    llama_server = Path(args.llama_server).resolve(strict=True)
     source_birth = Path(args.authority_inputs).resolve(strict=True)
     if repository == Path("/opt/metnos"):
         print("REFUSED: the repository must be a non-production worktree", file=sys.stderr)
@@ -652,9 +645,6 @@ def _run_outer(args: argparse.Namespace) -> int:
     if not (repository / "runtime/metnos_http_server.py").is_file():
         print("REFUSED: incomplete repository", file=sys.stderr)
         return EXIT_SELF
-    if not llama_server.is_file() or llama_server.is_symlink():
-        print("REFUSED: llama-server must be one regular file", file=sys.stderr)
-        return EXIT_SELF
     if shutil.which("bwrap") is None:
         print("REFUSED: bubblewrap is unavailable", file=sys.stderr)
         return EXIT_SELF
@@ -668,10 +658,8 @@ def _run_outer(args: argparse.Namespace) -> int:
         _copy_authority_inputs(
             source_birth, scratch / "user/cfg",
         )
-        _copy_reviewed_source(repository, scratch / "source", llama_server)
-        _copy_reviewed_source(
-            repository, scratch / "baseline", llama_server,
-        )
+        _copy_reviewed_source(repository, scratch / "source")
+        _copy_reviewed_source(repository, scratch / "baseline")
         _copy_regular(
             baseline_repository / "runtime/executor_birth_legacy_gate.py",
             scratch / "baseline/runtime/executor_birth_legacy_gate.py",
@@ -831,7 +819,6 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--restart-inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--repository")
     parser.add_argument("--pre-transition-repository")
-    parser.add_argument("--llama-server")
     parser.add_argument(
         "--authority-inputs",
         help="Birth directory supplying only author-root and operator inputs",
@@ -847,12 +834,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     ) and (
         result.repository is None
         or result.pre_transition_repository is None
-        or result.llama_server is None
         or result.authority_inputs is None
     ):
         parser.error(
-            "--repository, --pre-transition-repository, --llama-server, "
-            "and --authority-inputs are required"
+            "--repository, --pre-transition-repository, and "
+            "--authority-inputs are required"
         )
     return result
 

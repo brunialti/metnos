@@ -60,9 +60,6 @@ RUNTIME_COMPONENT_UNITS = (
     "metnos-side-display.service",
     "metnos-playwright.service",
     "metnos-telegram-daemon.service",
-    "metnos-llm.service",
-    "metnos-searxng.service",
-    "metnos-photon.service",
     "metnos-i18n-translator.timer",
 )
 FAILURE_WINDOW_S = 10 * 60

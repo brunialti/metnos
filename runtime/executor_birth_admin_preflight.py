@@ -215,7 +215,7 @@ _PR_CAP_AMBIENT_V1 = 47
 _PR_CAP_AMBIENT_CLEAR_ALL_V1 = 4
 _LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:7727bc054bb411bfdd853148ac1a4c06945a710234d2db7fdb84d5e1851a2765"
+    "sha256:b34a044f3b7729c8c1917ac0a727c73809124e9c95c98690d12e65e35da8718b"
 )
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -240,20 +240,8 @@ _EXPECTED_PRODUCT_ENABLEMENT_LINKS_V1 = (
         "../metnos-i18n-translator.timer",
     ),
     (
-        "/etc/systemd/system/metnos.target.wants/metnos-llm.service",
-        "../metnos-llm.service",
-    ),
-    (
-        "/etc/systemd/system/metnos.target.wants/metnos-photon.service",
-        "../metnos-photon.service",
-    ),
-    (
         "/etc/systemd/system/metnos.target.wants/metnos-playwright.service",
         "../metnos-playwright.service",
-    ),
-    (
-        "/etc/systemd/system/metnos.target.wants/metnos-searxng.service",
-        "../metnos-searxng.service",
     ),
     (
         "/etc/systemd/system/metnos.target.wants/metnos-side-display.service",
@@ -786,7 +774,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:64686860d90b4add555979ea61e362bbd9476bb05b9d18dac9d0891bd0026b9a"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:94c72a7d56f9988ab198d772b30a45219befe54412ca9fc95594dcbf08a68005"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -809,6 +797,7 @@ _BIRTH_CLOSED_SEALED_MODULES = (
 # Keep membership independently compiled while matching the canonical JSON
 # ordering without relying on insertion position in this frozen snapshot.
 _BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = tuple(sorted((
+    "install/birth_authority_provisioner.py:_publish_initial_predecessor_v2",
     "install/birth_authority_provisioner.py:complete_transition_cutover_v2",
     "install/birth_authority_provisioner.py:prepare_transition_receipts_v2",
     "install/birth_ownership_authority_provisioner.py:_discard_temporary",
@@ -14455,6 +14444,8 @@ def _require_preflight_entry_v1(
 def _trusted_python_path_v1(
     installation_root: str, working_directory: str,
 ) -> tuple[str, ...]:
+    import site
+
     root = PurePosixPath(validate_absolute_path_v1(installation_root))
     working = PurePosixPath(validate_absolute_path_v1(working_directory))
     try:
@@ -14462,7 +14453,12 @@ def _trusted_python_path_v1(
     except ValueError as exc:
         raise _invalid("launch Python root") from exc
     retained: list[str] = [working.as_posix()]
-    for raw in sys.path:
+    candidate_paths = [*sys.path]
+    try:
+        candidate_paths.extend(site.getsitepackages())
+    except (AttributeError, OSError):
+        pass
+    for raw in candidate_paths:
         if not isinstance(raw, str) or not raw or not raw.startswith("/"):
             continue
         try:

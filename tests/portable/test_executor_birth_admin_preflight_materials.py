@@ -43,20 +43,8 @@ _EXPECTED_ENABLEMENT_LINKS = (
         "../metnos-i18n-translator.timer",
     ),
     (
-        "/etc/systemd/system/metnos.target.wants/metnos-llm.service",
-        "../metnos-llm.service",
-    ),
-    (
-        "/etc/systemd/system/metnos.target.wants/metnos-photon.service",
-        "../metnos-photon.service",
-    ),
-    (
         "/etc/systemd/system/metnos.target.wants/metnos-playwright.service",
         "../metnos-playwright.service",
-    ),
-    (
-        "/etc/systemd/system/metnos.target.wants/metnos-searxng.service",
-        "../metnos-searxng.service",
     ),
     (
         "/etc/systemd/system/metnos.target.wants/"
@@ -306,9 +294,7 @@ def _binder_target_bytes(installation_root: str) -> dict[str, bytes]:
     return {
         "/usr/bin/python3.12": b"python-v1",
         "/usr/bin/systemctl": b"systemctl-v1",
-        "/usr/bin/java": b"java-v1",
         "/usr/bin/Xvfb": b"xvfb-v1",
-        f"{installation_root}/runtime/bin/llama-server": b"llama-v1",
     }
 
 
@@ -685,9 +671,6 @@ def _bound_graph(
         "runtime/executor_birth_distribution_manifest.py": b"VALUE = 1\n",
         "runtime/executor_birth_ownership_preflight.py": b"VALUE = 1\n",
         "runtime/sign.py": b"VALUE = 1\n",
-        "runtime/bin/llama-server": target_bytes[
-            f"{installation_root}/runtime/bin/llama-server"
-        ],
         **{
             f"deployment/systemd/{name}": content
             for name, content in fragments.items()
@@ -710,12 +693,7 @@ def _bound_graph(
     }
     manifest_files = [{
         "path": path,
-        "size": len(contents[path]) + (
-            1 if (
-                mutation == "manifest-target-size"
-                and path == "runtime/bin/llama-server"
-            ) else 0
-        ),
+        "size": len(contents[path]),
         "content_hash": preflight.distribution_file_hash_v1(
             path, contents[path],
         ),
@@ -870,7 +848,6 @@ def _bound_graph(
         ],
         "deployment/executor-birth-service-catalog-v1.json": catalog_encoded,
         "deployment/executor-birth-deployment-v1.json": descriptor_encoded,
-        "runtime/bin/llama-server": contents["runtime/bin/llama-server"],
         **{
             f"deployment/systemd/{name}": content
             for name, content in fragments.items()
@@ -1228,10 +1205,6 @@ def test_cutover_prerequisite_is_derived_from_captured_facts(monkeypatch) -> Non
         (
             "service-home-inside-release",
             "service home inside installation root",
-        ),
-        (
-            "manifest-target-size",
-            "preflight distribution target executable",
         ),
     ),
 )

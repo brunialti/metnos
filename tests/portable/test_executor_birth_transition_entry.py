@@ -78,6 +78,8 @@ def test_source_process_invokes_only_the_verified_release_entry(
         distribution=distribution,
         source_id=D("2"),
         service_user="metnos",
+        legacy_service_user="legacy-metnos",
+        legacy_installation_root="/opt/metnos",
         service_environment={"HOME": "/srv/metnos", "USER": "metnos"},
     )
 
@@ -85,6 +87,8 @@ def test_source_process_invokes_only_the_verified_release_entry(
     assert observed["command"] == [
         transition.sys.executable, "-I", entry.as_posix(), "complete",
         "--source-id", D("2"), "--service-user", "metnos",
+        "--legacy-service-user", "legacy-metnos",
+        "--legacy-installation-root", "/opt/metnos",
     ]
     assert transition._decode_handoff_frame_v1(observed["input"])[0] == D("2")
     assert observed["env"]["METNOS_INSTALL_ROOT"] == release.as_posix()
@@ -120,10 +124,13 @@ def test_closed_process_binds_distribution_source_user_and_final_state(
     )
     monkeypatch.setattr(
         provisioner, "complete_transition_cutover_v2",
-        lambda candidate, source_id, *, service_state_root: result
+        lambda candidate, source_id, *, service_state_root,
+        legacy_service_user, legacy_installation_root: result
         if (
             candidate is distribution
             and source_id == D("6")
+            and legacy_service_user == "legacy-metnos"
+            and legacy_installation_root == "/opt/metnos"
             and Path(service_state_root)
             == Path("/srv/metnos/.local/state/metnos")
         )
@@ -144,6 +151,8 @@ def test_closed_process_binds_distribution_source_user_and_final_state(
     completed = transition._complete_closed_v1(
         expected_source_id=D("6"),
         expected_service_user="metnos",
+        expected_legacy_service_user="legacy-metnos",
+        expected_legacy_installation_root="/opt/metnos",
         expected_service_state_root="/srv/metnos/.local/state/metnos",
         frame=frame,
     )
@@ -192,6 +201,8 @@ def test_closed_process_rejects_a_state_root_outside_the_signed_home(
         transition._complete_closed_v1(
             expected_source_id=D("8"),
             expected_service_user="metnos",
+            expected_legacy_service_user="legacy-metnos",
+            expected_legacy_installation_root="/opt/metnos",
             expected_service_state_root="/root/.local/state/metnos",
             frame=frame,
         )
@@ -241,6 +252,42 @@ def test_activation_uses_only_target_and_readiness_from_signed_catalog(
             "metnos-stack-ready.service",
         ],
     ]
+
+
+@LINUX_ONLY
+def test_service_authority_preparation_runs_as_the_selected_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from install import executor_birth_source_receiver as receiver
+
+    account = SimpleNamespace(
+        uid=991, gid=992, supplementary_gids=(44, 992),
+    )
+    observed = {}
+    monkeypatch.setattr(
+        receiver, "_service_account_snapshot_v1",
+        lambda name: account if name == "metnos" else None,
+    )
+
+    def run(command, **kwargs):
+        observed.update({"command": command, **kwargs})
+        return subprocess.CompletedProcess(
+            command, 0, stdout=b'{"prepared":true}\n', stderr=b"",
+        )
+
+    monkeypatch.setattr(transition.subprocess, "run", run)
+    environment = {
+        "HOME": "/srv/metnos", "LOGNAME": "metnos", "USER": "metnos",
+    }
+    transition._prepare_service_authorities_v1("metnos", environment)
+
+    assert observed["user"] == 991
+    assert observed["group"] == 992
+    assert observed["extra_groups"] == (44, 992)
+    assert observed["cwd"] == "/"
+    assert observed["umask"] == 0o077
+    assert observed["env"]["HOME"] == "/srv/metnos"
+    assert observed["command"][-3:] == ["prepare", "--service-user", "metnos"]
 
 
 @LINUX_ONLY

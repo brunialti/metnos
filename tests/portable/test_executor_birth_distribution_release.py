@@ -40,7 +40,6 @@ def _source_tree(tmp_path: Path):
         "runtime/executor_birth_distribution_manifest.py": b"VERIFY = 1\n",
         "runtime/executor_birth_ownership_preflight.py": b"OWNERSHIP = 1\n",
         "runtime/sign.py": b"SIGN = 1\n",
-        "runtime/bin/llama-server": b"#!/bin/sh\nexit 0\n",
         "docs/en/index.html": b"<!doctype html><title>Metnos</title>\n",
         "tutor/sources.toml": b"version = 1\n",
     }
@@ -50,7 +49,7 @@ def _source_tree(tmp_path: Path):
     for relative, content in sorted(values.items()):
         path = root.joinpath(*relative.split("/"))
         path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-        mode = 0o755 if relative == release.LLAMA_SOURCE_PATH_V1 else 0o644
+        mode = 0o644
         path.write_bytes(content)
         path.chmod(mode)
         files.append(assembler.ReceivedSourceFileV1(
@@ -112,6 +111,7 @@ def test_assembly_derives_catalog_descriptor_manifest_and_exact_repetition(
         ).read_bytes()
     )
     assert descriptor.installation_root == document["installation_root"]
+    assert descriptor.python_executable == str(Path(sys.executable).resolve())
     assert {item.source_path for item in descriptor.artifacts} == {
         release.ADMIN_PREFLIGHT_RELEASE_PATH_V1,
         *(item.path for item in files if item.role == "service_unit"),
@@ -190,11 +190,6 @@ def test_current_reviewed_source_assembles_and_passes_static_verification(
         shutil.copyfile(original, destination)
         destination.chmod(0o644)
         selected.append(relative)
-    llama = source_root.joinpath(*release.LLAMA_SOURCE_PATH_V1.split("/"))
-    llama.parent.mkdir(parents=True, exist_ok=True)
-    llama.write_bytes(b"#!/bin/sh\nexit 0\n")
-    llama.chmod(0o755)
-    selected.append(release.LLAMA_SOURCE_PATH_V1)
     for directory in (item for item in source_root.rglob("*") if item.is_dir()):
         directory.chmod(0o755)
 

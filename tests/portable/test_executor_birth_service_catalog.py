@@ -119,10 +119,7 @@ def _encoded(*, installation_root: str = "/opt/metnos") -> bytes:
 
 
 def _target_bytes(installation_root: str = "/opt/metnos"):
-    paths = (
-        _PYTHON, _SYSTEMCTL, "/usr/bin/java", "/usr/bin/Xvfb",
-        installation_root + "/runtime/bin/llama-server",
-    )
+    paths = (_PYTHON, _SYSTEMCTL, "/usr/bin/Xvfb")
     return tuple((path, ("target:" + path).encode("ascii")) for path in paths)
 
 
@@ -211,8 +208,7 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
     assert candidate_units == {
         "metnos-durable-worker.service", "metnos-http.service",
         "metnos-i18n-translator.service", "metnos-i18n-translator.timer",
-        "metnos-llm.service", "metnos-photon.service",
-        "metnos-playwright.service", "metnos-searxng.service",
+        "metnos-playwright.service",
         "metnos-side-display.service", "metnos-stack-quarantine.service",
         "metnos-stack-ready.service", "metnos-stack-watchdog.service",
         "metnos-stack-watchdog.timer", "metnos-telegram-daemon.service",
@@ -220,8 +216,9 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
     }
     assert legacy_only_units == {
         "metnos-backup.service", "metnos-backup.timer",
+        "metnos-llm.service", "metnos-photon.service",
         "metnos-prompts-translator.service",
-        "metnos-prompts-translator.timer",
+        "metnos-prompts-translator.timer", "metnos-searxng.service",
     }
     root = Path(__file__).resolve().parents[2]
     repository_units = {
@@ -337,17 +334,24 @@ def test_current_unit_directives_have_an_explicit_codec_decision() -> None:
     }
     observed_legacy_units = set(observed) - set(candidate)
     assert observed_legacy_units <= set(legacy_unit_owners)
-    assert set(legacy_unit_owners) - observed_legacy_units == (
-        set() if (root / "scripts/export-public.sh").is_file()
-        else _PUBLIC_EXPORT_OMITTED_UNITS
-    )
-    assert set(legacy_unit_owners.values()) == {"gated_entrypoint"}
+    expected_unmaterialized = {"metnos-llm.service"}
+    if not (root / "scripts/export-public.sh").is_file():
+        expected_unmaterialized |= _PUBLIC_EXPORT_OMITTED_UNITS
+    assert set(legacy_unit_owners) - observed_legacy_units == expected_unmaterialized
+    assert set(legacy_unit_owners.values()) == {
+        "external_dependency", "gated_entrypoint",
+    }
     missing = {
         (unit_name, section, name)
         for unit_name in set(observed) & set(candidate)
         for section, name in observed[unit_name] - candidate[unit_name]
     }
-    assert missing == set(catalog._CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1)
+    dispositions = set(catalog._CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1)
+    assert missing == {item for item in dispositions if item[0] in candidate}
+    assert {item for item in dispositions if item[0] in observed_legacy_units} == {
+        ("metnos-photon.service", "Service", "Environment"),
+        ("metnos-searxng.service", "Service", "Environment"),
+    }
 
 
 def test_catalog_codec_is_canonical_and_covers_six_classes() -> None:
