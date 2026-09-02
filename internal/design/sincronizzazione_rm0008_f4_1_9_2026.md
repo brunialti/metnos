@@ -1634,3 +1634,31 @@ La proiezione e' pubblicata esclusivamente su `main` come `2ca6e71`; il filtro
 GII forte ha verificato 1646 file con zero PII, zero segreti, zero file
 sensibili e nessun token. La cella systemd reale e' in esecuzione nel ciclo
 pubblico `33580021713`.
+
+## 51. A a B: l'ipotesi umask e' falsificata, sonda interna chiusa
+
+Il ciclo `33580021713` ha superato l'asserzione esplicita `root:root 0755`, ma
+il primo `check-all` installato ha ancora restituito `exit=24` prima di creare
+qualsiasi voce. I sette altri lavori sono verdi. Quindi `b60ead4a` resta un
+irrobustimento corretto della fixture, ma **non e' la correzione causale** del
+rifiuto; le affermazioni causali dei §§49-50 sono ritirate dall'evidenza.
+
+Il commit `e01b16eb` aggiunge soltanto una sonda sul ramo gia' fallito. Dopo il
+verdetto pubblico ridotto, ricarica il medesimo file installato in un processo
+isolato e richiama lo stesso `check-all` senza il riduttore pubblico. Stampa
+soltanto tipo, codice e dettaglio strutturale dell'eccezione; non stampa byte
+di controllo, firme, chiavi, contenuti o dati personali. La sonda non puo'
+rendere verde la prova: il `pytest.fail` resta incondizionato.
+
+B verifichi rapidamente che:
+
+1. la sonda gira soltanto dopo un rifiuto del vero programma installato;
+2. usa quel file installato, non il modulo gia' importato dalla fixture;
+3. nessun esito della sonda evita il fallimento;
+4. l'uscita e' limitata a metadati strutturali.
+
+Se concorda, registri:
+
+`B: CONCORDO SULLA SONDA INTERNA e01b16eb`
+
+`A: REVIEW_READY e01b16eb; UMASK_CAUSE_FALSIFIED 33580021713`
