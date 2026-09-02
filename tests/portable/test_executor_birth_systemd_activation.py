@@ -919,7 +919,8 @@ def _installed_commands_as_unit(entry_id: str, python: str) -> str:
 def _installed_check_all_diagnosis(program: Path, python: str) -> str:
     """Repeat check-all without the public error reducer after a refusal."""
     probe = (
-        "import importlib.util,sys\n"
+        "import importlib.util,json,os,sys\n"
+        "sys.dont_write_bytecode=True\n"
         "spec=importlib.util.spec_from_file_location('_metnos_probe',sys.argv[1])\n"
         "module=importlib.util.module_from_spec(spec)\n"
         "sys.modules[spec.name]=module\n"
@@ -927,43 +928,66 @@ def _installed_check_all_diagnosis(program: Path, python: str) -> str:
         "try:\n"
         " module._run_operational_command_v1(module.parse_cli_v1(['check-all']))\n"
         "except BaseException as error:\n"
-        " print(type(error).__name__+'|'+str(getattr(error,'code',''))+'|'"
-        "+str(getattr(error,'detail','')))\n"
+        " result={'kind':type(error).__name__,'code':str(getattr(error,'code','')),'detail':str(getattr(error,'detail',''))}\n"
         "else:\n"
-        " print('accepted')\n"
+        " result={'kind':'accepted','code':'','detail':''}\n"
+        "encoded=('metnos-probe-v1:'+json.dumps(result,ensure_ascii=True,sort_keys=True,separators=(',',':'))).encode('ascii')\n"
+        "os.write(int(sys.argv[2]),encoded)\n"
     )
+    read_descriptor, write_descriptor = os.pipe()
     try:
         completed = subprocess.run(
-            [python, "-I", "-S", "-c", probe, program.as_posix()],
-            capture_output=True, text=True, timeout=300,
+            [
+                python, "-I", "-S", "-c", probe, program.as_posix(),
+                str(write_descriptor),
+            ],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, pass_fds=(write_descriptor,),
+            timeout=300,
         )
     except Exception as failure:
+        os.close(write_descriptor)
+        os.close(read_descriptor)
         return f"raised {type(failure).__name__}"
-    payload = completed.stdout.strip()
+    os.close(write_descriptor)
+    try:
+        payload = os.read(read_descriptor, 513)
+    finally:
+        os.close(read_descriptor)
     if completed.returncode != 0:
         return f"probe-exit={completed.returncode}"
-    if completed.stderr:
-        return "probe-stderr-present"
-    if payload == "accepted":
-        return payload
-    fields = payload.split("|")
+    prefix = b"metnos-probe-v1:"
+    if len(payload) > 512 or not payload.startswith(prefix):
+        return "probe-output-rejected"
+    try:
+        value = json.loads(payload[len(prefix):].decode("ascii"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return "probe-output-rejected"
     if (
-        len(fields) == 3 and not fields[1] and not fields[2]
-        and fields[0] in {
+        not isinstance(value, dict)
+        or set(value) != {"kind", "code", "detail"}
+        or any(not isinstance(value[name], str) for name in value)
+    ):
+        return "probe-output-rejected"
+    kind, code, detail = value["kind"], value["code"], value["detail"]
+    if (kind, code, detail) == ("accepted", "", ""):
+        return kind
+    if (
+        not code and not detail
+        and kind in {
             "AttributeError", "OSError", "RuntimeError", "TypeError",
             "ValueError",
         }
     ):
-        return fields[0]
+        return kind
     if (
-        len(fields) != 3 or len(payload) > 256
-        or fields[0] != "PreflightError"
-        or not fields[1].startswith("birth_ownership_")
-        or not fields[1].isascii() or not fields[2].isascii()
-        or not fields[2] or not fields[2].isprintable()
+        kind != "PreflightError" or len(code) + len(detail) > 256
+        or not code.startswith("birth_ownership_")
+        or not code.isascii() or not detail.isascii()
+        or not detail or not detail.isprintable()
     ):
         return "probe-output-rejected"
-    return payload
+    return "|".join((kind, code, detail))
 
 
 def _wait_for(predicate, timeout: float = 300.0, *, diagnose=None) -> None:
