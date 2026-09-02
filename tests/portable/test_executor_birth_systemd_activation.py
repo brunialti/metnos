@@ -927,8 +927,15 @@ def _installed_check_all_diagnosis(program: Path, python: str) -> str:
         "spec.loader.exec_module(module)\n"
         "try:\n"
         " module._run_operational_command_v1(module.parse_cli_v1(['check-all']))\n"
-        "except BaseException as error:\n"
-        " result={'kind':type(error).__name__,'code':str(getattr(error,'code','')),'detail':str(getattr(error,'detail',''))}\n"
+        "except module.PreflightError as error:\n"
+        " result={'kind':'PreflightError','code':str(error.code),'detail':str(error.detail)}\n"
+        "except OSError as error:\n"
+        " errno=error.errno if type(error.errno) is int and 0 <= error.errno <= 4096 else None\n"
+        " result={'kind':'OSError','code':str(errno) if errno is not None else '','detail':''}\n"
+        "except (AttributeError,RuntimeError,TypeError,ValueError) as error:\n"
+        " result={'kind':type(error).__name__,'code':'','detail':''}\n"
+        "except BaseException:\n"
+        " result={'kind':'OtherError','code':'','detail':''}\n"
         "else:\n"
         " result={'kind':'accepted','code':'','detail':''}\n"
         "encoded=('metnos-probe-v1:'+json.dumps(result,ensure_ascii=True,sort_keys=True,separators=(',',':'))).encode('ascii')\n"
@@ -973,9 +980,17 @@ def _installed_check_all_diagnosis(program: Path, python: str) -> str:
     if (kind, code, detail) == ("accepted", "", ""):
         return kind
     if (
+        not detail and kind == "OSError"
+        and (
+            not code
+            or code.isascii() and code.isdecimal() and 0 <= int(code) <= 4096
+        )
+    ):
+        return "|".join((kind, code))
+    if (
         not code and not detail
         and kind in {
-            "AttributeError", "OSError", "RuntimeError", "TypeError",
+            "AttributeError", "OtherError", "RuntimeError", "TypeError",
             "ValueError",
         }
     ):
@@ -1159,11 +1174,10 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             check=False,
         ).stdout
         assert not fixture.marker_path.exists()
-        created = subprocess.run(
-            [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
-            capture_output=True, text=True, timeout=300,
+        installed_internal = _installed_check_all_diagnosis(
+            preflight_path, python,
         )
-        if created.returncode != 0:
+        if installed_internal != "accepted":
             names = tuple(sorted(
                 item.name for item in ATTESTATION_ROOT.iterdir()
             ))
@@ -1181,16 +1195,17 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             except preflight.PreflightError as failure:
                 state = "not-computed"
                 internal = f"{failure.code}:{failure.detail}"
-            installed_internal = _installed_check_all_diagnosis(
-                preflight_path, python,
-            )
             pytest.fail(
                 "installed check-all refused: "
-                f"exit={created.returncode} stderr={created.stderr.strip()!r}; "
                 f"in-process={internal}; attestation={state}; "
                 f"directory_entries={names!r}; "
                 f"installed-internal={installed_internal}"
             )
+        created = subprocess.run(
+            [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
+            capture_output=True, text=True, timeout=300,
+        )
+        assert created.returncode == 0
         assert created.stderr == ""
         assert attestation_path.is_file()
         assert not fixture.marker_path.exists()
