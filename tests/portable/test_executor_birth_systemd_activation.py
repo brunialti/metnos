@@ -59,6 +59,7 @@ from executor_birth_ownership_coordinator import (
     _coordinator_request_id_v1,
     _deployment_lock_for_test_v1,
     _install_transaction_id_v1,
+    _preflight_verified_record_v2,
     _record_hash_v2,
     _successor_claim_id_v1,
 )
@@ -561,7 +562,7 @@ def _capture_live_bindings(
 def _build_prerequisite_and_graph(
     fixture: _ActivationFixture, captured_tcb: object,
     effective: object, candidate_hash: str,
-) -> tuple[bytes, str]:
+) -> tuple[bytes, str, bytes, bytes]:
     authority = OWNERSHIP_ROOT / "authorities-v1"
     authority.mkdir(mode=0o755)
     registries = {
@@ -831,9 +832,59 @@ def _build_prerequisite_and_graph(
             transaction / f"record-{sequence:03d}-v2.json", encoded_record,
         )
         previous_hash = _record_hash_v2(encoded_record)
+
+    assert record.sequence == 5
+    checked_entry_ids = tuple(sorted(
+        (
+            entry.entry_id for entry in decoded_catalog.entries
+            if entry.requires_preflight or entry.unit_spec is not None
+        ),
+        key=lambda item: item.encode("utf-8"),
+    ))
+    attestation_value: dict[str, object] = {
+        "schema_version": 1,
+        "attestation_id": None,
+        "request_id": request_id,
+        "closed_build_id": closed_build_id,
+        "release_sequence": 1,
+        "head_id": head.head_id,
+        "required_head_frame_hash": _framed_digest_v1(
+            preflight.REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, required_frame,
+        ),
+        "deployment_descriptor_id": fixture.descriptor.descriptor_id,
+        "service_catalog_id": decoded_catalog.catalog_id,
+        "service_coverage_hash": decoded_catalog.service_coverage_hash,
+        "candidate_units_hash": candidate_hash,
+        "administrative_bundle_hash": bundle_hash,
+        "python_binary_hash": captured_tcb.executables.python_binary_hash,
+        "openssl_binary_hash": captured_tcb.executables.openssl_binary_hash,
+        "openssl_tcb_hash": captured_tcb.openssl_tcb.openssl_tcb_hash,
+        "systemctl_binary_hash": (
+            captured_tcb.executables.systemctl_binary_hash
+        ),
+        "systemd_analyze_binary_hash": (
+            captured_tcb.executables.systemd_analyze_binary_hash
+        ),
+        "effective_units_hash": effective.snapshot.effective_units_hash,
+        "checked_entry_ids": list(checked_entry_ids),
+    }
+    attestation_value["attestation_id"] = (
+        preflight._deployment_document_id_v1(
+            preflight.PREFLIGHT_ATTESTATION_DOMAIN_V1,
+            attestation_value,
+            "attestation_id",
+        )
+    )
+    attestation_bytes = _canonical(attestation_value)
+    verified_record = _preflight_verified_record_v2(
+        record, attestation_bytes,
+    )
     prerequisite_root = OWNERSHIP_ROOT / "startup-prerequisites-v1"
     prerequisite_root.mkdir(mode=0o755)
-    return prerequisite_bytes, request_id
+    return (
+        prerequisite_bytes, request_id, attestation_bytes,
+        verified_record.encode(),
+    )
 
 
 def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -1010,8 +1061,10 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         captured_tcb, effective, candidate_hash = _capture_live_bindings(fixture)
         _systemctl("stop", fixture.timer_name, check=False)
         _systemctl("reset-failed", fixture.service_name, check=False)
-        prerequisite, request_id = _build_prerequisite_and_graph(
-            fixture, captured_tcb, effective, candidate_hash,
+        prerequisite, request_id, attestation, verified_record = (
+            _build_prerequisite_and_graph(
+                fixture, captured_tcb, effective, candidate_hash,
+            )
         )
         prerequisite_path = (
             OWNERSHIP_ROOT / "startup-prerequisites-v1" / f"{request_id}.json"
@@ -1047,6 +1100,18 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             assert denied.stderr == preflight.CODE_INVALID + "\n"
             assert not fixture.marker_path.exists()
 
+        # The productive F4 path crosses and persists the preflight boundary
+        # before it activates the signed topology.  The real-systemd cell must
+        # enter through that same completed graph instead of launching from
+        # the intermediate HEAD_REQUIRED state.
+        _write_control(
+            ATTESTATION_ROOT / f"{request_id}.json", attestation,
+        )
+        _write_control(
+            OWNERSHIP_ROOT / "coordinator-v1" / "transactions-v2"
+            / request_id / "record-006-v2.json",
+            verified_record,
+        )
         _systemctl("start", fixture.timer_name)
         _wait_for(
             fixture.marker_path.exists,
