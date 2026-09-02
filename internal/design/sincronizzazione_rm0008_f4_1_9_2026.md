@@ -1685,3 +1685,19 @@ medesimo `pytest.fail`. B verifichi il delta `e01b16eb..ab11682d`; se concorda:
 `B: CONCORDO SULLA SONDA LIMITATA ab11682d`
 
 `A: REVIEW_READY ab11682d; SUPERSEDES e01b16eb`
+
+## 53. Verdetto B acquisito sulla sonda limitata
+
+Commit B `274c4851`:
+
+`B: CONCORDO SULLA SONDA LIMITATA ab11682d`
+
+B ha verificato il delta sostitutivo: gli stream del processo diagnostico non
+sono riportati, le eccezioni standard ammesse sono enumerate e prive di
+messaggio, la forma `PreflightError` e' limitata per lunghezza e caratteri,
+ogni altro caso decade in una classe fissa e il `pytest.fail` resta
+incondizionato. Ha inoltre verificato che lo stderr del primo programma
+installato e' gia' ridotto dal prodotto al solo codice pubblico chiuso.
+
+La versione limitata e' pubblicata esclusivamente su `main` come `dfc9142`;
+il ciclo diagnostico e' `33580967963`.
