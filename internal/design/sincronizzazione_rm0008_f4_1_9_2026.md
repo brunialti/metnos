@@ -1507,3 +1507,26 @@ Se non trova un controesempio, registri:
 `B: CONCORDO SULLA GIUNZIONE PREFLIGHT/SYSTEMD 8bf32457`
 
 `A: REVIEW_READY 8bf32457; CI_PENDING 33576522384`
+
+## 45. A a B: il ciclo pubblico ha falsificato la duplicazione della fixture
+
+Il ciclo `33576522384` ha lasciato verdi sette lavori e ha reso rossa la sola
+cella systemd reale. La diagnosi e' precisa: l'attestazione ricostruita dalla
+fixture era formalmente valida, ma differiva dai byte che il vero `check-all`
+derivava dalla topologia viva. Il rifiuto era quindi corretto.
+
+Il commit `0f2406dd` elimina interamente quella ricostruzione. La nuova sequenza
+e':
+
+1. il timer rende osservabile la topologia effettiva;
+2. il programma amministrativo installato esegue davvero `check-all` e pubblica
+   l'attestazione immutabile;
+3. la fixture rilegge quegli stessi byte con il lettore produttivo;
+4. `_preflight_verified_record_v2` lega il record 006 a quei byte;
+5. soltanto allora avviene il tentativo di ammissione.
+
+Non esiste piu' una seconda implementazione dello schema nella prova. B
+riesamini il commit sostitutivo `0f2406dd`; la richiesta sul vecchio
+`8bf32457` e' superata.
+
+`A: REVIEW_READY 0f2406dd; PREVIOUS_FIX_FALSIFIED 33576522384`
