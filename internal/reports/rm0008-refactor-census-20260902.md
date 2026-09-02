@@ -556,6 +556,32 @@ mode, ACL mutation, subprocess o lock. I 41 test del sottosistema, inclusi
 quelli del precedente owner metadata, sono verdi su descriptor reali; le prove
 ACL saltano esplicitamente solo quando il filesystem non le supporta.
 
+## Mini-tranche P0: pin source-review legato al path
+
+La review architetturale della deduplicazione ha scoperto che guard, preflight
+e publisher normalizzavano una riga simile al pin in qualunque sorgente Python.
+Un file estraneo poteva quindi contenere una falsa assegnazione
+`BIRTH_CLOSED_SOURCE_REVIEW_SHA256` senza far cambiare il source root.
+
+La normalizzazione ora riceve sempre `(relative_path, content)` ed è ammessa
+soltanto per due binding chiusi:
+
+- `runtime/contract_boundary_guard.py` con nome senza underscore;
+- `runtime/executor_birth_admin_preflight.py` con nome iniziale underscore.
+
+Ogni target deve contenere esattamente una literal valida. Path assente,
+literal assente, duplicato, nome errato o assegnazione aggiuntiva falliscono
+chiuso. Una riga pin-like in qualunque altro file resta materiale hashato. Il
+matcher usa soltanto spazio/tab e non può attraversare newline. I test golden
+provano la parità tra guard, standalone e tool di pubblicazione, oltre ai
+mutanti negativi. Il repin è convergente e byte-idempotente:
+
+- private: 713 file,
+  `sha256:15811955135303db4b0a147ce95b20127d471ae88b6e619bfb60cb7b90f5c136`;
+- public: 701 file,
+  `sha256:6592b09c895669da3d82bfef49a614613018de29bca222e1050de1b3e278dde3`;
+- inventario Python: 1.958 path.
+
 ## Piano esatto della deduplicazione boundary
 
 La seconda analisi AST distingue 61 funzioni/method body corrispondenti tra

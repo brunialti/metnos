@@ -19,10 +19,23 @@ SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
 SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-PIN_LINE = re.compile(
-    rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = '
-    rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))$'
+PIN_VALUE_V1 = (
+    rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
+PIN_ASSIGNMENT_V1 = re.compile(
+    rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256[ \t]*=[ \t]*'
+    + PIN_VALUE_V1 + rb'$'
+)
+PIN_BINDINGS_V1 = {
+    "runtime/contract_boundary_guard.py": re.compile(
+        rb'(?m)^BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = '
+        + PIN_VALUE_V1 + rb'$'
+    ),
+    "runtime/executor_birth_admin_preflight.py": re.compile(
+        rb'(?m)^_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = '
+        + PIN_VALUE_V1 + rb'$'
+    ),
+}
 PIN_PLACEHOLDER = (
     b'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:' + b"0" * 64 + b'"'
 )
@@ -101,17 +114,38 @@ def _indexed_sources(tree: Path) -> dict[str, bytes]:
     return result
 
 
+def _normalized_source(relative: str, content: bytes) -> bytes:
+    pattern = PIN_BINDINGS_V1.get(relative)
+    if pattern is None:
+        return content
+    expected = tuple(pattern.finditer(content))
+    assignments = tuple(PIN_ASSIGNMENT_V1.finditer(content))
+    if (
+        len(expected) != 1
+        or len(assignments) != 1
+        or expected[0].span() != assignments[0].span()
+    ):
+        _fail(f"invalid pin binding in {relative}")
+    start, end = expected[0].span()
+    return content[:start] + PIN_PLACEHOLDER + content[end:]
+
+
 def _source_root(sources: dict[str, bytes]) -> str:
     digest = hashlib.sha256(SOURCE_REVIEW_DOMAIN)
+    pin_targets = set()
     for relative, content in sorted(
         sources.items(), key=lambda item: item[0].encode("utf-8")
     ):
-        normalized = PIN_LINE.sub(PIN_PLACEHOLDER, content)
+        normalized = _normalized_source(relative, content)
+        if relative in PIN_BINDINGS_V1:
+            pin_targets.add(relative)
         encoded_path = relative.encode("utf-8")
         digest.update(len(encoded_path).to_bytes(8, "big"))
         digest.update(encoded_path)
         digest.update(len(normalized).to_bytes(8, "big"))
         digest.update(hashlib.sha256(normalized).digest())
+    if pin_targets != set(PIN_BINDINGS_V1):
+        _fail("source-review pin binding missing")
     return f"sha256:{digest.hexdigest()}"
 
 

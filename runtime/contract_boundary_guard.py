@@ -28,7 +28,7 @@ BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/2"
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:bf9831ae8fc0a821e83cd94e14fb9806bd2bfc87f03fa079085adfabc4deaeca"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:15811955135303db4b0a147ce95b20127d471ae88b6e619bfb60cb7b90f5c136"
 RM0008_ACCEPTANCE_EVOLUTION_SHA256 = "sha256:1babce04a78b8345cbacb9bf5677bebade3958e655f0dc45884ad70636322167"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
@@ -40,9 +40,23 @@ MAX_BOUNDARY_TOTAL_AST_NODES = 4_000_000
 MAX_BOUNDARY_AST_DEPTH = 64
 MAX_BOUNDARY_SCOPES = 512
 MAX_BOUNDARY_CALLS = 8_192
-_SOURCE_REVIEW_PIN_LINE = re.compile(
-    rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
+_SOURCE_REVIEW_PIN_VALUE_V1 = (
+    rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
+_SOURCE_REVIEW_PIN_ASSIGNMENT_V1 = re.compile(
+    rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256[ \t]*=[ \t]*'
+    + _SOURCE_REVIEW_PIN_VALUE_V1 + rb'$'
+)
+_SOURCE_REVIEW_PIN_BINDINGS_V1 = {
+    "runtime/contract_boundary_guard.py": re.compile(
+        rb'(?m)^BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = '
+        + _SOURCE_REVIEW_PIN_VALUE_V1 + rb'$'
+    ),
+    "runtime/executor_birth_admin_preflight.py": re.compile(
+        rb'(?m)^_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = '
+        + _SOURCE_REVIEW_PIN_VALUE_V1 + rb'$'
+    ),
+}
 _SOURCE_REVIEW_PIN_PLACEHOLDER = (
     b'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:' + b"0" * 64 + b'"'
 )
@@ -833,11 +847,21 @@ def _boundary_api_capabilities(canonical: str) -> tuple[str, ...]:
     return tuple(BOUNDARY_APIS.get(owner, {}).get(api, ()))
 
 
-def _normalized_source_review_bytes(content: bytes) -> bytes:
-    """Remove only the compiled pin value from its own reviewed material."""
-    return _SOURCE_REVIEW_PIN_LINE.sub(
-        _SOURCE_REVIEW_PIN_PLACEHOLDER, content,
-    )
+def _normalized_source_review_bytes(relative: str, content: bytes) -> bytes:
+    """Normalize exactly one pin in each of the two compiled bindings."""
+    pattern = _SOURCE_REVIEW_PIN_BINDINGS_V1.get(relative)
+    if pattern is None:
+        return content
+    expected = tuple(pattern.finditer(content))
+    assignments = tuple(_SOURCE_REVIEW_PIN_ASSIGNMENT_V1.finditer(content))
+    if (
+        len(expected) != 1
+        or len(assignments) != 1
+        or expected[0].span() != assignments[0].span()
+    ):
+        raise ValueError(f"invalid source-review pin binding: {relative}")
+    start, end = expected[0].span()
+    return content[:start] + _SOURCE_REVIEW_PIN_PLACEHOLDER + content[end:]
 
 
 def closed_python_source_review_sha256(
@@ -846,6 +870,7 @@ def closed_python_source_review_sha256(
     """Bind the exact Python source set approved for one closed build."""
     digest = hashlib.sha256(BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN)
     selected = []
+    pin_targets = set()
     for relative, content in sources.items():
         components = relative.split("/")
         if (
@@ -856,7 +881,12 @@ def closed_python_source_review_sha256(
             or type(content) is not bytes
         ):
             continue
-        selected.append((relative, _normalized_source_review_bytes(content)))
+        normalized = _normalized_source_review_bytes(relative, content)
+        selected.append((relative, normalized))
+        if relative in _SOURCE_REVIEW_PIN_BINDINGS_V1:
+            pin_targets.add(relative)
+    if pin_targets != set(_SOURCE_REVIEW_PIN_BINDINGS_V1):
+        raise ValueError("source-review pin binding missing")
     for relative, content in sorted(
         selected, key=lambda item: item[0].encode("utf-8"),
     ):
@@ -885,7 +915,7 @@ def closed_python_source_review_finding(root: Path) -> Finding | None:
         observed = closed_python_source_review_sha256(
             closed_python_sources_from_root(root),
         )
-    except (OSError, MemoryError) as exc:
+    except (OSError, MemoryError, ValueError) as exc:
         return Finding(
             "birth_closed_source_review_invalid", "<source-review>",
             f"cannot read reviewed Python sources: {type(exc).__name__}",

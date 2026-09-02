@@ -41,6 +41,25 @@ _CORPUS = {
     ),
 }
 
+_GUARD_PIN_PATH = "runtime/contract_boundary_guard.py"
+_ADMIN_PIN_PATH = "runtime/executor_birth_admin_preflight.py"
+_GUARD_PIN_NAME = b"BIRTH_CLOSED_SOURCE_REVIEW_SHA256"
+_ADMIN_PIN_NAME = b"_BIRTH_CLOSED_SOURCE_REVIEW_SHA256"
+
+
+def _pin_line(name: bytes, digit: bytes) -> bytes:
+    return name + b' = "sha256:' + digit * 64 + b'"\n'
+
+
+def _review_sources(
+    guard_digit: bytes = b"1", admin_digit: bytes = b"2",
+) -> dict[str, bytes]:
+    return {
+        **_CORPUS,
+        _GUARD_PIN_PATH: _pin_line(_GUARD_PIN_NAME, guard_digit),
+        _ADMIN_PIN_PATH: _pin_line(_ADMIN_PIN_NAME, admin_digit),
+    }
+
 _EXPECTED_FACT_PAYLOADS = (
     {
         "calls": [],
@@ -104,7 +123,7 @@ _EXPECTED_FINDING_PAYLOADS = (
 )
 
 _EXPECTED_NORMALIZED_SOURCE_REVIEW_SHA256 = (
-    "sha256:7a034ca0e27068833e85c9ec5f97c19e2f77a2d55783d747e9afe021ebae1d42"
+    "sha256:117ed968866f3da95963f9d54ac333621f66db66ef218b81d078ba9a8c6aa742"
 )
 
 _ESSENTIAL_POLICY_NAMES = (
@@ -277,22 +296,73 @@ def test_boundary_facts_and_findings_match_for_representative_corpus(
     }
 
 
-def test_boundary_source_review_hash_and_pin_normalization_match() -> None:
-    first_pin = b'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:' + b"1" * 64 + b'"\n'
-    second_pin = b'_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:' + b"2" * 64 + b'"\n'
-    first_sources = {**_CORPUS, "runtime/pin_probe.py": first_pin}
-    second_sources = {**_CORPUS, "runtime/pin_probe.py": second_pin}
-
-    imported_first = guard.closed_python_source_review_sha256(first_sources)
-    standalone_first = standalone._closed_python_source_review_sha256_v1(
-        first_sources,
-    )
-    imported_second = guard.closed_python_source_review_sha256(second_sources)
-    standalone_second = standalone._closed_python_source_review_sha256_v1(
-        second_sources,
+def _review_hashes(sources: dict[str, bytes]) -> tuple[str, str]:
+    return (
+        guard.closed_python_source_review_sha256(sources),
+        standalone._closed_python_source_review_sha256_v1(sources),
     )
 
-    assert imported_first == standalone_first
-    assert imported_second == standalone_second
-    assert imported_first == imported_second
-    assert imported_first == _EXPECTED_NORMALIZED_SOURCE_REVIEW_SHA256
+
+def test_boundary_source_review_normalizes_only_the_two_exact_bindings() -> None:
+    first = _review_hashes(_review_sources(b"1", b"2"))
+    second = _review_hashes(_review_sources(b"3", b"4"))
+    assert first[0] == first[1]
+    assert second[0] == second[1]
+    assert first == second
+    assert first[0] == _EXPECTED_NORMALIZED_SOURCE_REVIEW_SHA256
+
+
+def test_pin_like_assignment_outside_targets_remains_reviewed_material() -> None:
+    first = _review_sources()
+    second = _review_sources()
+    first["runtime/pin_probe.py"] = _pin_line(_GUARD_PIN_NAME, b"5")
+    second["runtime/pin_probe.py"] = _pin_line(_GUARD_PIN_NAME, b"6")
+    first_hashes = _review_hashes(first)
+    second_hashes = _review_hashes(second)
+    assert first_hashes[0] == first_hashes[1]
+    assert second_hashes[0] == second_hashes[1]
+    assert first_hashes != second_hashes
+
+
+def test_admin_target_accepts_the_nonliteral_public_alias_as_material() -> None:
+    sources = _review_sources()
+    baseline = _review_hashes(sources)
+    sources[_ADMIN_PIN_PATH] += (
+        _GUARD_PIN_NAME + b" = " + _ADMIN_PIN_NAME + b"\n"
+    )
+    with_alias = _review_hashes(sources)
+    assert with_alias[0] == with_alias[1]
+    assert with_alias != baseline
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing_path", "missing_literal", "duplicate",
+        "wrong_guard_name", "wrong_admin_name", "extra_wrong_name",
+    ],
+)
+def test_source_review_pin_binding_shape_fails_closed(case: str) -> None:
+    sources = _review_sources()
+    if case == "missing_path":
+        del sources[_GUARD_PIN_PATH]
+    elif case == "missing_literal":
+        sources[_ADMIN_PIN_PATH] = b"VALUE = 1\n"
+    elif case == "duplicate":
+        sources[_GUARD_PIN_PATH] *= 2
+    elif case == "wrong_guard_name":
+        sources[_GUARD_PIN_PATH] = _pin_line(_ADMIN_PIN_NAME, b"1")
+    elif case == "wrong_admin_name":
+        sources[_ADMIN_PIN_PATH] = _pin_line(_GUARD_PIN_NAME, b"2")
+    else:
+        sources[_GUARD_PIN_PATH] += _pin_line(_ADMIN_PIN_NAME, b"3")
+    with pytest.raises(ValueError, match="pin binding"):
+        guard.closed_python_source_review_sha256(sources)
+    with pytest.raises(standalone.PreflightError, match="pin binding"):
+        standalone._closed_python_source_review_sha256_v1(sources)
+
+
+def test_pin_assignment_matcher_never_crosses_a_newline() -> None:
+    split = _GUARD_PIN_NAME + b'\n= "sha256:' + b"1" * 64 + b'"\n'
+    assert guard._SOURCE_REVIEW_PIN_ASSIGNMENT_V1.search(split) is None
+    assert standalone._SOURCE_REVIEW_PIN_ASSIGNMENT_V1.search(split) is None
