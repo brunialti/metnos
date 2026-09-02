@@ -36,11 +36,12 @@ CHECK_ONLY=0
 # projection are two different reviewed source profiles.  Never derive either
 # expected value from the candidate being published: changing source bytes
 # requires an explicit review and an update of the corresponding fixed pin.
-PRIVATE_SOURCE_REVIEW_SHA256="sha256:15811955135303db4b0a147ce95b20127d471ae88b6e619bfb60cb7b90f5c136"
-PRIVATE_SOURCE_REVIEW_COUNT=713
-PUBLIC_SOURCE_REVIEW_SHA256="sha256:6592b09c895669da3d82bfef49a614613018de29bca222e1050de1b3e278dde3"
-PUBLIC_SOURCE_REVIEW_COUNT=701
+PRIVATE_SOURCE_REVIEW_SHA256="sha256:6a8dc12ddf41c73490b5a92efc912b3cab38814808b66715d73586083bb07e21"
+PRIVATE_SOURCE_REVIEW_COUNT=718
+PUBLIC_SOURCE_REVIEW_SHA256="sha256:e5172db359198460415991e9ca771050dc83bc65fe2b2558f6ce9f27c77ac49f"
+PUBLIC_SOURCE_REVIEW_COUNT=706
 SOURCE_REVIEW_TOOL="$REPO_ROOT/internal/tools/rm0008_public_source_review.py"
+BOUNDARY_POLICY_CHECKER="$REPO_ROOT/scripts/check_contract_boundary_policy.py"
 
 source_review_gate() {
   "$PYTHON" "$SOURCE_REVIEW_TOOL" "$@"
@@ -55,6 +56,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+echo "== -1. verifico proiezione policy del Birth gate =="
+"$PYTHON" -I -S "$BOUNDARY_POLICY_CHECKER"
+
 echo "== 0. verifico radice sorgenti privata RM-0008 =="
 source_review_gate \
   private-fs "$REPO_ROOT" \
@@ -63,6 +67,7 @@ echo "   radice privata: $PRIVATE_SOURCE_REVIEW_SHA256 ($PRIVATE_SOURCE_REVIEW_C
 
 echo "== 1. rigenero export =="
 bash scripts/export-public.sh "$DEST" >/dev/null
+"$PYTHON" -I -S "$DEST/scripts/check_contract_boundary_policy.py"
 source_review_gate \
   public-fs-pin "$DEST" \
   "$PUBLIC_SOURCE_REVIEW_SHA256" "$PUBLIC_SOURCE_REVIEW_COUNT" \

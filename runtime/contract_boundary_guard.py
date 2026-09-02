@@ -21,25 +21,26 @@ from pathlib import Path
 import re
 from typing import Iterable, Mapping, Sequence
 
+import contract_boundary_policy as _boundary_policy
 
-SCHEMA = "metnos.contract-boundary-inventory/2"
-BIRTH_CLOSED_SCHEMA = "metnos.contract-boundary-birth-closed/1"
-BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/2"
+SCHEMA = _boundary_policy.SCHEMA
+BIRTH_CLOSED_SCHEMA = _boundary_policy.BIRTH_CLOSED_SCHEMA
+BIRTH_CLOSED_GUARD_VERSION = _boundary_policy.BIRTH_CLOSED_GUARD_VERSION
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:15811955135303db4b0a147ce95b20127d471ae88b6e619bfb60cb7b90f5c136"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:6a8dc12ddf41c73490b5a92efc912b3cab38814808b66715d73586083bb07e21"
 RM0008_ACCEPTANCE_EVOLUTION_SHA256 = "sha256:1babce04a78b8345cbacb9bf5677bebade3958e655f0dc45884ad70636322167"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
-SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
-MAX_BOUNDARY_SOURCE_FILES = 2_048
-MAX_BOUNDARY_SOURCE_BYTES = 1 * 1024 * 1024
-MAX_BOUNDARY_TOTAL_SOURCE_BYTES = 32 * 1024 * 1024
-MAX_BOUNDARY_AST_NODES = 100_000
-MAX_BOUNDARY_TOTAL_AST_NODES = 4_000_000
-MAX_BOUNDARY_AST_DEPTH = 64
-MAX_BOUNDARY_SCOPES = 512
-MAX_BOUNDARY_CALLS = 8_192
+SCAN_ROOTS = _boundary_policy.SCAN_ROOTS
+MAX_BOUNDARY_SOURCE_FILES = _boundary_policy.MAX_BOUNDARY_SOURCE_FILES
+MAX_BOUNDARY_SOURCE_BYTES = _boundary_policy.MAX_BOUNDARY_SOURCE_BYTES
+MAX_BOUNDARY_TOTAL_SOURCE_BYTES = _boundary_policy.MAX_BOUNDARY_TOTAL_SOURCE_BYTES
+MAX_BOUNDARY_AST_NODES = _boundary_policy.MAX_BOUNDARY_AST_NODES
+MAX_BOUNDARY_TOTAL_AST_NODES = _boundary_policy.MAX_BOUNDARY_TOTAL_AST_NODES
+MAX_BOUNDARY_AST_DEPTH = _boundary_policy.MAX_BOUNDARY_AST_DEPTH
+MAX_BOUNDARY_SCOPES = _boundary_policy.MAX_BOUNDARY_SCOPES
+MAX_BOUNDARY_CALLS = _boundary_policy.MAX_BOUNDARY_CALLS
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -60,399 +61,33 @@ _SOURCE_REVIEW_PIN_BINDINGS_V1 = {
 _SOURCE_REVIEW_PIN_PLACEHOLDER = (
     b'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:' + b"0" * 64 + b'"'
 )
-AUTHORING_FILES = frozenset({
-    "manifest.toml",
-    "manifest.toml.sig",
-    "manifest.lang_state.json",
-})
-# Public boundary APIs are classified by their owning module, never by a
-# language, executor name or caller-chosen helper name.  Local wrappers inherit
-# these capabilities through the per-file call graph below.
-BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
-    "executor_birth": {
-        "birth_executor": ("birth",),
-    },
-    "executor_birth_intent": {
-        "submit_builtin_generation_birth": ("birth",),
-        "submit_change_extend_birth": ("birth",),
-        "submit_change_rollback_birth": ("birth",),
-        "submit_installer_birth": ("birth",),
-        "submit_promote_birth": ("birth",),
-        "submit_promoter_rollback_birth": ("birth",),
-        "submit_skills_birth": ("birth",),
-        "submit_stack_reconcile_birth": ("birth",),
-        "submit_synth_producer_birth": ("birth",),
-    },
-    "executor_birth_operational": {
-        "birth_executor": ("birth",),
-    },
-    "executor_birth_synth": {
-        "submit_synth_multistage": ("birth",),
-        "submit_synth_specialize": ("birth",),
-        "submit_synth_approve": ("birth",),
-    },
-    "contract_store": {
-        "verify_manifest_source": ("authoring_read", "authoring_verify"),
-        "prepare_technical_draft": ("authoring_read", "authoring_verify"),
-        "read_binding": ("verified_store_read",),
-        "current_revision_id": ("verified_store_read",),
-        "current_contract": ("verified_store_read",),
-        "current_manifest": ("verified_store_read",),
-        "diagnose_store": ("verified_store_read",),
-        "publish_localization": ("publish_localization",),
-        "publish_technical_update": ("publish_technical",),
-        "publish_signed_source": ("publish_bootstrap",),
-        "retire": ("retire",),
-        "reactivate_technical_update": ("reactivate",),
-        "rollback": ("rollback",),
-        "activate_store": ("legacy_bootstrap",),
-        "acquire_current_reattestation_snapshot": ("verified_store_read",),
-        "persist_current_reattestation_receipt": ("store_write",),
-        "read_current_birth_receipt": ("verified_store_read",),
-    },
-    "sign": {
-        "sign_executor": ("sign",),
-        "verify_executor": ("authoring_read", "authoring_verify"),
-        "publish_executor": ("publish_technical",),
-        "publish_authoring_update": ("publish_technical",),
-        "retire_executor_contract": ("retire",),
-        "reactivate_executor_contract": ("reactivate",),
-        "rollback_executor_contract": ("rollback",),
-    },
-    "loader": {
-        "load_catalog": ("live_artifact_read",),
-    },
-    "invocations": {
-        "load_executor_artifact": ("live_artifact_read",),
-    },
-    "i18n_migrate_manifests": {
-        "prepare_contract_store_shadow": ("legacy_bootstrap",),
-        "activate_prepared_contract_store": ("legacy_bootstrap",),
-    },
-    "contract_cutover_guard": {
-        "contract_cutover_guard": ("cutover_guard",),
-        "verify_store_only_catalog": (
-            "live_artifact_read",
-            "verified_store_read",
-        ),
-    },
-    "manifest_inventory": {
-        "inventory_authoring_manifests": ("authoring_read",),
-        "inventory_manifests": ("authoring_read", "verified_store_read"),
-        "inventory_store_manifests": ("verified_store_read",),
-    },
-    "executor_birth_authoring": {
-        "read_manifest_ref_versioned": ("authoring_versioned_read",),
-    },
-    "executor_birth_ownership_chain": {
-        "_InitialOwnershipChainStateV1": ("store_write",),
-        "_append_pair": ("store_write",),
-        "_inspect_ownership_chain_state_core_v1": ("store_write",),
-        "_mint_initial_ownership_chain_state_v1": ("store_write",),
-        "_replace_required_pointer": ("store_write",),
-        "_required_head_lock": ("store_write",),
-        "_update_required_head_locked": ("store_write",),
-        "append_authenticated_build": ("store_write",),
-        "append_cutover": ("store_write",),
-        "append_head": ("store_write",),
-        "initialize": ("store_write",),
-        "update_required_head": ("store_write",),
-    },
-    "executor_birth_ownership_cutover": {
-        "_publish_no_replace": ("store_write",),
-        "_sync_directory": ("store_write",),
-        "_write_temporary": ("store_write",),
-        "install_ownership_cutover_certificate": ("store_write",),
-    },
-    "executor_birth_ownership_coordinator": {
-        "_ACTIVE_DEPLOYMENT_LOCK_LEASES_V1": ("store_write",),
-        "_ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1": ("store_write",),
-        "_DEPLOYMENT_LOCK_FORK_GUARD": ("store_write",),
-        "_DeploymentLockLeaseV1": ("store_write",),
-        "_OPEN_DEPLOYMENT_LOCK_FDS_V1": ("store_write",),
-        "_append_coordinator_record_v1": ("store_write",),
-        "_deployment_lock_at_v1": ("store_write",),
-        "_deployment_lock_for_test_v1": ("store_write",),
-        "_deployment_lock_v1": ("store_write",),
-        "_publish_certificate_with_prerequisite_v1": ("store_write",),
-        "_publish_control_no_replace_v2": ("store_write",),
-        "_reserve_transition_edge_core_v2": ("store_write",),
-        "_reserve_transition_edge_locked_for_test_v2": ("store_write",),
-        "_reserve_transition_edge_locked_v2": ("store_write",),
-        "_LockedOwnershipCoordinatorGraphSnapshotV2": ("store_write",),
-        "_require_locked_coordinator_graph_snapshot_v2": ("store_write",),
-        "_require_locked_coordinator_graph_issued_v2": ("store_write",),
-        "_resolve_locked_coordinator_graph_issued_v2": ("store_write",),
-        "_resolve_ownership_coordinator_locked_v2": ("store_write",),
-        "require_issued": ("store_write",),
-        "resolve_issued": ("store_write",),
-        "prepare_ownership_cutover_v1": ("cutover_guard",),
-    },
-    "birth_ownership_authority_provisioner": {
-        "_discard_temporary": ("store_write",),
-        "_load_or_create_pair": ("store_write",),
-        "_publish_no_replace": ("store_write",),
-        "_provision_ownership_authorities_at_v1": ("store_write",),
-        "_provision_ownership_authorities_locked_v1": ("store_write",),
-        "_provisioning_lock": ("store_write",),
-        "_sync_directory": ("store_write",),
-        "_write_exclusive": ("store_write",),
-        "provision_root_ownership_authorities_v1": ("store_write",),
-    },
-    "executor_birth_source_receiver": {
-        "<module>": ("store_write",),
-        "_copy_source_file_v1": ("store_write",),
-        "_create_private_directory_v1": ("store_write",),
-        "_create_source_directories_v1": ("store_write",),
-        "_ensure_child_directory_v1": ("store_write",),
-        "_open_received_tree_at_v1": ("store_write",),
-        "_load_received_source_locked_core_v1": ("store_write",),
-        "_load_received_source_with_product_session_v1": ("store_write",),
-        "_load_received_source_with_test_session_v1": ("store_write",),
-        "_receive_source_for_test_v1": ("store_write",),
-        "_receive_source_locked_core_v1": ("store_write",),
-        "_receive_source_v1": ("store_write",),
-        "_receive_source_with_product_session_v1": ("store_write",),
-        "_receive_source_with_test_session_v1": ("store_write",),
-        "_remove_owned_tree_at_v1": ("store_write",),
-        "_rename_no_replace_v1": ("store_write",),
-        "_seal_temporary_directories_v1": ("store_write",),
-        "_verify_received_tree_fd_v1": ("store_write",),
-        "_write_all_v1": ("store_write",),
-        "_write_descriptor_v1": ("store_write",),
-        "copied_chunks": ("store_write",),
-        "main": ("store_write",),
-    },
-    "executor_birth_transition": {
-        "<module>": ("store_write",),
-        "deploy_source_v1": ("store_write",),
-        "main": ("store_write",),
-    },
-    "executor_birth_systemd": {
-        "_install_group6_administrative_for_test_v1": ("store_write",),
-        "_install_locked_core_v1": ("store_write",),
-        "_install_signed_isolated_systemd_for_test_v1": ("store_write",),
-        "_open_parent_v1": ("store_write",),
-        "_publish_administrative_tree_v1": ("store_write",),
-        "_publish_isolated_units_for_test_v1": ("store_write",),
-        "install_group6_administrative_v1": ("store_write",),
-    },
-    "executor_birth_admin_preflight": {
-        "_publish_preflight_attestation_core_v1": ("store_write",),
-        "_publish_preflight_attestation_for_test_v1": ("store_write",),
-        "_publish_preflight_attestation_v1": ("store_write",),
-        "_write_all_exact_v1": ("store_write",),
-    },
-}
-BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
-    "executor_birth": frozenset({"executor_birth", "runtime.executor_birth"}),
-    "executor_birth_intent": frozenset({
-        "executor_birth_intent", "runtime.executor_birth_intent",
-    }),
-    "executor_birth_operational": frozenset({
-        "executor_birth_operational", "runtime.executor_birth_operational",
-    }),
-    "executor_birth_synth": frozenset({
-        "executor_birth_synth", "runtime.executor_birth_synth",
-    }),
-    "contract_store": frozenset({"contract_store", "runtime.contract_store"}),
-    "sign": frozenset({"sign", "runtime.sign"}),
-    "loader": frozenset({"loader", "runtime.loader"}),
-    "invocations": frozenset({"invocations", "runtime.invocations"}),
-    "i18n_migrate_manifests": frozenset({
-        "admin.i18n_migrate_manifests",
-        "runtime.admin.i18n_migrate_manifests",
-    }),
-    "contract_cutover_guard": frozenset({
-        "contract_cutover_guard",
-        "runtime.contract_cutover_guard",
-    }),
-    "manifest_inventory": frozenset({
-        "manifest_inventory",
-        "runtime.manifest_inventory",
-    }),
-    "executor_birth_authoring": frozenset({
-        "executor_birth_authoring", "runtime.executor_birth_authoring",
-    }),
-    "executor_birth_ownership_chain": frozenset({
-        "executor_birth_ownership_chain", "runtime.executor_birth_ownership_chain",
-    }),
-    "executor_birth_ownership_cutover": frozenset({
-        "executor_birth_ownership_cutover",
-        "runtime.executor_birth_ownership_cutover",
-    }),
-    "executor_birth_ownership_coordinator": frozenset({
-        "executor_birth_ownership_coordinator",
-        "runtime.executor_birth_ownership_coordinator",
-    }),
-    "birth_ownership_authority_provisioner": frozenset({
-        "install.birth_ownership_authority_provisioner",
-    }),
-    "executor_birth_source_receiver": frozenset({
-        "install.executor_birth_source_receiver",
-    }),
-    "executor_birth_transition": frozenset({
-        "install.executor_birth_transition",
-    }),
-    "executor_birth_systemd": frozenset({
-        "install.executor_birth_systemd",
-    }),
-    "executor_birth_admin_preflight": frozenset({
-        "executor_birth_admin_preflight",
-        "runtime.executor_birth_admin_preflight",
-    }),
-}
-BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
-    "runtime/executor_birth.py": "executor_birth",
-    "runtime/executor_birth_intent.py": "executor_birth_intent",
-    "runtime/executor_birth_operational.py": "executor_birth_operational",
-    "runtime/contract_store.py": "contract_store",
-    "runtime/sign.py": "sign",
-    "runtime/loader.py": "loader",
-    "runtime/invocations.py": "invocations",
-    "runtime/admin/i18n_migrate_manifests.py": "i18n_migrate_manifests",
-    "runtime/contract_cutover_guard.py": "contract_cutover_guard",
-    "runtime/manifest_inventory.py": "manifest_inventory",
-    "runtime/executor_birth_authoring.py": "executor_birth_authoring",
-    "runtime/executor_birth_ownership_chain.py": "executor_birth_ownership_chain",
-    "runtime/executor_birth_ownership_coordinator.py": (
-        "executor_birth_ownership_coordinator"
-    ),
-    "install/birth_ownership_authority_provisioner.py": (
-        "birth_ownership_authority_provisioner"
-    ),
-    "install/executor_birth_source_receiver.py": (
-        "executor_birth_source_receiver"
-    ),
-    "install/executor_birth_transition.py": "executor_birth_transition",
-    "install/executor_birth_systemd.py": "executor_birth_systemd",
-    "runtime/executor_birth_admin_preflight.py": (
-        "executor_birth_admin_preflight"
-    ),
-}
-READ_OPERATIONS = frozenset({
-    "exists",
-    "glob",
-    "is_dir",
-    "is_file",
-    "iterdir",
-    "load",
-    "loads",
-    "open",
-    "parse",
-    "read",
-    "read_bytes",
-    "read_text",
-    "resolve",
-    "rglob",
-    "stat",
-})
-WRITE_OPERATIONS = frozenset({
-    "NamedTemporaryFile",
-    "chmod",
-    "chown",
-    "copy",
-    "copy2",
-    "copyfile",
-    "extract",
-    "extractall",
-    "fchmod",
-    "fchown",
-    "ftruncate",
-    "fsync",
-    "mkdir",
-    "mkdtemp",
-    "mkstemp",
-    "open",
-    "remove",
-    "rename",
-    "replace",
-    "rmdir",
-    "rmtree",
-    "hardlink_to",
-    "link",
-    "symlink_to",
-    "touch",
-    "truncate",
-    "unlink",
-    "write",
-    "write_bytes",
-    "write_text",
-})
-PROCESS_CALLS = frozenset({"Popen", "call", "check_call", "check_output", "run", "system"})
-DYNAMIC_CODE_LOADER_APIS = frozenset({
-    "FunctionType", "SourceFileLoader", "SourcelessFileLoader",
-    "exec_module", "load_module", "module_from_spec", "run_module",
-    "run_path", "spec_from_file_location",
-})
-DYNAMIC_CODE_LOADER_CANONICALS = frozenset({
-    "importlib.machinery.SourceFileLoader",
-    "importlib.machinery.SourcelessFileLoader",
-    "importlib.util.module_from_spec",
-    "importlib.util.spec_from_file_location",
-    "runpy.run_module",
-    "runpy.run_path",
-    "types.FunctionType",
-})
-SENSITIVE_FIRST_CLASS_REFERENCES = frozenset({
-    "getattr", "builtins.getattr", "builtins.__getattribute__",
-    "importlib.__getattribute__", "sys.modules.get",
-})
-SENSITIVE_IMPORT_NAMESPACES = frozenset({
-    "__builtins__", "__loader__", "__spec__", "builtins",
-    "builtins.__dict__", "importlib",
-    "importlib.__dict__", "importlib.machinery", "importlib.util", "runpy",
-    "sys.modules", "types",
-})
-SYS_MODULES_EXPOSING_METHODS = frozenset({
-    "copy", "items", "pop", "popitem", "setdefault", "values",
-})
-SYS_MODULES_MUTATING_METHODS = frozenset({
-    "__delitem__", "__setitem__", "clear", "pop", "popitem", "setdefault",
-    "update",
-})
-AUTHENTICATED_EXECUTION_SCOPE = (
-    "runtime/admitted_module_v1.py", "load_admitted_module_v1",
+AUTHORING_FILES = _boundary_policy.AUTHORING_FILES
+# Public policy names retain their historical concrete runtime types.
+BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = (
+    _boundary_policy.BOUNDARY_APIS
 )
+BOUNDARY_MODULES: Mapping[str, frozenset[str]] = _boundary_policy.BOUNDARY_MODULES
+BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = (
+    _boundary_policy.BOUNDARY_SOURCE_OWNERS
+)
+READ_OPERATIONS = _boundary_policy.READ_OPERATIONS
+WRITE_OPERATIONS = _boundary_policy.WRITE_OPERATIONS
+PROCESS_CALLS = _boundary_policy.PROCESS_CALLS
+DYNAMIC_CODE_LOADER_APIS = _boundary_policy.DYNAMIC_CODE_LOADER_APIS
+DYNAMIC_CODE_LOADER_CANONICALS = _boundary_policy.DYNAMIC_CODE_LOADER_CANONICALS
+SENSITIVE_FIRST_CLASS_REFERENCES = (
+    _boundary_policy.SENSITIVE_FIRST_CLASS_REFERENCES
+)
+SENSITIVE_IMPORT_NAMESPACES = _boundary_policy.SENSITIVE_IMPORT_NAMESPACES
+SYS_MODULES_EXPOSING_METHODS = _boundary_policy.SYS_MODULES_EXPOSING_METHODS
+SYS_MODULES_MUTATING_METHODS = _boundary_policy.SYS_MODULES_MUTATING_METHODS
+AUTHENTICATED_EXECUTION_SCOPE = _boundary_policy.AUTHENTICATED_EXECUTION_SCOPE
 AUTHENTICATED_PREFLIGHT_EXECUTION_SCOPE = (
-    "runtime/executor_birth_admin_preflight.py", "_launch_python_target_v1",
+    _boundary_policy.AUTHENTICATED_PREFLIGHT_EXECUTION_SCOPE
 )
-LIVE_READER_FORBIDDEN = frozenset({
-    "ambiguous_local_authority",
-    "authoring_read",
-    "authoring_write",
-    "authoring_verify",
-    "birth",
-    "legacy_bootstrap",
-    "publish_bootstrap",
-    "publish_localization",
-    "publish_technical",
-    "reactivate",
-    "retire",
-    "rollback",
-    "sign",
-    "store_write",
-    "dynamic_boundary_access",
-})
-PUBLISH_CAPABILITIES = frozenset({
-    "birth",
-    "publish_bootstrap",
-    "publish_localization",
-    "publish_technical",
-    "reactivate",
-    "retire",
-    "rollback",
-})
-FLOW_CAPABILITIES = PUBLISH_CAPABILITIES | frozenset({
-    "ambiguous_local_authority",
-    "authoring_write",
-    "cutover_guard",
-    "legacy_bootstrap",
-    "sign",
-    "store_write",
-    "dynamic_boundary_access",
-})
-
+LIVE_READER_FORBIDDEN = _boundary_policy.LIVE_READER_FORBIDDEN
+PUBLISH_CAPABILITIES = _boundary_policy.PUBLISH_CAPABILITIES
+FLOW_CAPABILITIES = _boundary_policy.FLOW_CAPABILITIES
 # These are implementation boundaries, not a caller-extensible allow-list.
 BIRTH_CLOSED_SEALED_MODULES = (
     "runtime/contract_store.py",
@@ -688,22 +323,13 @@ LIVE_MUTATIONS = frozenset({
     "rollback",
 })
 
-_AUTHORING_NAME_RE = re.compile(
-    r"(?:^|_)(?:(?:authoring_manifest|manifest_source|source_manifest)_"
-    r"(?:path|dir|root)|executor_(?:path|dir|root))(?:_|$)",
+_AUTHORING_NAME_RE = _boundary_policy._AUTHORING_NAME_RE
+_AMBIGUOUS_AUTHORING_ARGUMENT_RE = (
+    _boundary_policy._AMBIGUOUS_AUTHORING_ARGUMENT_RE
 )
-_AMBIGUOUS_AUTHORING_ARGUMENT_RE = re.compile(
-    r"(?:^|_)manifest_(?:path|dir|root)(?:_|$)",
-)
-_STORE_NAME_RE = re.compile(
-    r"(?:^|_)(?:(?:contract_publication|contract_store|publication_store)_"
-    r"(?:path|dir|root)|store_root|shadow_root|active_marker|store_relative|"
-    r"shadow_relative|active_relative)(?:_|$)",
-)
-_CONTRACT_SCOPE_RE = re.compile(r"(?:^|_)(?:contract|manifest)(?:_|$)")
-_GENERIC_PATH_NAME_RE = re.compile(
-    r"(?:^|_)(?:path|dir|root|file)(?:_|$)",
-)
+_STORE_NAME_RE = _boundary_policy._STORE_NAME_RE
+_CONTRACT_SCOPE_RE = _boundary_policy._CONTRACT_SCOPE_RE
+_GENERIC_PATH_NAME_RE = _boundary_policy._GENERIC_PATH_NAME_RE
 
 
 @dataclass(frozen=True)

@@ -668,6 +668,52 @@ richiedono `sudo chown` e sono bloccati da `no new privileges`; gli altri otto
 sono i difetti già riprodotti sul commit iniziale e descritti sopra. Non emerge
 alcuna regressione della quarta o quinta tranche.
 
+## Sesta tranche: autorità unica e proiezione della policy boundary
+
+La prima estrazione boundary elimina la doppia manutenzione manuale di API,
+alias modulo, owner sorgente, limiti, classificazioni e regex. I fatti
+immutabili e validati vivono in due owner piccoli:
+
+- `contract_boundary_api_policy.py`, 310 righe;
+- `contract_boundary_syntax_policy.py`, 187 righe.
+
+`contract_boundary_policy.py`, 100 righe, materializza soltanto i tipi storici
+esatti richiesti dal guard. `contract_boundary_projection.py`, 247 righe,
+consuma direttamente i record immutabili e genera la regione ASCII/LF del
+preflight standalone. Il renderer è puro, privo di I/O e di esecuzione
+dinamica; hash e payload derivano dalla stessa acquisizione canonica. I fatti
+autoriali passano così da circa 840 a 315 righe senza cambiare i corpi degli
+analizzatori.
+
+Il writer separato usa target fisso, file temporaneo sincronizzato, lock
+esclusivo sulla directory stabile, confronto dei byte attesi, replace atomico
+e `fsync` della directory. Marker mancanti, duplicati o invertiti, drift,
+mutazioni concorrenti, alias ambigui e capability non canoniche falliscono
+chiuso.
+
+Un checker read-only censito sotto `scripts/` viene eseguito con `python -I -S`
+prima di ogni repin e pubblicazione, sia sull'albero privato sia sull'export
+pubblico. Non è quindi possibile autenticare una policy nuova insieme a una
+proiezione standalone obsoleta. Due repin consecutivi hanno prodotto output e
+byte identici:
+
+- private: 718 file,
+  `sha256:6a8dc12ddf41c73490b5a92efc912b3cab38814808b66715d73586083bb07e21`;
+- public: 706 file,
+  `sha256:e5172db359198460415991e9ca771050dc83bc65fe2b2558f6ce9f27c77ac49f`;
+- inventario Python: 1.966 path.
+
+Le due revisioni indipendenti finali non rilevano P0 o P1 residui nella
+tranche. La suite estesa del checkpoint contiene 444 test, tutti superati. La
+vecchia aspettativa numerica di 126 owner, già incoerente con i 127 compilati,
+è stata sostituita dal confronto esatto con l'autorità condivisa.
+
+Restano intenzionalmente alla tranche successiva le policy birth-closed non
+ancora estratte e la scomposizione delle funzioni di analisi. La versione
+installata del gate è solo baseline comparativa: dopo equivalenza, replica
+Linux e avvio riuscito verrà rimossa insieme alle unità transitorie e agli
+script one-off, senza conservarla come fallback operativo.
+
 ## Decisione
 
 Le revisioni indipendenti di architettura, software engineering e Python
@@ -678,6 +724,7 @@ convergono sulla stessa decisione:
 2. characterization test prima di ogni estrazione;
 3. migrazione consumer per consumer, con dual-read comparativo soltanto e mai
    dual-write;
-4. replica reale completa prima di qualsiasi nuova proposta di esercizio;
-5. identità, layout, journal puro e porta POSIX read-only sono completati; la
-   prossima area è policy/proiezione boundary, poi analyzer puro.
+4. replica reale completa prima della sostituzione del gate in esercizio;
+5. identità, layout, journal puro, porta POSIX read-only e prima autorità
+   boundary sono completati; la prossima area è la policy birth-closed
+   residua, poi l'analyzer puro.

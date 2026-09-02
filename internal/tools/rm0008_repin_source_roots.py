@@ -57,6 +57,17 @@ def _review_module(tree: Path):
     return review
 
 
+def _require_policy_projection(tree: Path) -> None:
+    checker = tree / "scripts/check_contract_boundary_policy.py"
+    checked = subprocess.run(
+        [sys.executable, "-I", "-S", str(checker)],
+        cwd=tree, capture_output=True, text=True,
+    )
+    if checked.returncode != 0:
+        detail = checked.stderr.strip() or f"status={checked.returncode}"
+        raise SystemExit(f"boundary policy projection refused: {detail}")
+
+
 def _write_private_pin(tree: Path, root: str, count: int) -> None:
     for relative, pattern, replacement in PRIVATE_PIN_BINDINGS:
         path = tree / relative
@@ -92,6 +103,7 @@ def _write_public_pin(tree: Path, root: str, count: int) -> None:
 
 def main(argv: list[str]) -> int:
     tree = Path(argv[1] if len(argv) > 1 else ".").resolve()
+    _require_policy_projection(tree)
     review = _review_module(tree)
 
     sources = review._filesystem_sources(tree)
@@ -107,6 +119,7 @@ def main(argv: list[str]) -> int:
     if built.returncode != 0:
         print(built.stderr[-400:], file=sys.stderr)
         return 1
+    _require_policy_projection(export)
     public_sources = review._filesystem_sources(export)
     public = review._source_root(public_sources)
     _write_public_pin(tree, public, len(public_sources))

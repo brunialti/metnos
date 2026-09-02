@@ -6,10 +6,10 @@ future refactors may change ownership, but not these observable results.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import asdict
 import json
 from pathlib import Path
+import re
 
 import pytest
 
@@ -161,16 +161,21 @@ _LIMIT_NAMES = (
 
 
 def _frozen(value):
-    if isinstance(value, Mapping):
-        return tuple(
-            (key, _frozen(item))
-            for key, item in sorted(value.items())
+    if type(value) is dict:
+        return ("dict", tuple((key, _frozen(item)) for key, item in value.items()))
+    if type(value) is tuple:
+        return ("tuple", tuple(_frozen(item) for item in value))
+    if type(value) is list:
+        return ("list", tuple(_frozen(item) for item in value))
+    if type(value) in (set, frozenset):
+        members = tuple(sorted((_frozen(item) for item in value), key=repr))
+        return (type(value).__name__, members)
+    if isinstance(value, re.Pattern):
+        return (
+            "regex", type(value).__module__, type(value).__qualname__,
+            type(value.pattern).__name__, value.pattern, value.flags,
         )
-    if isinstance(value, (set, frozenset)):
-        return tuple(sorted(_frozen(item) for item in value))
-    if isinstance(value, (list, tuple)):
-        return tuple(_frozen(item) for item in value)
-    return value
+    return (type(value).__name__, value)
 
 
 def _serialized_model(value) -> str:
