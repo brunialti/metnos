@@ -851,6 +851,20 @@ def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProce
     )
 
 
+def _quiesce_failed_service(unit_name: str) -> None:
+    """Stop one service and prove that a later activation result is fresh."""
+    _systemctl("stop", unit_name)
+    _systemctl("reset-failed", unit_name)
+    active = _systemctl(
+        "show", unit_name, "--property=ActiveState", "--value",
+    ).stdout.strip()
+    result = _systemctl(
+        "show", unit_name, "--property=Result", "--value",
+    ).stdout.strip()
+    assert active == "inactive", f"service not quiescent: {unit_name}"
+    assert result != "exit-code", f"stale failed result for {unit_name}"
+
+
 def _unit_diagnosis(unit_name: str) -> str:
     """What the manager says about a unit, for a timeout that must explain.
 
@@ -1130,7 +1144,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         )
         captured_tcb, effective, candidate_hash = _capture_live_bindings(fixture)
         _systemctl("stop", fixture.timer_name, check=False)
-        _systemctl("reset-failed", fixture.service_name, check=False)
+        _quiesce_failed_service(fixture.service_name)
         prerequisite, request_id, head_required = (
             _build_prerequisite_and_graph(
                 fixture, captured_tcb, effective, candidate_hash,
@@ -1144,7 +1158,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         direct_denial = _systemctl("start", fixture.service_name, check=False)
         assert direct_denial.returncode != 0
         assert not fixture.marker_path.exists()
-        _systemctl("reset-failed", fixture.service_name, check=False)
+        _quiesce_failed_service(fixture.service_name)
         _systemctl("start", fixture.timer_name)
         _wait_for(lambda: _systemctl(
             "show", fixture.service_name, "--property=Result", "--value",
@@ -1152,7 +1166,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         ).stdout.strip() == "exit-code")
         assert not fixture.marker_path.exists()
         _systemctl("stop", fixture.timer_name, check=False)
-        _systemctl("reset-failed", fixture.service_name, check=False)
+        _quiesce_failed_service(fixture.service_name)
 
         _write_control(prerequisite_path, prerequisite)
         preflight_path = ADMINISTRATIVE_ROOT / "preflight.py"
@@ -1196,8 +1210,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             ).stdout.strip() == "exit-code",
             diagnose=lambda: _unit_diagnosis(fixture.service_name),
         )
-        _systemctl("stop", fixture.service_name, check=False)
-        _systemctl("reset-failed", fixture.service_name, check=False)
+        _quiesce_failed_service(fixture.service_name)
         assert fixture.timer_name in _systemctl(
             "show", fixture.service_name, "--property=TriggeredBy", "--value",
             check=False,
