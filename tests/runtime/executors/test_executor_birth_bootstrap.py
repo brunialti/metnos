@@ -254,8 +254,9 @@ def test_restart_reuses_already_installed_complete_bundle(monkeypatch, tmp_path:
 
 
 @pytest.mark.parametrize("changed", (False, True))
+@pytest.mark.parametrize("receipt_present", (False, True))
 def test_transition_authenticates_current_without_reusing_v1_receipts(
-    monkeypatch, tmp_path: Path, changed: bool,
+    monkeypatch, tmp_path: Path, changed: bool, receipt_present: bool,
 ) -> None:
     import contract_store
     import executor_birth_prepared_root as prepared_root
@@ -312,7 +313,8 @@ def test_transition_authenticates_current_without_reusing_v1_receipts(
     )
     monkeypatch.setattr(
         bootstrap, "_transition_historical_receipt_v1",
-        lambda *_args, **_kwargs: b"historical-receipt",
+        lambda *_args, **_kwargs:
+        b"historical-receipt" if receipt_present else None,
     )
     operation = lambda: bootstrap.verify_initial_installer_store_v1(
         prove_quiescent=lambda: True,
@@ -326,8 +328,41 @@ def test_transition_authenticates_current_without_reusing_v1_receipts(
         ):
             operation()
     else:
-        assert operation() == {"contracts": 1, "receipts": 1}
+        assert operation() == {
+            "contracts": 1,
+            "receipts": int(receipt_present),
+        }
     assert observed_policy == [("github", (991, 991))]
+
+
+def test_transition_allows_only_an_absent_historical_receipt(
+    monkeypatch, tmp_path: Path,
+) -> None:
+    import contract_store
+
+    ref = SimpleNamespace(
+        contract_id=ContractId(ManifestOrigin.CORE, "sample/manifest.toml"),
+    )
+    generation_id = "sha256:" + "1" * 64
+    monkeypatch.setattr(
+        contract_store, "_existing_contract_directory",
+        lambda *_args, **_kwargs: tmp_path,
+    )
+
+    assert bootstrap._transition_historical_receipt_v1(
+        ref, generation_id, store_root=None, admission_verifiers={},
+    ) is None
+
+    receipt = contract_store._birth_receipt_path(tmp_path, generation_id)
+    receipt.parent.mkdir()
+    receipt.mkdir()
+    with pytest.raises(
+        bootstrap.BirthBootstrapError,
+        match="birth_initial_receipt_invalid",
+    ):
+        bootstrap._transition_historical_receipt_v1(
+            ref, generation_id, store_root=None, admission_verifiers={},
+        )
 
 
 def test_the_sealed_build_refuses_without_a_prepared_set(monkeypatch, tmp_path: Path) -> None:

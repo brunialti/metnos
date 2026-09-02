@@ -1098,7 +1098,7 @@ def _verified_initial_receipt_v1(
 def _transition_historical_receipt_v1(
     ref: ManifestRef, generation_id: str, *, store_root: Path | None,
     admission_verifiers: Mapping[str, Ed25519PublicKey],
-) -> bytes:
+) -> bytes | None:
     """Bind the preserved V1 act without treating it as the new epoch act."""
     from contract_store import (
         _birth_receipt_path, _existing_contract_directory, _read_regular_file,
@@ -1111,8 +1111,18 @@ def _transition_historical_receipt_v1(
         contract_dir = _existing_contract_directory(
             ref.contract_id, store_root=store_root,
         )
+        receipt_path = _birth_receipt_path(contract_dir, generation_id)
+        try:
+            receipt_info = receipt_path.lstat()
+        except FileNotFoundError:
+            return None
+        if (
+            not stat.S_ISREG(receipt_info.st_mode)
+            or stat.S_ISLNK(receipt_info.st_mode)
+        ):
+            raise BirthBootstrapError("birth_initial_receipt_invalid")
         encoded = _read_regular_file(
-            _birth_receipt_path(contract_dir, generation_id),
+            receipt_path,
             code="birth_receipt_invalid",
         )
         receipt, _unsigned = _parse_admission(encoded)
@@ -1314,11 +1324,11 @@ def _verify_initial_catalog_v1(
             )
             if verified.generation_id != generation_id:
                 raise BirthBootstrapError("birth_initial_catalog_changed")
-            _transition_historical_receipt_v1(
+            historical = _transition_historical_receipt_v1(
                 refs[key], generation_id, store_root=store_root,
                 admission_verifiers=sealed.admission.verifier_keys,
             )
-            verified_receipts += 1
+            verified_receipts += int(historical is not None)
     _require_initial_install_quiescence_v1(prove_quiescent)
     return {"contracts": len(refs), "receipts": verified_receipts}
 

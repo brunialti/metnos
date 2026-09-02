@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:bc67bf45030267fa504efa9111fe020645aeafda906812c575a54f202eaba469",
+  "source_census": "sha256:c944e42e0b5a41331ed4e2016ec250c0f7abab03de9fe17d4cacd00acba05f00",
   "scan_roots": [
     "runtime",
     "install",
@@ -162,13 +162,13 @@
     },
     {
       "path": "install/executor_birth_contract_convergence.py",
-      "scope": "_source_generation_receipt_state",
+      "scope": "_source_generation_has_historical_receipt",
       "role": "store_owner",
       "capabilities": [
         "store_write",
         "verified_store_read"
       ],
-      "destination": "authenticated generation-receipt state classifier",
+      "destination": "authenticated historical-generation collision classifier",
       "phase": "M4"
     },
     {
