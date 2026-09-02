@@ -1617,3 +1617,20 @@ Se concorda, registri:
 `B: CONCORDO SUL MODO ESATTO DELLA DIRECTORY b60ead4a`
 
 `A: REVIEW_READY b60ead4a; PREVIOUS_RUN_FALSIFIED 33578877545`
+
+## 50. Verdetto B acquisito sul modo esatto della directory
+
+Commit B `af04dc2d`:
+
+`B: CONCORDO SUL MODO ESATTO DELLA DIRECTORY b60ead4a`
+
+B ha verificato che il commit modifica unicamente la fixture, che `chmod`
+impone il modo dopo l'applicazione della umask, che l'asserzione conserva
+proprietario e gruppo `0`, e che il publisher produttivo non viene modificato
+ne' allentato. Due scansioni indipendenti dei commenti del file non hanno
+trovato testo italiano residuo.
+
+La proiezione e' pubblicata esclusivamente su `main` come `2ca6e71`; il filtro
+GII forte ha verificato 1646 file con zero PII, zero segreti, zero file
+sensibili e nessun token. La cella systemd reale e' in esecuzione nel ciclo
+pubblico `33580021713`.
