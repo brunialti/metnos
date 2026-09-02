@@ -1225,6 +1225,17 @@ def _verify_initial_catalog_v1(
     mode = production_store_mode()
     sealed = load_sealed_authorities_v1()
     trusted = tuple(sorted(sealed.author.verifier_keys.items()))
+    skill_enabled = None
+    if (
+        authoring_owner is not None
+        and hasattr(os, "geteuid")
+        and os.geteuid() != authoring_owner[0]
+    ):
+        from skill_registry import _is_skill_enabled_for_owner_v1
+
+        skill_enabled = lambda name: _is_skill_enabled_for_owner_v1(
+            name, authoring_owner,
+        )
     if mode is ProductionStoreMode.LEGACY:
         if report is None:
             raise BirthBootstrapError("birth_initial_report_required")
@@ -1240,7 +1251,9 @@ def _verify_initial_catalog_v1(
             authoring_owner=authoring_owner,
         )
         store_root = None
-        inventory = inventory_store_manifests()
+        inventory = inventory_store_manifests(
+            skill_enabled=skill_enabled,
+        )
     else:
         raise BirthBootstrapError("birth_initial_install_state_invalid")
     if inventory.problems or not inventory.manifests:

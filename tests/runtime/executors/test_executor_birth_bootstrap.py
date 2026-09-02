@@ -260,6 +260,7 @@ def test_transition_authenticates_current_without_reusing_v1_receipts(
     import contract_store
     import executor_birth_prepared_root as prepared_root
     import manifest_inventory
+    import skill_registry
     from contract_bootstrap import ProductionStoreMode
 
     contract_id = ContractId(ManifestOrigin.CORE, "sample/manifest.toml")
@@ -284,8 +285,23 @@ def test_transition_authenticates_current_without_reusing_v1_receipts(
         contract_store, "current_manifest",
         lambda *_args, **_kwargs: SimpleNamespace(generation_id=next(observed)),
     )
+    observed_policy = []
+
+    def owned_skill_policy(name, owner):
+        observed_policy.append((name, owner))
+        return True
+
+    def store_inventory(*, skill_enabled=None):
+        assert skill_enabled is not None
+        assert skill_enabled("github") is True
+        return inventory
+
+    monkeypatch.setattr(bootstrap.os, "geteuid", lambda: 0)
     monkeypatch.setattr(
-        manifest_inventory, "inventory_store_manifests", lambda: inventory,
+        skill_registry, "_is_skill_enabled_for_owner_v1", owned_skill_policy,
+    )
+    monkeypatch.setattr(
+        manifest_inventory, "inventory_store_manifests", store_inventory,
     )
     monkeypatch.setattr(
         prepared_root, "load_sealed_authorities_v1",
@@ -311,6 +327,7 @@ def test_transition_authenticates_current_without_reusing_v1_receipts(
             operation()
     else:
         assert operation() == {"contracts": 1, "receipts": 1}
+    assert observed_policy == [("github", (991, 991))]
 
 
 def test_the_sealed_build_refuses_without_a_prepared_set(monkeypatch, tmp_path: Path) -> None:
