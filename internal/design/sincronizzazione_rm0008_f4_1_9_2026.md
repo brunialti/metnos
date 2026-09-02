@@ -2134,9 +2134,13 @@ una corsa nella preparazione di C3. Dopo l'avvio del timer la sonda osservava
 subito `TriggeredBy`, fermava il servizio e avviava `check-all`; su un host
 veloce il `OnActiveSec=100ms` non era ancora scaduto, quindi il trigger rimasto
 pendente avviava il servizio durante il censimento. Il primo `check-all`
-pubblicava correttamente byte poi riletti come identici, ma poteva chiudersi con
-`24/birth_ownership_recovery_required`; subito dopo sia il modulo sorgente sia
-l'esatto file installato accettavano lo stesso stato.
+poteva quindi chiudersi con `24/birth_ownership_recovery_required`: il secondo
+processo incontrava il residuo temporaneo OpenSSL del controllo concorrente e
+chiudeva correttamente in modo conservativo. Subito dopo il classificatore
+isolato sull'esatto file installato accettava lo stato, pubblicava
+l'attestazione e la rileggeva identica; anche il modulo sorgente accettava lo
+stesso stato. La pubblicazione osservata appartiene dunque alla diagnostica
+successiva, non e' attribuita al primo processo.
 
 La correzione e' confinata al test reale: prima di rimuovere il servizio,
 attende il suo atteso `Result=exit-code`. Questo prova che il timer one-shot ha
