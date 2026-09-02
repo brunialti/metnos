@@ -916,115 +916,6 @@ def _installed_commands_as_unit(entry_id: str, python: str) -> str:
     return "privileged " + "; ".join(report)
 
 
-def _installed_check_all_diagnosis(program: Path, python: str) -> str:
-    """Repeat check-all without the public error reducer after a refusal."""
-    probe = (
-        "import importlib.util,json,os,sys\n"
-        "sys.dont_write_bytecode=True\n"
-        "spec=importlib.util.spec_from_file_location('_metnos_probe',sys.argv[1])\n"
-        "module=importlib.util.module_from_spec(spec)\n"
-        "sys.modules[spec.name]=module\n"
-        "spec.loader.exec_module(module)\n"
-        "stage='attest'\n"
-        "try:\n"
-        " operational=module._attest_operational_preflight_v1()\n"
-        " stage='encode'\n"
-        " encoded=module._preflight_attestation_bytes_v1(operational.selected,operational.observation.observation)\n"
-        " request_id=operational.selected.transaction.prefix.records[-1].request_id\n"
-        " stage='publish'\n"
-        " module._publish_preflight_attestation_core_v1(encoded,request_id,root=module.PREFLIGHT_ATTESTATION_ROOT_V1,uid=0,gid=0,chain_stop=None)\n"
-        " stage='reread'\n"
-        " observed=module._read_preflight_attestation_core_v1(request_id,root=module.PREFLIGHT_ATTESTATION_ROOT_V1,uid=0,gid=0,chain_stop=None)\n"
-        " if observed != encoded: raise module._recovery('preflight attestation publication reread')\n"
-        "except module.PreflightError as error:\n"
-        " result={'kind':'PreflightError','code':str(error.code),'detail':stage+'|'+str(error.detail)}\n"
-        "except OSError as error:\n"
-        " errno=error.errno if type(error.errno) is int and 0 <= error.errno <= 4096 else None\n"
-        " result={'kind':'OSError','code':str(errno) if errno is not None else '','detail':stage}\n"
-        "except BaseException as error:\n"
-        " error_type=type(error)\n"
-        " name=error_type.__name__\n"
-        " if error_type.__module__ == 'builtins' and name.isascii() and name.isidentifier() and len(name) <= 64:\n"
-        "  result={'kind':'BuiltinError','code':name,'detail':stage}\n"
-        " elif error_type.__module__ == 'subprocess' and name in {'CalledProcessError','SubprocessError','TimeoutExpired'}:\n"
-        "  result={'kind':'SubprocessError','code':name,'detail':stage}\n"
-        " else:\n"
-        "  result={'kind':'OtherError','code':'','detail':stage}\n"
-        "else:\n"
-        " result={'kind':'accepted','code':'','detail':''}\n"
-        "encoded=('metnos-probe-v1:'+json.dumps(result,ensure_ascii=True,sort_keys=True,separators=(',',':'))).encode('ascii')\n"
-        "os.write(int(sys.argv[2]),encoded)\n"
-    )
-    read_descriptor, write_descriptor = os.pipe()
-    try:
-        completed = subprocess.run(
-            [
-                python, "-I", "-S", "-c", probe, program.as_posix(),
-                str(write_descriptor),
-            ],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, pass_fds=(write_descriptor,),
-            timeout=300,
-        )
-    except Exception as failure:
-        os.close(write_descriptor)
-        os.close(read_descriptor)
-        return f"raised {type(failure).__name__}"
-    os.close(write_descriptor)
-    try:
-        payload = os.read(read_descriptor, 513)
-    finally:
-        os.close(read_descriptor)
-    if completed.returncode != 0:
-        return f"probe-exit={completed.returncode}"
-    prefix = b"metnos-probe-v1:"
-    if len(payload) > 512 or not payload.startswith(prefix):
-        return "probe-output-rejected"
-    try:
-        value = json.loads(payload[len(prefix):].decode("ascii"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return "probe-output-rejected"
-    if (
-        not isinstance(value, dict)
-        or set(value) != {"kind", "code", "detail"}
-        or any(not isinstance(value[name], str) for name in value)
-    ):
-        return "probe-output-rejected"
-    kind, code, detail = value["kind"], value["code"], value["detail"]
-    if (kind, code, detail) == ("accepted", "", ""):
-        return kind
-    stages = {"attest", "encode", "publish", "reread"}
-    if (
-        detail in stages and kind == "OSError"
-        and (
-            not code
-            or code.isascii() and code.isdecimal() and 0 <= int(code) <= 4096
-        )
-    ):
-        return "|".join((kind, code, detail))
-    if (
-        kind == "BuiltinError" and detail in stages
-        and code.isascii() and code.isidentifier() and len(code) <= 64
-    ):
-        return "|".join((kind, code, detail))
-    if (
-        kind == "SubprocessError" and detail in stages
-        and code in {"CalledProcessError", "SubprocessError", "TimeoutExpired"}
-    ):
-        return "|".join((kind, code, detail))
-    if kind == "OtherError" and not code and detail in stages:
-        return "|".join((kind, detail))
-    if (
-        kind != "PreflightError" or len(code) + len(detail) > 256
-        or not code.startswith("birth_ownership_")
-        or not code.isascii() or not detail.isascii()
-        or not any(detail.startswith(stage + "|") for stage in stages)
-        or not detail.isprintable()
-    ):
-        return "probe-output-rejected"
-    return "|".join((kind, code, detail))
-
-
 def _wait_for(predicate, timeout: float = 300.0, *, diagnose=None) -> None:
     """Wait for a live condition produced by a gated unit.
 
@@ -1194,10 +1085,11 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             check=False,
         ).stdout
         assert not fixture.marker_path.exists()
-        installed_internal = _installed_check_all_diagnosis(
-            preflight_path, python,
+        created = subprocess.run(
+            [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
+            capture_output=True, text=True, timeout=300,
         )
-        if installed_internal != "accepted":
+        if created.returncode != 0:
             names = tuple(sorted(
                 item.name for item in ATTESTATION_ROOT.iterdir()
             ))
@@ -1217,15 +1109,10 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
                 internal = f"{failure.code}:{failure.detail}"
             pytest.fail(
                 "installed check-all refused: "
+                f"exit={created.returncode} stderr={created.stderr.strip()!r}; "
                 f"in-process={internal}; attestation={state}; "
-                f"directory_entries={names!r}; "
-                f"installed-internal={installed_internal}"
+                f"directory_entries={names!r}"
             )
-        created = subprocess.run(
-            [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
-            capture_output=True, text=True, timeout=300,
-        )
-        assert created.returncode == 0
         assert created.stderr == ""
         assert attestation_path.is_file()
         assert not fixture.marker_path.exists()

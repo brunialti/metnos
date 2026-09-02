@@ -8,6 +8,7 @@ distinguish a permissive clone from the existing oracle.
 """
 from __future__ import annotations
 
+import builtins
 import dataclasses
 import hashlib
 import json
@@ -985,10 +986,21 @@ def test_signed_isolated_g6c_recipe_rejects_one_fully_rehashed_mutant() -> None:
     assert failure.value.code == preflight.CODE_INVALID
 
 
-def test_administrative_bundle_hash_matches_framing_and_changes_with_artifact() -> None:
+def test_administrative_bundle_hash_matches_framing_and_changes_with_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     canonical_descriptor = _deployment_record()
     encoded = assembler.encode_deployment_descriptor_v1(canonical_descriptor)
     autonomous_descriptor = preflight._decode_deployment_descriptor_v1(encoded)
+
+    original_import = builtins.__import__
+
+    def isolated_import(name, *args, **kwargs):
+        if name == "executor_birth_distribution_assembler":
+            raise ModuleNotFoundError(name)
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", isolated_import)
 
     observed = preflight._administrative_bundle_hash_v1(
         autonomous_descriptor
