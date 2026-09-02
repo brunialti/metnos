@@ -185,13 +185,17 @@ def catalog_reconcile_lock(
     lock: ReconcileLock | None = None,
     path: Path | None = None,
     owner_uid: int | None = None,
+    catalog_trusted_owner: tuple[int, int] | None = None,
     wait_s: float = 2.0,
 ):
     """Acquire the catalog and lifecycle boundaries in one canonical order."""
     from contract_store import ContractStoreError, catalog_admission_lock
 
     try:
-        catalog = catalog_admission_lock(timeout=wait_s)
+        catalog_options = {"timeout": wait_s}
+        if catalog_trusted_owner is not None:
+            catalog_options["trusted_owner"] = catalog_trusted_owner
+        catalog = catalog_admission_lock(**catalog_options)
         catalog.__enter__()
     except ContractStoreError as exc:
         raise StackFailure(

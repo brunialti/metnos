@@ -1038,6 +1038,41 @@ def _verified_initial_receipt_v1(
     return encoded
 
 
+def _transition_historical_receipt_v1(
+    ref: ManifestRef, generation_id: str, *, store_root: Path | None,
+    admission_verifiers: Mapping[str, Ed25519PublicKey],
+) -> bytes:
+    """Bind the preserved V1 act without treating it as the new epoch act."""
+    from contract_store import (
+        _birth_receipt_path, _existing_contract_directory, _read_regular_file,
+    )
+    from executor_birth_receipts import (
+        _parse_admission, verify_admission_receipt,
+    )
+
+    try:
+        contract_dir = _existing_contract_directory(
+            ref.contract_id, store_root=store_root,
+        )
+        encoded = _read_regular_file(
+            _birth_receipt_path(contract_dir, generation_id),
+            code="birth_receipt_invalid",
+        )
+        receipt, _unsigned = _parse_admission(encoded)
+        if receipt.authentication.key_id in admission_verifiers:
+            receipt = verify_admission_receipt(
+                encoded, verifier_keys=admission_verifiers,
+            )
+    except Exception as exc:
+        raise BirthBootstrapError("birth_initial_receipt_invalid") from exc
+    if (
+        receipt.contract_id != ref.contract_id.value
+        or receipt.generation_id != generation_id
+    ):
+        raise BirthBootstrapError("birth_initial_receipt_binding_invalid")
+    return encoded
+
+
 def prepare_initial_installer_catalog_v1(*, prove_quiescent: object) -> dict:
     """Build the initial shadow through a private, non-installed Birth bundle."""
     from contract_bootstrap import ProductionStoreMode
@@ -1112,6 +1147,7 @@ def prepare_initial_installer_catalog_v1(*, prove_quiescent: object) -> dict:
 def _verify_initial_catalog_v1(
     *, report: Mapping[str, object] | None, prove_quiescent: object,
     authoring_owner: tuple[int, int] | None = None,
+    defer_v1_receipts_to_transition_v2: bool = False,
 ) -> dict[str, int]:
     from contract_bootstrap import ProductionStoreMode
     from contract_store import current_manifest, production_store_mode
@@ -1121,6 +1157,14 @@ def _verify_initial_catalog_v1(
     )
 
     _require_initial_install_quiescence_v1(prove_quiescent)
+    if (
+        type(defer_v1_receipts_to_transition_v2) is not bool
+        or (
+            defer_v1_receipts_to_transition_v2
+            and (report is not None or authoring_owner is None)
+        )
+    ):
+        raise BirthBootstrapError("birth_initial_transition_invalid")
     mode = production_store_mode()
     sealed = load_sealed_authorities_v1()
     trusted = tuple(sorted(sealed.author.verifier_keys.items()))
@@ -1173,22 +1217,40 @@ def _verify_initial_catalog_v1(
             or set(receipt_hashes) != set(refs)
         ):
             raise BirthBootstrapError("birth_initial_report_invalid")
+    verified_receipts = 0
     for key in sorted(refs):
         generation_id = catalog[key]
         if not isinstance(generation_id, str):
             raise BirthBootstrapError("birth_initial_report_invalid")
-        encoded = _verified_initial_receipt_v1(
-            refs[key], generation_id, store_root=store_root,
-            trusted_publics=trusted,
-            admission_verifiers=sealed.admission.verifier_keys,
-            request_id=expected_requests.get(key),
-        )
-        if receipt_hashes is not None and receipt_hashes[key] != (
-            "sha256:" + hashlib.sha256(encoded).hexdigest()
-        ):
-            raise BirthBootstrapError("birth_initial_report_invalid")
+        if not defer_v1_receipts_to_transition_v2:
+            encoded = _verified_initial_receipt_v1(
+                refs[key], generation_id, store_root=store_root,
+                trusted_publics=trusted,
+                admission_verifiers=sealed.admission.verifier_keys,
+                request_id=expected_requests.get(key),
+            )
+            if receipt_hashes is not None and receipt_hashes[key] != (
+                "sha256:" + hashlib.sha256(encoded).hexdigest()
+            ):
+                raise BirthBootstrapError("birth_initial_report_invalid")
+            verified_receipts += 1
+        else:
+            # V1 receipts are immutable acts of the historical context.  The
+            # caller is the first-transition path and will freeze this exact
+            # catalog and reattest every current generation into V2 before it
+            # can cross the ownership boundary.
+            verified = current_manifest(
+                refs[key], trusted_publics=trusted, store_root=store_root,
+            )
+            if verified.generation_id != generation_id:
+                raise BirthBootstrapError("birth_initial_catalog_changed")
+            _transition_historical_receipt_v1(
+                refs[key], generation_id, store_root=store_root,
+                admission_verifiers=sealed.admission.verifier_keys,
+            )
+            verified_receipts += 1
     _require_initial_install_quiescence_v1(prove_quiescent)
-    return {"contracts": len(refs), "receipts": len(refs)}
+    return {"contracts": len(refs), "receipts": verified_receipts}
 
 
 def verify_initial_installer_report_v1(
@@ -1203,11 +1265,15 @@ def verify_initial_installer_report_v1(
 def verify_initial_installer_store_v1(
     *, prove_quiescent: object,
     authoring_owner: tuple[int, int] | None = None,
+    defer_v1_receipts_to_transition_v2: bool = False,
 ) -> dict[str, int]:
     """Authenticate the store and bind mutable sources to the service owner."""
     return _verify_initial_catalog_v1(
         report=None, prove_quiescent=prove_quiescent,
         authoring_owner=authoring_owner,
+        defer_v1_receipts_to_transition_v2=(
+            defer_v1_receipts_to_transition_v2
+        ),
     )
 
 

@@ -3132,7 +3132,9 @@ def _seed_repository_authoring_locked_v1(
         authoring_paths, authoring_token, authoring_tree_id,
         materialize_staging, observe_tree,
     )
-    from executor_birth_snapshot import _acquire_authenticated_current_snapshot
+    from executor_birth_snapshot import (
+        CandidateSnapshotError, _acquire_authenticated_current_snapshot,
+    )
     from manifest_inventory import (
         inventory_authoring_manifests, inventory_store_manifests,
     )
@@ -3189,15 +3191,24 @@ def _seed_repository_authoring_locked_v1(
             if not _inside(target_root, external_root):
                 continue
 
+            # A resumed transition may already have published this contract
+            # through Birth into the external authoring root.  In that case
+            # the store-bound authoring is authoritative; contracts not yet
+            # converged are seeded from the immutable release source.
+            authoring_ref = (
+                target_ref
+                if target_ref.manifest_path.is_file()
+                else source_ref
+            )
             generation_identifier = expected[contract_id]
             current = _load_generation(
-                source_ref,
+                authoring_ref,
                 generation_identifier,
                 trusted_publics=trusted,
                 store_root=shadow_root,
             )
             snapshot, source_signature = _acquire_authenticated_current_snapshot(
-                source_ref.manifest_dir,
+                authoring_ref.manifest_dir,
             )
             try:
                 if (
@@ -3387,6 +3398,8 @@ def _seed_repository_authoring_locked_v1(
                     raise ContractStoreError(
                         "authoring_seed_owner_invalid", str(path),
                     ) from exc
+    except CandidateSnapshotError as exc:
+        raise ContractStoreError("authoring_tree_invalid", exc.detail) from exc
     except AuthoringInstallError as exc:
         raise ContractStoreError(exc.code, exc.detail) from exc
 

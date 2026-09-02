@@ -253,6 +253,66 @@ def test_restart_reuses_already_installed_complete_bundle(monkeypatch, tmp_path:
     assert bootstrap.bootstrap_birth_runtime() is sentinel
 
 
+@pytest.mark.parametrize("changed", (False, True))
+def test_transition_authenticates_current_without_reusing_v1_receipts(
+    monkeypatch, tmp_path: Path, changed: bool,
+) -> None:
+    import contract_store
+    import executor_birth_prepared_root as prepared_root
+    import manifest_inventory
+    from contract_bootstrap import ProductionStoreMode
+
+    contract_id = ContractId(ManifestOrigin.CORE, "sample/manifest.toml")
+    ref = ManifestRef(
+        contract_id, ManifestOrigin.CORE, ManifestStatus.ADMITTED,
+        tmp_path, tmp_path / "sample" / "manifest.toml",
+        "sample/manifest.toml", (tmp_path,),
+    )
+    inventory = ManifestInventory((ref,), ())
+    first = "sha256:" + "1" * 64
+    second = "sha256:" + ("2" if changed else "1") * 64
+    observed = iter((first, second))
+    monkeypatch.setattr(
+        contract_store, "production_store_mode",
+        lambda: ProductionStoreMode.STORE_ONLY,
+    )
+    monkeypatch.setattr(
+        contract_store, "materialize_repository_authoring_for_transition_v1",
+        lambda **_kwargs: 1,
+    )
+    monkeypatch.setattr(
+        contract_store, "current_manifest",
+        lambda *_args, **_kwargs: SimpleNamespace(generation_id=next(observed)),
+    )
+    monkeypatch.setattr(
+        manifest_inventory, "inventory_store_manifests", lambda: inventory,
+    )
+    monkeypatch.setattr(
+        prepared_root, "load_sealed_authorities_v1",
+        lambda: SimpleNamespace(
+            author=SimpleNamespace(verifier_keys={}),
+            admission=SimpleNamespace(verifier_keys={}),
+        ),
+    )
+    monkeypatch.setattr(
+        bootstrap, "_transition_historical_receipt_v1",
+        lambda *_args, **_kwargs: b"historical-receipt",
+    )
+    operation = lambda: bootstrap.verify_initial_installer_store_v1(
+        prove_quiescent=lambda: True,
+        authoring_owner=(991, 991),
+        defer_v1_receipts_to_transition_v2=True,
+    )
+    if changed:
+        with pytest.raises(
+            bootstrap.BirthBootstrapError,
+            match="birth_initial_catalog_changed",
+        ):
+            operation()
+    else:
+        assert operation() == {"contracts": 1, "receipts": 1}
+
+
 def test_the_sealed_build_refuses_without_a_prepared_set(monkeypatch, tmp_path: Path) -> None:
     """There is no free-form path left: without a prepared set nothing is built.
 

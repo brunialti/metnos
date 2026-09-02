@@ -180,7 +180,9 @@ def _maintenance_evidence_under_transition_v1(session: object) -> bytes:
 
 
 @contextmanager
-def _contract_cutover_guard_core_v1(reconciler):
+def _contract_cutover_guard_core_v1(
+    reconciler, *, catalog_trusted_owner: tuple[int, int] | None = None,
+):
     """Hold lifecycle exclusion for one already bound service observer."""
     if sys.platform != "linux":
         raise ContractCutoverGuardError(
@@ -193,7 +195,10 @@ def _contract_cutover_guard_core_v1(reconciler):
     # lifecycle/service exclusion second. This waits for an in-flight commit
     # to finish before services are stopped and prevents every later authoring
     # or publication write until the first store-only load has succeeded.
-    guard = catalog_reconcile_lock(wait_s=2)
+    guard_options = {"wait_s": 2}
+    if catalog_trusted_owner is not None:
+        guard_options["catalog_trusted_owner"] = catalog_trusted_owner
+    guard = catalog_reconcile_lock(**guard_options)
     try:
         guard.__enter__()
     except Exception as exc:
@@ -230,7 +235,10 @@ def contract_cutover_guard():
 
 
 @contextmanager
-def _contract_cutover_guard_for_service_user_v1(service_user: str):
+def _contract_cutover_guard_for_service_user_v1(
+    service_user: str,
+    *, catalog_trusted_owner: tuple[int, int] | None = None,
+):
     """Bind user-scope observations to the verified deployment account."""
     if (
         type(service_user) is not str or not service_user
@@ -248,7 +256,9 @@ def _contract_cutover_guard_for_service_user_v1(service_user: str):
     reconciler = StackReconciler(
         systemctl=systemctl, default_write_report=False,
     )
-    with _contract_cutover_guard_core_v1(reconciler) as boundary:
+    with _contract_cutover_guard_core_v1(
+        reconciler, catalog_trusted_owner=catalog_trusted_owner,
+    ) as boundary:
         yield boundary
 
 

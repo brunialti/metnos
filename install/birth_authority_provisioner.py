@@ -65,6 +65,7 @@ _PREDECESSOR_SOURCE_ROOTS_V2 = (
 )
 _MAX_PREDECESSOR_FILES_V2 = 4096
 _MAX_PREDECESSOR_BYTES_V2 = 512 * 1024 * 1024
+_CONTRACT_CONVERGENCE_TIMEOUT_SECONDS_V2 = 1200
 
 
 class BirthProvisioningError(RuntimeError):
@@ -4822,6 +4823,74 @@ def _install_bound_topology_v2(
     return _capture_cutover_effective_systemd_v2(prepared)
 
 
+def _converge_transition_contracts_v2(descriptor: object) -> dict[str, int]:
+    """Run the installed, governed catalog convergence as the service owner."""
+    release_root = Path(descriptor.installation_root)
+    entry = release_root / "install" / "executor_birth_contract_convergence.py"
+    environment = {
+        "HOME": descriptor.service_home,
+        "LOGNAME": descriptor.service_user,
+        "USER": descriptor.service_user,
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+        "METNOS_INSTALL_ROOT": release_root.as_posix(),
+        "METNOS_USER_DATA": (
+            Path(descriptor.service_home) / ".local" / "share" / "metnos"
+        ).as_posix(),
+        "METNOS_USER_STATE": (
+            Path(descriptor.service_home) / ".local" / "state" / "metnos"
+        ).as_posix(),
+        "METNOS_USER_CONFIG": (
+            Path(descriptor.service_home) / ".config" / "metnos"
+        ).as_posix(),
+        "METNOS_USER_CACHE": (
+            Path(descriptor.service_home) / ".cache" / "metnos"
+        ).as_posix(),
+        "METNOS_WORKSPACE": (
+            Path(descriptor.service_home) / ".local" / "share" / "metnos" / "workspace"
+        ).as_posix(),
+    }
+    try:
+        completed = subprocess.run(
+            [descriptor.python_executable, "-I", "-B", entry.as_posix()],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=False,
+            close_fds=True,
+            cwd="/",
+            env=environment,
+            user=descriptor.service_uid,
+            group=descriptor.service_gid,
+            extra_groups=descriptor.service_supplementary_gids,
+            umask=0o077,
+            timeout=_CONTRACT_CONVERGENCE_TIMEOUT_SECONDS_V2,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise _reject("birth_transition_contract_convergence_failed", exc) from None
+    if completed.returncode != 0:
+        try:
+            code = completed.stderr.decode("ascii").strip()
+        except UnicodeDecodeError:
+            code = ""
+        raise _reject(
+            code if re.fullmatch(r"birth_[a-z0-9_]{1,96}", code)
+            else "birth_transition_contract_convergence_failed"
+        )
+    try:
+        result = json.loads(completed.stdout.decode("ascii"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise _reject("birth_transition_contract_convergence_failed", exc) from None
+    if (
+        not isinstance(result, dict)
+        or set(result) != {"changed", "current", "examined"}
+        or any(type(value) is not int or value < 0 for value in result.values())
+        or result["changed"] + result["current"] != result["examined"]
+    ):
+        raise _reject("birth_transition_contract_convergence_failed")
+    return result
+
+
 def complete_transition_cutover_v2(
     distribution: object, source_id: object, *, service_state_root: object,
     legacy_service_user: object, legacy_installation_root: object,
@@ -4922,8 +4991,32 @@ def complete_transition_cutover_v2(
         if descriptor != signed_descriptor:
             raise _reject("birth_transition_service_identity_changed")
         with _exclusive_startup_gate_v1() as startup_session:
+            catalog_owner = (
+                descriptor.service_uid,
+                descriptor.service_gid,
+            )
+            if verified.release_sequence == 1:
+                # Prove the legacy stack quiescent before releasing the
+                # catalog lock to the governed service-owned Birth child.
+                # The final guard below reacquires both boundaries and proves
+                # quiescence again before the catalog is frozen.
+                with _contract_cutover_guard_for_service_user_v1(
+                    legacy_identity.name,
+                    catalog_trusted_owner=catalog_owner,
+                ) as (pre_convergence_maintenance, _pre_evidence):
+                    if (
+                        _resolve_legacy_service_identity_v2(
+                            legacy_identity.name,
+                        ) != legacy_identity
+                        or pre_convergence_maintenance() is not True
+                    ):
+                        raise _reject(
+                            "birth_transition_contract_convergence_failed"
+                        )
+                _converge_transition_contracts_v2(descriptor)
             with _contract_cutover_guard_for_service_user_v1(
                 legacy_identity.name,
+                catalog_trusted_owner=catalog_owner,
             ) as (maintenance, evidence):
                 if (
                     _resolve_legacy_service_identity_v2(legacy_identity.name)
@@ -4933,10 +5026,8 @@ def complete_transition_cutover_v2(
                 if verified.release_sequence == 1:
                     verify_initial_installer_store_v1(
                         prove_quiescent=maintenance,
-                        authoring_owner=(
-                            descriptor.service_uid,
-                            descriptor.service_gid,
-                        ),
+                        authoring_owner=catalog_owner,
+                        defer_v1_receipts_to_transition_v2=True,
                     )
                 with _transition_inventory_under_maintenance_v2(
                     maintenance, evidence,

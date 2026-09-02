@@ -381,10 +381,18 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         yield "startup"
         events.append("startup-exit")
 
-    maintenance = SimpleNamespace(observe=lambda: _Maintenance().observe())
+    class Maintenance:
+        observe = staticmethod(lambda: _Maintenance().observe())
+
+        def __call__(self):
+            events.append("maintenance-prove")
+            return True
+
+    maintenance = Maintenance()
 
     @contextmanager
-    def maintenance_guard(_service_user):
+    def maintenance_guard(_service_user, *, catalog_trusted_owner):
+        assert catalog_trusted_owner == (41, 42)
         events.append("maintenance-enter")
         yield maintenance, _Maintenance().observe()
         events.append("maintenance-exit")
@@ -428,12 +436,28 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     monkeypatch.setattr(contract_cutover_guard, "_begin_topology_transition_v1", lambda *_: None)
     monkeypatch.setattr(contract_cutover_guard, "_maintenance_evidence_under_transition_v1", lambda *_: b"maintenance")
     monkeypatch.setattr(coordinator, "_transition_inventory_under_maintenance_v2", inventory)
-    monkeypatch.setattr(
-        bootstrap, "verify_initial_installer_store_v1",
-        lambda *, prove_quiescent, authoring_owner:
+    def verify_initial(
+        *, prove_quiescent, authoring_owner,
+        defer_v1_receipts_to_transition_v2,
+    ):
+        if not (
+            prove_quiescent is maintenance
+            and authoring_owner == (41, 42)
+            and defer_v1_receipts_to_transition_v2 is True
+        ):
+            pytest.fail("authoring seed lost its maintenance or owner binding")
+        assert prove_quiescent() is True
         events.append("authoring-seed")
-        if prove_quiescent is maintenance and authoring_owner == (41, 42)
-        else pytest.fail("authoring seed lost its maintenance or owner binding"),
+        assert prove_quiescent() is True
+
+    monkeypatch.setattr(
+        bootstrap, "verify_initial_installer_store_v1", verify_initial,
+    )
+    monkeypatch.setattr(
+        provisioner, "_converge_transition_contracts_v2",
+        lambda candidate: events.append("contract-convergence")
+        if candidate is descriptor
+        else pytest.fail("contract convergence lost the signed descriptor"),
     )
     monkeypatch.setattr(provisioner, "_prepare_transition_receipt_material_locked_v2", lambda *_: preparation)
     monkeypatch.setattr(provisioner, "_complete_transition_receipts_locked_v2", lambda *_: complete)
@@ -485,7 +509,9 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     ) is result
     assert events == [
         "deployment-enter", "startup-enter", "maintenance-enter",
-        "authoring-seed", "inventory-enter", "predecessor", "composition",
+        "maintenance-prove", "maintenance-exit", "contract-convergence",
+        "maintenance-enter", "maintenance-prove", "authoring-seed",
+        "maintenance-prove", "inventory-enter", "predecessor", "composition",
         "inventory-exit",
         "maintenance-exit", "startup-exit", "deployment-exit",
     ]
@@ -514,6 +540,45 @@ def test_product_wrapper_denies_before_lock_when_closed_policy_is_absent(
             legacy_service_user="legacy-metnos",
             legacy_installation_root="/opt/metnos",
         )
+
+
+def test_contract_convergence_child_is_bound_to_the_signed_service_identity(
+    monkeypatch,
+) -> None:
+    descriptor = SimpleNamespace(
+        installation_root="/var/lib/metnos/executor-birth/releases-v1/1",
+        python_executable="/var/lib/metnos/executor-birth/venv/bin/python",
+        service_user="metnos-service", service_uid=991, service_gid=992,
+        service_supplementary_gids=(44, 992),
+        service_home="/var/lib/metnos-service",
+    )
+    observed = {}
+
+    def run(command, **options):
+        observed["command"] = command
+        observed.update(options)
+        return SimpleNamespace(
+            returncode=0,
+            stdout=b'{"changed":24,"current":98,"examined":122}\n',
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(provisioner.subprocess, "run", run)
+
+    assert provisioner._converge_transition_contracts_v2(descriptor) == {
+        "changed": 24, "current": 98, "examined": 122,
+    }
+    assert observed["command"] == [
+        descriptor.python_executable, "-I", "-B",
+        descriptor.installation_root
+        + "/install/executor_birth_contract_convergence.py",
+    ]
+    assert observed["user"] == descriptor.service_uid
+    assert observed["group"] == descriptor.service_gid
+    assert observed["extra_groups"] == descriptor.service_supplementary_gids
+    assert observed["umask"] == 0o077
+    assert observed["env"]["HOME"] == descriptor.service_home
+    assert observed["env"]["METNOS_INSTALL_ROOT"] == descriptor.installation_root
 
 
 @LINUX_ONLY
