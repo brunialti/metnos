@@ -29,7 +29,7 @@ BIRTH_CLOSED_GUARD_VERSION = _boundary_policy.BIRTH_CLOSED_GUARD_VERSION
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:6a8dc12ddf41c73490b5a92efc912b3cab38814808b66715d73586083bb07e21"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:7d6139069290689ce5d743fe5ef041ce9540f536613da99fd53c8dad091706fa"
 RM0008_ACCEPTANCE_EVOLUTION_SHA256 = "sha256:1babce04a78b8345cbacb9bf5677bebade3958e655f0dc45884ad70636322167"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = _boundary_policy.SCAN_ROOTS
@@ -88,240 +88,47 @@ AUTHENTICATED_PREFLIGHT_EXECUTION_SCOPE = (
 LIVE_READER_FORBIDDEN = _boundary_policy.LIVE_READER_FORBIDDEN
 PUBLISH_CAPABILITIES = _boundary_policy.PUBLISH_CAPABILITIES
 FLOW_CAPABILITIES = _boundary_policy.FLOW_CAPABILITIES
-# These are implementation boundaries, not a caller-extensible allow-list.
-BIRTH_CLOSED_SEALED_MODULES = (
-    "runtime/contract_store.py",
-    "runtime/executor_birth.py",
-    "runtime/executor_birth_commit_publisher.py",
-    "runtime/executor_birth_operational.py",
-    "runtime/executor_birth_ownership_coordinator.py",
-    "runtime/executor_birth_ownership_cutover.py",
-    "runtime/executor_birth_reattestation.py",
-    "runtime/sign.py",
+# Public Birth-closed policy names retain historical concrete runtime types.
+BIRTH_CLOSED_SEALED_MODULES = _boundary_policy.BIRTH_CLOSED_SEALED_MODULES
+BIRTH_CLOSED_OWNER = _boundary_policy.BIRTH_CLOSED_OWNER
+BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = (
+    _boundary_policy.BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
 )
-BIRTH_CLOSED_OWNER = "runtime/executor_birth_operational.py:birth_executor"
-BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
-    "install/birth_authority_provisioner.py:_publish_initial_predecessor_v2",
-    "install/birth_authority_provisioner.py:complete_transition_cutover_v2",
-    "install/birth_authority_provisioner.py:prepare_transition_receipts_v2",
-    "install/birth_ownership_authority_provisioner.py:_discard_temporary",
-    "install/birth_ownership_authority_provisioner.py:_load_or_create_pair",
-    "install/birth_ownership_authority_provisioner.py:_publish_no_replace",
-    "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_at_v1",
-    "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_locked_v1",
-    "install/birth_ownership_authority_provisioner.py:_provisioning_lock",
-    "install/birth_ownership_authority_provisioner.py:_sync_directory",
-    "install/birth_ownership_authority_provisioner.py:_write_exclusive",
-    "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
-    "install/executor_birth_distribution_release.py:build_and_install_received_source_v1",
-    "install/executor_birth_source_receiver.py:<module>",
-    "install/executor_birth_source_receiver.py:_copy_source_file_v1",
-    "install/executor_birth_source_receiver.py:_copy_source_file_v1.copied_chunks",
-    "install/executor_birth_source_receiver.py:_create_private_directory_v1",
-    "install/executor_birth_source_receiver.py:_create_source_directories_v1",
-    "install/executor_birth_source_receiver.py:_ensure_child_directory_v1",
-    "install/executor_birth_source_receiver.py:_open_received_tree_at_v1",
-    "install/executor_birth_source_receiver.py:_load_received_source_locked_core_v1",
-    "install/executor_birth_source_receiver.py:_load_received_source_with_product_session_v1",
-    "install/executor_birth_source_receiver.py:_load_received_source_with_test_session_v1",
-    "install/executor_birth_source_receiver.py:_receive_source_for_test_v1",
-    "install/executor_birth_source_receiver.py:_receive_source_locked_core_v1",
-    "install/executor_birth_source_receiver.py:_receive_source_v1",
-    "install/executor_birth_source_receiver.py:_receive_source_with_product_session_v1",
-    "install/executor_birth_source_receiver.py:_receive_source_with_test_session_v1",
-    "install/executor_birth_source_receiver.py:_remove_owned_tree_at_v1",
-    "install/executor_birth_source_receiver.py:_rename_no_replace_v1",
-    "install/executor_birth_source_receiver.py:_seal_temporary_directories_v1",
-    "install/executor_birth_source_receiver.py:_verify_received_tree_fd_v1",
-    "install/executor_birth_source_receiver.py:_write_all_v1",
-    "install/executor_birth_source_receiver.py:_write_descriptor_v1",
-    "install/executor_birth_source_receiver.py:main",
-    "install/executor_birth_transition.py:<module>",
-    "install/executor_birth_transition.py:deploy_source_v1",
-    "install/executor_birth_transition.py:main",
-    "runtime/executor_birth_ownership_coordinator.py:_publish_control_no_replace_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_core_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_v2",
-    "install/executor_birth_startup_gate.py:_install_startup_gate_core_v1",
-    "install/executor_birth_startup_gate.py:_install_startup_gate_for_test_v1",
-    "install/executor_birth_startup_gate.py:install_startup_gate_v1",
-    "install/executor_birth_startup_prerequisite.py:_finish_temporary_v1",
-    "install/executor_birth_startup_prerequisite.py:_publish_core_v1",
-    "install/executor_birth_startup_prerequisite.py:_publish_startup_prerequisite_for_test_v2",
-    "install/executor_birth_startup_prerequisite.py:_publish_startup_prerequisite_locked_v2",
-    "install/executor_birth_systemd.py:_install_group6_administrative_for_test_v1",
-    "install/executor_birth_systemd.py:_install_locked_core_v1",
-    "install/executor_birth_systemd.py:_install_signed_isolated_systemd_for_test_v1",
-    "install/executor_birth_systemd.py:_open_parent_v1",
-    "install/executor_birth_systemd.py:_publish_administrative_tree_v1",
-    "install/executor_birth_systemd.py:_publish_isolated_units_for_test_v1",
-    "install/executor_birth_systemd.py:install_group6_administrative_v1",
-    "runtime/executor_birth_admin_preflight.py:<module>",
-    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_core_v1",
-    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_for_test_v1",
-    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_v1",
-    "runtime/executor_birth_admin_preflight.py:_run_operational_command_v1",
-    "runtime/executor_birth_admin_preflight.py:_write_all_exact_v1",
-    "runtime/executor_birth_admin_preflight.py:main",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
-    "runtime/executor_birth_ownership_chain.py:_OwnershipChainStoreForTest._initialize_with_authorities",
-    "runtime/executor_birth_ownership_chain.py:_ensure_exact_directory_v1",
-    "runtime/executor_birth_ownership_chain.py:_ensure_product_directory_v1",
-    "runtime/executor_birth_ownership_chain.py:_inspect_ownership_chain_state_core_v1",
-    "runtime/executor_birth_ownership_chain.py:_inspect_ownership_chain_state_for_test_v1",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_cutover",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_context_transition",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_head",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.initialize",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.update_required_head",
-    "runtime/executor_birth_ownership_chain.py:_replace_required_pointer",
-    "runtime/executor_birth_ownership_chain.py:_required_head_lock",
-    "runtime/executor_birth_ownership_chain.py:inspect_ownership_chain_state_v1",
-    "runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher._persist_current_reattestation",
-    "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.append",
-    "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",
-    "runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete",
-    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.__init__",
-    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._append_initial",
-    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._committed",
-    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._inventory",
-    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.append_transaction_record",
-    "runtime/executor_birth_ownership_coordinator.py:_DeploymentLockLeaseV1",
-    "runtime/executor_birth_ownership_coordinator.py:_LockedOwnershipCoordinatorGraphSnapshotV2",
-    "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.require_issued",
-    "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.resolve_issued",
-    "runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_append_prepared_transition_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_append_prepared_transition_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_completed_transition_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_core_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_v2.observe_certificate_graph",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2.observe_head_graph",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2.publish",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2.observe_preflight_graph",
-    "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_at_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_for_test_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_decode_record",
-    "runtime/executor_birth_ownership_coordinator.py:_decode_record_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_ensure_coordinator_child_directory_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_observe_dominant_identity_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",
-    "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_material_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_publish_context_transition_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_publish_transaction_directory_no_replace_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_read_staged_transaction_directory_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_require_locked_coordinator_graph_snapshot_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_resolve_ownership_coordinator_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_transition_edge_locked_v2",
-})
-BIRTH_CLOSED_LEGACY_CAPABILITIES = frozenset({
-    "publish_localization", "publish_technical", "reactivate", "retire",
-    "rollback", "sign",
-})
-BIRTH_CLOSED_EXCEPTIONS = frozenset({
-    "localization_only", "retirement_only", "offline_nonproductive_authoring",
-})
-BIRTH_CLOSED_EXCEPTION_SCOPES: Mapping[str, str] = {
-    "runtime/admin/manifest_refactor.py:<module>": "offline_nonproductive_authoring",
-    "runtime/admin/manifest_refactor.py:main": "offline_nonproductive_authoring",
-    "runtime/admin/manifest_refactor.py:refactor_manifest": "offline_nonproductive_authoring",
-    "runtime/i18n_pipeline.py:live_contract_context": "localization_only",
-    "runtime/i18n_translator.py:<module>": "offline_nonproductive_authoring",
-    "runtime/i18n_translator.py:_align_one_manifest": "offline_nonproductive_authoring",
-    "runtime/i18n_translator.py:align_manifest_descriptions": "offline_nonproductive_authoring",
-    "runtime/manifest_normalize.py:<module>": "offline_nonproductive_authoring",
-    "runtime/manifest_normalize.py:apply_one": "offline_nonproductive_authoring",
-    "runtime/manifest_normalize.py:main": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:<module>": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:main": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:migrate_dirs": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:migrate_one": "offline_nonproductive_authoring",
-    "runtime/change_rollback.py:_rollback_create_executor": "retirement_only",
-    "runtime/cli/skills_cli.py:_cmd_uninstall": "retirement_only",
-}
-BIRTH_CLOSED_EXCEPTION_CAPABILITIES: Mapping[str, frozenset[str]] = {
-    "runtime/admin/manifest_refactor.py:<module>": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/admin/manifest_refactor.py:main": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/admin/manifest_refactor.py:refactor_manifest": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/i18n_pipeline.py:live_contract_context": frozenset({
-        "publish_localization", "verified_store_read",
-    }),
-    "runtime/i18n_translator.py:<module>": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/i18n_translator.py:_align_one_manifest": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/i18n_translator.py:align_manifest_descriptions": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/manifest_normalize.py:<module>": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/manifest_normalize.py:apply_one": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/manifest_normalize.py:main": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/migrate_manifest_descriptions.py:<module>": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/migrate_manifest_descriptions.py:main": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/migrate_manifest_descriptions.py:migrate_dirs": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/migrate_manifest_descriptions.py:migrate_one": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/change_rollback.py:_rollback_create_executor": frozenset({
-        "retire",
-    }),
-    "runtime/cli/skills_cli.py:_cmd_uninstall": frozenset({
-        "authoring_read", "retire",
-    }),
-}
-VALID_ROLES = frozenset({
-    "administrative_tool",
-    "birth_owner",
-    "documentation",
-    "live_reader",
-    "migration_boundary",
-    "offline_authoring",
-    "operational_producer",
-    "store_owner",
-})
-LIVE_MUTATIONS = frozenset({
-    "birth",
-    "publish_localization",
-    "publish_technical",
-    "reactivate",
-    "retire",
-    "rollback",
-})
+BIRTH_CLOSED_LEGACY_CAPABILITIES = (
+    _boundary_policy.BIRTH_CLOSED_LEGACY_CAPABILITIES
+)
+BIRTH_CLOSED_EXCEPTIONS = _boundary_policy.BIRTH_CLOSED_EXCEPTIONS
+BIRTH_CLOSED_EXCEPTION_SCOPES: Mapping[str, str] = (
+    _boundary_policy.BIRTH_CLOSED_EXCEPTION_SCOPES
+)
+BIRTH_CLOSED_EXCEPTION_CAPABILITIES: Mapping[str, frozenset[str]] = (
+    _boundary_policy.BIRTH_CLOSED_EXCEPTION_CAPABILITIES
+)
+VALID_ROLES = _boundary_policy.VALID_ROLES
+LIVE_MUTATIONS = _boundary_policy.LIVE_MUTATIONS
+DIRECT_MANIFEST_ALLOWED_ROLES = _boundary_policy.DIRECT_MANIFEST_ALLOWED_ROLES
+DIRECT_MANIFEST_ALLOWED_PATHS = _boundary_policy.DIRECT_MANIFEST_ALLOWED_PATHS
+BIRTH_OWNER_ALLOWED_PATHS = _boundary_policy.BIRTH_OWNER_ALLOWED_PATHS
+BIRTH_OWNER_FORBIDDEN_CAPABILITIES = (
+    _boundary_policy.BIRTH_OWNER_FORBIDDEN_CAPABILITIES
+)
+OPERATIONAL_BIRTH_FORBIDDEN_CAPABILITIES = (
+    _boundary_policy.OPERATIONAL_BIRTH_FORBIDDEN_CAPABILITIES
+)
+BOOTSTRAP_CAPABILITIES = _boundary_policy.BOOTSTRAP_CAPABILITIES
+BOOTSTRAP_ALLOWED_ROLES = _boundary_policy.BOOTSTRAP_ALLOWED_ROLES
+LIVE_MUTATION_ALLOWED_ROLES = _boundary_policy.LIVE_MUTATION_ALLOWED_ROLES
+DOCUMENTATION_CAPABILITY_EXEMPTIONS = (
+    _boundary_policy.DOCUMENTATION_CAPABILITY_EXEMPTIONS
+)
+BIRTH_CLOSED_EXCEPTION_JUSTIFICATIONS = (
+    _boundary_policy.BIRTH_CLOSED_EXCEPTION_JUSTIFICATIONS
+)
+BIRTH_CLOSED_COORDINATOR_REQUIRED_CAPABILITIES = (
+    _boundary_policy.BIRTH_CLOSED_COORDINATOR_REQUIRED_CAPABILITIES
+)
+BOUNDARY_ENTRY_KEYS = _boundary_policy.BOUNDARY_ENTRY_KEYS
+birth_closed_inventory_value_v1 = _boundary_policy.birth_closed_inventory_value_v1
 
 _AUTHORING_NAME_RE = _boundary_policy._AUTHORING_NAME_RE
 _AMBIGUOUS_AUTHORING_ARGUMENT_RE = (
@@ -2249,8 +2056,8 @@ def check(
 
         capabilities = set(fact.capabilities)
         if fact.direct_manifest_dir_access and not (
-            role in {"offline_authoring", "migration_boundary", "store_owner"}
-            or fact.path == "runtime/executor_birth_authoring.py"
+            role in DIRECT_MANIFEST_ALLOWED_ROLES
+            or fact.path in DIRECT_MANIFEST_ALLOWED_PATHS
         ):
             findings.append(Finding(
                 "direct_manifest_dir_read_without_token",
@@ -2259,15 +2066,8 @@ def check(
                 "use read_manifest_ref_versioned()",
             ))
         if role == "birth_owner" and (
-            fact.path not in {
-                "runtime/executor_birth.py",
-                "runtime/executor_birth_intent.py",
-                "runtime/executor_birth_operational.py",
-            }
-            or bool(capabilities & {
-                "legacy_bootstrap", "publish_bootstrap", "publish_localization",
-                "retire", "rollback", "sign",
-            })
+            fact.path not in BIRTH_OWNER_ALLOWED_PATHS
+            or bool(capabilities & BIRTH_OWNER_FORBIDDEN_CAPABILITIES)
         ):
             findings.append(Finding(
                 "birth_owner_invalid",
@@ -2276,7 +2076,7 @@ def check(
                 "cannot absorb dedicated or migration boundaries",
             ))
         if role == "operational_producer" and "birth" in capabilities and (
-            capabilities & {"publish_technical", "reactivate", "sign"}
+            capabilities & OPERATIONAL_BIRTH_FORBIDDEN_CAPABILITIES
         ):
             findings.append(Finding(
                 "operational_birth_mixed_authority",
@@ -2302,8 +2102,8 @@ def check(
                 "only a reviewed store_owner scope may mutate the publication store",
             ))
         if (
-            capabilities & {"legacy_bootstrap", "publish_bootstrap"}
-            and role not in {"migration_boundary", "store_owner"}
+            capabilities & BOOTSTRAP_CAPABILITIES
+            and role not in BOOTSTRAP_ALLOWED_ROLES
         ):
             findings.append(Finding(
                 "legacy_bootstrap_outside_boundary",
@@ -2316,13 +2116,10 @@ def check(
                 key,
                 "migration boundary has no discovered legacy-bootstrap operation",
             ))
-        if capabilities & LIVE_MUTATIONS and role not in {
-            "administrative_tool",
-            "birth_owner",
-            "migration_boundary",
-            "operational_producer",
-            "store_owner",
-        }:
+        if (
+            capabilities & LIVE_MUTATIONS
+            and role not in LIVE_MUTATION_ALLOWED_ROLES
+        ):
             findings.append(Finding(
                 "live_mutation_role_invalid",
                 key,
@@ -2352,7 +2149,7 @@ def check(
                     "authoring mutation has no publication boundary in the same scope",
                 ))
         if role == "documentation" and capabilities & (
-            LIVE_READER_FORBIDDEN - {"authoring_read", "authoring_verify"}
+            LIVE_READER_FORBIDDEN - DOCUMENTATION_CAPABILITY_EXEMPTIONS
         ):
             findings.append(Finding(
                 "documentation_mutates_boundary",
@@ -2382,17 +2179,7 @@ def birth_closed_findings(
             "source_census must equal the compiled Python source-review root",
         ))
     policy = inventory.get("birth_closed")
-    expected_policy = {
-        "schema": BIRTH_CLOSED_SCHEMA,
-        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
-        "owner": BIRTH_CLOSED_OWNER,
-        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
-        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
-        "exceptions": [
-            {"scope": scope, "exception": exception}
-            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
-        ],
-    }
+    expected_policy = birth_closed_inventory_value_v1()
     if policy != expected_policy:
         findings.append(Finding(
             "birth_closed_inventory_invalid", "<inventory>",
@@ -2432,7 +2219,10 @@ def birth_closed_findings(
         exception = entry.get("closed_exception")
         expected_exception = BIRTH_CLOSED_EXCEPTION_SCOPES.get(fact.key)
         if fact.key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS:
-            if entry.get("role") != "store_owner" or capabilities != {"store_write"}:
+            if (
+                entry.get("role") != "store_owner"
+                or capabilities != BIRTH_CLOSED_COORDINATOR_REQUIRED_CAPABILITIES
+            ):
                 findings.append(Finding(
                     "birth_closed_coordinator_invalid", fact.key,
                     "ownership coordinator must be an exact store_write owner",
@@ -2456,11 +2246,9 @@ def birth_closed_findings(
                 "closed builds permit no reflective, dynamic-import, or subprocess boundary",
             ))
 
-        relevant_exception_capabilities = {
-            "localization_only": {"publish_localization"},
-            "retirement_only": {"retire"},
-            "offline_nonproductive_authoring": {"sign"},
-        }.get(exception, set())
+        relevant_exception_capabilities = (
+            BIRTH_CLOSED_EXCEPTION_JUSTIFICATIONS.get(exception, frozenset())
+        )
         forbidden = capabilities & BIRTH_CLOSED_LEGACY_CAPABILITIES
         if not forbidden:
             if exception is not None and not (
@@ -2527,17 +2315,7 @@ def render_birth_closed_inventory(
     """Render a candidate without inventing closed exceptions or ownership."""
 
     payload = json.loads(render_inventory(facts, existing))
-    payload["birth_closed"] = {
-        "schema": BIRTH_CLOSED_SCHEMA,
-        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
-        "owner": BIRTH_CLOSED_OWNER,
-        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
-        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
-        "exceptions": [
-            {"scope": scope, "exception": exception}
-            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
-        ],
-    }
+    payload["birth_closed"] = birth_closed_inventory_value_v1()
     previous = {
         _entry_key(entry): entry
         for entry in (existing or {}).get("entries", [])

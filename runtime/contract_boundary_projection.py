@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contract_boundary_api_policy as api_policy
+import contract_boundary_birth_policy as birth_policy
 import contract_boundary_syntax_policy as syntax_policy
 from executor_birth_canonical import encode_canonical_ascii_v1
 from executor_birth_crypto_framing import framed_sha256_v1
@@ -89,6 +90,49 @@ def _regexes_v1() -> list[object]:
     return [[name, value.pattern, value.flags] for name, value in rows]
 
 
+def _birth_roles_v1() -> dict[str, object]:
+    value = birth_policy.BIRTH_CLOSED_POLICY_V1.roles
+    return {
+        "valid_roles": list(value.valid_roles),
+        "direct_manifest_roles": list(value.direct_manifest_roles),
+        "direct_manifest_paths": list(value.direct_manifest_paths),
+        "birth_owner_paths": list(value.birth_owner_paths),
+        "birth_owner_forbidden": list(value.birth_owner_forbidden),
+        "operational_birth_forbidden": list(value.operational_birth_forbidden),
+        "bootstrap_capabilities": list(value.bootstrap_capabilities),
+        "bootstrap_roles": list(value.bootstrap_roles),
+        "live_mutations": list(value.live_mutations),
+        "live_mutation_roles": list(value.live_mutation_roles),
+        "documentation_exemptions": list(value.documentation_exemptions),
+        "exception_justification": [
+            [kind, list(capabilities)]
+            for kind, capabilities in value.exception_justification
+        ],
+        "coordinator_capabilities": list(value.coordinator_capabilities),
+        "boundary_entry_keys": list(value.boundary_entry_keys),
+        "birth_closed_legacy_capabilities": list(
+            value.birth_closed_legacy_capabilities
+        ),
+    }
+
+
+def _birth_closed_v1() -> dict[str, object]:
+    value = birth_policy.BIRTH_CLOSED_POLICY_V1
+    return {
+        "owner": value.authority.owner,
+        "sealed_modules": list(value.authority.sealed_modules),
+        "coordinator_store_owners": list(
+            value.authority.coordinator_store_owners
+        ),
+        "exception_classes": list(value.exception_classes),
+        "exception_grants": [
+            [grant.scope, grant.exception, list(grant.capabilities)]
+            for grant in value.exception_grants
+        ],
+        "roles": _birth_roles_v1(),
+    }
+
+
 def policy_payload_v1() -> dict[str, object]:
     """Return the JSON-profile policy value with explicit ordering facts."""
     return {
@@ -98,6 +142,7 @@ def policy_payload_v1() -> dict[str, object]:
             syntax_policy.AUTHENTICATED_PREFLIGHT_EXECUTION_SCOPE
         ),
         "authoring_files": sorted(syntax_policy.AUTHORING_FILES),
+        "birth_closed": _birth_closed_v1(),
         "birth_closed_guard_version": syntax_policy.BIRTH_CLOSED_GUARD_VERSION,
         "birth_closed_schema": syntax_policy.BIRTH_CLOSED_SCHEMA,
         "limits": _limits_v1(),
@@ -136,6 +181,68 @@ def _assignment_lines_v1() -> tuple[str, ...]:
         '_BIRTH_CLOSED_SCHEMA = BIRTH_CLOSED_SCHEMA',
         '_BIRTH_CLOSED_GUARD_VERSION = BIRTH_CLOSED_GUARD_VERSION',
         '_BOUNDARY_SCAN_ROOTS = SCAN_ROOTS',
+    )
+
+
+def _birth_assignment_lines_v1() -> tuple[str, ...]:
+    return (
+        '_BIRTH_POLICY_DATA_V1 = _BOUNDARY_POLICY_DATA_V1["birth_closed"]',
+        '_BIRTH_ROLE_DATA_V1 = _BIRTH_POLICY_DATA_V1["roles"]',
+        '_BIRTH_CLOSED_OWNER = _BIRTH_POLICY_DATA_V1["owner"]',
+        '_BIRTH_CLOSED_SEALED_MODULES = tuple(_BIRTH_POLICY_DATA_V1["sealed_modules"])',
+        '_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = tuple(_BIRTH_POLICY_DATA_V1["coordinator_store_owners"])',
+        '_BIRTH_CLOSED_EXCEPTION_SCOPES = tuple(sorted((scope, exception) for scope, exception, _caps in _BIRTH_POLICY_DATA_V1["exception_grants"]))',
+        '_BIRTH_CLOSED_EXCEPTIONS = frozenset(_BIRTH_POLICY_DATA_V1["exception_classes"])',
+        '_BOUNDARY_ENTRY_KEYS = frozenset(_BIRTH_ROLE_DATA_V1["boundary_entry_keys"])',
+        '_BOUNDARY_ROLES = frozenset(_BIRTH_ROLE_DATA_V1["valid_roles"])',
+        'BIRTH_CLOSED_SEALED_MODULES = _BIRTH_CLOSED_SEALED_MODULES',
+        'BIRTH_CLOSED_OWNER = _BIRTH_CLOSED_OWNER',
+        'BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset(_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS)',
+        'BIRTH_CLOSED_LEGACY_CAPABILITIES = frozenset(_BIRTH_ROLE_DATA_V1["birth_closed_legacy_capabilities"])',
+        'BIRTH_CLOSED_EXCEPTIONS = frozenset(_BIRTH_POLICY_DATA_V1["exception_classes"])',
+        'BIRTH_CLOSED_EXCEPTION_SCOPES = {scope: exception for scope, exception, _caps in _BIRTH_POLICY_DATA_V1["exception_grants"]}',
+        'BIRTH_CLOSED_EXCEPTION_CAPABILITIES = {scope: frozenset(caps) for scope, _exception, caps in _BIRTH_POLICY_DATA_V1["exception_grants"]}',
+        'VALID_ROLES = frozenset(_BIRTH_ROLE_DATA_V1["valid_roles"])',
+        'LIVE_MUTATIONS = frozenset(_BIRTH_ROLE_DATA_V1["live_mutations"])',
+    )
+
+
+def _birth_matrix_lines_v1() -> tuple[str, ...]:
+    names = (
+        ("DIRECT_MANIFEST_ALLOWED_ROLES", "direct_manifest_roles"),
+        ("DIRECT_MANIFEST_ALLOWED_PATHS", "direct_manifest_paths"),
+        ("BIRTH_OWNER_ALLOWED_PATHS", "birth_owner_paths"),
+        ("BIRTH_OWNER_FORBIDDEN_CAPABILITIES", "birth_owner_forbidden"),
+        ("OPERATIONAL_BIRTH_FORBIDDEN_CAPABILITIES", "operational_birth_forbidden"),
+        ("BOOTSTRAP_CAPABILITIES", "bootstrap_capabilities"),
+        ("BOOTSTRAP_ALLOWED_ROLES", "bootstrap_roles"),
+        ("LIVE_MUTATION_ALLOWED_ROLES", "live_mutation_roles"),
+        ("DOCUMENTATION_CAPABILITY_EXEMPTIONS", "documentation_exemptions"),
+        ("BIRTH_CLOSED_COORDINATOR_REQUIRED_CAPABILITIES", "coordinator_capabilities"),
+    )
+    lines = tuple(
+        f'{target} = frozenset(_BIRTH_ROLE_DATA_V1["{source}"])'
+        for target, source in names
+    )
+    return lines + (
+        'BIRTH_CLOSED_EXCEPTION_JUSTIFICATIONS = {kind: frozenset(caps) for kind, caps in _BIRTH_ROLE_DATA_V1["exception_justification"]}',
+    )
+
+
+def _birth_inventory_lines_v1() -> tuple[str, ...]:
+    return (
+        'def birth_closed_inventory_value_v1():',
+        '    return {',
+        '        "schema": BIRTH_CLOSED_SCHEMA,',
+        '        "guard_version": BIRTH_CLOSED_GUARD_VERSION,',
+        '        "owner": BIRTH_CLOSED_OWNER,',
+        '        "coordinator_store_owners": list(_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),',
+        '        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),',
+        '        "exceptions": [',
+        '            {"scope": scope, "exception": exception}',
+        '            for scope, exception in _BIRTH_CLOSED_EXCEPTION_SCOPES',
+        '        ],',
+        '    }',
     )
 
 
@@ -195,9 +302,13 @@ def render_generated_region_v1() -> bytes:
         f"_BOUNDARY_POLICY_CANONICAL_ASCII_V1 = {payload!r}",
         '_BOUNDARY_POLICY_DATA_V1 = json.loads(_BOUNDARY_POLICY_CANONICAL_ASCII_V1.decode("ascii"))',
         *_assignment_lines_v1(),
+        *_birth_assignment_lines_v1(),
+        *_birth_matrix_lines_v1(),
         *_limit_lines_v1(),
         *_set_lines_v1(),
         *_scope_regex_lines_v1(),
+        *_birth_inventory_lines_v1(),
+        "del _BIRTH_POLICY_DATA_V1, _BIRTH_ROLE_DATA_V1",
         "del _BOUNDARY_POLICY_DATA_V1, _BOUNDARY_REGEX_DATA_V1",
         END_MARKER_V1.decode("ascii"),
     ]

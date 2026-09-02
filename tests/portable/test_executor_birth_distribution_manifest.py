@@ -91,7 +91,15 @@ def _files(root: Path):
         ),
         "requirements.lock": ("dependency_lock", b"cryptography==47.0.0\n"),
         "runtime/__version__.py": ("product_version", b'__version__ = "1.2.3"\n'),
+        "runtime/contract_boundary_api_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_authority_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_exception_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_boundary_guard.py": ("boundary_guard", b"GUARD = 1\n"),
+        "runtime/contract_boundary_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_policy_types.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_role_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_syntax_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_store.py": ("runtime_code", b"STORE = 1\n"),
         "runtime/executor_birth.py": ("runtime_code", b"BIRTH = 1\n"),
         "runtime/executor_birth_distribution_manifest.py": ("preflight", b"VERIFY = 1\n"),
@@ -798,6 +806,16 @@ def test_guard_version_inventory_policy_and_full_static_gate_are_fail_closed(tmp
                 verify_static_boundary=True,
             ),
         )
+
+
+def test_source_review_binding_error_is_fail_closed(monkeypatch):
+    def invalid_binding(_content):
+        raise ValueError("invalid source-review pin binding")
+
+    monkeypatch.setattr(
+        distribution, "closed_python_source_review_sha256", invalid_binding,
+    )
+    assert not distribution._source_review_is_exact_v1({})
 
 
 def test_uncovered_local_and_dynamic_imports_fail_closed(tmp_path):

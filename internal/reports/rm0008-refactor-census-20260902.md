@@ -714,6 +714,64 @@ installata del gate è solo baseline comparativa: dopo equivalenza, replica
 Linux e avvio riuscito verrà rimossa insieme alle unità transitorie e agli
 script one-off, senza conservarla come fallback operativo.
 
+## Settima tranche: policy Birth-closed unica e validata
+
+La policy Birth-closed non è più mantenuta manualmente nei due motori del
+guard. È stata separata in cinque owner immutabili e privi di I/O:
+
+- `contract_boundary_policy_types.py`, tipi ed errore di dominio;
+- `contract_boundary_role_policy.py`, vocabolario capability e matrici ruolo;
+- `contract_boundary_birth_authority_policy.py`, owner e autorità sigillate;
+- `contract_boundary_birth_exception_policy.py`, eccezioni e grant;
+- `contract_boundary_birth_policy.py`, aggregazione e validazione incrociata.
+
+Il grafo è aciclico: tipi, catalogo API/sintassi, ruoli, aggregato Birth,
+facciata/proiezione, consumer. Nessun modulo autorevole importa il guard o il
+preflight standalone. I cinque owner totalizzano 630 righe; il più grande è
+di 175 righe e la funzione più grande è di circa 32 righe. Nei due consumer
+storici sono state eliminate 617 righe e introdotte 139 righe di adattamento,
+con una riduzione netta di 478 righe nei due motori senza alterarne i tipi,
+l'ordine o le identità alias osservabili.
+
+La validazione unica rifiuta stringhe vuote o con NUL, tuple non canoniche,
+owner esterni ai moduli sigillati, scope non conformi a `path:scope`,
+sovrapposizioni fra owner/coordinator/eccezioni, eccezioni senza grant e
+capability estranee al vocabolario chiuso. La capability storica di
+giustificazione resta esatta. Le collezioni legacy restano uguali ma sono
+oggetti distinti dove la baseline lo richiede.
+
+Guard, preflight standalone e manifest di distribuzione usano lo stesso
+materializzatore dell'inventario. Tutti i nuovi owner sono dipendenze
+`runtime_code` richieste, nello stesso ordine, sia dal preflight sia dal
+manifest. Binding sorgente non valido viene tradotto nell'errore di dominio e
+fallisce chiuso. Il preflight continua a caricarsi con `python -I -S` e sole
+dipendenze standard library.
+
+La characterization completa dell'inventario, normalizzato soltanto nel
+campo `source_census` intenzionalmente variabile, ha digest
+`sha256:4f40025602a0654ca7651de36f3a4a1dc2d314d54e5b0a4b1a9647c5eb60a6a9`.
+La proiezione standalone conserva il digest
+`sha256:1607142dd9567be8406379d5c0a644a395e7c3a6c65a251f176c09f084dee681`.
+
+Due repin consecutivi hanno prodotto byte identici:
+
+- private: 723 file,
+  `sha256:7d6139069290689ce5d743fe5ef041ce9540f536613da99fd53c8dad091706fa`;
+- public: 711 file,
+  `sha256:51fa12e03a877e4e2d955cb58386c56128d872bdf28a00f6c17e2da8359b432a`.
+
+La suite combinata dei consumer e dei gate contiene `855 passed, 3 skipped`.
+Il guard Birth-closed, il checker della proiezione, il controllo del renderer,
+il controllo del diff e il gate completo di pubblicazione sono tutti verdi;
+l'export pubblico contiene 1.692 file e non presenta PII, secret o file
+sensibili. Le revisioni indipendenti di architettura e Python non rilevano
+P0, P1 o P2 residui nella tranche.
+
+La decisione è **GO per commit e scomposizione dell'analyzer**, non ancora per
+la sostituzione produttiva: prima servono eliminazione del residuo copiato fra
+i due analyzer, coerenza firmata della distribuzione, replica Linux reale e
+verifica dell'`ExecStartPre` installato.
+
 ## Decisione
 
 Le revisioni indipendenti di architettura, software engineering e Python

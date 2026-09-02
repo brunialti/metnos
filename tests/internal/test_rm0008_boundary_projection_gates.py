@@ -16,8 +16,13 @@ REPIN = ROOT / "internal/tools/rm0008_repin_source_roots.py"
 PUBLISHER = ROOT / "scripts/publish-public.sh"
 RUNTIME_FILES = (
     "contract_boundary_api_policy.py",
+    "contract_boundary_birth_authority_policy.py",
+    "contract_boundary_birth_exception_policy.py",
+    "contract_boundary_birth_policy.py",
     "contract_boundary_policy.py",
+    "contract_boundary_policy_types.py",
     "contract_boundary_projection.py",
+    "contract_boundary_role_policy.py",
     "contract_boundary_syntax_policy.py",
     "executor_birth_admin_preflight.py",
     "executor_birth_canonical.py",

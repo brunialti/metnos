@@ -235,7 +235,15 @@ def _fixture(
         "runtime/__version__.py": (
             "product_version", b'__version__ = "1.2.3"\n',
         ),
+        "runtime/contract_boundary_api_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_authority_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_exception_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_boundary_guard.py": ("boundary_guard", b"GUARD = 1\n"),
+        "runtime/contract_boundary_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_policy_types.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_role_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_syntax_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_store.py": ("runtime_code", b"STORE = 1\n"),
         "runtime/executor_birth.py": ("runtime_code", b"BIRTH = 1\n"),
         "runtime/executor_birth_distribution_manifest.py": (

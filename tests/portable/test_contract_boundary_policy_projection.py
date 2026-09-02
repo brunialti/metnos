@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT = ROOT / "runtime" / "executor_birth_admin_preflight.py"
 TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 GOLDEN_DIGEST_V1 = (
-    "sha256:5bc896ec9890cb51d8cd31c9e20de374a20ccb06fe8b7bad9e48c678ee58efe0"
+    "sha256:1607142dd9567be8406379d5c0a644a395e7c3a6c65a251f176c09f084dee681"
 )
 
 POLICY_NAMES = (
@@ -226,6 +226,11 @@ def test_fixed_tool_check_rejects_drift(tmp_path: Path) -> None:
     (replica / "internal" / "tools").mkdir(parents=True)
     runtime_names = (
         "contract_boundary_api_policy.py", "contract_boundary_syntax_policy.py",
+        "contract_boundary_policy_types.py",
+        "contract_boundary_role_policy.py",
+        "contract_boundary_birth_authority_policy.py",
+        "contract_boundary_birth_exception_policy.py",
+        "contract_boundary_birth_policy.py",
         "contract_boundary_policy.py", "contract_boundary_projection.py",
         "executor_birth_canonical.py", "executor_birth_crypto_framing.py",
         "executor_birth_admin_preflight.py",
@@ -365,7 +370,8 @@ def test_preflight_has_no_local_policy_or_renderer_import() -> None:
         elif isinstance(node, ast.ImportFrom):
             imported.add(node.module or "")
     assert not imported & {
-        "contract_boundary_api_policy", "contract_boundary_policy",
+        "contract_boundary_api_policy", "contract_boundary_birth_policy",
+        "contract_boundary_policy",
         "contract_boundary_projection", "contract_boundary_syntax_policy",
         "executor_birth_canonical", "executor_birth_crypto_framing",
     }
@@ -383,7 +389,8 @@ def test_projection_has_no_io_or_dynamic_execution_surface() -> None:
     assert not imported & {"os", "pathlib", "runpy", "subprocess", "tempfile"}
     assert "contract_boundary_policy" not in imported
     assert {
-        "contract_boundary_api_policy", "contract_boundary_syntax_policy",
+        "contract_boundary_api_policy", "contract_boundary_birth_policy",
+        "contract_boundary_syntax_policy",
     } <= imported
     calls = {
         node.func.id
@@ -396,6 +403,11 @@ def test_projection_has_no_io_or_dynamic_execution_surface() -> None:
 def test_policy_modules_and_functions_obey_size_limits() -> None:
     names = (
         "contract_boundary_api_policy.py", "contract_boundary_syntax_policy.py",
+        "contract_boundary_policy_types.py",
+        "contract_boundary_role_policy.py",
+        "contract_boundary_birth_authority_policy.py",
+        "contract_boundary_birth_exception_policy.py",
+        "contract_boundary_birth_policy.py",
         "contract_boundary_policy.py", "contract_boundary_projection.py",
     )
     for name in names:

@@ -28,12 +28,11 @@ from executor_birth_ownership_preflight import (
     ClosedBuildIdentity, _BUILD_AUTHORITY_SEAL,
 )
 from contract_boundary_guard import (
-    BIRTH_CLOSED_COORDINATOR_STORE_OWNERS, BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_GUARD_VERSION,
-    BIRTH_CLOSED_OWNER, BIRTH_CLOSED_SCHEMA, BIRTH_CLOSED_SEALED_MODULES,
     BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     SCAN_ROOTS, SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
     _bounded_ast_metrics, birth_closed_findings,
+    birth_closed_inventory_value_v1,
     closed_python_source_review_sha256, discover,
 )
 
@@ -84,7 +83,15 @@ _REQUIRED_PATH_ROLES = MappingProxyType({
     "deployment/executor-birth-service-catalog-v1.json": "service_catalog",
     "runtime/contract_store.py": "runtime_code",
     "runtime/sign.py": "runtime_code",
+    "runtime/contract_boundary_api_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_authority_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_exception_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_policy.py": "runtime_code",
     "runtime/contract_boundary_guard.py": "boundary_guard",
+    "runtime/contract_boundary_policy.py": "runtime_code",
+    "runtime/contract_boundary_policy_types.py": "runtime_code",
+    "runtime/contract_boundary_role_policy.py": "runtime_code",
+    "runtime/contract_boundary_syntax_policy.py": "runtime_code",
     "runtime/executor_birth.py": "runtime_code",
     "runtime/executor_birth_ownership_preflight.py": "preflight",
     "runtime/executor_birth_distribution_manifest.py": "preflight",
@@ -1412,17 +1419,7 @@ def _canonical_inventory(content: bytes) -> dict[str, object]:
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", "boundary inventory",
         ) from exc
-    expected_policy = {
-        "schema": BIRTH_CLOSED_SCHEMA,
-        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
-        "owner": BIRTH_CLOSED_OWNER,
-        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
-        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
-        "exceptions": [
-            {"scope": scope, "exception": exception}
-            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
-        ],
-    }
+    expected_policy = birth_closed_inventory_value_v1()
     if (
         not isinstance(value, dict) or _canonical(value) != content
         or value.get("schema") != BOUNDARY_INVENTORY_SCHEMA
@@ -1795,12 +1792,7 @@ def _verify_distribution_content_semantics_v1(
             "birth_ownership_distribution_file_mismatch", "boundary guard version",
         )
     if environment.verify_static_boundary:
-        if (
-            closed_python_source_review_sha256(verified_content)
-            != BIRTH_CLOSED_SOURCE_REVIEW_SHA256
-            or verified_content.get(_BOUNDARY_PREFLIGHT_ENTRYPOINT_V1)
-            != verified_content.get("runtime/executor_birth_admin_preflight.py")
-        ):
+        if not _source_review_is_exact_v1(verified_content):
             raise DistributionManifestError(
                 "birth_ownership_distribution_file_mismatch", "source review",
             )
@@ -1824,6 +1816,18 @@ def _verify_distribution_content_semantics_v1(
         )
     _verify_local_import_closure(
         environment.installation_root, files, verified_content,
+    )
+
+
+def _source_review_is_exact_v1(verified_content: Mapping[str, bytes]) -> bool:
+    try:
+        reviewed = closed_python_source_review_sha256(verified_content)
+    except ValueError:
+        return False
+    return (
+        reviewed == BIRTH_CLOSED_SOURCE_REVIEW_SHA256
+        and verified_content.get(_BOUNDARY_PREFLIGHT_ENTRYPOINT_V1)
+        == verified_content.get("runtime/executor_birth_admin_preflight.py")
     )
 
 

@@ -751,7 +751,15 @@ _REQUIRED_MANIFEST_PATHS = {
     "deployment/executor-birth-service-catalog-v1.json": "service_catalog",
     "runtime/contract_store.py": "runtime_code",
     "runtime/sign.py": "runtime_code",
+    "runtime/contract_boundary_api_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_authority_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_exception_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_policy.py": "runtime_code",
     "runtime/contract_boundary_guard.py": "boundary_guard",
+    "runtime/contract_boundary_policy.py": "runtime_code",
+    "runtime/contract_boundary_policy_types.py": "runtime_code",
+    "runtime/contract_boundary_role_policy.py": "runtime_code",
+    "runtime/contract_boundary_syntax_policy.py": "runtime_code",
     "runtime/executor_birth.py": "runtime_code",
     "runtime/executor_birth_ownership_preflight.py": "preflight",
     "runtime/executor_birth_distribution_manifest.py": "preflight",
@@ -761,7 +769,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:6a8dc12ddf41c73490b5a92efc912b3cab38814808b66715d73586083bb07e21"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:7d6139069290689ce5d743fe5ef041ce9540f536613da99fd53c8dad091706fa"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -783,175 +791,6 @@ _SOURCE_REVIEW_PIN_PLACEHOLDER = (
     b'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:' + b"0" * 64 + b'"'
 )
 _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1 = "deployment/admin/preflight.py"
-_BIRTH_CLOSED_OWNER = "runtime/executor_birth_operational.py:birth_executor"
-_BIRTH_CLOSED_SEALED_MODULES = (
-    "runtime/contract_store.py",
-    "runtime/executor_birth.py",
-    "runtime/executor_birth_commit_publisher.py",
-    "runtime/executor_birth_operational.py",
-    "runtime/executor_birth_ownership_coordinator.py",
-    "runtime/executor_birth_ownership_cutover.py",
-    "runtime/executor_birth_reattestation.py",
-    "runtime/sign.py",
-)
-# Keep membership independently compiled while matching the canonical JSON
-# ordering without relying on insertion position in this frozen snapshot.
-_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = tuple(sorted((
-    "install/birth_authority_provisioner.py:_publish_initial_predecessor_v2",
-    "install/birth_authority_provisioner.py:complete_transition_cutover_v2",
-    "install/birth_authority_provisioner.py:prepare_transition_receipts_v2",
-    "install/birth_ownership_authority_provisioner.py:_discard_temporary",
-    "install/birth_ownership_authority_provisioner.py:_load_or_create_pair",
-    "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_at_v1",
-    "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_locked_v1",
-    "install/birth_ownership_authority_provisioner.py:_provisioning_lock",
-    "install/birth_ownership_authority_provisioner.py:_publish_no_replace",
-    "install/birth_ownership_authority_provisioner.py:_sync_directory",
-    "install/birth_ownership_authority_provisioner.py:_write_exclusive",
-    "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
-    "install/executor_birth_distribution_release.py:build_and_install_received_source_v1",
-    "install/executor_birth_source_receiver.py:<module>",
-    "install/executor_birth_source_receiver.py:_copy_source_file_v1",
-    "install/executor_birth_source_receiver.py:_copy_source_file_v1.copied_chunks",
-    "install/executor_birth_source_receiver.py:_create_private_directory_v1",
-    "install/executor_birth_source_receiver.py:_create_source_directories_v1",
-    "install/executor_birth_source_receiver.py:_ensure_child_directory_v1",
-    "install/executor_birth_source_receiver.py:_open_received_tree_at_v1",
-    "install/executor_birth_source_receiver.py:_load_received_source_locked_core_v1",
-    "install/executor_birth_source_receiver.py:_load_received_source_with_product_session_v1",
-    "install/executor_birth_source_receiver.py:_load_received_source_with_test_session_v1",
-    "install/executor_birth_source_receiver.py:_receive_source_for_test_v1",
-    "install/executor_birth_source_receiver.py:_receive_source_locked_core_v1",
-    "install/executor_birth_source_receiver.py:_receive_source_v1",
-    "install/executor_birth_source_receiver.py:_receive_source_with_product_session_v1",
-    "install/executor_birth_source_receiver.py:_receive_source_with_test_session_v1",
-    "install/executor_birth_source_receiver.py:_remove_owned_tree_at_v1",
-    "install/executor_birth_source_receiver.py:_rename_no_replace_v1",
-    "install/executor_birth_source_receiver.py:_seal_temporary_directories_v1",
-    "install/executor_birth_source_receiver.py:_verify_received_tree_fd_v1",
-    "install/executor_birth_source_receiver.py:_write_all_v1",
-    "install/executor_birth_source_receiver.py:_write_descriptor_v1",
-    "install/executor_birth_source_receiver.py:main",
-    "install/executor_birth_transition.py:<module>",
-    "install/executor_birth_transition.py:deploy_source_v1",
-    "install/executor_birth_transition.py:main",
-    "runtime/executor_birth_ownership_coordinator.py:_publish_control_no_replace_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_core_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_v2",
-    "install/executor_birth_startup_gate.py:_install_startup_gate_core_v1",
-    "install/executor_birth_startup_gate.py:_install_startup_gate_for_test_v1",
-    "install/executor_birth_startup_gate.py:install_startup_gate_v1",
-    "install/executor_birth_startup_prerequisite.py:_finish_temporary_v1",
-    "install/executor_birth_startup_prerequisite.py:_publish_core_v1",
-    "install/executor_birth_startup_prerequisite.py:_publish_startup_prerequisite_for_test_v2",
-    "install/executor_birth_startup_prerequisite.py:_publish_startup_prerequisite_locked_v2",
-    "install/executor_birth_systemd.py:_install_group6_administrative_for_test_v1",
-    "install/executor_birth_systemd.py:_install_locked_core_v1",
-    "install/executor_birth_systemd.py:_install_signed_isolated_systemd_for_test_v1",
-    "install/executor_birth_systemd.py:_open_parent_v1",
-    "install/executor_birth_systemd.py:_publish_administrative_tree_v1",
-    "install/executor_birth_systemd.py:_publish_isolated_units_for_test_v1",
-    "install/executor_birth_systemd.py:install_group6_administrative_v1",
-    "runtime/executor_birth_admin_preflight.py:<module>",
-    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_core_v1",
-    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_for_test_v1",
-    "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_v1",
-    "runtime/executor_birth_admin_preflight.py:_run_operational_command_v1",
-    "runtime/executor_birth_admin_preflight.py:_write_all_exact_v1",
-    "runtime/executor_birth_admin_preflight.py:main",
-    "runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher._persist_current_reattestation",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_context_transition",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_cutover",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_head",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.initialize",
-    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.update_required_head",
-    "runtime/executor_birth_ownership_chain.py:_OwnershipChainStoreForTest._initialize_with_authorities",
-    "runtime/executor_birth_ownership_chain.py:_ensure_exact_directory_v1",
-    "runtime/executor_birth_ownership_chain.py:_ensure_product_directory_v1",
-    "runtime/executor_birth_ownership_chain.py:_inspect_ownership_chain_state_core_v1",
-    "runtime/executor_birth_ownership_chain.py:_inspect_ownership_chain_state_for_test_v1",
-    "runtime/executor_birth_ownership_chain.py:_replace_required_pointer",
-    "runtime/executor_birth_ownership_chain.py:_required_head_lock",
-    "runtime/executor_birth_ownership_chain.py:inspect_ownership_chain_state_v1",
-    "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.append",
-    "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",
-    "runtime/executor_birth_ownership_coordinator.py:_DeploymentLockLeaseV1",
-    "runtime/executor_birth_ownership_coordinator.py:_LockedOwnershipCoordinatorGraphSnapshotV2",
-    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.__init__",
-    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._append_initial",
-    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._committed",
-    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._inventory",
-    "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.append_transaction_record",
-    "runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_append_prepared_transition_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_append_prepared_transition_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete",
-    "runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.require_issued",
-    "runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.resolve_issued",
-    "runtime/executor_birth_ownership_coordinator.py:_completed_transition_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_core_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_v2.observe_certificate_graph",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2.observe_head_graph",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2.publish",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2.observe_preflight_graph",
-    "runtime/executor_birth_ownership_coordinator.py:_decode_record",
-    "runtime/executor_birth_ownership_coordinator.py:_decode_record_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_at_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_for_test_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_ensure_coordinator_child_directory_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_observe_dominant_identity_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",
-    "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_material_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1",
-    "runtime/executor_birth_ownership_coordinator.py:_publish_context_transition_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_publish_transaction_directory_no_replace_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_read_staged_transaction_directory_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_require_locked_coordinator_graph_snapshot_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_resolve_ownership_coordinator_locked_v2",
-    "runtime/executor_birth_ownership_coordinator.py:_transition_edge_locked_v2",
-)))
-_BIRTH_CLOSED_EXCEPTION_SCOPES = (
-    ("runtime/admin/manifest_refactor.py:<module>", "offline_nonproductive_authoring"),
-    ("runtime/admin/manifest_refactor.py:main", "offline_nonproductive_authoring"),
-    ("runtime/admin/manifest_refactor.py:refactor_manifest", "offline_nonproductive_authoring"),
-    ("runtime/change_rollback.py:_rollback_create_executor", "retirement_only"),
-    ("runtime/cli/skills_cli.py:_cmd_uninstall", "retirement_only"),
-    ("runtime/i18n_pipeline.py:live_contract_context", "localization_only"),
-    ("runtime/i18n_translator.py:<module>", "offline_nonproductive_authoring"),
-    ("runtime/i18n_translator.py:_align_one_manifest", "offline_nonproductive_authoring"),
-    ("runtime/i18n_translator.py:align_manifest_descriptions", "offline_nonproductive_authoring"),
-    ("runtime/manifest_normalize.py:<module>", "offline_nonproductive_authoring"),
-    ("runtime/manifest_normalize.py:apply_one", "offline_nonproductive_authoring"),
-    ("runtime/manifest_normalize.py:main", "offline_nonproductive_authoring"),
-    ("runtime/migrate_manifest_descriptions.py:<module>", "offline_nonproductive_authoring"),
-    ("runtime/migrate_manifest_descriptions.py:main", "offline_nonproductive_authoring"),
-    ("runtime/migrate_manifest_descriptions.py:migrate_dirs", "offline_nonproductive_authoring"),
-    ("runtime/migrate_manifest_descriptions.py:migrate_one", "offline_nonproductive_authoring"),
-)
-_BOUNDARY_ENTRY_KEYS = frozenset({
-    "path", "scope", "role", "capabilities", "destination", "phase",
-})
-_BOUNDARY_ROLES = frozenset({
-    "administrative_tool", "birth_owner", "documentation", "live_reader",
-    "migration_boundary", "offline_authoring", "operational_producer",
-    "store_owner",
-})
-
 REPEATABLE_PROPERTIES = _SYSTEMD_REPEATABLE_PROPERTIES_V1
 _DURATION_FACTORS = {
     "us": 1, "ms": 1_000, "s": 1_000_000, "min": 60_000_000,
@@ -8880,8 +8719,8 @@ def _authenticate_distribution_for_test_v1(
 # Autonomous standard-library projection of the certified boundary census.
 # It consumes only authenticated source bytes and imports no Metnos module.
 # BEGIN GENERATED CONTRACT BOUNDARY POLICY V1
-_BOUNDARY_POLICY_PROJECTION_SHA256_V1 = "sha256:5bc896ec9890cb51d8cd31c9e20de374a20ccb06fe8b7bad9e48c678ee58efe0"
-_BOUNDARY_POLICY_CANONICAL_ASCII_V1 = b'{"apis":[["executor_birth",[["birth_executor",["birth"]]]],["executor_birth_intent",[["submit_builtin_generation_birth",["birth"]],["submit_change_extend_birth",["birth"]],["submit_change_rollback_birth",["birth"]],["submit_installer_birth",["birth"]],["submit_promote_birth",["birth"]],["submit_promoter_rollback_birth",["birth"]],["submit_skills_birth",["birth"]],["submit_stack_reconcile_birth",["birth"]],["submit_synth_producer_birth",["birth"]]]],["executor_birth_operational",[["birth_executor",["birth"]]]],["executor_birth_synth",[["submit_synth_multistage",["birth"]],["submit_synth_specialize",["birth"]],["submit_synth_approve",["birth"]]]],["contract_store",[["verify_manifest_source",["authoring_read","authoring_verify"]],["prepare_technical_draft",["authoring_read","authoring_verify"]],["read_binding",["verified_store_read"]],["current_revision_id",["verified_store_read"]],["current_contract",["verified_store_read"]],["current_manifest",["verified_store_read"]],["diagnose_store",["verified_store_read"]],["publish_localization",["publish_localization"]],["publish_technical_update",["publish_technical"]],["publish_signed_source",["publish_bootstrap"]],["retire",["retire"]],["reactivate_technical_update",["reactivate"]],["rollback",["rollback"]],["activate_store",["legacy_bootstrap"]],["acquire_current_reattestation_snapshot",["verified_store_read"]],["persist_current_reattestation_receipt",["store_write"]],["read_current_birth_receipt",["verified_store_read"]]]],["sign",[["sign_executor",["sign"]],["verify_executor",["authoring_read","authoring_verify"]],["publish_executor",["publish_technical"]],["publish_authoring_update",["publish_technical"]],["retire_executor_contract",["retire"]],["reactivate_executor_contract",["reactivate"]],["rollback_executor_contract",["rollback"]]]],["loader",[["load_catalog",["live_artifact_read"]]]],["invocations",[["load_executor_artifact",["live_artifact_read"]]]],["i18n_migrate_manifests",[["prepare_contract_store_shadow",["legacy_bootstrap"]],["activate_prepared_contract_store",["legacy_bootstrap"]]]],["contract_cutover_guard",[["contract_cutover_guard",["cutover_guard"]],["verify_store_only_catalog",["live_artifact_read","verified_store_read"]]]],["manifest_inventory",[["inventory_authoring_manifests",["authoring_read"]],["inventory_manifests",["authoring_read","verified_store_read"]],["inventory_store_manifests",["verified_store_read"]]]],["executor_birth_authoring",[["read_manifest_ref_versioned",["authoring_versioned_read"]]]],["executor_birth_ownership_chain",[["_InitialOwnershipChainStateV1",["store_write"]],["_append_pair",["store_write"]],["_inspect_ownership_chain_state_core_v1",["store_write"]],["_mint_initial_ownership_chain_state_v1",["store_write"]],["_replace_required_pointer",["store_write"]],["_required_head_lock",["store_write"]],["_update_required_head_locked",["store_write"]],["append_authenticated_build",["store_write"]],["append_cutover",["store_write"]],["append_head",["store_write"]],["initialize",["store_write"]],["update_required_head",["store_write"]]]],["executor_birth_ownership_cutover",[["_publish_no_replace",["store_write"]],["_sync_directory",["store_write"]],["_write_temporary",["store_write"]],["install_ownership_cutover_certificate",["store_write"]]]],["executor_birth_ownership_coordinator",[["_ACTIVE_DEPLOYMENT_LOCK_LEASES_V1",["store_write"]],["_ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1",["store_write"]],["_DEPLOYMENT_LOCK_FORK_GUARD",["store_write"]],["_DeploymentLockLeaseV1",["store_write"]],["_OPEN_DEPLOYMENT_LOCK_FDS_V1",["store_write"]],["_append_coordinator_record_v1",["store_write"]],["_deployment_lock_at_v1",["store_write"]],["_deployment_lock_for_test_v1",["store_write"]],["_deployment_lock_v1",["store_write"]],["_publish_certificate_with_prerequisite_v1",["store_write"]],["_publish_control_no_replace_v2",["store_write"]],["_reserve_transition_edge_core_v2",["store_write"]],["_reserve_transition_edge_locked_for_test_v2",["store_write"]],["_reserve_transition_edge_locked_v2",["store_write"]],["_LockedOwnershipCoordinatorGraphSnapshotV2",["store_write"]],["_require_locked_coordinator_graph_snapshot_v2",["store_write"]],["_require_locked_coordinator_graph_issued_v2",["store_write"]],["_resolve_locked_coordinator_graph_issued_v2",["store_write"]],["_resolve_ownership_coordinator_locked_v2",["store_write"]],["require_issued",["store_write"]],["resolve_issued",["store_write"]],["prepare_ownership_cutover_v1",["cutover_guard"]]]],["birth_ownership_authority_provisioner",[["_discard_temporary",["store_write"]],["_load_or_create_pair",["store_write"]],["_publish_no_replace",["store_write"]],["_provision_ownership_authorities_at_v1",["store_write"]],["_provision_ownership_authorities_locked_v1",["store_write"]],["_provisioning_lock",["store_write"]],["_sync_directory",["store_write"]],["_write_exclusive",["store_write"]],["provision_root_ownership_authorities_v1",["store_write"]]]],["executor_birth_source_receiver",[["<module>",["store_write"]],["_copy_source_file_v1",["store_write"]],["_create_private_directory_v1",["store_write"]],["_create_source_directories_v1",["store_write"]],["_ensure_child_directory_v1",["store_write"]],["_open_received_tree_at_v1",["store_write"]],["_load_received_source_locked_core_v1",["store_write"]],["_load_received_source_with_product_session_v1",["store_write"]],["_load_received_source_with_test_session_v1",["store_write"]],["_receive_source_for_test_v1",["store_write"]],["_receive_source_locked_core_v1",["store_write"]],["_receive_source_v1",["store_write"]],["_receive_source_with_product_session_v1",["store_write"]],["_receive_source_with_test_session_v1",["store_write"]],["_remove_owned_tree_at_v1",["store_write"]],["_rename_no_replace_v1",["store_write"]],["_seal_temporary_directories_v1",["store_write"]],["_verify_received_tree_fd_v1",["store_write"]],["_write_all_v1",["store_write"]],["_write_descriptor_v1",["store_write"]],["copied_chunks",["store_write"]],["main",["store_write"]]]],["executor_birth_transition",[["<module>",["store_write"]],["deploy_source_v1",["store_write"]],["main",["store_write"]]]],["executor_birth_systemd",[["_install_group6_administrative_for_test_v1",["store_write"]],["_install_locked_core_v1",["store_write"]],["_install_signed_isolated_systemd_for_test_v1",["store_write"]],["_open_parent_v1",["store_write"]],["_publish_administrative_tree_v1",["store_write"]],["_publish_isolated_units_for_test_v1",["store_write"]],["install_group6_administrative_v1",["store_write"]]]],["executor_birth_admin_preflight",[["_publish_preflight_attestation_core_v1",["store_write"]],["_publish_preflight_attestation_for_test_v1",["store_write"]],["_publish_preflight_attestation_v1",["store_write"]],["_write_all_exact_v1",["store_write"]]]]],"authenticated_execution_scope":["runtime/admitted_module_v1.py","load_admitted_module_v1"],"authenticated_preflight_execution_scope":["runtime/executor_birth_admin_preflight.py","_launch_python_target_v1"],"authoring_files":["manifest.lang_state.json","manifest.toml","manifest.toml.sig"],"birth_closed_guard_version":"metnos.contract-boundary-inventory/2+birth-closed/2","birth_closed_schema":"metnos.contract-boundary-birth-closed/1","limits":{"ast_depth":64,"ast_nodes":100000,"calls":8192,"scopes":512,"source_bytes":1048576,"source_files":2048,"total_ast_nodes":4000000,"total_source_bytes":33554432},"modules":[["executor_birth",["executor_birth","runtime.executor_birth"]],["executor_birth_intent",["executor_birth_intent","runtime.executor_birth_intent"]],["executor_birth_operational",["executor_birth_operational","runtime.executor_birth_operational"]],["executor_birth_synth",["executor_birth_synth","runtime.executor_birth_synth"]],["contract_store",["contract_store","runtime.contract_store"]],["sign",["runtime.sign","sign"]],["loader",["loader","runtime.loader"]],["invocations",["invocations","runtime.invocations"]],["i18n_migrate_manifests",["admin.i18n_migrate_manifests","runtime.admin.i18n_migrate_manifests"]],["contract_cutover_guard",["contract_cutover_guard","runtime.contract_cutover_guard"]],["manifest_inventory",["manifest_inventory","runtime.manifest_inventory"]],["executor_birth_authoring",["executor_birth_authoring","runtime.executor_birth_authoring"]],["executor_birth_ownership_chain",["executor_birth_ownership_chain","runtime.executor_birth_ownership_chain"]],["executor_birth_ownership_cutover",["executor_birth_ownership_cutover","runtime.executor_birth_ownership_cutover"]],["executor_birth_ownership_coordinator",["executor_birth_ownership_coordinator","runtime.executor_birth_ownership_coordinator"]],["birth_ownership_authority_provisioner",["install.birth_ownership_authority_provisioner"]],["executor_birth_source_receiver",["install.executor_birth_source_receiver"]],["executor_birth_transition",["install.executor_birth_transition"]],["executor_birth_systemd",["install.executor_birth_systemd"]],["executor_birth_admin_preflight",["executor_birth_admin_preflight","runtime.executor_birth_admin_preflight"]]],"regexes":[["authoring_name","(?:^|_)(?:(?:authoring_manifest|manifest_source|source_manifest)_(?:path|dir|root)|executor_(?:path|dir|root))(?:_|$)",0],["ambiguous_authoring_argument","(?:^|_)manifest_(?:path|dir|root)(?:_|$)",0],["store_name","(?:^|_)(?:(?:contract_publication|contract_store|publication_store)_(?:path|dir|root)|store_root|shadow_root|active_marker|store_relative|shadow_relative|active_relative)(?:_|$)",0],["contract_scope","(?:^|_)(?:contract|manifest)(?:_|$)",0],["generic_path_name","(?:^|_)(?:path|dir|root|file)(?:_|$)",0]],"scan_roots":["runtime","install","scripts","executors"],"schema":"metnos.contract-boundary-inventory/2","sets":{"dynamic_code_loader_apis":["FunctionType","SourceFileLoader","SourcelessFileLoader","exec_module","load_module","module_from_spec","run_module","run_path","spec_from_file_location"],"dynamic_code_loader_canonicals":["importlib.machinery.SourceFileLoader","importlib.machinery.SourcelessFileLoader","importlib.util.module_from_spec","importlib.util.spec_from_file_location","runpy.run_module","runpy.run_path","types.FunctionType"],"flow_capabilities":["ambiguous_local_authority","authoring_write","birth","cutover_guard","dynamic_boundary_access","legacy_bootstrap","publish_bootstrap","publish_localization","publish_technical","reactivate","retire","rollback","sign","store_write"],"live_reader_forbidden":["ambiguous_local_authority","authoring_read","authoring_verify","authoring_write","birth","dynamic_boundary_access","legacy_bootstrap","publish_bootstrap","publish_localization","publish_technical","reactivate","retire","rollback","sign","store_write"],"process_calls":["Popen","call","check_call","check_output","run","system"],"publish_capabilities":["birth","publish_bootstrap","publish_localization","publish_technical","reactivate","retire","rollback"],"read_operations":["exists","glob","is_dir","is_file","iterdir","load","loads","open","parse","read","read_bytes","read_text","resolve","rglob","stat"],"sensitive_first_class_references":["builtins.__getattribute__","builtins.getattr","getattr","importlib.__getattribute__","sys.modules.get"],"sensitive_import_namespaces":["__builtins__","__loader__","__spec__","builtins","builtins.__dict__","importlib","importlib.__dict__","importlib.machinery","importlib.util","runpy","sys.modules","types"],"sys_modules_exposing_methods":["copy","items","pop","popitem","setdefault","values"],"sys_modules_mutating_methods":["__delitem__","__setitem__","clear","pop","popitem","setdefault","update"],"write_operations":["NamedTemporaryFile","chmod","chown","copy","copy2","copyfile","extract","extractall","fchmod","fchown","fsync","ftruncate","hardlink_to","link","mkdir","mkdtemp","mkstemp","open","remove","rename","replace","rmdir","rmtree","symlink_to","touch","truncate","unlink","write","write_bytes","write_text"]},"source_owners":[["runtime/executor_birth.py","executor_birth"],["runtime/executor_birth_intent.py","executor_birth_intent"],["runtime/executor_birth_operational.py","executor_birth_operational"],["runtime/contract_store.py","contract_store"],["runtime/sign.py","sign"],["runtime/loader.py","loader"],["runtime/invocations.py","invocations"],["runtime/admin/i18n_migrate_manifests.py","i18n_migrate_manifests"],["runtime/contract_cutover_guard.py","contract_cutover_guard"],["runtime/manifest_inventory.py","manifest_inventory"],["runtime/executor_birth_authoring.py","executor_birth_authoring"],["runtime/executor_birth_ownership_chain.py","executor_birth_ownership_chain"],["runtime/executor_birth_ownership_coordinator.py","executor_birth_ownership_coordinator"],["install/birth_ownership_authority_provisioner.py","birth_ownership_authority_provisioner"],["install/executor_birth_source_receiver.py","executor_birth_source_receiver"],["install/executor_birth_transition.py","executor_birth_transition"],["install/executor_birth_systemd.py","executor_birth_systemd"],["runtime/executor_birth_admin_preflight.py","executor_birth_admin_preflight"]]}'
+_BOUNDARY_POLICY_PROJECTION_SHA256_V1 = "sha256:1607142dd9567be8406379d5c0a644a395e7c3a6c65a251f176c09f084dee681"
+_BOUNDARY_POLICY_CANONICAL_ASCII_V1 = b'{"apis":[["executor_birth",[["birth_executor",["birth"]]]],["executor_birth_intent",[["submit_builtin_generation_birth",["birth"]],["submit_change_extend_birth",["birth"]],["submit_change_rollback_birth",["birth"]],["submit_installer_birth",["birth"]],["submit_promote_birth",["birth"]],["submit_promoter_rollback_birth",["birth"]],["submit_skills_birth",["birth"]],["submit_stack_reconcile_birth",["birth"]],["submit_synth_producer_birth",["birth"]]]],["executor_birth_operational",[["birth_executor",["birth"]]]],["executor_birth_synth",[["submit_synth_multistage",["birth"]],["submit_synth_specialize",["birth"]],["submit_synth_approve",["birth"]]]],["contract_store",[["verify_manifest_source",["authoring_read","authoring_verify"]],["prepare_technical_draft",["authoring_read","authoring_verify"]],["read_binding",["verified_store_read"]],["current_revision_id",["verified_store_read"]],["current_contract",["verified_store_read"]],["current_manifest",["verified_store_read"]],["diagnose_store",["verified_store_read"]],["publish_localization",["publish_localization"]],["publish_technical_update",["publish_technical"]],["publish_signed_source",["publish_bootstrap"]],["retire",["retire"]],["reactivate_technical_update",["reactivate"]],["rollback",["rollback"]],["activate_store",["legacy_bootstrap"]],["acquire_current_reattestation_snapshot",["verified_store_read"]],["persist_current_reattestation_receipt",["store_write"]],["read_current_birth_receipt",["verified_store_read"]]]],["sign",[["sign_executor",["sign"]],["verify_executor",["authoring_read","authoring_verify"]],["publish_executor",["publish_technical"]],["publish_authoring_update",["publish_technical"]],["retire_executor_contract",["retire"]],["reactivate_executor_contract",["reactivate"]],["rollback_executor_contract",["rollback"]]]],["loader",[["load_catalog",["live_artifact_read"]]]],["invocations",[["load_executor_artifact",["live_artifact_read"]]]],["i18n_migrate_manifests",[["prepare_contract_store_shadow",["legacy_bootstrap"]],["activate_prepared_contract_store",["legacy_bootstrap"]]]],["contract_cutover_guard",[["contract_cutover_guard",["cutover_guard"]],["verify_store_only_catalog",["live_artifact_read","verified_store_read"]]]],["manifest_inventory",[["inventory_authoring_manifests",["authoring_read"]],["inventory_manifests",["authoring_read","verified_store_read"]],["inventory_store_manifests",["verified_store_read"]]]],["executor_birth_authoring",[["read_manifest_ref_versioned",["authoring_versioned_read"]]]],["executor_birth_ownership_chain",[["_InitialOwnershipChainStateV1",["store_write"]],["_append_pair",["store_write"]],["_inspect_ownership_chain_state_core_v1",["store_write"]],["_mint_initial_ownership_chain_state_v1",["store_write"]],["_replace_required_pointer",["store_write"]],["_required_head_lock",["store_write"]],["_update_required_head_locked",["store_write"]],["append_authenticated_build",["store_write"]],["append_cutover",["store_write"]],["append_head",["store_write"]],["initialize",["store_write"]],["update_required_head",["store_write"]]]],["executor_birth_ownership_cutover",[["_publish_no_replace",["store_write"]],["_sync_directory",["store_write"]],["_write_temporary",["store_write"]],["install_ownership_cutover_certificate",["store_write"]]]],["executor_birth_ownership_coordinator",[["_ACTIVE_DEPLOYMENT_LOCK_LEASES_V1",["store_write"]],["_ACTIVE_DEPLOYMENT_LOCK_SESSIONS_V1",["store_write"]],["_DEPLOYMENT_LOCK_FORK_GUARD",["store_write"]],["_DeploymentLockLeaseV1",["store_write"]],["_OPEN_DEPLOYMENT_LOCK_FDS_V1",["store_write"]],["_append_coordinator_record_v1",["store_write"]],["_deployment_lock_at_v1",["store_write"]],["_deployment_lock_for_test_v1",["store_write"]],["_deployment_lock_v1",["store_write"]],["_publish_certificate_with_prerequisite_v1",["store_write"]],["_publish_control_no_replace_v2",["store_write"]],["_reserve_transition_edge_core_v2",["store_write"]],["_reserve_transition_edge_locked_for_test_v2",["store_write"]],["_reserve_transition_edge_locked_v2",["store_write"]],["_LockedOwnershipCoordinatorGraphSnapshotV2",["store_write"]],["_require_locked_coordinator_graph_snapshot_v2",["store_write"]],["_require_locked_coordinator_graph_issued_v2",["store_write"]],["_resolve_locked_coordinator_graph_issued_v2",["store_write"]],["_resolve_ownership_coordinator_locked_v2",["store_write"]],["require_issued",["store_write"]],["resolve_issued",["store_write"]],["prepare_ownership_cutover_v1",["cutover_guard"]]]],["birth_ownership_authority_provisioner",[["_discard_temporary",["store_write"]],["_load_or_create_pair",["store_write"]],["_publish_no_replace",["store_write"]],["_provision_ownership_authorities_at_v1",["store_write"]],["_provision_ownership_authorities_locked_v1",["store_write"]],["_provisioning_lock",["store_write"]],["_sync_directory",["store_write"]],["_write_exclusive",["store_write"]],["provision_root_ownership_authorities_v1",["store_write"]]]],["executor_birth_source_receiver",[["<module>",["store_write"]],["_copy_source_file_v1",["store_write"]],["_create_private_directory_v1",["store_write"]],["_create_source_directories_v1",["store_write"]],["_ensure_child_directory_v1",["store_write"]],["_open_received_tree_at_v1",["store_write"]],["_load_received_source_locked_core_v1",["store_write"]],["_load_received_source_with_product_session_v1",["store_write"]],["_load_received_source_with_test_session_v1",["store_write"]],["_receive_source_for_test_v1",["store_write"]],["_receive_source_locked_core_v1",["store_write"]],["_receive_source_v1",["store_write"]],["_receive_source_with_product_session_v1",["store_write"]],["_receive_source_with_test_session_v1",["store_write"]],["_remove_owned_tree_at_v1",["store_write"]],["_rename_no_replace_v1",["store_write"]],["_seal_temporary_directories_v1",["store_write"]],["_verify_received_tree_fd_v1",["store_write"]],["_write_all_v1",["store_write"]],["_write_descriptor_v1",["store_write"]],["copied_chunks",["store_write"]],["main",["store_write"]]]],["executor_birth_transition",[["<module>",["store_write"]],["deploy_source_v1",["store_write"]],["main",["store_write"]]]],["executor_birth_systemd",[["_install_group6_administrative_for_test_v1",["store_write"]],["_install_locked_core_v1",["store_write"]],["_install_signed_isolated_systemd_for_test_v1",["store_write"]],["_open_parent_v1",["store_write"]],["_publish_administrative_tree_v1",["store_write"]],["_publish_isolated_units_for_test_v1",["store_write"]],["install_group6_administrative_v1",["store_write"]]]],["executor_birth_admin_preflight",[["_publish_preflight_attestation_core_v1",["store_write"]],["_publish_preflight_attestation_for_test_v1",["store_write"]],["_publish_preflight_attestation_v1",["store_write"]],["_write_all_exact_v1",["store_write"]]]]],"authenticated_execution_scope":["runtime/admitted_module_v1.py","load_admitted_module_v1"],"authenticated_preflight_execution_scope":["runtime/executor_birth_admin_preflight.py","_launch_python_target_v1"],"authoring_files":["manifest.lang_state.json","manifest.toml","manifest.toml.sig"],"birth_closed":{"coordinator_store_owners":["install/birth_authority_provisioner.py:_publish_initial_predecessor_v2","install/birth_authority_provisioner.py:complete_transition_cutover_v2","install/birth_authority_provisioner.py:prepare_transition_receipts_v2","install/birth_ownership_authority_provisioner.py:_discard_temporary","install/birth_ownership_authority_provisioner.py:_load_or_create_pair","install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_at_v1","install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_locked_v1","install/birth_ownership_authority_provisioner.py:_provisioning_lock","install/birth_ownership_authority_provisioner.py:_publish_no_replace","install/birth_ownership_authority_provisioner.py:_sync_directory","install/birth_ownership_authority_provisioner.py:_write_exclusive","install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1","install/executor_birth_distribution_release.py:build_and_install_received_source_v1","install/executor_birth_source_receiver.py:<module>","install/executor_birth_source_receiver.py:_copy_source_file_v1","install/executor_birth_source_receiver.py:_copy_source_file_v1.copied_chunks","install/executor_birth_source_receiver.py:_create_private_directory_v1","install/executor_birth_source_receiver.py:_create_source_directories_v1","install/executor_birth_source_receiver.py:_ensure_child_directory_v1","install/executor_birth_source_receiver.py:_load_received_source_locked_core_v1","install/executor_birth_source_receiver.py:_load_received_source_with_product_session_v1","install/executor_birth_source_receiver.py:_load_received_source_with_test_session_v1","install/executor_birth_source_receiver.py:_open_received_tree_at_v1","install/executor_birth_source_receiver.py:_receive_source_for_test_v1","install/executor_birth_source_receiver.py:_receive_source_locked_core_v1","install/executor_birth_source_receiver.py:_receive_source_v1","install/executor_birth_source_receiver.py:_receive_source_with_product_session_v1","install/executor_birth_source_receiver.py:_receive_source_with_test_session_v1","install/executor_birth_source_receiver.py:_remove_owned_tree_at_v1","install/executor_birth_source_receiver.py:_rename_no_replace_v1","install/executor_birth_source_receiver.py:_seal_temporary_directories_v1","install/executor_birth_source_receiver.py:_verify_received_tree_fd_v1","install/executor_birth_source_receiver.py:_write_all_v1","install/executor_birth_source_receiver.py:_write_descriptor_v1","install/executor_birth_source_receiver.py:main","install/executor_birth_startup_gate.py:_install_startup_gate_core_v1","install/executor_birth_startup_gate.py:_install_startup_gate_for_test_v1","install/executor_birth_startup_gate.py:install_startup_gate_v1","install/executor_birth_startup_prerequisite.py:_finish_temporary_v1","install/executor_birth_startup_prerequisite.py:_publish_core_v1","install/executor_birth_startup_prerequisite.py:_publish_startup_prerequisite_for_test_v2","install/executor_birth_startup_prerequisite.py:_publish_startup_prerequisite_locked_v2","install/executor_birth_systemd.py:_install_group6_administrative_for_test_v1","install/executor_birth_systemd.py:_install_locked_core_v1","install/executor_birth_systemd.py:_install_signed_isolated_systemd_for_test_v1","install/executor_birth_systemd.py:_open_parent_v1","install/executor_birth_systemd.py:_publish_administrative_tree_v1","install/executor_birth_systemd.py:_publish_isolated_units_for_test_v1","install/executor_birth_systemd.py:install_group6_administrative_v1","install/executor_birth_transition.py:<module>","install/executor_birth_transition.py:deploy_source_v1","install/executor_birth_transition.py:main","runtime/executor_birth_admin_preflight.py:<module>","runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_core_v1","runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_for_test_v1","runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_v1","runtime/executor_birth_admin_preflight.py:_run_operational_command_v1","runtime/executor_birth_admin_preflight.py:_write_all_exact_v1","runtime/executor_birth_admin_preflight.py:main","runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher._persist_current_reattestation","runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair","runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked","runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build","runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_context_transition","runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_cutover","runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_head","runtime/executor_birth_ownership_chain.py:OwnershipChainStore.initialize","runtime/executor_birth_ownership_chain.py:OwnershipChainStore.update_required_head","runtime/executor_birth_ownership_chain.py:_OwnershipChainStoreForTest._initialize_with_authorities","runtime/executor_birth_ownership_chain.py:_ensure_exact_directory_v1","runtime/executor_birth_ownership_chain.py:_ensure_product_directory_v1","runtime/executor_birth_ownership_chain.py:_inspect_ownership_chain_state_core_v1","runtime/executor_birth_ownership_chain.py:_inspect_ownership_chain_state_for_test_v1","runtime/executor_birth_ownership_chain.py:_replace_required_pointer","runtime/executor_birth_ownership_chain.py:_required_head_lock","runtime/executor_birth_ownership_chain.py:inspect_ownership_chain_state_v1","runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.append","runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load","runtime/executor_birth_ownership_coordinator.py:_DeploymentLockLeaseV1","runtime/executor_birth_ownership_coordinator.py:_LockedOwnershipCoordinatorGraphSnapshotV2","runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.__init__","runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._append_initial","runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._committed","runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._inventory","runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.append_transaction_record","runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1","runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_for_test_v2","runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_v2","runtime/executor_birth_ownership_coordinator.py:_append_prepared_transition_locked_for_test_v2","runtime/executor_birth_ownership_coordinator.py:_append_prepared_transition_locked_v2","runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete","runtime/executor_birth_ownership_coordinator.py:_append_receipts_complete_locked_v2","runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.require_issued","runtime/executor_birth_ownership_coordinator.py:_build_locked_coordinator_graph_registry_v2.resolve_issued","runtime/executor_birth_ownership_coordinator.py:_completed_transition_locked_v2","runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_core_v2","runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_for_test_v2","runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_v2","runtime/executor_birth_ownership_coordinator.py:_cross_certificate_boundary_locked_v2.observe_certificate_graph","runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_for_test_v2","runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2","runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2.observe_head_graph","runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2","runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2.publish","runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2","runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2.observe_preflight_graph","runtime/executor_birth_ownership_coordinator.py:_decode_record","runtime/executor_birth_ownership_coordinator.py:_decode_record_v2","runtime/executor_birth_ownership_coordinator.py:_deployment_lock_at_v1","runtime/executor_birth_ownership_coordinator.py:_deployment_lock_for_test_v1","runtime/executor_birth_ownership_coordinator.py:_deployment_lock_v1","runtime/executor_birth_ownership_coordinator.py:_ensure_coordinator_child_directory_v2","runtime/executor_birth_ownership_coordinator.py:_observe_dominant_identity_locked_v2","runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1","runtime/executor_birth_ownership_coordinator.py:_proof_from_values","runtime/executor_birth_ownership_coordinator.py:_publish_certificate_material_v2","runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1","runtime/executor_birth_ownership_coordinator.py:_publish_context_transition_locked_v2","runtime/executor_birth_ownership_coordinator.py:_publish_control_no_replace_v2","runtime/executor_birth_ownership_coordinator.py:_publish_transaction_directory_no_replace_v2","runtime/executor_birth_ownership_coordinator.py:_read_staged_transaction_directory_v2","runtime/executor_birth_ownership_coordinator.py:_require_locked_coordinator_graph_snapshot_v2","runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_core_v2","runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_for_test_v2","runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_v2","runtime/executor_birth_ownership_coordinator.py:_resolve_ownership_coordinator_locked_v2","runtime/executor_birth_ownership_coordinator.py:_transition_edge_locked_v2"],"exception_classes":["localization_only","retirement_only","offline_nonproductive_authoring"],"exception_grants":[["runtime/admin/manifest_refactor.py:<module>","offline_nonproductive_authoring",["authoring_write","sign"]],["runtime/admin/manifest_refactor.py:main","offline_nonproductive_authoring",["authoring_read","authoring_write","sign"]],["runtime/admin/manifest_refactor.py:refactor_manifest","offline_nonproductive_authoring",["authoring_read","authoring_write","sign"]],["runtime/i18n_pipeline.py:live_contract_context","localization_only",["publish_localization","verified_store_read"]],["runtime/i18n_translator.py:<module>","offline_nonproductive_authoring",["authoring_write","sign"]],["runtime/i18n_translator.py:_align_one_manifest","offline_nonproductive_authoring",["authoring_read","authoring_write","sign"]],["runtime/i18n_translator.py:align_manifest_descriptions","offline_nonproductive_authoring",["authoring_read","authoring_write","sign"]],["runtime/manifest_normalize.py:<module>","offline_nonproductive_authoring",["authoring_write","sign"]],["runtime/manifest_normalize.py:apply_one","offline_nonproductive_authoring",["authoring_write","sign"]],["runtime/manifest_normalize.py:main","offline_nonproductive_authoring",["authoring_write","sign"]],["runtime/migrate_manifest_descriptions.py:<module>","offline_nonproductive_authoring",["authoring_write","sign"]],["runtime/migrate_manifest_descriptions.py:main","offline_nonproductive_authoring",["authoring_write","sign"]],["runtime/migrate_manifest_descriptions.py:migrate_dirs","offline_nonproductive_authoring",["authoring_read","authoring_write","sign"]],["runtime/migrate_manifest_descriptions.py:migrate_one","offline_nonproductive_authoring",["authoring_read","authoring_write","sign"]],["runtime/change_rollback.py:_rollback_create_executor","retirement_only",["retire"]],["runtime/cli/skills_cli.py:_cmd_uninstall","retirement_only",["authoring_read","retire"]]],"owner":"runtime/executor_birth_operational.py:birth_executor","roles":{"birth_closed_legacy_capabilities":["publish_localization","publish_technical","reactivate","retire","rollback","sign"],"birth_owner_forbidden":["legacy_bootstrap","publish_bootstrap","publish_localization","retire","rollback","sign"],"birth_owner_paths":["runtime/executor_birth.py","runtime/executor_birth_intent.py","runtime/executor_birth_operational.py"],"bootstrap_capabilities":["legacy_bootstrap","publish_bootstrap"],"bootstrap_roles":["migration_boundary","store_owner"],"boundary_entry_keys":["capabilities","destination","path","phase","role","scope"],"coordinator_capabilities":["store_write"],"direct_manifest_paths":["runtime/executor_birth_authoring.py"],"direct_manifest_roles":["migration_boundary","offline_authoring","store_owner"],"documentation_exemptions":["authoring_read","authoring_verify"],"exception_justification":[["localization_only",["publish_localization"]],["retirement_only",["retire"]],["offline_nonproductive_authoring",["sign"]]],"live_mutation_roles":["administrative_tool","birth_owner","migration_boundary","operational_producer","store_owner"],"live_mutations":["birth","publish_localization","publish_technical","reactivate","retire","rollback"],"operational_birth_forbidden":["publish_technical","reactivate","sign"],"valid_roles":["administrative_tool","birth_owner","documentation","live_reader","migration_boundary","offline_authoring","operational_producer","store_owner"]},"sealed_modules":["runtime/contract_store.py","runtime/executor_birth.py","runtime/executor_birth_commit_publisher.py","runtime/executor_birth_operational.py","runtime/executor_birth_ownership_coordinator.py","runtime/executor_birth_ownership_cutover.py","runtime/executor_birth_reattestation.py","runtime/sign.py"]},"birth_closed_guard_version":"metnos.contract-boundary-inventory/2+birth-closed/2","birth_closed_schema":"metnos.contract-boundary-birth-closed/1","limits":{"ast_depth":64,"ast_nodes":100000,"calls":8192,"scopes":512,"source_bytes":1048576,"source_files":2048,"total_ast_nodes":4000000,"total_source_bytes":33554432},"modules":[["executor_birth",["executor_birth","runtime.executor_birth"]],["executor_birth_intent",["executor_birth_intent","runtime.executor_birth_intent"]],["executor_birth_operational",["executor_birth_operational","runtime.executor_birth_operational"]],["executor_birth_synth",["executor_birth_synth","runtime.executor_birth_synth"]],["contract_store",["contract_store","runtime.contract_store"]],["sign",["runtime.sign","sign"]],["loader",["loader","runtime.loader"]],["invocations",["invocations","runtime.invocations"]],["i18n_migrate_manifests",["admin.i18n_migrate_manifests","runtime.admin.i18n_migrate_manifests"]],["contract_cutover_guard",["contract_cutover_guard","runtime.contract_cutover_guard"]],["manifest_inventory",["manifest_inventory","runtime.manifest_inventory"]],["executor_birth_authoring",["executor_birth_authoring","runtime.executor_birth_authoring"]],["executor_birth_ownership_chain",["executor_birth_ownership_chain","runtime.executor_birth_ownership_chain"]],["executor_birth_ownership_cutover",["executor_birth_ownership_cutover","runtime.executor_birth_ownership_cutover"]],["executor_birth_ownership_coordinator",["executor_birth_ownership_coordinator","runtime.executor_birth_ownership_coordinator"]],["birth_ownership_authority_provisioner",["install.birth_ownership_authority_provisioner"]],["executor_birth_source_receiver",["install.executor_birth_source_receiver"]],["executor_birth_transition",["install.executor_birth_transition"]],["executor_birth_systemd",["install.executor_birth_systemd"]],["executor_birth_admin_preflight",["executor_birth_admin_preflight","runtime.executor_birth_admin_preflight"]]],"regexes":[["authoring_name","(?:^|_)(?:(?:authoring_manifest|manifest_source|source_manifest)_(?:path|dir|root)|executor_(?:path|dir|root))(?:_|$)",0],["ambiguous_authoring_argument","(?:^|_)manifest_(?:path|dir|root)(?:_|$)",0],["store_name","(?:^|_)(?:(?:contract_publication|contract_store|publication_store)_(?:path|dir|root)|store_root|shadow_root|active_marker|store_relative|shadow_relative|active_relative)(?:_|$)",0],["contract_scope","(?:^|_)(?:contract|manifest)(?:_|$)",0],["generic_path_name","(?:^|_)(?:path|dir|root|file)(?:_|$)",0]],"scan_roots":["runtime","install","scripts","executors"],"schema":"metnos.contract-boundary-inventory/2","sets":{"dynamic_code_loader_apis":["FunctionType","SourceFileLoader","SourcelessFileLoader","exec_module","load_module","module_from_spec","run_module","run_path","spec_from_file_location"],"dynamic_code_loader_canonicals":["importlib.machinery.SourceFileLoader","importlib.machinery.SourcelessFileLoader","importlib.util.module_from_spec","importlib.util.spec_from_file_location","runpy.run_module","runpy.run_path","types.FunctionType"],"flow_capabilities":["ambiguous_local_authority","authoring_write","birth","cutover_guard","dynamic_boundary_access","legacy_bootstrap","publish_bootstrap","publish_localization","publish_technical","reactivate","retire","rollback","sign","store_write"],"live_reader_forbidden":["ambiguous_local_authority","authoring_read","authoring_verify","authoring_write","birth","dynamic_boundary_access","legacy_bootstrap","publish_bootstrap","publish_localization","publish_technical","reactivate","retire","rollback","sign","store_write"],"process_calls":["Popen","call","check_call","check_output","run","system"],"publish_capabilities":["birth","publish_bootstrap","publish_localization","publish_technical","reactivate","retire","rollback"],"read_operations":["exists","glob","is_dir","is_file","iterdir","load","loads","open","parse","read","read_bytes","read_text","resolve","rglob","stat"],"sensitive_first_class_references":["builtins.__getattribute__","builtins.getattr","getattr","importlib.__getattribute__","sys.modules.get"],"sensitive_import_namespaces":["__builtins__","__loader__","__spec__","builtins","builtins.__dict__","importlib","importlib.__dict__","importlib.machinery","importlib.util","runpy","sys.modules","types"],"sys_modules_exposing_methods":["copy","items","pop","popitem","setdefault","values"],"sys_modules_mutating_methods":["__delitem__","__setitem__","clear","pop","popitem","setdefault","update"],"write_operations":["NamedTemporaryFile","chmod","chown","copy","copy2","copyfile","extract","extractall","fchmod","fchown","fsync","ftruncate","hardlink_to","link","mkdir","mkdtemp","mkstemp","open","remove","rename","replace","rmdir","rmtree","symlink_to","touch","truncate","unlink","write","write_bytes","write_text"]},"source_owners":[["runtime/executor_birth.py","executor_birth"],["runtime/executor_birth_intent.py","executor_birth_intent"],["runtime/executor_birth_operational.py","executor_birth_operational"],["runtime/contract_store.py","contract_store"],["runtime/sign.py","sign"],["runtime/loader.py","loader"],["runtime/invocations.py","invocations"],["runtime/admin/i18n_migrate_manifests.py","i18n_migrate_manifests"],["runtime/contract_cutover_guard.py","contract_cutover_guard"],["runtime/manifest_inventory.py","manifest_inventory"],["runtime/executor_birth_authoring.py","executor_birth_authoring"],["runtime/executor_birth_ownership_chain.py","executor_birth_ownership_chain"],["runtime/executor_birth_ownership_coordinator.py","executor_birth_ownership_coordinator"],["install/birth_ownership_authority_provisioner.py","birth_ownership_authority_provisioner"],["install/executor_birth_source_receiver.py","executor_birth_source_receiver"],["install/executor_birth_transition.py","executor_birth_transition"],["install/executor_birth_systemd.py","executor_birth_systemd"],["runtime/executor_birth_admin_preflight.py","executor_birth_admin_preflight"]]}'
 _BOUNDARY_POLICY_DATA_V1 = json.loads(_BOUNDARY_POLICY_CANONICAL_ASCII_V1.decode("ascii"))
 SCHEMA = _BOUNDARY_POLICY_DATA_V1["schema"]
 BIRTH_CLOSED_SCHEMA = _BOUNDARY_POLICY_DATA_V1["birth_closed_schema"]
@@ -8895,6 +8734,35 @@ _BOUNDARY_INVENTORY_SCHEMA = SCHEMA
 _BIRTH_CLOSED_SCHEMA = BIRTH_CLOSED_SCHEMA
 _BIRTH_CLOSED_GUARD_VERSION = BIRTH_CLOSED_GUARD_VERSION
 _BOUNDARY_SCAN_ROOTS = SCAN_ROOTS
+_BIRTH_POLICY_DATA_V1 = _BOUNDARY_POLICY_DATA_V1["birth_closed"]
+_BIRTH_ROLE_DATA_V1 = _BIRTH_POLICY_DATA_V1["roles"]
+_BIRTH_CLOSED_OWNER = _BIRTH_POLICY_DATA_V1["owner"]
+_BIRTH_CLOSED_SEALED_MODULES = tuple(_BIRTH_POLICY_DATA_V1["sealed_modules"])
+_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = tuple(_BIRTH_POLICY_DATA_V1["coordinator_store_owners"])
+_BIRTH_CLOSED_EXCEPTION_SCOPES = tuple(sorted((scope, exception) for scope, exception, _caps in _BIRTH_POLICY_DATA_V1["exception_grants"]))
+_BIRTH_CLOSED_EXCEPTIONS = frozenset(_BIRTH_POLICY_DATA_V1["exception_classes"])
+_BOUNDARY_ENTRY_KEYS = frozenset(_BIRTH_ROLE_DATA_V1["boundary_entry_keys"])
+_BOUNDARY_ROLES = frozenset(_BIRTH_ROLE_DATA_V1["valid_roles"])
+BIRTH_CLOSED_SEALED_MODULES = _BIRTH_CLOSED_SEALED_MODULES
+BIRTH_CLOSED_OWNER = _BIRTH_CLOSED_OWNER
+BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset(_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS)
+BIRTH_CLOSED_LEGACY_CAPABILITIES = frozenset(_BIRTH_ROLE_DATA_V1["birth_closed_legacy_capabilities"])
+BIRTH_CLOSED_EXCEPTIONS = frozenset(_BIRTH_POLICY_DATA_V1["exception_classes"])
+BIRTH_CLOSED_EXCEPTION_SCOPES = {scope: exception for scope, exception, _caps in _BIRTH_POLICY_DATA_V1["exception_grants"]}
+BIRTH_CLOSED_EXCEPTION_CAPABILITIES = {scope: frozenset(caps) for scope, _exception, caps in _BIRTH_POLICY_DATA_V1["exception_grants"]}
+VALID_ROLES = frozenset(_BIRTH_ROLE_DATA_V1["valid_roles"])
+LIVE_MUTATIONS = frozenset(_BIRTH_ROLE_DATA_V1["live_mutations"])
+DIRECT_MANIFEST_ALLOWED_ROLES = frozenset(_BIRTH_ROLE_DATA_V1["direct_manifest_roles"])
+DIRECT_MANIFEST_ALLOWED_PATHS = frozenset(_BIRTH_ROLE_DATA_V1["direct_manifest_paths"])
+BIRTH_OWNER_ALLOWED_PATHS = frozenset(_BIRTH_ROLE_DATA_V1["birth_owner_paths"])
+BIRTH_OWNER_FORBIDDEN_CAPABILITIES = frozenset(_BIRTH_ROLE_DATA_V1["birth_owner_forbidden"])
+OPERATIONAL_BIRTH_FORBIDDEN_CAPABILITIES = frozenset(_BIRTH_ROLE_DATA_V1["operational_birth_forbidden"])
+BOOTSTRAP_CAPABILITIES = frozenset(_BIRTH_ROLE_DATA_V1["bootstrap_capabilities"])
+BOOTSTRAP_ALLOWED_ROLES = frozenset(_BIRTH_ROLE_DATA_V1["bootstrap_roles"])
+LIVE_MUTATION_ALLOWED_ROLES = frozenset(_BIRTH_ROLE_DATA_V1["live_mutation_roles"])
+DOCUMENTATION_CAPABILITY_EXEMPTIONS = frozenset(_BIRTH_ROLE_DATA_V1["documentation_exemptions"])
+BIRTH_CLOSED_COORDINATOR_REQUIRED_CAPABILITIES = frozenset(_BIRTH_ROLE_DATA_V1["coordinator_capabilities"])
+BIRTH_CLOSED_EXCEPTION_JUSTIFICATIONS = {kind: frozenset(caps) for kind, caps in _BIRTH_ROLE_DATA_V1["exception_justification"]}
 MAX_BOUNDARY_SOURCE_FILES_V1 = _BOUNDARY_POLICY_DATA_V1["limits"]["source_files"]
 MAX_BOUNDARY_SOURCE_BYTES_V1 = _BOUNDARY_POLICY_DATA_V1["limits"]["source_bytes"]
 MAX_BOUNDARY_TOTAL_SOURCE_BYTES_V1 = _BOUNDARY_POLICY_DATA_V1["limits"]["total_source_bytes"]
@@ -8923,111 +8791,24 @@ _AMBIGUOUS_AUTHORING_ARGUMENT_RE = re.compile(*_BOUNDARY_REGEX_DATA_V1["ambiguou
 _STORE_NAME_RE = re.compile(*_BOUNDARY_REGEX_DATA_V1["store_name"])
 _CONTRACT_SCOPE_RE = re.compile(*_BOUNDARY_REGEX_DATA_V1["contract_scope"])
 _GENERIC_PATH_NAME_RE = re.compile(*_BOUNDARY_REGEX_DATA_V1["generic_path_name"])
+def birth_closed_inventory_value_v1():
+    return {
+        "schema": BIRTH_CLOSED_SCHEMA,
+        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
+        "owner": BIRTH_CLOSED_OWNER,
+        "coordinator_store_owners": list(_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
+        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
+        "exceptions": [
+            {"scope": scope, "exception": exception}
+            for scope, exception in _BIRTH_CLOSED_EXCEPTION_SCOPES
+        ],
+    }
+del _BIRTH_POLICY_DATA_V1, _BIRTH_ROLE_DATA_V1
 del _BOUNDARY_POLICY_DATA_V1, _BOUNDARY_REGEX_DATA_V1
 # END GENERATED CONTRACT BOUNDARY POLICY V1
 # These are implementation boundaries, not a caller-extensible allow-list.
 
-SCHEMA = _BOUNDARY_INVENTORY_SCHEMA
-BIRTH_CLOSED_SCHEMA = _BIRTH_CLOSED_SCHEMA
-BIRTH_CLOSED_GUARD_VERSION = _BIRTH_CLOSED_GUARD_VERSION
 BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = _BIRTH_CLOSED_SOURCE_REVIEW_SHA256
-BIRTH_CLOSED_SEALED_MODULES = _BIRTH_CLOSED_SEALED_MODULES
-BIRTH_CLOSED_OWNER = _BIRTH_CLOSED_OWNER
-BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset(_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS)
-BIRTH_CLOSED_LEGACY_CAPABILITIES = frozenset({
-    "publish_localization", "publish_technical", "reactivate", "retire",
-    "rollback", "sign",
-})
-BIRTH_CLOSED_EXCEPTIONS = frozenset({
-    "localization_only", "retirement_only", "offline_nonproductive_authoring",
-})
-BIRTH_CLOSED_EXCEPTION_SCOPES: Mapping[str, str] = {
-    "runtime/admin/manifest_refactor.py:<module>": "offline_nonproductive_authoring",
-    "runtime/admin/manifest_refactor.py:main": "offline_nonproductive_authoring",
-    "runtime/admin/manifest_refactor.py:refactor_manifest": "offline_nonproductive_authoring",
-    "runtime/i18n_pipeline.py:live_contract_context": "localization_only",
-    "runtime/i18n_translator.py:<module>": "offline_nonproductive_authoring",
-    "runtime/i18n_translator.py:_align_one_manifest": "offline_nonproductive_authoring",
-    "runtime/i18n_translator.py:align_manifest_descriptions": "offline_nonproductive_authoring",
-    "runtime/manifest_normalize.py:<module>": "offline_nonproductive_authoring",
-    "runtime/manifest_normalize.py:apply_one": "offline_nonproductive_authoring",
-    "runtime/manifest_normalize.py:main": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:<module>": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:main": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:migrate_dirs": "offline_nonproductive_authoring",
-    "runtime/migrate_manifest_descriptions.py:migrate_one": "offline_nonproductive_authoring",
-    "runtime/change_rollback.py:_rollback_create_executor": "retirement_only",
-    "runtime/cli/skills_cli.py:_cmd_uninstall": "retirement_only",
-}
-BIRTH_CLOSED_EXCEPTION_CAPABILITIES: Mapping[str, frozenset[str]] = {
-    "runtime/admin/manifest_refactor.py:<module>": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/admin/manifest_refactor.py:main": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/admin/manifest_refactor.py:refactor_manifest": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/i18n_pipeline.py:live_contract_context": frozenset({
-        "publish_localization", "verified_store_read",
-    }),
-    "runtime/i18n_translator.py:<module>": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/i18n_translator.py:_align_one_manifest": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/i18n_translator.py:align_manifest_descriptions": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/manifest_normalize.py:<module>": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/manifest_normalize.py:apply_one": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/manifest_normalize.py:main": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/migrate_manifest_descriptions.py:<module>": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/migrate_manifest_descriptions.py:main": frozenset({
-        "authoring_write", "sign",
-    }),
-    "runtime/migrate_manifest_descriptions.py:migrate_dirs": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/migrate_manifest_descriptions.py:migrate_one": frozenset({
-        "authoring_read", "authoring_write", "sign",
-    }),
-    "runtime/change_rollback.py:_rollback_create_executor": frozenset({
-        "retire",
-    }),
-    "runtime/cli/skills_cli.py:_cmd_uninstall": frozenset({
-        "authoring_read", "retire",
-    }),
-}
-VALID_ROLES = frozenset({
-    "administrative_tool",
-    "birth_owner",
-    "documentation",
-    "live_reader",
-    "migration_boundary",
-    "offline_authoring",
-    "operational_producer",
-    "store_owner",
-})
-LIVE_MUTATIONS = frozenset({
-    "birth",
-    "publish_localization",
-    "publish_technical",
-    "reactivate",
-    "retire",
-    "rollback",
-})
-
 @dataclass(frozen=True)
 class ScopeFacts:
     path: str
@@ -10789,8 +10570,8 @@ def check(
 
         capabilities = set(fact.capabilities)
         if fact.direct_manifest_dir_access and not (
-            role in {"offline_authoring", "migration_boundary", "store_owner"}
-            or fact.path == "runtime/executor_birth_authoring.py"
+            role in DIRECT_MANIFEST_ALLOWED_ROLES
+            or fact.path in DIRECT_MANIFEST_ALLOWED_PATHS
         ):
             findings.append(Finding(
                 "direct_manifest_dir_read_without_token",
@@ -10799,15 +10580,8 @@ def check(
                 "use read_manifest_ref_versioned()",
             ))
         if role == "birth_owner" and (
-            fact.path not in {
-                "runtime/executor_birth.py",
-                "runtime/executor_birth_intent.py",
-                "runtime/executor_birth_operational.py",
-            }
-            or bool(capabilities & {
-                "legacy_bootstrap", "publish_bootstrap", "publish_localization",
-                "retire", "rollback", "sign",
-            })
+            fact.path not in BIRTH_OWNER_ALLOWED_PATHS
+            or bool(capabilities & BIRTH_OWNER_FORBIDDEN_CAPABILITIES)
         ):
             findings.append(Finding(
                 "birth_owner_invalid",
@@ -10816,7 +10590,7 @@ def check(
                 "cannot absorb dedicated or migration boundaries",
             ))
         if role == "operational_producer" and "birth" in capabilities and (
-            capabilities & {"publish_technical", "reactivate", "sign"}
+            capabilities & OPERATIONAL_BIRTH_FORBIDDEN_CAPABILITIES
         ):
             findings.append(Finding(
                 "operational_birth_mixed_authority",
@@ -10842,8 +10616,8 @@ def check(
                 "only a reviewed store_owner scope may mutate the publication store",
             ))
         if (
-            capabilities & {"legacy_bootstrap", "publish_bootstrap"}
-            and role not in {"migration_boundary", "store_owner"}
+            capabilities & BOOTSTRAP_CAPABILITIES
+            and role not in BOOTSTRAP_ALLOWED_ROLES
         ):
             findings.append(Finding(
                 "legacy_bootstrap_outside_boundary",
@@ -10856,13 +10630,10 @@ def check(
                 key,
                 "migration boundary has no discovered legacy-bootstrap operation",
             ))
-        if capabilities & LIVE_MUTATIONS and role not in {
-            "administrative_tool",
-            "birth_owner",
-            "migration_boundary",
-            "operational_producer",
-            "store_owner",
-        }:
+        if (
+            capabilities & LIVE_MUTATIONS
+            and role not in LIVE_MUTATION_ALLOWED_ROLES
+        ):
             findings.append(Finding(
                 "live_mutation_role_invalid",
                 key,
@@ -10892,7 +10663,7 @@ def check(
                     "authoring mutation has no publication boundary in the same scope",
                 ))
         if role == "documentation" and capabilities & (
-            LIVE_READER_FORBIDDEN - {"authoring_read", "authoring_verify"}
+            LIVE_READER_FORBIDDEN - DOCUMENTATION_CAPABILITY_EXEMPTIONS
         ):
             findings.append(Finding(
                 "documentation_mutates_boundary",
@@ -10922,17 +10693,7 @@ def birth_closed_findings(
             "source_census must equal the compiled Python source-review root",
         ))
     policy = inventory.get("birth_closed")
-    expected_policy = {
-        "schema": BIRTH_CLOSED_SCHEMA,
-        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
-        "owner": BIRTH_CLOSED_OWNER,
-        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
-        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
-        "exceptions": [
-            {"scope": scope, "exception": exception}
-            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
-        ],
-    }
+    expected_policy = birth_closed_inventory_value_v1()
     if policy != expected_policy:
         findings.append(Finding(
             "birth_closed_inventory_invalid", "<inventory>",
@@ -10972,7 +10733,10 @@ def birth_closed_findings(
         exception = entry.get("closed_exception")
         expected_exception = BIRTH_CLOSED_EXCEPTION_SCOPES.get(fact.key)
         if fact.key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS:
-            if entry.get("role") != "store_owner" or capabilities != {"store_write"}:
+            if (
+                entry.get("role") != "store_owner"
+                or capabilities != BIRTH_CLOSED_COORDINATOR_REQUIRED_CAPABILITIES
+            ):
                 findings.append(Finding(
                     "birth_closed_coordinator_invalid", fact.key,
                     "ownership coordinator must be an exact store_write owner",
@@ -10996,11 +10760,9 @@ def birth_closed_findings(
                 "closed builds permit no reflective, dynamic-import, or subprocess boundary",
             ))
 
-        relevant_exception_capabilities = {
-            "localization_only": {"publish_localization"},
-            "retirement_only": {"retire"},
-            "offline_nonproductive_authoring": {"sign"},
-        }.get(exception, set())
+        relevant_exception_capabilities = (
+            BIRTH_CLOSED_EXCEPTION_JUSTIFICATIONS.get(exception, frozenset())
+        )
         forbidden = capabilities & BIRTH_CLOSED_LEGACY_CAPABILITIES
         if not forbidden:
             if exception is not None and not (
@@ -11127,34 +10889,16 @@ def _validate_boundary_inventory_v1(content: bytes) -> dict[str, object]:
     ):
         raise _invalid("boundary inventory")
     policy = value.get("birth_closed")
-    if not isinstance(policy, dict) or set(policy) != {
-        "schema", "guard_version", "owner", "coordinator_store_owners",
-        "sealed_modules", "exceptions",
-    }:
+    expected_policy = birth_closed_inventory_value_v1()
+    if not isinstance(policy, dict) or policy != expected_policy:
         raise _invalid("Birth boundary policy")
-    owners = policy.get("coordinator_store_owners")
-    exceptions = policy.get("exceptions")
-    if (
-        policy.get("schema") != _BIRTH_CLOSED_SCHEMA
-        or policy.get("guard_version") != _BIRTH_CLOSED_GUARD_VERSION
-        or policy.get("owner") != _BIRTH_CLOSED_OWNER
-        or policy.get("sealed_modules") != list(_BIRTH_CLOSED_SEALED_MODULES)
-        or owners != list(_BIRTH_CLOSED_COORDINATOR_STORE_OWNERS)
-        or exceptions != [
-            {"scope": scope, "exception": exception}
-            for scope, exception in _BIRTH_CLOSED_EXCEPTION_SCOPES
-        ]
-    ):
-        raise _invalid("Birth boundary policy")
+    exceptions = policy["exceptions"]
     exception_map: dict[str, str] = {}
     for item in exceptions:
         if (
             not isinstance(item, dict) or set(item) != {"scope", "exception"}
             or not isinstance(item.get("scope"), str)
-            or item.get("exception") not in {
-                "localization_only", "retirement_only",
-                "offline_nonproductive_authoring",
-            }
+            or item.get("exception") not in _BIRTH_CLOSED_EXCEPTIONS
             or item["scope"] in exception_map
         ):
             raise _invalid("Birth boundary exception")

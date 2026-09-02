@@ -3,15 +3,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
-def _closed_names_v1(values: object, *, field: str) -> tuple[str, ...]:
-    if type(values) is not tuple or not values:
-        raise ValueError(f"boundary_policy_invalid:{field}")
-    if any(type(value) is not str or not value for value in values):
-        raise ValueError(f"boundary_policy_invalid:{field}")
-    if len(set(values)) != len(values):
-        raise ValueError(f"boundary_policy_duplicate:{field}")
-    return values
+from contract_boundary_policy_types import (
+    ContractBoundaryPolicyError,
+    closed_names_v1 as _closed_names_v1,
+    require_text_v1 as _require_text_v1,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,19 +16,20 @@ class BoundaryApiOwnerV1:
     apis: tuple[tuple[str, tuple[str, ...]], ...]
 
     def __post_init__(self) -> None:
-        if type(self.owner) is not str or not self.owner:
-            raise ValueError("boundary_policy_invalid:api_owner")
+        _require_text_v1(self.owner, field="api_owner")
         if type(self.apis) is not tuple or not self.apis:
-            raise ValueError("boundary_policy_invalid:apis")
+            raise ContractBoundaryPolicyError("boundary_policy_invalid:apis")
         names: list[str] = []
         for row in self.apis:
             if type(row) is not tuple or len(row) != 2:
-                raise ValueError("boundary_policy_invalid:api_row")
+                raise ContractBoundaryPolicyError("boundary_policy_invalid:api_row")
             name, capabilities = row
             names.append(name)
             closed = _closed_names_v1(capabilities, field="capabilities")
             if closed != tuple(sorted(closed)):
-                raise ValueError("boundary_policy_invalid:capability_order")
+                raise ContractBoundaryPolicyError(
+                    "boundary_policy_invalid:capability_order"
+                )
         _closed_names_v1(tuple(names), field="api_names")
 
 
@@ -42,8 +39,7 @@ class BoundaryModuleOwnerV1:
     module_names: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        if type(self.owner) is not str or not self.owner:
-            raise ValueError("boundary_policy_invalid:module_owner")
+        _require_text_v1(self.owner, field="module_owner")
         _closed_names_v1(self.module_names, field="module_names")
 
 
@@ -53,10 +49,8 @@ class BoundarySourceOwnerV1:
     owner: str
 
     def __post_init__(self) -> None:
-        if type(self.path) is not str or not self.path:
-            raise ValueError("boundary_policy_invalid:source_path")
-        if type(self.owner) is not str or not self.owner:
-            raise ValueError("boundary_policy_invalid:source_owner")
+        _require_text_v1(self.path, field="source_path")
+        _require_text_v1(self.owner, field="source_owner")
 
 
 BOUNDARY_API_OWNERS_V1 = (
@@ -291,10 +285,12 @@ def _validate_catalog_v1(
     _closed_names_v1(source_paths, field="source_paths")
     _closed_names_v1(module_aliases, field="module_aliases")
     if api_owners != module_owners:
-        raise ValueError("boundary_policy_invalid:owner_precedence")
+        raise ContractBoundaryPolicyError("boundary_policy_invalid:owner_precedence")
     known_owners = frozenset(module_owners)
     if any(row.owner not in known_owners for row in source_rows):
-        raise ValueError("boundary_policy_invalid:source_owner_reference")
+        raise ContractBoundaryPolicyError(
+            "boundary_policy_invalid:source_owner_reference"
+        )
 
 
 _validate_catalog_v1(
