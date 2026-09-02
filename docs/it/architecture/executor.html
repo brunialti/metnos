@@ -348,12 +348,11 @@ completo.</figcaption>
 </figure>
 
 <div class="callout note"><p><strong>A proposito di
-<code>affinity</code>.</strong> Oggi è una sola lista di termini italiani e
-inglesi, curati manualmente e usati per l'instradamento. A differenza della
-<code>description</code> e delle descrizioni degli argomenti, non viene scelta in
-base alla lingua dell'istanza. È compatibile con la vecchia regola dei manifest,
-ma non soddisfa ancora il più recente obiettivo i18n di Metnos per risorse
-semantiche versionate e con copertura verificabile. Vedi
+<code>affinity</code>.</strong> È intenzionalmente una lista indipendente dalla
+lingua di hint canonici per l'instradamento, non prosa mostrata all'utente. Il
+validatore multilingue ne controlla struttura e sovrapposizioni; il
+riconoscimento del linguaggio naturale appartiene invece al lessico di detection
+versionato, con copertura e politica di revisione esplicite. Vedi
 <a href="multilang.html">Lingua e internazionalizzazione</a>.</p></div>
 
 <h2>Cosa c'&egrave; di importante</h2>
@@ -502,10 +501,10 @@ declassamenti e differenze fra Linux, Windows e macOS, vedi la guida alla
 
 <p>
 Il campo <code>lifecycle</code> separa i candidati dagli executor disponibili
-al pianificatore. Non descrive una sequenza obbligatoria per ogni origine: gli
-executor distribuiti e revisionati possono nascere direttamente come
-<code>active</code>, mentre i candidati di Synt attraversano i passaggi di
-preparazione e ammissione.
+al pianificatore. Una distribuzione può caricare una generazione esatta già
+ammessa, ma nessuna generazione nuova o modificata diventa <code>active</code>
+soltanto perché la sua sorgente è stata revisionata. Ogni origine attraversa
+lo stesso confine Executor Birth prima dell'attivazione.
 </p>
 
 <table>
@@ -523,6 +522,25 @@ dopo altri 14 giorni in quello stato, <code>archived</code>. Gli executor curati
 a mano, quelli importati come skill e i nomi protetti non vengono ritirati per
 il solo fatto di essere usati di rado. Le soglie sono configurabili e il
 ripristino richiede un'azione esplicita.</p>
+
+<h2>Il solo confine di nascita</h2>
+
+<p>Executor Birth acquisisce una fotografia privata del candidato completo,
+assegna identità stabili ai byte esatti e al contesto di ammissione e applica
+tutti i controlli obbligatori di struttura, politica, localizzazione,
+instradamento e prova. Una revisione prodotta da un modello o importata riceve
+anche una revisione semantica indipendente; dove la politica lo richiede serve
+un'approvazione umana legata al candidato esatto. Un controllo obbligatorio
+fallito o indisponibile interrompe la transizione.</p>
+
+<p>Soltanto il confine di commit Birth può consegnare un candidato ammesso al
+deposito immutabile dei contratti. Rilegge quindi manifest e codice pubblicati
+prima di esporre la generazione come attiva, in preesercizio o in quarantena.
+Una firma isolata, una directory copiata o il riavvio di un servizio non possono
+rendere operativi byte modificati. Gli aggiornamenti del manutentore usano
+<code>runtime/stack_reconcile.py deploy --executor &lt;name&gt; --sign</code>;
+il flag di compatibilità consegna il candidato a Executor Birth e non seleziona
+il precedente pubblicatore diretto.</p>
 
 <!-- ============================================================== -->
 <h1 id="cap6">6. Le quattro origini: a mano, generato, importato, di sistema</h1>

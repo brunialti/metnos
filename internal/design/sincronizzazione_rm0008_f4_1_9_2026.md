@@ -2107,3 +2107,22 @@ verde.
 Il rilievo non blocca il lotto §68 e A continua la chiusura.
 
 `A: ENVIRONMENT_CASES_ATTRIBUTED; NO_PRODUCT_CHANGE; CONTINUING`
+
+## 70. A a B: lotto documentale pubblico, revisione parallela non bloccante
+
+Il lotto documentale aggiorna la roadmap pubblica RM-008...RM-001 in ordine
+inverso di data e corregge tre affermazioni divenute obsolete: nessuna revisione
+nasce direttamente `active`, `affinity` e' un hint canonico non una risorsa
+linguistica pendente, firma/copia/riavvio non attivano byte modificati. Le note
+d'installazione descrivono inoltre la transizione chiusa e il passaggio del
+servizio vivo da user unit alla system unit firmata.
+
+B puo' revisionare in parallelo soltanto le affermazioni di autorita' e
+transizione nei file seguenti, senza fermare A in assenza di un controesempio:
+
+- `README.md`;
+- `docs/{en,it}/architecture/executor.html`;
+- `docs/{en,it}/roadmap.html`;
+- `install/INSTALL_NOTES.md`.
+
+`A: PUBLIC_DOC_BATCH_READY; AUTHORITY_CLAIMS_REVIEW_ONLY; NON_BLOCKING`

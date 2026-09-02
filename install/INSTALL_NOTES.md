@@ -76,6 +76,29 @@ no-replace rename and directory synchronization. An exact final tree is
 idempotent, an exact completed staging tree is resumed, and every partial,
 extra or metadata-inconsistent tree requires explicit recovery.
 
+## Closed-build transition (RM-0008 group 7)
+
+The one-shot administrative transition is the only operation that selects a
+new required closed-build head. It receives one exact reviewed source tree into
+root-owned content-addressed storage, builds and signs the closed distribution,
+verifies it again from the installed copy, completes the durable ownership
+coordinator, and activates only the target and readiness units named by the
+signed service catalog.
+
+The transition is resumable and exact repetition is idempotent. The live
+user-level HTTP unit is stopped inside the coordinated switch and the signed
+system unit takes ownership; the same-name system unit is preserved as the
+signed destination rather than masked as a retired alias. Once the new head is
+required, an older build cannot be selected again. Recovery resumes the exact
+recorded transaction or requires a later release with a higher sequence; it
+does not restore the former publication path.
+
+This entry is for a release transition, not routine executor maintenance.
+After cutover, an ordinary executor edit uses
+`runtime/stack_reconcile.py deploy --executor <name> --sign`. The historical
+flag remains a command-line compatibility surface, but it now submits the
+candidate to Executor Birth and cannot select direct signing or publication.
+
 ## Canonical paths and user isolation
 
 The installer and every generated unit use the same environment contract as

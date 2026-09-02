@@ -71,6 +71,12 @@ An executor is a small capability with:
 - an observable success condition;
 - a reverse pattern when the operation is genuinely reversible.
 
+Every new or revised executor crosses one deterministic Birth boundary before
+it can become active. That boundary binds provenance, authority, checks, review,
+and any required approval to the candidate's exact bytes, then commits through
+the immutable contract store and rereads the result. A signature, copied
+directory, or service restart alone cannot activate changed code.
+
 The planner never receives an unrestricted shell or an arbitrary bag of tools.
 It sees only the capabilities admitted by the installed executor set. Shell
 access exists as a declared, policy-gated, disableable system capability — not
