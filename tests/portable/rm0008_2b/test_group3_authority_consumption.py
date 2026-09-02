@@ -160,3 +160,15 @@ def test_deployment_keys_are_disjoint_from_the_authenticated_birth_set(
     )
     with pytest.raises(OwnershipAuthorityError, match="authority_untrusted"):
         _birth_public_keys_v1()
+
+
+def test_privileged_reader_binds_to_the_configured_service_owner(
+    tmp_path: Path, monkeypatch,
+):
+    """Root authenticates the target account's fixed Birth tree, not root's UID."""
+    import executor_birth_prepared_root as door
+
+    _prepared(tmp_path, monkeypatch)
+    expected = door._birth_public_inventory_v1()
+    monkeypatch.setattr(door.os, "geteuid", lambda: 0)
+    assert door._birth_public_inventory_v1() == expected

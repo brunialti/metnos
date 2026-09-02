@@ -51,6 +51,29 @@ def _productive_role_catalog_v1():
     )
 
 
+def _posix_prepared_owner_uid_v1(handles: list[int]) -> int:
+    """Bind a privileged reader to the configured service-owned Birth root."""
+    from executor_birth_secure_fs import BirthSecureFSError
+
+    if len(handles) < 2:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    try:
+        root = os.fstat(handles[-1])
+        parent = os.fstat(handles[-2])
+        caller = os.geteuid()
+    except OSError as exc:
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc) from None
+    if caller != 0:
+        expected = caller
+    elif root.st_uid != 0 and parent.st_uid == root.st_uid:
+        expected = root.st_uid
+    else:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    if root.st_uid != expected:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    return expected
+
+
 def open_prepared_root_session_v1():
     """Open the fixed Birth root for reading and return the session.
 
@@ -77,8 +100,14 @@ def open_prepared_root_session_v1():
             handles, absolute = _open_posix_root(
                 root, exact_private=False, expected_uid=None,
             )
+            try:
+                expected_uid = _posix_prepared_owner_uid_v1(handles)
+            except BaseException:
+                for handle in reversed(handles):
+                    os.close(handle)
+                raise
             identity = _PlatformIdentity(
-                posix_uid=os.geteuid(), windows_service_sid=None,
+                posix_uid=expected_uid, windows_service_sid=None,
             )
     except BirthSecureFSError as exc:
         raise PreparedRootError(exc.code, exc) from None
