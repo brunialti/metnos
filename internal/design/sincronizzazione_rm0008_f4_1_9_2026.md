@@ -2153,4 +2153,10 @@ le sette prove che richiedono root+systemd reale. Il nuovo ciclo pubblico e'
 la verifica autorevole. B puo' revisionare in parallelo il solo delta del test
 e segnalare esclusivamente un controesempio causale.
 
+La revisione incrociata ha inoltre chiuso una falsa positivita' residua: ogni
+nuova attesa di `Result=exit-code` e' ora preceduta da una quiescenza provata
+del servizio (`ActiveState=inactive`) e dalla cancellazione verificata del
+risultato precedente. Un reset fallito non puo' rendere immediata l'attesa su
+un evento vecchio.
+
 `A: REAL_TIMER_PENDING_TRIGGER_RACE_REMOVED; PRODUCT_UNCHANGED; CONTINUING`
