@@ -15,6 +15,7 @@ _CERTIFICATION = (
 _NEGATIVE_CASES = (
     "tests/portable/rm0008_2a_acceptance/test_manifest_acceptance.py"
 )
+_ANCHOR = "tests/portable/test_rm0008_acceptance_evolution.py"
 _EXPECTED_PRODUCTIVE_GRAPH_MUTANTS = (
     "reader_gains_a_mutation",
     "third_construction_site",
@@ -167,6 +168,7 @@ def test_only_the_two_reviewed_acceptance_files_may_evolve() -> None:
     current = dict(source)
     current[_CERTIFICATION] = ("100644", "d" * 40)
     current[_NEGATIVE_CASES] = ("100644", "e" * 40)
+    current[_ANCHOR] = ("100644", "f" * 40)
 
     certification._validate_reviewed_acceptance_tree_evolution(source, current)
 
@@ -192,12 +194,15 @@ def test_removing_a_productive_graph_negative_case_is_detected() -> None:
         _assert_closed_productive_graph_mutants(reduced)
 
 
-@pytest.mark.parametrize("variant", ("missing", "added", "third", "only-one"))
+@pytest.mark.parametrize("variant", (
+    "missing", "added", "third", "only-one", "anchor-missing", "anchor-mode",
+))
 def test_every_other_acceptance_tree_change_is_rejected(variant: str) -> None:
     source = _baseline()
     current = dict(source)
     current[_CERTIFICATION] = ("100644", "d" * 40)
     current[_NEGATIVE_CASES] = ("100644", "e" * 40)
+    current[_ANCHOR] = ("100644", "f" * 40)
     if variant == "missing":
         current.pop("tests/portable/rm0008_2a_acceptance/required_cells_v1.py")
     elif variant == "added":
@@ -208,8 +213,12 @@ def test_every_other_acceptance_tree_change_is_rejected(variant: str) -> None:
         current["tests/portable/rm0008_2a_acceptance/required_cells_v1.py"] = (
             "100644", "f" * 40,
         )
-    else:
+    elif variant == "only-one":
         current[_NEGATIVE_CASES] = source[_NEGATIVE_CASES]
+    if variant == "anchor-missing":
+        current.pop(_ANCHOR)
+    elif variant == "anchor-mode":
+        current[_ANCHOR] = ("100755", "f" * 40)
 
     with pytest.raises(
         certification.CertificationError,
@@ -218,3 +227,16 @@ def test_every_other_acceptance_tree_change_is_rejected(variant: str) -> None:
         certification._validate_reviewed_acceptance_tree_evolution(
             source, current,
         )
+
+
+def test_current_acceptance_anchor_content_is_independently_bound() -> None:
+    source = (certification.REPO_ROOT / _ANCHOR).read_bytes()
+    certification._validate_current_exact_acceptance_blobs({_ANCHOR: source})
+
+    with pytest.raises(
+        certification.CertificationError,
+        match="current acceptance anchor differs",
+    ):
+        certification._validate_current_exact_acceptance_blobs({
+            _ANCHOR: source + b"\n",
+        })

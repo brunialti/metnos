@@ -49,6 +49,9 @@ _FROZEN_EXACT_PATHS = (
     "tests/portable/rm0008-2a-acceptance-manifest-v1.json",
     "tests/windows_identity/conftest.py",
 )
+_FROZEN_CURRENT_EXACT_PATHS = (
+    "tests/portable/test_rm0008_acceptance_evolution.py",
+)
 _FROZEN_TREE_EXCLUSIONS = {
     "tests/portable/rm0008_2a_acceptance/production-python-inventory-v1.json",
 }
@@ -2640,7 +2643,11 @@ def _require_snapshot_commit(source_git_sha: str) -> None:
 
 
 def _frozen_tree(commit: str) -> dict[str, tuple[str, str]]:
-    requested = [*_FROZEN_TREE_PREFIXES, *_FROZEN_EXACT_PATHS]
+    requested = [
+        *_FROZEN_TREE_PREFIXES,
+        *_FROZEN_EXACT_PATHS,
+        *_FROZEN_CURRENT_EXACT_PATHS,
+    ]
     raw = _run_git_bytes(
         ["ls-tree", "-r", "-z", "--full-tree", commit, "--", *requested],
         f"read the frozen acceptance tree at {commit}",
@@ -2698,7 +2705,9 @@ def _validate_reviewed_acceptance_tree_evolution(
     source_paths = set(source_tree)
     current_paths = set(current_tree)
     missing = sorted(source_paths - current_paths)
-    added = sorted(current_paths - source_paths)
+    added = {
+        path for path in current_paths - source_paths
+    }
     changed = sorted(
         path
         for path in source_paths & current_paths
@@ -2706,13 +2715,30 @@ def _validate_reviewed_acceptance_tree_evolution(
     )
     if (
         missing
-        or added
+        or added != set(_FROZEN_CURRENT_EXACT_PATHS)
+        or any(current_tree[path][0] != "100644" for path in added)
         or frozenset(changed) != _REVIEWED_ACCEPTANCE_EVOLUTIONS
     ):
         raise CertificationError(
             "frozen acceptance baseline has an unreviewed evolution; "
-            f"missing={missing!r}, added={added!r}, changed={changed!r}"
+            f"missing={missing!r}, added={sorted(added)!r}, "
+            f"changed={changed!r}"
         )
+
+
+def _validate_current_exact_acceptance_blobs(
+    blobs: Mapping[str, bytes],
+) -> None:
+    """Bind the added guard to the independently reviewed product source."""
+    from contract_boundary_guard import RM0008_ACCEPTANCE_EVOLUTION_SHA256
+
+    if set(blobs) != set(_FROZEN_CURRENT_EXACT_PATHS):
+        raise CertificationError("current acceptance anchor set differs")
+    for path in _FROZEN_CURRENT_EXACT_PATHS:
+        if digest_bytes(blobs[path]) != RM0008_ACCEPTANCE_EVOLUTION_SHA256:
+            raise CertificationError(
+                f"current acceptance anchor differs: {path}"
+            )
 
 
 def _validate_frozen_acceptance_baseline(
@@ -2722,6 +2748,10 @@ def _validate_frozen_acceptance_baseline(
     source_tree = _frozen_tree(source_git_sha)
     current_tree = _frozen_tree("HEAD")
     _validate_reviewed_acceptance_tree_evolution(source_tree, current_tree)
+    _validate_current_exact_acceptance_blobs({
+        path: _git_blob("HEAD", REPO_ROOT / path)
+        for path in _FROZEN_CURRENT_EXACT_PATHS
+    })
     historical_manifest = _git_blob(source_git_sha, MANIFEST_PATH)
     if digest_bytes(historical_manifest) != evidence["manifest_sha256"]:
         raise CertificationError("pre-fix manifest digest differs from its source blob")

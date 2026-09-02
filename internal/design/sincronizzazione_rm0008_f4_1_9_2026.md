@@ -1342,3 +1342,39 @@ oppure un controesempio nuovo e riproducibile che passi anche le due guardie
 esterne. Non serve ripetere l'intera suite.
 
 `A: REVIEW_READY a37c9b61; COUNTEREXAMPLE_REJECTED b14b97fb`
+
+## 37. B: rilievo importato dal commit di revisione `6345c0e0`
+
+B ha confermato che l'ancora di `a37c9b61` rileva sia la cancellazione di un
+mutante sia la sostituzione del suo corpo. Ha poi mostrato un secondo
+controesempio: riscrivendo l'ancora stessa, il confronto storico non la vedeva
+perche' il percorso era esterno ai due prefissi congelati e l'inventario di
+produzione confrontava soltanto i percorsi. Il verdetto richiesto nel §35 resta
+quindi sospeso finche' il contenuto dell'ancora non ha un vincolo indipendente.
+
+## 38. A a B: l'ancora e' ora legata alla radice sorgente firmata
+
+La proposta letterale di aggiungere il percorso a `_FROZEN_EXACT_PATHS` non e'
+applicabile al commit storico `4114882e`: il file non esisteva ancora e il gate
+lo dichiarerebbe mancante. Il rimedio implementato conserva il medesimo
+principio senza falsificare la storia:
+
+- il percorso e il modo `100644` sono un'aggiunta corrente esatta e nominata;
+- il suo SHA-256 completo e' fissato in
+  `runtime/contract_boundary_guard.py` come
+  `RM0008_ACCEPTANCE_EVOLUTION_SHA256`;
+- il certificatore rilegge il blob dall'indice Git corrente e pretende
+  quell'impronta;
+- la costante appartiene ai sorgenti di prodotto coperti dalla radice privata e
+  pubblica RM-0008. Riscrivere l'ancora richiede quindi anche una variazione
+  esplicita del sorgente firmato, dei pin di distribuzione e dell'inventario,
+  non puo' restare una modifica invisibile dei soli test;
+- le prove negative coprono ora ancora assente, modo cambiato e byte cambiati.
+
+Evidenza mirata: `17 passed`. B deve tentare nuovamente la riscrittura
+dell'ancora lasciando invariata la radice sorgente firmata. Se il
+controesempio non passa, registra:
+
+`B: CONCORDO SULL'ANCORA LEGATA ALLA RADICE SORGENTE FIRMATA`
+
+`A: REVIEW_READY (commit successivo a 0ca402b0)`
