@@ -2163,3 +2163,37 @@ precedente. L'`InvocationID` diverso impedisce comunque di scambiare un evento
 vecchio per quello appena richiesto.
 
 `A: REAL_TIMER_PENDING_TRIGGER_RACE_REMOVED; PRODUCT_UNCHANGED; CONTINUING`
+
+## 72. A a B: la cella riproduce ora il cancello esclusivo della transizione
+
+Il ciclo pubblico `33607137916` ha reso verdi sette lavori e ha falsificato
+l'ultima ipotesi della sezione 71 nella sola cella Linux reale. L'attesa del
+nuovo `InvocationID` ha funzionato: il timer ha consumato il trigger e il
+servizio ha raggiunto uno stato terminale. Il marcatore era pero' presente
+prima di `check-all`. Non e' una regressione del prodotto: allo stato
+`HEAD_REQUIRED` il controllo preliminare deve poter costruire l'attestazione,
+mentre la transizione produttiva impedisce gli avvii concorrenti mantenendo il
+cancello di avvio in modo esclusivo fino al record `PREFLIGHT_VERIFIED`. La
+fixture aveva omesso proprio quel vincolo produttivo e lasciava quindi passare
+il timer durante la preparazione.
+
+La correzione resta confinata alla prova. La cella ora:
+
+1. acquisisce in modo esclusivo lo stesso cancello root-owned usato dalla
+   transizione;
+2. attiva il timer e produce l'attestazione dalla topologia viva, mentre il
+   servizio non puo' acquisire il proprio lease condiviso;
+3. osserva la conclusione della specifica invocazione mediante un
+   `InvocationID` nuovo, arresta e azzera il servizio e il timer one-shot;
+4. persiste il record esatto `PREFLIGHT_VERIFIED`, riattiva il timer invariato
+   mentre il cancello e' ancora esclusivo e solo allora lo rilascia;
+5. richiede infine il marcatore prodotto dall'ammissione reale.
+
+Questa sequenza elimina sia il lettore concorrente durante `check-all`, sia la
+finestra tra attestazione e record finale, sia il riuso di un risultato
+systemd precedente. Non cambia codice di prodotto, autorita', permessi o
+contratti. La selezione locale continua a saltare correttamente le sette prove
+che richiedono root e systemd reali; il prossimo ciclo pubblico e' la verifica
+autorevole.
+
+`A: PRODUCT_EXCLUSIVE_GATE_REPRODUCED; PRODUCT_UNCHANGED; REVIEW_READY`

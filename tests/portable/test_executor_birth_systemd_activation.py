@@ -71,6 +71,7 @@ from executor_birth_ownership_preflight import (
     canonical_maintenance_proof,
     maintenance_evidence_hash,
 )
+from executor_birth_startup_gate import _exclusive_startup_gate_v1
 
 
 pytestmark = pytest.mark.skipif(
@@ -1209,39 +1210,69 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         previous_invocation = _systemctl(
             "show", fixture.service_name, "--property=InvocationID", "--value",
         ).stdout.strip()
-        _systemctl("start", fixture.timer_name)
-        _wait_for(
-            lambda: fixture.timer_name in _systemctl(
-                "show", fixture.service_name, "--property=TriggeredBy",
-                "--value", check=False,
-            ).stdout,
-            diagnose=lambda: _unit_diagnosis(fixture.timer_name),
-        )
-        # Starting the timer schedules the service after OnActiveSec.  Merely
-        # stopping the service here can race that pending trigger: a fast host
-        # stops before it fires and the service then enters check-all's
-        # ownership snapshot.  Result is not a suitable completion signal:
-        # this pre-attestation invocation may finish successfully without
-        # launching the probe.  Instead, require a different systemd
-        # InvocationID to reach a terminal state, proving that the one-shot
-        # timer has fired and its process has exited.  Keep the elapsed timer
-        # (and therefore TriggeredBy) active while clearing its service state.
-        _wait_for(
-            lambda: _completed_new_invocation(
-                fixture.service_name, previous_invocation,
-            ),
-            diagnose=lambda: _unit_diagnosis(fixture.service_name),
-        )
-        _quiesce_service(fixture.service_name)
-        assert fixture.timer_name in _systemctl(
-            "show", fixture.service_name, "--property=TriggeredBy", "--value",
-            check=False,
-        ).stdout
-        assert not fixture.marker_path.exists()
-        created = subprocess.run(
-            [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
-            capture_output=True, text=True, timeout=300,
-        )
+        with _exclusive_startup_gate_v1():
+            # Production holds the exclusive startup gate while it attests the
+            # live topology and persists PREFLIGHT_VERIFIED.  Reproduce that
+            # ordering here: the timer remains active, but its shared launch
+            # lease cannot cross the transition until the durable record does.
+            _systemctl("start", fixture.timer_name)
+            _wait_for(
+                lambda: fixture.timer_name in _systemctl(
+                    "show", fixture.service_name, "--property=TriggeredBy",
+                    "--value", check=False,
+                ).stdout,
+                diagnose=lambda: _unit_diagnosis(fixture.timer_name),
+            )
+            assert not fixture.marker_path.exists()
+            created = subprocess.run(
+                [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
+                capture_output=True, text=True, timeout=300,
+            )
+            if created.returncode == 0:
+                assert created.stderr == ""
+                assert attestation_path.is_file()
+                assert not fixture.marker_path.exists()
+                # The timer activation is held behind the exclusive transition
+                # gate and may still be finishing its bounded shared-lease
+                # attempt. Observe that exact invocation before resetting the
+                # one-shot timer, so no pending old attempt can overlap the
+                # admitted launch.
+                _wait_for(
+                    lambda: _completed_new_invocation(
+                        fixture.service_name, previous_invocation,
+                    ),
+                    diagnose=lambda: _unit_diagnosis(fixture.service_name),
+                )
+                _systemctl("stop", fixture.timer_name, check=False)
+                _quiesce_service(fixture.service_name)
+
+                attestation = preflight._read_preflight_attestation_v1(request_id)
+                verified_record = _preflight_verified_record_v2(
+                    head_required, attestation,
+                ).encode()
+                _write_control(
+                    OWNERSHIP_ROOT / "coordinator-v1" / "transactions-v2"
+                    / request_id / "record-006-v2.json",
+                    verified_record,
+                )
+                # Re-arm the unchanged signed timer before ordinary launches
+                # can take the shared gate. Releasing this lock is the only
+                # event that lets the admitted invocation cross the boundary.
+                _systemctl("start", fixture.timer_name)
+                _wait_for(
+                    lambda: fixture.timer_name in _systemctl(
+                        "show", fixture.service_name, "--property=TriggeredBy",
+                        "--value", check=False,
+                    ).stdout,
+                    diagnose=lambda: _unit_diagnosis(fixture.timer_name),
+                )
+                assert not fixture.marker_path.exists()
+            else:
+                # Freeze the failing topology before opening the gate for the
+                # diagnostic path below.
+                _systemctl("stop", fixture.timer_name, check=False)
+                _systemctl("stop", fixture.service_name, check=False)
+                _systemctl("reset-failed", fixture.service_name, check=False)
         if created.returncode != 0:
             installed_classification = _classify_installed_check_all_refusal(
                 preflight_path, python,
@@ -1270,23 +1301,6 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
                 f"directory_entries={names!r}; "
                 f"installed-classification={installed_classification}"
             )
-        assert created.stderr == ""
-        assert attestation_path.is_file()
-        assert not fixture.marker_path.exists()
-        _systemctl("stop", fixture.timer_name, check=False)
-        _systemctl("stop", fixture.service_name, check=False)
-        _systemctl("reset-failed", fixture.service_name, check=False)
-
-        attestation = preflight._read_preflight_attestation_v1(request_id)
-        verified_record = _preflight_verified_record_v2(
-            head_required, attestation,
-        ).encode()
-        _write_control(
-            OWNERSHIP_ROOT / "coordinator-v1" / "transactions-v2"
-            / request_id / "record-006-v2.json",
-            verified_record,
-        )
-        _systemctl("start", fixture.timer_name)
         _wait_for(
             fixture.marker_path.exists,
             diagnose=lambda: _unit_diagnosis(fixture.service_name) + "\n"
