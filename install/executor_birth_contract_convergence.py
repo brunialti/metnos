@@ -133,10 +133,9 @@ def converge() -> dict[str, int]:
         raise _fail("birth_transition_distribution_changed")
 
     import contract_store
-    from executor_birth_intent import (
-        BirthIntent,
-        require_birth_intent_adapter,
-        submit_installer_birth,
+    from executor_birth_intent import BirthIntent
+    from executor_birth_bootstrap import (
+        _build_initial_transition_installer_runtime_v1,
     )
     from manifest_inventory import (
         ManifestOrigin, inventory_authoring_manifests,
@@ -157,7 +156,7 @@ def converge() -> dict[str, int]:
     sealed = load_sealed_authorities_v1()
     trusted = tuple(sorted(sealed.author.verifier_keys.items()))
     admission_verifiers = sealed.admission.verifier_keys
-    require_birth_intent_adapter()
+    transition_runtime = _build_initial_transition_installer_runtime_v1()
     examined = 0
     changed = 0
     current = 0
@@ -222,7 +221,7 @@ def converge() -> dict[str, int]:
                 ):
                     current += 1
                     continue
-            birth = submit_installer_birth(BirthIntent(
+            birth = transition_runtime.submit(BirthIntent(
                 candidate_source_root=candidate,
                 contract_id=contract_id,
                 reason="converge first-transition repository contract",

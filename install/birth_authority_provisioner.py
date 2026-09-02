@@ -3786,6 +3786,65 @@ def _open_installer_layout_v1():
         return open_birth_provisioning_layout_v1()
 
 
+@contextmanager
+def _service_owned_birth_identity_v2(descriptor: object):
+    """Enter the signed service identity only around its Birth filesystem.
+
+    The coordinator remains root and retains its deployment lock.  Birth key
+    preparation, however, must create and verify objects as the account that
+    owns the prepared root; opening that root as uid 0 is correctly refused by
+    the secure-filesystem layer.
+    """
+    uid = getattr(descriptor, "service_uid", None)
+    gid = getattr(descriptor, "service_gid", None)
+    groups = getattr(descriptor, "service_supplementary_gids", None)
+    if (
+        os.name != "posix" or type(uid) is not int or uid <= 0
+        or type(gid) is not int or gid <= 0 or type(groups) is not tuple
+        or any(type(value) is not int or value <= 0 for value in groups)
+        or gid not in groups or os.geteuid() != 0 or os.getegid() != 0
+    ):
+        raise _reject("birth_transition_service_identity_changed")
+    try:
+        tasks = tuple(Path("/proc/self/task").iterdir())
+    except OSError as exc:
+        raise _reject("birth_transition_service_identity_changed", exc) from None
+    if len(tasks) != 1:
+        raise _reject("birth_transition_service_identity_changed")
+    original_groups = tuple(os.getgroups())
+    original_umask = os.umask(0o077)
+    entered = False
+    try:
+        os.setgroups(list(groups))
+        os.setegid(gid)
+        os.seteuid(uid)
+        entered = True
+        if (
+            os.geteuid() != uid or os.getegid() != gid
+            or tuple(os.getgroups()) != groups
+        ):
+            raise _reject("birth_transition_service_identity_changed")
+        yield
+    except BirthProvisioningError:
+        raise
+    except (OSError, ValueError) as exc:
+        raise _reject("birth_transition_service_identity_changed", exc) from None
+    finally:
+        try:
+            if entered:
+                os.seteuid(0)
+            os.setegid(0)
+            os.setgroups(list(original_groups))
+            os.umask(original_umask)
+        except (OSError, ValueError) as exc:
+            raise _reject("birth_transition_service_identity_changed", exc) from None
+        if (
+            os.geteuid() != 0 or os.getegid() != 0
+            or tuple(os.getgroups()) != original_groups
+        ):
+            raise _reject("birth_transition_service_identity_changed")
+
+
 def _prepare_transition_authority_set_v2(
     claim: object, distribution: object, previous_set: object,
 ) -> PreparedAuthoritySetV2:
@@ -4106,9 +4165,10 @@ def _prepare_transition_receipt_material_locked_v2(
             raise _conflict()
         previous_context = required.selection
         previous_set = required.authorities.prepared
-    prepared = _prepare_transition_authority_set_v2(
-        claim, verified, previous_set,
-    )
+    with _service_owned_birth_identity_v2(descriptor):
+        prepared = _prepare_transition_authority_set_v2(
+            claim, verified, previous_set,
+        )
     return _TransitionReceiptPreparationV2(
         verified, descriptor, previous_context, prepared,
         _TRANSITION_RECEIPT_PREPARATION_SEAL_V2,
@@ -4166,7 +4226,8 @@ def _complete_transition_receipts_locked_v2(
         current_inventory=current_inventory,
         deployment_descriptor=descriptor,
     )
-    _publish_prepared_authority_set_v2(prepared)
+    with _service_owned_birth_identity_v2(descriptor):
+        _publish_prepared_authority_set_v2(prepared)
     publication = _prepared_transition_publication_v2(
         record, transition,
         prepared_authority_set=prepared,
@@ -4996,6 +5057,9 @@ def complete_transition_cutover_v2(
                 descriptor.service_gid,
             )
             if verified.release_sequence == 1:
+                from executor_birth_ownership_chain import OwnershipChainStore
+
+                OwnershipChainStore.initialize()
                 # Prove the legacy stack quiescent before releasing the
                 # catalog lock to the governed service-owned Birth child.
                 # The final guard below reacquires both boundaries and proves

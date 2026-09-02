@@ -787,6 +787,63 @@ def _is_staged_reattestation_runtime_v2(value: object) -> bool:
     )
 
 
+_INITIAL_TRANSITION_INSTALLER_RUNTIME_SEAL_V1 = object()
+
+
+class _InitialTransitionInstallerRuntimeV1:
+    """Narrow installer port while the productive chain is still empty."""
+
+    __slots__ = ("_core", "_factory", "_seal")
+
+    def __init__(self, *, core: object, factory: object) -> None:
+        from executor_birth_operational import _is_birth_core
+
+        if not _is_birth_core(core) or not callable(factory):
+            raise BirthBootstrapError("birth_initial_transition_invalid")
+        self._core = core
+        self._factory = factory
+        self._seal = _INITIAL_TRANSITION_INSTALLER_RUNTIME_SEAL_V1
+
+    def submit(self, intent: BirthIntent):
+        from executor_birth_operational import _execute
+
+        if self._seal is not _INITIAL_TRANSITION_INSTALLER_RUNTIME_SEAL_V1:
+            raise BirthBootstrapError("birth_initial_transition_invalid")
+        request = self._factory(intent)
+        return _execute(request, self._core)
+
+
+def _build_initial_transition_installer_runtime_v1(
+) -> _InitialTransitionInstallerRuntimeV1:
+    """Build only the installer producer before the first head is published."""
+    from executor_birth_intent import _INSTALLER
+    from executor_birth_legacy_gate import closed_build_enforcement
+    from executor_birth_ownership_chain import (
+        _InitialOwnershipChainStateV1, inspect_ownership_chain_state_v1,
+    )
+    from executor_birth_prepared_root import load_sealed_authorities_v1
+
+    state = inspect_ownership_chain_state_v1()
+    if (
+        closed_build_enforcement() is not True
+        or type(state) is not _InitialOwnershipChainStateV1
+        or _runtime_bundle_snapshot() is not None
+    ):
+        raise BirthBootstrapError("birth_initial_transition_invalid")
+    sealed = load_sealed_authorities_v1()
+    assembly = _prepare_sealed_birth_assembly_v1(
+        sealed, now=lambda: datetime.now(timezone.utc),
+    )
+    factory = _request_factory(
+        assembly.authorities[_INSTALLER], assembly.registry,
+        assembly.producer_db, assembly.ttl_seconds, assembly.now,
+        assembly.context_builder,
+    )
+    return _InitialTransitionInstallerRuntimeV1(
+        core=assembly.core, factory=factory,
+    )
+
+
 def _build_staged_reattestation_runtime_v2(
     staged_context: object,
     *,

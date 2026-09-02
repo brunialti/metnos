@@ -353,6 +353,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     import executor_birth_distribution_manifest as manifest
     import executor_birth_dominant_startup as dominant
     import executor_birth_ownership_authorities as authorities_module
+    import executor_birth_ownership_chain as ownership_chain
     import executor_birth_ownership_coordinator as coordinator
     import executor_birth_ownership_preflight as ownership_preflight
     import executor_birth_startup_gate as startup_gate
@@ -432,6 +433,10 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
     monkeypatch.setattr(coordinator, "_completed_transition_locked_v2", lambda *_: None)
     monkeypatch.setattr(startup_gate, "_exclusive_startup_gate_v1", startup_lock)
+    monkeypatch.setattr(
+        ownership_chain.OwnershipChainStore, "initialize",
+        classmethod(lambda cls: events.append("chain-initialize")),
+    )
     monkeypatch.setattr(contract_cutover_guard, "_contract_cutover_guard_for_service_user_v1", maintenance_guard)
     monkeypatch.setattr(contract_cutover_guard, "_begin_topology_transition_v1", lambda *_: None)
     monkeypatch.setattr(contract_cutover_guard, "_maintenance_evidence_under_transition_v1", lambda *_: b"maintenance")
@@ -508,7 +513,8 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         legacy_installation_root="/opt/metnos",
     ) is result
     assert events == [
-        "deployment-enter", "startup-enter", "maintenance-enter",
+        "deployment-enter", "startup-enter", "chain-initialize",
+        "maintenance-enter",
         "maintenance-prove", "maintenance-exit", "contract-convergence",
         "maintenance-enter", "maintenance-prove", "authoring-seed",
         "maintenance-prove", "inventory-enter", "predecessor", "composition",
@@ -579,6 +585,128 @@ def test_contract_convergence_child_is_bound_to_the_signed_service_identity(
     assert observed["umask"] == 0o077
     assert observed["env"]["HOME"] == descriptor.service_home
     assert observed["env"]["METNOS_INSTALL_ROOT"] == descriptor.installation_root
+
+
+@LINUX_ONLY
+def test_transition_birth_mutation_enters_and_restores_signed_service_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "euid": 0, "egid": 0, "groups": (0,), "umask": 0o022,
+    }
+    calls = []
+
+    monkeypatch.setattr(provisioner.os, "geteuid", lambda: state["euid"])
+    monkeypatch.setattr(provisioner.os, "getegid", lambda: state["egid"])
+    monkeypatch.setattr(provisioner.os, "getgroups", lambda: list(state["groups"]))
+
+    def setgroups(values):
+        state["groups"] = tuple(values)
+        calls.append(("groups", tuple(values)))
+
+    def setegid(value):
+        state["egid"] = value
+        calls.append(("egid", value))
+
+    def seteuid(value):
+        state["euid"] = value
+        calls.append(("euid", value))
+
+    def umask(value):
+        previous = state["umask"]
+        state["umask"] = value
+        calls.append(("umask", value))
+        return previous
+
+    monkeypatch.setattr(provisioner.os, "setgroups", setgroups)
+    monkeypatch.setattr(provisioner.os, "setegid", setegid)
+    monkeypatch.setattr(provisioner.os, "seteuid", seteuid)
+    monkeypatch.setattr(provisioner.os, "umask", umask)
+    descriptor = SimpleNamespace(
+        service_uid=41, service_gid=42,
+        service_supplementary_gids=(42, 77),
+    )
+
+    with provisioner._service_owned_birth_identity_v2(descriptor):
+        assert (state["euid"], state["egid"], state["groups"], state["umask"]) == (
+            41, 42, (42, 77), 0o077,
+        )
+
+    assert (state["euid"], state["egid"], state["groups"], state["umask"]) == (
+        0, 0, (0,), 0o022,
+    )
+    assert calls == [
+        ("umask", 0o077), ("groups", (42, 77)), ("egid", 42),
+        ("euid", 41), ("euid", 0), ("egid", 0), ("groups", (0,)),
+        ("umask", 0o022),
+    ]
+
+
+def test_initial_transition_runtime_exposes_only_the_installer_submission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import executor_birth_bootstrap as bootstrap
+    import executor_birth_legacy_gate as legacy_gate
+    import executor_birth_operational as operational
+    import executor_birth_ownership_chain as ownership_chain
+    import executor_birth_prepared_root as prepared_root
+    from executor_birth_intent import BirthIntent, _INSTALLER
+    from manifest_inventory import ContractId, ManifestOrigin
+
+    class Initial:
+        pass
+
+    state = Initial()
+    core = object()
+    authority = object()
+    request = object()
+    result = object()
+    intent = BirthIntent(
+        candidate_source_root=Path("/candidate"),
+        contract_id=ContractId(ManifestOrigin.EXPLICIT, "alpha/manifest.toml"),
+        reason="initial convergence",
+    )
+    assembly = SimpleNamespace(
+        core=core, authorities={_INSTALLER: authority}, registry=object(),
+        producer_db=Path("/state/producers.sqlite"), ttl_seconds=60,
+        now=lambda: None, context_builder=object(),
+    )
+    observed = {}
+
+    monkeypatch.setattr(
+        ownership_chain, "_InitialOwnershipChainStateV1", Initial,
+    )
+    monkeypatch.setattr(
+        ownership_chain, "inspect_ownership_chain_state_v1", lambda: state,
+    )
+    monkeypatch.setattr(legacy_gate, "closed_build_enforcement", lambda: True)
+    monkeypatch.setattr(bootstrap, "_runtime_bundle_snapshot", lambda: None)
+    monkeypatch.setattr(prepared_root, "load_sealed_authorities_v1", object)
+    monkeypatch.setattr(
+        bootstrap, "_prepare_sealed_birth_assembly_v1", lambda *_args, **_kwargs: assembly,
+    )
+
+    def factory(*args):
+        observed["factory_args"] = args
+        return lambda value: request if value is intent else None
+
+    monkeypatch.setattr(bootstrap, "_request_factory", factory)
+    monkeypatch.setattr(operational, "_is_birth_core", lambda value: value is core)
+    monkeypatch.setattr(
+        operational, "_execute",
+        lambda value, selected_core: result
+        if value is request and selected_core is core else None,
+    )
+
+    runtime = bootstrap._build_initial_transition_installer_runtime_v1()
+
+    assert runtime.submit(intent) is result
+    assert observed["factory_args"] == (
+        authority, assembly.registry, assembly.producer_db,
+        assembly.ttl_seconds, assembly.now, assembly.context_builder,
+    )
+    assert not hasattr(runtime, "verify_receipt")
+    assert not hasattr(runtime, "reattest")
 
 
 @LINUX_ONLY
