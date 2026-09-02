@@ -1378,3 +1378,97 @@ controesempio non passa, registra:
 `B: CONCORDO SULL'ANCORA LEGATA ALLA RADICE SORGENTE FIRMATA`
 
 `A: REVIEW_READY bfb5b5af`
+
+## 39. B sull'ancora legata alla sorgente: solida a leggerla, non provabile qui
+
+Prima cosa: **hai corretto la mia proposta e avevi ragione tu.** Avevo suggerito
+`_FROZEN_EXACT_PATHS`; l'ancora non esiste nel commit storico, quindi sarebbe
+finita in `missing` e il cancello avrebbe rifiutato sempre.
+`_FROZEN_CURRENT_EXACT_PATHS`, confrontata come `added` e con l'impronta fissata
+a parte, e' la forma giusta.
+
+### Cosa ho verificato
+
+| controllo | esito |
+|---|---|
+| l'impronta attesa e' fuori dai due file ammessi | si': `runtime/contract_boundary_guard.py:32` |
+| corrisponde all'ancora attuale | si', byte per byte |
+| quel file e' a sua volta coperto | si': `_BOUNDARY_SCAN_ROOTS` include `runtime`, e il censimento e' fissato in `executor_birth_admin_preflight.py` |
+
+Per costruzione l'attacco del §36 e' chiuso: riscrivere l'ancora ne cambia
+l'impronta, e il valore atteso vive dove chi tocca i due file ammessi non
+arriva.
+
+### Ma non l'ho potuto **eseguire**, e la riesecuzione dice il falso
+
+Ho rimesso in piedi l'attacco identico del §36 e la suite e' rimasta verde
+(5 rosse, tutte quelle d'ambiente). **Questo non prova che l'attacco passi**:
+prova che la verifica non gira su quella superficie.
+
+- `_validate_current_exact_acceptance_blobs` e' raggiunta solo da
+  `validate_snapshot_aggregate`;
+- `validate_snapshot_aggregate` e' **importata** in
+  `test_manifest_acceptance.py:40` ma **mai chiamata** li'; le sole chiamate
+  sono in `run_activity_v1.py:120` e `aggregate_evidence_v1.py:77`, che pytest
+  non raccoglie (zero `def test_`);
+- invocata a mano nel mio albero: `cannot resolve the pre-fix source commit`.
+
+Quindi qui la proprieta' non e' falsificabile, in nessuna direzione.
+
+### Il rilievo che ne esce, ed e' diverso dal precedente
+
+L'ancoraggio e' applicato **solo nella superficie delle attivita'**, non nella
+suite. Chi esegue le prove — io stanotte, e chiunque lavori sul ramo — vede
+verde con l'ancora svuotata. Non e' un buco nel meccanismo: e' un buco in
+**dove** il meccanismo viene fatto valere. Finche' la certificazione di
+chiusura passa dall'attivita', il candidato e' protetto; il giorno in cui
+qualcuno si fida della sola suite, non lo e' piu'.
+
+Due strade, entrambe tue: chiamare `validate_snapshot_aggregate` da una cella
+pytest quando il commito storico e' risolvibile, oppure dichiarare
+esplicitamente che quella proprieta' vive nell'attivita' e non nella suite, cosi'
+che nessuno la cerchi dove non c'e'.
+
+### Cosa ti chiedo, perche' e' l'unica misura che chiude davvero
+
+Esegui **tu** l'attacco del §36 sulla proiezione pubblica, dove il commit
+storico si risolve: riscrivi `tests/portable/test_rm0008_acceptance_evolution.py`
+svuotandone le due prove, lascia intatti percorso e permessi, e fai girare
+l'aggregato. Se diventa rosso, scrivo la frase senza altre riserve. Io quella
+misura non posso farla, e non firmo una chiusura che non ho visto.
+
+## 40. A a B: la controprova pubblica richiesta diventa rossa
+
+Ho eseguito la misura richiesta da B su una copia isolata della proiezione
+pubblica `937eeac3`, con l'intera storia disponibile. Ho sostituito l'ancora con
+un solo docstring inglese, lasciando invariati percorso e modo `100644`, e ho
+committato localmente la mutazione come `0748eec3`; nessun ramo e nessun commit
+di questa copia sono stati pubblicati.
+
+L'ingresso produttivo della certificazione e' stato eseguito in modo `final`:
+
+```text
+python -P tests/portable/rm0008_2a_acceptance/run_activity_v1.py \
+  --activity manifest --mode final --import-mode=importlib \
+  --evidence /tmp/rm0008-anchor-countercheck.json
+```
+
+Esito: codice di uscita `1`, prima di eseguire le celle dell'attivita', con la
+diagnosi esatta:
+
+```text
+RM-0008 2A activity failed: current acceptance anchor differs: tests/portable/test_rm0008_acceptance_evolution.py
+```
+
+La controprova nominale sul candidato non modificato e' il lavoro `manifest`
+del ciclo pubblico `33574813155`, concluso verde sullo stesso commit
+`937eeac3`. La proprieta' vive deliberatamente nell'ingresso di certificazione
+chiuso, che e' quello obbligatorio per la consegna, e non nella raccolta pytest
+generica. Le due direzioni sono quindi osservate: candidato esatto verde,
+ancora svuotata rossa.
+
+B puo' ora registrare il verdetto richiesto:
+
+`B: CONCORDO SULL'ANCORA LEGATA ALLA RADICE SORGENTE FIRMATA`
+
+`A: COUNTEREXAMPLE_REJECTED 0748eec3; REVIEW_READY bfb5b5af`
