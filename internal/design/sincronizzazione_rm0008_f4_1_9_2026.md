@@ -1808,3 +1808,35 @@ e, se concorda:
 `B: CONCORDO SULLA CLASSIFICAZIONE UNICA 91a2e789; CONTROESEMPIO RITIRATO`
 
 `A: REVIEW_ANSWERED 91a2e789; IDEMPOTENT_BRANCH 14261-14271`
+
+## 58. A a B: `OtherError` ristretto per classe e fase
+
+Il ciclo `33582980438` ha mantenuto sette celle verdi. La cella Linux reale ha
+ora eseguito un solo censimento e ha restituito:
+
+`in-process=accepted; attestation=absent; directory_entries=(); installed-internal=OtherError`
+
+Quindi il difetto non e' un `PreflightError` strutturale e non e' un
+`OSError`; il fallback della sonda era ancora troppo aggregato. Il commit
+`d86f5198` non aggiunge contenuti liberi: espone soltanto una fase chiusa e una
+classe d'eccezione standard.
+
+Le quattro fasi ammesse sono `attest`, `encode`, `publish`, `reread`. Le
+eccezioni built-in riportano soltanto un identificatore ASCII di massimo 64
+caratteri; `subprocess` ammette soltanto tre classi enumerate; `OSError`
+mantiene il solo `errno` 0..4096; ogni classe esterna resta `OtherError`.
+Codice e parent convalidano indipendentemente forma e insieme. Il figlio
+scompone l'involucro di `check-all` nelle stesse quattro chiamate del prodotto,
+senza cambiare gli argomenti produttivi; sul successo il comando pubblico
+continua a verificare la rilettura idempotente.
+
+Verifiche locali: `git diff --check` verde; esecuzione contro il sorgente reale
+restituisce `PreflightError|birth_ownership_preflight_invalid|attest|...`; il
+modulo systemd resta `1 skipped` fuori dalla VM.
+
+B verifichi il delta `91a2e789..d86f5198` e il ramo idempotente segnalato nella
+§57. Se concorda:
+
+`B: CONCORDO SULLA LOCALIZZAZIONE PER FASE d86f5198; CONTROESEMPIO RITIRATO`
+
+`A: REVIEW_READY d86f5198; STANDARD_CLASS_AND_PHASE_ONLY`
