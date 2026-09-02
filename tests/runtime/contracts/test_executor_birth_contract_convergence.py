@@ -63,6 +63,7 @@ def test_historical_receipt_uses_a_deterministic_packaging_revision(
 
 def _convergence_environment(monkeypatch, tmp_path: Path):
     import contract_store
+    import executor_birth_bootstrap
     import executor_birth_intent
     import executor_birth_prepared_root
     import manifest_inventory
@@ -95,6 +96,12 @@ def _convergence_environment(monkeypatch, tmp_path: Path):
     )
     monkeypatch.setattr(executor_birth_intent, "require_birth_intent_adapter", lambda: None)
     monkeypatch.setattr(
+        executor_birth_bootstrap, "_build_initial_transition_installer_runtime_v1",
+        lambda: SimpleNamespace(
+            submit=lambda intent: executor_birth_intent.submit_installer_birth(intent),
+        ),
+    )
+    monkeypatch.setattr(
         contract_store,
         "materialize_repository_authoring_for_transition_v1",
         lambda **_kwargs: 1,
@@ -126,8 +133,8 @@ def test_exact_current_contract_is_not_revised_or_republished(
         else pytest.fail("exact current contract was revised"),
     )
     monkeypatch.setattr(
-        convergence, "_source_generation_has_historical_receipt",
-        lambda *_args, **_kwargs: pytest.fail("historical receipt was consulted"),
+        convergence, "_source_generation_receipt_state",
+        lambda *_args, **_kwargs: convergence._RECEIPT_CURRENT,
     )
     monkeypatch.setattr(
         contract_store, "_load_generation",
@@ -163,8 +170,8 @@ def test_mismatch_with_historical_receipt_publishes_only_the_revision(
 
     monkeypatch.setattr(convergence, "_candidate_for_transition", candidate)
     monkeypatch.setattr(
-        convergence, "_source_generation_has_historical_receipt",
-        lambda *_args, **_kwargs: True,
+        convergence, "_source_generation_receipt_state",
+        lambda *_args, **_kwargs: convergence._RECEIPT_HISTORICAL,
     )
     monkeypatch.setattr(
         contract_store, "_load_generation",
@@ -184,6 +191,48 @@ def test_mismatch_with_historical_receipt_publishes_only_the_revision(
         "changed": 1, "current": 0, "examined": 1,
     }
     assert published == [revised]
+
+
+def test_exact_current_without_receipt_is_republished_without_revision(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    import contract_store
+    import executor_birth_bootstrap
+
+    _convergence_environment(monkeypatch, tmp_path)
+    manifest = b'exact = true\n'
+    state = b'{}\n'
+    monkeypatch.setattr(
+        convergence, "_candidate_for_transition",
+        lambda _ref, destination, *, packaging_revision:
+        _write_candidate(destination, manifest, state)
+        if packaging_revision is False
+        else pytest.fail("missing receipt caused a packaging revision"),
+    )
+    monkeypatch.setattr(
+        convergence, "_source_generation_receipt_state",
+        lambda *_args, **_kwargs: convergence._RECEIPT_ABSENT,
+    )
+    monkeypatch.setattr(
+        contract_store, "_load_generation",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            manifest_bytes=manifest, language_state_bytes=state,
+        ),
+    )
+    published = []
+    runtime = SimpleNamespace(submit=lambda intent: (
+        published.append((intent.candidate_source_root / "manifest.toml").read_bytes())
+        or SimpleNamespace(error_code=None, publication=object())
+    ))
+    monkeypatch.setattr(
+        executor_birth_bootstrap, "_build_initial_transition_installer_runtime_v1",
+        lambda: runtime,
+    )
+
+    assert convergence.converge() == {
+        "changed": 1, "current": 0, "examined": 1,
+    }
+    assert published == [manifest]
 
 
 def test_corrupt_current_generation_is_not_treated_as_a_mismatch(

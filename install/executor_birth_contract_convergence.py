@@ -36,10 +36,15 @@ def _fail(code: str, detail: object = "") -> ContractConvergenceError:
     return ContractConvergenceError(code, str(detail))
 
 
-def _source_generation_has_historical_receipt(
+_RECEIPT_ABSENT = "absent"
+_RECEIPT_CURRENT = "current"
+_RECEIPT_HISTORICAL = "historical"
+
+
+def _source_generation_receipt_state(
     source_ref, *, store_root: Path, trusted_publics: tuple,
     admission_verifiers,
-) -> bool:
+) -> str:
     import contract_store
     from executor_birth_receipts import (
         _parse_admission, verify_admission_receipt,
@@ -61,7 +66,7 @@ def _source_generation_has_historical_receipt(
     if contract_store._is_link_like(historical_receipt):
         raise _fail("birth_transition_historical_receipt_invalid")
     if not historical_receipt.exists():
-        return False
+        return _RECEIPT_ABSENT
     generation_path = (
         contract_dir / "generations"
         / contract_store.generation_directory_name(source_generation)
@@ -69,7 +74,7 @@ def _source_generation_has_historical_receipt(
     if not generation_path.exists():
         # Birth writes the receipt before the generation and current pointer.
         # Replaying the exact candidate is the only crash-safe action here.
-        return False
+        return _RECEIPT_ABSENT
     installed = contract_store._load_generation_for_commit(
         source_ref, source_generation,
         trusted_publics=trusted_publics, store_root=store_root,
@@ -89,12 +94,12 @@ def _source_generation_has_historical_receipt(
         verify_admission_receipt(
             encoded, verifier_keys=admission_verifiers,
         )
-        return False
+        return _RECEIPT_CURRENT
     # A canonical receipt bound to this exact, author-authenticated immutable
     # generation belongs to a preceding admission context.  It stays intact;
     # the new context receives a separate packaging generation and later V2
     # reattestation.
-    return True
+    return _RECEIPT_HISTORICAL
 
 
 def _candidate_for_transition(
@@ -188,24 +193,33 @@ def converge() -> dict[str, int]:
                 if error.code != "code_digest_mismatch":
                     raise
                 installed = None
+            receipt_state = None
             if (
                 installed is not None
                 and installed.manifest_bytes == candidate_manifest
                 and installed.language_state_bytes == candidate_state
             ):
-                current += 1
-                continue
+                receipt_state = _source_generation_receipt_state(
+                    source_ref, store_root=store_root,
+                    trusted_publics=trusted,
+                    admission_verifiers=admission_verifiers,
+                )
+                if receipt_state != _RECEIPT_ABSENT:
+                    current += 1
+                    continue
             if contract_id.origin not in {
                 ManifestOrigin.CORE,
                 ManifestOrigin.BUILTIN,
                 ManifestOrigin.BUILTIN_SKILL,
             }:
                 raise _fail("birth_transition_external_contract_changed")
-            if _source_generation_has_historical_receipt(
-                source_ref, store_root=store_root,
-                trusted_publics=trusted,
-                admission_verifiers=admission_verifiers,
-            ):
+            if receipt_state is None:
+                receipt_state = _source_generation_receipt_state(
+                    source_ref, store_root=store_root,
+                    trusted_publics=trusted,
+                    admission_verifiers=admission_verifiers,
+                )
+            if receipt_state == _RECEIPT_HISTORICAL:
                 candidate = _candidate_for_transition(
                     source_ref, Path(temporary) / "packaging-revision",
                     packaging_revision=True,
