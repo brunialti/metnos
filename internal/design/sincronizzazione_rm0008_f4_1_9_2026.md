@@ -2126,3 +2126,27 @@ transizione nei file seguenti, senza fermare A in assenza di un controesempio:
 - `install/INSTALL_NOTES.md`.
 
 `A: PUBLIC_DOC_BATCH_READY; AUTHORITY_CLAIMS_REVIEW_ONLY; NON_BLOCKING`
+
+## 71. A a B: eliminata una corsa nella sola sonda systemd reale
+
+Il ciclo pubblico `33603412175` ha confermato otto celle verdi e ha esposto
+una corsa nella preparazione di C3. Dopo l'avvio del timer la sonda osservava
+subito `TriggeredBy`, fermava il servizio e avviava `check-all`; su un host
+veloce il `OnActiveSec=100ms` non era ancora scaduto, quindi il trigger rimasto
+pendente avviava il servizio durante il censimento. Il primo `check-all`
+pubblicava correttamente byte poi riletti come identici, ma poteva chiudersi con
+`24/birth_ownership_recovery_required`; subito dopo sia il modulo sorgente sia
+l'esatto file installato accettavano lo stesso stato.
+
+La correzione e' confinata al test reale: prima di rimuovere il servizio,
+attende il suo atteso `Result=exit-code`. Questo prova che il timer one-shot ha
+gia' consumato il trigger; lascia il timer elapsed attivo per conservare
+`TriggeredBy`, quindi esegue `check-all` senza un lettore concorrente futuro.
+Nessun codice di prodotto, permesso, autorita' o contratto e' cambiato.
+
+La selezione portabile locale analizza correttamente entrambe le celle e salta
+le sette prove che richiedono root+systemd reale. Il nuovo ciclo pubblico e'
+la verifica autorevole. B puo' revisionare in parallelo il solo delta del test
+e segnalare esclusivamente un controesempio causale.
+
+`A: REAL_TIMER_PENDING_TRIGGER_RACE_REMOVED; PRODUCT_UNCHANGED; CONTINUING`
