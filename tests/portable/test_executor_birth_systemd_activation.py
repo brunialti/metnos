@@ -925,17 +925,31 @@ def _installed_check_all_diagnosis(program: Path, python: str) -> str:
         "module=importlib.util.module_from_spec(spec)\n"
         "sys.modules[spec.name]=module\n"
         "spec.loader.exec_module(module)\n"
+        "stage='attest'\n"
         "try:\n"
-        " module._run_operational_command_v1(module.parse_cli_v1(['check-all']))\n"
+        " operational=module._attest_operational_preflight_v1()\n"
+        " stage='encode'\n"
+        " encoded=module._preflight_attestation_bytes_v1(operational.selected,operational.observation.observation)\n"
+        " request_id=operational.selected.transaction.prefix.records[-1].request_id\n"
+        " stage='publish'\n"
+        " module._publish_preflight_attestation_core_v1(encoded,request_id,root=module.PREFLIGHT_ATTESTATION_ROOT_V1,uid=0,gid=0,chain_stop=None)\n"
+        " stage='reread'\n"
+        " observed=module._read_preflight_attestation_core_v1(request_id,root=module.PREFLIGHT_ATTESTATION_ROOT_V1,uid=0,gid=0,chain_stop=None)\n"
+        " if observed != encoded: raise module._recovery('preflight attestation publication reread')\n"
         "except module.PreflightError as error:\n"
-        " result={'kind':'PreflightError','code':str(error.code),'detail':str(error.detail)}\n"
+        " result={'kind':'PreflightError','code':str(error.code),'detail':stage+'|'+str(error.detail)}\n"
         "except OSError as error:\n"
         " errno=error.errno if type(error.errno) is int and 0 <= error.errno <= 4096 else None\n"
-        " result={'kind':'OSError','code':str(errno) if errno is not None else '','detail':''}\n"
-        "except (AttributeError,RuntimeError,TypeError,ValueError) as error:\n"
-        " result={'kind':type(error).__name__,'code':'','detail':''}\n"
-        "except BaseException:\n"
-        " result={'kind':'OtherError','code':'','detail':''}\n"
+        " result={'kind':'OSError','code':str(errno) if errno is not None else '','detail':stage}\n"
+        "except BaseException as error:\n"
+        " error_type=type(error)\n"
+        " name=error_type.__name__\n"
+        " if error_type.__module__ == 'builtins' and name.isascii() and name.isidentifier() and len(name) <= 64:\n"
+        "  result={'kind':'BuiltinError','code':name,'detail':stage}\n"
+        " elif error_type.__module__ == 'subprocess' and name in {'CalledProcessError','SubprocessError','TimeoutExpired'}:\n"
+        "  result={'kind':'SubprocessError','code':name,'detail':stage}\n"
+        " else:\n"
+        "  result={'kind':'OtherError','code':'','detail':stage}\n"
         "else:\n"
         " result={'kind':'accepted','code':'','detail':''}\n"
         "encoded=('metnos-probe-v1:'+json.dumps(result,ensure_ascii=True,sort_keys=True,separators=(',',':'))).encode('ascii')\n"
@@ -979,27 +993,33 @@ def _installed_check_all_diagnosis(program: Path, python: str) -> str:
     kind, code, detail = value["kind"], value["code"], value["detail"]
     if (kind, code, detail) == ("accepted", "", ""):
         return kind
+    stages = {"attest", "encode", "publish", "reread"}
     if (
-        not detail and kind == "OSError"
+        detail in stages and kind == "OSError"
         and (
             not code
             or code.isascii() and code.isdecimal() and 0 <= int(code) <= 4096
         )
     ):
-        return "|".join((kind, code))
+        return "|".join((kind, code, detail))
     if (
-        not code and not detail
-        and kind in {
-            "AttributeError", "OtherError", "RuntimeError", "TypeError",
-            "ValueError",
-        }
+        kind == "BuiltinError" and detail in stages
+        and code.isascii() and code.isidentifier() and len(code) <= 64
     ):
-        return kind
+        return "|".join((kind, code, detail))
+    if (
+        kind == "SubprocessError" and detail in stages
+        and code in {"CalledProcessError", "SubprocessError", "TimeoutExpired"}
+    ):
+        return "|".join((kind, code, detail))
+    if kind == "OtherError" and not code and detail in stages:
+        return "|".join((kind, detail))
     if (
         kind != "PreflightError" or len(code) + len(detail) > 256
         or not code.startswith("birth_ownership_")
         or not code.isascii() or not detail.isascii()
-        or not detail or not detail.isprintable()
+        or not any(detail.startswith(stage + "|") for stage in stages)
+        or not detail.isprintable()
     ):
         return "probe-output-rejected"
     return "|".join((kind, code, detail))
