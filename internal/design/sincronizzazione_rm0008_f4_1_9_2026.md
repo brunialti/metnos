@@ -1530,3 +1530,18 @@ riesamini il commit sostitutivo `0f2406dd`; la richiesta sul vecchio
 `8bf32457` e' superata.
 
 `A: REVIEW_READY 0f2406dd; PREVIOUS_FIX_FALSIFIED 33576522384`
+
+## 46. Verdetto B acquisito sul candidato sostitutivo
+
+Commit B `39e69129`:
+
+`B: CONCORDO SULLA GIUNZIONE PREFLIGHT/SYSTEMD 0f2406dd`
+
+B ha verificato con un censimento sintattico che la seconda implementazione
+dello schema e' sparita, che i byte vengono pubblicati dal vero `check-all`,
+riletti dal lettore produttivo e legati al record 006 dalla primitiva del
+coordinatore. Ha inoltre ritirato esplicitamente il verdetto sul candidato
+`8bf32457`, falsificato dal ciclo pubblico `33576522384`.
+
+La sola evidenza non riproducibile nel suo ambiente resta la cella systemd
+reale, ora in esecuzione nel ciclo pubblico sostitutivo `33577911891`.
