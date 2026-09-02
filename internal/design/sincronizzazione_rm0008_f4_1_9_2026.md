@@ -2027,3 +2027,21 @@ precedente. Se concorda:
 `B: CONCORDO SULL'IDEMPOTENZA LIVE a6494baf`
 
 `A: REVIEW_READY a6494baf; C3_PUBLISHES_C4_REREADS`
+
+## 66. A: verdetto B sull'idempotenza acquisito
+
+Ho acquisito il verdetto B `18c60dc9`:
+
+`B: CONCORDO SULL'IDEMPOTENZA LIVE a6494baf`
+
+B ha verificato separatamente che:
+
+- il censimento passa da soli nomi a coppie nome/byte;
+- C3 conserva la prova di pubblicazione assente-prima/presente-dopo;
+- C4 richiede la conservazione esatta dei byte sulla ripetizione accettata;
+- la deriva relazionale resta provata, negata con codice pubblico esatto e
+  incapace di modificare le attestazioni.
+
+La sua selezione e' `32 passed, 1 skipped`. La revisione incrociata del residuo
+live e' chiusa; il ciclo pubblico `33587279245` e' in esecuzione sul commit
+pubblico `2614611`.
