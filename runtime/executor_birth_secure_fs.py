@@ -3232,6 +3232,7 @@ class _SecureRootSession:
                         mode,
                         dir_fd=directory,
                     )
+                    os.fchmod(fd, mode)
                     created = True
                 except FileExistsError:
                     fd = os.open(name, flags, dir_fd=directory)

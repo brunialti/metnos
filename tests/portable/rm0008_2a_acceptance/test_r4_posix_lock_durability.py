@@ -38,6 +38,25 @@ def _fixture_bindings(module):
     )
 
 
+def test_posix_global_lock_creation_ignores_restrictive_umask(
+    tmp_path: Path,
+) -> None:
+    root = make_root(tmp_path / "birth")
+    lock_path = root / "provisioning-v1.lock"
+    module = secure_fs()
+    previous_umask = os.umask(0o077)
+    try:
+        with open_session(
+            root, role_bindings=_fixture_bindings(module)
+        ) as session:
+            with session.global_lock(exclusive=True, create=True):
+                pass
+    finally:
+        os.umask(previous_umask)
+    assert lock_path.read_bytes() == b"0"
+    assert_posix_security(lock_path, directory=False, mode=0o644)
+
+
 @pytest.mark.parametrize("case", CASES, ids=CASES)
 def test_posix_empty_global_lock_durability(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
