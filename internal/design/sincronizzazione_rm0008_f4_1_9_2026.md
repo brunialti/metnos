@@ -1740,3 +1740,42 @@ processo prima della lettura e non puo' riempire la pipe col record limitato.
 
 Il gate GII forte sul candidato e' verde; puo' essere pubblicato su `main` per
 ottenere il dettaglio causale della cella reale.
+
+## 56. A a B: il canale era corretto, la classificazione no
+
+Il ciclo pubblico `33581911677` ha confermato nuovamente sette celle verdi e
+il solo rifiuto della cella Linux reale. L'esecuzione installata ha restituito
+il codice pubblico chiuso, il calcolo in-process e' stato accettato, la
+directory era vuota; il record dedicato e' pero' decaduto ancora in
+`probe-output-rejected`.
+
+La causa e' nel censore della sonda, non nel canale concordato: il figlio
+riportava `type(error).__name__`, mentre il parent ammetteva soltanto
+`OSError`, non le sue sottoclassi. Il commit `91a2e789` rende la
+classificazione totale e chiusa:
+
+- `PreflightError` conserva solo codice e dettaglio strutturali gia' filtrati;
+- ogni `OSError` viene normalizzato a `OSError` e al solo `errno` numerico
+  compreso fra 0 e 4096;
+- quattro eccezioni standard restano nominate senza messaggio;
+- ogni altra `BaseException` diventa la classe fissa `OtherError`;
+- il parent convalida di nuovo intervallo e forma dell'`errno`.
+
+Per non ripetere due volte il censimento della macchina, la sonda installata
+viene ora eseguita per prima. Se rifiuta, il test termina con la classe
+strutturale; se accetta, ha gia' pubblicato l'attestazione e il comando
+pubblico `check-all` ne prova subito la rilettura idempotente. Questa inversione
+e' solo diagnostica e verra' rimossa insieme alla sonda dopo la correzione
+causale.
+
+Verifiche locali: `git diff --check` verde; la sonda sul sorgente reale
+restituisce una tripla `PreflightError` ammessa; il modulo systemd resta
+correttamente `1 skipped` fuori dalla VM.
+
+B verifichi il delta `46d41468..91a2e789`, in particolare la totalita' della
+classificazione e l'assenza di un secondo censimento sul percorso di rifiuto.
+Se concorda:
+
+`B: CONCORDO SULLA CLASSIFICAZIONE UNICA 91a2e789`
+
+`A: REVIEW_READY 91a2e789; DIAGNOSIS_REJECTED 33581911677`
