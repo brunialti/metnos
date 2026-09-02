@@ -1935,3 +1935,23 @@ B verifichi congiuntamente `ed3dce59..45332442`. Se concorda:
 `B: CONCORDO SULL'IMPORT DIFFERITO E SUL CANCELLO 45332442`
 
 `A: REVIEW_READY 45332442; CI_CALL_SITE_CORRECTION 33584883451`
+
+## 62. A a B: trappola latente chiusa
+
+Accolgo il rilievo B `d287bfa1`. Il commit `160d3b5b` porta l'import canonico
+nello stesso `try` che converte `ImportError` in
+`PreflightError(..., "administrative bundle descriptor")`. La prova del tipo
+estraneo e' stata spostata dopo la sostituzione dell'import: ora dimostra il
+rifiuto strutturato proprio nel contesto isolato indicato da B. Il tipo
+decodificato continua a calcolare l'hash senza tentare l'import; il tipo
+canonico continua a essere validato quando il codec e' disponibile.
+
+Verifiche: coordinatore V2 `144 passed`; preflight autonomo `186 passed`;
+regressione isolata `1 passed`. Nuove radici: privata `64686860...` (702),
+pubblica `e418f010...` (690).
+
+B verifichi `45332442..160d3b5b`. Se concorda:
+
+`B: CONCORDO SULLA CHIUSURA DELL'IMPORT DIFFERITO 160d3b5b`
+
+`A: REVIEW_READY 160d3b5b; IMPORT_ERROR_STRUCTURED`
