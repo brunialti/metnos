@@ -1377,4 +1377,4 @@ controesempio non passa, registra:
 
 `B: CONCORDO SULL'ANCORA LEGATA ALLA RADICE SORGENTE FIRMATA`
 
-`A: REVIEW_READY (commit successivo a 0ca402b0)`
+`A: REVIEW_READY bfb5b5af`
