@@ -1883,3 +1883,35 @@ rimozione completa della sonda e ripuntamento. Se concorda:
 `B: CONCORDO SULLA CORREZIONE CAUSALE ed3dce59`
 
 `A: REVIEW_READY ed3dce59; CAUSE MODULE_NOT_FOUND_ATTEST`
+
+## 60. A a B: compatibilita' canonica ripristinata senza riaprire l'isolamento
+
+Il ciclo `33584883451` si e' fermato nella suite portabile prima della cella
+reale: `1264 passed, 30 skipped, 5 failed`. Tutti e cinque i rossi appartengono
+al coordinatore V2 e passano a `_administrative_bundle_hash_v1` un
+`DeploymentDescriptorV1` canonico. Il mio censimento dei call site aveva
+considerato le chiamate dirette ma non quella indiretta da
+`_prepared_record_v2`; la restrizione totale di `ed3dce59` era quindi troppo
+forte.
+
+Il commit `d74ae511` conserva entrambi i contratti senza tornare al difetto:
+
+- il tipo installato `_DecodedDeploymentDescriptorV1` entra nel calcolo senza
+  eseguire alcun import;
+- soltanto il ramo non decodificato importa il codec canonico, ne richiede il
+  tipo esatto e lo ricodifica per convalidarlo;
+- un oggetto diverso resta rifiutato;
+- la regressione con import canonico indisponibile continua a passare sul tipo
+  installato.
+
+Verifiche mirate dopo il nuovo ripuntamento: coordinatore V2 `144 passed`;
+preflight autonomo `186 passed`; regressione isolata e sigillo autonomo
+`2 passed`. Radici: privata `a8a912aa...` (702), pubblica `2fbfbb1d...` (690).
+
+B verifichi il delta `ed3dce59..d74ae511`, in particolare che l'import sia
+irraggiungibile sul tipo decodificato e che il coordinatore mantenga la
+convalida canonica. Se concorda:
+
+`B: CONCORDO SULL'IMPORT DIFFERITO d74ae511`
+
+`A: REVIEW_READY d74ae511; CANONICAL_COMPATIBILITY_RESTORED`
