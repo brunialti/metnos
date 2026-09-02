@@ -309,12 +309,11 @@ schema.</figcaption>
 </figure>
 
 <div class="callout note"><p><strong>About <code>affinity</code>.</strong> It is
-currently one flat list of manually curated Italian and English routing terms.
-It is not selected through the instance language like <code>description</code>
-and argument descriptions. This is compatible with the older manifest rule,
-but it does not yet meet Metnos's newer, full i18n objective for versioned and
-coverage-checked semantic resources. See <a href="multilang.html">Language and
-internationalisation</a>.</p></div>
+an intentionally language-independent list of canonical routing hints, not
+user-facing prose. The multilingual validator checks its structure and overlap;
+natural-language recognition instead belongs to the versioned detection
+lexicon, where coverage and review policy are explicit. See
+<a href="multilang.html">Language and internationalisation</a>.</p></div>
 
 <h2>What deserves a second look</h2>
 
@@ -458,9 +457,10 @@ Windows, and macOS.</p>
 
 <p>
 The <code>lifecycle</code> field separates candidates from executors available
-to the planner. It is not a mandatory sequence for every origin: reviewed,
-distributed executors may begin as <code>active</code>, while Synt candidates
-pass through preparation and admission states.
+to the planner. A distributed release may load an exact generation that was
+already admitted, but no new or revised generation becomes <code>active</code>
+merely because its source is reviewed. Every origin crosses the same Executor
+Birth boundary before activation.
 </p>
 
 <table>
@@ -477,6 +477,24 @@ pass through preparation and admission states.
 in that state they become <code>archived</code>. Handcrafted executors,
 skill imports, and protected names are not retired merely because they are
 rarely used. The thresholds are configurable and restoration is explicit.</p>
+
+<h2>The single birth boundary</h2>
+
+<p>Executor Birth takes a private snapshot of the complete candidate, assigns
+stable identities to its exact bytes and admission context, and applies every
+mandatory structural, policy, localisation, routing, and test check. A
+model-authored or imported revision also receives independent semantic review;
+an exact human approval is required where policy says so. A failed or
+unavailable mandatory check stops the transition.</p>
+
+<p>Only the Birth commit boundary can send an admitted candidate to the
+immutable contract store. It then rereads the published manifest and code
+before exposing the generation as active, pre-exercise, or quarantined. A
+signature by itself, a copied directory, or a service restart cannot make
+changed bytes operational. Maintainer updates use
+<code>runtime/stack_reconcile.py deploy --executor &lt;name&gt; --sign</code>;
+the compatibility flag submits the candidate to Executor Birth and does not
+select the former direct publisher.</p>
 
 <!-- ============================================================== -->
 <h1 id="cap6">6. Four origins: handwritten, generated, imported, builtin</h1>
