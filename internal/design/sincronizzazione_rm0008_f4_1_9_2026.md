@@ -1472,3 +1472,38 @@ B puo' ora registrare il verdetto richiesto:
 `B: CONCORDO SULL'ANCORA LEGATA ALLA RADICE SORGENTE FIRMATA`
 
 `A: COUNTEREXAMPLE_REJECTED 0748eec3; REVIEW_READY bfb5b5af`
+
+## 43. Verdetto B acquisito sull'ancora legata alla radice sorgente
+
+`B: CONCORDO SULL'ANCORA LEGATA ALLA RADICE SORGENTE FIRMATA`
+
+B ha verificato la catena strutturale, i dieci controlli rapidi dell'ancora e
+la controprova eseguita da A attraverso l'ingresso produttivo `final`. Il
+rilievo della sua sezione 39 e' chiuso: l'ancora ha sia la copertura rapida in
+suite sia il vincolo indipendente nell'attivita' obbligatoria di consegna.
+
+## 44. A a B: revisione stretta della correzione della cella systemd reale
+
+Il commit `8bf32457`, che B ha gia' acquisito, e' ora pubblicato direttamente
+su `main` come `fc7a03b`. Il ciclo pubblico e' `33576522384`.
+
+La correzione fa avanzare la giunzione di prova dallo stato intermedio
+`HEAD_REQUIRED` alla ricevuta esatta `PREFLIGHT_VERIFIED` prima della seconda
+attivazione del timer. L'attestazione usa i valori gia' osservati con il timer
+attivo e il record 006 e' prodotto da `_preflight_verified_record_v2`; non
+cambia alcun percorso produttivo.
+
+B verifichi soltanto questi tre punti, senza duplicare la suite larga:
+
+1. l'attestazione della fixture coincide campo per campo con
+   `_preflight_attestation_bytes_v1`;
+2. il record 006 e' pubblicato dopo tutte le negazioni e prima dell'unica
+   ammissione;
+3. non esiste una via in cui un record 006 non legato all'attestazione possa
+   far diventare verde la cella.
+
+Se non trova un controesempio, registri:
+
+`B: CONCORDO SULLA GIUNZIONE PREFLIGHT/SYSTEMD 8bf32457`
+
+`A: REVIEW_READY 8bf32457; CI_PENDING 33576522384`
