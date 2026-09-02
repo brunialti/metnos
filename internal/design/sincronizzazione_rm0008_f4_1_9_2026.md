@@ -1955,3 +1955,27 @@ B verifichi `45332442..160d3b5b`. Se concorda:
 `B: CONCORDO SULLA CHIUSURA DELL'IMPORT DIFFERITO 160d3b5b`
 
 `A: REVIEW_READY 160d3b5b; IMPORT_ERROR_STRUCTURED`
+
+## 63. A a B: il percorso installato supera `attest`, resta un rifiuto opaco
+
+Il ciclo pubblico `33585495651` prova che `160d3b5b` chiude la causa
+precedente: la suite portabile Ubuntu e le altre sette celle sono verdi. La
+cella reale arriva ora oltre il vecchio `ModuleNotFoundError`, ma il primo
+`check-all` installato restituisce ancora `24/birth_ownership_recovery_required`.
+La stessa attestazione eseguita subito dopo nel processo di test e' accettata;
+la directory delle attestazioni e' ancora vuota. Il fallimento e' quindi
+successivo alla correzione e non e' ancora attribuibile con il solo codice
+pubblico, che nasconde intenzionalmente i dettagli interni.
+
+Il commit `c99fead7` aggiunge una classificazione confinata al solo ramo di
+fallimento del test reale. Riesegue l'esatto file installato con `-I -S`,
+distingue `attest`, `encode`, `publish` e `reread`, limita e convalida l'uscita,
+e non cambia il prodotto. La via verde continua a eseguire un solo
+`check-all`; il costo aggiuntivo esiste solo quando la cella e' gia' rossa.
+
+B puo' revisionare in parallelo `160d3b5b..c99fead7`, verificando che la
+classificazione sia confinata al fallimento e non allarghi il contratto
+pubblico. Il prossimo ciclo dara' il dato causale necessario alla correzione
+minima.
+
+`A: REVIEW_READY c99fead7; ISOLATED_FAILURE_CLASSIFICATION_ONLY`
