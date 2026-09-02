@@ -302,6 +302,7 @@ def test_descriptor_capture_is_anchored_and_bound_to_the_verified_payload(
 
     _value, encoded, signature = _manifest(
         tmp_path, private, key_id,
+        target="linux",
         mutate=lambda value: value.update(
             installation_root=descriptor.installation_root,
         ),
@@ -310,7 +311,7 @@ def test_descriptor_capture_is_anchored_and_bound_to_the_verified_payload(
     verified = distribution._verify_distribution_manifest_for_test(
         encoded, signature, registry=registry,
         _environment=distribution._environment_for_test(
-            "windows" if os.name == "nt" else "linux", "x86_64", tmp_path,
+            "linux", "x86_64", tmp_path,
             claimed_installation_root=descriptor.installation_root,
         ),
     )

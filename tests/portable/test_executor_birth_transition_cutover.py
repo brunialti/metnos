@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import replace
+import os
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 
@@ -14,6 +15,12 @@ from executor_birth_service_catalog import (
     DecodedServiceCatalogV1, ServiceCatalogEntryV1, ServiceLegacyBindingV1,
 )
 from install import birth_authority_provisioner as provisioner
+
+
+LINUX_ONLY = pytest.mark.skipif(
+    os.name == "nt",
+    reason="the productive transition controls Linux processes and systemd",
+)
 
 
 def D(character: str) -> str:
@@ -29,6 +36,7 @@ def _gate_bytes(closed: bool = True) -> bytes:
     ).encode("ascii")
 
 
+@LINUX_ONLY
 def test_process_tree_observer_covers_open_and_mapped_paths(tmp_path: Path):
     observed_root = tmp_path / "previous"
     observed_root.mkdir()
@@ -122,6 +130,7 @@ class _Maintenance:
         }
 
 
+@LINUX_ONLY
 def test_retirement_preserves_the_occupied_fragment_before_replacement(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ):
@@ -172,6 +181,7 @@ def test_retirement_preserves_the_occupied_fragment_before_replacement(
     assert (system / "metnos-http.service").read_bytes() == signed_fragment
 
 
+@LINUX_ONLY
 def test_topology_helper_installs_reloads_and_returns_the_live_measurement(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ):
@@ -218,6 +228,7 @@ def test_topology_helper_installs_reloads_and_returns_the_live_measurement(
     assert calls[0][0][0] == ["/usr/bin/systemctl", "daemon-reload"]
 
 
+@LINUX_ONLY
 def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -370,6 +381,7 @@ def test_product_wrapper_denies_before_lock_when_closed_policy_is_absent(
         )
 
 
+@LINUX_ONLY
 def test_maintenance_session_retains_quiescence_across_named_load_states(
     monkeypatch: pytest.MonkeyPatch,
 ):
