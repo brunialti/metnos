@@ -939,10 +939,31 @@ def _installed_check_all_diagnosis(program: Path, python: str) -> str:
         )
     except Exception as failure:
         return f"raised {type(failure).__name__}"
-    return (
-        f"exit={completed.returncode} stdout={completed.stdout.strip()!r} "
-        f"stderr={completed.stderr.strip()!r}"
-    )
+    payload = completed.stdout.strip()
+    if completed.returncode != 0:
+        return f"probe-exit={completed.returncode}"
+    if completed.stderr:
+        return "probe-stderr-present"
+    if payload == "accepted":
+        return payload
+    fields = payload.split("|")
+    if (
+        len(fields) == 3 and not fields[1] and not fields[2]
+        and fields[0] in {
+            "AttributeError", "OSError", "RuntimeError", "TypeError",
+            "ValueError",
+        }
+    ):
+        return fields[0]
+    if (
+        len(fields) != 3 or len(payload) > 256
+        or fields[0] != "PreflightError"
+        or not fields[1].startswith("birth_ownership_")
+        or not fields[1].isascii() or not fields[2].isascii()
+        or not fields[2] or not fields[2].isprintable()
+    ):
+        return "probe-output-rejected"
+    return payload
 
 
 def _wait_for(predicate, timeout: float = 300.0, *, diagnose=None) -> None:
