@@ -786,7 +786,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:6b035e4bf6d56684e45960a5e0d38f3ce85aedf6517d4945cb5bf4931cbd661e"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:f5c908cb0b8fde9548dd4eeb42555c637114334955398d3f8db96e774b75d658"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -3675,16 +3675,7 @@ def _startup_prerequisite_digest_v1(encoded: bytes) -> str:
 def _administrative_bundle_hash_v1(
     descriptor: object,
 ) -> str:
-    from executor_birth_distribution_assembler import (
-        DeploymentDescriptorV1, encode_deployment_descriptor_v1,
-    )
-
-    if type(descriptor) is DeploymentDescriptorV1:
-        try:
-            encode_deployment_descriptor_v1(descriptor)
-        except Exception as exc:
-            raise _invalid("administrative bundle descriptor") from exc
-    elif type(descriptor) is not _DecodedDeploymentDescriptorV1:
+    if type(descriptor) is not _DecodedDeploymentDescriptorV1:
         raise _invalid("administrative bundle descriptor")
     material = bytearray(_u64be_v1(len(descriptor.artifacts)))
     for artifact in descriptor.artifacts:
