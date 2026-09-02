@@ -37,7 +37,11 @@ from contract_boundary_guard import (
     discover as discover_boundary_scopes,
 )
 from executor_birth_cutover import CurrentReceiptProof
-from executor_birth_context_transition import current_inventory_hash_v1
+from executor_birth_context_transition import (
+    context_transition_basename_v1,
+    current_inventory_hash_v1,
+    issue_context_transition_v1,
+)
 from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 from executor_birth_ownership_authorities import (
     decode_ownership_registry_v1,
@@ -608,6 +612,20 @@ def _build_prerequisite_and_graph(
     cutover_registry = decode_ownership_registry_v1(
         registries["cutover"], expected_kind="cutover",
     )
+    transition_encoded, context_transition = issue_context_transition_v1(
+        request_id=request_id,
+        closed_build_id=closed_build_id,
+        previous_cutover_id=None,
+        previous_set_id="1" * 64,
+        previous_admission_context_id="sha256:" + "2" * 64,
+        previous_context_epoch="sha256:" + "3" * 64,
+        set_id="4" * 64,
+        prepared_admission_context_id="sha256:" + "5" * 64,
+        prepared_context_epoch="sha256:" + "6" * 64,
+        context_material_sha256="7" * 64,
+        set_json_sha256="8" * 64,
+        current_inventory=proof.inventory,
+    )
     cutover_encoded, cutover_signature = issue_ownership_cutover_certificate(
         proof=proof, previous_cutover_id=None, request_id=request_id,
         signing_key_id=next(iter(cutover_registry.keys)),
@@ -615,7 +633,7 @@ def _build_prerequisite_and_graph(
         boundary_inventory_hash=manifest_value["boundary_inventory_hash"],
         boundary_guard_version=manifest_value["boundary_guard_version"],
         closed_build_id=closed_build_id,
-        context_transition_id="sha256:" + "8" * 64,
+        context_transition_id=context_transition.transition_id,
         dominant_startup_receipt="sha256:" + "9" * 64,
         private_key=fixture.private_keys["cutover"],
     )
@@ -706,11 +724,18 @@ def _build_prerequisite_and_graph(
     installed_tree_hash = preflight._installed_tree_hash_v1(manifest_files)
 
     chain = OWNERSHIP_ROOT / "chain-v1"
-    for name in ("builds-v1", "cutovers-v1", "heads-v1"):
+    for name in (
+        "builds-v1", "context-transitions-v1", "cutovers-v1", "heads-v1",
+    ):
         (chain / name).mkdir(mode=0o755, parents=True, exist_ok=True)
     build_stem = closed_build_id.removeprefix("sha256:")
     _write_control(chain / "builds-v1" / f"{build_stem}.json", fixture.manifest)
     _write_control(chain / "builds-v1" / f"{build_stem}.sig", fixture.signature)
+    _write_control(
+        chain / "context-transitions-v1"
+        / context_transition_basename_v1(context_transition.transition_id),
+        transition_encoded,
+    )
     cutover_stem = cutover.cutover_id.removeprefix("sha256:")
     _write_control(
         chain / "cutovers-v1" / f"{cutover_stem}.json", cutover_encoded,
