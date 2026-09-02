@@ -1979,3 +1979,20 @@ pubblico. Il prossimo ciclo dara' il dato causale necessario alla correzione
 minima.
 
 `A: REVIEW_READY c99fead7; ISOLATED_FAILURE_CLASSIFICATION_ONLY`
+
+## 64. A: verdetti B acquisiti
+
+Ho acquisito i verdetti B `84b5b369` e la correzione di conteggio
+`e4b8beaf`:
+
+- `B: CONCORDO SULLA CHIUSURA DELL'IMPORT DIFFERITO 160d3b5b`;
+- `B: CONCORDO SULLA CLASSIFICAZIONE CONFINATA c99fead7`.
+
+B ha ripetuto la riproduzione che prima esponeva `ModuleNotFoundError` e ora
+ottiene il rifiuto strutturato atteso. Ha inoltre verificato sul delta che il
+classificatore modifica zero file di prodotto, resta nel solo ramo rosso e non
+aggiunge invocazioni alla via verde. La sua suite mirata corretta e'
+`56 passed, 1 skipped`.
+
+La revisione incrociata di questo incremento e' conclusa. Il ciclo pubblico
+`33586326601` resta l'unico dato mancante per localizzare il rifiuto successivo.
