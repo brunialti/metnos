@@ -29,7 +29,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 import config as _C
-from executor_birth_maintenance_units import CONTRACT_CUTOVER_UNITS
+from executor_birth_maintenance_units import (
+    CONTRACT_CUTOVER_UNITS,
+    MAINTENANCE_TARGETS_V1,
+)
 
 
 SCHEMA_VERSION = 1
@@ -270,7 +273,12 @@ class Systemctl:
             raise StackFailure("systemctl_failed", type(exc).__name__) from exc
 
     def show(self, unit: str, scope: str = "user") -> dict[str, str]:
-        if unit not in {*STACK_UNITS, *CONTROL_PLANE_UNITS, TARGET_UNIT}:
+        # The service topology is the sole authority for both productive and
+        # legacy maintenance observations.  In particular, cutover must prove
+        # the retired system timers idle without widening this adapter to
+        # arbitrary systemd units or accepting a catalog unit in the wrong
+        # manager scope.
+        if (scope, unit) not in MAINTENANCE_TARGETS_V1:
             raise StackFailure("unknown_unit", "unit is outside the closed stack catalog")
         result = self.run(
             scope, "show", unit,

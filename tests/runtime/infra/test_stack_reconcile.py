@@ -508,6 +508,40 @@ def test_systemctl_show_accepts_closed_control_plane_units(monkeypatch):
         assert adapter.show(unit)["LoadState"] == "loaded"
 
 
+def test_systemctl_show_accepts_exact_central_maintenance_catalog(monkeypatch):
+    from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
+
+    observed = []
+
+    def run(_self, scope, *_args, **_kwargs):
+        observed.append((scope, _args[1]))
+        return subprocess.CompletedProcess(
+            [], 0, stdout="LoadState=loaded\nActiveState=inactive\n", stderr="",
+        )
+
+    monkeypatch.setattr(sr.Systemctl, "run", run)
+    adapter = sr.Systemctl()
+    for scope, unit in MAINTENANCE_TARGETS_V1:
+        assert adapter.show(unit, scope)["LoadState"] == "loaded"
+    assert observed == list(MAINTENANCE_TARGETS_V1)
+
+
+def test_systemctl_show_rejects_unit_outside_exact_scope_catalog(monkeypatch):
+    monkeypatch.setattr(
+        sr.Systemctl, "run",
+        lambda *_args, **_kwargs: pytest.fail("systemctl must not be invoked"),
+    )
+    adapter = sr.Systemctl()
+    for scope, unit in (
+        ("user", "metnos-backup.service"),
+        ("system", "metnos.target"),
+        ("system", "unrelated.service"),
+    ):
+        with pytest.raises(sr.StackFailure) as caught:
+            adapter.show(unit, scope)
+        assert caught.value.code == "unknown_unit"
+
+
 def test_check_rejects_catalog_drift(monkeypatch, tmp_path):
     _wire(monkeypatch, _composite(names=["delete_files"]))
     rec = sr.StackReconciler(
