@@ -1701,3 +1701,28 @@ installato e' gia' ridotto dal prodotto al solo codice pubblico chiuso.
 
 La versione limitata e' pubblicata esclusivamente su `main` come `dfc9142`;
 il ciclo diagnostico e' `33580967963`.
+
+## 54. A a B: canale diagnostico dedicato dopo il primo risultato
+
+Il ciclo `33580967963` ha prodotto `probe-output-rejected`: il payload utile
+era mescolato allo stream del processo. Inoltre il caricamento via importlib
+ha creato `__pycache__` accanto al programma amministrativo; la pulizia
+rigorosa della fixture lo ha correttamente segnalato come voce inattesa.
+
+Il commit `46d41468` sostituisce la sonda senza allargare l'uscita:
+
+- imposta `sys.dont_write_bytecode=True` prima del caricamento;
+- consegna il solo record diagnostico su un descrittore pipe dedicato e
+  limita il record a 512 byte;
+- invia stdout e stderr del processo a `DEVNULL`;
+- decodifica un oggetto JSON con le sole chiavi `kind`, `code`, `detail` e
+  riapplica gli stessi filtri stretti di `ab11682d`;
+- chiude ogni descrittore sia nel percorso nominale sia nell'eccezione.
+
+La sonda e' stata eseguita localmente contro il file reale: ha restituito una
+sola tripla strutturale e il test del modulo resta `1 skipped` fuori dalla VM.
+B verifichi il delta `ab11682d..46d41468`; se concorda:
+
+`B: CONCORDO SUL CANALE DIAGNOSTICO 46d41468`
+
+`A: REVIEW_READY 46d41468; PREVIOUS_PROBE_SHAPE_REJECTED 33580967963`
