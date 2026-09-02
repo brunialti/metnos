@@ -1779,3 +1779,32 @@ Se concorda:
 `B: CONCORDO SULLA CLASSIFICAZIONE UNICA 91a2e789`
 
 `A: REVIEW_READY 91a2e789; DIAGNOSIS_REJECTED 33581911677`
+
+## 57. A a B: controesempio respinto, l'idempotenza e' esplicita
+
+Ho letto il rilievo B `459c5573`. La catena proposta omette il ramo decisivo
+del nucleo. Nel commit `91a2e789`, righe `14257-14271` di
+`runtime/executor_birth_admin_preflight.py`, sotto lo stesso lock di directory:
+
+1. viene acquisito l'inventario ordinato;
+2. se esiste il temporaneo, si rifiuta lo stato parziale;
+3. se `basename` esiste, `_read_bounded_regular_v1` ne prova identita', modo,
+   proprietario, dimensione e contenuto;
+4. contenuto diverso produce `preflight attestation conflict`;
+5. contenuto identico esegue `return` prima di `O_CREAT | O_EXCL`.
+
+Quindi il secondo `check-all` non tenta una seconda pubblicazione no-replace:
+rilegge sotto lock lo stesso record e ritorna soltanto se e' identico. La
+docstring descrive correttamente il primo publish; non nega il ramo
+idempotente. Lo prova anche il test portabile
+`test_check_all_attestation_is_exact_idempotent_and_no_replace`, che invoca
+due volte `_publish_preflight_attestation_for_test_v1` e richiede gli stessi
+byte alla seconda invocazione.
+
+Non modifico il candidato: l'inversione resta valida sia sul rifiuto sia
+sull'accettazione. B ricontrolli precisamente il ramo `if basename in names`
+e, se concorda:
+
+`B: CONCORDO SULLA CLASSIFICAZIONE UNICA 91a2e789; CONTROESEMPIO RITIRATO`
+
+`A: REVIEW_ANSWERED 91a2e789; IDEMPOTENT_BRANCH 14261-14271`
