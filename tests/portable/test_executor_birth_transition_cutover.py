@@ -358,6 +358,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     import executor_birth_ownership_preflight as ownership_preflight
     import executor_birth_startup_gate as startup_gate
     import install.executor_birth_source_receiver as source_receiver
+    import install.executor_birth_startup_gate as startup_gate_installer
     import install.executor_birth_startup_prerequisite as prerequisite_module
 
     events: list[str] = []
@@ -432,6 +433,12 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         coordinator, "_reserve_transition_edge_locked_v2", lambda *_args, **_kwargs: object(),
     )
     monkeypatch.setattr(coordinator, "_completed_transition_locked_v2", lambda *_: None)
+    monkeypatch.setattr(
+        startup_gate_installer, "install_startup_gate_v1",
+        lambda session: events.append("startup-install")
+        if session == "deployment"
+        else pytest.fail("startup gate lost the deployment lock"),
+    )
     monkeypatch.setattr(startup_gate, "_exclusive_startup_gate_v1", startup_lock)
     monkeypatch.setattr(
         ownership_chain.OwnershipChainStore, "initialize",
@@ -513,7 +520,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         legacy_installation_root="/opt/metnos",
     ) is result
     assert events == [
-        "deployment-enter", "startup-enter", "chain-initialize",
+        "deployment-enter", "startup-install", "startup-enter", "chain-initialize",
         "maintenance-enter",
         "maintenance-prove", "maintenance-exit", "contract-convergence",
         "maintenance-enter", "maintenance-prove", "authoring-seed",

@@ -4990,6 +4990,7 @@ def complete_transition_cutover_v2(
     from install.executor_birth_source_receiver import (
         _load_received_source_with_product_session_v1,
     )
+    from install.executor_birth_startup_gate import install_startup_gate_v1
     from install.executor_birth_startup_prerequisite import (
         _publish_startup_prerequisite_locked_v2,
     )
@@ -5051,6 +5052,7 @@ def complete_transition_cutover_v2(
         descriptor = preparation.descriptor
         if descriptor != signed_descriptor:
             raise _reject("birth_transition_service_identity_changed")
+        install_startup_gate_v1(deployment_session)
         with _exclusive_startup_gate_v1() as startup_session:
             catalog_owner = (
                 descriptor.service_uid,
