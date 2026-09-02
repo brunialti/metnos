@@ -851,7 +851,7 @@ def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProce
     )
 
 
-def _quiesce_failed_service(unit_name: str) -> None:
+def _quiesce_service(unit_name: str) -> None:
     """Stop one service and prove that a later activation result is fresh."""
     _systemctl("stop", unit_name)
     _systemctl("reset-failed", unit_name)
@@ -863,6 +863,23 @@ def _quiesce_failed_service(unit_name: str) -> None:
     ).stdout.strip()
     assert active == "inactive", f"service not quiescent: {unit_name}"
     assert result != "exit-code", f"stale failed result for {unit_name}"
+
+
+def _completed_new_invocation(unit_name: str, previous: str) -> bool:
+    """Return true only after a different invocation reaches a terminal state."""
+    shown = _systemctl(
+        "show", unit_name, "--property=ActiveState,InvocationID", check=False,
+    )
+    if shown.returncode != 0:
+        return False
+    properties = dict(
+        line.split("=", 1) for line in shown.stdout.splitlines() if "=" in line
+    )
+    invocation = properties.get("InvocationID", "")
+    return bool(
+        invocation and invocation != previous
+        and properties.get("ActiveState") in {"inactive", "failed"}
+    )
 
 
 def _unit_diagnosis(unit_name: str) -> str:
@@ -1144,7 +1161,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         )
         captured_tcb, effective, candidate_hash = _capture_live_bindings(fixture)
         _systemctl("stop", fixture.timer_name, check=False)
-        _quiesce_failed_service(fixture.service_name)
+        _quiesce_service(fixture.service_name)
         prerequisite, request_id, head_required = (
             _build_prerequisite_and_graph(
                 fixture, captured_tcb, effective, candidate_hash,
@@ -1158,7 +1175,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         direct_denial = _systemctl("start", fixture.service_name, check=False)
         assert direct_denial.returncode != 0
         assert not fixture.marker_path.exists()
-        _quiesce_failed_service(fixture.service_name)
+        _quiesce_service(fixture.service_name)
         _systemctl("start", fixture.timer_name)
         _wait_for(lambda: _systemctl(
             "show", fixture.service_name, "--property=Result", "--value",
@@ -1166,7 +1183,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         ).stdout.strip() == "exit-code")
         assert not fixture.marker_path.exists()
         _systemctl("stop", fixture.timer_name, check=False)
-        _quiesce_failed_service(fixture.service_name)
+        _quiesce_service(fixture.service_name)
 
         _write_control(prerequisite_path, prerequisite)
         preflight_path = ADMINISTRATIVE_ROOT / "preflight.py"
@@ -1189,6 +1206,9 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         # the schema and can silently drift from what check-all observed.
         attestation_path = ATTESTATION_ROOT / f"{request_id}.json"
         assert not attestation_path.exists()
+        previous_invocation = _systemctl(
+            "show", fixture.service_name, "--property=InvocationID", "--value",
+        ).stdout.strip()
         _systemctl("start", fixture.timer_name)
         _wait_for(
             lambda: fixture.timer_name in _systemctl(
@@ -1200,17 +1220,19 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         # Starting the timer schedules the service after OnActiveSec.  Merely
         # stopping the service here can race that pending trigger: a fast host
         # stops before it fires and the service then enters check-all's
-        # ownership snapshot.  First observe the expected denied activation,
-        # proving that the one-shot timer has fired; then keep the elapsed
-        # timer (and therefore TriggeredBy) active while removing its service.
+        # ownership snapshot.  Result is not a suitable completion signal:
+        # this pre-attestation invocation may finish successfully without
+        # launching the probe.  Instead, require a different systemd
+        # InvocationID to reach a terminal state, proving that the one-shot
+        # timer has fired and its process has exited.  Keep the elapsed timer
+        # (and therefore TriggeredBy) active while clearing its service state.
         _wait_for(
-            lambda: _systemctl(
-                "show", fixture.service_name, "--property=Result", "--value",
-                check=False,
-            ).stdout.strip() == "exit-code",
+            lambda: _completed_new_invocation(
+                fixture.service_name, previous_invocation,
+            ),
             diagnose=lambda: _unit_diagnosis(fixture.service_name),
         )
-        _quiesce_failed_service(fixture.service_name)
+        _quiesce_service(fixture.service_name)
         assert fixture.timer_name in _systemctl(
             "show", fixture.service_name, "--property=TriggeredBy", "--value",
             check=False,
