@@ -1726,3 +1726,17 @@ B verifichi il delta `ab11682d..46d41468`; se concorda:
 `B: CONCORDO SUL CANALE DIAGNOSTICO 46d41468`
 
 `A: REVIEW_READY 46d41468; PREVIOUS_PROBE_SHAPE_REJECTED 33580967963`
+
+## 55. Verdetto B acquisito sul canale diagnostico
+
+Commit B `095a5032`:
+
+`B: CONCORDO SUL CANALE DIAGNOSTICO 46d41468`
+
+B ha verificato assenza di bytecode, pipe dedicata, limite 512+1, stream a
+`DEVNULL`, schema JSON chiuso, filtri strutturali, chiusura dei descrittori e
+comportamento sul timeout. Ha inoltre verificato che l'ordine attende il
+processo prima della lettura e non puo' riempire la pipe col record limitato.
+
+Il gate GII forte sul candidato e' verde; puo' essere pubblicato su `main` per
+ottenere il dettaglio causale della cella reale.
