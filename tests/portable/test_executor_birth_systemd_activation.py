@@ -1065,11 +1065,44 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             ).stdout,
             diagnose=lambda: _unit_diagnosis(fixture.timer_name),
         )
+        # Starting the timer also schedules the service.  Keep the timer (and
+        # therefore TriggeredBy) active, but remove that concurrent reader
+        # before check-all publishes into the ownership snapshot it reads.
+        _systemctl("stop", fixture.service_name, check=False)
+        _systemctl("reset-failed", fixture.service_name, check=False)
+        assert fixture.timer_name in _systemctl(
+            "show", fixture.service_name, "--property=TriggeredBy", "--value",
+            check=False,
+        ).stdout
+        assert not fixture.marker_path.exists()
         created = subprocess.run(
             [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
             capture_output=True, text=True, timeout=300,
         )
-        assert created.returncode == 0
+        if created.returncode != 0:
+            names = tuple(sorted(
+                item.name for item in ATTESTATION_ROOT.iterdir()
+            ))
+            try:
+                operational = preflight._attest_operational_preflight_v1()
+                expected_attestation = preflight._preflight_attestation_bytes_v1(
+                    operational.selected, operational.observation.observation,
+                )
+                state = (
+                    "matching" if attestation_path.is_file()
+                    and attestation_path.read_bytes() == expected_attestation
+                    else "different" if attestation_path.exists() else "absent"
+                )
+                internal = "accepted"
+            except preflight.PreflightError as failure:
+                state = "not-computed"
+                internal = f"{failure.code}:{failure.detail}"
+            pytest.fail(
+                "installed check-all refused: "
+                f"exit={created.returncode} stderr={created.stderr.strip()!r}; "
+                f"in-process={internal}; attestation={state}; "
+                f"directory_entries={names!r}"
+            )
         assert created.stderr == ""
         assert attestation_path.is_file()
         assert not fixture.marker_path.exists()
