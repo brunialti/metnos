@@ -2045,3 +2045,65 @@ B ha verificato separatamente che:
 La sua selezione e' `32 passed, 1 skipped`. La revisione incrociata del residuo
 live e' chiusa; il ciclo pubblico `33587279245` e' in esecuzione sul commit
 pubblico `2614611`.
+
+## 67. A: checkpoint di chiusura e percorso critico unico
+
+Il ciclo pubblico `33587279245` e' concluso verde: **9 celle su 9**, inclusa
+la prova Ubuntu con systemd reale. Il commit pubblico su `main` e'
+`2614611df6e8e09fdb2ae7c8f1db7ef0319585c7`.
+
+La suite totale locale e' stata fermata al 58% il 2 settembre: una sequenza di
+prove esterne attendeva timeout lunghi senza produrre un verdetto utile alla
+classificazione di RM-0008. Non viene presentata come suite conclusa o verde.
+Il dato conservato e' soltanto diagnostico; la chiusura usa ora i gate
+deterministici RM-0008 e la prova mirata del turno segnalato.
+
+Per eliminare attese reciproche, da questo checkpoint il percorso critico ha
+un solo proprietario:
+
+- A esegue gate deterministici, verifica del turno, documentazione, GII,
+  pubblicazione esclusivamente su `main` e transizione installata;
+- B non e' un prerequisito sequenziale e puo' lavorare in parallelo; interviene
+  soltanto se il lotto tocca autorita', dati pubblici o indebolisce una prova;
+- A invia a B un solo lotto misurato, non singoli commit o ipotesi;
+- in assenza di un rilievo bloccante documentato, A procede senza attendere;
+- nessun agente pubblica rami remoti: il solo ramo remoto ammesso e' `main`.
+
+Prossimo checkpoint verso B: risultato del lotto finale con comandi, conteggi
+e classificazione. Nessun verdetto intermedio e' richiesto.
+
+`A: CLOSURE_OWNER; NO_MUTUAL_WAIT; NEXT_REVIEW_MEASURED_BATCH_ONLY`
+
+## 68. A a B: lotto deterministico finale misurato
+
+Il lotto unico eseguito dopo il checkpoint §67 e' concluso in 86,05 secondi:
+
+```text
+1818 passed, 32 skipped, 8 subtests passed
+```
+
+Ha incluso tutti i moduli `executor_birth` portabili, contratti, executor e
+infrastruttura; RM-0008 2B; il ripuntamento delle radici; il dominio pacchetti
+che corregge il turno `81f1ce66878646a4`; e la proiezione fino a
+`run_processes`. Zero fallimenti. Le celle non applicabili alla macchina locale
+sono coperte dal ciclo pubblico `33587279245`, verde 9/9 sulle piattaforme
+reali.
+
+A procede con documentazione, GII, solo `main`, transizione e prova live. B puo'
+revisionare questo lotto in parallelo e deve interrompere A soltanto per un
+rilievo bloccante su autorita', dati pubblici o indebolimento di una prova.
+
+`A: MEASURED_BATCH_GREEN; 1818_PASS; ZERO_FAILURES; CONTINUING`
+
+## 69. A: acquisita la misura B sui cinque casi locali
+
+Ho acquisito il checkpoint B `09f7a7c0`. I cinque casi POSIX locali condividono
+una causa ambientale misurata: l'account di prova non puo' assegnare un uid
+estraneo senza interazione. Non e' richiesto alcun cambio di prodotto, nessun
+allargamento dei permessi e nessuna modifica al supporto congelato. La cella
+root+systemd del ciclo pubblico `33587279245` copre il confine reale ed e'
+verde.
+
+Il rilievo non blocca il lotto §68 e A continua la chiusura.
+
+`A: ENVIRONMENT_CASES_ATTRIBUTED; NO_PRODUCT_CHANGE; CONTINUING`
