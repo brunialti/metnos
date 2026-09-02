@@ -1183,9 +1183,19 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             ).stdout,
             diagnose=lambda: _unit_diagnosis(fixture.timer_name),
         )
-        # Starting the timer also schedules the service.  Keep the timer (and
-        # therefore TriggeredBy) active, but remove that concurrent reader
-        # before check-all publishes into the ownership snapshot it reads.
+        # Starting the timer schedules the service after OnActiveSec.  Merely
+        # stopping the service here can race that pending trigger: a fast host
+        # stops before it fires and the service then enters check-all's
+        # ownership snapshot.  First observe the expected denied activation,
+        # proving that the one-shot timer has fired; then keep the elapsed
+        # timer (and therefore TriggeredBy) active while removing its service.
+        _wait_for(
+            lambda: _systemctl(
+                "show", fixture.service_name, "--property=Result", "--value",
+                check=False,
+            ).stdout.strip() == "exit-code",
+            diagnose=lambda: _unit_diagnosis(fixture.service_name),
+        )
         _systemctl("stop", fixture.service_name, check=False)
         _systemctl("reset-failed", fixture.service_name, check=False)
         assert fixture.timer_name in _systemctl(
