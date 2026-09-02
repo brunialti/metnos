@@ -1295,13 +1295,16 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         # ordinary auxiliary `oneshot` starts: systemd loads lazily and
         # immediately unloads an inactive, unreferenced oneshot together with
         # its edges.  The auxiliary unit must therefore remain resident.
-        def _attestations() -> set[str]:
-            return {item.name for item in ATTESTATION_ROOT.iterdir()}
+        def _attestations() -> dict[str, bytes]:
+            return {
+                item.name: item.read_bytes()
+                for item in ATTESTATION_ROOT.iterdir()
+            }
 
         def _check_all() -> subprocess.CompletedProcess[str]:
             return subprocess.run(
                 [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
-                # Same census, same reason as the diagnosis probe above.
+                # The installed census is bounded by the live manager size.
                 capture_output=True, text=True, timeout=300,
             )
 
@@ -1326,7 +1329,10 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         published_before = _attestations()
         accepted = _check_all()
         assert accepted.returncode == 0, accepted.stderr
-        assert _attestations() > published_before
+        # The earlier C3 step already published this request's exact
+        # attestation. Repeating the accepted C4 observation must preserve the
+        # durable bytes instead of inventing a second name or rewriting them.
+        assert _attestations() == published_before
 
         # Both causal edges are present in the canonical snapshot, in both
         # directions, rather than only in the direct systemd reading.  The
