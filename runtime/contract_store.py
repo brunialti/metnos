@@ -3113,6 +3113,7 @@ def _seed_repository_authoring_locked_v1(
     shadow_root: Path,
     trusted: tuple[TrustedPublic, ...],
     authoring_owner: tuple[int, int] | None = None,
+    skill_enabled: Callable[[str], bool] | None = None,
 ) -> None:
     """Install authenticated mutable authoring outside the closed release.
 
@@ -3136,8 +3137,12 @@ def _seed_repository_authoring_locked_v1(
         inventory_authoring_manifests, inventory_store_manifests,
     )
 
-    source_inventory = inventory_authoring_manifests()
-    target_inventory = inventory_store_manifests(store_root=shadow_root)
+    source_inventory = inventory_authoring_manifests(
+        skill_enabled=skill_enabled,
+    )
+    target_inventory = inventory_store_manifests(
+        store_root=shadow_root, skill_enabled=skill_enabled,
+    )
     if authoring_owner is not None and (
         type(authoring_owner) is not tuple
         or len(authoring_owner) != 2
@@ -3428,11 +3433,24 @@ def materialize_repository_authoring_for_transition_v1(
         raise ContractStoreError("authoring_seed_transition_closed")
 
     trusted = _trusted_public_tuple(trusted_publics)
+    skill_enabled = None
+    if (
+        authoring_owner is not None
+        and hasattr(os, "geteuid")
+        and os.geteuid() != authoring_owner[0]
+    ):
+        from skill_registry import _is_skill_enabled_for_owner_v1
+
+        skill_enabled = lambda name: _is_skill_enabled_for_owner_v1(
+            name, authoring_owner,
+        )
     _container, root, _marker = _production_paths()
     with catalog_admission_lock(
         store_root=root, trusted_owner=authoring_owner,
     ):
-        inventory = inventory_store_manifests(store_root=root)
+        inventory = inventory_store_manifests(
+            store_root=root, skill_enabled=skill_enabled,
+        )
         if inventory.problems or not inventory.manifests:
             raise ContractStoreError("authoring_seed_inventory_invalid")
         expected = {
@@ -3444,6 +3462,7 @@ def materialize_repository_authoring_for_transition_v1(
             shadow_root=root,
             trusted=trusted,
             authoring_owner=authoring_owner,
+            skill_enabled=skill_enabled,
         )
     return len(expected)
 

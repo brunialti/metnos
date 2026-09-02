@@ -3864,6 +3864,67 @@ def test_cutover_externalizes_repository_authoring_and_birth_keeps_release_uncha
     assert not tuple(root.rglob("*.birth-control-*"))
 
 
+def test_store_inventory_ignores_only_exact_empty_unbound_publication_residue(
+    tmp_path: Path,
+) -> None:
+    store = tmp_path / "v1"
+    store.mkdir(mode=0o700)
+    store.chmod(0o700)
+    contract_dir = store / ("a" * 64)
+    generations = contract_dir / "generations"
+    generations.mkdir(parents=True, mode=0o700)
+    contract_dir.chmod(0o700)
+    generations.chmod(0o700)
+    lock_path = contract_dir / "writer.lock"
+    lock_path.write_bytes(b"\0")
+    lock_path.chmod(0o600)
+
+    inventory = manifest_inventory_module.inventory_store_manifests(
+        sources=(), store_root=store,
+    )
+
+    assert not inventory.manifests
+    assert not inventory.problems
+
+
+@pytest.mark.parametrize("corruption", (
+    "unexpected_entry",
+    "generation_payload",
+    "wrong_lock_bytes",
+    "wrong_lock_mode",
+))
+def test_store_inventory_exposes_deviating_unbound_publication_residue(
+    tmp_path: Path,
+    corruption: str,
+) -> None:
+    store = tmp_path / "v1"
+    store.mkdir(mode=0o700)
+    store.chmod(0o700)
+    contract_dir = store / ("b" * 64)
+    generations = contract_dir / "generations"
+    generations.mkdir(parents=True, mode=0o700)
+    contract_dir.chmod(0o700)
+    generations.chmod(0o700)
+    lock_path = contract_dir / "writer.lock"
+    lock_path.write_bytes(b"\0")
+    lock_path.chmod(0o600)
+    if corruption == "unexpected_entry":
+        (contract_dir / "unexpected").write_bytes(b"")
+    elif corruption == "generation_payload":
+        (generations / "payload").write_bytes(b"")
+    elif corruption == "wrong_lock_bytes":
+        lock_path.write_bytes(b"x")
+    elif corruption == "wrong_lock_mode":
+        lock_path.chmod(0o640)
+
+    inventory = manifest_inventory_module.inventory_store_manifests(
+        sources=(), store_root=store,
+    )
+
+    assert not inventory.manifests
+    assert [problem.code for problem in inventory.problems] == ["binding_invalid"]
+
+
 def test_cutover_resumes_an_exact_external_authoring_seed_before_marker(
     tmp_path: Path,
     monkeypatch,

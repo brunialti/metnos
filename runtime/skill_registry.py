@@ -236,8 +236,15 @@ def _require_plain_owned_file(
     *,
     code: str,
     allow_missing: bool = False,
+    trusted_owner: tuple[int, int] | None = None,
 ) -> os.stat_result | None:
     """Fail closed on redirected, non-regular, or foreign policy files."""
+    if trusted_owner is not None and (
+        type(trusted_owner) is not tuple
+        or len(trusted_owner) != 2
+        or any(type(value) is not int or value < 0 for value in trusted_owner)
+    ):
+        raise SkillEnablementError(code, "invalid trusted owner")
     try:
         status = path.lstat()
     except FileNotFoundError:
@@ -248,7 +255,13 @@ def _require_plain_owned_file(
         raise SkillEnablementError(code, f"{path}: {exc}") from exc
     if _is_link_like(path, status) or not stat.S_ISREG(status.st_mode):
         raise SkillEnablementError(code, str(path))
-    if (
+    if trusted_owner is not None and hasattr(status, "st_uid"):
+        caller_uid = os.geteuid() if hasattr(os, "geteuid") else None
+        if caller_uid not in {0, trusted_owner[0]}:
+            raise SkillEnablementError(code, "trusted owner requires root")
+        if (status.st_uid, status.st_gid) != trusted_owner:
+            raise SkillEnablementError(code, f"foreign owner: {path}")
+    elif (
         hasattr(os, "geteuid")
         and hasattr(status, "st_uid")
         and status.st_uid != os.geteuid()
@@ -262,13 +275,18 @@ def _require_same_open_file(
     opened: os.stat_result,
     *,
     code: str,
+    trusted_owner: tuple[int, int] | None = None,
 ) -> None:
-    current = _require_plain_owned_file(path, code=code)
+    current = _require_plain_owned_file(
+        path, code=code, trusted_owner=trusted_owner,
+    )
     if current is None or not os.path.samestat(current, opened):
         raise SkillEnablementError(code, f"changed while opening: {path}")
 
 
-def _read_state_payload() -> bytes | None:
+def _read_state_payload(
+    *, trusted_owner: tuple[int, int] | None = None,
+) -> bytes | None:
     """Read one stable policy file without following a redirected entry.
 
     ``None`` has exactly one meaning: the directory entry was absent at the
@@ -284,6 +302,7 @@ def _read_state_payload() -> bytes | None:
             return None
         before = _require_plain_owned_file(
             f, code="skill_state_invalid", allow_missing=True,
+            trusted_owner=trusted_owner,
         )
         if before is None:
             return None
@@ -296,11 +315,17 @@ def _read_state_payload() -> bytes | None:
             raise SkillEnablementError(
                 "skill_state_invalid", f"changed while opening: {f}",
             )
-        _require_same_open_file(f, opened, code="skill_state_invalid")
+        _require_same_open_file(
+            f, opened, code="skill_state_invalid",
+            trusted_owner=trusted_owner,
+        )
         with os.fdopen(descriptor, "rb") as handle:
             descriptor = -1
             payload = handle.read()
-        _require_same_open_file(f, opened, code="skill_state_invalid")
+        _require_same_open_file(
+            f, opened, code="skill_state_invalid",
+            trusted_owner=trusted_owner,
+        )
         _require_same_state_parent(parent[0], parent[1])
         return payload
     except SkillEnablementError:
@@ -320,7 +345,10 @@ def _decode_state_payload(payload: bytes) -> dict[str, bool]:
         raise SkillEnablementError("skill_state_invalid", str(exc)) from exc
 
 
-def _load_state(*, strict: bool = True) -> dict[str, bool]:
+def _load_state(
+    *, strict: bool = True,
+    trusted_owner: tuple[int, int] | None = None,
+) -> dict[str, bool]:
     """Load the policy; only a genuinely absent file selects defaults.
 
     ``strict`` is retained for source compatibility with older callers.  It no
@@ -329,7 +357,7 @@ def _load_state(*, strict: bool = True) -> dict[str, bool]:
     Read-only callers receive the same stable diagnostic and can render it.
     """
     del strict
-    payload = _read_state_payload()
+    payload = _read_state_payload(trusted_owner=trusted_owner)
     if payload is None:
         return {}
     return _decode_state_payload(payload)
@@ -537,14 +565,18 @@ def _state_writer_lock(*, timeout: float = _STATE_LOCK_TIMEOUT) -> Iterator[None
 # --- Public API ------------------------------------------------------------
 
 
-def list_skills(lang: str | None = None) -> list[SkillInfo]:
+def list_skills(
+    lang: str | None = None,
+    *,
+    _trusted_owner: tuple[int, int] | None = None,
+) -> list[SkillInfo]:
     """Ritorna l'inventario delle skill (skills/ + legacy _imports/).
 
     Args:
         lang: se valorizzato, filtra le skill con `lang in {"any", lang}`.
               `None` (default) = nessun filtro.
     """
-    state = _load_state()
+    state = _load_state(trusted_owner=_trusted_owner)
     out: list[SkillInfo] = []
     for skill_dir in _isd():
         skill_md = skill_dir / "SKILL.md"
@@ -618,8 +650,10 @@ def list_skills(lang: str | None = None) -> list[SkillInfo]:
     return out
 
 
-def get_skill_info(name: str) -> SkillInfo | None:
-    for s in list_skills():
+def get_skill_info(
+    name: str, *, _trusted_owner: tuple[int, int] | None = None,
+) -> SkillInfo | None:
+    for s in list_skills(_trusted_owner=_trusted_owner):
         if s.name == name:
             return s
     return None
@@ -923,6 +957,22 @@ def is_skill_enabled(name: str) -> bool:
         # skill non ancora installate via questo registry.
         return True
     # Locale gate.
+    if info.lang != "any" and info.lang != _C.DEFAULT_LANG.lower():
+        return False
+    return info.enabled
+
+
+def _is_skill_enabled_for_owner_v1(
+    name: str, trusted_owner: tuple[int, int],
+) -> bool:
+    """Read service-owned policy during the root-only ownership transition."""
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        raise SkillEnablementError(
+            "skill_state_invalid", "administrative reader required",
+        )
+    info = get_skill_info(name, _trusted_owner=trusted_owner)
+    if info is None:
+        return True
     if info.lang != "any" and info.lang != _C.DEFAULT_LANG.lower():
         return False
     return info.enabled

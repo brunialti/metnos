@@ -226,6 +226,32 @@ def test_missing_state_is_the_only_case_that_selects_defaults(
         skill_registry.list_skills()
 
 
+@pytest.mark.skipif(
+    not hasattr(os, "geteuid") or os.getuid() == 0,
+    reason="requires distinct POSIX service and root identities",
+)
+def test_root_transition_reads_only_the_declared_service_owned_policy(
+    authoring_env, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _skill(authoring_env.PATH_SKILLS_USER, "bundle", "unique_name")
+    state = skill_registry._state_file()
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text('{"bundle": false}\n', encoding="utf-8")
+    owner = (os.getuid(), os.getgid())
+    monkeypatch.setattr(skill_registry.os, "geteuid", lambda: 0)
+
+    assert skill_registry._is_skill_enabled_for_owner_v1(
+        "bundle", owner,
+    ) is False
+    with pytest.raises(
+        skill_registry.SkillEnablementError,
+        match="foreign owner",
+    ):
+        skill_registry._is_skill_enabled_for_owner_v1(
+            "bundle", (owner[0] + 1, owner[1]),
+        )
+
+
 def test_catalog_cache_signature_fails_closed_on_invalid_skill_state(
     authoring_env,
 ) -> None:
