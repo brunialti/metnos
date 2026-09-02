@@ -68,6 +68,7 @@ from executor_birth_ownership_coordinator import (
     _require_deployment_lock_session_v1,
     _resolve_ownership_coordinator_at_v2,
 )
+from executor_birth_posix_metadata import snapshot_stat_v1
 from executor_birth_service_catalog import (
     _build_service_catalog_v1, decode_service_catalog_v1,
 )
@@ -144,14 +145,6 @@ def _source_root_v1(ownership_root: Path, source_id: str) -> Path:
     )
 
 
-def _stable_identity(info: os.stat_result) -> tuple[int, ...]:
-    return (
-        info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
-        info.st_uid, info.st_gid, info.st_size,
-        info.st_mtime_ns, info.st_ctime_ns,
-    )
-
-
 def _read_received_file_v1(
     root: Path, item: ReceivedSourceFileV1, *, root_owned: bool,
 ) -> bytes:
@@ -209,7 +202,8 @@ def _read_received_file_v1(
         os.close(descriptor)
     content = b"".join(chunks)
     if (
-        total != item.size or _stable_identity(before) != _stable_identity(after)
+        total != item.size
+        or snapshot_stat_v1(before) != snapshot_stat_v1(after)
         or received_source_file_hash_v1(
             item.path, item.size, (content,) if content else (),
         ) != item.content_hash
@@ -338,7 +332,7 @@ def _write_exact_file_v1(
         not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode)
         or before.st_nlink != 1 or (before.st_uid, before.st_gid) != owner
         or stat.S_IMODE(before.st_mode) != mode or observed != content
-        or _stable_identity(before) != _stable_identity(after)
+        or snapshot_stat_v1(before) != snapshot_stat_v1(after)
     ):
         raise _fail("staged release", recovery=True)
 
@@ -354,7 +348,7 @@ def _read_executable_v1(path: str) -> bytes:
     if (
         not stat.S_ISREG(before.st_mode) or before.st_size > MAX_FILE_BYTES
         or before.st_mode & 0o111 == 0
-        or _stable_identity(before) != _stable_identity(after)
+        or snapshot_stat_v1(before) != snapshot_stat_v1(after)
         or len(content) != before.st_size
     ):
         raise _fail("target executable")

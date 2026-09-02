@@ -36,6 +36,7 @@ _RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
 if str(_RUNTIME) not in sys.path:  # pragma: no cover - import bootstrap
     sys.path.insert(0, str(_RUNTIME))
 
+import executor_birth_account_identity as _account_identity  # noqa: E402
 from executor_birth_prepared_set import (
     PreparedAuthoritySetV2, _PREPARED_AUTHORITY_SET_SEAL_V2,
     _prepared_authority_set_binding_v2, is_prepared_authority_set_v2,
@@ -59,7 +60,6 @@ MAXIMUM_CHECKPOINT_SEQUENCE_V1 = 8191
 MAXIMUM_JOURNAL_DOCUMENT_BYTES_V1 = 1024 * 1024
 
 _HEX_DIGITS = frozenset("0123456789abcdef")
-_SERVICE_ACCOUNT_RE_V2 = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
 _PREDECESSOR_SOURCE_ROOTS_V2 = (
     "deploy", "executors", "install", "runtime", "scripts", "tutor",
 )
@@ -4679,7 +4679,7 @@ class _LegacyServiceIdentityV2:
     def __post_init__(self) -> None:
         if (
             self._seal is not _LEGACY_SERVICE_IDENTITY_SEAL_V2
-            or _SERVICE_ACCOUNT_RE_V2.fullmatch(self.name) is None
+            or not _account_identity.is_posix_account_name_v1(self.name)
             or type(self.uid) is not int or self.uid <= 0
             or type(self.gid) is not int or self.gid <= 0
             or not isinstance(self.home, Path) or not self.home.is_absolute()
@@ -4693,28 +4693,27 @@ def _resolve_legacy_service_identity_v2(
 ) -> _LegacyServiceIdentityV2:
     """Resolve the previous user-scoped stack without accepting its paths."""
     if (
-        type(service_user) is not str
-        or _SERVICE_ACCOUNT_RE_V2.fullmatch(service_user) is None
+        not _account_identity.is_posix_account_name_v1(service_user)
     ):
         raise _reject("birth_transition_service_identity_changed")
     try:
-        import pwd
-
-        account = pwd.getpwnam(service_user)
-        home = Path(account.pw_dir)
-    except (ImportError, KeyError, OSError, TypeError) as exc:
+        account = _account_identity.resolve_posix_account_v1(service_user)
+        home = Path(account.home)
+    except (
+        _account_identity.PosixAccountResolutionError, TypeError,
+    ) as exc:
         raise _reject(
             "birth_transition_service_identity_changed", exc,
         ) from None
     if (
-        account.pw_name != service_user
-        or account.pw_uid <= 0 or account.pw_gid <= 0
+        account.name != service_user
+        or account.uid <= 0 or account.gid <= 0
         or not home.is_absolute() or home == Path("/")
         or Path(os.path.abspath(home)) != home
     ):
         raise _reject("birth_transition_service_identity_changed")
     return _LegacyServiceIdentityV2(
-        service_user, account.pw_uid, account.pw_gid, home,
+        service_user, account.uid, account.gid, home,
         _LEGACY_SERVICE_IDENTITY_SEAL_V2,
     )
 
@@ -4898,34 +4897,32 @@ def _install_bound_topology_v2(
     return _capture_cutover_effective_systemd_v2(prepared)
 
 
-def _converge_transition_contracts_v2(descriptor: object) -> dict[str, int]:
-    """Run the installed, governed catalog convergence as the service owner."""
+def _transition_service_environment_v2(descriptor: object) -> dict[str, str]:
     release_root = Path(descriptor.installation_root)
-    entry = release_root / "install" / "executor_birth_contract_convergence.py"
+    account = _account_identity.PosixAccountRecordV1(
+        descriptor.service_user,
+        descriptor.service_uid,
+        descriptor.service_gid,
+        descriptor.service_home,
+        descriptor.service_shell,
+    )
+    layout = _account_identity.metnos_xdg_layout_v1(
+        account,
+    )
     environment = {
-        "HOME": descriptor.service_home,
-        "LOGNAME": descriptor.service_user,
-        "USER": descriptor.service_user,
         "LANG": "C",
         "LC_ALL": "C",
         "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
         "METNOS_INSTALL_ROOT": release_root.as_posix(),
-        "METNOS_USER_DATA": (
-            Path(descriptor.service_home) / ".local" / "share" / "metnos"
-        ).as_posix(),
-        "METNOS_USER_STATE": (
-            Path(descriptor.service_home) / ".local" / "state" / "metnos"
-        ).as_posix(),
-        "METNOS_USER_CONFIG": (
-            Path(descriptor.service_home) / ".config" / "metnos"
-        ).as_posix(),
-        "METNOS_USER_CACHE": (
-            Path(descriptor.service_home) / ".cache" / "metnos"
-        ).as_posix(),
-        "METNOS_WORKSPACE": (
-            Path(descriptor.service_home) / ".local" / "share" / "metnos" / "workspace"
-        ).as_posix(),
     }
+    environment.update(layout.environment())
+    return environment
+
+
+def _converge_transition_contracts_v2(descriptor: object) -> dict[str, int]:
+    """Run the installed, governed catalog convergence as the service owner."""
+    release_root = Path(descriptor.installation_root)
+    entry = release_root / "install" / "executor_birth_contract_convergence.py"
     try:
         completed = subprocess.run(
             [descriptor.python_executable, "-I", "-B", entry.as_posix()],
@@ -4934,7 +4931,7 @@ def _converge_transition_contracts_v2(descriptor: object) -> dict[str, int]:
             check=False,
             close_fds=True,
             cwd="/",
-            env=environment,
+            env=_transition_service_environment_v2(descriptor),
             user=descriptor.service_uid,
             group=descriptor.service_gid,
             extra_groups=descriptor.service_supplementary_gids,

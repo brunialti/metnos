@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from executor_birth_account_identity import PosixAccountRecordV1
 from install import executor_birth_transition as transition
 
 
@@ -295,10 +296,13 @@ def test_service_environment_binds_every_root_to_the_account_home(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """All service roots follow the selected account on every platform."""
-    account = SimpleNamespace(pw_dir="/srv/metnos")
+    account = PosixAccountRecordV1(
+        name="metnos", uid=991, gid=992,
+        home="/srv/metnos", shell="/usr/sbin/nologin",
+    )
     monkeypatch.setattr(
-        transition, "pwd",
-        SimpleNamespace(getpwnam=lambda name: account if name == "metnos" else None),
+        transition._account_identity, "resolve_posix_account_v1",
+        lambda name: account if name == "metnos" else None,
     )
 
     selected, environment = transition._service_environment_v1("metnos")

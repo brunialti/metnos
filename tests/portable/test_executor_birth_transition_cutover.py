@@ -9,6 +9,7 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
+from executor_birth_account_identity import PosixAccountRecordV1
 from executor_birth_distribution_manifest import DistributionFile, file_content_hash
 from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 from executor_birth_service_catalog import (
@@ -25,6 +26,65 @@ LINUX_ONLY = pytest.mark.skipif(
 
 def D(character: str) -> str:
     return "sha256:" + character * 64
+
+
+def test_legacy_identity_facade_uses_the_shared_account_owner(monkeypatch) -> None:
+    account = PosixAccountRecordV1(
+        name="legacy-metnos", uid=981, gid=982,
+        home="/srv/legacy-metnos", shell="/usr/sbin/nologin",
+    )
+    monkeypatch.setattr(
+        provisioner._account_identity, "resolve_posix_account_v1",
+        lambda name: account if name == account.name else None,
+    )
+
+    resolved = provisioner._resolve_legacy_service_identity_v2(account.name)
+
+    assert resolved.name == account.name
+    assert resolved.uid == account.uid
+    assert resolved.gid == account.gid
+    assert resolved.home == Path(account.home)
+
+
+def test_legacy_identity_facade_preserves_the_public_error_code(monkeypatch) -> None:
+    account = PosixAccountRecordV1(
+        name="different", uid=981, gid=982,
+        home="/srv/legacy-metnos", shell="/usr/sbin/nologin",
+    )
+    monkeypatch.setattr(
+        provisioner._account_identity, "resolve_posix_account_v1",
+        lambda _name: account,
+    )
+
+    with pytest.raises(provisioner.BirthProvisioningError) as captured:
+        provisioner._resolve_legacy_service_identity_v2("legacy-metnos")
+    assert captured.value.code == "birth_transition_service_identity_changed"
+
+
+def test_transition_child_environment_uses_the_shared_xdg_layout() -> None:
+    descriptor = SimpleNamespace(
+        installation_root="/var/lib/metnos/releases/1",
+        service_user="metnos",
+        service_uid=991,
+        service_gid=992,
+        service_home="/srv/metnos",
+        service_shell="/usr/sbin/nologin",
+    )
+
+    assert provisioner._transition_service_environment_v2(descriptor) == {
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+        "METNOS_INSTALL_ROOT": "/var/lib/metnos/releases/1",
+        "HOME": "/srv/metnos",
+        "LOGNAME": "metnos",
+        "USER": "metnos",
+        "METNOS_USER_DATA": "/srv/metnos/.local/share/metnos",
+        "METNOS_USER_STATE": "/srv/metnos/.local/state/metnos",
+        "METNOS_USER_CONFIG": "/srv/metnos/.config/metnos",
+        "METNOS_USER_CACHE": "/srv/metnos/.cache/metnos",
+        "METNOS_WORKSPACE": "/srv/metnos/.local/share/metnos/workspace",
+    }
 
 
 def _gate_bytes(closed: bool = True) -> bytes:
@@ -565,6 +625,7 @@ def test_contract_convergence_child_is_bound_to_the_signed_service_identity(
         service_user="metnos-service", service_uid=991, service_gid=992,
         service_supplementary_gids=(44, 992),
         service_home="/var/lib/metnos-service",
+        service_shell="/usr/sbin/nologin",
     )
     observed = {}
 

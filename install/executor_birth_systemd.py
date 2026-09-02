@@ -37,17 +37,16 @@ from executor_birth_secure_file import (
     SecureFileReadError,
     read_immutable_regular_file,
 )
+from executor_birth_posix_metadata import snapshot_stat_v1
 from install.executor_birth_source_receiver import (
     _ServiceAccountV1,
     _create_private_directory_v1,
     _ensure_child_directory_v1,
-    _identity,
     _name_status_v1,
     _open_absolute_directory_v1,
     _rename_no_replace_v1,
     _require_absolute_chain_bound_v1,
     _service_account_snapshot_v1,
-    _stable_identity,
     _write_all_v1,
 )
 
@@ -436,8 +435,9 @@ def _verify_installed_tree_v1(
         after = os.fstat(file_fd)
         if (
             bytes(observed) != content
-            or _stable_identity(_identity(before))
-            != _stable_identity(_identity(after))
+            or not snapshot_stat_v1(before).same_stable_metadata_as(
+                snapshot_stat_v1(after),
+            )
             or distribution_manifest.file_content_hash(
                 ADMINISTRATIVE_PROGRAM_SOURCE_V1, bytes(observed),
             ) != content_hash
@@ -897,8 +897,9 @@ def _verify_unit_file_v1(
         after = os.fstat(descriptor)
         if (
             bytes(observed) != content
-            or _stable_identity(_identity(before))
-            != _stable_identity(_identity(after))
+            or not snapshot_stat_v1(before).same_stable_metadata_as(
+                snapshot_stat_v1(after),
+            )
         ):
             raise _fail("birth_ownership_recovery_required", "unit content")
         result = descriptor

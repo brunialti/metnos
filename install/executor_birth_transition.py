@@ -17,19 +17,15 @@ import subprocess
 import sys
 from typing import Mapping
 
-try:
-    import pwd
-except ImportError:  # pragma: no cover - exercised by the Windows gate
-    pwd = None
-
-
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _RUNTIME = _REPOSITORY / "runtime"
 for _IMPORT_ROOT in (_REPOSITORY, _RUNTIME):
     if str(_IMPORT_ROOT) not in sys.path:
         sys.path.insert(0, str(_IMPORT_ROOT))
+import executor_birth_account_identity as _account_identity  # noqa: E402
+
+
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
-_ACCOUNT_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
 _ERROR_RE = re.compile(r"birth_[a-z0-9_]{1,96}\Z")
 _FRAME_SCHEMA_V1 = "metnos.executor-birth.transition-handoff/1"
 _MAX_FRAME_BYTES_V1 = 4 * 1024 * 1024
@@ -57,31 +53,19 @@ def _require_root_linux_v1() -> None:
 
 def _service_environment_v1(service_user: object) -> tuple[str, Mapping[str, str]]:
     """Derive the fixed service paths before importing configuration modules."""
-    if type(service_user) is not str or _ACCOUNT_RE.fullmatch(service_user) is None:
+    if not _account_identity.is_posix_account_name_v1(service_user):
         raise _fail("birth_ownership_deployment_invalid")
-    if pwd is None:
-        raise _fail("birth_ownership_platform_unsupported")
     try:
-        account = pwd.getpwnam(service_user)
-    except (KeyError, OSError) as exc:
+        account = _account_identity.resolve_posix_account_v1(service_user)
+    except _account_identity.PosixAccountResolutionError as exc:
+        if exc.kind is _account_identity.PosixAccountFailureKindV1.platform_unsupported:
+            raise _fail("birth_ownership_platform_unsupported") from exc
         raise _fail("birth_ownership_deployment_invalid") from exc
-    home = Path(account.pw_dir)
-    if not home.is_absolute() or home == Path("/"):
+    home = Path(account.home)
+    if account.name != service_user or not home.is_absolute() or home == Path("/"):
         raise _fail("birth_ownership_deployment_invalid")
-    data = home / ".local" / "share" / "metnos"
-    state = home / ".local" / "state" / "metnos"
-    config = home / ".config" / "metnos"
-    cache = home / ".cache" / "metnos"
-    return service_user, {
-        "HOME": home.as_posix(),
-        "LOGNAME": service_user,
-        "USER": service_user,
-        "METNOS_USER_DATA": data.as_posix(),
-        "METNOS_USER_STATE": state.as_posix(),
-        "METNOS_USER_CONFIG": config.as_posix(),
-        "METNOS_USER_CACHE": cache.as_posix(),
-        "METNOS_WORKSPACE": (data / "workspace").as_posix(),
-    }
+    layout = _account_identity.metnos_xdg_layout_v1(account)
+    return account.name, layout.environment()
 
 
 def _prepare_service_authorities_v1(
@@ -125,19 +109,17 @@ def _prepare_service_authorities_v1(
 def _prepare_service_authorities_child_v1(service_user: object) -> dict:
     """Prepare only after the process identity matches the selected account."""
     selected_user, service_environment = _service_environment_v1(service_user)
-    if pwd is None:
-        raise _fail("birth_ownership_platform_unsupported")
     try:
-        account = pwd.getpwnam(selected_user)
-        supplementary = tuple(sorted(set(os.getgrouplist(
-            selected_user, account.pw_gid,
-        ))))
-    except (KeyError, OSError) as exc:
+        account = _account_identity.resolve_posix_account_v1(selected_user)
+        supplementary = _account_identity.resolve_supplementary_gids_v1(
+            selected_user, account.gid,
+        )
+    except _account_identity.PosixAccountResolutionError as exc:
         raise _fail("birth_ownership_deployment_invalid") from exc
     if (
         not hasattr(os, "geteuid")
-        or os.geteuid() != account.pw_uid
-        or os.getegid() != account.pw_gid
+        or os.geteuid() != account.uid
+        or os.getegid() != account.gid
         or tuple(sorted(set(os.getgroups()))) != supplementary
     ):
         raise _fail("birth_ownership_deployment_invalid")

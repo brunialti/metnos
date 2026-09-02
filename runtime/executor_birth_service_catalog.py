@@ -15,6 +15,8 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Iterable, Mapping, NamedTuple
 
+import executor_birth_account_identity as _account_identity
+
 
 CATALOG_PATH_V1 = "deployment/executor-birth-service-catalog-v1.json"
 CATALOG_ID_DOMAIN = b"metnos.executor-birth.service-catalog/v1\0"
@@ -43,7 +45,6 @@ _MODULE_RE = re.compile(
     r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){0,31}\Z"
 )
 _ENVIRONMENT_NAME_RE = re.compile(r"[A-Z_][A-Z0-9_]{0,127}\Z")
-_ACCOUNT_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
 _INTEGER_RE = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _DURATION_RE = re.compile(r"(?:0|[1-9][0-9]*)(?:us|ms|s|min|h|d|w)\Z")
 _SAFE_TOKEN_RE = re.compile(r"!?[A-Za-z0-9_./:@+=,-]+\Z")
@@ -1558,7 +1559,7 @@ def _validate_compile_context_v1(
     _absolute_path(context.service_home, "service home")
     _absolute_path(context.systemctl_executable, "systemctl executable")
     if (
-        _ACCOUNT_RE.fullmatch(context.service_user) is None
+        not _account_identity.is_posix_account_name_v1(context.service_user)
         or type(context.service_gid) is not int
         or not 0 < context.service_gid < 2 ** 31
         or any(

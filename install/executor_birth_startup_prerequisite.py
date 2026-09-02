@@ -25,13 +25,12 @@ from executor_birth_distribution_assembler import (
     encode_startup_prerequisite_v1,
 )
 from executor_birth_ownership_authorities import DEFAULT_OWNERSHIP_ROOT_V1
+from executor_birth_posix_metadata import snapshot_stat_v1
 from install.executor_birth_source_receiver import (
     _ensure_child_directory_v1,
-    _identity,
     _open_absolute_directory_v1,
     _rename_no_replace_v1,
     _require_absolute_chain_bound_v1,
-    _stable_identity,
     _write_all_v1,
 )
 
@@ -73,7 +72,7 @@ def _read_bound_file_v1(
             or (before.st_uid, before.st_gid) != owner
             or stat.S_IMODE(before.st_mode) != 0o644
             or not 0 < before.st_size <= MAX_STARTUP_PREREQUISITE_BYTES_V1
-            or _identity(before) != _identity(rebound)
+            or snapshot_stat_v1(before) != snapshot_stat_v1(rebound)
         ):
             raise _fail("file metadata")
         content = bytearray()
@@ -88,8 +87,9 @@ def _read_bound_file_v1(
         after = os.fstat(descriptor)
         if (
             len(content) != before.st_size
-            or _stable_identity(_identity(before))
-            != _stable_identity(_identity(after))
+            or not snapshot_stat_v1(before).same_stable_metadata_as(
+                snapshot_stat_v1(after),
+            )
         ):
             raise _fail("file changed")
         encoded = bytes(content)
@@ -123,7 +123,7 @@ def _read_temporary_file_v1(
             or (before.st_uid, before.st_gid) != owner
             or mode not in {0o600, 0o644}
             or before.st_size > MAX_STARTUP_PREREQUISITE_BYTES_V1
-            or _identity(before) != _identity(rebound)
+            or snapshot_stat_v1(before) != snapshot_stat_v1(rebound)
         ):
             raise _fail("temporary metadata")
         content = bytearray()
@@ -138,8 +138,9 @@ def _read_temporary_file_v1(
         after = os.fstat(descriptor)
         if (
             len(content) != before.st_size
-            or _stable_identity(_identity(before))
-            != _stable_identity(_identity(after))
+            or not snapshot_stat_v1(before).same_stable_metadata_as(
+                snapshot_stat_v1(after),
+            )
         ):
             raise _fail("temporary changed")
         return bytes(content), mode, descriptor
@@ -216,7 +217,7 @@ def _finish_temporary_v1(
                 or (opened.st_uid, opened.st_gid) != owner
                 or stat.S_IMODE(opened.st_mode) != 0o600
                 or opened.st_size != len(content)
-                or _identity(opened) != _identity(rebound)
+                or snapshot_stat_v1(opened) != snapshot_stat_v1(rebound)
             ):
                 raise _fail("temporary recovery metadata")
             if os.lseek(writable, 0, os.SEEK_END) != len(content):
@@ -277,7 +278,7 @@ def _publish_core_v1(
             not stat.S_ISDIR(root.st_mode)
             or (root.st_uid, root.st_gid) != owner
             or stat.S_IMODE(root.st_mode) != 0o755
-            or _identity(root) != _identity(rebound)
+            or snapshot_stat_v1(root) != snapshot_stat_v1(rebound)
         ):
             raise _fail("ownership root")
         require_sessions()
