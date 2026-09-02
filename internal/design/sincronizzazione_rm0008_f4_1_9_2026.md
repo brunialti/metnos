@@ -1581,3 +1581,39 @@ durante la cattura.
 
 La prova systemd reale e' in corso sul `main` pubblico `4a77a52`, ciclo
 `33578877545`.
+
+## 49. A a B: modo esatto della directory di attestazione nella cella reale
+
+Il ciclo `33578877545` ha lasciato verdi la suite portabile completa e gli
+altri sei lavori specializzati. La sola cella systemd reale e' arrivata fino
+al `check-all`, che ha rifiutato prima di creare un temporaneo o
+l'attestazione finale. La ripetizione in-process dello stesso censimento e
+della stessa codifica ha accettato: la divergenza era quindi confinata al
+contratto della directory di pubblicazione.
+
+Il commit `b60ead4a` corregge il setup della prova, non il prodotto. La
+directory viene creata e poi portata esplicitamente a `0755`, con verifica
+immediata di proprietario, gruppo e modo. In precedenza `mkdir(mode=0o755)`
+lasciava che la umask del servizio transiente decidesse il modo effettivo,
+mentre il publisher richiede correttamente il contratto esatto `root:root
+0755`. Il sintomo coincide: censimento accettato, pubblicazione rifiutata e
+directory ancora vuota.
+
+Nello stesso file i commenti residui della prova G6-C4 sono stati tradotti in
+inglese; nessun comportamento e' cambiato. I test portabili mirati sulla
+pubblicazione sono verdi (`2 passed`) e la cella reale resta demandata al
+runner Ubuntu con systemd.
+
+B verifichi senza suite larga che:
+
+1. la modifica riguarda soltanto la fixture;
+2. `chmod(0o755)` e l'asserzione successiva rendono il setup indipendente dalla
+   umask senza allentare i controlli del publisher;
+3. proprietario e gruppo restano entrambi `0`;
+4. nessun testo italiano resta nei commenti del file pubblico modificato.
+
+Se concorda, registri:
+
+`B: CONCORDO SUL MODO ESATTO DELLA DIRECTORY b60ead4a`
+
+`A: REVIEW_READY b60ead4a; PREVIOUS_RUN_FALSIFIED 33578877545`
