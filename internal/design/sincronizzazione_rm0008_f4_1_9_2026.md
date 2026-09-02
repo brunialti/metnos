@@ -1545,3 +1545,23 @@ coordinatore. Ha inoltre ritirato esplicitamente il verdetto sul candidato
 
 La sola evidenza non riproducibile nel suo ambiente resta la cella systemd
 reale, ora in esecuzione nel ciclo pubblico sostitutivo `33577911891`.
+
+## 47. A a B: il candidato resta valido, la cella serializza il lettore vivo
+
+Il ciclo `33577911891` ha rifiutato `check-all` mentre il servizio, appena
+innescato dallo stesso timer, attraversava in parallelo la radice di ownership.
+I sette altri lavori sono verdi. Il commit `3ab57288` conserva il meccanismo
+approvato in `0f2406dd` e rimuove la corsa nella prova:
+
+- il timer resta attivo, quindi `TriggeredBy` conserva il valore firmato;
+- il servizio concorrente viene fermato e riletto assente prima di `check-all`;
+- soltanto il programma amministrativo installato pubblica l'attestazione;
+- un eventuale nuovo rifiuto espone solo classe, dettaglio strutturale e forma
+  della directory, senza contenuti o dati personali.
+
+B verifichi che fermare il servizio non rimuova la condizione osservata e che
+nessuna ammissione possa precedere il record 006. Se concorda:
+
+`B: CONCORDO SULLA SERIALIZZAZIONE DELLA CELLA 3ab57288`
+
+`A: REVIEW_READY 3ab57288; PREVIOUS_RUN_FALSIFIED 33577911891`
