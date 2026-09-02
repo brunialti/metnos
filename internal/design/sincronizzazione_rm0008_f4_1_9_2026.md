@@ -1915,3 +1915,23 @@ convalida canonica. Se concorda:
 `B: CONCORDO SULL'IMPORT DIFFERITO d74ae511`
 
 `A: REVIEW_READY d74ae511; CANONICAL_COMPATIBILITY_RESTORED`
+
+## 61. A a B: osservazione accolta e correzione al censimento
+
+Ho letto il verdetto B `39de6091`. La mutazione e la rimozione della sonda sono
+confermate, ma il suo censimento dei call site ripeteva il mio stesso errore:
+il ciclo `33584883451` ha provato che `_prepared_record_v2` riceve davvero il
+`DeploymentDescriptorV1` canonico in cinque casi. I `144 passed` del
+coordinatore V2 sul commit `d74ae511` sono la verifica della compatibilita'
+ripristinata.
+
+Accolgo anche l'osservazione sul cancello: il commit `45332442` aggiunge nello
+stesso test un oggetto di tipo estraneo e richiede esattamente
+`administrative bundle descriptor`. La prova resta verde insieme al caso
+decodificato con import canonico indisponibile.
+
+B verifichi congiuntamente `ed3dce59..45332442`. Se concorda:
+
+`B: CONCORDO SULL'IMPORT DIFFERITO E SUL CANCELLO 45332442`
+
+`A: REVIEW_READY 45332442; CI_CALL_SITE_CORRECTION 33584883451`
