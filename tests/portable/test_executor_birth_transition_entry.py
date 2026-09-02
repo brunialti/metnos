@@ -314,3 +314,29 @@ def test_service_environment_binds_every_root_to_the_account_home(
         "METNOS_USER_CACHE": "/srv/metnos/.cache/metnos",
         "METNOS_WORKSPACE": "/srv/metnos/.local/share/metnos/workspace",
     }
+
+
+@LINUX_ONLY
+def test_cli_disables_bytecode_before_deployment(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The privileged entry never mutates its reviewed source with pyc files."""
+    observed = {}
+    monkeypatch.setattr(transition.sys, "dont_write_bytecode", False)
+    monkeypatch.setattr(transition, "_require_root_linux_v1", lambda: None)
+
+    def deploy(*args):
+        observed["disabled"] = transition.sys.dont_write_bytecode
+        return {"state": "PREFLIGHT_VERIFIED"}
+
+    monkeypatch.setattr(transition, "deploy_source_v1", deploy)
+    result = transition.main([
+        "deploy", "--source", "/reviewed/source",
+        "--service-user", "metnos",
+        "--legacy-service-user", "legacy-metnos",
+        "--legacy-installation-root", "/opt/metnos",
+    ])
+
+    assert result == 0
+    assert observed == {"disabled": True}
+    assert capsys.readouterr().out == '{"state":"PREFLIGHT_VERIFIED"}\n'

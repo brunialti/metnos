@@ -452,6 +452,10 @@ def _parse_cli_v1(argv: object) -> tuple[str, str, str, str | None, str | None]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Root must not add ignored bytecode files to the reviewed source before
+    # the receiver inventories it.  Keep this invariant independent of the
+    # installer or operator command that invokes the transition entry.
+    sys.dont_write_bytecode = True
     try:
         operation, value, service_user, legacy_service_user, legacy_root = _parse_cli_v1(
             list(sys.argv[1:] if argv is None else argv),
