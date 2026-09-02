@@ -12,6 +12,7 @@ from ._support import (
     make_root,
     open_session,
     private_role,
+    public_role,
     role_binding,
     secure_fs,
     tree_snapshot,
@@ -35,26 +36,48 @@ def _fixture_bindings(module):
             directory=False,
             role=private_role(module),
         ),
+        role_binding(
+            module,
+            ("published",),
+            directory=True,
+            role=public_role(module),
+        ),
+        role_binding(
+            module,
+            ("published", "proof.json"),
+            directory=False,
+            role=public_role(module),
+        ),
     )
 
 
-def test_posix_global_lock_creation_ignores_restrictive_umask(
-    tmp_path: Path,
+def _assert_exact_creation_modes_ignore_restrictive_umask(
+    tmp_path: Path, module,
 ) -> None:
-    root = make_root(tmp_path / "birth")
+    root = make_root(tmp_path)
     lock_path = root / "provisioning-v1.lock"
-    module = secure_fs()
     previous_umask = os.umask(0o077)
     try:
         with open_session(
             root, role_bindings=_fixture_bindings(module)
         ) as session:
             with session.global_lock(exclusive=True, create=True):
-                pass
+                session.create_directory_exclusive(
+                    ("published",), role=public_role(module)
+                )
+                session.create_file_exclusive(
+                    ("published", "proof.json"),
+                    b"{}",
+                    role=public_role(module),
+                )
     finally:
         os.umask(previous_umask)
     assert lock_path.read_bytes() == b"0"
     assert_posix_security(lock_path, directory=False, mode=0o644)
+    assert_posix_security(root / "published", directory=True, mode=0o755)
+    assert_posix_security(
+        root / "published" / "proof.json", directory=False, mode=0o644
+    )
 
 
 @pytest.mark.parametrize("case", CASES, ids=CASES)
@@ -64,6 +87,9 @@ def test_posix_empty_global_lock_durability(
     root = make_root(tmp_path / "birth")
     lock_path = root / "provisioning-v1.lock"
     if case == "empty-lock-fsync-order":
+        _assert_exact_creation_modes_ignore_restrictive_umask(
+            tmp_path / "exact-modes", secure_fs()
+        )
         write_public(lock_path, b"")
         before = tree_snapshot(root)
         module = secure_fs()
