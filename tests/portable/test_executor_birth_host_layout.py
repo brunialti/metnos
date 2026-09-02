@@ -12,7 +12,9 @@ import executor_birth_account_identity as identity
 import executor_birth_host_layout as layout
 
 
-def _snapshot(**changes) -> identity.PosixAccountSnapshotV1:
+def _snapshot(
+    *, supplementary_gids: tuple[int, ...] | None = None, **changes,
+) -> identity.PosixAccountSnapshotV1:
     values = {
         "name": "metnos",
         "uid": 991,
@@ -22,7 +24,8 @@ def _snapshot(**changes) -> identity.PosixAccountSnapshotV1:
     }
     values.update(changes)
     record = identity.PosixAccountRecordV1(**values)
-    return identity.PosixAccountSnapshotV1(record, (992, 1001))
+    groups = (record.gid,) if supplementary_gids is None else supplementary_gids
+    return identity.PosixAccountSnapshotV1(record, groups)
 
 
 def _conforming_observation(
@@ -53,11 +56,17 @@ def _missing_observation(
     return layout.HostLayoutObservationV1(spec.account, objects)
 
 
+def _attributes(kind, uid: int, gid: int, mode: int) -> tuple[object, ...]:
+    return kind, uid, gid, mode, layout.PosixAclPolicyV1.absent
+
+
 def test_account_policy_is_system_metnos_with_canonical_home_and_shell() -> None:
     spec = layout.build_host_layout_spec_v1(_snapshot())
     assert spec.account_policy == layout.HostAccountPolicyV1(
         layout.HostAccountKindV1.system,
         "metnos",
+        "metnos",
+        (),
         PurePosixPath("/var/lib/metnos-service"),
         PurePosixPath("/usr/sbin/nologin"),
     )
@@ -72,13 +81,12 @@ def test_canonical_tree_has_signed_paths_owners_modes_and_no_acls() -> None:
         )
         for item in spec.objects
     }
-    root = (layout.HostOwnerKindV1.root, 0, 0, 0o755, layout.PosixAclPolicyV1.absent)
-    service = (
-        layout.HostOwnerKindV1.service, 991, 992, 0o700,
-        layout.PosixAclPolicyV1.absent,
-    )
+    root = _attributes(layout.HostOwnerKindV1.root, 0, 0, 0o755)
+    bootstrap = _attributes(layout.HostOwnerKindV1.root, 0, 0, 0o700)
+    service = _attributes(layout.HostOwnerKindV1.service, 991, 992, 0o700)
     expected_paths = {
         layout.HostPathRoleV1.ownership_parent: "/var/lib/metnos",
+        layout.HostPathRoleV1.bootstrap_root: "/var/lib/metnos-host-provisioning-v1",
         layout.HostPathRoleV1.service_home: "/var/lib/metnos-service",
         layout.HostPathRoleV1.ownership_root: "/var/lib/metnos/executor-birth",
         layout.HostPathRoleV1.cache_parent: "/var/lib/metnos-service/.cache",
@@ -99,7 +107,8 @@ def test_canonical_tree_has_signed_paths_owners_modes_and_no_acls() -> None:
     }
     assert set(actual) == set(expected_paths)
     for role, path in expected_paths.items():
-        assert actual[role] == (path, *(service if role in service_roles else root))
+        attributes = bootstrap if role is layout.HostPathRoleV1.bootstrap_root else root
+        assert actual[role] == (path, *(service if role in service_roles else attributes))
 
 
 @pytest.mark.parametrize(
@@ -115,6 +124,12 @@ def test_canonical_tree_has_signed_paths_owners_modes_and_no_acls() -> None:
 def test_canonical_tree_rejects_wrong_service_identity(changes, error) -> None:
     with pytest.raises(ValueError, match=error):
         layout.build_host_layout_spec_v1(_snapshot(**changes))
+
+
+@pytest.mark.parametrize("groups", [(), (992, 1001), (1001,)])
+def test_canonical_tree_requires_only_the_primary_group(groups) -> None:
+    with pytest.raises(ValueError, match="only its primary group"):
+        layout.build_host_layout_spec_v1(_snapshot(supplementary_gids=groups))
 
 
 def test_missing_tree_produces_deterministic_parent_first_plan() -> None:
@@ -249,3 +264,6 @@ def test_import_is_pure_portable_and_within_source_limits(tmp_path: Path) -> Non
     ]
     assert max(sizes) <= 40
     assert layout.SERVICE_HOME_V1 == PurePosixPath("/var/lib/metnos-service")
+    assert layout.HOST_PROVISIONING_ROOT_V1 == PurePosixPath(
+        "/var/lib/metnos-host-provisioning-v1"
+    )

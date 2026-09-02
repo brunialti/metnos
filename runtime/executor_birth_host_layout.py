@@ -19,6 +19,7 @@ SERVICE_ACCOUNT_NAME_V1 = "metnos"
 SERVICE_HOME_V1 = PurePosixPath("/var/lib/metnos-service")
 SERVICE_SHELL_V1 = PurePosixPath("/usr/sbin/nologin")
 OWNERSHIP_ROOT_V1 = PurePosixPath("/var/lib/metnos/executor-birth")
+HOST_PROVISIONING_ROOT_V1 = PurePosixPath("/var/lib/metnos-host-provisioning-v1")
 
 
 class HostAccountKindV1(str, Enum):
@@ -27,6 +28,7 @@ class HostAccountKindV1(str, Enum):
 
 class HostPathRoleV1(str, Enum):
     ownership_parent = "ownership_parent"
+    bootstrap_root = "bootstrap_root"
     service_home = "service_home"
     ownership_root = "ownership_root"
     cache_parent = "cache_parent"
@@ -71,6 +73,8 @@ class HostLayoutConflictKindV1(str, Enum):
 class HostAccountPolicyV1:
     kind: HostAccountKindV1
     name: str
+    primary_group_name: str
+    supplementary_group_names: tuple[str, ...]
     home: PurePosixPath
     shell: PurePosixPath
 
@@ -78,6 +82,8 @@ class HostAccountPolicyV1:
 SERVICE_ACCOUNT_POLICY_V1 = HostAccountPolicyV1(
     HostAccountKindV1.system,
     SERVICE_ACCOUNT_NAME_V1,
+    SERVICE_ACCOUNT_NAME_V1,
+    (),
     SERVICE_HOME_V1,
     SERVICE_SHELL_V1,
 )
@@ -239,29 +245,33 @@ def _validate_service_account_v1(account: PosixAccountSnapshotV1) -> None:
         raise ValueError("service account shell must be /usr/sbin/nologin")
     if record.uid <= 0 or record.gid <= 0:
         raise ValueError("service account must not use root ownership ids")
+    if account.supplementary_gids != (record.gid,):
+        raise ValueError("service account must have only its primary group")
 
 
 def _host_path_source_v1(
     account: PosixAccountSnapshotV1,
-) -> tuple[tuple[HostPathRoleV1, PurePosixPath, HostOwnerKindV1], ...]:
+) -> tuple[tuple[HostPathRoleV1, PurePosixPath, HostOwnerKindV1, int], ...]:
     xdg = metnos_xdg_layout_v1(account.record)
     paths = (
-        (HostPathRoleV1.ownership_parent, OWNERSHIP_ROOT_V1.parent, HostOwnerKindV1.root),
-        (HostPathRoleV1.service_home, xdg.home, HostOwnerKindV1.root),
-        (HostPathRoleV1.cache_parent, xdg.cache.parent, HostOwnerKindV1.root),
-        (HostPathRoleV1.config_parent, xdg.config.parent, HostOwnerKindV1.root),
-        (HostPathRoleV1.local_parent, xdg.data.parent.parent, HostOwnerKindV1.root),
-        (HostPathRoleV1.ownership_root, OWNERSHIP_ROOT_V1, HostOwnerKindV1.root),
-        (HostPathRoleV1.cache, xdg.cache, HostOwnerKindV1.service),
-        (HostPathRoleV1.config, xdg.config, HostOwnerKindV1.service),
-        (HostPathRoleV1.share_parent, xdg.data.parent, HostOwnerKindV1.root),
-        (HostPathRoleV1.state_parent, xdg.state.parent, HostOwnerKindV1.root),
-        (HostPathRoleV1.data, xdg.data, HostOwnerKindV1.service),
-        (HostPathRoleV1.state, xdg.state, HostOwnerKindV1.service),
-        (HostPathRoleV1.workspace, xdg.workspace, HostOwnerKindV1.service),
+        (HostPathRoleV1.ownership_parent, OWNERSHIP_ROOT_V1.parent, HostOwnerKindV1.root, 0o755),
+        (HostPathRoleV1.bootstrap_root, HOST_PROVISIONING_ROOT_V1, HostOwnerKindV1.root, 0o700),
+        (HostPathRoleV1.service_home, xdg.home, HostOwnerKindV1.root, 0o755),
+        (HostPathRoleV1.cache_parent, xdg.cache.parent, HostOwnerKindV1.root, 0o755),
+        (HostPathRoleV1.config_parent, xdg.config.parent, HostOwnerKindV1.root, 0o755),
+        (HostPathRoleV1.local_parent, xdg.data.parent.parent, HostOwnerKindV1.root, 0o755),
+        (HostPathRoleV1.ownership_root, OWNERSHIP_ROOT_V1, HostOwnerKindV1.root, 0o755),
+        (HostPathRoleV1.cache, xdg.cache, HostOwnerKindV1.service, 0o700),
+        (HostPathRoleV1.config, xdg.config, HostOwnerKindV1.service, 0o700),
+        (HostPathRoleV1.share_parent, xdg.data.parent, HostOwnerKindV1.root, 0o755),
+        (HostPathRoleV1.state_parent, xdg.state.parent, HostOwnerKindV1.root, 0o755),
+        (HostPathRoleV1.data, xdg.data, HostOwnerKindV1.service, 0o700),
+        (HostPathRoleV1.state, xdg.state, HostOwnerKindV1.service, 0o700),
+        (HostPathRoleV1.workspace, xdg.workspace, HostOwnerKindV1.service, 0o700),
     )
     return tuple(
-        (role, PurePosixPath(path.as_posix()), owner) for role, path, owner in paths
+        (role, PurePosixPath(path.as_posix()), owner, mode)
+        for role, path, owner, mode in paths
     )
 
 
@@ -270,6 +280,7 @@ def _path_spec_v1(
     role: HostPathRoleV1,
     path: PurePosixPath,
     owner_kind: HostOwnerKindV1,
+    mode: int,
 ) -> HostPathSpecV1:
     record = account.record
     ownership = (
@@ -277,7 +288,6 @@ def _path_spec_v1(
         if owner_kind is HostOwnerKindV1.root
         else HostOwnershipV1(HostOwnerKindV1.service, record.uid, record.gid)
     )
-    mode = 0o755 if owner_kind is HostOwnerKindV1.root else 0o700
     return HostPathSpecV1(
         role, path, ownership, mode, PosixAclPolicyV1.absent,
     )
@@ -287,8 +297,8 @@ def build_host_layout_spec_v1(account: PosixAccountSnapshotV1) -> HostLayoutSpec
     """Build the single canonical RM-0008 host tree for one pinned account."""
     _validate_service_account_v1(account)
     objects = tuple(
-        _path_spec_v1(account, role, path, owner)
-        for role, path, owner in _host_path_source_v1(account)
+        _path_spec_v1(account, role, path, owner, mode)
+        for role, path, owner, mode in _host_path_source_v1(account)
     )
     return HostLayoutSpecV1(SERVICE_ACCOUNT_POLICY_V1, account, objects)
 
@@ -377,7 +387,8 @@ __all__ = [
     "HostLayoutPlanV1", "HostLayoutSpecV1", "HostLayoutStepKindV1",
     "HostLayoutStepV1", "HostLayoutVerificationError", "HostNodeKindV1",
     "HostOwnerKindV1", "HostOwnershipV1", "HostPathObservationV1",
-    "HostPathRoleV1", "HostPathSpecV1", "OWNERSHIP_ROOT_V1",
+    "HostPathRoleV1", "HostPathSpecV1", "HOST_PROVISIONING_ROOT_V1",
+    "OWNERSHIP_ROOT_V1",
     "PosixAclPolicyV1", "SERVICE_ACCOUNT_NAME_V1", "SERVICE_ACCOUNT_POLICY_V1",
     "SERVICE_HOME_V1", "SERVICE_SHELL_V1",
     "build_host_layout_spec_v1", "diff_host_layout_v1", "verify_host_layout_v1",

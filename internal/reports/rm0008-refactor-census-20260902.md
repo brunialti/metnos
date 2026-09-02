@@ -457,7 +457,10 @@ filesystem, subprocess, systemd o effetti all'import. Il modulo descrive:
 
 - l'account di sistema `metnos`, home `/var/lib/metnos-service` e shell
   `/usr/sbin/nologin`;
+- il gruppo primario `metnos` e l'assenza esplicita di gruppi supplementari;
 - i parent strutturali `root:root 0755`;
+- la capsula bootstrap permanente `/var/lib/metnos-host-provisioning-v1`,
+  `root:root 0700`, separata dalla radice che deve essere provisionata;
 - le foglie XDG e il workspace `service:service 0700`;
 - `/var/lib/metnos/executor-birth` come `root:root 0755`;
 - assenza di ACL POSIX access/default, osservazioni complete, conflitti e
@@ -466,7 +469,7 @@ filesystem, subprocess, systemd o effetti all'import. Il modulo descrive:
 
 I path data/state/config/cache/workspace non sono duplicati: vengono derivati
 dall'owner `executor_birth_account_identity.metnos_xdg_layout_v1`. Il modulo
-contiene 384 righe e la funzione più lunga 23; 41 test mirati sono verdi.
+contiene 395 righe e la funzione più lunga 24; 44 test mirati sono verdi.
 Questa tranche è intenzionalmente solo dominio: non crea ancora account o
 directory e non viene invocata dalla transizione. Il prossimo adapter mutante
 dovrà consumare questo piano sotto journal, non ricostruire policy proprie.
@@ -501,6 +504,82 @@ La decisione resta: `contract_boundary_policy` e
 `contract_boundary_analysis` saranno gli owner autoriali; il preflight
 `python -I -S` conterrà una proiezione generata deterministicamente e
 verificata, non un import del runtime non ancora fidato.
+
+## Quarta tranche: protocollo puro di provisioning host
+
+Il workflow iniziale ha ora una grammatica persistente pura, ma non ancora un
+adapter di storage o un mutatore. Il journal non vive sotto la radice che deve
+creare: la sua sede prevista è la capsula bootstrap indipendente descritta dal
+layout host. La FSM chiusa è:
+
+`PLANNED/ENSURE_ACCOUNT -> ACCOUNT_READY/ENSURE_LAYOUT ->`
+`LAYOUT_READY/VERIFY_HOST -> HOST_VERIFIED`.
+
+Ogni record contiene sequence, hash del predecessore e digest immutabili di
+request, policy, account, layout e osservazione. Le funzioni pubbliche creano
+soltanto la transizione successiva ammessa; non esiste un `append` generico.
+JSON non canonico, chiavi duplicate, campi extra, booleani usati come interi,
+record oltre 64 KiB, salti di stato, tampering e drift delle evidenze vengono
+rifiutati fail-closed.
+
+Per non introdurre nuove copie tecniche, il journal usa tre owner piccoli:
+
+- `executor_birth_canonical.py`: profilo JSON ASCII canonico e decoder chiuso,
+  57 righe;
+- `executor_birth_crypto_framing.py`: framing length-delimited e SHA-256,
+  37 righe;
+- `executor_birth_host_provisioning_evidence.py`: digest derivati soltanto dai
+  tipi canonici identity/layout, 160 righe.
+
+`executor_birth_host_provisioning_journal.py` contiene 362 righe; la funzione
+massima dei quattro moduli è 26 righe. I 22 test dedicati includono golden
+bytes/digest e prove negative della catena. Nessun modulo esegue I/O, lookup o
+mutazioni.
+
+## Quinta tranche: capability POSIX read-only condivisa
+
+È stata estratta una porta pubblica e policy-neutral per osservare directory
+reali senza riusare private di `secure_fs` o del source receiver:
+
+- `executor_birth_posix_directory.py`, 300 righe: walk assoluto componente per
+  componente con descriptor, `O_NOFOLLOW`, binding a PID/device/inode e
+  verifica della catena prima e dopo l'osservazione;
+- `executor_birth_posix_acl.py`, 118 righe: decoder fail-closed degli xattr ACL
+  access/default;
+- `executor_birth_posix_directory_model.py`, 68 righe: errori e osservazioni
+  tipizzate che rifiutano stati impossibili.
+
+La capability non è copiabile o serializzabile, chiude i descriptor anche sui
+fallimenti, rifiuta symlink e sostituzioni inode e traduce in una tassonomia
+chiusa le syscall assenti. È rigorosamente read-only: nessun mkdir, owner,
+mode, ACL mutation, subprocess o lock. I 41 test del sottosistema, inclusi
+quelli del precedente owner metadata, sono verdi su descriptor reali; le prove
+ACL saltano esplicitamente solo quando il filesystem non le supporta.
+
+## Piano esatto della deduplicazione boundary
+
+La seconda analisi AST distingue 61 funzioni/method body corrispondenti tra
+guard e preflight; le 53 definizioni top-level identiche valgono 1.729 righe
+per copia. Sono inoltre presenti 32 assegnazioni AST identiche (505 righe) e
+48 policy equivalenti considerando alias e rappresentazioni.
+
+L'ordine di estrazione stabilito è:
+
+1. `contract_boundary_policy` come unica autorità di tabelle, limiti e regex;
+2. proiezione ASCII deterministica e verificata nel preflight `python -I -S`;
+3. owner puro di normalizzazione/source-review;
+4. modelli e primitive AST;
+5. risoluzione import/dynamic boundary;
+6. literal, path e taint;
+7. collector e alias;
+8. scomposizione di `_analyse_scope` (486 righe) per costrutto;
+9. scanner puro `relative path + bytes` con port I/O distinti;
+10. scomposizione di `check` (207) e `birth_closed_findings` (114).
+
+La proiezione standalone resterà fisicamente tracciata perché fa parte del
+TCB isolato, ma non sarà più una seconda sorgente autoriale. Il gate confronterà
+i byte generati e gli output differenziali, non l'identità accidentale dei
+corpi AST.
 
 ## Verifica integrata dopo le tre tranche
 
@@ -537,6 +616,32 @@ La classificazione è una baseline esplicita, non una deroga: questi otto
 difetti devono essere trattati nelle rispettive aree e i cinque test privilegi
 devono essere eseguiti nella replica Linux reale.
 
+## Verifica integrata dopo cinque tranche
+
+Il nuovo checkpoint ha rigenerato due volte i pin con output e byte identici:
+
+- private: 713 file,
+  `sha256:bf9831ae8fc0a821e83cd94e14fb9806bd2bfc87f03fa079085adfabc4deaeca`;
+- public: 701 file,
+  `sha256:9fcc63edb8caabc4d46d321ae182588a9b7bff86d9a1469ee0ff0a904980aa13`.
+
+L'inventario autorevole contiene 1.957 path. I test integrati dei nuovi owner
+hanno prodotto `107 passed`; la suite mirata dei consumer e dei gate ha
+prodotto `487 passed, 3 skipped` più il solo snapshot 126/127 già presente
+nella baseline.
+
+La corsa ampia è stata deliberatamente estesa a 130 file. Il risultato è
+`2435 passed, 34 skipped, 15 failed`. Ottantaquattro pass e due failure
+appartengono al test aggregatore dei connettori, fuori dal perimetro RM-0008:
+`consult_frontier` e `find_places` falliscono per il comportamento delle loro
+fixture/provider e non importano i moduli modificati. Tolto quel file, la
+stessa corsa contiene quindi `2351 passed, 34 skipped, 13 failed`.
+
+I tredici failure del perimetro coincidono per node-id con la baseline: cinque
+richiedono `sudo chown` e sono bloccati da `no new privileges`; gli altri otto
+sono i difetti già riprodotti sul commit iniziale e descritti sopra. Non emerge
+alcuna regressione della quarta o quinta tranche.
+
 ## Decisione
 
 Le revisioni indipendenti di architettura, software engineering e Python
@@ -548,4 +653,5 @@ convergono sulla stessa decisione:
 3. migrazione consumer per consumer, con dual-read comparativo soltanto e mai
    dual-write;
 4. replica reale completa prima di qualsiasi nuova proposta di esercizio;
-5. prima area di intervento: identità e layout, poi boundary analyzer puro.
+5. identità, layout, journal puro e porta POSIX read-only sono completati; la
+   prossima area è policy/proiezione boundary, poi analyzer puro.
