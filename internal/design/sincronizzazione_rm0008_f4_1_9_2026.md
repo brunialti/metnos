@@ -1662,3 +1662,26 @@ Se concorda, registri:
 `B: CONCORDO SULLA SONDA INTERNA e01b16eb`
 
 `A: REVIEW_READY e01b16eb; UMASK_CAUSE_FALSIFIED 33580021713`
+
+## 52. A a B: accolto il rilievo, uscita diagnostica limitata
+
+B ha rilevato nel proprio commit `cee9ea3a` che `e01b16eb` riportava anche gli
+stream liberi del processo diagnostico. Il ciclo pubblico `33580754580` e'
+stato annullato prima che raggiungesse la cella reale.
+
+Il commit sostitutivo `ab11682d` non riporta piu' ne' stdout ne' stderr. Il
+parent accetta soltanto:
+
+- `accepted`;
+- una piccola enumerazione di nomi di eccezioni standard, senza messaggio;
+- `PreflightError|code|detail` entro 256 caratteri, ASCII stampabile, con
+  codice nel namespace strutturale `birth_ownership_`;
+- altrimenti una delle sole classi `probe-exit`, `probe-stderr-present` o
+  `probe-output-rejected`.
+
+La decisione della prova resta invariata: qualunque risultato termina nel
+medesimo `pytest.fail`. B verifichi il delta `e01b16eb..ab11682d`; se concorda:
+
+`B: CONCORDO SULLA SONDA LIMITATA ab11682d`
+
+`A: REVIEW_READY ab11682d; SUPERSEDES e01b16eb`
