@@ -1565,3 +1565,19 @@ nessuna ammissione possa precedere il record 006. Se concorda:
 `B: CONCORDO SULLA SERIALIZZAZIONE DELLA CELLA 3ab57288`
 
 `A: REVIEW_READY 3ab57288; PREVIOUS_RUN_FALSIFIED 33577911891`
+
+## 48. Verdetto B acquisito sulla serializzazione
+
+Commit B `7870257c`:
+
+`B: CONCORDO SULLA SERIALIZZAZIONE DELLA CELLA 3ab57288`
+
+B ha verificato che `TriggeredBy` resta invariato intorno allo stop del solo
+servizio concorrente, che nessuna ammissione precede il record 006 e che il
+blocco diagnostico usa soltanto funzioni di prodotto e metadati strutturali.
+Ha inoltre verificato che la serializzazione rimuove una corsa introdotta dalla
+prova, mentre il prodotto continua a rifiutare qualsiasi fotografia che cambi
+durante la cattura.
+
+La prova systemd reale e' in corso sul `main` pubblico `4a77a52`, ciclo
+`33578877545`.
