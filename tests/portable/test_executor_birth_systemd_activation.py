@@ -990,6 +990,16 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         assert OWNERSHIP_ROOT.is_dir() and not OWNERSHIP_ROOT.is_symlink()
         assert (ownership_info.st_uid, ownership_info.st_gid) == (0, 0)
         ATTESTATION_ROOT.mkdir(mode=0o755)
+        # The publisher requires this exact installation contract.  Do not
+        # let the transient service manager's umask turn the fixture into a
+        # different directory than the one the product is specified to use.
+        ATTESTATION_ROOT.chmod(0o755)
+        attestation_root_info = ATTESTATION_ROOT.stat()
+        assert (
+            attestation_root_info.st_uid,
+            attestation_root_info.st_gid,
+            stat.S_IMODE(attestation_root_info.st_mode),
+        ) == (0, 0, 0o755)
         fixture.marker_root.mkdir(mode=0o700)
         os.chown(fixture.marker_root, fixture.account.uid, fixture.account.gid)
         _systemctl("daemon-reload")
@@ -1165,14 +1175,14 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         )
         assert stat.S_IMODE(marker_info.st_mode) == 0o640
 
-        # ── G6-C4: la prova relazionale, sulla stessa cella ────────────
-        # Misurato su systemd 255.4 prima di scrivere questa parte:
-        # `TriggeredBy` sul servizio NON compare dopo `daemon-reload`, solo
-        # dopo l'avvio del timer — che qui e' gia' avvenuto. `ConflictedBy`
-        # non compare ne' dopo `daemon-reload` ne' avviando un'ausiliaria
-        # `oneshot` ordinaria: systemd carica pigramente e scarica subito una
-        # oneshot inattiva senza riferimenti, e con essa spariscono i suoi
-        # archi. L'unita' ausiliaria deve quindi restare residente.
+        # G6-C4: the relational proof, in the same cell.
+        # Measured on systemd 255.4 before this section was written:
+        # `TriggeredBy` does not appear on the service after `daemon-reload`;
+        # it appears only after the timer starts, as it already has here.
+        # `ConflictedBy` appears neither after `daemon-reload` nor after an
+        # ordinary auxiliary `oneshot` starts: systemd loads lazily and
+        # immediately unloads an inactive, unreferenced oneshot together with
+        # its edges.  The auxiliary unit must therefore remain resident.
         def _attestations() -> set[str]:
             return {item.name for item in ATTESTATION_ROOT.iterdir()}
 
@@ -1206,9 +1216,9 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         assert accepted.returncode == 0, accepted.stderr
         assert _attestations() > published_before
 
-        # I due archi causali sono nella fotografia canonica, in entrambe le
-        # direzioni, e non solo nella lettura diretta di systemd. La stessa
-        # fotografia porta anche l'impronta di riferimento: uno scatto solo.
+        # Both causal edges are present in the canonical snapshot, in both
+        # directions, rather than only in the direct systemd reading.  The
+        # same single snapshot also carries the reference hash.
         _tcb, baseline_observation, _candidate = _capture_live_bindings(fixture)
         baseline_hash = baseline_observation.snapshot.effective_units_hash
         assert ("Triggers", fixture.service_name) in _edges_of(
@@ -1241,15 +1251,15 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             _systemctl("daemon-reload")
             _systemctl("start", auxiliary_name)
 
-            # Anche qui uno scatto solo: l'arco nuovo e l'impronta derivata
-            # vengono dalla stessa osservazione.
+            # Use one snapshot here too: the new edge and its derived hash
+            # come from the same observation.
             _tcb, drifted, _candidate = _capture_live_bindings(fixture)
             assert ("ConflictedBy", auxiliary_name) in _edges_of(
                 drifted, fixture.service_name,
             )
             assert drifted.snapshot.effective_units_hash != baseline_hash
 
-            # La deriva relazionale nega, e nega PRIMA di pubblicare.
+            # Relational drift denies before publishing anything.
             published_before_denial = _attestations()
             denied = _check_all()
             assert denied.returncode == preflight.EXIT_INVALID
