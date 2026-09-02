@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:3d2cb84b353f67dce3e2547148747f0610eb4e5032ba3eaeff5fffaa6e57f6fb",
+  "source_census": "sha256:032bf13df27458e552311b32f8969371d50ee7b9e2a1c41c546cd44bcfb93514",
   "scan_roots": [
     "runtime",
     "install",
@@ -2226,6 +2226,16 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "OwnershipChainStore._initialize_with_fixed_authority_snapshot_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned initialization from service-loaded public trust",
       "phase": "M4"
     },
     {

@@ -353,7 +353,6 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     import executor_birth_distribution_manifest as manifest
     import executor_birth_dominant_startup as dominant
     import executor_birth_ownership_authorities as authorities_module
-    import executor_birth_ownership_chain as ownership_chain
     import executor_birth_ownership_coordinator as coordinator
     import executor_birth_ownership_preflight as ownership_preflight
     import executor_birth_startup_gate as startup_gate
@@ -441,8 +440,10 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
     monkeypatch.setattr(startup_gate, "_exclusive_startup_gate_v1", startup_lock)
     monkeypatch.setattr(
-        ownership_chain.OwnershipChainStore, "initialize",
-        classmethod(lambda cls: events.append("chain-initialize")),
+        provisioner, "_initialize_transition_ownership_chain_v2",
+        lambda candidate: events.append("chain-initialize")
+        if candidate is descriptor
+        else pytest.fail("chain initialization lost the signed identity"),
     )
     monkeypatch.setattr(contract_cutover_guard, "_contract_cutover_guard_for_service_user_v1", maintenance_guard)
     monkeypatch.setattr(contract_cutover_guard, "_begin_topology_transition_v1", lambda *_: None)
@@ -646,6 +647,55 @@ def test_transition_birth_mutation_enters_and_restores_signed_service_identity(
         ("umask", 0o077), ("groups", (42, 77)), ("egid", 42),
         ("euid", 41), ("euid", 0), ("egid", 0), ("groups", (0,)),
         ("umask", 0o022),
+    ]
+
+
+def test_chain_initialization_loads_trust_as_service_then_creates_as_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import executor_birth_ownership_authorities as authority_module
+    import executor_birth_ownership_chain as ownership_chain
+
+    descriptor = object()
+    snapshot = object()
+    result = object()
+    events = []
+
+    @contextmanager
+    def service_identity(candidate):
+        assert candidate is descriptor
+        events.append("service-enter")
+        yield
+        events.append("service-exit")
+
+    def load_snapshot():
+        events.append("snapshot-load")
+        return snapshot
+
+    def initialize(cls, candidate):
+        assert cls is ownership_chain.OwnershipChainStore
+        assert candidate is snapshot
+        events.append("root-initialize")
+        return result
+
+    monkeypatch.setattr(
+        provisioner, "_service_owned_birth_identity_v2", service_identity,
+    )
+    monkeypatch.setattr(
+        authority_module, "_load_fixed_ownership_public_snapshot_v1",
+        load_snapshot,
+    )
+    monkeypatch.setattr(
+        ownership_chain.OwnershipChainStore,
+        "_initialize_with_fixed_authority_snapshot_v1",
+        classmethod(initialize),
+    )
+
+    assert provisioner._initialize_transition_ownership_chain_v2(
+        descriptor,
+    ) is result
+    assert events == [
+        "service-enter", "snapshot-load", "service-exit", "root-initialize",
     ]
 
 

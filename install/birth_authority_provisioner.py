@@ -3845,6 +3845,20 @@ def _service_owned_birth_identity_v2(descriptor: object):
             raise _reject("birth_transition_service_identity_changed")
 
 
+def _initialize_transition_ownership_chain_v2(descriptor: object) -> object:
+    """Load mixed public trust as the service, then create root-owned state."""
+    from executor_birth_ownership_authorities import (
+        _load_fixed_ownership_public_snapshot_v1,
+    )
+    from executor_birth_ownership_chain import OwnershipChainStore
+
+    with _service_owned_birth_identity_v2(descriptor):
+        snapshot = _load_fixed_ownership_public_snapshot_v1()
+    return OwnershipChainStore._initialize_with_fixed_authority_snapshot_v1(
+        snapshot,
+    )
+
+
 def _prepare_transition_authority_set_v2(
     claim: object, distribution: object, previous_set: object,
 ) -> PreparedAuthoritySetV2:
@@ -5059,9 +5073,7 @@ def complete_transition_cutover_v2(
                 descriptor.service_gid,
             )
             if verified.release_sequence == 1:
-                from executor_birth_ownership_chain import OwnershipChainStore
-
-                OwnershipChainStore.initialize()
+                _initialize_transition_ownership_chain_v2(descriptor)
                 # Prove the legacy stack quiescent before releasing the
                 # catalog lock to the governed service-owned Birth child.
                 # The final guard below reacquires both boundaries and proves

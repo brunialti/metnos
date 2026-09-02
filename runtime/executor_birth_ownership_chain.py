@@ -913,18 +913,53 @@ class OwnershipChainStore:
             _load_fixed_ownership_public_snapshot_v1,
         )
 
+        return cls._initialize_with_fixed_authority_snapshot_v1(
+            _load_fixed_ownership_public_snapshot_v1(),
+        )
+
+    @classmethod
+    def _initialize_with_fixed_authority_snapshot_v1(
+        cls, snapshot: object,
+    ) -> "OwnershipChainStore":
+        """Create root-owned state from the exact module-sealed cold snapshot."""
+        _require_linux_product_v1()
+        from executor_birth_ownership_authorities import (
+            OwnershipPublicRegistriesV1, _FIXED_PUBLIC_SNAPSHOT_SEAL,
+            _FixedOwnershipPublicSnapshotV1, _PUBLIC_SEAL,
+        )
+
         if cls is not OwnershipChainStore:
             raise OwnershipChainError(
                 "birth_ownership_distribution_recovery_required",
                 "productive store",
             )
-        # Fail on the fixed authority before the first filesystem mutation.
-        _load_fixed_ownership_public_snapshot_v1()
+        # The root coordinator cannot open the service-owned prepared Birth
+        # root.  It may instead receive the same module-sealed public snapshot
+        # loaded while the process held the signed service identity.
+        authorities = getattr(snapshot, "public", None)
+        if (
+            type(snapshot) is not _FixedOwnershipPublicSnapshotV1
+            or snapshot._seal is not _FIXED_PUBLIC_SNAPSHOT_SEAL
+            or type(authorities) is not OwnershipPublicRegistriesV1
+            or authorities._seal is not _PUBLIC_SEAL
+        ):
+            raise OwnershipChainError(
+                "birth_ownership_recovery_required", "authority snapshot",
+            )
         root = DEFAULT_OWNERSHIP_CHAIN_ROOT_V1
         _ensure_product_directory_v1(root)
         for name in CHAIN_OBJECT_DIRECTORIES_V1:
             _ensure_product_directory_v1(root / name)
-        return cls()
+        store = object.__new__(OwnershipChainStore)
+        store.root = root
+        store._fixed_authority_snapshot = snapshot
+        store._authorities = authorities
+        (
+            store.distribution_registry, store.cutover_registry,
+            store.head_registry,
+        ) = _registries_from_authorities(authorities)
+        _require_product_chain_metadata_v1(root)
+        return store
 
     def _append_pair(
         self, directory: str, stem: str, encoded: bytes, signature: bytes,
