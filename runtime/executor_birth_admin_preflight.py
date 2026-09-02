@@ -786,7 +786,7 @@ _BIRTH_CLOSED_GUARD_VERSION = (
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:a8a912aaa6dd655b1abb6b52ffd7e125cdd22d15269966560293da98a59813ea"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:64686860d90b4add555979ea61e362bbd9476bb05b9d18dac9d0891bd0026b9a"
 _SOURCE_REVIEW_PIN_LINE = re.compile(
     rb'(?m)^_?BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = (?:"sha256:" \+ "0" \* 64|"sha256:[0-9a-f]{64}")$'
 )
@@ -3676,9 +3676,12 @@ def _administrative_bundle_hash_v1(
     descriptor: object,
 ) -> str:
     if type(descriptor) is not _DecodedDeploymentDescriptorV1:
-        from executor_birth_distribution_assembler import (
-            DeploymentDescriptorV1, encode_deployment_descriptor_v1,
-        )
+        try:
+            from executor_birth_distribution_assembler import (
+                DeploymentDescriptorV1, encode_deployment_descriptor_v1,
+            )
+        except ImportError as exc:
+            raise _invalid("administrative bundle descriptor") from exc
 
         if type(descriptor) is not DeploymentDescriptorV1:
             raise _invalid("administrative bundle descriptor")
