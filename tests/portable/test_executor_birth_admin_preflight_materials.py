@@ -1002,6 +1002,10 @@ def test_administrative_bundle_hash_matches_framing_and_changes_with_artifact(
 
     monkeypatch.setattr(builtins, "__import__", isolated_import)
 
+    with pytest.raises(preflight.PreflightError) as invalid:
+        preflight._administrative_bundle_hash_v1(object())
+    assert invalid.value.detail == "administrative bundle descriptor"
+
     observed = preflight._administrative_bundle_hash_v1(
         autonomous_descriptor
     )
