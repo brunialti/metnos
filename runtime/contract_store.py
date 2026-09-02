@@ -1932,10 +1932,17 @@ def _exclusive_file_lock(
     timeout_code: str,
     invalid_code: str,
     detail: str,
+    trusted_owner: tuple[int, int] | None = None,
 ) -> Iterator[None]:
     """Hold one finite cross-process lock without following redirected paths."""
     if timeout < 0:
         raise ValueError("timeout must be non-negative")
+    if trusted_owner is not None and (
+        type(trusted_owner) is not tuple
+        or len(trusted_owner) != 2
+        or any(type(value) is not int or value < 0 for value in trusted_owner)
+    ):
+        raise ContractStoreError(invalid_code, "invalid trusted owner")
     _require_plain_directory(lock_path.parent, code=invalid_code)
     _require_no_link_components(lock_path.parent, code=invalid_code)
     process_lock = _process_lock_for(lock_path)
@@ -1958,7 +1965,25 @@ def _exclusive_file_lock(
             or not stat.S_ISREG(before.st_mode)
         ):
             raise ContractStoreError(invalid_code, str(lock_path))
-        flags = os.O_RDWR | os.O_CREAT
+        caller_owner = (
+            (os.geteuid(), os.getegid())
+            if hasattr(os, "geteuid") and hasattr(os, "getegid")
+            else None
+        )
+        delegated_owner = (
+            trusted_owner is not None
+            and caller_owner is not None
+            and trusted_owner != caller_owner
+        )
+        if delegated_owner and caller_owner[0] != 0:
+            raise ContractStoreError(invalid_code, "trusted owner requires root")
+        # A privileged transition may authenticate an existing service-owned
+        # lock, but it never creates a new object under that delegated owner.
+        # Creation remains the responsibility of the account that owns the
+        # store, avoiding a root-owned residue after a failed migration.
+        flags = os.O_RDWR
+        if not delegated_owner:
+            flags |= os.O_CREAT
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         try:
@@ -1969,7 +1994,12 @@ def _exclusive_file_lock(
         file_status = os.fstat(handle.fileno())
         if not stat.S_ISREG(file_status.st_mode):
             raise ContractStoreError(invalid_code, str(lock_path))
-        if (
+        if trusted_owner is not None and hasattr(file_status, "st_uid"):
+            if (file_status.st_uid, file_status.st_gid) != trusted_owner:
+                raise ContractStoreError(
+                    invalid_code, f"foreign owner: {lock_path}",
+                )
+        elif (
             hasattr(os, "geteuid")
             and hasattr(file_status, "st_uid")
             and file_status.st_uid != os.geteuid()
@@ -2050,6 +2080,7 @@ def catalog_admission_lock(
     *,
     store_root: Path | str | None = None,
     timeout: float = DEFAULT_LOCK_TIMEOUT,
+    trusted_owner: tuple[int, int] | None = None,
 ) -> Iterator[None]:
     """Serialize every transition that can add or remove a visible name.
 
@@ -2067,11 +2098,16 @@ def catalog_admission_lock(
         held = {}
         _CATALOG_LOCK_LOCAL.held = held
     if key in held:
-        held[key] += 1
+        count, established_owner = held[key]
+        if established_owner != trusted_owner:
+            raise ContractStoreError(
+                "catalog_lock_invalid", "reentrant owner mismatch",
+            )
+        held[key] = (count + 1, established_owner)
         try:
             yield
         finally:
-            held[key] -= 1
+            held[key] = (count, established_owner)
         return
 
     lock = _exclusive_file_lock(
@@ -2080,9 +2116,10 @@ def catalog_admission_lock(
         timeout_code="catalog_lock_timeout",
         invalid_code="catalog_lock_invalid",
         detail=str(lock_path),
+        trusted_owner=trusted_owner,
     )
     lock.__enter__()
-    held[key] = 1
+    held[key] = (1, trusted_owner)
     try:
         yield
     finally:
@@ -3370,6 +3407,13 @@ def materialize_repository_authoring_for_transition_v1(
     )
     from manifest_inventory import inventory_store_manifests
 
+    if authoring_owner is not None and (
+        type(authoring_owner) is not tuple
+        or len(authoring_owner) != 2
+        or any(type(value) is not int or value < 0 for value in authoring_owner)
+    ):
+        raise ContractStoreError("authoring_seed_owner_invalid")
+
     _require_productive_installation_source()
     if production_store_mode() not in {
         ProductionStoreMode.ACTIVE, ProductionStoreMode.STORE_ONLY,
@@ -3385,7 +3429,9 @@ def materialize_repository_authoring_for_transition_v1(
 
     trusted = _trusted_public_tuple(trusted_publics)
     _container, root, _marker = _production_paths()
-    with catalog_admission_lock(store_root=root):
+    with catalog_admission_lock(
+        store_root=root, trusted_owner=authoring_owner,
+    ):
         inventory = inventory_store_manifests(store_root=root)
         if inventory.problems or not inventory.manifests:
             raise ContractStoreError("authoring_seed_inventory_invalid")

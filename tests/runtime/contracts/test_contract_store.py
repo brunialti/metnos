@@ -381,6 +381,42 @@ def _try_catalog_lock_after_fork(store: str, result) -> None:
         result.close()
 
 
+@pytest.mark.skipif(
+    not hasattr(os, "geteuid"), reason="requires POSIX ownership",
+)
+def test_privileged_catalog_lock_accepts_only_the_declared_service_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = tmp_path / "store"
+    with contract_store_module.catalog_admission_lock(store_root=store):
+        pass
+
+    expected = (os.getuid(), os.getgid())
+    if expected[0] == 0:
+        expected = (995, 985)
+        real_fstat = os.fstat
+
+        def service_owned(descriptor: int):
+            values = list(real_fstat(descriptor))
+            values[4], values[5] = expected
+            return os.stat_result(values)
+
+        monkeypatch.setattr(contract_store_module.os, "fstat", service_owned)
+    monkeypatch.setattr(contract_store_module.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(contract_store_module.os, "getegid", lambda: 0)
+
+    with contract_store_module.catalog_admission_lock(
+        store_root=store, trusted_owner=expected,
+    ):
+        pass
+    with pytest.raises(ContractStoreError, match="catalog_lock_invalid"):
+        with contract_store_module.catalog_admission_lock(
+            store_root=store,
+            trusted_owner=(expected[0] + 1, expected[1]),
+        ):
+            pass
+
+
 def _publish_same_candidate(
     ref: ManifestRef,
     public_key_bytes: bytes,
