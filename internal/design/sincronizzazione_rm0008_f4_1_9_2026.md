@@ -2142,11 +2142,14 @@ l'attestazione e la rileggeva identica; anche il modulo sorgente accettava lo
 stesso stato. La pubblicazione osservata appartiene dunque alla diagnostica
 successiva, non e' attribuita al primo processo.
 
-La correzione e' confinata al test reale: prima di rimuovere il servizio,
-attende il suo atteso `Result=exit-code`. Questo prova che il timer one-shot ha
-gia' consumato il trigger; lascia il timer elapsed attivo per conservare
-`TriggeredBy`, quindi esegue `check-all` senza un lettore concorrente futuro.
-Nessun codice di prodotto, permesso, autorita' o contratto e' cambiato.
+Il ciclo `33605494563` ha poi mostrato che `Result` non e' il segnale corretto:
+l'invocazione pre-attestazione puo' concludersi legittimamente con `success`
+senza lanciare la sonda. La correzione resta confinata al test reale: acquisisce
+l'`InvocationID` prima dell'avvio del timer e attende che un identificatore
+nuovo raggiunga uno stato terminale. Questo prova sia il consumo del trigger
+one-shot sia l'uscita del processo; lascia il timer elapsed attivo per
+conservare `TriggeredBy`, quindi esegue `check-all` senza un lettore concorrente
+futuro. Nessun codice di prodotto, permesso, autorita' o contratto e' cambiato.
 
 La selezione portabile locale analizza correttamente entrambe le celle e salta
 le sette prove che richiedono root+systemd reale. Il nuovo ciclo pubblico e'
@@ -2154,9 +2157,9 @@ la verifica autorevole. B puo' revisionare in parallelo il solo delta del test
 e segnalare esclusivamente un controesempio causale.
 
 La revisione incrociata ha inoltre chiuso una falsa positivita' residua: ogni
-nuova attesa di `Result=exit-code` e' ora preceduta da una quiescenza provata
-del servizio (`ActiveState=inactive`) e dalla cancellazione verificata del
-risultato precedente. Un reset fallito non puo' rendere immediata l'attesa su
-un evento vecchio.
+nuova attivazione e' preceduta da una quiescenza provata del servizio
+(`ActiveState=inactive`) e dalla cancellazione verificata del risultato
+precedente. L'`InvocationID` diverso impedisce comunque di scambiare un evento
+vecchio per quello appena richiesto.
 
 `A: REAL_TIMER_PENDING_TRIGGER_RACE_REMOVED; PRODUCT_UNCHANGED; CONTINUING`
