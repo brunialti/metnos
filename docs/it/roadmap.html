@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Roadmap</title>
+ <meta name="description" content="Linea temporale delle roadmap di Metnos, con stato verificato e date di definizione e implementazione.">
+ <link rel="canonical" href="https://metnos.com/it/roadmap">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/roadmap">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/roadmap">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/roadmap">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260823-1">
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
+</head>
+<body>
+<h1>Roadmap</h1>
+
+<p class="lead">Questa linea temporale raccoglie le direzioni di sviluppo
+formalmente definite per Metnos. Distingue ciò che è stato realizzato da ciò
+che è pronto o in attesa, così una specifica futura non viene scambiata per
+una funzione già disponibile. La roadmap definita più recentemente compare per prima.</p>
+
+<p>Le date indicano quando una direzione è stata definita e, quando esiste una
+prova di completamento, quando è stata implementata. I documenti tecnici
+interni, le analisi e le decisioni architetturali non sono pubblicati.</p>
+
+<ul class="roadmap-legend" aria-label="Legenda degli stati">
+ <li class="is-done">Completata</li>
+ <li class="is-active">In corso</li>
+ <li class="is-ready">Pronta o da realizzare</li>
+ <li class="is-waiting">In attesa</li>
+</ul>
+
+<ol class="roadmap-timeline" aria-label="Linea temporale delle roadmap di Metnos">
+ <li class="roadmap-item roadmap-item--active">
+  <time class="roadmap-date" datetime="2026-08-25">25 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <div class="roadmap-meta"><span class="roadmap-id">RM-008</span><span class="roadmap-status">In corso</span><span class="roadmap-fact"><strong>Definita:</strong> 25 agosto 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> candidato certificato; transizione live da eseguire</span></div>
+   <h2>Porta unica di nascita degli executor</h2>
+   <p>Ogni executor nuovo o revisionato attraversa un solo percorso deterministico di ammissione prima di diventare attivo. Il candidato chiude i precedenti percorsi di pubblicazione, lega autorità e provenienza ai byte esatti e ha superato i gate portabili, Linux systemd, identità Windows e runtime mirato. Il completamento richiede ancora la transizione live autorizzata e il relativo turno da capo a fondo.</p>
+  </article>
+ </li>
+ <li class="roadmap-item roadmap-item--done">
+  <time class="roadmap-date" datetime="2026-08-24">24 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <div class="roadmap-meta"><span class="roadmap-id">RM-007</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 24 agosto 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 25 agosto 2026</span></div>
+   <h2>Pubblicazione verificata delle varianti linguistiche dei contratti</h2>
+   <p>Le varianti linguistiche attraversano un solo confine di pubblicazione verificato che lega sorgente, identità semantica, firma e attivazione, senza trasformare la traduzione in una modifica tecnica non revisionata.</p>
+  </article>
+ </li>
+ <li class="roadmap-item roadmap-item--done">
+  <time class="roadmap-date" datetime="2026-08-22">22 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <div class="roadmap-meta"><span class="roadmap-id">RM-006</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 22 agosto 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 23 agosto 2026</span></div>
+   <h2>Certificazione logica da capo a fondo</h2>
+   <p>Certificazione su 24 flussi di riferimento in italiano e inglese: due cicli completi, 96/96 casi conformi e cinque sonde non distruttive su confini reali, con un oracolo indipendente dal sistema sotto prova.</p>
+  </article>
+ </li>
+ <li class="roadmap-item roadmap-item--done tutor-exclude">
+  <time class="roadmap-date" datetime="2026-08-21">21 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <div class="roadmap-meta"><span class="roadmap-id">RM-005</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 21 agosto 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 23 agosto 2026</span></div>
+   <h2>Multilinguismo completo e auto-localizzazione</h2>
+   <p>Localizzazione versionata di messaggi, manifest, lessici, pianificazione, prompt, dispositivi e Tutor, con gate atomico e attivazione esplicita della lingua scelta per l'istanza.</p>
+  </article>
+ </li>
+ <li class="roadmap-item roadmap-item--done">
+  <time class="roadmap-date" datetime="2026-08-17">17 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <div class="roadmap-meta"><span class="roadmap-id">RM-004</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 17 agosto 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 22 agosto 2026</span></div>
+   <h2>LRE (Long Run Engine)</h2>
+   <p>Motore universale per affidare automaticamente attività lunghe a un'esecuzione persistente, tracciabile, riprendibile e governata, senza profili da scegliere.</p>
+  </article>
+ </li>
+ <li class="roadmap-item roadmap-item--done">
+  <time class="roadmap-date" datetime="2026-07-23">23 luglio 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <div class="roadmap-meta"><span class="roadmap-id">RM-003</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 23 luglio 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 30 luglio 2026</span></div>
+   <h2>Tutor integrato</h2>
+   <p>Guida operativa che usa la documentazione pubblica e i contratti ammessi per rispondere senza diventare un secondo pianificatore.</p>
+  </article>
+ </li>
+ <li class="roadmap-item roadmap-item--done">
+  <time class="roadmap-date" datetime="2026-07-23">23 luglio 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <div class="roadmap-meta"><span class="roadmap-id">RM-002</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 23 luglio 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 25 agosto 2026</span></div>
+   <h2>Controllo multilingue dei manifest</h2>
+   <p>Un controllo deterministico e fail-closed mantiene allineati contratti, argomenti e descrizioni degli executor in tutte le lingue ammesse.</p>
+  </article>
+ </li>
+ <li class="roadmap-item roadmap-item--waiting tutor-exclude">
+  <time class="roadmap-date" datetime="2026-07-23">23 luglio 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <div class="roadmap-meta"><span class="roadmap-id">RM-001</span><span class="roadmap-status">In attesa</span><span class="roadmap-fact"><strong>Definita:</strong> 23 luglio 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> non iniziata</span></div>
+   <h2>Conoscenza locale dell'utente</h2>
+   <p>Memoria personale locale, controllabile e separata fra gli utenti. La direzione è progettata, ma non è pianificata: la valutazione attuale non giustifica ancora il costo dell'intero sistema.</p>
+  </article>
+ </li>
+</ol>
+
+<div class="callout note"><p><strong>Come leggere lo stato.</strong> “Completata” richiede prove nel sistema distribuito. “Pronta” indica una direzione definita ma non ancora disponibile nella sua interezza. “In attesa” significa che non esiste un impegno di realizzazione.</p></div>
+</body>
+</html>
+

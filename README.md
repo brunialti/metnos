@@ -304,6 +304,8 @@ optional services, or non-interactive installation.
   through real natural-language scenes.
 - [Architecture guide](https://metnos.com/en/architecture/) — request flow,
   policy, memory, Tutor, devices, intelligent executors, and observability.
+- [Public roadmap](https://metnos.com/en/roadmap) — verified delivery status,
+  ordered from the most recently defined roadmap to the oldest.
 - [Generated executor catalog](https://metnos.com/en/architecture/executor_catalog)
   — the current signed capability inventory.
 - [Executor Standard](EXECUTOR_STANDARD.md) — the normative capability
