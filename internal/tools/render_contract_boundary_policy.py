@@ -15,10 +15,15 @@ REPO_ROOT_V1 = Path(__file__).resolve().parents[2]
 TARGET_V1 = REPO_ROOT_V1 / "runtime" / "executor_birth_admin_preflight.py"
 sys.path.insert(0, str(REPO_ROOT_V1 / "runtime"))
 
+from contract_boundary_analyzer_projection import (  # noqa: E402
+    ContractBoundaryAnalyzerProjectionError,
+    check_generated_region_v1 as check_analyzer_region_v1,
+    replace_generated_region_v1 as replace_analyzer_region_v1,
+)
 from contract_boundary_projection import (  # noqa: E402
     ContractBoundaryProjectionError,
-    check_generated_region_v1,
-    replace_generated_region_v1,
+    check_generated_region_v1 as check_policy_region_v1,
+    replace_generated_region_v1 as replace_policy_region_v1,
 )
 
 
@@ -78,18 +83,31 @@ def _atomic_write_v1(expected: bytes, content: bytes) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def _check_all_regions_v1(source: bytes) -> bool:
+    return check_policy_region_v1(source) and check_analyzer_region_v1(source)
+
+
+def _replace_all_regions_v1(source: bytes) -> bytes:
+    with_policy = replace_policy_region_v1(source)
+    return replace_analyzer_region_v1(with_policy)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _arguments_v1(argv)
     try:
         source = TARGET_V1.read_bytes()
         if args.check:
-            return 0 if check_generated_region_v1(source) else 1
-        updated = replace_generated_region_v1(source)
+            return 0 if _check_all_regions_v1(source) else 1
+        updated = _replace_all_regions_v1(source)
         if updated == source:
             return 0
         _atomic_write_v1(source, updated)
         return 0
-    except (ContractBoundaryProjectionError, OSError) as exc:
+    except (
+        ContractBoundaryAnalyzerProjectionError,
+        ContractBoundaryProjectionError,
+        OSError,
+    ) as exc:
         print(f"contract_boundary_projection_error:{exc}", file=sys.stderr)
         return 2
 

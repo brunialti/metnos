@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:7d6139069290689ce5d743fe5ef041ce9540f536613da99fd53c8dad091706fa",
+  "source_census": "sha256:b1566afeec507e98ba6ea96fe30be12dab2994df7159079acedf950743ff6aed",
   "scan_roots": [
     "runtime",
     "install",
@@ -144,6 +144,7 @@
       "role": "store_owner",
       "capabilities": [
         "authoring_write",
+        "birth",
         "store_write"
       ],
       "destination": "first-transition service-owned governed catalog convergence",
@@ -178,6 +179,7 @@
       "capabilities": [
         "authoring_read",
         "authoring_write",
+        "birth",
         "store_write",
         "verified_store_read"
       ],
@@ -189,8 +191,11 @@
       "scope": "main",
       "role": "store_owner",
       "capabilities": [
+        "authoring_read",
         "authoring_write",
-        "store_write"
+        "birth",
+        "store_write",
+        "verified_store_read"
       ],
       "destination": "closed command boundary for first-transition convergence",
       "phase": "M4"
@@ -203,6 +208,96 @@
         "store_write"
       ],
       "destination": "locked signed release publication from one received source",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_host_capability.py",
+      "scope": "bind_locked_host_effects_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "process-bound locked Linux host layout convergence capability factory",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_host_journal_posix.py",
+      "scope": "PosixJournalStoreV1._rewrite_staging",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "append-only crash-resumable root-owned host provisioning journal under its fixed lock",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_host_journal_posix.py",
+      "scope": "PosixJournalStoreV1._stage_record",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "append-only crash-resumable root-owned host provisioning journal under its fixed lock",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_host_journal_posix.py",
+      "scope": "PosixJournalStoreV1.append_record",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "append-only crash-resumable root-owned host provisioning journal under its fixed lock",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_host_journal_posix.py",
+      "scope": "_write_all_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "append-only crash-resumable root-owned host provisioning journal under its fixed lock",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_host_journal_posix.py",
+      "scope": "open_journal_lock_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "append-only crash-resumable root-owned host provisioning journal under its fixed lock",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_host_posix.py",
+      "scope": "_ensure_bootstrap_root_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "process-bound locked Linux host layout convergence adapter",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_host_posix.py",
+      "scope": "locked_host_effects_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "process-bound locked Linux host layout convergence adapter",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_host_provisioning.py",
+      "scope": "provision_executor_birth_host_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "single canonical account and host-layout provisioning orchestrator",
       "phase": "M4"
     },
     {
@@ -573,6 +668,16 @@
         "store_write"
       ],
       "destination": "one-shot handoff to the verified release and signed topology activation",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_transition.py",
+      "scope": "_provisioned_service_environment_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "validated transition bridge to the locked canonical host provisioner",
       "phase": "M4"
     },
     {

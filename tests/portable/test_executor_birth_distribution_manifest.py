@@ -89,8 +89,26 @@ def _files(root: Path):
         "deployment/executor-birth-service-catalog-v1.json": (
             "service_catalog", b'{"schema_version":1}\n',
         ),
+        "install/executor_birth_host_capability.py": (
+            "runtime_code", b"CAPABILITY = 1\n",
+        ),
+        "install/executor_birth_host_journal_posix.py": (
+            "runtime_code", b"JOURNAL_POSIX = 1\n",
+        ),
+        "install/executor_birth_host_posix.py": (
+            "runtime_code", b"HOST_POSIX = 1\n",
+        ),
+        "install/executor_birth_host_provisioning.py": (
+            "runtime_code", b"PROVISION = 1\n",
+        ),
+        "install/executor_birth_transition.py": (
+            "runtime_code", b"TRANSITION = 1\n",
+        ),
         "requirements.lock": ("dependency_lock", b"cryptography==47.0.0\n"),
         "runtime/__version__.py": ("product_version", b'__version__ = "1.2.3"\n'),
+        "runtime/contract_boundary_analyzer_ast.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_analyzer_projection.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_analyzer_types.py": ("runtime_code", b"ANALYZER = 1\n"),
         "runtime/contract_boundary_api_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_boundary_birth_authority_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_boundary_birth_exception_policy.py": ("runtime_code", b"POLICY = 1\n"),
@@ -102,7 +120,31 @@ def _files(root: Path):
         "runtime/contract_boundary_syntax_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_store.py": ("runtime_code", b"STORE = 1\n"),
         "runtime/executor_birth.py": ("runtime_code", b"BIRTH = 1\n"),
+        "runtime/executor_birth_account_identity.py": (
+            "runtime_code", b"ACCOUNT = 1\n",
+        ),
+        "runtime/executor_birth_canonical.py": (
+            "runtime_code", b"CANONICAL = 1\n",
+        ),
+        "runtime/executor_birth_crypto_framing.py": (
+            "runtime_code", b"FRAMING = 1\n",
+        ),
         "runtime/executor_birth_distribution_manifest.py": ("preflight", b"VERIFY = 1\n"),
+        "runtime/executor_birth_host_layout.py": (
+            "runtime_code", b"LAYOUT = 1\n",
+        ),
+        "runtime/executor_birth_host_path_policy.py": (
+            "runtime_code", b"PATH_POLICY = 1\n",
+        ),
+        "runtime/executor_birth_host_provisioning_evidence.py": (
+            "runtime_code", b"EVIDENCE = 1\n",
+        ),
+        "runtime/executor_birth_host_provisioning_journal.py": (
+            "runtime_code", b"JOURNAL = 1\n",
+        ),
+        "runtime/executor_birth_posix_metadata.py": (
+            "runtime_code", b"METADATA = 1\n",
+        ),
         "runtime/executor_birth_ownership_preflight.py": ("preflight", b"PREFLIGHT = 1\n"),
         "runtime/sign.py": ("runtime_code", b"SIGN = 1\n"),
         "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json": (

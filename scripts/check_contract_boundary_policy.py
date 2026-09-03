@@ -12,9 +12,13 @@ PREFLIGHT_V1 = (
 )
 sys.path.insert(0, str(REPOSITORY_ROOT_V1 / "runtime"))
 
+from contract_boundary_analyzer_projection import (  # noqa: E402
+    ContractBoundaryAnalyzerProjectionError,
+    check_generated_region_v1 as check_analyzer_region_v1,
+)
 from contract_boundary_projection import (  # noqa: E402
     ContractBoundaryProjectionError,
-    check_generated_region_v1,
+    check_generated_region_v1 as check_policy_region_v1,
 )
 
 
@@ -26,11 +30,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         source = PREFLIGHT_V1.read_bytes()
-        if check_generated_region_v1(source):
+        if check_policy_region_v1(source) and check_analyzer_region_v1(source):
             return 0
         print("contract_boundary_projection_error:stale", file=sys.stderr)
         return 1
-    except (ContractBoundaryProjectionError, OSError) as exc:
+    except (
+        ContractBoundaryAnalyzerProjectionError,
+        ContractBoundaryProjectionError,
+        OSError,
+    ) as exc:
         print(f"contract_boundary_projection_error:{exc}", file=sys.stderr)
         return 2
 

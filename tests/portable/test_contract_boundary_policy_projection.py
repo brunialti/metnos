@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT = ROOT / "runtime" / "executor_birth_admin_preflight.py"
 TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 GOLDEN_DIGEST_V1 = (
-    "sha256:1607142dd9567be8406379d5c0a644a395e7c3a6c65a251f176c09f084dee681"
+    "sha256:a32e70a7092bfd4688b808f3065cd4015df7c64aacdd1b1f2e212b05a64e7b3e"
 )
 
 POLICY_NAMES = (
@@ -103,6 +103,67 @@ def test_authoring_facts_are_immutable_and_facade_materializes_legacy_types() ->
     assert type(policy.BOUNDARY_APIS) is dict
     assert type(policy.BOUNDARY_MODULES) is dict
     assert type(policy.BOUNDARY_SOURCE_OWNERS) is dict
+
+
+def test_contract_convergence_owner_is_exact_in_all_three_registries() -> None:
+    owner = "executor_birth_contract_convergence"
+    expected_apis = (
+        ("<module>", (
+            "authoring_read", "authoring_write", "birth", "store_write",
+            "verified_store_read",
+        )),
+        ("_source_generation_has_historical_receipt", (
+            "store_write", "verified_store_read",
+        )),
+        ("_candidate_for_transition", ("authoring_read", "authoring_write")),
+        ("converge", (
+            "authoring_read", "authoring_write", "birth", "store_write",
+            "verified_store_read",
+        )),
+        ("main", (
+            "authoring_read", "authoring_write", "birth", "store_write",
+            "verified_store_read",
+        )),
+    )
+    api = next(row for row in api_policy.BOUNDARY_API_OWNERS_V1 if row.owner == owner)
+    module = next(
+        row for row in api_policy.BOUNDARY_MODULE_OWNERS_V1 if row.owner == owner
+    )
+    source = next(
+        row for row in api_policy.BOUNDARY_SOURCE_OWNERS_V1 if row.owner == owner
+    )
+    assert api.apis == expected_apis
+    assert module.module_names == ("install.executor_birth_contract_convergence",)
+    assert (source.path, source.owner) == (
+        "install/executor_birth_contract_convergence.py", owner,
+    )
+    assert tuple(policy.BOUNDARY_APIS[owner].items()) == expected_apis
+    assert tuple(standalone.BOUNDARY_APIS[owner].items()) == expected_apis
+    assert guard.BOUNDARY_SOURCE_OWNERS[source.path] == owner
+    assert standalone.BOUNDARY_SOURCE_OWNERS[source.path] == owner
+
+
+def test_host_effect_api_has_one_owner_and_complete_module_closure() -> None:
+    owner = "executor_birth_host_provisioning"
+    api = next(row for row in api_policy.BOUNDARY_API_OWNERS_V1 if row.owner == owner)
+    module = next(
+        row for row in api_policy.BOUNDARY_MODULE_OWNERS_V1 if row.owner == owner
+    )
+    sources = tuple(
+        row.path for row in api_policy.BOUNDARY_SOURCE_OWNERS_V1
+        if row.owner == owner
+    )
+    assert module.module_names == (
+        "install.executor_birth_host_capability",
+        "install.executor_birth_host_journal_posix",
+        "install.executor_birth_host_posix",
+        "install.executor_birth_host_provisioning",
+    )
+    assert sources == tuple(name.replace(".", "/") + ".py" for name in module.module_names)
+    assert tuple(policy.BOUNDARY_APIS[owner].items()) == api.apis
+    expected_modules = frozenset(module.module_names)
+    assert policy.BOUNDARY_MODULES[owner] == expected_modules
+    assert standalone.BOUNDARY_MODULES[owner] == expected_modules
 
 
 def test_projection_consumes_immutable_records_not_mutable_facade(
@@ -225,6 +286,9 @@ def test_fixed_tool_check_rejects_drift(tmp_path: Path) -> None:
     (replica / "runtime").mkdir(parents=True)
     (replica / "internal" / "tools").mkdir(parents=True)
     runtime_names = (
+        "contract_boundary_analyzer_ast.py",
+        "contract_boundary_analyzer_projection.py",
+        "contract_boundary_analyzer_types.py",
         "contract_boundary_api_policy.py", "contract_boundary_syntax_policy.py",
         "contract_boundary_policy_types.py",
         "contract_boundary_role_policy.py",
@@ -370,6 +434,9 @@ def test_preflight_has_no_local_policy_or_renderer_import() -> None:
         elif isinstance(node, ast.ImportFrom):
             imported.add(node.module or "")
     assert not imported & {
+        "contract_boundary_analyzer_ast",
+        "contract_boundary_analyzer_projection",
+        "contract_boundary_analyzer_types",
         "contract_boundary_api_policy", "contract_boundary_birth_policy",
         "contract_boundary_policy",
         "contract_boundary_projection", "contract_boundary_syntax_policy",

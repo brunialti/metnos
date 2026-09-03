@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import FrozenInstanceError, replace
 import inspect
 import json
 from pathlib import Path
@@ -12,6 +13,7 @@ import executor_birth_account_identity as identity
 import executor_birth_canonical as canonical
 import executor_birth_crypto_framing as framing
 import executor_birth_host_layout as layout
+import executor_birth_host_path_policy as path_policy
 import executor_birth_host_provisioning_evidence as evidence
 import executor_birth_host_provisioning_journal as journal
 
@@ -139,10 +141,10 @@ def test_request_policy_and_typed_evidence_are_deterministic() -> None:
     first_observation = _conforming_observation(first)
     second_observation = _conforming_observation(second)
     assert evidence.host_provisioning_request_id_v1() == (
-        "sha256:2dcc72c998d24c56562d14192004d606463f7098e14e7fd2b34bed6bb2eb0b88"
+        "sha256:4b16ae3dc061ec5b10713a6cbda823f1ec9d5583250510096b4abb6b4417e92a"
     )
     assert evidence.host_provisioning_policy_sha256_v1() == (
-        "sha256:4f4d33f1d03390ff504c95de598611aab08f91e22c2b715b52ed870e577ff900"
+        "sha256:29920e5d24890d6f259183d25fcb60da308bc61bfc3749b6c2d99945069c4996"
     )
     assert evidence.host_account_snapshot_sha256_v1(first) == (
         evidence.host_account_snapshot_sha256_v1(second)
@@ -153,6 +155,28 @@ def test_request_policy_and_typed_evidence_are_deterministic() -> None:
     assert evidence.host_layout_observation_sha256_v1(
         first, first_observation,
     ) == evidence.host_layout_observation_sha256_v1(second, second_observation)
+
+
+def test_policy_digest_and_layout_share_the_immutable_path_owner(
+    monkeypatch,
+) -> None:
+    original = path_policy.HOST_PATH_POLICY_V1
+    with pytest.raises(FrozenInstanceError):
+        original[-1].mode = 0o710
+    changed = original[:-1] + (replace(original[-1], mode=0o710),)
+    baseline = evidence.host_provisioning_policy_sha256_v1()
+    monkeypatch.setattr(path_policy, "HOST_PATH_POLICY_V1", changed)
+    assert layout.build_host_layout_spec_v1(_snapshot()).objects[-1].mode == 0o710
+    assert evidence.host_provisioning_policy_sha256_v1() != baseline
+
+
+def test_policy_digest_binds_the_canonical_trust_anchors(monkeypatch) -> None:
+    baseline = evidence.host_provisioning_policy_sha256_v1()
+    monkeypatch.setattr(
+        path_policy, "HOST_TRUST_ANCHORS_V1",
+        path_policy.HOST_TRUST_ANCHORS_V1[:-1],
+    )
+    assert evidence.host_provisioning_policy_sha256_v1() != baseline
 
 
 def test_only_specific_typed_transition_constructors_are_public() -> None:

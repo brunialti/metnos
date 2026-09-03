@@ -419,6 +419,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     import install.executor_birth_source_receiver as source_receiver
     import install.executor_birth_startup_gate as startup_gate_installer
     import install.executor_birth_startup_prerequisite as prerequisite_module
+    import install.executor_birth_systemd as systemd_installer
 
     events: list[str] = []
     distribution = SimpleNamespace(
@@ -543,7 +544,22 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         )
         else pytest.fail("predecessor binding changed"),
     )
-    monkeypatch.setattr(admin, "_prepare_cutover_candidate_v2", lambda *_: prepared)
+    def install_administrative(candidate, session):
+        if candidate is not distribution or session != "deployment":
+            pytest.fail("administrative install lost its authenticated lock binding")
+        events.append("administrative-install")
+
+    def prepare_candidate(complete_record, candidate):
+        if complete_record is not complete or candidate is not distribution:
+            pytest.fail("candidate preparation lost its authenticated binding")
+        events.append("candidate-prepare")
+        return prepared
+
+    monkeypatch.setattr(
+        systemd_installer, "install_group6_administrative_v1",
+        install_administrative,
+    )
+    monkeypatch.setattr(admin, "_prepare_cutover_candidate_v2", prepare_candidate)
     monkeypatch.setattr(coordinator, "_observe_dominant_identity_locked_v2", lambda *_: (D("1"), D("2"), D("3")))
     monkeypatch.setattr(provisioner, "_capture_bound_transition_catalog_v2", lambda *_: SimpleNamespace(catalog=SimpleNamespace(catalog_id=D("4"))))
     monkeypatch.setattr(provisioner, "_observe_bound_enforcement_v2", lambda *_: D("6"))
@@ -585,9 +601,110 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         "maintenance-enter",
         "maintenance-prove", "maintenance-exit", "contract-convergence",
         "maintenance-enter", "maintenance-prove", "authoring-seed",
-        "maintenance-prove", "inventory-enter", "predecessor", "composition",
+        "maintenance-prove", "inventory-enter", "predecessor",
+        "administrative-install", "candidate-prepare", "composition",
         "inventory-exit",
         "maintenance-exit", "startup-exit", "deployment-exit",
+    ]
+
+
+def test_completed_cutover_only_reattests_and_skips_administrative_install(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import config
+    import executor_birth_admin_preflight as admin
+    import executor_birth_distribution_manifest as manifest
+    import executor_birth_legacy_gate as legacy_gate
+    import executor_birth_ownership_coordinator as coordinator
+    import install.executor_birth_source_receiver as source_receiver
+    import install.executor_birth_systemd as systemd_installer
+
+    events = []
+    distribution = SimpleNamespace(
+        encoded=b"distribution", signature=b"s" * 64, release_sequence=2,
+    )
+    descriptor = SimpleNamespace(
+        service_user="metnos", service_uid=41, service_gid=42,
+        service_home="/srv/metnos",
+    )
+    completed, result = object(), object()
+    expected_distribution = distribution
+
+    @contextmanager
+    def deployment_lock():
+        events.append("deployment-enter")
+        yield "deployment"
+        events.append("deployment-exit")
+
+    def reserve(session, *, distribution, source_id):
+        assert (session, distribution, source_id) == (
+            "deployment", expected_distribution, D("a"),
+        )
+        events.append("reserve-observe")
+
+    completed_calls = 0
+
+    def observe_completed(session, candidate):
+        nonlocal completed_calls
+        assert session == "deployment" and candidate is distribution
+        completed_calls += 1
+        events.append("completed-observe")
+        return completed
+
+    service_state_root = Path("/srv/metnos/.local/state/metnos")
+    monkeypatch.setattr(config, "PATH_USER_STATE", service_state_root)
+    monkeypatch.setattr(legacy_gate, "closed_build_enforcement", lambda: True)
+    monkeypatch.setattr(
+        provisioner, "_resolve_legacy_service_identity_v2",
+        lambda _name: SimpleNamespace(name="legacy-metnos"),
+    )
+    monkeypatch.setattr(
+        manifest, "verify_current_installation_distribution_v1",
+        lambda *_args: distribution,
+    )
+    monkeypatch.setattr(
+        manifest, "capture_current_deployment_descriptor_v1",
+        lambda candidate: (candidate, descriptor),
+    )
+    monkeypatch.setattr(coordinator, "_deployment_lock_v1", deployment_lock)
+    monkeypatch.setattr(
+        source_receiver, "_load_received_source_with_product_session_v1",
+        lambda source_id, session: SimpleNamespace(source_id=source_id)
+        if session == "deployment" else pytest.fail("deployment lock lost"),
+    )
+    monkeypatch.setattr(
+        coordinator, "_reserve_transition_edge_locked_v2", reserve,
+    )
+    monkeypatch.setattr(
+        coordinator, "_completed_transition_locked_v2", observe_completed,
+    )
+    monkeypatch.setattr(
+        admin, "_attest_operational_preflight_v1",
+        lambda: events.append("operational-attestation"),
+    )
+    monkeypatch.setattr(
+        coordinator, "_result",
+        lambda record: result if record is completed
+        else pytest.fail("completed result changed"),
+    )
+    monkeypatch.setattr(
+        systemd_installer, "install_group6_administrative_v1",
+        lambda *_args: pytest.fail("completed cutover rewrote administrative TCB"),
+    )
+    monkeypatch.setattr(
+        admin, "_prepare_cutover_candidate_v2",
+        lambda *_args: pytest.fail("completed cutover recaptured candidate TCB"),
+    )
+
+    assert provisioner.complete_transition_cutover_v2(
+        distribution, D("a"), service_state_root=service_state_root,
+        legacy_service_user="legacy-metnos",
+        legacy_installation_root="/opt/metnos",
+    ) is result
+    assert completed_calls == 2
+    assert events == [
+        "deployment-enter", "reserve-observe", "completed-observe",
+        "operational-attestation", "completed-observe", "deployment-exit",
     ]
 
 

@@ -10,6 +10,7 @@ import pytest
 
 import executor_birth_account_identity as identity
 import executor_birth_host_layout as layout
+import executor_birth_host_path_policy as path_policy
 
 
 def _snapshot(
@@ -89,6 +90,9 @@ def test_canonical_tree_has_signed_paths_owners_modes_and_no_acls() -> None:
         layout.HostPathRoleV1.bootstrap_root: "/var/lib/metnos-host-provisioning-v1",
         layout.HostPathRoleV1.service_home: "/var/lib/metnos-service",
         layout.HostPathRoleV1.ownership_root: "/var/lib/metnos/executor-birth",
+        layout.HostPathRoleV1.preflight_attestations: (
+            "/var/lib/metnos/executor-birth/preflight-attestations-v1"
+        ),
         layout.HostPathRoleV1.cache_parent: "/var/lib/metnos-service/.cache",
         layout.HostPathRoleV1.config_parent: "/var/lib/metnos-service/.config",
         layout.HostPathRoleV1.local_parent: "/var/lib/metnos-service/.local",
@@ -105,9 +109,12 @@ def test_canonical_tree_has_signed_paths_owners_modes_and_no_acls() -> None:
         layout.HostPathRoleV1.data, layout.HostPathRoleV1.state,
         layout.HostPathRoleV1.workspace,
     }
+    private_root_roles = {
+        layout.HostPathRoleV1.bootstrap_root,
+    }
     assert set(actual) == set(expected_paths)
     for role, path in expected_paths.items():
-        attributes = bootstrap if role is layout.HostPathRoleV1.bootstrap_root else root
+        attributes = bootstrap if role in private_root_roles else root
         assert actual[role] == (path, *(service if role in service_roles else attributes))
 
 
@@ -151,25 +158,42 @@ def test_missing_tree_produces_deterministic_parent_first_plan() -> None:
         assert all(step.target is target for step in group)
 
 
-def test_xdg_leaves_are_derived_from_the_identity_owner(monkeypatch) -> None:
+def test_xdg_leaves_are_derived_once_by_the_immutable_path_owner() -> None:
     snapshot = _snapshot()
-    calls = []
-    original = identity.metnos_xdg_layout_v1
-
-    def derive(record):
-        calls.append(record)
-        return original(record)
-
-    monkeypatch.setattr(layout, "metnos_xdg_layout_v1", derive)
     spec = layout.build_host_layout_spec_v1(snapshot)
     by_role = {item.role: item.path for item in spec.objects}
-    xdg = original(snapshot.record)
-    assert calls == [snapshot.record]
+    xdg = identity.metnos_xdg_layout_v1(snapshot.record)
+    assert layout.HOST_PATH_POLICY_V1 is path_policy.HOST_PATH_POLICY_V1
     assert by_role[layout.HostPathRoleV1.data] == PurePosixPath(xdg.data.as_posix())
     assert by_role[layout.HostPathRoleV1.state] == PurePosixPath(xdg.state.as_posix())
     assert by_role[layout.HostPathRoleV1.config] == PurePosixPath(xdg.config.as_posix())
     assert by_role[layout.HostPathRoleV1.cache] == PurePosixPath(xdg.cache.as_posix())
     assert by_role[layout.HostPathRoleV1.workspace] == PurePosixPath(xdg.workspace.as_posix())
+
+
+def test_path_policy_is_the_account_independent_layout_source() -> None:
+    spec = layout.build_host_layout_spec_v1(_snapshot())
+    projected = tuple(
+        (
+            item.role, item.path, item.ownership.kind,
+            item.mode, item.posix_acl,
+        )
+        for item in spec.objects
+    )
+    assert projected == tuple(
+        (item.role, item.path, item.owner_kind, item.mode, item.posix_acl)
+        for item in path_policy.HOST_PATH_POLICY_V1
+    )
+
+
+def test_trust_anchor_owner_is_typed_ordered_and_closed() -> None:
+    assert path_policy.HOST_TRUST_ANCHORS_V1 == (
+        PurePosixPath("/"), PurePosixPath("/var"), PurePosixPath("/var/lib"),
+    )
+    with pytest.raises(ValueError, match="host trust anchor"):
+        path_policy._validate_trust_anchors_v1(
+            (PurePosixPath("/var"), PurePosixPath("/")),
+        )
 
 
 def test_diff_repairs_owner_acl_then_final_mode() -> None:
@@ -266,4 +290,7 @@ def test_import_is_pure_portable_and_within_source_limits(tmp_path: Path) -> Non
     assert layout.SERVICE_HOME_V1 == PurePosixPath("/var/lib/metnos-service")
     assert layout.HOST_PROVISIONING_ROOT_V1 == PurePosixPath(
         "/var/lib/metnos-host-provisioning-v1"
+    )
+    assert layout.PREFLIGHT_ATTESTATION_ROOT_V1 == PurePosixPath(
+        "/var/lib/metnos/executor-birth/preflight-attestations-v1"
     )

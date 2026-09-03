@@ -235,6 +235,9 @@ def _fixture(
         "runtime/__version__.py": (
             "product_version", b'__version__ = "1.2.3"\n',
         ),
+        "runtime/contract_boundary_analyzer_ast.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_analyzer_projection.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_analyzer_types.py": ("runtime_code", b"ANALYZER = 1\n"),
         "runtime/contract_boundary_api_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_boundary_birth_authority_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_boundary_birth_exception_policy.py": ("runtime_code", b"POLICY = 1\n"),
@@ -245,10 +248,23 @@ def _fixture(
         "runtime/contract_boundary_role_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_boundary_syntax_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_store.py": ("runtime_code", b"STORE = 1\n"),
+        "install/executor_birth_host_capability.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_journal_posix.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_posix.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_provisioning.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_transition.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth.py": ("runtime_code", b"BIRTH = 1\n"),
+        "runtime/executor_birth_account_identity.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_canonical.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_crypto_framing.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_distribution_manifest.py": (
             "preflight", b"VERIFY = 1\n",
         ),
+        "runtime/executor_birth_host_layout.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_path_policy.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_provisioning_evidence.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_provisioning_journal.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_posix_metadata.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_ownership_preflight.py": (
             "preflight", b"PREFLIGHT = 1\n",
         ),
@@ -352,10 +368,12 @@ def test_install_is_byte_identical_idempotent_and_defers_every_unit(
     fixture = _fixture(tmp_path)
     with _deployment_lock_for_test_v1(fixture.ownership_root) as session:
         first = _install(fixture, session)
+        installed = fixture.administrative_root / "preflight.py"
+        first_identity = (installed.stat().st_dev, installed.stat().st_ino)
         second = _install(fixture, session)
 
-    installed = fixture.administrative_root / "preflight.py"
     assert first == second
+    assert (installed.stat().st_dev, installed.stat().st_ino) == first_identity
     assert type(first) is installer._InstalledGroup6AdministrativeForTestV1
     assert installed.read_bytes() == fixture.preflight
     assert stat.S_IMODE(installed.stat().st_mode) == 0o755

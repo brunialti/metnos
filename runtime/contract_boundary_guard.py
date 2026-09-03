@@ -14,14 +14,36 @@ from __future__ import annotations
 
 import argparse
 import ast
-from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
 import re
 from typing import Iterable, Mapping, Sequence
 
+from contract_boundary_analyzer_ast import (
+    leaf_name_v1,
+    dotted_name_v1,
+    module_leaf_v1,
+    target_names_v1,
+    string_values_v1,
+    static_string_v1,
+    static_strings_v1,
+    resolved_alias_name_v1,
+    has_bound_root_v1,
+)
+from contract_boundary_analyzer_types import ScopeFacts, Finding
 import contract_boundary_policy as _boundary_policy
+
+
+_leaf_name = leaf_name_v1
+_dotted_name = dotted_name_v1
+_module_leaf = module_leaf_v1
+_target_names = target_names_v1
+_string_values = string_values_v1
+_static_string = static_string_v1
+_static_strings = static_strings_v1
+_resolved_alias_name = resolved_alias_name_v1
+_has_bound_root = has_bound_root_v1
 
 SCHEMA = _boundary_policy.SCHEMA
 BIRTH_CLOSED_SCHEMA = _boundary_policy.BIRTH_CLOSED_SCHEMA
@@ -29,7 +51,7 @@ BIRTH_CLOSED_GUARD_VERSION = _boundary_policy.BIRTH_CLOSED_GUARD_VERSION
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:7d6139069290689ce5d743fe5ef041ce9540f536613da99fd53c8dad091706fa"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:b1566afeec507e98ba6ea96fe30be12dab2994df7159079acedf950743ff6aed"
 RM0008_ACCEPTANCE_EVOLUTION_SHA256 = "sha256:1babce04a78b8345cbacb9bf5677bebade3958e655f0dc45884ad70636322167"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = _boundary_policy.SCAN_ROOTS
@@ -138,32 +160,6 @@ _STORE_NAME_RE = _boundary_policy._STORE_NAME_RE
 _CONTRACT_SCOPE_RE = _boundary_policy._CONTRACT_SCOPE_RE
 _GENERIC_PATH_NAME_RE = _boundary_policy._GENERIC_PATH_NAME_RE
 
-
-@dataclass(frozen=True)
-class ScopeFacts:
-    path: str
-    scope: str
-    line: int
-    capabilities: tuple[str, ...]
-    calls: tuple[str, ...]
-    direct_manifest_dir_access: bool = False
-    closed_dynamic_boundary: bool = False
-
-    @property
-    def key(self) -> str:
-        return f"{self.path}:{self.scope}"
-
-
-@dataclass(frozen=True)
-class Finding:
-    code: str
-    scope: str
-    message: str
-
-    def __str__(self) -> str:
-        return f"{self.code}: {self.scope}: {self.message}"
-
-
 def birth_migration_findings(
     facts: Sequence[ScopeFacts],
     inventory: Mapping[str, object],
@@ -204,27 +200,6 @@ def birth_migration_findings(
             f"path still owns {bypasses!r} instead of birth_executor",
         ))
     return sorted(findings, key=lambda finding: finding.scope)
-
-
-def _leaf_name(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
-
-
-def _dotted_name(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        parent = _dotted_name(node.value)
-        return f"{parent}.{node.attr}" if parent else node.attr
-    return None
-
-
-def _module_leaf(module: str) -> str:
-    return module.rsplit(".", 1)[-1]
 
 
 def _boundary_owner(module: str) -> str | None:
@@ -372,73 +347,6 @@ def _defined_boundary_capabilities(path: str, scope: str) -> tuple[str, ...]:
     api = scope.rsplit(".", 1)[-1]
     capabilities = set(BOUNDARY_APIS.get(module, {}).get(api, ()))
     return tuple(sorted(capabilities))
-
-
-def _target_names(node: ast.AST) -> set[str]:
-    if isinstance(node, ast.Name):
-        return {node.id}
-    if isinstance(node, (ast.Tuple, ast.List)):
-        result: set[str] = set()
-        for item in node.elts:
-            result.update(_target_names(item))
-        return result
-    return set()
-
-
-def _string_values(node: ast.AST) -> Iterable[str]:
-    for item in ast.walk(node):
-        if isinstance(item, ast.Constant) and isinstance(item.value, str):
-            yield item.value
-
-
-def _static_string(node: ast.AST) -> str | None:
-    """Evaluate only syntax that is unambiguously a constant string."""
-
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        left = _static_string(node.left)
-        right = _static_string(node.right)
-        return left + right if left is not None and right is not None else None
-    if isinstance(node, ast.JoinedStr):
-        parts = [_static_string(value) for value in node.values]
-        return "".join(parts) if all(part is not None for part in parts) else None
-    return None
-
-
-def _static_strings(node: ast.AST) -> set[str]:
-    return {
-        value
-        for item in ast.walk(node)
-        if (value := _static_string(item)) is not None
-    }
-
-
-def _resolved_alias_name(
-    node: ast.AST, aliases: Mapping[str, str],
-) -> str | None:
-    dotted = _dotted_name(node)
-    if dotted is None:
-        return None
-    first, separator, remainder = dotted.partition(".")
-    return aliases.get(first, first) + (
-        separator + remainder if separator else ""
-    )
-
-
-def _has_bound_root(node: ast.AST, aliases: Mapping[str, str]) -> bool:
-    """Whether the first name is an observed import or propagated alias.
-
-    A bare local called ``sign`` is not the imported ``sign`` module merely
-    because both spellings coincide.  Imported modules and aliases are entered
-    in ``aliases`` before a scope is analysed; ordinary parameters and local
-    values are not.
-    """
-
-    current = node
-    while isinstance(current, ast.Attribute):
-        current = current.value
-    return isinstance(current, ast.Name) and current.id in aliases
 
 
 def _is_dynamic_code_loader_call(func: ast.AST, canonical: str) -> bool:

@@ -30,6 +30,12 @@ _ERROR_RE = re.compile(r"birth_[a-z0-9_]{1,96}\Z")
 _FRAME_SCHEMA_V1 = "metnos.executor-birth.transition-handoff/1"
 _MAX_FRAME_BYTES_V1 = 4 * 1024 * 1024
 _ACTIVATION_TIMEOUT_SECONDS_V1 = 300
+_HOST_PROVISIONING_ERROR_CODES_V1 = frozenset({
+    "birth_ownership_administrative_required",
+    "birth_ownership_platform_unsupported",
+    "birth_provisioning_host_invalid",
+    "birth_provisioning_recovery_required",
+})
 
 
 class TransitionEntryError(RuntimeError):
@@ -66,6 +72,66 @@ def _service_environment_v1(service_user: object) -> tuple[str, Mapping[str, str
         raise _fail("birth_ownership_deployment_invalid")
     layout = _account_identity.metnos_xdg_layout_v1(account)
     return account.name, layout.environment()
+
+
+def _provisioned_service_environment_v1(
+    service_user: object,
+) -> tuple[str, Mapping[str, str]]:
+    """Provision first, then reject an identity change during fresh lookup."""
+    from install.executor_birth_host_provisioning import (
+        HostProvisioningError,
+        provision_executor_birth_host_v1,
+    )
+
+    try:
+        provisioned = provision_executor_birth_host_v1(service_user)
+    except HostProvisioningError as exc:
+        code = (
+            exc.code if type(exc.code) is str
+            and exc.code in _HOST_PROVISIONING_ERROR_CODES_V1
+            else "birth_ownership_deployment_invalid"
+        )
+        raise _fail(code) from exc
+    try:
+        snapshot = provisioned.account
+        if type(snapshot) is not _account_identity.PosixAccountSnapshotV1:
+            raise TypeError("provisioned account snapshot")
+        selected = snapshot.record.name
+        environment = _account_identity.metnos_xdg_layout_v1(
+            snapshot.record,
+        ).environment()
+        current = _account_identity.resolve_posix_account_snapshot_v1(selected)
+        snapshot.assert_unchanged(current)
+    except (
+        TypeError,
+        ValueError,
+        _account_identity.PosixAccountResolutionError,
+        _account_identity.PosixAccountSnapshotChangedError,
+    ) as exc:
+        raise _fail("birth_ownership_deployment_invalid") from exc
+    return selected, environment
+
+
+def _validated_legacy_inputs_v1(
+    service_user: object,
+    legacy_service_user: object,
+    legacy_installation_root: object,
+) -> tuple[str, Mapping[str, str], Path]:
+    if not _account_identity.is_posix_account_name_v1(service_user):
+        raise _fail("birth_ownership_deployment_invalid")
+    selected, environment = _service_environment_v1(legacy_service_user)
+    if selected == service_user:
+        raise _fail("birth_ownership_deployment_invalid")
+    try:
+        root = Path(os.fspath(legacy_installation_root))
+    except TypeError as exc:
+        raise _fail("birth_ownership_deployment_invalid") from exc
+    if (
+        not root.is_absolute() or Path(os.path.abspath(root)) != root
+        or root == Path("/")
+    ):
+        raise _fail("birth_ownership_deployment_invalid")
+    return selected, environment, root
 
 
 def _prepare_service_authorities_v1(
@@ -369,21 +435,15 @@ def deploy_source_v1(
 ) -> dict:
     """Receive, build, cross and activate one exact reviewed source tree."""
     _require_root_linux_v1()
-    selected_user, service_environment = _service_environment_v1(service_user)
-    selected_legacy_user, _legacy_environment = _service_environment_v1(
-        legacy_service_user,
+    selected_legacy_user, _legacy_environment, selected_legacy_root = (
+        _validated_legacy_inputs_v1(
+            service_user, legacy_service_user, legacy_installation_root,
+        )
+    )
+    selected_user, service_environment = _provisioned_service_environment_v1(
+        service_user,
     )
     if selected_legacy_user == selected_user:
-        raise _fail("birth_ownership_deployment_invalid")
-    try:
-        selected_legacy_root = Path(os.fspath(legacy_installation_root))
-    except TypeError as exc:
-        raise _fail("birth_ownership_deployment_invalid") from exc
-    if (
-        not selected_legacy_root.is_absolute()
-        or Path(os.path.abspath(selected_legacy_root)) != selected_legacy_root
-        or selected_legacy_root == Path("/")
-    ):
         raise _fail("birth_ownership_deployment_invalid")
     os.environ.update(service_environment)
     os.environ["METNOS_INSTALL_ROOT"] = _REPOSITORY.as_posix()

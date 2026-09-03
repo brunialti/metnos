@@ -7,9 +7,8 @@ from executor_birth_account_identity import (
 )
 from executor_birth_canonical import encode_canonical_ascii_v1
 from executor_birth_crypto_framing import framed_sha256_v1
+import executor_birth_host_path_policy as path_policy
 from executor_birth_host_layout import (
-    HOST_PROVISIONING_ROOT_V1,
-    OWNERSHIP_ROOT_V1,
     SERVICE_ACCOUNT_POLICY_V1,
     HostAccountPolicyV1,
     HostLayoutObservationV1,
@@ -58,8 +57,14 @@ def _policy_value_v1() -> dict[str, object]:
     return {
         "protocol": HOST_PROVISIONING_POLICY_PROTOCOL_V1,
         "account_policy": _account_policy_value_v1(SERVICE_ACCOUNT_POLICY_V1),
-        "bootstrap_root": HOST_PROVISIONING_ROOT_V1.as_posix(),
-        "ownership_root": OWNERSHIP_ROOT_V1.as_posix(),
+        "path_policy": [{
+            "role": item.role.value, "path": item.path.as_posix(),
+            "owner_kind": item.owner_kind.value, "mode": item.mode,
+            "posix_acl": item.posix_acl.value,
+        } for item in path_policy.HOST_PATH_POLICY_V1],
+        "trust_anchors": [
+            path.as_posix() for path in path_policy.HOST_TRUST_ANCHORS_V1
+        ],
     }
 
 

@@ -772,10 +772,130 @@ la sostituzione produttiva: prima servono eliminazione del residuo copiato fra
 i due analyzer, coerenza firmata della distribuzione, replica Linux reale e
 verifica dell'`ExecStartPre` installato.
 
+## Ottava area: baseline esatta dell'analyzer e blocchi produttivi
+
+Il confronto AST dopo `b660be21` misura 53 definizioni top-level identiche
+(49 funzioni e 4 classi), cioè circa 1.710 righe per copia. Includendo i metodi
+sono 61 corpi identici. Otto funzioni superano 40 righe; `_analyse_scope` ne
+occupa 486, `check` 197 e `birth_closed_findings` 105. Il residuo è stato
+classificato per responsabilità: tipi, primitive AST, simboli, dynamic e
+reflection, path/taint, alias, call detector, composizione scope, scan,
+inventory rules e Birth rules.
+
+L'architettura approvata assegna un owner piccolo a ogni responsabilità e
+mantiene due soli adapter: il guard acquisisce file dal repository; il
+preflight riceve esclusivamente byte già autenticati. Poiché il preflight deve
+restare autosufficiente sotto `python -I -S`, il codice canonico viene
+proiettato in una regione generata e verificata prima del source-review. La
+copia incorporata sarà quindi un artefatto derivato, non una seconda autorità
+manuale. Marker assenti, duplicati, invertiti o stale devono bloccare repin e
+pubblicazione.
+
+La characterization già presente confronta modelli, policy, facts, findings,
+ordinamento e source-review fra i due motori su un corpus rappresentativo. Va
+estesa ai limiti ±1, UTF-8/sintassi non validi, `MemoryError`, import relativi e
+star, shadowing, `sys.modules`, reflection, loader dinamici, eccezione `runpy`
+autenticata, subprocess/sign, taint, scope annidati e chiamate ambigue. Prima
+dello switch il confronto deve coprire anche gli interi alberi privato e
+pubblico.
+
+La revisione dell'integrazione ha inoltre individuato quattro blocchi P0
+indipendenti dall'analyzer:
+
+1. il protocollo puro di provisioning host non è ancora consumato
+   dall'entrypoint produttivo;
+2. l'installer Group 6 che pubblica il preflight amministrativo esiste ma non
+   è chiamato dal percorso produttivo;
+3. nessun consumer produttivo crea e verifica
+   `preflight-attestations-v1`;
+4. manca una replica Linux completa
+   `deploy → provisioning → Group 6 → retirement → Group 7 → attestation → activation → reboot`.
+
+Il gate resta quindi **NO-GO produttivo** anche se la policy e i relativi pin
+sono verdi. La sostituzione sarà interna allo stesso `preflight.py`: nessun
+secondo eseguibile, subprocess o `ExecStartPre`. Sono criteri obbligatori
+account/layout esatti e idempotenti, installazione root:root `0755` vincolata
+al manifesto, rifiuto pre-prerequisite, crash/resume a ogni confine,
+tamper matrix, riavvio e assenza finale di unità o binding legacy.
+
+## Nona area: analyzer canonico, provisioning host e grammatica legacy
+
+Checkpoint del 3 settembre 2026. La prima estrazione dell'analyzer non usa
+più il guard come seconda autorità manuale. Tipi e primitive AST hanno owner
+canonici piccoli; una proiezione deterministica incorpora gli stessi sorgenti
+nel preflight isolato. Il digest della proiezione include path, sorgente
+completa e corpo generato; collisioni di nomi, free name e decorator vengono
+verificate prima della generazione. La policy boundary assegna inoltre un
+owner esplicito alla convergenza contratti e al provisioning host. Checker,
+renderer e confronto differenziale sono verdi sotto `python -I -S`.
+
+Il provisioning produttivo dell'account e del layout non dipende più dallo
+script one-off. `deploy_source_v1` valida prima gli input legacy non mutanti,
+poi invoca un solo orchestratore host che:
+
+- crea o ri-osserva il gruppo e l'account `metnos` con identità esatta;
+- converge i quindici path della policy unica, inclusa la directory delle
+  attestazioni, con owner, mode e assenza ACL espliciti;
+- usa trust anchor condivisi per `/`, `/var` e `/var/lib`;
+- registra quattro record append-only sotto lock root-owned, verificando
+  l'intero prefisso, sequence, previous hash e snapshot POSIX;
+- riattesta root, lock e capability prima e dopo ogni effetto;
+- rifiuta step non appartenenti esattamente al layout canonico, fork, copie e
+  serializzazione della capability.
+
+L'installer Group 6 viene ora chiamato dal percorso di cutover, sotto le tre
+sessioni già richieste, prima della cattura del candidato TCB. Il percorso già
+completato non reinstalla né ricattura materiale amministrativo. Manifesto,
+preflight standalone e fixture richiedono la stessa closure host; i dieci scope
+mutanti nuovi sono censiti come `store_owner` nell'inventario M4.
+
+Lo stato legacy è per ora esclusivamente puro e read-only. Sette owner piccoli
+separano request account-bound, grammatica, journal e adapter POSIX. La FSM è:
+
+`PLANNED -> INVENTORIED -> AUTHORING_ADOPTED -> LEGACY_STATE_READY`.
+
+La transizione di adozione conserva esattamente path, tipi, contenuti, mode,
+link e ACL. Per uno stato già service-owned o vuoto ammette solo un no-op; per
+lo stato root-owned ammette soltanto `root:root -> service` dentro
+`contract-authoring`. Publication, marker e control restano immutati e i loro
+byte restano sotto l'autorità del contract store. Request sostituite con
+`dataclasses.replace`, copie, deepcopy, symlink, hardlink, stage non legati,
+Unicode non rappresentabile, NUL, race ACL/metadati e sostituzioni inode
+falliscono chiuso. Il digest della grammatica è legato anche alla policy host.
+
+Le revisioni avversariali hanno bloccato due falsi verdi prima del checkpoint:
+una FSM che accettava la scomparsa dell'authoring come adozione e un adapter
+che accettava step costruiti fuori policy. Un secondo ciclo ha poi riprodotto
+e chiuso il rilascio del lock padre da un figlio, il bypass della request con
+`dataclasses.replace` e la race metadati/ACL. Il verdetto finale indipendente
+è **GO per commit**, senza P0/P1 residui. La suite combinata prima del repin ha
+prodotto `878 passed, 2 skipped, 3 deselected`; i tre deselezionati sono
+esclusivamente i gate che devono restare rossi finché il nuovo source root non
+viene autenticato.
+
+Il repin è stato eseguito due volte con output e byte identici:
+
+- private: 736 file,
+  `sha256:b1566afeec507e98ba6ea96fe30be12dab2994df7159079acedf950743ff6aed`;
+- public: 724 file,
+  `sha256:d8cfbe86381cf06dceec670fd04db9d8c70749147659aa2efd68d80ee950ad9d`;
+- inventario Python: 1.993 path.
+
+Dopo il repin la stessa suite contiene `895 passed, 2 skipped`, senza
+deselezioni. Il guard Birth-closed, checker e renderer della proiezione sono
+verdi. Il gate pubblico `--check` ha ricostruito 1.715 file e rilevato zero
+PII, secret o file sensibili; nessun push è stato eseguito.
+
+Il verdetto produttivo resta **NO-GO**. La grammatica legacy non dispone ancora
+di effect adapter, journal POSIX e composizione con l'autenticazione semantica
+del contract store; `check-all` conserva ancora scritture e file temporanei;
+manca infine la replica Linux reale completa. Nessuna di queste tranche ha
+sostituito il gate installato o modificato lo stato in esercizio.
+
 ## Decisione
 
 Le revisioni indipendenti di architettura, software engineering e Python
-convergono sulla stessa decisione:
+convergono sulla stessa decisione aggiornata:
 
 1. nessun'altra patch allo script operativo e nessun nuovo tentativo in
    produzione;
@@ -783,6 +903,10 @@ convergono sulla stessa decisione:
 3. migrazione consumer per consumer, con dual-read comparativo soltanto e mai
    dual-write;
 4. replica reale completa prima della sostituzione del gate in esercizio;
-5. identità, layout, journal puro, porta POSIX read-only e prima autorità
-   boundary sono completati; la prossima area è la policy birth-closed
-   residua, poi l'analyzer puro.
+5. identità, layout, journal host, analyzer canonico e grammatica legacy pura
+   sono completati e sottoposti a doppia review;
+6. la prossima area è rendere il preflight realmente read-only, quindi
+   integrare l'adozione legacy autenticata sotto una macchina a stati
+   persistente;
+7. la sostituzione del gate installato avverrà soltanto dopo replica Linux,
+   seconda esecuzione no-op e riavvio verificato.

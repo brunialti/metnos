@@ -5113,6 +5113,12 @@ def complete_transition_cutover_v2(
                     _publish_initial_predecessor_v2(
                         verified, complete, legacy_installation_root,
                     )
+                    from install.executor_birth_systemd import (
+                        install_group6_administrative_v1,
+                    )
+                    install_group6_administrative_v1(
+                        verified, deployment_session,
+                    )
                     prepared = _prepare_cutover_candidate_v2(
                         complete, verified,
                     )

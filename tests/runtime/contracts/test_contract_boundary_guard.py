@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+import contract_boundary_guard as boundary_guard
+
 from contract_boundary_guard import (
     BIRTH_CLOSED_GUARD_VERSION,
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
@@ -26,6 +28,7 @@ from contract_boundary_guard import (
     discover,
     render_birth_closed_inventory,
     render_inventory,
+    scan_file,
 )
 
 
@@ -753,6 +756,84 @@ def test_first_class_boundary_callable_keeps_its_capability(tmp_path: Path) -> N
     assert _fact(facts, "callbacks").capabilities == (
         "publish_localization", "verified_store_read",
     )
+
+
+_CONVERGENCE_CAPABILITIES = (
+    "authoring_read", "authoring_write", "birth", "store_write",
+    "verified_store_read",
+)
+
+
+def test_contract_convergence_import_alias_and_first_class_are_classified(
+    tmp_path: Path,
+) -> None:
+    aliased = _scan(
+        tmp_path / "aliased",
+        "import install.executor_birth_contract_convergence as convergence\n"
+        "def run(): return convergence.converge()\n",
+    )
+    first_class = _scan(
+        tmp_path / "first-class",
+        "from install.executor_birth_contract_convergence import converge as run_now\n"
+        "def callback(): return run_now\n",
+    )
+    assert _fact(aliased, "run").capabilities == _CONVERGENCE_CAPABILITIES
+    assert _fact(first_class, "callback").capabilities == (
+        _CONVERGENCE_CAPABILITIES
+    )
+
+
+def test_local_converge_name_does_not_gain_contract_authority(tmp_path: Path) -> None:
+    facts = _scan(
+        tmp_path,
+        "def converge(value): return value\n"
+        "def inspect(manifest_path):\n"
+        "    return converge(manifest_path.read_text(encoding='utf-8'))\n",
+    )
+    assert _fact(facts, "inspect").capabilities == ("authoring_read",)
+
+
+def _contract_convergence_inventory(root: Path, facts: list[ScopeFacts]) -> dict:
+    payload = json.loads(
+        (root / "internal/reports/rm0007-m4-boundary-inventory.json").read_text()
+    )
+    relative = "install/executor_birth_contract_convergence.py"
+    payload["entries"] = [
+        entry for entry in payload["entries"] if entry["path"] == relative
+    ]
+    assert len(payload["entries"]) == 5
+    assert {fact.scope for fact in facts if fact.capabilities} == {
+        entry["scope"] for entry in payload["entries"]
+    }
+    return payload
+
+
+def test_contract_convergence_birth_and_source_owner_are_guarded_mutants(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = Path(__file__).resolve().parents[3]
+    relative = "install/executor_birth_contract_convergence.py"
+    path = root / relative
+    baseline = scan_file(path, repository_root=root)
+    inventory = _contract_convergence_inventory(root, baseline)
+    assert check(baseline, inventory) == []
+
+    owner = "executor_birth_contract_convergence"
+    without_birth = {
+        name: tuple(cap for cap in capabilities if cap != "birth")
+        for name, capabilities in boundary_guard.BOUNDARY_APIS[owner].items()
+    }
+    with monkeypatch.context() as scoped:
+        scoped.setitem(boundary_guard.BOUNDARY_APIS, owner, without_birth)
+        observed = scan_file(path, repository_root=root)
+        assert "birth" not in _fact(observed, "converge").capabilities
+        assert "boundary_scope_changed" in _codes(check(observed, inventory))
+
+    with monkeypatch.context() as scoped:
+        scoped.delitem(boundary_guard.BOUNDARY_SOURCE_OWNERS, relative)
+        observed = scan_file(path, repository_root=root)
+        assert "birth" not in _fact(observed, "converge").capabilities
+        assert "boundary_scope_changed" in _codes(check(observed, inventory))
 
 
 def test_legacy_bootstrap_requires_an_explicit_migration_boundary(
