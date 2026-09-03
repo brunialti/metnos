@@ -1,6 +1,5 @@
 """Immutable API, module and source-owner boundary facts."""
 from __future__ import annotations
-
 from dataclasses import dataclass
 
 from contract_boundary_policy_types import (
@@ -8,8 +7,6 @@ from contract_boundary_policy_types import (
     closed_names_v1 as _closed_names_v1,
     require_text_v1 as _require_text_v1,
 )
-
-
 @dataclass(frozen=True, slots=True)
 class BoundaryApiOwnerV1:
     owner: str
@@ -233,16 +230,38 @@ BOUNDARY_API_OWNERS_V1 = (
         ('_LockedHostEffectsV1.observe_account', ('store_write',)),
         ('_LockedHostEffectsV1.observe_layout', ('store_write',)),
         ('_LockedHostEffectsV1.observe_primary_group', ('store_write',)),
+        ('HostJournalEffectsV1.append_record', ('store_write',)),
         ('bind_locked_host_effects_v1', ('store_write',)),
-        ('PosixJournalStoreV1._recover_linked_pending', ('store_write',)),
-        ('PosixJournalStoreV1._rewrite_staging', ('store_write',)),
-        ('PosixJournalStoreV1._stage_record', ('store_write',)),
         ('PosixJournalStoreV1.append_record', ('store_write',)),
         ('_ensure_bootstrap_root_v1', ('store_write',)),
-        ('_write_all_v1', ('store_write',)),
         ('locked_host_effects_v1', ('store_write',)),
         ('open_journal_lock_v1', ('store_write',)),
         ('provision_executor_birth_host_v1', ('store_write',)),
+    )),
+    BoundaryApiOwnerV1('executor_birth_posix_foundation', (
+        ('BoundPosixAppendJournalV1._create_stage_v1', ('store_write',)),
+        ('BoundPosixAppendJournalV1._promote_v1', ('store_write',)),
+        ('BoundPosixAppendJournalV1._recover_linked_v1', ('store_write',)),
+        ('BoundPosixAppendJournalV1._rewrite_v1', ('store_write',)),
+        ('BoundPosixAppendJournalV1._stage_v1', ('store_write',)),
+        ('BoundPosixAppendJournalV1._unlink_pending_v1', ('store_write',)),
+        ('BoundPosixAppendJournalV1.append_exact', ('store_write',)),
+        ('_write_all_v1', ('store_write',)),
+        ('open_journal_lock_v1', ('store_write',)),
+        ('remove_acl_v1', ('store_write',)),
+    )),
+    BoundaryApiOwnerV1('executor_birth_legacy_state_adoption', (
+        ('_LegacyStateEffectsV1._change_owner_v1', ('store_write',)),
+        ('_LegacyStateEffectsV1.adopt_authoring', ('store_write',)),
+        ('_LockedLegacyStateEffectsV1.adopt_authoring', ('store_write',)),
+        ('_LockedLegacyStateEffectsV1.append_record', ('store_write',)),
+        ('LegacyStateJournalStoreV1.append_record', ('store_write',)),
+        ('adopt_legacy_state_v1', ('store_write',)),
+        ('_inspect_terminal_legacy_state_v1', ('live_artifact_read', 'verified_store_read')),
+        ('inspect_ready_legacy_state_live_v1', ('live_artifact_read', 'verified_store_read')),
+        ('inspect_terminal_legacy_state_history_v1', ('verified_store_read',)),
+        ('locked_legacy_state_effects_v1', ('store_write',)),
+        ('open_legacy_journal_lock_v1', ('store_write',)),
     )),
     BoundaryApiOwnerV1('executor_birth_systemd', (
         ('_install_group6_administrative_for_test_v1', ('store_write',)),
@@ -254,10 +273,17 @@ BOUNDARY_API_OWNERS_V1 = (
         ('install_group6_administrative_v1', ('store_write',)),
     )),
     BoundaryApiOwnerV1('executor_birth_admin_preflight', (
+        ('_attest_operational_preflight_v1', ('live_artifact_read', 'verified_store_read')),
+        ('_preflight_attestation_bytes_v1', ('verified_store_read',)),
+        ('main', ('live_artifact_read', 'verified_store_read')),
+    )),
+    BoundaryApiOwnerV1('executor_birth_preflight_attestation_store', (
         ('_publish_preflight_attestation_core_v1', ('store_write',)),
         ('_publish_preflight_attestation_for_test_v1', ('store_write',)),
         ('_publish_preflight_attestation_v1', ('store_write',)),
-        ('_write_all_exact_v1', ('store_write',)),
+    )),
+    BoundaryApiOwnerV1('executor_birth_preflight_store_authority', (
+        ('bind_store_mutation_port_v1', ('store_write',)),
     )),
 )
 
@@ -287,8 +313,21 @@ BOUNDARY_MODULE_OWNERS_V1 = (
         'install.executor_birth_host_posix',
         'install.executor_birth_host_provisioning',
     )),
+    BoundaryModuleOwnerV1('executor_birth_posix_foundation', (
+        'install.executor_birth_append_journal_posix',
+        'install.executor_birth_posix_directory',
+    )),
+    BoundaryModuleOwnerV1('executor_birth_legacy_state_adoption', (
+        'install.executor_birth_legacy_state_adoption',
+        'install.executor_birth_legacy_state_effect_posix',
+        'install.executor_birth_legacy_state_inspection',
+        'install.executor_birth_legacy_state_journal_posix',
+        'install.executor_birth_legacy_state_posix',
+    )),
     BoundaryModuleOwnerV1('executor_birth_systemd', ('install.executor_birth_systemd',)),
     BoundaryModuleOwnerV1('executor_birth_admin_preflight', ('executor_birth_admin_preflight', 'runtime.executor_birth_admin_preflight')),
+    BoundaryModuleOwnerV1('executor_birth_preflight_attestation_store', ('executor_birth_preflight_attestation_store', 'runtime.executor_birth_preflight_attestation_store')),
+    BoundaryModuleOwnerV1('executor_birth_preflight_store_authority', ('executor_birth_preflight_store_authority', 'runtime.executor_birth_preflight_store_authority')),
 )
 
 BOUNDARY_SOURCE_OWNERS_V1 = (
@@ -313,10 +352,18 @@ BOUNDARY_SOURCE_OWNERS_V1 = (
     BoundarySourceOwnerV1('install/executor_birth_host_journal_posix.py', 'executor_birth_host_provisioning'),
     BoundarySourceOwnerV1('install/executor_birth_host_posix.py', 'executor_birth_host_provisioning'),
     BoundarySourceOwnerV1('install/executor_birth_host_provisioning.py', 'executor_birth_host_provisioning'),
+    BoundarySourceOwnerV1('install/executor_birth_append_journal_posix.py', 'executor_birth_posix_foundation'),
+    BoundarySourceOwnerV1('install/executor_birth_posix_directory.py', 'executor_birth_posix_foundation'),
+    BoundarySourceOwnerV1('install/executor_birth_legacy_state_adoption.py', 'executor_birth_legacy_state_adoption'),
+    BoundarySourceOwnerV1('install/executor_birth_legacy_state_effect_posix.py', 'executor_birth_legacy_state_adoption'),
+    BoundarySourceOwnerV1('install/executor_birth_legacy_state_inspection.py', 'executor_birth_legacy_state_adoption'),
+    BoundarySourceOwnerV1('install/executor_birth_legacy_state_journal_posix.py', 'executor_birth_legacy_state_adoption'),
+    BoundarySourceOwnerV1('install/executor_birth_legacy_state_posix.py', 'executor_birth_legacy_state_adoption'),
     BoundarySourceOwnerV1('install/executor_birth_systemd.py', 'executor_birth_systemd'),
     BoundarySourceOwnerV1('runtime/executor_birth_admin_preflight.py', 'executor_birth_admin_preflight'),
+    BoundarySourceOwnerV1('runtime/executor_birth_preflight_attestation_store.py', 'executor_birth_preflight_attestation_store'),
+    BoundarySourceOwnerV1('runtime/executor_birth_preflight_store_authority.py', 'executor_birth_preflight_store_authority'),
 )
-
 def _validate_catalog_v1(
     api_rows: tuple[BoundaryApiOwnerV1, ...],
     module_rows: tuple[BoundaryModuleOwnerV1, ...],

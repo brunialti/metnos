@@ -17,6 +17,7 @@ SERVICE_SHELL_V1 = PurePosixPath("/usr/sbin/nologin")
 OWNERSHIP_ROOT_V1 = PurePosixPath("/var/lib/metnos/executor-birth")
 HOST_PROVISIONING_ROOT_V1 = PurePosixPath("/var/lib/metnos-host-provisioning-v1")
 PREFLIGHT_ATTESTATION_ROOT_V1 = OWNERSHIP_ROOT_V1 / "preflight-attestations-v1"
+LEGACY_STATE_JOURNAL_ROOT_V1 = OWNERSHIP_ROOT_V1 / "legacy-state-adoption-v1"
 HOST_TRUST_ANCHORS_V1 = (
     PurePosixPath("/"), PurePosixPath("/var"), PurePosixPath("/var/lib"),
 )
@@ -25,6 +26,7 @@ HOST_TRUST_ANCHORS_V1 = (
 class HostPathRoleV1(str, Enum):
     ownership_parent = "ownership_parent"
     bootstrap_root = "bootstrap_root"
+    legacy_state_journal = "legacy_state_journal"
     service_home = "service_home"
     ownership_root = "ownership_root"
     cache_parent = "cache_parent"
@@ -95,6 +97,7 @@ def _canonical_path_policy_v1() -> tuple[HostPathPolicyV1, ...]:
         (HostPathRoleV1.config, xdg.config, HostOwnerKindV1.service, 0o700),
         (HostPathRoleV1.share_parent, xdg.data.parent, HostOwnerKindV1.root, 0o755),
         (HostPathRoleV1.state_parent, xdg.state.parent, HostOwnerKindV1.root, 0o755),
+        (HostPathRoleV1.legacy_state_journal, LEGACY_STATE_JOURNAL_ROOT_V1, HostOwnerKindV1.root, 0o700),
         (HostPathRoleV1.preflight_attestations, PREFLIGHT_ATTESTATION_ROOT_V1, HostOwnerKindV1.root, 0o755),
         (HostPathRoleV1.data, xdg.data, HostOwnerKindV1.service, 0o700),
         (HostPathRoleV1.state, xdg.state, HostOwnerKindV1.service, 0o700),
@@ -143,6 +146,7 @@ _validate_trust_anchors_v1(HOST_TRUST_ANCHORS_V1)
 __all__ = [
     "HOST_PATH_POLICY_V1", "HOST_PROVISIONING_ROOT_V1",
     "HOST_TRUST_ANCHORS_V1",
+    "LEGACY_STATE_JOURNAL_ROOT_V1",
     "HostOwnerKindV1", "HostPathPolicyV1", "HostPathRoleV1",
     "OWNERSHIP_ROOT_V1", "PREFLIGHT_ATTESTATION_ROOT_V1",
     "PosixAclPolicyV1", "SERVICE_ACCOUNT_NAME_V1", "SERVICE_HOME_V1",

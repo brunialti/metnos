@@ -25,6 +25,11 @@ from contract_boundary_projection import (  # noqa: E402
     check_generated_region_v1 as check_policy_region_v1,
     replace_generated_region_v1 as replace_policy_region_v1,
 )
+from executor_birth_legacy_state_preflight_projection import (  # noqa: E402
+    LegacyStatePreflightProjectionError,
+    check_generated_region_v1 as check_legacy_state_region_v1,
+    replace_generated_region_v1 as replace_legacy_state_region_v1,
+)
 
 
 def _arguments_v1(argv: list[str] | None) -> argparse.Namespace:
@@ -84,12 +89,17 @@ def _atomic_write_v1(expected: bytes, content: bytes) -> None:
 
 
 def _check_all_regions_v1(source: bytes) -> bool:
-    return check_policy_region_v1(source) and check_analyzer_region_v1(source)
+    return (
+        check_policy_region_v1(source)
+        and check_analyzer_region_v1(source)
+        and check_legacy_state_region_v1(source)
+    )
 
 
 def _replace_all_regions_v1(source: bytes) -> bytes:
     with_policy = replace_policy_region_v1(source)
-    return replace_analyzer_region_v1(with_policy)
+    with_analyzer = replace_analyzer_region_v1(with_policy)
+    return replace_legacy_state_region_v1(with_analyzer)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -106,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     except (
         ContractBoundaryAnalyzerProjectionError,
         ContractBoundaryProjectionError,
+        LegacyStatePreflightProjectionError,
         OSError,
     ) as exc:
         print(f"contract_boundary_projection_error:{exc}", file=sys.stderr)

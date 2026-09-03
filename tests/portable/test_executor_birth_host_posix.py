@@ -98,7 +98,7 @@ def test_observation_rejects_concurrent_child_replacement(tmp_path, monkeypatch)
     monkeypatch.setattr(posix.os, "stat", changing_stat)
     monkeypatch.setattr(posix, "_TRUST_ANCHORS_V1", frozenset())
     monkeypatch.setattr(posix, "_acl_present_v1", lambda _fd: (False, False))
-    effects = posix._PosixHostEffectsV1((os.getuid(), os.getgid()))
+    effects = posix._PosixHostEffectsV1()
     with pytest.raises(
         journal_posix.HostProvisioningPosixError,
         match="layout path replaced",
@@ -138,7 +138,7 @@ def test_observation_rejects_mode_or_acl_metadata_race(
     monkeypatch.setattr(posix, "_acl_present_v1", lambda _fd: (False, False))
     monkeypatch.setattr(posix, "_require_bound_v1", changed_final)
     with pytest.raises(journal_posix.HostProvisioningPosixError):
-        posix._PosixHostEffectsV1((os.getuid(), os.getgid()))._observe_target(target)
+        posix._PosixHostEffectsV1()._observe_target(target)
 
 
 def test_symlink_is_observed_as_conflict_without_following(
@@ -149,7 +149,7 @@ def test_symlink_is_observed_as_conflict_without_following(
     link = tmp_path / "link"
     link.symlink_to(destination, target_is_directory=True)
     target = SimpleNamespace(path=PurePosixPath(link.as_posix()))
-    effects = posix._PosixHostEffectsV1((os.getuid(), os.getgid()))
+    effects = posix._PosixHostEffectsV1()
     monkeypatch.setattr(posix, "_TRUST_ANCHORS_V1", frozenset())
     observed = effects._observe_target(target)
     assert observed.node_kind is layout.HostNodeKindV1.other

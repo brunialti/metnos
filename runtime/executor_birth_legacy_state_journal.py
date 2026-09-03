@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import re
 
 from executor_birth_canonical import (
     CanonicalDocumentError,
@@ -10,6 +11,7 @@ from executor_birth_canonical import (
     encode_canonical_ascii_v1,
 )
 from executor_birth_crypto_framing import framed_sha256_v1, is_framed_sha256_v1
+import executor_birth_legacy_state_wire as wire
 from executor_birth_legacy_state_request import (
     LegacyStateError,
     LegacyStateRequestV1,
@@ -21,6 +23,7 @@ from executor_birth_legacy_state_policy import (
     LegacyStateDispositionV1,
     LegacyStateObservationV1,
     classify_legacy_state_v1,
+    legacy_state_adoption_target_sha256_v1,
     legacy_state_policy_sha256_v1,
 )
 
@@ -28,6 +31,7 @@ from executor_birth_legacy_state_policy import (
 MAX_LEGACY_STATE_RECORD_BYTES_V1 = 64 * 1024
 _RECORD_DOMAIN = b"metnos.executor-birth.legacy-state-record/v1\0"
 _RECORD_SEAL = object()
+_WIRE_DIGEST_RE_V1 = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 class LegacyStateV1(str, Enum):
@@ -46,7 +50,7 @@ class LegacyStateIntentV1(str, Enum):
 _STATES = tuple(LegacyStateV1)
 _INTENTS = (*tuple(LegacyStateIntentV1), None)
 _RECORD_KEYS = frozenset({
-    "authoring_sha256", "intent", "inventory_disposition",
+    "adoption_target_sha256", "authoring_sha256", "intent", "inventory_disposition",
     "inventory_sha256", "policy_sha256", "previous_record_sha256",
     "protocol", "ready_sha256", "record_sha256", "request_id",
     "schema_version", "sequence", "state",
@@ -69,6 +73,26 @@ def _require_fsm_v1() -> None:
 _require_fsm_v1()
 
 
+def legacy_state_wire_profile_v1() -> dict[str, object]:
+    return {
+        "dispositions": frozenset(
+            item.value for item in LegacyStateDispositionV1
+            if item is not LegacyStateDispositionV1.invalid
+        ),
+        "fsm": LEGACY_STATE_FSM_V1,
+        "maximum_record_bytes": MAX_LEGACY_STATE_RECORD_BYTES_V1,
+        "output_fields": wire.LEGACY_STATE_WIRE_OUTPUT_FIELDS_V1,
+        "policy_sha256": legacy_state_policy_sha256_v1(),
+        "protocol": LEGACY_STATE_PROTOCOL_V1,
+        "record_domain": _RECORD_DOMAIN,
+        "record_keys": _RECORD_KEYS,
+    }
+
+
+def _decode_wire_canonical_v1(raw: bytes, maximum: int) -> object:
+    return decode_canonical_ascii_v1(raw, maximum=maximum)
+
+
 @dataclass(frozen=True, slots=True)
 class LegacyStateRecordV1:
     sequence: int
@@ -79,6 +103,7 @@ class LegacyStateRecordV1:
     policy_sha256: str
     inventory_sha256: str | None
     inventory_disposition: LegacyStateDispositionV1 | None
+    adoption_target_sha256: str | None
     authoring_sha256: str | None
     ready_sha256: str | None
     _seal: object = field(repr=False, compare=False)
@@ -94,6 +119,7 @@ class LegacyStateRecordV1:
 
 def _record_material(record: LegacyStateRecordV1) -> dict[str, object]:
     return {
+        "adoption_target_sha256": record.adoption_target_sha256,
         "authoring_sha256": record.authoring_sha256,
         "intent": None if record.intent is None else record.intent.value,
         "inventory_disposition": (
@@ -112,8 +138,13 @@ def _record_material(record: LegacyStateRecordV1) -> dict[str, object]:
 
 def _validate_record(record: LegacyStateRecordV1) -> None:
     sequence = record.sequence
-    expected = (sequence >= 1, sequence >= 2, sequence >= 3) if type(sequence) is int else ()
-    values = (record.inventory_sha256, record.authoring_sha256, record.ready_sha256)
+    expected = (
+        sequence >= 1, sequence >= 1, sequence >= 2, sequence >= 3,
+    ) if type(sequence) is int else ()
+    values = (
+        record.inventory_sha256, record.adoption_target_sha256,
+        record.authoring_sha256, record.ready_sha256,
+    )
     disposition_present = (
         type(record.inventory_disposition) is LegacyStateDispositionV1
         and record.inventory_disposition is not LegacyStateDispositionV1.invalid
@@ -125,6 +156,7 @@ def _validate_record(record: LegacyStateRecordV1) -> None:
         or not is_framed_sha256_v1(record.request_id)
         or record.policy_sha256 != legacy_state_policy_sha256_v1()
         or any(flag != is_framed_sha256_v1(value) for flag, value in zip(expected, values))
+        or (sequence >= 2 and record.authoring_sha256 != record.adoption_target_sha256)
         or (sequence >= 3 and record.ready_sha256 != record.authoring_sha256)
         or (sequence >= 1) != disposition_present
         or (sequence == 0) != (record.previous_record_sha256 is None)
@@ -146,17 +178,11 @@ def encode_legacy_state_record_v1(record: LegacyStateRecordV1) -> bytes:
 
 def decode_legacy_state_record_v1(raw: bytes) -> LegacyStateRecordV1:
     try:
-        value = decode_canonical_ascii_v1(
-            raw, maximum=MAX_LEGACY_STATE_RECORD_BYTES_V1,
+        value = wire.legacy_state_wire_record_v1(
+            raw, legacy_state_wire_profile_v1(), _WIRE_DIGEST_RE_V1,
+            _decode_wire_canonical_v1, encode_canonical_ascii_v1,
+            framed_sha256_v1, _invalid,
         )
-        if type(value) is not dict or set(value) != _RECORD_KEYS:
-            raise _invalid("record_schema")
-        if (
-            type(value["schema_version"]) is not int
-            or value["schema_version"] != 1
-            or value["protocol"] != LEGACY_STATE_PROTOCOL_V1
-        ):
-            raise _invalid("record_schema")
         disposition = value["inventory_disposition"]
         record = LegacyStateRecordV1(
             value["sequence"], LegacyStateV1(value["state"]),
@@ -164,32 +190,25 @@ def decode_legacy_state_record_v1(raw: bytes) -> LegacyStateRecordV1:
             value["previous_record_sha256"], value["request_id"],
             value["policy_sha256"], value["inventory_sha256"],
             None if disposition is None else LegacyStateDispositionV1(disposition),
-            value["authoring_sha256"], value["ready_sha256"], _RECORD_SEAL,
+            value["adoption_target_sha256"], value["authoring_sha256"],
+            value["ready_sha256"], _RECORD_SEAL,
         )
     except LegacyStateError:
         raise
     except (CanonicalDocumentError, KeyError, TypeError, ValueError) as exc:
         raise _invalid("record_decode") from exc
-    if value["record_sha256"] != record.record_sha256:
-        raise _invalid("record_hash")
     return record
 
 
+def _wire_record_value_v1(record: LegacyStateRecordV1) -> dict[str, object]:
+    value = _record_material(record)
+    value["record_sha256"] = record.record_sha256
+    return value
+
+
 def _linked(previous: LegacyStateRecordV1, current: LegacyStateRecordV1) -> bool:
-    return (
-        current.sequence == previous.sequence + 1
-        and current.previous_record_sha256 == previous.record_sha256
-        and current.request_id == previous.request_id
-        and current.policy_sha256 == previous.policy_sha256
-        and (
-            previous.sequence < 1
-            or (current.inventory_sha256, current.inventory_disposition)
-            == (previous.inventory_sha256, previous.inventory_disposition)
-        )
-        and (
-            previous.sequence < 2
-            or current.authoring_sha256 == previous.authoring_sha256
-        )
+    return wire.legacy_state_wire_records_linked_v1(
+        _wire_record_value_v1(previous), _wire_record_value_v1(current),
     )
 
 
@@ -211,7 +230,7 @@ def plan_legacy_state_v1(request: LegacyStateRequestV1) -> LegacyStateRecordV1:
     return LegacyStateRecordV1(
         0, LegacyStateV1.PLANNED, LegacyStateIntentV1.INVENTORY, None,
         request.request_id, legacy_state_policy_sha256_v1(),
-        None, None, None, None, _RECORD_SEAL,
+        None, None, None, None, None, _RECORD_SEAL,
     )
 
 
@@ -224,11 +243,13 @@ def _advance(previous, request, state, observation) -> LegacyStateRecordV1:
         raise _invalid("transition_observation")
     sequence = previous.sequence + 1
     digest = observation.observation_sha256
+    target = legacy_state_adoption_target_sha256_v1(request, observation)
     record = LegacyStateRecordV1(
         sequence, state, _INTENTS[sequence], previous.record_sha256,
         previous.request_id, previous.policy_sha256,
         digest if sequence == 1 else previous.inventory_sha256,
         disposition if sequence == 1 else previous.inventory_disposition,
+        target if sequence == 1 else previous.adoption_target_sha256,
         digest if sequence == 2 else previous.authoring_sha256,
         digest if sequence == 3 else None, _RECORD_SEAL,
     )
@@ -259,6 +280,7 @@ def _same_adoption_entry_v1(request, before, after) -> bool:
         and before.content_sha256 == after.content_sha256
         and before.has_access_acl == after.has_access_acl
         and before.has_default_acl == after.has_default_acl
+        and before.device == after.device and before.inode == after.inode
     )
 
 
@@ -288,16 +310,37 @@ def legacy_state_adoption_delta_valid_v1(request, before, after) -> bool:
     )
 
 
+def legacy_state_adoption_resume_valid_v1(
+    request: LegacyStateRequestV1, target_sha256: str,
+    observation: LegacyStateObservationV1,
+) -> bool:
+    """Accept only states whose normalized adoption projection is unchanged."""
+    require_canonical_legacy_state_request_v1(request)
+    if (
+        not is_framed_sha256_v1(target_sha256)
+        or type(observation) is not LegacyStateObservationV1
+    ):
+        raise _invalid("adoption_resume_type")
+    try:
+        projected = legacy_state_adoption_target_sha256_v1(
+            request, observation,
+        )
+    except LegacyStateError:
+        return False
+    return projected == target_sha256
+
+
 def record_authoring_adopted_v1(inventoried, request, before, after):
     require_canonical_legacy_state_request_v1(request)
     if type(inventoried) is not LegacyStateRecordV1 or inventoried.state is not LegacyStateV1.INVENTORIED:
         raise _invalid("transition_predecessor")
     if (
         type(before) is not LegacyStateObservationV1
-        or before.observation_sha256 != inventoried.inventory_sha256
-        or classify_legacy_state_v1(request, before)
-        is not inventoried.inventory_disposition
+        or not legacy_state_adoption_resume_valid_v1(
+            request, inventoried.adoption_target_sha256, before,
+        )
         or not legacy_state_adoption_delta_valid_v1(request, before, after)
+        or after.observation_sha256 != inventoried.adoption_target_sha256
     ):
         raise _invalid("authoring_not_adopted")
     return _advance(
@@ -320,7 +363,9 @@ __all__ = [
     "MAX_LEGACY_STATE_RECORD_BYTES_V1", "LegacyStateIntentV1",
     "LegacyStateRecordV1", "LegacyStateV1", "decode_legacy_state_chain_v1",
     "decode_legacy_state_record_v1", "encode_legacy_state_record_v1",
-    "legacy_state_adoption_delta_valid_v1", "plan_legacy_state_v1",
+    "legacy_state_adoption_delta_valid_v1",
+    "legacy_state_adoption_resume_valid_v1", "plan_legacy_state_v1",
+    "legacy_state_wire_profile_v1",
     "record_authoring_adopted_v1",
     "record_legacy_state_inventoried_v1", "record_legacy_state_ready_v1",
 ]

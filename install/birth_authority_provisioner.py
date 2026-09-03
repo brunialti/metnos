@@ -4190,7 +4190,8 @@ def _prepare_transition_receipt_material_locked_v2(
 
 
 def _complete_transition_receipts_locked_v2(
-    session: object, preparation: object, frozen: object,
+    session: object, preparation: object, frozen: object, *,
+    initial_legacy_state_record_sha256: object = None,
 ) -> object:
     """Reach receipt completeness under caller-held deployment and maintenance."""
     from datetime import datetime, timezone
@@ -4239,6 +4240,9 @@ def _complete_transition_receipts_locked_v2(
         prepared_authority_set=prepared,
         current_inventory=current_inventory,
         deployment_descriptor=descriptor,
+        initial_legacy_state_record_sha256=(
+            initial_legacy_state_record_sha256
+        ),
     )
     with _service_owned_birth_identity_v2(descriptor):
         _publish_prepared_authority_set_v2(prepared)
@@ -4729,7 +4733,7 @@ def _observe_bound_enforcement_v2(prepared: object) -> str:
     distribution = getattr(materials, "distribution", None)
     facts = getattr(distribution, "facts", None)
     files = getattr(distribution, "files", ())
-    relative = "runtime/executor_birth_legacy_gate.py"
+    relative = "runtime/executor_birth_authority_gate.py"
     matches = tuple(item for item in files if item.path == relative)
     if facts is None or len(matches) != 1:
         raise _reject("birth_transition_enforcement_invalid")
@@ -4963,11 +4967,85 @@ def _converge_transition_contracts_v2(descriptor: object) -> dict[str, int]:
     return result
 
 
+def _transition_legacy_context_v2(descriptor: object, distribution: object):
+    from executor_birth_legacy_state_request import (
+        build_legacy_state_request_v1,
+    )
+
+    record = _account_identity.PosixAccountRecordV1(
+        descriptor.service_user, descriptor.service_uid,
+        descriptor.service_gid, descriptor.service_home,
+        descriptor.service_shell,
+    )
+    account = _account_identity.PosixAccountSnapshotV1(
+        record, descriptor.service_supplementary_gids,
+    )
+    request = build_legacy_state_request_v1(
+        account, distribution.identity.closed_build_id,
+    )
+    return account, request
+
+
+def _adopt_transition_legacy_state_v2(
+    descriptor: object, distribution: object, maintenance_session: object,
+):
+    """Converge J while the caller retains deployment/startup/catalog locks."""
+    from install.executor_birth_legacy_state_adoption import adopt_legacy_state_v1
+    from install.executor_birth_legacy_state_effect_posix import (
+        locked_legacy_state_effects_v1,
+    )
+    from install.executor_birth_legacy_state_inspection import (
+        inspect_ready_legacy_state_live_v1,
+    )
+
+    try:
+        account, request = _transition_legacy_context_v2(
+            descriptor, distribution,
+        )
+        with locked_legacy_state_effects_v1(
+            request, account, maintenance_session,
+        ) as effects:
+            result = adopt_legacy_state_v1(request, effects)
+            if result.changed:
+                inspect_ready_legacy_state_live_v1(
+                    request, account, result.record_sha256,
+                    maintenance_session,
+                )
+            return result
+    except BirthProvisioningError:
+        raise
+    except Exception as exc:
+        code = getattr(exc, "code", "birth_legacy_state_recovery_required")
+        if not isinstance(code, str) or not code.startswith("birth_legacy_state_"):
+            code = "birth_legacy_state_recovery_required"
+        raise _reject(code, exc) from None
+
+
+def _inspect_transition_legacy_state_v2(
+    descriptor, distribution, record_sha256, maintenance_session,
+):
+    from install.executor_birth_legacy_state_inspection import (
+        inspect_terminal_legacy_state_history_v1,
+    )
+
+    try:
+        account, request = _transition_legacy_context_v2(
+            descriptor, distribution,
+        )
+        return inspect_terminal_legacy_state_history_v1(
+            request, account, record_sha256, maintenance_session,
+        )
+    except BirthProvisioningError:
+        raise
+    except Exception as exc:
+        raise _reject("birth_legacy_state_recovery_required", exc) from None
+
+
 def complete_transition_cutover_v2(
     distribution: object, source_id: object, *, service_state_root: object,
     legacy_service_user: object, legacy_installation_root: object,
 ):
-    """Complete one reserved V2 crossing while retaining all three locks."""
+    """Complete one reserved V2 crossing under the ordered lock protocol."""
     from contract_cutover_guard import (
         _begin_topology_transition_v1,
         _contract_cutover_guard_for_service_user_v1,
@@ -4996,7 +5074,9 @@ def complete_transition_cutover_v2(
         _reserve_transition_edge_locked_v2,
         _transition_inventory_under_maintenance_v2,
     )
-    from executor_birth_legacy_gate import closed_build_enforcement
+    from executor_birth_authority_gate import (
+        BirthAuthorityGateClosed, require_closed_build_v1,
+    )
     from executor_birth_startup_gate import _exclusive_startup_gate_v1
     from install.executor_birth_source_receiver import (
         _load_received_source_with_product_session_v1,
@@ -5006,7 +5086,9 @@ def complete_transition_cutover_v2(
         _publish_startup_prerequisite_locked_v2,
     )
 
-    if closed_build_enforcement() is not True:
+    try:
+        require_closed_build_v1()
+    except BirthAuthorityGateClosed:
         raise _reject("birth_ownership_closed_enforcement_required")
     legacy_identity = _resolve_legacy_service_identity_v2(
         legacy_service_user,
@@ -5065,6 +5147,8 @@ def complete_transition_cutover_v2(
             raise _reject("birth_transition_service_identity_changed")
         install_startup_gate_v1(deployment_session)
         with _exclusive_startup_gate_v1() as startup_session:
+            legacy_adoption = None
+            legacy_state_record_sha256 = None
             catalog_owner = (
                 descriptor.service_uid,
                 descriptor.service_gid,
@@ -5088,6 +5172,9 @@ def complete_transition_cutover_v2(
                         raise _reject(
                             "birth_transition_contract_convergence_failed"
                         )
+                    legacy_adoption = _adopt_transition_legacy_state_v2(
+                        descriptor, verified, pre_convergence_maintenance,
+                    )
                 _converge_transition_contracts_v2(descriptor)
             with _contract_cutover_guard_for_service_user_v1(
                 legacy_identity.name,
@@ -5099,9 +5186,18 @@ def complete_transition_cutover_v2(
                 ):
                     raise _reject("birth_transition_service_identity_changed")
                 if verified.release_sequence == 1:
+                    if legacy_adoption is None:
+                        raise _reject("birth_legacy_state_recovery_required")
+                    legacy_state = _inspect_transition_legacy_state_v2(
+                        descriptor, verified,
+                        legacy_adoption.record_sha256, maintenance,
+                    )
+                    legacy_state_record_sha256 = (
+                        legacy_state.record_sha256
+                    )
                     verify_initial_installer_store_v1(
                         prove_quiescent=maintenance,
-                        authoring_owner=catalog_owner,
+                        trusted_authoring_owner=catalog_owner,
                         defer_v1_receipts_to_transition_v2=True,
                     )
                 with _transition_inventory_under_maintenance_v2(
@@ -5109,6 +5205,9 @@ def complete_transition_cutover_v2(
                 ) as frozen:
                     complete = _complete_transition_receipts_locked_v2(
                         deployment_session, preparation, frozen,
+                        initial_legacy_state_record_sha256=(
+                            legacy_state_record_sha256
+                        ),
                     )
                     _publish_initial_predecessor_v2(
                         verified, complete, legacy_installation_root,
@@ -5208,25 +5307,6 @@ def complete_transition_cutover_v2(
                     if len(final_records) != 1:
                         raise _reject("birth_transition_final_state_missing")
                     return _result(final_records[0])
-
-
-def prepare_transition_receipts_v2(
-    distribution: object,
-):
-    """Reach V2 receipt completeness without exposing a partial product door."""
-    from executor_birth_ownership_coordinator import (
-        _deployment_lock_v1, _result, _transition_maintenance_inventory_v2,
-    )
-
-    with _deployment_lock_v1() as session:
-        preparation = _prepare_transition_receipt_material_locked_v2(
-            session, distribution,
-        )
-        with _transition_maintenance_inventory_v2() as frozen:
-            complete = _complete_transition_receipts_locked_v2(
-                session, preparation, frozen,
-            )
-        return _result(complete)
 
 
 def _run_provisioning_entry_v1(

@@ -16,7 +16,7 @@ def _manifest_text(*, code_file: str, digest: str) -> str:
 def test_verifier_parses_the_same_manifest_bytes_whose_signature_passed(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    import executor_birth_legacy_gate as gate
+    import executor_birth_authority_gate as gate
     import sign
 
     monkeypatch.setattr(gate, "closed_build_enforcement", lambda: False)

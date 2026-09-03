@@ -16,6 +16,7 @@ import executor_birth_host_path_policy as _path_policy
 from executor_birth_host_path_policy import (
     HOST_PROVISIONING_ROOT_V1,
     HOST_TRUST_ANCHORS_V1,
+    LEGACY_STATE_JOURNAL_ROOT_V1,
     OWNERSHIP_ROOT_V1,
     PREFLIGHT_ATTESTATION_ROOT_V1,
     SERVICE_ACCOUNT_NAME_V1,

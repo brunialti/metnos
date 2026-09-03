@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:b1566afeec507e98ba6ea96fe30be12dab2994df7159079acedf950743ff6aed",
+  "source_census": "sha256:53e2762f279a43e50f730c9959e7322c95b50b4be73069c13db1f854c2566286",
   "scan_roots": [
     "runtime",
     "install",
@@ -20,6 +20,28 @@
     },
     {
       "path": "install/birth_authority_provisioner.py",
+      "scope": "_adopt_transition_legacy_state_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "live_artifact_read",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "maintenance-bound crash-resumable legacy-state adoption",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_authority_provisioner.py",
+      "scope": "_inspect_transition_legacy_state_v2",
+      "role": "live_reader",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "historical terminal legacy-state inspection after convergence",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_authority_provisioner.py",
       "scope": "_publish_initial_predecessor_v2",
       "role": "store_owner",
       "capabilities": [
@@ -33,17 +55,9 @@
       "scope": "complete_transition_cutover_v2",
       "role": "store_owner",
       "capabilities": [
-        "store_write"
-      ],
-      "destination": "sealed productive transition crossing under fixed administrative sessions",
-      "phase": "M4"
-    },
-    {
-      "path": "install/birth_authority_provisioner.py",
-      "scope": "prepare_transition_receipts_v2",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
+        "live_artifact_read",
+        "store_write",
+        "verified_store_read"
       ],
       "destination": "sealed productive transition crossing under fixed administrative sessions",
       "phase": "M4"
@@ -139,6 +153,76 @@
       "phase": "M4"
     },
     {
+      "path": "install/executor_birth_append_journal_posix.py",
+      "scope": "BoundPosixAppendJournalV1._create_stage_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "shared descriptor-bound crash-safe append-journal kernel",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_append_journal_posix.py",
+      "scope": "BoundPosixAppendJournalV1._rewrite_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "shared descriptor-bound crash-safe append-journal kernel",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_append_journal_posix.py",
+      "scope": "BoundPosixAppendJournalV1._stage_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "shared descriptor-bound crash-safe append-journal kernel",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_append_journal_posix.py",
+      "scope": "BoundPosixAppendJournalV1.append_exact",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "shared descriptor-bound crash-safe append-journal kernel",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_append_journal_posix.py",
+      "scope": "_seal_stage_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "shared descriptor-bound crash-safe append-journal kernel",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_append_journal_posix.py",
+      "scope": "_write_all_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "shared descriptor-bound crash-safe append-journal kernel",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_append_journal_posix.py",
+      "scope": "open_journal_lock_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "shared descriptor-bound crash-safe append-journal kernel",
+      "phase": "M4"
+    },
+    {
       "path": "install/executor_birth_contract_convergence.py",
       "scope": "<module>",
       "role": "store_owner",
@@ -222,46 +306,6 @@
     },
     {
       "path": "install/executor_birth_host_journal_posix.py",
-      "scope": "PosixJournalStoreV1._rewrite_staging",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "append-only crash-resumable root-owned host provisioning journal under its fixed lock",
-      "phase": "M4"
-    },
-    {
-      "path": "install/executor_birth_host_journal_posix.py",
-      "scope": "PosixJournalStoreV1._stage_record",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "append-only crash-resumable root-owned host provisioning journal under its fixed lock",
-      "phase": "M4"
-    },
-    {
-      "path": "install/executor_birth_host_journal_posix.py",
-      "scope": "PosixJournalStoreV1.append_record",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "append-only crash-resumable root-owned host provisioning journal under its fixed lock",
-      "phase": "M4"
-    },
-    {
-      "path": "install/executor_birth_host_journal_posix.py",
-      "scope": "_write_all_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "append-only crash-resumable root-owned host provisioning journal under its fixed lock",
-      "phase": "M4"
-    },
-    {
-      "path": "install/executor_birth_host_journal_posix.py",
       "scope": "open_journal_lock_v1",
       "role": "store_owner",
       "capabilities": [
@@ -298,6 +342,78 @@
         "store_write"
       ],
       "destination": "single canonical account and host-layout provisioning orchestrator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_legacy_state_adoption.py",
+      "scope": "adopt_legacy_state_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "pure orchestration of the persistent legacy-state FSM",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_legacy_state_effect_posix.py",
+      "scope": "locked_legacy_state_effects_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "nominal-maintenance-bound legacy ownership effect authority",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_legacy_state_inspection.py",
+      "scope": "_inspect_terminal_legacy_state_v1",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read",
+        "verified_store_read"
+      ],
+      "destination": "shared terminal legacy-state inspection over bounded immutable records",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_legacy_state_inspection.py",
+      "scope": "inspect_ready_legacy_state_live_v1",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read",
+        "verified_store_read"
+      ],
+      "destination": "maintenance-bound live legacy-state verification before convergence",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_legacy_state_inspection.py",
+      "scope": "inspect_terminal_legacy_state_history_v1",
+      "role": "live_reader",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "read-only historical terminal legacy-state verification",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_legacy_state_journal_posix.py",
+      "scope": "open_legacy_journal_lock_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "typed legacy-state facade over the shared append journal",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_posix_directory.py",
+      "scope": "remove_acl_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "centralized descriptor-bound POSIX metadata convergence",
       "phase": "M4"
     },
     {
@@ -1947,72 +2063,34 @@
     },
     {
       "path": "runtime/executor_birth_admin_preflight.py",
-      "scope": "<module>",
-      "role": "store_owner",
+      "scope": "_attest_operational_preflight_v1",
+      "role": "live_reader",
       "capabilities": [
-        "store_write"
+        "live_artifact_read",
+        "verified_store_read"
       ],
-      "destination": "no-replace preflight attestation under fixed startup proof",
+      "destination": "pure operational attestation from authenticated live inputs",
       "phase": "M4"
     },
     {
       "path": "runtime/executor_birth_admin_preflight.py",
-      "scope": "_publish_preflight_attestation_core_v1",
-      "role": "store_owner",
+      "scope": "_preflight_attestation_bytes_v1",
+      "role": "live_reader",
       "capabilities": [
-        "store_write"
+        "verified_store_read"
       ],
-      "destination": "no-replace preflight attestation under fixed startup proof",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_admin_preflight.py",
-      "scope": "_publish_preflight_attestation_for_test_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "no-replace preflight attestation under fixed startup proof",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_admin_preflight.py",
-      "scope": "_publish_preflight_attestation_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "no-replace preflight attestation under fixed startup proof",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_admin_preflight.py",
-      "scope": "_run_operational_command_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "no-replace preflight attestation under fixed startup proof",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_admin_preflight.py",
-      "scope": "_write_all_exact_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "no-replace preflight attestation under fixed startup proof",
+      "destination": "canonical encoding of an authenticated preflight observation",
       "phase": "M4"
     },
     {
       "path": "runtime/executor_birth_admin_preflight.py",
       "scope": "main",
-      "role": "store_owner",
+      "role": "live_reader",
       "capabilities": [
-        "store_write"
+        "live_artifact_read",
+        "verified_store_read"
       ],
-      "destination": "no-replace preflight attestation under fixed startup proof",
+      "destination": "read-only administrative preflight command under the startup gate",
       "phase": "M4"
     },
     {
@@ -2665,6 +2743,17 @@
     },
     {
       "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_attest_product_preflight_for_head_v2",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read",
+        "verified_store_read"
+      ],
+      "destination": "fresh authenticated preflight observation before coordinator publication",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
       "scope": "_build_locked_coordinator_graph_registry_v2.require_issued",
       "role": "store_owner",
       "capabilities": [
@@ -2786,16 +2875,6 @@
     {
       "path": "runtime/executor_birth_ownership_coordinator.py",
       "scope": "_cross_preflight_boundary_locked_for_test_v2",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "sealed root-owned ownership transition coordinator",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_ownership_coordinator.py",
-      "scope": "_cross_preflight_boundary_locked_for_test_v2.publish",
       "role": "store_owner",
       "capabilities": [
         "store_write"
@@ -2951,6 +3030,16 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership transition coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_publish_test_preflight_attestation_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "private store publication seam bound to an exact test authority",
       "phase": "M4"
     },
     {
@@ -3123,6 +3212,116 @@
         "verified_store_read"
       ],
       "destination": "sole authenticated postcondition reader under publication-store locks",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_preflight_attestation_store.py",
+      "scope": "_promote_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "atomic no-replace promotion of one completely staged attestation",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_preflight_attestation_store.py",
+      "scope": "_publish_locked_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "crash-recoverable attestation publication while the store lock is held",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_preflight_attestation_store.py",
+      "scope": "_publish_preflight_attestation_core_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "single authenticated preflight-attestation store mutation core",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_preflight_attestation_store.py",
+      "scope": "_publish_preflight_attestation_for_test_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "private store entry bound to an exact test authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_preflight_attestation_store.py",
+      "scope": "_publish_preflight_attestation_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "product store entry bound to the fixed host authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_preflight_attestation_store.py",
+      "scope": "_recover_both_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "idempotent recovery of linked final and temporary store names",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_preflight_attestation_store.py",
+      "scope": "_recover_temporary_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "validated recovery of one interrupted attestation staging file",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_preflight_attestation_store.py",
+      "scope": "_stage_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "durable exact-byte staging with incomplete-state marker",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_preflight_attestation_store.py",
+      "scope": "_sync_unlink_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "durable removal of a validated superseded staging name",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_preflight_attestation_store.py",
+      "scope": "_write_all_exact_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "bounded exact descriptor write inside the authenticated store",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_preflight_store_authority.py",
+      "scope": "bind_store_mutation_port_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed process-local factory for the fixed preflight store mutation port",
       "phase": "M4"
     },
     {
@@ -4565,8 +4764,6 @@
     "owner": "runtime/executor_birth_operational.py:birth_executor",
     "coordinator_store_owners": [
       "install/birth_authority_provisioner.py:_publish_initial_predecessor_v2",
-      "install/birth_authority_provisioner.py:complete_transition_cutover_v2",
-      "install/birth_authority_provisioner.py:prepare_transition_receipts_v2",
       "install/birth_ownership_authority_provisioner.py:_discard_temporary",
       "install/birth_ownership_authority_provisioner.py:_load_or_create_pair",
       "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_at_v1",
@@ -4616,13 +4813,6 @@
       "install/executor_birth_transition.py:<module>",
       "install/executor_birth_transition.py:deploy_source_v1",
       "install/executor_birth_transition.py:main",
-      "runtime/executor_birth_admin_preflight.py:<module>",
-      "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_core_v1",
-      "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_for_test_v1",
-      "runtime/executor_birth_admin_preflight.py:_publish_preflight_attestation_v1",
-      "runtime/executor_birth_admin_preflight.py:_run_operational_command_v1",
-      "runtime/executor_birth_admin_preflight.py:_write_all_exact_v1",
-      "runtime/executor_birth_admin_preflight.py:main",
       "runtime/executor_birth_commit_publisher.py:_BirthCommitPublisher._persist_current_reattestation",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
       "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
@@ -4667,7 +4857,6 @@
       "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2",
       "runtime/executor_birth_ownership_coordinator.py:_cross_head_boundary_locked_v2.observe_head_graph",
       "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2",
-      "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_for_test_v2.publish",
       "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2",
       "runtime/executor_birth_ownership_coordinator.py:_cross_preflight_boundary_locked_v2.observe_preflight_graph",
       "runtime/executor_birth_ownership_coordinator.py:_decode_record",
@@ -4683,6 +4872,7 @@
       "runtime/executor_birth_ownership_coordinator.py:_publish_certificate_with_prerequisite_v1",
       "runtime/executor_birth_ownership_coordinator.py:_publish_context_transition_locked_v2",
       "runtime/executor_birth_ownership_coordinator.py:_publish_control_no_replace_v2",
+      "runtime/executor_birth_ownership_coordinator.py:_publish_test_preflight_attestation_v2",
       "runtime/executor_birth_ownership_coordinator.py:_publish_transaction_directory_no_replace_v2",
       "runtime/executor_birth_ownership_coordinator.py:_read_staged_transaction_directory_v2",
       "runtime/executor_birth_ownership_coordinator.py:_require_locked_coordinator_graph_snapshot_v2",
@@ -4690,7 +4880,18 @@
       "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_for_test_v2",
       "runtime/executor_birth_ownership_coordinator.py:_reserve_transition_edge_locked_v2",
       "runtime/executor_birth_ownership_coordinator.py:_resolve_ownership_coordinator_locked_v2",
-      "runtime/executor_birth_ownership_coordinator.py:_transition_edge_locked_v2"
+      "runtime/executor_birth_ownership_coordinator.py:_transition_edge_locked_v2",
+      "runtime/executor_birth_preflight_attestation_store.py:_promote_v1",
+      "runtime/executor_birth_preflight_attestation_store.py:_publish_locked_v1",
+      "runtime/executor_birth_preflight_attestation_store.py:_publish_preflight_attestation_core_v1",
+      "runtime/executor_birth_preflight_attestation_store.py:_publish_preflight_attestation_for_test_v1",
+      "runtime/executor_birth_preflight_attestation_store.py:_publish_preflight_attestation_v1",
+      "runtime/executor_birth_preflight_attestation_store.py:_recover_both_v1",
+      "runtime/executor_birth_preflight_attestation_store.py:_recover_temporary_v1",
+      "runtime/executor_birth_preflight_attestation_store.py:_stage_v1",
+      "runtime/executor_birth_preflight_attestation_store.py:_sync_unlink_v1",
+      "runtime/executor_birth_preflight_attestation_store.py:_write_all_exact_v1",
+      "runtime/executor_birth_preflight_store_authority.py:bind_store_mutation_port_v1"
     ],
     "sealed_modules": [
       "runtime/contract_store.py",
@@ -4699,6 +4900,8 @@
       "runtime/executor_birth_operational.py",
       "runtime/executor_birth_ownership_coordinator.py",
       "runtime/executor_birth_ownership_cutover.py",
+      "runtime/executor_birth_preflight_attestation_store.py",
+      "runtime/executor_birth_preflight_store_authority.py",
       "runtime/executor_birth_reattestation.py",
       "runtime/sign.py"
     ],

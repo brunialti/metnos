@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 import contract_store
-import executor_birth_legacy_gate as gate
+import executor_birth_authority_gate as gate
 import sign
 
 
@@ -98,7 +98,7 @@ def test_closed_build_denies_signing_before_path_or_key_access(
     name: str, closed_build,
 ) -> None:
     operation = getattr(sign, name)
-    with pytest.raises(gate.LegacyBirthAuthorityClosed) as caught:
+    with pytest.raises(gate.BirthAuthorityGateClosed) as caught:
         _sign_call(operation, name)
     assert caught.value.code == gate.LEGACY_API_CLOSED
     assert caught.value.operation == name
@@ -117,7 +117,7 @@ def test_explicit_nonproductive_root_preserves_offline_exception(
         assert caught.value.code != gate.LEGACY_API_CLOSED
 
 
-def test_environment_and_user_state_cannot_change_compiled_policy(
+def test_environment_and_user_state_cannot_change_authority_gate_policy(
     monkeypatch, tmp_path: Path,
 ) -> None:
     compiled = gate.closed_build_enforcement()
@@ -128,7 +128,7 @@ def test_environment_and_user_state_cannot_change_compiled_policy(
 
 def test_private_signing_helper_cannot_bypass_public_alias(closed_build) -> None:
     alias = sign._sign_executor_under_catalog_lock
-    with pytest.raises(gate.LegacyBirthAuthorityClosed) as caught:
+    with pytest.raises(gate.BirthAuthorityGateClosed) as caught:
         alias(object())
     assert caught.value.operation == "sign_executor"
 

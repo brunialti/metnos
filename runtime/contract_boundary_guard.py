@@ -51,7 +51,7 @@ BIRTH_CLOSED_GUARD_VERSION = _boundary_policy.BIRTH_CLOSED_GUARD_VERSION
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:b1566afeec507e98ba6ea96fe30be12dab2994df7159079acedf950743ff6aed"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:53e2762f279a43e50f730c9959e7322c95b50b4be73069c13db1f854c2566286"
 RM0008_ACCEPTANCE_EVOLUTION_SHA256 = "sha256:1babce04a78b8345cbacb9bf5677bebade3958e655f0dc45884ad70636322167"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = _boundary_policy.SCAN_ROOTS
@@ -1470,7 +1470,8 @@ def _analyse_scope(
         )
 
         reads = api in READ_OPERATIONS
-        writes = _writes_path(api, item)
+        persistent_write = _writes_path(api, item)
+        writes = persistent_write
         if api in {
             "copy", "copy2", "copyfile", "hardlink_to", "link", "remove",
             "rename", "replace", "rmdir", "rmtree", "symlink_to",
@@ -1489,11 +1490,15 @@ def _analyse_scope(
         if store_touch and writes:
             capabilities.add("store_write")
 
-        # Every filesystem mutation implemented by the single store-owner
-        # module is publication-store authority.  File-handle writes and
-        # ``os.open`` flags do not retain their originating Path expression,
-        # so requiring path-name taint here would create an easy bypass.
-        if path == "runtime/contract_store.py" and writes:
+        # Every filesystem mutation implemented by a declared store-writing
+        # source owner is store authority. Descriptor and dir-fd operations
+        # deliberately lose Path taint, so the reviewed owner is the semantic
+        # boundary instead of a hard-coded filename or variable spelling.
+        source_owner = BOUNDARY_SOURCE_OWNERS.get(path)
+        descriptor_store_owners = {
+            "contract_store", "executor_birth_preflight_attestation_store",
+        }
+        if persistent_write and source_owner in descriptor_store_owners:
             capabilities.add("store_write")
 
         # Importing any private store implementation detail is itself an
@@ -1562,6 +1567,7 @@ def _apply_callable_aliases(
             or value in SENSITIVE_FIRST_CLASS_REFERENCES
             or value in SENSITIVE_IMPORT_NAMESPACES
             or value in DYNAMIC_CODE_LOADER_CANONICALS
+            or value.rsplit(".", 1)[-1] in WRITE_OPERATIONS
             or value.startswith("importlib.")
             and value.rsplit(".", 1)[-1] in DYNAMIC_CODE_LOADER_APIS
         )

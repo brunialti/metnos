@@ -29,13 +29,6 @@ MAX_RELATIVE_PATH_COMPONENTS_V1 = 32
 ADMINISTRATIVE_ADAPTER_PATH_V1 = (
     "/usr/libexec/metnos/executor-birth-v1/preflight.py"
 )
-# The product's private runtime root, mirrored from the administrative
-# preflight, which owns it. Every gated unit must declare it writable: the gate
-# each unit runs before its payload verifies signatures through openssl, which
-# needs a temporary directory there, and a hardened unit mounts the hierarchy
-# read-only.
-RUNTIME_ROOT_TEXT_V1 = "/run/metnos-executor-birth-v1"
-
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ENTRY_ID_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
 _UNIT_RE = re.compile(
@@ -391,18 +384,9 @@ def _service_unit_recipe(
         _source_directive("Service", "Group", "@service_gid@"),
         _source_directive("Service", "KillMode", "control-group"),
         _source_directive("Service", "NoNewPrivileges", "yes"),
-        # Imposed here, with the gate itself, and never left to each unit:
-        # every gated unit runs the same `check --entry-id` before its payload,
-        # and that program verifies signatures through openssl in a temporary
-        # directory under the product's runtime root. Without this the gate
-        # dies with the generic recovery code — measured on the live G6-C cell
-        # (roadmap §23.23). It is a consequence of the shape, not a per-unit
-        # choice, and it grants the demoted payload nothing: the root stays
-        # `0700` root-owned, so discretionary permissions still apply.
-        _source_directive(
-            "Service", "ReadWritePaths",
-            RUNTIME_ROOT_TEXT_V1, *writable_paths,
-        ),
+        *((_source_directive(
+            "Service", "ReadWritePaths", *writable_paths,
+        ),) if writable_paths else ()),
         *settings,
         _source_directive(
             "Service", "SupplementaryGroups",
@@ -839,6 +823,10 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             _repository_entry("legacy-install-setup", "script", "install/setup.sh"),
             _repository_entry(
                 "legacy-install-module", "python_module", "install/__main__.py",
+            ),
+            _repository_entry(
+                "legacy-install-contract-convergence", "python_module",
+                "install/executor_birth_contract_convergence.py",
             ),
     ),
     _entrypoint(

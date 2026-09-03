@@ -141,10 +141,10 @@ def test_request_policy_and_typed_evidence_are_deterministic() -> None:
     first_observation = _conforming_observation(first)
     second_observation = _conforming_observation(second)
     assert evidence.host_provisioning_request_id_v1() == (
-        "sha256:4b16ae3dc061ec5b10713a6cbda823f1ec9d5583250510096b4abb6b4417e92a"
+        "sha256:59035c3ad264c0733fdb737472a190ced0e6ed98fa31e0f2f06cb7fd1948275d"
     )
     assert evidence.host_provisioning_policy_sha256_v1() == (
-        "sha256:29920e5d24890d6f259183d25fcb60da308bc61bfc3749b6c2d99945069c4996"
+        "sha256:9893adfcf88f69900130c77f0f00b43b8652f72796e2a563ecbac3faa248d019"
     )
     assert evidence.host_account_snapshot_sha256_v1(first) == (
         evidence.host_account_snapshot_sha256_v1(second)

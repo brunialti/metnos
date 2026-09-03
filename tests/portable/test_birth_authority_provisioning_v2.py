@@ -35,7 +35,6 @@ from install.birth_authority_provisioner import (
     decode_transaction_header_v2,
     decode_material_plan_v2, empty_digests_v1,
     _prepare_transition_authority_set_v2, is_prepared_authority_set_v2,
-    prepare_transition_receipts_v2,
     provisioning_source_inventory_hash_v2,
 )
 from rm0008_2b import support
@@ -897,6 +896,15 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
     )
 
     @contextmanager
+    def service_identity(_descriptor):
+        yield
+
+    monkeypatch.setattr(
+        provisioning, "_service_owned_birth_identity_v2",
+        service_identity,
+    )
+
+    @contextmanager
     def maintenance_inventory():
         class Maintenance:
             def __call__(self):
@@ -969,7 +977,18 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
         lambda record: order.append("result") or result,
     )
 
-    assert prepare_transition_receipts_v2(distribution) is result
+    def prepare_receipts_for_test(candidate):
+        with coordinator_module._deployment_lock_v1() as locked_session:
+            staged = provisioning._prepare_transition_receipt_material_locked_v2(
+                locked_session, candidate,
+            )
+            with coordinator_module._transition_maintenance_inventory_v2() as frozen:
+                completed = provisioning._complete_transition_receipts_locked_v2(
+                    locked_session, staged, frozen,
+                )
+            return coordinator_module._result(completed)
+
+    assert prepare_receipts_for_test(distribution) is result
     assert order == [
         "deployment-lock", "distribution", "graph", "previous", "stage",
         "maintenance-enter", "distribution", "prepared", "publish", "publication",

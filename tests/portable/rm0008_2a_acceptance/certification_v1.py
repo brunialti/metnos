@@ -1900,7 +1900,6 @@ def validate_productive_mutation_graph(
         f"{provisioner_module}::prepare_or_defer_until_legacy_author_exists",
         f"{provisioner_module}::ensure_executor_birth_authorities_prepared",
         f"{provisioner_module}::complete_transition_cutover_v2",
-        f"{provisioner_module}::prepare_transition_receipts_v2",
     })
     installer_resolver_symbols = {
         "install.birth_authority_provisioning::_resolve_path_user_config_v1",

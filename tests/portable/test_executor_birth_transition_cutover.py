@@ -160,7 +160,7 @@ def test_entrypoint_observer_ignores_unrelated_work_in_the_same_tree(
 
 
 def test_enforcement_observation_is_bound_to_the_signed_file(tmp_path: Path):
-    relative = "runtime/executor_birth_legacy_gate.py"
+    relative = "runtime/executor_birth_authority_gate.py"
     gate = tmp_path / relative
     gate.parent.mkdir()
     payload = _gate_bytes()
@@ -467,7 +467,8 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
 
     descriptor = SimpleNamespace(
         service_user="metnos", service_uid=41, service_gid=42,
-        service_home="/srv/metnos",
+        service_home="/srv/metnos", service_shell="/usr/sbin/nologin",
+        service_supplementary_gids=(42,),
     )
     preparation = SimpleNamespace(descriptor=descriptor)
     service_state_root = Path("/srv/metnos/.local/state/metnos")
@@ -511,12 +512,12 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     monkeypatch.setattr(contract_cutover_guard, "_maintenance_evidence_under_transition_v1", lambda *_: b"maintenance")
     monkeypatch.setattr(coordinator, "_transition_inventory_under_maintenance_v2", inventory)
     def verify_initial(
-        *, prove_quiescent, authoring_owner,
+        *, prove_quiescent, trusted_authoring_owner,
         defer_v1_receipts_to_transition_v2,
     ):
         if not (
             prove_quiescent is maintenance
-            and authoring_owner == (41, 42)
+            and trusted_authoring_owner == (41, 42)
             and defer_v1_receipts_to_transition_v2 is True
         ):
             pytest.fail("authoring seed lost its maintenance or owner binding")
@@ -533,8 +534,36 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         if candidate is descriptor
         else pytest.fail("contract convergence lost the signed descriptor"),
     )
+    def adopt_legacy(candidate, verified, proof):
+        if candidate is not descriptor or verified is not distribution or proof is not maintenance:
+            pytest.fail("legacy adoption lost its ordered lock binding")
+        events.append("legacy-state-adoption")
+        return SimpleNamespace(record_sha256=D("8"))
+
+    def inspect_legacy(candidate, verified, record_sha256, proof):
+        if (
+            candidate is not descriptor or verified is not distribution
+            or record_sha256 != D("8") or proof is not maintenance
+        ):
+            pytest.fail("legacy inspection lost its historical binding")
+        events.append("legacy-state-inspection")
+        return SimpleNamespace(record_sha256=D("8"))
+
+    monkeypatch.setattr(
+        provisioner, "_adopt_transition_legacy_state_v2", adopt_legacy,
+    )
+    monkeypatch.setattr(
+        provisioner, "_inspect_transition_legacy_state_v2", inspect_legacy,
+    )
     monkeypatch.setattr(provisioner, "_prepare_transition_receipt_material_locked_v2", lambda *_: preparation)
-    monkeypatch.setattr(provisioner, "_complete_transition_receipts_locked_v2", lambda *_: complete)
+    def complete_receipts(*_args, **kwargs):
+        assert kwargs["initial_legacy_state_record_sha256"] == D("8")
+        return complete
+
+    monkeypatch.setattr(
+        provisioner, "_complete_transition_receipts_locked_v2",
+        complete_receipts,
+    )
     monkeypatch.setattr(
         provisioner, "_publish_initial_predecessor_v2",
         lambda candidate, record, root: events.append("predecessor")
@@ -598,9 +627,10 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     ) is result
     assert events == [
         "deployment-enter", "startup-install", "startup-enter", "chain-initialize",
-        "maintenance-enter",
-        "maintenance-prove", "maintenance-exit", "contract-convergence",
-        "maintenance-enter", "maintenance-prove", "authoring-seed",
+        "maintenance-enter", "maintenance-prove", "legacy-state-adoption",
+        "maintenance-exit", "contract-convergence",
+        "maintenance-enter", "legacy-state-inspection",
+        "maintenance-prove", "authoring-seed",
         "maintenance-prove", "inventory-enter", "predecessor",
         "administrative-install", "candidate-prepare", "composition",
         "inventory-exit",
@@ -614,7 +644,7 @@ def test_completed_cutover_only_reattests_and_skips_administrative_install(
     import config
     import executor_birth_admin_preflight as admin
     import executor_birth_distribution_manifest as manifest
-    import executor_birth_legacy_gate as legacy_gate
+    import executor_birth_authority_gate as authority_gate
     import executor_birth_ownership_coordinator as coordinator
     import install.executor_birth_source_receiver as source_receiver
     import install.executor_birth_systemd as systemd_installer
@@ -653,7 +683,7 @@ def test_completed_cutover_only_reattests_and_skips_administrative_install(
 
     service_state_root = Path("/srv/metnos/.local/state/metnos")
     monkeypatch.setattr(config, "PATH_USER_STATE", service_state_root)
-    monkeypatch.setattr(legacy_gate, "closed_build_enforcement", lambda: True)
+    monkeypatch.setattr(authority_gate, "closed_build_enforcement", lambda: True)
     monkeypatch.setattr(
         provisioner, "_resolve_legacy_service_identity_v2",
         lambda _name: SimpleNamespace(name="legacy-metnos"),
@@ -711,10 +741,10 @@ def test_completed_cutover_only_reattests_and_skips_administrative_install(
 def test_product_wrapper_denies_before_lock_when_closed_policy_is_absent(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    import executor_birth_legacy_gate as legacy_gate
+    import executor_birth_authority_gate as authority_gate
     import executor_birth_ownership_coordinator as coordinator
 
-    monkeypatch.setattr(legacy_gate, "closed_build_enforcement", lambda: False)
+    monkeypatch.setattr(authority_gate, "closed_build_enforcement", lambda: False)
     monkeypatch.setattr(
         coordinator, "_deployment_lock_v1",
         lambda: pytest.fail("deployment lock must remain unopened"),
@@ -771,6 +801,65 @@ def test_contract_convergence_child_is_bound_to_the_signed_service_identity(
     assert observed["umask"] == 0o077
     assert observed["env"]["HOME"] == descriptor.service_home
     assert observed["env"]["METNOS_INSTALL_ROOT"] == descriptor.installation_root
+
+
+@pytest.mark.parametrize("changed", [True, False])
+def test_legacy_adoption_helper_binds_signed_account_and_build(
+    monkeypatch, changed,
+) -> None:
+    from contextlib import contextmanager
+    from executor_birth_legacy_state_request import (
+        require_canonical_legacy_state_request_v1,
+    )
+    from install import executor_birth_legacy_state_adoption as adoption
+    from install import executor_birth_legacy_state_effect_posix as effect
+    from install import executor_birth_legacy_state_inspection as inspection
+
+    descriptor = SimpleNamespace(
+        service_user="metnos", service_uid=991, service_gid=992,
+        service_supplementary_gids=(992,),
+        service_home="/var/lib/metnos-service",
+        service_shell="/usr/sbin/nologin",
+    )
+    distribution = SimpleNamespace(
+        identity=SimpleNamespace(closed_build_id=D("7")),
+    )
+    proof, raw_effects = lambda: True, object()
+    expected = SimpleNamespace(changed=changed, record_sha256=D("8"))
+    observed = {}
+
+    @contextmanager
+    def locked(request, account, prove_quiescent):
+        observed.update(
+            request=request, account=account, proof=prove_quiescent,
+        )
+        yield raw_effects
+
+    def adopt(request, effects):
+        assert request is observed["request"] and effects is raw_effects
+        return expected
+
+    def inspect_live(request, account, record_sha256, maintenance_session):
+        assert request is observed["request"] and account is observed["account"]
+        assert record_sha256 == D("8") and maintenance_session is proof
+        observed["live-inspection"] = True
+
+    monkeypatch.setattr(effect, "locked_legacy_state_effects_v1", locked)
+    monkeypatch.setattr(adoption, "adopt_legacy_state_v1", adopt)
+    monkeypatch.setattr(
+        inspection, "inspect_ready_legacy_state_live_v1", inspect_live,
+    )
+    assert provisioner._adopt_transition_legacy_state_v2(
+        descriptor, distribution, proof,
+    ) is expected
+    request = require_canonical_legacy_state_request_v1(observed["request"])
+    assert request.distribution_sha256 == D("7")
+    assert request.state_root.as_posix() == (
+        "/var/lib/metnos-service/.local/state/metnos"
+    )
+    assert observed["account"].record.uid == 991
+    assert observed["proof"] is proof
+    assert (observed.get("live-inspection") is True) is changed
 
 
 @LINUX_ONLY
@@ -881,7 +970,7 @@ def test_initial_transition_runtime_exposes_only_the_installer_submission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import executor_birth_bootstrap as bootstrap
-    import executor_birth_legacy_gate as legacy_gate
+    import executor_birth_authority_gate as authority_gate
     import executor_birth_operational as operational
     import executor_birth_ownership_chain as ownership_chain
     import executor_birth_prepared_root as prepared_root
@@ -914,7 +1003,7 @@ def test_initial_transition_runtime_exposes_only_the_installer_submission(
     monkeypatch.setattr(
         ownership_chain, "inspect_ownership_chain_state_v1", lambda: state,
     )
-    monkeypatch.setattr(legacy_gate, "closed_build_enforcement", lambda: True)
+    monkeypatch.setattr(authority_gate, "closed_build_enforcement", lambda: True)
     monkeypatch.setattr(bootstrap, "_runtime_bundle_snapshot", lambda: None)
     monkeypatch.setattr(prepared_root, "load_sealed_authorities_v1", object)
     monkeypatch.setattr(

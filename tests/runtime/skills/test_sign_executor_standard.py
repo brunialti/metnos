@@ -17,7 +17,7 @@ import sign  # noqa: E402
 @pytest.fixture(autouse=True)
 def preclosed_authoring_build(monkeypatch):
     """Exercise the historical authoring implementation as an older build."""
-    import executor_birth_legacy_gate as gate
+    import executor_birth_authority_gate as gate
 
     monkeypatch.setattr(gate, "closed_build_enforcement", lambda: False)
 

@@ -95,14 +95,14 @@ def test_required_context_preserves_chain_inspection_failure(monkeypatch) -> Non
 def test_closed_bootstrap_refuses_the_historical_context_without_a_head(
     monkeypatch,
 ) -> None:
-    import executor_birth_legacy_gate as legacy_gate
+    import executor_birth_authority_gate as authority_gate
     import executor_birth_ownership_chain as ownership_chain
     import executor_birth_prepared_root as prepared_root
 
     monkeypatch.setattr(
         ownership_chain, "inspect_ownership_chain_state_v1", lambda: object(),
     )
-    monkeypatch.setattr(legacy_gate, "closed_build_enforcement", lambda: True)
+    monkeypatch.setattr(authority_gate, "closed_build_enforcement", lambda: True)
     monkeypatch.setattr(
         prepared_root, "load_required_context_runtime_v1",
         lambda: pytest.fail("loaded a required context without a head"),
@@ -118,13 +118,13 @@ def test_closed_bootstrap_refuses_the_historical_context_without_a_head(
 def test_open_bootstrap_retains_the_initial_context_before_transition(
     monkeypatch,
 ) -> None:
-    import executor_birth_legacy_gate as legacy_gate
+    import executor_birth_authority_gate as authority_gate
     import executor_birth_ownership_chain as ownership_chain
 
     monkeypatch.setattr(
         ownership_chain, "inspect_ownership_chain_state_v1", lambda: object(),
     )
-    monkeypatch.setattr(legacy_gate, "closed_build_enforcement", lambda: False)
+    monkeypatch.setattr(authority_gate, "closed_build_enforcement", lambda: False)
 
     assert bootstrap._required_context_runtime_for_bootstrap_v1() is None
 
@@ -280,7 +280,9 @@ def test_transition_authenticates_current_without_reusing_v1_receipts(
     )
     monkeypatch.setattr(
         contract_store, "materialize_repository_authoring_for_transition_v1",
-        lambda **_kwargs: 1,
+        lambda **_kwargs: pytest.fail(
+            "administrative verification attempted authoring materialization"
+        ),
     )
     monkeypatch.setattr(
         contract_store, "current_manifest",
@@ -318,7 +320,7 @@ def test_transition_authenticates_current_without_reusing_v1_receipts(
     )
     operation = lambda: bootstrap.verify_initial_installer_store_v1(
         prove_quiescent=lambda: True,
-        authoring_owner=(991, 991),
+        trusted_authoring_owner=(991, 991),
         defer_v1_receipts_to_transition_v2=True,
     )
     if changed:

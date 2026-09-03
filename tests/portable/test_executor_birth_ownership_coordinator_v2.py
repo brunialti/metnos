@@ -125,21 +125,39 @@ def payload_bound_distribution_v2():
         "runtime/contract_boundary_role_policy.py": "runtime_code",
         "runtime/contract_boundary_syntax_policy.py": "runtime_code",
         "runtime/contract_store.py": "runtime_code",
+        "install/executor_birth_append_journal_posix.py": "runtime_code",
+        "install/executor_birth_contract_convergence.py": "runtime_code",
         "install/executor_birth_host_capability.py": "runtime_code",
         "install/executor_birth_host_journal_posix.py": "runtime_code",
         "install/executor_birth_host_posix.py": "runtime_code",
         "install/executor_birth_host_provisioning.py": "runtime_code",
+        "install/executor_birth_legacy_state_adoption.py": "runtime_code",
+        "install/executor_birth_legacy_state_effect_posix.py": "runtime_code",
+        "install/executor_birth_legacy_state_inspection.py": "runtime_code",
+        "install/executor_birth_legacy_state_journal_posix.py": "runtime_code",
+        "install/executor_birth_legacy_state_posix.py": "runtime_code",
+        "install/executor_birth_posix_directory.py": "runtime_code",
         "install/executor_birth_transition.py": "runtime_code",
         "runtime/executor_birth.py": "runtime_code",
         "runtime/executor_birth_account_identity.py": "runtime_code",
+        "runtime/executor_birth_authority_gate.py": "runtime_code",
         "runtime/executor_birth_canonical.py": "runtime_code",
         "runtime/executor_birth_crypto_framing.py": "runtime_code",
         "runtime/executor_birth_distribution_manifest.py": "preflight",
         "runtime/executor_birth_host_layout.py": "runtime_code",
+        "runtime/executor_birth_host_chain_policy.py": "runtime_code",
         "runtime/executor_birth_host_path_policy.py": "runtime_code",
         "runtime/executor_birth_host_provisioning_evidence.py": "runtime_code",
         "runtime/executor_birth_host_provisioning_journal.py": "runtime_code",
+        "runtime/executor_birth_legacy_state.py": "runtime_code",
+        "runtime/executor_birth_legacy_state_journal.py": "runtime_code",
+        "runtime/executor_birth_legacy_state_policy.py": "runtime_code",
+        "runtime/executor_birth_legacy_state_preflight_projection.py": "runtime_code",
+        "runtime/executor_birth_legacy_state_request.py": "runtime_code",
+        "runtime/executor_birth_legacy_state_wire.py": "runtime_code",
         "runtime/executor_birth_posix_metadata.py": "runtime_code",
+        "runtime/executor_birth_preflight_attestation_store.py": "runtime_code",
+        "runtime/executor_birth_preflight_store_authority.py": "runtime_code",
         "runtime/executor_birth_ownership_preflight.py": "preflight",
         "runtime/sign.py": "runtime_code",
         "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json": (
@@ -603,6 +621,7 @@ def record_v2(sequence: int) -> OwnershipCoordinatorRecordV2:
         target_set_json_sha256="8" * 64,
         context_transition_id=D("9"),
         current_inventory_hash=current_inventory_hash_v1(current.inventory),
+        legacy_state_record_sha256=D("0"),
         current_proof=current if sequence >= 1 else None,
         maintenance_before_hash=evidence_hash,
         maintenance_after_hash=evidence_hash,
@@ -630,7 +649,7 @@ def test_v2_codec_state_threshold_table(sequence):
     encoded = record.encode()
     value = json.loads(encoded)
 
-    assert len(value) == 49
+    assert len(value) == 50
     assert _decode_record_v2(encoded) == record
     assert _record_basename_v2(sequence) == f"record-{sequence:03d}-v2.json"
     assert _install_transaction_id_v1(
@@ -1189,6 +1208,80 @@ def test_preflight_crossing_refuses_conflicting_durable_attestation(tmp_path):
 
 
 @LINUX_ONLY
+def test_preflight_live_drift_is_refused_before_journal_append(tmp_path):
+    head, _repeat, _graph, _required, _distribution, _certificate = (
+        _complete_initial_head_crossing_v2(tmp_path, None)
+    )
+    ownership_root = tmp_path / "ownership"
+    gate_path = tmp_path / "runtime" / "startup-v1.lock"
+    attestation_root = ownership_root / "preflight-attestations-v1"
+    attestation_root.mkdir(mode=0o755)
+    encoded = preflight_attestation(head)
+    drifted = preflight_attestation(head, effective_units_hash=D("f"))
+
+    with _deployment_lock_for_test_v1(ownership_root) as deployment:
+        with _exclusive_startup_gate_for_test_v1(gate_path) as startup:
+            with pytest.raises(
+                OwnershipCoordinatorError, match="preflight live drift",
+            ):
+                _cross_preflight_boundary_locked_for_test_v2(
+                    deployment, startup, ownership_root=ownership_root,
+                    gate_path=gate_path, attestation_root=attestation_root,
+                    head_required=head, encoded_attestation=encoded,
+                    _reattest_for_test=lambda: drifted,
+                )
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            deployment, ownership_root,
+        ).observation
+
+    assert graph.transactions[-1].latest == head
+    assert len(graph.transactions[-1].records) == 6
+    assert (
+        attestation_root / f"{head.request_id}.json"
+    ).read_bytes() == encoded
+
+
+@LINUX_ONLY
+def test_preflight_final_drift_is_durable_and_retryable(tmp_path):
+    head, _repeat, _graph, _required, _distribution, _certificate = (
+        _complete_initial_head_crossing_v2(tmp_path, None)
+    )
+    ownership_root = tmp_path / "ownership"
+    gate_path = tmp_path / "runtime" / "startup-v1.lock"
+    attestation_root = ownership_root / "preflight-attestations-v1"
+    attestation_root.mkdir(mode=0o755)
+    encoded = preflight_attestation(head)
+    observed = iter((encoded, preflight_attestation(
+        head, effective_units_hash=D("f"),
+    )))
+    arguments = dict(
+        ownership_root=ownership_root, gate_path=gate_path,
+        attestation_root=attestation_root, head_required=head,
+        encoded_attestation=encoded,
+    )
+
+    with _deployment_lock_for_test_v1(ownership_root) as deployment:
+        with _exclusive_startup_gate_for_test_v1(gate_path) as startup:
+            with pytest.raises(
+                OwnershipCoordinatorError, match="preflight live drift",
+            ):
+                _cross_preflight_boundary_locked_for_test_v2(
+                    deployment, startup, **arguments,
+                    _reattest_for_test=lambda: next(observed),
+                )
+            recovered = _cross_preflight_boundary_locked_for_test_v2(
+                deployment, startup, **arguments,
+            )
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            deployment, ownership_root,
+        ).observation
+
+    assert recovered == graph.transactions[-1].latest
+    assert recovered.sequence == 6
+    assert len(graph.transactions[-1].records) == 7
+
+
+@LINUX_ONLY
 @pytest.mark.parametrize(
     "interruption_stage", ("certificate_ready", "certificate_signature"),
 )
@@ -1678,6 +1771,7 @@ def test_prepared_v2_record_binds_first_transition_before_publication():
         prepared_authority_set=target,
         current_inventory=inventory,
         deployment_descriptor=descriptor,
+        initial_legacy_state_record_sha256=D("0"),
     )
 
     assert record.state is OwnershipCoordinatorStateV1.PREPARED
@@ -1687,6 +1781,7 @@ def test_prepared_v2_record_binds_first_transition_before_publication():
     assert record.target_set_id == target.target_set_id == transition.set_id
     assert record.context_transition_id == transition.transition_id
     assert record.current_inventory_hash == current_inventory_hash_v1(inventory)
+    assert record.legacy_state_record_sha256 == D("0")
     assert record.administrative_bundle_hash == administrative_bundle_oracle(
         descriptor,
     )
@@ -1700,6 +1795,35 @@ def test_prepared_publication_artifact_normalizes_unsealed_inputs():
     ):
         PreparedTransitionPublicationV2(
             None, None, None, None, None, None, object(),
+        )
+
+
+def test_initial_prepared_requires_one_terminal_legacy_record_digest():
+    claim = bound_claim(
+        release_sequence=1, previous_head_id=None,
+        closed_build_id=D("3"), source_id=D("2"),
+        previous_closed_build_id=None, previous_cutover_id=None,
+    )
+    descriptor = deployment_descriptor(1)
+    distribution = verified_distribution(
+        claim, descriptor, previous_closed_build_id=None,
+    )
+    previous = prepared_set(
+        set_id="1" * 64, admission_context_id=D("2"),
+        context_epoch=D("3"),
+    )
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="legacy_state_record_sha256",
+    ):
+        _prepared_record_v2(
+            claim=claim, distribution=distribution, predecessor=None,
+            previous_context=previous,
+            prepared_authority_set=prepared_target(
+                claim, distribution, previous_set_id=previous.set_id,
+            ),
+            current_inventory=CurrentInventoryV1(()),
+            deployment_descriptor=descriptor,
         )
 
 
@@ -1736,6 +1860,10 @@ def test_prepared_v2_record_binds_a_completed_predecessor_selection():
     assert record.previous_closed_build_id == predecessor.closed_build_id
     assert record.previous_cutover_id == predecessor.cutover_id
     assert record.previous_head_id == predecessor.head_id
+    assert (
+        record.legacy_state_record_sha256
+        == predecessor.legacy_state_record_sha256
+    )
     assert transition.previous_set_id == previous_selection.set_id
     staged = required_selection_for_predecessor(predecessor, staged=True)
     with pytest.raises(
@@ -1750,6 +1878,7 @@ def test_prepared_v2_record_binds_a_completed_predecessor_selection():
             prepared_authority_set=target,
             current_inventory=proof().inventory,
             deployment_descriptor=descriptor,
+            initial_legacy_state_record_sha256=D("f"),
         )
 
 
@@ -1781,6 +1910,7 @@ def test_prepared_v2_record_rejects_crossed_target_and_release_facts():
         ),
         current_inventory=CurrentInventoryV1(()),
         deployment_descriptor=descriptor,
+        initial_legacy_state_record_sha256=D("0"),
     )
     changes = (
         {"prepared_authority_set": prepared_target(
@@ -1832,6 +1962,7 @@ def test_prepared_v2_record_persists_once_and_inventory_drift_conflicts(
             prepared_authority_set=target,
             current_inventory=inventory,
             deployment_descriptor=descriptor,
+            initial_legacy_state_record_sha256=D("0"),
         )[0]
 
     first = build(CurrentInventoryV1(()))
@@ -1929,6 +2060,7 @@ def transaction_records(
             target_set_json_sha256="8" * 64,
             context_transition_id=context_transition_id,
             current_inventory_hash=inventory_hash,
+            legacy_state_record_sha256=D("0"),
             current_proof=current if sequence >= 1 else None,
             maintenance_before_hash=evidence_hash if sequence >= 1 else None,
             maintenance_after_hash=evidence_hash if sequence >= 1 else None,
@@ -2388,6 +2520,7 @@ def test_locked_prepared_checkpoint_selects_the_durable_pending_claim(tmp_path):
             prepared_authority_set=target,
             current_inventory=CurrentInventoryV1(()),
             deployment_descriptor=descriptor,
+            initial_legacy_state_record_sha256=D("0"),
         )
 
         first, transition = _append_prepared_transition_locked_for_test_v2(
@@ -3096,6 +3229,7 @@ def test_read_only_resolver_rejects_invalid_inventory_and_cardinality(
     ("sequence", "field", "replacement", "detail"),
     (
         (1, "distribution_payload_hash", D("f"), "transaction carry"),
+        (1, "legacy_state_record_sha256", D("f"), "transaction carry"),
         (1, "target_set_id", "f" * 64, "transaction carry"),
         (
             3, "dominant_startup_receipt", D("f"),

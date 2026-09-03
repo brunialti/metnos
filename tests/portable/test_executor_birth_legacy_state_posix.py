@@ -65,7 +65,7 @@ def test_fresh_observation_ignores_every_non_reserved_name(tmp_path: Path) -> No
     request = _request(root)
     observation = _observe(request)
     assert observation.entries == ()
-    assert legacy.classify_legacy_state_v1(
+    assert legacy._classify_legacy_state_for_test_v1(
         request, observation,
     ) is legacy.LegacyStateDispositionV1.fresh
 
@@ -80,7 +80,7 @@ def test_real_authoring_and_store_replica_are_observed_exactly(tmp_path: Path) -
     _write(root / ".contract-publications-v1.catalog-admission.lock", b"\0")
     request = _request(root)
     observation = _observe(request)
-    assert legacy.classify_legacy_state_v1(
+    assert legacy._classify_legacy_state_for_test_v1(
         request, observation,
     ) is legacy.LegacyStateDispositionV1.exact_service
 
@@ -100,7 +100,7 @@ def test_unsafe_authoring_residue_is_invalid(tmp_path: Path, mutation: str) -> N
         _mkdir(canonical.parent / (".birth-stage-" + "c" * 64))
     request = _request(root)
     observation = _observe(request)
-    assert legacy.classify_legacy_state_v1(
+    assert legacy._classify_legacy_state_for_test_v1(
         request, observation,
     ) is legacy.LegacyStateDispositionV1.invalid
 

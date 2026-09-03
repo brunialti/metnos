@@ -11,6 +11,8 @@ from types import SimpleNamespace
 import pytest
 
 import executor_birth_admin_preflight as preflight
+import executor_birth_preflight_attestation_store as attestation_store
+import executor_birth_preflight_store_authority as store_authority
 import executor_birth_distribution_assembler as assembler
 
 
@@ -162,8 +164,18 @@ def _operational_attestation_fixture(
     )
 
 
+def _publish_for_test(operational, root: Path) -> bytes:
+    encoded = preflight._preflight_attestation_bytes_v1(
+        operational.selected, operational.observation.observation,
+    )
+    request_id = operational.selected.transaction.prefix.records[-1].request_id
+    return attestation_store._publish_preflight_attestation_for_test_v1(
+        encoded, request_id, root,
+    )
+
+
 @LINUX_ONLY
-def test_check_all_attestation_is_exact_idempotent_and_no_replace(
+def test_attestation_store_publication_is_exact_idempotent_and_no_replace(
     tmp_path: Path,
 ) -> None:
     materials, _fragment = _target_materials()
@@ -172,7 +184,7 @@ def test_check_all_attestation_is_exact_idempotent_and_no_replace(
     root = tmp_path / "attestations"
     root.mkdir(mode=0o755)
 
-    encoded = preflight._publish_preflight_attestation_for_test_v1(
+    encoded = _publish_for_test(
         operational, root,
     )
     value = preflight.decode_canonical_json_v1(
@@ -206,13 +218,13 @@ def test_check_all_attestation_is_exact_idempotent_and_no_replace(
     assert destination.read_bytes() == encoded
     assert stat.S_IMODE(destination.stat().st_mode) == 0o644
     assert destination.stat().st_nlink == 1
-    assert preflight._publish_preflight_attestation_for_test_v1(
+    assert _publish_for_test(
         operational, root,
     ) == encoded
 
     destination.write_bytes(encoded + b" ")
     with pytest.raises(preflight.PreflightError) as conflict:
-        preflight._publish_preflight_attestation_for_test_v1(
+        _publish_for_test(
             operational, root,
         )
     assert conflict.value.code == preflight.CODE_RECOVERY
@@ -229,7 +241,7 @@ def test_check_all_attestation_is_exact_idempotent_and_no_replace(
 
 
 @LINUX_ONLY
-def test_check_all_attestation_retains_partial_state_for_recovery(
+def test_attestation_store_retains_partial_state_for_recovery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     materials, _fragment = _target_materials()
@@ -237,13 +249,18 @@ def test_check_all_attestation_retains_partial_state_for_recovery(
     operational = _operational_attestation_fixture(materials)
     root = tmp_path / "attestations"
     root.mkdir(mode=0o755)
+
+    def fail_at_promotion(_self, _temporary, _basename):
+        raise preflight._recovery("killpoint")
+
     monkeypatch.setattr(
-        preflight.os, "link",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("killpoint")),
+        store_authority._StoreMutationPortV1,
+        "link_staging",
+        fail_at_promotion,
     )
 
     with pytest.raises(preflight.PreflightError) as failure:
-        preflight._publish_preflight_attestation_for_test_v1(
+        _publish_for_test(
             operational, root,
         )
     assert failure.value.code == preflight.CODE_RECOVERY

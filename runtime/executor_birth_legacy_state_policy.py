@@ -16,6 +16,7 @@ from executor_birth_legacy_state_request import (
     LegacyStateError,
     LegacyStateRequestV1,
     is_legacy_state_utf8_path_v1,
+    require_canonical_legacy_state_request_v1,
 )
 
 
@@ -91,6 +92,8 @@ class LegacyPathObservationV1:
     content_sha256: str | None
     has_access_acl: bool = False
     has_default_acl: bool = False
+    device: int = 0
+    inode: int = 0
 
     def __post_init__(self) -> None:
         path = self.relative_path
@@ -110,6 +113,8 @@ class LegacyPathObservationV1:
             or type(self.nlink) is not int or self.nlink < 1
             or type(self.has_access_acl) is not bool
             or type(self.has_default_acl) is not bool
+            or type(self.device) is not int or self.device < 0
+            or type(self.inode) is not int or self.inode < 0
             or (regular and not valid_size)
             or (not regular and self.size is not None)
             or (regular and not is_framed_sha256_v1(self.content_sha256))
@@ -152,7 +157,7 @@ def _entry_value(entry: LegacyPathObservationV1) -> dict[str, object]:
         "has_default_acl": entry.has_default_acl, "mode": entry.mode,
         "nlink": entry.nlink, "node_kind": entry.node_kind.value,
         "relative_path": entry.relative_path.as_posix(), "size": entry.size,
-        "uid": entry.uid,
+        "uid": entry.uid, "device": entry.device, "inode": entry.inode,
     }
 
 
@@ -246,7 +251,7 @@ def _topology_valid(entries: dict[str, LegacyPathObservationV1]) -> bool:
     return _authoring_shape_valid(entries)
 
 
-def classify_legacy_state_v1(
+def _classify_legacy_state_core_v1(
     request: LegacyStateRequestV1,
     observation: LegacyStateObservationV1,
 ) -> LegacyStateDispositionV1:
@@ -276,14 +281,73 @@ def classify_legacy_state_v1(
     )
 
 
+def classify_legacy_state_v1(
+    request: LegacyStateRequestV1,
+    observation: LegacyStateObservationV1,
+) -> LegacyStateDispositionV1:
+    require_canonical_legacy_state_request_v1(request)
+    return _classify_legacy_state_core_v1(request, observation)
+
+
+def _classify_legacy_state_for_test_v1(
+    request: LegacyStateRequestV1,
+    observation: LegacyStateObservationV1,
+) -> LegacyStateDispositionV1:
+    if type(request) is not LegacyStateRequestV1 or request._canonical is not False:
+        raise _invalid("test_classification_request")
+    return _classify_legacy_state_core_v1(request, observation)
+
+
+def _project_adoption_entry_v1(
+    request: LegacyStateRequestV1, entry: LegacyPathObservationV1,
+) -> LegacyPathObservationV1:
+    authoring = entry.relative_path.parts[0] == _AUTHORING
+    owner = (entry.uid, entry.gid)
+    if authoring and owner == (0, 0):
+        owner = (request.service_uid, request.service_gid)
+    return LegacyPathObservationV1(
+        entry.relative_path, entry.node_kind, *owner, entry.mode, entry.nlink,
+        entry.size, entry.content_sha256,
+        entry.has_access_acl, entry.has_default_acl, entry.device, entry.inode,
+    )
+
+
+def project_legacy_state_adoption_v1(
+    request: LegacyStateRequestV1,
+    observation: LegacyStateObservationV1,
+) -> LegacyStateObservationV1:
+    """Project any valid partial adoption to its sole permitted final state."""
+    if (
+        type(request) is not LegacyStateRequestV1
+        or type(observation) is not LegacyStateObservationV1
+        or classify_legacy_state_v1(request, observation)
+        is LegacyStateDispositionV1.invalid
+    ):
+        raise _invalid("adoption_projection")
+    return LegacyStateObservationV1(tuple(
+        _project_adoption_entry_v1(request, entry)
+        for entry in observation.entries
+    ))
+
+
+def legacy_state_adoption_target_sha256_v1(
+    request: LegacyStateRequestV1,
+    observation: LegacyStateObservationV1,
+) -> str:
+    return project_legacy_state_adoption_v1(
+        request, observation,
+    ).observation_sha256
+
+
 def legacy_state_policy_sha256_v1() -> str:
     return _digest(_POLICY_DOMAIN, {
-        "adoption_delta": "authoring-root-owner-to-service-only",
+        "adoption_delta": "crash-resumable-authoring-root-owner-to-service-only",
         "authoring_control_leaves": sorted(_CONTROL_LEAF_SIZES),
         "authoring_control_leaf_sizes": _CONTROL_LEAF_SIZES,
         "authoring_control_pattern": _CONTROL_RE.pattern,
         "dispositions": [item.value for item in LegacyStateDispositionV1],
         "directory_mode": 0o700, "file_mode": 0o600,
+        "identity_binding": "device+inode",
         "fsm": [list(item) for item in LEGACY_STATE_FSM_V1],
         "host_provisioning_policy_sha256": host_provisioning_policy_sha256_v1(),
         "max_depth": MAX_LEGACY_STATE_DEPTH_V1,
@@ -310,6 +374,7 @@ __all__ = [
     "MAX_LEGACY_STATE_TOTAL_BYTES_V1", "LegacyNodeKindV1",
     "LegacyPathObservationV1", "LegacyStateDispositionV1",
     "LegacyStateObservationV1", "classify_legacy_state_v1",
+    "legacy_state_adoption_target_sha256_v1",
     "legacy_state_file_sha256_v1",
-    "legacy_state_policy_sha256_v1",
+    "legacy_state_policy_sha256_v1", "project_legacy_state_adoption_v1",
 ]

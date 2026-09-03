@@ -265,6 +265,8 @@ def _fixture(
         "runtime/executor_birth_host_provisioning_evidence.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_host_provisioning_journal.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_posix_metadata.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_preflight_attestation_store.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_preflight_store_authority.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_ownership_preflight.py": (
             "preflight", b"PREFLIGHT = 1\n",
         ),
@@ -273,6 +275,8 @@ def _fixture(
             "boundary_inventory", inventory,
         ),
     }
+    for path, role in distribution._REQUIRED_PATH_ROLES.items():
+        values.setdefault(path, (role, b"VALUE = 1\n"))
     values.update({
         "deployment/systemd/" + unit_name: ("service_unit", fragment)
         for unit_name, fragment in unit_fragments

@@ -3985,7 +3985,7 @@ def test_cutover_resumes_an_exact_external_authoring_seed_before_marker(
     assert not tuple(seed_root.rglob(".birth-stage-*"))
 
 
-def test_transition_rebinds_the_exact_authoring_tree_to_the_service_owner(
+def test_transition_materialization_has_no_ownership_authority(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -4002,28 +4002,13 @@ def test_transition_rebinds_the_exact_authoring_tree_to_the_service_owner(
         trusted_publics=trusted,
         quiescence_guard=lambda: True,
     )
-    observed: list[Path] = []
-    real_fchown = os.fchown
-
-    def record_owner(descriptor: int, uid: int, gid: int) -> None:
-        assert (uid, gid) == (os.getuid(), os.getgid())
-        target = Path(f"/proc/self/fd/{descriptor}").resolve()
-        observed.append(target)
-        real_fchown(descriptor, uid, gid)
-
-    monkeypatch.setattr(contract_store_module.os, "fchown", record_owner)
+    monkeypatch.setattr(
+        contract_store_module.os, "fchown",
+        lambda *_args: pytest.fail("contract store attempted ownership transfer"),
+    )
     assert contract_store_module.materialize_repository_authoring_for_transition_v1(
         trusted_publics=trusted,
-        authoring_owner=(os.getuid(), os.getgid()),
     ) == 1
-
-    authoring_root = (
-        contract_store_module._C.PATH_USER_STATE
-        / "contract-authoring" / "v1"
-    )
-    assert authoring_root.parent in observed
-    assert authoring_root in observed
-    assert set(authoring_root.rglob("*")).issubset(observed)
 
 
 def test_transition_owner_binding_rejects_a_linked_authoring_inode(
@@ -4056,7 +4041,6 @@ def test_transition_owner_binding_rejects_a_linked_authoring_inode(
     with pytest.raises(ContractStoreError, match="authoring_tree_invalid"):
         contract_store_module.materialize_repository_authoring_for_transition_v1(
             trusted_publics=trusted,
-            authoring_owner=(os.getuid(), os.getgid()),
         )
 
 

@@ -258,6 +258,7 @@ def _other(relative: PurePosixPath, info) -> LegacyPathObservationV1:
     return LegacyPathObservationV1(
         relative, LegacyNodeKindV1.other, info.st_uid, info.st_gid,
         stat.S_IMODE(info.st_mode), info.st_nlink, None, None,
+        False, False, info.st_dev, info.st_ino,
     )
 
 
@@ -281,6 +282,7 @@ def _scan_name(parent_fd, name, relative, depth, budget, result) -> None:
             relative, LegacyNodeKindV1.regular_file, opened.st_uid, opened.st_gid,
             stat.S_IMODE(opened.st_mode), opened.st_nlink, len(payload),
             legacy_state_file_sha256_v1(payload), acl[0], acl[1],
+            opened.st_dev, opened.st_ino,
         ))
         return
     _scan_directory(parent_fd, name, relative, depth, before, budget, result)
@@ -311,7 +313,7 @@ def _scan_directory(parent_fd, name, relative, depth, before, budget, result) ->
         result.append(LegacyPathObservationV1(
             relative, LegacyNodeKindV1.directory, final.st_uid, final.st_gid,
             stat.S_IMODE(final.st_mode), final.st_nlink, None, None,
-            acl[0], acl[1],
+            acl[0], acl[1], final.st_dev, final.st_ino,
         ))
     finally:
         os.close(descriptor)

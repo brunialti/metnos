@@ -24,8 +24,8 @@ from executor_birth_host_layout import (
     require_canonical_host_layout_step_v1,
 )
 from install.executor_birth_host_journal_posix import (
-    HostProvisioningPosixError, PosixJournalStoreV1, open_journal_lock_v1,
-    raise_posix_v1, require_journal_lock_bound_v1,
+    HostJournalEffectsV1, HostProvisioningPosixError, PosixJournalStoreV1,
+    open_journal_lock_v1, raise_posix_v1, require_journal_lock_bound_v1,
 )
 
 
@@ -192,7 +192,7 @@ def _require_bound_v1(parent: int, name: str, child: int):
     return opened
 
 
-class _PosixHostEffectsV1(PosixJournalStoreV1):
+class _PosixHostEffectsV1(HostJournalEffectsV1):
     def observe_account(self):
         try:
             return account_identity.resolve_posix_account_snapshot_v1(
@@ -365,19 +365,18 @@ def locked_host_effects_v1():
     owner_pid = os.getpid()
     _ensure_bootstrap_root_v1()
     roots, lock_fd, locked = [], None, False
-    effects = _PosixHostEffectsV1()
-    capability = None
+    effects, capability = None, None
     try:
         bootstrap = _bootstrap_expected_v1()
         roots = _open_chain_v1(_ROOT, bootstrap)
         lock_fd = open_journal_lock_v1(roots[-1], (0, 0))
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
         locked = True
+        effects = _PosixHostEffectsV1(PosixJournalStoreV1(roots[-1], (0, 0)))
         def attest() -> None:
             _attest_locked_host_v1(roots, lock_fd, bootstrap)
 
         attest()
-        effects._root_fd = roots[-1]
         from install.executor_birth_host_capability import bind_locked_host_effects_v1
         capability = bind_locked_host_effects_v1(effects, attest)
         yield capability
@@ -389,8 +388,6 @@ def locked_host_effects_v1():
             elif locked and owner:
                 _attest_locked_host_v1(roots, lock_fd, bootstrap)
         finally:
-            if owner:
-                effects._root_fd = None
             if lock_fd is not None:
                 if locked and owner:
                     fcntl.flock(lock_fd, fcntl.LOCK_UN)

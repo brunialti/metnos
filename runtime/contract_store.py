@@ -486,12 +486,12 @@ def _deny_closed_legacy_api(
     operation: str, store_root: Path | str | None,
 ) -> None:
     """Translate the build-level F4 gate into the store's stable error type."""
-    from executor_birth_legacy_gate import (
-        LegacyBirthAuthorityClosed, deny_legacy_contract_api,
+    from executor_birth_authority_gate import (
+        BirthAuthorityGateClosed, deny_legacy_contract_api,
     )
     try:
         deny_legacy_contract_api(operation, store_root=store_root)
-    except LegacyBirthAuthorityClosed as exc:
+    except BirthAuthorityGateClosed as exc:
         raise ContractStoreError(exc.code, exc.operation) from None
 
 
@@ -3112,7 +3112,6 @@ def _seed_repository_authoring_locked_v1(
     *,
     shadow_root: Path,
     trusted: tuple[TrustedPublic, ...],
-    authoring_owner: tuple[int, int] | None = None,
     skill_enabled: Callable[[str], bool] | None = None,
 ) -> None:
     """Install authenticated mutable authoring outside the closed release.
@@ -3145,12 +3144,6 @@ def _seed_repository_authoring_locked_v1(
     target_inventory = inventory_store_manifests(
         store_root=shadow_root, skill_enabled=skill_enabled,
     )
-    if authoring_owner is not None and (
-        type(authoring_owner) is not tuple
-        or len(authoring_owner) != 2
-        or any(type(value) is not int or value < 0 for value in authoring_owner)
-    ):
-        raise ContractStoreError("authoring_seed_owner_invalid")
     if source_inventory.problems or target_inventory.problems:
         raise ContractStoreError("authoring_seed_inventory_invalid")
     source_refs = source_inventory.by_id()
@@ -3335,69 +3328,6 @@ def _seed_repository_authoring_locked_v1(
             else:
                 raise ContractStoreError("authoring_seed_invalid", relative)
 
-        if authoring_owner is not None:
-            # The transition runs with administrative privileges, while later
-            # Birth updates run as the signed service account. Transfer only
-            # the dedicated, fully inventoried authoring tree after every byte
-            # has been authenticated and no unexpected entry remains.
-            owner_uid, owner_gid = authoring_owner
-            ownership_paths = (
-                external_root.parent,
-                external_root,
-                *sorted(
-                    external_root.rglob("*"),
-                    key=lambda item: item.as_posix().encode("utf-8"),
-                ),
-            )
-            for path in reversed(ownership_paths):
-                try:
-                    status = path.lstat()
-                    if stat.S_ISLNK(status.st_mode) or not (
-                        stat.S_ISDIR(status.st_mode)
-                        or stat.S_ISREG(status.st_mode)
-                    ):
-                        raise ContractStoreError(
-                            "authoring_seed_invalid", str(path),
-                        )
-                    flags = (
-                        os.O_RDONLY
-                        | getattr(os, "O_NOFOLLOW", 0)
-                        | getattr(os, "O_CLOEXEC", 0)
-                    )
-                    if stat.S_ISDIR(status.st_mode):
-                        flags |= getattr(os, "O_DIRECTORY", 0)
-                    elif status.st_nlink != 1:
-                        raise ContractStoreError(
-                            "authoring_seed_invalid", str(path),
-                        )
-                    descriptor = os.open(path, flags)
-                    try:
-                        opened = os.fstat(descriptor)
-                        if (
-                            opened.st_dev != status.st_dev
-                            or opened.st_ino != status.st_ino
-                            or opened.st_mode != status.st_mode
-                        ):
-                            raise ContractStoreError(
-                                "authoring_seed_source_changed", str(path),
-                            )
-                        os.fchown(descriptor, owner_uid, owner_gid)
-                        os.fsync(descriptor)
-                        rebound = os.fstat(descriptor)
-                        if (rebound.st_uid, rebound.st_gid) != (
-                            owner_uid, owner_gid,
-                        ):
-                            raise ContractStoreError(
-                                "authoring_seed_owner_invalid", str(path),
-                            )
-                    finally:
-                        os.close(descriptor)
-                except ContractStoreError:
-                    raise
-                except OSError as exc:
-                    raise ContractStoreError(
-                        "authoring_seed_owner_invalid", str(path),
-                    ) from exc
     except CandidateSnapshotError as exc:
         raise ContractStoreError("authoring_tree_invalid", exc.detail) from exc
     except AuthoringInstallError as exc:
@@ -3407,7 +3337,6 @@ def _seed_repository_authoring_locked_v1(
 def materialize_repository_authoring_for_transition_v1(
     *,
     trusted_publics: Iterable[TrustedPublic],
-    authoring_owner: tuple[int, int] | None = None,
 ) -> int:
     """Materialize the current closed-build authoring before ownership cutover.
 
@@ -3425,13 +3354,6 @@ def materialize_repository_authoring_for_transition_v1(
     )
     from manifest_inventory import inventory_store_manifests
 
-    if authoring_owner is not None and (
-        type(authoring_owner) is not tuple
-        or len(authoring_owner) != 2
-        or any(type(value) is not int or value < 0 for value in authoring_owner)
-    ):
-        raise ContractStoreError("authoring_seed_owner_invalid")
-
     _require_productive_installation_source()
     if production_store_mode() not in {
         ProductionStoreMode.ACTIVE, ProductionStoreMode.STORE_ONLY,
@@ -3446,23 +3368,10 @@ def materialize_repository_authoring_for_transition_v1(
         raise ContractStoreError("authoring_seed_transition_closed")
 
     trusted = _trusted_public_tuple(trusted_publics)
-    skill_enabled = None
-    if (
-        authoring_owner is not None
-        and hasattr(os, "geteuid")
-        and os.geteuid() != authoring_owner[0]
-    ):
-        from skill_registry import _is_skill_enabled_for_owner_v1
-
-        skill_enabled = lambda name: _is_skill_enabled_for_owner_v1(
-            name, authoring_owner,
-        )
     _container, root, _marker = _production_paths()
-    with catalog_admission_lock(
-        store_root=root, trusted_owner=authoring_owner,
-    ):
+    with catalog_admission_lock(store_root=root):
         inventory = inventory_store_manifests(
-            store_root=root, skill_enabled=skill_enabled,
+            store_root=root,
         )
         if inventory.problems or not inventory.manifests:
             raise ContractStoreError("authoring_seed_inventory_invalid")
@@ -3474,8 +3383,6 @@ def materialize_repository_authoring_for_transition_v1(
             expected,
             shadow_root=root,
             trusted=trusted,
-            authoring_owner=authoring_owner,
-            skill_enabled=skill_enabled,
         )
     return len(expected)
 

@@ -119,7 +119,7 @@ def test_the_module_never_imports_the_gate_it_measures() -> None:
     thing worth certifying.
     """
     source = Path(evidence.__file__).read_text("utf-8")
-    assert "import executor_birth_legacy_gate" not in source
+    assert "import executor_birth_authority_gate" not in source
     assert "closed_build_enforcement()" not in source.replace(
         "`closed_build_enforcement()`", "",
     )

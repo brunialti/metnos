@@ -88,6 +88,9 @@ def test_canonical_tree_has_signed_paths_owners_modes_and_no_acls() -> None:
     expected_paths = {
         layout.HostPathRoleV1.ownership_parent: "/var/lib/metnos",
         layout.HostPathRoleV1.bootstrap_root: "/var/lib/metnos-host-provisioning-v1",
+        layout.HostPathRoleV1.legacy_state_journal: (
+            "/var/lib/metnos/executor-birth/legacy-state-adoption-v1"
+        ),
         layout.HostPathRoleV1.service_home: "/var/lib/metnos-service",
         layout.HostPathRoleV1.ownership_root: "/var/lib/metnos/executor-birth",
         layout.HostPathRoleV1.preflight_attestations: (
@@ -111,6 +114,7 @@ def test_canonical_tree_has_signed_paths_owners_modes_and_no_acls() -> None:
     }
     private_root_roles = {
         layout.HostPathRoleV1.bootstrap_root,
+        layout.HostPathRoleV1.legacy_state_journal,
     }
     assert set(actual) == set(expected_paths)
     for role, path in expected_paths.items():

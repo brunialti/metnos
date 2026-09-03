@@ -558,7 +558,7 @@ def _sealed_authorities(sealed):
 
 def _required_context_runtime_for_bootstrap_v1():
     """Select the new context only when the fixed chain already requires it."""
-    from executor_birth_legacy_gate import closed_build_enforcement
+    from executor_birth_authority_gate import closed_build_enforcement
     from executor_birth_ownership_chain import (
         OwnershipChainError, VerifiedOwnershipChain,
         inspect_ownership_chain_state_v1,
@@ -817,7 +817,7 @@ def _build_initial_transition_installer_runtime_v1(
 ) -> _InitialTransitionInstallerRuntimeV1:
     """Build only the installer producer before the first head is published."""
     from executor_birth_intent import _INSTALLER
-    from executor_birth_legacy_gate import closed_build_enforcement
+    from executor_birth_authority_gate import closed_build_enforcement
     from executor_birth_ownership_chain import (
         _InitialOwnershipChainStateV1, inspect_ownership_chain_state_v1,
     )
@@ -1145,7 +1145,7 @@ def prepare_initial_installer_catalog_v1(*, prove_quiescent: object) -> dict:
     from contract_bootstrap import ProductionStoreMode
     from contract_store import production_store_mode
     from executor_birth_intent import _INSTALLER
-    from executor_birth_legacy_gate import closed_build_enforcement
+    from executor_birth_authority_gate import closed_build_enforcement
     from executor_birth_prepared_root import load_sealed_authorities_v1
     from manifest_inventory import inventory_authoring_manifests
 
@@ -1213,7 +1213,7 @@ def prepare_initial_installer_catalog_v1(*, prove_quiescent: object) -> dict:
 
 def _verify_initial_catalog_v1(
     *, report: Mapping[str, object] | None, prove_quiescent: object,
-    authoring_owner: tuple[int, int] | None = None,
+    trusted_authoring_owner: tuple[int, int] | None = None,
     defer_v1_receipts_to_transition_v2: bool = False,
 ) -> dict[str, int]:
     from contract_bootstrap import ProductionStoreMode
@@ -1227,8 +1227,19 @@ def _verify_initial_catalog_v1(
     if (
         type(defer_v1_receipts_to_transition_v2) is not bool
         or (
+            trusted_authoring_owner is not None
+            and (
+                type(trusted_authoring_owner) is not tuple
+                or len(trusted_authoring_owner) != 2
+                or any(
+                    type(value) is not int or value <= 0
+                    for value in trusted_authoring_owner
+                )
+            )
+        )
+        or (
             defer_v1_receipts_to_transition_v2
-            and (report is not None or authoring_owner is None)
+            and (report is not None or trusted_authoring_owner is None)
         )
     ):
         raise BirthBootstrapError("birth_initial_transition_invalid")
@@ -1237,14 +1248,14 @@ def _verify_initial_catalog_v1(
     trusted = tuple(sorted(sealed.author.verifier_keys.items()))
     skill_enabled = None
     if (
-        authoring_owner is not None
+        trusted_authoring_owner is not None
         and hasattr(os, "geteuid")
-        and os.geteuid() != authoring_owner[0]
+        and os.geteuid() != trusted_authoring_owner[0]
     ):
         from skill_registry import _is_skill_enabled_for_owner_v1
 
         skill_enabled = lambda name: _is_skill_enabled_for_owner_v1(
-            name, authoring_owner,
+            name, trusted_authoring_owner,
         )
     if mode is ProductionStoreMode.LEGACY:
         if report is None:
@@ -1256,10 +1267,14 @@ def _verify_initial_catalog_v1(
             materialize_repository_authoring_for_transition_v1,
         )
 
-        materialize_repository_authoring_for_transition_v1(
-            trusted_publics=trusted,
-            authoring_owner=authoring_owner,
-        )
+        if (
+            trusted_authoring_owner is None
+            or not hasattr(os, "geteuid")
+            or os.geteuid() == trusted_authoring_owner[0]
+        ):
+            materialize_repository_authoring_for_transition_v1(
+                trusted_publics=trusted,
+            )
         store_root = None
         inventory = inventory_store_manifests(
             skill_enabled=skill_enabled,
@@ -1344,13 +1359,13 @@ def verify_initial_installer_report_v1(
 
 def verify_initial_installer_store_v1(
     *, prove_quiescent: object,
-    authoring_owner: tuple[int, int] | None = None,
+    trusted_authoring_owner: tuple[int, int] | None = None,
     defer_v1_receipts_to_transition_v2: bool = False,
 ) -> dict[str, int]:
-    """Authenticate the store and bind mutable sources to the service owner."""
+    """Authenticate the store under its already-established service owner."""
     return _verify_initial_catalog_v1(
         report=None, prove_quiescent=prove_quiescent,
-        authoring_owner=authoring_owner,
+        trusted_authoring_owner=trusted_authoring_owner,
         defer_v1_receipts_to_transition_v2=(
             defer_v1_receipts_to_transition_v2
         ),

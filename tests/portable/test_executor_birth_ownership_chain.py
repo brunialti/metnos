@@ -305,6 +305,8 @@ def _cold_distribution(
         "runtime/executor_birth_host_provisioning_evidence.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_host_provisioning_journal.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_posix_metadata.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_preflight_attestation_store.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_preflight_store_authority.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_ownership_preflight.py": ("preflight", b"PREFLIGHT = 1\n"),
         "runtime/sign.py": ("runtime_code", b"SIGN = 1\n"),
         "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json": (
@@ -312,6 +314,8 @@ def _cold_distribution(
         ),
         "systemd/metnos-http-birth-closed.conf": ("service_unit", b"[Service]\n"),
     }
+    for path, role in distribution_module._REQUIRED_PATH_ROLES.items():
+        content_by_path.setdefault(path, (role, b"VALUE = 1\n"))
     files = []
     for path, (role, content) in content_by_path.items():
         target = root.joinpath(*path.split("/"))

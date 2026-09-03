@@ -892,21 +892,67 @@ del contract store; `check-all` conserva ancora scritture e file temporanei;
 manca infine la replica Linux reale completa. Nessuna di queste tranche ha
 sostituito il gate installato o modificato lo stato in esercizio.
 
+## Decima area: preflight puro, adozione riprendibile e nuovo authority gate
+
+Checkpoint del 3 settembre 2026. La parte mutante è stata separata dal
+preflight: l'osservazione amministrativa autentica e sigilla esclusivamente
+materiale in memoria, mentre la pubblicazione durevole appartiene a uno store
+owner dedicato e riprendibile. I descrittori di controllo vengono chiusi tutti
+anche in presenza di errori multipli; ogni errore residuo viene tradotto nel
+dominio di recovery del Birth gate.
+
+L'adozione dello stato legacy è ora una macchina a stati persistente con
+journal append-only e quattro confini espliciti. L'ispezione `live` è ammessa
+solo sotto la prima maintenance window; dopo la convergenza viene usata
+soltanto la vista storica autenticata. Il digest del record terminale
+`LEGACY_STATE_READY` è una foreign key obbligatoria del coordinatore e viene
+ereditato senza variazioni da tutti i successori.
+
+Il decoder legacy incorporato nel preflight non è più una seconda
+implementazione manuale. Un owner wire puro e piccolo viene validato per
+profilo AST e chiusura dei nomi; una proiezione deterministica lega path,
+sorgente completa, profilo e corpo generato. Il renderer boundary esistente
+rigenera e controlla entrambe le proiezioni, evitando un nuovo tool one-off.
+Journal, record e lock vengono verificati tramite descrittori anche per ACL di
+accesso e default prima, durante e dopo la lettura.
+
+`executor_birth_legacy_gate.py` è stato eliminato. I consumer importano ora
+`executor_birth_authority_gate.py`, che conserva la superficie pubblica
+caratterizzata della baseline ma delega alle autorità separate. Manifesto di
+distribuzione, closure amministrativa e fixture descrivono lo stesso insieme
+di moduli richiesti. Nessuna modifica è stata applicata all'installazione in
+esercizio durante questa area; il cambio corrente è ancora confinato alla
+sorgente candidata e ai test.
+
+Il checkpoint finale chiude anche i rilievi delle tre revisioni indipendenti:
+nessun P0 o P1 residuo, journal POSIX sotto il limite strutturale, funzioni
+entro quaranta righe e nomenclatura dei test coerente con un preflight puro.
+La suite estesa ha prodotto `1838 passed, 27 skipped`; il pacchetto di
+accettazione RM-0008 ha prodotto `86 passed, 5 deselected`. I cinque casi
+deselezionati sono esclusivamente prove di binding UID che richiedono un vero
+`chown` privilegiato, non consentito nel contenitore di sviluppo.
+
+Il gate di pubblicazione ha ricostruito 1.739 file senza eseguire push e ha
+confermato zero PII, secret e file sensibili. Prima dell'ultimo repin le radici
+riesaminate erano 747 sorgenti private e 735 pubbliche; i valori definitivi
+sono registrati dal publisher insieme all'inventario Python aggiornato. La
+baseline storica non è più referenziata dai percorsi produttivi o dai test del
+candidato.
+
 ## Decisione
 
 Le revisioni indipendenti di architettura, software engineering e Python
 convergono sulla stessa decisione aggiornata:
 
-1. nessun'altra patch allo script operativo e nessun nuovo tentativo in
-   produzione;
-2. characterization test prima di ogni estrazione;
-3. migrazione consumer per consumer, con dual-read comparativo soltanto e mai
-   dual-write;
-4. replica reale completa prima della sostituzione del gate in esercizio;
-5. identità, layout, journal host, analyzer canonico e grammatica legacy pura
-   sono completati e sottoposti a doppia review;
-6. la prossima area è rendere il preflight realmente read-only, quindi
-   integrare l'adozione legacy autenticata sotto una macchina a stati
-   persistente;
-7. la sostituzione del gate installato avverrà soltanto dopo replica Linux,
-   seconda esecuzione no-op e riavvio verificato.
+1. il refactor strutturale candidato è completo e può essere committato;
+2. identità, layout, permessi, journal host e catalogo unità hanno un'unica
+   autorità; il preflight non scrive più e l'adozione è persistente e
+   riprendibile;
+3. il vecchio gate è stato rimosso dalla sorgente candidata; resta presente
+   soltanto nell'installazione corrente, che questa attività non ha mutato;
+4. il solo collaudo residuo è la replica Linux privilegiata dei cinque casi
+   UID, seguita da due esecuzioni consecutive (cutover e no-op) e riavvio;
+5. se la replica resta verde, la nuova release sostituisce atomicamente quella
+   installata e la pulizia rimuove gli artefatti operativi superseduti;
+6. non sono ammessi nuovi script one-off né doppie autorità durante questa
+   ultima fase.

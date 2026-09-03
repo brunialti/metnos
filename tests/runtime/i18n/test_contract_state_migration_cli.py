@@ -10,7 +10,7 @@ import pytest
 
 import config
 import contract_store
-import executor_birth_legacy_gate
+import executor_birth_authority_gate
 import manifest_inventory
 import sign
 from admin.i18n_migrate_manifests import (
@@ -52,7 +52,8 @@ def _inventory(monkeypatch, refs) -> None:
         manifests=tuple(refs), problems=(),
     )
     monkeypatch.setattr(
-        manifest_inventory, "inventory_authoring_manifests", lambda: value,
+        manifest_inventory, "inventory_authoring_manifests",
+        lambda **_kwargs: value,
     )
 
 
@@ -127,7 +128,7 @@ def _prepared_activation_fixture(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         manifest_inventory,
         "inventory_authoring_manifests",
-        lambda: authoring_inventory((source,)),
+        lambda **_kwargs: authoring_inventory((source,)),
     )
     monkeypatch.setattr(sign, "list_trusted_publics", lambda: list(trusted))
     canonical_shadow = (
@@ -335,7 +336,7 @@ def test_activation_retry_after_swap_reconciles_without_shadow(
     # Exercise the recovery code carried by the pre-certificate installer.
     # The released F4 build keeps this policy bit compiled to True.
     monkeypatch.setattr(
-        executor_birth_legacy_gate,
+        executor_birth_authority_gate,
         "closed_build_enforcement",
         lambda: False,
     )
@@ -393,7 +394,7 @@ def test_post_swap_retry_rejects_report_from_another_catalog(
     # Exercise the recovery code carried by the pre-certificate installer.
     # The released F4 build keeps this policy bit compiled to True.
     monkeypatch.setattr(
-        executor_birth_legacy_gate,
+        executor_birth_authority_gate,
         "closed_build_enforcement",
         lambda: False,
     )

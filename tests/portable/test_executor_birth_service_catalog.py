@@ -537,11 +537,15 @@ def test_source_compiler_binds_targets_environment_and_supplementary_groups() ->
         "install-llm": {
             ("python_module", "repository", "install/llm_manager.py"),
         },
-        "install-metnos": {
-            ("script", "repository", "install/bootstrap.sh"),
-            ("script", "repository", "install/setup.sh"),
-            ("python_module", "repository", "install/__main__.py"),
-        },
+            "install-metnos": {
+                ("script", "repository", "install/bootstrap.sh"),
+                ("script", "repository", "install/setup.sh"),
+                ("python_module", "repository", "install/__main__.py"),
+                (
+                    "python_module", "repository",
+                    "install/executor_birth_contract_convergence.py",
+                ),
+            },
         "install-playwright": {
             ("python_module", "repository", "install/playwright_sidecar.py"),
             ("script", "repository", "runtime/playwright_sidecar/install.sh"),

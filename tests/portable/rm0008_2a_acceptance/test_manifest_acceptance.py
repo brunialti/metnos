@@ -2151,8 +2151,6 @@ def ensure_executor_birth_authorities_prepared():
     return _provision_prepared_authorities_v1(None)
 def complete_transition_cutover_v2():
     return _provision_prepared_authorities_v1(None)
-def prepare_transition_receipts_v2():
-    return _provision_prepared_authorities_v1(None)
 """,
         "install/executor_birth_transition.py": """
 def deploy_source_v1():

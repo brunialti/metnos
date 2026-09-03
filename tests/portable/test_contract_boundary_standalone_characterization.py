@@ -301,6 +301,30 @@ def test_boundary_facts_and_findings_match_for_representative_corpus(
     }
 
 
+def test_declared_descriptor_store_owner_cannot_hide_writes(tmp_path: Path) -> None:
+    relative = "runtime/executor_birth_preflight_attestation_store.py"
+    source = (
+        b"import os\n"
+        b"def direct(fd):\n    os.write(fd, b'x')\n"
+        b"def aliased(fd):\n    writer = os.write\n    writer(fd, b'x')\n"
+        b"def deferred(fd):\n    effect = lambda: os.fsync(fd)\n    effect()\n"
+        b"def linked(directory):\n"
+        b"    os.link('a', 'b', src_dir_fd=directory, dst_dir_fd=directory)\n"
+    )
+    target = tmp_path / relative
+    target.parent.mkdir(parents=True)
+    target.write_bytes(source)
+
+    imported = guard.discover(tmp_path)
+    standalone_facts = standalone._discover_boundary_from_verified_v1({
+        relative: source,
+    })
+    expected = {"aliased", "deferred", "direct", "linked"}
+    for facts in (imported, standalone_facts):
+        assert {fact.scope for fact in facts} == expected
+        assert all(fact.capabilities == ("store_write",) for fact in facts)
+
+
 def _review_hashes(sources: dict[str, bytes]) -> tuple[str, str]:
     return (
         guard.closed_python_source_review_sha256(sources),

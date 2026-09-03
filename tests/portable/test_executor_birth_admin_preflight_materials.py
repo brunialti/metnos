@@ -449,13 +449,8 @@ def _isolated_g6c_records(
             "Service", "ProtectSystem", "scalar", ("strict",),
         ),
         catalog.ServiceDirectiveV1(
-            # The runtime root too: the administrative program writes
-            # openssl's temporaries there, and the shape check requires it.
             "Service", "ReadWritePaths", "path_list",
-            tuple(sorted(
-                (marker_root, preflight.RUNTIME_ROOT.as_posix()),
-                key=lambda item: item.encode("utf-8"),
-            )),
+            (marker_root,),
         ),
         catalog.ServiceDirectiveV1(
             "Service", "SupplementaryGroups", "scalar", ("44 991",),
@@ -693,6 +688,8 @@ def _bound_graph(
         "runtime/executor_birth_host_provisioning_evidence.py": b"VALUE = 1\n",
         "runtime/executor_birth_host_provisioning_journal.py": b"VALUE = 1\n",
         "runtime/executor_birth_posix_metadata.py": b"VALUE = 1\n",
+        "runtime/executor_birth_preflight_attestation_store.py": b"VALUE = 1\n",
+        "runtime/executor_birth_preflight_store_authority.py": b"VALUE = 1\n",
         "runtime/executor_birth_ownership_preflight.py": b"VALUE = 1\n",
         "runtime/sign.py": b"VALUE = 1\n",
         **{
@@ -700,6 +697,8 @@ def _bound_graph(
             for name, content in fragments.items()
         },
     }
+    for relative in preflight._REQUIRED_MANIFEST_PATHS:
+        contents.setdefault(relative, b"VALUE = 1\n")
     roles = {
         "deployment/admin/preflight.py": "preflight",
         "deployment/executor-birth-deployment-v1.json": "deployment_descriptor",
@@ -865,6 +864,7 @@ def _bound_graph(
         current_inventory_hash=(
             preflight._current_inventory_hash_from_receipts_v1(())
         ),
+        legacy_state_record_sha256=D("a"),
     )
     captured = {
         "deployment/admin/preflight.py": contents[

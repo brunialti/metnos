@@ -20,6 +20,10 @@ from contract_boundary_projection import (  # noqa: E402
     ContractBoundaryProjectionError,
     check_generated_region_v1 as check_policy_region_v1,
 )
+from executor_birth_legacy_state_preflight_projection import (  # noqa: E402
+    LegacyStatePreflightProjectionError,
+    check_generated_region_v1 as check_legacy_state_region_v1,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,13 +34,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         source = PREFLIGHT_V1.read_bytes()
-        if check_policy_region_v1(source) and check_analyzer_region_v1(source):
+        if (
+            check_policy_region_v1(source)
+            and check_analyzer_region_v1(source)
+            and check_legacy_state_region_v1(source)
+        ):
             return 0
         print("contract_boundary_projection_error:stale", file=sys.stderr)
         return 1
     except (
         ContractBoundaryAnalyzerProjectionError,
         ContractBoundaryProjectionError,
+        LegacyStatePreflightProjectionError,
         OSError,
     ) as exc:
         print(f"contract_boundary_projection_error:{exc}", file=sys.stderr)

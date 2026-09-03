@@ -118,7 +118,8 @@ def test_tcb_hashes_and_document_match_independent_normative_framing() -> None:
     )
     expected_value = {
         "schema_version": 1,
-        "command_profile": "ed25519-pkeyutl-v1",
+        "command_profile": "ed25519-pkeyutl-sealed-memfd-v1",
+        "material_transport": "sealed-memfd-proc-self-fd-v1",
         "config_path": "/dev/null",
         "provider": "default",
         "elf_loader": "/trusted/lib/ld-linux.so",

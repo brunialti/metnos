@@ -92,6 +92,12 @@ def _files(root: Path):
         "install/executor_birth_host_capability.py": (
             "runtime_code", b"CAPABILITY = 1\n",
         ),
+        "install/executor_birth_append_journal_posix.py": (
+            "runtime_code", b"APPEND_JOURNAL = 1\n",
+        ),
+        "install/executor_birth_contract_convergence.py": (
+            "runtime_code", b"CONVERGENCE = 1\n",
+        ),
         "install/executor_birth_host_journal_posix.py": (
             "runtime_code", b"JOURNAL_POSIX = 1\n",
         ),
@@ -100,6 +106,24 @@ def _files(root: Path):
         ),
         "install/executor_birth_host_provisioning.py": (
             "runtime_code", b"PROVISION = 1\n",
+        ),
+        "install/executor_birth_legacy_state_adoption.py": (
+            "runtime_code", b"LEGACY_ADOPTION = 1\n",
+        ),
+        "install/executor_birth_legacy_state_effect_posix.py": (
+            "runtime_code", b"LEGACY_EFFECT = 1\n",
+        ),
+        "install/executor_birth_legacy_state_inspection.py": (
+            "runtime_code", b"LEGACY_INSPECTION = 1\n",
+        ),
+        "install/executor_birth_legacy_state_journal_posix.py": (
+            "runtime_code", b"LEGACY_JOURNAL = 1\n",
+        ),
+        "install/executor_birth_legacy_state_posix.py": (
+            "runtime_code", b"LEGACY_OBSERVER = 1\n",
+        ),
+        "install/executor_birth_posix_directory.py": (
+            "runtime_code", b"POSIX_DIRECTORY = 1\n",
         ),
         "install/executor_birth_transition.py": (
             "runtime_code", b"TRANSITION = 1\n",
@@ -123,6 +147,9 @@ def _files(root: Path):
         "runtime/executor_birth_account_identity.py": (
             "runtime_code", b"ACCOUNT = 1\n",
         ),
+        "runtime/executor_birth_authority_gate.py": (
+            "runtime_code", b"AUTHORITY_GATE = 1\n",
+        ),
         "runtime/executor_birth_canonical.py": (
             "runtime_code", b"CANONICAL = 1\n",
         ),
@@ -133,6 +160,9 @@ def _files(root: Path):
         "runtime/executor_birth_host_layout.py": (
             "runtime_code", b"LAYOUT = 1\n",
         ),
+        "runtime/executor_birth_host_chain_policy.py": (
+            "runtime_code", b"CHAIN_POLICY = 1\n",
+        ),
         "runtime/executor_birth_host_path_policy.py": (
             "runtime_code", b"PATH_POLICY = 1\n",
         ),
@@ -142,8 +172,32 @@ def _files(root: Path):
         "runtime/executor_birth_host_provisioning_journal.py": (
             "runtime_code", b"JOURNAL = 1\n",
         ),
+        "runtime/executor_birth_legacy_state.py": (
+            "runtime_code", b"LEGACY = 1\n",
+        ),
+        "runtime/executor_birth_legacy_state_journal.py": (
+            "runtime_code", b"LEGACY_FSM = 1\n",
+        ),
+        "runtime/executor_birth_legacy_state_policy.py": (
+            "runtime_code", b"LEGACY_POLICY = 1\n",
+        ),
+        "runtime/executor_birth_legacy_state_preflight_projection.py": (
+            "runtime_code", b"LEGACY_PROJECTION = 1\n",
+        ),
+        "runtime/executor_birth_legacy_state_request.py": (
+            "runtime_code", b"LEGACY_REQUEST = 1\n",
+        ),
+        "runtime/executor_birth_legacy_state_wire.py": (
+            "runtime_code", b"LEGACY_WIRE = 1\n",
+        ),
         "runtime/executor_birth_posix_metadata.py": (
             "runtime_code", b"METADATA = 1\n",
+        ),
+        "runtime/executor_birth_preflight_attestation_store.py": (
+            "runtime_code", b"ATTESTATION_STORE = 1\n",
+        ),
+        "runtime/executor_birth_preflight_store_authority.py": (
+            "runtime_code", b"ATTESTATION_AUTHORITY = 1\n",
         ),
         "runtime/executor_birth_ownership_preflight.py": ("preflight", b"PREFLIGHT = 1\n"),
         "runtime/sign.py": ("runtime_code", b"SIGN = 1\n"),

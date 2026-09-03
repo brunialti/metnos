@@ -118,6 +118,10 @@ def test_context_reattests_each_operation_and_exit(monkeypatch) -> None:
     monkeypatch.setattr(posix, "_open_chain_v1", lambda *_args: [10, 11, 12, 13])
     monkeypatch.setattr(posix, "open_journal_lock_v1", lambda *_args: 14)
     monkeypatch.setattr(
+        posix, "PosixJournalStoreV1",
+        lambda *_args: SimpleNamespace(load_records=lambda: (), append_record=lambda *_: None),
+    )
+    monkeypatch.setattr(
         posix, "_attest_locked_host_v1",
         lambda *_args: events.append("attest"),
     )
@@ -142,6 +146,10 @@ def test_forked_cleanup_only_closes_inherited_descriptors(monkeypatch) -> None:
     monkeypatch.setattr(posix, "_bootstrap_expected_v1", lambda: {})
     monkeypatch.setattr(posix, "_open_chain_v1", lambda *_args: [10, 11, 12, 13])
     monkeypatch.setattr(posix, "open_journal_lock_v1", lambda *_args: 14)
+    monkeypatch.setattr(
+        posix, "PosixJournalStoreV1",
+        lambda *_args: SimpleNamespace(load_records=lambda: (), append_record=lambda *_: None),
+    )
     monkeypatch.setattr(
         posix, "_attest_locked_host_v1",
         lambda *_args: events.append("attest"),

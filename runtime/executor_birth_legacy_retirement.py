@@ -146,10 +146,15 @@ def plan_catalog_retirement_v1(catalog: object) -> CatalogRetirementPlanV1:
 
     if type(catalog) is not DecodedServiceCatalogV1:
         raise _invalid("legacy_retirement_catalog_invalid", "type")
-    dominant_units = frozenset(
+    dominant_units = frozenset({
         str(entry.unit_name)
         for entry in catalog.entries if entry.unit_name is not None
-    )
+    } | {
+        binding.locator
+        for entry in catalog.entries if entry.external_unit_name is not None
+        for binding in catalog.legacy_bindings if binding.entry_id == entry.entry_id
+        and binding.kind in {"user_unit", "system_unit"}
+    })
     bindings = tuple({
         "legacy_id": binding.legacy_id,
         "entry_id": binding.entry_id,

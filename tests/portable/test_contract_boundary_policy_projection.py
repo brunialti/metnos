@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT = ROOT / "runtime" / "executor_birth_admin_preflight.py"
 TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 GOLDEN_DIGEST_V1 = (
-    "sha256:a32e70a7092bfd4688b808f3065cd4015df7c64aacdd1b1f2e212b05a64e7b3e"
+    "sha256:17bb30258e145a12833b0be6062f904b01252f92b7fcd4f5961d266d51bba320"
 )
 
 POLICY_NAMES = (
@@ -296,7 +296,15 @@ def test_fixed_tool_check_rejects_drift(tmp_path: Path) -> None:
         "contract_boundary_birth_exception_policy.py",
         "contract_boundary_birth_policy.py",
         "contract_boundary_policy.py", "contract_boundary_projection.py",
-        "executor_birth_canonical.py", "executor_birth_crypto_framing.py",
+        "executor_birth_account_identity.py", "executor_birth_canonical.py",
+        "executor_birth_crypto_framing.py", "executor_birth_host_layout.py",
+        "executor_birth_host_path_policy.py",
+        "executor_birth_host_provisioning_evidence.py",
+        "executor_birth_legacy_state_journal.py",
+        "executor_birth_legacy_state_policy.py",
+        "executor_birth_legacy_state_preflight_projection.py",
+        "executor_birth_legacy_state_request.py",
+        "executor_birth_legacy_state_wire.py",
         "executor_birth_admin_preflight.py",
     )
     for name in runtime_names:

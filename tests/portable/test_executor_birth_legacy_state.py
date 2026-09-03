@@ -154,6 +154,8 @@ def test_exact_closed_record_chain_round_trips_and_carries_digests() -> None:
     encoded = tuple(legacy.encode_legacy_state_record_v1(item) for item in records)
     assert legacy.decode_legacy_state_chain_v1(encoded) == records
     assert ready.inventory_sha256 == inventoried.inventory_sha256
+    assert inventoried.adoption_target_sha256 == after.observation_sha256
+    assert ready.adoption_target_sha256 == inventoried.adoption_target_sha256
     assert ready.authoring_sha256 == adopted.authoring_sha256
     assert ready.ready_sha256 == adopted.authoring_sha256
 
@@ -163,7 +165,7 @@ def test_protocol_has_stable_golden_digests() -> None:
     observation = _observation()
     planned = legacy.plan_legacy_state_v1(request)
     assert legacy.legacy_state_policy_sha256_v1() == (
-        "sha256:e7efecd82f303326045b1377e9ba2692b0cafeb0e8209fff8dfcb85094cc857e"
+        "sha256:ab14fe3acc1f72745c488724bb9e2f9988789f443dbfb9103950cdc1621f0dbb"
     )
     assert request.request_id == (
         "sha256:9839f15abbaab1b6fb19bdb6292e55368f6aa7aa85f1681f775907acc948142f"
@@ -172,7 +174,7 @@ def test_protocol_has_stable_golden_digests() -> None:
         "sha256:8080b6a3a55bcaa5c4142928f04172d19296e2e00b44407dd40724504537aacb"
     )
     assert planned.record_sha256 == (
-        "sha256:4dc4f4221b33c996d4e04ab665ab538f21b4756f0aa8530ea8bda75da3a2145f"
+        "sha256:90cada6fa8a04006c1644e917ce6fca65a8a68557dd7006cd351016b925871a2"
     )
 
 
@@ -247,6 +249,33 @@ def test_adoption_delta_rejects_every_change_except_authoring_owner() -> None:
     )
     assert not legacy.legacy_state_adoption_delta_valid_v1(
         request, _observation(), service,
+    )
+
+
+def test_adoption_target_resumes_only_the_same_partially_chowned_tree() -> None:
+    request = _request()
+    original = _real_authoring((0, 0))
+    final = _real_authoring()
+    mixed = _observation(*(
+        replace(entry, uid=SERVICE[0], gid=SERVICE[1])
+        if index % 2 else entry
+        for index, entry in enumerate(original.entries)
+    ))
+    target = legacy.legacy_state_adoption_target_sha256_v1(request, original)
+    assert target == final.observation_sha256
+    assert legacy.legacy_state_adoption_target_sha256_v1(request, mixed) == target
+    assert legacy.legacy_state_adoption_resume_valid_v1(request, target, mixed)
+    inventoried = legacy.record_legacy_state_inventoried_v1(
+        legacy.plan_legacy_state_v1(request), request, original,
+    )
+    adopted = legacy.record_authoring_adopted_v1(
+        inventoried, request, mixed, final,
+    )
+    assert adopted.authoring_sha256 == target
+    changed = list(mixed.entries)
+    changed[-1] = _file(changed[-1].relative_path.as_posix(), b"changed")
+    assert not legacy.legacy_state_adoption_resume_valid_v1(
+        request, target, _observation(*changed),
     )
 
 
@@ -327,6 +356,8 @@ def test_canonical_request_rejects_replace_to_data_or_cache_role() -> None:
             legacy.require_canonical_legacy_state_request_v1(mutant)
         with pytest.raises(legacy.LegacyStateError):
             legacy.plan_legacy_state_v1(mutant)
+        with pytest.raises(legacy.LegacyStateError):
+            legacy.classify_legacy_state_v1(mutant, _observation())
 
 
 def test_canonical_request_denies_copy_and_deepcopy() -> None:
