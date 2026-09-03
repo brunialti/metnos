@@ -458,6 +458,70 @@ def _verify_installed_tree_v1(
             os.close(file_fd)
 
 
+def _remove_recoverable_stage_file_v1(
+    stage_fd: int, *, content_size: int, owner: tuple[int, int],
+) -> None:
+    with os.scandir(stage_fd) as entries:
+        names = tuple(sorted(entry.name for entry in entries))
+    if names not in {(), (ADMINISTRATIVE_PROGRAM_BASENAME_V1,)}:
+        raise _fail("birth_ownership_recovery_required", "administrative stage")
+    if not names:
+        return
+    name = names[0]
+    descriptor = os.open(name, _READ_FLAGS_V1, dir_fd=stage_fd)
+    try:
+        info = os.fstat(descriptor)
+        rebound = os.stat(name, dir_fd=stage_fd, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+            or (info.st_uid, info.st_gid) != owner
+            or stat.S_IMODE(info.st_mode) not in {0o600, 0o755}
+            or info.st_size > content_size
+            or (info.st_dev, info.st_ino) != (rebound.st_dev, rebound.st_ino)
+        ):
+            raise _fail(
+                "birth_ownership_recovery_required", "administrative stage",
+            )
+    finally:
+        os.close(descriptor)
+    os.unlink(name, dir_fd=stage_fd)
+    os.fsync(stage_fd)
+
+
+def _recover_incomplete_administrative_stage_v1(
+    parent_fd: int, stage_name: str, *, content_size: int,
+    owner: tuple[int, int], require_session: Callable[[], None],
+) -> None:
+    require_session()
+    stage_fd = os.open(stage_name, _DIRECTORY_FLAGS_V1, dir_fd=parent_fd)
+    try:
+        info = os.fstat(stage_fd)
+        rebound = os.stat(stage_name, dir_fd=parent_fd, follow_symlinks=False)
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or (info.st_uid, info.st_gid) != owner
+            or stat.S_IMODE(info.st_mode) not in {0o700, 0o755}
+            or (info.st_dev, info.st_ino) != (rebound.st_dev, rebound.st_ino)
+        ):
+            raise _fail(
+                "birth_ownership_recovery_required", "administrative stage",
+            )
+        _remove_recoverable_stage_file_v1(
+            stage_fd, content_size=content_size, owner=owner,
+        )
+        require_session()
+        os.rmdir(stage_name, dir_fd=parent_fd)
+        os.fsync(parent_fd)
+    except DistributionAssemblerError:
+        raise
+    except OSError as exc:
+        raise _fail(
+            "birth_ownership_recovery_required", "administrative stage",
+        ) from exc
+    finally:
+        os.close(stage_fd)
+
+
 def _publish_administrative_tree_v1(
     administrative_root: Path, *, descriptor_id: str, content: bytes,
     content_hash: str, owner: tuple[int, int], require_session: Callable[[], None],
@@ -485,11 +549,19 @@ def _publish_administrative_tree_v1(
             require_session()
             return
         if stage_info is not None:
-            stage_fd = _verify_installed_tree_v1(
-                parent_fd, stage_name, content=content, content_hash=content_hash,
-                owner=owner, error_code="birth_ownership_recovery_required",
-            )
-        else:
+            try:
+                stage_fd = _verify_installed_tree_v1(
+                    parent_fd, stage_name, content=content,
+                    content_hash=content_hash, owner=owner,
+                    error_code="birth_ownership_recovery_required",
+                )
+            except DistributionAssemblerError:
+                _recover_incomplete_administrative_stage_v1(
+                    parent_fd, stage_name, content_size=len(content),
+                    owner=owner, require_session=require_session,
+                )
+                stage_info = None
+        if stage_info is None:
             require_session()
             stage_fd, _identity = _create_private_directory_v1(
                 parent_fd, stage_name, owner=owner,

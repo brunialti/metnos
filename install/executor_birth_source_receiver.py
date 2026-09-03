@@ -1390,6 +1390,49 @@ def _require_initial_namespaces_v1(
             raise _fail("birth_ownership_recovery_required", "sources metadata")
 
 
+def _recover_receive_residue_v1(
+    incoming_fd: int, sources_fd: int, *, owner: tuple[int, int],
+) -> None:
+    """Remove one interrupted private receive tree under the product lock.
+
+    The deployment lock excludes a live peer.  Only the exact private
+    namespace minted by this receiver is recoverable; every other name or a
+    second residue remains an ambiguous state and fails closed.
+    """
+    try:
+        with os.scandir(incoming_fd) as iterator:
+            names = tuple(sorted(item.name for item in iterator))
+    except OSError as exc:
+        raise _fail(
+            "birth_ownership_recovery_required", "incoming inventory",
+        ) from exc
+    residue = tuple(
+        name for name in names if name != SOURCES_DIRECTORY_BASENAME_V1
+    )
+    if not residue:
+        return
+    if len(residue) != 1 or _RECEIVE_RE.fullmatch(residue[0]) is None:
+        raise _fail("birth_ownership_recovery_required", "incoming inventory")
+    name = residue[0]
+    info = _name_status_v1(incoming_fd, name)
+    if (
+        info is None or not stat.S_ISDIR(info.st_mode)
+        or (info.st_uid, info.st_gid) != owner
+        or stat.S_IMODE(info.st_mode) not in {0o700, 0o755}
+    ):
+        raise _fail("birth_ownership_recovery_required", "receive residue")
+    _remove_owned_tree_at_v1(
+        incoming_fd, name, expected_identity=_identity(info), owner=owner,
+    )
+    try:
+        os.fsync(incoming_fd)
+    except OSError as exc:
+        raise _fail(
+            "birth_ownership_recovery_required", "receive residue sync",
+        ) from exc
+    _require_initial_namespaces_v1(incoming_fd, sources_fd, owner=owner)
+
+
 def _require_no_foreign_structured_v1(sources_fd: int, source_id: str) -> None:
     try:
         with os.scandir(sources_fd) as iterator:
@@ -1660,6 +1703,7 @@ def _receive_source_locked_core_v1(
             incoming_fd, SOURCES_DIRECTORY_BASENAME_V1,
             owner=owner, mode=0o755,
         )
+        _recover_receive_residue_v1(incoming_fd, sources_fd, owner=owner)
         _require_initial_namespaces_v1(incoming_fd, sources_fd, owner=owner)
 
         for _attempt in range(16):

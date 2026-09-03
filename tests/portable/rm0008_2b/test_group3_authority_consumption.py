@@ -152,10 +152,11 @@ def test_deployment_keys_are_disjoint_from_the_authenticated_birth_set(
         for store in stores
         for key in store.verifier_keys.values()
     }
+    assert door._historical_birth_public_inventory_v1() == expected
     assert _birth_public_keys_v1() == expected
 
     monkeypatch.setattr(
-        door, "_birth_public_inventory_v1",
+        door, "_historical_birth_public_inventory_v1",
         lambda: (_ for _ in ()).throw(door.PreparedRootError("untrusted")),
     )
     with pytest.raises(OwnershipAuthorityError, match="authority_untrusted"):

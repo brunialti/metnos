@@ -47,14 +47,33 @@ def test_handoff_frame_is_exact_bounded_and_round_trips() -> None:
         )
 
 
+def test_handoff_bound_covers_the_distribution_payload_abi() -> None:
+    from executor_birth_distribution_manifest import MAX_PAYLOAD_BYTES
+
+    encoded = b"x" * MAX_PAYLOAD_BYTES
+    frame = transition._handoff_frame_v1(
+        source_id=D("1"), encoded=encoded, signature=b"s" * 64,
+    )
+
+    assert len(frame) <= transition._MAX_FRAME_BYTES_V1
+    assert transition._decode_handoff_frame_v1(frame) == (
+        D("1"), encoded, b"s" * 64,
+    )
+
+
 def test_source_process_invokes_only_the_verified_release_entry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import executor_birth_service_catalog as catalog
+
     release = tmp_path / "release"
     entry = release / "install" / "executor_birth_transition.py"
     entry.parent.mkdir(parents=True)
     entry.write_bytes(b"# verified entry\n")
+    managed_python = tmp_path / "python-env" / "bin" / "python"
+    managed_python.parent.mkdir(parents=True)
+    managed_python.write_bytes(b"#!/bin/sh\n")
     distribution = SimpleNamespace(
         installation_root=release.as_posix(),
         files=(SimpleNamespace(path="install/executor_birth_transition.py"),),
@@ -62,6 +81,20 @@ def test_source_process_invokes_only_the_verified_release_entry(
         signature=b"s" * 64,
     )
     observed = {}
+    monkeypatch.setattr(
+        catalog, "capture_current_service_catalog_v1",
+        lambda candidate: SimpleNamespace(catalog=SimpleNamespace(entries=(
+            SimpleNamespace(
+                execution_kind="python_module",
+                target_executable=managed_python.as_posix(),
+            ),
+            SimpleNamespace(
+                execution_kind="python_module",
+                target_executable=managed_python.as_posix(),
+            ),
+            SimpleNamespace(execution_kind="none", target_executable=None),
+        ))) if candidate is distribution else pytest.fail("wrong distribution"),
+    )
 
     def run(command, **kwargs):
         observed.update({"command": command, **kwargs})
@@ -86,7 +119,7 @@ def test_source_process_invokes_only_the_verified_release_entry(
 
     assert result["state"] == "PREFLIGHT_VERIFIED"
     assert observed["command"] == [
-        transition.sys.executable, "-I", entry.as_posix(), "complete",
+        managed_python.as_posix(), "-I", "-B", entry.as_posix(), "complete",
         "--source-id", D("2"), "--service-user", "metnos",
         "--legacy-service-user", "legacy-metnos",
         "--legacy-installation-root", "/opt/metnos",

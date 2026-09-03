@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:53e2762f279a43e50f730c9959e7322c95b50b4be73069c13db1f854c2566286",
+  "source_census": "sha256:a555b4f9b8138c31e157595bdf0fd14c2b5b4ee2b5b0e451bc660fe72c74872e",
   "scan_roots": [
     "runtime",
     "install",
@@ -295,6 +295,46 @@
       "phase": "M4"
     },
     {
+      "path": "install/executor_birth_python_environment_posix.py",
+      "scope": "_ensure_core_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "content-addressed root-owned production Python environment installer",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_python_environment_posix.py",
+      "scope": "_seal_tree_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "content-addressed root-owned production Python environment installer",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_python_environment_posix.py",
+      "scope": "ensure_python_environment_for_test_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "isolated test seam for the production Python environment installer",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_python_environment_posix.py",
+      "scope": "ensure_python_environment_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "fixed productive entry for the root-owned Python environment installer",
+      "phase": "M4"
+    },
+    {
       "path": "install/executor_birth_host_capability.py",
       "scope": "bind_locked_host_effects_v1",
       "role": "store_owner",
@@ -514,6 +554,16 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_recover_receive_residue_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "bounded cleanup of an interrupted received-source staging tree",
       "phase": "M4"
     },
     {
@@ -4774,6 +4824,10 @@
       "install/birth_ownership_authority_provisioner.py:_write_exclusive",
       "install/birth_ownership_authority_provisioner.py:provision_root_ownership_authorities_v1",
       "install/executor_birth_distribution_release.py:build_and_install_received_source_v1",
+      "install/executor_birth_python_environment_posix.py:_ensure_core_v1",
+      "install/executor_birth_python_environment_posix.py:_seal_tree_v1",
+      "install/executor_birth_python_environment_posix.py:ensure_python_environment_for_test_v1",
+      "install/executor_birth_python_environment_posix.py:ensure_python_environment_v1",
       "install/executor_birth_source_receiver.py:<module>",
       "install/executor_birth_source_receiver.py:_copy_source_file_v1",
       "install/executor_birth_source_receiver.py:_copy_source_file_v1.copied_chunks",
@@ -4789,6 +4843,7 @@
       "install/executor_birth_source_receiver.py:_receive_source_v1",
       "install/executor_birth_source_receiver.py:_receive_source_with_product_session_v1",
       "install/executor_birth_source_receiver.py:_receive_source_with_test_session_v1",
+      "install/executor_birth_source_receiver.py:_recover_receive_residue_v1",
       "install/executor_birth_source_receiver.py:_remove_owned_tree_at_v1",
       "install/executor_birth_source_receiver.py:_rename_no_replace_v1",
       "install/executor_birth_source_receiver.py:_seal_temporary_directories_v1",

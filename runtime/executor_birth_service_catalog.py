@@ -192,6 +192,7 @@ class _SourceCompileContextV1:
     service_home: str
     systemctl_executable: str
     target_hashes: tuple[tuple[str, str], ...]
+    administrative_python_executable: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1503,8 +1504,12 @@ def _resolve_recipe_value_v1(
     fixed = {
         "@installation_root@": context.installation_root,
         "@python@": context.python_executable,
-        "@administrative_python@": context.python_executable,
-        "!@administrative_python@": "!" + context.python_executable,
+        "@administrative_python@": (
+            context.administrative_python_executable or context.python_executable
+        ),
+        "!@administrative_python@": "!" + (
+            context.administrative_python_executable or context.python_executable
+        ),
         "@service_user@": context.service_user,
         "@service_gid@": str(context.service_gid),
         "@service_home@": context.service_home,
@@ -1544,6 +1549,10 @@ def _validate_compile_context_v1(
         )
     _absolute_path(context.installation_root, "installation root")
     _absolute_path(context.python_executable, "python executable")
+    _absolute_path(
+        context.administrative_python_executable or context.python_executable,
+        "administrative python executable",
+    )
     _absolute_path(context.service_home, "service home")
     _absolute_path(context.systemctl_executable, "systemctl executable")
     if (
@@ -2237,7 +2246,7 @@ def _source_identity(
         )
     if (
         len(python_paths) != 1
-        or python_paths != administrative_python
+        or len(administrative_python) != 1
         or len(service_users) != 1
         or len(service_gids) != 1
         or len(supplementary_gids) != 1
@@ -2290,6 +2299,7 @@ def _source_identity(
         next(iter(service_users)), next(iter(service_gids)),
         next(iter(supplementary_gids)), service_home,
         str(stop_entry.target_executable), target_hashes,
+        str(next(iter(administrative_python))),
     ))
     if catalog.entries != expected_entries:
         raise ServiceCatalogError(
@@ -2313,6 +2323,7 @@ def _build_service_catalog_v1(
     service_gid: int, service_supplementary_gids: tuple[int, ...],
     service_home: str, systemctl_executable: str,
     target_executables: tuple[tuple[str, bytes], ...],
+    administrative_python_executable: str | None = None,
 ) -> _BuiltServiceCatalogV1:
     """Compile the fixed service source against exact executable bytes.
 
@@ -2333,9 +2344,14 @@ def _build_service_catalog_v1(
         raise ServiceCatalogError(
             "birth_ownership_service_catalog_invalid", "target coverage",
         )
+    administrative_python = (
+        python_executable if administrative_python_executable is None
+        else administrative_python_executable
+    )
     base_context = _SourceCompileContextV1(
         installation_root, python_executable, service_user, service_gid,
         service_supplementary_gids, service_home, systemctl_executable, (),
+        administrative_python,
     )
     by_id = {item.entry_id: item for item in SERVICE_SOURCE_V1}
     resolved_targets: list[tuple[str, str]] = []
@@ -2368,7 +2384,7 @@ def _build_service_catalog_v1(
     entries = _compile_service_source_v1(_SourceCompileContextV1(
         installation_root, python_executable, service_user, service_gid,
         service_supplementary_gids, service_home, systemctl_executable,
-        tuple(resolved_targets),
+        tuple(resolved_targets), administrative_python,
     ))
     legacy = tuple(ServiceLegacyBindingV1(
         str(item["legacy_id"]), str(item["entry_id"]), str(item["kind"]),

@@ -859,7 +859,7 @@ def test_legacy_adoption_helper_binds_signed_account_and_build(
     )
     assert observed["account"].record.uid == 991
     assert observed["proof"] is proof
-    assert (observed.get("live-inspection") is True) is changed
+    assert observed.get("live-inspection") is True
 
 
 @LINUX_ONLY

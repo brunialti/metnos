@@ -23,7 +23,7 @@ from contract_boundary_guard import BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
 
 
 _HASH_A = "sha256:" + "1" * 64
-_PYTHON = "/usr/bin/python3"
+_PYTHON = "/var/lib/metnos/python-envs-v1/" + "0" * 64 + "/bin/python"
 _SYSTEMCTL = "/usr/bin/systemctl"
 
 _PUBLIC_EXPORT_OMITTED_ENTRYPOINTS = {
@@ -168,6 +168,31 @@ def test_public_builder_derives_the_fixed_catalog_and_all_unit_fragments() -> No
         )
         for item in decoded.entries if item.unit_spec is not None
     }
+
+
+def test_public_builder_separates_service_environment_from_admin_python() -> None:
+    admin_python = "/usr/bin/python3.12"
+    targets = _target_bytes()
+    built = catalog._build_service_catalog_v1(
+        installation_root="/opt/metnos", python_executable=_PYTHON,
+        administrative_python_executable=admin_python,
+        service_user="metnos", service_gid=1000,
+        service_supplementary_gids=(1000,), service_home="/srv/metnos",
+        systemctl_executable=_SYSTEMCTL, target_executables=targets,
+    )
+    decoded = catalog.decode_service_catalog_v1(built.encoded)
+    python_entries = tuple(
+        item for item in decoded.entries
+        if item.execution_kind == "python_module"
+        and item.class_name == "gated_service"
+    )
+    assert python_entries
+    assert {item.target_executable for item in python_entries} == {_PYTHON}
+    for item in python_entries:
+        directives = catalog._directive_index(item.unit_spec)
+        assert directives[("Service", "ExecStartPre")].values[0] == (
+            "!" + admin_python
+        )
 
 
 @pytest.mark.parametrize("targets", (

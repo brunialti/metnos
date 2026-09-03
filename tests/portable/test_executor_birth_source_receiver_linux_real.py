@@ -552,6 +552,57 @@ def test_interrupted_cleanup_is_safe_to_repeat(tmp_path: Path, monkeypatch) -> N
 
 
 @linux_only
+def test_receiver_recovers_one_exact_private_residue(tmp_path: Path) -> None:
+    incoming = tmp_path / "incoming-v1"
+    sources = incoming / receiver.SOURCES_DIRECTORY_BASENAME_V1
+    residue = incoming / (".receive-" + "2" * 32 + ".tmp")
+    sources.mkdir(parents=True)
+    residue.mkdir(mode=0o700)
+    (residue / "partial").write_bytes(b"partial")
+    incoming_fd = os.open(incoming, receiver._DIRECTORY_FLAGS)
+    sources_fd = os.open(sources, receiver._DIRECTORY_FLAGS)
+    try:
+        receiver._recover_receive_residue_v1(
+            incoming_fd, sources_fd, owner=(os.geteuid(), os.getegid()),
+        )
+    finally:
+        os.close(sources_fd)
+        os.close(incoming_fd)
+    assert not residue.exists()
+    assert tuple(item.name for item in incoming.iterdir()) == (
+        receiver.SOURCES_DIRECTORY_BASENAME_V1,
+    )
+
+
+@linux_only
+@pytest.mark.parametrize("shape", ("foreign", "duplicate"))
+def test_receiver_never_guesses_an_ambiguous_residue(
+    tmp_path: Path, shape: str,
+) -> None:
+    incoming = tmp_path / "incoming-v1"
+    sources = incoming / receiver.SOURCES_DIRECTORY_BASENAME_V1
+    sources.mkdir(parents=True)
+    first = incoming / (".receive-" + "3" * 32 + ".tmp")
+    first.mkdir(mode=0o700)
+    second = (
+        incoming / "foreign.tmp" if shape == "foreign"
+        else incoming / (".receive-" + "4" * 32 + ".tmp")
+    )
+    second.mkdir(mode=0o700)
+    incoming_fd = os.open(incoming, receiver._DIRECTORY_FLAGS)
+    sources_fd = os.open(sources, receiver._DIRECTORY_FLAGS)
+    try:
+        with pytest.raises(DistributionAssemblerError, match="recovery_required"):
+            receiver._recover_receive_residue_v1(
+                incoming_fd, sources_fd, owner=(os.geteuid(), os.getegid()),
+            )
+    finally:
+        os.close(sources_fd)
+        os.close(incoming_fd)
+    assert first.is_dir() and second.is_dir()
+
+
+@linux_only
 def test_directory_binding_failure_does_not_leak_descriptor(
     tmp_path: Path, monkeypatch,
 ) -> None:
@@ -794,28 +845,6 @@ def _kill_productive_receive_at_stage(source: Path, stage: str) -> None:
     assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
 
 
-def _remove_productive_receive_residue_v1(incoming: Path) -> None:
-    from executor_birth_ownership_coordinator import _deployment_lock_v1
-
-    with _deployment_lock_v1():
-        incoming_fd = os.open(incoming, receiver._DIRECTORY_FLAGS)
-        try:
-            names = [
-                item.name for item in incoming.iterdir()
-                if item.name.startswith(".receive-") and item.name.endswith(".tmp")
-            ]
-            assert len(names) == 1
-            info = os.stat(
-                names[0], dir_fd=incoming_fd, follow_symlinks=False,
-            )
-            receiver._remove_owned_tree_at_v1(
-                incoming_fd, names[0], expected_identity=receiver._identity(info),
-                owner=(0, 0),
-            )
-        finally:
-            os.close(incoming_fd)
-
-
 @pytest.mark.skipif(
     os.environ.get("METNOS_REQUIRE_REAL_B2_RECEIVER_LINUX") != "1",
     reason="the fixed productive root is tested only in a disposable root VM",
@@ -885,7 +914,11 @@ def test_productive_fixed_root_in_disposable_vm(
         else:
             assert len(list(incoming.glob(".receive-*.tmp"))) == 1
             assert not list(sources.glob(".sha256:*.tmp"))
-            with pytest.raises(DistributionAssemblerError) as failure:
-                receiver._receive_source_v1(str(crash_source), "nobody")
-            assert failure.value.code == "birth_ownership_recovery_required"
-            _remove_productive_receive_residue_v1(incoming)
+            recovered_id = receiver._receive_source_v1(
+                str(crash_source), "nobody",
+            )
+            assert not list(incoming.glob(".receive-*.tmp"))
+            recovered = sources / recovered_id
+            assert recovered.is_dir()
+            assert (recovered / "large.bin").stat().st_size == 2 * 1024 * 1024
+            assert (recovered / "z-last.txt").read_bytes() == b"last\n"

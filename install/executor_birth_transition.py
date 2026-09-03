@@ -28,7 +28,10 @@ import executor_birth_account_identity as _account_identity  # noqa: E402
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ERROR_RE = re.compile(r"birth_[a-z0-9_]{1,96}\Z")
 _FRAME_SCHEMA_V1 = "metnos.executor-birth.transition-handoff/1"
-_MAX_FRAME_BYTES_V1 = 4 * 1024 * 1024
+# The signed distribution ABI admits payloads through 16 MiB.  Its base64
+# representation needs 4/3 of that space; keep a bounded allowance for the
+# canonical envelope and the fixed signature/source fields.
+_MAX_FRAME_BYTES_V1 = 24 * 1024 * 1024
 _ACTIVATION_TIMEOUT_SECONDS_V1 = 300
 _HOST_PROVISIONING_ERROR_CODES_V1 = frozenset({
     "birth_ownership_administrative_required",
@@ -384,6 +387,8 @@ def _invoke_closed_release_v1(
     legacy_service_user: str, legacy_installation_root: str,
     service_environment: Mapping[str, str],
 ) -> dict:
+    from executor_birth_service_catalog import capture_current_service_catalog_v1
+
     release_root = Path(distribution.installation_root)
     entry = release_root / "install" / "executor_birth_transition.py"
     matching = tuple(
@@ -392,12 +397,24 @@ def _invoke_closed_release_v1(
     )
     if len(matching) != 1 or not entry.is_file():
         raise _fail("birth_ownership_distribution_invalid")
+    loaded = capture_current_service_catalog_v1(distribution)
+    python_executables = {
+        item.target_executable for item in loaded.catalog.entries
+        if item.execution_kind == "python_module"
+    }
+    if (
+        len(python_executables) != 1
+        or None in python_executables
+        or not Path(next(iter(python_executables))).is_file()
+    ):
+        raise _fail("birth_ownership_service_catalog_invalid")
+    service_python = str(next(iter(python_executables)))
     frame = _handoff_frame_v1(
         source_id=source_id, encoded=distribution.encoded,
         signature=distribution.signature,
     )
     command = [
-        sys.executable, "-I", entry.as_posix(), "complete",
+        service_python, "-I", "-B", entry.as_posix(), "complete",
         "--source-id", source_id, "--service-user", service_user,
         "--legacy-service-user", legacy_service_user,
         "--legacy-installation-root", legacy_installation_root,
@@ -459,6 +476,13 @@ def deploy_source_v1(
     provision_root_ownership_authorities_v1()
     source_id = _receive_source_v1(source, selected_user)
     distribution = build_and_install_received_source_v1(source_id)
+    from install.executor_birth_systemd_quiescence import (
+        quiesce_legacy_systemd_v1,
+    )
+    legacy_snapshot = _account_identity.resolve_posix_account_snapshot_v1(
+        selected_legacy_user,
+    )
+    quiesce_legacy_systemd_v1(legacy_snapshot)
     return _invoke_closed_release_v1(
         distribution=distribution, source_id=source_id,
         service_user=selected_user,

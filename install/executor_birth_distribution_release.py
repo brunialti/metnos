@@ -88,7 +88,7 @@ BOUNDARY_INVENTORY_SOURCE_PATH_V1 = (
 BOUNDARY_INVENTORY_RELEASE_PATH_V1 = (
     "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json"
 )
-DEPENDENCY_SOURCE_PATH_V1 = "requirements.txt"
+DEPENDENCY_SOURCE_PATH_V1 = "requirements-linux-x86_64.lock"
 DEPENDENCY_RELEASE_PATH_V1 = "requirements.lock"
 ADMIN_PREFLIGHT_SOURCE_PATH_V1 = "runtime/executor_birth_admin_preflight.py"
 ADMIN_PREFLIGHT_RELEASE_PATH_V1 = "deployment/admin/preflight.py"
@@ -102,6 +102,10 @@ _OPENSSL_V1 = "/usr/bin/openssl"
 _SYSTEMCTL_V1 = "/usr/bin/systemctl"
 _SYSTEMD_ANALYZE_V1 = "/usr/bin/systemd-analyze"
 _XVFB_V1 = "/usr/bin/Xvfb"
+_PYTHON_ENVIRONMENT_PROFILE_V1 = "linux-x86_64-cpython-312"
+_PYTHON_WHEELHOUSE_V1 = Path(
+    "/var/lib/metnos/python-wheelhouse-v1/linux-x86_64-cpython-312"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -418,6 +422,7 @@ def _assemble_staging_v1(
     *, source: ReceivedSourceV1, source_root: Path,
     account: _ServiceAccountV1, edge: _ReleaseEdgeV1, signing_key_id: str,
     release_directory: Path, root_owned: bool,
+    service_python_executable: str | None = None,
 ) -> _StagedReleaseV1:
     if type(source) is not ReceivedSourceV1 or type(account) is not _ServiceAccountV1:
         raise _fail("release inputs")
@@ -473,18 +478,23 @@ def _assemble_staging_v1(
     content.update(generated)
 
     python_executable = os.path.realpath(sys.executable)
+    service_python = (
+        python_executable
+        if service_python_executable is None else service_python_executable
+    )
     target_executables = tuple((path, payload) for path, payload in (
-        (python_executable, _read_executable_v1(python_executable)),
+        (service_python, _read_executable_v1(service_python)),
         (_SYSTEMCTL_V1, _read_executable_v1(_SYSTEMCTL_V1)),
         (_XVFB_V1, _read_executable_v1(_XVFB_V1)),
     ))
     built_catalog = _build_service_catalog_v1(
         installation_root=final_root.as_posix(),
-        python_executable=python_executable, service_user=account.name,
+        python_executable=service_python, service_user=account.name,
         service_gid=account.gid,
         service_supplementary_gids=account.supplementary_gids,
         service_home=account.home, systemctl_executable=_SYSTEMCTL_V1,
         target_executables=target_executables,
+        administrative_python_executable=python_executable,
     )
     catalog_path = "deployment/executor-birth-service-catalog-v1.json"
     content[catalog_path] = (built_catalog.encoded, 0o644)
@@ -573,6 +583,25 @@ def build_and_install_received_source_v1(source_id: object) -> VerifiedDistribut
         source = _load_received_source_with_product_session_v1(
             source_id, session,
         )
+        source_root = _source_root_v1(
+            DEFAULT_OWNERSHIP_ROOT_V1, source.source_id,
+        )
+        dependency = next(
+            (item for item in source.files if item.path == DEPENDENCY_SOURCE_PATH_V1),
+            None,
+        )
+        if dependency is None:
+            raise _fail("received source incomplete")
+        dependency_lock = _read_received_file_v1(
+            source_root, dependency, root_owned=True,
+        )
+        from install.executor_birth_python_environment_posix import (
+            ensure_python_environment_v1,
+        )
+        python_environment = ensure_python_environment_v1(
+            dependency_lock, _PYTHON_WHEELHOUSE_V1,
+            _PYTHON_ENVIRONMENT_PROFILE_V1,
+        )
         account = _service_account_snapshot_v1(source.service_user)
         coordinator, _created = _ensure_coordinator_child_directory_v2(
             DEFAULT_OWNERSHIP_ROOT_V1,
@@ -586,12 +615,11 @@ def build_and_install_received_source_v1(source_id: object) -> VerifiedDistribut
         key_id = _distribution_signing_key_id_v1(authority)
         staged = _assemble_staging_v1(
             source=source,
-            source_root=_source_root_v1(
-                DEFAULT_OWNERSHIP_ROOT_V1, source.source_id,
-            ),
+            source_root=source_root,
             account=account, edge=edge, signing_key_id=key_id,
             release_directory=DEFAULT_RELEASE_DIRECTORY_V1,
             root_owned=True,
+            service_python_executable=python_environment.python_executable.as_posix(),
         )
         signature = _sign_distribution_payload_v1(authority, staged.encoded)
         snapshot = _load_fixed_ownership_public_snapshot_v1()

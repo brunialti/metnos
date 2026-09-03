@@ -5006,11 +5006,14 @@ def _adopt_transition_legacy_state_v2(
             request, account, maintenance_session,
         ) as effects:
             result = adopt_legacy_state_v1(request, effects)
-            if result.changed:
-                inspect_ready_legacy_state_live_v1(
-                    request, account, result.record_sha256,
-                    maintenance_session,
-                )
+            # The journal may already be terminal after a crash between the
+            # READY append and this live proof.  Re-prove the terminal state on
+            # every entry; a replayed journal is not itself evidence that the
+            # live tree still matches it.
+            inspect_ready_legacy_state_live_v1(
+                request, account, result.record_sha256,
+                maintenance_session,
+            )
             return result
     except BirthProvisioningError:
         raise

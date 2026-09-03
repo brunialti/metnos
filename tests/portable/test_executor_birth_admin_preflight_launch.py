@@ -97,7 +97,7 @@ def test_launch_plan_uses_only_signed_identity_environment_and_root(
     entry = _entry()
     monkeypatch.setattr(
         preflight, "_trusted_python_path_v1",
-        lambda root, working: (root, working),
+        lambda root, working, service_python=None: (root, working),
     )
     monkeypatch.setattr(preflight.os, "readlink", lambda _path: "/usr/bin/python3")
     monkeypatch.setenv("ATTACKER_PATH", "/tmp/attacker")
@@ -176,7 +176,7 @@ def test_python_bootstrap_has_one_exact_authenticated_runpy_door(
 
     assert preflight.sys.path == list(plan.python_path)
     assert preflight.sys.argv == ["probe.main", "--probe"]
-    assert calls == [(('probe.main',), {
+    assert calls == [(("probe.main",), {
         "run_name": "__main__", "alter_sys": False,
     })]
 

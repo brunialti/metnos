@@ -535,10 +535,7 @@ def load_required_context_runtime_v1() -> RequiredContextRuntimeV1:
     return loaded
 
 
-def _birth_public_inventory_v1() -> frozenset[bytes]:
-    """Reload the fixed Birth set and return its authenticated public keys."""
-    sealed = load_sealed_authorities_v1()
-    stores = (sealed.author, sealed.admission, *sealed.producers.values())
+def _public_inventory_from_stores_v1(stores) -> frozenset[bytes]:
     result: set[bytes] = set()
     try:
         for store in stores:
@@ -551,3 +548,55 @@ def _birth_public_inventory_v1() -> frozenset[bytes]:
     if not result or any(len(item) != 32 for item in result):
         raise PreparedRootError("birth_prepared_set_untrusted")
     return frozenset(result)
+
+
+def _birth_public_inventory_v1() -> frozenset[bytes]:
+    """Reload the runtime-selected Birth set and its authenticated public keys."""
+    sealed = load_sealed_authorities_v1()
+    return _public_inventory_from_stores_v1((
+        sealed.author, sealed.admission, *sealed.producers.values(),
+    ))
+
+
+def _historical_birth_public_inventory_v1() -> frozenset[bytes]:
+    """Read fixed predecessor keys without rebinding them to candidate source.
+
+    Ownership-authority key exclusion precedes construction of the successor
+    distribution.  At that boundary the prepared marker and key stores are the
+    authenticated predecessor, while candidate source is not yet an installed
+    runtime and therefore cannot be used to rebuild its context material.
+    """
+    from executor_birth_keystore import (
+        BirthKeyStoreError, _load_birth_keystore_in_session,
+    )
+    from executor_birth_prepared_set import (
+        AUTHORITY_SETS_BASENAME_V1, AUTHOR_STORE_BASENAME_V1,
+        PreparedSetError, authority_registry_v1, load_prepared_set_v1,
+    )
+
+    session = open_prepared_root_session_v1()
+    with session:
+        with session.global_lock(exclusive=False, create=False):
+            prepared = load_prepared_set_v1(session)
+            location = (AUTHORITY_SETS_BASENAME_V1, prepared.set_id)
+            registry = authority_registry_v1(session, location)
+            try:
+                stores = (
+                    _load_birth_keystore_in_session(
+                        (AUTHOR_STORE_BASENAME_V1,), session,
+                    ),
+                    _load_birth_keystore_in_session(
+                        location + ("admission",), session,
+                    ),
+                    *(
+                        _load_birth_keystore_in_session(
+                            location + ("producers", name), session,
+                        )
+                        for name in sorted(registry["producers"])
+                    ),
+                )
+            except BirthKeyStoreError as exc:
+                raise PreparedSetError(
+                    "birth_prepared_set_unavailable", exc,
+                ) from None
+            return _public_inventory_from_stores_v1(stores)

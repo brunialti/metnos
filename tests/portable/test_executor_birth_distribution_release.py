@@ -31,7 +31,7 @@ def _source_tree(tmp_path: Path):
     inventory = b'{"birth_closed":{},"entries":[],"scan_roots":[],"schema":"x","source_census":"x"}'
     values = {
         release.BOUNDARY_INVENTORY_SOURCE_PATH_V1: inventory,
-        "requirements.txt": b"fixture==1\n",
+        release.DEPENDENCY_SOURCE_PATH_V1: b"fixture==1\n",
         "install/executor_birth_host_capability.py": b"CAPABILITY = 1\n",
         "install/executor_birth_append_journal_posix.py": b"APPEND_JOURNAL = 1\n",
         "install/executor_birth_contract_convergence.py": b"CONVERGENCE = 1\n",
