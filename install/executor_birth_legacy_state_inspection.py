@@ -109,15 +109,10 @@ def _terminal_record_v1(raw, request, expected_record_sha256):
 
 def _require_current_state_v1(request, latest) -> None:
     current = observe_legacy_state_v1(request)
-    expected_disposition = (
-        LegacyStateDispositionV1.fresh
-        if latest.inventory_disposition is LegacyStateDispositionV1.fresh
-        else LegacyStateDispositionV1.exact_service
-    )
     if (
         current.observation_sha256 != latest.ready_sha256
         or classify_legacy_state_v1(request, current)
-        is not expected_disposition
+        is not LegacyStateDispositionV1.exact_service
     ):
         _fail("legacy state changed")
 
@@ -166,7 +161,7 @@ def _inspect_terminal_legacy_state_v1(
 def inspect_ready_legacy_state_live_v1(
     request, account, expected_record_sha256, maintenance_session,
 ):
-    """Prove READY against the live state before contract convergence."""
+    """Prove post-convergence READY against the live exact-service state."""
     return _inspect_terminal_legacy_state_v1(
         request, account, expected_record_sha256, maintenance_session,
         live=True,
@@ -176,7 +171,7 @@ def inspect_ready_legacy_state_live_v1(
 def inspect_terminal_legacy_state_history_v1(
     request, account, expected_record_sha256, maintenance_session,
 ):
-    """Verify immutable READY history after contract convergence."""
+    """Verify immutable post-convergence READY history."""
     return _inspect_terminal_legacy_state_v1(
         request, account, expected_record_sha256, maintenance_session,
         live=False,

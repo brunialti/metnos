@@ -44,7 +44,7 @@ class LegacyStateV1(str, Enum):
 class LegacyStateIntentV1(str, Enum):
     INVENTORY = "INVENTORY"
     ADOPT_AUTHORING = "ADOPT_AUTHORING"
-    VERIFY_LEGACY_STATE = "VERIFY_LEGACY_STATE"
+    CONVERGE_CONTRACTS_AND_VERIFY = "CONVERGE_CONTRACTS_AND_VERIFY"
 
 
 _STATES = tuple(LegacyStateV1)
@@ -157,7 +157,6 @@ def _validate_record(record: LegacyStateRecordV1) -> None:
         or record.policy_sha256 != legacy_state_policy_sha256_v1()
         or any(flag != is_framed_sha256_v1(value) for flag, value in zip(expected, values))
         or (sequence >= 2 and record.authoring_sha256 != record.adoption_target_sha256)
-        or (sequence >= 3 and record.ready_sha256 != record.authoring_sha256)
         or (sequence >= 1) != disposition_present
         or (sequence == 0) != (record.previous_record_sha256 is None)
         or (sequence > 0 and not is_framed_sha256_v1(record.previous_record_sha256))
@@ -352,7 +351,11 @@ def record_legacy_state_ready_v1(adopted, request, observation):
     require_canonical_legacy_state_request_v1(request)
     if type(adopted) is not LegacyStateRecordV1 or adopted.state is not LegacyStateV1.AUTHORING_ADOPTED:
         raise _invalid("transition_predecessor")
-    if type(observation) is not LegacyStateObservationV1 or observation.observation_sha256 != adopted.authoring_sha256:
+    if (
+        type(observation) is not LegacyStateObservationV1
+        or classify_legacy_state_v1(request, observation)
+        is not LegacyStateDispositionV1.exact_service
+    ):
         raise _invalid("legacy_state_changed")
     return _advance(
         adopted, request, LegacyStateV1.LEGACY_STATE_READY, observation,

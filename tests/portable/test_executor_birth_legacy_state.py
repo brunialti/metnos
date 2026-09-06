@@ -148,7 +148,7 @@ def test_exact_closed_record_chain_round_trips_and_carries_digests() -> None:
     assert [item.intent for item in records] == [
         legacy.LegacyStateIntentV1.INVENTORY,
         legacy.LegacyStateIntentV1.ADOPT_AUTHORING,
-        legacy.LegacyStateIntentV1.VERIFY_LEGACY_STATE,
+        legacy.LegacyStateIntentV1.CONVERGE_CONTRACTS_AND_VERIFY,
         None,
     ]
     encoded = tuple(legacy.encode_legacy_state_record_v1(item) for item in records)
@@ -165,7 +165,7 @@ def test_protocol_has_stable_golden_digests() -> None:
     observation = _observation()
     planned = legacy.plan_legacy_state_v1(request)
     assert legacy.legacy_state_policy_sha256_v1() == (
-        "sha256:ab14fe3acc1f72745c488724bb9e2f9988789f443dbfb9103950cdc1621f0dbb"
+        "sha256:cbbc2c326de1aef494f9a31a6ab0437e7f67e4af018de0e09920962347752f12"
     )
     assert request.request_id == (
         "sha256:9839f15abbaab1b6fb19bdb6292e55368f6aa7aa85f1681f775907acc948142f"
@@ -174,7 +174,7 @@ def test_protocol_has_stable_golden_digests() -> None:
         "sha256:8080b6a3a55bcaa5c4142928f04172d19296e2e00b44407dd40724504537aacb"
     )
     assert planned.record_sha256 == (
-        "sha256:90cada6fa8a04006c1644e917ce6fca65a8a68557dd7006cd351016b925871a2"
+        "sha256:ef7522a9f78acdeeda551a991cfcb08b5105294d9907c6d4a5fb3b6ab5d345d4"
     )
 
 
@@ -203,7 +203,7 @@ def test_records_reject_invalid_transition_tamper_and_duplicate_keys() -> None:
         legacy.decode_legacy_state_record_v1(wrong_type)
 
 
-def test_terminal_record_rejects_a_rehashed_changed_observation() -> None:
+def test_terminal_record_carries_a_distinct_post_convergence_observation() -> None:
     request = _request()
     planned = legacy.plan_legacy_state_v1(request)
     inventoried = legacy.record_legacy_state_inventoried_v1(
@@ -223,10 +223,10 @@ def test_terminal_record_rejects_a_rehashed_changed_observation() -> None:
         b"metnos.executor-birth.legacy-state-record/v1\0",
         encode_canonical_ascii_v1(unsigned),
     )
-    with pytest.raises(legacy.LegacyStateError):
-        legacy.decode_legacy_state_record_v1(
-            encode_canonical_ascii_v1(value),
-        )
+    decoded = legacy.decode_legacy_state_record_v1(
+        encode_canonical_ascii_v1(value),
+    )
+    assert decoded.ready_sha256 == "sha256:" + "f" * 64
 
 
 def test_adoption_delta_rejects_every_change_except_authoring_owner() -> None:

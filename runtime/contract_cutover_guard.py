@@ -12,6 +12,8 @@ import os
 import sys
 import threading
 
+from executor_birth_maintenance_units import QUIESCENT_LOAD_STATES_V1
+
 
 class ContractCutoverGuardError(RuntimeError):
     def __init__(self, code: str, detail: str = "") -> None:
@@ -21,7 +23,6 @@ class ContractCutoverGuardError(RuntimeError):
 
 
 _QUIESCENT_STATES = frozenset({"inactive", "failed"})
-_TRANSITION_LOAD_STATES_V1 = frozenset({"loaded", "masked"})
 _MAINTENANCE_SESSION_SEAL_V1 = object()
 _MAINTENANCE_SESSION_GUARD_V1 = threading.Lock()
 _ACTIVE_MAINTENANCE_SESSIONS_V1: dict[object, object] = {}
@@ -73,16 +74,16 @@ def _prove_stack_stopped_v1(reconciler, *, load_states: frozenset[str]) -> dict:
 
 
 def prove_stack_stopped(reconciler) -> dict:
-    """Prove each pre-transition unit is either absent or loaded and idle."""
+    """Prove every unit is loaded, absent or retired, and remains idle."""
     return _prove_stack_stopped_v1(
-        reconciler, load_states=frozenset({"loaded", "not-found"}),
+        reconciler, load_states=QUIESCENT_LOAD_STATES_V1,
     )
 
 
 def _prove_transition_stack_stopped_v1(reconciler) -> dict:
     """Accept only named quiescent load states while topology is replaced."""
     return _prove_stack_stopped_v1(
-        reconciler, load_states=_TRANSITION_LOAD_STATES_V1,
+        reconciler, load_states=QUIESCENT_LOAD_STATES_V1,
     )
 
 
@@ -262,14 +263,23 @@ def _contract_cutover_guard_for_service_user_v1(
         yield boundary
 
 
-def _verify_store_only_catalog_locked() -> dict[str, int]:
+def _verify_store_only_catalog_locked(
+    *, catalog_trusted_owner: tuple[int, int] | None = None,
+) -> dict[str, int]:
     """Authenticate all bindings and perform the first cold loader pass."""
     from contract_store import ContractRetirement, current_contract
-    from loader import invalidate_catalog_cache, load_catalog
+    from loader import _load_catalog_for_cutover_audit_v1
     from manifest_inventory import ManifestStatus, inventory_manifests
     from sign import list_trusted_publics
 
-    structural = inventory_manifests()
+    skill_enabled = None
+    if catalog_trusted_owner is not None:
+        from skill_registry import _skill_enabled_snapshot_for_owner_v1
+
+        skill_enabled = _skill_enabled_snapshot_for_owner_v1(
+            catalog_trusted_owner,
+        )
+    structural = inventory_manifests(skill_enabled=skill_enabled)
     if structural.problems:
         detail = "; ".join(
             f"{problem.code}:{problem.path}"
@@ -297,8 +307,9 @@ def _verify_store_only_catalog_locked() -> dict[str, int]:
             ref.contract_id.storage_key,
             str(revision.generation_id),
         )
-    invalidate_catalog_cache()
-    catalog = load_catalog(verify=True)
+    catalog = _load_catalog_for_cutover_audit_v1(
+        catalog_trusted_owner=catalog_trusted_owner,
+    )
     fatal = [
         (path, reason)
         for path, reason in catalog.rejected

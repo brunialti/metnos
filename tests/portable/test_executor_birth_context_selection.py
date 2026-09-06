@@ -1,7 +1,7 @@
 """Portable checks for the nominal F4 context selection."""
 from __future__ import annotations
 
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -120,7 +120,11 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
     from executor_birth_receipts import IssuerRegistry
     from executor_birth_shadow import _sealed_dependencies_for_test
     from executor_birth_ownership_coordinator import (
-        OwnershipCoordinatorError, _prepare_staged_current_receipts_v2,
+        OwnershipCoordinatorError,
+    )
+    import executor_birth_transition_receipts as transition_receipts_module
+    from executor_birth_transition_receipts import (
+        _prepare_staged_current_receipts_v2,
     )
     from manifest_inventory import (
         ContractId, ManifestOrigin, ManifestRef, ManifestStatus,
@@ -262,13 +266,40 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
     monkeypatch.setattr(
         cutover_module, "prepare_current_receipt_proof", prepare_proof,
     )
+    effective = [(0, 0)]
+    monkeypatch.setattr(
+        transition_receipts_module.os, "geteuid", lambda: effective[0][0],
+    )
+    monkeypatch.setattr(
+        transition_receipts_module.os, "getegid", lambda: effective[0][1],
+    )
+
+    @contextmanager
+    def identity_scope():
+        assert effective[0] == (0, 0)
+        effective[0] = (991, 992)
+        try:
+            yield
+        finally:
+            effective[0] = (0, 0)
+
+    def enumerate_current():
+        assert effective[0] == (0, 0)
+        return (current,)
+
+    common = {
+        "enumerate_current": enumerate_current,
+        "identity_scope": identity_scope,
+        "catalog_owner": (991, 992),
+    }
     assert _prepare_staged_current_receipts_v2(
         runtime, prove_quiescent=lambda: True,
         expected_inventory=CurrentInventoryV1((current.identity,)),
+        **common,
     ) is proof
     assert handles == [prepared_handle]
-    for name in ("enumerate_current", "verify_receipt"):
-        assert callbacks[name].__self__ is runtime
+    assert callbacks["enumerate_current"] is enumerate_current
+    assert callbacks["verify_receipt"].__self__ is runtime
     assert callable(callbacks["read_receipt"])
     assert callable(callbacks["reattest_via_birth"])
     with pytest.raises(
@@ -278,6 +309,7 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
             runtime,
             prove_quiescent=lambda: True,
             expected_inventory=CurrentInventoryV1(()),
+            **common,
         )
 
     def unavailable(**_kwargs):
@@ -293,6 +325,7 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
             runtime,
             prove_quiescent=lambda: False,
             expected_inventory=CurrentInventoryV1((current.identity,)),
+            **common,
         )
     assert failure.value.code == "birth_ownership_receipt_proof_invalid"
     assert failure.value.detail == (

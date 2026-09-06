@@ -416,6 +416,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     import executor_birth_ownership_coordinator as coordinator
     import executor_birth_ownership_preflight as ownership_preflight
     import executor_birth_startup_gate as startup_gate
+    import executor_birth_transition_gate as transition_gate
     import install.executor_birth_source_receiver as source_receiver
     import install.executor_birth_startup_gate as startup_gate_installer
     import install.executor_birth_startup_prerequisite as prerequisite_module
@@ -451,6 +452,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
             return True
 
     maintenance = Maintenance()
+    transition_current = object()
 
     @contextmanager
     def maintenance_guard(_service_user, *, catalog_trusted_owner):
@@ -460,9 +462,14 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         events.append("maintenance-exit")
 
     @contextmanager
-    def inventory(_maintenance, _evidence):
+    def inventory(
+        _gate, _session, enumerator, _maintenance, _evidence, *,
+        catalog_trusted_owner,
+    ):
+        assert enumerator is transition_current
+        assert catalog_trusted_owner == (41, 42)
         events.append("inventory-enter")
-        yield (maintenance, object(), b"evidence")
+        yield (maintenance, object(), b"evidence", transition_current)
         events.append("inventory-exit")
 
     descriptor = SimpleNamespace(
@@ -495,6 +502,27 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
     monkeypatch.setattr(coordinator, "_completed_transition_locked_v2", lambda *_: None)
     monkeypatch.setattr(
+        transition_gate, "_transition_gate_snapshot_locked_v2",
+        lambda *_: events.append("gate-snapshot") or object(),
+    )
+    monkeypatch.setattr(
+        transition_gate, "_transition_gate_phase_locked_v2", lambda *_: None,
+    )
+    @contextmanager
+    def service_identity(candidate):
+        assert candidate is descriptor
+        events.append("service-enter")
+        yield
+        events.append("service-exit")
+
+    monkeypatch.setattr(
+        provisioner, "_service_owned_birth_identity_v2", service_identity,
+    )
+    monkeypatch.setattr(
+        transition_gate, "_transition_current_enumerator_v2",
+        lambda *_: events.append("current-enumerator") or transition_current,
+    )
+    monkeypatch.setattr(
         startup_gate_installer, "install_startup_gate_v1",
         lambda session: events.append("startup-install")
         if session == "deployment"
@@ -510,7 +538,9 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     monkeypatch.setattr(contract_cutover_guard, "_contract_cutover_guard_for_service_user_v1", maintenance_guard)
     monkeypatch.setattr(contract_cutover_guard, "_begin_topology_transition_v1", lambda *_: None)
     monkeypatch.setattr(contract_cutover_guard, "_maintenance_evidence_under_transition_v1", lambda *_: b"maintenance")
-    monkeypatch.setattr(coordinator, "_transition_inventory_under_maintenance_v2", inventory)
+    monkeypatch.setattr(
+        transition_gate, "_transition_inventory_under_maintenance_v2", inventory,
+    )
     def verify_initial(
         *, prove_quiescent, trusted_authoring_owner,
         defer_v1_receipts_to_transition_v2,
@@ -534,26 +564,28 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         if candidate is descriptor
         else pytest.fail("contract convergence lost the signed descriptor"),
     )
-    def adopt_legacy(candidate, verified, proof):
+    def prepare_legacy(candidate, verified, proof, *, require_live_ready):
         if candidate is not descriptor or verified is not distribution or proof is not maintenance:
             pytest.fail("legacy adoption lost its ordered lock binding")
+        assert require_live_ready is True
         events.append("legacy-state-adoption")
-        return SimpleNamespace(record_sha256=D("8"))
+        return SimpleNamespace(record_sha256=D("7"), ready=False)
 
-    def inspect_legacy(candidate, verified, record_sha256, proof):
+    def complete_legacy(candidate, verified, prepared_record, proof, *, live):
         if (
             candidate is not descriptor or verified is not distribution
-            or record_sha256 != D("8") or proof is not maintenance
+            or prepared_record.record_sha256 != D("7")
+            or proof is not maintenance or live is not True
         ):
             pytest.fail("legacy inspection lost its historical binding")
         events.append("legacy-state-inspection")
         return SimpleNamespace(record_sha256=D("8"))
 
     monkeypatch.setattr(
-        provisioner, "_adopt_transition_legacy_state_v2", adopt_legacy,
+        provisioner, "_prepare_transition_legacy_state_v2", prepare_legacy,
     )
     monkeypatch.setattr(
-        provisioner, "_inspect_transition_legacy_state_v2", inspect_legacy,
+        provisioner, "_complete_transition_legacy_state_v2", complete_legacy,
     )
     monkeypatch.setattr(provisioner, "_prepare_transition_receipt_material_locked_v2", lambda *_: preparation)
     def complete_receipts(*_args, **kwargs):
@@ -627,11 +659,13 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     ) is result
     assert events == [
         "deployment-enter", "startup-install", "startup-enter", "chain-initialize",
+        "gate-snapshot",
         "maintenance-enter", "maintenance-prove", "legacy-state-adoption",
         "maintenance-exit", "contract-convergence",
-        "maintenance-enter", "legacy-state-inspection",
-        "maintenance-prove", "authoring-seed",
-        "maintenance-prove", "inventory-enter", "predecessor",
+        "service-enter", "current-enumerator", "service-exit",
+        "maintenance-enter", "maintenance-prove", "authoring-seed",
+        "maintenance-prove", "legacy-state-inspection", "inventory-enter",
+        "predecessor",
         "administrative-install", "candidate-prepare", "composition",
         "inventory-exit",
         "maintenance-exit", "startup-exit", "deployment-exit",
@@ -804,7 +838,7 @@ def test_contract_convergence_child_is_bound_to_the_signed_service_identity(
 
 
 @pytest.mark.parametrize("changed", [True, False])
-def test_legacy_adoption_helper_binds_signed_account_and_build(
+def test_legacy_preparation_helper_binds_signed_account_and_build(
     monkeypatch, changed,
 ) -> None:
     from contextlib import contextmanager
@@ -825,7 +859,7 @@ def test_legacy_adoption_helper_binds_signed_account_and_build(
         identity=SimpleNamespace(closed_build_id=D("7")),
     )
     proof, raw_effects = lambda: True, object()
-    expected = SimpleNamespace(changed=changed, record_sha256=D("8"))
+    expected = SimpleNamespace(changed=changed, record_sha256=D("8"), ready=True)
     observed = {}
 
     @contextmanager
@@ -835,7 +869,7 @@ def test_legacy_adoption_helper_binds_signed_account_and_build(
         )
         yield raw_effects
 
-    def adopt(request, effects):
+    def prepare(request, effects):
         assert request is observed["request"] and effects is raw_effects
         return expected
 
@@ -845,12 +879,12 @@ def test_legacy_adoption_helper_binds_signed_account_and_build(
         observed["live-inspection"] = True
 
     monkeypatch.setattr(effect, "locked_legacy_state_effects_v1", locked)
-    monkeypatch.setattr(adoption, "adopt_legacy_state_v1", adopt)
+    monkeypatch.setattr(adoption, "prepare_legacy_state_authoring_v1", prepare)
     monkeypatch.setattr(
         inspection, "inspect_ready_legacy_state_live_v1", inspect_live,
     )
-    assert provisioner._adopt_transition_legacy_state_v2(
-        descriptor, distribution, proof,
+    assert provisioner._prepare_transition_legacy_state_v2(
+        descriptor, distribution, proof, require_live_ready=True,
     ) is expected
     request = require_canonical_legacy_state_request_v1(observed["request"])
     assert request.distribution_sha256 == D("7")
@@ -1034,14 +1068,19 @@ def test_initial_transition_runtime_exposes_only_the_installer_submission(
 
 
 @LINUX_ONLY
+@pytest.mark.parametrize(("initial_load", "transition_load"), (
+    ("loaded", "masked"),
+    ("not-found", "masked"),
+    ("loaded", "not-found"),
+))
 def test_maintenance_session_retains_quiescence_across_named_load_states(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, initial_load: str, transition_load: str,
 ):
     import contract_cutover_guard
     import stack_reconcile
     from executor_birth_ownership_preflight import canonical_maintenance_proof
 
-    state = {"load": "loaded", "active": "inactive"}
+    state = {"load": initial_load, "active": "inactive"}
 
     class Systemctl:
         @staticmethod
@@ -1073,7 +1112,7 @@ def test_maintenance_session_retains_quiescence_across_named_load_states(
         contract_cutover_guard._begin_topology_transition_v1(
             session, initial,
         )
-        state["load"] = "masked"
+        state["load"] = transition_load
         assert (
             contract_cutover_guard._maintenance_evidence_under_transition_v1(
                 session,

@@ -65,6 +65,7 @@ def test_source_process_invokes_only_the_verified_release_entry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import executor_birth_distribution_manifest as manifest
     import executor_birth_service_catalog as catalog
 
     release = tmp_path / "release"
@@ -75,14 +76,24 @@ def test_source_process_invokes_only_the_verified_release_entry(
     managed_python.parent.mkdir(parents=True)
     managed_python.write_bytes(b"#!/bin/sh\n")
     distribution = SimpleNamespace(
-        installation_root=release.as_posix(),
-        files=(SimpleNamespace(path="install/executor_birth_transition.py"),),
+        installation_root="/forged/source-context-root",
+        files=(),
         encoded=b"distribution",
         signature=b"s" * 64,
     )
+    record = SimpleNamespace(
+        installation_root=release.as_posix(),
+        files=(SimpleNamespace(path="install/executor_birth_transition.py"),),
+    )
     observed = {}
     monkeypatch.setattr(
-        catalog, "capture_current_service_catalog_v1",
+        manifest, "authenticate_distribution_record_v1",
+        lambda encoded, signature: record
+        if encoded == distribution.encoded and signature == distribution.signature
+        else pytest.fail("wrong distribution material"),
+    )
+    monkeypatch.setattr(
+        catalog, "load_service_catalog_v1",
         lambda candidate: SimpleNamespace(catalog=SimpleNamespace(entries=(
             SimpleNamespace(
                 execution_kind="python_module",
@@ -93,7 +104,11 @@ def test_source_process_invokes_only_the_verified_release_entry(
                 target_executable=managed_python.as_posix(),
             ),
             SimpleNamespace(execution_kind="none", target_executable=None),
-        ))) if candidate is distribution else pytest.fail("wrong distribution"),
+        ))) if candidate is record else pytest.fail("wrong record"),
+    )
+    monkeypatch.setattr(
+        catalog, "capture_current_service_catalog_v1",
+        lambda *_args: pytest.fail("source context cannot claim to be current"),
     )
 
     def run(command, **kwargs):

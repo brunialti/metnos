@@ -16,6 +16,7 @@ import pytest
 
 import contract_boundary_guard as canonical_guard
 import executor_birth_admin_preflight as preflight
+from executor_birth_maintenance_units import QUIESCENT_LOAD_STATES_V1
 from contract_boundary_guard import (
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
     BIRTH_CLOSED_EXCEPTION_SCOPES,
@@ -780,10 +781,12 @@ def _authenticated_fixed_ownership_fixture(
     maintenance = canonical_maintenance_proof(
         source="inactive_http_and_inactive_sidecar",
         units=tuple({
-            "scope": scope, "unit": unit, "load_state": "loaded",
+            "scope": scope, "unit": unit,
+            "load_state": ("loaded", "masked", "not-found")[index % 3],
             "active_state": "inactive", "main_pid": 0,
-        } for scope, unit in MAINTENANCE_TARGETS_V1),
+        } for index, (scope, unit) in enumerate(MAINTENANCE_TARGETS_V1)),
     )
+    assert preflight._QUIESCENT_LOAD_STATES_V1 == QUIESCENT_LOAD_STATES_V1
     maintenance_hash = maintenance_evidence_hash(maintenance)
     previous_cutover_id = None
     previous_head_id = None

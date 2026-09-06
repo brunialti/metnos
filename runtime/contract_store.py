@@ -2099,7 +2099,13 @@ def catalog_admission_lock(
         _CATALOG_LOCK_LOCAL.held = held
     if key in held:
         count, established_owner = held[key]
-        if established_owner != trusted_owner:
+        delegated_reentry = (
+            established_owner is not None
+            and trusted_owner is None
+            and hasattr(os, "geteuid")
+            and (os.geteuid(), os.getegid()) == established_owner
+        )
+        if established_owner != trusted_owner and not delegated_reentry:
             raise ContractStoreError(
                 "catalog_lock_invalid", "reentrant owner mismatch",
             )
@@ -2108,6 +2114,12 @@ def catalog_admission_lock(
             yield
         finally:
             held[key] = (count, established_owner)
+            if delegated_reentry and (
+                os.geteuid(), os.getegid()
+            ) != established_owner:
+                raise ContractStoreError(
+                    "catalog_lock_invalid", "reentrant identity changed",
+                )
         return
 
     lock = _exclusive_file_lock(

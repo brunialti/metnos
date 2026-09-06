@@ -19,6 +19,7 @@ RUNTIME_FILES = (
     "contract_boundary_analyzer_projection.py",
     "contract_boundary_analyzer_types.py",
     "contract_boundary_api_policy.py",
+    "contract_boundary_module_policy.py",
     "contract_boundary_birth_authority_policy.py",
     "contract_boundary_birth_exception_policy.py",
     "contract_boundary_birth_policy.py",
@@ -28,8 +29,17 @@ RUNTIME_FILES = (
     "contract_boundary_role_policy.py",
     "contract_boundary_syntax_policy.py",
     "executor_birth_admin_preflight.py",
+    "executor_birth_account_identity.py",
     "executor_birth_canonical.py",
     "executor_birth_crypto_framing.py",
+    "executor_birth_host_layout.py",
+    "executor_birth_host_path_policy.py",
+    "executor_birth_host_provisioning_evidence.py",
+    "executor_birth_legacy_state_journal.py",
+    "executor_birth_legacy_state_policy.py",
+    "executor_birth_legacy_state_preflight_projection.py",
+    "executor_birth_legacy_state_request.py",
+    "executor_birth_legacy_state_wire.py",
 )
 
 
@@ -58,6 +68,14 @@ def _copy_minimal_tree(target: Path) -> None:
 
 def test_trusted_checker_accepts_current_projection_in_isolation() -> None:
     checked = _isolated_checker(ROOT)
+    assert checked.returncode == 0, checked.stderr
+
+
+def test_trusted_checker_accepts_minimal_tree_in_isolation(
+    tmp_path: Path,
+) -> None:
+    _copy_minimal_tree(tmp_path)
+    checked = _isolated_checker(tmp_path)
     assert checked.returncode == 0, checked.stderr
 
 

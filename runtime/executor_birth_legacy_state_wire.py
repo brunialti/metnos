@@ -80,10 +80,6 @@ def legacy_state_wire_require_relations_v1(
             sequence >= 2
             and value["authoring_sha256"] != value["adoption_target_sha256"]
         )
-        or (
-            sequence >= 3
-            and value["ready_sha256"] != value["authoring_sha256"]
-        )
     ):
         raise invalid("record_grammar")
 

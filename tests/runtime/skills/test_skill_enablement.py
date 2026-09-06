@@ -240,16 +240,98 @@ def test_root_transition_reads_only_the_declared_service_owned_policy(
     owner = (os.getuid(), os.getgid())
     monkeypatch.setattr(skill_registry.os, "geteuid", lambda: 0)
 
-    assert skill_registry._is_skill_enabled_for_owner_v1(
-        "bundle", owner,
-    ) is False
+    snapshot = skill_registry._skill_enabled_snapshot_for_owner_v1(owner)
+    assert snapshot("bundle") is False
+    state.write_text('{"bundle": true}\n', encoding="utf-8")
+    assert snapshot("bundle") is False
+    assert skill_registry._skill_enabled_snapshot_for_owner_v1(owner)(
+        "bundle",
+    ) is True
     with pytest.raises(
         skill_registry.SkillEnablementError,
         match="foreign owner",
     ):
-        skill_registry._is_skill_enabled_for_owner_v1(
-            "bundle", (owner[0] + 1, owner[1]),
+        skill_registry._skill_enabled_snapshot_for_owner_v1(
+            (owner[0] + 1, owner[1]),
         )
+
+
+def test_owner_snapshot_rejects_conflicting_skill_definitions(monkeypatch) -> None:
+    owner = (41, 42)
+    monkeypatch.setattr(skill_registry.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(
+        skill_registry,
+        "_list_skills_from_state_v1",
+        lambda _state, *, lang=None: [
+            SimpleNamespace(
+                name="bundle", lang="any", auto_enable=True, enabled=True,
+            ),
+            SimpleNamespace(
+                name="bundle", lang="en", auto_enable=True, enabled=True,
+            ),
+        ],
+    )
+
+    with pytest.raises(
+        skill_registry.SkillEnablementError,
+        match="skill_definition_conflict",
+    ):
+        skill_registry._skill_enabled_snapshot_for_owner_v1(owner)
+
+
+def test_owner_snapshot_captures_one_authenticated_skill_inventory(
+    monkeypatch,
+) -> None:
+    owner = (41, 42)
+    reads = []
+    states = []
+    monkeypatch.setattr(skill_registry.os, "geteuid", lambda: 0)
+
+    def read_state(*, trusted_owner=None):
+        reads.append(trusted_owner)
+        return b'{"bundle":false}\n'
+
+    def list_skills(state, *, lang=None):
+        states.append(dict(state))
+        return [SimpleNamespace(
+            name="bundle", lang="any", auto_enable=False, enabled=False,
+        )]
+
+    monkeypatch.setattr(skill_registry, "_read_state_payload", read_state)
+    monkeypatch.setattr(
+        skill_registry, "_list_skills_from_state_v1", list_skills,
+    )
+    snapshot, signature = skill_registry._skill_policy_snapshot_for_owner_v1(
+        owner,
+    )
+
+    assert snapshot("bundle") is False
+    assert snapshot("unknown") is True
+    assert signature[:3] == ("skill_state", "present", 17)
+    assert reads == [owner]
+    assert states == [{"bundle": False}]
+
+
+def test_owner_snapshot_honours_disabled_state_without_definition(
+    monkeypatch,
+) -> None:
+    owner = (41, 42)
+    monkeypatch.setattr(skill_registry.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(
+        skill_registry, "_load_state_snapshot_v1",
+        lambda *, trusted_owner=None: (
+            {"detached-bundle": False},
+            ("skill_state", "present", 1, "digest"),
+        ) if trusted_owner == owner else ({}, ("skill_state", "absent", 0, "")),
+    )
+    monkeypatch.setattr(
+        skill_registry, "_list_skills_from_state_v1",
+        lambda _state, *, lang=None: [],
+    )
+
+    snapshot = skill_registry._skill_enabled_snapshot_for_owner_v1(owner)
+    assert snapshot("detached-bundle") is False
+    assert snapshot("unknown") is True
 
 
 def test_catalog_cache_signature_fails_closed_on_invalid_skill_state(

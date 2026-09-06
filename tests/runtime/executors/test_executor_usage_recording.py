@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -137,3 +138,37 @@ def test_un_db_illeggibile_non_ferma_l_invocazione(db_isolato, monkeypatch) -> N
 
     assert scheduler.invoke(
         _Executor(), lambda: {"ok": True, "entries": []})["ok"] is True
+
+
+def test_read_only_lifecycle_does_not_create_database_or_parent(
+    tmp_path, monkeypatch,
+) -> None:
+    database = tmp_path / "absent" / "executor_stats.db"
+    monkeypatch.setattr(executor_aging, "DB_PATH", database)
+
+    assert executor_aging.lifecycle_override_map(read_only=True) == {}
+    assert not database.parent.exists()
+
+
+def test_read_only_lifecycle_reads_without_schema_or_file_mutation(
+    db_isolato,
+) -> None:
+    executor_aging.register("sample", source="handcrafted")
+    with sqlite3.connect(executor_aging.DB_PATH) as connection:
+        connection.execute(
+            "UPDATE executor_stats SET deprecated_at = ? WHERE name = ?",
+            ("2026-09-05T00:00:00Z", "sample"),
+        )
+    before_bytes = executor_aging.DB_PATH.read_bytes()
+    before_entries = tuple(sorted(executor_aging.DB_PATH.parent.iterdir()))
+
+    assert executor_aging.lifecycle_override_map(read_only=True) == {
+        "sample": "deprecated",
+    }
+    assert executor_aging.DB_PATH.read_bytes() == before_bytes
+    assert tuple(sorted(executor_aging.DB_PATH.parent.iterdir())) == before_entries
+
+
+def test_read_only_lifecycle_flag_is_exact_bool(db_isolato) -> None:
+    with pytest.raises(ValueError, match="read_only must be bool"):
+        executor_aging.lifecycle_override_map(read_only=1)

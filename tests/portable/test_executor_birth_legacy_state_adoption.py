@@ -10,8 +10,9 @@ import executor_birth_legacy_state_journal as journal
 import executor_birth_legacy_state_policy as policy
 from executor_birth_legacy_state_request import build_legacy_state_request_v1
 from install.executor_birth_legacy_state_adoption import (
+    _complete_legacy_state_ready_v1,
     LegacyStateAdoptionError,
-    adopt_legacy_state_v1,
+    prepare_legacy_state_authoring_v1,
 )
 
 
@@ -80,19 +81,53 @@ class _Effects:
         self.checkpoints.append(name)
 
 
-def test_fresh_state_reaches_terminal_and_terminal_replay_is_historical() -> None:
-    effects = _Effects(policy.LegacyStateObservationV1(()))
-    first = adopt_legacy_state_v1(_request(), effects)
-    assert first.changed is True
+def test_adopted_state_reaches_terminal_and_terminal_replay_is_historical() -> None:
+    effects = _Effects(_root_authoring())
+    prepared = prepare_legacy_state_authoring_v1(_request(), effects)
+    assert prepared.changed is True and prepared.ready is False
+    first = _complete_legacy_state_ready_v1(
+        _request(), effects, expected_record_sha256=prepared.record_sha256,
+    )
+    assert first.changed is True and first.ready is True
     assert [item.state for item in journal.decode_legacy_state_chain_v1(
         tuple(effects.raw),
     )] == list(journal.LegacyStateV1)
     observations = effects.observations
-    effects.observation = _root_authoring()
-    repeated = adopt_legacy_state_v1(_request(), effects)
+    repeated = prepare_legacy_state_authoring_v1(_request(), effects)
     assert repeated.changed is False
     assert repeated.record_sha256 == first.record_sha256
     assert effects.observations == observations
+
+
+def test_ready_refuses_fresh_state_before_contract_convergence() -> None:
+    effects = _Effects(policy.LegacyStateObservationV1(()))
+    prepared = prepare_legacy_state_authoring_v1(_request(), effects)
+    with pytest.raises(
+        LegacyStateAdoptionError, match="birth_legacy_state_recovery_required",
+    ):
+        _complete_legacy_state_ready_v1(
+            _request(), effects,
+            expected_record_sha256=prepared.record_sha256,
+        )
+    assert len(effects.raw) == 3
+
+
+def test_crash_after_convergence_resumes_before_ready_append() -> None:
+    effects = _Effects(_root_authoring())
+    prepared = prepare_legacy_state_authoring_v1(_request(), effects)
+    before = tuple(effects.raw)
+
+    resumed = prepare_legacy_state_authoring_v1(_request(), effects)
+
+    assert resumed.record_sha256 == prepared.record_sha256
+    assert resumed.changed is False and resumed.ready is False
+    assert tuple(effects.raw) == before
+    ready = _complete_legacy_state_ready_v1(
+        _request(), effects,
+        expected_record_sha256=resumed.record_sha256,
+    )
+    assert ready.ready is True
+    assert len(effects.raw) == 4
 
 
 def test_crash_after_chown_before_record_resumes_from_normalized_target() -> None:
@@ -101,15 +136,16 @@ def test_crash_after_chown_before_record_resumes_from_normalized_target() -> Non
     with pytest.raises(
         LegacyStateAdoptionError, match="birth_legacy_state_recovery_required",
     ):
-        adopt_legacy_state_v1(_request(), effects)
+        prepare_legacy_state_authoring_v1(_request(), effects)
     assert len(effects.raw) == 2
     assert effects.adoptions == 1
     assert policy.classify_legacy_state_v1(
         _request(), effects.observation,
     ) is policy.LegacyStateDispositionV1.exact_service
-    result = adopt_legacy_state_v1(_request(), effects)
+    result = prepare_legacy_state_authoring_v1(_request(), effects)
     assert result.changed is True
-    assert len(effects.raw) == 4
+    assert result.ready is False
+    assert len(effects.raw) == 3
     assert effects.adoptions == 2
 
 
@@ -117,7 +153,7 @@ def test_inode_substitution_after_inventory_fails_before_adoption() -> None:
     effects = _Effects(_root_authoring())
     effects.fail_sequence_once = 2
     with pytest.raises(LegacyStateAdoptionError):
-        adopt_legacy_state_v1(_request(), effects)
+        prepare_legacy_state_authoring_v1(_request(), effects)
     adopted = list(effects.observation.entries)
     first = adopted[0]
     adopted[0] = policy.LegacyPathObservationV1(
@@ -130,5 +166,5 @@ def test_inode_substitution_after_inventory_fails_before_adoption() -> None:
     with pytest.raises(
         LegacyStateAdoptionError, match="birth_legacy_state_recovery_required",
     ):
-        adopt_legacy_state_v1(_request(), effects)
+        prepare_legacy_state_authoring_v1(_request(), effects)
     assert effects.adoptions == 1

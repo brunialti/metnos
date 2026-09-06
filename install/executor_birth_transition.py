@@ -387,17 +387,23 @@ def _invoke_closed_release_v1(
     legacy_service_user: str, legacy_installation_root: str,
     service_environment: Mapping[str, str],
 ) -> dict:
-    from executor_birth_service_catalog import capture_current_service_catalog_v1
+    from executor_birth_distribution_manifest import (
+        authenticate_distribution_record_v1,
+    )
+    from executor_birth_service_catalog import load_service_catalog_v1
 
-    release_root = Path(distribution.installation_root)
+    record = authenticate_distribution_record_v1(
+        distribution.encoded, distribution.signature,
+    )
+    release_root = Path(record.installation_root)
     entry = release_root / "install" / "executor_birth_transition.py"
     matching = tuple(
-        item for item in distribution.files
+        item for item in record.files
         if item.path == "install/executor_birth_transition.py"
     )
     if len(matching) != 1 or not entry.is_file():
         raise _fail("birth_ownership_distribution_invalid")
-    loaded = capture_current_service_catalog_v1(distribution)
+    loaded = load_service_catalog_v1(record)
     python_executables = {
         item.target_executable for item in loaded.catalog.entries
         if item.execution_kind == "python_module"

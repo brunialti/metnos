@@ -824,6 +824,8 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
     import executor_birth_ownership_coordinator as coordinator_module
     import executor_birth_ownership_preflight as preflight_module
     import executor_birth_prepared_root as prepared_root_module
+    import executor_birth_transition_gate as transition_gate_module
+    import executor_birth_transition_receipts as transition_receipts_module
 
     base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
     context_source = Path(runtime_config.PATH_RUNTIME) / "executor_standard.py"
@@ -831,7 +833,9 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
     with pytest.raises(PreparedSetError, match="birth_prepared_set_mismatch"):
         prepared_root_module.read_prepared_set_v1()
     claim = _claim()
-    descriptor = SimpleNamespace(descriptor_id=D("9"))
+    descriptor = SimpleNamespace(
+        descriptor_id=D("9"), service_uid=991, service_gid=992,
+    )
     inventory = CurrentInventoryV1(())
     order = []
     session = object()
@@ -918,14 +922,21 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
 
         order.append("maintenance-enter")
         try:
-            yield Maintenance(), inventory, b"maintenance"
+            yield Maintenance(), inventory, b"maintenance", enumerate_current
         finally:
             order.append("maintenance-exit")
 
+    def enumerate_current():
+        return ()
+
     monkeypatch.setattr(
-        coordinator_module, "_transition_maintenance_inventory_v2",
-        maintenance_inventory,
+        transition_gate_module, "_require_transition_current_enumerator_v2",
+        lambda value, observed_session, candidate: value
+        if value is enumerate_current
+        and observed_session is session and candidate is distribution
+        else pytest.fail("transition enumerator binding changed"),
     )
+
     monkeypatch.setattr(
         coordinator_module, "_append_prepared_transition_locked_v2",
         lambda observed_session, **values: (
@@ -952,12 +963,14 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
         prepared_root_module, "_load_staged_reattestation_context_v1",
         lambda *args: order.append("staged-context") or "context",
     )
-    def build_staged_receipts(*_args, **_kwargs):
+    def build_staged_receipts(*_args, **kwargs):
+        assert kwargs["enumerate_current"] is enumerate_current
+        assert kwargs["catalog_owner"] == (991, 992)
         order.extend(("staged-runtime", "receipts"))
         return CurrentReceiptProof((), {})
 
     monkeypatch.setattr(
-        coordinator_module, "_build_staged_current_receipts_v2",
+        transition_receipts_module, "_build_staged_current_receipts_v2",
         build_staged_receipts,
     )
     monkeypatch.setattr(
@@ -982,7 +995,7 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
             staged = provisioning._prepare_transition_receipt_material_locked_v2(
                 locked_session, candidate,
             )
-            with coordinator_module._transition_maintenance_inventory_v2() as frozen:
+            with maintenance_inventory() as frozen:
                 completed = provisioning._complete_transition_receipts_locked_v2(
                     locked_session, staged, frozen,
                 )

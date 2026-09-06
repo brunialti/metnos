@@ -4202,10 +4202,15 @@ def _complete_transition_receipts_locked_v2(
     from executor_birth_ownership_coordinator import (
         _append_prepared_transition_locked_v2,
         _append_receipts_complete_locked_v2,
-        _build_staged_current_receipts_v2,
         _prepared_transition_publication_v2,
         _publish_context_transition_locked_v2,
         _require_deployment_lock_session_v1,
+    )
+    from executor_birth_transition_gate import (
+        _require_transition_current_enumerator_v2,
+    )
+    from executor_birth_transition_receipts import (
+        _build_staged_current_receipts_v2,
     )
     from executor_birth_prepared_root import (
         _load_staged_reattestation_context_v1,
@@ -4218,7 +4223,7 @@ def _complete_transition_receipts_locked_v2(
     if (
         type(preparation) is not _TransitionReceiptPreparationV2
         or preparation._seal is not _TRANSITION_RECEIPT_PREPARATION_SEAL_V2
-        or type(frozen) is not tuple or len(frozen) != 3
+        or type(frozen) is not tuple or len(frozen) != 4
     ):
         raise _conflict()
     distribution = preparation.distribution
@@ -4228,11 +4233,15 @@ def _complete_transition_receipts_locked_v2(
     )
     if verified != distribution or repeated_descriptor != descriptor:
         raise _conflict()
-    maintenance, current_inventory, evidence = frozen
+    maintenance, current_inventory, evidence, enumerate_current = frozen
     if not callable(maintenance):
         raise _conflict()
     previous_context = preparation.previous_context
     prepared = preparation.prepared_authority_set
+    enumerate_current = _require_transition_current_enumerator_v2(
+        enumerate_current, session, distribution,
+    )
+    catalog_owner = (descriptor.service_uid, descriptor.service_gid)
     record, transition = _append_prepared_transition_locked_v2(
         session,
         distribution=verified,
@@ -4253,14 +4262,22 @@ def _complete_transition_receipts_locked_v2(
         deployment_descriptor=descriptor,
         current_inventory=current_inventory,
     )
-    staged_context = _load_staged_reattestation_context_v1(
-        transition, verified, current_inventory,
-    )
+    with _service_owned_birth_identity_v2(descriptor):
+        staged_context = _load_staged_reattestation_context_v1(
+            transition, verified, current_inventory,
+        )
+
+    def service_identity():
+        return _service_owned_birth_identity_v2(descriptor)
+
     proof = _build_staged_current_receipts_v2(
         staged_context,
         now=lambda: datetime.now(timezone.utc),
         prove_quiescent=maintenance,
         expected_inventory=current_inventory,
+        enumerate_current=enumerate_current,
+        identity_scope=service_identity,
+        catalog_owner=catalog_owner,
     )
     observed = maintenance.observe()
     final_evidence = canonical_maintenance_proof(
@@ -4986,11 +5003,14 @@ def _transition_legacy_context_v2(descriptor: object, distribution: object):
     return account, request
 
 
-def _adopt_transition_legacy_state_v2(
-    descriptor: object, distribution: object, maintenance_session: object,
+def _prepare_transition_legacy_state_v2(
+    descriptor: object, distribution: object, maintenance_session: object, *,
+    require_live_ready: bool,
 ):
-    """Converge J while the caller retains deployment/startup/catalog locks."""
-    from install.executor_birth_legacy_state_adoption import adopt_legacy_state_v1
+    """Reach authoring adoption before the governed convergence child runs."""
+    from install.executor_birth_legacy_state_adoption import (
+        prepare_legacy_state_authoring_v1,
+    )
     from install.executor_birth_legacy_state_effect_posix import (
         locked_legacy_state_effects_v1,
     )
@@ -5005,15 +5025,12 @@ def _adopt_transition_legacy_state_v2(
         with locked_legacy_state_effects_v1(
             request, account, maintenance_session,
         ) as effects:
-            result = adopt_legacy_state_v1(request, effects)
-            # The journal may already be terminal after a crash between the
-            # READY append and this live proof.  Re-prove the terminal state on
-            # every entry; a replayed journal is not itself evidence that the
-            # live tree still matches it.
-            inspect_ready_legacy_state_live_v1(
-                request, account, result.record_sha256,
-                maintenance_session,
-            )
+            result = prepare_legacy_state_authoring_v1(request, effects)
+            if result.ready and require_live_ready:
+                inspect_ready_legacy_state_live_v1(
+                    request, account, result.record_sha256,
+                    maintenance_session,
+                )
             return result
     except BirthProvisioningError:
         raise
@@ -5024,10 +5041,17 @@ def _adopt_transition_legacy_state_v2(
         raise _reject(code, exc) from None
 
 
-def _inspect_transition_legacy_state_v2(
-    descriptor, distribution, record_sha256, maintenance_session,
+def _complete_transition_legacy_state_v2(
+    descriptor, distribution, prepared, maintenance_session, *, live,
 ):
+    from install.executor_birth_legacy_state_adoption import (
+        _complete_legacy_state_ready_v1,
+    )
+    from install.executor_birth_legacy_state_effect_posix import (
+        locked_legacy_state_effects_v1,
+    )
     from install.executor_birth_legacy_state_inspection import (
+        inspect_ready_legacy_state_live_v1,
         inspect_terminal_legacy_state_history_v1,
     )
 
@@ -5035,9 +5059,22 @@ def _inspect_transition_legacy_state_v2(
         account, request = _transition_legacy_context_v2(
             descriptor, distribution,
         )
-        return inspect_terminal_legacy_state_history_v1(
-            request, account, record_sha256, maintenance_session,
-        )
+        with locked_legacy_state_effects_v1(
+            request, account, maintenance_session,
+        ) as effects:
+            result = _complete_legacy_state_ready_v1(
+                request, effects,
+                expected_record_sha256=prepared.record_sha256,
+            )
+            inspect = (
+                inspect_ready_legacy_state_live_v1
+                if live else inspect_terminal_legacy_state_history_v1
+            )
+            inspect(
+                request, account, result.record_sha256,
+                maintenance_session,
+            )
+            return result
     except BirthProvisioningError:
         raise
     except Exception as exc:
@@ -5075,6 +5112,11 @@ def complete_transition_cutover_v2(
         _cross_preflight_boundary_locked_v2, _deployment_lock_v1,
         _observe_dominant_identity_locked_v2, _result,
         _reserve_transition_edge_locked_v2,
+    )
+    from executor_birth_transition_gate import (
+        _transition_gate_snapshot_locked_v2,
+        _transition_gate_phase_locked_v2,
+        _transition_current_enumerator_v2,
         _transition_inventory_under_maintenance_v2,
     )
     from executor_birth_authority_gate import (
@@ -5150,7 +5192,7 @@ def complete_transition_cutover_v2(
             raise _reject("birth_transition_service_identity_changed")
         install_startup_gate_v1(deployment_session)
         with _exclusive_startup_gate_v1() as startup_session:
-            legacy_adoption = None
+            legacy_preparation = None
             legacy_state_record_sha256 = None
             catalog_owner = (
                 descriptor.service_uid,
@@ -5158,6 +5200,13 @@ def complete_transition_cutover_v2(
             )
             if verified.release_sequence == 1:
                 _initialize_transition_ownership_chain_v2(descriptor)
+            transition_gate = _transition_gate_snapshot_locked_v2(
+                deployment_session, verified,
+            )
+            transition_phase = _transition_gate_phase_locked_v2(
+                transition_gate, deployment_session,
+            )
+            if verified.release_sequence == 1:
                 # Prove the legacy stack quiescent before releasing the
                 # catalog lock to the governed service-owned Birth child.
                 # The final guard below reacquires both boundaries and proves
@@ -5175,10 +5224,18 @@ def complete_transition_cutover_v2(
                         raise _reject(
                             "birth_transition_contract_convergence_failed"
                         )
-                    legacy_adoption = _adopt_transition_legacy_state_v2(
+                    legacy_preparation = _prepare_transition_legacy_state_v2(
                         descriptor, verified, pre_convergence_maintenance,
+                        require_live_ready=transition_phase is None,
                     )
-                _converge_transition_contracts_v2(descriptor)
+                    if transition_phase is not None and not legacy_preparation.ready:
+                        raise _reject("birth_legacy_state_recovery_required")
+                if not legacy_preparation.ready:
+                    _converge_transition_contracts_v2(descriptor)
+            with _service_owned_birth_identity_v2(descriptor):
+                transition_current = _transition_current_enumerator_v2(
+                    transition_gate, deployment_session,
+                )
             with _contract_cutover_guard_for_service_user_v1(
                 legacy_identity.name,
                 catalog_trusted_owner=catalog_owner,
@@ -5189,22 +5246,28 @@ def complete_transition_cutover_v2(
                 ):
                     raise _reject("birth_transition_service_identity_changed")
                 if verified.release_sequence == 1:
-                    if legacy_adoption is None:
+                    if legacy_preparation is None:
                         raise _reject("birth_legacy_state_recovery_required")
-                    legacy_state = _inspect_transition_legacy_state_v2(
-                        descriptor, verified,
-                        legacy_adoption.record_sha256, maintenance,
-                    )
-                    legacy_state_record_sha256 = (
-                        legacy_state.record_sha256
-                    )
                     verify_initial_installer_store_v1(
                         prove_quiescent=maintenance,
                         trusted_authoring_owner=catalog_owner,
                         defer_v1_receipts_to_transition_v2=True,
                     )
+                    legacy_state = _complete_transition_legacy_state_v2(
+                        descriptor, verified, legacy_preparation, maintenance,
+                        live=transition_phase is None,
+                    )
+                    if (
+                        transition_phase is not None
+                        and transition_phase.legacy_state_record_sha256
+                        != legacy_state.record_sha256
+                    ):
+                        raise _reject("birth_legacy_state_recovery_required")
+                    legacy_state_record_sha256 = legacy_state.record_sha256
                 with _transition_inventory_under_maintenance_v2(
-                    maintenance, evidence,
+                    transition_gate, deployment_session,
+                    transition_current, maintenance, evidence,
+                    catalog_trusted_owner=catalog_owner,
                 ) as frozen:
                     complete = _complete_transition_receipts_locked_v2(
                         deployment_session, preparation, frozen,

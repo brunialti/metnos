@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT = ROOT / "runtime" / "executor_birth_admin_preflight.py"
 TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 GOLDEN_DIGEST_V1 = (
-    "sha256:a6ca128cd9e98c2853bff5b7ce55dc796883627b853d69ab029ca889d76f7238"
+    "sha256:9d80b83c1cb8d89a7c2b2983e7ed1a74c469de13f0ae7c28cb470031692c6524"
 )
 
 POLICY_NAMES = (
@@ -289,7 +289,8 @@ def test_fixed_tool_check_rejects_drift(tmp_path: Path) -> None:
         "contract_boundary_analyzer_ast.py",
         "contract_boundary_analyzer_projection.py",
         "contract_boundary_analyzer_types.py",
-        "contract_boundary_api_policy.py", "contract_boundary_syntax_policy.py",
+        "contract_boundary_api_policy.py", "contract_boundary_module_policy.py",
+        "contract_boundary_syntax_policy.py",
         "contract_boundary_policy_types.py",
         "contract_boundary_role_policy.py",
         "contract_boundary_birth_authority_policy.py",
@@ -477,7 +478,8 @@ def test_projection_has_no_io_or_dynamic_execution_surface() -> None:
 
 def test_policy_modules_and_functions_obey_size_limits() -> None:
     names = (
-        "contract_boundary_api_policy.py", "contract_boundary_syntax_policy.py",
+        "contract_boundary_api_policy.py", "contract_boundary_module_policy.py",
+        "contract_boundary_syntax_policy.py",
         "contract_boundary_policy_types.py",
         "contract_boundary_role_policy.py",
         "contract_boundary_birth_authority_policy.py",

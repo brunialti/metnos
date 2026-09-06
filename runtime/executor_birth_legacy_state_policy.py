@@ -47,7 +47,7 @@ _SCAFFOLD_ROOTS = (_AUTHORING, *tuple(sorted(_PUBLICATION_DIRS)))
 LEGACY_STATE_FSM_V1 = (
     ("PLANNED", "INVENTORY"),
     ("INVENTORIED", "ADOPT_AUTHORING"),
-    ("AUTHORING_ADOPTED", "VERIFY_LEGACY_STATE"),
+    ("AUTHORING_ADOPTED", "CONVERGE_CONTRACTS_AND_VERIFY"),
     ("LEGACY_STATE_READY", None),
 )
 _POLICY_DOMAIN = b"metnos.executor-birth.legacy-state-policy/v1\0"
@@ -358,6 +358,7 @@ def legacy_state_policy_sha256_v1() -> str:
         "origins": sorted(_ORIGINS), "posix_acl": "absent",
         "protocol": LEGACY_STATE_PROTOCOL_V1,
         "publication_payloads": "opaque-existing-owner",
+        "ready_state": "exact-service-after-contract-convergence",
         "request_binding": "canonical-host-layout-state-role+typed-account",
         "reserved": [item.as_posix() for item in LEGACY_STATE_RESERVED_TOP_LEVEL_V1],
         "scaffolds": [root + "/v1" for root in _SCAFFOLD_ROOTS],

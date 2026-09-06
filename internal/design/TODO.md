@@ -11,6 +11,7 @@ non restano artificialmente aperte.
 |---:|---|---|---|
 | P0 MAX | **AFF-I18N-001** | analisi di dettaglio completata; revisione adversarial e approvazione richieste prima dello sviluppo | Specifica approvata, implementazione generale, migrazione, benchmark di routing e copertura i18n verificati senza regressioni. |
 | P0 | **RM-0008 / Birth Gate** | `active`; gruppi 1-3 chiusi e verdi; piano del gruppo 4 pronto, 26 rilievi statici iniziali misurati | Porta deterministica senza bypass; solo i sintetizzati ricevono revisione semantica, test indipendenti, preesercizio e riesame frontier; certificazione interamente verde. |
+| P0 CRITICAL | **PY-RUNTIME-IDENTITY-001** | doppia identita' rilevata durante il cutover RM-0008: descrittore firmato sul Python di sistema e dipendenze nel virtual environment gestito | Un solo virtual environment standard e non versionato nel repository; descrittore firmato, unita' systemd, installer, diagnostica e convergenza puntano alla medesima identita' attestata. |
 | P0 | **SEC-001** | attesa esterna | Audit indipendente svolto da un soggetto diverso dall'implementatore; finding classificati e chiusura verificata di quelli alti o bloccanti. |
 | P1 | **EXEC-BIND-001** | analisi separata; nessuna implementazione autorizzata | Stabilire se e come legare i byte verificati a quelli eseguiti per processi locali, builtin e bundle remoti, censendo prima la chiusura reale delle dipendenze. |
 | P1 | **REL-001** | osservazione temporale | Almeno un ciclo di release con telemetria versionata e volume sufficiente per dominio; ratifica degli SLO sulla base dei dati osservati. |
@@ -26,6 +27,12 @@ della ripresa del §23.6 sono completati; il gruppo 4 deve chiudere staticamente
 F4. La porta deterministica riguarda ogni origine; revisione LLM,
 preesercizio, feedback frontier e revisione automatica riguardano soltanto gli
 executor sintetizzati.
+`PY-RUNTIME-IDENTITY-001` e' un requisito critico post-cutover. Non autorizza
+una modifica dell'identita' del build RM-0008 gia' firmato: impone invece che
+la release successiva elimini la doppia identita' fra `/usr/bin/python3.12` e
+l'ambiente dipendenze. Il virtual environment e' un artefatto installato e
+attestato; nel repository pubblico restano soltanto lock e istruzioni di
+costruzione, mai le librerie dell'ambiente.
 `EXEC-BIND-001` conserva il rischio deliberatamente escluso dalla revisione
 KISS di RM-0007. Prima di proporre copie di codice o binding di release deve
 censire file dichiarati, import, risorse locali, builtin già caricati,

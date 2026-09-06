@@ -290,18 +290,20 @@ def test_transition_authenticates_current_without_reusing_v1_receipts(
     )
     observed_policy = []
 
-    def owned_skill_policy(name, owner):
-        observed_policy.append((name, owner))
-        return True
+    def owned_skill_snapshot(owner):
+        observed_policy.append(("snapshot", owner))
+        return lambda name: observed_policy.append((name, owner)) or True
 
     def store_inventory(*, skill_enabled=None):
         assert skill_enabled is not None
         assert skill_enabled("github") is True
         return inventory
 
-    monkeypatch.setattr(bootstrap.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(bootstrap.os, "geteuid", lambda: 991)
+    monkeypatch.setattr(bootstrap.os, "getegid", lambda: 0)
     monkeypatch.setattr(
-        skill_registry, "_is_skill_enabled_for_owner_v1", owned_skill_policy,
+        skill_registry, "_skill_enabled_snapshot_for_owner_v1",
+        owned_skill_snapshot,
     )
     monkeypatch.setattr(
         manifest_inventory, "inventory_store_manifests", store_inventory,
@@ -334,7 +336,10 @@ def test_transition_authenticates_current_without_reusing_v1_receipts(
             "contracts": 1,
             "receipts": int(receipt_present),
         }
-    assert observed_policy == [("github", (991, 991))]
+    assert observed_policy == [
+        ("snapshot", (991, 991)),
+        ("github", (991, 991)),
+    ]
 
 
 def test_transition_allows_only_an_absent_historical_receipt(

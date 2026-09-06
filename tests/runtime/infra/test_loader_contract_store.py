@@ -25,6 +25,7 @@ from i18n_materializer import encode_language_state, manifest_language_selectors
 from manifest_inventory import (
     ContractId,
     ManifestBootstrapError,
+    ManifestLayout,
     ManifestOrigin,
     ManifestSource,
     inventory_authoring_manifests,
@@ -407,6 +408,124 @@ def test_store_catalog_cache_hits_on_unchanged_revision_inventory(
 
     assert first is second
     assert cold_loads == [True]
+
+
+def test_store_catalog_audit_has_no_cache_registration_log_or_ddl_effects(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import executor_aging
+    import skill_credentials
+    import skill_registry
+
+    source_root, ref, trusted = _source(tmp_path)
+    state, _generation = _activate_published_store(tmp_path, ref, trusted)
+    _point_loader_at(
+        monkeypatch, state=state, source_root=source_root, trusted=trusted,
+    )
+    owner = (os.getuid(), os.getgid())
+    snapshots = []
+    original_affinity = loader._check_affinity_overlap
+
+    class ForbiddenCache(dict):
+        def get(self, *_args, **_kwargs):
+            pytest.fail("audit consulted the process catalog cache")
+
+        def __setitem__(self, *_args, **_kwargs):
+            pytest.fail("audit populated the process catalog cache")
+
+    def fail(*_args, **_kwargs):
+        pytest.fail("audit invoked a mutating or diagnostic hook")
+
+    def skill_snapshot(trusted_owner):
+        snapshots.append(trusted_owner)
+        return (
+            lambda _name: True,
+            ("skill_state", "present", 2, "snapshot"),
+        )
+
+    def affinity(catalog, *, write_audit=True):
+        assert write_audit is False
+        return original_affinity(catalog, write_audit=write_audit)
+
+    def lifecycle(*, read_only=False):
+        assert read_only is True
+        return {}
+
+    monkeypatch.setattr(loader, "_CATALOG_CACHE", ForbiddenCache())
+    monkeypatch.setattr(loader, "boot_register_verb_unique_builtins", fail)
+    monkeypatch.setattr(loader, "_check_affinity_overlap", affinity)
+    monkeypatch.setattr(executor_aging, "register", fail)
+    monkeypatch.setattr(executor_aging, "lifecycle_override_map", lifecycle)
+    monkeypatch.setattr(skill_credentials, "compute_dormancy", fail)
+    monkeypatch.setattr(skill_credentials, "resolve_github_token", fail)
+    monkeypatch.setattr(
+        skill_registry, "_skill_policy_snapshot_for_owner_v1", skill_snapshot,
+    )
+    monkeypatch.setattr(skill_registry, "skill_state_cache_signature", fail)
+    for name in ("debug", "info", "warning", "error"):
+        monkeypatch.setattr(loader.log, name, fail)
+
+    catalog = loader._load_catalog_for_cutover_audit_v1(
+        catalog_trusted_owner=owner,
+        _executors_dir=source_root,
+        _include_synth=False,
+        _lang="en",
+    )
+
+    assert catalog.get("read_files") is not None
+    assert snapshots == [owner, owner]
+
+    monkeypatch.setattr(
+        executor_aging, "lifecycle_override_map",
+        lambda *, read_only=False: (_ for _ in ()).throw(
+            RuntimeError("invalid aging database")
+        ),
+    )
+    with pytest.raises(RuntimeError, match="invalid aging database"):
+        loader._load_catalog_for_cutover_audit_v1(
+            catalog_trusted_owner=owner,
+            _executors_dir=source_root,
+            _include_synth=False,
+            _lang="en",
+        )
+
+
+@pytest.mark.parametrize("owner", [
+    [1, 2], (True, 2), (1,), (1, -1), (0, 2),
+])
+def test_catalog_read_options_fail_before_store_lock(
+    monkeypatch, owner,
+) -> None:
+    monkeypatch.setattr(
+        loader, "resolve_manifest_layout", lambda: ManifestLayout.STORE_ONLY,
+    )
+    monkeypatch.setattr(
+        contract_store_module,
+        "catalog_admission_lock",
+        lambda **_kwargs: pytest.fail("invalid options reached the store lock"),
+    )
+
+    with pytest.raises(ValueError):
+        loader.load_catalog(catalog_trusted_owner=owner)
+
+
+def test_catalog_owner_and_cutover_audit_are_store_only(monkeypatch) -> None:
+    monkeypatch.setattr(
+        loader, "resolve_manifest_layout", lambda: ManifestLayout.AUTHORING,
+    )
+    monkeypatch.setattr(
+        loader,
+        "_load_catalog_under_catalog_lock",
+        lambda *_args, **_kwargs: pytest.fail("invalid options reached loader"),
+    )
+
+    with pytest.raises(ValueError, match="catalog_trusted_owner"):
+        loader.load_catalog(catalog_trusted_owner=(1, 2))
+    with pytest.raises(ValueError, match="cutover audit"):
+        loader._load_catalog_for_cutover_audit_v1(
+            catalog_trusted_owner=None,
+        )
 
 
 def test_store_cache_uses_generation_id_when_pointer_mtime_is_unchanged(

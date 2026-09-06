@@ -15,7 +15,8 @@ the exact live turn both succeed. The required announcement is exactly:
 
 - Worktree: `/tmp/metnos-rm0008-f4-transizione`
 - Local branch: `codex/rm0008-f4-transizione` (local staging only; never publish it)
-- Base commit: `9a6587f096b3bb42dcbb83da50f2f55caa33c63b`
+- Candidate commit: `07469c36926b700c35e5f96bc6c6fb8af59fa411`
+- Candidate base commit: `9a6587f096b3bb42dcbb83da50f2f55caa33c63b`
 - Modified implementation/evidence files before this handover: 19
 - Binary diff SHA-256 immediately before adding this handover:
   `422cef309104b625edef0e392062434a65f9a2306733d0c1f97a9ada88c3d730`
@@ -24,8 +25,9 @@ the exact live turn both succeed. The required announcement is exactly:
   and must not be reused. It failed before changing production with
   `birth_provisioning_acl_unsafe`.
 
-The working tree is intentionally uncommitted at this checkpoint. Preserve the
-19 changes and this handover; do not reset or reconstruct them from memory.
+All implementation, evidence, probe and test changes are committed in the
+candidate commit. The only post-commit change is this handover update recording
+the final isolated probe result; preserve it when resuming.
 
 ## Verified result at handover
 
@@ -40,6 +42,31 @@ The release's full static-boundary assembly test is independently green:
 ```text
 1 passed in 23.02s
 ```
+
+The productive transition and real-turn probe is also fully green. It was run
+outside the default Codex network restriction while retaining the probe's
+private filesystem, process, identity and user-data namespaces. The default
+runner was proven to reject every IPv4 socket with `EPERM`, even for a minimal
+standalone Python process; the earlier red result was therefore an execution
+environment restriction, not a product failure.
+
+The authorized run proved, in this order:
+
+```text
+baseline contracts and receipts: 1 / 1
+signed release copy: verified
+post-transition copy: verified
+post-transition Birth: verified
+cold restart: verified
+HTTP readiness: 200 after 60.5 seconds
+real turn: 200 in 4.1 seconds
+executor step: get_preferences, ok=true
+process shutdown: no survivors
+B3 GREEN: the verified post-transition copy served a real turn.
+```
+
+This closes the isolated server-turn red. It does not replace the required live
+production check for the exact query `avvia dropbox` after activation.
 
 `git diff --check` is green. Earlier in this phase the deterministic broad
 suite completed with `1818 passed, 32 skipped, 8 subtests passed`; do not rerun
@@ -122,13 +149,7 @@ public  690 sha256:1bb1c6d87105c5d464f879467ef6ac10f6c940501054a67a14d1acb9dae0d
 
 ## Remaining closure sequence
 
-1. Review the current diff for internal consistency. Do not redesign the
-   topology unless a failing check proves a concrete defect.
-2. Run the directly affected focused tests and the overlap probe. They must
-   remain green with zero failures.
-3. Commit the candidate locally. Record the exact commit and require a clean
-   tree before activation.
-4. Build one new root activation helper. It must:
+1. Build one new root activation helper. It must:
    - require the exact clean candidate commit;
    - verify the three external services are loaded and active;
    - create a dedicated no-login `metnos` system account with home
@@ -147,16 +168,16 @@ public  690 sha256:1bb1c6d87105c5d464f879467ef6ac10f6c940501054a67a14d1acb9dae0d
    - restore the old exact units only if failure occurs before the productive
      transition starts. Once the transition journal exists, resume that same
      transaction instead of attempting to return to the legacy path.
-5. Have the operator execute that helper once with `sudo`; monitor its
+2. Have the operator execute that helper once with `sudo`; monitor its
    transient system unit until completion.
-6. Verify production health, the ownership chain, `metnos.target`, public HTTP,
+3. Verify production health, the ownership chain, `metnos.target`, public HTTP,
    Tutor, and the exact live query `avvia dropbox`.
-7. Update the RM-0008 roadmap with final evidence and keep roadmap entries in
+4. Update the RM-0008 roadmap with final evidence and keep roadmap entries in
    reverse date order. Update all affected public documentation and regenerate
    Tutor.
-8. Run the strong GII publication gate, including personal-data and secret
+5. Run the strong GII publication gate, including personal-data and secret
    checks. Public code comments and documentation must be English.
-9. Publish the tested result directly to public `main`. Do not push a feature
+6. Publish the tested result directly to public `main`. Do not push a feature
    branch. After `main` is verified green, delete every other remote branch.
 
 ## Non-negotiable stop conditions

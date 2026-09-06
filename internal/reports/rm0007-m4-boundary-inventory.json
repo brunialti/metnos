@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:a555b4f9b8138c31e157595bdf0fd14c2b5b4ee2b5b0e451bc660fe72c74872e",
+  "source_census": "sha256:b66a5c7b44fe47c7a91747f0ed5f5d969a3a13e4b2cdd1f9b98f99f3bf662bc0",
   "scan_roots": [
     "runtime",
     "install",
@@ -20,24 +20,36 @@
     },
     {
       "path": "install/birth_authority_provisioner.py",
-      "scope": "_adopt_transition_legacy_state_v2",
+      "scope": "_complete_transition_legacy_state_v2",
       "role": "store_owner",
       "capabilities": [
         "live_artifact_read",
         "store_write",
         "verified_store_read"
       ],
-      "destination": "maintenance-bound crash-resumable legacy-state adoption",
+      "destination": "post-convergence terminal legacy-state checkpoint under maintenance",
       "phase": "M4"
     },
     {
       "path": "install/birth_authority_provisioner.py",
-      "scope": "_inspect_transition_legacy_state_v2",
-      "role": "live_reader",
+      "scope": "_complete_transition_receipts_locked_v2",
+      "role": "store_owner",
       "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed receipt-completion checkpoint under the deployment lock",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_authority_provisioner.py",
+      "scope": "_prepare_transition_legacy_state_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "live_artifact_read",
+        "store_write",
         "verified_store_read"
       ],
-      "destination": "historical terminal legacy-state inspection after convergence",
+      "destination": "pre-convergence authoring adoption under maintenance",
       "phase": "M4"
     },
     {
@@ -295,46 +307,6 @@
       "phase": "M4"
     },
     {
-      "path": "install/executor_birth_python_environment_posix.py",
-      "scope": "_ensure_core_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "content-addressed root-owned production Python environment installer",
-      "phase": "M4"
-    },
-    {
-      "path": "install/executor_birth_python_environment_posix.py",
-      "scope": "_seal_tree_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "content-addressed root-owned production Python environment installer",
-      "phase": "M4"
-    },
-    {
-      "path": "install/executor_birth_python_environment_posix.py",
-      "scope": "ensure_python_environment_for_test_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "isolated test seam for the production Python environment installer",
-      "phase": "M4"
-    },
-    {
-      "path": "install/executor_birth_python_environment_posix.py",
-      "scope": "ensure_python_environment_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "fixed productive entry for the root-owned Python environment installer",
-      "phase": "M4"
-    },
-    {
       "path": "install/executor_birth_host_capability.py",
       "scope": "bind_locked_host_effects_v1",
       "role": "store_owner",
@@ -386,12 +358,22 @@
     },
     {
       "path": "install/executor_birth_legacy_state_adoption.py",
-      "scope": "adopt_legacy_state_v1",
+      "scope": "_complete_legacy_state_ready_v1",
       "role": "store_owner",
       "capabilities": [
         "store_write"
       ],
-      "destination": "pure orchestration of the persistent legacy-state FSM",
+      "destination": "closed post-convergence finalizer of the persistent legacy-state FSM",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_legacy_state_adoption.py",
+      "scope": "prepare_legacy_state_authoring_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "pre-convergence preparation of the persistent legacy-state FSM",
       "phase": "M4"
     },
     {
@@ -454,6 +436,46 @@
         "store_write"
       ],
       "destination": "centralized descriptor-bound POSIX metadata convergence",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_python_environment_posix.py",
+      "scope": "_ensure_core_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "content-addressed root-owned production Python environment installer",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_python_environment_posix.py",
+      "scope": "_seal_tree_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "content-addressed root-owned production Python environment installer",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_python_environment_posix.py",
+      "scope": "ensure_python_environment_for_test_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "isolated test seam for the production Python environment installer",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_python_environment_posix.py",
+      "scope": "ensure_python_environment_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "fixed productive entry for the root-owned Python environment installer",
       "phase": "M4"
     },
     {
@@ -558,16 +580,6 @@
     },
     {
       "path": "install/executor_birth_source_receiver.py",
-      "scope": "_recover_receive_residue_v1",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "bounded cleanup of an interrupted received-source staging tree",
-      "phase": "M4"
-    },
-    {
-      "path": "install/executor_birth_source_receiver.py",
       "scope": "_receive_source_for_test_v1",
       "role": "store_owner",
       "capabilities": [
@@ -614,6 +626,16 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership cutover coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_source_receiver.py",
+      "scope": "_recover_receive_residue_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "bounded cleanup of an interrupted received-source staging tree",
       "phase": "M4"
     },
     {
@@ -3234,16 +3256,6 @@
     },
     {
       "path": "runtime/executor_birth_ownership_coordinator.py",
-      "scope": "_transition_maintenance_inventory_v2",
-      "role": "administrative_tool",
-      "capabilities": [
-        "cutover_guard"
-      ],
-      "destination": "fresh maintenance inventory under the fixed transition sessions",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/executor_birth_ownership_coordinator.py",
       "scope": "prepare_ownership_cutover_v1",
       "role": "store_owner",
       "capabilities": [
@@ -3392,6 +3404,58 @@
         "store_write"
       ],
       "destination": "explicitly authorized recovery of one incomplete publication container",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_transition_chain_policy.py",
+      "scope": "_transition_chain_authority_source_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "validated phase-to-authority selector for the authenticated ownership chain",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_transition_gate.py",
+      "scope": "_transition_current_enumerator_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "authenticated current-inventory selector for the exact side of the initial ownership gate",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_transition_gate.py",
+      "scope": "_transition_gate_snapshot_locked_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed transition phase and chain observation under the exact deployment lock",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_transition_gate.py",
+      "scope": "_transition_inventory_under_maintenance_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "live_artifact_read",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "maintenance-frozen authenticated catalog census across the transition boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_transition_receipts.py",
+      "scope": "_build_staged_current_receipts_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "service-identity-bound receipt proof for the frozen transition inventory",
       "phase": "M4"
     },
     {
@@ -3681,6 +3745,16 @@
         "verified_store_read"
       ],
       "destination": "canonical dual-layout loader boundary; STORE_ONLY uses authenticated generations only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
+      "scope": "_load_catalog_for_cutover_audit_v1",
+      "role": "administrative_tool",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "cold read-only STORE_ONLY catalog audit for the ownership cutover",
       "phase": "M4"
     },
     {
@@ -4309,20 +4383,20 @@
     },
     {
       "path": "runtime/skill_registry.py",
-      "scope": "_store_candidate_preflight",
+      "scope": "_list_skills_from_state_v1",
       "role": "administrative_tool",
       "capabilities": [
-        "verified_store_read"
+        "authoring_read"
       ],
       "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
       "phase": "M4"
     },
     {
       "path": "runtime/skill_registry.py",
-      "scope": "list_skills",
+      "scope": "_store_candidate_preflight",
       "role": "administrative_tool",
       "capabilities": [
-        "authoring_read"
+        "verified_store_read"
       ],
       "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
       "phase": "M4"
@@ -4946,7 +5020,10 @@
       "runtime/executor_birth_preflight_attestation_store.py:_stage_v1",
       "runtime/executor_birth_preflight_attestation_store.py:_sync_unlink_v1",
       "runtime/executor_birth_preflight_attestation_store.py:_write_all_exact_v1",
-      "runtime/executor_birth_preflight_store_authority.py:bind_store_mutation_port_v1"
+      "runtime/executor_birth_preflight_store_authority.py:bind_store_mutation_port_v1",
+      "runtime/executor_birth_transition_chain_policy.py:_transition_chain_authority_source_v2",
+      "runtime/executor_birth_transition_gate.py:_transition_current_enumerator_v2",
+      "runtime/executor_birth_transition_gate.py:_transition_gate_snapshot_locked_v2"
     ],
     "sealed_modules": [
       "runtime/contract_store.py",
@@ -4958,6 +5035,9 @@
       "runtime/executor_birth_preflight_attestation_store.py",
       "runtime/executor_birth_preflight_store_authority.py",
       "runtime/executor_birth_reattestation.py",
+      "runtime/executor_birth_transition_chain_policy.py",
+      "runtime/executor_birth_transition_gate.py",
+      "runtime/executor_birth_transition_receipts.py",
       "runtime/sign.py"
     ],
     "exceptions": [

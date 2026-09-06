@@ -25,7 +25,7 @@ _PLAN_DOMAIN_V1 = b"metnos.executor-birth.systemd-quiescence-plan/v1\0"
 _SCOPES_V1 = ("system", "user")
 _QUIESCENT_STATES_V1 = frozenset({"failed", "inactive"})
 _INHIBITED_STATES_V1 = frozenset({
-    "disabled", "masked", "masked-runtime", "not-found",
+    "disabled", "masked", "masked-runtime", "not-found", "static",
 })
 _SYSTEMCTL_V1 = "/usr/bin/systemctl"
 _RUNUSER_V1 = "/usr/sbin/runuser"
@@ -226,16 +226,35 @@ def _parse_show_v1(
         fields = {key: value for key, value in pairs if len((key, value)) == 2}
     except (UnicodeDecodeError, ValueError) as exc:
         _fail("systemctl show output", exc)
-    expected = {"LoadState", "ActiveState", "UnitFileState", "MainPID"}
-    if len(pairs) != 4 or set(fields) != expected:
+    required = {"LoadState", "ActiveState"}
+    admitted = required | {"UnitFileState", "MainPID"}
+    if (
+        any(len(pair) != 2 for pair in pairs)
+        or len(fields) != len(pairs)
+        or not required.issubset(fields)
+        or not set(fields).issubset(admitted)
+    ):
         _fail("systemctl show output")
     try:
-        pid = int(fields["MainPID"])
+        if "MainPID" in fields:
+            pid = int(fields["MainPID"])
+        elif (
+            unit.endswith((".timer", ".target"))
+            or fields["LoadState"] == "not-found"
+        ):
+            pid = 0
+        else:
+            _fail("systemctl show PID")
     except ValueError as exc:
         _fail("systemctl show PID", exc)
+    unit_file_state = fields.get("UnitFileState")
+    if not unit_file_state and fields["LoadState"] == "not-found":
+        unit_file_state = "not-found"
+    elif unit_file_state is None:
+        _fail("systemctl show output")
     return SystemdUnitObservationV1(
         scope, unit, fields["LoadState"], fields["ActiveState"],
-        fields["UnitFileState"], pid,
+        unit_file_state, pid,
     )
 
 
@@ -248,10 +267,12 @@ class _SubprocessSystemdEffectsV1:
             _fail("systemctl action")
         if batch.scope == "user":
             _require_current_legacy_snapshot_v1(snapshot)
-        _run_command_v1(
+        completed = _run_command_v1(
             _command_v1(batch.scope, action, batch.units, snapshot),
             _command_environment_v1(batch.scope, snapshot),
         )
+        if type(completed.returncode) is not int or completed.returncode != 0:
+            _fail(f"systemctl {action} {batch.scope}")
 
     def observe(
         self, scope: str, unit: str, snapshot: PosixAccountSnapshotV1,
@@ -261,7 +282,7 @@ class _SubprocessSystemdEffectsV1:
         command = _command_v1(scope, "show", (unit,), snapshot)
         completed = _run_command_v1(
             command[:-2] + (
-                "--no-pager", "--plain",
+                "--no-pager", "--plain", "--all",
                 "--property=LoadState,ActiveState,UnitFileState,MainPID",
                 "--", unit,
             ),
@@ -275,9 +296,37 @@ def _observations_v1(plan, snapshot, effects) -> tuple[SystemdUnitObservationV1,
         effects.observe(batch.scope, unit, snapshot)
         for batch in plan.batches for unit in batch.units
     )
-    if any(type(item) is not SystemdUnitObservationV1 for item in observed):
+    expected = tuple(
+        (batch.scope, unit) for batch in plan.batches for unit in batch.units
+    )
+    if (
+        any(type(item) is not SystemdUnitObservationV1 for item in observed)
+        or tuple((item.scope, item.unit) for item in observed) != expected
+    ):
         _fail("effects observation")
     return observed
+
+
+def _action_batch_v1(
+    action: str, batch: SystemdQuiescenceBatchV1,
+    observations: tuple[SystemdUnitObservationV1, ...],
+) -> SystemdQuiescenceBatchV1 | None:
+    scoped = tuple(item for item in observations if item.scope == batch.scope)
+    if tuple(item.unit for item in scoped) != batch.units:
+        _fail("action observations")
+    if action == "disable":
+        units = tuple(
+            item.unit for item in scoped
+            if item.unit_file_state not in _INHIBITED_STATES_V1
+        )
+    elif action == "stop":
+        units = tuple(
+            item.unit for item in scoped
+            if item.active_state not in _QUIESCENT_STATES_V1 or item.main_pid != 0
+        )
+    else:
+        _fail("systemctl action")
+    return SystemdQuiescenceBatchV1(batch.scope, units) if units else None
 
 
 def _is_quiescent_v1(observations: tuple[SystemdUnitObservationV1, ...]) -> bool:
@@ -302,10 +351,17 @@ def _quiesce_core_v1(snapshot, effects, crash_seam=None) -> SystemdQuiescencePro
     before = _observations_v1(plan, account, effects)
     if _is_quiescent_v1(before):
         return SystemdQuiescenceProofV1(plan.plan_digest, before)
-    for action in ("disable", "stop"):
-        for batch in plan.batches:
-            effects.apply(action, batch, account)
-            _checkpoint_v1(crash_seam, f"{batch.scope}_{action}d")
+    for batch in plan.batches:
+        action_batch = _action_batch_v1("disable", batch, before)
+        if action_batch is not None:
+            effects.apply("disable", action_batch, account)
+        _checkpoint_v1(crash_seam, f"{batch.scope}_disabled")
+    after_disable = _observations_v1(plan, account, effects)
+    for batch in plan.batches:
+        action_batch = _action_batch_v1("stop", batch, after_disable)
+        if action_batch is not None:
+            effects.apply("stop", action_batch, account)
+        _checkpoint_v1(crash_seam, f"{batch.scope}_stopped")
     after = _observations_v1(plan, account, effects)
     if not _is_quiescent_v1(after):
         _fail("legacy units not quiescent")

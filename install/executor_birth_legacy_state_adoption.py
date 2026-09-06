@@ -41,6 +41,7 @@ class LegacyStateEffectsV1(Protocol):
 class LegacyStateAdoptionResultV1:
     record_sha256: str
     changed: bool
+    ready: bool
 
 
 def _records_v1(effects: LegacyStateEffectsV1):
@@ -107,37 +108,65 @@ def _ready_v1(request, effects, latest):
     return record
 
 
-def adopt_legacy_state_v1(
+def prepare_legacy_state_authoring_v1(
     request: LegacyStateRequestV1, effects: LegacyStateEffectsV1,
 ) -> LegacyStateAdoptionResultV1:
-    """Converge the four-state journal; terminal replay is historical."""
+    """Reach AUTHORING_ADOPTED; READY is reserved for post-convergence."""
     try:
         require_canonical_legacy_state_request_v1(request)
         records = _planned_v1(request, effects, _records_v1(effects))
-        changed = len(records) < 4
+        changed = len(records) < 3
         latest = records[-1]
         if latest.request_id != request.request_id:
             raise _fail("journal request changed", recovery=True)
         if latest.state is journal.LegacyStateV1.LEGACY_STATE_READY:
             return LegacyStateAdoptionResultV1(
-                latest.record_sha256, changed,
+                latest.record_sha256, changed, True,
             )
         if latest.state is journal.LegacyStateV1.PLANNED:
             latest = _inventoried_v1(request, effects, latest)
         if latest.state is journal.LegacyStateV1.INVENTORIED:
             latest = _adopted_v1(request, effects, latest)
-        if latest.state is journal.LegacyStateV1.AUTHORING_ADOPTED:
-            latest = _ready_v1(request, effects, latest)
-        if latest.state is not journal.LegacyStateV1.LEGACY_STATE_READY:
+        if latest.state is not journal.LegacyStateV1.AUTHORING_ADOPTED:
             raise _fail("journal terminal", recovery=True)
-        return LegacyStateAdoptionResultV1(latest.record_sha256, changed)
+        return LegacyStateAdoptionResultV1(
+            latest.record_sha256, changed, False,
+        )
     except LegacyStateAdoptionError:
         raise
     except LegacyStateError as exc:
         raise _fail(exc.detail, recovery=True) from exc
 
 
+def _complete_legacy_state_ready_v1(
+    request: LegacyStateRequestV1, effects: LegacyStateEffectsV1, *,
+    expected_record_sha256: str,
+) -> LegacyStateAdoptionResultV1:
+    """Record exact-service READY only after contract convergence."""
+    try:
+        require_canonical_legacy_state_request_v1(request)
+        records = _records_v1(effects)
+        latest = records[-1]
+        if (
+            latest.request_id != request.request_id
+            or latest.record_sha256 != expected_record_sha256
+        ):
+            raise _fail("journal changed", recovery=True)
+        changed = latest.state is journal.LegacyStateV1.AUTHORING_ADOPTED
+        if changed:
+            latest = _ready_v1(request, effects, latest)
+        if latest.state is not journal.LegacyStateV1.LEGACY_STATE_READY:
+            raise _fail("journal terminal", recovery=True)
+        return LegacyStateAdoptionResultV1(
+            latest.record_sha256, changed, True,
+        )
+    except LegacyStateAdoptionError:
+        raise
+    except (IndexError, LegacyStateError) as exc:
+        raise _fail("journal chain", recovery=True) from exc
+
+
 __all__ = [
     "LegacyStateAdoptionError", "LegacyStateAdoptionResultV1",
-    "LegacyStateEffectsV1", "adopt_legacy_state_v1",
+    "LegacyStateEffectsV1", "prepare_legacy_state_authoring_v1",
 ]

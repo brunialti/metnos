@@ -41,6 +41,9 @@ BIRTH_AUTHORITY_POLICY_V1 = BirthAuthorityPolicyV1(
         'runtime/executor_birth_preflight_attestation_store.py',
         'runtime/executor_birth_preflight_store_authority.py',
         'runtime/executor_birth_reattestation.py',
+        'runtime/executor_birth_transition_chain_policy.py',
+        'runtime/executor_birth_transition_gate.py',
+        'runtime/executor_birth_transition_receipts.py',
         'runtime/sign.py',
     ),
     coordinator_store_owners=(
@@ -178,6 +181,9 @@ BIRTH_AUTHORITY_POLICY_V1 = BirthAuthorityPolicyV1(
         'runtime/executor_birth_preflight_attestation_store.py:_sync_unlink_v1',
         'runtime/executor_birth_preflight_attestation_store.py:_write_all_exact_v1',
         'runtime/executor_birth_preflight_store_authority.py:bind_store_mutation_port_v1',
+        'runtime/executor_birth_transition_chain_policy.py:_transition_chain_authority_source_v2',
+        'runtime/executor_birth_transition_gate.py:_transition_current_enumerator_v2',
+        'runtime/executor_birth_transition_gate.py:_transition_gate_snapshot_locked_v2',
     ),
 )
 

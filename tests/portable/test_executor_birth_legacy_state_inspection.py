@@ -104,16 +104,17 @@ def test_live_inspection_accepts_matching_exact_service(
     ]
 
 
-def test_live_inspection_accepts_matching_fresh_state(monkeypatch) -> None:
+def test_live_inspection_rejects_fresh_state_after_ready(monkeypatch) -> None:
     digest = "sha256:" + "a" * 64
     request, latest, _events = _install_seams(
         monkeypatch, current_sha256=digest,
         disposition=LegacyStateDispositionV1.fresh,
         inventory_disposition=LegacyStateDispositionV1.fresh,
     )
-    assert inspection.inspect_ready_legacy_state_live_v1(
-        request, object(), latest.record_sha256, object(),
-    ) is latest
+    with pytest.raises(inspection.LegacyStateInspectionError):
+        inspection.inspect_ready_legacy_state_live_v1(
+            request, object(), latest.record_sha256, object(),
+        )
 
 
 def test_history_inspection_does_not_reopen_changed_service_state(

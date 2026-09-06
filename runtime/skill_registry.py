@@ -357,29 +357,31 @@ def _load_state(
     Read-only callers receive the same stable diagnostic and can render it.
     """
     del strict
+    return _load_state_snapshot_v1(trusted_owner=trusted_owner)[0]
+
+
+def _load_state_snapshot_v1(
+    *, trusted_owner: tuple[int, int] | None = None,
+) -> tuple[dict[str, bool], tuple[str, str, int, str]]:
+    """Decode policy and derive its cache identity from the same bytes."""
     payload = _read_state_payload(trusted_owner=trusted_owner)
     if payload is None:
-        return {}
-    return _decode_state_payload(payload)
+        return {}, ("skill_state", "absent", 0, "")
+    return _decode_state_payload(payload), (
+        "skill_state", "present", len(payload), hashlib.sha256(payload).hexdigest(),
+    )
 
 
-def skill_state_cache_signature() -> tuple[str, str, int, str]:
+def skill_state_cache_signature(
+    *, trusted_owner: tuple[int, int] | None = None,
+) -> tuple[str, str, int, str]:
     """Return a validated cache token or raise ``skill_state_invalid``.
 
     The loader must validate the policy *before* consulting its catalog cache;
     otherwise an unreadable or redirected file is indistinguishable from an
     absent one and an older catalog can remain live.
     """
-    payload = _read_state_payload()
-    if payload is None:
-        return ("skill_state", "absent", 0, "")
-    _decode_state_payload(payload)
-    return (
-        "skill_state",
-        "present",
-        len(payload),
-        hashlib.sha256(payload).hexdigest(),
-    )
+    return _load_state_snapshot_v1(trusted_owner=trusted_owner)[1]
 
 
 def _fsync_directory(path: Path) -> None:
@@ -577,6 +579,13 @@ def list_skills(
               `None` (default) = nessun filtro.
     """
     state = _load_state(trusted_owner=_trusted_owner)
+    return _list_skills_from_state_v1(state, lang=lang)
+
+
+def _list_skills_from_state_v1(
+    state: Mapping[str, bool], *, lang: str | None = None,
+) -> list[SkillInfo]:
+    """Build definitions from one already authenticated policy snapshot."""
     out: list[SkillInfo] = []
     for skill_dir in _isd():
         skill_md = skill_dir / "SKILL.md"
@@ -659,9 +668,9 @@ def get_skill_info(
     return None
 
 
-def _skill_definitions() -> dict[str, SkillInfo]:
+def _skill_definitions_from_v1(infos: list[SkillInfo]) -> dict[str, SkillInfo]:
     definitions: dict[str, SkillInfo] = {}
-    for info in list_skills():
+    for info in infos:
         previous = definitions.get(info.name)
         if previous is not None and (
             previous.lang != info.lang
@@ -672,6 +681,10 @@ def _skill_definitions() -> dict[str, SkillInfo]:
             )
         definitions.setdefault(info.name, info)
     return definitions
+
+
+def _skill_definitions() -> dict[str, SkillInfo]:
+    return _skill_definitions_from_v1(list_skills())
 
 
 def _candidate_policy(
@@ -686,8 +699,9 @@ def _candidate_policy(
         if info is None:
             # Preserve the historical treatment of structurally installed
             # bundles whose optional SKILL.md metadata is unavailable.  Their
-            # manifests still cross the authenticated admission boundary.
-            return True
+            # manifests still cross the authenticated admission boundary,
+            # but an explicit operator disable remains authoritative.
+            return bool(state.get(skill_name, True))
         configured = state.get(skill_name, bool(info.auto_enable))
         locale_matches = info.lang in {"any", runtime_lang}
         return bool(configured) and locale_matches
@@ -966,16 +980,29 @@ def _is_skill_enabled_for_owner_v1(
     name: str, trusted_owner: tuple[int, int],
 ) -> bool:
     """Read service-owned policy during the root-only ownership transition."""
+    return _skill_enabled_snapshot_for_owner_v1(trusted_owner)(name)
+
+
+def _skill_enabled_snapshot_for_owner_v1(
+    trusted_owner: tuple[int, int],
+) -> Callable[[str], bool]:
+    """Capture one owner-authenticated visibility policy for a stable scan."""
+    return _skill_policy_snapshot_for_owner_v1(trusted_owner)[0]
+
+
+def _skill_policy_snapshot_for_owner_v1(
+    trusted_owner: tuple[int, int],
+) -> tuple[Callable[[str], bool], tuple[str, str, int, str]]:
+    """Bind effective visibility and cache identity to one policy read."""
     if not hasattr(os, "geteuid") or os.geteuid() != 0:
         raise SkillEnablementError(
             "skill_state_invalid", "administrative reader required",
         )
-    info = get_skill_info(name, _trusted_owner=trusted_owner)
-    if info is None:
-        return True
-    if info.lang != "any" and info.lang != _C.DEFAULT_LANG.lower():
-        return False
-    return info.enabled
+    state, signature = _load_state_snapshot_v1(trusted_owner=trusted_owner)
+    definitions = _skill_definitions_from_v1(
+        _list_skills_from_state_v1(state),
+    )
+    return _candidate_policy(state, definitions), signature
 
 
 def matches_locale(lang_field: str, runtime_lang: str | None = None) -> bool:

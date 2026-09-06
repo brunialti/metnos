@@ -1249,13 +1249,13 @@ def _verify_initial_catalog_v1(
     skill_enabled = None
     if (
         trusted_authoring_owner is not None
-        and hasattr(os, "geteuid")
-        and os.geteuid() != trusted_authoring_owner[0]
+        and hasattr(os, "geteuid") and hasattr(os, "getegid")
+        and (os.geteuid(), os.getegid()) != trusted_authoring_owner
     ):
-        from skill_registry import _is_skill_enabled_for_owner_v1
+        from skill_registry import _skill_enabled_snapshot_for_owner_v1
 
-        skill_enabled = lambda name: _is_skill_enabled_for_owner_v1(
-            name, trusted_authoring_owner,
+        skill_enabled = _skill_enabled_snapshot_for_owner_v1(
+            trusted_authoring_owner,
         )
     if mode is ProductionStoreMode.LEGACY:
         if report is None:
@@ -1270,7 +1270,8 @@ def _verify_initial_catalog_v1(
         if (
             trusted_authoring_owner is None
             or not hasattr(os, "geteuid")
-            or os.geteuid() == trusted_authoring_owner[0]
+            or not hasattr(os, "getegid")
+            or (os.geteuid(), os.getegid()) == trusted_authoring_owner
         ):
             materialize_repository_authoring_for_transition_v1(
                 trusted_publics=trusted,

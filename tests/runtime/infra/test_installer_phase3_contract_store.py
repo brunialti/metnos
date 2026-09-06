@@ -62,12 +62,15 @@ def test_shared_cutover_guard_proves_the_complete_lifecycle_catalog() -> None:
     } for item in evidence["units"])
 
 
-def test_shared_cutover_guard_rejects_a_required_unit_not_found() -> None:
+@pytest.mark.parametrize("load_state", ["loaded", "masked", "not-found"])
+def test_shared_cutover_guard_accepts_named_quiescent_load_states(
+    load_state,
+) -> None:
     class Systemctl:
         @staticmethod
         def show(unit: str, scope: str) -> dict:
             return {
-                "LoadState": "not-found",
+                "LoadState": load_state,
                 "ActiveState": "inactive",
                 "MainPID": "0",
             }
@@ -78,11 +81,8 @@ def test_shared_cutover_guard_rejects_a_required_unit_not_found() -> None:
             "source": "inactive_http_and_inactive_sidecar",
         },
     )
-    with pytest.raises(
-        contract_cutover_guard.ContractCutoverGuardError,
-        match="quiescence_unknown",
-    ):
-        contract_cutover_guard.prove_stack_stopped(reconciler)
+    evidence = contract_cutover_guard.prove_stack_stopped(reconciler)
+    assert {item["load_state"] for item in evidence["units"]} == {load_state}
 
 
 def test_managed_server_cutover_rejects_non_linux_platform_early(
