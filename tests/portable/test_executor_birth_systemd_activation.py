@@ -11,7 +11,7 @@ import subprocess
 import time
 from contextlib import ExitStack
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -787,6 +787,7 @@ def _build_prerequisite_and_graph(
     claims.mkdir(mode=0o755, parents=True)
     transaction.mkdir(mode=0o755, parents=True)
     _write_control(claims / "initial.json", claim.encode())
+    legacy_state_record_sha256 = _install_legacy_state_journal(fixture)
     previous_hash = None
     for sequence, state in enumerate(OwnershipCoordinatorStateV1):
         if sequence > 5:
@@ -817,7 +818,7 @@ def _build_prerequisite_and_graph(
             target_set_json_sha256="8" * 64,
             context_transition_id=cutover.context_transition_id,
             current_inventory_hash=current_inventory_hash_v1(proof.inventory),
-            legacy_state_record_sha256="sha256:" + "0" * 64,
+            legacy_state_record_sha256=legacy_state_record_sha256,
             current_proof=proof if sequence >= 1 else None,
             maintenance_before_hash=(maintenance_hash if sequence >= 1 else None),
             maintenance_after_hash=(maintenance_hash if sequence >= 1 else None),
@@ -867,6 +868,50 @@ def _build_prerequisite_and_graph(
     prerequisite_root = OWNERSHIP_ROOT / "startup-prerequisites-v1"
     prerequisite_root.mkdir(mode=0o755)
     return prerequisite_bytes, request_id, record
+
+
+def _install_legacy_state_journal(fixture: _ActivationFixture) -> str:
+    """Complete the synthetic G7 history; this does not prove real adoption."""
+    from executor_birth_account_identity import (
+        PosixAccountRecordV1, PosixAccountSnapshotV1,
+    )
+    from executor_birth_host_layout import SERVICE_ACCOUNT_POLICY_V1
+    import executor_birth_legacy_state as legacy
+
+    # Like the synthetic context/set/receipt above, this nominal historical
+    # account is only input to pure constructors, never an account lookup or
+    # a claim that the guest's daemon account is the product service account.
+    policy = SERVICE_ACCOUNT_POLICY_V1
+    account = PosixAccountSnapshotV1(PosixAccountRecordV1(
+        policy.name, fixture.account.uid, fixture.account.gid,
+        policy.home.as_posix(), policy.shell.as_posix(),
+    ), (fixture.account.gid,))
+    request = legacy.build_legacy_state_request_v1(
+        account, _raw_digest(fixture.manifest),
+    )
+    observation = legacy.LegacyStateObservationV1(tuple(
+        legacy.LegacyPathObservationV1(
+            PurePosixPath(relative), legacy.LegacyNodeKindV1.directory,
+            fixture.account.uid, fixture.account.gid, 0o700, 2, None, None,
+        ) for relative in ("contract-authoring", "contract-authoring/v1")
+    ))
+    planned = legacy.plan_legacy_state_v1(request)
+    inventoried = legacy.record_legacy_state_inventoried_v1(
+        planned, request, observation,
+    )
+    adopted = legacy.record_authoring_adopted_v1(
+        inventoried, request, observation, observation,
+    )
+    ready = legacy.record_legacy_state_ready_v1(adopted, request, observation)
+    root = OWNERSHIP_ROOT / "legacy-state-adoption-v1"
+    root.mkdir(mode=0o700)
+    _write_control(root / "journal.lock", b"", 0o600)
+    for record in (planned, inventoried, adopted, ready):
+        _write_control(
+            root / f"record-{record.sequence:03d}.json",
+            legacy.encode_legacy_state_record_v1(record),
+        )
+    return ready.record_sha256
 
 
 def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
