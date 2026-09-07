@@ -103,7 +103,23 @@ minuti. Il limite e' ora 50 minuti e una prova lo mantiene maggiore della somma
 dei limiti di convergenza, attivazione e verifica. E' un limite massimo, non un
 ritardo aggiunto al percorso normale.
 
-## 5. Prove richieste
+## 5. Lettura storica prima della preparazione del nuovo contesto
+
+La verifica della prima migrazione deve distinguere autenticazione dei byte
+storici ed esecuzione sotto autorita'. Ricostruire il contesto V1 dai sorgenti
+nuovi prima di leggere i contratti invariati produce correttamente un mismatch,
+ma nel punto sbagliato: la lettura non richiede quel runtime.
+
+Una vista immutabile condivisa autentica marker, insieme, materiali e legami
+delle chiavi sotto la stessa barriera, restituendo soltanto identita' e chiavi
+pubbliche. La convergenza, la verifica iniziale con ricevute deferite alla V2 e
+l'enumerazione sul lato storico usano questa vista. Il runtime rigoroso viene
+costruito soltanto se serve davvero pubblicare un contratto; in quel caso il
+contesto V1 non corrispondente continua a essere rifiutato. Nessun runtime puo'
+quindi eseguire una vecchia autorita' su sorgenti diversi. La riattestazione V2
+rimane legata al nuovo contesto della distribuzione autenticata.
+
+## 6. Prove richieste
 
 - selezione positiva solo per la prima distribuzione staged;
 - rifiuto per contesto richiesto, distribuzione successiva e transizione
@@ -118,6 +134,9 @@ ritardo aggiunto al percorso normale.
   vincolata al secondo;
 - rifiuto prima del subprocess per zero o due identita' Python di servizio;
 - budget del processo chiuso maggiore dei sottoprocessi che contiene;
+- migrazione con contesto storico A e sorgenti realmente diversi B: lettura
+  autenticata e convergenza senza pubblicazione, runtime V1 ancora rifiutato;
+- rifiuto di alterazioni a insieme storico, chiavi o binding del contratto;
 - suite RM-0008 e prova completa sul clone isolato prima di ogni atto live.
 
 RM0008-Unita: RM-VARIAZIONE-03

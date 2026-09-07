@@ -219,6 +219,60 @@ def _load_historical_transition_anchor_v1():
             return load_prepared_set_v1(session)
 
 
+@dataclass(frozen=True, slots=True)
+class HistoricalTransitionVerifiersV1:
+    """Persisted V1 identity and public verification keys, never a runtime."""
+
+    prepared: object
+    author_verifier_keys: Mapping[str, object]
+    admission_verifier_keys: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        for field in ("author_verifier_keys", "admission_verifier_keys"):
+            object.__setattr__(
+                self, field, MappingProxyType(dict(getattr(self, field))),
+            )
+
+
+def _load_historical_transition_verifiers_v1() -> HistoricalTransitionVerifiersV1:
+    """Authenticate existing V1 artifacts without selecting runtime authority.
+
+    The first transition must read the historical catalog before preparing its
+    new context.  Its marker, set, material and key bindings remain validated
+    under one barrier; no private keys or executable authorities escape this
+    reader.  Runtime construction still rebuilds the context independently.
+    """
+    from executor_birth_keystore import (
+        BirthKeyStoreError, _load_birth_keystore_in_session,
+    )
+    from executor_birth_prepared_set import (
+        AUTHORITY_SETS_BASENAME_V1, AUTHOR_STORE_BASENAME_V1, PreparedSetError,
+        load_prepared_set_v1,
+    )
+
+    session = open_prepared_root_session_v1()
+    with session:
+        with session.global_lock(exclusive=False, create=False):
+            prepared = load_prepared_set_v1(session)
+            try:
+                author = _load_birth_keystore_in_session(
+                    (AUTHOR_STORE_BASENAME_V1,), session,
+                )
+                admission = _load_birth_keystore_in_session(
+                    (AUTHORITY_SETS_BASENAME_V1, prepared.set_id, "admission"),
+                    session,
+                )
+            except BirthKeyStoreError as exc:
+                raise PreparedSetError(
+                    "birth_prepared_set_unavailable", exc,
+                ) from None
+            return HistoricalTransitionVerifiersV1(
+                prepared=prepared,
+                author_verifier_keys=author.verifier_keys,
+                admission_verifier_keys=admission.verifier_keys,
+            )
+
+
 def _load_sealed_authorities_from_set_v1(session, prepared, open_sources):
     """Load one already selected set while its root barrier is held."""
     from executor_birth_context import _context_epoch

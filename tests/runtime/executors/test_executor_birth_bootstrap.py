@@ -309,11 +309,15 @@ def test_transition_authenticates_current_without_reusing_v1_receipts(
         manifest_inventory, "inventory_store_manifests", store_inventory,
     )
     monkeypatch.setattr(
-        prepared_root, "load_sealed_authorities_v1",
+        prepared_root, "_load_historical_transition_verifiers_v1",
         lambda: SimpleNamespace(
-            author=SimpleNamespace(verifier_keys={}),
-            admission=SimpleNamespace(verifier_keys={}),
+            prepared=object(), author_verifier_keys={},
+            admission_verifier_keys={},
         ),
+    )
+    monkeypatch.setattr(
+        prepared_root, "load_sealed_authorities_v1",
+        lambda: pytest.fail("deferred receipt verification selected a runtime"),
     )
     monkeypatch.setattr(
         bootstrap, "_transition_historical_receipt_v1",
@@ -340,6 +344,33 @@ def test_transition_authenticates_current_without_reusing_v1_receipts(
         ("snapshot", (991, 991)),
         ("github", (991, 991)),
     ]
+
+
+def test_nondeferred_initial_verification_keeps_strict_context_validation(
+    monkeypatch,
+) -> None:
+    import contract_store
+    import executor_birth_prepared_root as prepared_root
+    from contract_bootstrap import ProductionStoreMode
+    from executor_birth_prepared_set import PreparedSetError
+
+    monkeypatch.setattr(
+        contract_store, "production_store_mode",
+        lambda: ProductionStoreMode.STORE_ONLY,
+    )
+    monkeypatch.setattr(
+        prepared_root, "_load_historical_transition_verifiers_v1",
+        lambda: pytest.fail("ordinary initial verification selected history"),
+    )
+
+    def mismatched_context():
+        raise PreparedSetError("birth_prepared_set_mismatch")
+
+    monkeypatch.setattr(
+        prepared_root, "load_sealed_authorities_v1", mismatched_context,
+    )
+    with pytest.raises(PreparedSetError, match="birth_prepared_set_mismatch"):
+        bootstrap.verify_initial_installer_store_v1(prove_quiescent=lambda: True)
 
 
 def test_transition_allows_only_an_absent_historical_receipt(

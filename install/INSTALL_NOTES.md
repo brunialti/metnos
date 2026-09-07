@@ -85,6 +85,12 @@ verifies it again from the installed copy, completes the durable ownership
 coordinator, and activates only the target and readiness units named by the
 signed service catalog.
 
+Before the first transition prepares its new context, unchanged current
+contracts are authenticated with the verified historical set's public keys.
+This read-only verification does not construct a historical Birth runtime.
+Any contract requiring publication still needs the strict runtime context
+check; the transition never executes old authority under changed source.
+
 The transition is resumable and exact repetition is idempotent. The live
 user-level HTTP unit is stopped inside the coordinated switch and the signed
 system unit takes ownership; the same-name system unit is preserved as the

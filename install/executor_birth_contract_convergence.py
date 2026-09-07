@@ -141,7 +141,9 @@ def converge() -> dict[str, int]:
         ManifestOrigin, inventory_authoring_manifests,
         inventory_store_manifests,
     )
-    from executor_birth_prepared_root import load_sealed_authorities_v1
+    from executor_birth_prepared_root import (
+        _load_historical_transition_verifiers_v1,
+    )
 
     source_inventory = inventory_authoring_manifests()
     _container, store_root, _marker = contract_store._production_paths()
@@ -153,10 +155,10 @@ def converge() -> dict[str, int]:
     if not set(stored).issubset(sources) or not stored:
         raise _fail("birth_transition_contract_catalog_mismatch")
 
-    sealed = load_sealed_authorities_v1()
-    trusted = tuple(sorted(sealed.author.verifier_keys.items()))
-    admission_verifiers = sealed.admission.verifier_keys
-    transition_runtime = _build_initial_transition_installer_runtime_v1()
+    historical = _load_historical_transition_verifiers_v1()
+    trusted = tuple(sorted(historical.author_verifier_keys.items()))
+    admission_verifiers = historical.admission_verifier_keys
+    transition_runtime = None
     examined = 0
     changed = 0
     current = 0
@@ -221,6 +223,10 @@ def converge() -> dict[str, int]:
                 ):
                     current += 1
                     continue
+            if transition_runtime is None:
+                # Verification alone does not select historical authority for
+                # execution.  A changed contract still needs a strict runtime.
+                transition_runtime = _build_initial_transition_installer_runtime_v1()
             birth = transition_runtime.submit(BirthIntent(
                 candidate_source_root=candidate,
                 contract_id=contract_id,

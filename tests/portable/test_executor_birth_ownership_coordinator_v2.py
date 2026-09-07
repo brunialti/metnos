@@ -538,7 +538,7 @@ def install_maintenance_fixture(monkeypatch, tmp_path, *, drift: bool):
     return port, verified, item
 
 
-def test_initial_transition_inventory_uses_historical_sealed_authority(
+def test_initial_transition_inventory_uses_only_historical_public_verifiers(
     monkeypatch,
 ):
     import executor_birth_authority_gate as authority_gate
@@ -551,11 +551,7 @@ def test_initial_transition_inventory_uses_historical_sealed_authority(
 
     state = Initial()
     verifier = object()
-    sealed = type("Sealed", (), {
-        "author": type("Author", (), {
-            "verifier_keys": {"author-v1": verifier},
-        })(),
-    })()
+    historical = SimpleNamespace(author_verifier_keys={"author-v1": verifier})
     expected = object()
     observed = {}
     monkeypatch.setattr(
@@ -569,7 +565,12 @@ def test_initial_transition_inventory_uses_historical_sealed_authority(
         authority_gate, "closed_build_enforcement", lambda: True,
     )
     monkeypatch.setattr(
-        prepared_root, "load_sealed_authorities_v1", lambda: sealed,
+        prepared_root, "_load_historical_transition_verifiers_v1",
+        lambda: historical,
+    )
+    monkeypatch.setattr(
+        prepared_root, "load_sealed_authorities_v1",
+        lambda: pytest.fail("historical inventory selected runtime authorities"),
     )
     monkeypatch.setattr(
         coordinator_module, "_current_reattestation_port_v1",
@@ -638,11 +639,16 @@ def test_initial_transition_partial_chain_uses_historical_authority(
     distribution = SimpleNamespace(release_sequence=1)
     phase = SimpleNamespace(state=phase_state, head_id=None)
     verifier, expected = object(), object()
-    sealed = SimpleNamespace(
-        author=SimpleNamespace(verifier_keys={"author-v1": verifier}),
-    )
+    historical = SimpleNamespace(author_verifier_keys={"author-v1": verifier})
     monkeypatch.setattr(authority_gate, "closed_build_enforcement", lambda: True)
-    monkeypatch.setattr(prepared_root, "load_sealed_authorities_v1", lambda: sealed)
+    monkeypatch.setattr(
+        prepared_root, "_load_historical_transition_verifiers_v1",
+        lambda: historical,
+    )
+    monkeypatch.setattr(
+        prepared_root, "load_sealed_authorities_v1",
+        lambda: pytest.fail("partial initial chain selected runtime authorities"),
+    )
     monkeypatch.setattr(
         coordinator_module, "_current_reattestation_port_v1",
         lambda: pytest.fail("partial initial chain selected ordinary runtime"),
@@ -732,6 +738,10 @@ def test_transition_verified_chain_uses_required_context_authority(
     monkeypatch.setattr(
         transition_gate_module, "_transition_chain_authority_source_v2",
         lambda observed: "required",
+    )
+    monkeypatch.setattr(
+        prepared_root, "_load_historical_transition_verifiers_v1",
+        lambda: pytest.fail("required chain selected historical verifiers"),
     )
     monkeypatch.setattr(
         prepared_root, "load_required_context_runtime_v1",

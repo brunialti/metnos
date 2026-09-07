@@ -1241,7 +1241,9 @@ def _verify_initial_catalog_v1(
 ) -> dict[str, int]:
     from contract_bootstrap import ProductionStoreMode
     from contract_store import current_manifest, production_store_mode
-    from executor_birth_prepared_root import load_sealed_authorities_v1
+    from executor_birth_prepared_root import (
+        _load_historical_transition_verifiers_v1, load_sealed_authorities_v1,
+    )
     from manifest_inventory import (
         inventory_authoring_manifests, inventory_store_manifests,
     )
@@ -1267,8 +1269,16 @@ def _verify_initial_catalog_v1(
     ):
         raise BirthBootstrapError("birth_initial_transition_invalid")
     mode = production_store_mode()
-    sealed = load_sealed_authorities_v1()
-    trusted = tuple(sorted(sealed.author.verifier_keys.items()))
+    if defer_v1_receipts_to_transition_v2:
+        historical = _load_historical_transition_verifiers_v1()
+        prepared = historical.prepared
+        trusted = tuple(sorted(historical.author_verifier_keys.items()))
+        admission_verifiers = historical.admission_verifier_keys
+    else:
+        sealed = load_sealed_authorities_v1()
+        prepared = sealed.prepared
+        trusted = tuple(sorted(sealed.author.verifier_keys.items()))
+        admission_verifiers = sealed.admission.verifier_keys
     skill_enabled = None
     if (
         trusted_authoring_owner is not None
@@ -1329,7 +1339,7 @@ def _verify_initial_catalog_v1(
         catalog = report.get("catalog")
         receipt_hashes = report.get("birth_receipts")
         if (
-            report.get("prepared_set_id") != sealed.prepared.set_id
+            report.get("prepared_set_id") != prepared.set_id
             or not isinstance(catalog, dict)
             or set(catalog) != set(refs)
             or not isinstance(receipt_hashes, dict)
@@ -1345,7 +1355,7 @@ def _verify_initial_catalog_v1(
             encoded = _verified_initial_receipt_v1(
                 refs[key], generation_id, store_root=store_root,
                 trusted_publics=trusted,
-                admission_verifiers=sealed.admission.verifier_keys,
+                admission_verifiers=admission_verifiers,
                 request_id=expected_requests.get(key),
             )
             if receipt_hashes is not None and receipt_hashes[key] != (
@@ -1365,7 +1375,7 @@ def _verify_initial_catalog_v1(
                 raise BirthBootstrapError("birth_initial_catalog_changed")
             historical = _transition_historical_receipt_v1(
                 refs[key], generation_id, store_root=store_root,
-                admission_verifiers=sealed.admission.verifier_keys,
+                admission_verifiers=admission_verifiers,
             )
             verified_receipts += int(historical is not None)
     _require_initial_install_quiescence_v1(prove_quiescent)

@@ -88,10 +88,9 @@ def _convergence_environment(monkeypatch, tmp_path: Path):
     )
     monkeypatch.setattr(contract_store, "current_revision_id", lambda *_args, **_kwargs: "g")
     monkeypatch.setattr(
-        executor_birth_prepared_root, "load_sealed_authorities_v1",
+        executor_birth_prepared_root, "_load_historical_transition_verifiers_v1",
         lambda: SimpleNamespace(
-            author=SimpleNamespace(verifier_keys={}),
-            admission=SimpleNamespace(verifier_keys={}),
+            author_verifier_keys={}, admission_verifier_keys={},
         ),
     )
     monkeypatch.setattr(executor_birth_intent, "require_birth_intent_adapter", lambda: None)
@@ -120,9 +119,14 @@ def test_exact_current_contract_is_not_revised_or_republished(
     tmp_path: Path, monkeypatch,
 ) -> None:
     import contract_store
+    import executor_birth_bootstrap
     import executor_birth_intent
 
     _convergence_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        executor_birth_bootstrap, "_build_initial_transition_installer_runtime_v1",
+        lambda: pytest.fail("verification selected a publication runtime"),
+    )
     manifest = b'exact = true\n'
     state = b'{}\n'
     monkeypatch.setattr(
@@ -210,4 +214,39 @@ def test_corrupt_current_generation_is_not_treated_as_a_mismatch(
 
     monkeypatch.setattr(contract_store, "_load_generation", corrupt)
     with pytest.raises(contract_store.ContractStoreError, match="signature_invalid"):
+        convergence.converge()
+
+
+def test_changed_contract_still_requires_a_matching_runtime_context(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    import contract_store
+    import executor_birth_bootstrap
+    from executor_birth_prepared_set import PreparedSetError
+
+    _convergence_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        convergence, "_candidate_for_transition",
+        lambda _ref, destination, *, packaging_revision:
+        _write_candidate(destination, b'new = true\n', b'{}\n'),
+    )
+    monkeypatch.setattr(
+        convergence, "_source_generation_has_historical_receipt",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        contract_store, "_load_generation",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            manifest_bytes=b'old = true\n', language_state_bytes=b'{}\n',
+        ),
+    )
+
+    def mismatched_runtime():
+        raise PreparedSetError("birth_prepared_set_mismatch")
+
+    monkeypatch.setattr(
+        executor_birth_bootstrap, "_build_initial_transition_installer_runtime_v1",
+        mismatched_runtime,
+    )
+    with pytest.raises(PreparedSetError, match="birth_prepared_set_mismatch"):
         convergence.converge()

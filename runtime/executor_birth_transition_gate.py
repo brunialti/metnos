@@ -267,7 +267,9 @@ del _build_transition_current_enumerator_registry_v2
 def _transition_current_enumerator_v2(gate, session):
     """Select the authenticated read port valid on this side of the gate."""
     from executor_birth_authority_gate import closed_build_enforcement
-    from executor_birth_prepared_root import load_sealed_authorities_v1
+    from executor_birth_prepared_root import (
+        _load_historical_transition_verifiers_v1,
+    )
 
     observed = _require_transition_gate_snapshot_locked_v2(gate, session)
     authority_source = _transition_chain_authority_source_v2(observed)
@@ -287,9 +289,11 @@ def _transition_current_enumerator_v2(gate, session):
         )
     from contract_store import _store_root
 
-    if sealed is None:
-        sealed = load_sealed_authorities_v1()
-    trusted = tuple(sorted(sealed.author.verifier_keys.items()))
+    if authority_source == "historical":
+        historical = _load_historical_transition_verifiers_v1()
+        trusted = tuple(sorted(historical.author_verifier_keys.items()))
+    else:
+        trusted = tuple(sorted(sealed.author.verifier_keys.items()))
     return _issue_transition_current_enumerator_v2(
         gate=gate,
         session=session,
