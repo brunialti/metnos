@@ -1168,25 +1168,17 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         os.chown(fixture.marker_root, fixture.account.uid, fixture.account.gid)
         _systemctl("daemon-reload")
 
-        # The prerequisite is signed against the EFFECTIVE topology, and the
-        # launch it authorises happens while the timer is running. Measured on
-        # systemd 255.4: the reverse causal edge `TriggeredBy` exists only
-        # while the trigger is active — absent after `daemon-reload`, present
-        # once the timer starts, absent again after stop. Capturing with the
-        # timer stopped therefore signed a topology the launch could never
-        # present, and the signed binding refused every time. The capture is
-        # taken in the activation state the launch will observe.
-        _systemctl("start", fixture.timer_name)
-        _wait_for(
-            lambda: fixture.timer_name in _systemctl(
-                "show", fixture.service_name, "--property=TriggeredBy",
-                "--value", check=False,
-            ).stdout,
-            diagnose=lambda: _unit_diagnosis(fixture.timer_name),
-        )
+        # Production signs its prerequisite before activating the timer.
+        # On systemd 255.4 the inverse `TriggeredBy` edge is absent here and
+        # appears only after activation. Admission must accept that exact
+        # signed timer without recapturing or rewriting this prerequisite.
+        assert _systemctl(
+            "show", fixture.timer_name, "--property=ActiveState", "--value",
+        ).stdout.strip() == "inactive"
+        assert fixture.timer_name not in _systemctl(
+            "show", fixture.service_name, "--property=TriggeredBy", "--value",
+        ).stdout.split()
         captured_tcb, effective, candidate_hash = _capture_live_bindings(fixture)
-        _systemctl("stop", fixture.timer_name, check=False)
-        _quiesce_service(fixture.service_name)
         prerequisite, request_id, head_required = (
             _build_prerequisite_and_graph(
                 fixture, captured_tcb, effective, candidate_hash,
@@ -1400,15 +1392,20 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         # rewrite the exact attestation published by the earlier C3 crossing.
         assert _attestation_snapshot() == published_before
 
-        # Both causal edges are present in the canonical snapshot, in both
-        # directions, rather than only in the direct systemd reading.  The
-        # same single snapshot also carries the reference hash.
+        # The active manager exposes the inverse edge, but that exact signed
+        # timer is not residual authority. Its declared forward edge remains
+        # in the snapshot, and activation must preserve the inactive hash.
+        assert fixture.timer_name in _systemctl(
+            "show", fixture.service_name, "--property=TriggeredBy", "--value",
+        ).stdout.split()
         _tcb, baseline_observation, _candidate = _capture_live_bindings(fixture)
         baseline_hash = baseline_observation.snapshot.effective_units_hash
+        assert baseline_hash == effective.snapshot.effective_units_hash
+        assert prerequisite_path.read_bytes() == prerequisite
         assert ("Triggers", fixture.service_name) in _edges_of(
             baseline_observation, fixture.timer_name,
         )
-        assert ("TriggeredBy", fixture.timer_name) in _edges_of(
+        assert ("TriggeredBy", fixture.timer_name) not in _edges_of(
             baseline_observation, fixture.service_name,
         )
 

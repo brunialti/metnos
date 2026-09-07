@@ -816,7 +816,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:c2c0cd9692fbe04af8a8feaf0c41efe613ca817602a3a78f85aef811d31850a8"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:c1a6666f44a1166f02fa6801fc3d52c4dcecc2b23b77f01225ecb68d9b84630a"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -12899,11 +12899,26 @@ def _compile_systemd_manager_projection_v1(
 def _compile_systemd_added_edge_pairs_v1(
     entry: _ServiceCatalogEntryV1,
     observed: Mapping[str, tuple[str, ...]],
+    *, catalog: _DecodedServiceCatalogV1,
 ) -> tuple[tuple[str, str], ...]:
     plan = _systemd_property_plan_v1(entry)
     _validate_systemd_property_cardinality_v1(plan, observed)
     assert entry.unit_spec is not None
     configured = _service_directive_index_v1(entry.unit_spec)
+    # systemd exposes this reverse edge only while the timer is active. Its
+    # cause is already signed and checked as Timer.Unit in the same catalog;
+    # it is not a manager-added dependency. Keep every other observed edge.
+    declared_timers = {
+        timer.unit_name for timer in catalog.entries
+        if timer.class_name == "gated_timer"
+        and timer.timer_target == entry.entry_id
+        and timer.unit_spec is not None
+        and any(
+            directive.section == "Timer" and directive.name == "Unit"
+            and directive.values == (entry.unit_name,)
+            for directive in timer.unit_spec.directives
+        )
+    }
     residual: list[tuple[str, str]] = []
     for relation in sorted(_SYSTEMD_ADDED_EDGE_RELATIONS_V1):
         values = _normalize_systemd_unit_list_v1(
@@ -12916,6 +12931,7 @@ def _compile_systemd_added_edge_pairs_v1(
         residual.extend(
             (relation, unit_name) for unit_name in values
             if unit_name not in explicit
+            and not (relation == "TriggeredBy" and unit_name in declared_timers)
         )
     residual.sort(key=lambda item: (
         item[0].encode("utf-8"), item[1].encode("utf-8"),
@@ -13479,7 +13495,9 @@ def _capture_effective_systemd_units_core_v1(
             plan.requested_properties,
         )
         _validate_systemd_property_cardinality_v1(plan, observed)
-        edge_pairs = _compile_systemd_added_edge_pairs_v1(entry, observed)
+        edge_pairs = _compile_systemd_added_edge_pairs_v1(
+            entry, observed, catalog=materials.catalog,
+        )
         total_edges += len(edge_pairs)
         if total_edges > MAX_SYSTEMD_ADDED_EDGES_TOTAL_V1:
             raise _invalid("systemd added edge total")
