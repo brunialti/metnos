@@ -202,7 +202,8 @@ def readiness_catalog() -> tuple[ServiceSpec, ...]:
     cannot fall back to it. This projection never changes control targets.
     """
     from executor_birth_ownership_chain import (
-        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1, VerifiedOwnershipChain,
+        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1, REQUIRED_HEAD_BASENAME,
+        OwnershipChainStore, VerifiedOwnershipChain,
         inspect_ownership_chain_state_v1,
     )
     from executor_birth_service_catalog import capture_current_service_catalog_v1
@@ -211,7 +212,14 @@ def readiness_catalog() -> tuple[ServiceSpec, ...]:
         DEFAULT_OWNERSHIP_CHAIN_ROOT_V1.lstat()
     except FileNotFoundError:
         return SERVICES
-    chain = inspect_ownership_chain_state_v1()
+    try:
+        (DEFAULT_OWNERSHIP_CHAIN_ROOT_V1 / REQUIRED_HEAD_BASENAME).lstat()
+    except FileNotFoundError:
+        chain = inspect_ownership_chain_state_v1()
+    else:
+        # The public cold reader authenticates the required chain without
+        # opening the coordinator's root-only mutation lock.
+        chain = OwnershipChainStore().read_required_chain_cold_v1()
     # The public inspector returns a verified chain or a validated initial
     # state; corrupt or partial chains raise before a profile is selected.
     if not isinstance(chain, VerifiedOwnershipChain):

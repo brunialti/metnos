@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -94,6 +95,10 @@ def _verified_readiness_chain(monkeypatch, tmp_path):
     class VerifiedChain:
         required_distribution = SimpleNamespace(installation_root=str(tmp_path))
 
+    class PublicStore:
+        def read_required_chain_cold_v1(self):
+            return VerifiedChain()
+
     entries = tuple(SimpleNamespace(
         unit_name=item.unit_name, external_unit_name=item.external_unit_name,
         scope=catalog._entry_scope(item.class_name),
@@ -101,7 +106,12 @@ def _verified_readiness_chain(monkeypatch, tmp_path):
     monkeypatch.setattr(registry._C, "PATH_ROOT", tmp_path)
     monkeypatch.setattr(ownership, "DEFAULT_OWNERSHIP_CHAIN_ROOT_V1", tmp_path)
     monkeypatch.setattr(ownership, "VerifiedOwnershipChain", VerifiedChain)
-    monkeypatch.setattr(ownership, "inspect_ownership_chain_state_v1", VerifiedChain)
+    (tmp_path / ownership.REQUIRED_HEAD_BASENAME).write_bytes(b"required")
+    monkeypatch.setattr(ownership, "OwnershipChainStore", PublicStore)
+    monkeypatch.setattr(
+        ownership, "inspect_ownership_chain_state_v1",
+        lambda: pytest.fail("a required chain must use the public cold reader"),
+    )
 
     def capture(distribution):
         assert distribution is VerifiedChain.required_distribution
@@ -151,6 +161,84 @@ def test_readiness_catalog_never_falls_back_after_chain_failure(monkeypatch, tmp
     )
     with pytest.raises(ownership.OwnershipChainError):
         registry.readiness_catalog()
+
+
+def test_readiness_catalog_never_falls_back_after_cold_chain_failure(
+    monkeypatch, tmp_path,
+):
+    import executor_birth_ownership_chain as ownership
+
+    _verified_readiness_chain(monkeypatch, tmp_path)
+
+    def invalid_chain(_self):
+        raise ownership.OwnershipChainError("invalid-required-chain")
+
+    monkeypatch.setattr(
+        ownership.OwnershipChainStore, "read_required_chain_cold_v1", invalid_chain,
+    )
+    with pytest.raises(ownership.OwnershipChainError):
+        registry.readiness_catalog()
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or os.geteuid() != 0,
+    reason="real root/nonroot permissions: run in a disposable root guest",
+)
+def test_readiness_nonroot_does_not_read_root_only_mutation_lock(monkeypatch):
+    """Exercise real UID/DAC and consumer routing, not mocked chain crypto."""
+    import multiprocessing
+    import tempfile
+    import executor_birth_ownership_chain as ownership
+
+    with tempfile.TemporaryDirectory(prefix="metnos-readiness-test-", dir="/run") as name:
+        root = Path(name)
+        root.chmod(0o755)
+        _verified_readiness_chain(monkeypatch, root)
+        lock = root / ownership.REQUIRED_HEAD_LOCK_BASENAME
+        lock.write_bytes(b"\0")
+        lock.chmod(0o600)
+        before = lock.stat()
+        assert (before.st_uid, before.st_gid, before.st_mode & 0o777) == (0, 0, 0o600)
+        parent, child = multiprocessing.Pipe(duplex=False)
+
+        def read_as_service():
+            try:
+                os.setgroups([])
+                os.setresgid(65534, 65534, 65534)
+                os.setresuid(65534, 65534, 65534)
+                assert os.geteuid() == 65534
+                with pytest.raises(PermissionError):
+                    lock.read_bytes()
+                # The previous inspector fails at its real lock reader.
+                with pytest.raises(ownership.OwnershipChainError) as failure:
+                    ownership._require_required_head_lock_metadata_v1(
+                        root, root_owned=True,
+                    )
+                assert failure.value.detail == "required lock metadata"
+                profile = {spec.key: spec for spec in registry.readiness_catalog()}
+                assert profile["playwright"].targets[0].scope == "system"
+                child.send(("ok", os.geteuid()))
+            except BaseException as exc:
+                child.send(("error", repr(exc)))
+            finally:
+                child.close()
+
+        process = multiprocessing.get_context("fork").Process(target=read_as_service)
+        process.start()
+        child.close()
+        process.join(10)
+        if process.is_alive():
+            process.terminate()
+            process.join(5)
+            pytest.fail("nonroot readiness reader did not terminate")
+        assert process.exitcode == 0
+        assert parent.poll(2)
+        assert parent.recv() == ("ok", 65534)
+        parent.close()
+        after = lock.stat()
+        assert (after.st_ino, after.st_uid, after.st_gid, after.st_mode, after.st_mtime_ns) == (
+            before.st_ino, before.st_uid, before.st_gid, before.st_mode, before.st_mtime_ns,
+        )
 
 
 def test_readiness_catalog_rejects_missing_signed_service(monkeypatch, tmp_path):
