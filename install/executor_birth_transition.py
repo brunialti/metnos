@@ -33,6 +33,10 @@ _FRAME_SCHEMA_V1 = "metnos.executor-birth.transition-handoff/1"
 # canonical envelope and the fixed signature/source fields.
 _MAX_FRAME_BYTES_V1 = 24 * 1024 * 1024
 _ACTIVATION_TIMEOUT_SECONDS_V1 = 300
+# The closed release can contain the 20-minute contract convergence and then
+# activate/verify the signed target topology.  Keep its parent budget larger
+# than those bounded child operations plus the remaining verification work.
+_CLOSED_RELEASE_TIMEOUT_SECONDS_V1 = 3000
 _HOST_PROVISIONING_ERROR_CODES_V1 = frozenset({
     "birth_ownership_administrative_required",
     "birth_ownership_platform_unsupported",
@@ -430,7 +434,7 @@ def _invoke_closed_release_v1(
             command, input=frame, capture_output=True, check=False,
             close_fds=True,
             env=_install_environment_v1(release_root, service_environment),
-            timeout=_ACTIVATION_TIMEOUT_SECONDS_V1 * 2,
+            timeout=_CLOSED_RELEASE_TIMEOUT_SECONDS_V1,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise _fail("birth_transition_activation_failed") from exc

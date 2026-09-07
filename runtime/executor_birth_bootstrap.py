@@ -600,6 +600,7 @@ def _prepare_sealed_birth_assembly_v1(
     *,
     now: Callable[[], datetime],
     store_root: Path | None = None,
+    initial_current_adoption_transition_id: str | None = None,
 ) -> _SealedBirthAssemblyV1:
     """Build one core from authorities read once under the root barrier.
 
@@ -674,6 +675,9 @@ def _prepare_sealed_birth_assembly_v1(
         shadow_dependencies=_assemble_production_dependencies(
             semantic_authority=sealed.semantic, windows_sandbox_registry=None,
             linux_sandbox_registry=sealed.sandbox,
+            initial_current_adoption_transition_id=(
+                initial_current_adoption_transition_id
+            ),
         ),
         admission_private_key=sealed.admission.active_private_key,
         admission_verifier_keys=sealed.admission.verifier_keys,
@@ -855,17 +859,36 @@ def _build_staged_reattestation_runtime_v2(
 
     if not isinstance(staged_context, StagedReattestationContextV1):
         raise BirthBootstrapError("birth_context_selection_invalid")
+    selection = staged_context.selection
+    initial_adoption = _initial_current_adoption_transition_id_v1(selection)
     assembly = _prepare_sealed_birth_assembly_v1(
         staged_context.authorities, now=now, store_root=store_root,
+        initial_current_adoption_transition_id=initial_adoption,
     )
     factory = _reattestation_factory_for_assembly_v1(
-        assembly, selection=staged_context.selection,
+        assembly, selection=selection,
     )
     return _StagedReattestationRuntimeV2(
         _STAGED_REATTESTATION_RUNTIME_TOKEN_V2,
         core=assembly.core,
         factory=factory,
     )
+
+
+def _initial_current_adoption_transition_id_v1(selection: object) -> str | None:
+    """Select the explicit compatibility rule for the first staged F4 cutover."""
+    from executor_birth_context_selection import is_context_selection_v1
+
+    if not is_context_selection_v1(selection, allow_staged=True):
+        raise BirthBootstrapError("birth_context_selection_invalid")
+    distribution = selection.distribution
+    if (
+        selection.staged_reattestation_only
+        and distribution.release_sequence == 1
+        and distribution.previous_closed_build_id is None
+    ):
+        return selection.transition_id
+    return None
 
 
 def _build_sealed(

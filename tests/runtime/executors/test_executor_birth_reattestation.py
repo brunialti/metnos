@@ -6,11 +6,13 @@ import pytest
 
 from executor_birth_cutover import CurrentGeneration
 from executor_birth_reattestation import (
-    BirthReattestationError, ReattestationRequest,
+    BirthReattestationError,
+    _initial_adoption_transition,
     _reattestation_request_for_test,
     _reattest_current_for_test, _sealed_reattestation_core_for_test,
 )
 from executor_birth_producer_store import ProducerReceiptBinding
+from executor_birth_producer_context import ProducerRequestV2, _REQUEST_SEAL
 from executor_birth_receipts import (
     AdmissionKind, RevisionClass, issue_admission_receipt,
     verify_admission_receipt, verify_producer_receipt,
@@ -100,6 +102,74 @@ def test_reattests_exact_generation_without_publication_and_durable_reread(tmp_p
     assert receipt.birth_request_id == request.request_id
     assert "reattestation_current_generation_v1" in receipt.check_results
     assert rig.persist_calls == 1
+
+
+def test_initial_adoption_executes_without_legacy_property_protocol(tmp_path):
+    request, rig = prepared(tmp_path)
+    transition_id = "sha256:" + "b" * 64
+    _context, context_pin = rig.birth.context_resolver(request)
+    producer_request = ProducerRequestV2(
+        request.request_id,
+        request.producer_binding.objective_hash,
+        request.current.ref.contract_id.value,
+        request.current.generation_id,
+        context_pin.admission_context_id,
+        transition_id,
+        context_pin.context_epoch,
+        "e" * 64,
+        request.producer_binding.candidate_source_id,
+        _REQUEST_SEAL,
+    )
+    scoped = _reattestation_request_for_test(
+        request.request_id, request.current, request.producer_receipt,
+        request.actor, request.reason, request.producer_binding,
+        producer_request,
+    )
+
+    class RefuseInvocation:
+        def run(self, *_args, **_kwargs):
+            raise AssertionError("legacy executor property protocol invoked")
+
+    dependencies = replace(
+        rig.birth.shadow_dependencies,
+        property_runner=RefuseInvocation(),
+        initial_current_adoption_transition_id=transition_id,
+    )
+    assert _initial_adoption_transition(scoped, dependencies) == transition_id
+    with pytest.raises(
+        BirthReattestationError, match="birth_initial_adoption_scope_invalid",
+    ):
+        _initial_adoption_transition(
+            scoped,
+            replace(
+                dependencies,
+                initial_current_adoption_transition_id="sha256:" + "f" * 64,
+            ),
+        )
+    rig.birth = replace(rig.birth, shadow_dependencies=dependencies)
+    core = _sealed_reattestation_core_for_test(
+        birth=rig.birth,
+        capture=rig.capture,
+        persist=rig.persist,
+        read_receipt=rig.read,
+        persist_v2=lambda current, encoded, expected, _request: rig.persist(
+            current, encoded, expected,
+        ),
+        read_v2=lambda current, _request: rig.read(current),
+    )
+    result = _reattest_current_for_test(scoped, _core=core)
+    receipt = verify_admission_receipt(
+        result.receipt, verifier_keys=rig.birth.admission_verifier_keys,
+    )
+
+    assert receipt.check_results["properties"].status.value == "not_applicable"
+    assert (
+        receipt.check_results["initial_current_generation_adoption_v1"].status.value
+        == "passed"
+    )
+    repeated = _reattest_current_for_test(scoped, _core=core)
+    assert repeated.repeated is True
+    assert repeated.receipt == result.receipt
 
 
 def test_missing_or_unreadable_current_fails_before_receipt_claim(tmp_path):

@@ -4940,13 +4940,31 @@ def _transition_service_environment_v2(descriptor: object) -> dict[str, str]:
     return environment
 
 
-def _converge_transition_contracts_v2(descriptor: object) -> dict[str, int]:
+def _converge_transition_contracts_v2(
+    descriptor: object, distribution: object,
+) -> dict[str, int]:
     """Run the installed, governed catalog convergence as the service owner."""
+    from executor_birth_service_catalog import (
+        capture_current_service_catalog_v1,
+    )
+
+    loaded = capture_current_service_catalog_v1(distribution)
+    python_executables = {
+        item.target_executable for item in loaded.catalog.entries
+        if item.execution_kind == "python_module"
+    }
+    if (
+        len(python_executables) != 1
+        or None in python_executables
+        or not Path(next(iter(python_executables))).is_file()
+    ):
+        raise _reject("birth_transition_contract_convergence_failed")
+    service_python = str(next(iter(python_executables)))
     release_root = Path(descriptor.installation_root)
     entry = release_root / "install" / "executor_birth_contract_convergence.py"
     try:
         completed = subprocess.run(
-            [descriptor.python_executable, "-I", "-B", entry.as_posix()],
+            [service_python, "-I", "-B", entry.as_posix()],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             check=False,
@@ -5231,7 +5249,7 @@ def complete_transition_cutover_v2(
                     if transition_phase is not None and not legacy_preparation.ready:
                         raise _reject("birth_legacy_state_recovery_required")
                 if not legacy_preparation.ready:
-                    _converge_transition_contracts_v2(descriptor)
+                    _converge_transition_contracts_v2(descriptor, verified)
             with _service_owned_birth_identity_v2(descriptor):
                 transition_current = _transition_current_enumerator_v2(
                     transition_gate, deployment_session,

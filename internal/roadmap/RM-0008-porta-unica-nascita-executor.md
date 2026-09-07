@@ -301,8 +301,10 @@ I domini byte sono rispettivamente
 Il codec V1 rappresenta ogni valore come tag di tipo di un byte, lunghezza del
 payload unsigned a 64 bit big-endian e payload. Mappe e array antepongono anche
 la cardinalità unsigned a 64 bit. I tag di null, stringa UTF-8, intero con
-segno in complemento a due minimo, booleano, array e mappa sono rispettivamente
-`n`, `s`, `i`, `b`, `a` e `m`; il booleano non è un intero. Le
+segno in complemento a due minimo, float finito IEEE-754 binary64 big-endian,
+booleano, array e mappa sono rispettivamente `n`, `s`, `i`, `f`, `b`, `a` e
+`m`; booleano, intero e float restano tipi distinti. NaN e infinito sono
+rifiutati. Le
 chiavi di mappa sono stringhe e si ordinano per byte UTF-8. I vettori golden del
 codec e delle tre identità in
 `tests/runtime/executors/test_executor_birth_identity.py` sono normativi e un
@@ -324,18 +326,21 @@ chiusa: enumera chiavi tecniche per ogni tabella, distingue mappe i cui nomi son
 dati (`properties`, fixture e risultati attesi) e non accetta estensioni
 implicite. `LINGUISTIC_SURFACE_PATHS_V1` è il predicato versionato che seleziona
 la `description` radice e ogni `description` localizzata nei nodi JSON Schema
-ammessi sotto `args`; non è una lista derivata dal catalogo installato. La
-proiezione rimuove soltanto tali superfici e il blocco runtime-owned Birth. Nome, ciclo di
+ammessi sotto `args`; non è una lista derivata dal catalogo installato. La forma
+stringa standard di una `description` JSON Schema annidata non è una superficie
+localizzata e resta legata all'identità. La proiezione rimuove soltanto tali
+superfici e il blocco runtime-owned Birth. Nome, ciclo di
 vita, codice, schemi, capacità, ambito, effetti, undo, collocazione, piattaforma,
 sandbox, affinità, prove e campi tecnici restano inclusi. Un campo sconosciuto
 produce `semantic_core_unknown_field` e impedisce il trasporto dell'evidenza.
 
 Le mappe ordinano le chiavi per byte UTF-8; gli array conservano ordine e
-cardinalità. Stringhe, interi, booleani, array e mappe hanno tag distinti e
-framing lunghezza-payload. Campo assente e campo vuoto differiscono. Le stringhe
-non subiscono trim o normalizzazione Unicode implicita. Float, date e orari sono
-rifiutati con `semantic_core_type_unsupported`. Commenti, spazi e ordine TOML
-non cambiano il digest. Alias e default non vengono materializzati.
+cardinalità. Stringhe, interi, float finiti, booleani, array e mappe hanno tag
+distinti e framing lunghezza-payload. Campo assente e campo vuoto differiscono.
+Le stringhe non subiscono trim o normalizzazione Unicode implicita. Float non
+finiti, date e orari sono rifiutati con `semantic_core_type_unsupported`.
+Commenti, spazi e ordine TOML non cambiano il digest. Alias e default non
+vengono materializzati.
 
 I percorsi di `code.files` sono relativi, POSIX, canonici e privi di `..`, link,
 duplicati o collisioni di maiuscole. Tutti i byte entrano nel digest. La versione
@@ -1372,6 +1377,7 @@ sviluppo.
 | 2026-09-01 | `active` | RM-VARIAZIONE-02 corretta dopo il secondo giro B: rimossa la premessa errata sulla proprieta' del file di sistema, dichiarato il cambio del servizio vivo dallo spazio utente a quello di sistema e aggiunta una sonda committata che riproduce 15/39/16/1. La proposta non presume la decisione dell'autorita': il codice dipendente attende ancora l'accettazione B sul commit corretto e il successivo verbale separato. |
 | 2026-09-01 | `done` | RM-VARIAZIONE-02 approvata: proposta A `5a323981`, allineamento di stato `efe999e2`, accettazione B `3541d675` e decisione dell'autorita' in `internal/design/decisione_rm0008_variazione_02_1_9_2026.md`. Il codice del gruppo 7 puo' applicare la regola; il sistema vivo resta invariato fino alla chiusura di tutti i gate. |
 | 2026-09-01 | `active` | Il rilievo B `de054b93` sulla provenienza della decisione e' stato recepito riportando nel verbale i tre input testuali ricevuti direttamente nella task Codex principale RM-0008. Il verbale non attribuisce piu' i messaggi alla task separata di B ed e' offerto alla nuova revisione incrociata. |
+| 2026-09-07 | `active` | RM-VARIAZIONE-03 isola la regressione del runner delle proprieta': l'adozione delle correnti pre-F4 e' esplicita, limitata alla prima distribuzione staged e attestata senza modificare i 24 executor revertibili. Il candidato ha 193 test mirati verdi; recovery e passaggio sul clone restano obbligatori prima del live (§23.51). |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 
@@ -3391,3 +3397,33 @@ dell'autorita' registrata in
 `internal/design/decisione_rm0008_variazione_02_1_9_2026.md`. Il codice del
 gruppo 7 puo' applicare la regola; il sistema vivo resta invariato fino alla
 chiusura di tutti i gate tecnici, della revisione incrociata e del filtro GII.
+
+
+### 23.51 RM-VARIAZIONE-03: i byte pre-F4 non fingono un protocollo futuro
+
+Il passaggio produttivo si e' fermato prima del punto di non ritorno: il runner
+delle proprieta' inviava `birth_property_action` a un catalogo in cui nessun
+executor implementa tale campo. La correzione del solo profilo avrebbe
+allargato la regressione, mentre aggiungere lo stesso involucro a 24 executor
+avrebbe duplicato una responsabilita' centrale.
+
+La regola corretta e' un'adozione esplicita delle sole generazioni correnti
+anteriori a F4. E' raggiungibile esclusivamente durante la riattestazione
+staged della distribuzione autenticata con sequenza 1 e nessun predecessore.
+I controlli retrospettivi delle proprieta' e della semantica sono registrati
+`not_applicable`: i byte correnti non implementano il futuro protocollo delle
+proprieta' e il nuovo insieme non contiene evidenza indipendente retroattiva
+per i 16 contratti importati. Una prova distinta lega l'adozione a transizione,
+contratto, generazione, sorgente, candidato e contesto. Ogni nascita, revisione
+o transizione successiva conserva il comportamento fail-closed precedente.
+
+Ricevute e claim gia' prodotti dalla transizione interrotta restano storia
+immutabile: contesto, transizione e sorgente separano le identita' della nuova
+esecuzione. Il disegno completo, i limiti e le prove sono in
+`internal/design/rm0008_variazione_03_adozione_correnti_iniziali_7_9_2026.md`.
+
+Il riesame preventivo della catena ha inoltre eliminato due difetti operativi
+senza introdurre nuove astrazioni: la convergenza usa l'unico Python di servizio
+firmato, e il processo padre dispone di un budget maggiore dei timeout interni
+che racchiude. I timeout esterni dell'operatore devono rispettare la stessa
+gerarchia e non possono troncare un recupero o un passaggio ancora valido.

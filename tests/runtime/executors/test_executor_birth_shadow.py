@@ -128,6 +128,61 @@ def test_unrecognized_dependency_cannot_inject_checks_or_applicability():
         _sealed_dependencies_for_test(observer=observer, check_specs=())
 
 
+def test_initial_f4_adoption_is_explicit_and_does_not_invoke_property_protocol():
+    _, observer = _observer_holder()
+
+    class RefuseInvocation:
+        def run(self, *_args, **_kwargs):
+            raise AssertionError("legacy executor property protocol invoked")
+
+    report = _call(
+        observer,
+        facts=RevisionFacts(reattestation=True),
+        property_runner=RefuseInvocation(),
+        initial_current_adoption_transition_id=D,
+    )
+
+    properties = next(item for item in report.checks if item.check_id == "properties")
+    assert properties.status.value == "not_applicable"
+    assert properties.redacted_detail == "initial_f4_current_adoption"
+    assert report.outcome is BirthOutcome.ADMITTED
+
+
+def test_initial_f4_adoption_does_not_invent_retrospective_semantic_evidence():
+    _, observer = _observer_holder(
+        origin=ExecutorOrigin.IMPORTED,
+        authorship=RevisionAuthor.IMPORTER,
+    )
+
+    class RefuseSemanticReview:
+        def inputs_for(self, _request):
+            raise AssertionError("semantic review invoked during initial adoption")
+
+    report = _call(
+        observer,
+        origin=ExecutorOrigin.IMPORTED,
+        authorship=RevisionAuthor.IMPORTER,
+        facts=RevisionFacts(reattestation=True),
+        property_runner=object(),
+        semantic_authority=RefuseSemanticReview(),
+        initial_current_adoption_transition_id=D,
+    )
+
+    semantic = next(
+        item for item in report.checks if item.check_id == "semantic_review"
+    )
+    assert semantic.status.value == "not_applicable"
+    assert semantic.redacted_detail == "initial_f4_current_adoption"
+    assert report.outcome is BirthOutcome.ADMITTED
+
+
+def test_initial_f4_adoption_dependency_requires_a_canonical_transition():
+    with pytest.raises(ValueError, match="birth_dependencies_untrusted"):
+        _sealed_dependencies_for_test(
+            initial_current_adoption_transition_id="not-a-transition",
+        )
+
+
 def test_core_applicability_requires_semantic_review_for_model_authorship():
     _, observer = _observer_holder(authorship=RevisionAuthor.MODEL)
     report = _call(observer, authorship=RevisionAuthor.MODEL, property_runner=object())

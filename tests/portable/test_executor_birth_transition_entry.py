@@ -144,6 +144,16 @@ def test_source_process_invokes_only_the_verified_release_entry(
     assert observed["env"]["HOME"] == "/srv/metnos"
 
 
+def test_closed_release_timeout_covers_convergence_and_activation() -> None:
+    from install import birth_authority_provisioner as provisioner
+
+    assert transition._CLOSED_RELEASE_TIMEOUT_SECONDS_V1 > (
+        provisioner._CONTRACT_CONVERGENCE_TIMEOUT_SECONDS_V2
+        + 3 * transition._ACTIVATION_TIMEOUT_SECONDS_V1
+        + 600
+    )
+
+
 @LINUX_ONLY
 def test_closed_process_binds_distribution_source_user_and_final_state(
     monkeypatch: pytest.MonkeyPatch,

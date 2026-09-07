@@ -560,8 +560,8 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
     monkeypatch.setattr(
         provisioner, "_converge_transition_contracts_v2",
-        lambda candidate: events.append("contract-convergence")
-        if candidate is descriptor
+        lambda candidate, verified: events.append("contract-convergence")
+        if candidate is descriptor and verified is distribution
         else pytest.fail("contract convergence lost the signed descriptor"),
     )
     def prepare_legacy(candidate, verified, proof, *, require_live_ready):
@@ -798,16 +798,25 @@ def test_product_wrapper_denies_before_lock_when_closed_policy_is_absent(
 
 
 def test_contract_convergence_child_is_bound_to_the_signed_service_identity(
-    monkeypatch,
+    monkeypatch, tmp_path,
 ) -> None:
+    service_python = tmp_path / "managed-python"
+    service_python.write_bytes(b"managed python")
     descriptor = SimpleNamespace(
         installation_root="/var/lib/metnos/executor-birth/releases-v1/1",
-        python_executable="/var/lib/metnos/executor-birth/venv/bin/python",
+        python_executable="/usr/bin/python3.12",
         service_user="metnos-service", service_uid=991, service_gid=992,
         service_supplementary_gids=(44, 992),
         service_home="/var/lib/metnos-service",
         service_shell="/usr/sbin/nologin",
     )
+    distribution = object()
+    catalog = SimpleNamespace(entries=(
+        SimpleNamespace(
+            execution_kind="python_module",
+            target_executable=service_python.as_posix(),
+        ),
+    ))
     observed = {}
 
     def run(command, **options):
@@ -820,21 +829,64 @@ def test_contract_convergence_child_is_bound_to_the_signed_service_identity(
         )
 
     monkeypatch.setattr(provisioner.subprocess, "run", run)
+    monkeypatch.setattr(
+        "executor_birth_service_catalog.capture_current_service_catalog_v1",
+        lambda candidate: SimpleNamespace(catalog=catalog)
+        if candidate is distribution
+        else pytest.fail("convergence lost the verified distribution"),
+    )
 
-    assert provisioner._converge_transition_contracts_v2(descriptor) == {
+    assert provisioner._converge_transition_contracts_v2(
+        descriptor, distribution,
+    ) == {
         "changed": 24, "current": 98, "examined": 122,
     }
     assert observed["command"] == [
-        descriptor.python_executable, "-I", "-B",
+        service_python.as_posix(), "-I", "-B",
         descriptor.installation_root
         + "/install/executor_birth_contract_convergence.py",
     ]
+    assert observed["command"][0] != descriptor.python_executable
     assert observed["user"] == descriptor.service_uid
     assert observed["group"] == descriptor.service_gid
     assert observed["extra_groups"] == descriptor.service_supplementary_gids
     assert observed["umask"] == 0o077
     assert observed["env"]["HOME"] == descriptor.service_home
     assert observed["env"]["METNOS_INSTALL_ROOT"] == descriptor.installation_root
+
+
+@pytest.mark.parametrize("python_count", [0, 2])
+def test_contract_convergence_rejects_ambiguous_service_python(
+    monkeypatch, tmp_path, python_count,
+) -> None:
+    targets = []
+    for index in range(python_count):
+        target = tmp_path / f"managed-python-{index}"
+        target.write_bytes(b"managed python")
+        targets.append(target.as_posix())
+    catalog = SimpleNamespace(entries=tuple(
+        SimpleNamespace(
+            execution_kind="python_module", target_executable=target,
+        )
+        for target in targets
+    ))
+    monkeypatch.setattr(
+        "executor_birth_service_catalog.capture_current_service_catalog_v1",
+        lambda _distribution: SimpleNamespace(catalog=catalog),
+    )
+    monkeypatch.setattr(
+        provisioner.subprocess, "run",
+        lambda *_args, **_options: pytest.fail("ambiguous Python was executed"),
+    )
+    descriptor = SimpleNamespace(
+        installation_root="/var/lib/metnos/executor-birth/releases-v1/1",
+    )
+
+    with pytest.raises(
+        provisioner.BirthProvisioningError,
+        match="birth_transition_contract_convergence_failed",
+    ):
+        provisioner._converge_transition_contracts_v2(descriptor, object())
 
 
 @pytest.mark.parametrize("changed", [True, False])

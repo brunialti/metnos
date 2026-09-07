@@ -278,7 +278,7 @@ def _load_sealed_authorities_from_set_v1(session, prepared, open_sources):
         location + ("semantic", "public"),
         location + ("semantic", "evidence"),
         session,
-    )
+    )._seal_for_detached_use_v1()
     approval_document = _read_prepared_document_v1(
         session, location + ("approval", "authority.json"),
     )

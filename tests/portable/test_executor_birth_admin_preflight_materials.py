@@ -23,6 +23,9 @@ import executor_birth_distribution_assembler as assembler
 import executor_birth_service_catalog as catalog
 
 
+_MANAGED_PYTHON = (
+    "/var/lib/metnos/python-envs-v1/" + "a" * 64 + "/bin/python"
+)
 _EXPECTED_ENABLEMENT_LINKS = (
     (
         "/etc/systemd/system/default.target.wants/metnos.target",
@@ -126,7 +129,7 @@ def _catalog_bytes() -> bytes:
     entries = catalog._compile_service_source_v1(
         catalog._SourceCompileContextV1(
             installation_root=installation_root,
-            python_executable="/usr/bin/python3.12",
+            python_executable=_MANAGED_PYTHON,
             service_user="metnos",
             service_gid=991,
             service_supplementary_gids=(44, 991),
@@ -171,7 +174,7 @@ def _deployment_record() -> assembler.DeploymentDescriptorV1:
         artifacts=artifacts,
         service_catalog_id=decoded_catalog.catalog_id,
         service_coverage_hash=decoded_catalog.service_coverage_hash,
-        python_executable="/usr/bin/python3.12",
+        python_executable=_MANAGED_PYTHON,
         openssl_executable="/usr/bin/openssl",
         systemctl_executable="/usr/bin/systemctl",
         systemd_analyze_executable="/usr/bin/systemd-analyze",
@@ -292,7 +295,7 @@ def _binder_installation_root(release_sequence: int) -> str:
 
 def _binder_target_bytes(installation_root: str) -> dict[str, bytes]:
     return {
-        "/usr/bin/python3.12": b"python-v1",
+        _MANAGED_PYTHON: b"python-v1",
         "/usr/bin/systemctl": b"systemctl-v1",
         "/usr/bin/Xvfb": b"xvfb-v1",
     }
@@ -311,7 +314,7 @@ def _bound_catalog_bytes(
         if executable is None:
             continue
         resolved = (
-            executable.replace("@python@", "/usr/bin/python3.12")
+            executable.replace("@python@", _MANAGED_PYTHON)
             .replace("@systemctl@", "/usr/bin/systemctl")
             .replace("@installation_root@", installation_root)
         )
@@ -324,7 +327,7 @@ def _bound_catalog_bytes(
     entries = catalog._compile_service_source_v1(
         catalog._SourceCompileContextV1(
             installation_root=installation_root,
-            python_executable="/usr/bin/python3.12",
+            python_executable=_MANAGED_PYTHON,
             service_user="metnos",
             service_gid=991,
             service_supplementary_gids=(44, 991),
@@ -409,8 +412,8 @@ def _isolated_g6c_records(
     service_name = f"metnos-g6c-{namespace}-probe.service"
     timer_id = service_id + "-timer"
     timer_name = f"metnos-g6c-{namespace}-probe.timer"
-    python = "/usr/bin/python3"
-    administrative = "!/usr/bin/python3"
+    python = _MANAGED_PYTHON
+    administrative = "!" + _MANAGED_PYTHON
     service_spec = catalog.make_unit_spec_v1(service_name, (
         catalog.ServiceDirectiveV1(
             "Unit", "Description", "scalar", (description,),
@@ -638,7 +641,7 @@ def _bound_graph(
         artifacts=tuple(artifacts),
         service_catalog_id=decoded_catalog.catalog_id,
         service_coverage_hash=decoded_catalog.service_coverage_hash,
-        python_executable="/usr/bin/python3.12",
+        python_executable=_MANAGED_PYTHON,
         openssl_executable="/usr/bin/openssl",
         systemctl_executable="/usr/bin/systemctl",
         systemd_analyze_executable="/usr/bin/systemd-analyze",

@@ -358,6 +358,87 @@ def test_required_and_staged_producers_preserve_scope():
     assert is_context_selection_v1(staged, allow_staged=True)
 
 
+def test_initial_current_adoption_is_only_the_first_staged_distribution():
+    from executor_birth_bootstrap import (
+        BirthBootstrapError,
+        _initial_current_adoption_transition_id_v1,
+    )
+
+    transition, prepared, distribution = _evidence()
+    required = _context_selection_from_required_chain_v1(
+        transition, prepared, distribution,
+    )
+    staged = _context_selection_for_staged_reattestation_v1(
+        transition, prepared, distribution,
+    )
+    assert _initial_current_adoption_transition_id_v1(required) is None
+    assert (
+        _initial_current_adoption_transition_id_v1(staged)
+        == transition.transition_id
+    )
+
+    later_distribution = _verified_distribution_for_test(
+        distribution.identity,
+        previous_closed_build_id=D("e"),
+        release_sequence=2,
+        encoded=b"later-distribution",
+        signature=b"l" * 64,
+    )
+    later = _context_selection_for_staged_reattestation_v1(
+        transition, prepared, later_distribution,
+    )
+    assert _initial_current_adoption_transition_id_v1(later) is None
+
+    with pytest.raises(BirthBootstrapError, match="birth_context_selection_invalid"):
+        _initial_current_adoption_transition_id_v1(object())
+
+
+def test_recovered_initial_transition_cannot_reuse_v2_producer_requests():
+    from executor_birth_producer_context import build_producer_request_v2
+    from manifest_inventory import ContractId, ManifestOrigin
+
+    transition, prepared, distribution = _evidence()
+    first_selection = _context_selection_for_staged_reattestation_v1(
+        transition, prepared, distribution,
+    )
+    _encoded, recovered_transition = issue_context_transition_v1(
+        request_id=D("f"),
+        closed_build_id=D("2"),
+        previous_cutover_id=None,
+        previous_set_id="3" * 64,
+        previous_admission_context_id=D("4"),
+        previous_context_epoch=D("5"),
+        set_id="6" * 64,
+        prepared_admission_context_id=D("7"),
+        prepared_context_epoch=D("8"),
+        context_material_sha256="9" * 64,
+        set_json_sha256="a" * 64,
+        current_inventory=CurrentReceiptProof((), {}).inventory,
+    )
+    recovered_selection = _context_selection_for_staged_reattestation_v1(
+        recovered_transition, prepared, distribution,
+    )
+    contract_id = ContractId(ManifestOrigin.EXPLICIT, "alpha/manifest.toml")
+    common = {
+        "contract_id": contract_id,
+        "generation_id": D("b"),
+        "candidate_source_id": D("c"),
+    }
+    first = build_producer_request_v2(first_selection, **common)
+    recovered = build_producer_request_v2(recovered_selection, **common)
+    changed_source = build_producer_request_v2(
+        recovered_selection, **{**common, "candidate_source_id": D("d")},
+    )
+
+    assert len({
+        first.request_id, recovered.request_id, changed_source.request_id,
+    }) == 3
+    assert len({
+        first.objective_hash, recovered.objective_hash,
+        changed_source.objective_hash,
+    }) == 3
+
+
 def test_verified_distribution_context_opens_only_its_runtime_tree(monkeypatch):
     import executor_birth_prepared_root as prepared_root
     import executor_birth_secure_fs as secure_fs

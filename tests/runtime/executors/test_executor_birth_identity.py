@@ -57,7 +57,16 @@ def test_codec_golden_and_type_separation():
     assert encode_framed_v1(True) != encode_framed_v1(1)
     assert encode_framed_v1(-129).endswith(b"\xff\x7f")
     assert encode_framed_v1(128).endswith(b"\x00\x80")
+    assert encode_framed_v1(1.5).hex() == "6600000000000000083ff8000000000000"
+    assert encode_framed_v1(1.0) != encode_framed_v1(1)
+    assert encode_framed_v1(-0.0) != encode_framed_v1(0.0)
     assert encode_framed_v1({"a": 1, "b": 2}) == encode_framed_v1({"b": 2, "a": 1})
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_codec_rejects_non_finite_floats(value):
+    with pytest.raises(IdentityError, match="semantic_core_type_unsupported"):
+        encode_framed_v1(value)
 
 
 def test_domains_are_distinct_and_versioned():
@@ -126,6 +135,36 @@ def test_semantic_core_ignores_only_linguistic_surfaces():
     assert semantic_core_id(sample(manifest_bytes=MANIFEST.replace(b'type="string"', b'type="integer"'))) != base
 
 
+def test_semantic_core_accepts_and_binds_nested_schema_string_description():
+    nested = MANIFEST.replace(
+        b"[[tests]]",
+        b'''[args.properties.value.properties.nested]
+type="string"
+description="technical nested description"
+[[tests]]''',
+    )
+    changed = nested.replace(b"technical nested description", b"changed nested description")
+    assert semantic_core_id(sample(manifest_bytes=nested)) != semantic_core_id(
+        sample(manifest_bytes=changed)
+    )
+
+
+@pytest.mark.parametrize("description", [b"description=7\n", b"description=[\"x\"]\n"])
+def test_semantic_core_rejects_invalid_nested_schema_description(description):
+    invalid = MANIFEST.replace(
+        b'''[args.properties.value.description]\nit="valore"\nen="value"\n''',
+        description,
+    )
+    with pytest.raises(IdentityError, match="semantic_core_unknown_field"):
+        semantic_core_id(sample(manifest_bytes=invalid))
+
+
+def test_semantic_core_rejects_non_string_localized_schema_description():
+    invalid = MANIFEST.replace(b'it="valore"', b"it=7")
+    with pytest.raises(IdentityError, match="semantic_core_unknown_field"):
+        semantic_core_id(sample(manifest_bytes=invalid))
+
+
 def test_semantic_core_accepts_and_binds_paired_device_identity_contract():
     declared = MANIFEST.replace(
         b'type="string"\n[args.properties.value.description]',
@@ -142,6 +181,24 @@ def test_semantic_core_is_fail_closed_for_unknown_and_unsupported_types():
     dated = MANIFEST.replace(b'version="1.0.0"', b'version=1979-05-27T07:32:00Z')
     with pytest.raises(IdentityError, match="semantic_core_type_unsupported"):
         semantic_core_id(sample(manifest_bytes=dated))
+
+
+def test_candidate_and_semantic_core_accept_and_bind_finite_manifest_floats():
+    integral = MANIFEST.replace(b"input={value=\"x\"}", b"input={value=1}")
+    fractional = MANIFEST.replace(b"input={value=\"x\"}", b"input={value=1.0}")
+    assert candidate_id(sample(manifest_bytes=integral)) != candidate_id(
+        sample(manifest_bytes=fractional)
+    )
+    assert semantic_core_id(sample(manifest_bytes=integral)) != semantic_core_id(
+        sample(manifest_bytes=fractional)
+    )
+
+
+@pytest.mark.parametrize("literal", [b"nan", b"+inf", b"-inf"])
+def test_manifest_identity_rejects_non_finite_floats(literal):
+    manifest = MANIFEST.replace(b"input={value=\"x\"}", b"input={value=" + literal + b"}")
+    with pytest.raises(IdentityError, match="semantic_core_type_unsupported"):
+        candidate_id(sample(manifest_bytes=manifest))
 
 
 def test_semantic_core_preserves_absent_empty_array_order_and_unicode():

@@ -47,11 +47,13 @@ from contract_store import (
     generation_directory_name,
     generation_id,
     prepare_technical_draft,
+    persist_current_reattestation_receipt_v2,
     production_store_mode,
     publish_localization,
     publish_signed_source,
     publish_technical_update,
     reactivate_technical_update,
+    read_current_birth_receipt_v2,
     read_binding,
     rollback,
     retire,
@@ -2489,6 +2491,114 @@ def test_technical_publication_updates_code_without_regressing_localization(
 
 
 _BIRTH_DIGEST = "sha256:" + ("7" * 64)
+
+
+def _birth_digest(character: str) -> str:
+    return "sha256:" + character * 64
+
+
+def _v2_request(
+    ref: ManifestRef, generation_id: str, *, context: str, transition: str,
+):
+    from executor_birth_producer_context import ProducerRequestV2, _REQUEST_SEAL
+
+    return ProducerRequestV2(
+        _birth_digest("1"), _birth_digest("2"), ref.contract_id.value,
+        generation_id, context, transition, _birth_digest("3"), "4" * 64,
+        _birth_digest("5"), _REQUEST_SEAL,
+    )
+
+
+def _v2_reattestation_receipt(
+    ref: ManifestRef, generation_id: str, request, private_key,
+) -> bytes:
+    return issue_admission_receipt(
+        policy_version="birth-policy-v1",
+        contract_id=ref.contract_id,
+        generation_id=generation_id,
+        candidate_id=_birth_digest("6"),
+        semantic_core_id=_birth_digest("7"),
+        admission_context_id=request.admission_context_id,
+        birth_request_id=request.request_id,
+        authoring_journal_hash=_birth_digest("8"),
+        predecessor_id=generation_id,
+        producer_receipt_hash=_birth_digest("9"),
+        revision_class=RevisionClass.REATTESTATION,
+        check_results={
+            "reattestation_current_generation_v1": AdmissionCheck(
+                "1", AdmittedCheckStatus.PASSED, _birth_digest("a"),
+            ),
+        },
+        semantic_review_hash=None,
+        approval_hash=None,
+        approved_lifecycle=ApprovedLifecycle.ACTIVE,
+        kind=AdmissionKind.REATTESTATION,
+        issued_at="2026-09-07T12:00:00Z",
+        key_id="birth-test-key",
+        private_key=private_key,
+    )
+
+
+def test_v2_reattestation_receipts_from_two_contexts_coexist(tmp_path: Path) -> None:
+    _root, ref, _private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    generation_id = initial.current_generation_id
+    first = _v2_request(
+        ref, generation_id, context=_birth_digest("b"),
+        transition=_birth_digest("c"),
+    )
+    second = _v2_request(
+        ref, generation_id, context=_birth_digest("d"),
+        transition=_birth_digest("e"),
+    )
+    admission_private = Ed25519PrivateKey.generate()
+
+    def persist(request) -> bytes:
+        encoded = _v2_reattestation_receipt(
+            ref, generation_id, request, admission_private,
+        )
+        authorization = BirthCommitAuthorization(
+            _birth_digest("6"), _birth_digest("7"),
+            request.admission_context_id, generation_id,
+            lambda *_args: encoded,
+            lambda wire: verify_admission_receipt(
+                wire, public_key=admission_private.public_key(),
+                expected_key_id="birth-test-key",
+            ),
+        )
+        return persist_current_reattestation_receipt_v2(
+            ref, encoded, request=request, authorization=authorization,
+            verifier=authorization.verifier,
+            expected_bindings={
+                "contract_id": ref.contract_id.value,
+                "generation_id": generation_id,
+                "admission_context_id": request.admission_context_id,
+                "birth_request_id": request.request_id,
+            },
+            trusted_publics=trusted, store_root=store,
+        )
+
+    first_wire = persist(first)
+    assert read_current_birth_receipt_v2(
+        ref, request=first, trusted_publics=trusted, store_root=store,
+    ) == first_wire
+    assert read_current_birth_receipt_v2(
+        ref, request=second, trusted_publics=trusted, store_root=store,
+    ) is None
+
+    second_wire = persist(second)
+    assert second_wire != first_wire
+    assert read_current_birth_receipt_v2(
+        ref, request=first, trusted_publics=trusted, store_root=store,
+    ) == first_wire
+    assert read_current_birth_receipt_v2(
+        ref, request=second, trusted_publics=trusted, store_root=store,
+    ) == second_wire
+    assert len(tuple(store.rglob("admission-receipts-v2/**/*.json"))) == 2
 
 
 def _birth_authorization(

@@ -213,10 +213,19 @@ class _BirthDependencies:
     approval_subject: ApprovalSubject | None
     approval_evidence: ApprovalEvidence | None
     now: datetime | None
+    initial_current_adoption_transition_id: str | None
     _seal: object
 
     def __post_init__(self) -> None:
-        if self._seal is not _DEPENDENCY_SEAL:
+        if (
+            self._seal is not _DEPENDENCY_SEAL
+            or (
+                self.initial_current_adoption_transition_id is not None
+                and _DIGEST_RE.fullmatch(
+                    self.initial_current_adoption_transition_id
+                ) is None
+            )
+        ):
             raise ValueError("birth_dependencies_untrusted")
 
 
@@ -229,6 +238,7 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
         "semantic_policy": None, "semantic_risk": None,
         "independent_evidence": (), "semantic_authority": None, "approval_subject": None,
         "approval_evidence": None, "now": None, "_seal": _DEPENDENCY_SEAL,
+        "initial_current_adoption_transition_id": None,
     }
     if set(overrides) - set(values):
         raise ValueError("birth_dependencies_invalid")
@@ -236,9 +246,11 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
     return _BirthDependencies(**values)  # type: ignore[arg-type]
 
 
-def _assemble_production_dependencies(*, semantic_authority=None,
-                                      windows_sandbox_registry=None,
-                                      linux_sandbox_registry=None) -> _BirthDependencies:
+def _assemble_production_dependencies(
+    *, semantic_authority=None, windows_sandbox_registry=None,
+    linux_sandbox_registry=None,
+    initial_current_adoption_transition_id: str | None = None,
+) -> _BirthDependencies:
     """Single core-owned assembler; it cannot alter the fixed check catalog."""
     # The runner is constructed only after Birth owns the observation.  Keeping
     # it out of this process-global dependency object prevents an unbound or
@@ -247,6 +259,9 @@ def _assemble_production_dependencies(*, semantic_authority=None,
         property_runner=None, semantic_authority=semantic_authority,
         windows_sandbox_registry=windows_sandbox_registry,
         linux_sandbox_registry=linux_sandbox_registry,
+        initial_current_adoption_transition_id=(
+            initial_current_adoption_transition_id
+        ),
     )
 
 
@@ -420,6 +435,17 @@ def _closure_check(observed: ObservedCandidate, _decision: RevisionDecision,
 
 
 def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    transition_id = deps.initial_current_adoption_transition_id
+    if transition_id is not None:
+        evidence = _shadow_evidence(
+            "properties", "initial-f4-current-adoption", transition_id,
+            observed.identities.candidate_id,
+            observed.identities.admission_context_id,
+        )
+        return CheckResult(
+            "properties", "v1", CheckStatus.NOT_APPLICABLE, None,
+            evidence, "initial_f4_current_adoption",
+        )
     runner = deps.property_runner or ObservedPropertyRunner(
         observed, windows_registry=deps.windows_sandbox_registry,
         linux_registry=deps.linux_sandbox_registry,
@@ -434,6 +460,17 @@ def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, de
 
 
 def _semantic_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    transition_id = deps.initial_current_adoption_transition_id
+    if transition_id is not None:
+        evidence = _shadow_evidence(
+            "semantic-review", "initial-f4-current-adoption", transition_id,
+            observed.identities.candidate_id,
+            observed.identities.admission_context_id,
+        )
+        return CheckResult(
+            "semantic_review", "v1", CheckStatus.NOT_APPLICABLE, None,
+            evidence, "initial_f4_current_adoption",
+        )
     request = SemanticReviewRequest(
         observed.identities.candidate_id, observed.identities.admission_context_id,
         f"{observed.executor_origin.value}.{observed.revision_authorship.value}",
