@@ -209,6 +209,326 @@ def _minimal_catalog() -> DecodedServiceCatalogV1:
     return DecodedServiceCatalogV1(D("1"), (entry,), bindings, b"catalog", D("2"))
 
 
+@pytest.fixture
+def historical_repository(tmp_path: Path):
+    """A fixed old layout, not derived from the candidate's legacy bindings."""
+    import executor_birth_service_catalog as service_catalog
+
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        pytest.skip("real root metadata: run these cases in a root user namespace")
+    root = tmp_path / "previous"
+    root.mkdir(mode=0o755)
+    for name in ("deploy", "executors", "install", "runtime", "scripts", "tutor"):
+        (root / name).mkdir(mode=0o755)
+    old_paths = (
+        "deploy/backup_nas.sh", "deploy/run_prompts_translator.sh",
+        "install/__main__.py", "install/bootstrap.sh",
+        "install/download_models.sh", "install/llm_manager.py",
+        "install/playwright_sidecar.py", "install/service_control_policy.py",
+        "install/setup.sh", "install/sidecar.py",
+        "runtime/playwright_sidecar/install.sh", "scripts/install_git_hooks.sh",
+        "scripts/migrate-syspath-to-package.py",
+        "scripts/normalize_installed_github_executors.py",
+        "scripts/post-rename-verify.sh", "scripts/rename-myclaw-to-metnos.sh",
+    )
+    for relative in old_paths:
+        path = root / relative
+        path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        path.write_bytes(("# old entry: " + relative + "\n").encode("ascii"))
+        path.chmod(0o644)
+    python = "/usr/bin/python3.12"
+    built = service_catalog._build_service_catalog_v1(
+        installation_root=(tmp_path / "candidate").as_posix(),
+        python_executable=python, service_user="metnos", service_gid=1000,
+        service_supplementary_gids=(1000,), service_home="/srv/metnos",
+        systemctl_executable="/usr/bin/systemctl",
+        target_executables=tuple(
+            (path, ("test executable: " + path).encode("ascii"))
+            for path in (python, "/usr/bin/systemctl", "/usr/bin/Xvfb")
+        ),
+    )
+    return root, service_catalog.decode_service_catalog_v1(built.encoded)
+
+
+@LINUX_ONLY
+def test_historical_repository_without_new_helper_can_be_censused_and_retired(
+    historical_repository,
+):
+    import executor_birth_legacy_neutralizer as neutralizer
+    from executor_birth_legacy_retirement import plan_catalog_retirement_v1
+
+    root, catalog = historical_repository
+    absent = "install/executor_birth_contract_convergence.py"
+    assert not (root / absent).exists()
+    locators = provisioner._predecessor_file_locators_v2(root, catalog)
+    evidence = tuple(
+        provisioner._capture_predecessor_file_v2(root, locator)
+        for locator in locators
+    )
+    assert evidence and absent not in locators
+    steps = tuple(
+        step for step in plan_catalog_retirement_v1(catalog).steps
+        if step.scope == "repository"
+    )
+    assert steps and all(step.locator != absent for step in steps)
+    before = {step.locator: (root / step.locator).read_bytes() for step in steps}
+    capability = neutralizer._TestOnlyNeutralizationCapabilityV1(root)
+    performed = neutralizer.neutralize_for_test_v1(
+        capability, steps, replacement_fragments={},
+    )
+    repeated = neutralizer.neutralize_for_test_v1(
+        capability, steps, replacement_fragments={},
+    )
+    assert len(performed) == len(repeated) == len(steps)
+    assert all(entry.repeated for entry in repeated)
+    for locator, payload in before.items():
+        path = root / locator
+        assert not path.exists()
+        assert path.with_name(path.name + neutralizer.RETIRED_EXTENSION_V1).read_bytes() == payload
+    assert not (root / absent).exists()
+
+
+@LINUX_ONLY
+def test_historical_census_still_refuses_a_missing_real_legacy_entry(
+    historical_repository,
+):
+    root, catalog = historical_repository
+    (root / "install/bootstrap.sh").unlink()
+    with pytest.raises(
+        provisioner.BirthProvisioningError,
+        match="birth_transition_predecessor_invalid",
+    ):
+        provisioner._predecessor_file_locators_v2(root, catalog)
+
+
+@LINUX_ONLY
+def test_false_new_helper_legacy_binding_reproduces_the_production_failure(
+    historical_repository,
+):
+    root, catalog = historical_repository
+    faulty = replace(catalog, legacy_bindings=(*catalog.legacy_bindings,
+        ServiceLegacyBindingV1(
+            "legacy-install-contract-convergence", "entry-installer",
+            "python_module", "repository",
+            "install/executor_birth_contract_convergence.py", "retire_in_group7",
+        ),
+    ))
+    with pytest.raises(
+        provisioner.BirthProvisioningError,
+        match="birth_transition_predecessor_invalid",
+    ):
+        provisioner._predecessor_file_locators_v2(root, faulty)
+
+
+def _first_release_receipts_complete_v2(catalog):
+    import executor_birth_ownership_coordinator as coordinator
+    from test_executor_birth_ownership_coordinator_v2 import record_v2
+
+    base = record_v2(1)
+    install_value = base.install_transaction_value()
+    install_value.update({
+        "release_sequence": 1,
+        "previous_head_id": None,
+        "service_coverage_hash": catalog.service_coverage_hash,
+    })
+    return replace(
+        base,
+        previous_closed_build_id=None,
+        previous_cutover_id=None,
+        release_sequence=1,
+        previous_head_id=None,
+        service_coverage_hash=catalog.service_coverage_hash,
+        install_transaction_id=coordinator._install_transaction_id_v1(
+            install_value,
+        ),
+    )
+
+
+def _publish_historical_predecessor_fixture(
+    historical_repository, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    """Inject only the verified-catalog carrier and temporary ownership root."""
+    import executor_birth_ownership_authorities as authorities
+    import executor_birth_service_catalog as service_catalog
+
+    legacy_root, catalog = historical_repository
+    ownership_root = tmp_path / "ownership"
+    ownership_root.mkdir(mode=0o755)
+    verified = object()
+    complete = _first_release_receipts_complete_v2(catalog)
+    monkeypatch.setattr(
+        authorities, "DEFAULT_OWNERSHIP_ROOT_V1", ownership_root,
+    )
+    monkeypatch.setattr(
+        service_catalog, "capture_current_service_catalog_v1",
+        lambda candidate: SimpleNamespace(catalog=catalog)
+        if candidate is verified
+        else pytest.fail("verified catalog carrier changed"),
+    )
+
+    provisioner._publish_initial_predecessor_v2(
+        verified, complete, legacy_root,
+    )
+    return legacy_root, catalog, ownership_root, verified, complete
+
+
+@LINUX_ONLY
+def test_initial_predecessor_replays_after_a_real_legacy_file_is_retired(
+    historical_repository, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    import executor_birth_legacy_neutralizer as neutralizer
+    from executor_birth_distribution_assembler import (
+        decode_predecessor_descriptor_v1,
+    )
+    from executor_birth_legacy_retirement import plan_catalog_retirement_v1
+
+    legacy_root, catalog, ownership_root, verified, complete = (
+        _publish_historical_predecessor_fixture(
+            historical_repository, tmp_path, monkeypatch,
+        )
+    )
+    predecessor_path = ownership_root / "predecessor-v1.json"
+    first_bytes = predecessor_path.read_bytes()
+    first_stat = predecessor_path.stat()
+    predecessor = decode_predecessor_descriptor_v1(first_bytes)
+    retired_locator = "install/bootstrap.sh"
+    assert retired_locator in {item.path for item in predecessor.files}
+
+    step = next(
+        item for item in plan_catalog_retirement_v1(catalog).steps
+        if item.scope == "repository" and item.locator == retired_locator
+    )
+    performed = neutralizer.neutralize_for_test_v1(
+        neutralizer._TestOnlyNeutralizationCapabilityV1(legacy_root),
+        (step,), replacement_fragments={},
+    )
+    retired_path = legacy_root / retired_locator
+    assert len(performed) == 1 and performed[0].repeated is False
+    assert not retired_path.exists()
+    assert retired_path.with_name(
+        retired_path.name + neutralizer.RETIRED_EXTENSION_V1
+    ).is_file()
+
+    provisioner._publish_initial_predecessor_v2(
+        verified, complete, legacy_root,
+    )
+
+    replay_stat = predecessor_path.stat()
+    assert predecessor_path.read_bytes() == first_bytes
+    assert (replay_stat.st_dev, replay_stat.st_ino) == (
+        first_stat.st_dev, first_stat.st_ino,
+    )
+
+
+@pytest.mark.parametrize("mutation", (
+    "binding", "mode", "symlink", "hardlink", "noncanonical",
+))
+@LINUX_ONLY
+def test_initial_predecessor_replay_rejects_changed_anchor_or_binding(
+    historical_repository, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+):
+    import executor_birth_ownership_coordinator as coordinator
+    from executor_birth_distribution_assembler import DistributionAssemblerError
+
+    legacy_root, _catalog, ownership_root, verified, complete = (
+        _publish_historical_predecessor_fixture(
+            historical_repository, tmp_path, monkeypatch,
+        )
+    )
+    predecessor_path = ownership_root / "predecessor-v1.json"
+    if mutation == "binding":
+        install_value = complete.install_transaction_value()
+        install_value["administrative_bundle_hash"] = D("f")
+        complete = replace(
+            complete,
+            administrative_bundle_hash=D("f"),
+            install_transaction_id=coordinator._install_transaction_id_v1(
+                install_value,
+            ),
+        )
+        expected = coordinator.OwnershipCoordinatorError
+    elif mutation == "mode":
+        predecessor_path.chmod(0o600)
+        expected = coordinator.OwnershipCoordinatorError
+    elif mutation == "symlink":
+        target = ownership_root / "predecessor-target.json"
+        target.write_bytes(predecessor_path.read_bytes())
+        target.chmod(0o644)
+        predecessor_path.unlink()
+        predecessor_path.symlink_to(target.name)
+        expected = coordinator.OwnershipCoordinatorError
+    elif mutation == "hardlink":
+        (ownership_root / "predecessor-alias.json").hardlink_to(predecessor_path)
+        expected = coordinator.OwnershipCoordinatorError
+    else:
+        predecessor_path.write_bytes(predecessor_path.read_bytes() + b"\n")
+        predecessor_path.chmod(0o644)
+        expected = DistributionAssemblerError
+    before_bytes = predecessor_path.read_bytes()
+    before = predecessor_path.lstat()
+
+    with pytest.raises(expected):
+        provisioner._publish_initial_predecessor_v2(
+            verified, complete, legacy_root,
+        )
+
+    after = predecessor_path.lstat()
+    assert predecessor_path.read_bytes() == before_bytes
+    assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+
+
+@pytest.mark.parametrize("field", (
+    "transaction_id", "installation_root", "administrative_bundle_hash",
+    "service_catalog_id", "service_coverage_hash", "service_commands",
+))
+@LINUX_ONLY
+def test_initial_predecessor_replay_binds_every_historical_header(
+    historical_repository, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    field: str,
+):
+    from dataclasses import fields
+    import executor_birth_ownership_coordinator as coordinator
+    from executor_birth_distribution_assembler import (
+        build_predecessor_descriptor_v1, decode_predecessor_descriptor_v1,
+        encode_predecessor_descriptor_v1,
+    )
+
+    legacy_root, _catalog, ownership_root, verified, complete = (
+        _publish_historical_predecessor_fixture(
+            historical_repository, tmp_path, monkeypatch,
+        )
+    )
+    anchor = ownership_root / "predecessor-v1.json"
+    historical = decode_predecessor_descriptor_v1(anchor.read_bytes())
+    values = {
+        item.name: getattr(historical, item.name)
+        for item in fields(historical) if item.name != "predecessor_id"
+    }
+    values[field] = (
+        "/different/installation" if field == "installation_root"
+        else historical.service_commands[1:] if field == "service_commands"
+        else D("f")
+    )
+    changed = encode_predecessor_descriptor_v1(
+        build_predecessor_descriptor_v1(**values),
+    )
+    anchor.write_bytes(changed)
+    before = anchor.stat()
+
+    with pytest.raises(
+        coordinator.OwnershipCoordinatorError,
+        match="birth_ownership_journal_conflict",
+    ):
+        provisioner._publish_initial_predecessor_v2(
+            verified, complete, legacy_root,
+        )
+
+    assert anchor.read_bytes() == changed
+    after = anchor.stat()
+    assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+
+
 @LINUX_ONLY
 def test_initial_predecessor_is_published_from_the_bound_legacy_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
@@ -238,6 +558,12 @@ def test_initial_predecessor_is_published_from_the_bound_legacy_entry(
         coordinator, "OwnershipCoordinatorRecordV2", SimpleNamespace,
     )
     monkeypatch.setattr(authorities, "DEFAULT_OWNERSHIP_ROOT_V1", tmp_path)
+    monkeypatch.setattr(
+        coordinator, "_require_read_only_directory_v2",
+        lambda path, *, root_owned: None
+        if path == tmp_path and root_owned is True
+        else pytest.fail("ownership root binding changed"),
+    )
     monkeypatch.setattr(
         provisioner, "_require_transition_directory_v2",
         lambda path, *, owner: path

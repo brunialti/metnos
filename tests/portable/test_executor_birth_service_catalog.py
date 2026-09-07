@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import copy
 import hashlib
 import json
 import re
@@ -19,7 +18,10 @@ if str(RUNTIME) not in sys.path:
 
 import executor_birth_service_catalog as catalog
 import executor_birth_admin_operations as admin_operations
-from contract_boundary_guard import BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
+from contract_boundary_guard import (
+    BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
+    BOUNDARY_SOURCE_OWNERS,
+)
 
 
 _HASH_A = "sha256:" + "1" * 64
@@ -301,11 +303,22 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
         for item in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
         if item.endswith(":main")
     }
+    candidate_only_entrypoints = (
+        discovered_entrypoints & set(BOUNDARY_SOURCE_OWNERS)
+    ) - repository_bindings - store_entrypoints
     assert discovered_entrypoints & store_entrypoints == {
         "install/executor_birth_source_receiver.py",
         "install/executor_birth_transition.py",
     }
-    assert discovered_entrypoints <= repository_bindings | store_entrypoints
+    assert candidate_only_entrypoints == {
+        "install/executor_birth_contract_convergence.py",
+    }
+    assert BOUNDARY_SOURCE_OWNERS[
+        "install/executor_birth_contract_convergence.py"
+    ] == "executor_birth_contract_convergence"
+    assert discovered_entrypoints <= (
+        repository_bindings | store_entrypoints | candidate_only_entrypoints
+    )
     assert repository_bindings - discovered_entrypoints == (
         set() if complete_source_tree else _PUBLIC_EXPORT_OMITTED_ENTRYPOINTS
     )
@@ -562,15 +575,11 @@ def test_source_compiler_binds_targets_environment_and_supplementary_groups() ->
         "install-llm": {
             ("python_module", "repository", "install/llm_manager.py"),
         },
-            "install-metnos": {
-                ("script", "repository", "install/bootstrap.sh"),
-                ("script", "repository", "install/setup.sh"),
-                ("python_module", "repository", "install/__main__.py"),
-                (
-                    "python_module", "repository",
-                    "install/executor_birth_contract_convergence.py",
-                ),
-            },
+        "install-metnos": {
+            ("script", "repository", "install/bootstrap.sh"),
+            ("script", "repository", "install/setup.sh"),
+            ("python_module", "repository", "install/__main__.py"),
+        },
         "install-playwright": {
             ("python_module", "repository", "install/playwright_sidecar.py"),
             ("script", "repository", "runtime/playwright_sidecar/install.sh"),

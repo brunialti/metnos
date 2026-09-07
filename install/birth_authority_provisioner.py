@@ -4638,12 +4638,14 @@ def _publish_initial_predecessor_v2(
     """Publish the immutable first-transition anchor while maintenance is held."""
     from executor_birth_distribution_assembler import (
         MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1,
-        build_predecessor_descriptor_v1, encode_predecessor_descriptor_v1,
+        build_predecessor_descriptor_v1, decode_predecessor_descriptor_v1,
+        encode_predecessor_descriptor_v1,
     )
     from executor_birth_ownership_authorities import DEFAULT_OWNERSHIP_ROOT_V1
     from executor_birth_ownership_coordinator import (
         OwnershipCoordinatorRecordV2, OwnershipCoordinatorStateV1,
-        _publish_control_no_replace_v2,
+        _publish_control_no_replace_v2, _read_control_file_v2,
+        _require_read_only_directory_v2,
     )
 
     if (
@@ -4667,10 +4669,22 @@ def _publish_initial_predecessor_v2(
     catalog = loaded.catalog
     if catalog.service_coverage_hash != complete.service_coverage_hash:
         raise _reject("birth_transition_predecessor_invalid")
-    locators = _predecessor_file_locators_v2(root, catalog)
-    files = tuple(_capture_predecessor_file_v2(root, item) for item in locators)
-    if _predecessor_file_locators_v2(root, catalog) != locators:
-        raise _reject("birth_transition_predecessor_changed")
+    _require_read_only_directory_v2(DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True)
+    anchor = DEFAULT_OWNERSHIP_ROOT_V1 / "predecessor-v1.json"
+    try:
+        anchor.lstat()
+    except FileNotFoundError:
+        locators = _predecessor_file_locators_v2(root, catalog)
+        files = tuple(_capture_predecessor_file_v2(root, item) for item in locators)
+        if _predecessor_file_locators_v2(root, catalog) != locators:
+            raise _reject("birth_transition_predecessor_changed")
+    else:
+        # Retirement may already have renamed files. Reuse only the immutable
+        # historical inventory; rebuild every transition binding below.
+        stored = _read_control_file_v2(
+            anchor, MAX_PREDECESSOR_DESCRIPTOR_BYTES_V1, root_owned=True,
+        )
+        files = decode_predecessor_descriptor_v1(stored).files
     predecessor = build_predecessor_descriptor_v1(
         transaction_id=complete.install_transaction_id,
         installation_root=root.as_posix(), files=files,

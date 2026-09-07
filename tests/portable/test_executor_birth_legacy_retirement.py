@@ -51,7 +51,7 @@ def test_every_real_binding_receives_exactly_one_action() -> None:
         plan.legacy_binding_count,
         plan.cross_scope_match_count,
         plan.same_destination_overlap_count,
-    ) == (15, 40, 16, 1)
+    ) == (15, 39, 16, 1)
     assert {step.action for step in steps} == {
         "mask_user_unit", "mask_system_unit", "revoke_repository_entrypoint",
         "preserve_replaced_system_unit",
@@ -103,7 +103,7 @@ def test_a_future_catalog_can_grow_without_weakening_overlap_detection() -> None
         plan.legacy_binding_count,
         plan.cross_scope_match_count,
         plan.same_destination_overlap_count,
-    ) == (16, 40, 16, 1)
+    ) == (16, 39, 16, 1)
 
 
 def test_the_plan_does_not_depend_on_the_order_it_was_given() -> None:

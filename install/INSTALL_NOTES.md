@@ -91,6 +91,15 @@ This read-only verification does not construct a historical Birth runtime.
 Any contract requiring publication still needs the strict runtime context
 check; the transition never executes old authority under changed source.
 
+Legacy retirement bindings identify required files of the previous installation,
+not every entry point of the candidate. The new contract-convergence module is
+covered by the candidate's signed runtime inventory and preflight, but is not
+required to exist in the old tree. Missing required legacy files remain an error.
+On replay, the immutable predecessor census is securely reread and all its
+transition bindings are checked against the current authenticated inputs.
+It is not rebuilt from paths that retirement may already have renamed, and it
+does not replace current quiescence or topology checks.
+
 The transition is resumable and exact repetition is idempotent. The live
 user-level HTTP unit is stopped inside the coordinated switch and the signed
 system unit takes ownership; the same-name system unit is preserved as the

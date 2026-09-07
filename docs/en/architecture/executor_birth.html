@@ -32,6 +32,17 @@
  historical set, key inventory, or contract-to-generation binding are
  rejected; a historical signature is not a general permission to execute
  new code.</p>
+ <h2>The census distinguishes the old and new installations</h2>
+ <p>Retirement entries describe only components of the old installation.
+ A module introduced by the new distribution must not be required in its
+ predecessor: it remains covered by the new distribution's signed
+ inventory and verification. A missing required historical component
+ still blocks the transition.</p>
+ <p>Resuming reuses the recorded historical census, because retirement may
+ already have renamed some files. The document must retain its valid format,
+ integrity and safe ownership and match the same transition, installation
+ and catalog exactly. It is neither rewritten nor treated as a fresh
+ verification of current state.</p>
 </main>
 </body>
 </html>

@@ -348,6 +348,21 @@ def _bound_catalog_bytes(
         return encoded
 
     value = json.loads(encoded)
+    if recipe_mutation == "legacy-convergence":
+        value["legacy_bindings"].append({
+            "legacy_id": "legacy-install-contract-convergence",
+            "entry_id": "entry-installer",
+            "kind": "python_module",
+            "scope": "repository",
+            "locator": "install/executor_birth_contract_convergence.py",
+            "disposition": "retire_in_group7",
+        })
+        value["legacy_bindings"].sort(
+            key=lambda item: item["legacy_id"].encode("utf-8"),
+        )
+        return _reidentify(
+            _canonical(value), "catalog_id", catalog.CATALOG_ID_DOMAIN,
+        )
     if recipe_mutation == "pre-normalized-marker":
         entry = next(
             item for item in value["entries"]
@@ -554,6 +569,7 @@ def _bound_graph(
         recipe_mutation=(
             "description" if mutation == "recipe-description"
             else "restart" if mutation == "recipe-restart"
+            else "legacy-convergence" if mutation == "recipe-legacy-convergence"
             else "pre-normalized-marker"
             if mutation == "pre-normalized-marker" else None
         ),
@@ -1266,6 +1282,7 @@ def test_pure_material_binder_requires_exact_captured_preflight_bytes(
 @pytest.mark.parametrize(
     "mutation", (
         "recipe-description", "recipe-restart", "pre-normalized-marker",
+        "recipe-legacy-convergence",
     ),
 )
 def test_pure_material_binder_rejects_fully_rebound_source_recipe_mutants(
