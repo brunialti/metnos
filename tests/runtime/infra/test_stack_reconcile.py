@@ -18,6 +18,16 @@ RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 import stack_reconcile as sr
 
 
+@pytest.fixture(autouse=True)
+def _legacy_readiness_catalog(monkeypatch):
+    import services_registry
+
+    monkeypatch.setattr(
+        services_registry, "readiness_catalog", services_registry.catalog,
+        raising=False,
+    )
+
+
 def test_catalog_lifecycle_guard_acquires_catalog_before_reconcile(
     monkeypatch,
 ) -> None:
@@ -526,6 +536,25 @@ def test_systemctl_show_accepts_exact_central_maintenance_catalog(monkeypatch):
     assert observed == list(MAINTENANCE_TARGETS_V1)
 
 
+def test_systemctl_show_accepts_only_canonical_product_system_units(monkeypatch):
+    from executor_birth_service_catalog import SERVICE_SOURCE_V1
+
+    observed = []
+
+    def run(_self, scope, *args, **_kwargs):
+        assert args[0] == "show"
+        observed.append((scope, args[1]))
+        return subprocess.CompletedProcess(
+            [], 0, stdout="LoadState=loaded\nActiveState=active\n", stderr="",
+        )
+
+    monkeypatch.setattr(sr.Systemctl, "run", run)
+    units = tuple(item.unit_name for item in SERVICE_SOURCE_V1 if item.unit_name)
+    for unit in units:
+        assert sr.Systemctl().show(unit, "system")["LoadState"] == "loaded"
+    assert observed == [("system", unit) for unit in units]
+
+
 def test_systemctl_show_rejects_unit_outside_exact_scope_catalog(monkeypatch):
     monkeypatch.setattr(
         sr.Systemctl, "run",
@@ -534,7 +563,7 @@ def test_systemctl_show_rejects_unit_outside_exact_scope_catalog(monkeypatch):
     adapter = sr.Systemctl()
     for scope, unit in (
         ("user", "metnos-backup.service"),
-        ("system", "metnos.target"),
+        ("user", "llama-server.service"),
         ("system", "unrelated.service"),
     ):
         with pytest.raises(sr.StackFailure) as caught:
@@ -571,6 +600,117 @@ def test_installed_sidecar_must_be_aligned(monkeypatch, tmp_path):
     with pytest.raises(sr.StackFailure) as caught:
         rec.check()
     assert "sidecar_contract" in caught.value.details["failed_checks"]
+
+
+def _signed_readiness_catalog(monkeypatch):
+    import dataclasses
+    import services_registry
+
+    profile = tuple(dataclasses.replace(
+        spec, targets=(services_registry.ServiceTarget(
+            spec.targets[-1].unit, "system",
+        ),),
+    ) for spec in services_registry.catalog())
+    monkeypatch.setattr(services_registry, "readiness_catalog", lambda: profile)
+    return profile
+
+
+@pytest.mark.parametrize("stopped", [False, True])
+def test_signed_system_sidecar_health_is_required_unless_deliberately_stopped(
+    monkeypatch, tmp_path, stopped,
+):
+    import services_registry
+
+    _wire(monkeypatch, _composite(sidecar_ok=False))
+    _signed_readiness_catalog(monkeypatch)
+    monkeypatch.setattr(
+        services_registry, "desired_state",
+        lambda key: "stopped" if stopped and key == "playwright" else "running",
+    )
+    fake = FakeSystemctl()
+
+    def show(unit, scope="user"):
+        fake.calls.append(("show", scope, unit))
+        return {
+            "LoadState": "loaded" if scope == "system" else "not-found",
+            "ActiveState": "active" if scope == "system" else "inactive",
+        }
+
+    fake.show = show
+    rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
+    if stopped:
+        assert rec.check()["ok"] is True
+    else:
+        with pytest.raises(sr.StackFailure) as caught:
+            rec.check()
+        assert "sidecar_contract" in caught.value.details["failed_checks"]
+    assert ("show", "system", "metnos-playwright.service") in fake.calls
+    assert not any(call[1] == "user" for call in fake.calls)
+
+
+def test_signed_system_component_failure_cannot_hide_behind_absent_user_unit(
+    monkeypatch, tmp_path,
+):
+    _wire(monkeypatch, _composite())
+    _signed_readiness_catalog(monkeypatch)
+    fake = FakeSystemctl()
+
+    def show(unit, scope="user"):
+        return {
+            "LoadState": "loaded" if scope == "system" else "not-found",
+            "ActiveState": "failed" if unit == "metnos-telegram-daemon.service"
+            else "active",
+        }
+
+    fake.show = show
+    rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
+    with pytest.raises(sr.StackFailure) as caught:
+        rec.check()
+    assert "managed_components" in caught.value.details["failed_checks"]
+
+
+def test_readiness_passes_the_same_signed_profile_to_watched_services(
+    monkeypatch, tmp_path,
+):
+    _wire(monkeypatch, _composite())
+    profile = _signed_readiness_catalog(monkeypatch)
+    observed = []
+
+    def snapshot(key, **kwargs):
+        observed.append((key, kwargs.get("spec")))
+        return {"installed": True, "load_state": "loaded", "active_state": "active",
+                "healthy": True, "process_stopped": False, "observation_error": ""}
+
+    monkeypatch.setattr(sr, "_watched_service_snapshot", snapshot)
+    rec = sr.StackReconciler(systemctl=FakeSystemctl(), report_path=tmp_path / "report.json")
+    assert rec.check()["ok"] is True
+    by_key = {spec.key: spec for spec in profile}
+    assert observed == [(key, by_key[key]) for key in sr.WATCHED_SERVICE_KEYS]
+
+
+def test_signed_readiness_does_not_authorize_new_watchdog_mutation_scopes(monkeypatch):
+    _signed_readiness_catalog(monkeypatch)
+    with pytest.raises(sr.StackFailure) as caught:
+        sr.StackReconciler._validate_watched_target("durable_workloads", {
+            "unit": "metnos-durable-worker.service", "scope": "system",
+        })
+    assert caught.value.code == "invalid_service_target"
+
+
+def test_readiness_rejects_invalid_signed_profile_before_observation(monkeypatch, tmp_path):
+    import services_registry
+
+    monkeypatch.setattr(
+        services_registry, "readiness_catalog",
+        lambda: (_ for _ in ()).throw(ValueError("invalid chain")),
+    )
+    monkeypatch.setattr(sr, "_json_request", lambda *a, **k: pytest.fail("no probe"))
+    fake = FakeSystemctl()
+    rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
+    with pytest.raises(sr.StackFailure) as caught:
+        rec.check()
+    assert caught.value.code == "service_catalog_unavailable"
+    assert fake.calls == []
 
 
 def test_installed_managed_component_cannot_be_silently_stopped(

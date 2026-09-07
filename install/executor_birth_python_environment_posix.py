@@ -210,9 +210,10 @@ def _seal_tree_v1(root: Path, owner: tuple[int, int]) -> None:
             )
             try:
                 descriptor = os.open(path, flags)
+                executable = bool(os.fstat(descriptor).st_mode & 0o111)
                 os.fchown(descriptor, *owner)
                 posix_directory.remove_acl_v1(descriptor)
-                mode = 0o755 if path.is_dir() or path == root / "bin/python" else 0o644
+                mode = 0o755 if path.is_dir() or path == root / "bin/python" or executable else 0o644
                 os.fchmod(descriptor, mode)
                 os.fsync(descriptor)
             except (OSError, posix_directory.PosixDirectoryError) as exc:

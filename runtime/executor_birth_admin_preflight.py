@@ -816,7 +816,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:a3911cd48bcec97fc808bc7dd4a7f3544f0d2fc8bdbd3098a44d5c65c9f6a216"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:1c07efd4016dbac02ee2c56760269a633a5ca99e4ec2a3a7f86107e6b4818466"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -3228,7 +3228,7 @@ def _require_isolated_g6c_source_recipe_v1(
     if (
         service.external_unit_name is not None or service.adapter_path is not None
         or service.scope != "system" or service.execution_kind != "python_module"
-        or service.target_executable != descriptor.python_executable
+        or not _service_python_binding_v1(service.target_executable, descriptor)
         or service.target_executable_hash is None
         or service.python_module != "runtime.executor_birth_activation_probe"
         or service.target_args != (marker_path,)

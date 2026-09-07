@@ -139,11 +139,16 @@ def test_catalog_target_reconcile_and_phase5_unit_sets_remain_in_parity():
     assert set(reconcile.STACK_UNITS) == (
         registry_units | {"metnos-stack-watchdog.timer"}
     )
+    # A supported system baseline is observed by the endpoint/service health
+    # checks; its unused user alias is not a second required component.
+    system_baseline_aliases = {
+        target.unit for service in registry.catalog()
+        if any(target.scope == "system" for target in service.targets)
+        for target in service.targets if target.scope == "user"
+    }
     assert set(reconcile.RUNTIME_COMPONENT_UNITS) == (
-        registry_units - {
-            "metnos-http.service",
-            "metnos-i18n-translator.service",
-        }
+        registry_units - system_baseline_aliases
+        - {"metnos-i18n-translator.service"}
     )
     rendered_control_units = {
         unit for _template, unit in phase5.STACK_UNIT_TEMPLATES

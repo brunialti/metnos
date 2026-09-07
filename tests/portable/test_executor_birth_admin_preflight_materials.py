@@ -417,6 +417,7 @@ def _bound_catalog_bytes(
 
 def _isolated_g6c_records(
     *, description: str = "isolated signed G6-C probe",
+    service_python: str = _MANAGED_PYTHON,
 ) -> tuple[bytes, assembler.DeploymentDescriptorV1]:
     namespace = "0123456789abcdef"
     release_sequence = 1
@@ -427,8 +428,8 @@ def _isolated_g6c_records(
     service_name = f"metnos-g6c-{namespace}-probe.service"
     timer_id = service_id + "-timer"
     timer_name = f"metnos-g6c-{namespace}-probe.timer"
-    python = _MANAGED_PYTHON
-    administrative = "!" + _MANAGED_PYTHON
+    python = service_python
+    administrative = "!/usr/bin/python3.12"
     service_spec = catalog.make_unit_spec_v1(service_name, (
         catalog.ServiceDirectiveV1(
             "Unit", "Description", "scalar", (description,),
@@ -544,7 +545,7 @@ def _isolated_g6c_records(
         service_home="/var/lib/metnos", service_shell="/usr/sbin/nologin",
         artifacts=tuple(artifacts), service_catalog_id=decoded.catalog_id,
         service_coverage_hash=decoded.service_coverage_hash,
-        python_executable=python, openssl_executable="/usr/bin/openssl",
+        python_executable="/usr/bin/python3.12", openssl_executable="/usr/bin/openssl",
         systemctl_executable="/usr/bin/systemctl",
         systemd_analyze_executable="/usr/bin/systemd-analyze",
     )
@@ -1004,6 +1005,18 @@ def test_signed_isolated_g6c_recipe_rejects_one_fully_rehashed_mutant() -> None:
             autonomous_catalog, autonomous_descriptor,
         )
     assert failure.value.code == preflight.CODE_INVALID
+
+
+@pytest.mark.parametrize("python", ("/usr/bin/python3.12", "/tmp/python"))
+def test_signed_isolated_g6c_recipe_requires_managed_service_python(python: str) -> None:
+    encoded, descriptor = _isolated_g6c_records(service_python=python)
+    with pytest.raises(preflight.PreflightError):
+        preflight._service_source_identity_v1(
+            preflight._decode_service_catalog_v1(encoded),
+            preflight._decode_deployment_descriptor_v1(
+                assembler.encode_deployment_descriptor_v1(descriptor),
+            ),
+        )
 
 
 def test_administrative_bundle_hash_matches_framing_and_changes_with_artifact(

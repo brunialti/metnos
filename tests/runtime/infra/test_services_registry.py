@@ -10,6 +10,7 @@ _RUNTIME = str((Path(__file__).resolve().parents[3] / "runtime"))
 
 import services_registry as registry
 from http_render import render_template
+import pytest
 
 
 def _show(*, unit: str, load: str = "loaded", active: str = "active"):
@@ -49,6 +50,119 @@ def test_catalog_keys_and_targets_are_closed_and_unique():
                    for target in service.targets)
         assert all(target.unit.endswith((".service", ".timer"))
                    for target in service.targets)
+
+
+def test_readiness_catalog_preserves_initial_installer_profile(monkeypatch, tmp_path):
+    import executor_birth_ownership_chain as ownership
+
+    monkeypatch.setattr(ownership, "DEFAULT_OWNERSHIP_CHAIN_ROOT_V1", tmp_path / "absent")
+    monkeypatch.setattr(
+        ownership, "inspect_ownership_chain_state_v1",
+        lambda: pytest.fail("no chain should be opened on the fresh installer"),
+    )
+    assert registry.readiness_catalog() is registry.SERVICES
+
+
+def test_readiness_catalog_preserves_verified_empty_chain(monkeypatch, tmp_path):
+    import executor_birth_ownership_chain as ownership
+    import executor_birth_service_catalog as catalog
+
+    monkeypatch.setattr(ownership, "DEFAULT_OWNERSHIP_CHAIN_ROOT_V1", tmp_path)
+    state = ownership._mint_initial_ownership_chain_state_v1(tmp_path)
+    monkeypatch.setattr(ownership, "inspect_ownership_chain_state_v1", lambda: state)
+    monkeypatch.setattr(
+        catalog, "capture_current_service_catalog_v1",
+        lambda _: pytest.fail("an initial chain has no required distribution"),
+    )
+    assert registry.readiness_catalog() is registry.SERVICES
+
+
+def test_readiness_catalog_has_no_store_mutation_authority():
+    from contract_boundary_guard import scan_file
+
+    source = Path(registry.__file__)
+    facts = scan_file(source, repository_root=source.parent.parent)
+    reader = next(fact for fact in facts if fact.scope == "readiness_catalog")
+    assert reader.capabilities == ()
+    assert not reader.closed_dynamic_boundary
+
+
+def _verified_readiness_chain(monkeypatch, tmp_path):
+    import executor_birth_ownership_chain as ownership
+    import executor_birth_service_catalog as catalog
+
+    class VerifiedChain:
+        required_distribution = SimpleNamespace(installation_root=str(tmp_path))
+
+    entries = tuple(SimpleNamespace(
+        unit_name=item.unit_name, external_unit_name=item.external_unit_name,
+        scope=catalog._entry_scope(item.class_name),
+    ) for item in catalog.SERVICE_SOURCE_V1)
+    monkeypatch.setattr(registry._C, "PATH_ROOT", tmp_path)
+    monkeypatch.setattr(ownership, "DEFAULT_OWNERSHIP_CHAIN_ROOT_V1", tmp_path)
+    monkeypatch.setattr(ownership, "VerifiedOwnershipChain", VerifiedChain)
+    monkeypatch.setattr(ownership, "inspect_ownership_chain_state_v1", VerifiedChain)
+
+    def capture(distribution):
+        assert distribution is VerifiedChain.required_distribution
+        return SimpleNamespace(catalog=SimpleNamespace(entries=entries))
+
+    monkeypatch.setattr(catalog, "capture_current_service_catalog_v1", capture)
+    return VerifiedChain
+
+
+def test_readiness_catalog_uses_signed_targets_without_changing_control_policy(
+    monkeypatch, tmp_path,
+):
+    _verified_readiness_chain(monkeypatch, tmp_path)
+    policy_before = registry.render_polkit_rule("metnos-test")
+    profile = {spec.key: spec for spec in registry.readiness_catalog()}
+    for key in ("playwright", "telegram", "side_display", "i18n", "durable_workloads"):
+        original = registry.get(key)
+        assert profile[key].targets == (registry.ServiceTarget(original.targets[0].unit, "system"),)
+        assert original.targets[0].scope == "user"
+        assert profile[key].required == original.required
+        assert profile[key].base_url == original.base_url
+    for key in ("http", "llm", "searxng", "photon"):
+        assert profile[key].targets == (registry.get(key).targets[-1],)
+    assert registry.render_polkit_rule("metnos-test") == policy_before
+
+
+def test_readiness_catalog_rejects_another_release_root(monkeypatch, tmp_path):
+    import executor_birth_service_catalog as catalog
+
+    _verified_readiness_chain(monkeypatch, tmp_path)
+    monkeypatch.setattr(registry._C, "PATH_ROOT", tmp_path / "different-release")
+    monkeypatch.setattr(
+        catalog, "capture_current_service_catalog_v1",
+        lambda _: pytest.fail("wrong installation must stop before catalog capture"),
+    )
+    with pytest.raises(ValueError, match="root mismatch"):
+        registry.readiness_catalog()
+
+
+def test_readiness_catalog_never_falls_back_after_chain_failure(monkeypatch, tmp_path):
+    import executor_birth_ownership_chain as ownership
+
+    monkeypatch.setattr(ownership, "DEFAULT_OWNERSHIP_CHAIN_ROOT_V1", tmp_path)
+    monkeypatch.setattr(
+        ownership, "inspect_ownership_chain_state_v1",
+        lambda: (_ for _ in ()).throw(ownership.OwnershipChainError("invalid-chain")),
+    )
+    with pytest.raises(ownership.OwnershipChainError):
+        registry.readiness_catalog()
+
+
+def test_readiness_catalog_rejects_missing_signed_service(monkeypatch, tmp_path):
+    import executor_birth_service_catalog as catalog
+
+    _verified_readiness_chain(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        catalog, "capture_current_service_catalog_v1",
+        lambda _: SimpleNamespace(catalog=SimpleNamespace(entries=())),
+    )
+    with pytest.raises(ValueError, match="uniquely signed"):
+        registry.readiness_catalog()
 
 
 def test_endpoints_have_one_canonical_default(monkeypatch):

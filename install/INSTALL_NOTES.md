@@ -85,6 +85,16 @@ verifies it again from the installed copy, completes the durable ownership
 coordinator, and activates only the target and readiness units named by the
 signed service catalog.
 
+The complete Linux x86_64 CPython 3.12 release uses
+`requirements-linux-x86_64.lock`, including Playwright and its pinned runtime
+dependencies because the signed catalog installs the browser sidecar. The
+offline builder verifies wheel hashes and publishes a new content-addressed
+Python environment; it never patches an existing environment. Sealing keeps
+packaged executable files executable, normalizes permissions to 0755/0644,
+and removes special permission bits. Browser binaries and native libraries
+remain separate installation prerequisites. This complete release profile
+does not change the legacy six-phase installer's optional-sidecar choices.
+
 Before the first transition prepares its new context, unchanged current
 contracts are authenticated with the verified historical set's public keys.
 This read-only verification does not construct a historical Birth runtime.

@@ -260,8 +260,22 @@ class _ActivationFixture:
 
 
 def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
+    from install.executor_birth_python_environment_posix import (
+        PRODUCT_ENVIRONMENT_STORE_V1, ensure_python_environment_v1,
+    )
+
     account = _service_account()
-    python, python_bytes = _canonical_executable("/usr/bin/python3")
+    python, _python_bytes = _canonical_executable("/usr/bin/python3")
+    lock_bytes = (repository / "requirements-linux-x86_64.lock").read_bytes()
+    PRODUCT_ENVIRONMENT_STORE_V1.mkdir(mode=0o755, parents=True, exist_ok=True)
+    environment = ensure_python_environment_v1(
+        lock_bytes,
+        Path("/var/lib/metnos/python-wheelhouse-v1/linux-x86_64-cpython-312"),
+        "linux-x86_64-cpython-312",
+    )
+    service_python, service_python_bytes = _canonical_executable(
+        environment.python_executable.as_posix(),
+    )
     openssl, _openssl_bytes = _canonical_executable("/usr/bin/openssl")
     systemctl, _systemctl_bytes = _canonical_executable("/usr/bin/systemctl")
     systemd_analyze, _analyze_bytes = _canonical_executable(
@@ -359,8 +373,8 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
     entries = (
         catalog.ServiceCatalogEntryV1(
             service_entry_id, service_name, None, None, "gated_service",
-            "system", "python_module", python,
-            catalog.target_executable_hash_v1(python, python_bytes),
+            "system", "python_module", service_python,
+            catalog.target_executable_hash_v1(service_python, service_python_bytes),
             "runtime.executor_birth_activation_probe",
             (marker_path.as_posix(),),
             RELEASE_ROOT.as_posix(), (), None, service_spec, True, True,
@@ -422,7 +436,7 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
         "deployment/executor-birth-deployment-v1.json": descriptor_bytes,
         "deployment/executor-birth-service-catalog-v1.json": catalog_bytes,
         BOUNDARY_INVENTORY_PATH: _compiled_boundary_inventory(repository),
-        "requirements.lock": b"cryptography==47.0.0\n",
+        "requirements.lock": lock_bytes,
         **{
             "deployment/systemd/" + name: fragment
             for name, fragment in unit_fragments
