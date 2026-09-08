@@ -12,6 +12,10 @@ import pytest
 from install import executor_birth_posix_directory as directory
 
 
+LINUX_ONLY = pytest.mark.skipif(os.name != "posix", reason="real POSIX directory handles")
+
+
+@LINUX_ONLY
 def test_absolute_chain_rejects_live_root_replacement(tmp_path) -> None:
     root = tmp_path / "root"
     root.mkdir(mode=0o700)
@@ -25,6 +29,7 @@ def test_absolute_chain_rejects_live_root_replacement(tmp_path) -> None:
         bound.close()
 
 
+@LINUX_ONLY
 def test_relative_open_rebinds_every_parent_after_use(tmp_path) -> None:
     root = tmp_path / "root"
     leaf = root / "parent" / "leaf"
@@ -44,15 +49,18 @@ def test_relative_open_rebinds_every_parent_after_use(tmp_path) -> None:
 
 
 def test_acl_unsupported_is_fail_closed(monkeypatch) -> None:
+    monkeypatch.setattr(directory, "require_posix_directory_platform_v1", lambda: None)
+    monkeypatch.setattr(errno, "ENODATA", 61, raising=False)
     monkeypatch.setattr(
         directory.os, "getxattr",
         lambda *_args: (_ for _ in ()).throw(OSError(errno.ENOTSUP, "no ACL")),
+        raising=False,
     )
     with pytest.raises(directory.PosixDirectoryError, match="ACL observation"):
         directory.require_no_acl_v1(7)
 
 
-def test_constructor_closes_child_that_fails_initial_rebind(monkeypatch) -> None:
+def test_constructor_closes_child_that_fails_initial_rebind(tmp_path, monkeypatch) -> None:
     opened, closed = iter((10, 11)), []
     monkeypatch.setattr(directory, "require_posix_directory_platform_v1", lambda: None)
     monkeypatch.setattr(directory.os, "open", lambda *_args, **_kwargs: next(opened))
@@ -62,7 +70,7 @@ def test_constructor_closes_child_that_fails_initial_rebind(monkeypatch) -> None
         lambda *_args: (_ for _ in ()).throw(directory.PosixDirectoryError("changed")),
     )
     with pytest.raises(directory.PosixDirectoryError):
-        directory.BoundDirectoryChainV1(Path("/child"))
+        directory.BoundDirectoryChainV1(tmp_path / "child")
     assert closed == [11, 10]
 
 
@@ -83,6 +91,7 @@ def test_relative_open_closes_child_that_fails_initial_rebind(monkeypatch) -> No
     assert closed == [11]
 
 
+@LINUX_ONLY
 def test_metadata_change_during_acl_observation_is_rejected(tmp_path, monkeypatch) -> None:
     root = tmp_path / "root"
     root.mkdir(mode=0o700)
@@ -110,7 +119,7 @@ def test_metadata_change_during_acl_observation_is_rejected(tmp_path, monkeypatc
 
 
 def test_platform_gate_rejects_missing_no_follow(monkeypatch) -> None:
-    monkeypatch.delattr(directory.os, "O_NOFOLLOW")
+    monkeypatch.delattr(directory.os, "O_NOFOLLOW", raising=False)
     with pytest.raises(directory.PosixDirectoryError, match="platform unsupported"):
         directory.require_posix_directory_platform_v1()
 

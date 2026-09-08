@@ -1987,6 +1987,7 @@ def test_fixed_ownership_capture_rejects_legacy_state_posix_acl(
 def test_control_acl_presence_is_rejected_without_filesystem_acl_support(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, acl_name: str,
 ) -> None:
+    monkeypatch.setattr(errno, "ENODATA", 61, raising=False)
     target = tmp_path / "control"
     target.write_bytes(b"")
     descriptor = os.open(target, os.O_RDONLY)
@@ -1997,7 +1998,7 @@ def test_control_acl_presence_is_rejected_without_filesystem_acl_support(
             return b"acl"
         raise OSError(errno.ENODATA, "absent")
 
-    monkeypatch.setattr(preflight.os, "getxattr", getxattr)
+    monkeypatch.setattr(preflight.os, "getxattr", getxattr, raising=False)
     try:
         _recovery(
             preflight._require_no_control_acl_v1,
@@ -2010,6 +2011,7 @@ def test_control_acl_presence_is_rejected_without_filesystem_acl_support(
 def test_control_acl_observation_error_is_typed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(errno, "ENODATA", 61, raising=False)
     target = tmp_path / "control"
     target.write_bytes(b"")
     descriptor = os.open(target, os.O_RDONLY)
@@ -2017,6 +2019,7 @@ def test_control_acl_observation_error_is_typed(
     monkeypatch.setattr(
         preflight.os, "getxattr",
         lambda *_args: (_ for _ in ()).throw(OSError(errno.EIO, "injected")),
+        raising=False,
     )
     try:
         _recovery(
@@ -2363,6 +2366,8 @@ def test_legacy_state_decoders_reject_rehashed_relinked_semantic_drift(
 def test_control_descriptor_cleanup_attempts_all_and_preserves_active_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    target = tmp_path / "control"
+    target.write_bytes(b"")
     real_close = os.close
     attempts = []
 
@@ -2371,7 +2376,7 @@ def test_control_descriptor_cleanup_attempts_all_and_preserves_active_error(
         real_close(descriptor)
         raise OSError(errno.EIO, "injected close failure")
 
-    first = tuple(os.open(tmp_path, os.O_RDONLY) for _ in range(3))
+    first = tuple(os.open(target, os.O_RDONLY) for _ in range(3))
     monkeypatch.setattr(preflight.os, "close", failing_close)
     failure = _recovery(
         preflight._close_control_descriptors_v1,
@@ -2381,7 +2386,7 @@ def test_control_descriptor_cleanup_attempts_all_and_preserves_active_error(
     assert isinstance(failure.__cause__, OSError)
 
     attempts.clear()
-    second = tuple(os.open(tmp_path, os.O_RDONLY) for _ in range(3))
+    second = tuple(os.open(target, os.O_RDONLY) for _ in range(3))
     primary = ValueError("primary failure")
     preflight._close_control_descriptors_v1(
         second, active_error=primary,

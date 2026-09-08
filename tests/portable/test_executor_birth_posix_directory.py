@@ -304,7 +304,7 @@ def test_platform_capability_absence_is_typed(monkeypatch) -> None:
 
 
 def test_missing_required_syscall_flag_is_typed(monkeypatch) -> None:
-    monkeypatch.delattr(directory.os, "O_NOFOLLOW")
+    monkeypatch.delattr(directory.os, "O_NOFOLLOW", raising=False)
     with pytest.raises(directory.PosixDirectoryError) as captured:
         directory.open_posix_directory_v1(PurePosixPath("/tmp"))
     assert captured.value.kind is directory.PosixDirectoryFailureKindV1.platform_unsupported

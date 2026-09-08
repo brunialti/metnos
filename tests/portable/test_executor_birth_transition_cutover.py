@@ -28,6 +28,7 @@ def D(character: str) -> str:
     return "sha256:" + character * 64
 
 
+@LINUX_ONLY
 def test_legacy_identity_facade_uses_the_shared_account_owner(monkeypatch) -> None:
     account = PosixAccountRecordV1(
         name="legacy-metnos", uid=981, gid=982,
@@ -1073,6 +1074,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     ]
 
 
+@LINUX_ONLY
 def test_completed_cutover_only_reattests_and_skips_administrative_install(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1291,6 +1293,7 @@ def test_contract_convergence_rejects_ambiguous_service_python(
 
 
 @pytest.mark.parametrize("changed", [True, False])
+@LINUX_ONLY
 def test_legacy_preparation_helper_binds_signed_account_and_build(
     monkeypatch, changed,
 ) -> None:

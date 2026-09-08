@@ -269,9 +269,11 @@ def test_staged_selection_builds_only_a_context_bound_reattestation(
     effective = [(0, 0)]
     monkeypatch.setattr(
         transition_receipts_module.os, "geteuid", lambda: effective[0][0],
+        raising=False,
     )
     monkeypatch.setattr(
         transition_receipts_module.os, "getegid", lambda: effective[0][1],
+        raising=False,
     )
 
     @contextmanager

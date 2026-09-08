@@ -1318,6 +1318,8 @@ def test_pending_cutover_selection_uses_exact_authenticated_bytes(archived, muta
 
 @pytest.mark.parametrize("signature_fails", (False, True))
 def test_product_candidate_preparation_authenticates_before_archive(monkeypatch, signature_fails):
+    # All host effects below are simulated; exercise ordering on either runner.
+    monkeypatch.setattr(preflight, "require_linux_before_io_v1", lambda: None)
     from pathlib import Path
     import executor_birth_distribution_manifest as manifest
     import executor_birth_ownership_coordinator as coordinator
