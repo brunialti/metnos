@@ -992,10 +992,10 @@ def _safe_mail_accounts(raw) -> tuple[list[str], bool]:
 
 
 def mail_extras(executor, args) -> tuple[list[Path], bool]:
-    """Read-only credential binds and network authority for local IMAP.
+    """Read-only credential binds and network authority for local mail.
 
     The grant exists only when the signed manifest declares an effective
-    ``mail:read`` or ``mail:write`` capability. Invocation arguments can then
+    ``mail:read``, ``mail:write`` or ``mail:send`` capability. Arguments can then
     *narrow* it to the selected channel/backend/account; they can never create
     it. Google mail is governed by ``provider:access`` and Telegram inquiry has
     no synchronous mailbox, so neither receives the local IMAP vault surface.
@@ -1012,17 +1012,29 @@ def mail_extras(executor, args) -> tuple[list[Path], bool]:
         getattr(executor, "args_schema", None) or {},
         args,
     )
-    if not any(cap.get("name") in {"mail:read", "mail:write"}
-               for cap in effective):
+    mail_modes = {cap.get("name") for cap in effective}
+    if not mail_modes.intersection({"mail:read", "mail:write", "mail:send"}):
         return [], False
 
     invocation = args if isinstance(args, dict) else {}
     channel = str(invocation.get("via_channel") or "email").casefold()
     client = str(invocation.get("client") or "metnos").casefold()
-    if channel not in {"email", "mail"} or client != "metnos":
+    sending = "mail:send" in mail_modes
+    channels = {"email", "mail", "auto"} if sending else {"email", "mail"}
+    if channel not in channels or client != "metnos":
         return [], False
 
-    accounts, all_accounts = _safe_mail_accounts(invocation.get("account"))
+    account = invocation.get("account")
+    if sending and account is None:
+        # The HTTP startup resolves this private preference once; the child
+        # inherits it unchanged. Reading mail keeps its declared default.
+        account = os.environ.get("METNOS_DEFAULT_MAIL_ACCOUNT") or "metnos_system"
+    accounts, all_accounts = _safe_mail_accounts(account)
+    if sending and not mail_modes.intersection({"mail:read", "mail:write"}):
+        # SMTP sending selects one account; the reader's 'all' expansion
+        # must not expose other credentials before an invalid send fails.
+        if all_accounts or isinstance(account, list):
+            return [], True
     try:
         import config as _config
         import credentials as _credentials

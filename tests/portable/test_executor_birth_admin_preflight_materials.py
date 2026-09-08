@@ -978,6 +978,31 @@ def test_candidate_units_match_independent_hash_and_exact_enablement_links() -> 
     )) == _EXPECTED_ENABLEMENT_LINKS
 
 
+@pytest.mark.parametrize("engine", ("v3", "metis"))
+def test_product_recipe_pin_admits_v3_and_rejects_rehashed_metis(engine) -> None:
+    original = catalog.decode_service_catalog_v1(_catalog_bytes())
+    entries = tuple(
+        dataclasses.replace(entry, target_environment=tuple(
+            dataclasses.replace(value, value=engine)
+            if value.name == "METNOS_ENGINE" else value
+            for value in entry.target_environment
+        )) if entry.entry_id == "service-http" else entry
+        for entry in original.entries
+    )
+    encoded = catalog._encode_service_catalog_v1(entries, original.legacy_bindings)
+    autonomous = preflight._decode_service_catalog_v1(encoded)
+    descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(_deployment_record())
+    )
+    if engine == "v3":
+        assert preflight._service_source_identity_v1(autonomous, descriptor) == (
+            preflight._EXPECTED_SERVICE_SOURCE_IDENTITY_V1
+        )
+    else:
+        with pytest.raises(preflight.PreflightError, match="service source recipe"):
+            preflight._service_source_identity_v1(autonomous, descriptor)
+
+
 def test_signed_isolated_g6c_recipe_has_one_closed_namespace_and_no_links() -> None:
     encoded, descriptor = _isolated_g6c_records()
     autonomous_catalog = preflight._decode_service_catalog_v1(encoded)

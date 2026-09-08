@@ -364,6 +364,10 @@ def run_standalone(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> None:
     # before the HTTP application can start any mutating background worker.
     from executor_birth_bootstrap import require_birth_runtime_before_workers
     require_birth_runtime_before_workers()
+    # Resolve the private SMTP preference once. Existing executor processes
+    # inherit this same value; they do not need access to runtime.toml.
+    from runtime_settings import mail_default_account
+    os.environ["METNOS_DEFAULT_MAIL_ACCOUNT"] = mail_default_account()
     lock = ProcessLock(LOCKFILE)
     lock.acquire()
     try:

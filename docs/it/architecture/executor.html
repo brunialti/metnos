@@ -550,6 +550,25 @@ catalogo firmato corrente, senza modificare servizi o ampliare i comandi di
 controllo. Un catalogo non valido interrompe la verifica: non viene sostituito
 silenziosamente con la configurazione precedente.</p>
 
+<p>Il catalogo firmato avvia HTTP con <code>METNOS_ENGINE=v3</code>, senza
+ereditare aggiunte arbitrarie alle unit&agrave; (<code>.service.d</code>) o
+all'ambiente di avvio. Le impostazioni private restano nel file esistente
+<code>$METNOS_USER_CONFIG/runtime.toml</code>: <code>default_account</code> nella
+sezione <code>[mail]</code> &egrave; una stringa non vuota, con valore predefinito
+<code>metnos_system</code>; <code>nightly_enabled</code> in <code>[telos]</code>
+&egrave; un booleano, predefinito <code>false</code>.
+<code>METNOS_DEFAULT_MAIL_ACCOUNT</code> e <code>METNOS_TELOS_NIGHTLY</code>
+prevalgono sui rispettivi valori nel file; per Telos soltanto il valore esatto
+<code>1</code> nell'ambiente abilita l'attivit&agrave; notturna.</p>
+
+<p>HTTP risolve una sola volta il conto SMTP dopo la verifica Birth e prima
+dell'avvio dei processi di lavoro: gli executor ereditano il nome risolto,
+senza ricevere il file privato, mentre un conto esplicito nell'invocazione
+continua a prevalere. Un conto predefinito vuoto o di tipo errato e un'impostazione
+Telos non booleana nel file vengono rifiutati, senza scegliere silenziosamente
+un altro valore. Questa precedenza non autorizza modifiche alle unit&agrave;
+firmate n&eacute; inserisce valori personali nel catalogo pubblico.</p>
+
 <p>La configurazione dei servizi viene firmata prima dell'avvio dei timer. I
 collegamenti automatici di attivazione e ordinamento di un preciso timer firmato
 possono comparire al caricamento o all'avvio senza richiedere una nuova firma.

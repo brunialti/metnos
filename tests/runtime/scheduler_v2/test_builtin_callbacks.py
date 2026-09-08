@@ -2,6 +2,12 @@
 from __future__ import annotations
 
 import inspect
+import sys
+from types import SimpleNamespace
+
+import pytest
+
+import runtime_settings
 
 from scheduler_v2.builtin_callbacks import (
     _BUILTIN_JOBS,
@@ -56,6 +62,61 @@ def test_builtin_jobs_table_matches_callbacks():
     install_default_callbacks(d)
     for job in _BUILTIN_JOBS:
         assert d.callbacks.get(job["callback_key"]) is not None, job["name"]
+
+
+@pytest.fixture
+def nightly_callback(db_path, tmp_path, monkeypatch):
+    config = tmp_path / "runtime.toml"
+    monkeypatch.setattr(runtime_settings, "_TOML_PATH", config)
+    monkeypatch.setattr(runtime_settings, "_CACHE", {})
+    monkeypatch.setattr(runtime_settings, "_CACHE_MTIME", 0.0)
+    monkeypatch.delenv("METNOS_TELOS_NIGHTLY", raising=False)
+    calls = []
+
+    def run_all_telos(**kwargs):
+        calls.append(kwargs)
+        return {"processed": 2}
+
+    monkeypatch.setitem(sys.modules, "telos_introspect", SimpleNamespace(run_all_telos=run_all_telos))
+    monkeypatch.setitem(sys.modules, "telos_lenses", SimpleNamespace(LENSES={"first": None, "second": None}))
+    daemon = SchedulerDaemon(db_path)
+    install_default_callbacks(daemon)
+    return config, daemon.callbacks.get("telos_introspect_nightly").fn, calls
+
+
+def test_telos_nightly_is_opt_in(nightly_callback):
+    _, callback, calls = nightly_callback
+    result = callback({})
+    assert result["ok"] is True and result["skipped"] is True
+    assert calls == []
+
+
+@pytest.mark.parametrize("source", ["toml", "environment"])
+def test_telos_nightly_uses_persistent_or_environment_opt_in(nightly_callback, monkeypatch, source):
+    config, callback, calls = nightly_callback
+    config.write_text('[telos]\nnightly_enabled = true\n', encoding="utf-8")
+    if source == "environment":
+        config.write_text('[telos]\nnightly_enabled = false\n', encoding="utf-8")
+        monkeypatch.setenv("METNOS_TELOS_NIGHTLY", "1")
+    assert callback({}) == {"ok": True, "processed": 2}
+    assert calls == [{"lenses": ["first", "second"], "persist": True,
+                      "evaluate_duplicates": False}]
+
+
+def test_telos_nightly_environment_can_disable_persistent_opt_in(nightly_callback, monkeypatch):
+    config, callback, calls = nightly_callback
+    config.write_text('[telos]\nnightly_enabled = true\n', encoding="utf-8")
+    monkeypatch.setenv("METNOS_TELOS_NIGHTLY", "0")
+    assert callback({})["skipped"] is True
+    assert calls == []
+
+
+def test_telos_nightly_rejects_invalid_persistent_type_without_running(nightly_callback):
+    config, callback, calls = nightly_callback
+    config.write_text('[telos]\nnightly_enabled = [true]\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="telos.nightly_enabled must be a boolean"):
+        callback({})
+    assert calls == []
 
 
 def _in_memory_path(tmp_factory=None):

@@ -503,6 +503,24 @@ readiness checks observe the units and scope bound by the current signed catalog
 without changing services or broadening control commands. An invalid catalog
 stops the check: it is not silently replaced with the previous configuration.</p>
 
+<p>The signed catalog starts HTTP with <code>METNOS_ENGINE=v3</code>, without
+inheriting arbitrary unit drop-ins (<code>.service.d</code>) or launch-environment
+additions. Private settings remain in the existing
+<code>$METNOS_USER_CONFIG/runtime.toml</code>: <code>default_account</code> in
+<code>[mail]</code> is a nonempty string, defaulting to
+<code>metnos_system</code>; <code>nightly_enabled</code> in <code>[telos]</code>
+is a boolean, defaulting to <code>false</code>.
+<code>METNOS_DEFAULT_MAIL_ACCOUNT</code> and <code>METNOS_TELOS_NIGHTLY</code>
+override their respective file settings; only the exact environment value
+<code>1</code> enables nightly Telos activity.</p>
+
+<p>HTTP resolves the SMTP account once, after the Birth check and before workers
+start: executors inherit the resolved name without receiving the private file,
+while an explicit invocation account still takes precedence. An empty or wrongly
+typed default account and a non-boolean Telos file setting are rejected rather
+than silently replaced with another value. This precedence does not authorize
+changes to signed units or put personal values in the public catalog.</p>
+
 <p>The service configuration is signed before its timers start. The automatic
 activation and ordering links of an exact signed timer may appear when it is
 loaded or started without requiring another signature. Equivalent disabled

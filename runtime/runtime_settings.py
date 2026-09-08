@@ -50,6 +50,8 @@ _TOML_PATH = _C.PATH_USER_CONFIG / "runtime.toml"
 # ── Default values (override fallback hierarchy) ─────────────────────────────
 
 _DEFAULTS: dict[str, Any] = {
+    "mail.default_account": "metnos_system",
+    "telos.nightly_enabled": False,
     # Telos pipeline accept→synt_request (C.8 fase 2, 24/5/2026).
     # Filtri restrittivi a 3 livelli (utente puo' gestire poche proposte
     # alla volta; le filtrate riemergono nel tempo con score piu' alto).
@@ -69,6 +71,8 @@ _DEFAULTS: dict[str, Any] = {
 
 # Mapping chiave config TOML → variabile d'ambiente.
 _ENV_MAP: dict[str, str] = {
+    "mail.default_account": "METNOS_DEFAULT_MAIL_ACCOUNT",
+    "telos.nightly_enabled": "METNOS_TELOS_NIGHTLY",
     "telos.dashboard_min_alignment": "METNOS_TELOS_DASHBOARD_MIN_ALIGNMENT",
     "telos.dashboard_min_convergence": "METNOS_TELOS_DASHBOARD_MIN_CONVERGENCE",
     "telos.dashboard_max_rows": "METNOS_TELOS_DASHBOARD_MAX_ROWS",
@@ -86,18 +90,25 @@ _CACHE_MTIME: float = 0.0
 _LOCK = threading.Lock()
 
 
-def _load_toml() -> dict[str, Any]:
+def _load_toml(*, strict: bool = False) -> dict[str, Any]:
     """Carica runtime.toml flat-dictionary `<section>.<key>`. Reload on
     mtime change. Ritorna dict vuoto se file assente o tomllib non disponibile.
+    Strict readers reject an existing configuration they cannot load.
     """
     global _CACHE, _CACHE_MTIME
     if tomllib is None:
+        if strict and os.path.lexists(_TOML_PATH):
+            raise ValueError("runtime configuration parser unavailable")
         return {}
     if not _TOML_PATH.is_file():
+        if strict and os.path.lexists(_TOML_PATH):
+            raise ValueError("runtime configuration must be a file")
         return {}
     try:
         mtime = _TOML_PATH.stat().st_mtime
     except OSError:
+        if strict:
+            raise ValueError("runtime configuration unreadable") from None
         with _LOCK:
             return dict(_CACHE)
     # Tutta la lettura/scrittura della cache va sotto lock per evitare
@@ -109,6 +120,10 @@ def _load_toml() -> dict[str, Any]:
         try:
             data = tomllib.loads(_TOML_PATH.read_text(encoding="utf-8"))
         except Exception as ex:
+            if strict:
+                # Do not select another account or enablement state after an
+                # explicit configuration fails to load; never echo its data.
+                raise ValueError("runtime configuration invalid") from None
             _LOG.warning("runtime_settings: parse %s fallito: %r",
                          _TOML_PATH, ex)
             _CACHE = {}
@@ -201,6 +216,29 @@ def get_float(key: str, default: float | None = None) -> float:
 
 
 # ── Typed accessors per i flag canonici (riducono boilerplate al caller) ───
+
+def mail_default_account() -> str:
+    """SMTP default: env > TOML > default; invalid explicit values fail."""
+    key = "mail.default_account"
+    env_name = _ENV_MAP[key]
+    value = (os.environ[env_name] if env_name in os.environ
+             else _load_toml(strict=True).get(key, _DEFAULTS[key]))
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("mail.default_account must be a nonempty string")
+    return value.strip()
+
+
+def telos_nightly_enabled() -> bool:
+    """Preserve exact env opt-in '1'; the persistent setting must be bool."""
+    key = "telos.nightly_enabled"
+    env_name = _ENV_MAP[key]
+    if env_name in os.environ:
+        return os.environ[env_name] == "1"
+    value = _load_toml(strict=True).get(key, _DEFAULTS[key])
+    if type(value) is not bool:
+        raise ValueError("telos.nightly_enabled must be a boolean")
+    return value
+
 
 def feedback_error_demote_threshold() -> int:
     return get_int("feedback.error_demote_threshold")

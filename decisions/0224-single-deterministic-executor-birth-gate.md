@@ -199,6 +199,22 @@ This corrects the comparison without changing the admission or activation
 boundary. Passing portable cases does not substitute for the real systemd cell,
 the complete isolated transition or the final functional check in exercise.
 
+## Operational configuration — HTTP private settings
+
+The signed HTTP recipe selects engine `v3`, preserving the production contract;
+its launch environment remains closed and arbitrary unit drop-ins are rejected.
+Instance choices reuse the existing private `runtime.toml`: `default_account`
+in `[mail]` is a nonempty string, defaulting to `metnos_system`, and
+`nightly_enabled` in `[telos]` is a boolean, defaulting to `false`. Their named
+environment overrides take precedence; `METNOS_TELOS_NIGHTLY` retains the exact
+opt-in value `1`.
+HTTP resolves `METNOS_DEFAULT_MAIL_ACCOUNT` after its Birth check and before
+workers start, so the sandbox and child executor use the same selected name
+without receiving the private file; an explicit invocation account still wins.
+Empty mail overrides and incorrectly typed file settings are rejected, not
+silently replaced. These are application data, not new launch authority or
+personal values in signed source.
+
 ## Consequences
 
 - Local models may remain useful even when imperfect: poor output is rejected

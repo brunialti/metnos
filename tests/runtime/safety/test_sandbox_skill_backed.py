@@ -362,7 +362,7 @@ def test_mail_account_argument_without_capability_grants_nothing():
     ) == ([], False)
 
 
-@pytest.mark.parametrize("mail_capability", ["mail:read", "mail:write"])
+@pytest.mark.parametrize("mail_capability", ["mail:read", "mail:write", "mail:send"])
 def test_mail_local_binds_only_selected_account_read_only(
         tmp_path, monkeypatch, mail_capability):
     import config
@@ -405,6 +405,74 @@ def test_mail_local_binds_only_selected_account_read_only(
     for path in paths:
         position = bwrap.index(str(path))
         assert bwrap[position - 1] == "--ro-bind"
+
+
+@pytest.mark.parametrize("capability,channel,account,selected", [
+    ("mail:send", "email", None, "work"),
+    ("mail:send", "auto", None, "work"),
+    ("mail:send", "email", "personal", "personal"),
+    ("mail:read", "email", None, "metnos_system"),
+    ("mail:write", "email", None, "metnos_system"),
+    ("mail:send", "telegram", None, None),
+    ("mail:read", "auto", None, None),
+])
+def test_mail_sender_default_matches_child_without_exposing_other_accounts(
+        tmp_path, monkeypatch, capability, channel, account, selected):
+    import config
+    import credentials
+
+    vault = tmp_path / "credentials"
+    vault.mkdir()
+    files = {name: vault / f"smtp_{name}.json.age"
+             for name in ("work", "personal", "metnos_system")}
+    for path in files.values():
+        path.write_bytes(b"encrypted-fixture")
+    foreign = vault / "private-site.json.age"
+    foreign.write_bytes(b"not-mail")
+    monkeypatch.setattr(config, "PATH_USER_CONFIG", tmp_path)
+    monkeypatch.setattr(credentials, "CRED_DIR", vault)
+    monkeypatch.setattr(credentials, "ADMIN_KEY_PATH", tmp_path / "absent.key")
+    monkeypatch.setenv("METNOS_DEFAULT_MAIL_ACCOUNT", "work")
+    paths, network = sandbox.mail_extras(
+        _mail_ex(caps=[{"name": capability}]),
+        {"account": account, "via_channel": channel},
+    )
+    assert paths == ([] if selected is None else [files[selected]])
+    assert network is (selected is not None)
+    assert foreign not in paths
+    assert vault not in paths
+
+
+@pytest.mark.parametrize("account", ["all", "ALL", ["work", "personal"], ["all"]])
+@pytest.mark.parametrize("real_manifest", [False, True])
+def test_mail_send_never_expands_multiple_credentials(tmp_path, monkeypatch, account, real_manifest):
+    import config
+    import credentials
+
+    vault = tmp_path / "credentials"
+    vault.mkdir()
+    (vault / "smtp_work.json.age").write_bytes(b"encrypted")
+    (vault / "smtp_personal.json.age").write_bytes(b"encrypted")
+    monkeypatch.setattr(config, "PATH_USER_CONFIG", tmp_path)
+    monkeypatch.setattr(credentials, "CRED_DIR", vault)
+    executor = _mail_ex(caps=[{"name": "mail:send"}])
+    if real_manifest:
+        import tomllib
+
+        path = Path(__file__).resolve().parents[3] / "executors/send_messages/manifest.toml"
+        manifest = tomllib.loads(path.read_text(encoding="utf-8"))
+        assert manifest["args"]["properties"]["account"]["type"] == "string"
+        executor = _ex(manifest["name"], schema=manifest["args"],
+                       caps=manifest["capabilities"], standard_state="declared")
+    assert sandbox.mail_extras(executor, {"account": account}) == ([], True)
+
+
+def test_mail_send_conditional_capability_does_not_grant_outside_condition(monkeypatch):
+    monkeypatch.setenv("METNOS_DEFAULT_MAIL_ACCOUNT", "work")
+    executor = _mail_ex(caps=[{
+        "name": "mail:send", "when": {"arg": "via_channel", "values": ["email"]},
+    }])
+    assert sandbox.mail_extras(executor, {"via_channel": "auto"}) == ([], False)
 
 
 def test_mail_all_expands_only_mail_credentials(tmp_path, monkeypatch):

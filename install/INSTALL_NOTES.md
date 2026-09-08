@@ -134,6 +134,34 @@ After cutover, an ordinary executor edit uses
 flag remains a command-line compatibility surface, but it now submits the
 candidate to Executor Birth and cannot select direct signing or publication.
 
+### Private HTTP runtime settings
+
+The signed HTTP recipe selects `METNOS_ENGINE=v3`; its launcher does not inherit
+arbitrary environment additions, and the signed-unit preflight rejects extra
+service drop-ins. Instance settings reuse `$METNOS_USER_CONFIG/runtime.toml`,
+without embedding personal account names in the public catalog:
+
+```toml
+[mail]
+default_account = "metnos_system"
+
+[telos]
+nightly_enabled = false
+```
+
+These are the defaults when the corresponding keys are absent. A present
+`METNOS_DEFAULT_MAIL_ACCOUNT` or `METNOS_TELOS_NIGHTLY` overrides its file
+setting; Telos preserves the exact environment opt-in `1`, with every other
+environment value disabling it. The mail value must be a nonempty string and
+the Telos file value a boolean; empty mail overrides and incorrectly typed file
+settings fail instead of silently selecting another account or enablement state.
+HTTP resolves the SMTP default once after its Birth check and before acquiring
+its process lock or starting workers, then shares the resolved account name
+through the environment with child executors, which retain explicit
+invocation-account precedence and do not receive `runtime.toml`.
+Environment precedence is not permission to modify a signed unit or restore
+its legacy drop-ins; preserve private choices in the existing configuration.
+
 ## Canonical paths and user isolation
 
 The installer and every generated unit use the same environment contract as
