@@ -1192,8 +1192,15 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
     assert not STARTUP_GATE.exists()
     assert not ATTESTATION_ROOT.exists()
 
+    # The maintenance proof inspects the real user manager as well as PID 1.
+    # A nologin account on a fresh VM has no manager until explicitly started.
+    user_manager = f"user@{fixture.account.uid}.service"
+    assert _systemctl(
+        "show", user_manager, "--property=ActiveState", "--value",
+    ).stdout.strip() == "inactive"
     installed = False
     try:
+        _systemctl("start", user_manager)
         _materialize_release(fixture)
         _install_administrative_and_units(fixture)
         installed = True
@@ -1550,3 +1557,4 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         if fixture.marker_root.exists():
             assert tuple(fixture.marker_root.iterdir()) == ()
             fixture.marker_root.rmdir()
+        _systemctl("stop", user_manager, check=False)
