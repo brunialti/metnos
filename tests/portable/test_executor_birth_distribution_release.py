@@ -31,16 +31,57 @@ def _source_tree(tmp_path: Path):
     inventory = b'{"birth_closed":{},"entries":[],"scan_roots":[],"schema":"x","source_census":"x"}'
     values = {
         release.BOUNDARY_INVENTORY_SOURCE_PATH_V1: inventory,
-        "requirements.txt": b"fixture==1\n",
+        release.DEPENDENCY_SOURCE_PATH_V1: b"fixture==1\n",
+        "install/executor_birth_host_capability.py": b"CAPABILITY = 1\n",
+        "install/executor_birth_append_journal_posix.py": b"APPEND_JOURNAL = 1\n",
+        "install/executor_birth_contract_convergence.py": b"CONVERGENCE = 1\n",
+        "install/executor_birth_host_journal_posix.py": b"JOURNAL_POSIX = 1\n",
+        "install/executor_birth_host_posix.py": b"HOST_POSIX = 1\n",
+        "install/executor_birth_host_provisioning.py": b"PROVISION = 1\n",
+        "install/executor_birth_legacy_state_adoption.py": b"LEGACY_ADOPTION = 1\n",
+        "install/executor_birth_legacy_state_effect_posix.py": b"LEGACY_EFFECT = 1\n",
+        "install/executor_birth_legacy_state_inspection.py": b"LEGACY_INSPECTION = 1\n",
+        "install/executor_birth_legacy_state_journal_posix.py": b"LEGACY_JOURNAL = 1\n",
+        "install/executor_birth_legacy_state_posix.py": b"LEGACY_OBSERVER = 1\n",
+        "install/executor_birth_posix_directory.py": b"POSIX_DIRECTORY = 1\n",
+        "install/executor_birth_transition.py": b"TRANSITION = 1\n",
         "runtime/__version__.py": b'__version__ = "1.2.3"\n',
+        "runtime/contract_boundary_analyzer_ast.py": b"ANALYZER = 1\n",
+        "runtime/contract_boundary_analyzer_projection.py": b"ANALYZER = 1\n",
+        "runtime/contract_boundary_analyzer_types.py": b"ANALYZER = 1\n",
+        "runtime/contract_boundary_api_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_birth_authority_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_birth_exception_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_birth_policy.py": b"POLICY = 1\n",
         "runtime/contract_boundary_guard.py": b"GUARD = 1\n",
+        "runtime/contract_boundary_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_policy_types.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_role_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_syntax_policy.py": b"POLICY = 1\n",
         "runtime/contract_store.py": b"STORE = 1\n",
         "runtime/executor_birth.py": b"BIRTH = 1\n",
+        "runtime/executor_birth_account_identity.py": b"ACCOUNT = 1\n",
+        "runtime/executor_birth_authority_gate.py": b"AUTHORITY_GATE = 1\n",
+        "runtime/executor_birth_canonical.py": b"CANONICAL = 1\n",
+        "runtime/executor_birth_crypto_framing.py": b"FRAMING = 1\n",
         "runtime/executor_birth_admin_preflight.py": b"PREFLIGHT = 1\n",
         "runtime/executor_birth_distribution_manifest.py": b"VERIFY = 1\n",
+        "runtime/executor_birth_host_layout.py": b"LAYOUT = 1\n",
+        "runtime/executor_birth_host_chain_policy.py": b"CHAIN_POLICY = 1\n",
+        "runtime/executor_birth_host_path_policy.py": b"PATH_POLICY = 1\n",
+        "runtime/executor_birth_host_provisioning_evidence.py": b"EVIDENCE = 1\n",
+        "runtime/executor_birth_host_provisioning_journal.py": b"JOURNAL = 1\n",
+        "runtime/executor_birth_legacy_state.py": b"LEGACY = 1\n",
+        "runtime/executor_birth_legacy_state_journal.py": b"LEGACY_FSM = 1\n",
+        "runtime/executor_birth_legacy_state_policy.py": b"LEGACY_POLICY = 1\n",
+        "runtime/executor_birth_legacy_state_preflight_projection.py": b"LEGACY_PROJECTION = 1\n",
+        "runtime/executor_birth_legacy_state_request.py": b"LEGACY_REQUEST = 1\n",
+        "runtime/executor_birth_legacy_state_wire.py": b"LEGACY_WIRE = 1\n",
+        "runtime/executor_birth_posix_metadata.py": b"METADATA = 1\n",
+        "runtime/executor_birth_preflight_attestation_store.py": b"ATTESTATION = 1\n",
+        "runtime/executor_birth_preflight_store_authority.py": b"AUTHORITY = 1\n",
         "runtime/executor_birth_ownership_preflight.py": b"OWNERSHIP = 1\n",
         "runtime/sign.py": b"SIGN = 1\n",
-        "runtime/bin/llama-server": b"#!/bin/sh\nexit 0\n",
         "docs/en/index.html": b"<!doctype html><title>Metnos</title>\n",
         "tutor/sources.toml": b"version = 1\n",
     }
@@ -50,7 +91,7 @@ def _source_tree(tmp_path: Path):
     for relative, content in sorted(values.items()):
         path = root.joinpath(*relative.split("/"))
         path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-        mode = 0o755 if relative == release.LLAMA_SOURCE_PATH_V1 else 0o644
+        mode = 0o644
         path.write_bytes(content)
         path.chmod(mode)
         files.append(assembler.ReceivedSourceFileV1(
@@ -112,6 +153,7 @@ def test_assembly_derives_catalog_descriptor_manifest_and_exact_repetition(
         ).read_bytes()
     )
     assert descriptor.installation_root == document["installation_root"]
+    assert descriptor.python_executable == str(Path(sys.executable).resolve())
     assert {item.source_path for item in descriptor.artifacts} == {
         release.ADMIN_PREFLIGHT_RELEASE_PATH_V1,
         *(item.path for item in files if item.role == "service_unit"),
@@ -190,11 +232,6 @@ def test_current_reviewed_source_assembles_and_passes_static_verification(
         shutil.copyfile(original, destination)
         destination.chmod(0o644)
         selected.append(relative)
-    llama = source_root.joinpath(*release.LLAMA_SOURCE_PATH_V1.split("/"))
-    llama.parent.mkdir(parents=True, exist_ok=True)
-    llama.write_bytes(b"#!/bin/sh\nexit 0\n")
-    llama.chmod(0o755)
-    selected.append(release.LLAMA_SOURCE_PATH_V1)
     for directory in (item for item in source_root.rglob("*") if item.is_dir()):
         directory.chmod(0o755)
 

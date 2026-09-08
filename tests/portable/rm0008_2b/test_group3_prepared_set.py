@@ -6,6 +6,7 @@ canonical documents — is not re-tested.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 from pathlib import Path
@@ -200,6 +201,7 @@ def test_every_authority_is_read_once_under_the_barrier(
     tmp_path: Path, monkeypatch,
 ):
     import executor_birth_prepared_root as door
+    from executor_birth_semantic_review import SemanticReviewRequest
 
     base = _prepared(tmp_path, monkeypatch)
     support.use_config(monkeypatch, base)
@@ -213,6 +215,15 @@ def test_every_authority_is_read_once_under_the_barrier(
     assert len(sealed.producers) == 11
     assert sealed.approval.revision >= 1
     assert sealed.context_epoch == sealed.prepared.prepared_context_epoch
+    request = SemanticReviewRequest(
+        "sha256:" + "1" * 64,
+        "sha256:" + "2" * 64,
+        "model:generator",
+        b"name='fixture'",
+        b"{}",
+        {"main.py": b"print('ok')"},
+    )
+    assert sealed.semantic.inputs_for(request)[2] == ()
     # What travels out is material and values; no live capability onto the
     # Birth root leaves the barrier.
     for value in (sealed.author, sealed.admission, *sealed.producers.values()):
@@ -220,3 +231,64 @@ def test_every_authority_is_read_once_under_the_barrier(
         assert not hasattr(value, "create_file_exclusive")
     with pytest.raises(TypeError):
         sealed.producers["x"] = None
+
+
+def test_signed_semantic_evidence_survives_session_close(
+    tmp_path: Path, monkeypatch,
+):
+    import executor_birth_prepared_root as door
+    from executor_birth_semantic_authority import EVIDENCE_DOMAIN
+    from executor_birth_semantic_review import SemanticReviewRequest
+
+    reviewer = Ed25519PrivateKey.generate()
+    base = support.make_config(
+        tmp_path, author=Ed25519PrivateKey.generate(),
+    )
+    support.install_operator_input(
+        base,
+        approval=support.approval_document(),
+        semantic=support.semantic_document(("review.pub",)),
+        keys={"review.pub": support.public_bytes(reviewer)},
+    )
+    support.provision(monkeypatch, base)
+
+    candidate_id = "sha256:" + "1" * 64
+    context_id = "sha256:" + "2" * 64
+    evidence = {
+        "evidence_id": "sha256:" + "3" * 64,
+        "evidence_version": "v1",
+        "kind": "deterministic_oracle",
+        "owner_id": "independent-owner",
+        "candidate_id": candidate_id,
+        "admission_context_id": context_id,
+        "status": "passed",
+        "evidence_hash": "sha256:" + "4" * 64,
+    }
+    record = {
+        "schema_version": 1,
+        "key_id": "review-key-0",
+        "evidence": evidence,
+        "signature": base64.b64encode(
+            reviewer.sign(EVIDENCE_DOMAIN + support.canonical_json(evidence))
+        ).decode("ascii"),
+    }
+    support.write(
+        support.installed_set(base) / "semantic" / "evidence" / "proof.json",
+        support.canonical_json(record),
+        0o644,
+    )
+
+    support.use_config(monkeypatch, base)
+    sealed = door.load_sealed_authorities_v1()
+    request = SemanticReviewRequest(
+        candidate_id,
+        context_id,
+        "model:generator",
+        b"name='fixture'",
+        b"{}",
+        {"main.py": b"print('ok')"},
+    )
+
+    assert [item.evidence_id for item in sealed.semantic.inputs_for(request)[2]] == [
+        evidence["evidence_id"]
+    ]

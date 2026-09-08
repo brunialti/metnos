@@ -15,14 +15,9 @@
 <body>
 <h1>Roadmap</h1>
 
-<p class="lead">Questa linea temporale raccoglie le direzioni di sviluppo
-formalmente definite per Metnos. Distingue ciò che è stato realizzato da ciò
-che è pronto o in attesa, così una specifica futura non viene scambiata per
-una funzione già disponibile. La roadmap definita più recentemente compare per prima.</p>
+<p class="lead">Qui trovi i progetti di Metnos: cosa è già disponibile, cosa stiamo completando e cosa è previsto per il futuro. I progetti più recenti sono in cima.</p>
 
-<p>Le date indicano quando una direzione è stata definita e, quando esiste una
-prova di completamento, quando è stata implementata. I documenti tecnici
-interni, le analisi e le decisioni architetturali non sono pubblicati.</p>
+<p>Per ogni progetto trovi quando è stato proposto e a che punto è la realizzazione. I dettagli tecnici interni non sono pubblicati.</p>
 
 <ul class="roadmap-legend" aria-label="Legenda degli stati">
  <li class="is-done">Completata</li>
@@ -32,73 +27,80 @@ interni, le analisi e le decisioni architetturali non sono pubblicati.</p>
 </ul>
 
 <ol class="roadmap-timeline" aria-label="Linea temporale delle roadmap di Metnos">
- <li class="roadmap-item roadmap-item--active">
+ <li id="rm009" class="roadmap-item roadmap-item--waiting tutor-exclude">
+  <time class="roadmap-date" datetime="2026-09-03">3 settembre 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <div class="roadmap-meta"><span class="roadmap-id">RM-009</span><span class="roadmap-status">In attesa</span><span class="roadmap-fact"><strong>Proposta:</strong> 3 settembre 2026</span><span class="roadmap-fact"><strong>Realizzazione:</strong> non iniziata</span></div>
+   <h2>Metnos impara a migliorare</h2>
+   <p>L’obiettivo è far riconoscere a Metnos ciò che ancora non sa fare, proporre nuove funzioni e usare le decisioni delle persone per migliorare. Ogni funzione dovrà avere limiti chiari su ciò che può fare da sola. Il lavoro non è ancora iniziato.</p>
+  </article>
+ </li>
+ <li id="rm008" class="roadmap-item roadmap-item--active">
   <time class="roadmap-date" datetime="2026-08-25">25 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
   <article class="roadmap-card">
-   <div class="roadmap-meta"><span class="roadmap-id">RM-008</span><span class="roadmap-status">In corso</span><span class="roadmap-fact"><strong>Definita:</strong> 25 agosto 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> candidato certificato; transizione live da eseguire</span></div>
-   <h2>Porta unica di nascita degli executor</h2>
-   <p>Ogni executor nuovo o revisionato attraversa un solo percorso deterministico di ammissione prima di diventare attivo. Il candidato chiude i precedenti percorsi di pubblicazione, lega autorità e provenienza ai byte esatti e ha superato i gate portabili, Linux systemd, identità Windows e runtime mirato. Il completamento richiede ancora la transizione live autorizzata e il relativo turno da capo a fondo.</p>
+   <div class="roadmap-meta"><span class="roadmap-id">RM-008</span><span class="roadmap-status">In corso</span><span class="roadmap-fact"><strong>Proposta:</strong> 25 agosto 2026</span><span class="roadmap-fact"><strong>Realizzazione:</strong> sistema attivo dall’8 settembre 2026; fase di prova ancora da completare</span></div>
+   <h2>Controlli per le nuove funzioni</h2>
+   <p>Gli strumenti di Metnos, nuovi o aggiornati, devono superare gli stessi controlli prima di essere usati. Il nuovo sistema è attivo dall’8 settembre e ha superato prove d’uso reali. Restano la fase di prova controllata delle nuove funzioni generate da Metnos e le verifiche finali di recupero e conservazione.</p>
   </article>
  </li>
- <li class="roadmap-item roadmap-item--done">
+ <li id="rm007" class="roadmap-item roadmap-item--done">
   <time class="roadmap-date" datetime="2026-08-24">24 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
   <article class="roadmap-card">
-   <div class="roadmap-meta"><span class="roadmap-id">RM-007</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 24 agosto 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 25 agosto 2026</span></div>
-   <h2>Pubblicazione verificata delle varianti linguistiche dei contratti</h2>
-   <p>Le varianti linguistiche attraversano un solo confine di pubblicazione verificato che lega sorgente, identità semantica, firma e attivazione, senza trasformare la traduzione in una modifica tecnica non revisionata.</p>
+   <div class="roadmap-meta"><span class="roadmap-id">RM-007</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Proposta:</strong> 24 agosto 2026</span><span class="roadmap-fact"><strong>Realizzazione:</strong> 25 agosto 2026</span></div>
+   <h2>Traduzioni pubblicate solo dopo i controlli</h2>
+   <p>Quando cambia la traduzione della scheda di uno strumento, Metnos verifica che descriva ancora la stessa funzione. La nuova versione viene usata solo dopo i controlli, senza cambiare di nascosto ciò che lo strumento può fare.</p>
   </article>
  </li>
- <li class="roadmap-item roadmap-item--done">
+ <li id="rm006" class="roadmap-item roadmap-item--done">
   <time class="roadmap-date" datetime="2026-08-22">22 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
   <article class="roadmap-card">
-   <div class="roadmap-meta"><span class="roadmap-id">RM-006</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 22 agosto 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 23 agosto 2026</span></div>
-   <h2>Certificazione logica da capo a fondo</h2>
-   <p>Certificazione su 24 flussi di riferimento in italiano e inglese: due cicli completi, 96/96 casi conformi e cinque sonde non distruttive su confini reali, con un oracolo indipendente dal sistema sotto prova.</p>
+   <div class="roadmap-meta"><span class="roadmap-id">RM-006</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Proposta:</strong> 22 agosto 2026</span><span class="roadmap-fact"><strong>Realizzazione:</strong> 23 agosto 2026</span></div>
+   <h2>Prove complete, dalla richiesta al risultato</h2>
+   <p>Metnos è stato provato su richieste in italiano e inglese, controllando anche il risultato delle azioni, non soltanto le risposte. I casi previsti hanno superato le verifiche. Questo non garantisce che ogni possibile richiesta sia priva di errori.</p>
   </article>
  </li>
- <li class="roadmap-item roadmap-item--done tutor-exclude">
+ <li id="rm005" class="roadmap-item roadmap-item--done tutor-exclude">
   <time class="roadmap-date" datetime="2026-08-21">21 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
   <article class="roadmap-card">
-   <div class="roadmap-meta"><span class="roadmap-id">RM-005</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 21 agosto 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 23 agosto 2026</span></div>
-   <h2>Multilinguismo completo e auto-localizzazione</h2>
-   <p>Localizzazione versionata di messaggi, manifest, lessici, pianificazione, prompt, dispositivi e Tutor, con gate atomico e attivazione esplicita della lingua scelta per l'istanza.</p>
+   <div class="roadmap-meta"><span class="roadmap-id">RM-005</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Proposta:</strong> 21 agosto 2026</span><span class="roadmap-fact"><strong>Realizzazione:</strong> 23 agosto 2026</span></div>
+   <h2>Metnos nella lingua scelta</h2>
+   <p>Messaggi, schermate, istruzioni degli strumenti e Tutor vengono adattati alla lingua scelta per Metnos. Le nuove traduzioni vengono controllate prima di essere attivate, per evitare testi mancanti o incoerenti.</p>
   </article>
  </li>
- <li class="roadmap-item roadmap-item--done">
+ <li id="rm004" class="roadmap-item roadmap-item--done">
   <time class="roadmap-date" datetime="2026-08-17">17 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
   <article class="roadmap-card">
-   <div class="roadmap-meta"><span class="roadmap-id">RM-004</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 17 agosto 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 22 agosto 2026</span></div>
-   <h2>LRE (Long Run Engine)</h2>
-   <p>Motore universale per affidare automaticamente attività lunghe a un'esecuzione persistente, tracciabile, riprendibile e governata, senza profili da scegliere.</p>
+   <div class="roadmap-meta"><span class="roadmap-id">RM-004</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Proposta:</strong> 17 agosto 2026</span><span class="roadmap-fact"><strong>Realizzazione:</strong> 22 agosto 2026</span></div>
+   <h2>Attività lunghe senza tenere aperta la chat</h2>
+   <p>LRE gestisce le attività lunghe adatte a questo tipo di esecuzione e ne salva l’avanzamento. Puoi seguirle e ritrovare i risultati senza tenere aperta la chat. Dopo un’interruzione, il sistema controlla se e come riprenderle.</p>
   </article>
  </li>
- <li class="roadmap-item roadmap-item--done">
+ <li id="rm003" class="roadmap-item roadmap-item--done">
   <time class="roadmap-date" datetime="2026-07-23">23 luglio 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
   <article class="roadmap-card">
-   <div class="roadmap-meta"><span class="roadmap-id">RM-003</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 23 luglio 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 30 luglio 2026</span></div>
-   <h2>Tutor integrato</h2>
-   <p>Guida operativa che usa la documentazione pubblica e i contratti ammessi per rispondere senza diventare un secondo pianificatore.</p>
+   <div class="roadmap-meta"><span class="roadmap-id">RM-003</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Proposta:</strong> 23 luglio 2026</span><span class="roadmap-fact"><strong>Realizzazione:</strong> 30 luglio 2026</span></div>
+   <h2>Una guida dentro Metnos</h2>
+   <p>Il Tutor risponde alle domande su come usare Metnos, basandosi sulla documentazione e sugli strumenti disponibili. Spiega cosa puoi fare e come: non esegue azioni al posto tuo.</p>
   </article>
  </li>
- <li class="roadmap-item roadmap-item--done">
+ <li id="rm002" class="roadmap-item roadmap-item--done">
   <time class="roadmap-date" datetime="2026-07-23">23 luglio 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
   <article class="roadmap-card">
-   <div class="roadmap-meta"><span class="roadmap-id">RM-002</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Definita:</strong> 23 luglio 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> 25 agosto 2026</span></div>
-   <h2>Controllo multilingue dei manifest</h2>
-   <p>Un controllo deterministico e fail-closed mantiene allineati contratti, argomenti e descrizioni degli executor in tutte le lingue ammesse.</p>
+   <div class="roadmap-meta"><span class="roadmap-id">RM-002</span><span class="roadmap-status">Completata</span><span class="roadmap-fact"><strong>Proposta:</strong> 23 luglio 2026</span><span class="roadmap-fact"><strong>Realizzazione:</strong> 25 agosto 2026</span></div>
+   <h2>Schede degli strumenti coerenti tra le lingue</h2>
+   <p>Ogni strumento ha una scheda che spiega cosa fa, quali dati servono e cosa restituisce. Metnos controlla che queste informazioni siano coerenti nelle diverse lingue e blocca le versioni che non superano i controlli.</p>
   </article>
  </li>
- <li class="roadmap-item roadmap-item--waiting tutor-exclude">
+ <li id="rm001" class="roadmap-item roadmap-item--waiting tutor-exclude">
   <time class="roadmap-date" datetime="2026-07-23">23 luglio 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
   <article class="roadmap-card">
-   <div class="roadmap-meta"><span class="roadmap-id">RM-001</span><span class="roadmap-status">In attesa</span><span class="roadmap-fact"><strong>Definita:</strong> 23 luglio 2026</span><span class="roadmap-fact"><strong>Implementata:</strong> non iniziata</span></div>
-   <h2>Conoscenza locale dell'utente</h2>
-   <p>Memoria personale locale, controllabile e separata fra gli utenti. La direzione è progettata, ma non è pianificata: la valutazione attuale non giustifica ancora il costo dell'intero sistema.</p>
+   <div class="roadmap-meta"><span class="roadmap-id">RM-001</span><span class="roadmap-status">In attesa</span><span class="roadmap-fact"><strong>Proposta:</strong> 23 luglio 2026</span><span class="roadmap-fact"><strong>Realizzazione:</strong> non iniziata</span></div>
+   <h2>Ricordare preferenze e abitudini</h2>
+   <p>L’obiettivo è ricordare sul tuo computer informazioni utili per aiutarti meglio, tenendole separate da quelle degli altri utenti. Potrai controllare cosa viene ricordato e cancellarlo. Questa funzione non è ancora stata realizzata.</p>
   </article>
  </li>
 </ol>
 
-<div class="callout note"><p><strong>Come leggere lo stato.</strong> “Completata” richiede prove nel sistema distribuito. “Pronta” indica una direzione definita ma non ancora disponibile nella sua interezza. “In attesa” significa che non esiste un impegno di realizzazione.</p></div>
+<div class="callout note"><p><strong>Cosa significano gli stati.</strong> “Completata”: realizzata e verificata. “In corso”: il lavoro è iniziato, ma non è finito. “Pronta”: il progetto è definito, ma la funzione non è ancora disponibile per intero. “In attesa”: il lavoro non è programmato.</p></div>
 </body>
 </html>
-

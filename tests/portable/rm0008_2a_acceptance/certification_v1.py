@@ -1355,6 +1355,7 @@ def validate_productive_mutation_graph(
 
     known_modules = set(sources)
     definitions: dict[str, ast.AST] = {}
+    definitions_by_module: dict[str, list[tuple[str, ast.AST]]] = defaultdict(list)
     simple_definitions: dict[str, dict[str, str]] = defaultdict(dict)
     class_methods: dict[str, dict[tuple[str, str], str]] = defaultdict(dict)
     for module, (_, tree) in sources.items():
@@ -1362,15 +1363,18 @@ def validate_productive_mutation_graph(
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 symbol = f"{module}::{node.name}"
                 definitions[symbol] = node
+                definitions_by_module[module].append((symbol, node))
                 simple_definitions[module][node.name] = symbol
             elif isinstance(node, ast.ClassDef):
                 class_symbol = f"{module}::{node.name}"
                 definitions[class_symbol] = node
+                definitions_by_module[module].append((class_symbol, node))
                 simple_definitions[module][node.name] = class_symbol
                 for member in node.body:
                     if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         symbol = f"{module}::{node.name}.{member.name}"
                         definitions[symbol] = member
+                        definitions_by_module[module].append((symbol, member))
                         class_methods[module][(node.name, member.name)] = symbol
 
     imports: dict[str, dict[str, tuple[str, str]]] = defaultdict(dict)
@@ -1433,23 +1437,24 @@ def validate_productive_mutation_graph(
     direct_alias_exports: list[str] = []
     indirect_mutator_references: list[str] = []
     for module, (path_text, tree) in sources.items():
-        parents = {
-            child: parent
-            for parent in ast.walk(tree)
-            for child in ast.iter_child_nodes(parent)
-        }
         owners: list[tuple[str, ast.AST, str | None]] = [
             (f"{module}::<module>", tree, None)
         ]
-        for symbol, node in definitions.items():
-            if not symbol.startswith(module + "::") or isinstance(node, ast.ClassDef):
+        for symbol, node in definitions_by_module.get(module, ()):
+            if isinstance(node, ast.ClassDef):
                 continue
             class_name = symbol.split("::", 1)[1].split(".", 1)[0] if "." in symbol.split("::", 1)[1] else None
             owners.append((symbol, node, class_name))
         for owner, owner_node, class_name in owners:
-            body_nodes = list(_owned_ast_nodes(owner_node))
-            owner_aliases = {key: dict(value) for key, value in aliases.items()}
-            for node in body_nodes:
+            body_nodes, assignments, import_nodes, parents = _owner_node_index_v1(
+                owner_node
+            )
+            # Reference resolution below is deliberately module-local.  Copying
+            # every other module's alias table for every function made the real
+            # productive graph quadratic in modules while contributing no data
+            # that `_resolve_reference` can read.
+            owner_aliases = {module: dict(aliases.get(module, {}))}
+            for node in import_nodes:
                 if isinstance(node, ast.Import):
                     for imported in node.names:
                         local = imported.asname or imported.name.split(".", 1)[0]
@@ -1476,9 +1481,7 @@ def validate_productive_mutation_graph(
             changed = True
             while changed:
                 changed = False
-                for node in body_nodes:
-                    if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-                        continue
+                for node in assignments:
                     value = node.value
                     if value is None:
                         continue
@@ -1510,9 +1513,7 @@ def validate_productive_mutation_graph(
             changed = True
             while changed:
                 changed = False
-                for node in body_nodes:
-                    if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-                        continue
+                for node in assignments:
                     if node.value is None:
                         continue
                     value = _constant_text(node.value, constant_texts)
@@ -1580,9 +1581,7 @@ def validate_productive_mutation_graph(
                 alias_changed = True
                 while alias_changed:
                     alias_changed = False
-                    for assignment in body_nodes:
-                        if not isinstance(assignment, (ast.Assign, ast.AnnAssign)):
-                            continue
+                    for assignment in assignments:
                         if not (
                             is_capability_target(assignment.value)
                             or imports_secure_filesystem(assignment.value)
@@ -1900,7 +1899,6 @@ def validate_productive_mutation_graph(
         f"{provisioner_module}::prepare_or_defer_until_legacy_author_exists",
         f"{provisioner_module}::ensure_executor_birth_authorities_prepared",
         f"{provisioner_module}::complete_transition_cutover_v2",
-        f"{provisioner_module}::prepare_transition_receipts_v2",
     })
     installer_resolver_symbols = {
         "install.birth_authority_provisioning::_resolve_path_user_config_v1",
@@ -1944,7 +1942,7 @@ def validate_productive_mutation_graph(
     for module, (module_path, module_tree) in sources.items():
         if not module.startswith("runtime."):
             continue
-        for node in ast.walk(module_tree):
+        for node in _module_import_index_v1(module_tree):
             named: list[str] = []
             if isinstance(node, ast.Import):
                 named = [alias.name for alias in node.names]
@@ -2488,24 +2486,51 @@ def _resolve_reference(
     return None
 
 
-def _owned_ast_nodes(owner: ast.AST) -> Iterable[ast.AST]:
-    """Yield one owner's executable graph, including its nested scopes.
+def _owner_node_index_v1(
+    owner: ast.AST,
+) -> tuple[
+    list[ast.AST],
+    list[ast.Assign | ast.AnnAssign],
+    list[ast.Import | ast.ImportFrom],
+    dict[ast.AST, ast.AST],
+]:
+    """Classify one owner's executable graph in one immutable-AST traversal.
 
     Module-level definitions are separate owners. A function or method owns
-    every nested function/class body it can create, so those bodies must not be
-    invisible to the capability graph.
+    every nested function/class body it can create, so those bodies remain
+    visible to the capability graph.
     """
-    stack = list(ast.iter_child_nodes(owner))
+    nodes: list[ast.AST] = []
+    assignments: list[ast.Assign | ast.AnnAssign] = []
+    imports: list[ast.Import | ast.ImportFrom] = []
+    parents: dict[ast.AST, ast.AST] = {}
+    stack = [(child, owner) for child in ast.iter_child_nodes(owner)]
     while stack:
-        node = stack.pop()
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            if isinstance(owner, ast.Module):
-                continue
-            yield node
-            stack.extend(ast.iter_child_nodes(node))
+        node, parent = stack.pop()
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and isinstance(owner, ast.Module)
+        ):
             continue
-        yield node
-        stack.extend(ast.iter_child_nodes(node))
+        nodes.append(node)
+        parents[node] = parent
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            assignments.append(node)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            imports.append(node)
+        stack.extend((child, node) for child in ast.iter_child_nodes(node))
+    return nodes, assignments, imports, parents
+
+
+def _module_import_index_v1(
+    tree: ast.Module,
+) -> list[ast.Import | ast.ImportFrom]:
+    """Preserve imports from every scope, including nested class bodies."""
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+    ]
 
 
 def _is_sensitive_reference(reference: tuple[str, str]) -> bool:

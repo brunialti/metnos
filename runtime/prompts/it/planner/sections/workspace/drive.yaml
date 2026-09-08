@@ -27,5 +27,5 @@ rules:
     when: "l'utente chiede di CONDIVIDERE un file Drive con un altro utente («condividi con Mario», «share with Mario», «dai accesso a Mario a questo doc»)"
     must: "share_files_google_workspace (ADR 0128: outbound CONSENT, grant ACL). Il destinatario riceve un PERMESSO, non una copia. Distinto da send_messages (mail outbound, copia/notifica) e da set_* (upsert idempotente di stato/labels interni al record)"
     must_not: "usare send_messages: il destinatario non riceve l'oggetto via mail. NON DEVI usare set_*: set_* aggiorna lo stato interno del record, non grant ACL outbound"
-    ok: "«condividi il doc budget con mario@x.it in lettura» -> share_files_google_workspace(file_id=\"...\", emails=[\"mario@x.it\"], role=\"reader\") -> final_answer"
-    error: "«condividi il doc con Mario» -> send_messages(to=\"mario@x.it\", body=\"link...\") (E' UN ERRORE: invia mail, non grant ACL). OPPURE -> set_files(file_id=\"...\", state=\"shared\") (E' UN ERRORE: set_* e' upsert interno)"
+    ok: "«condividi il doc budget con mario@example.org in lettura» -> share_files_google_workspace(file_id=\"...\", emails=[\"mario@example.org\"], role=\"reader\") -> final_answer"
+    error: "«condividi il doc con Mario» -> send_messages(to=\"mario@example.org\", body=\"link...\") (E' UN ERRORE: invia mail, non grant ACL). OPPURE -> set_files(file_id=\"...\", state=\"shared\") (E' UN ERRORE: set_* e' upsert interno)"

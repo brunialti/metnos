@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import stat
 import tomllib
 from dataclasses import dataclass
@@ -54,6 +55,7 @@ _REPOSITORY_AUTHORING_ORIGINS = frozenset({
     ManifestOrigin.RETIRED,
 })
 _STORE_AUTHORING_RELATIVE = Path("contract-authoring") / "v1"
+_STORAGE_KEY_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class ManifestBootstrapError(RuntimeError):
@@ -543,6 +545,117 @@ def _structural_location(
     return root, manifest_path, skill_name, allowed_code_roots
 
 
+def _is_empty_unbound_publication_residue_v1(
+    contract_dir: Path | str,
+) -> bool:
+    """Recognize only the exact crash residue preceding binding creation.
+
+    The contract writer creates this directory, its empty generations
+    directory and the one-byte lock before it makes ``binding.json`` visible.
+    A process death in that narrow interval leaves no contract identity or
+    business payload to inventory.  Ignore that exact fail-safe scaffold, but
+    keep every deviation visible as ``binding_invalid``.
+
+    The check is POSIX-only because its safety argument depends on exact Unix
+    ownership, modes, link count and advisory locking.  It never repairs or
+    removes the residue; a later publication of the same contract can resume
+    through the existing writer lock.
+    """
+    if os.name != "posix":
+        return False
+    directory = Path(contract_dir)
+    if _STORAGE_KEY_RE.fullmatch(directory.name) is None:
+        return False
+
+    def plain_directory(status: os.stat_result, mode: int) -> bool:
+        return stat.S_ISDIR(status.st_mode) and stat.S_IMODE(status.st_mode) == mode
+
+    def same_object(before: os.stat_result, after: os.stat_result) -> bool:
+        return (
+            os.path.samestat(before, after)
+            and before.st_mode == after.st_mode
+            and before.st_nlink == after.st_nlink
+            and before.st_uid == after.st_uid
+            and before.st_gid == after.st_gid
+            and before.st_size == after.st_size
+            and before.st_mtime_ns == after.st_mtime_ns
+            and before.st_ctime_ns == after.st_ctime_ns
+        )
+
+    try:
+        version_before = directory.parent.lstat()
+        directory_before = directory.lstat()
+        if (
+            not plain_directory(version_before, 0o700)
+            or not plain_directory(directory_before, 0o700)
+            or (directory_before.st_uid, directory_before.st_gid)
+            != (version_before.st_uid, version_before.st_gid)
+        ):
+            return False
+        trusted_owner = (directory_before.st_uid, directory_before.st_gid)
+        lock_path = directory / "writer.lock"
+        lock_before = lock_path.lstat()
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(lock_path, flags)
+        locked = False
+        try:
+            opened = os.fstat(descriptor)
+            if not same_object(lock_before, opened):
+                return False
+            import fcntl
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            locked = True
+            if set(os.listdir(directory)) != {"generations", "writer.lock"}:
+                return False
+
+            generations = directory / "generations"
+            generations_before = generations.lstat()
+            if (
+                not plain_directory(generations_before, 0o700)
+                or (generations_before.st_uid, generations_before.st_gid)
+                != trusted_owner
+                or not stat.S_ISREG(lock_before.st_mode)
+                or stat.S_IMODE(lock_before.st_mode) != 0o600
+                or (lock_before.st_uid, lock_before.st_gid) != trusted_owner
+                or lock_before.st_nlink != 1
+                or lock_before.st_size != 1
+                or tuple(generations.iterdir())
+            ):
+                return False
+
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            if os.read(descriptor, 2) != b"\0":
+                return False
+            lock_after = os.fstat(descriptor)
+            if not same_object(opened, lock_after):
+                return False
+
+            version_after = directory.parent.lstat()
+            directory_after = directory.lstat()
+            generations_after = generations.lstat()
+            lock_path_after = lock_path.lstat()
+            return (
+                same_object(version_before, version_after)
+                and same_object(directory_before, directory_after)
+                and same_object(generations_before, generations_after)
+                and same_object(lock_before, lock_path_after)
+                and set(os.listdir(directory)) == {"generations", "writer.lock"}
+                and not tuple(generations.iterdir())
+            )
+        finally:
+            try:
+                if locked:
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+    except OSError:
+        return False
+
+
 def inventory_store_manifests(
     sources: Iterable[ManifestSource] | None = None,
     *,
@@ -561,7 +674,8 @@ def inventory_store_manifests(
         _store_authoring_sources(default_manifest_sources())
         if sources is None else tuple(sources)
     )
-    if binding_reader is None:
+    default_binding_reader = binding_reader is None
+    if default_binding_reader:
         from contract_store import read_binding as binding_reader
 
     version_root, _marker = _publication_paths(
@@ -602,6 +716,11 @@ def inventory_store_manifests(
             if not isinstance(contract_id, ContractId):
                 raise TypeError("binding returned no ContractId")
         except Exception as exc:
+            if (
+                default_binding_reader
+                and _is_empty_unbound_publication_residue_v1(contract_dir)
+            ):
+                continue
             problems.append(InventoryProblem(
                 "binding_invalid",
                 str(contract_dir),

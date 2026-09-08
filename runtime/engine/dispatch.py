@@ -6424,7 +6424,7 @@ def _insert_consent_gate_if_scheduled(framework, query: str, runtime_ctx):
         # channel+actor dal runtime_ctx → get_approval rende il FORM A PULSANTI
         # nativo del canale (Telegram inline: Approva/Disapprova/Annulla) invece
         # del fallback testuale, e salva il dialog pending sotto il sender
-        # CORRETTO («telegram:roberto») così il tap/ripresa lo ritrova. Roberto
+        # CORRETTO («telegram:example») così il tap/ripresa lo ritrova. Roberto
         # 20/6: il gate DEVE usare i pulsanti, non una risposta digitata.
         rc = runtime_ctx or {}
         # timeout generoso: un'approvazione SCHEDULATA outbound si tappa con

@@ -6,7 +6,7 @@ per il vocabolario — un verbo solo invece di due — ma lascia al modello una
 decisione binaria che la richiesta contiene gia' per intero.
 
 Misurato prima di scrivere questo file (17/8/2026): «installa PowerToys su
-pc-roberto» produceva `uninstall=true` in **12 prove su 12**, con tre stesure
+pc-example» produceva `uninstall=true` in **12 prove su 12**, con tre stesure
 diverse della descrizione del manifest — testa che afferma, testa che definisce
 entrambe le direzioni, testa senza esempio letterale. Il testo non era la leva.
 Una decisione che la richiesta determina non si affida a un modello (§7.9).

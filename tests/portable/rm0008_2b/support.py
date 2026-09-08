@@ -607,7 +607,9 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
     user_config = tmp_path / "config"
     keys = user_config / "keys"
     keys.mkdir(parents=True)
-    (keys / "projection_pub.bin").write_bytes(public_bytes(projection_key))
+    projection_public = keys / "projection_pub.bin"
+    projection_public.write_bytes(public_bytes(projection_key))
+    projection_public.chmod(0o644)
 
     def executor(name: str, root: Path, code: Path, payload: bytes, **values):
         fields = {
@@ -638,12 +640,21 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
         get=lambda name: dependency if name == dependency.name else None,
     )
     import sign
+    import config as runtime_config
     original_keys_dir = sign.KEYS_DIR
+    original_state = runtime_config.PATH_USER_STATE
+    isolated_state = tmp_path / "user-state"
+    isolated_state.mkdir(mode=0o700)
     try:
         sign.KEYS_DIR = keys
-        encoded, roots = admitted_code_dependency_projection_v1(consumer, catalog)
+        # Model this fixture's authoring installation, never the runner host.
+        runtime_config.PATH_USER_STATE = isolated_state
+        encoded, roots, sealed_keys = admitted_code_dependency_projection_v1(
+            consumer, catalog,
+        )
     finally:
         sign.KEYS_DIR = original_keys_dir
+        runtime_config.PATH_USER_STATE = original_state
     original_sandbox_file = sandbox.__file__
     try:
         # A GitHub systemd service runs as root while its checkout lives below
@@ -653,6 +664,7 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
         sandbox.__file__ = str(runtime_root / "sandbox.py")
         command = sandbox.wrap_command(
             consumer, [sys.executable, str(consumer_code)], extra_ro=roots,
+            sealed_ro_files=sealed_keys,
         )
     finally:
         sandbox.__file__ = original_sandbox_file
@@ -664,6 +676,7 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
     )
     environment["METNOS_RUNTIME"] = str(runtime_root)
     environment["METNOS_USER_CONFIG"] = str(user_config)
+    environment["METNOS_USER_STATE"] = str(isolated_state)
     process = subprocess.run(
         command, input="{}", capture_output=True, text=True, timeout=15,
         env=environment, check=False,
@@ -704,6 +717,17 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
             )
             assert str(source_runtime) not in command
             assert "--unshare-net" in command
+            sealed_root = str(sandbox._PROJECTED_TRUST_ROOT_V1)
+            assert ["--tmpfs", sealed_root] in [
+                command[index:index + 2]
+                for index in range(len(command) - 1)
+            ]
+            assert ["--remount-ro", sealed_root] in [
+                command[index:index + 2]
+                for index in range(len(command) - 1)
+            ]
+            assert "--disable-userns" in command
+            assert "--assert-userns-disabled" in command
     assert process.returncode == 0, process.stderr
     result = json.loads(process.stdout)
     assert result == {

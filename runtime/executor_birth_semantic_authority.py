@@ -2,12 +2,12 @@
 
 Only public verification material is loaded here.  Producers and candidates
 cannot mint evidence through this interface; an operator provisions signed
-evidence records out of band and the authority authenticates them at use time.
+evidence records out of band and the authority authenticates them before a
+detached authority leaves its Birth session, or at use time for legacy paths.
 """
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import os
 import re
@@ -94,6 +94,56 @@ def derive_review_risk_facts(request: SemanticReviewRequest) -> ReviewRiskFacts:
     return ReviewRiskFacts(risk, complexity, uncertainty)
 
 
+def _evidence_for_request(
+    request: SemanticReviewRequest,
+    records: tuple[IndependentEvidence, ...],
+) -> tuple[IndependentEvidence, ...]:
+    result: list[IndependentEvidence] = []
+    seen: set[str] = set()
+    for item in records:
+        if item.candidate_id != request.candidate_id:
+            continue
+        if item.admission_context_id != request.admission_context_id:
+            raise SemanticReviewError("evidence_obsolete", item.evidence_id)
+        if item.owner_id == request.generator_owner_id:
+            raise SemanticReviewError(
+                "evidence_forged", "candidate self-attestation"
+            )
+        if item.evidence_id in seen:
+            raise SemanticReviewError("evidence_forged", "duplicate evidence_id")
+        seen.add(item.evidence_id)
+        result.append(item)
+    return tuple(result)
+
+
+@dataclass(frozen=True, slots=True)
+class SealedSemanticAuthorityV1:
+    """Authenticated semantic values detached from the Birth session."""
+
+    policy: ReviewPolicyV1
+    evidence_records: tuple[IndependentEvidence, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.policy, ReviewPolicyV1)
+            or type(self.evidence_records) is not tuple
+            or any(
+                not isinstance(item, IndependentEvidence)
+                for item in self.evidence_records
+            )
+        ):
+            raise SemanticReviewError(
+                "semantic_review_unavailable", "authority config"
+            )
+
+    def inputs_for(self, request: SemanticReviewRequest):
+        return (
+            self.policy,
+            derive_review_risk_facts(request),
+            _evidence_for_request(request, self.evidence_records),
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class PreprovisionedSemanticAuthority:
     policy: ReviewPolicyV1
@@ -113,6 +163,18 @@ class PreprovisionedSemanticAuthority:
 
     def inputs_for(self, request: SemanticReviewRequest):
         return self.policy, derive_review_risk_facts(request), self._evidence_for(request)
+
+    def _seal_for_detached_use_v1(self) -> SealedSemanticAuthorityV1:
+        """Authenticate evidence while the bound Birth session is alive."""
+        from executor_birth_secure_fs import _SecureDirectoryHandle
+
+        if not isinstance(self.evidence_dir, _SecureDirectoryHandle):
+            raise SemanticReviewError(
+                "semantic_review_unavailable", "evidence store"
+            )
+        return SealedSemanticAuthorityV1(
+            self.policy, self._records_from_capability()
+        )
 
     def _evidence_for(self, request: SemanticReviewRequest) -> tuple[IndependentEvidence, ...]:
         from executor_birth_secure_fs import _SecureDirectoryHandle
@@ -135,23 +197,12 @@ class PreprovisionedSemanticAuthority:
             names = sorted((name for name in os.listdir(directory_fd) if name.endswith(".json")), key=lambda name: name.encode())
             if len(names) > _MAX_EVIDENCE_FILES or any(name in {".", ".."} or "/" in name or "\\" in name for name in names):
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store bounds")
-            result: list[IndependentEvidence] = []
-            seen: set[str] = set()
-            for name in names:
-                item = self._read_record_at(directory_fd, name)
-                if item.candidate_id != request.candidate_id:
-                    continue
-                if item.admission_context_id != request.admission_context_id:
-                    raise SemanticReviewError("evidence_obsolete", item.evidence_id)
-                if item.owner_id == request.generator_owner_id:
-                    raise SemanticReviewError("evidence_forged", "candidate self-attestation")
-                if item.evidence_id in seen:
-                    raise SemanticReviewError("evidence_forged", "duplicate evidence_id")
-                seen.add(item.evidence_id)
-                result.append(item)
+            records = tuple(
+                self._read_record_at(directory_fd, name) for name in names
+            )
             if not _same_file(before, os.fstat(directory_fd)):
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store changed")
-            return tuple(result)
+            return _evidence_for_request(request, records)
         finally:
             os.close(directory_fd)
 
@@ -166,6 +217,9 @@ class PreprovisionedSemanticAuthority:
         the capability is closed the store is simply unavailable, and the
         refusal carries no location.
         """
+        return _evidence_for_request(request, self._records_from_capability())
+
+    def _records_from_capability(self) -> tuple[IndependentEvidence, ...]:
         from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
 
         try:
@@ -186,7 +240,6 @@ class PreprovisionedSemanticAuthority:
                 "semantic_review_unavailable", "evidence store bounds"
             )
         result: list[IndependentEvidence] = []
-        seen: set[str] = set()
         for name in names:
             try:
                 raw = self.evidence_dir.read_file(
@@ -198,19 +251,7 @@ class PreprovisionedSemanticAuthority:
                 raise SemanticReviewError(
                     "semantic_review_unavailable", "evidence store"
                 ) from exc
-            item = self._decode_record(raw, name)
-            if item.candidate_id != request.candidate_id:
-                continue
-            if item.admission_context_id != request.admission_context_id:
-                raise SemanticReviewError("evidence_obsolete", item.evidence_id)
-            if item.owner_id == request.generator_owner_id:
-                raise SemanticReviewError(
-                    "evidence_forged", "candidate self-attestation"
-                )
-            if item.evidence_id in seen:
-                raise SemanticReviewError("evidence_forged", "duplicate evidence_id")
-            seen.add(item.evidence_id)
-            result.append(item)
+            result.append(self._decode_record(raw, name))
         return tuple(result)
 
     def _evidence_for_windows(self, request: SemanticReviewRequest) -> tuple[IndependentEvidence, ...]:
@@ -229,23 +270,13 @@ class PreprovisionedSemanticAuthority:
             if len(names) > _MAX_EVIDENCE_FILES or any(
                     name in {".", ".."} or "/" in name or "\\" in name for name in names):
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store bounds")
-            result: list[IndependentEvidence] = []
-            seen: set[str] = set()
-            for name in names:
-                item = self._read_record_windows(final_directory, name)
-                if item.candidate_id != request.candidate_id:
-                    continue
-                if item.admission_context_id != request.admission_context_id:
-                    raise SemanticReviewError("evidence_obsolete", item.evidence_id)
-                if item.owner_id == request.generator_owner_id:
-                    raise SemanticReviewError("evidence_forged", "candidate self-attestation")
-                if item.evidence_id in seen:
-                    raise SemanticReviewError("evidence_forged", "duplicate evidence_id")
-                seen.add(item.evidence_id)
-                result.append(item)
+            records = tuple(
+                self._read_record_windows(final_directory, name)
+                for name in names
+            )
             if _win_info(handle) != before:
                 raise SemanticReviewError("semantic_review_unavailable", "evidence store changed")
-            return tuple(result)
+            return _evidence_for_request(request, records)
         except SemanticReviewError:
             raise
         except (OSError, ValueError) as exc:
@@ -355,10 +386,11 @@ def _load_semantic_authority_in_session(
     """Load the authority through a session that already holds the global lock.
 
     The three relative names come from the closed catalogue and never from a
-    value declared inside the document.  The evidence location is kept as a
-    directory capability bound to this session rather than a path to reopen,
-    so every use after the session is closed fails with the stable code and
-    without a path in the message (section 16.13.3).
+    value declared inside the document.  The returned authority retains a
+    directory capability bound to this session rather than a path to reopen.
+    A caller that needs detached use must seal it before the session closes;
+    otherwise later use fails with the stable code and without a path in the
+    message (section 16.13.3).
     """
     import json
 

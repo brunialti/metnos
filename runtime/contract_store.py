@@ -486,12 +486,12 @@ def _deny_closed_legacy_api(
     operation: str, store_root: Path | str | None,
 ) -> None:
     """Translate the build-level F4 gate into the store's stable error type."""
-    from executor_birth_legacy_gate import (
-        LegacyBirthAuthorityClosed, deny_legacy_contract_api,
+    from executor_birth_authority_gate import (
+        BirthAuthorityGateClosed, deny_legacy_contract_api,
     )
     try:
         deny_legacy_contract_api(operation, store_root=store_root)
-    except LegacyBirthAuthorityClosed as exc:
+    except BirthAuthorityGateClosed as exc:
         raise ContractStoreError(exc.code, exc.operation) from None
 
 
@@ -1932,10 +1932,17 @@ def _exclusive_file_lock(
     timeout_code: str,
     invalid_code: str,
     detail: str,
+    trusted_owner: tuple[int, int] | None = None,
 ) -> Iterator[None]:
     """Hold one finite cross-process lock without following redirected paths."""
     if timeout < 0:
         raise ValueError("timeout must be non-negative")
+    if trusted_owner is not None and (
+        type(trusted_owner) is not tuple
+        or len(trusted_owner) != 2
+        or any(type(value) is not int or value < 0 for value in trusted_owner)
+    ):
+        raise ContractStoreError(invalid_code, "invalid trusted owner")
     _require_plain_directory(lock_path.parent, code=invalid_code)
     _require_no_link_components(lock_path.parent, code=invalid_code)
     process_lock = _process_lock_for(lock_path)
@@ -1958,7 +1965,25 @@ def _exclusive_file_lock(
             or not stat.S_ISREG(before.st_mode)
         ):
             raise ContractStoreError(invalid_code, str(lock_path))
-        flags = os.O_RDWR | os.O_CREAT
+        caller_owner = (
+            (os.geteuid(), os.getegid())
+            if hasattr(os, "geteuid") and hasattr(os, "getegid")
+            else None
+        )
+        delegated_owner = (
+            trusted_owner is not None
+            and caller_owner is not None
+            and trusted_owner != caller_owner
+        )
+        if delegated_owner and caller_owner[0] != 0:
+            raise ContractStoreError(invalid_code, "trusted owner requires root")
+        # A privileged transition may authenticate an existing service-owned
+        # lock, but it never creates a new object under that delegated owner.
+        # Creation remains the responsibility of the account that owns the
+        # store, avoiding a root-owned residue after a failed migration.
+        flags = os.O_RDWR
+        if not delegated_owner:
+            flags |= os.O_CREAT
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         try:
@@ -1969,7 +1994,12 @@ def _exclusive_file_lock(
         file_status = os.fstat(handle.fileno())
         if not stat.S_ISREG(file_status.st_mode):
             raise ContractStoreError(invalid_code, str(lock_path))
-        if (
+        if trusted_owner is not None and hasattr(file_status, "st_uid"):
+            if (file_status.st_uid, file_status.st_gid) != trusted_owner:
+                raise ContractStoreError(
+                    invalid_code, f"foreign owner: {lock_path}",
+                )
+        elif (
             hasattr(os, "geteuid")
             and hasattr(file_status, "st_uid")
             and file_status.st_uid != os.geteuid()
@@ -2050,6 +2080,7 @@ def catalog_admission_lock(
     *,
     store_root: Path | str | None = None,
     timeout: float = DEFAULT_LOCK_TIMEOUT,
+    trusted_owner: tuple[int, int] | None = None,
 ) -> Iterator[None]:
     """Serialize every transition that can add or remove a visible name.
 
@@ -2067,11 +2098,28 @@ def catalog_admission_lock(
         held = {}
         _CATALOG_LOCK_LOCAL.held = held
     if key in held:
-        held[key] += 1
+        count, established_owner = held[key]
+        delegated_reentry = (
+            established_owner is not None
+            and trusted_owner is None
+            and hasattr(os, "geteuid")
+            and (os.geteuid(), os.getegid()) == established_owner
+        )
+        if established_owner != trusted_owner and not delegated_reentry:
+            raise ContractStoreError(
+                "catalog_lock_invalid", "reentrant owner mismatch",
+            )
+        held[key] = (count + 1, established_owner)
         try:
             yield
         finally:
-            held[key] -= 1
+            held[key] = (count, established_owner)
+            if delegated_reentry and (
+                os.geteuid(), os.getegid()
+            ) != established_owner:
+                raise ContractStoreError(
+                    "catalog_lock_invalid", "reentrant identity changed",
+                )
         return
 
     lock = _exclusive_file_lock(
@@ -2080,9 +2128,10 @@ def catalog_admission_lock(
         timeout_code="catalog_lock_timeout",
         invalid_code="catalog_lock_invalid",
         detail=str(lock_path),
+        trusted_owner=trusted_owner,
     )
     lock.__enter__()
-    held[key] = 1
+    held[key] = (1, trusted_owner)
     try:
         yield
     finally:
@@ -3075,7 +3124,7 @@ def _seed_repository_authoring_locked_v1(
     *,
     shadow_root: Path,
     trusted: tuple[TrustedPublic, ...],
-    authoring_owner: tuple[int, int] | None = None,
+    skill_enabled: Callable[[str], bool] | None = None,
 ) -> None:
     """Install authenticated mutable authoring outside the closed release.
 
@@ -3094,19 +3143,19 @@ def _seed_repository_authoring_locked_v1(
         authoring_paths, authoring_token, authoring_tree_id,
         materialize_staging, observe_tree,
     )
-    from executor_birth_snapshot import _acquire_authenticated_current_snapshot
+    from executor_birth_snapshot import (
+        CandidateSnapshotError, _acquire_authenticated_current_snapshot,
+    )
     from manifest_inventory import (
         inventory_authoring_manifests, inventory_store_manifests,
     )
 
-    source_inventory = inventory_authoring_manifests()
-    target_inventory = inventory_store_manifests(store_root=shadow_root)
-    if authoring_owner is not None and (
-        type(authoring_owner) is not tuple
-        or len(authoring_owner) != 2
-        or any(type(value) is not int or value < 0 for value in authoring_owner)
-    ):
-        raise ContractStoreError("authoring_seed_owner_invalid")
+    source_inventory = inventory_authoring_manifests(
+        skill_enabled=skill_enabled,
+    )
+    target_inventory = inventory_store_manifests(
+        store_root=shadow_root, skill_enabled=skill_enabled,
+    )
     if source_inventory.problems or target_inventory.problems:
         raise ContractStoreError("authoring_seed_inventory_invalid")
     source_refs = source_inventory.by_id()
@@ -3147,15 +3196,24 @@ def _seed_repository_authoring_locked_v1(
             if not _inside(target_root, external_root):
                 continue
 
+            # A resumed transition may already have published this contract
+            # through Birth into the external authoring root.  In that case
+            # the store-bound authoring is authoritative; contracts not yet
+            # converged are seeded from the immutable release source.
+            authoring_ref = (
+                target_ref
+                if target_ref.manifest_path.is_file()
+                else source_ref
+            )
             generation_identifier = expected[contract_id]
             current = _load_generation(
-                source_ref,
+                authoring_ref,
                 generation_identifier,
                 trusted_publics=trusted,
                 store_root=shadow_root,
             )
             snapshot, source_signature = _acquire_authenticated_current_snapshot(
-                source_ref.manifest_dir,
+                authoring_ref.manifest_dir,
             )
             try:
                 if (
@@ -3282,69 +3340,8 @@ def _seed_repository_authoring_locked_v1(
             else:
                 raise ContractStoreError("authoring_seed_invalid", relative)
 
-        if authoring_owner is not None:
-            # The transition runs with administrative privileges, while later
-            # Birth updates run as the signed service account. Transfer only
-            # the dedicated, fully inventoried authoring tree after every byte
-            # has been authenticated and no unexpected entry remains.
-            owner_uid, owner_gid = authoring_owner
-            ownership_paths = (
-                external_root.parent,
-                external_root,
-                *sorted(
-                    external_root.rglob("*"),
-                    key=lambda item: item.as_posix().encode("utf-8"),
-                ),
-            )
-            for path in reversed(ownership_paths):
-                try:
-                    status = path.lstat()
-                    if stat.S_ISLNK(status.st_mode) or not (
-                        stat.S_ISDIR(status.st_mode)
-                        or stat.S_ISREG(status.st_mode)
-                    ):
-                        raise ContractStoreError(
-                            "authoring_seed_invalid", str(path),
-                        )
-                    flags = (
-                        os.O_RDONLY
-                        | getattr(os, "O_NOFOLLOW", 0)
-                        | getattr(os, "O_CLOEXEC", 0)
-                    )
-                    if stat.S_ISDIR(status.st_mode):
-                        flags |= getattr(os, "O_DIRECTORY", 0)
-                    elif status.st_nlink != 1:
-                        raise ContractStoreError(
-                            "authoring_seed_invalid", str(path),
-                        )
-                    descriptor = os.open(path, flags)
-                    try:
-                        opened = os.fstat(descriptor)
-                        if (
-                            opened.st_dev != status.st_dev
-                            or opened.st_ino != status.st_ino
-                            or opened.st_mode != status.st_mode
-                        ):
-                            raise ContractStoreError(
-                                "authoring_seed_source_changed", str(path),
-                            )
-                        os.fchown(descriptor, owner_uid, owner_gid)
-                        os.fsync(descriptor)
-                        rebound = os.fstat(descriptor)
-                        if (rebound.st_uid, rebound.st_gid) != (
-                            owner_uid, owner_gid,
-                        ):
-                            raise ContractStoreError(
-                                "authoring_seed_owner_invalid", str(path),
-                            )
-                    finally:
-                        os.close(descriptor)
-                except ContractStoreError:
-                    raise
-                except OSError as exc:
-                    raise ContractStoreError(
-                        "authoring_seed_owner_invalid", str(path),
-                    ) from exc
+    except CandidateSnapshotError as exc:
+        raise ContractStoreError("authoring_tree_invalid", exc.detail) from exc
     except AuthoringInstallError as exc:
         raise ContractStoreError(exc.code, exc.detail) from exc
 
@@ -3352,7 +3349,6 @@ def _seed_repository_authoring_locked_v1(
 def materialize_repository_authoring_for_transition_v1(
     *,
     trusted_publics: Iterable[TrustedPublic],
-    authoring_owner: tuple[int, int] | None = None,
 ) -> int:
     """Materialize the current closed-build authoring before ownership cutover.
 
@@ -3386,7 +3382,9 @@ def materialize_repository_authoring_for_transition_v1(
     trusted = _trusted_public_tuple(trusted_publics)
     _container, root, _marker = _production_paths()
     with catalog_admission_lock(store_root=root):
-        inventory = inventory_store_manifests(store_root=root)
+        inventory = inventory_store_manifests(
+            store_root=root,
+        )
         if inventory.problems or not inventory.manifests:
             raise ContractStoreError("authoring_seed_inventory_invalid")
         expected = {
@@ -3397,7 +3395,6 @@ def materialize_repository_authoring_for_transition_v1(
             expected,
             shadow_root=root,
             trusted=trusted,
-            authoring_owner=authoring_owner,
         )
     return len(expected)
 

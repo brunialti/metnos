@@ -274,7 +274,16 @@ def enumerate_authenticated_current_generations(
     from contract_store import ContractRetirement, VerifiedManifest, current_contract
     from manifest_inventory import inventory_store_manifests
 
-    inventory = inventory_store_manifests(store_root=store_root)
+    # Cutover covers every persisted binding.  Visibility policy is deliberately
+    # irrelevant here: disabled skills still need an authenticated generation
+    # in the frozen inventory and a durable transition receipt.
+    def include_structural_skill_binding(_name: str) -> bool:
+        return True
+
+    inventory = inventory_store_manifests(
+        store_root=store_root,
+        skill_enabled=include_structural_skill_binding,
+    )
     if inventory.problems:
         raise BirthCutoverError("birth_cutover_inventory_invalid")
     result: list[CurrentGeneration] = []

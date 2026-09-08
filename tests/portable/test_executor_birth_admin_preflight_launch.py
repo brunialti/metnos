@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+import site
 from types import SimpleNamespace
 
 import pytest
@@ -95,7 +97,7 @@ def test_launch_plan_uses_only_signed_identity_environment_and_root(
     entry = _entry()
     monkeypatch.setattr(
         preflight, "_trusted_python_path_v1",
-        lambda root, working: (root, working),
+        lambda root, working, service_python=None: (root, working),
     )
     monkeypatch.setattr(preflight.os, "readlink", lambda _path: "/usr/bin/python3")
     monkeypatch.setenv("ATTACKER_PATH", "/tmp/attacker")
@@ -113,6 +115,29 @@ def test_launch_plan_uses_only_signed_identity_environment_and_root(
     assert "ATTACKER_PATH" not in dict(plan.environment)
     assert plan.python_path == ("/release", "/release/runtime")
     assert plan.umask == 0o027
+
+
+def test_python_launch_path_keeps_only_trusted_system_packages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    system_packages = "/usr/lib/python3/dist-packages"
+    rejected_packages = "/srv/metnos/.local/lib/python3/site-packages"
+    monkeypatch.setattr(preflight.sys, "path", ["/usr/lib/python3.12"])
+    monkeypatch.setattr(
+        site, "getsitepackages", lambda: [system_packages, rejected_packages],
+    )
+
+    def resolve(path, **_kwargs):
+        if path == Path(rejected_packages):
+            raise preflight.PreflightError(preflight.CODE_INVALID, "test")
+        return SimpleNamespace(canonical_path=path.as_posix())
+
+    monkeypatch.setattr(preflight, "_resolve_trusted_path_core_v1", resolve)
+    assert preflight._trusted_python_path_v1(
+        "/release", "/release/runtime",
+    ) == (
+        "/release/runtime", "/usr/lib/python3.12", system_packages,
+    )
 
 
 def test_notify_environment_is_closed_and_pid_bound(
@@ -151,7 +176,7 @@ def test_python_bootstrap_has_one_exact_authenticated_runpy_door(
 
     assert preflight.sys.path == list(plan.python_path)
     assert preflight.sys.argv == ["probe.main", "--probe"]
-    assert calls == [(('probe.main',), {
+    assert calls == [(("probe.main",), {
         "run_name": "__main__", "alter_sys": False,
     })]
 

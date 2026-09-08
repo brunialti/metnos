@@ -2100,7 +2100,7 @@ def _fmt_health_block(h: dict, host: str = "", sections: set | None = None) -> s
             if usb or blk:
                 out.append(_msg("MSG_HEALTH_PERIPHERALS",
                                 body=" · ".join(blk + usb)))
-        # §2.8 (10/7, turn 6dce715f: «ip del pc-roberto» col client senza
+        # §2.8 (10/7, turn 6dce715f: «ip del pc-example» col client senza
         # psutil → health.network=[] → blocco = SOLO titolo): se il focus non
         # ha prodotto NULLA e nessuna sezione dinamica seguirà, dillo.
         _dynamic = sections & {"load", "memory", "disk", "thermal", "power",

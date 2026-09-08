@@ -12,7 +12,6 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, replace
 from datetime import timezone
-from pathlib import Path
 from types import MappingProxyType
 from typing import Callable, Mapping
 
@@ -293,6 +292,38 @@ def _verify_existing(encoded: bytes, request: ReattestationRequest,
     return encoded
 
 
+def _initial_adoption_transition(
+    request: ReattestationRequest, dependencies: _BirthDependencies,
+) -> str | None:
+    transition_id = dependencies.initial_current_adoption_transition_id
+    if transition_id is None:
+        return None
+    producer_request = request.producer_request
+    if (
+        producer_request is None
+        or getattr(producer_request, "transition_id", None) != transition_id
+    ):
+        raise BirthReattestationError("birth_initial_adoption_scope_invalid")
+    return transition_id
+
+
+def _initial_adoption_check(
+    request: ReattestationRequest,
+    observed: ObservedCandidate,
+    transition_id: str,
+) -> AdmissionCheck:
+    evidence = _hash(
+        b"metnos.executor-birth.initial-current-adoption/v1\0",
+        transition_id.encode("ascii"),
+        request.current.ref.contract_id.value.encode("utf-8"),
+        request.current.generation_id.encode("ascii"),
+        request.producer_binding.candidate_source_id.encode("ascii"),
+        observed.identities.candidate_id.encode("ascii"),
+        observed.identities.admission_context_id.encode("ascii"),
+    )
+    return AdmissionCheck("1", AdmittedCheckStatus.PASSED, evidence)
+
+
 def _execute(request: ReattestationRequest, core: _ReattestationCore) -> ReattestationResult:
     if not isinstance(core, _ReattestationCore) or core._seal is not _SEAL:
         raise BirthReattestationError("birth_reattestation_core_untrusted")
@@ -300,6 +331,9 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             or request._seal is not _REQUEST_SEAL):
         raise BirthReattestationError("birth_reattestation_request_untrusted")
     birth = core.birth
+    initial_adoption = _initial_adoption_transition(
+        request, birth.shadow_dependencies,
+    )
     instant = birth.now().astimezone(timezone.utc).replace(microsecond=0)
     snapshot = core.capture(request.current)
     observed: ObservedCandidate | None = None
@@ -388,10 +422,12 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             )
 
         shadow = birth.shadow_dependencies
-        property_runner = shadow.property_runner or ObservedPropertyRunner(
-            observed, windows_registry=shadow.windows_sandbox_registry,
-            linux_registry=shadow.linux_sandbox_registry,
-        )
+        property_runner = shadow.property_runner
+        if property_runner is None and initial_adoption is None:
+            property_runner = ObservedPropertyRunner(
+                observed, windows_registry=shadow.windows_sandbox_registry,
+                linux_registry=shadow.linux_sandbox_registry,
+            )
         approval_subject, approval_evidence = birth.approval_resolver(
             request, observed, ShadowRevisionClass.REATTESTATION, instant,  # type: ignore[arg-type]
         )
@@ -428,6 +464,10 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
         checks["reattestation_current_generation_v1"] = AdmissionCheck(
             "1", AdmittedCheckStatus.PASSED, evidence,
         )
+        if initial_adoption is not None:
+            checks["initial_current_generation_adoption_v1"] = (
+                _initial_adoption_check(request, observed, initial_adoption)
+            )
         semantic_hash = next((
             check.evidence_hash for check in report.checks
             if check.check_id == "semantic_review" and check.status is CheckStatus.PASSED

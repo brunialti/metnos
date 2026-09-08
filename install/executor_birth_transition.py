@@ -17,23 +17,32 @@ import subprocess
 import sys
 from typing import Mapping
 
-try:
-    import pwd
-except ImportError:  # pragma: no cover - exercised by the Windows gate
-    pwd = None
-
-
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _RUNTIME = _REPOSITORY / "runtime"
 for _IMPORT_ROOT in (_REPOSITORY, _RUNTIME):
     if str(_IMPORT_ROOT) not in sys.path:
         sys.path.insert(0, str(_IMPORT_ROOT))
+import executor_birth_account_identity as _account_identity  # noqa: E402
+
+
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
-_ACCOUNT_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
 _ERROR_RE = re.compile(r"birth_[a-z0-9_]{1,96}\Z")
 _FRAME_SCHEMA_V1 = "metnos.executor-birth.transition-handoff/1"
-_MAX_FRAME_BYTES_V1 = 4 * 1024 * 1024
+# The signed distribution ABI admits payloads through 16 MiB.  Its base64
+# representation needs 4/3 of that space; keep a bounded allowance for the
+# canonical envelope and the fixed signature/source fields.
+_MAX_FRAME_BYTES_V1 = 24 * 1024 * 1024
 _ACTIVATION_TIMEOUT_SECONDS_V1 = 300
+# The closed release can contain the 20-minute contract convergence and then
+# activate/verify the signed target topology.  Keep its parent budget larger
+# than those bounded child operations plus the remaining verification work.
+_CLOSED_RELEASE_TIMEOUT_SECONDS_V1 = 3000
+_HOST_PROVISIONING_ERROR_CODES_V1 = frozenset({
+    "birth_ownership_administrative_required",
+    "birth_ownership_platform_unsupported",
+    "birth_provisioning_host_invalid",
+    "birth_provisioning_recovery_required",
+})
 
 
 class TransitionEntryError(RuntimeError):
@@ -57,31 +66,144 @@ def _require_root_linux_v1() -> None:
 
 def _service_environment_v1(service_user: object) -> tuple[str, Mapping[str, str]]:
     """Derive the fixed service paths before importing configuration modules."""
-    if type(service_user) is not str or _ACCOUNT_RE.fullmatch(service_user) is None:
+    if not _account_identity.is_posix_account_name_v1(service_user):
         raise _fail("birth_ownership_deployment_invalid")
-    if pwd is None:
-        raise _fail("birth_ownership_platform_unsupported")
     try:
-        account = pwd.getpwnam(service_user)
-    except (KeyError, OSError) as exc:
+        account = _account_identity.resolve_posix_account_v1(service_user)
+    except _account_identity.PosixAccountResolutionError as exc:
+        if exc.kind is _account_identity.PosixAccountFailureKindV1.platform_unsupported:
+            raise _fail("birth_ownership_platform_unsupported") from exc
         raise _fail("birth_ownership_deployment_invalid") from exc
-    home = Path(account.pw_dir)
-    if not home.is_absolute() or home == Path("/"):
+    home = Path(account.home)
+    if account.name != service_user or not home.is_absolute() or home == Path("/"):
         raise _fail("birth_ownership_deployment_invalid")
-    data = home / ".local" / "share" / "metnos"
-    state = home / ".local" / "state" / "metnos"
-    config = home / ".config" / "metnos"
-    cache = home / ".cache" / "metnos"
-    return service_user, {
-        "HOME": home.as_posix(),
-        "LOGNAME": service_user,
-        "USER": service_user,
-        "METNOS_USER_DATA": data.as_posix(),
-        "METNOS_USER_STATE": state.as_posix(),
-        "METNOS_USER_CONFIG": config.as_posix(),
-        "METNOS_USER_CACHE": cache.as_posix(),
-        "METNOS_WORKSPACE": (data / "workspace").as_posix(),
-    }
+    layout = _account_identity.metnos_xdg_layout_v1(account)
+    return account.name, layout.environment()
+
+
+def _provisioned_service_environment_v1(
+    service_user: object,
+) -> tuple[str, Mapping[str, str]]:
+    """Provision first, then reject an identity change during fresh lookup."""
+    from install.executor_birth_host_provisioning import (
+        HostProvisioningError,
+        provision_executor_birth_host_v1,
+    )
+
+    try:
+        provisioned = provision_executor_birth_host_v1(service_user)
+    except HostProvisioningError as exc:
+        code = (
+            exc.code if type(exc.code) is str
+            and exc.code in _HOST_PROVISIONING_ERROR_CODES_V1
+            else "birth_ownership_deployment_invalid"
+        )
+        raise _fail(code) from exc
+    try:
+        snapshot = provisioned.account
+        if type(snapshot) is not _account_identity.PosixAccountSnapshotV1:
+            raise TypeError("provisioned account snapshot")
+        selected = snapshot.record.name
+        environment = _account_identity.metnos_xdg_layout_v1(
+            snapshot.record,
+        ).environment()
+        current = _account_identity.resolve_posix_account_snapshot_v1(selected)
+        snapshot.assert_unchanged(current)
+    except (
+        TypeError,
+        ValueError,
+        _account_identity.PosixAccountResolutionError,
+        _account_identity.PosixAccountSnapshotChangedError,
+    ) as exc:
+        raise _fail("birth_ownership_deployment_invalid") from exc
+    return selected, environment
+
+
+def _validated_legacy_inputs_v1(
+    service_user: object,
+    legacy_service_user: object,
+    legacy_installation_root: object,
+) -> tuple[str, Mapping[str, str], Path]:
+    if not _account_identity.is_posix_account_name_v1(service_user):
+        raise _fail("birth_ownership_deployment_invalid")
+    selected, environment = _service_environment_v1(legacy_service_user)
+    if selected == service_user:
+        raise _fail("birth_ownership_deployment_invalid")
+    try:
+        root = Path(os.fspath(legacy_installation_root))
+    except TypeError as exc:
+        raise _fail("birth_ownership_deployment_invalid") from exc
+    if (
+        not root.is_absolute() or Path(os.path.abspath(root)) != root
+        or root == Path("/")
+    ):
+        raise _fail("birth_ownership_deployment_invalid")
+    return selected, environment, root
+
+
+def _prepare_service_authorities_v1(
+    service_user: str, service_environment: Mapping[str, str],
+) -> None:
+    """Run user-owned Birth preparation under the selected service identity."""
+    from install.executor_birth_source_receiver import (
+        _service_account_snapshot_v1,
+    )
+
+    account = _service_account_snapshot_v1(service_user)
+    entry = _REPOSITORY / "install" / "executor_birth_transition.py"
+    command = [
+        sys.executable, "-I", entry.as_posix(), "prepare",
+        "--service-user", service_user,
+    ]
+    try:
+        completed = subprocess.run(
+            command, stdin=subprocess.DEVNULL, capture_output=True,
+            check=False, close_fds=True, cwd="/",
+            env=_install_environment_v1(_REPOSITORY, service_environment),
+            user=account.uid, group=account.gid,
+            extra_groups=account.supplementary_gids, umask=0o077,
+            timeout=_ACTIVATION_TIMEOUT_SECONDS_V1,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise _fail("birth_provisioning_io_unavailable") from exc
+    if completed.returncode != 0:
+        try:
+            code = completed.stderr.decode("ascii").strip()
+        except UnicodeDecodeError:
+            code = ""
+        raise _fail(
+            code if _ERROR_RE.fullmatch(code) is not None
+            else "birth_provisioning_io_unavailable"
+        )
+    if completed.stdout != b'{"prepared":true}\n':
+        raise _fail("birth_provisioning_io_unavailable")
+
+
+def _prepare_service_authorities_child_v1(service_user: object) -> dict:
+    """Prepare only after the process identity matches the selected account."""
+    selected_user, service_environment = _service_environment_v1(service_user)
+    try:
+        account = _account_identity.resolve_posix_account_v1(selected_user)
+        supplementary = _account_identity.resolve_supplementary_gids_v1(
+            selected_user, account.gid,
+        )
+    except _account_identity.PosixAccountResolutionError as exc:
+        raise _fail("birth_ownership_deployment_invalid") from exc
+    if (
+        not hasattr(os, "geteuid")
+        or os.geteuid() != account.uid
+        or os.getegid() != account.gid
+        or tuple(sorted(set(os.getgroups()))) != supplementary
+    ):
+        raise _fail("birth_ownership_deployment_invalid")
+    os.environ.clear()
+    os.environ.update(_install_environment_v1(_REPOSITORY, service_environment))
+    from install.birth_authority_provisioner import (
+        ensure_executor_birth_authorities_prepared,
+    )
+
+    ensure_executor_birth_authorities_prepared()
+    return {"prepared": True}
 
 
 def _install_environment_v1(
@@ -215,6 +337,8 @@ def _activate_signed_topology_v1(distribution: object, descriptor: object) -> di
 
 def _complete_closed_v1(
     *, expected_source_id: str, expected_service_user: str,
+    expected_legacy_service_user: str,
+    expected_legacy_installation_root: str,
     expected_service_state_root: object, frame: bytes,
 ) -> dict:
     source_id, encoded, signature = _decode_handoff_frame_v1(frame)
@@ -247,6 +371,8 @@ def _complete_closed_v1(
     result = complete_transition_cutover_v2(
         distribution, source_id,
         service_state_root=selected_state_root,
+        legacy_service_user=expected_legacy_service_user,
+        legacy_installation_root=expected_legacy_installation_root,
     )
     if getattr(getattr(result, "state", None), "value", None) != "PREFLIGHT_VERIFIED":
         raise _fail("birth_transition_final_state_missing")
@@ -262,30 +388,53 @@ def _complete_closed_v1(
 
 def _invoke_closed_release_v1(
     *, distribution: object, source_id: str, service_user: str,
+    legacy_service_user: str, legacy_installation_root: str,
     service_environment: Mapping[str, str],
 ) -> dict:
-    release_root = Path(distribution.installation_root)
+    from executor_birth_distribution_manifest import (
+        authenticate_distribution_record_v1,
+    )
+    from executor_birth_service_catalog import load_service_catalog_v1
+
+    record = authenticate_distribution_record_v1(
+        distribution.encoded, distribution.signature,
+    )
+    release_root = Path(record.installation_root)
     entry = release_root / "install" / "executor_birth_transition.py"
     matching = tuple(
-        item for item in distribution.files
+        item for item in record.files
         if item.path == "install/executor_birth_transition.py"
     )
     if len(matching) != 1 or not entry.is_file():
         raise _fail("birth_ownership_distribution_invalid")
+    loaded = load_service_catalog_v1(record)
+    python_executables = {
+        item.target_executable for item in loaded.catalog.entries
+        if item.execution_kind == "python_module"
+    }
+    if (
+        len(python_executables) != 1
+        or None in python_executables
+        or not Path(next(iter(python_executables))).is_file()
+    ):
+        raise _fail("birth_ownership_service_catalog_invalid")
+    service_python = str(next(iter(python_executables)))
     frame = _handoff_frame_v1(
         source_id=source_id, encoded=distribution.encoded,
         signature=distribution.signature,
     )
     command = [
-        sys.executable, "-I", entry.as_posix(), "complete",
+        service_python, "-I", "-B", entry.as_posix(), "complete",
         "--source-id", source_id, "--service-user", service_user,
+        "--legacy-service-user", legacy_service_user,
+        "--legacy-installation-root", legacy_installation_root,
     ]
     try:
         completed = subprocess.run(
             command, input=frame, capture_output=True, check=False,
             close_fds=True,
             env=_install_environment_v1(release_root, service_environment),
-            timeout=_ACTIVATION_TIMEOUT_SECONDS_V1 * 2,
+            timeout=_CLOSED_RELEASE_TIMEOUT_SECONDS_V1,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise _fail("birth_transition_activation_failed") from exc
@@ -307,15 +456,24 @@ def _invoke_closed_release_v1(
     return result
 
 
-def deploy_source_v1(source: object, service_user: object) -> dict:
+def deploy_source_v1(
+    source: object, service_user: object, legacy_service_user: object,
+    legacy_installation_root: object,
+) -> dict:
     """Receive, build, cross and activate one exact reviewed source tree."""
     _require_root_linux_v1()
-    selected_user, service_environment = _service_environment_v1(service_user)
+    selected_legacy_user, _legacy_environment, selected_legacy_root = (
+        _validated_legacy_inputs_v1(
+            service_user, legacy_service_user, legacy_installation_root,
+        )
+    )
+    selected_user, service_environment = _provisioned_service_environment_v1(
+        service_user,
+    )
+    if selected_legacy_user == selected_user:
+        raise _fail("birth_ownership_deployment_invalid")
     os.environ.update(service_environment)
     os.environ["METNOS_INSTALL_ROOT"] = _REPOSITORY.as_posix()
-    from install.birth_authority_provisioner import (
-        ensure_executor_birth_authorities_prepared,
-    )
     from install.birth_ownership_authority_provisioner import (
         provision_root_ownership_authorities_v1,
     )
@@ -324,41 +482,74 @@ def deploy_source_v1(source: object, service_user: object) -> dict:
     )
     from install.executor_birth_source_receiver import _receive_source_v1
 
-    ensure_executor_birth_authorities_prepared()
+    _prepare_service_authorities_v1(selected_user, service_environment)
     provision_root_ownership_authorities_v1()
     source_id = _receive_source_v1(source, selected_user)
     distribution = build_and_install_received_source_v1(source_id)
+    from install.executor_birth_systemd_quiescence import (
+        quiesce_legacy_systemd_v1,
+    )
+    legacy_snapshot = _account_identity.resolve_posix_account_snapshot_v1(
+        selected_legacy_user,
+    )
+    quiesce_legacy_systemd_v1(legacy_snapshot)
     return _invoke_closed_release_v1(
         distribution=distribution, source_id=source_id,
-        service_user=selected_user, service_environment=service_environment,
+        service_user=selected_user,
+        legacy_service_user=selected_legacy_user,
+        legacy_installation_root=selected_legacy_root.as_posix(),
+        service_environment=service_environment,
     )
 
 
-def _parse_cli_v1(argv: object) -> tuple[str, str, str]:
+def _parse_cli_v1(argv: object) -> tuple[str, str, str, str | None, str | None]:
     if type(argv) is not list or any(type(item) is not str for item in argv):
         raise _fail("birth_ownership_deployment_invalid")
     if (
-        len(argv) == 5 and argv[0] == "deploy"
+        len(argv) == 9 and argv[0] == "deploy"
         and argv[1] == "--source" and argv[3] == "--service-user"
+        and argv[5] == "--legacy-service-user"
+        and argv[7] == "--legacy-installation-root"
     ):
-        return "deploy", argv[2], argv[4]
+        return "deploy", argv[2], argv[4], argv[6], argv[8]
     if (
-        len(argv) == 5 and argv[0] == "complete"
+        len(argv) == 9 and argv[0] == "complete"
         and argv[1] == "--source-id" and argv[3] == "--service-user"
+        and argv[5] == "--legacy-service-user"
+        and argv[7] == "--legacy-installation-root"
     ):
-        return "complete", argv[2], argv[4]
+        return "complete", argv[2], argv[4], argv[6], argv[8]
+    if (
+        len(argv) == 3 and argv[0] == "prepare"
+        and argv[1] == "--service-user"
+    ):
+        return "prepare", "", argv[2], None, None
     raise _fail("birth_ownership_deployment_invalid")
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Root must not add ignored bytecode files to the reviewed source before
+    # the receiver inventories it.  Keep this invariant independent of the
+    # installer or operator command that invokes the transition entry.
+    sys.dont_write_bytecode = True
     try:
-        _require_root_linux_v1()
-        operation, value, service_user = _parse_cli_v1(
+        operation, value, service_user, legacy_service_user, legacy_root = _parse_cli_v1(
             list(sys.argv[1:] if argv is None else argv),
         )
-        if operation == "deploy":
-            result = deploy_source_v1(value, service_user)
+        if operation == "prepare":
+            result = _prepare_service_authorities_child_v1(service_user)
         else:
+            _require_root_linux_v1()
+            if legacy_service_user is None or legacy_root is None:
+                raise _fail("birth_ownership_deployment_invalid")
+            if operation == "deploy":
+                result = deploy_source_v1(
+                    value, service_user, legacy_service_user, legacy_root,
+                )
+                sys.stdout.write(
+                    _canonical_json_v1(result).decode("ascii") + "\n"
+                )
+                return 0
             selected_user, service_environment = _service_environment_v1(
                 service_user,
             )
@@ -368,6 +559,8 @@ def main(argv: list[str] | None = None) -> int:
             result = _complete_closed_v1(
                 expected_source_id=value,
                 expected_service_user=selected_user,
+                expected_legacy_service_user=legacy_service_user,
+                expected_legacy_installation_root=legacy_root,
                 expected_service_state_root=(
                     service_environment["METNOS_USER_STATE"]
                 ),

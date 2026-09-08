@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos — verifica storica e transizione degli executor</title>
+ <link rel="canonical" href="https://metnos.com/it/architecture/executor_birth">
+ <meta name="description" content="Come la prima transizione degli executor distingue la verifica delle firme storiche dall'autorità di eseguire e pubblicare.">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor_birth">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor_birth">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
+</head>
+<body>
+<nav aria-label="Lingua"><a href="/it/index.html">Documentazione</a> · IT · <a href="/en/architecture/executor_birth.html" lang="en">EN</a></nav>
+<main>
+ <h1>Verificare la storia non significa eseguirla</h1>
+ <p>Quando cambia il codice di Metnos, le firme dei contratti già presenti
+ devono restare verificabili. Questo non autorizza però il nuovo codice a
+ eseguire o pubblicare usando un contesto di autorità precedente.</p>
+ <h2>Prima transizione coordinata</h2>
+ <p>Il percorso iniziale autentica l'insieme storico e i legami delle sue
+ chiavi sotto un'unica barriera. Ai lettori consegna soltanto l'identità
+ dell'insieme e le chiavi pubbliche di verifica, non un runtime eseguibile.</p>
+ <p>Se un contratto è invariato, la convergenza ne verifica firma e contenuto
+ senza ripubblicarlo. Se occorre pubblicare una modifica, costruisce invece
+ il runtime completo e verifica che il suo contesto corrisponda ai sorgenti:
+ un contesto diverso viene rifiutato.</p>
+ <h2>Il nuovo contesto resta obbligatorio</h2>
+ <p>La lettura storica non sostituisce la riattestazione della transizione.
+ Quest'ultima resta legata alla nuova distribuzione autenticata. Modificare
+ l'insieme storico, l'inventario delle chiavi o il legame fra contratto e
+ generazione causa un rifiuto; una firma storica non è un permesso generale
+ per eseguire codice nuovo.</p>
+ <h2>Il censimento distingue vecchia e nuova installazione</h2>
+ <p>Le voci da ritirare descrivono soltanto componenti della vecchia
+ installazione. Un modulo introdotto dalla nuova distribuzione non deve
+ essere richiesto nel predecessore: resta invece coperto dall'inventario
+ firmato e dalle verifiche della nuova distribuzione. L'assenza di un vero
+ componente storico richiesto continua a bloccare la transizione.</p>
+ <p>Alla ripresa viene riutilizzato il censimento storico già registrato,
+ perché il ritiro può avere rinominato alcuni file. Il documento deve
+ conservare formato, integrità e proprietà sicuri e corrispondere esattamente
+ alla stessa transizione, installazione e catalogo. Non viene riscritto né
+ presentato come una nuova verifica dello stato corrente.</p>
+</main>
+</body>
+</html>

@@ -133,7 +133,7 @@ _RECORD_KEYS_V2 = _RECORD_KEYS | frozenset({
     "target_set_id", "target_admission_context_id", "target_context_epoch",
     "target_context_material_sha256", "target_set_json_sha256",
     "context_transition_id", "current_inventory_hash",
-    "dominant_startup_receipt",
+    "dominant_startup_receipt", "legacy_state_record_sha256",
 })
 _LEGACY_DISPOSITION_REASON_V2 = "superseded_before_certificate"
 
@@ -821,6 +821,7 @@ class OwnershipCoordinatorRecordV2:
     target_set_json_sha256: str
     context_transition_id: str
     current_inventory_hash: str
+    legacy_state_record_sha256: str
     current_proof: CurrentReceiptProof | None = None
     maintenance_before_hash: str | None = None
     maintenance_after_hash: str | None = None
@@ -857,7 +858,7 @@ class OwnershipCoordinatorRecordV2:
             "administrative_bundle_hash", "previous_admission_context_id",
             "previous_context_epoch", "target_admission_context_id",
             "target_context_epoch", "context_transition_id",
-            "current_inventory_hash",
+            "current_inventory_hash", "legacy_state_record_sha256",
         ):
             _require_digest(getattr(self, field), field)
         for field in (
@@ -1051,6 +1052,7 @@ class OwnershipCoordinatorRecordV2:
             "context_transition_id": self.context_transition_id,
             "current_inventory_hash": self.current_inventory_hash,
             "dominant_startup_receipt": self.dominant_startup_receipt,
+            "legacy_state_record_sha256": self.legacy_state_record_sha256,
         }
 
     def encode(self) -> bytes:
@@ -1136,6 +1138,7 @@ def _decode_record_v2(encoded: bytes) -> OwnershipCoordinatorRecordV2:
         target_set_json_sha256=value.get("target_set_json_sha256"),
         context_transition_id=value.get("context_transition_id"),
         current_inventory_hash=value.get("current_inventory_hash"),
+        legacy_state_record_sha256=value.get("legacy_state_record_sha256"),
         current_proof=proof,
         maintenance_before_hash=value.get("maintenance_before_hash"),
         maintenance_after_hash=value.get("maintenance_after_hash"),
@@ -1329,6 +1332,7 @@ _TRANSACTION_CARRY_KEYS_V2 = _LEGACY_CARRY_KEYS_V1 | frozenset({
     "target_set_id", "target_admission_context_id", "target_context_epoch",
     "target_context_material_sha256", "target_set_json_sha256",
     "context_transition_id", "current_inventory_hash",
+    "legacy_state_record_sha256",
 })
 _TRANSACTION_THRESHOLD_KEYS_V2 = (
     (1, frozenset({
@@ -3116,6 +3120,7 @@ def _prepared_record_v2(
     *, claim: object, distribution: object, predecessor: object,
     previous_context: object, prepared_authority_set: object,
     current_inventory: object, deployment_descriptor: object,
+    initial_legacy_state_record_sha256: object = None,
 ) -> tuple[OwnershipCoordinatorRecordV2, object]:
     """Bind one exact staged set and frozen inventory before publication."""
     from executor_birth_admin_preflight import (
@@ -3170,6 +3175,10 @@ def _prepared_record_v2(
             previous_context.prepared_admission_context_id
         )
         previous_context_epoch = previous_context.prepared_context_epoch
+        legacy_state_record_sha256 = _require_digest(
+            initial_legacy_state_record_sha256,
+            "legacy_state_record_sha256",
+        )
     else:
         if (
             type(predecessor) is not OwnershipCoordinatorRecordV2
@@ -3184,11 +3193,14 @@ def _prepared_record_v2(
             != predecessor.closed_build_id
         ):
             raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+        if initial_legacy_state_record_sha256 is not None:
+            raise OwnershipCoordinatorError("birth_ownership_request_conflict")
         previous_cutover_id = predecessor.cutover_id
         previous_closed_build_id = predecessor.closed_build_id
         previous_set_id = previous_context.set_id
         previous_admission_context_id = previous_context.admission_context_id
         previous_context_epoch = previous_context.context_epoch
+        legacy_state_record_sha256 = predecessor.legacy_state_record_sha256
 
     expected_request_id = _coordinator_request_id_v1(
         claim.closed_build_id,
@@ -3280,6 +3292,7 @@ def _prepared_record_v2(
         target_set_json_sha256=target.target_set_json_sha256,
         context_transition_id=transition.transition_id,
         current_inventory_hash=transition.current_inventory_hash,
+        legacy_state_record_sha256=legacy_state_record_sha256,
     )
     return record, transition
 
@@ -3693,6 +3706,7 @@ def _prepared_transition_from_graph_v2(
     graph: object, *, distribution: object, previous_context: object,
     prepared_authority_set: object, current_inventory: object,
     deployment_descriptor: object,
+    initial_legacy_state_record_sha256: object = None,
 ) -> tuple[OwnershipCoordinatorRecordV2, object]:
     """Derive PREPARED only from the terminal edge of one locked graph."""
     claim, predecessor = _transition_edge_from_graph_v2(graph, distribution)
@@ -3704,6 +3718,9 @@ def _prepared_transition_from_graph_v2(
         prepared_authority_set=prepared_authority_set,
         current_inventory=current_inventory,
         deployment_descriptor=deployment_descriptor,
+        initial_legacy_state_record_sha256=(
+            initial_legacy_state_record_sha256
+        ),
     )
 
 
@@ -3729,6 +3746,7 @@ def _append_prepared_transition_locked_v2(
     session: _DeploymentLockSessionV1, *, distribution: object,
     previous_context: object, prepared_authority_set: object,
     current_inventory: object, deployment_descriptor: object,
+    initial_legacy_state_record_sha256: object = None,
 ) -> tuple[OwnershipCoordinatorRecordV2, object]:
     """Append and reread one productive PREPARED record under the fixed lock."""
     snapshot = _resolve_ownership_coordinator_locked_v2(session)
@@ -3740,6 +3758,9 @@ def _append_prepared_transition_locked_v2(
         prepared_authority_set=prepared_authority_set,
         current_inventory=current_inventory,
         deployment_descriptor=deployment_descriptor,
+        initial_legacy_state_record_sha256=(
+            initial_legacy_state_record_sha256
+        ),
     )
     persisted = _append_ownership_transaction_locked_v2(session, record)
     reread_snapshot = _resolve_ownership_coordinator_locked_v2(session)
@@ -3755,6 +3776,7 @@ def _append_prepared_transition_locked_for_test_v2(
     distribution: object, previous_context: object,
     prepared_authority_set: object, current_inventory: object,
     deployment_descriptor: object,
+    initial_legacy_state_record_sha256: object = None,
 ) -> tuple[OwnershipCoordinatorRecordV2, object]:
     """Portable proof seam kept nominally separate from the productive lock."""
     snapshot = _resolve_ownership_coordinator_locked_for_test_v2(
@@ -3767,6 +3789,9 @@ def _append_prepared_transition_locked_for_test_v2(
         prepared_authority_set=prepared_authority_set,
         current_inventory=current_inventory,
         deployment_descriptor=deployment_descriptor,
+        initial_legacy_state_record_sha256=(
+            initial_legacy_state_record_sha256
+        ),
     )
     persisted = _append_ownership_transaction_locked_for_test_v2(
         session, ownership_root, record,
@@ -4870,89 +4895,98 @@ def _cross_head_boundary_locked_for_test_v2(
     )
 
 
-def _cross_preflight_boundary_core_v2(
-    *, head_required: object, append_record: object, observe_graph: object,
-    publish_attestation: object, reread_attestation: object,
-    require_sessions: object,
-    _crash_seam: Callable[[str], None] | None = None,
+def _require_preflight_crossing_inputs_v2(
+    head_required: object, callbacks: tuple[object, ...], crash: object,
 ) -> OwnershipCoordinatorRecordV2:
-    """Advance sequence 5 to 6 only around one exact durable attestation."""
     if (
         type(head_required) is not OwnershipCoordinatorRecordV2
         or head_required.sequence != 5
         or head_required.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED
-        or not callable(append_record)
-        or not callable(observe_graph)
-        or not callable(publish_attestation)
-        or not callable(reread_attestation)
-        or not callable(require_sessions)
+        or any(not callable(callback) for callback in callbacks)
+        or crash is not None and not callable(crash)
     ):
         raise OwnershipCoordinatorError(
             "birth_ownership_recovery_required", "preflight crossing input",
         )
+    return head_required
 
-    def require() -> None:
-        require_sessions()
 
-    def preflight_transaction():
-        require()
-        graph = observe_graph()
-        if type(graph) is not _ObservedOwnershipCoordinatorGraphV2:
-            raise OwnershipCoordinatorError(
-                "birth_ownership_recovery_required", "preflight graph",
-            )
-        matches = tuple(
-            item for item in graph.transactions
-            if item.claim.request_id == head_required.request_id
+def _preflight_transaction_v2(
+    head_required: OwnershipCoordinatorRecordV2, observe_graph: Callable,
+    require: Callable[[], None],
+):
+    require()
+    graph = observe_graph()
+    if type(graph) is not _ObservedOwnershipCoordinatorGraphV2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight graph",
         )
-        if (
-            len(matches) != 1 or len(matches[0].records) < 6
-            or matches[0].records[5] != head_required
-            or matches[0].latest.sequence not in {5, 6}
-        ):
-            raise OwnershipCoordinatorError(
-                "birth_ownership_recovery_required", "preflight predecessor",
-            )
-        return matches[0]
+    matches = tuple(
+        item for item in graph.transactions
+        if item.claim.request_id == head_required.request_id
+    )
+    if (
+        len(matches) != 1 or len(matches[0].records) < 6
+        or matches[0].records[5] != head_required
+        or matches[0].latest.sequence not in {5, 6}
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight predecessor",
+        )
+    return matches[0]
 
-    transaction = preflight_transaction()
+
+def _require_fresh_preflight_attestation_v2(
+    encoded: bytes, reattest: Callable[[], bytes],
+    require: Callable[[], None], *, detail: str,
+) -> None:
     require()
     try:
-        encoded = publish_attestation()
+        fresh = reattest()
     except Exception as exc:
         raise OwnershipCoordinatorError(
-            "birth_ownership_recovery_required", "preflight publication",
+            "birth_ownership_recovery_required", detail,
         ) from exc
     require()
-    verified_record = _preflight_verified_record_v2(
-        head_required, encoded,
-    )
-    if _crash_seam is not None:
-        _crash_seam("preflight_attestation_published")
-
-    transaction = preflight_transaction()
-    if transaction.latest.sequence == 5:
-        persisted = append_record(verified_record)
-        _require_transaction_record_reread_v2(
-            observe_graph(), persisted, detail="preflight verified reread",
+    if type(fresh) is not bytes or fresh != encoded:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight live drift",
         )
-        require()
-        if _crash_seam is not None:
-            _crash_seam("preflight_verified")
-    elif transaction.latest.sequence == 6:
-        persisted = transaction.latest
-        if persisted != verified_record:
+
+
+def _persist_preflight_verified_v2(
+    head_required: OwnershipCoordinatorRecordV2,
+    verified_record: OwnershipCoordinatorRecordV2, *, transaction: object,
+    append_record: Callable, observe_graph: Callable,
+    require: Callable[[], None], crash: Callable[[str], None] | None,
+) -> OwnershipCoordinatorRecordV2:
+    if transaction.latest.sequence == 6:
+        if transaction.latest != verified_record:
             raise OwnershipCoordinatorError(
                 "birth_ownership_recovery_required", "preflight record binding",
             )
-    else:
+        return transaction.latest
+    if transaction.latest.sequence != 5:
         raise OwnershipCoordinatorError(
             "birth_ownership_recovery_required", "preflight journal order",
         )
-
+    persisted = append_record(verified_record)
+    _require_transaction_record_reread_v2(
+        observe_graph(), persisted, detail="preflight verified reread",
+    )
     require()
+    if crash is not None:
+        crash("preflight_verified")
+    return persisted
+
+
+def _require_final_preflight_binding_v2(
+    head_required: OwnershipCoordinatorRecordV2,
+    persisted: OwnershipCoordinatorRecordV2, encoded: bytes, *,
+    reread: Callable[[], bytes], transaction: Callable, require: Callable,
+) -> None:
     try:
-        observed = reread_attestation()
+        observed = reread()
     except Exception as exc:
         raise OwnershipCoordinatorError(
             "birth_ownership_recovery_required", "preflight final reread",
@@ -4961,12 +4995,91 @@ def _cross_preflight_boundary_core_v2(
     if (
         observed != encoded
         or _preflight_verified_record_v2(head_required, observed) != persisted
-        or preflight_transaction().latest != persisted
+        or transaction().latest != persisted
     ):
         raise OwnershipCoordinatorError(
             "birth_ownership_recovery_required", "preflight final binding",
         )
+
+
+def _publish_preflight_for_crossing_v2(
+    head: OwnershipCoordinatorRecordV2, publish: Callable[[], bytes],
+    require: Callable[[], None], crash: Callable[[str], None] | None,
+) -> tuple[bytes, OwnershipCoordinatorRecordV2]:
+    require()
+    try:
+        encoded = publish()
+    except Exception as exc:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight publication",
+        ) from exc
+    require()
+    verified = _preflight_verified_record_v2(head, encoded)
+    if crash is not None:
+        crash("preflight_attestation_published")
+    return encoded, verified
+
+
+def _cross_preflight_boundary_core_v2(
+    *, head_required: object, append_record: object, observe_graph: object,
+    publish_attestation: object, reread_attestation: object,
+    reattest_attestation: object, require_sessions: object,
+    _crash_seam: Callable[[str], None] | None = None,
+) -> OwnershipCoordinatorRecordV2:
+    """Advance sequence 5 to 6 only around one exact durable attestation."""
+    callbacks = (
+        append_record, observe_graph, publish_attestation, reread_attestation,
+        reattest_attestation, require_sessions,
+    )
+    head = _require_preflight_crossing_inputs_v2(
+        head_required, callbacks, _crash_seam,
+    )
+    require = require_sessions
+    transaction = lambda: _preflight_transaction_v2(
+        head, observe_graph, require,
+    )
+    transaction()
+    encoded, verified_record = _publish_preflight_for_crossing_v2(
+        head, publish_attestation, require, _crash_seam,
+    )
+    current = transaction()
+    _require_fresh_preflight_attestation_v2(
+        encoded, reattest_attestation, require,
+        detail="preflight pre-append reattest",
+    )
+    persisted = _persist_preflight_verified_v2(
+        head, verified_record, transaction=current, append_record=append_record,
+        observe_graph=observe_graph, require=require, crash=_crash_seam,
+    )
+    _require_fresh_preflight_attestation_v2(
+        encoded, reattest_attestation, require,
+        detail="preflight final reattest",
+    )
+    _require_final_preflight_binding_v2(
+        head, persisted, encoded, reread=reread_attestation,
+        transaction=transaction, require=require,
+    )
     return persisted
+
+
+def _attest_product_preflight_for_head_v2(
+    head_required: OwnershipCoordinatorRecordV2,
+) -> bytes:
+    from executor_birth_admin_preflight import (
+        _attest_operational_preflight_v1,
+        _preflight_attestation_bytes_v1,
+    )
+
+    operational = _attest_operational_preflight_v1()
+    encoded = _preflight_attestation_bytes_v1(
+        operational.selected, operational.observation.observation,
+    )
+    latest = operational.selected.transaction.prefix.records[-1]
+    if latest.request_id != head_required.request_id:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "preflight request binding",
+        )
+    return encoded
 
 
 def _cross_preflight_boundary_locked_v2(
@@ -4974,10 +5087,8 @@ def _cross_preflight_boundary_locked_v2(
     _crash_seam: Callable[[str], None] | None = None,
 ) -> OwnershipCoordinatorRecordV2:
     """Product crossing with fixed-root preflight and all sessions retained."""
-    from executor_birth_admin_preflight import (
-        _attest_operational_preflight_v1,
-        _publish_preflight_attestation_v1,
-        _read_preflight_attestation_v1,
+    from executor_birth_preflight_attestation_store import (
+        _publish_preflight_attestation_v1, _read_preflight_attestation_v1,
     )
     from executor_birth_dominant_startup import _require_product_sessions_v1
 
@@ -4989,6 +5100,9 @@ def _cross_preflight_boundary_locked_v2(
             snapshot, held[0],
         )
 
+    def attest() -> bytes:
+        return _attest_product_preflight_for_head_v2(head_required)
+
     return _cross_preflight_boundary_core_v2(
         head_required=head_required,
         append_record=lambda record: _append_ownership_transaction_locked_v2(
@@ -4996,64 +5110,88 @@ def _cross_preflight_boundary_locked_v2(
         ),
         observe_graph=observe_preflight_graph,
         publish_attestation=lambda: _publish_preflight_attestation_v1(
-            _attest_operational_preflight_v1(),
+            attest(), head_required.request_id, held,
         ),
         reread_attestation=lambda: _read_preflight_attestation_v1(
             head_required.request_id,
         ),
+        reattest_attestation=attest,
         require_sessions=lambda: _require_product_sessions_v1(held),
         _crash_seam=_crash_seam,
     )
+
+
+def _test_preflight_crossing_inputs_v2(
+    ownership_root: Path, gate_path: Path, attestation_root: Path,
+    encoded: object, reattest: object,
+) -> tuple[Path, Path, Path, Callable[[], bytes]]:
+    ownership = Path(ownership_root)
+    gate = Path(gate_path)
+    attestations = Path(attestation_root)
+    if (
+        type(encoded) is not bytes or not attestations.is_absolute()
+        or attestations.parent != ownership
+        or reattest is not None and not callable(reattest)
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "test preflight crossing",
+        )
+    callback = reattest if reattest is not None else lambda: encoded
+    return ownership, gate, attestations, callback
+
+
+def _require_test_preflight_sessions_v2(
+    deployment: object, startup: object, ownership: Path, gate: Path,
+) -> None:
+    from executor_birth_startup_gate import (
+        _require_exclusive_startup_gate_session_for_test_v1,
+    )
+
+    _require_test_deployment_lock_session_v1(deployment, ownership)
+    _require_exclusive_startup_gate_session_for_test_v1(startup, gate)
+
+
+def _publish_test_preflight_attestation_v2(
+    encoded: bytes, attestation_root: Path,
+) -> bytes:
+    from executor_birth_admin_preflight import _decode_preflight_attestation_v1
+    from executor_birth_preflight_attestation_store import (
+        _publish_preflight_attestation_for_test_v1,
+    )
+
+    request_id = _decode_preflight_attestation_v1(encoded).request_id
+    return _publish_preflight_attestation_for_test_v1(
+        encoded, request_id, attestation_root,
+    )
+
+
+def _read_test_preflight_attestation_v2(
+    request_id: str, attestation_root: Path,
+) -> bytes:
+    from executor_birth_preflight_attestation_store import (
+        _read_preflight_attestation_for_test_v1,
+    )
+    return _read_preflight_attestation_for_test_v1(request_id, attestation_root)
 
 
 def _cross_preflight_boundary_locked_for_test_v2(
     deployment_session: object, startup_session: object, *,
     ownership_root: Path, gate_path: Path, attestation_root: Path,
     head_required: object, encoded_attestation: bytes,
+    _reattest_for_test: Callable[[], bytes] | None = None,
     _crash_seam: Callable[[str], None] | None = None,
 ) -> OwnershipCoordinatorRecordV2:
     """Portable nominal seam; productive sessions and roots cannot enter it."""
-    from executor_birth_admin_preflight import (
-        _decode_preflight_attestation_v1,
-        _publish_preflight_attestation_core_v1,
-        _read_preflight_attestation_for_test_v1,
-    )
-    from executor_birth_startup_gate import (
-        _require_exclusive_startup_gate_session_for_test_v1,
-    )
-
-    ownership_root = Path(ownership_root)
-    gate_path = Path(gate_path)
-    attestation_root = Path(attestation_root)
-    if (
-        type(encoded_attestation) is not bytes
-        or not attestation_root.is_absolute()
-        or attestation_root.parent != ownership_root
-    ):
-        raise OwnershipCoordinatorError(
-            "birth_ownership_recovery_required", "test preflight crossing",
+    ownership_root, gate_path, attestation_root, reattest = (
+        _test_preflight_crossing_inputs_v2(
+            ownership_root, gate_path, attestation_root, encoded_attestation,
+            _reattest_for_test,
         )
-
+    )
     def require() -> None:
-        _require_test_deployment_lock_session_v1(
-            deployment_session, ownership_root,
+        _require_test_preflight_sessions_v2(
+            deployment_session, startup_session, ownership_root, gate_path,
         )
-        _require_exclusive_startup_gate_session_for_test_v1(
-            startup_session, gate_path,
-        )
-
-    def publish() -> bytes:
-        decoded = _decode_preflight_attestation_v1(encoded_attestation)
-        _publish_preflight_attestation_core_v1(
-            encoded_attestation, decoded.request_id,
-            root=attestation_root, uid=os.getuid(), gid=os.getgid(),
-            chain_stop=ownership_root.parent,
-        )
-        return _read_preflight_attestation_for_test_v1(
-            decoded.request_id, attestation_root,
-        )
-
-    require()
     return _cross_preflight_boundary_core_v2(
         head_required=head_required,
         append_record=lambda record: (
@@ -5066,10 +5204,13 @@ def _cross_preflight_boundary_locked_for_test_v2(
                 deployment_session, ownership_root,
             ).observation
         ),
-        publish_attestation=publish,
-        reread_attestation=lambda: _read_preflight_attestation_for_test_v1(
+        publish_attestation=lambda: _publish_test_preflight_attestation_v2(
+            encoded_attestation, attestation_root,
+        ),
+        reread_attestation=lambda: _read_test_preflight_attestation_v2(
             head_required.request_id, attestation_root,
         ),
+        reattest_attestation=reattest,
         require_sessions=require,
         _crash_seam=_crash_seam,
     )
@@ -5286,89 +5427,6 @@ def _prepare_under_maintenance_v1(
     return _result(complete)
 
 
-def _prepare_staged_current_receipts_v2(
-    staged_runtime: object, *, prove_quiescent: Callable[[], bool],
-    expected_inventory: object,
-) -> CurrentReceiptProof:
-    """Build a V2-only receipt proof for one frozen transition inventory."""
-    from executor_birth_bootstrap import _is_staged_reattestation_runtime_v2
-    from executor_birth_cutover import (
-        BirthCutoverError, CurrentInventoryV1, prepare_current_receipt_proof,
-    )
-
-    if (
-        not _is_staged_reattestation_runtime_v2(staged_runtime)
-        or not callable(prove_quiescent)
-        or not isinstance(expected_inventory, CurrentInventoryV1)
-    ):
-        raise OwnershipCoordinatorError(
-            "birth_ownership_birth_runtime_unavailable",
-        )
-    prepared_by_identity: dict[tuple[str, str], object] = {}
-
-    def prepared_for(current):
-        identity = current.identity
-        prepared = prepared_by_identity.get(identity)
-        if prepared is None:
-            prepared = staged_runtime.prepare(current)
-            prepared_by_identity[identity] = prepared
-        elif prepared.current != current:
-            raise OwnershipCoordinatorError(
-                "birth_ownership_recovery_required",
-                "current inventory changed",
-            )
-        return prepared
-
-    try:
-        report = prepare_current_receipt_proof(
-            prove_quiescent=prove_quiescent,
-            enumerate_current=staged_runtime.enumerate_current,
-            read_receipt=lambda current: staged_runtime.read_receipt(
-                prepared_for(current),
-            ),
-            reattest_via_birth=lambda current: staged_runtime.reattest(
-                prepared_for(current),
-            ),
-            verify_receipt=staged_runtime.verify_receipt,
-        )
-    except BirthCutoverError as exc:
-        raise OwnershipCoordinatorError(
-            "birth_ownership_receipt_proof_invalid",
-            _wrapped_cause_detail_v1(exc),
-        ) from exc
-    except Exception as exc:
-        raise OwnershipCoordinatorError(
-            "birth_ownership_receipt_proof_invalid",
-        ) from exc
-    if (
-        not isinstance(report.proof, CurrentReceiptProof)
-        or report.proof.inventory != expected_inventory
-    ):
-        raise OwnershipCoordinatorError(
-            "birth_ownership_recovery_required", "current inventory changed",
-        )
-    return report.proof
-
-
-def _build_staged_current_receipts_v2(
-    staged_context: object, *, now: Callable[[], datetime],
-    prove_quiescent: Callable[[], bool], expected_inventory: object,
-) -> CurrentReceiptProof:
-    """Own staged-runtime composition at the receipt-proof boundary."""
-    from executor_birth_bootstrap import (
-        _build_staged_reattestation_runtime_v2,
-    )
-
-    staged_runtime = _build_staged_reattestation_runtime_v2(
-        staged_context, now=now,
-    )
-    return _prepare_staged_current_receipts_v2(
-        staged_runtime,
-        prove_quiescent=prove_quiescent,
-        expected_inventory=expected_inventory,
-    )
-
-
 def _current_reattestation_port_v1():
     """Load the sole fixed Birth port that can enumerate current generations."""
     from executor_birth_bootstrap import BirthBootstrapError, bootstrap_birth_runtime
@@ -5398,67 +5456,6 @@ def _current_reattestation_port_v1():
             "birth_ownership_birth_runtime_unavailable",
         )
     return port
-
-
-@contextmanager
-def _transition_inventory_under_maintenance_v2(maintenance, evidence):
-    """Freeze exact current identities under an already held maintenance guard."""
-    from contract_cutover_guard import (
-        _maintenance_evidence_under_transition_v1,
-        _verify_store_only_catalog_locked,
-    )
-    from executor_birth_cutover import freeze_current_inventory_v1
-    from executor_birth_ownership_preflight import canonical_maintenance_proof
-
-    port = _current_reattestation_port_v1()
-    initial = _maintenance_evidence_under_transition_v1(maintenance)
-    supplied = canonical_maintenance_proof(
-        source=evidence["source"], units=evidence["units"],
-    )
-    if supplied != initial or maintenance() is not True:
-        raise OwnershipCoordinatorError(
-            "birth_ownership_maintenance_changed",
-        )
-    inventory = freeze_current_inventory_v1(port.enumerate_current())
-    _verify_store_only_catalog_locked()
-    if (
-        _maintenance_evidence_under_transition_v1(maintenance) != initial
-        or maintenance() is not True
-    ):
-        raise OwnershipCoordinatorError(
-            "birth_ownership_maintenance_changed",
-        )
-    try:
-        yield maintenance, inventory, initial
-    except BaseException:
-        raise
-    else:
-        _verify_store_only_catalog_locked()
-        final_inventory = freeze_current_inventory_v1(
-            port.enumerate_current(),
-        )
-        if (
-            final_inventory != inventory
-            or _maintenance_evidence_under_transition_v1(maintenance)
-            != initial
-            or maintenance() is not True
-        ):
-            raise OwnershipCoordinatorError(
-                "birth_ownership_recovery_required",
-                "current inventory or maintenance changed",
-            )
-
-
-@contextmanager
-def _transition_maintenance_inventory_v2():
-    """Acquire the ordinary guard and freeze the exact current identities."""
-    from contract_cutover_guard import contract_cutover_guard
-
-    with contract_cutover_guard() as (maintenance, evidence):
-        with _transition_inventory_under_maintenance_v2(
-            maintenance, evidence,
-        ) as frozen:
-            yield frozen
 
 
 def prepare_ownership_cutover_v1(

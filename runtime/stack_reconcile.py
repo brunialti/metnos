@@ -29,7 +29,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 import config as _C
-from executor_birth_maintenance_units import CONTRACT_CUTOVER_UNITS
+from executor_birth_maintenance_units import (
+    CONTRACT_CUTOVER_UNITS,
+    MAINTENANCE_TARGETS_V1,
+)
 
 
 SCHEMA_VERSION = 1
@@ -60,9 +63,6 @@ RUNTIME_COMPONENT_UNITS = (
     "metnos-side-display.service",
     "metnos-playwright.service",
     "metnos-telegram-daemon.service",
-    "metnos-llm.service",
-    "metnos-searxng.service",
-    "metnos-photon.service",
     "metnos-i18n-translator.timer",
 )
 FAILURE_WINDOW_S = 10 * 60
@@ -188,13 +188,17 @@ def catalog_reconcile_lock(
     lock: ReconcileLock | None = None,
     path: Path | None = None,
     owner_uid: int | None = None,
+    catalog_trusted_owner: tuple[int, int] | None = None,
     wait_s: float = 2.0,
 ):
     """Acquire the catalog and lifecycle boundaries in one canonical order."""
     from contract_store import ContractStoreError, catalog_admission_lock
 
     try:
-        catalog = catalog_admission_lock(timeout=wait_s)
+        catalog_options = {"timeout": wait_s}
+        if catalog_trusted_owner is not None:
+            catalog_options["trusted_owner"] = catalog_trusted_owner
+        catalog = catalog_admission_lock(**catalog_options)
         catalog.__enter__()
     except ContractStoreError as exc:
         raise StackFailure(
@@ -269,7 +273,17 @@ class Systemctl:
             raise StackFailure("systemctl_failed", type(exc).__name__) from exc
 
     def show(self, unit: str, scope: str = "user") -> dict[str, str]:
-        if unit not in {*STACK_UNITS, *CONTROL_PLANE_UNITS, TARGET_UNIT}:
+        # The service topology is the sole authority for both productive and
+        # legacy maintenance observations.  In particular, cutover must prove
+        # the retired system timers idle without widening this adapter to
+        # arbitrary systemd units or accepting a catalog unit in the wrong
+        # manager scope.
+        from executor_birth_service_catalog import SERVICE_SOURCE_V1
+
+        productive = scope == "system" and any(
+            item.unit_name == unit for item in SERVICE_SOURCE_V1
+        )
+        if (scope, unit) not in MAINTENANCE_TARGETS_V1 and not productive:
             raise StackFailure("unknown_unit", "unit is outside the closed stack catalog")
         result = self.run(
             scope, "show", unit,
@@ -378,7 +392,8 @@ def _service_uid() -> int:
 
 
 def _watched_service_snapshot(key: str, *,
-                              probe_endpoint: bool | None = None) -> dict:
+                              probe_endpoint: bool | None = None,
+                              spec: Any | None = None) -> dict:
     """Resolve one closed-catalog dependency and add process-state evidence.
 
     SearXNG and LRE are checked functionally.  The LLM is deliberately not
@@ -389,8 +404,8 @@ def _watched_service_snapshot(key: str, *,
     """
     from services_registry import get, snapshot_one
 
-    spec = get(key)
-    if spec is None or key not in WATCHED_SERVICE_KEYS:
+    spec = get(key) if spec is None else spec
+    if spec is None or spec.key != key or key not in WATCHED_SERVICE_KEYS:
         raise StackFailure("unknown_service", "service is outside watchdog scope")
     should_probe = key == "searxng" if probe_endpoint is None else probe_endpoint
     row = snapshot_one(spec, probe_endpoint=should_probe)
@@ -613,7 +628,7 @@ class StackReconciler:
         self.catalog_names_provider = catalog_names_provider or _catalog_names
         self.default_write_report = default_write_report
 
-    def _sidecar_required(self, mode: str) -> bool:
+    def _sidecar_required(self, mode: str, spec: Any) -> bool:
         if mode == "yes":
             return True
         if mode == "no":
@@ -621,7 +636,8 @@ class StackReconciler:
         from services_registry import desired_state
         if desired_state("playwright") == "stopped":
             return False
-        state = self.systemctl.show("metnos-playwright.service")
+        target = spec.targets[0]
+        state = self.systemctl.show(target.unit, target.scope)
         return state.get("LoadState") not in {"not-found", "error", ""}
 
     def check(self, *, require_sidecar: str = "auto",
@@ -629,6 +645,14 @@ class StackReconciler:
               write_report: bool | None = None) -> dict:
         started = time.time()
         checks: list[dict[str, Any]] = []
+        from services_registry import desired_state, key_for_unit, readiness_catalog
+
+        try:
+            services = {spec.key: spec for spec in readiness_catalog()}
+        except Exception as exc:
+            raise StackFailure(
+                "service_catalog_unavailable", "readiness service catalog is unavailable",
+            ) from exc
 
         health = _json_request(f"{self.endpoints.http}/agent/health")
         checks.append({"name": "http_health", "ok": bool(health.get("ok"))})
@@ -654,7 +678,7 @@ class StackReconciler:
             "unexpected_live": sorted(live_names - local_names),
         })
 
-        sidecar_required = self._sidecar_required(require_sidecar)
+        sidecar_required = self._sidecar_required(require_sidecar, services["playwright"])
         sidecar = composite.get("sidecar") or {}
         sidecar_ok = bool(sidecar.get("ok")) if sidecar_required else True
         checks.append({
@@ -666,12 +690,13 @@ class StackReconciler:
         })
 
         component_states = []
-        from services_registry import desired_state, key_for_unit
         for unit in RUNTIME_COMPONENT_UNITS:
-            state = self.systemctl.show(unit)
+            service_key = key_for_unit(unit)
+            target = next(target for target in services[service_key].targets
+                          if target.unit == unit)
+            state = self.systemctl.show(target.unit, target.scope)
             installed = state.get("LoadState") not in {"not-found", "error", ""}
             active = state.get("ActiveState") == "active"
-            service_key = key_for_unit(unit, "user")
             target_state = desired_state(service_key) if service_key else "running"
             component_states.append({
                 "unit": unit,
@@ -697,7 +722,7 @@ class StackReconciler:
         # for a kernel-stopped MainPID observed during a provider outage.
         for service_key in WATCHED_SERVICE_KEYS:
             try:
-                service = _watched_service_snapshot(service_key)
+                service = _watched_service_snapshot(service_key, spec=services[service_key])
                 target_state = desired_state(service_key)
                 service["desired_state"] = target_state
                 service_ok = (

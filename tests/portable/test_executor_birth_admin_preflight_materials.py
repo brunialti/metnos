@@ -23,6 +23,9 @@ import executor_birth_distribution_assembler as assembler
 import executor_birth_service_catalog as catalog
 
 
+_MANAGED_PYTHON = (
+    "/var/lib/metnos/python-envs-v1/" + "a" * 64 + "/bin/python"
+)
 _EXPECTED_ENABLEMENT_LINKS = (
     (
         "/etc/systemd/system/default.target.wants/metnos.target",
@@ -43,20 +46,8 @@ _EXPECTED_ENABLEMENT_LINKS = (
         "../metnos-i18n-translator.timer",
     ),
     (
-        "/etc/systemd/system/metnos.target.wants/metnos-llm.service",
-        "../metnos-llm.service",
-    ),
-    (
-        "/etc/systemd/system/metnos.target.wants/metnos-photon.service",
-        "../metnos-photon.service",
-    ),
-    (
         "/etc/systemd/system/metnos.target.wants/metnos-playwright.service",
         "../metnos-playwright.service",
-    ),
-    (
-        "/etc/systemd/system/metnos.target.wants/metnos-searxng.service",
-        "../metnos-searxng.service",
     ),
     (
         "/etc/systemd/system/metnos.target.wants/"
@@ -126,7 +117,10 @@ def _assert_record_fields_match(observed: object, expected: object) -> None:
     } == expected_value
 
 
-def _catalog_bytes() -> bytes:
+def _catalog_bytes(
+    *, service_home: str = "/var/lib/metnos",
+    administrative_python: str | None = None,
+) -> bytes:
     installation_root = (
         "/var/lib/metnos/executor-birth/releases-v1/00000000000000000002"
     )
@@ -138,13 +132,14 @@ def _catalog_bytes() -> bytes:
     entries = catalog._compile_service_source_v1(
         catalog._SourceCompileContextV1(
             installation_root=installation_root,
-            python_executable="/usr/bin/python3.12",
+            python_executable=_MANAGED_PYTHON,
             service_user="metnos",
             service_gid=991,
             service_supplementary_gids=(44, 991),
-            service_home="/var/lib/metnos",
+            service_home=service_home,
             systemctl_executable="/usr/bin/systemctl",
             target_hashes=target_hashes,
+            administrative_python_executable=administrative_python,
         )
     )
     legacy = tuple(
@@ -157,8 +152,13 @@ def _catalog_bytes() -> bytes:
     return catalog._encode_service_catalog_v1(entries, legacy)
 
 
-def _deployment_record() -> assembler.DeploymentDescriptorV1:
-    decoded_catalog = catalog.decode_service_catalog_v1(_catalog_bytes())
+def _deployment_record(
+    *, service_home: str = "/var/lib/metnos",
+    administrative_python: str | None = None,
+) -> assembler.DeploymentDescriptorV1:
+    decoded_catalog = catalog.decode_service_catalog_v1(_catalog_bytes(
+        service_home=service_home, administrative_python=administrative_python,
+    ))
     artifacts = (
         assembler.DeploymentArtifactV1(
             "deployment/systemd/metnos.target",
@@ -178,12 +178,12 @@ def _deployment_record() -> assembler.DeploymentDescriptorV1:
         service_uid=991,
         service_gid=991,
         service_supplementary_gids=(44, 991),
-        service_home="/var/lib/metnos",
+        service_home=service_home,
         service_shell="/usr/sbin/nologin",
         artifacts=artifacts,
         service_catalog_id=decoded_catalog.catalog_id,
         service_coverage_hash=decoded_catalog.service_coverage_hash,
-        python_executable="/usr/bin/python3.12",
+        python_executable=administrative_python or _MANAGED_PYTHON,
         openssl_executable="/usr/bin/openssl",
         systemctl_executable="/usr/bin/systemctl",
         systemd_analyze_executable="/usr/bin/systemd-analyze",
@@ -304,11 +304,9 @@ def _binder_installation_root(release_sequence: int) -> str:
 
 def _binder_target_bytes(installation_root: str) -> dict[str, bytes]:
     return {
-        "/usr/bin/python3.12": b"python-v1",
+        _MANAGED_PYTHON: b"python-v1",
         "/usr/bin/systemctl": b"systemctl-v1",
-        "/usr/bin/java": b"java-v1",
         "/usr/bin/Xvfb": b"xvfb-v1",
-        f"{installation_root}/runtime/bin/llama-server": b"llama-v1",
     }
 
 
@@ -325,7 +323,7 @@ def _bound_catalog_bytes(
         if executable is None:
             continue
         resolved = (
-            executable.replace("@python@", "/usr/bin/python3.12")
+            executable.replace("@python@", _MANAGED_PYTHON)
             .replace("@systemctl@", "/usr/bin/systemctl")
             .replace("@installation_root@", installation_root)
         )
@@ -338,7 +336,7 @@ def _bound_catalog_bytes(
     entries = catalog._compile_service_source_v1(
         catalog._SourceCompileContextV1(
             installation_root=installation_root,
-            python_executable="/usr/bin/python3.12",
+            python_executable=_MANAGED_PYTHON,
             service_user="metnos",
             service_gid=991,
             service_supplementary_gids=(44, 991),
@@ -359,6 +357,21 @@ def _bound_catalog_bytes(
         return encoded
 
     value = json.loads(encoded)
+    if recipe_mutation == "legacy-convergence":
+        value["legacy_bindings"].append({
+            "legacy_id": "legacy-install-contract-convergence",
+            "entry_id": "entry-installer",
+            "kind": "python_module",
+            "scope": "repository",
+            "locator": "install/executor_birth_contract_convergence.py",
+            "disposition": "retire_in_group7",
+        })
+        value["legacy_bindings"].sort(
+            key=lambda item: item["legacy_id"].encode("utf-8"),
+        )
+        return _reidentify(
+            _canonical(value), "catalog_id", catalog.CATALOG_ID_DOMAIN,
+        )
     if recipe_mutation == "pre-normalized-marker":
         entry = next(
             item for item in value["entries"]
@@ -413,6 +426,7 @@ def _bound_catalog_bytes(
 
 def _isolated_g6c_records(
     *, description: str = "isolated signed G6-C probe",
+    service_python: str = _MANAGED_PYTHON,
 ) -> tuple[bytes, assembler.DeploymentDescriptorV1]:
     namespace = "0123456789abcdef"
     release_sequence = 1
@@ -423,8 +437,8 @@ def _isolated_g6c_records(
     service_name = f"metnos-g6c-{namespace}-probe.service"
     timer_id = service_id + "-timer"
     timer_name = f"metnos-g6c-{namespace}-probe.timer"
-    python = "/usr/bin/python3"
-    administrative = "!/usr/bin/python3"
+    python = service_python
+    administrative = "!/usr/bin/python3.12"
     service_spec = catalog.make_unit_spec_v1(service_name, (
         catalog.ServiceDirectiveV1(
             "Unit", "Description", "scalar", (description,),
@@ -463,13 +477,8 @@ def _isolated_g6c_records(
             "Service", "ProtectSystem", "scalar", ("strict",),
         ),
         catalog.ServiceDirectiveV1(
-            # The runtime root too: the administrative program writes
-            # openssl's temporaries there, and the shape check requires it.
             "Service", "ReadWritePaths", "path_list",
-            tuple(sorted(
-                (marker_root, preflight.RUNTIME_ROOT.as_posix()),
-                key=lambda item: item.encode("utf-8"),
-            )),
+            (marker_root,),
         ),
         catalog.ServiceDirectiveV1(
             "Service", "SupplementaryGroups", "scalar", ("44 991",),
@@ -545,7 +554,7 @@ def _isolated_g6c_records(
         service_home="/var/lib/metnos", service_shell="/usr/sbin/nologin",
         artifacts=tuple(artifacts), service_catalog_id=decoded.catalog_id,
         service_coverage_hash=decoded.service_coverage_hash,
-        python_executable=python, openssl_executable="/usr/bin/openssl",
+        python_executable="/usr/bin/python3.12", openssl_executable="/usr/bin/openssl",
         systemctl_executable="/usr/bin/systemctl",
         systemd_analyze_executable="/usr/bin/systemd-analyze",
     )
@@ -553,14 +562,14 @@ def _isolated_g6c_records(
 
 
 def _bound_graph(
-    mutation: str | None = None,
+    mutation: str | None = None, *, service_home: str = "/var/lib/metnos",
 ) -> dict[str, object]:
     release_sequence = 1 if mutation == "release1-predecessor" else 2
     installation_root = _binder_installation_root(release_sequence)
     service_home = (
         installation_root
         if mutation == "service-home-inside-release"
-        else "/var/lib/metnos"
+        else service_home
     )
     target_bytes = _binder_target_bytes(installation_root)
     catalog_encoded = _bound_catalog_bytes(
@@ -570,6 +579,7 @@ def _bound_graph(
         recipe_mutation=(
             "description" if mutation == "recipe-description"
             else "restart" if mutation == "recipe-restart"
+            else "legacy-convergence" if mutation == "recipe-legacy-convergence"
             else "pre-normalized-marker"
             if mutation == "pre-normalized-marker" else None
         ),
@@ -657,7 +667,7 @@ def _bound_graph(
         artifacts=tuple(artifacts),
         service_catalog_id=decoded_catalog.catalog_id,
         service_coverage_hash=decoded_catalog.service_coverage_hash,
-        python_executable="/usr/bin/python3.12",
+        python_executable=_MANAGED_PYTHON,
         openssl_executable="/usr/bin/openssl",
         systemctl_executable="/usr/bin/systemctl",
         systemd_analyze_executable="/usr/bin/systemd-analyze",
@@ -679,20 +689,45 @@ def _bound_graph(
         "internal/reports/boundary.json": b"{}",
         "requirements.lock": b"fixture==1\n",
         "runtime/__version__.py": b'__version__ = "1.2.3"\n',
+        "runtime/contract_boundary_analyzer_ast.py": b"ANALYZER = 1\n",
+        "runtime/contract_boundary_analyzer_projection.py": b"ANALYZER = 1\n",
+        "runtime/contract_boundary_analyzer_types.py": b"ANALYZER = 1\n",
+        "runtime/contract_boundary_api_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_birth_authority_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_birth_exception_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_birth_policy.py": b"POLICY = 1\n",
         "runtime/contract_boundary_guard.py": b"VALUE = 1\n",
+        "runtime/contract_boundary_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_policy_types.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_role_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_syntax_policy.py": b"POLICY = 1\n",
         "runtime/contract_store.py": b"VALUE = 1\n",
+        "install/executor_birth_host_capability.py": b"VALUE = 1\n",
+        "install/executor_birth_host_journal_posix.py": b"VALUE = 1\n",
+        "install/executor_birth_host_posix.py": b"VALUE = 1\n",
+        "install/executor_birth_host_provisioning.py": b"VALUE = 1\n",
+        "install/executor_birth_transition.py": b"VALUE = 1\n",
         "runtime/executor_birth.py": b"VALUE = 1\n",
+        "runtime/executor_birth_account_identity.py": b"VALUE = 1\n",
+        "runtime/executor_birth_canonical.py": b"VALUE = 1\n",
+        "runtime/executor_birth_crypto_framing.py": b"VALUE = 1\n",
         "runtime/executor_birth_distribution_manifest.py": b"VALUE = 1\n",
+        "runtime/executor_birth_host_layout.py": b"VALUE = 1\n",
+        "runtime/executor_birth_host_path_policy.py": b"VALUE = 1\n",
+        "runtime/executor_birth_host_provisioning_evidence.py": b"VALUE = 1\n",
+        "runtime/executor_birth_host_provisioning_journal.py": b"VALUE = 1\n",
+        "runtime/executor_birth_posix_metadata.py": b"VALUE = 1\n",
+        "runtime/executor_birth_preflight_attestation_store.py": b"VALUE = 1\n",
+        "runtime/executor_birth_preflight_store_authority.py": b"VALUE = 1\n",
         "runtime/executor_birth_ownership_preflight.py": b"VALUE = 1\n",
         "runtime/sign.py": b"VALUE = 1\n",
-        "runtime/bin/llama-server": target_bytes[
-            f"{installation_root}/runtime/bin/llama-server"
-        ],
         **{
             f"deployment/systemd/{name}": content
             for name, content in fragments.items()
         },
     }
+    for relative in preflight._REQUIRED_MANIFEST_PATHS:
+        contents.setdefault(relative, b"VALUE = 1\n")
     roles = {
         "deployment/admin/preflight.py": "preflight",
         "deployment/executor-birth-deployment-v1.json": "deployment_descriptor",
@@ -710,12 +745,7 @@ def _bound_graph(
     }
     manifest_files = [{
         "path": path,
-        "size": len(contents[path]) + (
-            1 if (
-                mutation == "manifest-target-size"
-                and path == "runtime/bin/llama-server"
-            ) else 0
-        ),
+        "size": len(contents[path]),
         "content_hash": preflight.distribution_file_hash_v1(
             path, contents[path],
         ),
@@ -863,6 +893,7 @@ def _bound_graph(
         current_inventory_hash=(
             preflight._current_inventory_hash_from_receipts_v1(())
         ),
+        legacy_state_record_sha256=D("a"),
     )
     captured = {
         "deployment/admin/preflight.py": contents[
@@ -870,7 +901,6 @@ def _bound_graph(
         ],
         "deployment/executor-birth-service-catalog-v1.json": catalog_encoded,
         "deployment/executor-birth-deployment-v1.json": descriptor_encoded,
-        "runtime/bin/llama-server": contents["runtime/bin/llama-server"],
         **{
             f"deployment/systemd/{name}": content
             for name, content in fragments.items()
@@ -957,6 +987,97 @@ def test_candidate_units_match_independent_hash_and_exact_enablement_links() -> 
     )) == _EXPECTED_ENABLEMENT_LINKS
 
 
+@pytest.mark.parametrize("engine", ("v3", "metis"))
+def test_product_recipe_pin_admits_v3_and_rejects_rehashed_metis(engine) -> None:
+    original = catalog.decode_service_catalog_v1(_catalog_bytes())
+    entries = tuple(
+        dataclasses.replace(entry, target_environment=tuple(
+            dataclasses.replace(value, value=engine)
+            if value.name == "METNOS_ENGINE" else value
+            for value in entry.target_environment
+        )) if entry.entry_id == "service-http" else entry
+        for entry in original.entries
+    )
+    encoded = catalog._encode_service_catalog_v1(entries, original.legacy_bindings)
+    autonomous = preflight._decode_service_catalog_v1(encoded)
+    descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(_deployment_record())
+    )
+    if engine == "v3":
+        assert preflight._service_source_identity_v1(autonomous, descriptor) == (
+            preflight._EXPECTED_SERVICE_SOURCE_IDENTITY_V1
+        )
+    else:
+        with pytest.raises(preflight.PreflightError, match="service source recipe"):
+            preflight._service_source_identity_v1(autonomous, descriptor)
+
+
+@pytest.mark.parametrize("service_home", (
+    "/var/lib/metnos", "/var/lib/metnos-service", "/srv/assistant",
+))
+@pytest.mark.parametrize("administrative_python", (None, "/usr/bin/python3.12"))
+def test_product_recipe_identity_is_independent_of_signed_service_home(
+    service_home: str, administrative_python: str | None,
+) -> None:
+    context = dict(service_home=service_home,
+                   administrative_python=administrative_python)
+    encoded = _catalog_bytes(**context)
+    catalog.decode_service_catalog_v1(encoded)
+    descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(_deployment_record(**context)),
+    )
+    assert preflight._service_source_identity_v1(
+        preflight._decode_service_catalog_v1(encoded), descriptor,
+    ) == preflight._EXPECTED_SERVICE_SOURCE_IDENTITY_V1
+
+
+@pytest.mark.parametrize("writable_path", (
+    "/", "/var/lib/metnos-service-other/.local/share/metnos",
+    "/var/lib/metnos-service/.config/metnos",
+))
+def test_product_recipe_rejects_rehashed_writable_path_expansion(
+    writable_path: str,
+) -> None:
+    context = dict(service_home="/var/lib/metnos-service",
+                   administrative_python="/usr/bin/python3.12")
+    original = catalog.decode_service_catalog_v1(_catalog_bytes(**context))
+    entries = tuple(
+        dataclasses.replace(entry, unit_spec=catalog.make_unit_spec_v1(
+            entry.unit_name, tuple(
+                dataclasses.replace(directive, values=(writable_path,))
+                if directive.name == "ReadWritePaths" else directive
+                for directive in entry.unit_spec.directives
+            ),
+        )) if entry.entry_id == "service-telegram-daemon" else entry
+        for entry in original.entries
+    )
+    encoded = catalog._encode_service_catalog_v1(entries, original.legacy_bindings)
+    descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(_deployment_record(**context)),
+    )
+    with pytest.raises(preflight.PreflightError):
+        preflight._service_source_identity_v1(
+            preflight._decode_service_catalog_v1(encoded), descriptor,
+        )
+
+
+def test_product_recipe_rejects_rehashed_wrong_worker_directory() -> None:
+    original = catalog.decode_service_catalog_v1(_catalog_bytes())
+    entries = tuple(
+        dataclasses.replace(entry, target_working_directory="/opt/metnos")
+        if entry.entry_id == "service-durable-worker" else entry
+        for entry in original.entries
+    )
+    encoded = catalog._encode_service_catalog_v1(entries, original.legacy_bindings)
+    descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(_deployment_record()),
+    )
+    with pytest.raises(preflight.PreflightError):
+        preflight._service_source_identity_v1(
+            preflight._decode_service_catalog_v1(encoded), descriptor,
+        )
+
+
 def test_signed_isolated_g6c_recipe_has_one_closed_namespace_and_no_links() -> None:
     encoded, descriptor = _isolated_g6c_records()
     autonomous_catalog = preflight._decode_service_catalog_v1(encoded)
@@ -984,6 +1105,18 @@ def test_signed_isolated_g6c_recipe_rejects_one_fully_rehashed_mutant() -> None:
             autonomous_catalog, autonomous_descriptor,
         )
     assert failure.value.code == preflight.CODE_INVALID
+
+
+@pytest.mark.parametrize("python", ("/usr/bin/python3.12", "/tmp/python"))
+def test_signed_isolated_g6c_recipe_requires_managed_service_python(python: str) -> None:
+    encoded, descriptor = _isolated_g6c_records(service_python=python)
+    with pytest.raises(preflight.PreflightError):
+        preflight._service_source_identity_v1(
+            preflight._decode_service_catalog_v1(encoded),
+            preflight._decode_deployment_descriptor_v1(
+                assembler.encode_deployment_descriptor_v1(descriptor),
+            ),
+        )
 
 
 def test_administrative_bundle_hash_matches_framing_and_changes_with_artifact(
@@ -1107,8 +1240,11 @@ def test_pure_material_binder_accepts_one_fully_rebound_product_graph() -> None:
     )
 
 
-def test_candidate_binder_is_available_at_receipts_complete() -> None:
-    graph = _bound_graph()
+@pytest.mark.parametrize("service_home", (
+    "/var/lib/metnos", "/var/lib/metnos-service", "/srv/assistant",
+))
+def test_candidate_binder_is_available_at_receipts_complete(service_home) -> None:
+    graph = _bound_graph(service_home=service_home)
     transaction = _receipts_complete_transaction(graph)
 
     candidate = preflight._bind_candidate_cutover_materials_core_v1(
@@ -1126,12 +1262,9 @@ def test_candidate_binder_is_available_at_receipts_complete() -> None:
     )
 
 
-def test_pending_cutover_selection_uses_exact_authenticated_bytes() -> None:
-    graph = _bound_graph()
-    transaction = _receipts_complete_transaction(graph)
+def _pending_cutover_snapshot(graph, transaction, *, archived=False):
     encoded = preflight._canonical_json(transaction.as_value())
     prepared = transaction._replace(sequence=0, state="PREPARED")
-    verified = transaction._replace(sequence=6, state="PREFLIGHT_VERIFIED")
     claim = preflight._DecodedSuccessorClaimV1(
         transaction.successor_claim_id,
         transaction.previous_head_id,
@@ -1143,30 +1276,122 @@ def test_pending_cutover_selection_uses_exact_authenticated_bytes() -> None:
     authenticated_transaction = preflight._AuthenticatedTransactionSnapshotV2(
         claim,
         preflight._DecodedCoordinatorPrefixV2(
-            (prepared, transaction, verified),
-            (b"prepared", encoded, b"verified"),
+            (prepared, transaction), (b"prepared", encoded),
         ),
     )
-    snapshot = preflight._ReconciledFixedOwnershipSnapshotV1(
-        (), None, None, (graph["distribution"],), (), (), (claim,),
+    return preflight._ReconciledFixedOwnershipSnapshotV1(
+        (), None, None, (graph["distribution"],) if archived else (), (), (), (claim,),
         (authenticated_transaction,), (), None, None, graph["predecessor"],
     )
 
+
+@pytest.mark.parametrize("archived", (False, True))
+@pytest.mark.parametrize("mutation", (None, "payload", "signature", "archive-conflict"))
+def test_pending_cutover_selection_uses_exact_authenticated_bytes(archived, mutation) -> None:
+    graph = _bound_graph()
+    transaction = _receipts_complete_transaction(graph)
+    candidate = graph["distribution"]
+    if mutation == "payload":
+        transaction = transaction._replace(distribution_payload_hash=D("0"))
+    elif mutation == "signature":
+        candidate = candidate._replace(signature=b"x" * 64)
+    snapshot = _pending_cutover_snapshot(graph, transaction, archived=archived)
+    if mutation == "archive-conflict":
+        snapshot = snapshot._replace(builds=(candidate._replace(signature=b"x" * 64),))
+    arguments = dict(
+        complete_encoded=preflight._canonical_json(transaction.as_value()),
+        request_id=transaction.request_id, closed_build_id=transaction.closed_build_id,
+        release_sequence=transaction.release_sequence, distribution=candidate,
+    )
+    if mutation:
+        with pytest.raises(preflight.PreflightError, match="cutover candidate"):
+            preflight._select_cutover_candidate_from_snapshot_v2(snapshot, **arguments)
+        return
     build, selected, predecessor = (
-        preflight._select_cutover_candidate_from_snapshot_v2(
-            snapshot,
-            complete_encoded=encoded,
-            request_id=transaction.request_id,
-            closed_build_id=transaction.closed_build_id,
-            release_sequence=transaction.release_sequence,
-            distribution_encoded=graph["distribution"].encoded,
-            distribution_signature=graph["distribution"].signature,
-        )
+        preflight._select_cutover_candidate_from_snapshot_v2(snapshot, **arguments)
     )
 
     assert build is graph["distribution"]
     assert selected is transaction
     assert predecessor is graph["predecessor"]
+
+
+@pytest.mark.parametrize("signature_fails", (False, True))
+def test_product_candidate_preparation_authenticates_before_archive(monkeypatch, signature_fails):
+    from pathlib import Path
+    import executor_birth_distribution_manifest as manifest
+    import executor_birth_ownership_coordinator as coordinator
+    from executor_birth_ownership_preflight import _sealed_build_identity_for_test
+    from test_executor_birth_ownership_coordinator_v2 import record_v2
+
+    graph = _bound_graph()
+    distribution = graph["distribution"]
+    facts = distribution.facts
+    original = record_v2(1)
+    install_value = original.install_transaction_value()
+    install_value["closed_build_id"] = facts.closed_build_id
+    complete = dataclasses.replace(
+        original, closed_build_id=facts.closed_build_id,
+        previous_closed_build_id=facts.previous_closed_build_id,
+        distribution_payload_hash=preflight._raw_sha256_v1(distribution.encoded),
+        distribution_signature_hash=preflight._raw_sha256_v1(distribution.signature),
+        boundary_inventory_hash=facts.boundary_inventory_hash,
+        boundary_guard_version=facts.boundary_guard_version,
+        install_transaction_id=coordinator._install_transaction_id_v1(install_value),
+    )
+    decoded = preflight._decode_coordinator_record_v2(complete.encode())
+    snapshot = _pending_cutover_snapshot(graph, decoded)
+    assert snapshot.builds == ()
+    verified = manifest._verified_distribution_for_test(
+        _sealed_build_identity_for_test(facts.closed_build_id, facts.boundary_inventory_hash,
+                                       facts.boundary_guard_version),
+        previous_closed_build_id=facts.previous_closed_build_id,
+        release_sequence=facts.release_sequence,
+        encoded=distribution.encoded, signature=distribution.signature,
+    )
+    events = []
+    materials = preflight._bind_candidate_cutover_materials_core_v1(
+        distribution, _receipts_complete_transaction(graph), graph["predecessor"], graph["captured"],
+    )
+    tcb = preflight._CapturedAdministrativeTcbV1(SimpleNamespace(), SimpleNamespace())
+    captured = SimpleNamespace(snapshot=snapshot, administrative_tcb=SimpleNamespace(capture=tcb))
+    monkeypatch.setattr(manifest, "verify_current_installation_distribution_v1", lambda *_: verified)
+    monkeypatch.setattr(preflight, "_authenticate_fixed_ownership_snapshot_v1", lambda: captured)
+    monkeypatch.setattr(preflight, "_load_product_distribution_registry_v1", lambda: (
+        preflight.DistributionPublicKeyV1(facts.signing_key_id, b"k" * 32)
+    ))
+    monkeypatch.setattr(preflight, "_resolve_root_executable_v1", lambda *_: Path("/usr/bin/openssl"))
+
+    def verify_signature(key, payload, signature, **_kwargs):
+        assert key == b"k" * 32 and payload == preflight.SIGNATURE_DOMAIN + distribution.encoded
+        assert signature == distribution.signature
+        events.append("authenticate")
+        if signature_fails:
+            raise preflight._invalid("distribution signature")
+
+    def capture_tree(*_args, **_kwargs):
+        events.append("capture")
+        return graph["captured"]
+
+    def bind(build, transaction, predecessor, contents):
+        assert build == distribution and transaction == decoded
+        assert predecessor is graph["predecessor"] and contents is graph["captured"]
+        events.append("bind")
+        return materials
+
+    monkeypatch.setattr(preflight, "_verify_ed25519_openssl_core_v1", verify_signature)
+    monkeypatch.setattr(preflight, "_snapshot_exact_distribution_tree_v1", capture_tree)
+    monkeypatch.setattr(preflight, "_capture_verified_distribution_tree_v1", capture_tree)
+    monkeypatch.setattr(preflight, "_bind_candidate_cutover_materials_core_v1", bind)
+    monkeypatch.setattr(preflight, "_revalidate_captured_administrative_tcb_v1", lambda *_args, **_kwargs: None)
+    if signature_fails:
+        with pytest.raises(preflight.PreflightError, match="distribution signature"):
+            preflight._prepare_cutover_candidate_v2(complete, verified)
+        assert events == ["authenticate"]
+        return
+    prepared = preflight._prepare_cutover_candidate_v2(complete, verified)
+    assert prepared.materials is materials
+    assert events == ["authenticate", "capture", "capture", "bind"]
 
 
 def test_cutover_prerequisite_is_derived_from_captured_facts(monkeypatch) -> None:
@@ -1229,10 +1454,6 @@ def test_cutover_prerequisite_is_derived_from_captured_facts(monkeypatch) -> Non
             "service-home-inside-release",
             "service home inside installation root",
         ),
-        (
-            "manifest-target-size",
-            "preflight distribution target executable",
-        ),
     ),
 )
 def test_pure_material_binder_rejects_fully_rebound_semantic_mutants(
@@ -1266,6 +1487,7 @@ def test_pure_material_binder_requires_exact_captured_preflight_bytes(
 @pytest.mark.parametrize(
     "mutation", (
         "recipe-description", "recipe-restart", "pre-normalized-marker",
+        "recipe-legacy-convergence",
     ),
 )
 def test_pure_material_binder_rejects_fully_rebound_source_recipe_mutants(

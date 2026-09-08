@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos — historical verification and executor transition</title>
+ <link rel="canonical" href="https://metnos.com/en/architecture/executor_birth">
+ <meta name="description" content="How the first executor transition separates historical signature verification from authority to execute and publish.">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor_birth">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor_birth">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
+</head>
+<body>
+<nav aria-label="Language"><a href="/en/index.html">Documentation</a> · <a href="/it/architecture/executor_birth.html" lang="it">IT</a> · EN</nav>
+<main>
+ <h1>Verifying history does not mean executing it</h1>
+ <p>When Metnos code changes, signatures on existing contracts must remain
+ verifiable. This does not authorize new code to execute or publish using
+ a previous authority context.</p>
+ <h2>The first coordinated transition</h2>
+ <p>The initial path authenticates the historical set and its key bindings
+ under one barrier. Readers receive only the set identity and public
+ verification keys, not an executable runtime.</p>
+ <p>For an unchanged contract, convergence verifies its signature and
+ contents without publishing it again. If a change requires publication,
+ it constructs the full runtime and checks that its context matches the
+ source code: a different context is rejected.</p>
+ <h2>The new context is still required</h2>
+ <p>Historical reading does not replace transition reattestation, which
+ remains bound to the new authenticated distribution. Changes to the
+ historical set, key inventory, or contract-to-generation binding are
+ rejected; a historical signature is not a general permission to execute
+ new code.</p>
+ <h2>The census distinguishes the old and new installations</h2>
+ <p>Retirement entries describe only components of the old installation.
+ A module introduced by the new distribution must not be required in its
+ predecessor: it remains covered by the new distribution's signed
+ inventory and verification. A missing required historical component
+ still blocks the transition.</p>
+ <p>Resuming reuses the recorded historical census, because retirement may
+ already have renamed some files. The document must retain its valid format,
+ integrity and safe ownership and match the same transition, installation
+ and catalog exactly. It is neither rewritten nor treated as a fresh
+ verification of current state.</p>
+</main>
+</body>
+</html>

@@ -202,7 +202,7 @@ def _find_named_device(qn: str, devices):
         if m:
             matches.append((d, m.group(0), name, False))
             continue
-        # Ancora NOMINALE («il pc-roberto», «di pc-roberto»): routing sì,
+        # Ancora NOMINALE («il pc-example», «di pc-example»): routing sì,
         # strip NO (il caller preserva la query). SOLO per nomi TECNICI
         # (composti: trattino/underscore/cifra) — un device chiamato con una
         # parola comune («casa») matcherebbe le locuzioni («le foto di casa»)
@@ -215,7 +215,7 @@ def _find_named_device(qn: str, devices):
         if m:
             matches.append((d, m.group(0), name, True))
             continue
-        # Nome tecnico nudo («temperatura pc-roberto»): i nomi con struttura
+        # Nome tecnico nudo («temperatura pc-example»): i nomi con struttura
         # distintiva (trattino, underscore o cifra) sono sufficientemente
         # specifici da costituire da soli un riferimento esplicito.
         # Le locuzioni comuni restano escluse per evitare falsi positivi.

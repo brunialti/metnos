@@ -9,8 +9,9 @@ import shutil
 import stat
 import subprocess
 import time
+from contextlib import ExitStack
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -36,6 +37,10 @@ from contract_boundary_guard import (
     closed_python_sources_from_root,
     discover as discover_boundary_scopes,
 )
+from contract_cutover_guard import (
+    _begin_topology_transition_v1,
+    _contract_cutover_guard_for_service_user_v1,
+)
 from executor_birth_cutover import CurrentReceiptProof
 from executor_birth_context_transition import (
     context_transition_basename_v1,
@@ -57,9 +62,10 @@ from executor_birth_ownership_coordinator import (
     OwnershipCoordinatorStateV1,
     SuccessorClaimV1,
     _coordinator_request_id_v1,
+    _cross_preflight_boundary_locked_v2,
+    _deployment_lock_v1,
     _deployment_lock_for_test_v1,
     _install_transaction_id_v1,
-    _preflight_verified_record_v2,
     _record_hash_v2,
     _successor_claim_id_v1,
 )
@@ -101,6 +107,20 @@ def _canonical(value: object) -> bytes:
 
 def _raw_digest(content: bytes) -> str:
     return "sha256:" + hashlib.sha256(content).hexdigest()
+
+
+def _attestation_snapshot() -> dict[str, bytes]:
+    entries = tuple(ATTESTATION_ROOT.iterdir())
+    assert len(entries) <= 4096
+    result: dict[str, bytes] = {}
+    for item in entries:
+        info = item.lstat()
+        assert stat.S_ISREG(info.st_mode) and not item.is_symlink()
+        assert info.st_size <= preflight.MAX_PREFLIGHT_ATTESTATION_BYTES_V1
+        encoded = item.read_bytes()
+        assert len(encoded) == info.st_size
+        result[item.name] = encoded
+    return result
 
 
 def _framed_digest(domain: bytes, content: bytes) -> str:
@@ -240,8 +260,22 @@ class _ActivationFixture:
 
 
 def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
+    from install.executor_birth_python_environment_posix import (
+        PRODUCT_ENVIRONMENT_STORE_V1, ensure_python_environment_v1,
+    )
+
     account = _service_account()
-    python, python_bytes = _canonical_executable("/usr/bin/python3")
+    python, _python_bytes = _canonical_executable("/usr/bin/python3")
+    lock_bytes = (repository / "requirements-linux-x86_64.lock").read_bytes()
+    PRODUCT_ENVIRONMENT_STORE_V1.mkdir(mode=0o755, parents=True, exist_ok=True)
+    environment = ensure_python_environment_v1(
+        lock_bytes,
+        Path("/var/lib/metnos/python-wheelhouse-v1/linux-x86_64-cpython-312"),
+        "linux-x86_64-cpython-312",
+    )
+    service_python, service_python_bytes = _canonical_executable(
+        environment.python_executable.as_posix(),
+    )
     openssl, _openssl_bytes = _canonical_executable("/usr/bin/openssl")
     systemctl, _systemctl_bytes = _canonical_executable("/usr/bin/systemctl")
     systemd_analyze, _analyze_bytes = _canonical_executable(
@@ -306,13 +340,7 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
         ),
         catalog.ServiceDirectiveV1(
             "Service", "ReadWritePaths", "path_list",
-            # The runtime root as well as the marker: the administrative
-            # program writes openssl's temporaries there, and `path_list`
-            # values are ordered by their UTF-8 bytes.
-            tuple(sorted(
-                (marker_root.as_posix(), RUNTIME_ROOT.as_posix()),
-                key=lambda item: item.encode("utf-8"),
-            )),
+            (marker_root.as_posix(),),
         ),
         catalog.ServiceDirectiveV1(
             "Service", "SupplementaryGroups", "scalar", (supplementary,),
@@ -345,8 +373,8 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
     entries = (
         catalog.ServiceCatalogEntryV1(
             service_entry_id, service_name, None, None, "gated_service",
-            "system", "python_module", python,
-            catalog.target_executable_hash_v1(python, python_bytes),
+            "system", "python_module", service_python,
+            catalog.target_executable_hash_v1(service_python, service_python_bytes),
             "runtime.executor_birth_activation_probe",
             (marker_path.as_posix(),),
             RELEASE_ROOT.as_posix(), (), None, service_spec, True, True,
@@ -408,7 +436,7 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
         "deployment/executor-birth-deployment-v1.json": descriptor_bytes,
         "deployment/executor-birth-service-catalog-v1.json": catalog_bytes,
         BOUNDARY_INVENTORY_PATH: _compiled_boundary_inventory(repository),
-        "requirements.lock": b"cryptography==47.0.0\n",
+        "requirements.lock": lock_bytes,
         **{
             "deployment/systemd/" + name: fragment
             for name, fragment in unit_fragments
@@ -759,6 +787,7 @@ def _build_prerequisite_and_graph(
     claims.mkdir(mode=0o755, parents=True)
     transaction.mkdir(mode=0o755, parents=True)
     _write_control(claims / "initial.json", claim.encode())
+    legacy_state_record_sha256 = _install_legacy_state_journal(fixture)
     previous_hash = None
     for sequence, state in enumerate(OwnershipCoordinatorStateV1):
         if sequence > 5:
@@ -789,6 +818,7 @@ def _build_prerequisite_and_graph(
             target_set_json_sha256="8" * 64,
             context_transition_id=cutover.context_transition_id,
             current_inventory_hash=current_inventory_hash_v1(proof.inventory),
+            legacy_state_record_sha256=legacy_state_record_sha256,
             current_proof=proof if sequence >= 1 else None,
             maintenance_before_hash=(maintenance_hash if sequence >= 1 else None),
             maintenance_after_hash=(maintenance_hash if sequence >= 1 else None),
@@ -838,6 +868,50 @@ def _build_prerequisite_and_graph(
     prerequisite_root = OWNERSHIP_ROOT / "startup-prerequisites-v1"
     prerequisite_root.mkdir(mode=0o755)
     return prerequisite_bytes, request_id, record
+
+
+def _install_legacy_state_journal(fixture: _ActivationFixture) -> str:
+    """Complete the synthetic G7 history; this does not prove real adoption."""
+    from executor_birth_account_identity import (
+        PosixAccountRecordV1, PosixAccountSnapshotV1,
+    )
+    from executor_birth_host_layout import SERVICE_ACCOUNT_POLICY_V1
+    import executor_birth_legacy_state as legacy
+
+    # Like the synthetic context/set/receipt above, this nominal historical
+    # account is only input to pure constructors, never an account lookup or
+    # a claim that the guest's daemon account is the product service account.
+    policy = SERVICE_ACCOUNT_POLICY_V1
+    account = PosixAccountSnapshotV1(PosixAccountRecordV1(
+        policy.name, fixture.account.uid, fixture.account.gid,
+        policy.home.as_posix(), policy.shell.as_posix(),
+    ), (fixture.account.gid,))
+    request = legacy.build_legacy_state_request_v1(
+        account, _raw_digest(fixture.manifest),
+    )
+    observation = legacy.LegacyStateObservationV1(tuple(
+        legacy.LegacyPathObservationV1(
+            PurePosixPath(relative), legacy.LegacyNodeKindV1.directory,
+            fixture.account.uid, fixture.account.gid, 0o700, 2, None, None,
+        ) for relative in ("contract-authoring", "contract-authoring/v1")
+    ))
+    planned = legacy.plan_legacy_state_v1(request)
+    inventoried = legacy.record_legacy_state_inventoried_v1(
+        planned, request, observation,
+    )
+    adopted = legacy.record_authoring_adopted_v1(
+        inventoried, request, observation, observation,
+    )
+    ready = legacy.record_legacy_state_ready_v1(adopted, request, observation)
+    root = OWNERSHIP_ROOT / "legacy-state-adoption-v1"
+    root.mkdir(mode=0o700)
+    _write_control(root / "journal.lock", b"", 0o600)
+    for record in (planned, inventoried, adopted, ready):
+        _write_control(
+            root / f"record-{record.sequence:03d}.json",
+            legacy.encode_legacy_state_record_v1(record),
+        )
+    return ready.record_sha256
 
 
 def _systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -962,12 +1036,7 @@ def _classify_installed_check_all_refusal(program: Path, python: str) -> str:
         " operational=module._attest_operational_preflight_v1()\n"
         " stage='encode'\n"
         " encoded=module._preflight_attestation_bytes_v1(operational.selected,operational.observation.observation)\n"
-        " request_id=operational.selected.transaction.prefix.records[-1].request_id\n"
-        " stage='publish'\n"
-        " module._publish_preflight_attestation_core_v1(encoded,request_id,root=module.PREFLIGHT_ATTESTATION_ROOT_V1,uid=0,gid=0,chain_stop=None)\n"
-        " stage='reread'\n"
-        " observed=module._read_preflight_attestation_core_v1(request_id,root=module.PREFLIGHT_ATTESTATION_ROOT_V1,uid=0,gid=0,chain_stop=None)\n"
-        " if observed != encoded: raise module._recovery('preflight attestation publication reread')\n"
+        " if not encoded: raise module._recovery('empty preflight attestation')\n"
         "except module.PreflightError as error:\n"
         " result={'kind':'PreflightError','code':str(error.code),'detail':stage+'|'+str(error.detail)}\n"
         "except OSError as error:\n"
@@ -1144,25 +1213,17 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         os.chown(fixture.marker_root, fixture.account.uid, fixture.account.gid)
         _systemctl("daemon-reload")
 
-        # The prerequisite is signed against the EFFECTIVE topology, and the
-        # launch it authorises happens while the timer is running. Measured on
-        # systemd 255.4: the reverse causal edge `TriggeredBy` exists only
-        # while the trigger is active — absent after `daemon-reload`, present
-        # once the timer starts, absent again after stop. Capturing with the
-        # timer stopped therefore signed a topology the launch could never
-        # present, and the signed binding refused every time. The capture is
-        # taken in the activation state the launch will observe.
-        _systemctl("start", fixture.timer_name)
-        _wait_for(
-            lambda: fixture.timer_name in _systemctl(
-                "show", fixture.service_name, "--property=TriggeredBy",
-                "--value", check=False,
-            ).stdout,
-            diagnose=lambda: _unit_diagnosis(fixture.timer_name),
-        )
+        # Production signs its prerequisite before activating the timer.
+        # On systemd 255.4 the inverse TriggeredBy/After pair is absent here
+        # and appears after loading/activation. Admission must accept that exact
+        # signed timer without recapturing or rewriting this prerequisite.
+        assert _systemctl(
+            "show", fixture.timer_name, "--property=ActiveState", "--value",
+        ).stdout.strip() == "inactive"
+        assert fixture.timer_name not in _systemctl(
+            "show", fixture.service_name, "--property=TriggeredBy", "--value",
+        ).stdout.split()
         captured_tcb, effective, candidate_hash = _capture_live_bindings(fixture)
-        _systemctl("stop", fixture.timer_name, check=False)
-        _quiesce_service(fixture.service_name)
         prerequisite, request_id, head_required = (
             _build_prerequisite_and_graph(
                 fixture, captured_tcb, effective, candidate_hash,
@@ -1202,15 +1263,50 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             assert denied.stderr == preflight.CODE_INVALID + "\n"
             assert not fixture.marker_path.exists()
 
-        # Let the installed product produce the attestation from the live
-        # topology.  Reconstructing that document in the fixture duplicates
-        # the schema and can silently drift from what check-all observed.
+        # `check-all` observes and encodes under a shared gate, but never
+        # publishes. Only the coordinator crossing below owns that effect.
         attestation_path = ATTESTATION_ROOT / f"{request_id}.json"
         assert not attestation_path.exists()
+        store_before_check = _attestation_snapshot()
+        created = subprocess.run(
+            [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
+            capture_output=True, text=True, timeout=300,
+        )
+        if created.returncode != 0:
+            installed = _classify_installed_check_all_refusal(
+                preflight_path, python,
+            )
+            pytest.fail(
+                "installed check-all refused before crossing: "
+                f"exit={created.returncode} stderr={created.stderr.strip()!r}; "
+                f"classification={installed}"
+            )
+        assert created.stderr == ""
+        assert _attestation_snapshot() == store_before_check
         previous_invocation = _systemctl(
             "show", fixture.service_name, "--property=InvocationID", "--value",
         ).stdout.strip()
-        with _exclusive_startup_gate_v1():
+        with ExitStack() as transition:
+            deployment_session = transition.enter_context(
+                _deployment_lock_v1(),
+            )
+            startup_session = transition.enter_context(
+                _exclusive_startup_gate_v1(),
+            )
+            maintenance_session, evidence = transition.enter_context(
+                _contract_cutover_guard_for_service_user_v1(
+                    fixture.account.name,
+                    catalog_trusted_owner=(
+                        fixture.account.uid, fixture.account.gid,
+                    ),
+                ),
+            )
+            expected_evidence = canonical_maintenance_proof(
+                source=evidence["source"], units=evidence["units"],
+            )
+            _begin_topology_transition_v1(
+                maintenance_session, expected_evidence,
+            )
             # Production holds the exclusive startup gate while it attests the
             # live topology and persists PREFLIGHT_VERIFIED.  Reproduce that
             # ordering here: the timer remains active, but its shared launch
@@ -1224,83 +1320,38 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
                 diagnose=lambda: _unit_diagnosis(fixture.timer_name),
             )
             assert not fixture.marker_path.exists()
-            created = subprocess.run(
-                [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
-                capture_output=True, text=True, timeout=300,
+            persisted = _cross_preflight_boundary_locked_v2(
+                (
+                    deployment_session, startup_session,
+                    maintenance_session,
+                ),
+                head_required,
             )
-            if created.returncode == 0:
-                assert created.stderr == ""
-                assert attestation_path.is_file()
-                assert not fixture.marker_path.exists()
-                # The timer activation is held behind the exclusive transition
-                # gate and may still be finishing its bounded shared-lease
-                # attempt. Observe that exact invocation before resetting the
-                # one-shot timer, so no pending old attempt can overlap the
-                # admitted launch.
-                _wait_for(
-                    lambda: _completed_new_invocation(
-                        fixture.service_name, previous_invocation,
-                    ),
-                    diagnose=lambda: _unit_diagnosis(fixture.service_name),
-                )
-                _systemctl("stop", fixture.timer_name, check=False)
-                _quiesce_service(fixture.service_name)
+            assert persisted.sequence == 6
+            assert attestation_path.is_file()
+            assert not fixture.marker_path.exists()
+            # Observe the blocked invocation before resetting the one-shot
+            # timer, so no pending old attempt overlaps the admitted launch.
+            _wait_for(
+                lambda: _completed_new_invocation(
+                    fixture.service_name, previous_invocation,
+                ),
+                diagnose=lambda: _unit_diagnosis(fixture.service_name),
+            )
+            _systemctl("stop", fixture.timer_name, check=False)
+            _quiesce_service(fixture.service_name)
 
-                attestation = preflight._read_preflight_attestation_v1(request_id)
-                verified_record = _preflight_verified_record_v2(
-                    head_required, attestation,
-                ).encode()
-                _write_control(
-                    OWNERSHIP_ROOT / "coordinator-v1" / "transactions-v2"
-                    / request_id / "record-006-v2.json",
-                    verified_record,
-                )
-                # Re-arm the unchanged signed timer before ordinary launches
-                # can take the shared gate. Releasing this lock is the only
-                # event that lets the admitted invocation cross the boundary.
-                _systemctl("start", fixture.timer_name)
-                _wait_for(
-                    lambda: fixture.timer_name in _systemctl(
-                        "show", fixture.service_name, "--property=TriggeredBy",
-                        "--value", check=False,
-                    ).stdout,
-                    diagnose=lambda: _unit_diagnosis(fixture.timer_name),
-                )
-                assert not fixture.marker_path.exists()
-            else:
-                # Freeze the failing topology before opening the gate for the
-                # diagnostic path below.
-                _systemctl("stop", fixture.timer_name, check=False)
-                _systemctl("stop", fixture.service_name, check=False)
-                _systemctl("reset-failed", fixture.service_name, check=False)
-        if created.returncode != 0:
-            installed_classification = _classify_installed_check_all_refusal(
-                preflight_path, python,
+            # Re-arm the unchanged signed timer before ordinary launches can
+            # take the shared gate. Releasing this lock admits the invocation.
+            _systemctl("start", fixture.timer_name)
+            _wait_for(
+                lambda: fixture.timer_name in _systemctl(
+                    "show", fixture.service_name, "--property=TriggeredBy",
+                    "--value", check=False,
+                ).stdout,
+                diagnose=lambda: _unit_diagnosis(fixture.timer_name),
             )
-            names = tuple(sorted(
-                item.name for item in ATTESTATION_ROOT.iterdir()
-            ))
-            try:
-                operational = preflight._attest_operational_preflight_v1()
-                expected_attestation = preflight._preflight_attestation_bytes_v1(
-                    operational.selected, operational.observation.observation,
-                )
-                state = (
-                    "matching" if attestation_path.is_file()
-                    and attestation_path.read_bytes() == expected_attestation
-                    else "different" if attestation_path.exists() else "absent"
-                )
-                internal = "accepted"
-            except preflight.PreflightError as failure:
-                state = "not-computed"
-                internal = f"{failure.code}:{failure.detail}"
-            pytest.fail(
-                "installed check-all refused: "
-                f"exit={created.returncode} stderr={created.stderr.strip()!r}; "
-                f"in-process={internal}; attestation={state}; "
-                f"directory_entries={names!r}; "
-                f"installed-classification={installed_classification}"
-            )
+            assert not fixture.marker_path.exists()
         _wait_for(
             fixture.marker_path.exists,
             diagnose=lambda: _unit_diagnosis(fixture.service_name) + "\n"
@@ -1354,12 +1405,6 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         # ordinary auxiliary `oneshot` starts: systemd loads lazily and
         # immediately unloads an inactive, unreferenced oneshot together with
         # its edges.  The auxiliary unit must therefore remain resident.
-        def _attestations() -> dict[str, bytes]:
-            return {
-                item.name: item.read_bytes()
-                for item in ATTESTATION_ROOT.iterdir()
-            }
-
         def _check_all() -> subprocess.CompletedProcess[str]:
             return subprocess.run(
                 [python, "-I", "-S", preflight_path.as_posix(), "check-all"],
@@ -1385,23 +1430,33 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
                 for edge in entry.manager_added_edges
             }
 
-        published_before = _attestations()
+        published_before = _attestation_snapshot()
         accepted = _check_all()
         assert accepted.returncode == 0, accepted.stderr
-        # The earlier C3 step already published this request's exact
-        # attestation. Repeating the accepted C4 observation must preserve the
-        # durable bytes instead of inventing a second name or rewriting them.
-        assert _attestations() == published_before
+        # `check-all` is a pure observer: it cannot invent a second name or
+        # rewrite the exact attestation published by the earlier C3 crossing.
+        assert _attestation_snapshot() == published_before
 
-        # Both causal edges are present in the canonical snapshot, in both
-        # directions, rather than only in the direct systemd reading.  The
-        # same single snapshot also carries the reference hash.
+        # The active manager exposes the inverse edge, but that exact signed
+        # timer is not residual authority. Its declared forward edge remains
+        # in the snapshot, and activation must preserve the inactive hash.
+        assert fixture.timer_name in _systemctl(
+            "show", fixture.service_name, "--property=TriggeredBy", "--value",
+        ).stdout.split()
+        assert fixture.timer_name in _systemctl(
+            "show", fixture.service_name, "--property=After", "--value",
+        ).stdout.split()
         _tcb, baseline_observation, _candidate = _capture_live_bindings(fixture)
         baseline_hash = baseline_observation.snapshot.effective_units_hash
+        assert baseline_hash == effective.snapshot.effective_units_hash
+        assert prerequisite_path.read_bytes() == prerequisite
         assert ("Triggers", fixture.service_name) in _edges_of(
             baseline_observation, fixture.timer_name,
         )
-        assert ("TriggeredBy", fixture.timer_name) in _edges_of(
+        assert ("TriggeredBy", fixture.timer_name) not in _edges_of(
+            baseline_observation, fixture.service_name,
+        )
+        assert ("After", fixture.timer_name) not in _edges_of(
             baseline_observation, fixture.service_name,
         )
 
@@ -1437,11 +1492,11 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             assert drifted.snapshot.effective_units_hash != baseline_hash
 
             # Relational drift denies before publishing anything.
-            published_before_denial = _attestations()
+            published_before_denial = _attestation_snapshot()
             denied = _check_all()
             assert denied.returncode == preflight.EXIT_INVALID
             assert denied.stderr == preflight.CODE_INVALID + "\n"
-            assert _attestations() == published_before_denial
+            assert _attestation_snapshot() == published_before_denial
         finally:
             if auxiliary_installed:
                 _systemctl("stop", auxiliary_name, check=False)

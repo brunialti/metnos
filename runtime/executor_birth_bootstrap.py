@@ -558,7 +558,7 @@ def _sealed_authorities(sealed):
 
 def _required_context_runtime_for_bootstrap_v1():
     """Select the new context only when the fixed chain already requires it."""
-    from executor_birth_legacy_gate import closed_build_enforcement
+    from executor_birth_authority_gate import closed_build_enforcement
     from executor_birth_ownership_chain import (
         OwnershipChainError, VerifiedOwnershipChain,
         inspect_ownership_chain_state_v1,
@@ -600,6 +600,7 @@ def _prepare_sealed_birth_assembly_v1(
     *,
     now: Callable[[], datetime],
     store_root: Path | None = None,
+    initial_current_adoption_transition_id: str | None = None,
 ) -> _SealedBirthAssemblyV1:
     """Build one core from authorities read once under the root barrier.
 
@@ -674,6 +675,9 @@ def _prepare_sealed_birth_assembly_v1(
         shadow_dependencies=_assemble_production_dependencies(
             semantic_authority=sealed.semantic, windows_sandbox_registry=None,
             linux_sandbox_registry=sealed.sandbox,
+            initial_current_adoption_transition_id=(
+                initial_current_adoption_transition_id
+            ),
         ),
         admission_private_key=sealed.admission.active_private_key,
         admission_verifier_keys=sealed.admission.verifier_keys,
@@ -787,6 +791,63 @@ def _is_staged_reattestation_runtime_v2(value: object) -> bool:
     )
 
 
+_INITIAL_TRANSITION_INSTALLER_RUNTIME_SEAL_V1 = object()
+
+
+class _InitialTransitionInstallerRuntimeV1:
+    """Narrow installer port while the productive chain is still empty."""
+
+    __slots__ = ("_core", "_factory", "_seal")
+
+    def __init__(self, *, core: object, factory: object) -> None:
+        from executor_birth_operational import _is_birth_core
+
+        if not _is_birth_core(core) or not callable(factory):
+            raise BirthBootstrapError("birth_initial_transition_invalid")
+        self._core = core
+        self._factory = factory
+        self._seal = _INITIAL_TRANSITION_INSTALLER_RUNTIME_SEAL_V1
+
+    def submit(self, intent: BirthIntent):
+        from executor_birth_operational import _execute
+
+        if self._seal is not _INITIAL_TRANSITION_INSTALLER_RUNTIME_SEAL_V1:
+            raise BirthBootstrapError("birth_initial_transition_invalid")
+        request = self._factory(intent)
+        return _execute(request, self._core)
+
+
+def _build_initial_transition_installer_runtime_v1(
+) -> _InitialTransitionInstallerRuntimeV1:
+    """Build only the installer producer before the first head is published."""
+    from executor_birth_intent import _INSTALLER
+    from executor_birth_authority_gate import closed_build_enforcement
+    from executor_birth_ownership_chain import (
+        _InitialOwnershipChainStateV1, inspect_ownership_chain_state_v1,
+    )
+    from executor_birth_prepared_root import load_sealed_authorities_v1
+
+    state = inspect_ownership_chain_state_v1()
+    if (
+        closed_build_enforcement() is not True
+        or type(state) is not _InitialOwnershipChainStateV1
+        or _runtime_bundle_snapshot() is not None
+    ):
+        raise BirthBootstrapError("birth_initial_transition_invalid")
+    sealed = load_sealed_authorities_v1()
+    assembly = _prepare_sealed_birth_assembly_v1(
+        sealed, now=lambda: datetime.now(timezone.utc),
+    )
+    factory = _request_factory(
+        assembly.authorities[_INSTALLER], assembly.registry,
+        assembly.producer_db, assembly.ttl_seconds, assembly.now,
+        assembly.context_builder,
+    )
+    return _InitialTransitionInstallerRuntimeV1(
+        core=assembly.core, factory=factory,
+    )
+
+
 def _build_staged_reattestation_runtime_v2(
     staged_context: object,
     *,
@@ -798,17 +859,36 @@ def _build_staged_reattestation_runtime_v2(
 
     if not isinstance(staged_context, StagedReattestationContextV1):
         raise BirthBootstrapError("birth_context_selection_invalid")
+    selection = staged_context.selection
+    initial_adoption = _initial_current_adoption_transition_id_v1(selection)
     assembly = _prepare_sealed_birth_assembly_v1(
         staged_context.authorities, now=now, store_root=store_root,
+        initial_current_adoption_transition_id=initial_adoption,
     )
     factory = _reattestation_factory_for_assembly_v1(
-        assembly, selection=staged_context.selection,
+        assembly, selection=selection,
     )
     return _StagedReattestationRuntimeV2(
         _STAGED_REATTESTATION_RUNTIME_TOKEN_V2,
         core=assembly.core,
         factory=factory,
     )
+
+
+def _initial_current_adoption_transition_id_v1(selection: object) -> str | None:
+    """Select the explicit compatibility rule for the first staged F4 cutover."""
+    from executor_birth_context_selection import is_context_selection_v1
+
+    if not is_context_selection_v1(selection, allow_staged=True):
+        raise BirthBootstrapError("birth_context_selection_invalid")
+    distribution = selection.distribution
+    if (
+        selection.staged_reattestation_only
+        and distribution.release_sequence == 1
+        and distribution.previous_closed_build_id is None
+    ):
+        return selection.transition_id
+    return None
 
 
 def _build_sealed(
@@ -847,6 +927,7 @@ def _build_sealed(
     )
     return _assemble_birth_runtime_bundle(
         assembly.core, factories, reattestation_factory,
+        author_verifier_keys=sealed.author.verifier_keys,
     )
 
 
@@ -1038,12 +1119,57 @@ def _verified_initial_receipt_v1(
     return encoded
 
 
+def _transition_historical_receipt_v1(
+    ref: ManifestRef, generation_id: str, *, store_root: Path | None,
+    admission_verifiers: Mapping[str, Ed25519PublicKey],
+) -> bytes | None:
+    """Bind the preserved V1 act without treating it as the new epoch act."""
+    from contract_store import (
+        _birth_receipt_path, _existing_contract_directory, _read_regular_file,
+    )
+    from executor_birth_receipts import (
+        _parse_admission, verify_admission_receipt,
+    )
+
+    try:
+        contract_dir = _existing_contract_directory(
+            ref.contract_id, store_root=store_root,
+        )
+        receipt_path = _birth_receipt_path(contract_dir, generation_id)
+        try:
+            receipt_info = receipt_path.lstat()
+        except FileNotFoundError:
+            return None
+        if (
+            not stat.S_ISREG(receipt_info.st_mode)
+            or stat.S_ISLNK(receipt_info.st_mode)
+        ):
+            raise BirthBootstrapError("birth_initial_receipt_invalid")
+        encoded = _read_regular_file(
+            receipt_path,
+            code="birth_receipt_invalid",
+        )
+        receipt, _unsigned = _parse_admission(encoded)
+        if receipt.authentication.key_id in admission_verifiers:
+            receipt = verify_admission_receipt(
+                encoded, verifier_keys=admission_verifiers,
+            )
+    except Exception as exc:
+        raise BirthBootstrapError("birth_initial_receipt_invalid") from exc
+    if (
+        receipt.contract_id != ref.contract_id.value
+        or receipt.generation_id != generation_id
+    ):
+        raise BirthBootstrapError("birth_initial_receipt_binding_invalid")
+    return encoded
+
+
 def prepare_initial_installer_catalog_v1(*, prove_quiescent: object) -> dict:
     """Build the initial shadow through a private, non-installed Birth bundle."""
     from contract_bootstrap import ProductionStoreMode
     from contract_store import production_store_mode
     from executor_birth_intent import _INSTALLER
-    from executor_birth_legacy_gate import closed_build_enforcement
+    from executor_birth_authority_gate import closed_build_enforcement
     from executor_birth_prepared_root import load_sealed_authorities_v1
     from manifest_inventory import inventory_authoring_manifests
 
@@ -1111,19 +1237,60 @@ def prepare_initial_installer_catalog_v1(*, prove_quiescent: object) -> dict:
 
 def _verify_initial_catalog_v1(
     *, report: Mapping[str, object] | None, prove_quiescent: object,
-    authoring_owner: tuple[int, int] | None = None,
+    trusted_authoring_owner: tuple[int, int] | None = None,
+    defer_v1_receipts_to_transition_v2: bool = False,
 ) -> dict[str, int]:
     from contract_bootstrap import ProductionStoreMode
     from contract_store import current_manifest, production_store_mode
-    from executor_birth_prepared_root import load_sealed_authorities_v1
+    from executor_birth_prepared_root import (
+        _load_historical_transition_verifiers_v1, load_sealed_authorities_v1,
+    )
     from manifest_inventory import (
         inventory_authoring_manifests, inventory_store_manifests,
     )
 
     _require_initial_install_quiescence_v1(prove_quiescent)
+    if (
+        type(defer_v1_receipts_to_transition_v2) is not bool
+        or (
+            trusted_authoring_owner is not None
+            and (
+                type(trusted_authoring_owner) is not tuple
+                or len(trusted_authoring_owner) != 2
+                or any(
+                    type(value) is not int or value <= 0
+                    for value in trusted_authoring_owner
+                )
+            )
+        )
+        or (
+            defer_v1_receipts_to_transition_v2
+            and (report is not None or trusted_authoring_owner is None)
+        )
+    ):
+        raise BirthBootstrapError("birth_initial_transition_invalid")
     mode = production_store_mode()
-    sealed = load_sealed_authorities_v1()
-    trusted = tuple(sorted(sealed.author.verifier_keys.items()))
+    if defer_v1_receipts_to_transition_v2:
+        historical = _load_historical_transition_verifiers_v1()
+        prepared = historical.prepared
+        trusted = tuple(sorted(historical.author_verifier_keys.items()))
+        admission_verifiers = historical.admission_verifier_keys
+    else:
+        sealed = load_sealed_authorities_v1()
+        prepared = sealed.prepared
+        trusted = tuple(sorted(sealed.author.verifier_keys.items()))
+        admission_verifiers = sealed.admission.verifier_keys
+    skill_enabled = None
+    if (
+        trusted_authoring_owner is not None
+        and hasattr(os, "geteuid") and hasattr(os, "getegid")
+        and (os.geteuid(), os.getegid()) != trusted_authoring_owner
+    ):
+        from skill_registry import _skill_enabled_snapshot_for_owner_v1
+
+        skill_enabled = _skill_enabled_snapshot_for_owner_v1(
+            trusted_authoring_owner,
+        )
     if mode is ProductionStoreMode.LEGACY:
         if report is None:
             raise BirthBootstrapError("birth_initial_report_required")
@@ -1134,12 +1301,19 @@ def _verify_initial_catalog_v1(
             materialize_repository_authoring_for_transition_v1,
         )
 
-        materialize_repository_authoring_for_transition_v1(
-            trusted_publics=trusted,
-            authoring_owner=authoring_owner,
-        )
+        if (
+            trusted_authoring_owner is None
+            or not hasattr(os, "geteuid")
+            or not hasattr(os, "getegid")
+            or (os.geteuid(), os.getegid()) == trusted_authoring_owner
+        ):
+            materialize_repository_authoring_for_transition_v1(
+                trusted_publics=trusted,
+            )
         store_root = None
-        inventory = inventory_store_manifests()
+        inventory = inventory_store_manifests(
+            skill_enabled=skill_enabled,
+        )
     else:
         raise BirthBootstrapError("birth_initial_install_state_invalid")
     if inventory.problems or not inventory.manifests:
@@ -1166,29 +1340,47 @@ def _verify_initial_catalog_v1(
         catalog = report.get("catalog")
         receipt_hashes = report.get("birth_receipts")
         if (
-            report.get("prepared_set_id") != sealed.prepared.set_id
+            report.get("prepared_set_id") != prepared.set_id
             or not isinstance(catalog, dict)
             or set(catalog) != set(refs)
             or not isinstance(receipt_hashes, dict)
             or set(receipt_hashes) != set(refs)
         ):
             raise BirthBootstrapError("birth_initial_report_invalid")
+    verified_receipts = 0
     for key in sorted(refs):
         generation_id = catalog[key]
         if not isinstance(generation_id, str):
             raise BirthBootstrapError("birth_initial_report_invalid")
-        encoded = _verified_initial_receipt_v1(
-            refs[key], generation_id, store_root=store_root,
-            trusted_publics=trusted,
-            admission_verifiers=sealed.admission.verifier_keys,
-            request_id=expected_requests.get(key),
-        )
-        if receipt_hashes is not None and receipt_hashes[key] != (
-            "sha256:" + hashlib.sha256(encoded).hexdigest()
-        ):
-            raise BirthBootstrapError("birth_initial_report_invalid")
+        if not defer_v1_receipts_to_transition_v2:
+            encoded = _verified_initial_receipt_v1(
+                refs[key], generation_id, store_root=store_root,
+                trusted_publics=trusted,
+                admission_verifiers=admission_verifiers,
+                request_id=expected_requests.get(key),
+            )
+            if receipt_hashes is not None and receipt_hashes[key] != (
+                "sha256:" + hashlib.sha256(encoded).hexdigest()
+            ):
+                raise BirthBootstrapError("birth_initial_report_invalid")
+            verified_receipts += 1
+        else:
+            # V1 receipts are immutable acts of the historical context.  The
+            # caller is the first-transition path and will freeze this exact
+            # catalog and reattest every current generation into V2 before it
+            # can cross the ownership boundary.
+            verified = current_manifest(
+                refs[key], trusted_publics=trusted, store_root=store_root,
+            )
+            if verified.generation_id != generation_id:
+                raise BirthBootstrapError("birth_initial_catalog_changed")
+            historical = _transition_historical_receipt_v1(
+                refs[key], generation_id, store_root=store_root,
+                admission_verifiers=admission_verifiers,
+            )
+            verified_receipts += int(historical is not None)
     _require_initial_install_quiescence_v1(prove_quiescent)
-    return {"contracts": len(refs), "receipts": len(refs)}
+    return {"contracts": len(refs), "receipts": verified_receipts}
 
 
 def verify_initial_installer_report_v1(
@@ -1202,12 +1394,16 @@ def verify_initial_installer_report_v1(
 
 def verify_initial_installer_store_v1(
     *, prove_quiescent: object,
-    authoring_owner: tuple[int, int] | None = None,
+    trusted_authoring_owner: tuple[int, int] | None = None,
+    defer_v1_receipts_to_transition_v2: bool = False,
 ) -> dict[str, int]:
-    """Authenticate the store and bind mutable sources to the service owner."""
+    """Authenticate the store under its already-established service owner."""
     return _verify_initial_catalog_v1(
         report=None, prove_quiescent=prove_quiescent,
-        authoring_owner=authoring_owner,
+        trusted_authoring_owner=trusted_authoring_owner,
+        defer_v1_receipts_to_transition_v2=(
+            defer_v1_receipts_to_transition_v2
+        ),
     )
 
 

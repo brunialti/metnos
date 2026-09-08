@@ -65,9 +65,16 @@ def test_maintenance_proof_rejects_a_well_formed_subset():
         )
 
 
-def test_maintenance_proof_rejects_a_required_unit_not_found():
+@pytest.mark.parametrize("load_state", ["loaded", "masked", "not-found"])
+def test_maintenance_proof_accepts_named_quiescent_load_states(load_state):
+    assert json.loads(_maintenance(load_state=load_state))["units"][0][
+        "load_state"
+    ] == load_state
+
+
+def test_maintenance_proof_rejects_an_unknown_load_state():
     with pytest.raises(preflight.OwnershipPreflightError, match="not_quiescent"):
-        _maintenance(load_state="not-found")
+        _maintenance(load_state="bad")
 
 
 def _installed(tmp_path: Path):

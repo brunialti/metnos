@@ -277,10 +277,36 @@ def _cold_distribution(
         ),
         "requirements.lock": ("dependency_lock", b"cryptography==47.0.0\n"),
         "runtime/__version__.py": ("product_version", b'__version__ = "1.2.3"\n'),
+        "runtime/contract_boundary_analyzer_ast.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_analyzer_projection.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_analyzer_types.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_api_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_authority_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_exception_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_boundary_guard.py": ("boundary_guard", b"GUARD = 1\n"),
+        "runtime/contract_boundary_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_policy_types.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_role_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_syntax_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_store.py": ("runtime_code", b"STORE = 1\n"),
+        "install/executor_birth_host_capability.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_journal_posix.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_posix.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_provisioning.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_transition.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth.py": ("runtime_code", b"BIRTH = 1\n"),
+        "runtime/executor_birth_account_identity.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_canonical.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_crypto_framing.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_distribution_manifest.py": ("preflight", b"VERIFY = 1\n"),
+        "runtime/executor_birth_host_layout.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_path_policy.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_provisioning_evidence.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_provisioning_journal.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_posix_metadata.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_preflight_attestation_store.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_preflight_store_authority.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_ownership_preflight.py": ("preflight", b"PREFLIGHT = 1\n"),
         "runtime/sign.py": ("runtime_code", b"SIGN = 1\n"),
         "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json": (
@@ -288,6 +314,8 @@ def _cold_distribution(
         ),
         "systemd/metnos-http-birth-closed.conf": ("service_unit", b"[Service]\n"),
     }
+    for path, role in distribution_module._REQUIRED_PATH_ROLES.items():
+        content_by_path.setdefault(path, (role, b"VALUE = 1\n"))
     files = []
     for path, (role, content) in content_by_path.items():
         target = root.joinpath(*path.split("/"))
@@ -1546,6 +1574,51 @@ def test_chain_inspection_rejects_unsafe_persistent_required_lock(
 
     assert failure.value.code == "birth_ownership_recovery_required"
     assert failure.value.detail == "required lock metadata"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX private writer lock")
+@pytest.mark.parametrize("mutation", [None, "mode", "owner", "hardlink", "size", "symlink"])
+def test_product_chain_reader_never_opens_private_writer_lock(tmp_path, monkeypatch, mutation):
+    info = SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_nlink=1,
+                           st_size=1, st_uid=0, st_gid=0, st_file_attributes=0)
+    if mutation == "mode":
+        info.st_mode = stat.S_IFREG | 0o644
+    elif mutation == "owner":
+        info.st_uid = 1234
+    elif mutation == "hardlink":
+        info.st_nlink = 2
+    elif mutation == "size":
+        info.st_size = 0
+    elif mutation == "symlink":
+        info.st_mode = stat.S_IFLNK | 0o600
+    monkeypatch.setattr(Path, "lstat", lambda _path: info)
+    monkeypatch.setattr(os, "geteuid", lambda: 1234)
+    opens = []
+
+    def forbidden_open(*args):
+        opens.append(args)
+        raise PermissionError("writer lock is intentionally root-only")
+
+    monkeypatch.setattr(chain_module, "_safe_read", forbidden_open)
+    if mutation is None:
+        chain_module._require_required_head_lock_metadata_v1(tmp_path, root_owned=True)
+    else:
+        with pytest.raises(OwnershipChainError, match="required lock metadata"):
+            chain_module._require_required_head_lock_metadata_v1(tmp_path, root_owned=True)
+    assert opens == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX administrative writer lock")
+@pytest.mark.parametrize("root_owned,euid", [(True, 0), (False, 1234)])
+def test_chain_writer_lock_owner_still_checks_marker(tmp_path, monkeypatch, root_owned, euid):
+    info = SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_nlink=1,
+                           st_size=1, st_uid=euid, st_gid=euid, st_file_attributes=0)
+    monkeypatch.setattr(Path, "lstat", lambda _path: info)
+    monkeypatch.setattr(os, "geteuid", lambda: euid)
+    monkeypatch.setattr(os, "getegid", lambda: euid)
+    monkeypatch.setattr(chain_module, "_safe_read", lambda *_args: b"x")
+    with pytest.raises(OwnershipChainError, match="required lock metadata"):
+        chain_module._require_required_head_lock_metadata_v1(tmp_path, root_owned=root_owned)
 
 
 def test_chain_inspection_delegates_complete_prefix_with_known_lock(

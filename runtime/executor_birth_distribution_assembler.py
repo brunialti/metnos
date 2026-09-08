@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Iterable, Mapping
 
+import executor_birth_account_identity as _account_identity
+
 
 RECEIVED_SOURCE_DESCRIPTOR_BASENAME_V1 = "received-source-v1.json"
 RECEIVED_SOURCE_FILE_HASH_DOMAIN_V1 = (
@@ -51,7 +53,6 @@ MAX_PREDECESSOR_FILES_V1 = 20_000
 MAX_SERVICE_COMMANDS_V1 = 20_000
 
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
-_ACCOUNT_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
 _DOCUMENT_KEYS = frozenset({
     "schema_version", "source_id", "service_user", "files",
 })
@@ -395,7 +396,7 @@ def _load_document(
 
 
 def _service_user(value: object) -> str:
-    if type(value) is not str or _ACCOUNT_RE.fullmatch(value) is None:
+    if not _account_identity.is_posix_account_name_v1(value):
         raise _invalid("service user")
     return value
 

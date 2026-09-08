@@ -18,8 +18,9 @@ from executor_birth_admin_preflight import (
     RUNTIME_ROOT, STARTUP_GATE_PATH_V1,
 )
 from executor_birth_distribution_assembler import DistributionAssemblerError
+from executor_birth_posix_metadata import snapshot_stat_v1
 from install.executor_birth_source_receiver import (
-    _ensure_child_directory_v1, _identity, _name_status_v1,
+    _ensure_child_directory_v1, _name_status_v1,
     _open_absolute_directory_v1, _require_absolute_chain_bound_v1,
 )
 
@@ -158,7 +159,7 @@ def _install_startup_gate_core_v1(
             or opened.st_size != 0
             or (opened.st_uid, opened.st_gid) != owner
             or stat.S_IMODE(opened.st_mode) != 0o600
-            or _identity(opened) != _identity(rebound)
+            or snapshot_stat_v1(opened) != snapshot_stat_v1(rebound)
         ):
             raise _fail("gate metadata")
         require_session()

@@ -1439,7 +1439,7 @@ def polarity_state_at(
                 local_prefix = local_prefix[separator_end:]
     elif target_scope:
         # A reviewed sequence immediately before this target anchor starts a
-        # new placement clause (``not on server, and on pc-roberto``). Other
+        # new placement clause (``not on server, and on pc-example``). Other
         # comma/colon forms retain polarity so coordinated negative target
         # lists cannot become affirmative by punctuation alone.
         separator_end = max(

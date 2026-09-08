@@ -15,6 +15,8 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Iterable, Mapping, NamedTuple
 
+import executor_birth_account_identity as _account_identity
+
 
 CATALOG_PATH_V1 = "deployment/executor-birth-service-catalog-v1.json"
 CATALOG_ID_DOMAIN = b"metnos.executor-birth.service-catalog/v1\0"
@@ -27,13 +29,6 @@ MAX_RELATIVE_PATH_COMPONENTS_V1 = 32
 ADMINISTRATIVE_ADAPTER_PATH_V1 = (
     "/usr/libexec/metnos/executor-birth-v1/preflight.py"
 )
-# The product's private runtime root, mirrored from the administrative
-# preflight, which owns it. Every gated unit must declare it writable: the gate
-# each unit runs before its payload verifies signatures through openssl, which
-# needs a temporary directory there, and a hardened unit mounts the hierarchy
-# read-only.
-RUNTIME_ROOT_TEXT_V1 = "/run/metnos-executor-birth-v1"
-
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ENTRY_ID_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
 _UNIT_RE = re.compile(
@@ -43,7 +38,6 @@ _MODULE_RE = re.compile(
     r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){0,31}\Z"
 )
 _ENVIRONMENT_NAME_RE = re.compile(r"[A-Z_][A-Z0-9_]{0,127}\Z")
-_ACCOUNT_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
 _INTEGER_RE = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _DURATION_RE = re.compile(r"(?:0|[1-9][0-9]*)(?:us|ms|s|min|h|d|w)\Z")
 _SAFE_TOKEN_RE = re.compile(r"!?[A-Za-z0-9_./:@+=,-]+\Z")
@@ -198,6 +192,7 @@ class _SourceCompileContextV1:
     service_home: str
     systemctl_executable: str
     target_hashes: tuple[tuple[str, str], ...]
+    administrative_python_executable: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -390,18 +385,9 @@ def _service_unit_recipe(
         _source_directive("Service", "Group", "@service_gid@"),
         _source_directive("Service", "KillMode", "control-group"),
         _source_directive("Service", "NoNewPrivileges", "yes"),
-        # Imposed here, with the gate itself, and never left to each unit:
-        # every gated unit runs the same `check --entry-id` before its payload,
-        # and that program verifies signatures through openssl in a temporary
-        # directory under the product's runtime root. Without this the gate
-        # dies with the generic recovery code — measured on the live G6-C cell
-        # (roadmap §23.23). It is a consequence of the shape, not a per-unit
-        # choice, and it grants the demoted payload nothing: the root stays
-        # `0700` root-owned, so discretionary permissions still apply.
-        _source_directive(
-            "Service", "ReadWritePaths",
-            RUNTIME_ROOT_TEXT_V1, *writable_paths,
-        ),
+        *((_source_directive(
+            "Service", "ReadWritePaths", *writable_paths,
+        ),) if writable_paths else ()),
         *settings,
         _source_directive(
             "Service", "SupplementaryGroups",
@@ -477,6 +463,18 @@ def _entrypoint(
     )
 
 
+def _external_service(
+    entry_id: str, unit_name: str, legacy_unit_name: str,
+) -> ServiceSourceEntryV1:
+    """Bind an infrastructure service without creating a competing unit."""
+    return ServiceSourceEntryV1(
+        entry_id, "external_dependency", external_unit_name=unit_name,
+        legacy_bindings=(
+            _user_unit(f"legacy-{entry_id}-user", legacy_unit_name),
+        ),
+    )
+
+
 # The tuple below is the sole static topology source.  It is intentionally not
 # generated from host state or optional-file presence.  B3 will add authenticated
 # executable paths, hashes and per-release target values to these same entries;
@@ -488,7 +486,7 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             "runtime.metnos_http_server", "--host", "127.0.0.1", "--port", "8770",
             environment=_target_environment(
                 *_TARGET_DATA_ENVIRONMENT_V1,
-                ("METNOS_ENGINE", "metis"),
+                ("METNOS_ENGINE", "v3"),
                 ("METNOS_EXECUTOR_MAX_CLASS", "3"),
                 ("METNOS_EXECUTOR_PARALLEL", "1"),
                 ("METNOS_INTENT_CLASSIFIER", "1"),
@@ -525,6 +523,7 @@ SERVICE_SOURCE_V1 = tuple(sorted((
         "service-durable-worker", "metnos-durable-worker.service",
         target_recipe=_python_target(
             "durable_workloads.service",
+            working_directory="@installation_root@/runtime",
             environment=_TARGET_DATA_ENVIRONMENT_V1,
         ),
         relations=(
@@ -573,7 +572,10 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             environment=_TARGET_DATA_ENVIRONMENT_V1,
         ),
         relations=(
-            _unit_relation("Requires", "service-http", "timer-i18n-translator"),
+            _unit_relation(
+                "Requires", "service-http", "timer-i18n-translator",
+                "service-llm", "service-searxng", "service-photon",
+            ),
             _unit_relation(
                 "After", "external-network-online", "service-http",
                 "service-side-display", "service-playwright",
@@ -732,68 +734,12 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             _source_directive("Service", "Type", "simple"),
         ),
     ),
-    _service(
-        "service-llm", "metnos-llm.service",
-        target_recipe=_native_target(
-            "@installation_root@/runtime/bin/llama-server", "-m",
-            "@service_data@/models/llm.gguf", "--host", "127.0.0.1",
-            "--port", "8080", "-ngl", "0", "-c", "8192",
-        ),
-        relations=(
-            _unit_relation("After", "external-network-online"),
-            _unit_relation("Before", "service-stack-ready"),
-            _unit_relation("PartOf", "target-stack"),
-            _install_relation("WantedBy", "target-stack"),
-        ),
-        settings=(
-            _source_directive("Service", "Nice", "5"),
-            _source_directive("Service", "Restart", "on-failure"),
-            _source_directive("Service", "Type", "simple"),
-        ),
+    _external_service("service-llm", "llama-server.service", "metnos-llm.service"),
+    _external_service(
+        "service-searxng", "searxng.service", "metnos-searxng.service",
     ),
-    _service(
-        "service-searxng", "metnos-searxng.service",
-        target_recipe=_python_target(
-            "searx.webapp",
-            working_directory="@installation_root@/runtime/vendor/searxng",
-            environment=_target_environment(
-                ("SEARXNG_SETTINGS_PATH", "@service_config@/searxng/settings.yml"),
-                ("TMPDIR", "@service_data@/sidecars/searxng/cache"),
-            ),
-        ),
-        relations=(
-            _unit_relation("After", "external-network"),
-            _unit_relation("Before", "service-stack-ready"),
-            _unit_relation("PartOf", "target-stack"),
-            _install_relation("WantedBy", "target-stack"),
-        ),
-        settings=(
-            _source_directive("Service", "Restart", "on-failure"),
-            _source_directive("Service", "RestartSec", "10s"),
-            _source_directive("Service", "Type", "simple"),
-        ),
-    ),
-    _service(
-        "service-photon", "metnos-photon.service",
-        target_recipe=_native_target(
-            "/usr/bin/java", "-jar", "@installation_root@/runtime/vendor/photon.jar",
-            "serve", "-data-dir", "@service_data@/sidecars/photon/current",
-            "-listen-ip", "127.0.0.1", "-listen-port", "2322", "-j", "4",
-            environment=_target_environment(
-                ("PHOTON_DATA_DIR", "@service_data@/sidecars/photon/current"),
-            ),
-        ),
-        relations=(
-            _unit_relation("After", "external-network"),
-            _unit_relation("Before", "service-stack-ready"),
-            _unit_relation("PartOf", "target-stack"),
-            _install_relation("WantedBy", "target-stack"),
-        ),
-        settings=(
-            _source_directive("Service", "Restart", "on-failure"),
-            _source_directive("Service", "RestartSec", "10s"),
-            _source_directive("Service", "Type", "simple"),
-        ),
+    _external_service(
+        "service-photon", "photon.service", "metnos-photon.service",
     ),
     _timer(
         "timer-i18n-translator", "metnos-i18n-translator.timer",
@@ -1036,13 +982,13 @@ _CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1 = MappingProxyType({
     ("metnos-i18n-translator.service", "Service", "Environment"):
         "move_to_signed_target_or_minimum_environment",
     ("metnos-photon.service", "Service", "Environment"):
-        "move_to_signed_target_environment",
+        "retained_by_external_system_service",
     ("metnos-playwright.service", "Service", "Environment"):
         "move_to_signed_target_environment",
     ("metnos-playwright.service", "Unit", "Documentation"):
         "drop_nonoperational_legacy_metadata",
     ("metnos-searxng.service", "Service", "Environment"):
-        "move_to_signed_target_environment",
+        "retained_by_external_system_service",
     ("metnos-side-display.service", "Service", "Environment"):
         "drop_unused_xvfb_display_environment",
     ("metnos-side-display.service", "Unit", "Documentation"):
@@ -1555,8 +1501,12 @@ def _resolve_recipe_value_v1(
     fixed = {
         "@installation_root@": context.installation_root,
         "@python@": context.python_executable,
-        "@administrative_python@": context.python_executable,
-        "!@administrative_python@": "!" + context.python_executable,
+        "@administrative_python@": (
+            context.administrative_python_executable or context.python_executable
+        ),
+        "!@administrative_python@": "!" + (
+            context.administrative_python_executable or context.python_executable
+        ),
         "@service_user@": context.service_user,
         "@service_gid@": str(context.service_gid),
         "@service_home@": context.service_home,
@@ -1596,10 +1546,14 @@ def _validate_compile_context_v1(
         )
     _absolute_path(context.installation_root, "installation root")
     _absolute_path(context.python_executable, "python executable")
+    _absolute_path(
+        context.administrative_python_executable or context.python_executable,
+        "administrative python executable",
+    )
     _absolute_path(context.service_home, "service home")
     _absolute_path(context.systemctl_executable, "systemctl executable")
     if (
-        _ACCOUNT_RE.fullmatch(context.service_user) is None
+        not _account_identity.is_posix_account_name_v1(context.service_user)
         or type(context.service_gid) is not int
         or not 0 < context.service_gid < 2 ** 31
         or any(
@@ -2289,7 +2243,7 @@ def _source_identity(
         )
     if (
         len(python_paths) != 1
-        or python_paths != administrative_python
+        or len(administrative_python) != 1
         or len(service_users) != 1
         or len(service_gids) != 1
         or len(supplementary_gids) != 1
@@ -2342,6 +2296,7 @@ def _source_identity(
         next(iter(service_users)), next(iter(service_gids)),
         next(iter(supplementary_gids)), service_home,
         str(stop_entry.target_executable), target_hashes,
+        str(next(iter(administrative_python))),
     ))
     if catalog.entries != expected_entries:
         raise ServiceCatalogError(
@@ -2365,6 +2320,7 @@ def _build_service_catalog_v1(
     service_gid: int, service_supplementary_gids: tuple[int, ...],
     service_home: str, systemctl_executable: str,
     target_executables: tuple[tuple[str, bytes], ...],
+    administrative_python_executable: str | None = None,
 ) -> _BuiltServiceCatalogV1:
     """Compile the fixed service source against exact executable bytes.
 
@@ -2385,9 +2341,14 @@ def _build_service_catalog_v1(
         raise ServiceCatalogError(
             "birth_ownership_service_catalog_invalid", "target coverage",
         )
+    administrative_python = (
+        python_executable if administrative_python_executable is None
+        else administrative_python_executable
+    )
     base_context = _SourceCompileContextV1(
         installation_root, python_executable, service_user, service_gid,
         service_supplementary_gids, service_home, systemctl_executable, (),
+        administrative_python,
     )
     by_id = {item.entry_id: item for item in SERVICE_SOURCE_V1}
     resolved_targets: list[tuple[str, str]] = []
@@ -2420,7 +2381,7 @@ def _build_service_catalog_v1(
     entries = _compile_service_source_v1(_SourceCompileContextV1(
         installation_root, python_executable, service_user, service_gid,
         service_supplementary_gids, service_home, systemctl_executable,
-        tuple(resolved_targets),
+        tuple(resolved_targets), administrative_python,
     ))
     legacy = tuple(ServiceLegacyBindingV1(
         str(item["legacy_id"]), str(item["entry_id"]), str(item["kind"]),

@@ -32,6 +32,7 @@ from pathlib import Path
 from types import ModuleType
 
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from code_file_paths import PortableCodePathError, validate_portable_code_files
@@ -105,6 +106,11 @@ def _trusted_keys_dir_at_start_v1() -> Path | None:
 
 
 _TRUSTED_KEYS_DIR_V1 = _trusted_keys_dir_at_start_v1()
+_BIRTH_AUTHOR_PUBLIC_DIR_V1 = (
+    None if _TRUSTED_KEYS_DIR_V1 is None
+    else _TRUSTED_KEYS_DIR_V1.parent / "birth" / "author-root-v1" / "public"
+)
+_PROJECTED_TRUST_ROOT_V1 = Path("/.metnos-admission-v1")
 
 
 class AdmittedModuleError(RuntimeError):
@@ -133,6 +139,126 @@ def _read_exact_file_v1(path: Path) -> bytes:
             return stream.read(MAXIMUM_CODE_FILE_BYTES_V1 + 1)
     finally:
         os.close(descriptor)
+
+
+def _raw_public_key_v1(public_key: Ed25519PublicKey) -> bytes:
+    return public_key.public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw,
+    )
+
+
+def _read_birth_public_v1(path: Path) -> bytes:
+    """Read one immutable public-key binding through its exact directory entry."""
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = -1
+    try:
+        before = path.lstat()
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or stat.S_ISLNK(before.st_mode)
+            or not os.path.samestat(before, opened)
+            or opened.st_nlink != 1
+            or opened.st_size != 32
+            or bool(
+                getattr(opened, "st_file_attributes", 0)
+                & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+            )
+            or (
+                os.name == "posix"
+                and (
+                    stat.S_IMODE(opened.st_mode) != 0o644
+                    or opened.st_uid != os.geteuid()
+                )
+            )
+        ):
+            raise AdmittedModuleError("admitted_module_dependency_unavailable")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            payload = stream.read(33)
+        after = path.lstat()
+        if len(payload) != 32 or not os.path.samestat(opened, after):
+            raise AdmittedModuleError("admitted_module_dependency_unavailable")
+        return payload
+    except AdmittedModuleError:
+        raise
+    except OSError as exc:
+        raise AdmittedModuleError(
+            "admitted_module_dependency_unavailable",
+        ) from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _birth_public_id_v1(payload: bytes) -> str:
+    return "birth-ed25519-v1-sha256-" + hashlib.sha256(payload).hexdigest()
+
+
+def _store_only_author_ring_v1() -> dict[str, Ed25519PublicKey]:
+    from sign import list_trusted_publics
+
+    try:
+        values = list_trusted_publics()
+    except Exception as exc:
+        raise AdmittedModuleError(
+            "admitted_module_dependency_unavailable",
+        ) from exc
+    result: dict[str, Ed25519PublicKey] = {}
+    for value in values:
+        if (
+            type(value) is not tuple
+            or len(value) != 2
+            or not isinstance(value[0], str)
+            or not isinstance(value[1], Ed25519PublicKey)
+            or value[0] in result
+            or value[0] != _birth_public_id_v1(_raw_public_key_v1(value[1]))
+        ):
+            raise AdmittedModuleError("admitted_module_dependency_unavailable")
+        result[value[0]] = value[1]
+    if not result:
+        raise AdmittedModuleError("admitted_module_dependency_unavailable")
+    return result
+
+
+def _dependency_public_key_v1(
+    signer: str, *, store_only: bool,
+    author_ring: dict[str, Ed25519PublicKey],
+) -> Path:
+    from sign import KEYS_DIR
+
+    if store_only:
+        verifier = author_ring.get(signer)
+        if verifier is None or _BIRTH_AUTHOR_PUBLIC_DIR_V1 is None:
+            raise AdmittedModuleError("admitted_module_dependency_unavailable")
+        public_key = _BIRTH_AUTHOR_PUBLIC_DIR_V1 / f"{signer}.pub"
+        payload = _read_birth_public_v1(public_key)
+        if (
+            _birth_public_id_v1(payload) != signer
+            or payload != _raw_public_key_v1(verifier)
+        ):
+            raise AdmittedModuleError("admitted_module_dependency_unavailable")
+        return public_key
+
+    public_key = KEYS_DIR / f"{signer}_pub.bin"
+    try:
+        key_info = public_key.lstat()
+    except OSError as exc:
+        raise AdmittedModuleError(
+            "admitted_module_dependency_unavailable",
+        ) from exc
+    if (
+        not stat.S_ISREG(key_info.st_mode)
+        or stat.S_ISLNK(key_info.st_mode)
+        or key_info.st_nlink != 1
+        or key_info.st_size != 32
+        or bool(
+            getattr(key_info, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        )
+    ):
+        raise AdmittedModuleError("admitted_module_dependency_unavailable")
+    return public_key
 
 
 def code_digest_of_bytes_v1(payloads) -> str:
@@ -239,8 +365,8 @@ def encode_admitted_executor_records_v1(executors) -> str:
 
 def admitted_code_dependency_projection_v1(
     executor, catalog,
-) -> tuple[str, list[Path]]:
-    """Project only signed dependency names from a verified catalogue."""
+) -> tuple[str, list[Path], list[Path]]:
+    """Project signed dependencies, ordinary roots and sealed signer keys."""
     names = getattr(executor, "code_dependencies", ()) or ()
     if (
         not isinstance(names, tuple)
@@ -256,10 +382,14 @@ def admitted_code_dependency_projection_v1(
     ):
         raise AdmittedModuleError("admitted_module_record_invalid")
     if not names:
-        return "", []
+        return "", [], []
     records = []
     roots: list[Path] = []
-    from sign import KEYS_DIR
+    sealed_keys: list[Path] = []
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    store_only = resolve_manifest_layout() is ManifestLayout.STORE_ONLY
+    author_ring = _store_only_author_ring_v1() if store_only else {}
 
     for name in names:
         target = catalog.get(name)
@@ -283,27 +413,12 @@ def admitted_code_dependency_projection_v1(
             roots.append(root)
         # Expose only the public key that authenticated this exact catalogue
         # row, never the key directory or unrelated trust anchors.
-        public_key = KEYS_DIR / f"{signer}_pub.bin"
-        try:
-            key_info = public_key.lstat()
-        except OSError as exc:
-            raise AdmittedModuleError(
-                "admitted_module_dependency_unavailable",
-            ) from exc
-        if (
-            not stat.S_ISREG(key_info.st_mode)
-            or stat.S_ISLNK(key_info.st_mode)
-            or key_info.st_nlink != 1
-            or key_info.st_size != 32
-            or bool(
-                getattr(key_info, "st_file_attributes", 0)
-                & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
-            )
-        ):
-            raise AdmittedModuleError("admitted_module_dependency_unavailable")
-        if public_key not in roots:
-            roots.append(public_key)
-    return encode_admitted_executor_records_v1(records), roots
+        public_key = _dependency_public_key_v1(
+            signer, store_only=store_only, author_ring=author_ring,
+        )
+        if public_key not in sealed_keys:
+            sealed_keys.append(public_key)
+    return encode_admitted_executor_records_v1(records), roots, sealed_keys
 
 
 def runtime_admitted_executor_v1(name: str) -> AdmittedExecutorRecordV1:
@@ -366,6 +481,30 @@ def _record_binding_v1(executor) -> tuple[str, Path, Path, str, tuple[str, ...]]
 
 
 def _trusted_public_keys_v1() -> tuple[Ed25519PublicKey, ...]:
+    if _BIRTH_AUTHOR_PUBLIC_DIR_V1 is not None:
+        try:
+            birth_status = _BIRTH_AUTHOR_PUBLIC_DIR_V1.lstat()
+        except FileNotFoundError:
+            birth_status = None
+        except OSError:
+            return ()
+        if birth_status is not None:
+            if (
+                not stat.S_ISDIR(birth_status.st_mode)
+                or stat.S_ISLNK(birth_status.st_mode)
+            ):
+                return ()
+            try:
+                paths = sorted(_BIRTH_AUTHOR_PUBLIC_DIR_V1.glob("*.pub"))
+                values = []
+                for path in paths:
+                    raw = _read_birth_public_v1(path)
+                    if path.name != f"{_birth_public_id_v1(raw)}.pub":
+                        return ()
+                    values.append(Ed25519PublicKey.from_public_bytes(raw))
+                return tuple(values)
+            except (AdmittedModuleError, OSError, TypeError, ValueError):
+                return ()
     keys = []
     if _TRUSTED_KEYS_DIR_V1 is None:
         return ()
@@ -382,10 +521,47 @@ def _trusted_public_keys_v1() -> tuple[Ed25519PublicKey, ...]:
     return tuple(keys)
 
 
+def _projected_trusted_public_keys_v1() -> tuple[Ed25519PublicKey, ...]:
+    """Read only the signer files sealed into the executor namespace."""
+    try:
+        root_info = _PROJECTED_TRUST_ROOT_V1.lstat()
+        if (
+            not stat.S_ISDIR(root_info.st_mode)
+            or stat.S_ISLNK(root_info.st_mode)
+            or os.name != "posix"
+            or not (
+                os.statvfs(_PROJECTED_TRUST_ROOT_V1).f_flag
+                & getattr(os, "ST_RDONLY", 1)
+            )
+        ):
+            return ()
+        paths = sorted(
+            _PROJECTED_TRUST_ROOT_V1.iterdir(),
+            key=lambda item: os.fsencode(item.name),
+        )
+        if not paths:
+            return ()
+        keys = []
+        for path in paths:
+            raw = _read_birth_public_v1(path)
+            if path.name.endswith(".pub"):
+                if path.name != f"{_birth_public_id_v1(raw)}.pub":
+                    return ()
+            elif not path.name.endswith("_pub.bin"):
+                return ()
+            keys.append(Ed25519PublicKey.from_public_bytes(raw))
+        return tuple(keys)
+    except (AdmittedModuleError, OSError, TypeError, ValueError):
+        return ()
+
+
 def _verify_projection_signature_v1(
-    manifest_bytes: bytes, signature_bytes: bytes,
+    manifest_bytes: bytes, signature_bytes: bytes, *, projected: bool = False,
 ) -> None:
-    keys = _trusted_public_keys_v1()
+    keys = (
+        _projected_trusted_public_keys_v1()
+        if projected else _trusted_public_keys_v1()
+    )
     for public_key in keys:
         try:
             public_key.verify(signature_bytes, manifest_bytes)
@@ -395,7 +571,7 @@ def _verify_projection_signature_v1(
     raise AdmittedModuleError("admitted_module_projection_untrusted")
 
 
-def _authenticate_parent_projection_v1(executor):
+def _authenticate_parent_projection_v1(executor, *, projected: bool = False):
     """Authenticate a child projection against an installed trusted key."""
     import tomllib
 
@@ -412,7 +588,9 @@ def _authenticate_parent_projection_v1(executor):
         signature_bytes = _read_exact_file_v1(
             _contained_file_v1(directory, "manifest.toml.sig"),
         )
-        _verify_projection_signature_v1(manifest_bytes, signature_bytes)
+        _verify_projection_signature_v1(
+            manifest_bytes, signature_bytes, projected=projected,
+        )
         manifest = tomllib.loads(manifest_bytes.decode("utf-8"))
     except AdmittedModuleError:
         raise
@@ -451,7 +629,7 @@ def _current_verified_record_v1(executor):
         isinstance(executor, AdmittedExecutorRecordV1)
         and executor._projection_seal is _PARENT_PROJECTION_SEAL_V1
     ):
-        return _authenticate_parent_projection_v1(executor)
+        return _authenticate_parent_projection_v1(executor, projected=True)
     try:
         # These callables are captured before executor code runs.  Rebinding
         # public attributes on ``loader`` cannot replace the authority used by

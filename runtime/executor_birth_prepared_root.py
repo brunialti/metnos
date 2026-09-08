@@ -51,6 +51,29 @@ def _productive_role_catalog_v1():
     )
 
 
+def _posix_prepared_owner_uid_v1(handles: list[int]) -> int:
+    """Bind a privileged reader to the configured service-owned Birth root."""
+    from executor_birth_secure_fs import BirthSecureFSError
+
+    if len(handles) < 2:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    try:
+        root = os.fstat(handles[-1])
+        parent = os.fstat(handles[-2])
+        caller = os.geteuid()
+    except OSError as exc:
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc) from None
+    if caller != 0:
+        expected = caller
+    elif root.st_uid != 0 and parent.st_uid == root.st_uid:
+        expected = root.st_uid
+    else:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    if root.st_uid != expected:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    return expected
+
+
 def open_prepared_root_session_v1():
     """Open the fixed Birth root for reading and return the session.
 
@@ -77,8 +100,14 @@ def open_prepared_root_session_v1():
             handles, absolute = _open_posix_root(
                 root, exact_private=False, expected_uid=None,
             )
+            try:
+                expected_uid = _posix_prepared_owner_uid_v1(handles)
+            except BaseException:
+                for handle in reversed(handles):
+                    os.close(handle)
+                raise
             identity = _PlatformIdentity(
-                posix_uid=os.geteuid(), windows_service_sid=None,
+                posix_uid=expected_uid, windows_service_sid=None,
             )
     except BirthSecureFSError as exc:
         raise PreparedRootError(exc.code, exc) from None
@@ -190,6 +219,60 @@ def _load_historical_transition_anchor_v1():
             return load_prepared_set_v1(session)
 
 
+@dataclass(frozen=True, slots=True)
+class HistoricalTransitionVerifiersV1:
+    """Persisted V1 identity and public verification keys, never a runtime."""
+
+    prepared: object
+    author_verifier_keys: Mapping[str, object]
+    admission_verifier_keys: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        for field in ("author_verifier_keys", "admission_verifier_keys"):
+            object.__setattr__(
+                self, field, MappingProxyType(dict(getattr(self, field))),
+            )
+
+
+def _load_historical_transition_verifiers_v1() -> HistoricalTransitionVerifiersV1:
+    """Authenticate existing V1 artifacts without selecting runtime authority.
+
+    The first transition must read the historical catalog before preparing its
+    new context.  Its marker, set, material and key bindings remain validated
+    under one barrier; no private keys or executable authorities escape this
+    reader.  Runtime construction still rebuilds the context independently.
+    """
+    from executor_birth_keystore import (
+        BirthKeyStoreError, _load_birth_keystore_in_session,
+    )
+    from executor_birth_prepared_set import (
+        AUTHORITY_SETS_BASENAME_V1, AUTHOR_STORE_BASENAME_V1, PreparedSetError,
+        load_prepared_set_v1,
+    )
+
+    session = open_prepared_root_session_v1()
+    with session:
+        with session.global_lock(exclusive=False, create=False):
+            prepared = load_prepared_set_v1(session)
+            try:
+                author = _load_birth_keystore_in_session(
+                    (AUTHOR_STORE_BASENAME_V1,), session,
+                )
+                admission = _load_birth_keystore_in_session(
+                    (AUTHORITY_SETS_BASENAME_V1, prepared.set_id, "admission"),
+                    session,
+                )
+            except BirthKeyStoreError as exc:
+                raise PreparedSetError(
+                    "birth_prepared_set_unavailable", exc,
+                ) from None
+            return HistoricalTransitionVerifiersV1(
+                prepared=prepared,
+                author_verifier_keys=author.verifier_keys,
+                admission_verifier_keys=admission.verifier_keys,
+            )
+
+
 def _load_sealed_authorities_from_set_v1(session, prepared, open_sources):
     """Load one already selected set while its root barrier is held."""
     from executor_birth_context import _context_epoch
@@ -249,7 +332,7 @@ def _load_sealed_authorities_from_set_v1(session, prepared, open_sources):
         location + ("semantic", "public"),
         location + ("semantic", "evidence"),
         session,
-    )
+    )._seal_for_detached_use_v1()
     approval_document = _read_prepared_document_v1(
         session, location + ("approval", "authority.json"),
     )
@@ -506,10 +589,7 @@ def load_required_context_runtime_v1() -> RequiredContextRuntimeV1:
     return loaded
 
 
-def _birth_public_inventory_v1() -> frozenset[bytes]:
-    """Reload the fixed Birth set and return its authenticated public keys."""
-    sealed = load_sealed_authorities_v1()
-    stores = (sealed.author, sealed.admission, *sealed.producers.values())
+def _public_inventory_from_stores_v1(stores) -> frozenset[bytes]:
     result: set[bytes] = set()
     try:
         for store in stores:
@@ -522,3 +602,55 @@ def _birth_public_inventory_v1() -> frozenset[bytes]:
     if not result or any(len(item) != 32 for item in result):
         raise PreparedRootError("birth_prepared_set_untrusted")
     return frozenset(result)
+
+
+def _birth_public_inventory_v1() -> frozenset[bytes]:
+    """Reload the runtime-selected Birth set and its authenticated public keys."""
+    sealed = load_sealed_authorities_v1()
+    return _public_inventory_from_stores_v1((
+        sealed.author, sealed.admission, *sealed.producers.values(),
+    ))
+
+
+def _historical_birth_public_inventory_v1() -> frozenset[bytes]:
+    """Read fixed predecessor keys without rebinding them to candidate source.
+
+    Ownership-authority key exclusion precedes construction of the successor
+    distribution.  At that boundary the prepared marker and key stores are the
+    authenticated predecessor, while candidate source is not yet an installed
+    runtime and therefore cannot be used to rebuild its context material.
+    """
+    from executor_birth_keystore import (
+        BirthKeyStoreError, _load_birth_keystore_in_session,
+    )
+    from executor_birth_prepared_set import (
+        AUTHORITY_SETS_BASENAME_V1, AUTHOR_STORE_BASENAME_V1,
+        PreparedSetError, authority_registry_v1, load_prepared_set_v1,
+    )
+
+    session = open_prepared_root_session_v1()
+    with session:
+        with session.global_lock(exclusive=False, create=False):
+            prepared = load_prepared_set_v1(session)
+            location = (AUTHORITY_SETS_BASENAME_V1, prepared.set_id)
+            registry = authority_registry_v1(session, location)
+            try:
+                stores = (
+                    _load_birth_keystore_in_session(
+                        (AUTHOR_STORE_BASENAME_V1,), session,
+                    ),
+                    _load_birth_keystore_in_session(
+                        location + ("admission",), session,
+                    ),
+                    *(
+                        _load_birth_keystore_in_session(
+                            location + ("producers", name), session,
+                        )
+                        for name in sorted(registry["producers"])
+                    ),
+                )
+            except BirthKeyStoreError as exc:
+                raise PreparedSetError(
+                    "birth_prepared_set_unavailable", exc,
+                ) from None
+            return _public_inventory_from_stores_v1(stores)

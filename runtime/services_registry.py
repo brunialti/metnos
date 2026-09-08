@@ -20,7 +20,7 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, wait
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 import config as _C
@@ -193,6 +193,58 @@ _LRE_HEALTH_MESSAGE_KEYS = {
 def catalog() -> tuple[ServiceSpec, ...]:
     """Ritorna il catalogo immutabile dei servizi logici."""
     return SERVICES
+
+
+def readiness_catalog() -> tuple[ServiceSpec, ...]:
+    """Project observation targets from the required signed deployment.
+
+    The initial installer keeps its user profile. An existing invalid chain
+    cannot fall back to it. This projection never changes control targets.
+    """
+    from executor_birth_ownership_chain import (
+        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1, REQUIRED_HEAD_BASENAME,
+        OwnershipChainStore, VerifiedOwnershipChain,
+        inspect_ownership_chain_state_v1,
+    )
+    from executor_birth_service_catalog import capture_current_service_catalog_v1
+
+    try:
+        DEFAULT_OWNERSHIP_CHAIN_ROOT_V1.lstat()
+    except FileNotFoundError:
+        return SERVICES
+    try:
+        (DEFAULT_OWNERSHIP_CHAIN_ROOT_V1 / REQUIRED_HEAD_BASENAME).lstat()
+    except FileNotFoundError:
+        chain = inspect_ownership_chain_state_v1()
+    else:
+        # The public cold reader authenticates the required chain without
+        # opening the coordinator's root-only mutation lock.
+        chain = OwnershipChainStore().read_required_chain_cold_v1()
+    # The public inspector returns a verified chain or a validated initial
+    # state; corrupt or partial chains raise before a profile is selected.
+    if not isinstance(chain, VerifiedOwnershipChain):
+        return SERVICES
+    distribution = chain.required_distribution
+    if Path(distribution.installation_root) != Path(_C.PATH_ROOT):
+        raise ValueError("readiness distribution root mismatch")
+    loaded = capture_current_service_catalog_v1(distribution)
+    targets = {
+        entry.unit_name: ServiceTarget(entry.unit_name, entry.scope)
+        for entry in loaded.catalog.entries if entry.unit_name is not None
+    }
+    targets.update({
+        entry.external_unit_name: ServiceTarget(entry.external_unit_name, "system")
+        for entry in loaded.catalog.entries if entry.external_unit_name is not None
+    })
+    result = []
+    for spec in SERVICES:
+        selected = tuple(dict.fromkeys(
+            targets[target.unit] for target in spec.targets if target.unit in targets
+        ))
+        if len(selected) != 1:
+            raise ValueError("readiness service target is not uniquely signed")
+        result.append(replace(spec, targets=selected))
+    return tuple(result)
 
 
 def _catalog_key(service_key: str, field: str) -> str:

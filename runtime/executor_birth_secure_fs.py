@@ -892,6 +892,28 @@ def _posix_role_uid(role: _BirthObjectRole, expected_uid: int | None) -> int | N
     return expected_uid
 
 
+def _posix_exact_mode_v1(
+    role: _BirthObjectRole, *, directory: bool,
+) -> int | None:
+    return {
+        (_BirthObjectRole.birth_confidential, False): 0o600,
+        (_BirthObjectRole.birth_confidential, True): 0o700,
+        (_BirthObjectRole.birth_integrity_only, False): 0o644,
+        (_BirthObjectRole.birth_integrity_only, True): 0o755,
+        (_BirthObjectRole.historical_private, False): 0o600,
+        (_BirthObjectRole.historical_private, True): 0o700,
+    }.get((role, directory))
+
+
+def _posix_creation_mode_v1(
+    role: _BirthObjectRole, *, directory: bool,
+) -> int:
+    mode = _posix_exact_mode_v1(role, directory=directory)
+    if mode is None:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    return mode
+
+
 def _verify_posix_directory(
     fd: int,
     *,
@@ -907,11 +929,7 @@ def _verify_posix_directory(
     if role_uid is not None and value.st_uid != role_uid:
         raise BirthSecureFSError("birth_provisioning_acl_unsafe")
     mode = stat.S_IMODE(value.st_mode)
-    expected_mode = {
-        _BirthObjectRole.birth_confidential: 0o700,
-        _BirthObjectRole.birth_integrity_only: 0o755,
-        _BirthObjectRole.historical_private: 0o700,
-    }.get(role)
+    expected_mode = _posix_exact_mode_v1(role, directory=True)
     if (expected_mode is not None and mode != expected_mode) or (
         role is _BirthObjectRole.historical_public and mode & 0o022
     ):
@@ -933,15 +951,28 @@ def _verify_posix_file(
     if role_uid is not None and value.st_uid != role_uid:
         raise BirthSecureFSError("birth_provisioning_acl_unsafe")
     mode = stat.S_IMODE(value.st_mode)
-    expected_mode = {
-        _BirthObjectRole.birth_confidential: 0o600,
-        _BirthObjectRole.birth_integrity_only: 0o644,
-        _BirthObjectRole.historical_private: 0o600,
-    }.get(role)
+    expected_mode = _posix_exact_mode_v1(role, directory=False)
     if (expected_mode is not None and mode != expected_mode) or (
         role is _BirthObjectRole.historical_public and mode & 0o022
     ):
         raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+
+
+def _apply_posix_creation_profile_v1(
+    fd: int,
+    *,
+    role: _BirthObjectRole,
+    directory: bool,
+    expected_uid: int | None,
+) -> None:
+    """Apply the one Birth POSIX policy used by runtime and installer.
+
+    ``open`` and ``mkdir`` modes are filtered by the process umask.  The
+    descriptor is therefore corrected and verified before the object is used.
+    """
+    os.fchmod(fd, _posix_creation_mode_v1(role, directory=directory))
+    verifier = _verify_posix_directory if directory else _verify_posix_file
+    verifier(fd, role=role, expected_uid=expected_uid)
 
 
 def _open_posix_root(
@@ -3221,16 +3252,18 @@ class _SecureRootSession:
         try:
             if create and exclusive:
                 try:
-                    mode = (
-                        0o644
-                        if role is _BirthObjectRole.birth_integrity_only
-                        else 0o600
-                    )
+                    mode = _posix_creation_mode_v1(role, directory=False)
                     fd = os.open(
                         name,
                         flags | os.O_CREAT | os.O_EXCL,
                         mode,
                         dir_fd=directory,
+                    )
+                    _apply_posix_creation_profile_v1(
+                        fd,
+                        role=role,
+                        directory=False,
+                        expected_uid=self._expected_uid,
                     )
                     created = True
                 except FileExistsError:
@@ -3500,16 +3533,15 @@ class _SecureRootSession:
                 | getattr(os, "O_NOFOLLOW", 0)
             )
             try:
-                mode = (
-                    0o600
-                    if role is _BirthObjectRole.birth_confidential
-                    else 0o644
-                )
+                mode = _posix_creation_mode_v1(role, directory=False)
                 fd = os.open(name, flags, mode, dir_fd=directory)
                 committed = False
                 try:
-                    _verify_posix_file(
-                        fd, role=role, expected_uid=self._expected_uid
+                    _apply_posix_creation_profile_v1(
+                        fd,
+                        role=role,
+                        directory=False,
+                        expected_uid=self._expected_uid,
                     )
                     before = _posix_identity(fd)
                     _write_all_posix(fd, payload)
@@ -3697,11 +3729,7 @@ class _SecureRootSession:
                     self, components, handle, os.path.join(directory_path, name),
                 )
             try:
-                mode = (
-                    0o700
-                    if role is _BirthObjectRole.birth_confidential
-                    else 0o755
-                )
+                mode = _posix_creation_mode_v1(role, directory=True)
                 os.mkdir(name, mode, dir_fd=directory)
                 os.fsync(directory)
                 # A descriptor opened for path resolution alone cannot be
@@ -3717,6 +3745,12 @@ class _SecureRootSession:
                     dir_fd=directory,
                 )
                 try:
+                    _apply_posix_creation_profile_v1(
+                        opened,
+                        role=role,
+                        directory=True,
+                        expected_uid=self._expected_uid,
+                    )
                     os.fsync(opened)
                     self._commit_exact_role_binding_v1(
                         components, _posix_identity(opened),

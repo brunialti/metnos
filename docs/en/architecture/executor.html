@@ -496,6 +496,88 @@ changed bytes operational. Maintainer updates use
 the compatibility flag submits the candidate to Executor Birth and does not
 select the former direct publisher.</p>
 
+<p>During transition, the inventory and first cold catalog load use the same
+author public-key set already authenticated by Birth. In exercise, readers use
+the authorities of the installed Birth context; separate administrative
+processes authenticate them through the current ownership chain. In the closed
+store, missing keys or an invalid context stop the read: the legacy key
+directory is never consulted as a fallback.</p>
+
+<p>Before requiring the new distribution, the transition binds the candidate's
+authenticated bytes to its durable receipts. It does not prematurely require
+the build archive published only after the certificate, but rejects an already
+present conflicting archive. The contract-receipt catalog and the service
+catalog have distinct identities: both are checked, without using either as
+proof of the other or advancing publication.</p>
+
+<p>The service-recipe check also binds writable paths to the account's signed
+home directory. Relocating that directory does not change the allowed recipe:
+the relative data and state paths remain exact. Additional or different paths
+are rejected even when their hashes have been recomputed.</p>
+
+<p>For code dependencies between executors, the parent process selects only
+the public keys that authenticated the requested contracts. The Linux sandbox
+exposes these keys in a private read-only mount, separate from configuration
+paths; the mount stays empty when there are no dependencies. The child cannot
+add keys or replace the mount by creating a nested isolation environment.
+Explicitly permitted writes and the temporary directory remain available.</p>
+
+<p>The Linux distribution includes the Playwright driver in its managed Python
+environment and preserves executable permissions for programs supplied by its
+packages; browsers remain separately installed resources. After the transition,
+readiness checks observe the units and scope bound by the current signed catalog,
+without changing services or broadening control commands. An invalid catalog
+stops the check: it is not silently replaced with the previous configuration.</p>
+
+<p>The signed catalog starts HTTP with <code>METNOS_ENGINE=v3</code>, without
+inheriting arbitrary unit drop-ins (<code>.service.d</code>) or launch-environment
+additions. Private settings remain in the existing
+<code>$METNOS_USER_CONFIG/runtime.toml</code>: <code>default_account</code> in
+<code>[mail]</code> is a nonempty string, defaulting to
+<code>metnos_system</code>; <code>nightly_enabled</code> in <code>[telos]</code>
+is a boolean, defaulting to <code>false</code>.
+<code>METNOS_DEFAULT_MAIL_ACCOUNT</code> and <code>METNOS_TELOS_NIGHTLY</code>
+override their respective file settings; only the exact environment value
+<code>1</code> enables nightly Telos activity.</p>
+
+<p>HTTP resolves the SMTP account once, after the Birth check and before workers
+start: executors inherit the resolved name without receiving the private file,
+while an explicit invocation account still takes precedence. An empty or wrongly
+typed default account and a non-boolean Telos file setting are rejected rather
+than silently replaced with another value. This precedence does not authorize
+changes to signed units or put personal values in the public catalog.</p>
+
+<p>The service configuration is signed before its timers start. The automatic
+activation and ordering links of an exact signed timer may appear when it is
+loaded or started without requiring another signature. Equivalent disabled
+values of an unconfigured watchdog also have one canonical representation.
+For a configured watchdog, systemd's initial runtime sentinel is accepted only
+when the same observation proves the service inactive, dead, without main or
+control processes and never started. The exact signed setting remains the
+canonical value; a disabled or different watchdog after start is rejected.
+Unexpected triggers, new dependencies and changes to explicitly configured
+values remain subject to strict verification.</p>
+
+<p>The service reads the signed ownership chain without opening the private
+root-owned writer lock; it still verifies the lock's exact metadata.
+Administrative checks also inspect its marker. Startup checks may reuse the
+pure source analysis for one identical set of paths and bytes in the same
+process, but never reuse live file checks, signatures or service observations.
+Declared imports may also reuse syntax analysis, but their filesystem
+resolution is always repeated. The service reader uses the same bounded
+reuse: its before/after observations remain independent and live without
+repeating syntax analysis of identical bytes. Reuse also binds the exact
+analysis limits. File-operation and external-command analysis
+applies only to relevant calls, without changing authority classification.
+Signal-termination reports are parsed in systemd's native form without changing
+the signed command or interpreting termination as success.</p>
+
+<p>Every Python service module is resolved from the working directory declared
+in the signed catalog. The long-running workload service uses the
+<code>runtime</code> subdirectory and does not depend on paths inherited from
+a development session. A regression checks this constraint for every declared
+Python entry point.</p>
+
 <!-- ============================================================== -->
 <h1 id="cap6">6. Four origins: handwritten, generated, imported, builtin</h1>
 

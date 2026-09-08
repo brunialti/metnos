@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import functools
+import errno
 import json
 import os
+import struct
 import subprocess
 import sys
 import time
@@ -14,6 +16,7 @@ import pytest
 
 import contract_boundary_guard as canonical_guard
 import executor_birth_admin_preflight as preflight
+from executor_birth_maintenance_units import QUIESCENT_LOAD_STATES_V1
 from contract_boundary_guard import (
     BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
     BIRTH_CLOSED_EXCEPTION_SCOPES,
@@ -144,13 +147,41 @@ def _distribution_fixture(
         "internal/reports/boundary.json": preflight._canonical_json(inventory),
         "requirements.lock": b"fixture==1\n",
         "runtime/__version__.py": b'__version__ = "1.2.3"\n',
+        "runtime/contract_boundary_analyzer_ast.py": b"ANALYZER = 1\n",
+        "runtime/contract_boundary_analyzer_projection.py": b"ANALYZER = 1\n",
+        "runtime/contract_boundary_analyzer_types.py": b"ANALYZER = 1\n",
+        "runtime/contract_boundary_api_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_birth_authority_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_birth_exception_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_birth_policy.py": b"POLICY = 1\n",
         "runtime/contract_boundary_guard.py": b"VALUE = 1\n",
+        "runtime/contract_boundary_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_policy_types.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_role_policy.py": b"POLICY = 1\n",
+        "runtime/contract_boundary_syntax_policy.py": b"POLICY = 1\n",
         "runtime/contract_store.py": b"VALUE = 1\n",
+        "install/executor_birth_host_capability.py": b"VALUE = 1\n",
+        "install/executor_birth_host_journal_posix.py": b"VALUE = 1\n",
+        "install/executor_birth_host_posix.py": b"VALUE = 1\n",
+        "install/executor_birth_host_provisioning.py": b"VALUE = 1\n",
+        "install/executor_birth_transition.py": b"VALUE = 1\n",
         "runtime/executor_birth.py": b"VALUE = 1\n",
+        "runtime/executor_birth_account_identity.py": b"VALUE = 1\n",
+        "runtime/executor_birth_canonical.py": b"VALUE = 1\n",
+        "runtime/executor_birth_crypto_framing.py": b"VALUE = 1\n",
         "runtime/executor_birth_distribution_manifest.py": b"VALUE = 1\n",
+        "runtime/executor_birth_host_layout.py": b"VALUE = 1\n",
+        "runtime/executor_birth_host_path_policy.py": b"VALUE = 1\n",
+        "runtime/executor_birth_host_provisioning_evidence.py": b"VALUE = 1\n",
+        "runtime/executor_birth_host_provisioning_journal.py": b"VALUE = 1\n",
+        "runtime/executor_birth_posix_metadata.py": b"VALUE = 1\n",
+        "runtime/executor_birth_preflight_attestation_store.py": b"VALUE = 1\n",
+        "runtime/executor_birth_preflight_store_authority.py": b"VALUE = 1\n",
         "runtime/executor_birth_ownership_preflight.py": b"VALUE = 1\n",
         "runtime/sign.py": b"VALUE = 1\n",
     }
+    for relative in preflight._REQUIRED_MANIFEST_PATHS:
+        contents.setdefault(relative, b"VALUE = 1\n")
     roles = {
         "deployment/admin/preflight.py": "preflight",
         "deployment/executor-birth-deployment-v1.json": "deployment_descriptor",
@@ -250,6 +281,88 @@ def _write_control_file(path: Path, content: bytes, mode: int = 0o644) -> None:
     path.chmod(mode)
 
 
+def _legacy_state_journal_records() -> tuple[bytes, ...]:
+    from executor_birth_canonical import encode_canonical_ascii_v1
+    from executor_birth_crypto_framing import framed_sha256_v1
+    from executor_birth_legacy_state_policy import (
+        LEGACY_STATE_PROTOCOL_V1,
+        legacy_state_policy_sha256_v1,
+    )
+
+    request_id = preflight._raw_sha256_v1(b"legacy-state-request")
+    inventory = preflight._raw_sha256_v1(b"legacy-state-inventory")
+    target = preflight._raw_sha256_v1(b"legacy-state-target")
+    records = []
+    previous = None
+    for sequence, (state, intent) in enumerate(preflight._LEGACY_STATE_FSM_V1):
+        value = {
+            "adoption_target_sha256": target if sequence >= 1 else None,
+            "authoring_sha256": target if sequence >= 2 else None,
+            "intent": intent,
+            "inventory_disposition": "exact-service" if sequence >= 1 else None,
+            "inventory_sha256": inventory if sequence >= 1 else None,
+            "policy_sha256": legacy_state_policy_sha256_v1(),
+            "previous_record_sha256": previous,
+            "protocol": LEGACY_STATE_PROTOCOL_V1,
+            "ready_sha256": target if sequence >= 3 else None,
+            "request_id": request_id, "schema_version": 1,
+            "sequence": sequence, "state": state,
+        }
+        value["record_sha256"] = framed_sha256_v1(
+            preflight.LEGACY_STATE_RECORD_DOMAIN_V1,
+            encode_canonical_ascii_v1(value),
+        )
+        encoded = encode_canonical_ascii_v1(value)
+        records.append(encoded)
+        previous = value["record_sha256"]
+    return tuple(records)
+
+
+def _install_legacy_state_journal(root: Path) -> str:
+    journal = root / "legacy-state-adoption-v1"
+    journal.mkdir(mode=0o700)
+    _write_control_file(journal / "journal.lock", b"", 0o600)
+    records = _legacy_state_journal_records()
+    for sequence, encoded in enumerate(records):
+        _write_control_file(journal / f"record-{sequence:03d}.json", encoded)
+    return json.loads(records[-1])["record_sha256"]
+
+
+def _repair_legacy_state_chain(
+    encoded: tuple[bytes, ...], sequence: int, mutate,
+) -> tuple[bytes, ...]:
+    values = [json.loads(item) for item in encoded]
+    mutate(values[sequence])
+    repaired = []
+    previous = None
+    for value in values:
+        value["previous_record_sha256"] = previous
+        value.pop("record_sha256", None)
+        value["record_sha256"] = preflight._framed_sha256_v1(
+            preflight.LEGACY_STATE_RECORD_DOMAIN_V1,
+            preflight._canonical_json(value),
+        )
+        repaired.append(preflight._canonical_json(value))
+        previous = value["record_sha256"]
+    return tuple(repaired)
+
+
+def _posix_acl_xattr(entries: tuple[tuple[int, int, int], ...]) -> bytes:
+    return struct.pack("<I", 2) + b"".join(
+        struct.pack("<HHI", tag, permissions, identifier)
+        for tag, permissions, identifier in entries
+    )
+
+
+def _extended_posix_acl(owner: int, group: int, other: int) -> bytes:
+    undefined = 0xFFFFFFFF
+    return _posix_acl_xattr((
+        (0x01, owner, undefined), (0x02, group, 424242),
+        (0x04, group, undefined), (0x10, group, undefined),
+        (0x20, other, undefined),
+    ))
+
+
 def _fixed_ownership_fixture(
     tmp_path: Path, *, required: bool, include_predecessor: bool | None = None,
 ) -> Path:
@@ -346,6 +459,9 @@ def _fixed_ownership_fixture(
     transactions = coordinator / "transactions-v2"
     claims.mkdir(mode=0o755)
     transactions.mkdir(mode=0o755)
+    legacy_state_record_sha256 = (
+        _install_legacy_state_journal(root) if required else None
+    )
 
     transaction_id = digest("1")
     if required:
@@ -485,6 +601,7 @@ def _fixed_ownership_fixture(
                     proof,
                     context_transition_id=transition.transition_id,
                 ),
+                legacy_state_record_sha256=legacy_state_record_sha256,
                 current_proof=proof if sequence >= 1 else None,
                 maintenance_before_hash=(
                     maintenance_hash if sequence >= 1 else None
@@ -600,6 +717,7 @@ def _authenticated_fixed_ownership_fixture(
     root = _fixed_ownership_fixture(
         tmp_path, required=False, include_predecessor=False,
     )
+    legacy_state_record_sha256 = _install_legacy_state_journal(root)
     authority = root / "authorities-v1"
     private = {
         kind: Ed25519PrivateKey.generate()
@@ -663,10 +781,12 @@ def _authenticated_fixed_ownership_fixture(
     maintenance = canonical_maintenance_proof(
         source="inactive_http_and_inactive_sidecar",
         units=tuple({
-            "scope": scope, "unit": unit, "load_state": "loaded",
+            "scope": scope, "unit": unit,
+            "load_state": ("loaded", "masked", "not-found")[index % 3],
             "active_state": "inactive", "main_pid": 0,
-        } for scope, unit in MAINTENANCE_TARGETS_V1),
+        } for index, (scope, unit) in enumerate(MAINTENANCE_TARGETS_V1)),
     )
+    assert preflight._QUIESCENT_LOAD_STATES_V1 == QUIESCENT_LOAD_STATES_V1
     maintenance_hash = maintenance_evidence_hash(maintenance)
     previous_cutover_id = None
     previous_head_id = None
@@ -896,6 +1016,7 @@ def _authenticated_fixed_ownership_fixture(
                     proof,
                     context_transition_id=transition.transition_id,
                 ),
+                legacy_state_record_sha256=legacy_state_record_sha256,
                 current_proof=proof if record_sequence >= 1 else None,
                 maintenance_before_hash=(
                     maintenance_hash if record_sequence >= 1 else None
@@ -1062,11 +1183,13 @@ def test_fixed_ownership_capture_accepts_two_structural_regimes(
         assert candidate.required_head is not None
         assert len(candidate.builds) == len(candidate.cutovers) == len(candidate.heads) == 1
         assert len(candidate.claims) == len(candidate.transactions) == 1
+        assert len(candidate.legacy_state_adoption_records) == 4
         assert candidate.transactions[0].decoded_prefix is not None
         assert candidate.transactions[0].decoded_prefix.records[-1].sequence == 5
     else:
         assert candidate.anchor is candidate.required_head is None
         assert not candidate.builds and not candidate.claims
+        assert not candidate.legacy_state_adoption_records
         assert (candidate.predecessor is not None) is has_predecessor
 
 
@@ -1082,7 +1205,6 @@ def test_fixed_ownership_authentication_accepts_empty_initial_state(
 
     result = preflight._authenticate_fixed_ownership_snapshot_for_test_v1(
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
     assert type(result) is preflight._AuthenticatedFixedOwnershipSnapshotForTestV1
@@ -1107,7 +1229,6 @@ def test_fixed_ownership_authentication_accepts_coherent_durable_graphs(
 
     result = preflight._authenticate_fixed_ownership_snapshot_for_test_v1(
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
     snapshot = result.snapshot
@@ -1136,7 +1257,6 @@ def test_fixed_ownership_authentication_requires_bound_context_transition(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1152,7 +1272,6 @@ def test_fixed_ownership_authentication_requires_record_006_attestation(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1190,7 +1309,6 @@ def test_fixed_ownership_authentication_binds_record_006_attestation(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1207,7 +1325,6 @@ def test_fixed_ownership_authentication_accepts_pre_chain_recovery_prefixes(
 
     result = preflight._authenticate_fixed_ownership_snapshot_for_test_v1(
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
     assert result.snapshot.required_head is None
@@ -1230,7 +1347,6 @@ def test_fixed_ownership_authentication_accepts_required_head_cas_boundary(
 
     result = preflight._authenticate_fixed_ownership_snapshot_for_test_v1(
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
     assert result.snapshot.required_head is not None
@@ -1256,7 +1372,6 @@ def test_fixed_ownership_authentication_accepts_bootstrap_chain_frontiers(
 
     result = preflight._authenticate_fixed_ownership_snapshot_for_test_v1(
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
     assert result.snapshot.anchor is not None
@@ -1284,7 +1399,6 @@ def test_fixed_ownership_authentication_accepts_build_verified_before_archives(
 
     result = preflight._authenticate_fixed_ownership_snapshot_for_test_v1(
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
     assert result.snapshot.required_head is not None
@@ -1304,7 +1418,6 @@ def test_fixed_ownership_authentication_rejects_missing_predecessor_at_receipts(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1321,7 +1434,6 @@ def test_fixed_ownership_authentication_rejects_orphan_predecessor(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1379,7 +1491,6 @@ def test_fixed_ownership_authentication_rejects_altered_signatures(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1408,7 +1519,6 @@ def test_fixed_ownership_authentication_rejects_required_head_rollback(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1451,7 +1561,6 @@ def test_fixed_ownership_authentication_rejects_claim_transaction_mismatch(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1483,7 +1592,6 @@ def test_fixed_ownership_authentication_rejects_predecessor_mismatch(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1503,7 +1611,6 @@ def test_fixed_ownership_authentication_rejects_successor_chain_mutants(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1559,7 +1666,6 @@ def test_fixed_ownership_authentication_rejects_isolated_orphan_archives(
     failure = _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
     assert failure.detail == f"orphan {orphan_kind} archive"
 
@@ -1588,7 +1694,6 @@ def test_fixed_ownership_authentication_rejects_artifact_binding_mutants(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1698,7 +1803,6 @@ def test_fixed_ownership_authentication_accepts_bound_legacy_disposition(
 
     result = preflight._authenticate_fixed_ownership_snapshot_for_test_v1(
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
     assert result.snapshot.legacy_prefix is not None
@@ -1726,7 +1830,6 @@ def test_fixed_ownership_authentication_accepts_bound_legacy_disposition(
     _recovery(
         preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
         root, openssl_executable=Path("/usr/bin/openssl"),
-        temporary_root=temporary,
     )
 
 
@@ -1807,6 +1910,145 @@ def test_fixed_ownership_capture_rejects_unsafe_metadata_and_inventory(
     _recovery(
         preflight._capture_fixed_ownership_state_for_test_v1,
         root, between_for_test=between,
+    )
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize(
+    "mutation", ["missing", "pending", "extra", "rebind", "record-rebind"],
+)
+def test_fixed_ownership_capture_requires_terminal_legacy_state_inventory(
+    tmp_path: Path, mutation: str,
+) -> None:
+    root = _fixed_ownership_fixture(tmp_path, required=True)
+    journal = root / "legacy-state-adoption-v1"
+    between = None
+    if mutation == "missing":
+        for child in journal.iterdir():
+            child.unlink()
+        journal.rmdir()
+    elif mutation == "pending":
+        _write_control_file(journal / ".record-003.pending", b"partial")
+    elif mutation == "extra":
+        _write_control_file(journal / "unexpected", b"")
+    elif mutation == "rebind":
+        replaced = root / "legacy-state-adoption-replaced"
+
+        def rebind() -> None:
+            journal.rename(replaced)
+            journal.mkdir(mode=0o700)
+
+        between = rebind
+    else:
+        record = journal / "record-003.json"
+
+        def record_rebind() -> None:
+            content = record.read_bytes()
+            record.unlink()
+            _write_control_file(record, content)
+
+        between = record_rebind
+    _recovery(
+        preflight._capture_fixed_ownership_state_for_test_v1,
+        root, between_for_test=between,
+    )
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("acl_kind", ["access", "default"])
+def test_fixed_ownership_capture_rejects_legacy_state_posix_acl(
+    tmp_path: Path, acl_kind: str,
+) -> None:
+    root = _fixed_ownership_fixture(tmp_path, required=True)
+    journal = root / "legacy-state-adoption-v1"
+    target = journal / "record-003.json" if acl_kind == "access" else journal
+    name = "system.posix_acl_access" if acl_kind == "access" else (
+        "system.posix_acl_default"
+    )
+    acl = _extended_posix_acl(6, 4, 4) if acl_kind == "access" else (
+        _extended_posix_acl(7, 0, 0)
+    )
+    try:
+        os.setxattr(target, name, acl, follow_symlinks=False)
+    except OSError as exc:
+        unsupported = {
+            errno.EACCES, errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP,
+            errno.EPERM,
+        }
+        if exc.errno in unsupported:
+            pytest.skip(f"POSIX ACL xattrs unavailable: {exc}")
+        raise
+    _recovery(
+        preflight._capture_fixed_ownership_state_for_test_v1, root,
+    )
+
+
+@pytest.mark.parametrize("acl_name", preflight._CONTROL_ACL_NAMES_V1)
+def test_control_acl_presence_is_rejected_without_filesystem_acl_support(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, acl_name: str,
+) -> None:
+    target = tmp_path / "control"
+    target.write_bytes(b"")
+    descriptor = os.open(target, os.O_RDONLY)
+    identity = preflight._metadata_identity_v1(os.fstat(descriptor))
+
+    def getxattr(_descriptor, name):
+        if name == acl_name:
+            return b"acl"
+        raise OSError(errno.ENODATA, "absent")
+
+    monkeypatch.setattr(preflight.os, "getxattr", getxattr)
+    try:
+        _recovery(
+            preflight._require_no_control_acl_v1,
+            descriptor, "legacy-state-adoption-v1", identity,
+        )
+    finally:
+        os.close(descriptor)
+
+
+def test_control_acl_observation_error_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "control"
+    target.write_bytes(b"")
+    descriptor = os.open(target, os.O_RDONLY)
+    identity = preflight._metadata_identity_v1(os.fstat(descriptor))
+    monkeypatch.setattr(
+        preflight.os, "getxattr",
+        lambda *_args: (_ for _ in ()).throw(OSError(errno.EIO, "injected")),
+    )
+    try:
+        _recovery(
+            preflight._require_no_control_acl_v1,
+            descriptor, "legacy-state-adoption-v1", identity,
+        )
+    finally:
+        os.close(descriptor)
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("mutation", ["tamper", "mismatch"])
+def test_fixed_ownership_authentication_binds_terminal_legacy_state_record(
+    tmp_path: Path, mutation: str,
+) -> None:
+    root, _temporary = _authenticated_fixed_ownership_fixture(tmp_path)
+    if mutation == "tamper":
+        record = root / "legacy-state-adoption-v1/record-003.json"
+        value = json.loads(record.read_bytes())
+        value["ready_sha256"] = preflight._raw_sha256_v1(b"tampered")
+        _write_control_file(record, preflight._canonical_json(value))
+    else:
+        replacement = preflight._raw_sha256_v1(b"wrong-legacy-terminal")
+        _rewrite_v2_transactions(
+            root,
+            lambda value: value.__setitem__(
+                "legacy_state_record_sha256", replacement,
+            ),
+        )
+    _recovery(
+        preflight._authenticate_fixed_ownership_snapshot_for_test_v1,
+        root, openssl_executable=Path("/usr/bin/openssl"),
     )
 
 
@@ -2033,6 +2275,121 @@ def test_autonomous_successor_claim_codec_matches_runtime_and_rejects_mutants() 
         )
 
 
+def _standalone_legacy_state_projection(record):
+    return preflight._DecodedLegacyStateRecordV1(
+        record.sequence, record.state.value,
+        None if record.intent is None else record.intent.value,
+        record.previous_record_sha256, record.request_id,
+        record.policy_sha256, record.inventory_sha256,
+        (
+            None if record.inventory_disposition is None
+            else record.inventory_disposition.value
+        ),
+        record.adoption_target_sha256, record.authoring_sha256,
+        record.ready_sha256, record.record_sha256,
+    )
+
+
+def _assert_legacy_state_decoders_reject(encoded: tuple[bytes, ...]) -> None:
+    from executor_birth_legacy_state_journal import (
+        LegacyStateError, decode_legacy_state_chain_v1,
+    )
+
+    with pytest.raises(LegacyStateError):
+        decode_legacy_state_chain_v1(encoded)
+    _invalid(preflight._decode_legacy_state_chain_v1, encoded)
+
+
+def test_autonomous_legacy_state_decoder_matches_runtime() -> None:
+    from executor_birth_legacy_state_journal import decode_legacy_state_chain_v1
+
+    encoded = _legacy_state_journal_records()
+    runtime_records = decode_legacy_state_chain_v1(encoded)
+    standalone_records = preflight._decode_legacy_state_chain_v1(encoded)
+    for runtime_record, standalone_record in zip(
+        runtime_records, standalone_records,
+    ):
+        assert standalone_record == _standalone_legacy_state_projection(
+            runtime_record,
+        )
+
+    value = json.loads(encoded[-1])
+    value["record_sha256"] = preflight._raw_sha256_v1(b"wrong-record")
+    mutant = (*encoded[:-1], preflight._canonical_json(value))
+    _assert_legacy_state_decoders_reject(mutant)
+
+    for field, replacement in (
+        ("inventory_disposition", []),
+        ("sequence", True),
+        ("state", "INVENTORIED"),
+    ):
+        malformed = json.loads(encoded[0])
+        malformed[field] = replacement
+        malformed_raw = (
+            preflight._canonical_json(malformed), *encoded[1:],
+        )
+        _assert_legacy_state_decoders_reject(malformed_raw)
+
+
+@pytest.mark.parametrize("mutation", ["request", "inventory", "adoption"])
+def test_legacy_state_decoders_reject_rehashed_relinked_semantic_drift(
+    mutation: str,
+) -> None:
+    digest = lambda label: preflight._raw_sha256_v1(label.encode("ascii"))
+    if mutation == "request":
+        sequence = 2
+        change = lambda value: value.__setitem__("request_id", digest("other"))
+    elif mutation == "inventory":
+        sequence = 2
+        change = lambda value: value.__setitem__(
+            "inventory_sha256", digest("other-inventory"),
+        )
+    else:
+        sequence = 3
+
+        def change(value) -> None:
+            replacement = digest("other-adoption")
+            for field in (
+                "adoption_target_sha256", "authoring_sha256", "ready_sha256",
+            ):
+                value[field] = replacement
+
+    repaired = _repair_legacy_state_chain(
+        _legacy_state_journal_records(), sequence, change,
+    )
+    _assert_legacy_state_decoders_reject(repaired)
+
+
+def test_control_descriptor_cleanup_attempts_all_and_preserves_active_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_close = os.close
+    attempts = []
+
+    def failing_close(descriptor: int) -> None:
+        attempts.append(descriptor)
+        real_close(descriptor)
+        raise OSError(errno.EIO, "injected close failure")
+
+    first = tuple(os.open(tmp_path, os.O_RDONLY) for _ in range(3))
+    monkeypatch.setattr(preflight.os, "close", failing_close)
+    failure = _recovery(
+        preflight._close_control_descriptors_v1,
+        first, active_error=None,
+    )
+    assert attempts == list(reversed(first))
+    assert isinstance(failure.__cause__, OSError)
+
+    attempts.clear()
+    second = tuple(os.open(tmp_path, os.O_RDONLY) for _ in range(3))
+    primary = ValueError("primary failure")
+    preflight._close_control_descriptors_v1(
+        second, active_error=primary,
+    )
+    assert attempts == list(reversed(second))
+    assert primary.__notes__ == ["control descriptor cleanup failed"]
+
+
 def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None:
     from executor_birth_cutover import CurrentReceiptProof
     from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
@@ -2114,6 +2471,7 @@ def test_autonomous_coordinator_prefix_000_through_005_matches_runtime() -> None
             **_epoch_record_fields_v2(
                 proof, context_transition_id=digest("9"),
             ),
+            legacy_state_record_sha256=digest("0"),
             current_proof=proof if sequence >= 1 else None,
             maintenance_before_hash=(maintenance_hash if sequence >= 1 else None),
             maintenance_after_hash=(maintenance_hash if sequence >= 1 else None),
@@ -2882,6 +3240,37 @@ def test_direct_reviewed_boundary_api_is_not_misclassified_as_dynamic(
         assert fact.closed_dynamic_boundary is False
 
 
+def test_boundary_census_reuses_only_the_exact_latest_source_bytes(monkeypatch):
+    scan = preflight._scan_boundary_source_v1
+    calls = []
+
+    def observed_scan(path, content):
+        calls.append((path, content))
+        return scan(path, content)
+
+    monkeypatch.setattr(preflight, "_scan_boundary_source_v1", observed_scan)
+    first = {"runtime/census_reuse_probe.py": b"import runtime.sign as s\ns.sign_executor(None)\n"}
+    second = {"runtime/census_reuse_probe.py": b"VALUE = 2\n"}
+    facts = preflight._discover_boundary_from_verified_v1(first)
+    assert any("sign" in fact.capabilities for fact in facts)
+    assert preflight._discover_boundary_from_verified_v1(dict(first)) == facts
+    assert len(calls) == 1
+    assert preflight._discover_boundary_from_verified_v1(second) == ()
+    assert len(calls) == 2
+    assert preflight._discover_boundary_from_verified_v1(first) == facts
+    assert len(calls) == 3  # One candidate retained, not an unbounded history.
+    renamed = {"runtime/census_renamed_probe.py": next(iter(first.values()))}
+    assert all(fact.path in renamed for fact in preflight._discover_boundary_from_verified_v1(renamed))
+    assert len(calls) == 4
+
+
+def test_boundary_census_cache_never_bypasses_input_budget(monkeypatch):
+    content = {"runtime/census_budget_probe.py": b"VALUE = 1\n"}
+    preflight._discover_boundary_from_verified_v1(content)
+    monkeypatch.setattr(preflight, "MAX_BOUNDARY_TOTAL_SOURCE_BYTES_V1", 1)
+    _invalid(preflight._discover_boundary_from_verified_v1, content)
+
+
 def test_autonomous_manifest_source_grammar_and_budget_are_closed(
     tmp_path: Path,
 ) -> None:
@@ -3009,11 +3398,16 @@ def test_operational_entrypoint_root_denies_missing_without_mutation(
     assert tuple(tmp_path.iterdir()) == before
 
 
-def test_operational_dispatch_keeps_check_all_outside_shared_gate(
+def test_operational_dispatch_keeps_check_all_read_only_under_shared_gate(
     monkeypatch,
 ) -> None:
     events = []
-    operational = object()
+    selected = object()
+    observation = object()
+    operational = SimpleNamespace(
+        selected=selected,
+        observation=SimpleNamespace(observation=observation),
+    )
     entry = SimpleNamespace(class_name="gated_service")
     plan = object()
 
@@ -3036,8 +3430,8 @@ def test_operational_dispatch_keeps_check_all_outside_shared_gate(
         ) or entry,
     )
     monkeypatch.setattr(
-        preflight, "_publish_preflight_attestation_v1",
-        lambda authority: events.append(("publish", authority)),
+        preflight, "_preflight_attestation_bytes_v1",
+        lambda left, right: events.append(("encode", left, right)) or b"encoded",
     )
     monkeypatch.setattr(
         preflight, "_make_launch_plan_v1",
@@ -3055,7 +3449,9 @@ def test_operational_dispatch_keeps_check_all_outside_shared_gate(
     preflight._run_operational_command_v1(
         preflight.CliCommandV1("check-all", None),
     )
-    assert events == ["attest", ("publish", operational)]
+    assert events == [
+        "gate", "attest", ("encode", selected, observation), ("release", 41),
+    ]
 
     events.clear()
     preflight._run_operational_command_v1(
@@ -3218,7 +3614,7 @@ def test_distribution_registry_manifest_openssl_and_tree_are_one_binding(
     release, encoded, signature, registry, temporary = _distribution_fixture(tmp_path)
     record = preflight._authenticate_distribution_for_test_v1(
         encoded, signature, registry,
-        openssl_executable=Path("/usr/bin/openssl"), temporary_root=temporary,
+        openssl_executable=Path("/usr/bin/openssl"),
     )
     assert list(temporary.iterdir()) == []
     boundary_calls = []
@@ -3281,21 +3677,21 @@ def test_distribution_registry_manifest_openssl_and_tree_are_one_binding(
         with monkeypatch.context() as patcher:
             patcher.setattr(
                 preflight, "_run_openssl_bounded_v1",
-                lambda _argv: (
+                    lambda _argv, **_kwargs: (
                     completed.returncode, completed.stdout, completed.stderr,
                 ),
             )
             _invalid(
                 preflight._authenticate_distribution_for_test_v1,
                 encoded, signature, registry,
-                openssl_executable=Path("/usr/bin/openssl"), temporary_root=temporary,
+                openssl_executable=Path("/usr/bin/openssl"),
             )
         assert list(temporary.iterdir()) == []
 
     _invalid(
         preflight._authenticate_distribution_for_test_v1,
         encoded, bytes([signature[0] ^ 1]) + signature[1:], registry,
-        openssl_executable=Path("/usr/bin/openssl"), temporary_root=temporary,
+        openssl_executable=Path("/usr/bin/openssl"),
     )
     assert list(temporary.iterdir()) == []
     target = release / "runtime" / "executor_birth.py"
@@ -3309,7 +3705,7 @@ def test_exact_tree_rejects_extra_empty_link_hardlink_special_and_bytecode(tmp_p
     release, encoded, signature, registry, temporary = _distribution_fixture(tmp_path)
     record = preflight._authenticate_distribution_for_test_v1(
         encoded, signature, registry,
-        openssl_executable=Path("/usr/bin/openssl"), temporary_root=temporary,
+        openssl_executable=Path("/usr/bin/openssl"),
     )
     target = release / "runtime" / "executor_birth.py"
 
@@ -3354,13 +3750,43 @@ def test_exact_tree_rejects_extra_empty_link_hardlink_special_and_bytecode(tmp_p
 
 
 @LINUX_ONLY
+def test_cached_census_does_not_cache_live_distribution_metadata(tmp_path, monkeypatch):
+    release, encoded, signature, registry, _temporary = _distribution_fixture(tmp_path)
+    record = preflight._authenticate_distribution_for_test_v1(
+        encoded, signature, registry, openssl_executable=Path("/usr/bin/openssl"),
+    )
+    preflight._scan_boundary_sources_v1.cache_clear()
+    # The signed fixture has a dummy policy; exercise the real census inside
+    # the full live-file verifier without claiming a production policy proof.
+    monkeypatch.setattr(
+        preflight, "_require_birth_closed_sources_v1",
+        lambda content, _inventory: preflight._discover_boundary_from_verified_v1(content),
+    )
+    scan = preflight._scan_boundary_source_v1
+    calls = []
+
+    def observed_scan(path, content):
+        calls.append(path)
+        return scan(path, content)
+
+    monkeypatch.setattr(preflight, "_scan_boundary_source_v1", observed_scan)
+    preflight._verify_installed_distribution_for_test_v1(record, release)
+    initial_count = len(calls)
+    assert initial_count > 0
+    preflight._verify_installed_distribution_for_test_v1(record, release)
+    assert len(calls) == initial_count
+    (release / "runtime" / "executor_birth.py").chmod(0o622)
+    _invalid(preflight._verify_installed_distribution_for_test_v1, record, release)
+
+
+@LINUX_ONLY
 def test_exact_tree_detects_live_name_substitution_during_bytes(tmp_path, monkeypatch) -> None:
     fixture_root = tmp_path / "substitution"
     fixture_root.mkdir(mode=0o700)
     release, encoded, signature, registry, temporary = _distribution_fixture(fixture_root)
     record = preflight._authenticate_distribution_for_test_v1(
         encoded, signature, registry,
-        openssl_executable=Path("/usr/bin/openssl"), temporary_root=temporary,
+        openssl_executable=Path("/usr/bin/openssl"),
     )
     target = release / "runtime" / "executor_birth.py"
     original_content = target.read_bytes()
@@ -3391,7 +3817,7 @@ def test_exact_tree_detects_live_name_substitution_during_bytes(tmp_path, monkey
     release, encoded, signature, registry, temporary = _distribution_fixture(semantic_root)
     record = preflight._authenticate_distribution_for_test_v1(
         encoded, signature, registry,
-        openssl_executable=Path("/usr/bin/openssl"), temporary_root=temporary,
+        openssl_executable=Path("/usr/bin/openssl"),
     )
     target = release / "runtime" / "executor_birth.py"
     original_content = target.read_bytes()
@@ -3504,7 +3930,9 @@ def test_real_boundary_policy_snapshot_is_exact_and_entry_schema_is_closed() -> 
     raw = _compiled_boundary_inventory_fixture()
     encoded = preflight._canonical_json(raw)
     parsed = preflight._validate_boundary_inventory_v1(encoded)
-    assert len(parsed["birth_closed"]["coordinator_store_owners"]) == 126
+    assert parsed["birth_closed"]["coordinator_store_owners"] == sorted(
+        preflight.BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
+    )
     assert len(parsed["birth_closed"]["exceptions"]) == 16
     for mutate in ("owners", "exceptions", "entry"):
         mutant = json.loads(encoded)
@@ -3571,7 +3999,7 @@ def test_productive_consumption_reauthenticates_before_tree(monkeypatch, tmp_pat
     _release, encoded, signature, registry, temporary = _distribution_fixture(tmp_path)
     test_record = preflight._authenticate_distribution_for_test_v1(
         encoded, signature, registry,
-        openssl_executable=Path("/usr/bin/openssl"), temporary_root=temporary,
+        openssl_executable=Path("/usr/bin/openssl"),
     )
     product_record = preflight.AuthenticatedDistributionV1(
         test_record.facts, test_record.files, test_record.encoded,
@@ -3696,33 +4124,30 @@ def test_openssl_teardown_timeout_closes_streams_and_requires_recovery() -> None
 
 @LINUX_ONLY
 @pytest.mark.parametrize("valid_openssl_result", (False, True))
-def test_openssl_cleanup_attempts_all_resources_and_residue_blocks_retry(
-    monkeypatch, tmp_path, valid_openssl_result,
+def test_openssl_cleanup_attempts_all_memfds(
+    monkeypatch, valid_openssl_result,
 ) -> None:
-    temporary = tmp_path / "openssl-temporary"
-    temporary.mkdir(mode=0o700)
-    original_unlink = Path.unlink
-    original_rmdir = Path.rmdir
+    descriptors = (101, 102, 103)
     attempts = []
-    failed_once = False
+    failed = False
 
-    def fail_first_unlink(path, *args, **kwargs):
-        nonlocal failed_once
-        attempts.append(("unlink", path.name))
-        if path.name == "public-key.pem" and not failed_once:
-            failed_once = True
-            raise OSError("injected unlink failure")
-        return original_unlink(path, *args, **kwargs)
+    def close_with_one_failure(descriptor):
+        nonlocal failed
+        attempts.append(descriptor)
+        if not failed:
+            failed = True
+            raise OSError("injected close failure")
 
-    def record_rmdir(path, *args, **kwargs):
-        attempts.append(("rmdir", path.name))
-        return original_rmdir(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "unlink", fail_first_unlink)
-    monkeypatch.setattr(Path, "rmdir", record_rmdir)
+    monkeypatch.setattr(
+        preflight, "_openssl_verify_memfds_v1", lambda *_args: descriptors,
+    )
+    monkeypatch.setattr(preflight, "_recheck_memfds_v1", lambda value: None)
+    monkeypatch.setattr(
+        preflight.os, "close", close_with_one_failure,
+    )
     monkeypatch.setattr(
         preflight, "_run_openssl_bounded_v1",
-        lambda _argv: (
+        lambda _argv, **kwargs: (
             (
                 0,
                 b"Signature Verified Successfully\n",
@@ -3735,37 +4160,10 @@ def test_openssl_cleanup_attempts_all_resources_and_residue_blocks_retry(
     failure = _recovery(
         preflight._verify_ed25519_openssl_core_v1,
         b"k" * 32, b"payload", b"s" * 64,
-        openssl_executable=Path("/usr/bin/openssl"), temporary_root=temporary,
-        temporary_uid=os.getuid(), temporary_gid=os.getgid(),
-        chain_stop=temporary,
+        openssl_executable=Path("/usr/bin/openssl"),
     )
-    if valid_openssl_result:
-        assert failure.__cause__ is None
-    else:
-        assert isinstance(failure.__cause__, preflight.PreflightError)
-        assert failure.__cause__.code == preflight.CODE_INVALID
-    assert {item for item in attempts if item[0] == "unlink"} == {
-        ("unlink", "public-key.pem"),
-        ("unlink", "payload.bin"),
-        ("unlink", "signature.bin"),
-    }
-    assert any(operation == "rmdir" for operation, _name in attempts)
-
-    with monkeypatch.context() as patcher:
-        patcher.setattr(
-            preflight, "_run_openssl_bounded_v1",
-            lambda _argv: (_ for _ in ()).throw(
-                AssertionError("OpenSSL reached before residue denial")
-            ),
-        )
-        _recovery(
-            preflight._verify_ed25519_openssl_core_v1,
-            b"k" * 32, b"payload", b"s" * 64,
-            openssl_executable=Path("/usr/bin/openssl"), temporary_root=temporary,
-            temporary_uid=os.getuid(), temporary_gid=os.getgid(),
-            chain_stop=temporary,
-        )
-
+    assert failure.code == preflight.CODE_RECOVERY
+    assert attempts == [103, 102, 101]
 
 def test_product_distribution_entries_deny_non_linux_before_io(monkeypatch) -> None:
     monkeypatch.setattr(preflight.sys, "platform", "win32")
@@ -4021,6 +4419,38 @@ def test_exec_pair_accepts_completed_process_and_rejects_mixed_state() -> None:
         ),
         extended=False,
     )
+
+
+@pytest.mark.parametrize("code,status", [
+    ("killed", "15/TERM"), ("killed", "9/KILL"),
+    ("dumped", "11/SEGV"), ("killed", "35/RTMIN+1"),
+    ("killed", "32/32"),
+])
+def test_exec_pair_accepts_systemd_signal_exit(code, status):
+    values = tuple(
+        _exec_value(extended=extended, flags="" if extended else "no").replace(
+            "code=(null) ; status=0/0", f"code={code} ; status={status}",
+        )
+        for extended in (False, True)
+    )
+    assert preflight.validate_exec_property_pair_v1(
+        (values[0],), (values[1],), (),
+    )[0] == {"path": "/bin/x", "argv": ("/bin/x", "arg"), "flags": ()}
+    _invalid(preflight.validate_exec_property_pair_v1,
+             (values[0],), (values[1].replace(f"status={status}", "status=1/1"),), ())
+
+
+@pytest.mark.parametrize("code,status", [
+    ("exited", "0/0"), ("exited", "15/TERM"), ("(null)", "15/TERM"),
+    ("killed", "15"), ("dumped", "11"), ("killed", "15/"),
+    ("killed", "15/TERM/extra"), ("killed", "15/term"),
+    ("killed", "35/RTMIN++1"), ("dumped", "11/SEGV;injected"),
+])
+def test_exec_parser_rejects_malformed_signal_exit(code, status):
+    value = _exec_value(extended=False, flags="no").replace(
+        "code=(null) ; status=0/0", f"code={code} ; status={status}",
+    )
+    _invalid(preflight.parse_systemd_exec_v1, value, extended=False)
 
 
 def test_timer_parser_matches_real_repeated_systemd_255_shape() -> None:

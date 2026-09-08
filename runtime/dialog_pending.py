@@ -326,7 +326,7 @@ def find_by_dialog_id(dialog_id: str, *,
 
     Il `dialog_id` (uuid) e' globalmente unico → la chiave-sender NON serve per
     identificarlo. Fallback robusto quando il sender al tap differisce da quello
-    di salvataggio (query SCHEDULATE: pending sotto «telegram:roberto», il tap
+    di salvataggio (query SCHEDULATE: pending sotto «telegram:example», il tap
     risolve il chat_id a «host») e i bridge a TTL (cap_pending 10 min) sono
     scaduti mentre il dialogo (timeout_s) e' ancora valido. Salta i
     completati/cancellati/scaduti. §7.9 deterministico."""

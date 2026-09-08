@@ -542,6 +542,95 @@ rendere operativi byte modificati. Gli aggiornamenti del manutentore usano
 il flag di compatibilità consegna il candidato a Executor Birth e non seleziona
 il precedente pubblicatore diretto.</p>
 
+<p>Durante la transizione, l'inventario e il primo caricamento del catalogo
+usano lo stesso insieme di chiavi pubbliche autore gi&agrave; autenticato da
+Birth. In esercizio, il lettore usa le autorit&agrave; del contesto Birth
+installato; un processo amministrativo separato le verifica dalla catena
+corrente. Nel deposito chiuso, chiavi mancanti o un contesto non valido
+interrompono la lettura: la vecchia directory delle chiavi non viene
+consultata come ripiego.</p>
+
+<p>Il servizio legge la catena firmata senza aprire il file privato con cui
+root coordina le scritture; ne verifica comunque i metadati esatti.
+Il controllo amministrativo verifica anche il byte marcatore. I controlli
+d'avvio possono riusare l'analisi pura di un solo insieme identico di percorsi
+e byte nello stesso processo, mai le verifiche dei file, delle firme o dei
+servizi vivi. Anche gli import dichiarati possono riusare l'analisi sintattica;
+la loro risoluzione sul filesystem viene sempre ripetuta. Lo stesso riuso
+limitato si applica al lettore dei servizi: le osservazioni prima e dopo
+la lettura restano indipendenti e vive, senza ripetere l'analisi sintattica
+degli stessi byte. Il riuso rispetta anche gli esatti limiti di analisi.
+Le analisi delle
+operazioni su file e dei comandi esterni si applicano soltanto alle chiamate
+pertinenti, senza cambiare la classificazione delle autorità.
+Gli arresti per segnale sono letti nel formato nativo di systemd,
+senza modificare il comando firmato o considerarli un successo.</p>
+
+<p>Ogni modulo Python dei servizi viene risolto dalla directory di lavoro
+indicata nel catalogo firmato. Il servizio delle attivit&agrave; lunghe usa
+la sottocartella <code>runtime</code>; non dipende dai percorsi ereditati
+dalla sessione di sviluppo. Una prova controlla questo vincolo per tutti
+gli avvii Python dichiarati.</p>
+
+<p>Prima di rendere obbligatoria la nuova distribuzione, la transizione lega
+i byte autenticati del candidato alle ricevute durevoli. Non richiede in anticipo
+l'archivio che viene pubblicato soltanto dopo il certificato, ma rifiuta un
+archivio gi&agrave; presente e incoerente. Il catalogo delle ricevute dei contratti
+e quello dei servizi hanno identit&agrave; distinte: entrambi vengono controllati,
+senza usare l'uno come prova dell'altro o anticipare la pubblicazione.</p>
+
+<p>Il controllo della struttura dei servizi lega anche i percorsi scrivibili
+alla directory personale firmata dell'account. Cambiare questa directory non
+cambia la struttura ammessa: restano esatti i percorsi relativi per dati e stato.
+Percorsi aggiuntivi o diversi sono rifiutati, anche con impronte ricalcolate.</p>
+
+<p>Per le dipendenze di codice tra executor, il processo principale seleziona
+soltanto le chiavi pubbliche che hanno autenticato i contratti richiesti.
+Nella sandbox Linux queste chiavi sono esposte in un montaggio privato di
+sola lettura, separato dai percorsi di configurazione; senza dipendenze il
+montaggio resta vuoto. Il processo figlio non pu&ograve; aggiungere chiavi o
+sostituire il montaggio creando un nuovo ambiente di isolamento. Le scritture
+esplicitamente consentite e la directory temporanea restano disponibili.</p>
+
+<p>La distribuzione Linux include nell'ambiente Python gestito anche il driver
+Playwright e conserva i permessi di esecuzione dei programmi forniti dai pacchetti;
+i browser restano risorse installate separatamente. Dopo la transizione, la
+verifica di disponibilit&agrave; osserva le unit&agrave; e l'ambito indicati dal
+catalogo firmato corrente, senza modificare servizi o ampliare i comandi di
+controllo. Un catalogo non valido interrompe la verifica: non viene sostituito
+silenziosamente con la configurazione precedente.</p>
+
+<p>Il catalogo firmato avvia HTTP con <code>METNOS_ENGINE=v3</code>, senza
+ereditare aggiunte arbitrarie alle unit&agrave; (<code>.service.d</code>) o
+all'ambiente di avvio. Le impostazioni private restano nel file esistente
+<code>$METNOS_USER_CONFIG/runtime.toml</code>: <code>default_account</code> nella
+sezione <code>[mail]</code> &egrave; una stringa non vuota, con valore predefinito
+<code>metnos_system</code>; <code>nightly_enabled</code> in <code>[telos]</code>
+&egrave; un booleano, predefinito <code>false</code>.
+<code>METNOS_DEFAULT_MAIL_ACCOUNT</code> e <code>METNOS_TELOS_NIGHTLY</code>
+prevalgono sui rispettivi valori nel file; per Telos soltanto il valore esatto
+<code>1</code> nell'ambiente abilita l'attivit&agrave; notturna.</p>
+
+<p>HTTP risolve una sola volta il conto SMTP dopo la verifica Birth e prima
+dell'avvio dei processi di lavoro: gli executor ereditano il nome risolto,
+senza ricevere il file privato, mentre un conto esplicito nell'invocazione
+continua a prevalere. Un conto predefinito vuoto o di tipo errato e un'impostazione
+Telos non booleana nel file vengono rifiutati, senza scegliere silenziosamente
+un altro valore. Questa precedenza non autorizza modifiche alle unit&agrave;
+firmate n&eacute; inserisce valori personali nel catalogo pubblico.</p>
+
+<p>La configurazione dei servizi viene firmata prima dell'avvio dei timer. I
+collegamenti automatici di attivazione e ordinamento di un preciso timer firmato
+possono comparire al caricamento o all'avvio senza richiedere una nuova firma.
+Anche i valori equivalenti di un controllo di vitalit&agrave; non configurato e
+disattivato hanno una sola rappresentazione. Per un controllo configurato, il
+valore iniziale di systemd &egrave; ammesso solo se la stessa osservazione prova
+che il servizio &egrave; inattivo, senza processi principali o di controllo e
+mai avviato. Il valore firmato resta canonico; dopo l'avvio un controllo
+disabilitato o diverso viene rifiutato. Attivatori inattesi, nuove dipendenze
+e modifiche ai valori esplicitamente dichiarati restano soggetti alla verifica
+rigorosa.</p>
+
 <!-- ============================================================== -->
 <h1 id="cap6">6. Le quattro origini: a mano, generato, importato, di sistema</h1>
 

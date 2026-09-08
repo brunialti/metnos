@@ -41,7 +41,7 @@ SKILL_NAME = "google-workspace"
 ROME = ZoneInfo("Europe/Rome")
 
 # Alias calendar_id → identity Google. Lookup deterministico §7.9.
-# Bug live 15/5/2026: LLM emette `calendar_id=roberto` (nome utente Metnos),
+# Bug live 15/5/2026: LLM emette `calendar_id=primary` (nome utente Metnos),
 # Google API ritorna 404 perche' "roberto" non e' un valid Google calendar
 # ID. Pattern utili: `primary` (default), email completa, oppure alias
 # semantici tradotti qui.

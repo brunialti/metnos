@@ -12,6 +12,8 @@ import os
 import sys
 import threading
 
+from executor_birth_maintenance_units import QUIESCENT_LOAD_STATES_V1
+
 
 class ContractCutoverGuardError(RuntimeError):
     def __init__(self, code: str, detail: str = "") -> None:
@@ -21,7 +23,6 @@ class ContractCutoverGuardError(RuntimeError):
 
 
 _QUIESCENT_STATES = frozenset({"inactive", "failed"})
-_TRANSITION_LOAD_STATES_V1 = frozenset({"loaded", "masked"})
 _MAINTENANCE_SESSION_SEAL_V1 = object()
 _MAINTENANCE_SESSION_GUARD_V1 = threading.Lock()
 _ACTIVE_MAINTENANCE_SESSIONS_V1: dict[object, object] = {}
@@ -73,16 +74,16 @@ def _prove_stack_stopped_v1(reconciler, *, load_states: frozenset[str]) -> dict:
 
 
 def prove_stack_stopped(reconciler) -> dict:
-    """Prove the complete pre-transition unit catalog is loaded and idle."""
+    """Prove every unit is loaded, absent or retired, and remains idle."""
     return _prove_stack_stopped_v1(
-        reconciler, load_states=frozenset({"loaded"}),
+        reconciler, load_states=QUIESCENT_LOAD_STATES_V1,
     )
 
 
 def _prove_transition_stack_stopped_v1(reconciler) -> dict:
     """Accept only named quiescent load states while topology is replaced."""
     return _prove_stack_stopped_v1(
-        reconciler, load_states=_TRANSITION_LOAD_STATES_V1,
+        reconciler, load_states=QUIESCENT_LOAD_STATES_V1,
     )
 
 
@@ -180,7 +181,9 @@ def _maintenance_evidence_under_transition_v1(session: object) -> bytes:
 
 
 @contextmanager
-def _contract_cutover_guard_core_v1(reconciler):
+def _contract_cutover_guard_core_v1(
+    reconciler, *, catalog_trusted_owner: tuple[int, int] | None = None,
+):
     """Hold lifecycle exclusion for one already bound service observer."""
     if sys.platform != "linux":
         raise ContractCutoverGuardError(
@@ -193,7 +196,10 @@ def _contract_cutover_guard_core_v1(reconciler):
     # lifecycle/service exclusion second. This waits for an in-flight commit
     # to finish before services are stopped and prevents every later authoring
     # or publication write until the first store-only load has succeeded.
-    guard = catalog_reconcile_lock(wait_s=2)
+    guard_options = {"wait_s": 2}
+    if catalog_trusted_owner is not None:
+        guard_options["catalog_trusted_owner"] = catalog_trusted_owner
+    guard = catalog_reconcile_lock(**guard_options)
     try:
         guard.__enter__()
     except Exception as exc:
@@ -230,7 +236,10 @@ def contract_cutover_guard():
 
 
 @contextmanager
-def _contract_cutover_guard_for_service_user_v1(service_user: str):
+def _contract_cutover_guard_for_service_user_v1(
+    service_user: str,
+    *, catalog_trusted_owner: tuple[int, int] | None = None,
+):
     """Bind user-scope observations to the verified deployment account."""
     if (
         type(service_user) is not str or not service_user
@@ -248,25 +257,41 @@ def _contract_cutover_guard_for_service_user_v1(service_user: str):
     reconciler = StackReconciler(
         systemctl=systemctl, default_write_report=False,
     )
-    with _contract_cutover_guard_core_v1(reconciler) as boundary:
+    with _contract_cutover_guard_core_v1(
+        reconciler, catalog_trusted_owner=catalog_trusted_owner,
+    ) as boundary:
         yield boundary
 
 
-def _verify_store_only_catalog_locked() -> dict[str, int]:
+def _verify_store_only_catalog_locked(
+    *, catalog_trusted_owner: tuple[int, int] | None = None,
+    trusted_publics: tuple | None = None,
+) -> dict[str, int]:
     """Authenticate all bindings and perform the first cold loader pass."""
     from contract_store import ContractRetirement, current_contract
-    from loader import invalidate_catalog_cache, load_catalog
+    from loader import _load_catalog_for_cutover_audit_v1
     from manifest_inventory import ManifestStatus, inventory_manifests
-    from sign import list_trusted_publics
 
-    structural = inventory_manifests()
+    skill_enabled = None
+    if catalog_trusted_owner is not None:
+        from skill_registry import _skill_enabled_snapshot_for_owner_v1
+
+        skill_enabled = _skill_enabled_snapshot_for_owner_v1(
+            catalog_trusted_owner,
+        )
+    structural = inventory_manifests(skill_enabled=skill_enabled)
     if structural.problems:
         detail = "; ".join(
             f"{problem.code}:{problem.path}"
             for problem in structural.problems[:12]
         )
         raise ContractCutoverGuardError("store_inventory_invalid", detail)
-    trusted = tuple(list_trusted_publics())
+    if trusted_publics is None:
+        from sign import list_trusted_publics
+
+        trusted = tuple(list_trusted_publics())
+    else:
+        trusted = trusted_publics
     if not trusted:
         raise ContractCutoverGuardError("trusted_keys_missing")
     expected: dict[str, tuple[str, str]] = {}
@@ -287,8 +312,10 @@ def _verify_store_only_catalog_locked() -> dict[str, int]:
             ref.contract_id.storage_key,
             str(revision.generation_id),
         )
-    invalidate_catalog_cache()
-    catalog = load_catalog(verify=True)
+    catalog = _load_catalog_for_cutover_audit_v1(
+        catalog_trusted_owner=catalog_trusted_owner,
+        trusted_publics=trusted,
+    )
     fatal = [
         (path, reason)
         for path, reason in catalog.rejected

@@ -16,6 +16,7 @@ import stat
 import sys
 import unicodedata
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Mapping, NamedTuple
@@ -28,12 +29,11 @@ from executor_birth_ownership_preflight import (
     ClosedBuildIdentity, _BUILD_AUTHORITY_SEAL,
 )
 from contract_boundary_guard import (
-    BIRTH_CLOSED_COORDINATOR_STORE_OWNERS, BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_GUARD_VERSION,
-    BIRTH_CLOSED_OWNER, BIRTH_CLOSED_SCHEMA, BIRTH_CLOSED_SEALED_MODULES,
     BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     SCAN_ROOTS, SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
-    _bounded_ast_metrics, birth_closed_findings,
+    _bounded_ast_metrics, _boundary_ast_limits, birth_closed_findings,
+    birth_closed_inventory_value_v1,
     closed_python_source_review_sha256, discover,
 )
 
@@ -82,10 +82,52 @@ _REQUIRED_PATH_ROLES = MappingProxyType({
     "deployment/admin/preflight.py": "preflight",
     "deployment/executor-birth-deployment-v1.json": "deployment_descriptor",
     "deployment/executor-birth-service-catalog-v1.json": "service_catalog",
+    "install/executor_birth_host_capability.py": "runtime_code",
+    "install/executor_birth_append_journal_posix.py": "runtime_code",
+    "install/executor_birth_contract_convergence.py": "runtime_code",
+    "install/executor_birth_host_journal_posix.py": "runtime_code",
+    "install/executor_birth_host_posix.py": "runtime_code",
+    "install/executor_birth_host_provisioning.py": "runtime_code",
+    "install/executor_birth_legacy_state_adoption.py": "runtime_code",
+    "install/executor_birth_legacy_state_effect_posix.py": "runtime_code",
+    "install/executor_birth_legacy_state_inspection.py": "runtime_code",
+    "install/executor_birth_legacy_state_journal_posix.py": "runtime_code",
+    "install/executor_birth_legacy_state_posix.py": "runtime_code",
+    "install/executor_birth_posix_directory.py": "runtime_code",
+    "install/executor_birth_transition.py": "runtime_code",
     "runtime/contract_store.py": "runtime_code",
     "runtime/sign.py": "runtime_code",
+    "runtime/contract_boundary_analyzer_ast.py": "runtime_code",
+    "runtime/contract_boundary_analyzer_projection.py": "runtime_code",
+    "runtime/contract_boundary_analyzer_types.py": "runtime_code",
+    "runtime/contract_boundary_api_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_authority_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_exception_policy.py": "runtime_code",
+    "runtime/contract_boundary_birth_policy.py": "runtime_code",
     "runtime/contract_boundary_guard.py": "boundary_guard",
+    "runtime/contract_boundary_policy.py": "runtime_code",
+    "runtime/contract_boundary_policy_types.py": "runtime_code",
+    "runtime/contract_boundary_role_policy.py": "runtime_code",
+    "runtime/contract_boundary_syntax_policy.py": "runtime_code",
     "runtime/executor_birth.py": "runtime_code",
+    "runtime/executor_birth_account_identity.py": "runtime_code",
+    "runtime/executor_birth_authority_gate.py": "runtime_code",
+    "runtime/executor_birth_canonical.py": "runtime_code",
+    "runtime/executor_birth_crypto_framing.py": "runtime_code",
+    "runtime/executor_birth_host_layout.py": "runtime_code",
+    "runtime/executor_birth_host_chain_policy.py": "runtime_code",
+    "runtime/executor_birth_host_path_policy.py": "runtime_code",
+    "runtime/executor_birth_host_provisioning_evidence.py": "runtime_code",
+    "runtime/executor_birth_host_provisioning_journal.py": "runtime_code",
+    "runtime/executor_birth_legacy_state.py": "runtime_code",
+    "runtime/executor_birth_legacy_state_journal.py": "runtime_code",
+    "runtime/executor_birth_legacy_state_policy.py": "runtime_code",
+    "runtime/executor_birth_legacy_state_preflight_projection.py": "runtime_code",
+    "runtime/executor_birth_legacy_state_request.py": "runtime_code",
+    "runtime/executor_birth_legacy_state_wire.py": "runtime_code",
+    "runtime/executor_birth_posix_metadata.py": "runtime_code",
+    "runtime/executor_birth_preflight_attestation_store.py": "runtime_code",
+    "runtime/executor_birth_preflight_store_authority.py": "runtime_code",
     "runtime/executor_birth_ownership_preflight.py": "preflight",
     "runtime/executor_birth_distribution_manifest.py": "preflight",
     "runtime/__version__.py": "product_version",
@@ -1412,17 +1454,7 @@ def _canonical_inventory(content: bytes) -> dict[str, object]:
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", "boundary inventory",
         ) from exc
-    expected_policy = {
-        "schema": BIRTH_CLOSED_SCHEMA,
-        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
-        "owner": BIRTH_CLOSED_OWNER,
-        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
-        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
-        "exceptions": [
-            {"scope": scope, "exception": exception}
-            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
-        ],
-    }
+    expected_policy = birth_closed_inventory_value_v1()
     if (
         not isinstance(value, dict) or _canonical(value) != content
         or value.get("schema") != BOUNDARY_INVENTORY_SCHEMA
@@ -1436,32 +1468,16 @@ def _canonical_inventory(content: bytes) -> dict[str, object]:
     return value
 
 
-def _verify_local_import_closure(
-    root: Path, files: tuple[DistributionFile, ...],
-    content: Mapping[str, bytes],
-) -> None:
-    declared = {item.path for item in files}
-
-    def local_candidates(module: str, source: str, level: int) -> tuple[str, ...]:
-        pieces = [piece for piece in module.split(".") if piece]
-        if level:
-            parent = source.split("/")[:-1]
-            if level > len(parent):
-                return ()
-            pieces = parent[:len(parent) - level + 1] + pieces
-        alternatives = []
-        for prefix in ([], ["runtime"]):
-            path = "/".join(prefix + pieces)
-            if path:
-                alternatives.extend((path + ".py", path + "/__init__.py"))
-        return tuple(dict.fromkeys(alternatives))
-
+@lru_cache(maxsize=1)
+def _analyze_local_imports_v1(
+    sources: tuple[tuple[str, bytes], ...], limits: tuple[object, ...],
+) -> tuple[tuple[str, tuple[tuple[str, int], ...]], ...]:
+    """Cache syntax only; every import path is resolved afresh by the caller."""
+    result = []
     total_ast_nodes = 0
-    for item in files:
-        if not item.path.endswith(".py"):
-            continue
+    for source_path, source_bytes in sources:
         try:
-            tree = ast.parse(content[item.path].decode("utf-8"), filename=item.path)
+            tree = ast.parse(source_bytes.decode("utf-8"), filename=source_path)
             total_ast_nodes += _bounded_ast_metrics(tree)
             if total_ast_nodes > MAX_BOUNDARY_TOTAL_AST_NODES_V1:
                 raise ValueError("boundary total AST node budget exceeded")
@@ -1482,7 +1498,7 @@ def _verify_local_import_closure(
 
             def authenticated_door_eval(call: ast.Call) -> bool:
                 if (
-                    item.path != "runtime/admitted_module_v1.py"
+                    source_path != "runtime/admitted_module_v1.py"
                     or not isinstance(call.func, ast.Name)
                     or call.func.id not in {"compile", "exec"}
                 ):
@@ -1520,7 +1536,7 @@ def _verify_local_import_closure(
 
             def authenticated_preflight_runpy(call: ast.Call) -> bool:
                 if (
-                    item.path not in {
+                    source_path not in {
                         "runtime/executor_birth_admin_preflight.py",
                         _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1,
                     }
@@ -1641,8 +1657,36 @@ def _verify_local_import_closure(
             raise DistributionManifestError(
                 "birth_ownership_distribution_file_mismatch", "python source",
             ) from exc
+        result.append((source_path, tuple(modules)))
+    return tuple(result)
+
+
+def _verify_local_import_closure(
+    root: Path, files: tuple[DistributionFile, ...],
+    content: Mapping[str, bytes],
+) -> None:
+    declared = {item.path for item in files}
+
+    def local_candidates(module: str, source: str, level: int) -> tuple[str, ...]:
+        pieces = [piece for piece in module.split(".") if piece]
+        if level:
+            parent = source.split("/")[:-1]
+            if level > len(parent):
+                return ()
+            pieces = parent[:len(parent) - level + 1] + pieces
+        alternatives = []
+        for prefix in ([], ["runtime"]):
+            path = "/".join(prefix + pieces)
+            if path:
+                alternatives.extend((path + ".py", path + "/__init__.py"))
+        return tuple(dict.fromkeys(alternatives))
+
+    sources = tuple((item.path, content[item.path]) for item in files
+                    if item.path.endswith(".py"))
+    limits = (_boundary_ast_limits(), MAX_BOUNDARY_TOTAL_AST_NODES_V1)
+    for source_path, modules in _analyze_local_imports_v1(sources, limits):
         for module, level in modules:
-            candidates = local_candidates(module, item.path, level)
+            candidates = local_candidates(module, source_path, level)
             existing = [candidate for candidate in candidates
                         if root.joinpath(*candidate.split("/")).exists()]
             if existing and (len(existing) != 1 or existing[0] not in declared):
@@ -1795,12 +1839,7 @@ def _verify_distribution_content_semantics_v1(
             "birth_ownership_distribution_file_mismatch", "boundary guard version",
         )
     if environment.verify_static_boundary:
-        if (
-            closed_python_source_review_sha256(verified_content)
-            != BIRTH_CLOSED_SOURCE_REVIEW_SHA256
-            or verified_content.get(_BOUNDARY_PREFLIGHT_ENTRYPOINT_V1)
-            != verified_content.get("runtime/executor_birth_admin_preflight.py")
-        ):
+        if not _source_review_is_exact_v1(verified_content):
             raise DistributionManifestError(
                 "birth_ownership_distribution_file_mismatch", "source review",
             )
@@ -1824,6 +1863,18 @@ def _verify_distribution_content_semantics_v1(
         )
     _verify_local_import_closure(
         environment.installation_root, files, verified_content,
+    )
+
+
+def _source_review_is_exact_v1(verified_content: Mapping[str, bytes]) -> bool:
+    try:
+        reviewed = closed_python_source_review_sha256(verified_content)
+    except ValueError:
+        return False
+    return (
+        reviewed == BIRTH_CLOSED_SOURCE_REVIEW_SHA256
+        and verified_content.get(_BOUNDARY_PREFLIGHT_ENTRYPOINT_V1)
+        == verified_content.get("runtime/executor_birth_admin_preflight.py")
     )
 
 

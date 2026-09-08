@@ -246,7 +246,8 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "endgame_book/analogy_transfer/boden_transformational/"
             "pattern_language/generative_design/counterfactual/"
             "constitutional) su tutti i telos dichiarati. Opt-in via "
-            "env METNOS_TELOS_NIGHTLY=1 (default OFF). Output: "
+            "runtime.toml telos.nightly_enabled=true o env "
+            "METNOS_TELOS_NIGHTLY=1 (default OFF). Output: "
             "~/.local/share/metnos/telos_proposals.jsonl (ADR 0156)."
         ),
     },
@@ -747,13 +748,13 @@ def install_default_callbacks(scheduler) -> None:
     # Telos engine nightly introspection (ADR 0156, 21/5/2026 v8).
     # Esegue le 10 lenti laterali su tutti i telos dichiarati, produce
     # proposte in `~/.local/share/metnos/telos_proposals.jsonl`.
-    # Opt-in via env METNOS_TELOS_NIGHTLY=1 (default OFF) per evitare
+    # Opt-in via runtime.toml o env METNOS_TELOS_NIGHTLY=1 (default OFF) per evitare
     # auto-run prima che la review utente sia wired (next session).
     def _task_telos_introspect_nightly(payload=None):
-        import os
-        if os.environ.get("METNOS_TELOS_NIGHTLY", "0") != "1":
+        from runtime_settings import telos_nightly_enabled
+        if not telos_nightly_enabled():
             return {"ok": True, "skipped": True,
-                    "reason": "METNOS_TELOS_NIGHTLY=0 (opt-in)"}
+                    "reason": "telos.nightly_enabled=false (opt-in)"}
         from telos_introspect import run_all_telos
         from telos_lenses import LENSES
         # Forza tutte le 10 lenti attive: in modalita' nightly ignoriamo

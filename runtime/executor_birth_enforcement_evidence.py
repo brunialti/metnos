@@ -23,7 +23,7 @@ from pathlib import Path
 
 
 ENFORCEMENT_EVIDENCE_DOMAIN_V1 = b"metnos.executor-birth.enforcement-evidence/v1\0"
-GATE_MODULE_BASENAME_V1 = "executor_birth_legacy_gate.py"
+GATE_MODULE_BASENAME_V1 = "executor_birth_authority_gate.py"
 MAX_GATE_MODULE_BYTES_V1 = 256 * 1024
 
 # The literal is read from the source, not evaluated: importing the module and

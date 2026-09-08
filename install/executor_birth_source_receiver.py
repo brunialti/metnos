@@ -13,7 +13,7 @@ import re
 import stat
 import sys
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Iterable, Iterator
 
@@ -36,7 +36,14 @@ from executor_birth_distribution_assembler import (
     encode_received_source_v1,
     received_source_file_hash_v1,
 )
+import executor_birth_account_identity as _account_identity
 from executor_birth_ownership_authorities import DEFAULT_OWNERSHIP_ROOT_V1
+from executor_birth_posix_metadata import (
+    PosixObjectKeyV1,
+    PosixStableMetadataV1,
+    PosixStatSnapshotV1,
+    snapshot_stat_v1,
+)
 
 
 INCOMING_DIRECTORY_BASENAME_V1 = "incoming-v1"
@@ -51,7 +58,6 @@ MAX_SOURCE_TREE_ENTRIES_V1 = (
     MAX_SOURCE_FILES_V1 + MAX_SOURCE_DIRECTORIES_V1 + 1
 )
 
-_ACCOUNT_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
 _SOURCE_ID_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _RECEIVE_RE = re.compile(r"\.receive-[0-9a-f]{32}\.tmp\Z")
 _STRUCTURED_RE = re.compile(r"\.(sha256:[0-9a-f]{64})\.tmp\Z")
@@ -101,13 +107,26 @@ class _ServiceAccountV1:
     supplementary_gids: tuple[int, ...]
     home: str
     shell: str
+    _identity_snapshot: _account_identity.PosixAccountSnapshotV1 | None = field(
+        default=None, compare=False, repr=False,
+    )
+
+    def _identity_snapshot_v1(self) -> _account_identity.PosixAccountSnapshotV1:
+        if self._identity_snapshot is not None:
+            return self._identity_snapshot
+        return _account_identity.PosixAccountSnapshotV1(
+            _account_identity.PosixAccountRecordV1(
+                self.name, self.uid, self.gid, self.home, self.shell,
+            ),
+            self.supplementary_gids,
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class _SourceEntryV1:
     path: str
     directory: bool
-    identity: tuple[int, ...]
+    identity: PosixStatSnapshotV1
     mode: int
     size: int
 
@@ -127,7 +146,7 @@ def _require_root_v1() -> None:
 
 
 def _service_user_grammar_v1(value: object) -> str:
-    if type(value) is not str or _ACCOUNT_RE.fullmatch(value) is None:
+    if not _account_identity.is_posix_account_name_v1(value):
         raise _fail("birth_ownership_deployment_invalid", "service user")
     return value
 
@@ -179,20 +198,18 @@ def _relative_component_v1(name: object) -> str:
     return name
 
 
-def _identity(info: os.stat_result) -> tuple[int, ...]:
-    return (
-        info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
-        info.st_uid, info.st_gid, info.st_size,
-        info.st_mtime_ns, info.st_ctime_ns,
-    )
+def _identity(info: os.stat_result) -> PosixStatSnapshotV1:
+    """Compatibility facade for receiver callers during the migration."""
+    return snapshot_stat_v1(info)
 
 
-def _entry_identity(info: os.stat_result) -> tuple[int, ...]:
+def _entry_identity(info: os.stat_result) -> PosixStatSnapshotV1:
     return _identity(info)
 
 
-def _stable_identity(value: tuple[int, ...]) -> tuple[int, ...]:
-    return value[:7]
+def _stable_identity(value: PosixStatSnapshotV1) -> PosixStableMetadataV1:
+    """Compatibility facade for the historical timestamp-free comparison."""
+    return value.stable_metadata
 
 
 def _require_plain_directory_fd_v1(
@@ -222,25 +239,31 @@ def _require_plain_file_info_v1(
 
 
 def _service_account_snapshot_v1(name: str) -> _ServiceAccountV1:
-    import pwd
-
     try:
-        entry = pwd.getpwnam(name)
-        supplementary = tuple(sorted(set(os.getgrouplist(name, entry.pw_gid))))
-    except (KeyError, OSError) as exc:
+        snapshot = _account_identity.resolve_posix_account_snapshot_v1(name)
+    except _account_identity.PosixAccountResolutionError as exc:
         raise _fail("birth_ownership_deployment_invalid", "service account") from exc
-    home = _canonical_account_path_v1(entry.pw_dir, "service home")
-    shell = _canonical_account_path_v1(entry.pw_shell, "service shell")
+    entry = snapshot.record
+    supplementary = snapshot.supplementary_gids
+    home = _canonical_account_path_v1(entry.home, "service home")
+    shell = _canonical_account_path_v1(entry.shell, "service shell")
     if (
-        entry.pw_name != name or entry.pw_uid <= 0 or entry.pw_gid <= 0
+        entry.name != name or entry.uid <= 0 or entry.gid <= 0
         or any(type(item) is not int or item <= 0 for item in supplementary)
-        or entry.pw_gid not in supplementary
+        or entry.gid not in supplementary
         or PurePosixPath(shell).name not in _SHELL_BASENAMES
     ):
         raise _fail("birth_ownership_deployment_unsafe", "service account")
     resolved = _resolve_root_owned_shell_v1(shell)
+    bound_snapshot = _account_identity.PosixAccountSnapshotV1(
+        _account_identity.PosixAccountRecordV1(
+            name, entry.uid, entry.gid, home, resolved,
+        ),
+        supplementary,
+    )
     account = _ServiceAccountV1(
-        name, entry.pw_uid, entry.pw_gid, supplementary, home, resolved,
+        name, entry.uid, entry.gid, supplementary, home, resolved,
+        bound_snapshot,
     )
     _require_closed_user_authority_v1(account)
     return account
@@ -573,7 +596,7 @@ def _scan_source_v1(root_fd: int) -> tuple[_SourceEntryV1, ...]:
     opened: set[int] = set()
     stack: list[
         tuple[
-            str, int, tuple[str, ...], tuple[int, ...] | None, str | None,
+            str, int, tuple[str, ...], PosixStatSnapshotV1 | None, str | None,
         ]
     ] = [
         ("enter", root_fd, (), None, None),
@@ -639,7 +662,9 @@ def _scan_source_v1(root_fd: int) -> tuple[_SourceEntryV1, ...]:
             if len(names) != len(set(names)):
                 raise _fail("birth_ownership_deployment_invalid", "source inventory")
             stack.append(("exit", directory_fd, prefix, _identity(before), None))
-            children: list[tuple[str, tuple[str, ...], tuple[int, ...]]] = []
+            children: list[
+                tuple[str, tuple[str, ...], PosixStatSnapshotV1]
+            ] = []
             for name in names:
                 relative_parts = prefix + (name,)
                 if len(relative_parts) > MAX_SOURCE_PATH_DEPTH_V1:
@@ -890,7 +915,7 @@ def _open_descendant_directory_v1(root_fd: int, parts: tuple[str, ...]) -> tuple
 
 def _create_private_directory_v1(
     parent_fd: int, name: str, *, owner: tuple[int, int],
-) -> tuple[int, tuple[int, ...]]:
+) -> tuple[int, PosixStatSnapshotV1]:
     try:
         os.mkdir(name, 0o700, dir_fd=parent_fd)
     except FileExistsError:
@@ -1162,7 +1187,7 @@ def _verify_received_tree_fd_v1(
     opened: set[int] = set()
     stack: list[
         tuple[
-            str, int, tuple[str, ...], tuple[int, ...] | None, str | None,
+            str, int, tuple[str, ...], PosixStatSnapshotV1 | None, str | None,
         ]
     ] = [
         ("enter", root_fd, (), None, None),
@@ -1206,7 +1231,9 @@ def _verify_received_tree_fd_v1(
                     "birth_ownership_recovery_required", "tree inventory",
                 ) from exc
             stack.append(("exit", directory_fd, prefix, _identity(before), None))
-            children: list[tuple[str, tuple[str, ...], tuple[int, ...]]] = []
+            children: list[
+                tuple[str, tuple[str, ...], PosixStatSnapshotV1]
+            ] = []
             for name in names:
                 relative_parts = prefix + (name,)
                 if len(relative_parts) > MAX_SOURCE_PATH_DEPTH_V1:
@@ -1315,7 +1342,7 @@ def _name_status_v1(parent_fd: int, name: str) -> os.stat_result | None:
 def _open_received_tree_at_v1(
     parent_fd: int, name: str, *, owner: tuple[int, int],
     expected_record: ReceivedSourceV1 | None,
-) -> tuple[int, ReceivedSourceV1, tuple[int, ...]]:
+) -> tuple[int, ReceivedSourceV1, PosixStatSnapshotV1]:
     descriptor = _open_child_directory_v1(parent_fd, name)
     try:
         record = _verify_received_tree_fd_v1(
@@ -1363,6 +1390,49 @@ def _require_initial_namespaces_v1(
             raise _fail("birth_ownership_recovery_required", "sources metadata")
 
 
+def _recover_receive_residue_v1(
+    incoming_fd: int, sources_fd: int, *, owner: tuple[int, int],
+) -> None:
+    """Remove one interrupted private receive tree under the product lock.
+
+    The deployment lock excludes a live peer.  Only the exact private
+    namespace minted by this receiver is recoverable; every other name or a
+    second residue remains an ambiguous state and fails closed.
+    """
+    try:
+        with os.scandir(incoming_fd) as iterator:
+            names = tuple(sorted(item.name for item in iterator))
+    except OSError as exc:
+        raise _fail(
+            "birth_ownership_recovery_required", "incoming inventory",
+        ) from exc
+    residue = tuple(
+        name for name in names if name != SOURCES_DIRECTORY_BASENAME_V1
+    )
+    if not residue:
+        return
+    if len(residue) != 1 or _RECEIVE_RE.fullmatch(residue[0]) is None:
+        raise _fail("birth_ownership_recovery_required", "incoming inventory")
+    name = residue[0]
+    info = _name_status_v1(incoming_fd, name)
+    if (
+        info is None or not stat.S_ISDIR(info.st_mode)
+        or (info.st_uid, info.st_gid) != owner
+        or stat.S_IMODE(info.st_mode) not in {0o700, 0o755}
+    ):
+        raise _fail("birth_ownership_recovery_required", "receive residue")
+    _remove_owned_tree_at_v1(
+        incoming_fd, name, expected_identity=_identity(info), owner=owner,
+    )
+    try:
+        os.fsync(incoming_fd)
+    except OSError as exc:
+        raise _fail(
+            "birth_ownership_recovery_required", "receive residue sync",
+        ) from exc
+    _require_initial_namespaces_v1(incoming_fd, sources_fd, owner=owner)
+
+
 def _require_no_foreign_structured_v1(sources_fd: int, source_id: str) -> None:
     try:
         with os.scandir(sources_fd) as iterator:
@@ -1377,7 +1447,7 @@ def _require_no_foreign_structured_v1(sources_fd: int, source_id: str) -> None:
 
 
 def _remove_owned_tree_at_v1(
-    parent_fd: int, name: str, *, expected_identity: tuple[int, ...],
+    parent_fd: int, name: str, *, expected_identity: PosixStatSnapshotV1,
     owner: tuple[int, int],
 ) -> None:
     root_fd = _open_child_directory_v1(parent_fd, name)
@@ -1385,16 +1455,16 @@ def _remove_owned_tree_at_v1(
     try:
         root_info = os.fstat(root_fd)
         if (
-            (root_info.st_dev, root_info.st_ino) != expected_identity[:2]
+            _identity(root_info).object_key != expected_identity.object_key
             or (root_info.st_uid, root_info.st_gid) != owner
         ):
             raise _fail("birth_ownership_recovery_required", "temporary cleanup")
 
         stack: list[
             tuple[
-                str, int, int | None, str | None, tuple[int, int] | None, int,
+                str, int, int | None, str | None, PosixObjectKeyV1 | None, int,
             ]
-        ] = [("enter", root_fd, parent_fd, name, expected_identity[:2], 0)]
+        ] = [("enter", root_fd, parent_fd, name, expected_identity.object_key, 0)]
         while stack:
             (
                 phase, directory_fd, containing_fd, child_name, identity, depth,
@@ -1410,9 +1480,9 @@ def _remove_owned_tree_at_v1(
                     child_name, dir_fd=containing_fd, follow_symlinks=False,
                 )
                 if (
-                    (current.st_dev, current.st_ino) != identity
+                    _identity(current).object_key != identity
                     or (current.st_uid, current.st_gid) != owner
-                    or (rebound.st_dev, rebound.st_ino) != identity
+                    or _identity(rebound).object_key != identity
                 ):
                     raise _fail(
                         "birth_ownership_recovery_required", "temporary cleanup",
@@ -1446,9 +1516,9 @@ def _remove_owned_tree_at_v1(
                     child_fd = _open_child_directory_v1(directory_fd, child_name)
                     opened.add(child_fd)
                     opened_info = os.fstat(child_fd)
-                    child_identity = (child_info.st_dev, child_info.st_ino)
+                    child_identity = _identity(child_info).object_key
                     if (
-                        (opened_info.st_dev, opened_info.st_ino) != child_identity
+                        _identity(opened_info).object_key != child_identity
                         or (opened_info.st_uid, opened_info.st_gid) != owner
                     ):
                         raise _fail("birth_ownership_recovery_required", "temporary cleanup")
@@ -1603,7 +1673,7 @@ def _receive_source_locked_core_v1(
     sources_fd: int | None = None
     temporary_fd: int | None = None
     receive_name: str | None = None
-    receive_identity: tuple[int, ...] | None = None
+    receive_identity: PosixStatSnapshotV1 | None = None
     receive_owned = False
     try:
         try:
@@ -1633,6 +1703,7 @@ def _receive_source_locked_core_v1(
             incoming_fd, SOURCES_DIRECTORY_BASENAME_V1,
             owner=owner, mode=0o755,
         )
+        _recover_receive_residue_v1(incoming_fd, sources_fd, owner=owner)
         _require_initial_namespaces_v1(incoming_fd, sources_fd, owner=owner)
 
         for _attempt in range(16):
@@ -1680,8 +1751,14 @@ def _receive_source_locked_core_v1(
         ):
             raise _fail("birth_ownership_deployment_unsafe", "source changed")
         account_after = _service_account_snapshot_v1(service_user)
-        if account_before != account_after:
-            raise _fail("birth_ownership_deployment_unsafe", "service account changed")
+        try:
+            account_before._identity_snapshot_v1().assert_unchanged(
+                account_after._identity_snapshot_v1(),
+            )
+        except _account_identity.PosixAccountSnapshotChangedError:
+            raise _fail(
+                "birth_ownership_deployment_unsafe", "service account changed",
+            ) from None
         require_session()
 
         structured_name = f".{record.source_id}.tmp"

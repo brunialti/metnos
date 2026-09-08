@@ -845,7 +845,7 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
 
         # Robustezza NL→determinismo §2.4: `from_contains` e' dominio APERTO.
         # Il planner a volte include una parola-tema ("bollette eniplenitude")
-        # che NON e' nel mittente ("noreply@eniplenitude.com") → IMAP FROM su
+        # che NON e' nel mittente ("noreply@vendor.example.com") → IMAP FROM su
         # tutta la frase = 0 risultati (fallimento silenzioso). Tolleranza:
         # multi-token → OR (match se UNO qualsiasi dei token e' nel From).
         # Solo FROM (subject/body restano frasi). Turn 1671283e.

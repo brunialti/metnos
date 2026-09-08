@@ -71,6 +71,112 @@ def test_maintenance_session_rejects_a_look_alike() -> None:
     assert denied.value.code == "cutover_session_invalid"
 
 
+def test_store_verification_uses_owner_aware_read_only_catalog(monkeypatch):
+    import loader
+    import manifest_inventory
+    import sign
+    import skill_registry
+
+    owner = (41, 42)
+    predicate = lambda _name: True
+    observed = []
+    inventory = SimpleNamespace(problems=(), manifests=())
+    catalog = SimpleNamespace(rejected=[], get=lambda _name: None)
+
+    monkeypatch.setattr(
+        skill_registry,
+        "_skill_enabled_snapshot_for_owner_v1",
+        lambda trusted_owner: (
+            observed.append(("skill", trusted_owner)) or predicate
+        ),
+    )
+    monkeypatch.setattr(
+        manifest_inventory,
+        "inventory_manifests",
+        lambda *, skill_enabled=None: (
+            observed.append(("inventory", skill_enabled)) or inventory
+        ),
+    )
+    trusted = (("key", object()),)
+    monkeypatch.setattr(
+        sign, "list_trusted_publics",
+        lambda: pytest.fail("transition audit reopened legacy trusted keys"),
+    )
+    monkeypatch.setattr(loader, "invalidate_catalog_cache", lambda: pytest.fail(
+        "catalog verification invalidated process cache",
+    ))
+
+    def load_catalog(**kwargs):
+        observed.append(("load", kwargs))
+        return catalog
+
+    monkeypatch.setattr(
+        loader, "_load_catalog_for_cutover_audit_v1", load_catalog,
+    )
+
+    assert guard._verify_store_only_catalog_locked(
+        catalog_trusted_owner=owner,
+        trusted_publics=trusted,
+    ) == {"bindings": 0, "loaded": 0, "retired": 0}
+    assert observed == [
+        ("skill", owner),
+        ("inventory", predicate),
+        ("load", {
+            "catalog_trusted_owner": owner,
+            "trusted_publics": trusted,
+        }),
+    ]
+
+
+def test_initial_maintenance_accepts_an_absent_legacy_unit() -> None:
+    class Systemctl:
+        @staticmethod
+        def show(_unit: str, _scope: str) -> dict[str, object]:
+            return {
+                "LoadState": "not-found",
+                "ActiveState": "inactive",
+                "MainPID": 0,
+            }
+
+    observed = guard.prove_stack_stopped(SimpleNamespace(
+        systemctl=Systemctl(),
+        require_quiescent=lambda: {
+            "source": "inactive_http_and_inactive_sidecar",
+        },
+    ))
+    assert observed["units"]
+    assert {item["load_state"] for item in observed["units"]} == {"not-found"}
+
+
+@pytest.mark.parametrize("load_state", ["loaded", "masked", "not-found"])
+def test_initial_and_transition_maintenance_accept_named_quiescent_load_states(
+    load_state,
+) -> None:
+    class Systemctl:
+        @staticmethod
+        def show(_unit: str, _scope: str) -> dict[str, object]:
+            return {
+                "LoadState": load_state,
+                "ActiveState": "inactive",
+                "MainPID": 0,
+            }
+
+    reconciler = SimpleNamespace(
+        systemctl=Systemctl(),
+        require_quiescent=lambda: {
+            "source": "inactive_http_and_inactive_sidecar",
+        },
+    )
+    for operation in (
+        guard.prove_stack_stopped,
+        guard._prove_transition_stack_stopped_v1,
+    ):
+        observed = operation(reconciler)
+        assert {item["load_state"] for item in observed["units"]} == {
+            load_state,
+        }
+
+
 def test_transition_guard_binds_user_scope_to_the_verified_account(
     monkeypatch,
 ) -> None:

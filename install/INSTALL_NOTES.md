@@ -67,6 +67,11 @@ one stable capture of the signed deployment descriptor and administrative
 preflight, then cross-checks their hashes, paths, phases and service-account
 identity before changing the administrative namespace.
 
+The transition passes an `AuthenticatedDistributionRecordV1` to G6, obtained
+by authenticating the exact payload and signature of its verified installed
+distribution. A `VerifiedDistribution` is not interchangeable with this input;
+neither nominal validation nor signature verification may be bypassed.
+
 G6 installs only the artifact marked `install_phase=group6_admin`, as an exact
 root-owned executable at
 `/usr/libexec/metnos/executor-birth-v1/preflight.py`. Artifacts marked
@@ -85,6 +90,50 @@ verifies it again from the installed copy, completes the durable ownership
 coordinator, and activates only the target and readiness units named by the
 signed service catalog.
 
+At `RECEIPTS_COMPLETE`, candidate preparation authenticates the distribution
+and binds its exact bytes, hashes and release identity to the durable record.
+It does not require a build archive that is published only after the cutover
+certificate; an existing conflicting archive is still rejected. Dominant
+startup binds the current contract-receipt catalog identity, distinct from the
+signed service catalog identity. Both observations retain their own checks:
+the receipt proof is reread under the transition locks and the service catalog
+is recaptured before certification. These checks do not advance publication.
+
+The effective systemd snapshot is signed before timer activation. The inverse
+`TriggeredBy` and implicit ordering `After` links of an exact catalog timer are
+already bound by its signed `Timer.Unit`. They are normalized consistently in
+both the property projection and the dependency inventory as the timer is
+loaded or activated; an explicitly declared service `After` is still required.
+Undeclared triggers, other dependency edges, and changes to the timer's
+configured target remain subject to strict checks. An unconfigured watchdog's
+equivalent disabled values (`0` and `infinity`) have one canonical identity;
+explicitly configured watchdog values are still checked against the signature.
+
+The complete Linux x86_64 CPython 3.12 release uses
+`requirements-linux-x86_64.lock`, including Playwright and its pinned runtime
+dependencies because the signed catalog installs the browser sidecar. The
+offline builder verifies wheel hashes and publishes a new content-addressed
+Python environment; it never patches an existing environment. Sealing keeps
+packaged executable files executable, normalizes permissions to 0755/0644,
+and removes special permission bits. Browser binaries and native libraries
+remain separate installation prerequisites. This complete release profile
+does not change the legacy six-phase installer's optional-sidecar choices.
+
+Before the first transition prepares its new context, unchanged current
+contracts are authenticated with the verified historical set's public keys.
+This read-only verification does not construct a historical Birth runtime.
+Any contract requiring publication still needs the strict runtime context
+check; the transition never executes old authority under changed source.
+
+Legacy retirement bindings identify required files of the previous installation,
+not every entry point of the candidate. The new contract-convergence module is
+covered by the candidate's signed runtime inventory and preflight, but is not
+required to exist in the old tree. Missing required legacy files remain an error.
+On replay, the immutable predecessor census is securely reread and all its
+transition bindings are checked against the current authenticated inputs.
+It is not rebuilt from paths that retirement may already have renamed, and it
+does not replace current quiescence or topology checks.
+
 The transition is resumable and exact repetition is idempotent. The live
 user-level HTTP unit is stopped inside the coordinated switch and the signed
 system unit takes ownership; the same-name system unit is preserved as the
@@ -98,6 +147,34 @@ After cutover, an ordinary executor edit uses
 `runtime/stack_reconcile.py deploy --executor <name> --sign`. The historical
 flag remains a command-line compatibility surface, but it now submits the
 candidate to Executor Birth and cannot select direct signing or publication.
+
+### Private HTTP runtime settings
+
+The signed HTTP recipe selects `METNOS_ENGINE=v3`; its launcher does not inherit
+arbitrary environment additions, and the signed-unit preflight rejects extra
+service drop-ins. Instance settings reuse `$METNOS_USER_CONFIG/runtime.toml`,
+without embedding personal account names in the public catalog:
+
+```toml
+[mail]
+default_account = "metnos_system"
+
+[telos]
+nightly_enabled = false
+```
+
+These are the defaults when the corresponding keys are absent. A present
+`METNOS_DEFAULT_MAIL_ACCOUNT` or `METNOS_TELOS_NIGHTLY` overrides its file
+setting; Telos preserves the exact environment opt-in `1`, with every other
+environment value disabling it. The mail value must be a nonempty string and
+the Telos file value a boolean; empty mail overrides and incorrectly typed file
+settings fail instead of silently selecting another account or enablement state.
+HTTP resolves the SMTP default once after its Birth check and before acquiring
+its process lock or starting workers, then shares the resolved account name
+through the environment with child executors, which retain explicit
+invocation-account precedence and do not receive `runtime.toml`.
+Environment precedence is not permission to modify a signed unit or restore
+its legacy drop-ins; preserve private choices in the existing configuration.
 
 ## Canonical paths and user isolation
 

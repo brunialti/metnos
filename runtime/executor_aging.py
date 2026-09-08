@@ -136,6 +136,19 @@ def _open() -> sqlite3.Connection:
     return c
 
 
+def _open_read_only() -> sqlite3.Connection | None:
+    """Open an existing statistics database without creating or migrating it."""
+    if not DB_PATH.exists():
+        return None
+    absolute = Path(os.path.abspath(DB_PATH))
+    connection = sqlite3.connect(
+        absolute.as_uri() + "?mode=ro", uri=True,
+    )
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA query_only = ON")
+    return connection
+
+
 def _row(r) -> ExecutorStat:
     # SQLite Row supports both index and key access; tolerate missing columns
     # if an older DB is opened (forward-compat for the `source` field).
@@ -304,10 +317,14 @@ def all_stats() -> list[ExecutorStat]:
         conn.close()
 
 
-def lifecycle_override_map() -> dict[str, str]:
+def lifecycle_override_map(*, read_only: bool = False) -> dict[str, str]:
     """Ritorna {name → lifecycle override} per l'integrazione con loader.py.
     Solo entries che hanno un override attivo (deprecated_at o archived_at)."""
-    conn = _open()
+    if type(read_only) is not bool:
+        raise ValueError("read_only must be bool")
+    conn = _open_read_only() if read_only else _open()
+    if conn is None:
+        return {}
     try:
         out = {}
         for r in conn.execute(

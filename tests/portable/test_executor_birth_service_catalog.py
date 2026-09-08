@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import ast
-import copy
 import hashlib
+from importlib.machinery import PathFinder
 import json
 import re
 import shutil
@@ -19,11 +19,14 @@ if str(RUNTIME) not in sys.path:
 
 import executor_birth_service_catalog as catalog
 import executor_birth_admin_operations as admin_operations
-from contract_boundary_guard import BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
+from contract_boundary_guard import (
+    BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
+    BOUNDARY_SOURCE_OWNERS,
+)
 
 
 _HASH_A = "sha256:" + "1" * 64
-_PYTHON = "/usr/bin/python3"
+_PYTHON = "/var/lib/metnos/python-envs-v1/" + "0" * 64 + "/bin/python"
 _SYSTEMCTL = "/usr/bin/systemctl"
 
 _PUBLIC_EXPORT_OMITTED_ENTRYPOINTS = {
@@ -112,6 +115,25 @@ def _legacy() -> tuple[catalog.ServiceLegacyBindingV1, ...]:
     ) for item in catalog.legacy_bindings_from_source_v1())
 
 
+@pytest.mark.parametrize("entry", [
+    entry for entry in _entries(installation_root=str(RUNTIME.parent))
+    if entry.execution_kind == "python_module"
+], ids=lambda entry: entry.entry_id)
+def test_python_targets_resolve_from_their_signed_working_directory(entry) -> None:
+    # Do not import the service: ambient sys.path must not hide a bad recipe.
+    search_path = [entry.target_working_directory]
+    parts = entry.python_module.split(".")
+    for index in range(1, len(parts) + 1):
+        name = ".".join(parts[:index])
+        spec = PathFinder.find_spec(name, search_path)
+        assert spec is not None, (entry.entry_id, name, search_path)
+        if index < len(parts):
+            assert spec.submodule_search_locations is not None
+            search_path = spec.submodule_search_locations
+    assert spec.origin is not None
+    assert Path(spec.origin).is_relative_to(RUNTIME.parent)
+
+
 def _encoded(*, installation_root: str = "/opt/metnos") -> bytes:
     return catalog._encode_service_catalog_v1(
         _entries(installation_root=installation_root), _legacy(),
@@ -119,10 +141,7 @@ def _encoded(*, installation_root: str = "/opt/metnos") -> bytes:
 
 
 def _target_bytes(installation_root: str = "/opt/metnos"):
-    paths = (
-        _PYTHON, _SYSTEMCTL, "/usr/bin/java", "/usr/bin/Xvfb",
-        installation_root + "/runtime/bin/llama-server",
-    )
+    paths = (_PYTHON, _SYSTEMCTL, "/usr/bin/Xvfb")
     return tuple((path, ("target:" + path).encode("ascii")) for path in paths)
 
 
@@ -173,6 +192,31 @@ def test_public_builder_derives_the_fixed_catalog_and_all_unit_fragments() -> No
     }
 
 
+def test_public_builder_separates_service_environment_from_admin_python() -> None:
+    admin_python = "/usr/bin/python3.12"
+    targets = _target_bytes()
+    built = catalog._build_service_catalog_v1(
+        installation_root="/opt/metnos", python_executable=_PYTHON,
+        administrative_python_executable=admin_python,
+        service_user="metnos", service_gid=1000,
+        service_supplementary_gids=(1000,), service_home="/srv/metnos",
+        systemctl_executable=_SYSTEMCTL, target_executables=targets,
+    )
+    decoded = catalog.decode_service_catalog_v1(built.encoded)
+    python_entries = tuple(
+        item for item in decoded.entries
+        if item.execution_kind == "python_module"
+        and item.class_name == "gated_service"
+    )
+    assert python_entries
+    assert {item.target_executable for item in python_entries} == {_PYTHON}
+    for item in python_entries:
+        directives = catalog._directive_index(item.unit_spec)
+        assert directives[("Service", "ExecStartPre")].values[0] == (
+            "!" + admin_python
+        )
+
+
 @pytest.mark.parametrize("targets", (
     _target_bytes()[:-1],
     _target_bytes() + (("/usr/bin/unexpected", b"extra"),),
@@ -211,8 +255,7 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
     assert candidate_units == {
         "metnos-durable-worker.service", "metnos-http.service",
         "metnos-i18n-translator.service", "metnos-i18n-translator.timer",
-        "metnos-llm.service", "metnos-photon.service",
-        "metnos-playwright.service", "metnos-searxng.service",
+        "metnos-playwright.service",
         "metnos-side-display.service", "metnos-stack-quarantine.service",
         "metnos-stack-ready.service", "metnos-stack-watchdog.service",
         "metnos-stack-watchdog.timer", "metnos-telegram-daemon.service",
@@ -220,8 +263,9 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
     }
     assert legacy_only_units == {
         "metnos-backup.service", "metnos-backup.timer",
+        "metnos-llm.service", "metnos-photon.service",
         "metnos-prompts-translator.service",
-        "metnos-prompts-translator.timer",
+        "metnos-prompts-translator.timer", "metnos-searxng.service",
     }
     root = Path(__file__).resolve().parents[2]
     repository_units = {
@@ -279,11 +323,22 @@ def test_single_source_covers_repository_units_entrypoints_and_maintenance() -> 
         for item in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
         if item.endswith(":main")
     }
+    candidate_only_entrypoints = (
+        discovered_entrypoints & set(BOUNDARY_SOURCE_OWNERS)
+    ) - repository_bindings - store_entrypoints
     assert discovered_entrypoints & store_entrypoints == {
         "install/executor_birth_source_receiver.py",
         "install/executor_birth_transition.py",
     }
-    assert discovered_entrypoints <= repository_bindings | store_entrypoints
+    assert candidate_only_entrypoints == {
+        "install/executor_birth_contract_convergence.py",
+    }
+    assert BOUNDARY_SOURCE_OWNERS[
+        "install/executor_birth_contract_convergence.py"
+    ] == "executor_birth_contract_convergence"
+    assert discovered_entrypoints <= (
+        repository_bindings | store_entrypoints | candidate_only_entrypoints
+    )
     assert repository_bindings - discovered_entrypoints == (
         set() if complete_source_tree else _PUBLIC_EXPORT_OMITTED_ENTRYPOINTS
     )
@@ -337,17 +392,24 @@ def test_current_unit_directives_have_an_explicit_codec_decision() -> None:
     }
     observed_legacy_units = set(observed) - set(candidate)
     assert observed_legacy_units <= set(legacy_unit_owners)
-    assert set(legacy_unit_owners) - observed_legacy_units == (
-        set() if (root / "scripts/export-public.sh").is_file()
-        else _PUBLIC_EXPORT_OMITTED_UNITS
-    )
-    assert set(legacy_unit_owners.values()) == {"gated_entrypoint"}
+    expected_unmaterialized = {"metnos-llm.service"}
+    if not (root / "scripts/export-public.sh").is_file():
+        expected_unmaterialized |= _PUBLIC_EXPORT_OMITTED_UNITS
+    assert set(legacy_unit_owners) - observed_legacy_units == expected_unmaterialized
+    assert set(legacy_unit_owners.values()) == {
+        "external_dependency", "gated_entrypoint",
+    }
     missing = {
         (unit_name, section, name)
         for unit_name in set(observed) & set(candidate)
         for section, name in observed[unit_name] - candidate[unit_name]
     }
-    assert missing == set(catalog._CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1)
+    dispositions = set(catalog._CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1)
+    assert missing == {item for item in dispositions if item[0] in candidate}
+    assert {item for item in dispositions if item[0] in observed_legacy_units} == {
+        ("metnos-photon.service", "Service", "Environment"),
+        ("metnos-searxng.service", "Service", "Environment"),
+    }
 
 
 def test_catalog_codec_is_canonical_and_covers_six_classes() -> None:
@@ -472,6 +534,17 @@ def test_renderer_domain_rejects_ambiguous_multi_value_tokens(name, values) -> N
         catalog.make_unit_spec_v1("metnos-test.service", [
             _directive("Service", name, values),
         ])
+
+
+def test_signed_http_target_preserves_the_production_v3_engine(monkeypatch) -> None:
+    from engine import get_engine_name, is_v3
+
+    entry = next(item for item in _entries() if item.entry_id == "service-http")
+    environment = {item.name: item.value for item in entry.target_environment}
+    assert environment["METNOS_ENGINE"] == "v3"
+    monkeypatch.setenv("METNOS_ENGINE", environment["METNOS_ENGINE"])
+    assert get_engine_name() == "v3"
+    assert is_v3() is True
 
 
 def test_source_compiler_binds_targets_environment_and_supplementary_groups() -> None:

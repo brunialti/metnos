@@ -28,6 +28,9 @@ def test_initial_catalog_is_birth_published_and_replay_verifiable(
     tmp_path: Path, monkeypatch,
 ) -> None:
     import executor_birth_bootstrap as bootstrap
+    import executor_birth_authority_gate as authority_gate
+    import executor_birth_ownership_authorities as ownership_authorities
+    import executor_birth_ownership_chain as ownership_chain
     import config
     import manifest_inventory
     import sign
@@ -44,6 +47,26 @@ def test_initial_catalog_is_birth_published_and_replay_verifiable(
     )
 
     historic_author = Ed25519PrivateKey.generate()
+    # This scenario certifies the pre-close bootstrap phase itself.  The
+    # checked-in product is already F4-closed, so select that historical phase
+    # only inside the isolated fixture instead of weakening the compiled gate.
+    monkeypatch.setattr(
+        authority_gate, "closed_build_enforcement", lambda: False,
+    )
+    monkeypatch.setattr(
+        bootstrap, "_required_context_runtime_for_bootstrap_v1", lambda: None,
+    )
+    # The historical pre-cutover fixture owns its own absent ownership head.
+    # A completed cutover on the machine running pytest is not its state.
+    monkeypatch.setattr(
+        ownership_authorities, "DEFAULT_OWNERSHIP_ROOT_V1", tmp_path / "ownership",
+    )
+    monkeypatch.setattr(
+        ownership_chain, "DEFAULT_OWNERSHIP_CHAIN_ROOT_V1", tmp_path / "chain",
+    )
+    monkeypatch.setenv(
+        "METNOS_INSTALL_ROOT", str(Path(bootstrap.__file__).resolve().parents[1]),
+    )
     base = support.make_config(
         tmp_path / "installation",
         author=historic_author,
@@ -62,7 +85,8 @@ def test_initial_catalog_is_birth_published_and_replay_verifiable(
     monkeypatch.setattr(config, "PATH_SYNTH_EXECUTORS", ref.source_root)
     inventory = ManifestInventory((ref,), ())
     monkeypatch.setattr(
-        manifest_inventory, "inventory_authoring_manifests", lambda: inventory,
+        manifest_inventory, "inventory_authoring_manifests",
+        lambda *_args, **_kwargs: inventory,
     )
     report = bootstrap.prepare_initial_installer_catalog_v1(
         prove_quiescent=lambda: True,

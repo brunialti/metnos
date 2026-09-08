@@ -191,6 +191,11 @@ def _catalog_id(values: list[dict[str, object]]) -> str:
     return "sha256:" + hashlib.sha256(framed).hexdigest()
 
 
+def current_receipt_catalog_id_v1(proof: CurrentReceiptProof) -> str:
+    """Identify current contract receipts, not the separate service catalog."""
+    return _catalog_id(_binding_values(_bindings_from_proof(proof)))
+
+
 def _cutover_id(unsigned: Mapping[str, object]) -> str:
     material = {key: value for key, value in unsigned.items() if key != "cutover_id"}
     return "sha256:" + hashlib.sha256(CUTOVER_ID_DOMAIN + _canonical(material)).hexdigest()

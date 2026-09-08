@@ -68,7 +68,11 @@ def test_a_first_migration_installs_the_previous_identity(
         ("peer_priv.bin", support.private_bytes(peer), 0o600),
     ])
     source = _source(base, monkeypatch)
-    result = support.provision(monkeypatch, base)
+    previous_umask = os.umask(0o077)
+    try:
+        result = support.provision(monkeypatch, base)
+    finally:
+        os.umask(previous_umask)
 
     assert result.outcome is AuthorProvisioningOutcomeV1.installed
     assert result.active_key_id == source.active_key_id
@@ -87,6 +91,20 @@ def test_a_first_migration_installs_the_previous_identity(
     assert config["private_file"] == f"private/{source.active_key_id}.key"
     assert [item["key_id"] for item in config["keys"]] == sorted(source.publics)
     assert [item["status"] for item in config["keys"]].count("active") == 1
+    assert (
+        (base / "birth" / "provisioning-v1.lock").stat().st_mode & 0o777
+    ) == 0o644
+    assert store.stat().st_mode & 0o777 == 0o700
+    assert (store / "private").stat().st_mode & 0o777 == 0o700
+    assert (store / "public").stat().st_mode & 0o777 == 0o755
+    assert all(
+        item.stat().st_mode & 0o777 == 0o600
+        for item in (store / "private").iterdir()
+    )
+    assert all(
+        item.stat().st_mode & 0o777 == 0o644
+        for item in (store / "public").iterdir()
+    )
 
 
 def test_publication_reopens_once_after_the_verified_checkpoint(

@@ -928,7 +928,23 @@ _STORE_SYNTHESIZED_ORIGINS = frozenset({
 })
 
 
-def _catalog_cache_signature(dirs: list) -> tuple:
+def _validate_catalog_read_options(
+    layout: ManifestLayout, *, catalog_trusted_owner: object,
+) -> None:
+    if catalog_trusted_owner is not None and (
+        layout is not ManifestLayout.STORE_ONLY
+        or type(catalog_trusted_owner) is not tuple
+        or len(catalog_trusted_owner) != 2
+        or any(type(value) is not int or value <= 0
+               for value in catalog_trusted_owner)
+    ):
+        raise ValueError("catalog_trusted_owner is invalid")
+
+
+def _catalog_cache_signature(
+    dirs: list, *, catalog_trusted_owner: tuple[int, int] | None = None,
+    skill_state_signature: tuple[str, str, int, str] | None = None,
+) -> tuple:
     """Firma deterministica per invalidazione cache: max mtime ricorsivo
     di tutti i manifest.toml + .py + .sig nelle dirs + mtime del DB
     executor_aging (lifecycle override puo' cambiare lo stato visibile).
@@ -980,9 +996,13 @@ def _catalog_cache_signature(dirs: list) -> tuple:
     # Skill state (asse 2): enable/disable di una skill (skill_enabled.json)
     # cambia la dormancy first-party → visibility del catalog diversa. Il mtime
     # nella firma fa SÌ che set_skill_enabled invalidi la cache → gating live.
-    from skill_registry import skill_state_cache_signature
+    if skill_state_signature is None:
+        from skill_registry import skill_state_cache_signature
 
-    sig.append(skill_state_cache_signature())
+        skill_state_signature = skill_state_cache_signature(
+            trusted_owner=catalog_trusted_owner,
+        )
+    sig.append(skill_state_signature)
     return tuple(sig)
 
 
@@ -1008,6 +1028,8 @@ def _store_catalog_signature(
     include_synth: bool,
     trusted_publics: tuple,
     revision_ids: Mapping[str, str] | None = None,
+    catalog_trusted_owner: tuple[int, int] | None = None,
+    skill_state_signature: tuple[str, str, int, str] | None = None,
 ) -> tuple:
     """Identify one structural inventory and its live revision pointers.
 
@@ -1055,7 +1077,10 @@ def _store_catalog_signature(
     # Aging and skill visibility remain mutable application state.  Their
     # existing signatures are appended separately; mtimes are never used as
     # a substitute for a contract revision identity.
-    external_state = _catalog_cache_signature([])
+    external_state = _catalog_cache_signature(
+        [], catalog_trusted_owner=catalog_trusted_owner,
+        skill_state_signature=skill_state_signature,
+    )
     return (
         "store-v1",
         _trusted_public_signature(trusted_publics),
@@ -1089,6 +1114,9 @@ def _load_catalog_under_catalog_lock(
     include_synth=True,
     include_verb_unique=True,
     lang: str | None = None,
+    catalog_trusted_owner: tuple[int, int] | None = None,
+    audit_only: bool = False,
+    trusted_publics: tuple | None = None,
 ) -> Catalog:
     """Scansiona executors_dir + (opzionale) SYNTHESIZED_EXECUTORS_DIR.
 
@@ -1149,17 +1177,34 @@ def _load_catalog_under_catalog_lock(
             except Exception:
                 _catalog_lang = "it"
     _hidden_env = os.environ.get("METNOS_HIDE_EXECUTORS", "")
-    cache_key = f"{executors_dir}|{verify}|{include_synth}|{include_verb_unique}|{_catalog_lang}|{_hidden_env}"
+    cache_key = (
+        f"{executors_dir}|{verify}|{include_synth}|{include_verb_unique}|"
+        f"{_catalog_lang}|{_hidden_env}|owner={catalog_trusted_owner!r}"
+    )
     catalog = Catalog()
     current_sig = None
     if store_only:
+        store_trusted = (
+            tuple(list_trusted_publics())
+            if trusted_publics is None else trusted_publics
+        )
         # Build one coherent store snapshot. A publisher may atomically move a
         # pointer while a cold load is authenticating several contracts; a
         # bounded retry prevents caching a mixed catalog and fails explicitly
         # if the store never settles.
         for attempt in range(_STORE_SNAPSHOT_ATTEMPTS):
-            inventory = inventory_manifests()
-            trusted = tuple(list_trusted_publics())
+            skill_enabled = None
+            skill_state_signature = None
+            if catalog_trusted_owner is not None:
+                from skill_registry import _skill_policy_snapshot_for_owner_v1
+
+                skill_enabled, skill_state_signature = (
+                    _skill_policy_snapshot_for_owner_v1(
+                        catalog_trusted_owner,
+                    )
+                )
+            inventory = inventory_manifests(skill_enabled=skill_enabled)
+            trusted = store_trusted
             expected_revisions = _store_revision_ids(
                 inventory,
                 include_synth=include_synth,
@@ -1169,10 +1214,13 @@ def _load_catalog_under_catalog_lock(
                 include_synth=include_synth,
                 trusted_publics=trusted,
                 revision_ids=expected_revisions,
+                catalog_trusted_owner=catalog_trusted_owner,
+                skill_state_signature=skill_state_signature,
             )
-            cached = _CATALOG_CACHE.get(cache_key)
-            if cached is not None and cached[1] == before:
-                return cached[0]
+            if not audit_only:
+                cached = _CATALOG_CACHE.get(cache_key)
+                if cached is not None and cached[1] == before:
+                    return cached[0]
 
             candidate = Catalog()
             try:
@@ -1183,6 +1231,9 @@ def _load_catalog_under_catalog_lock(
                     inventory=inventory,
                     trusted_publics=trusted,
                     expected_revision_ids=expected_revisions,
+                    skill_enabled=skill_enabled,
+                    emit_diagnostics=not audit_only,
+                    evaluate_runtime_dormancy=not audit_only,
                 )
             except Exception as exc:
                 from manifest_inventory import ManifestBootstrapError
@@ -1198,8 +1249,18 @@ def _load_catalog_under_catalog_lock(
                         "contract revision changed while authenticating it",
                     ) from exc
                 continue
-            after_inventory = inventory_manifests()
-            after_trusted = tuple(list_trusted_publics())
+            after_skill_enabled = None
+            after_skill_state_signature = None
+            if catalog_trusted_owner is not None:
+                after_skill_enabled, after_skill_state_signature = (
+                    _skill_policy_snapshot_for_owner_v1(
+                        catalog_trusted_owner,
+                    )
+                )
+            after_inventory = inventory_manifests(
+                skill_enabled=after_skill_enabled,
+            )
+            after_trusted = store_trusted
             after_revisions = _store_revision_ids(
                 after_inventory,
                 include_synth=include_synth,
@@ -1209,6 +1270,8 @@ def _load_catalog_under_catalog_lock(
                 include_synth=include_synth,
                 trusted_publics=after_trusted,
                 revision_ids=after_revisions,
+                catalog_trusted_owner=catalog_trusted_owner,
+                skill_state_signature=after_skill_state_signature,
             )
             if before == after:
                 catalog = candidate
@@ -1256,7 +1319,7 @@ def _load_catalog_under_catalog_lock(
     # Affinity overlap guard (ADR 0114, 8/5/2026): synth con Jaccard >=0.5
     # verso UN handcrafted (o un altro synth piu' vecchio) viene rejected.
     # Audit log JSONL. Esecuzione DOPO load completo, PRIMA di GC.
-    _check_affinity_overlap(catalog)
+    _check_affinity_overlap(catalog, write_audit=not audit_only)
 
     # GC dei synth rifiutati per collision (ADR 0079, 4/5/2026): prima del
     # ramo executor_aging cosi' i path GC-ati non concorrono piu' agli
@@ -1269,7 +1332,7 @@ def _load_catalog_under_catalog_lock(
     # GC per evitare di iniettare e poi GC-are nello stesso load.
     # `include_verb_unique=False` (testing): salta l'iniezione per test che
     # asseriscono cardinalità sull'executors_dir custom (es. carica_*).
-    if include_verb_unique:
+    if include_verb_unique and not audit_only:
         if store_only:
             # Store bindings already enumerate every persisted builtin
             # contract. Registration supplies only its in-process callable;
@@ -1301,30 +1364,26 @@ def _load_catalog_under_catalog_lock(
     # discovered executors with their source. Best-effort: if the module
     # isn't available (dev mode) we silently skip the integration.
     try:
-        from executor_aging import (
-            lifecycle_override_map, register as _exec_register,
-        )
+        from executor_aging import lifecycle_override_map
         # Register each executor from its admitted metadata. Post-cutover the
         # live manifest path belongs to the generation store, so path shape is
         # neither provenance nor a reason to reopen authoring.
-        for ex in catalog.executors.values():
-            try:
-                if ex.source == "imported":
-                    # Bundle skill IMPORTATO (github, google-workspace, …): vive
-                    # sotto executors/skills/<skill>/ — NON e' un synth REATTIVO.
-                    # source='skill' = esente da aging come handcrafted: le skill
-                    # NON invecchiano (§reference aging-inactivity-trap; ADR 0170).
-                    src = "skill"
-                elif ex.source == "synthesized":
-                    src = "synth:reactive"  # default; introvertive_specialize
-                                            # writes its own register call
-                else:
-                    src = "handcrafted"
-                _exec_register(ex.name, source=src)
-            except Exception:
-                pass
+        if not audit_only:
+            from executor_aging import register as _exec_register
 
-        overrides = lifecycle_override_map()
+            for ex in catalog.executors.values():
+                try:
+                    if ex.source == "imported":
+                        src = "skill"
+                    elif ex.source == "synthesized":
+                        src = "synth:reactive"
+                    else:
+                        src = "handcrafted"
+                    _exec_register(ex.name, source=src)
+                except Exception:
+                    pass
+
+        overrides = lifecycle_override_map(read_only=audit_only)
         if overrides:
             to_archive = []
             for name, target_state in overrides.items():
@@ -1345,32 +1404,43 @@ def _load_catalog_under_catalog_lock(
     except ImportError:
         pass
     except Exception as e:
+        if audit_only:
+            raise
         log.warning("loader: executor_aging override failed: %s", e)
 
     # Ogni reject è visibile almeno nel log anche quando nessuna UI admin è
     # aperta. Il Catalog conserva la stessa lista per la superficie HTTP.
-    for rejected_path, rejected_reason in catalog.rejected:
-        log.warning("[loader] rejected %s: %s", rejected_path, rejected_reason)
+    if not audit_only:
+        for rejected_path, rejected_reason in catalog.rejected:
+            log.warning("[loader] rejected %s: %s", rejected_path, rejected_reason)
 
     # Aggiorna cache (ADR 0099): memorizza catalog + firma corrente.
-    _CATALOG_CACHE[cache_key] = (catalog, current_sig)
+    if not audit_only:
+        _CATALOG_CACHE[cache_key] = (catalog, current_sig)
     return catalog
 
 
 def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
                  include_synth=True, include_verb_unique=True,
-                 lang: str | None = None) -> Catalog:
+                 lang: str | None = None,
+                 catalog_trusted_owner: tuple[int, int] | None = None) -> Catalog:
     """Load one catalog from a stable publication and visibility snapshot."""
-    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+    layout = resolve_manifest_layout()
+    _validate_catalog_read_options(
+        layout,
+        catalog_trusted_owner=catalog_trusted_owner,
+    )
+    if layout is ManifestLayout.STORE_ONLY:
         from contract_store import catalog_admission_lock
 
-        with catalog_admission_lock():
+        with catalog_admission_lock(trusted_owner=catalog_trusted_owner):
             return _load_catalog_under_catalog_lock(
                 executors_dir,
                 verify,
                 include_synth=include_synth,
                 include_verb_unique=include_verb_unique,
                 lang=lang,
+                catalog_trusted_owner=catalog_trusted_owner,
             )
     return _load_catalog_under_catalog_lock(
         executors_dir,
@@ -1378,7 +1448,39 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
         include_synth=include_synth,
         include_verb_unique=include_verb_unique,
         lang=lang,
+        catalog_trusted_owner=catalog_trusted_owner,
     )
+
+
+def _load_catalog_for_cutover_audit_v1(
+    *, catalog_trusted_owner: tuple[int, int] | None,
+    trusted_publics: tuple,
+    _executors_dir=DEFAULT_EXECUTORS_DIR,
+    _include_synth: bool = True,
+    _lang: str | None = None,
+) -> Catalog:
+    """Cold-authenticate STORE_ONLY without process or filesystem effects."""
+    layout = resolve_manifest_layout()
+    _validate_catalog_read_options(
+        layout, catalog_trusted_owner=catalog_trusted_owner,
+    )
+    if layout is not ManifestLayout.STORE_ONLY:
+        raise ValueError("cutover audit requires the store-only layout")
+    if type(trusted_publics) is not tuple or not trusted_publics:
+        raise ValueError("cutover audit requires trusted public keys")
+    from contract_store import catalog_admission_lock
+
+    with catalog_admission_lock(trusted_owner=catalog_trusted_owner):
+        return _load_catalog_under_catalog_lock(
+            _executors_dir,
+            verify=True,
+            include_synth=_include_synth,
+            include_verb_unique=False,
+            lang=_lang,
+            catalog_trusted_owner=catalog_trusted_owner,
+            audit_only=True,
+            trusted_publics=trusted_publics,
+        )
 
 
 def invalidate_catalog_cache() -> None:
@@ -1462,7 +1564,21 @@ def check_affinity_pair(candidate_aff: set, existing_aff: set,
     return (j >= threshold, j)
 
 
-def _check_affinity_overlap(catalog: Catalog) -> list[dict]:
+def _apply_affinity_rejections(
+    catalog: Catalog, rejected: list[tuple[str, dict]],
+) -> None:
+    for name, entry in rejected:
+        executor = catalog.executors.pop(name, None)
+        catalog.rejected.append((
+            str(executor.manifest_path) if executor else f"<{name}>",
+            f"affinity_overlap with '{entry['overlapping_with']}' "
+            f"(jaccard={entry['jaccard']}, shared={entry['shared_terms']})",
+        ))
+
+
+def _check_affinity_overlap(
+    catalog: Catalog, *, write_audit: bool = True,
+) -> list[dict]:
     """Pairwise Jaccard su affinity. Synth con Jaccard >= soglia verso
     UN handcrafted o un altro synth con identita' strutturale prioritaria
     viene rejected con motivo `affinity_overlap`. Audit JSONL append.
@@ -1579,34 +1695,20 @@ def _check_affinity_overlap(catalog: Catalog) -> list[dict]:
 
     # Apply: rimuovi dal catalog + append a rejected list + audit log.
     if to_remove:
+        _apply_affinity_rejections(catalog, to_remove)
+    if to_remove and write_audit:
         import json as _json
         import time as _time
         audit_path = _affinity_audit_path()
         ts = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
         try:
             with audit_path.open("a", encoding="utf-8") as fh:
-                for name, entry in to_remove:
-                    ex = catalog.executors.pop(name, None)
-                    catalog.rejected.append((
-                        str(ex.manifest_path) if ex else f"<{name}>",
-                        f"affinity_overlap with '{entry['overlapping_with']}' "
-                        f"(jaccard={entry['jaccard']}, shared={entry['shared_terms']})",
-                    ))
+                for _name, entry in to_remove:
                     line = dict(entry)
                     line["ts"] = ts
                     fh.write(_json.dumps(line, ensure_ascii=False) + "\n")
         except OSError as ex:
             log.warning("[loader] affinity audit log write failed: %s", ex)
-            # Anche se l'audit fallisce, applichiamo il reject (no silent
-            # admission §2.8): rimuovi dal catalog comunque.
-            for name, entry in to_remove:
-                if name in catalog.executors:
-                    catalog.executors.pop(name, None)
-                    catalog.rejected.append((
-                        f"<{name}>",
-                        f"affinity_overlap with '{entry['overlapping_with']}' "
-                        f"(jaccard={entry['jaccard']})",
-                    ))
         log.info("[loader] %d synth rejected for affinity overlap (ADR 0114)",
                  len(to_remove))
     return rejected_local
@@ -1742,6 +1844,9 @@ def _load_parsed_manifest_into_catalog(
     contract_id: str | None = None,
     authoring_manifest_path: Path | None = None,
     reject_any_name_collision: bool = False,
+    skill_enabled=None,
+    emit_diagnostics: bool = True,
+    evaluate_runtime_dormancy: bool = True,
 ) -> None:
     """Admit one already-authenticated manifest mapping into ``catalog``."""
     manifest = _thaw_manifest(parsed)
@@ -1918,13 +2023,15 @@ def _load_parsed_manifest_into_catalog(
 
         # Dormancy check (ADR 15/5/2026): executor importato da skill
         # ma senza credenziali → dormant=True, filtrato dal pool top-K.
-        try:
-            from skill_credentials import compute_dormancy as _compute_dormancy
-            _dormant, _dormant_reason = _compute_dormancy(
-                manifest.get("provenance") or {}
-            )
-        except Exception:
-            _dormant, _dormant_reason = False, ""
+        _dormant, _dormant_reason = False, ""
+        if evaluate_runtime_dormancy:
+            try:
+                from skill_credentials import compute_dormancy as _compute_dormancy
+                _dormant, _dormant_reason = _compute_dormancy(
+                    manifest.get("provenance") or {}
+                )
+            except Exception:
+                _dormant, _dormant_reason = False, ""
 
         # Gating SKILL first-party (asse 2 rilascio pubblico): se l'executor
         # appartiene a una skill-capacità DISABILITATA dall'utente, dormant →
@@ -1943,20 +2050,28 @@ def _load_parsed_manifest_into_catalog(
                     _dormant = True
                     _dormant_reason = (
                         f"skill_catalog_unavailable:{type(ex).__name__}")
-                log.warning("[loader] skill catalog lookup failed for %s: %s",
-                            name, ex)
+                if emit_diagnostics:
+                    log.warning(
+                        "[loader] skill catalog lookup failed for %s: %s",
+                        name, ex,
+                    )
             if not _dormant and _fp_skill and _fp_skill != "core":
                 try:
-                    from skill_registry import is_skill_enabled as _isen
-                    if not _isen(_fp_skill):
+                    enabled = skill_enabled
+                    if enabled is None:
+                        from skill_registry import is_skill_enabled as enabled
+                    if not enabled(_fp_skill):
                         _dormant = True
                         _dormant_reason = f"skill_disabled:{_fp_skill}"
                 except Exception as ex:
                     _dormant = True
                     _dormant_reason = (
                         f"skill_enable_gate_unavailable:{type(ex).__name__}")
-                    log.warning("[loader] skill enable lookup failed for %s: %s",
-                                name, ex)
+                    if emit_diagnostics:
+                        log.warning(
+                            "[loader] skill enable lookup failed for %s: %s",
+                            name, ex,
+                        )
 
         # Sandbox profile dichiarativo (mini-version 17/5/2026):
         # legge [sandbox] dal manifest senza enforcement. Default vuoto
@@ -2091,6 +2206,9 @@ def _load_store_into_catalog(
     inventory=None,
     trusted_publics: tuple | None = None,
     expected_revision_ids: Mapping[str, str] | None = None,
+    skill_enabled=None,
+    emit_diagnostics: bool = True,
+    evaluate_runtime_dormancy: bool = True,
 ) -> None:
     """Load only bound, generation-verified contracts after cutover."""
     if inventory is None:
@@ -2115,7 +2233,7 @@ def _load_store_into_catalog(
     from contract_store import ACTIVE_RELATIVE, ContractStoreError, current_manifest
 
     marker = _C.PATH_USER_STATE / ACTIVE_RELATIVE
-    if not os.path.lexists(os.fspath(marker)):
+    if emit_diagnostics and not os.path.lexists(os.fspath(marker)):
         log.warning(
             "[loader] contract publication root is active without marker; "
             "maintenance must restore contract-publications.ACTIVE",
@@ -2198,6 +2316,9 @@ def _load_store_into_catalog(
             contract_id=str(ref.contract_id),
             authoring_manifest_path=ref.manifest_path,
             reject_any_name_collision=True,
+            skill_enabled=skill_enabled,
+            emit_diagnostics=emit_diagnostics,
+            evaluate_runtime_dormancy=evaluate_runtime_dormancy,
         )
 
 

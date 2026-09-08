@@ -200,6 +200,7 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
     _install_birth_runtime_bundle(
         _assemble_birth_runtime_bundle(
             core, {_INSTALLER: factory}, reattestation_factory,
+            author_verifier_keys=dict(trusted),
         )
     )
 
@@ -232,6 +233,10 @@ def test_installer_intent_publishes_the_bytes_the_door_later_executes(
     )
     monkeypatch.setattr(
         "admitted_module_v1._trusted_public_keys_v1",
+        lambda: tuple(public for _name, public in trusted),
+    )
+    monkeypatch.setattr(
+        "admitted_module_v1._projected_trusted_public_keys_v1",
         lambda: tuple(public for _name, public in trusted),
     )
     projected = runtime_admitted_executor_v1(record.name)

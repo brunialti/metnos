@@ -10,11 +10,14 @@ import os
 import stat
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import executor_birth_ownership_coordinator as coordinator_module
+import executor_birth_transition_chain_policy as transition_chain_policy_module
+import executor_birth_transition_gate as transition_gate_module
 from contract_boundary_guard import BOUNDARY_APIS
 from executor_birth_cutover import CurrentInventoryV1, CurrentReceiptProof
 from executor_birth_context_selection import (
@@ -112,10 +115,52 @@ def payload_bound_distribution_v2():
         ),
         "requirements.lock": "dependency_lock",
         "runtime/__version__.py": "product_version",
+        "runtime/contract_boundary_analyzer_ast.py": "runtime_code",
+        "runtime/contract_boundary_analyzer_projection.py": "runtime_code",
+        "runtime/contract_boundary_analyzer_types.py": "runtime_code",
+        "runtime/contract_boundary_api_policy.py": "runtime_code",
+        "runtime/contract_boundary_birth_authority_policy.py": "runtime_code",
+        "runtime/contract_boundary_birth_exception_policy.py": "runtime_code",
+        "runtime/contract_boundary_birth_policy.py": "runtime_code",
         "runtime/contract_boundary_guard.py": "boundary_guard",
+        "runtime/contract_boundary_policy.py": "runtime_code",
+        "runtime/contract_boundary_policy_types.py": "runtime_code",
+        "runtime/contract_boundary_role_policy.py": "runtime_code",
+        "runtime/contract_boundary_syntax_policy.py": "runtime_code",
         "runtime/contract_store.py": "runtime_code",
+        "install/executor_birth_append_journal_posix.py": "runtime_code",
+        "install/executor_birth_contract_convergence.py": "runtime_code",
+        "install/executor_birth_host_capability.py": "runtime_code",
+        "install/executor_birth_host_journal_posix.py": "runtime_code",
+        "install/executor_birth_host_posix.py": "runtime_code",
+        "install/executor_birth_host_provisioning.py": "runtime_code",
+        "install/executor_birth_legacy_state_adoption.py": "runtime_code",
+        "install/executor_birth_legacy_state_effect_posix.py": "runtime_code",
+        "install/executor_birth_legacy_state_inspection.py": "runtime_code",
+        "install/executor_birth_legacy_state_journal_posix.py": "runtime_code",
+        "install/executor_birth_legacy_state_posix.py": "runtime_code",
+        "install/executor_birth_posix_directory.py": "runtime_code",
+        "install/executor_birth_transition.py": "runtime_code",
         "runtime/executor_birth.py": "runtime_code",
+        "runtime/executor_birth_account_identity.py": "runtime_code",
+        "runtime/executor_birth_authority_gate.py": "runtime_code",
+        "runtime/executor_birth_canonical.py": "runtime_code",
+        "runtime/executor_birth_crypto_framing.py": "runtime_code",
         "runtime/executor_birth_distribution_manifest.py": "preflight",
+        "runtime/executor_birth_host_layout.py": "runtime_code",
+        "runtime/executor_birth_host_chain_policy.py": "runtime_code",
+        "runtime/executor_birth_host_path_policy.py": "runtime_code",
+        "runtime/executor_birth_host_provisioning_evidence.py": "runtime_code",
+        "runtime/executor_birth_host_provisioning_journal.py": "runtime_code",
+        "runtime/executor_birth_legacy_state.py": "runtime_code",
+        "runtime/executor_birth_legacy_state_journal.py": "runtime_code",
+        "runtime/executor_birth_legacy_state_policy.py": "runtime_code",
+        "runtime/executor_birth_legacy_state_preflight_projection.py": "runtime_code",
+        "runtime/executor_birth_legacy_state_request.py": "runtime_code",
+        "runtime/executor_birth_legacy_state_wire.py": "runtime_code",
+        "runtime/executor_birth_posix_metadata.py": "runtime_code",
+        "runtime/executor_birth_preflight_attestation_store.py": "runtime_code",
+        "runtime/executor_birth_preflight_store_authority.py": "runtime_code",
         "runtime/executor_birth_ownership_preflight.py": "preflight",
         "runtime/sign.py": "runtime_code",
         "share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json": (
@@ -333,10 +378,10 @@ def maintenance() -> bytes:
         units=tuple({
             "scope": scope,
             "unit": unit,
-            "load_state": "loaded",
+            "load_state": ("loaded", "masked", "not-found")[index % 3],
             "active_state": "inactive",
             "main_pid": 0,
-        } for scope, unit in MAINTENANCE_TARGETS_V1),
+        } for index, (scope, unit) in enumerate(MAINTENANCE_TARGETS_V1)),
     )
 
 
@@ -465,10 +510,13 @@ def install_maintenance_fixture(monkeypatch, tmp_path, *, drift: bool):
             return () if drift and self.calls > 1 else (item,)
 
     verified = []
+    trusted = (("author-v1", object()),)
     monkeypatch.setattr(guard_module, "contract_cutover_guard", guard)
     monkeypatch.setattr(
         guard_module, "_verify_store_only_catalog_locked",
-        lambda: verified.append(True),
+        lambda **options: verified.append(
+            options.get("trusted_publics") == trusted
+        ),
     )
     monkeypatch.setattr(
         guard_module, "_maintenance_evidence_under_transition_v1",
@@ -476,9 +524,293 @@ def install_maintenance_fixture(monkeypatch, tmp_path, *, drift: bool):
     )
     port = Port()
     monkeypatch.setattr(
-        coordinator_module, "_current_reattestation_port_v1", lambda: port,
+        transition_gate_module, "_require_transition_gate_snapshot_locked_v2",
+        lambda *_args: SimpleNamespace(distribution="distribution"),
+    )
+
+    def require_enumerator(value, _session, distribution):
+        assert value.__self__ is port
+        assert value.__func__ is Port.enumerate_current
+        assert distribution == "distribution"
+        return value
+
+    monkeypatch.setattr(
+        transition_gate_module, "_require_transition_current_enumerator_v2",
+        require_enumerator,
+    )
+    monkeypatch.setattr(
+        transition_gate_module, "_transition_current_trusted_publics_v2",
+        lambda value, current, distribution: trusted
+        if value.__self__ is port and current is not None
+        and distribution == "distribution"
+        else pytest.fail("current verifier authority changed"),
     )
     return port, verified, item
+
+
+def test_initial_transition_inventory_uses_only_historical_public_verifiers(
+    monkeypatch,
+):
+    import executor_birth_authority_gate as authority_gate
+    import executor_birth_cutover as cutover
+    import executor_birth_ownership_chain as ownership_chain
+    import executor_birth_prepared_root as prepared_root
+
+    class Initial:
+        pass
+
+    state = Initial()
+    verifier = object()
+    historical = SimpleNamespace(author_verifier_keys={"author-v1": verifier})
+    expected = object()
+    observed = {}
+    monkeypatch.setattr(
+        ownership_chain, "_InitialOwnershipChainStateV1", Initial,
+    )
+    monkeypatch.setattr(
+        ownership_chain, "inspect_ownership_chain_state_v1", lambda: state,
+    )
+    distribution = SimpleNamespace(release_sequence=1)
+    monkeypatch.setattr(
+        authority_gate, "closed_build_enforcement", lambda: True,
+    )
+    monkeypatch.setattr(
+        prepared_root, "_load_historical_transition_verifiers_v1",
+        lambda: historical,
+    )
+    monkeypatch.setattr(
+        prepared_root, "load_sealed_authorities_v1",
+        lambda: pytest.fail("historical inventory selected runtime authorities"),
+    )
+    monkeypatch.setattr(
+        coordinator_module, "_current_reattestation_port_v1",
+        lambda: pytest.fail("ordinary runtime crossed the initial gate"),
+    )
+
+    def enumerate_current_generations(*, trusted_publics, store_root):
+        observed["trusted"] = trusted_publics
+        observed["store_root"] = store_root
+        return expected
+
+    monkeypatch.setattr(
+        cutover, "enumerate_authenticated_current_generations",
+        enumerate_current_generations,
+    )
+
+    gate, session = object(), object()
+    observation = SimpleNamespace(
+        distribution=distribution, claim=None, predecessor=None,
+        phase=None, chain=state, partial=False,
+    )
+    monkeypatch.setattr(
+        transition_gate_module, "_require_transition_gate_snapshot_locked_v2",
+        lambda candidate, current: observation
+        if candidate is gate and current is session
+        else pytest.fail("transition gate binding changed"),
+    )
+    enumerate_current = transition_gate_module._transition_current_enumerator_v2(
+        gate, session,
+    )
+
+    assert enumerate_current() is expected
+    assert observed["trusted"] == (("author-v1", verifier),)
+    assert observed["store_root"].is_absolute()
+    assert transition_gate_module._transition_current_trusted_publics_v2(
+        enumerate_current, session, distribution,
+    ) == (("author-v1", verifier),)
+
+
+def test_transition_gate_rejects_an_unissued_snapshot(monkeypatch):
+    session = object()
+    monkeypatch.setattr(
+        transition_gate_module, "_require_deployment_lock_session_v1",
+        lambda candidate: None
+        if candidate is session
+        else pytest.fail("deployment session changed"),
+    )
+    forged = transition_gate_module._TransitionGateSnapshotV2(object())
+    with pytest.raises(OwnershipCoordinatorError) as failed:
+        transition_gate_module._require_transition_gate_snapshot_locked_v2(
+            forged, session,
+        )
+    assert failed.value.detail == "gate authority"
+
+
+@pytest.mark.parametrize("phase_state", (
+    OwnershipCoordinatorStateV1.CERTIFICATE_READY,
+    OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED,
+    OwnershipCoordinatorStateV1.BUILD_VERIFIED,
+))
+def test_initial_transition_partial_chain_uses_historical_authority(
+    monkeypatch, phase_state,
+):
+    import executor_birth_authority_gate as authority_gate
+    import executor_birth_cutover as cutover
+    import executor_birth_ownership_chain as ownership_chain
+    import executor_birth_prepared_root as prepared_root
+
+    distribution = SimpleNamespace(release_sequence=1)
+    phase = SimpleNamespace(state=phase_state, head_id=None)
+    verifier, expected = object(), object()
+    historical = SimpleNamespace(author_verifier_keys={"author-v1": verifier})
+    monkeypatch.setattr(authority_gate, "closed_build_enforcement", lambda: True)
+    monkeypatch.setattr(
+        prepared_root, "_load_historical_transition_verifiers_v1",
+        lambda: historical,
+    )
+    monkeypatch.setattr(
+        prepared_root, "load_sealed_authorities_v1",
+        lambda: pytest.fail("partial initial chain selected runtime authorities"),
+    )
+    monkeypatch.setattr(
+        coordinator_module, "_current_reattestation_port_v1",
+        lambda: pytest.fail("partial initial chain selected ordinary runtime"),
+    )
+    monkeypatch.setattr(
+        cutover, "enumerate_authenticated_current_generations",
+        lambda *, trusted_publics, store_root: expected
+        if trusted_publics == (("author-v1", verifier),)
+        and store_root.is_absolute()
+        else pytest.fail("historical authority changed"),
+    )
+
+    gate, session = object(), object()
+    observation = SimpleNamespace(
+        distribution=distribution, claim=None, predecessor=None,
+        phase=phase, chain=None, partial=True,
+    )
+    monkeypatch.setattr(
+        transition_gate_module, "_require_transition_gate_snapshot_locked_v2",
+        lambda candidate, current: observation
+        if candidate is gate and current is session
+        else pytest.fail("transition gate binding changed"),
+    )
+    enumerate_current = transition_gate_module._transition_current_enumerator_v2(
+        gate, session,
+    )
+    assert enumerate_current() is expected
+
+
+@pytest.mark.parametrize("code,detail", (
+    ("birth_ownership_recovery_required", "cold chain"),
+    ("birth_ownership_distribution_recovery_required", "partial chain"),
+))
+def test_transition_selector_rejects_nonexact_partial_chain_error(
+    monkeypatch, code, detail,
+):
+    import executor_birth_ownership_chain as ownership_chain
+
+    session = object()
+    distribution = SimpleNamespace(release_sequence=1)
+    monkeypatch.setattr(
+        transition_gate_module, "_resolve_ownership_coordinator_locked_v2",
+        lambda _: object(),
+    )
+    monkeypatch.setattr(
+        transition_gate_module, "_require_locked_coordinator_graph_snapshot_v2",
+        lambda *_: object(),
+    )
+    monkeypatch.setattr(
+        transition_gate_module, "_transition_gate_edge_phase_v2",
+        lambda *_: (object(), None, SimpleNamespace(
+            state=OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED,
+        )),
+    )
+    monkeypatch.setattr(
+        transition_gate_module,
+        "_require_deployment_lock_session_v1", lambda _: None,
+    )
+    monkeypatch.setattr(
+        ownership_chain, "inspect_ownership_chain_state_v1",
+        lambda: (_ for _ in ()).throw(
+            ownership_chain.OwnershipChainError(code, detail)
+        ),
+    )
+    with pytest.raises(ownership_chain.OwnershipChainError) as failed:
+        transition_gate_module._transition_gate_snapshot_locked_v2(
+            session, distribution,
+        )
+    assert (failed.value.code, failed.value.detail) == (code, detail)
+
+
+def test_transition_verified_chain_uses_required_context_authority(
+    monkeypatch,
+):
+    import executor_birth_cutover as cutover
+    import executor_birth_prepared_root as prepared_root
+    session, distribution = object(), SimpleNamespace(release_sequence=1)
+    phase = SimpleNamespace(
+        state=OwnershipCoordinatorStateV1.HEAD_REQUIRED,
+        head_id=D("1"),
+    )
+    chain = SimpleNamespace(required_head=SimpleNamespace(head_id=D("1")))
+    verifier, expected = object(), object()
+    sealed = SimpleNamespace(
+        author=SimpleNamespace(verifier_keys={"author-v1": verifier}),
+    )
+    monkeypatch.setattr(
+        transition_gate_module, "_transition_chain_authority_source_v2",
+        lambda observed: "required",
+    )
+    monkeypatch.setattr(
+        prepared_root, "_load_historical_transition_verifiers_v1",
+        lambda: pytest.fail("required chain selected historical verifiers"),
+    )
+    monkeypatch.setattr(
+        prepared_root, "load_required_context_runtime_v1",
+        lambda: SimpleNamespace(
+            required_head_id=D("1"), authorities=sealed,
+        ),
+    )
+    monkeypatch.setattr(
+        cutover, "enumerate_authenticated_current_generations",
+        lambda *, trusted_publics, store_root: expected
+        if trusted_publics == (("author-v1", verifier),)
+        and store_root.is_absolute()
+        else pytest.fail("required authority changed"),
+    )
+
+    gate = object()
+    observation = SimpleNamespace(
+        distribution=distribution, claim=None, predecessor=None,
+        phase=phase, chain=chain, partial=False,
+    )
+    monkeypatch.setattr(
+        transition_gate_module, "_require_transition_gate_snapshot_locked_v2",
+        lambda candidate, current: observation
+        if candidate is gate and current is session
+        else pytest.fail("transition gate binding changed"),
+    )
+    enumerate_current = transition_gate_module._transition_current_enumerator_v2(
+        gate, session,
+    )
+    assert enumerate_current() is expected
+
+
+def test_initial_transition_rejects_partial_chain_before_certificate_ready(
+    monkeypatch,
+):
+    import executor_birth_ownership_chain as ownership_chain
+
+    distribution = SimpleNamespace(release_sequence=1)
+    gate, session = object(), object()
+    observation = SimpleNamespace(
+        distribution=distribution,
+        claim=None, predecessor=None,
+        phase=SimpleNamespace(
+            state=OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE,
+        ),
+        chain=None, partial=True,
+    )
+    monkeypatch.setattr(
+        transition_gate_module, "_require_transition_gate_snapshot_locked_v2",
+        lambda candidate, current: observation
+        if candidate is gate and current is session
+        else pytest.fail("transition gate binding changed"),
+    )
+    with pytest.raises(OwnershipCoordinatorError) as failed:
+        transition_gate_module._transition_current_enumerator_v2(gate, session)
+    assert failed.value.detail == "chain phase"
 
 
 def test_transition_maintenance_freezes_and_rechecks_the_exact_inventory(
@@ -488,40 +820,59 @@ def test_transition_maintenance_freezes_and_rechecks_the_exact_inventory(
         monkeypatch, tmp_path, drift=False,
     )
 
-    with coordinator_module._transition_maintenance_inventory_v2() as frozen:
-        prove_quiescent, inventory, evidence = frozen
-        assert prove_quiescent() is True
-        assert inventory.identities == (item.identity,)
-        assert evidence == maintenance()
+    from contract_cutover_guard import contract_cutover_guard
 
-    assert port.calls == 2
+    with contract_cutover_guard() as (maintenance_guard, evidence):
+        with transition_gate_module._transition_inventory_under_maintenance_v2(
+            object(), object(), port.enumerate_current,
+            maintenance_guard, evidence, catalog_trusted_owner=(991, 991),
+        ) as frozen:
+            prove_quiescent, inventory, observed, enumerator = frozen
+            assert prove_quiescent() is True
+            assert inventory.identities == (item.identity,)
+            assert observed == maintenance()
+            assert enumerator() == (item,)
+
+    assert port.calls == 3
     assert verified == [True, True]
 
 
 def test_transition_maintenance_rejects_inventory_drift_on_exit(
     monkeypatch, tmp_path,
 ):
-    install_maintenance_fixture(monkeypatch, tmp_path, drift=True)
+    port, _, _ = install_maintenance_fixture(monkeypatch, tmp_path, drift=True)
+    from contract_cutover_guard import contract_cutover_guard
 
     with pytest.raises(
         OwnershipCoordinatorError,
         match="birth_ownership_recovery_required",
     ):
-        with coordinator_module._transition_maintenance_inventory_v2():
-            pass
+        with contract_cutover_guard() as (maintenance_guard, evidence):
+            with transition_gate_module._transition_inventory_under_maintenance_v2(
+                object(), object(), port.enumerate_current,
+                maintenance_guard, evidence,
+                catalog_trusted_owner=(991, 991),
+            ):
+                pass
 
 
 def test_transition_maintenance_preserves_the_body_failure(
     monkeypatch, tmp_path,
 ):
-    install_maintenance_fixture(monkeypatch, tmp_path, drift=True)
+    port, _, _ = install_maintenance_fixture(monkeypatch, tmp_path, drift=True)
+    from contract_cutover_guard import contract_cutover_guard
     body_failure = OwnershipCoordinatorError(
         "birth_cutover_reattestation_failed", "contract-alpha",
     )
 
     with pytest.raises(OwnershipCoordinatorError) as failed:
-        with coordinator_module._transition_maintenance_inventory_v2():
-            raise body_failure
+        with contract_cutover_guard() as (maintenance_guard, evidence):
+            with transition_gate_module._transition_inventory_under_maintenance_v2(
+                object(), object(), port.enumerate_current,
+                maintenance_guard, evidence,
+                catalog_trusted_owner=(991, 991),
+            ):
+                raise body_failure
 
     assert failed.value is body_failure
     assert failed.value.code == "birth_cutover_reattestation_failed"
@@ -579,6 +930,7 @@ def record_v2(sequence: int) -> OwnershipCoordinatorRecordV2:
         target_set_json_sha256="8" * 64,
         context_transition_id=D("9"),
         current_inventory_hash=current_inventory_hash_v1(current.inventory),
+        legacy_state_record_sha256=D("0"),
         current_proof=current if sequence >= 1 else None,
         maintenance_before_hash=evidence_hash,
         maintenance_after_hash=evidence_hash,
@@ -606,7 +958,7 @@ def test_v2_codec_state_threshold_table(sequence):
     encoded = record.encode()
     value = json.loads(encoded)
 
-    assert len(value) == 49
+    assert len(value) == 50
     assert _decode_record_v2(encoded) == record
     assert _record_basename_v2(sequence) == f"record-{sequence:03d}-v2.json"
     assert _install_transaction_id_v1(
@@ -1165,6 +1517,80 @@ def test_preflight_crossing_refuses_conflicting_durable_attestation(tmp_path):
 
 
 @LINUX_ONLY
+def test_preflight_live_drift_is_refused_before_journal_append(tmp_path):
+    head, _repeat, _graph, _required, _distribution, _certificate = (
+        _complete_initial_head_crossing_v2(tmp_path, None)
+    )
+    ownership_root = tmp_path / "ownership"
+    gate_path = tmp_path / "runtime" / "startup-v1.lock"
+    attestation_root = ownership_root / "preflight-attestations-v1"
+    attestation_root.mkdir(mode=0o755)
+    encoded = preflight_attestation(head)
+    drifted = preflight_attestation(head, effective_units_hash=D("f"))
+
+    with _deployment_lock_for_test_v1(ownership_root) as deployment:
+        with _exclusive_startup_gate_for_test_v1(gate_path) as startup:
+            with pytest.raises(
+                OwnershipCoordinatorError, match="preflight live drift",
+            ):
+                _cross_preflight_boundary_locked_for_test_v2(
+                    deployment, startup, ownership_root=ownership_root,
+                    gate_path=gate_path, attestation_root=attestation_root,
+                    head_required=head, encoded_attestation=encoded,
+                    _reattest_for_test=lambda: drifted,
+                )
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            deployment, ownership_root,
+        ).observation
+
+    assert graph.transactions[-1].latest == head
+    assert len(graph.transactions[-1].records) == 6
+    assert (
+        attestation_root / f"{head.request_id}.json"
+    ).read_bytes() == encoded
+
+
+@LINUX_ONLY
+def test_preflight_final_drift_is_durable_and_retryable(tmp_path):
+    head, _repeat, _graph, _required, _distribution, _certificate = (
+        _complete_initial_head_crossing_v2(tmp_path, None)
+    )
+    ownership_root = tmp_path / "ownership"
+    gate_path = tmp_path / "runtime" / "startup-v1.lock"
+    attestation_root = ownership_root / "preflight-attestations-v1"
+    attestation_root.mkdir(mode=0o755)
+    encoded = preflight_attestation(head)
+    observed = iter((encoded, preflight_attestation(
+        head, effective_units_hash=D("f"),
+    )))
+    arguments = dict(
+        ownership_root=ownership_root, gate_path=gate_path,
+        attestation_root=attestation_root, head_required=head,
+        encoded_attestation=encoded,
+    )
+
+    with _deployment_lock_for_test_v1(ownership_root) as deployment:
+        with _exclusive_startup_gate_for_test_v1(gate_path) as startup:
+            with pytest.raises(
+                OwnershipCoordinatorError, match="preflight live drift",
+            ):
+                _cross_preflight_boundary_locked_for_test_v2(
+                    deployment, startup, **arguments,
+                    _reattest_for_test=lambda: next(observed),
+                )
+            recovered = _cross_preflight_boundary_locked_for_test_v2(
+                deployment, startup, **arguments,
+            )
+        graph = _resolve_ownership_coordinator_locked_for_test_v2(
+            deployment, ownership_root,
+        ).observation
+
+    assert recovered == graph.transactions[-1].latest
+    assert recovered.sequence == 6
+    assert len(graph.transactions[-1].records) == 7
+
+
+@LINUX_ONLY
 @pytest.mark.parametrize(
     "interruption_stage", ("certificate_ready", "certificate_signature"),
 )
@@ -1654,6 +2080,7 @@ def test_prepared_v2_record_binds_first_transition_before_publication():
         prepared_authority_set=target,
         current_inventory=inventory,
         deployment_descriptor=descriptor,
+        initial_legacy_state_record_sha256=D("0"),
     )
 
     assert record.state is OwnershipCoordinatorStateV1.PREPARED
@@ -1663,6 +2090,7 @@ def test_prepared_v2_record_binds_first_transition_before_publication():
     assert record.target_set_id == target.target_set_id == transition.set_id
     assert record.context_transition_id == transition.transition_id
     assert record.current_inventory_hash == current_inventory_hash_v1(inventory)
+    assert record.legacy_state_record_sha256 == D("0")
     assert record.administrative_bundle_hash == administrative_bundle_oracle(
         descriptor,
     )
@@ -1676,6 +2104,35 @@ def test_prepared_publication_artifact_normalizes_unsealed_inputs():
     ):
         PreparedTransitionPublicationV2(
             None, None, None, None, None, None, object(),
+        )
+
+
+def test_initial_prepared_requires_one_terminal_legacy_record_digest():
+    claim = bound_claim(
+        release_sequence=1, previous_head_id=None,
+        closed_build_id=D("3"), source_id=D("2"),
+        previous_closed_build_id=None, previous_cutover_id=None,
+    )
+    descriptor = deployment_descriptor(1)
+    distribution = verified_distribution(
+        claim, descriptor, previous_closed_build_id=None,
+    )
+    previous = prepared_set(
+        set_id="1" * 64, admission_context_id=D("2"),
+        context_epoch=D("3"),
+    )
+    with pytest.raises(
+        OwnershipCoordinatorError,
+        match="legacy_state_record_sha256",
+    ):
+        _prepared_record_v2(
+            claim=claim, distribution=distribution, predecessor=None,
+            previous_context=previous,
+            prepared_authority_set=prepared_target(
+                claim, distribution, previous_set_id=previous.set_id,
+            ),
+            current_inventory=CurrentInventoryV1(()),
+            deployment_descriptor=descriptor,
         )
 
 
@@ -1712,6 +2169,10 @@ def test_prepared_v2_record_binds_a_completed_predecessor_selection():
     assert record.previous_closed_build_id == predecessor.closed_build_id
     assert record.previous_cutover_id == predecessor.cutover_id
     assert record.previous_head_id == predecessor.head_id
+    assert (
+        record.legacy_state_record_sha256
+        == predecessor.legacy_state_record_sha256
+    )
     assert transition.previous_set_id == previous_selection.set_id
     staged = required_selection_for_predecessor(predecessor, staged=True)
     with pytest.raises(
@@ -1726,6 +2187,7 @@ def test_prepared_v2_record_binds_a_completed_predecessor_selection():
             prepared_authority_set=target,
             current_inventory=proof().inventory,
             deployment_descriptor=descriptor,
+            initial_legacy_state_record_sha256=D("f"),
         )
 
 
@@ -1757,6 +2219,7 @@ def test_prepared_v2_record_rejects_crossed_target_and_release_facts():
         ),
         current_inventory=CurrentInventoryV1(()),
         deployment_descriptor=descriptor,
+        initial_legacy_state_record_sha256=D("0"),
     )
     changes = (
         {"prepared_authority_set": prepared_target(
@@ -1808,6 +2271,7 @@ def test_prepared_v2_record_persists_once_and_inventory_drift_conflicts(
             prepared_authority_set=target,
             current_inventory=inventory,
             deployment_descriptor=descriptor,
+            initial_legacy_state_record_sha256=D("0"),
         )[0]
 
     first = build(CurrentInventoryV1(()))
@@ -1905,6 +2369,7 @@ def transaction_records(
             target_set_json_sha256="8" * 64,
             context_transition_id=context_transition_id,
             current_inventory_hash=inventory_hash,
+            legacy_state_record_sha256=D("0"),
             current_proof=current if sequence >= 1 else None,
             maintenance_before_hash=evidence_hash if sequence >= 1 else None,
             maintenance_after_hash=evidence_hash if sequence >= 1 else None,
@@ -1927,6 +2392,180 @@ def transaction_records(
         records.append(record)
         previous_hash = _record_hash_v2(record.encode())
     return tuple(records)
+
+
+def selector_chain_material(
+    distribution, claim, *, cutover_id: str, head_id: str,
+    previous_cutover_id: str | None = None, previous_heads=(),
+):
+    from executor_birth_ownership_chain import (
+        OwnershipHead, VerifiedOwnershipChain, encode_required_head,
+    )
+
+    head = OwnershipHead(
+        claim.release_sequence, cutover_id, claim.closed_build_id,
+        claim.previous_head_id, head_id,
+        "birth-ed25519-v1-sha256-" + "1" * 64,
+        f"head-{claim.release_sequence}".encode("ascii"), b"s" * 64,
+    )
+    records = list(transaction_records(
+        claim, end_sequence=6,
+        previous_closed_build_id=distribution.previous_closed_build_id,
+        previous_cutover_id=previous_cutover_id,
+        cutover_id=cutover_id, head_id=head_id,
+        distribution=distribution,
+    ))
+    tree_hash = installed_tree_hash_v1(distribution.files)
+    for sequence in range(4, 7):
+        records[sequence] = replace(
+            records[sequence], installed_tree_hash=tree_hash,
+        )
+    frame = encode_required_head(head)
+    head_values = {
+        "head_id": head.head_id,
+        "verified_chain_head_id": head.head_id,
+        "head_payload_hash": coordinator_module._framed_digest_v2(
+            coordinator_module._HEAD_PAYLOAD_HASH_DOMAIN_V2, head.encoded,
+        ),
+        "head_signature_hash": coordinator_module._framed_digest_v2(
+            coordinator_module._HEAD_SIGNATURE_HASH_DOMAIN_V2,
+            head.signature,
+        ),
+        "required_head_frame_hash": coordinator_module._framed_digest_v2(
+            coordinator_module._REQUIRED_HEAD_FRAME_HASH_DOMAIN_V2, frame,
+        ),
+    }
+    for sequence in (5, 6):
+        records[sequence] = replace(records[sequence], **head_values)
+    heads = (*previous_heads, head)
+    chain = VerifiedOwnershipChain(
+        heads[0].cutover_id, heads, required_distribution=distribution,
+    )
+    return tuple(records), chain
+
+
+def selector_observation(
+    distribution, claim, phase, chain, *, predecessor=None, partial=False,
+):
+    return SimpleNamespace(
+        distribution=distribution, claim=claim, predecessor=predecessor,
+        phase=phase, chain=chain, partial=partial,
+    )
+
+
+@pytest.mark.parametrize("phase_state", tuple(OwnershipCoordinatorStateV1))
+def test_initial_and_partial_chain_phase_matrix(monkeypatch, phase_state):
+    import executor_birth_ownership_chain as chain_module
+
+    class Initial:
+        pass
+
+    monkeypatch.setattr(chain_module, "_InitialOwnershipChainStateV1", Initial)
+    distribution = SimpleNamespace(release_sequence=1)
+    phase = SimpleNamespace(state=phase_state)
+    initial_allowed = phase_state in {
+        OwnershipCoordinatorStateV1.PREPARED,
+        OwnershipCoordinatorStateV1.RECEIPTS_COMPLETE,
+        OwnershipCoordinatorStateV1.CERTIFICATE_READY,
+    }
+    partial_allowed = phase_state in {
+        OwnershipCoordinatorStateV1.CERTIFICATE_READY,
+        OwnershipCoordinatorStateV1.CERTIFICATE_PUBLISHED,
+        OwnershipCoordinatorStateV1.BUILD_VERIFIED,
+    }
+    initial = selector_observation(
+        distribution, None, phase, Initial(),
+    )
+    partial = selector_observation(
+        distribution, None, phase, None, partial=True,
+    )
+    if initial_allowed:
+        assert transition_chain_policy_module._transition_chain_authority_source_v2(
+            initial,
+        ) == "historical"
+    else:
+        with pytest.raises(OwnershipCoordinatorError, match="chain phase"):
+            transition_chain_policy_module._transition_chain_authority_source_v2(initial)
+    if partial_allowed:
+        assert transition_chain_policy_module._transition_chain_authority_source_v2(
+            partial,
+        ) == "historical"
+    else:
+        with pytest.raises(OwnershipCoordinatorError, match="chain phase"):
+            transition_chain_policy_module._transition_chain_authority_source_v2(partial)
+
+
+def test_verified_chain_phase_matrix_binds_predecessor_and_target():
+    first = payload_bound_distribution_v2()
+    first_claim = bound_claim(
+        release_sequence=1, previous_head_id=None,
+        closed_build_id=first.identity.closed_build_id, source_id=D("2"),
+        previous_closed_build_id=None, previous_cutover_id=None,
+    )
+    first_records, predecessor_chain = selector_chain_material(
+        first, first_claim, cutover_id=D("3"), head_id=D("8"),
+    )
+    second_claim = bound_claim(
+        release_sequence=2, previous_head_id=D("8"),
+        closed_build_id=D("c"), source_id=D("d"),
+        previous_closed_build_id=first.identity.closed_build_id,
+        previous_cutover_id=D("3"),
+    )
+    second = replace(
+        verified_distribution(
+            second_claim, deployment_descriptor(2),
+            previous_closed_build_id=first.identity.closed_build_id,
+        ),
+        files=first.files,
+    )
+    second_records, target_chain = selector_chain_material(
+        second, second_claim, cutover_id=D("4"), head_id=D("9"),
+        previous_cutover_id=D("3"),
+        previous_heads=predecessor_chain.heads,
+    )
+    predecessor = first_records[6]
+
+    for sequence in range(5):
+        observed = selector_observation(
+            second, second_claim, second_records[sequence],
+            predecessor_chain, predecessor=predecessor,
+        )
+        assert transition_chain_policy_module._transition_chain_authority_source_v2(
+            observed,
+        ) == "required"
+    at_build = selector_observation(
+        second, second_claim, second_records[4], target_chain,
+        predecessor=predecessor,
+    )
+    assert transition_chain_policy_module._transition_chain_authority_source_v2(
+        at_build,
+    ) == "required"
+    for sequence in (5, 6):
+        target = selector_observation(
+            second, second_claim, second_records[sequence], target_chain,
+            predecessor=predecessor,
+        )
+        assert transition_chain_policy_module._transition_chain_authority_source_v2(
+            target,
+        ) == "required"
+        stale = SimpleNamespace(**vars(target))
+        stale.chain = predecessor_chain
+        with pytest.raises(OwnershipCoordinatorError, match="chain phase"):
+            transition_chain_policy_module._transition_chain_authority_source_v2(stale)
+
+    mutants = (
+        replace(predecessor, head_signature_hash=D("f")),
+        replace(predecessor, required_head_frame_hash=D("f")),
+        replace(predecessor, installed_tree_hash=D("f")),
+        replace(predecessor, boundary_inventory_hash=D("f")),
+    )
+    for mutant in mutants:
+        observed = selector_observation(
+            second, second_claim, second_records[3], predecessor_chain,
+            predecessor=mutant,
+        )
+        with pytest.raises(OwnershipCoordinatorError, match="chain phase"):
+            transition_chain_policy_module._transition_chain_authority_source_v2(observed)
 
 
 @pytest.mark.parametrize(
@@ -2364,6 +3003,7 @@ def test_locked_prepared_checkpoint_selects_the_durable_pending_claim(tmp_path):
             prepared_authority_set=target,
             current_inventory=CurrentInventoryV1(()),
             deployment_descriptor=descriptor,
+            initial_legacy_state_record_sha256=D("0"),
         )
 
         first, transition = _append_prepared_transition_locked_for_test_v2(
@@ -3072,6 +3712,7 @@ def test_read_only_resolver_rejects_invalid_inventory_and_cardinality(
     ("sequence", "field", "replacement", "detail"),
     (
         (1, "distribution_payload_hash", D("f"), "transaction carry"),
+        (1, "legacy_state_record_sha256", D("f"), "transaction carry"),
         (1, "target_set_id", "f" * 64, "transaction carry"),
         (
             3, "dominant_startup_receipt", D("f"),

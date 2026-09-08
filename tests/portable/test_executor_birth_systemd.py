@@ -235,12 +235,38 @@ def _fixture(
         "runtime/__version__.py": (
             "product_version", b'__version__ = "1.2.3"\n',
         ),
+        "runtime/contract_boundary_analyzer_ast.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_analyzer_projection.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_analyzer_types.py": ("runtime_code", b"ANALYZER = 1\n"),
+        "runtime/contract_boundary_api_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_authority_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_exception_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_birth_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_boundary_guard.py": ("boundary_guard", b"GUARD = 1\n"),
+        "runtime/contract_boundary_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_policy_types.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_role_policy.py": ("runtime_code", b"POLICY = 1\n"),
+        "runtime/contract_boundary_syntax_policy.py": ("runtime_code", b"POLICY = 1\n"),
         "runtime/contract_store.py": ("runtime_code", b"STORE = 1\n"),
+        "install/executor_birth_host_capability.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_journal_posix.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_posix.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_host_provisioning.py": ("runtime_code", b"VALUE = 1\n"),
+        "install/executor_birth_transition.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth.py": ("runtime_code", b"BIRTH = 1\n"),
+        "runtime/executor_birth_account_identity.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_canonical.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_crypto_framing.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_distribution_manifest.py": (
             "preflight", b"VERIFY = 1\n",
         ),
+        "runtime/executor_birth_host_layout.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_path_policy.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_provisioning_evidence.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_host_provisioning_journal.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_posix_metadata.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_preflight_attestation_store.py": ("runtime_code", b"VALUE = 1\n"),
+        "runtime/executor_birth_preflight_store_authority.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_ownership_preflight.py": (
             "preflight", b"PREFLIGHT = 1\n",
         ),
@@ -249,6 +275,8 @@ def _fixture(
             "boundary_inventory", inventory,
         ),
     }
+    for path, role in distribution._REQUIRED_PATH_ROLES.items():
+        values.setdefault(path, (role, b"VALUE = 1\n"))
     values.update({
         "deployment/systemd/" + unit_name: ("service_unit", fragment)
         for unit_name, fragment in unit_fragments
@@ -344,10 +372,12 @@ def test_install_is_byte_identical_idempotent_and_defers_every_unit(
     fixture = _fixture(tmp_path)
     with _deployment_lock_for_test_v1(fixture.ownership_root) as session:
         first = _install(fixture, session)
+        installed = fixture.administrative_root / "preflight.py"
+        first_identity = (installed.stat().st_dev, installed.stat().st_ino)
         second = _install(fixture, session)
 
-    installed = fixture.administrative_root / "preflight.py"
     assert first == second
+    assert (installed.stat().st_dev, installed.stat().st_ino) == first_identity
     assert type(first) is installer._InstalledGroup6AdministrativeForTestV1
     assert installed.read_bytes() == fixture.preflight
     assert stat.S_IMODE(installed.stat().st_mode) == 0o755
@@ -364,32 +394,68 @@ def test_install_is_byte_identical_idempotent_and_defers_every_unit(
     )
 
 
-@pytest.mark.parametrize("existing", ["partial-stage", "unsafe-final"])
-def test_partial_or_unsafe_namespace_requires_explicit_recovery(
-    tmp_path: Path, existing: str,
+def test_partial_administrative_stage_is_rebuilt_on_resume(
+    tmp_path: Path,
 ) -> None:
     fixture = _fixture(tmp_path)
     fixture.administrative_root.parent.mkdir(mode=0o755)
     fixture.administrative_root.parent.chmod(0o755)
-    if existing == "partial-stage":
-        target = fixture.administrative_root.parent / (
-            installer._STAGING_PREFIX_V1
-            + fixture.descriptor.descriptor_id.removeprefix("sha256:")
-            + installer._STAGING_SUFFIX_V1
-        )
-        target.mkdir(mode=0o755)
-    else:
-        target = fixture.administrative_root
-        target.mkdir(mode=0o755)
-        (target / "preflight.py").write_bytes(fixture.preflight)
-        (target / "preflight.py").chmod(0o644)
+    stage = fixture.administrative_root.parent / (
+        installer._STAGING_PREFIX_V1
+        + fixture.descriptor.descriptor_id.removeprefix("sha256:")
+        + installer._STAGING_SUFFIX_V1
+    )
+    stage.mkdir(mode=0o700)
+    partial = stage / "preflight.py"
+    partial.write_bytes(fixture.preflight[:17])
+    partial.chmod(0o600)
+
+    with _deployment_lock_for_test_v1(fixture.ownership_root) as session:
+        installed = _install(fixture, session)
+    assert installed.closed_build_id == fixture.record.closed_build_id
+    assert not stage.exists()
+    assert (
+        fixture.administrative_root / "preflight.py"
+    ).read_bytes() == fixture.preflight
+
+
+def test_unsafe_final_namespace_requires_explicit_recovery(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path)
+    fixture.administrative_root.parent.mkdir(mode=0o755)
+    fixture.administrative_root.parent.chmod(0o755)
+    target = fixture.administrative_root
+    target.mkdir(mode=0o755)
+    (target / "preflight.py").write_bytes(fixture.preflight)
+    (target / "preflight.py").chmod(0o644)
 
     with _deployment_lock_for_test_v1(fixture.ownership_root) as session:
         with pytest.raises(DistributionAssemblerError) as caught:
             _install(fixture, session)
     assert caught.value.code == "birth_ownership_recovery_required"
-    if existing == "partial-stage":
-        assert not fixture.administrative_root.exists()
+
+
+def test_unsafe_administrative_stage_is_never_removed(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path)
+    fixture.administrative_root.parent.mkdir(mode=0o755)
+    fixture.administrative_root.parent.chmod(0o755)
+    stage = fixture.administrative_root.parent / (
+        installer._STAGING_PREFIX_V1
+        + fixture.descriptor.descriptor_id.removeprefix("sha256:")
+        + installer._STAGING_SUFFIX_V1
+    )
+    stage.mkdir(mode=0o700)
+    unexpected = stage / "unexpected"
+    unexpected.write_bytes(b"foreign")
+
+    with _deployment_lock_for_test_v1(fixture.ownership_root) as session:
+        with pytest.raises(DistributionAssemblerError) as caught:
+            _install(fixture, session)
+    assert caught.value.code == "birth_ownership_recovery_required"
+    assert unexpected.read_bytes() == b"foreign"
 
 
 def test_complete_bound_stage_is_promoted_without_rewriting(

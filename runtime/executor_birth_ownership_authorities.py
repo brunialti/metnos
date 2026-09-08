@@ -689,11 +689,13 @@ def _require_no_reused_public_keys_v1(
 
 
 def _birth_public_keys_v1() -> frozenset[bytes]:
-    """Reload public Birth trust through its fixed authenticated door."""
-    from executor_birth_prepared_root import _birth_public_inventory_v1
+    """Reload predecessor Birth trust through its fixed authenticated door."""
+    from executor_birth_prepared_root import (
+        _historical_birth_public_inventory_v1,
+    )
 
     try:
-        result = _birth_public_inventory_v1()
+        result = _historical_birth_public_inventory_v1()
     except Exception as exc:
         raise OwnershipAuthorityError(
             "birth_ownership_authority_untrusted",

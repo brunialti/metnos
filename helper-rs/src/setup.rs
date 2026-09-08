@@ -120,7 +120,7 @@ pub fn service_recovery_argv() -> Vec<String> {
 /// l'aiutante non risponde (senza consenso il servizio non si avvia), quindi
 /// Metnos propone di installarlo, e l'installazione sbatte contro il servizio
 /// di prima con «servizio specificato gia' esistente» (1073). Successo il
-/// 19/8/2026 su PC-ROBERTO.
+/// 19/8/2026 su pc-example.
 ///
 /// `config` invece di `delete`+`create`: si corregge cio' che c'e' — il
 /// percorso del binario puo' essere cambiato — senza smontare e rimontare un

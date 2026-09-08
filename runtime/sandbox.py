@@ -24,6 +24,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import stat
 import sys
 import sysconfig
 from pathlib import Path
@@ -36,6 +37,7 @@ class SandboxUnavailableError(RuntimeError):
 _TRUSTED_UNDO_BROKER_DIGEST_V1 = (
     "sha256:8f819a52ce9f242ace86de74822058baf609c863557f7cdc4482439983f4f895"
 )
+_PROJECTED_TRUST_ROOT_V1 = Path("/.metnos-admission-v1")
 
 
 def requires_os_sandbox(executor) -> bool:
@@ -594,6 +596,7 @@ def _build_bwrap_args(
     autonomy: str = "supervised",
     extra_ro: list[Path] | None = None,
     extra_rw: list[Path] | None = None,
+    sealed_ro_files: list[Path] | None = None,
     force_net: bool = False,
 ) -> list[str]:
     """Costruisce gli argomenti di bwrap a partire da un manifest.
@@ -776,12 +779,58 @@ def _build_bwrap_args(
         if Path(p).exists():
             args += ["--bind", str(p), str(p)]
 
+    # Signer keys authenticate projected executor code.  Never reproduce their
+    # configurable host path: an executor could replace one of its writable
+    # ancestors and insert a sibling key.  A top-level private mount has no
+    # replaceable ancestor, contains only parent-selected keys, and is sealed
+    # before the child starts.
+    sealed_by_name: dict[str, Path] = {}
+    for value in sealed_ro_files or []:
+        path = Path(value)
+        parent = path.parent
+        try:
+            info = path.lstat()
+            parent_info = parent.lstat()
+        except OSError as exc:
+            raise SandboxUnavailableError(
+                "sealed read-only file is unavailable",
+            ) from exc
+        if (
+            not path.is_absolute()
+            or not stat.S_ISREG(info.st_mode)
+            or stat.S_ISLNK(info.st_mode)
+            or info.st_nlink != 1
+            or info.st_size != 32
+            or not stat.S_ISDIR(parent_info.st_mode)
+            or stat.S_ISLNK(parent_info.st_mode)
+            or not re.fullmatch(
+                r"[A-Za-z0-9_.-]+(?:\.pub|_pub\.bin)", path.name,
+            )
+        ):
+            raise SandboxUnavailableError(
+                "sealed read-only file is unsafe",
+            )
+        existing = sealed_by_name.setdefault(path.name, path)
+        if existing != path:
+            raise SandboxUnavailableError(
+                "sealed read-only file names collide",
+            )
+    root = _PROJECTED_TRUST_ROOT_V1
+    args += ["--tmpfs", str(root)]
+    for name, path in sorted(sealed_by_name.items()):
+        args += ["--ro-bind", str(path), str(root / name)]
+    args += ["--remount-ro", str(root)]
+
     # Network: se nessuna capability (o extra del chiamante) lo richiede, isola
     if not has_network:
         args += ["--unshare-net"]
 
     # Isolamento utente/IPC/uts: sempre on
-    args += ["--unshare-user", "--unshare-ipc", "--unshare-uts"]
+    args += ["--unshare-user"]
+    # A second user+mount namespace could overmount the sealed ring, including
+    # its deliberately empty form for executors without code dependencies.
+    args += ["--disable-userns", "--assert-userns-disabled"]
+    args += ["--unshare-ipc", "--unshare-uts"]
 
     # Niente nuovi privilegi
     args += ["--die-with-parent"]
@@ -796,6 +845,7 @@ def wrap_command(
     autonomy: str = "supervised",
     extra_ro: list | None = None,
     extra_rw: list | None = None,
+    sealed_ro_files: list | None = None,
     force_net: bool = False,
 ) -> list[str]:
     """Costruisce il comando isolato o fallisce chiuso.
@@ -849,6 +899,7 @@ def wrap_command(
         autonomy=autonomy,
         extra_ro=[Path(p) for p in (extra_ro or [])],
         extra_rw=[Path(p) for p in (extra_rw or [])],
+        sealed_ro_files=[Path(p) for p in (sealed_ro_files or [])],
         force_net=force_net,
     )
     return ["bwrap", *bwrap_args, "--", *command]
@@ -992,10 +1043,10 @@ def _safe_mail_accounts(raw) -> tuple[list[str], bool]:
 
 
 def mail_extras(executor, args) -> tuple[list[Path], bool]:
-    """Read-only credential binds and network authority for local IMAP.
+    """Read-only credential binds and network authority for local mail.
 
     The grant exists only when the signed manifest declares an effective
-    ``mail:read`` or ``mail:write`` capability. Invocation arguments can then
+    ``mail:read``, ``mail:write`` or ``mail:send`` capability. Arguments can then
     *narrow* it to the selected channel/backend/account; they can never create
     it. Google mail is governed by ``provider:access`` and Telegram inquiry has
     no synchronous mailbox, so neither receives the local IMAP vault surface.
@@ -1012,17 +1063,29 @@ def mail_extras(executor, args) -> tuple[list[Path], bool]:
         getattr(executor, "args_schema", None) or {},
         args,
     )
-    if not any(cap.get("name") in {"mail:read", "mail:write"}
-               for cap in effective):
+    mail_modes = {cap.get("name") for cap in effective}
+    if not mail_modes.intersection({"mail:read", "mail:write", "mail:send"}):
         return [], False
 
     invocation = args if isinstance(args, dict) else {}
     channel = str(invocation.get("via_channel") or "email").casefold()
     client = str(invocation.get("client") or "metnos").casefold()
-    if channel not in {"email", "mail"} or client != "metnos":
+    sending = "mail:send" in mail_modes
+    channels = {"email", "mail", "auto"} if sending else {"email", "mail"}
+    if channel not in channels or client != "metnos":
         return [], False
 
-    accounts, all_accounts = _safe_mail_accounts(invocation.get("account"))
+    account = invocation.get("account")
+    if sending and account is None:
+        # The HTTP startup resolves this private preference once; the child
+        # inherits it unchanged. Reading mail keeps its declared default.
+        account = os.environ.get("METNOS_DEFAULT_MAIL_ACCOUNT") or "metnos_system"
+    accounts, all_accounts = _safe_mail_accounts(account)
+    if sending and not mail_modes.intersection({"mail:read", "mail:write"}):
+        # SMTP sending selects one account; the reader's 'all' expansion
+        # must not expose other credentials before an invalid send fails.
+        if all_accounts or isinstance(account, list):
+            return [], True
     try:
         import config as _config
         import credentials as _credentials

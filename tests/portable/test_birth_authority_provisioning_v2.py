@@ -4,8 +4,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 from contextlib import contextmanager
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -35,7 +37,6 @@ from install.birth_authority_provisioner import (
     decode_transaction_header_v2,
     decode_material_plan_v2, empty_digests_v1,
     _prepare_transition_authority_set_v2, is_prepared_authority_set_v2,
-    prepare_transition_receipts_v2,
     provisioning_source_inventory_hash_v2,
 )
 from rm0008_2b import support
@@ -120,6 +121,33 @@ def _transition_inputs(tmp_path, monkeypatch):
     return base, previous, distribution
 
 
+def _real_revertible_contract(tmp_path: Path, author: Ed25519PrivateKey):
+    from manifest_inventory import ManifestOrigin, ManifestSource
+    from sign import sign_manifest_bytes
+
+    project = Path(__file__).resolve().parents[2]
+    source_root = tmp_path / "contract-source"
+    source = project / "executors" / "change_files_format"
+    destination = source_root / source.name
+    destination.mkdir(parents=True)
+    for name in (
+        "manifest.toml", "manifest.lang_state.json", "change_files_format.py",
+    ):
+        shutil.copyfile(source / name, destination / name)
+    (destination / "manifest.toml.sig").write_bytes(sign_manifest_bytes(
+        (destination / "manifest.toml").read_bytes(), private_key=author,
+    ))
+    from manifest_inventory import inventory_authoring_manifests
+
+    observed = inventory_authoring_manifests((ManifestSource(
+        ManifestOrigin.USER, source_root,
+        min_depth=1, max_depth=1, allowed_code_roots=(source_root,),
+    ),))
+    assert not observed.problems, observed.problems
+    assert len(observed.manifests) == 1
+    return observed.manifests[0]
+
+
 @pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
 def test_first_transition_reads_a_stale_v1_anchor_without_selecting_it(
     tmp_path, monkeypatch,
@@ -142,6 +170,225 @@ def test_first_transition_reads_a_stale_v1_anchor_without_selecting_it(
         read_prepared_set_v1()
     assert _load_historical_transition_anchor_v1() == previous
     assert marker.read_bytes() == marker_before
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_stale_v1_anchor_supports_only_verification_transition_consumers(
+    tmp_path, monkeypatch,
+):
+    """Cross every verification-only consumer with one genuine stale anchor."""
+    import config as runtime_config
+    import contract_store
+    import executor_birth_authority_gate as authority_gate
+    import executor_birth_bootstrap as bootstrap
+    import executor_birth_ownership_chain as ownership_chain
+    import executor_birth_prepared_root as prepared_root
+    import executor_birth_transition_gate as transition_gate
+    import install.executor_birth_contract_convergence as convergence
+    import manifest_inventory
+    from contract_bootstrap import STORE_RELATIVE
+    from executor_birth_context_transition import issue_context_transition_v1
+    from executor_birth_cutover import (
+        BirthCutoverError, freeze_current_inventory_v1,
+    )
+    from executor_birth_receipts import verify_admission_receipt
+    import executor_birth_transition_receipts as transition_receipts
+
+    author = Ed25519PrivateKey.generate()
+    base = support.make_config(
+        tmp_path / "installation", author=author, operator=True,
+    )
+    support.provision(monkeypatch, base)
+    support.use_config(monkeypatch, base)
+    previous = prepared_root.read_prepared_set_v1()
+
+    ref = _real_revertible_contract(tmp_path / "contract", author)
+    monkeypatch.setattr(runtime_config, "PATH_SYNTH_EXECUTORS", ref.source_root)
+    state_root = tmp_path / "service-state"
+    store_root = state_root / STORE_RELATIVE
+    trusted = (("fixture-author", author.public_key()),)
+    publication = contract_store.publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store_root,
+    )
+    monkeypatch.setattr(runtime_config, "PATH_USER_STATE", state_root)
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", str(convergence._REPOSITORY))
+
+    # Keep the source census isolated while retaining its real parser and
+    # authentication.  The fixture contract deliberately reuses a product
+    # name, which would otherwise create an unrelated cross-origin collision.
+    inventory_authoring = manifest_inventory.inventory_authoring_manifests
+    source = manifest_inventory.ManifestSource(
+        manifest_inventory.ManifestOrigin.USER,
+        ref.source_root,
+        min_depth=1,
+        max_depth=1,
+        allowed_code_roots=(ref.source_root,),
+    )
+    monkeypatch.setattr(
+        manifest_inventory,
+        "inventory_authoring_manifests",
+        lambda *_args, **_kwargs: inventory_authoring((source,)),
+    )
+
+    materializations = []
+    monkeypatch.setattr(
+        contract_store,
+        "materialize_repository_authoring_for_transition_v1",
+        lambda *, trusted_publics: materializations.append(
+            tuple(trusted_publics),
+        ) or 1,
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "_build_initial_transition_installer_runtime_v1",
+        lambda: pytest.fail("unchanged catalog selected a strict runtime"),
+    )
+
+    context_source = Path(runtime_config.PATH_RUNTIME) / "executor_standard.py"
+    context_source.write_bytes(context_source.read_bytes() + b"\n")
+    with pytest.raises(PreparedSetError, match="birth_prepared_set_mismatch"):
+        prepared_root.load_sealed_authorities_v1()
+
+    historical = prepared_root._load_historical_transition_verifiers_v1()
+    assert historical.prepared == previous
+    assert support.public_bytes(author) in {
+        key.public_bytes_raw()
+        for key in historical.author_verifier_keys.values()
+    }
+    assert historical.admission_verifier_keys
+
+    class InitialChain:
+        pass
+
+    monkeypatch.setattr(
+        ownership_chain, "_InitialOwnershipChainStateV1", InitialChain,
+    )
+    monkeypatch.setattr(
+        authority_gate, "closed_build_enforcement", lambda: True,
+    )
+    gate, session = object(), object()
+    observation = SimpleNamespace(
+        distribution=SimpleNamespace(release_sequence=1),
+        claim=None,
+        predecessor=None,
+        phase=None,
+        chain=InitialChain(),
+        partial=False,
+    )
+    monkeypatch.setattr(
+        transition_gate,
+        "_require_transition_gate_snapshot_locked_v2",
+        lambda candidate, current: observation
+        if candidate is gate and current is session
+        else pytest.fail("transition gate binding changed"),
+    )
+    enumerate_current = transition_gate._transition_current_enumerator_v2(
+        gate, session,
+    )
+    current = enumerate_current()
+    assert len(current) == 1
+    assert current[0].generation_id == publication.current_generation_id
+
+    assert convergence.converge() == {
+        "changed": 0, "current": 1, "examined": 1,
+    }
+    assert bootstrap.verify_initial_installer_store_v1(
+        prove_quiescent=lambda: True,
+        trusted_authoring_owner=(os.geteuid(), os.getegid()),
+        defer_v1_receipts_to_transition_v2=True,
+    ) == {"contracts": 1, "receipts": 0}
+    assert len(materializations) == 2
+
+    # Continue on the same fixture into the new set and a genuine V2 receipt.
+    # The historical view is verification-only; signing happens exclusively
+    # through the newly staged context built from source B.
+    distribution = replace(
+        _distribution(),
+        installation_root=str(Path(runtime_config.PATH_RUNTIME).parent),
+    )
+    claim = _claim()
+    prepared = _prepare_transition_authority_set_v2(
+        claim, distribution, previous,
+    )
+    _publish_prepared_authority_set_v2(prepared)
+    inventory = freeze_current_inventory_v1(current)
+    _encoded, transition = issue_context_transition_v1(
+        request_id=claim.request_id,
+        closed_build_id=claim.closed_build_id,
+        previous_cutover_id=None,
+        previous_set_id=previous.set_id,
+        previous_admission_context_id=(
+            previous.prepared_admission_context_id
+        ),
+        previous_context_epoch=previous.prepared_context_epoch,
+        set_id=prepared.target_set_id,
+        prepared_admission_context_id=(
+            prepared.target_admission_context_id
+        ),
+        prepared_context_epoch=prepared.target_context_epoch,
+        context_material_sha256=prepared.target_context_material_sha256,
+        set_json_sha256=prepared.target_set_json_sha256,
+        current_inventory=inventory,
+    )
+    staged = prepared_root._load_staged_reattestation_context_v1(
+        transition, distribution, inventory,
+    )
+    owner = (os.getuid(), os.getgid())
+    effective = [(0, 0)]
+    monkeypatch.setattr(
+        transition_receipts.os, "geteuid", lambda: effective[0][0],
+    )
+    monkeypatch.setattr(
+        transition_receipts.os, "getegid", lambda: effective[0][1],
+    )
+
+    @contextmanager
+    def service_identity():
+        assert effective[0] == (0, 0)
+        effective[0] = owner
+        try:
+            yield
+        finally:
+            effective[0] = (0, 0)
+
+    def enumerate_for_receipts():
+        assert effective[0] == (0, 0)
+        return current
+
+    proof = transition_receipts._build_staged_current_receipts_v2(
+        staged,
+        now=lambda: datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc),
+        prove_quiescent=lambda: True,
+        expected_inventory=inventory,
+        enumerate_current=enumerate_for_receipts,
+        identity_scope=service_identity,
+        catalog_owner=owner,
+    )
+    receipts = tuple(store_root.glob("*/admission-receipts-v2/*/*.json"))
+    assert proof.inventory == inventory
+    assert len(receipts) == 1
+    assert verify_admission_receipt(
+        receipts[0].read_bytes(),
+        verifier_keys=staged.authorities.admission.verifier_keys,
+    ).generation_id == publication.current_generation_id
+
+    contract_dir = contract_store._existing_contract_directory(
+        ref.contract_id, store_root=store_root,
+    )
+    binding = contract_dir / contract_store.BINDING_FILE
+    mutated = json.loads(binding.read_bytes())
+    mutated["schema_version"] = 2
+    binding.write_bytes(support.canonical_json(mutated))
+    with pytest.raises(BirthCutoverError, match="birth_cutover_inventory_invalid"):
+        enumerate_current()
+
+    marker = base / "birth" / "prepared-v1.json"
+    marker_value = json.loads(marker.read_bytes())
+    marker_value["author_store_public_inventory_sha256"] = "0" * 64
+    marker.write_bytes(support.canonical_json(marker_value))
+    with pytest.raises(PreparedSetError, match="birth_prepared_set_mismatch"):
+        prepared_root._load_historical_transition_verifiers_v1()
 
 
 def _material_plan(header: TransactionHeaderV2) -> MaterialPlanV2:
@@ -825,6 +1072,8 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
     import executor_birth_ownership_coordinator as coordinator_module
     import executor_birth_ownership_preflight as preflight_module
     import executor_birth_prepared_root as prepared_root_module
+    import executor_birth_transition_gate as transition_gate_module
+    import executor_birth_transition_receipts as transition_receipts_module
 
     base, previous, distribution = _transition_inputs(tmp_path, monkeypatch)
     context_source = Path(runtime_config.PATH_RUNTIME) / "executor_standard.py"
@@ -832,7 +1081,9 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
     with pytest.raises(PreparedSetError, match="birth_prepared_set_mismatch"):
         prepared_root_module.read_prepared_set_v1()
     claim = _claim()
-    descriptor = SimpleNamespace(descriptor_id=D("9"))
+    descriptor = SimpleNamespace(
+        descriptor_id=D("9"), service_uid=991, service_gid=992,
+    )
     inventory = CurrentInventoryV1(())
     order = []
     session = object()
@@ -897,6 +1148,15 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
     )
 
     @contextmanager
+    def service_identity(_descriptor):
+        yield
+
+    monkeypatch.setattr(
+        provisioning, "_service_owned_birth_identity_v2",
+        service_identity,
+    )
+
+    @contextmanager
     def maintenance_inventory():
         class Maintenance:
             def __call__(self):
@@ -910,14 +1170,21 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
 
         order.append("maintenance-enter")
         try:
-            yield Maintenance(), inventory, b"maintenance"
+            yield Maintenance(), inventory, b"maintenance", enumerate_current
         finally:
             order.append("maintenance-exit")
 
+    def enumerate_current():
+        return ()
+
     monkeypatch.setattr(
-        coordinator_module, "_transition_maintenance_inventory_v2",
-        maintenance_inventory,
+        transition_gate_module, "_require_transition_current_enumerator_v2",
+        lambda value, observed_session, candidate: value
+        if value is enumerate_current
+        and observed_session is session and candidate is distribution
+        else pytest.fail("transition enumerator binding changed"),
     )
+
     monkeypatch.setattr(
         coordinator_module, "_append_prepared_transition_locked_v2",
         lambda observed_session, **values: (
@@ -944,12 +1211,14 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
         prepared_root_module, "_load_staged_reattestation_context_v1",
         lambda *args: order.append("staged-context") or "context",
     )
-    def build_staged_receipts(*_args, **_kwargs):
+    def build_staged_receipts(*_args, **kwargs):
+        assert kwargs["enumerate_current"] is enumerate_current
+        assert kwargs["catalog_owner"] == (991, 992)
         order.extend(("staged-runtime", "receipts"))
         return CurrentReceiptProof((), {})
 
     monkeypatch.setattr(
-        coordinator_module, "_build_staged_current_receipts_v2",
+        transition_receipts_module, "_build_staged_current_receipts_v2",
         build_staged_receipts,
     )
     monkeypatch.setattr(
@@ -969,7 +1238,18 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
         lambda record: order.append("result") or result,
     )
 
-    assert prepare_transition_receipts_v2(distribution) is result
+    def prepare_receipts_for_test(candidate):
+        with coordinator_module._deployment_lock_v1() as locked_session:
+            staged = provisioning._prepare_transition_receipt_material_locked_v2(
+                locked_session, candidate,
+            )
+            with maintenance_inventory() as frozen:
+                completed = provisioning._complete_transition_receipts_locked_v2(
+                    locked_session, staged, frozen,
+                )
+            return coordinator_module._result(completed)
+
+    assert prepare_receipts_for_test(distribution) is result
     assert order == [
         "deployment-lock", "distribution", "graph", "previous", "stage",
         "maintenance-enter", "distribution", "prepared", "publish", "publication",
@@ -983,6 +1263,159 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
             base / "birth" / "authority-sets"
         ).rglob("set.json")
     )
+
+
+@pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
+def test_initial_v2_transition_reattests_a_real_revertible_contract(
+    tmp_path, monkeypatch,
+):
+    import config as runtime_config
+    import executor_birth_reattestation as reattestation_module
+    import executor_birth_transition_receipts as receipts_module
+    from contract_bootstrap import STORE_RELATIVE
+    from contract_store import publish_signed_source
+    from executor_birth_context_transition import issue_context_transition_v1
+    from executor_birth_cutover import (
+        enumerate_authenticated_current_generations,
+        freeze_current_inventory_v1,
+    )
+    from executor_birth_prepared_root import (
+        _load_staged_reattestation_context_v1,
+        read_prepared_set_v1,
+    )
+    from executor_birth_receipts import verify_admission_receipt
+    from executor_birth_transition_receipts import (
+        _build_staged_current_receipts_v2,
+    )
+
+    author = Ed25519PrivateKey.generate()
+    base = support.make_config(
+        tmp_path / "installation", author=author, operator=True,
+    )
+    support.provision(monkeypatch, base)
+    support.use_config(monkeypatch, base)
+    previous = read_prepared_set_v1()
+    distribution = replace(
+        _distribution(),
+        installation_root=str(Path(runtime_config.PATH_RUNTIME).parent),
+    )
+    ref = _real_revertible_contract(tmp_path, author)
+    monkeypatch.setattr(runtime_config, "PATH_SYNTH_EXECUTORS", ref.source_root)
+    trusted = (("initial-author", author.public_key()),)
+    state_root = tmp_path / "service-state"
+    store_root = state_root / STORE_RELATIVE
+    publication = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store_root,
+    )
+    monkeypatch.setattr(runtime_config, "PATH_USER_STATE", state_root)
+    monkeypatch.setenv(
+        "METNOS_INSTALL_ROOT",
+        str(Path(reattestation_module.__file__).resolve().parents[1]),
+    )
+
+    from manifest_inventory import inventory_store_manifests
+
+    stored_inventory = inventory_store_manifests(
+        store_root=store_root, skill_enabled=lambda _name: True,
+    )
+    assert not stored_inventory.problems, stored_inventory.problems
+    current = enumerate_authenticated_current_generations(
+        trusted_publics=trusted, store_root=store_root,
+    )
+    assert len(current) == 1
+    assert current[0].ref.manifest_relative == (
+        "change_files_format/manifest.toml"
+    )
+    assert current[0].generation_id == publication.current_generation_id
+    inventory = freeze_current_inventory_v1(current)
+
+    claim = _claim()
+    prepared = _prepare_transition_authority_set_v2(
+        claim, distribution, previous,
+    )
+    _publish_prepared_authority_set_v2(prepared)
+    _encoded, transition = issue_context_transition_v1(
+        request_id=claim.request_id,
+        closed_build_id=claim.closed_build_id,
+        previous_cutover_id=None,
+        previous_set_id=previous.set_id,
+        previous_admission_context_id=(
+            previous.prepared_admission_context_id
+        ),
+        previous_context_epoch=previous.prepared_context_epoch,
+        set_id=prepared.target_set_id,
+        prepared_admission_context_id=(
+            prepared.target_admission_context_id
+        ),
+        prepared_context_epoch=prepared.target_context_epoch,
+        context_material_sha256=prepared.target_context_material_sha256,
+        set_json_sha256=prepared.target_set_json_sha256,
+        current_inventory=inventory,
+    )
+    staged = _load_staged_reattestation_context_v1(
+        transition, distribution, inventory,
+    )
+
+    class RefuseLegacyRunner:
+        def __init__(self, *_args, **_kwargs):
+            raise AssertionError("legacy property protocol was constructed")
+
+    monkeypatch.setattr(
+        reattestation_module, "ObservedPropertyRunner", RefuseLegacyRunner,
+    )
+    owner = (os.getuid(), os.getgid())
+    effective = [(0, 0)]
+    monkeypatch.setattr(
+        receipts_module.os, "geteuid", lambda: effective[0][0],
+    )
+    monkeypatch.setattr(
+        receipts_module.os, "getegid", lambda: effective[0][1],
+    )
+
+    @contextmanager
+    def service_identity():
+        assert effective[0] == (0, 0)
+        effective[0] = owner
+        try:
+            yield
+        finally:
+            effective[0] = (0, 0)
+
+    def enumerate_current():
+        assert effective[0] == (0, 0)
+        return enumerate_authenticated_current_generations(
+            trusted_publics=trusted, store_root=store_root,
+        )
+
+    fixed_now = datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
+    inputs = dict(
+        now=lambda: fixed_now,
+        prove_quiescent=lambda: True,
+        expected_inventory=inventory,
+        enumerate_current=enumerate_current,
+        identity_scope=service_identity,
+        catalog_owner=owner,
+    )
+    proof = _build_staged_current_receipts_v2(staged, **inputs)
+    repeated = _build_staged_current_receipts_v2(staged, **inputs)
+
+    stored = tuple(store_root.glob(
+        "*/admission-receipts-v2/*/*.json",
+    ))
+    assert len(stored) == 1
+    receipt = verify_admission_receipt(
+        stored[0].read_bytes(),
+        verifier_keys=staged.authorities.admission.verifier_keys,
+    )
+    assert proof.inventory == inventory
+    assert repeated == proof
+    assert receipt.contract_id == current[0].ref.contract_id.value
+    assert receipt.generation_id == current[0].generation_id
+    assert receipt.check_results["properties"].status.value == "not_applicable"
+    assert receipt.check_results[
+        "initial_current_generation_adoption_v1"
+    ].status.value == "passed"
 
 
 @pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)

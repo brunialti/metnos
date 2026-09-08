@@ -38,7 +38,7 @@ _PATH_RE = re.compile(
     r"(?:^|\s)((?:~|\.{1,2})?/(?:[\w.\-]+/?)+|~/[\w.\-/]*"
     # Windows: i segmenti INTERMEDI (chiusi da \) ammettono lo spazio
     # («Program Files\»); il segmento FINALE no — altrimenti la regex
-    # mangerebbe il resto della frase («…\etc sul PC-ROBERTO e metti…»).
+    # mangerebbe il resto della frase («…\etc sul pc-example e metti…»).
     r"|[A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n]+\\)*[\w.\-]*"
     r"|\\\\[\w.\-]+\\(?:[^\\/:*?\"<>|\r\n]+\\)*[\w.\-]*)"
 )
