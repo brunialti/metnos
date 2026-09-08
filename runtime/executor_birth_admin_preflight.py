@@ -822,7 +822,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:e39943d87dead33cba5abbc6d01fbf769fea18b5d2f77c1e5f884a53ae0d36db"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:5588a48f67d6fb01aebef793dd9a6da3617db583856152133da5095c07dae3ce"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -10468,7 +10468,7 @@ def _analyse_scope(
         if dynamic_import:
             capabilities.add("dynamic_boundary_access")
             closed_dynamic_boundary = True
-        command_parts = set(_string_values(item)) | _static_strings(item)
+        command_parts = _static_strings(item) if api in PROCESS_CALLS else set()
         sign_entrypoint = any(
             part.endswith("sign.py") or part == "runtime.sign"
             for part in command_parts
@@ -10492,8 +10492,10 @@ def _analyse_scope(
         ):
             closed_dynamic_boundary = True
 
+        reads = api in READ_OPERATIONS
+        persistent_write = _writes_path(api, item)
         target = _call_target(item)
-        authoring_touch = _touches(
+        authoring_touch = (reads or persistent_write) and (_touches(
             target,
             tainted=authoring_names,
             pattern=_AUTHORING_NAME_RE,
@@ -10514,8 +10516,8 @@ def _analyse_scope(
                 literal_test=_has_authoring_literal,
             )
             for keyword in item.keywords
-        )
-        store_touch = _touches(
+        ))
+        store_touch = (reads or persistent_write) and (_touches(
             target,
             tainted=store_names,
             pattern=_STORE_NAME_RE,
@@ -10536,10 +10538,7 @@ def _analyse_scope(
                 literal_test=_has_store_literal,
             )
             for keyword in item.keywords
-        )
-
-        reads = api in READ_OPERATIONS
-        persistent_write = _writes_path(api, item)
+        ))
         writes = persistent_write
         if api in {
             "copy", "copy2", "copyfile", "hardlink_to", "link", "remove",
@@ -11446,32 +11445,16 @@ def _product_version_from_source_v1(content: bytes) -> str:
     return assignments[0]
 
 
-def _verify_local_import_closure_v1(
-    root: Path, files: tuple[DistributionFileV1, ...],
-    content: dict[str, bytes],
-) -> None:
-    declared = frozenset(item.path for item in files)
-
-    def candidates(module: str, source: str, level: int) -> tuple[str, ...]:
-        pieces = [piece for piece in module.split(".") if piece]
-        if level:
-            parent = source.split("/")[:-1]
-            if level > len(parent):
-                return ()
-            pieces = parent[:len(parent) - level + 1] + pieces
-        result: list[str] = []
-        for prefix in ([], ["runtime"]):
-            stem = "/".join(prefix + pieces)
-            if stem:
-                result.extend((stem + ".py", stem + "/__init__.py"))
-        return tuple(dict.fromkeys(result))
-
+@lru_cache(maxsize=1)
+def _analyze_local_imports_v1(
+    sources: tuple[tuple[str, bytes], ...],
+) -> tuple[tuple[str, tuple[tuple[str, int], ...]], ...]:
+    """Retain only pure syntax facts; filesystem resolution is never cached."""
+    result = []
     total_ast_nodes = 0
-    for item in files:
-        if not item.path.endswith(".py"):
-            continue
+    for source_path, source_bytes in sources:
         try:
-            tree = ast.parse(content[item.path].decode("utf-8"), filename=item.path)
+            tree = ast.parse(source_bytes.decode("utf-8"), filename=source_path)
             total_ast_nodes += _bounded_ast_metrics_v1(tree)
             if total_ast_nodes > MAX_BOUNDARY_TOTAL_AST_NODES_V1:
                 raise _invalid("boundary total AST budget")
@@ -11492,7 +11475,7 @@ def _verify_local_import_closure_v1(
 
             def authenticated_door_eval(call: ast.Call) -> bool:
                 if (
-                    item.path != "runtime/admitted_module_v1.py"
+                    source_path != "runtime/admitted_module_v1.py"
                     or not isinstance(call.func, ast.Name)
                     or call.func.id not in {"compile", "exec"}
                 ):
@@ -11512,8 +11495,8 @@ def _verify_local_import_closure_v1(
                             call,
                             (
                                 "runtime/executor_birth_admin_preflight.py"
-                                if item.path == _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1
-                                else item.path
+                                if source_path == _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1
+                                else source_path
                             ),
                             parent.name, aliases,
                             list(ast.walk(parent)),
@@ -11578,8 +11561,35 @@ def _verify_local_import_closure_v1(
                     raise _invalid("dynamic import")
         except MemoryError as exc:
             raise _invalid("Python source") from exc
+        result.append((source_path, tuple(imports)))
+    return tuple(result)
+
+
+def _verify_local_import_closure_v1(
+    root: Path, files: tuple[DistributionFileV1, ...],
+    content: dict[str, bytes],
+) -> None:
+    declared = frozenset(item.path for item in files)
+
+    def candidates(module: str, source: str, level: int) -> tuple[str, ...]:
+        pieces = [piece for piece in module.split(".") if piece]
+        if level:
+            parent = source.split("/")[:-1]
+            if level > len(parent):
+                return ()
+            pieces = parent[:len(parent) - level + 1] + pieces
+        result: list[str] = []
+        for prefix in ([], ["runtime"]):
+            stem = "/".join(prefix + pieces)
+            if stem:
+                result.extend((stem + ".py", stem + "/__init__.py"))
+        return tuple(dict.fromkeys(result))
+
+    sources = tuple((item.path, content[item.path]) for item in files
+                    if item.path.endswith(".py"))
+    for source_path, imports in _analyze_local_imports_v1(sources):
         for module, level in imports:
-            possible = candidates(module, item.path, level)
+            possible = candidates(module, source_path, level)
             existing: list[str] = []
             for relative in possible:
                 candidate = root.joinpath(*relative.split("/"))

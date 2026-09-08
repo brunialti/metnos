@@ -326,3 +326,16 @@ and paired-observation checks. This follows the upstream
 [systemctl formatter](https://github.com/systemd/systemd/blob/v255/src/systemctl/systemctl-show.c)
 and [signal formatter](https://github.com/systemd/systemd/blob/v255/src/basic/signal-util.c).
 Parsing a terminated process does not classify it as successfully started.
+
+The actual r15 clone completed all seven durable records but still failed
+activation deadlines. Profiling the unchanged installed preflight attributed
+almost all work to source semantics: the boundary census and two equivalent
+import syntax scans. Import syntax now has its own single-entry cache keyed
+by exact ordered paths and bytes; live import resolution remains outside it.
+The census avoids command parsing for non-process calls and path-taint scans
+for calls that neither read nor write. All 466 observed boundary facts on the
+754-file r15 corpus were identical in an offline before/after comparison.
+The latter change reduced the uncached census from 14.799 to 11.871 seconds.
+These measurements do not establish successful activation; the complete
+candidate still requires a fresh end-to-end proof. No deadline, filesystem
+permission, signing authority or mandatory check has been relaxed.

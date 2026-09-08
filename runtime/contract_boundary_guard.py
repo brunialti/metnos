@@ -51,7 +51,7 @@ BIRTH_CLOSED_GUARD_VERSION = _boundary_policy.BIRTH_CLOSED_GUARD_VERSION
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:e39943d87dead33cba5abbc6d01fbf769fea18b5d2f77c1e5f884a53ae0d36db"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:5588a48f67d6fb01aebef793dd9a6da3617db583856152133da5095c07dae3ce"
 RM0008_ACCEPTANCE_EVOLUTION_SHA256 = "sha256:1babce04a78b8345cbacb9bf5677bebade3958e655f0dc45884ad70636322167"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = _boundary_policy.SCAN_ROOTS
@@ -1399,7 +1399,7 @@ def _analyse_scope(
         if dynamic_import:
             capabilities.add("dynamic_boundary_access")
             closed_dynamic_boundary = True
-        command_parts = set(_string_values(item)) | _static_strings(item)
+        command_parts = _static_strings(item) if api in PROCESS_CALLS else set()
         sign_entrypoint = any(
             part.endswith("sign.py") or part == "runtime.sign"
             for part in command_parts
@@ -1423,8 +1423,10 @@ def _analyse_scope(
         ):
             closed_dynamic_boundary = True
 
+        reads = api in READ_OPERATIONS
+        persistent_write = _writes_path(api, item)
         target = _call_target(item)
-        authoring_touch = _touches(
+        authoring_touch = (reads or persistent_write) and (_touches(
             target,
             tainted=authoring_names,
             pattern=_AUTHORING_NAME_RE,
@@ -1445,8 +1447,8 @@ def _analyse_scope(
                 literal_test=_has_authoring_literal,
             )
             for keyword in item.keywords
-        )
-        store_touch = _touches(
+        ))
+        store_touch = (reads or persistent_write) and (_touches(
             target,
             tainted=store_names,
             pattern=_STORE_NAME_RE,
@@ -1467,10 +1469,7 @@ def _analyse_scope(
                 literal_test=_has_store_literal,
             )
             for keyword in item.keywords
-        )
-
-        reads = api in READ_OPERATIONS
-        persistent_write = _writes_path(api, item)
+        ))
         writes = persistent_write
         if api in {
             "copy", "copy2", "copyfile", "hardlink_to", "link", "remove",

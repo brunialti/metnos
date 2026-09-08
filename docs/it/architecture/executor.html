@@ -555,7 +555,11 @@ root coordina le scritture; ne verifica comunque i metadati esatti.
 Il controllo amministrativo verifica anche il byte marcatore. I controlli
 d'avvio possono riusare l'analisi pura di un solo insieme identico di percorsi
 e byte nello stesso processo, mai le verifiche dei file, delle firme o dei
-servizi vivi. Gli arresti per segnale sono letti nel formato nativo di systemd,
+servizi vivi. Anche gli import dichiarati possono riusare l'analisi sintattica;
+la loro risoluzione sul filesystem viene sempre ripetuta. Le analisi delle
+operazioni su file e dei comandi esterni si applicano soltanto alle chiamate
+pertinenti, senza cambiare la classificazione delle autorità.
+Gli arresti per segnale sono letti nel formato nativo di systemd,
 senza modificare il comando firmato o considerarli un successo.</p>
 
 <p>Prima di rendere obbligatoria la nuova distribuzione, la transizione lega
