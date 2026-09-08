@@ -1155,12 +1155,27 @@ def _demote(account: _ServiceAccountV1):
     return demote
 
 
+def _prepare_activation_catalog(tmp_path, account, monkeypatch) -> Path:
+    """Prepare a real service-owned catalog lock, outside root's own state."""
+    import contract_store
+
+    state = tmp_path / "service-state"
+    state.mkdir(mode=0o700)
+    os.chown(state, account.uid, account.gid)
+    lock = contract_store._catalog_lock_path(state / contract_store.STORE_RELATIVE)
+    lock.touch(mode=0o600, exist_ok=False)
+    os.chown(lock, account.uid, account.gid)
+    monkeypatch.setattr(contract_store._C, "PATH_USER_STATE", state)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
+    return lock
+
+
 def test_signed_systemd_cell_denies_then_admits_real_timer(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import fcntl
 
-    del tmp_path  # fixed roots are intentional and the VM is disposable.
+    # Signed installation roots are fixed; mutable test state stays isolated.
     assert os.geteuid() == 0
     assert Path("/run/systemd/system").is_dir()
     assert shutil.which("systemctl") == "/usr/bin/systemctl"
@@ -1170,6 +1185,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
     namespace = os.urandom(8).hex()
     repository = Path(__file__).resolve().parents[2]
     fixture = _activation_fixture(repository, namespace)
+    _prepare_activation_catalog(tmp_path, fixture.account, monkeypatch)
     unit_paths = tuple(UNIT_ROOT / name for name, _ in fixture.unit_fragments)
     assert all(not path.exists() for path in unit_paths)
     assert not fixture.marker_root.exists()
