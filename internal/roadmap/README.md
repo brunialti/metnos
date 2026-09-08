@@ -73,7 +73,8 @@ Ogni roadmap deve inoltre separare chiaramente:
 
 | ID | Titolo | Stato | Implementazione | Ultima revisione |
 |---|---|---|---|---|
-| [RM-0008](RM-0008-porta-unica-nascita-executor.md) | Porta unica di nascita e ciclo controllato degli executor sintetizzati | `active` | candidato F4 certificato; transizione produttiva e prova live finali da eseguire | 2026-09-02 |
+| [RM-0009](RM-0009-crescita-allineata-delle-capacita.md) | Crescita allineata delle capacità | `active` | revisione 4, F0-F6 e FS; implementazione non iniziata, da autorizzare | 2026-09-04 |
+| [RM-0008](RM-0008-porta-unica-nascita-executor.md) | Porta unica di nascita e ciclo controllato degli executor sintetizzati | `in_progress` | F4: transizione produttiva e turni reali verificati; requisiti di preesercizio e chiusura F5-F6 ancora distinti | 2026-09-08 |
 | [RM-0007](RM-0007-pubblicazione-verificata-contratti.md) | Pubblicazione verificata delle varianti linguistiche dei contratti | `closed` | M0-M4, cutover, due cicli operativi e distribuzione certificati | 2026-08-25 |
 | [RM-0006](RM-0006-certificazione-logica-e2e.md) | Certificazione logica da capo a fondo | `implemented` | C0-C6 completate; cinque sonde reali e certificazione finale 96/96 | 2026-08-23 |
 | [RM-0005](RM-0005-multilinguismo-full-auto-localizzante.md) | Multilinguismo full e auto-localizzazione dell’istanza | `closed` | consolidamento lessicale completo; 21 contratti Birth firmati e CI Linux/Windows verde | 2026-08-30 |

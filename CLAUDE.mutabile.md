@@ -6,6 +6,14 @@
 
 ## S. Stato corrente (23/8/2026)
 
+- **RM-0008: transizione F4 verificata in esercizio** (8/9, ADR 0224):
+  release chiusa, catena e sette record durevoli riletti; HTTP, browser e LRE
+  attivi, turni reali dell'ora e Tutor riusciti. LRE resta abilitato.
+  Non ripetere la transizione. F5-F6 restano distinti: nessuna apertura implicita
+  del preesercizio. Prove: `internal/design/handover_rm0008_verifica_8_9_2026.md`.
+- **RM-0009 nella raccolta comune** (8/9): conservata la revisione 4 del 4/9
+  in `internal/roadmap/RM-0009-crescita-allineata-delle-capacita.md`.
+  Progettazione futura, implementazione non iniziata; non modifica i gate RM-0008.
 - **Analisi richiesta/intent in corso (8/8)**: prima di riprendere prove di
   normalizzazione o intent extraction leggere
   `internal/design/handover_request_analysis_8_8_2026.md` e
@@ -38,12 +46,13 @@
   suite i18n certificano fallback bootstrap e ripresa. Il percorso privilegiato
   richiede sintassi nativa pronta e revisionata; il censimento lessicale residuo
   e la prova reale devono concludersi prima di richiudere RM-0005.
-- **RM-0008 gruppo 2 chiuso — insieme di autorita' predisposto e inerte** (27/8,
+- **RM-0008 gruppo 2, checkpoint storico superato dalla transizione F4** (27/8,
   ADR 0224): l'installatore prepara identita' autore, Admission e un archivio
   per capacita' Producer dentro una transazione durevole; nessun nome
   autorevole nasce definitivo e i tre finali arrivano con rinomine senza
   sostituzione. Il nucleo puo' consegnare soltanto fatti al pubblicatore
-  sigillato. Il runtime Birth **non** e' attivo e nessun chiamante e' migrato.
+  sigillato. Al checkpoint del 27/8 il runtime Birth non era ancora attivo;
+  per lo stato produttivo corrente vale l'aggiornamento F4 dell'8/9 in testa.
   Tre requisiti sono dichiarati non provati (confine Windows oltre la
   pubblicazione, uccisione reale a ogni passo di scrittura, due predispositori
   concorrenti). Dettaglio e criterio di uscita:

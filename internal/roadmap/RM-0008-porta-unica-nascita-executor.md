@@ -1,5 +1,15 @@
 # RM-0008 — Porta unica di nascita e ciclo controllato degli executor
 
+> **Aggiornamento operativo, 8 settembre 2026 — stato `in_progress`.**
+> La transizione produttiva F4 r18 (`b715a765`) ha raggiunto
+> `PREFLIGHT_VERIFIED`: catena e sette record durevoli riletti, HTTP, browser
+> e LRE attivi; verificati un turno reale dell'ora e un turno Tutor fondato.
+> Questo risultato supera le indicazioni storiche di transizione da eseguire,
+> ma non attesta i requisiti ulteriori di F5-F6: il preesercizio conserva
+> il requisito di cinque ammissioni reali da almeno due produttori (§23.4).
+> Prove: `internal/design/handover_rm0008_verifica_8_9_2026.md`.
+> RM-0009 è raccolta nell'indice comune, non è implementata e non apre F5.
+
 > RM-0008 · stato `active` · avanzamento verificato il 30 agosto 2026 ·
 > conservazione persistente · gruppi 1-5 della ripresa (§23.6), G6-A, G6-B1,
 > G6-B2 e G6-B3 completati; G6-C1 e G6-C2 sono certificati. La cella C2
