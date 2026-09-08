@@ -239,6 +239,16 @@ def _invoke_transition_current_enumerator_core_v2(issued, value):
     )
 
 
+def _transition_current_trusted_publics_core_v2(
+    issued, value, session, distribution,
+):
+    """Return only the verifier ring sealed into this issued read port."""
+    _require_transition_current_enumerator_core_v2(
+        issued, value, session, distribution,
+    )
+    return _current_enumerator_registration_v2(issued, value)[4]
+
+
 def _build_transition_current_enumerator_registry_v2():
     issued = weakref.WeakKeyDictionary()
 
@@ -253,13 +263,19 @@ def _build_transition_current_enumerator_registry_v2():
     def invoke(value):
         return _invoke_transition_current_enumerator_core_v2(issued, value)
 
-    return issue, require, invoke
+    def trusted_publics(value, session, distribution):
+        return _transition_current_trusted_publics_core_v2(
+            issued, value, session, distribution,
+        )
+
+    return issue, require, invoke, trusted_publics
 
 
 (
     _issue_transition_current_enumerator_v2,
     _require_transition_current_enumerator_v2,
     _invoke_transition_current_enumerator_v2,
+    _transition_current_trusted_publics_v2,
 ) = _build_transition_current_enumerator_registry_v2()
 del _build_transition_current_enumerator_registry_v2
 
@@ -318,6 +334,9 @@ def _freeze_transition_inventory_v2(
     enumerate_current = _require_transition_current_enumerator_v2(
         enumerate_current, session, observed.distribution,
     )
+    trusted_publics = _transition_current_trusted_publics_v2(
+        enumerate_current, session, observed.distribution,
+    )
     initial = _maintenance_evidence_under_transition_v1(maintenance)
     supplied = canonical_maintenance_proof(
         source=evidence["source"], units=evidence["units"],
@@ -329,6 +348,7 @@ def _freeze_transition_inventory_v2(
     inventory = freeze_current_inventory_v1(enumerate_current())
     _verify_store_only_catalog_locked(
         catalog_trusted_owner=catalog_trusted_owner,
+        trusted_publics=trusted_publics,
     )
     if (
         _maintenance_evidence_under_transition_v1(maintenance) != initial
@@ -337,12 +357,12 @@ def _freeze_transition_inventory_v2(
         raise OwnershipCoordinatorError(
             "birth_ownership_maintenance_changed",
         )
-    return enumerate_current, initial, inventory
+    return enumerate_current, initial, inventory, trusted_publics
 
 
 def _require_transition_inventory_unchanged_v2(
     enumerate_current, maintenance, initial, inventory,
-    catalog_trusted_owner,
+    catalog_trusted_owner, trusted_publics,
 ) -> None:
     from contract_cutover_guard import (
         _maintenance_evidence_under_transition_v1,
@@ -352,6 +372,7 @@ def _require_transition_inventory_unchanged_v2(
 
     _verify_store_only_catalog_locked(
         catalog_trusted_owner=catalog_trusted_owner,
+        trusted_publics=trusted_publics,
     )
     final_inventory = freeze_current_inventory_v1(enumerate_current())
     if (
@@ -371,9 +392,11 @@ def _transition_inventory_under_maintenance_v2(
     catalog_trusted_owner,
 ):
     """Freeze exact current identities under an already held maintenance guard."""
-    enumerate_current, initial, inventory = _freeze_transition_inventory_v2(
-        gate, session, enumerate_current, maintenance, evidence,
-        catalog_trusted_owner,
+    enumerate_current, initial, inventory, trusted_publics = (
+        _freeze_transition_inventory_v2(
+            gate, session, enumerate_current, maintenance, evidence,
+            catalog_trusted_owner,
+        )
     )
     try:
         yield maintenance, inventory, initial, enumerate_current
@@ -382,5 +405,5 @@ def _transition_inventory_under_maintenance_v2(
     else:
         _require_transition_inventory_unchanged_v2(
             enumerate_current, maintenance, initial, inventory,
-            catalog_trusted_owner,
+            catalog_trusted_owner, trusted_publics,
         )

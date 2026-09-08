@@ -510,10 +510,13 @@ def install_maintenance_fixture(monkeypatch, tmp_path, *, drift: bool):
             return () if drift and self.calls > 1 else (item,)
 
     verified = []
+    trusted = (("author-v1", object()),)
     monkeypatch.setattr(guard_module, "contract_cutover_guard", guard)
     monkeypatch.setattr(
         guard_module, "_verify_store_only_catalog_locked",
-        lambda **_kwargs: verified.append(True),
+        lambda **options: verified.append(
+            options.get("trusted_publics") == trusted
+        ),
     )
     monkeypatch.setattr(
         guard_module, "_maintenance_evidence_under_transition_v1",
@@ -534,6 +537,13 @@ def install_maintenance_fixture(monkeypatch, tmp_path, *, drift: bool):
     monkeypatch.setattr(
         transition_gate_module, "_require_transition_current_enumerator_v2",
         require_enumerator,
+    )
+    monkeypatch.setattr(
+        transition_gate_module, "_transition_current_trusted_publics_v2",
+        lambda value, current, distribution: trusted
+        if value.__self__ is port and current is not None
+        and distribution == "distribution"
+        else pytest.fail("current verifier authority changed"),
     )
     return port, verified, item
 
@@ -605,6 +615,9 @@ def test_initial_transition_inventory_uses_only_historical_public_verifiers(
     assert enumerate_current() is expected
     assert observed["trusted"] == (("author-v1", verifier),)
     assert observed["store_root"].is_absolute()
+    assert transition_gate_module._transition_current_trusted_publics_v2(
+        enumerate_current, session, distribution,
+    ) == (("author-v1", verifier),)
 
 
 def test_transition_gate_rejects_an_unissued_snapshot(monkeypatch):

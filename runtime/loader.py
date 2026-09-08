@@ -1116,6 +1116,7 @@ def _load_catalog_under_catalog_lock(
     lang: str | None = None,
     catalog_trusted_owner: tuple[int, int] | None = None,
     audit_only: bool = False,
+    trusted_publics: tuple | None = None,
 ) -> Catalog:
     """Scansiona executors_dir + (opzionale) SYNTHESIZED_EXECUTORS_DIR.
 
@@ -1183,6 +1184,10 @@ def _load_catalog_under_catalog_lock(
     catalog = Catalog()
     current_sig = None
     if store_only:
+        store_trusted = (
+            tuple(list_trusted_publics())
+            if trusted_publics is None else trusted_publics
+        )
         # Build one coherent store snapshot. A publisher may atomically move a
         # pointer while a cold load is authenticating several contracts; a
         # bounded retry prevents caching a mixed catalog and fails explicitly
@@ -1199,7 +1204,7 @@ def _load_catalog_under_catalog_lock(
                     )
                 )
             inventory = inventory_manifests(skill_enabled=skill_enabled)
-            trusted = tuple(list_trusted_publics())
+            trusted = store_trusted
             expected_revisions = _store_revision_ids(
                 inventory,
                 include_synth=include_synth,
@@ -1255,7 +1260,7 @@ def _load_catalog_under_catalog_lock(
             after_inventory = inventory_manifests(
                 skill_enabled=after_skill_enabled,
             )
-            after_trusted = tuple(list_trusted_publics())
+            after_trusted = store_trusted
             after_revisions = _store_revision_ids(
                 after_inventory,
                 include_synth=include_synth,
@@ -1449,6 +1454,7 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
 
 def _load_catalog_for_cutover_audit_v1(
     *, catalog_trusted_owner: tuple[int, int] | None,
+    trusted_publics: tuple,
     _executors_dir=DEFAULT_EXECUTORS_DIR,
     _include_synth: bool = True,
     _lang: str | None = None,
@@ -1460,6 +1466,8 @@ def _load_catalog_for_cutover_audit_v1(
     )
     if layout is not ManifestLayout.STORE_ONLY:
         raise ValueError("cutover audit requires the store-only layout")
+    if type(trusted_publics) is not tuple or not trusted_publics:
+        raise ValueError("cutover audit requires trusted public keys")
     from contract_store import catalog_admission_lock
 
     with catalog_admission_lock(trusted_owner=catalog_trusted_owner):
@@ -1471,6 +1479,7 @@ def _load_catalog_for_cutover_audit_v1(
             lang=_lang,
             catalog_trusted_owner=catalog_trusted_owner,
             audit_only=True,
+            trusted_publics=trusted_publics,
         )
 
 

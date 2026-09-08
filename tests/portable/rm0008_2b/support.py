@@ -607,7 +607,9 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
     user_config = tmp_path / "config"
     keys = user_config / "keys"
     keys.mkdir(parents=True)
-    (keys / "projection_pub.bin").write_bytes(public_bytes(projection_key))
+    projection_public = keys / "projection_pub.bin"
+    projection_public.write_bytes(public_bytes(projection_key))
+    projection_public.chmod(0o644)
 
     def executor(name: str, root: Path, code: Path, payload: bytes, **values):
         fields = {
@@ -641,7 +643,9 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
     original_keys_dir = sign.KEYS_DIR
     try:
         sign.KEYS_DIR = keys
-        encoded, roots = admitted_code_dependency_projection_v1(consumer, catalog)
+        encoded, roots, sealed_keys = admitted_code_dependency_projection_v1(
+            consumer, catalog,
+        )
     finally:
         sign.KEYS_DIR = original_keys_dir
     original_sandbox_file = sandbox.__file__
@@ -653,6 +657,7 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
         sandbox.__file__ = str(runtime_root / "sandbox.py")
         command = sandbox.wrap_command(
             consumer, [sys.executable, str(consumer_code)], extra_ro=roots,
+            sealed_ro_files=sealed_keys,
         )
     finally:
         sandbox.__file__ = original_sandbox_file
@@ -704,6 +709,17 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
             )
             assert str(source_runtime) not in command
             assert "--unshare-net" in command
+            sealed_root = str(sandbox._PROJECTED_TRUST_ROOT_V1)
+            assert ["--tmpfs", sealed_root] in [
+                command[index:index + 2]
+                for index in range(len(command) - 1)
+            ]
+            assert ["--remount-ro", sealed_root] in [
+                command[index:index + 2]
+                for index in range(len(command) - 1)
+            ]
+            assert "--disable-userns" in command
+            assert "--assert-userns-disabled" in command
     assert process.returncode == 0, process.stderr
     result = json.loads(process.stdout)
     assert result == {

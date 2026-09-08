@@ -927,6 +927,7 @@ def _build_sealed(
     )
     return _assemble_birth_runtime_bundle(
         assembly.core, factories, reattestation_factory,
+        author_verifier_keys=sealed.author.verifier_keys,
     )
 
 

@@ -3236,7 +3236,9 @@ def _fill_runtime_sourced_args(executor, args: dict) -> dict:
     return args
 
 
-def _admitted_code_dependency_projection(executor) -> tuple[str, list[Path]]:
+def _admitted_code_dependency_projection(
+    executor,
+) -> tuple[str, list[Path], list[Path]]:
     """Project signed dependency records and their exact read-only roots.
 
     The parent owns the verified catalogue.  The child receives no catalogue
@@ -3438,7 +3440,11 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
         }
 
     try:
-        _admitted_dependencies, _dependency_roots = (
+        (
+            _admitted_dependencies,
+            _dependency_roots,
+            _dependency_signer_keys,
+        ) = (
             _admitted_code_dependency_projection(executor)
         )
     except Exception:
@@ -3483,6 +3489,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
         cmd = _sandbox.wrap_command(
             executor, base_cmd, autonomy=autonomy,
             extra_ro=_extra_ro, extra_rw=_extra_rw,
+            sealed_ro_files=_dependency_signer_keys,
             force_net=_force_net,
         )
     except _sandbox.SandboxUnavailableError:

@@ -97,7 +97,11 @@ def test_store_verification_uses_owner_aware_read_only_catalog(monkeypatch):
             observed.append(("inventory", skill_enabled)) or inventory
         ),
     )
-    monkeypatch.setattr(sign, "list_trusted_publics", lambda: [("key", object())])
+    trusted = (("key", object()),)
+    monkeypatch.setattr(
+        sign, "list_trusted_publics",
+        lambda: pytest.fail("transition audit reopened legacy trusted keys"),
+    )
     monkeypatch.setattr(loader, "invalidate_catalog_cache", lambda: pytest.fail(
         "catalog verification invalidated process cache",
     ))
@@ -112,11 +116,15 @@ def test_store_verification_uses_owner_aware_read_only_catalog(monkeypatch):
 
     assert guard._verify_store_only_catalog_locked(
         catalog_trusted_owner=owner,
+        trusted_publics=trusted,
     ) == {"bindings": 0, "loaded": 0, "retired": 0}
     assert observed == [
         ("skill", owner),
         ("inventory", predicate),
-        ("load", {"catalog_trusted_owner": owner}),
+        ("load", {
+            "catalog_trusted_owner": owner,
+            "trusted_publics": trusted,
+        }),
     ]
 
 

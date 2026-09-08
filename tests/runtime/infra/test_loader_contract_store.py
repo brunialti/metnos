@@ -423,6 +423,12 @@ def test_store_catalog_audit_has_no_cache_registration_log_or_ddl_effects(
     _point_loader_at(
         monkeypatch, state=state, source_root=source_root, trusted=trusted,
     )
+    # The transition owns an authenticated verifier ring already.  The cold
+    # audit must not fall back to the removed legacy ~/.config keys directory.
+    monkeypatch.setattr(
+        loader, "list_trusted_publics",
+        lambda: pytest.fail("cutover audit reopened legacy trusted keys"),
+    )
     owner = (os.getuid(), os.getgid())
     snapshots = []
     original_affinity = loader._check_affinity_overlap
@@ -468,6 +474,7 @@ def test_store_catalog_audit_has_no_cache_registration_log_or_ddl_effects(
 
     catalog = loader._load_catalog_for_cutover_audit_v1(
         catalog_trusted_owner=owner,
+        trusted_publics=trusted,
         _executors_dir=source_root,
         _include_synth=False,
         _lang="en",
@@ -475,6 +482,18 @@ def test_store_catalog_audit_has_no_cache_registration_log_or_ddl_effects(
 
     assert catalog.get("read_files") is not None
     assert snapshots == [owner, owner]
+
+    wrong = (("other-author", Ed25519PrivateKey.generate().public_key()),)
+    denied = loader._load_catalog_for_cutover_audit_v1(
+        catalog_trusted_owner=owner,
+        trusted_publics=wrong,
+        _executors_dir=source_root,
+        _include_synth=False,
+        _lang="en",
+    )
+    assert denied.get("read_files") is None
+    assert denied.rejected
+    assert all("signature" in reason for _path, reason in denied.rejected)
 
     monkeypatch.setattr(
         executor_aging, "lifecycle_override_map",
@@ -485,6 +504,7 @@ def test_store_catalog_audit_has_no_cache_registration_log_or_ddl_effects(
     with pytest.raises(RuntimeError, match="invalid aging database"):
         loader._load_catalog_for_cutover_audit_v1(
             catalog_trusted_owner=owner,
+            trusted_publics=trusted,
             _executors_dir=source_root,
             _include_synth=False,
             _lang="en",
@@ -525,6 +545,7 @@ def test_catalog_owner_and_cutover_audit_are_store_only(monkeypatch) -> None:
     with pytest.raises(ValueError, match="cutover audit"):
         loader._load_catalog_for_cutover_audit_v1(
             catalog_trusted_owner=None,
+            trusted_publics=(),
         )
 
 

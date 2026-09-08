@@ -181,7 +181,34 @@ def restore_public_key(name):
 
 
 def list_trusted_publics():
-    """Tutte le *_pub.bin nella keys dir sono trusted in v1.1 POC."""
+    """Return the active author verifier ring for the current store layout.
+
+    Authoring mode reads the legacy public-key files.  Productive STORE_ONLY
+    mode accepts only the sealed Birth runtime or its required chain context;
+    it never falls back to the retired ambient key directory.
+    """
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+        from executor_birth_operational import (
+            _runtime_author_trusted_publics_v1,
+        )
+
+        # STORE_ONLY never falls back to the retired ambient key directory.
+        # Productive workers use their already installed immutable bundle;
+        # separate administrative/readiness processes authenticate the same
+        # required context directly from the ownership chain.
+        trusted = _runtime_author_trusted_publics_v1()
+        if trusted is None:
+            from executor_birth_prepared_root import (
+                load_required_context_runtime_v1,
+            )
+
+            required = load_required_context_runtime_v1()
+            trusted = tuple(sorted(
+                required.authorities.author.verifier_keys.items()
+            ))
+        return list(trusted)
     if not KEYS_DIR.exists():
         return []
     out = []

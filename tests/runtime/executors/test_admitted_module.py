@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import serialization
 
 from admitted_module_v1 import (
     ADMITTED_EXECUTORS_ENV_V1, AdmittedModuleError,
@@ -19,6 +21,27 @@ _ENTRY = b"VALUE = 41\n\n\ndef reverse(plan, results):\n    return {'ok': True}\
 _HELPER = b"HELPED = True\n"
 _CURRENT = {}
 _TEST_PRIVATE = Ed25519PrivateKey.generate()
+
+
+def _raw_public(private: Ed25519PrivateKey) -> bytes:
+    return private.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw,
+    )
+
+
+def _birth_key_id(private: Ed25519PrivateKey) -> str:
+    return "birth-ed25519-v1-sha256-" + hashlib.sha256(
+        _raw_public(private),
+    ).hexdigest()
+
+
+def _birth_public_path(root: Path, private: Ed25519PrivateKey) -> Path:
+    key_id = _birth_key_id(private)
+    path = root / "birth" / "author-root-v1" / "public" / f"{key_id}.pub"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(_raw_public(private))
+    path.chmod(0o644)
+    return path
 
 
 def _snapshot(executor):
@@ -46,6 +69,10 @@ def _sign_projection(executor, monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(
         admitted, "_trusted_public_keys_v1",
+        lambda: (_TEST_PRIVATE.public_key(),),
+    )
+    monkeypatch.setattr(
+        admitted, "_projected_trusted_public_keys_v1",
         lambda: (_TEST_PRIVATE.public_key(),),
     )
 
@@ -455,13 +482,231 @@ def test_dependency_projection_mounts_only_the_records_signer_key(
     unrelated.write_bytes(b"b" * 32)
     monkeypatch.setattr(sign, "KEYS_DIR", keys)
 
-    encoded, roots = admitted_code_dependency_projection_v1(
+    encoded, roots, sealed_keys = admitted_code_dependency_projection_v1(
         consumer, SimpleNamespace(get=lambda name: target),
     )
 
     assert encoded == encode_admitted_executor_records_v1([target])
-    assert roots == [Path(target.manifest_path).parent, author]
+    assert roots == [Path(target.manifest_path).parent]
+    assert sealed_keys == [author]
     assert unrelated not in roots
+    assert unrelated not in sealed_keys
+
+
+def test_store_only_dependency_projection_uses_the_sealed_birth_author_key(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import admitted_module_v1 as admitted
+    import manifest_inventory
+    import sign
+
+    target = _published(tmp_path / "target")
+    author = Ed25519PrivateKey.generate()
+    target.signed_by = _birth_key_id(author)
+    consumer = SimpleNamespace(code_dependencies=(target.name,))
+    public = _birth_public_path(tmp_path / "config", author)
+    legacy = tmp_path / "missing-legacy-keys"
+    monkeypatch.setattr(sign, "KEYS_DIR", legacy)
+    monkeypatch.setattr(
+        sign, "list_trusted_publics",
+        lambda: [(target.signed_by, author.public_key())],
+    )
+    monkeypatch.setattr(
+        manifest_inventory, "resolve_manifest_layout",
+        lambda: manifest_inventory.ManifestLayout.STORE_ONLY,
+    )
+    monkeypatch.setattr(
+        admitted, "_BIRTH_AUTHOR_PUBLIC_DIR_V1", public.parent,
+        raising=False,
+    )
+
+    encoded, roots, sealed_keys = admitted_code_dependency_projection_v1(
+        consumer, SimpleNamespace(get=lambda name: target),
+    )
+
+    assert encoded == encode_admitted_executor_records_v1([target])
+    assert roots == [Path(target.manifest_path).parent]
+    assert sealed_keys == [public]
+    assert not legacy.exists()
+
+
+def test_store_only_dependency_projection_rejects_a_mismatched_sealed_ring(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import admitted_module_v1 as admitted
+    import manifest_inventory
+    import sign
+
+    target = _published(tmp_path / "target")
+    author = Ed25519PrivateKey.generate()
+    wrong = Ed25519PrivateKey.generate()
+    target.signed_by = _birth_key_id(author)
+    consumer = SimpleNamespace(code_dependencies=(target.name,))
+    public = _birth_public_path(tmp_path / "config", author)
+    public.write_bytes(_raw_public(wrong))
+    legacy = tmp_path / "legacy-keys"
+    legacy.mkdir()
+    (legacy / f"{target.signed_by}_pub.bin").write_bytes(
+        _raw_public(wrong),
+    )
+    monkeypatch.setattr(sign, "KEYS_DIR", legacy)
+    monkeypatch.setattr(
+        sign, "list_trusted_publics",
+        lambda: [(target.signed_by, author.public_key())],
+    )
+    monkeypatch.setattr(
+        manifest_inventory, "resolve_manifest_layout",
+        lambda: manifest_inventory.ManifestLayout.STORE_ONLY,
+    )
+    monkeypatch.setattr(
+        admitted, "_BIRTH_AUTHOR_PUBLIC_DIR_V1", public.parent,
+        raising=False,
+    )
+
+    with pytest.raises(
+        AdmittedModuleError, match="admitted_module_dependency_unavailable",
+    ):
+        admitted_code_dependency_projection_v1(
+            consumer, SimpleNamespace(get=lambda _name: target),
+        )
+
+
+@pytest.mark.parametrize("link_kind", ["symbolic", "hard"])
+def test_store_only_dependency_projection_rejects_a_linked_birth_public_key(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, link_kind: str):
+    import admitted_module_v1 as admitted
+    import manifest_inventory
+    import sign
+
+    target = _published(tmp_path / "target")
+    author = Ed25519PrivateKey.generate()
+    target.signed_by = _birth_key_id(author)
+    consumer = SimpleNamespace(code_dependencies=(target.name,))
+    directory = tmp_path / "config" / "birth" / "author-root-v1" / "public"
+    directory.mkdir(parents=True)
+    backing = directory / "backing.pub"
+    backing.write_bytes(_raw_public(author))
+    public = directory / f"{target.signed_by}.pub"
+    if link_kind == "symbolic":
+        public.symlink_to(backing)
+    else:
+        os.link(backing, public)
+    monkeypatch.setattr(
+        sign, "list_trusted_publics",
+        lambda: [(target.signed_by, author.public_key())],
+    )
+    monkeypatch.setattr(
+        manifest_inventory, "resolve_manifest_layout",
+        lambda: manifest_inventory.ManifestLayout.STORE_ONLY,
+    )
+    monkeypatch.setattr(
+        admitted, "_BIRTH_AUTHOR_PUBLIC_DIR_V1", directory, raising=False,
+    )
+
+    with pytest.raises(
+        AdmittedModuleError, match="admitted_module_dependency_unavailable",
+    ):
+        admitted_code_dependency_projection_v1(
+            consumer, SimpleNamespace(get=lambda _name: target),
+        )
+
+
+def test_projected_record_uses_only_the_sealed_ring(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import admitted_module_v1 as admitted
+
+    trusted = _published(tmp_path / "trusted")
+    config = tmp_path / "config"
+    canonical = _birth_public_path(config, Ed25519PrivateKey.generate())
+    sealed = tmp_path / "sealed"
+    sealed.mkdir()
+    selected = sealed / f"{_birth_key_id(_TEST_PRIVATE)}.pub"
+    selected.write_bytes(_raw_public(_TEST_PRIVATE))
+    selected.chmod(0o644)
+    monkeypatch.setattr(admitted, "_PROJECTED_TRUST_ROOT_V1", sealed)
+    monkeypatch.setattr(
+        admitted, "_BIRTH_AUTHOR_PUBLIC_DIR_V1", canonical.parent,
+    )
+    monkeypatch.setattr(admitted, "_TRUSTED_KEYS_DIR_V1", config / "keys")
+    original_statvfs = admitted.os.statvfs
+    monkeypatch.setattr(
+        admitted.os, "statvfs",
+        lambda path: SimpleNamespace(
+            f_flag=original_statvfs(path).f_flag
+            | getattr(admitted.os, "ST_RDONLY", 1),
+        ),
+    )
+    monkeypatch.setenv(
+        ADMITTED_EXECUTORS_ENV_V1,
+        encode_admitted_executor_records_v1([trusted]),
+    )
+
+    projected = runtime_admitted_executor_v1("demo")
+
+    assert load_admitted_module_v1(projected).VALUE == 41
+    assert canonical.exists()
+    assert not (config / "keys").exists()
+
+
+def test_projected_record_rejects_a_changed_sealed_key_without_legacy_fallback(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import admitted_module_v1 as admitted
+
+    trusted = _published(tmp_path / "trusted")
+    config = tmp_path / "config"
+    _birth_public_path(config, _TEST_PRIVATE)
+    legacy = config / "keys"
+    legacy.mkdir()
+    (legacy / "author_pub.bin").write_bytes(_raw_public(_TEST_PRIVATE))
+    sealed = tmp_path / "sealed"
+    sealed.mkdir()
+    wrong = Ed25519PrivateKey.generate()
+    selected = sealed / f"{_birth_key_id(wrong)}.pub"
+    selected.write_bytes(_raw_public(wrong))
+    selected.chmod(0o644)
+    monkeypatch.setattr(admitted, "_PROJECTED_TRUST_ROOT_V1", sealed)
+    monkeypatch.setattr(
+        admitted, "_BIRTH_AUTHOR_PUBLIC_DIR_V1",
+        config / "birth" / "author-root-v1" / "public",
+    )
+    monkeypatch.setattr(admitted, "_TRUSTED_KEYS_DIR_V1", legacy)
+    original_statvfs = admitted.os.statvfs
+    monkeypatch.setattr(
+        admitted.os, "statvfs",
+        lambda path: SimpleNamespace(
+            f_flag=original_statvfs(path).f_flag
+            | getattr(admitted.os, "ST_RDONLY", 1),
+        ),
+    )
+    monkeypatch.setenv(
+        ADMITTED_EXECUTORS_ENV_V1,
+        encode_admitted_executor_records_v1([trusted]),
+    )
+
+    with pytest.raises(
+        AdmittedModuleError, match="admitted_module_projection_untrusted",
+    ):
+        load_admitted_module_v1(runtime_admitted_executor_v1("demo"))
+
+
+def test_projected_record_rejects_a_writable_lookalike_ring(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import admitted_module_v1 as admitted
+
+    trusted = _published(tmp_path / "trusted")
+    sealed = tmp_path / "writable-lookalike"
+    sealed.mkdir()
+    public = sealed / f"{_birth_key_id(_TEST_PRIVATE)}.pub"
+    public.write_bytes(_raw_public(_TEST_PRIVATE))
+    public.chmod(0o644)
+    monkeypatch.setattr(admitted, "_PROJECTED_TRUST_ROOT_V1", sealed)
+    monkeypatch.setenv(
+        ADMITTED_EXECUTORS_ENV_V1,
+        encode_admitted_executor_records_v1([trusted]),
+    )
+
+    with pytest.raises(
+        AdmittedModuleError, match="admitted_module_projection_untrusted",
+    ):
+        load_admitted_module_v1(runtime_admitted_executor_v1("demo"))
 
 
 def test_dependency_projection_refuses_a_public_key_symlink(

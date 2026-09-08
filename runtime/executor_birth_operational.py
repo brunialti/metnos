@@ -715,19 +715,30 @@ class BirthRuntimeBundle:
     core: _BirthCore
     producer_factories: Mapping[object, Callable[["BirthIntent"], BirthRequest]]
     reattestation_factory: Callable[[object], object]
+    author_verifier_keys: Mapping[str, Ed25519PublicKey]
     _seal: object
 
     def __post_init__(self) -> None:
         if self._seal is not _RUNTIME_SEAL or self.core._seal is not _CORE_SEAL:
             raise ValueError("birth_runtime_bundle_untrusted")
         factories = dict(self.producer_factories)
+        author_verifiers = dict(self.author_verifier_keys)
         if (
             not factories
             or any(not callable(value) for value in factories.values())
             or not callable(self.reattestation_factory)
+            or not author_verifiers
+            or any(
+                not isinstance(key_id, str) or not key_id
+                or not isinstance(verifier, Ed25519PublicKey)
+                for key_id, verifier in author_verifiers.items()
+            )
         ):
             raise ValueError("birth_runtime_bundle_invalid")
         object.__setattr__(self, "producer_factories", MappingProxyType(factories))
+        object.__setattr__(
+            self, "author_verifier_keys", MappingProxyType(author_verifiers),
+        )
 
 
 _RUNTIME_SEAL = object()
@@ -739,6 +750,8 @@ def _assemble_birth_runtime_bundle(
     core: _BirthCore,
     producer_factories: Mapping["_ProducerCapability", Callable[["BirthIntent"], BirthRequest]],
     reattestation_factory: Callable[[object], object],
+    *,
+    author_verifier_keys: Mapping[str, Ed25519PublicKey],
 ) -> BirthRuntimeBundle:
     """Bootstrap primitive; its inputs must already be fully validated."""
     from executor_birth_intent import _is_producer_capability
@@ -747,7 +760,8 @@ def _assemble_birth_runtime_bundle(
     ):
         raise ValueError("birth_producer_capability_untrusted")
     return BirthRuntimeBundle(
-        core, producer_factories, reattestation_factory, _RUNTIME_SEAL,
+        core, producer_factories, reattestation_factory,
+        author_verifier_keys, _RUNTIME_SEAL,
     )
 
 
@@ -767,6 +781,14 @@ def _runtime_bundle_snapshot() -> BirthRuntimeBundle | None:
     # language-level happens-before edge for alternate Python implementations.
     with _RUNTIME_LOCK:
         return _RUNTIME_BUNDLE
+
+
+def _runtime_author_trusted_publics_v1() -> tuple | None:
+    """Expose only the public author ring of the installed sealed runtime."""
+    bundle = _runtime_bundle_snapshot()
+    if bundle is None:
+        return None
+    return tuple(sorted(bundle.author_verifier_keys.items()))
 
 
 def _execute_intent_with_capability(

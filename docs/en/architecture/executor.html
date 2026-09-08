@@ -496,6 +496,20 @@ changed bytes operational. Maintainer updates use
 the compatibility flag submits the candidate to Executor Birth and does not
 select the former direct publisher.</p>
 
+<p>During transition, the inventory and first cold catalog load use the same
+author public-key set already authenticated by Birth. In exercise, readers use
+the authorities of the installed Birth context; separate administrative
+processes authenticate them through the current ownership chain. In the closed
+store, missing keys or an invalid context stop the read: the legacy key
+directory is never consulted as a fallback.</p>
+
+<p>For code dependencies between executors, the parent process selects only
+the public keys that authenticated the requested contracts. The Linux sandbox
+exposes these keys in a private read-only mount, separate from configuration
+paths; the mount stays empty when there are no dependencies. The child cannot
+add keys or replace the mount by creating a nested isolation environment.
+Explicitly permitted writes and the temporary directory remain available.</p>
+
 <p>The Linux distribution includes the Playwright driver in its managed Python
 environment and preserves executable permissions for programs supplied by its
 packages; browsers remain separately installed resources. After the transition,

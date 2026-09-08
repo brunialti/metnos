@@ -24,6 +24,7 @@ from executor_birth_predecessor import (
 from executor_birth_operational import (
     BirthRequest, _assemble_birth_runtime_bundle, _birth_executor_for_test,
     _install_birth_runtime_bundle, _runtime_bundle_snapshot, _sealed_core_for_test,
+    _runtime_author_trusted_publics_v1,
     birth_executor, candidate_source_id,
     approval_scope,
 )
@@ -538,8 +539,10 @@ def test_concurrent_exact_retries_converge_on_one_committed_binding(tmp_path):
 def test_runtime_bundle_install_is_atomic_and_install_once(monkeypatch, tmp_path):
     request, core = _fixture(tmp_path, lambda *_args, **_kwargs: None)
     capability = intent_api._producer_capabilities_for_bootstrap()[0]
+    author_public = Ed25519PrivateKey.generate().public_key()
     bundle = _assemble_birth_runtime_bundle(
         core, {capability: lambda _intent: request}, lambda _current: object(),
+        author_verifier_keys={"author": author_public},
     )
     monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
     barrier = threading.Barrier(3)
@@ -564,9 +567,104 @@ def test_runtime_bundle_install_is_atomic_and_install_once(monkeypatch, tmp_path
     snapshot = _runtime_bundle_snapshot()
     assert snapshot is bundle
     assert snapshot.core is core
+    assert _runtime_author_trusted_publics_v1() == (("author", author_public),)
     assert snapshot.producer_factories[capability](
         intent_api.BirthIntent(tmp_path, request.manifest_ref.contract_id, "test")
     ) is request
+
+
+def test_store_only_trust_comes_only_from_installed_birth_bundle(
+    monkeypatch, tmp_path,
+):
+    import executor_birth_prepared_root as prepared_root
+    import manifest_inventory
+    import sign
+    from types import SimpleNamespace
+
+    request, core = _fixture(tmp_path, lambda *_args, **_kwargs: None)
+    capability = intent_api._producer_capabilities_for_bootstrap()[0]
+    author_public = Ed25519PrivateKey.generate().public_key()
+    legacy_public = Ed25519PrivateKey.generate().public_key()
+    legacy_keys = tmp_path / "legacy-keys"
+    legacy_keys.mkdir()
+    (legacy_keys / "legacy_pub.bin").write_bytes(
+        legacy_public.public_bytes_raw(),
+    )
+    monkeypatch.setattr(sign, "KEYS_DIR", legacy_keys)
+    monkeypatch.setattr(
+        manifest_inventory, "resolve_manifest_layout",
+        lambda: manifest_inventory.ManifestLayout.STORE_ONLY,
+    )
+    monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
+
+    # A fresh closed administrative process reads the required chain context;
+    # it still never falls back to the ambient legacy key file.
+    loads = []
+    monkeypatch.setattr(
+        prepared_root, "load_required_context_runtime_v1",
+        lambda: (
+            loads.append(True)
+            or SimpleNamespace(authorities=SimpleNamespace(
+                author=SimpleNamespace(
+                    verifier_keys={"author": author_public},
+                ),
+            ))
+        ),
+    )
+    assert sign.list_trusted_publics() == [("author", author_public)]
+    assert loads == [True]
+    bundle = _assemble_birth_runtime_bundle(
+        core, {capability: lambda _intent: request}, lambda _current: object(),
+        author_verifier_keys={"author": author_public},
+    )
+    _install_birth_runtime_bundle(bundle)
+    monkeypatch.setattr(
+        prepared_root, "load_required_context_runtime_v1",
+        lambda: pytest.fail("installed runtime reloaded the required context"),
+    )
+
+    trusted = sign.list_trusted_publics()
+    assert len(trusted) == 1
+    assert trusted[0][0] == "author"
+    assert trusted[0][1] is author_public
+
+
+def test_store_only_trust_never_falls_back_when_required_context_fails(
+    monkeypatch, tmp_path,
+):
+    import executor_birth_prepared_root as prepared_root
+    import manifest_inventory
+    import sign
+
+    keys = tmp_path / "legacy-keys"
+    keys.mkdir()
+    (keys / "legacy_pub.bin").write_bytes(
+        Ed25519PrivateKey.generate().public_key().public_bytes_raw(),
+    )
+    monkeypatch.setattr(sign, "KEYS_DIR", keys)
+    monkeypatch.setattr(
+        manifest_inventory, "resolve_manifest_layout",
+        lambda: manifest_inventory.ManifestLayout.STORE_ONLY,
+    )
+    monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
+    monkeypatch.setattr(
+        prepared_root, "load_required_context_runtime_v1",
+        lambda: (_ for _ in ()).throw(RuntimeError("required context invalid")),
+    )
+
+    with pytest.raises(RuntimeError, match="required context invalid"):
+        sign.list_trusted_publics()
+
+
+def test_runtime_bundle_rejects_an_invalid_author_verifier_ring(tmp_path):
+    request, core = _fixture(tmp_path, lambda *_args, **_kwargs: None)
+    capability = intent_api._producer_capabilities_for_bootstrap()[0]
+
+    with pytest.raises(ValueError, match="birth_runtime_bundle_invalid"):
+        _assemble_birth_runtime_bundle(
+            core, {capability: lambda _intent: request},
+            lambda _current: object(), author_verifier_keys={"author": object()},
+        )
 
 
 def test_racing_readers_never_observe_a_partial_runtime(monkeypatch, tmp_path):
@@ -574,6 +672,9 @@ def test_racing_readers_never_observe_a_partial_runtime(monkeypatch, tmp_path):
     capability = intent_api._producer_capabilities_for_bootstrap()[0]
     bundle = _assemble_birth_runtime_bundle(
         core, {capability: lambda _intent: request}, lambda _current: object(),
+        author_verifier_keys={
+            "author": Ed25519PrivateKey.generate().public_key(),
+        },
     )
     monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
     barrier = threading.Barrier(9)

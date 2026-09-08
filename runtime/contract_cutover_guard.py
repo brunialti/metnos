@@ -265,12 +265,12 @@ def _contract_cutover_guard_for_service_user_v1(
 
 def _verify_store_only_catalog_locked(
     *, catalog_trusted_owner: tuple[int, int] | None = None,
+    trusted_publics: tuple | None = None,
 ) -> dict[str, int]:
     """Authenticate all bindings and perform the first cold loader pass."""
     from contract_store import ContractRetirement, current_contract
     from loader import _load_catalog_for_cutover_audit_v1
     from manifest_inventory import ManifestStatus, inventory_manifests
-    from sign import list_trusted_publics
 
     skill_enabled = None
     if catalog_trusted_owner is not None:
@@ -286,7 +286,12 @@ def _verify_store_only_catalog_locked(
             for problem in structural.problems[:12]
         )
         raise ContractCutoverGuardError("store_inventory_invalid", detail)
-    trusted = tuple(list_trusted_publics())
+    if trusted_publics is None:
+        from sign import list_trusted_publics
+
+        trusted = tuple(list_trusted_publics())
+    else:
+        trusted = trusted_publics
     if not trusted:
         raise ContractCutoverGuardError("trusted_keys_missing")
     expected: dict[str, tuple[str, str]] = {}
@@ -309,6 +314,7 @@ def _verify_store_only_catalog_locked(
         )
     catalog = _load_catalog_for_cutover_audit_v1(
         catalog_trusted_owner=catalog_trusted_owner,
+        trusted_publics=trusted,
     )
     fatal = [
         (path, reason)

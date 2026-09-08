@@ -215,6 +215,27 @@ Empty mail overrides and incorrectly typed file settings are rejected, not
 silently replaced. These are application data, not new launch authority or
 personal values in signed source.
 
+## Read-side author trust after the legacy transition
+
+The transition inventory and its cold loader audit receive the same public
+author ring from the existing authenticated read port, including the final
+unchanged-inventory check. The installed runtime bundle retains this immutable
+public ring; separate administrative readers authenticate the required context
+through the ownership chain. STORE_ONLY readers never fall back to the retired
+ambient key directory. Missing or invalid authority remains an explicit refusal.
+This repairs the shared reader connection without introducing a second key
+store, changing publication authority, or weakening signature verification.
+
+Code-dependency projections select their signer files from that authenticated
+ring. In Linux executor processes, the parent exposes only those public files
+in a private read-only top-level mount, empty when no dependency is declared.
+The child projection reader uses only that mount, without a configuration-path
+fallback. Nested user namespaces are disabled to prevent replacement of the
+mount; ordinary temporary storage and explicitly granted writable mounts are
+unchanged. This is a filesystem boundary, not a claim of isolation from Python
+code that modifies its own process. No signing key or publication authority is
+passed to the child.
+
 ## Consequences
 
 - Local models may remain useful even when imperfect: poor output is rejected

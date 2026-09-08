@@ -542,6 +542,22 @@ rendere operativi byte modificati. Gli aggiornamenti del manutentore usano
 il flag di compatibilità consegna il candidato a Executor Birth e non seleziona
 il precedente pubblicatore diretto.</p>
 
+<p>Durante la transizione, l'inventario e il primo caricamento del catalogo
+usano lo stesso insieme di chiavi pubbliche autore gi&agrave; autenticato da
+Birth. In esercizio, il lettore usa le autorit&agrave; del contesto Birth
+installato; un processo amministrativo separato le verifica dalla catena
+corrente. Nel deposito chiuso, chiavi mancanti o un contesto non valido
+interrompono la lettura: la vecchia directory delle chiavi non viene
+consultata come ripiego.</p>
+
+<p>Per le dipendenze di codice tra executor, il processo principale seleziona
+soltanto le chiavi pubbliche che hanno autenticato i contratti richiesti.
+Nella sandbox Linux queste chiavi sono esposte in un montaggio privato di
+sola lettura, separato dai percorsi di configurazione; senza dipendenze il
+montaggio resta vuoto. Il processo figlio non pu&ograve; aggiungere chiavi o
+sostituire il montaggio creando un nuovo ambiente di isolamento. Le scritture
+esplicitamente consentite e la directory temporanea restano disponibili.</p>
+
 <p>La distribuzione Linux include nell'ambiente Python gestito anche il driver
 Playwright e conserva i permessi di esecuzione dei programmi forniti dai pacchetti;
 i browser restano risorse installate separatamente. Dopo la transizione, la
