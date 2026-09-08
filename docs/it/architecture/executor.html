@@ -556,7 +556,11 @@ Il controllo amministrativo verifica anche il byte marcatore. I controlli
 d'avvio possono riusare l'analisi pura di un solo insieme identico di percorsi
 e byte nello stesso processo, mai le verifiche dei file, delle firme o dei
 servizi vivi. Anche gli import dichiarati possono riusare l'analisi sintattica;
-la loro risoluzione sul filesystem viene sempre ripetuta. Le analisi delle
+la loro risoluzione sul filesystem viene sempre ripetuta. Lo stesso riuso
+limitato si applica al lettore dei servizi: le osservazioni prima e dopo
+la lettura restano indipendenti e vive, senza ripetere l'analisi sintattica
+degli stessi byte. Il riuso rispetta anche gli esatti limiti di analisi.
+Le analisi delle
 operazioni su file e dei comandi esterni si applicano soltanto alle chiamate
 pertinenti, senza cambiare la classificazione delle autorità.
 Gli arresti per segnale sono letti nel formato nativo di systemd,

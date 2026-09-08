@@ -16,6 +16,7 @@ import stat
 import sys
 import unicodedata
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Mapping, NamedTuple
@@ -31,7 +32,7 @@ from contract_boundary_guard import (
     BIRTH_CLOSED_GUARD_VERSION,
     BIRTH_CLOSED_SOURCE_REVIEW_SHA256,
     SCAN_ROOTS, SCHEMA as BOUNDARY_INVENTORY_SCHEMA,
-    _bounded_ast_metrics, birth_closed_findings,
+    _bounded_ast_metrics, _boundary_ast_limits, birth_closed_findings,
     birth_closed_inventory_value_v1,
     closed_python_source_review_sha256, discover,
 )
@@ -1467,32 +1468,16 @@ def _canonical_inventory(content: bytes) -> dict[str, object]:
     return value
 
 
-def _verify_local_import_closure(
-    root: Path, files: tuple[DistributionFile, ...],
-    content: Mapping[str, bytes],
-) -> None:
-    declared = {item.path for item in files}
-
-    def local_candidates(module: str, source: str, level: int) -> tuple[str, ...]:
-        pieces = [piece for piece in module.split(".") if piece]
-        if level:
-            parent = source.split("/")[:-1]
-            if level > len(parent):
-                return ()
-            pieces = parent[:len(parent) - level + 1] + pieces
-        alternatives = []
-        for prefix in ([], ["runtime"]):
-            path = "/".join(prefix + pieces)
-            if path:
-                alternatives.extend((path + ".py", path + "/__init__.py"))
-        return tuple(dict.fromkeys(alternatives))
-
+@lru_cache(maxsize=1)
+def _analyze_local_imports_v1(
+    sources: tuple[tuple[str, bytes], ...], limits: tuple[object, ...],
+) -> tuple[tuple[str, tuple[tuple[str, int], ...]], ...]:
+    """Cache syntax only; every import path is resolved afresh by the caller."""
+    result = []
     total_ast_nodes = 0
-    for item in files:
-        if not item.path.endswith(".py"):
-            continue
+    for source_path, source_bytes in sources:
         try:
-            tree = ast.parse(content[item.path].decode("utf-8"), filename=item.path)
+            tree = ast.parse(source_bytes.decode("utf-8"), filename=source_path)
             total_ast_nodes += _bounded_ast_metrics(tree)
             if total_ast_nodes > MAX_BOUNDARY_TOTAL_AST_NODES_V1:
                 raise ValueError("boundary total AST node budget exceeded")
@@ -1513,7 +1498,7 @@ def _verify_local_import_closure(
 
             def authenticated_door_eval(call: ast.Call) -> bool:
                 if (
-                    item.path != "runtime/admitted_module_v1.py"
+                    source_path != "runtime/admitted_module_v1.py"
                     or not isinstance(call.func, ast.Name)
                     or call.func.id not in {"compile", "exec"}
                 ):
@@ -1551,7 +1536,7 @@ def _verify_local_import_closure(
 
             def authenticated_preflight_runpy(call: ast.Call) -> bool:
                 if (
-                    item.path not in {
+                    source_path not in {
                         "runtime/executor_birth_admin_preflight.py",
                         _BOUNDARY_PREFLIGHT_ENTRYPOINT_V1,
                     }
@@ -1672,8 +1657,36 @@ def _verify_local_import_closure(
             raise DistributionManifestError(
                 "birth_ownership_distribution_file_mismatch", "python source",
             ) from exc
+        result.append((source_path, tuple(modules)))
+    return tuple(result)
+
+
+def _verify_local_import_closure(
+    root: Path, files: tuple[DistributionFile, ...],
+    content: Mapping[str, bytes],
+) -> None:
+    declared = {item.path for item in files}
+
+    def local_candidates(module: str, source: str, level: int) -> tuple[str, ...]:
+        pieces = [piece for piece in module.split(".") if piece]
+        if level:
+            parent = source.split("/")[:-1]
+            if level > len(parent):
+                return ()
+            pieces = parent[:len(parent) - level + 1] + pieces
+        alternatives = []
+        for prefix in ([], ["runtime"]):
+            path = "/".join(prefix + pieces)
+            if path:
+                alternatives.extend((path + ".py", path + "/__init__.py"))
+        return tuple(dict.fromkeys(alternatives))
+
+    sources = tuple((item.path, content[item.path]) for item in files
+                    if item.path.endswith(".py"))
+    limits = (_boundary_ast_limits(), MAX_BOUNDARY_TOTAL_AST_NODES_V1)
+    for source_path, modules in _analyze_local_imports_v1(sources, limits):
         for module, level in modules:
-            candidates = local_candidates(module, item.path, level)
+            candidates = local_candidates(module, source_path, level)
             existing = [candidate for candidate in candidates
                         if root.joinpath(*candidate.split("/")).exists()]
             if existing and (len(existing) != 1 or existing[0] not in declared):

@@ -564,7 +564,10 @@ Administrative checks also inspect its marker. Startup checks may reuse the
 pure source analysis for one identical set of paths and bytes in the same
 process, but never reuse live file checks, signatures or service observations.
 Declared imports may also reuse syntax analysis, but their filesystem
-resolution is always repeated. File-operation and external-command analysis
+resolution is always repeated. The service reader uses the same bounded
+reuse: its before/after observations remain independent and live without
+repeating syntax analysis of identical bytes. Reuse also binds the exact
+analysis limits. File-operation and external-command analysis
 applies only to relevant calls, without changing authority classification.
 Signal-termination reports are parsed in systemd's native form without changing
 the signed command or interpreting termination as success.</p>

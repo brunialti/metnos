@@ -16,6 +16,7 @@ import argparse
 import ast
 import hashlib
 import json
+from functools import lru_cache
 from pathlib import Path
 import re
 from typing import Iterable, Mapping, Sequence
@@ -51,7 +52,7 @@ BIRTH_CLOSED_GUARD_VERSION = _boundary_policy.BIRTH_CLOSED_GUARD_VERSION
 BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:5588a48f67d6fb01aebef793dd9a6da3617db583856152133da5095c07dae3ce"
+BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:83b2e4e75991be41358c9d516c703dba3f246ab50c8e91eb03314cc599257467"
 RM0008_ACCEPTANCE_EVOLUTION_SHA256 = "sha256:1babce04a78b8345cbacb9bf5677bebade3958e655f0dc45884ad70636322167"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = _boundary_policy.SCAN_ROOTS
@@ -1726,11 +1727,24 @@ def _scan_file_with_metrics_unchecked(
     path: Path, *, repository_root: Path,
 ) -> tuple[list[ScopeFacts], int, int]:
     relative = path.relative_to(repository_root).as_posix()
+    return _scan_source_with_metrics(relative, _read_boundary_source(path))
+
+
+def _read_boundary_source(path: Path) -> bytes:
     try:
         with path.open("rb") as source:
             content = source.read(MAX_BOUNDARY_SOURCE_BYTES + 1)
         if len(content) > MAX_BOUNDARY_SOURCE_BYTES:
             raise ValueError("boundary source byte budget exceeded")
+        return content
+    except (OSError, MemoryError) as exc:
+        raise ValueError(f"cannot read boundary source: {path}") from exc
+
+
+def _scan_source_with_metrics(
+    relative: str, content: bytes,
+) -> tuple[list[ScopeFacts], int, int]:
+    try:
         tree = ast.parse(content.decode("utf-8"), filename=relative)
         node_count = _bounded_ast_metrics(tree)
     except (
@@ -1817,7 +1831,6 @@ def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
 
 def discover(repository_root: Path) -> list[ScopeFacts]:
     repository_root = repository_root.resolve()
-    facts: list[ScopeFacts] = []
     paths: list[Path] = []
     for root_name in SCAN_ROOTS:
         scan_root = repository_root / root_name
@@ -1839,19 +1852,39 @@ def discover(repository_root: Path) -> list[ScopeFacts]:
     ):
         raise ValueError("boundary source byte budget exceeded")
     total_source_bytes = 0
-    total_ast_nodes = 0
+    sources = []
     for path in paths:
-        discovered, source_bytes, ast_nodes = _scan_file_with_metrics(
-            path, repository_root=repository_root,
-        )
-        total_source_bytes += source_bytes
-        total_ast_nodes += ast_nodes
+        content = _read_boundary_source(path)
+        total_source_bytes += len(content)
         if total_source_bytes > MAX_BOUNDARY_TOTAL_SOURCE_BYTES:
             raise ValueError("boundary total source byte budget exceeded")
+        sources.append((path.relative_to(repository_root).as_posix(), content))
+    return list(_discover_source_facts(tuple(sources), _boundary_ast_limits()))
+
+
+def _boundary_ast_limits() -> tuple[int, ...]:
+    return (MAX_BOUNDARY_AST_NODES, MAX_BOUNDARY_AST_DEPTH,
+            MAX_BOUNDARY_SCOPES, MAX_BOUNDARY_CALLS, MAX_BOUNDARY_TOTAL_AST_NODES)
+
+
+@lru_cache(maxsize=1)
+def _discover_source_facts(
+    sources: tuple[tuple[str, bytes], ...], limits: tuple[int, ...],
+) -> tuple[ScopeFacts, ...]:
+    # One bounded syntax snapshot, keyed by exact paths, bytes and budgets.
+    # Enumeration, reads and byte/file budgets remain live on every call.
+    facts: list[ScopeFacts] = []
+    total_ast_nodes = 0
+    for relative, content in sources:
+        try:
+            discovered, _, ast_nodes = _scan_source_with_metrics(relative, content)
+        except MemoryError as exc:
+            raise ValueError("cannot scan boundary source: memory exhausted") from exc
+        total_ast_nodes += ast_nodes
         if total_ast_nodes > MAX_BOUNDARY_TOTAL_AST_NODES:
             raise ValueError("boundary total AST node budget exceeded")
         facts.extend(discovered)
-    return sorted(
+    return tuple(sorted(
         (
             fact for fact in facts
             if (
@@ -1861,7 +1894,7 @@ def discover(repository_root: Path) -> list[ScopeFacts]:
             )
         ),
         key=lambda fact: (fact.path, fact.scope),
-    )
+    ))
 
 
 def load_inventory(path: Path) -> dict:

@@ -339,3 +339,18 @@ The latter change reduced the uncached census from 14.799 to 11.871 seconds.
 These measurements do not establish successful activation; the complete
 candidate still requires a fresh end-to-end proof. No deadline, filesystem
 permission, signing authority or mandatory check has been relaxed.
+
+The r16 transition still exceeded stack readiness's deadline. A measurement
+on its preserved clone found three complete boundary/import analyses per
+service-catalog read. The runtime now reuses only immutable syntax facts for
+one exact ordered source snapshot and analysis-budget tuple. Filesystem
+enumeration, source reads, metadata, signatures and import resolution remain
+outside both caches; the before/after distribution checks are unchanged.
+Returned boundary lists are fresh copies, and no AST or persistent verdict
+is retained. Warm-cache tests cover changed bytes, paths, added/removed files,
+unreadable sources, tightened budgets and newly uncovered local imports.
+On the same installed state, replacing only the pure analysis functions in
+memory reduced a cold catalog read from 51.485 to 18.056 seconds, and the
+next read to 1.464 seconds, with the same nine services. This read-only
+measurement and the unchanged 466 boundary entries are predictive evidence,
+not proof that the complete new candidate activates successfully.
