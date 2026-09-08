@@ -601,7 +601,11 @@ firmate n&eacute; inserisce valori personali nel catalogo pubblico.</p>
 collegamenti automatici di attivazione e ordinamento di un preciso timer firmato
 possono comparire al caricamento o all'avvio senza richiedere una nuova firma.
 Anche i valori equivalenti di un controllo di vitalit&agrave; non configurato e
-disattivato hanno una sola rappresentazione. Attivatori inattesi, nuove dipendenze
+disattivato hanno una sola rappresentazione. Per un controllo configurato, il
+valore iniziale di systemd &egrave; ammesso solo se la stessa osservazione prova
+che il servizio &egrave; inattivo, senza processi principali o di controllo e
+mai avviato. Il valore firmato resta canonico; dopo l'avvio un controllo
+disabilitato o diverso viene rifiutato. Attivatori inattesi, nuove dipendenze
 e modifiche ai valori esplicitamente dichiarati restano soggetti alla verifica
 rigorosa.</p>
 

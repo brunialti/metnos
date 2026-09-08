@@ -279,3 +279,20 @@ expansions. The isolated G6 recipe remains independently constrained.
   operational birth owner.
 - RM-0007 remains the commit mechanism and RM-0002 remains the linguistic
   validator; this decision coordinates them rather than duplicating them.
+
+## Configured watchdog before its first start (8 September 2026)
+
+The real r13 clone loaded all 12 signed units but refused Playwright because
+`WatchdogSec=45s` was compared with `WatchdogUSec=infinity`. In systemd 255,
+the latter exposes `service_get_watchdog_usec()`, initially the runtime
+sentinel; `service_start()` copies the configured timeout before execution.
+See [the upstream implementation](https://github.com/systemd/systemd/blob/v255/src/core/service.c)
+and [its D-Bus getter](https://github.com/systemd/systemd/blob/v255/src/core/dbus-service.c).
+
+Only that initial sentinel is projected onto the exact signed setting, and
+only with one complete manager observation showing inactive/dead, zero main
+and control PIDs and zero main-start monotonic timestamp. Missing, duplicate
+or contradictory evidence is refused. After start the measured timeout must
+still match exactly. The lifecycle fields are evidence, not part of the stable
+configuration hash; signed fragments, no-drop-in checks and reload checks are
+unchanged. No service start is performed to manufacture a preflight result.

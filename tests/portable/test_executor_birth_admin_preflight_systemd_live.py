@@ -768,6 +768,11 @@ def _timer_manager_observation(entry, catalog) -> dict[str, tuple[str, ...]]:
     """Build typed show values against the real plan, without replacing it."""
     plan = preflight._systemd_property_plan_v1(entry)
     values = {name: ("",) * count for name, count in plan.cardinalities if count}
+    values.update({name: (value,) for name, value in (
+        ("ActiveState", "active"), ("SubState", "running"),
+        ("MainPID", "123"), ("ControlPID", "0"),
+        ("ExecMainStartTimestampMonotonic", "1"),
+    ) if name in values})
     defaults = {"boolean": "no", "integer": "0", "duration": "0s"}
     for section, name, kind in preflight._systemd_applicable_directives_v1(entry.class_name):
         for property_name in preflight._systemd_manager_properties_for_directive_v1(section, name):
@@ -961,6 +966,41 @@ def test_configured_nonzero_watchdog_remains_exact() -> None:
             preflight._compile_systemd_manager_projection_v1,
             entry, changed, catalog=materials.catalog,
         ).detail == "systemd configured directive"
+
+
+@LINUX_ONLY
+def test_configured_watchdog_initial_sentinel_has_stable_projection() -> None:
+    """systemd 255 exposes infinity until the first start, not WatchdogSec."""
+    materials = _timer_materials(watchdog="45s")
+    entry = next(e for e in materials.catalog.entries if e.unit_name == "probe.service")
+    running = _timer_manager_observation(entry, materials.catalog)
+    expected = preflight._compile_systemd_manager_projection_v1(
+        entry, running, catalog=materials.catalog,
+    )
+    initial = dict(running, WatchdogUSec=("infinity",), ActiveState=("inactive",),
+                   SubState=("dead",), MainPID=("0",), ControlPID=("0",),
+                   ExecMainStartTimestampMonotonic=("0",))
+    assert preflight._compile_systemd_manager_projection_v1(
+        entry, initial, catalog=materials.catalog,
+    ) == expected
+    # No disabling or stale override is admitted after a start or without
+    # the complete never-started observation, even if the service is stopped.
+    for key, value in (
+        ("ActiveState", "active"), ("ActiveState", "activating"),
+        ("SubState", "start-pre"), ("MainPID", "123"), ("ControlPID", "123"),
+        ("ExecMainStartTimestampMonotonic", "1"),
+        ("WatchdogUSec", "0"), ("WatchdogUSec", "1s"),
+    ):
+        _assert_invalid(preflight._compile_systemd_manager_projection_v1,
+                        entry, dict(initial, **{key: (value,)}), catalog=materials.catalog)
+    for key in ("ActiveState", "SubState", "MainPID", "ControlPID",
+                "ExecMainStartTimestampMonotonic"):
+        incomplete = dict(initial)
+        incomplete.pop(key)
+        _assert_invalid(preflight._compile_systemd_manager_projection_v1,
+                        entry, incomplete, catalog=materials.catalog)
+        _assert_invalid(preflight._compile_systemd_manager_projection_v1,
+                        entry, dict(initial, **{key: initial[key] * 2}), catalog=materials.catalog)
 
 
 @LINUX_ONLY

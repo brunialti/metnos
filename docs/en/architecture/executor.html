@@ -551,6 +551,10 @@ changes to signed units or put personal values in the public catalog.</p>
 activation and ordering links of an exact signed timer may appear when it is
 loaded or started without requiring another signature. Equivalent disabled
 values of an unconfigured watchdog also have one canonical representation.
+For a configured watchdog, systemd's initial runtime sentinel is accepted only
+when the same observation proves the service inactive, dead, without main or
+control processes and never started. The exact signed setting remains the
+canonical value; a disabled or different watchdog after start is rejected.
 Unexpected triggers, new dependencies and changes to explicitly configured
 values remain subject to strict verification.</p>
 

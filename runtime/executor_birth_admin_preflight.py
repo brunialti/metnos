@@ -635,6 +635,11 @@ _SYSTEMD_BASE_PROPERTIES_V1 = frozenset({
     "DropInPaths", "FragmentPath", "LoadState", "NeedDaemonReload",
     "UnitFileState",
 })
+_SYSTEMD_INITIAL_WATCHDOG_STATE_V1 = (
+    ("ActiveState", "inactive"), ("SubState", "dead"),
+    ("MainPID", "0"), ("ControlPID", "0"),
+    ("ExecMainStartTimestampMonotonic", "0"),
+)
 _SYSTEMD_ADDED_EDGE_RELATIONS_V1 = frozenset({
     "Requires", "Requisite", "Wants", "BindsTo", "PartOf", "Upholds",
     "RequiredBy", "RequisiteOf", "WantedBy", "BoundBy", "ConsistsOf",
@@ -816,7 +821,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:e21f1c33f17fe9139f25bbfb8c4b032336d37326e6493f4e61fa3eef6c0da53e"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:82ef18a60c3313a03bd142eddb1722f0b0faaa47d6604d497d322400a5d8857d"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -12406,6 +12411,8 @@ def _systemd_property_plan_v1(
 
     requested = set(_SYSTEMD_BASE_PROPERTIES_V1)
     requested.update(_SYSTEMD_ADDED_EDGE_RELATIONS_V1)
+    if ("Service", "WatchdogSec") in configured:
+        requested.update(name for name, _ in _SYSTEMD_INITIAL_WATCHDOG_STATE_V1)
     for section, name, _value_type in applicable:
         requested.update(_systemd_manager_properties_for_directive_v1(
             section, name,
@@ -12920,6 +12927,17 @@ def _compile_systemd_manager_projection_v1(
             )
         if directive is not None:
             signed = _normalize_signed_systemd_directive_v1(directive)
+            # systemd 255 exposes the runtime watchdog, initially infinity,
+            # and copies WatchdogSec into it only at service_start(). Bind the
+            # never-started sentinel to the exact signed fragment, retaining
+            # strict runtime equality after start and a stable projection.
+            if (
+                (section, name) == ("Service", "WatchdogSec")
+                and normalized == ("infinity",)
+                and all(observed.get(key) == (value,)
+                        for key, value in _SYSTEMD_INITIAL_WATCHDOG_STATE_V1)
+            ):
+                normalized = signed
             if name in _SYSTEMD_DIRECT_RELATIONS_V1:
                 if not set(signed).issubset(normalized):
                     raise _invalid("systemd direct relation")
