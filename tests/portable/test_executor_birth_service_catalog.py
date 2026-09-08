@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+from importlib.machinery import PathFinder
 import json
 import re
 import shutil
@@ -112,6 +113,25 @@ def _legacy() -> tuple[catalog.ServiceLegacyBindingV1, ...]:
         str(item["legacy_id"]), str(item["entry_id"]), str(item["kind"]),
         str(item["scope"]), str(item["locator"]), str(item["disposition"]),
     ) for item in catalog.legacy_bindings_from_source_v1())
+
+
+@pytest.mark.parametrize("entry", [
+    entry for entry in _entries(installation_root=str(RUNTIME.parent))
+    if entry.execution_kind == "python_module"
+], ids=lambda entry: entry.entry_id)
+def test_python_targets_resolve_from_their_signed_working_directory(entry) -> None:
+    # Do not import the service: ambient sys.path must not hide a bad recipe.
+    search_path = [entry.target_working_directory]
+    parts = entry.python_module.split(".")
+    for index in range(1, len(parts) + 1):
+        name = ".".join(parts[:index])
+        spec = PathFinder.find_spec(name, search_path)
+        assert spec is not None, (entry.entry_id, name, search_path)
+        if index < len(parts):
+            assert spec.submodule_search_locations is not None
+            search_path = spec.submodule_search_locations
+    assert spec.origin is not None
+    assert Path(spec.origin).is_relative_to(RUNTIME.parent)
 
 
 def _encoded(*, installation_root: str = "/opt/metnos") -> bytes:

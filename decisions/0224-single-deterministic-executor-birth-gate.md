@@ -354,3 +354,11 @@ memory reduced a cold catalog read from 51.485 to 18.056 seconds, and the
 next read to 1.464 seconds, with the same nine services. This read-only
 measurement and the unchanged 466 boundary entries are predictive evidence,
 not proof that the complete new candidate activates successfully.
+
+The r17 clone passed HTTP, browser and all 122 executor checks, but the durable
+worker failed before entering its module. Its signed recipe selected the
+installation root while `durable_workloads.service` lives under `runtime`.
+The recipe now selects that directory, as other bare runtime modules do.
+A regression resolves every Python target from its signed directory without
+importing a parent package or inheriting ambient source paths. The launcher
+keeps its restricted path; no runtime fallback or readiness exception is added.

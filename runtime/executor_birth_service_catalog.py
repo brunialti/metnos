@@ -523,6 +523,7 @@ SERVICE_SOURCE_V1 = tuple(sorted((
         "service-durable-worker", "metnos-durable-worker.service",
         target_recipe=_python_target(
             "durable_workloads.service",
+            working_directory="@installation_root@/runtime",
             environment=_TARGET_DATA_ENVIRONMENT_V1,
         ),
         relations=(
