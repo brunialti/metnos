@@ -63,6 +63,15 @@ _REVIEWED_ACCEPTANCE_EVOLUTIONS = frozenset({
 _FROZEN_WORKFLOW_SHA256 = (
     "3e953be12480be9a4e6dfa19812a053492b5e26e155c9ecb7b749c29bde135e9"
 )
+# Reviewed CI preparation only: install venv support and the full locked
+# wheelhouse. All six acceptance jobs and their blocking summary are unchanged.
+_REVIEWED_WORKFLOW_SHA256 = (
+    "5aeda2ff4b76d594f56baf9059550bbda74cc1b98fe9df30ac77c0a1f55f18eb"
+)
+_REVIEWED_WORKFLOW_GIT_EDGE = (
+    ("100644", "ce3bbd7e5097b23e4ad577ffa1b8af40b75618f7"),
+    ("100644", "fe5afb0b15d754d80f70d00838398ff305d825a8"),
+)
 _EFFECTIVE_PYTEST_SUPPORT_SHA256 = {
     "conftest.py": "c31a567f781dcbd3e1ce06c67c901a1b3be07c21a5d8c4030cc8bf262a753015",
     "tests/portable/conftest.py": (
@@ -2720,7 +2729,7 @@ def _validate_reviewed_acceptance_tree_evolution(
     source_tree: Mapping[str, tuple[str, str]],
     current_tree: Mapping[str, tuple[str, str]],
 ) -> None:
-    """Allow only the two reviewed files that extend the closed F4 graph.
+    """Allow the reviewed F4 graph and exact CI prerequisite preparation.
 
     The historical commit, manifest, evidence and every other acceptance file
     remain byte-identical. The current verifier and its negative cases evolve
@@ -2738,6 +2747,11 @@ def _validate_reviewed_acceptance_tree_evolution(
         for path in source_paths & current_paths
         if source_tree[path] != current_tree[path]
     )
+    workflow = WORKFLOW_PATH.relative_to(REPO_ROOT).as_posix()
+    if workflow in changed and (
+        source_tree[workflow], current_tree[workflow],
+    ) == _REVIEWED_WORKFLOW_GIT_EDGE:
+        changed.remove(workflow)
     if (
         missing
         or added != set(_FROZEN_CURRENT_EXACT_PATHS)
@@ -3029,7 +3043,9 @@ def validate_workflow_structure(path: Path = WORKFLOW_PATH) -> None:
         raise CertificationError("summary lacks canonical pre-fix snapshot aggregation")
     if "inputs.rm0008_run_diagnostic" in summary or "rm0008_increment_2a_windows_diagnostics" in summary:
         raise CertificationError("summary or A jobs inherit the D diagnostic")
-    if _normalized_source_sha256(text) != _FROZEN_WORKFLOW_SHA256:
+    if _normalized_source_sha256(text) not in {
+        _FROZEN_WORKFLOW_SHA256, _REVIEWED_WORKFLOW_SHA256,
+    }:
         raise CertificationError("workflow differs from the frozen certification form")
 
 
