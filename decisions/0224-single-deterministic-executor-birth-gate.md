@@ -185,6 +185,20 @@ measurements and the minimal base change each would need are recorded in
 `internal/reports/rm0008-gruppo2-analisi-implementazione.md`, sections 17.54,
 17.60 and 17.65.
 
+## Operational verification — canonical systemd observations
+
+The closed distribution binds configured service behavior, not differences in
+how the manager renders the same behavior before and after activation. Real
+systemd 255.4 testing exposed both inverse timer links (`TriggeredBy` and
+implicit `After`) and an unconfigured watchdog changing from `infinity` to `0`.
+The verifier normalizes only the inverse links derived from the same signed
+catalog timer target, in both the property projection and residual dependencies,
+and those two disabled defaults. Explicit dependencies and watchdog settings,
+foreign triggers, timer target changes and dependency origins remain checked.
+This corrects the comparison without changing the admission or activation
+boundary. Passing portable cases does not substitute for the real systemd cell,
+the complete isolated transition or the final functional check in exercise.
+
 ## Consequences
 
 - Local models may remain useful even when imperfect: poor output is rejected

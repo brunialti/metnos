@@ -503,10 +503,12 @@ readiness checks observe the units and scope bound by the current signed catalog
 without changing services or broadening control commands. An invalid catalog
 stops the check: it is not silently replaced with the previous configuration.</p>
 
-<p>The service configuration is signed before its timers start. The inverse link
-of an exact signed timer may appear during activation without requiring another
-signature; unexpected triggers and changes to declared dependencies remain
-subject to strict verification.</p>
+<p>The service configuration is signed before its timers start. The automatic
+activation and ordering links of an exact signed timer may appear when it is
+loaded or started without requiring another signature. Equivalent disabled
+values of an unconfigured watchdog also have one canonical representation.
+Unexpected triggers, new dependencies and changes to explicitly configured
+values remain subject to strict verification.</p>
 
 <!-- ============================================================== -->
 <h1 id="cap6">6. Four origins: handwritten, generated, imported, builtin</h1>

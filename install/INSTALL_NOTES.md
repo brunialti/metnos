@@ -86,10 +86,14 @@ coordinator, and activates only the target and readiness units named by the
 signed service catalog.
 
 The effective systemd snapshot is signed before timer activation. The inverse
-`TriggeredBy` edge of an exact catalog timer is already bound by its signed
-`Timer.Unit`, and is not counted as a manager-added dependency: systemd exposes
-it only while the timer is active. Undeclared triggers, other dependency edges,
-and changes to the timer's configured target remain subject to strict checks.
+`TriggeredBy` and implicit ordering `After` links of an exact catalog timer are
+already bound by its signed `Timer.Unit`. They are normalized consistently in
+both the property projection and the dependency inventory as the timer is
+loaded or activated; an explicitly declared service `After` is still required.
+Undeclared triggers, other dependency edges, and changes to the timer's
+configured target remain subject to strict checks. An unconfigured watchdog's
+equivalent disabled values (`0` and `infinity`) have one canonical identity;
+explicitly configured watchdog values are still checked against the signature.
 
 The complete Linux x86_64 CPython 3.12 release uses
 `requirements-linux-x86_64.lock`, including Playwright and its pinned runtime

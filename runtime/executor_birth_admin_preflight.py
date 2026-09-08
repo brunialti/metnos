@@ -816,7 +816,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:c1a6666f44a1166f02fa6801fc3d52c4dcecc2b23b77f01225ecb68d9b84630a"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:70e7fa0bf680360bdbffe614faab563bdce94beaa725bb7785c40dac11737ce5"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -12804,9 +12804,32 @@ def _normalize_manager_directive_v1(
     return _normalize_systemd_scalar_v1(raw)
 
 
+def _declared_timer_inverse_edges_v1(
+    entry: _ServiceCatalogEntryV1, catalog: _DecodedServiceCatalogV1,
+) -> frozenset[tuple[str, str]]:
+    """Name only the inverse edges implied by a signed Timer.Unit pair."""
+    timers = {
+        timer.unit_name for timer in catalog.entries
+        if timer.class_name == "gated_timer"
+        and timer.timer_target == entry.entry_id
+        and timer.unit_name is not None
+        and timer.unit_spec is not None
+        and any(
+            directive.section == "Timer" and directive.name == "Unit"
+            and directive.values == (entry.unit_name,)
+            for directive in timer.unit_spec.directives
+        )
+    }
+    return frozenset(
+        (relation, timer)
+        for timer in timers for relation in ("After", "TriggeredBy")
+    )
+
+
 def _compile_systemd_manager_projection_v1(
     entry: _ServiceCatalogEntryV1,
-    observed: Mapping[str, tuple[str, ...]],
+    observed: Mapping[str, tuple[str, ...]], *,
+    catalog: _DecodedServiceCatalogV1,
 ) -> _SystemdManagerProjectionV1:
     """Validate one closed show result and project it onto signed names."""
     plan = _systemd_property_plan_v1(entry)
@@ -12814,6 +12837,7 @@ def _compile_systemd_manager_projection_v1(
     assert entry.unit_spec is not None
     configured = _service_directive_index_v1(entry.unit_spec)
     applicable = _systemd_applicable_directives_v1(entry.class_name)
+    declared_inverse = _declared_timer_inverse_edges_v1(entry, catalog)
 
     exec_values: dict[str, tuple[str, ...]] = {}
     for name, pair in _SYSTEMD_EXEC_PROPERTY_PAIRS_V1.items():
@@ -12867,6 +12891,12 @@ def _compile_systemd_manager_projection_v1(
                 section, name, value_type, observed,
             )
         directive = configured.get((section, name))
+        if section == "Unit" and name == "After":
+            explicit = set(() if directive is None else directive.values)
+            normalized = tuple(
+                value for value in normalized
+                if ("After", value) not in declared_inverse or value in explicit
+            )
         if directive is not None:
             signed = _normalize_signed_systemd_directive_v1(directive)
             if name in _SYSTEMD_DIRECT_RELATIONS_V1:
@@ -12878,14 +12908,15 @@ def _compile_systemd_manager_projection_v1(
             raise _invalid("systemd Documentation default")
         elif (
             section == "Service" and name == "WatchdogSec"
-            and normalized not in (("0",), ("infinity",))
         ):
             # A watchdog that was never configured is reported as disabled in
             # two equivalent ways. Measured on systemd 255.4: most units render
             # `WatchdogUSec=0`, others render `infinity` (observed on
             # `launchpadlib-cache-clean.service`). Both mean "no watchdog";
             # pinning only the first denied a unit that configured nothing.
-            raise _invalid(f"systemd Watchdog default {normalized!r}")
+            if normalized not in (("0",), ("infinity",)):
+                raise _invalid(f"systemd Watchdog default {normalized!r}")
+            normalized = ("0",)
         properties.append(_SystemdManagerPropertyV1(
             name, value_type, normalized,
         ))
@@ -12905,20 +12936,10 @@ def _compile_systemd_added_edge_pairs_v1(
     _validate_systemd_property_cardinality_v1(plan, observed)
     assert entry.unit_spec is not None
     configured = _service_directive_index_v1(entry.unit_spec)
-    # systemd exposes this reverse edge only while the timer is active. Its
-    # cause is already signed and checked as Timer.Unit in the same catalog;
-    # it is not a manager-added dependency. Keep every other observed edge.
-    declared_timers = {
-        timer.unit_name for timer in catalog.entries
-        if timer.class_name == "gated_timer"
-        and timer.timer_target == entry.entry_id
-        and timer.unit_spec is not None
-        and any(
-            directive.section == "Timer" and directive.name == "Unit"
-            and directive.values == (entry.unit_name,)
-            for directive in timer.unit_spec.directives
-        )
-    }
+    # systemd adds Before+Triggers to a loaded timer and exposes their inverse
+    # After+TriggeredBy on the target. Their cause is already signed as the
+    # Timer.Unit pair; keep every other observed manager edge.
+    declared_inverse = _declared_timer_inverse_edges_v1(entry, catalog)
     residual: list[tuple[str, str]] = []
     for relation in sorted(_SYSTEMD_ADDED_EDGE_RELATIONS_V1):
         values = _normalize_systemd_unit_list_v1(
@@ -12931,7 +12952,7 @@ def _compile_systemd_added_edge_pairs_v1(
         residual.extend(
             (relation, unit_name) for unit_name in values
             if unit_name not in explicit
-            and not (relation == "TriggeredBy" and unit_name in declared_timers)
+            and (relation, unit_name) not in declared_inverse
         )
     residual.sort(key=lambda item: (
         item[0].encode("utf-8"), item[1].encode("utf-8"),
@@ -13567,7 +13588,9 @@ def _capture_effective_systemd_units_core_v1(
             _configured_directives_hash_from_fragment_v1(
                 candidate.unit_name, fragment.captured.content,
             ),
-            _compile_systemd_manager_projection_v1(entry, observed),
+            _compile_systemd_manager_projection_v1(
+                entry, observed, catalog=materials.catalog,
+            ),
             manager_edges,
         ))
     snapshot = _make_effective_systemd_units_snapshot_v1(

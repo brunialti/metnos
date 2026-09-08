@@ -1214,8 +1214,8 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         _systemctl("daemon-reload")
 
         # Production signs its prerequisite before activating the timer.
-        # On systemd 255.4 the inverse `TriggeredBy` edge is absent here and
-        # appears only after activation. Admission must accept that exact
+        # On systemd 255.4 the inverse TriggeredBy/After pair is absent here
+        # and appears after loading/activation. Admission must accept that exact
         # signed timer without recapturing or rewriting this prerequisite.
         assert _systemctl(
             "show", fixture.timer_name, "--property=ActiveState", "--value",
@@ -1443,6 +1443,9 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         assert fixture.timer_name in _systemctl(
             "show", fixture.service_name, "--property=TriggeredBy", "--value",
         ).stdout.split()
+        assert fixture.timer_name in _systemctl(
+            "show", fixture.service_name, "--property=After", "--value",
+        ).stdout.split()
         _tcb, baseline_observation, _candidate = _capture_live_bindings(fixture)
         baseline_hash = baseline_observation.snapshot.effective_units_hash
         assert baseline_hash == effective.snapshot.effective_units_hash
@@ -1451,6 +1454,9 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             baseline_observation, fixture.timer_name,
         )
         assert ("TriggeredBy", fixture.timer_name) not in _edges_of(
+            baseline_observation, fixture.service_name,
+        )
+        assert ("After", fixture.timer_name) not in _edges_of(
             baseline_observation, fixture.service_name,
         )
 

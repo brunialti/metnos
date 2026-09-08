@@ -694,7 +694,9 @@ def test_double_observation_denies_prerequisite_or_manager_drift(
     ).detail == "effective systemd A/B mismatch"
 
 
-def _timer_materials() -> preflight._BoundPreflightMaterialsV1:
+def _timer_materials(
+    *, watchdog: str | None = None, explicit_timer_after: bool = False,
+) -> preflight._BoundPreflightMaterialsV1:
     """Decode a real catalog; only the systemctl/TCB envelope is synthetic."""
     entries = []
     for label in ("other", "probe"):
@@ -708,7 +710,12 @@ def _timer_materials() -> preflight._BoundPreflightMaterialsV1:
         ) for name, operation in (("ExecStart", "launch"), ("ExecStartPre", "check")))
         directives = (
             service_catalog.ServiceDirectiveV1("Unit", "Description", "scalar", (label,)),
-            service_catalog.ServiceDirectiveV1("Unit", "After", "unit_list", ("basic.target",)),
+            service_catalog.ServiceDirectiveV1(
+                "Unit", "After", "unit_list",
+                ("basic.target", "probe.timer")
+                if label == "probe" and explicit_timer_after
+                else ("basic.target",),
+            ),
             service_catalog.ServiceDirectiveV1("Unit", "Requires", "unit_list", ("basic.target",)),
             *commands,
             *(service_catalog.ServiceDirectiveV1("Service", name, kind, (value,))
@@ -718,6 +725,9 @@ def _timer_materials() -> preflight._BoundPreflightMaterialsV1:
                   ("NoNewPrivileges", "boolean", "yes"), ("Type", "scalar", "oneshot"),
                   ("User", "scalar", "daemon"), ("WorkingDirectory", "path_list", "/"),
               )),
+            *((service_catalog.ServiceDirectiveV1(
+                "Service", "WatchdogSec", "duration", (watchdog,),
+            ),) if label == "probe" and watchdog is not None else ()),
         )
         entries.append(service_catalog.ServiceCatalogEntryV1(
             entry_id, unit_name, None, None, "gated_service", "system",
@@ -754,7 +764,7 @@ def _timer_materials() -> preflight._BoundPreflightMaterialsV1:
     )
 
 
-def _timer_manager_observation(entry) -> dict[str, tuple[str, ...]]:
+def _timer_manager_observation(entry, catalog) -> dict[str, tuple[str, ...]]:
     """Build typed show values against the real plan, without replacing it."""
     plan = preflight._systemd_property_plan_v1(entry)
     values = {name: ("",) * count for name, count in plan.cardinalities if count}
@@ -765,7 +775,8 @@ def _timer_manager_observation(entry) -> dict[str, tuple[str, ...]]:
                 values[property_name] = (defaults.get(kind, ""),)
     if entry.class_name == "gated_service":
         values.update(KillSignal=("SIGTERM",), UMask=("0022",),
-                      MemoryHigh=("infinity",), MemoryMax=("infinity",))
+                      MemoryHigh=("infinity",), MemoryMax=("infinity",),
+                      WatchdogUSec=("infinity",))
     for directive in entry.unit_spec.directives:
         section, name, kind = directive.section, directive.name, directive.value_type
         if kind == "argv":
@@ -787,7 +798,9 @@ def _timer_manager_observation(entry) -> dict[str, tuple[str, ...]]:
     if entry.class_name == "gated_timer":
         values["Triggers"] = ("probe.service",)
     preflight._validate_systemd_property_cardinality_v1(plan, values)
-    preflight._compile_systemd_manager_projection_v1(entry, values)
+    preflight._compile_systemd_manager_projection_v1(
+        entry, values, catalog=catalog,
+    )
     return values
 
 
@@ -805,7 +818,10 @@ def timer_capture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         (unit_root / name).chmod(0o644)
     _harden_directories(live_root)
     entries = {entry.unit_name: entry for entry in materials.catalog.entries}
-    observed = {name: _timer_manager_observation(entry) for name, entry in entries.items()}
+    observed = {
+        name: _timer_manager_observation(entry, materials.catalog)
+        for name, entry in entries.items()
+    }
 
     def show(executable, unit_name, properties):
         assert executable == "/usr/bin/systemctl"
@@ -838,6 +854,8 @@ def test_declared_timer_inactive_active_has_identical_complete_snapshot(timer_ca
     _materials, observed, capture = timer_capture
     inactive = capture()
     observed["probe.service"]["TriggeredBy"] = ("probe.timer",)
+    observed["probe.service"]["After"] = ("basic.target probe.timer",)
+    observed["probe.service"]["WatchdogUSec"] = ("0",)
     active = capture()
     assert inactive == active
     service = next(item for item in active.snapshot.entries if item.unit_name == "probe.service")
@@ -849,13 +867,16 @@ def test_declared_timer_inactive_active_has_identical_complete_snapshot(timer_ca
         "/etc/systemd/system/probe.timer",
     }
     observed["probe.service"]["TriggeredBy"] = ("",)
+    observed["probe.service"]["After"] = ("basic.target",)
     assert capture() == inactive
 
 
 @LINUX_ONLY
 @pytest.mark.parametrize(("unit", "relation", "added"), [
     ("probe.service", "TriggeredBy", "outside.timer"),
+    ("probe.service", "After", "outside.timer"),
     ("other.service", "TriggeredBy", "probe.timer"),
+    ("other.service", "After", "probe.timer"),
     ("probe.service", "ConflictedBy", "outside.service"),
     ("probe.service", "ConsistsOf", "probe.timer"),
     ("probe.timer", "Triggers", "outside.service"),
@@ -878,6 +899,68 @@ def test_timer_observed_target_mismatch_still_denied(timer_capture) -> None:
     _materials, observed, capture = timer_capture
     observed["probe.timer"]["Unit"] = ("other.service",)
     assert _assert_invalid(capture).detail == "systemd configured directive"
+
+
+@LINUX_ONLY
+def test_explicit_after_declared_timer_remains_signed() -> None:
+    materials = _timer_materials(explicit_timer_after=True)
+    entry = next(
+        item for item in materials.catalog.entries
+        if item.unit_name == "probe.service"
+    )
+    observed = _timer_manager_observation(entry, materials.catalog)
+    projection = preflight._compile_systemd_manager_projection_v1(
+        entry, observed, catalog=materials.catalog,
+    )
+    after = next(item for item in projection.properties if item.name == "After")
+    assert after.values == ("basic.target", "probe.timer")
+    assert preflight._compile_systemd_added_edge_pairs_v1(
+        entry, observed, catalog=materials.catalog,
+    ) == ()
+
+
+@LINUX_ONLY
+def test_unconfigured_watchdog_disabled_forms_have_one_canonical_value() -> None:
+    materials = _timer_materials()
+    entry = next(
+        item for item in materials.catalog.entries
+        if item.unit_name == "probe.service"
+    )
+    observed = _timer_manager_observation(entry, materials.catalog)
+    infinity = preflight._compile_systemd_manager_projection_v1(
+        entry, observed, catalog=materials.catalog,
+    )
+    observed["WatchdogUSec"] = ("0",)
+    zero = preflight._compile_systemd_manager_projection_v1(
+        entry, observed, catalog=materials.catalog,
+    )
+    assert zero == infinity
+    watchdog = next(item for item in zero.properties if item.name == "WatchdogSec")
+    assert watchdog.values == ("0",)
+    observed["WatchdogUSec"] = ("1s",)
+    assert _assert_invalid(
+        preflight._compile_systemd_manager_projection_v1,
+        entry, observed, catalog=materials.catalog,
+    ).detail == "systemd Watchdog default ('1000000',)"
+
+
+@LINUX_ONLY
+def test_configured_nonzero_watchdog_remains_exact() -> None:
+    materials = _timer_materials(watchdog="5s")
+    entry = next(
+        item for item in materials.catalog.entries
+        if item.unit_name == "probe.service"
+    )
+    observed = _timer_manager_observation(entry, materials.catalog)
+    preflight._compile_systemd_manager_projection_v1(
+        entry, observed, catalog=materials.catalog,
+    )
+    for disabled in ("0", "infinity"):
+        changed = dict(observed, WatchdogUSec=(disabled,))
+        assert _assert_invalid(
+            preflight._compile_systemd_manager_projection_v1,
+            entry, changed, catalog=materials.catalog,
+        ).detail == "systemd configured directive"
 
 
 @LINUX_ONLY
