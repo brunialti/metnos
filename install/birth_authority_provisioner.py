@@ -5129,6 +5129,7 @@ def complete_transition_cutover_v2(
         _prepare_cutover_candidate_v2,
     )
     from executor_birth_distribution_manifest import (
+        authenticate_distribution_record_v1,
         capture_current_deployment_descriptor_v1,
         verify_current_installation_distribution_v1,
     )
@@ -5314,7 +5315,10 @@ def complete_transition_cutover_v2(
                         install_group6_administrative_v1,
                     )
                     install_group6_administrative_v1(
-                        verified, deployment_session,
+                        authenticate_distribution_record_v1(
+                            verified.encoded, verified.signature,
+                        ),
+                        deployment_session,
                     )
                     prepared = _prepare_cutover_candidate_v2(
                         complete, verified,
@@ -5334,9 +5338,14 @@ def complete_transition_cutover_v2(
                         )
 
                     def observe_catalog() -> str:
-                        return _capture_bound_transition_catalog_v2(
-                            verified, prepared,
-                        ).catalog.catalog_id
+                        from executor_birth_ownership_cutover import (
+                            current_receipt_catalog_id_v1,
+                        )
+
+                        _capture_bound_transition_catalog_v2(verified, prepared)
+                        # observe_identity rereads this exact receipt proof
+                        # under the same locks before each catalog observation.
+                        return current_receipt_catalog_id_v1(complete.current_proof)
 
                     def observe_enforcement() -> str:
                         return _observe_bound_enforcement_v2(prepared)

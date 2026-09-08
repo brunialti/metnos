@@ -236,6 +236,24 @@ unchanged. This is a filesystem boundary, not a claim of isolation from Python
 code that modifies its own process. No signing key or publication authority is
 passed to the child.
 
+## Transition composition at the certificate boundary
+
+The administrative installer receives the authenticated-record type required
+by G6, built from the same payload and signature as the verified installed
+distribution. Candidate preparation authenticates these bytes and matches them
+to the durable `RECEIPTS_COMPLETE` record; it cannot require the build archive
+whose publication follows certification. An existing conflicting archive is
+rejected, not replaced or treated as an alternative head.
+
+Dominant startup's catalog binding identifies the current contract receipts,
+not the separately signed service catalog. The coordinator rereads the receipt
+proof under the existing locks, while the service catalog is recaptured and
+compared independently. Integration tests cross the actual G6 type check,
+dominant-startup completion and certificate-ready validation, including negative
+cases for invalid signatures and changed catalogs. These corrections preserve
+the publication order and authority boundaries; they introduce no new recovery
+path and do not replace the full isolated transition test.
+
 ## Consequences
 
 - Local models may remain useful even when imperfect: poor output is rejected

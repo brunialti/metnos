@@ -66,9 +66,15 @@ def test_zero_one_many_round_trip_bind_exact_current_proof(authority, names):
     )
     assert certificate.as_proof() == proof
     assert certificate.current_count == len(names)
+    assert cutover_module.current_receipt_catalog_id_v1(proof) == certificate.catalog_id
     assert certificate.context_transition_id == D("5")
     assert certificate.dominant_startup_receipt == D("6")
     assert encoded == _canonical(json.loads(encoded))
+
+
+def test_current_receipt_catalog_rejects_a_service_catalog_carrier():
+    with pytest.raises(OwnershipCutoverError, match="proof type"):
+        cutover_module.current_receipt_catalog_id_v1({"catalog_id": D("1")})
 
 
 def test_previous_cutover_is_authenticated_and_exact(authority):

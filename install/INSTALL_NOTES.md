@@ -67,6 +67,11 @@ one stable capture of the signed deployment descriptor and administrative
 preflight, then cross-checks their hashes, paths, phases and service-account
 identity before changing the administrative namespace.
 
+The transition passes an `AuthenticatedDistributionRecordV1` to G6, obtained
+by authenticating the exact payload and signature of its verified installed
+distribution. A `VerifiedDistribution` is not interchangeable with this input;
+neither nominal validation nor signature verification may be bypassed.
+
 G6 installs only the artifact marked `install_phase=group6_admin`, as an exact
 root-owned executable at
 `/usr/libexec/metnos/executor-birth-v1/preflight.py`. Artifacts marked
@@ -84,6 +89,15 @@ root-owned content-addressed storage, builds and signs the closed distribution,
 verifies it again from the installed copy, completes the durable ownership
 coordinator, and activates only the target and readiness units named by the
 signed service catalog.
+
+At `RECEIPTS_COMPLETE`, candidate preparation authenticates the distribution
+and binds its exact bytes, hashes and release identity to the durable record.
+It does not require a build archive that is published only after the cutover
+certificate; an existing conflicting archive is still rejected. Dominant
+startup binds the current contract-receipt catalog identity, distinct from the
+signed service catalog identity. Both observations retain their own checks:
+the receipt proof is reread under the transition locks and the service catalog
+is recaptured before certification. These checks do not advance publication.
 
 The effective systemd snapshot is signed before timer activation. The inverse
 `TriggeredBy` and implicit ordering `After` links of an exact catalog timer are

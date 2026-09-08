@@ -503,6 +503,13 @@ processes authenticate them through the current ownership chain. In the closed
 store, missing keys or an invalid context stop the read: the legacy key
 directory is never consulted as a fallback.</p>
 
+<p>Before requiring the new distribution, the transition binds the candidate's
+authenticated bytes to its durable receipts. It does not prematurely require
+the build archive published only after the certificate, but rejects an already
+present conflicting archive. The contract-receipt catalog and the service
+catalog have distinct identities: both are checked, without using either as
+proof of the other or advancing publication.</p>
+
 <p>For code dependencies between executors, the parent process selects only
 the public keys that authenticated the requested contracts. The Linux sandbox
 exposes these keys in a private read-only mount, separate from configuration

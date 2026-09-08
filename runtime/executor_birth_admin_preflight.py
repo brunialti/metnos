@@ -816,7 +816,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:f4b243aae507c2852aff423c461e8def8e418496b8bebc604cafd78a872388f0"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:ef121ace52db2a24bb9501e5929226e9c3119f9d5320017eb89aed36f2ee8e64"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -3980,8 +3980,7 @@ def _bind_preflight_materials_for_test_v1(
 def _select_cutover_candidate_from_snapshot_v2(
     snapshot: _ReconciledFixedOwnershipSnapshotV1, *,
     complete_encoded: bytes, request_id: str, closed_build_id: str,
-    release_sequence: int, distribution_encoded: bytes,
-    distribution_signature: bytes,
+    release_sequence: int, distribution: _AuthenticatedDistributionObjectV1,
 ) -> tuple[
     _AuthenticatedDistributionObjectV1,
     _DecodedCoordinatorRecordV2,
@@ -3994,8 +3993,7 @@ def _select_cutover_candidate_from_snapshot_v2(
         or type(request_id) is not str
         or type(closed_build_id) is not str
         or type(release_sequence) is not int
-        or type(distribution_encoded) is not bytes
-        or type(distribution_signature) is not bytes
+        or type(distribution) is not _AuthenticatedDistributionObjectV1
     ):
         raise _invalid("cutover candidate selection")
     transactions = tuple(
@@ -4010,7 +4008,8 @@ def _select_cutover_candidate_from_snapshot_v2(
     predecessor = snapshot.predecessor
     if (
         len(transactions) != 1
-        or len(builds) != 1
+        or len(builds) > 1
+        or (builds and builds[0] != distribution)
         or type(predecessor) is not _DecodedPredecessorDescriptorV1
     ):
         raise _recovery("cutover candidate selection")
@@ -4018,7 +4017,9 @@ def _select_cutover_candidate_from_snapshot_v2(
     if len(transaction.prefix.records) < 2:
         raise _recovery("cutover candidate binding")
     complete = transaction.prefix.records[1]
-    build = builds[0]
+    # The build archive is published after the certificate boundary. Before
+    # that point the freshly authenticated candidate is the input, not a head.
+    build = distribution
     if (
         transaction.prefix.encoded_records[1] != complete_encoded
         or complete.sequence != 1
@@ -4028,8 +4029,13 @@ def _select_cutover_candidate_from_snapshot_v2(
         or complete.request_id != request_id
         or complete.closed_build_id != closed_build_id
         or complete.release_sequence != release_sequence
-        or build.encoded != distribution_encoded
-        or build.signature != distribution_signature
+        or build.facts.closed_build_id != closed_build_id
+        or build.facts.release_sequence != release_sequence
+        or complete.distribution_payload_hash != _raw_sha256_v1(build.encoded)
+        or complete.distribution_signature_hash != _raw_sha256_v1(build.signature)
+        or complete.previous_closed_build_id != build.facts.previous_closed_build_id
+        or complete.boundary_inventory_hash != build.facts.boundary_inventory_hash
+        or complete.boundary_guard_version != build.facts.boundary_guard_version
     ):
         raise _recovery("cutover candidate binding")
     return build, complete, predecessor
@@ -4061,14 +4067,16 @@ def _prepare_cutover_candidate_v2(
     if verified != distribution:
         raise _recovery("cutover distribution changed")
     authenticated = _authenticate_fixed_ownership_snapshot_v1()
+    candidate = authenticate_distribution_v1(verified.encoded, verified.signature)
     build, transaction, predecessor = _select_cutover_candidate_from_snapshot_v2(
         authenticated.snapshot,
         complete_encoded=complete.encode(),
         request_id=complete.request_id,
         closed_build_id=complete.closed_build_id,
         release_sequence=complete.release_sequence,
-        distribution_encoded=distribution.encoded,
-        distribution_signature=distribution.signature,
+        distribution=_AuthenticatedDistributionObjectV1(
+            candidate.facts, candidate.files, candidate.encoded, candidate.signature,
+        ),
     )
     root = RELEASE_ROOT / f"{complete.release_sequence:020d}"
     if build.facts.installation_root != root.as_posix():

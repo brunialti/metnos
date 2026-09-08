@@ -550,6 +550,13 @@ corrente. Nel deposito chiuso, chiavi mancanti o un contesto non valido
 interrompono la lettura: la vecchia directory delle chiavi non viene
 consultata come ripiego.</p>
 
+<p>Prima di rendere obbligatoria la nuova distribuzione, la transizione lega
+i byte autenticati del candidato alle ricevute durevoli. Non richiede in anticipo
+l'archivio che viene pubblicato soltanto dopo il certificato, ma rifiuta un
+archivio gi&agrave; presente e incoerente. Il catalogo delle ricevute dei contratti
+e quello dei servizi hanno identit&agrave; distinte: entrambi vengono controllati,
+senza usare l'uno come prova dell'altro o anticipare la pubblicazione.</p>
+
 <p>Per le dipendenze di codice tra executor, il processo principale seleziona
 soltanto le chiavi pubbliche che hanno autenticato i contratti richiesti.
 Nella sandbox Linux queste chiavi sono esposte in un montaggio privato di

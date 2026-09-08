@@ -729,8 +729,11 @@ def test_topology_helper_installs_reloads_and_returns_the_live_measurement(
 
 
 @LINUX_ONLY
+@pytest.mark.parametrize(("authentication_fails", "catalog_drifts"), (
+    (False, False), (True, False), (False, True),
+))
 def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, authentication_fails: bool, catalog_drifts: bool,
 ):
     import config
     import contract_cutover_guard
@@ -738,6 +741,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     import executor_birth_admin_preflight as admin
     import executor_birth_distribution_manifest as manifest
     import executor_birth_dominant_startup as dominant
+    import executor_birth_service_catalog as service_catalog
     import executor_birth_ownership_authorities as authorities_module
     import executor_birth_ownership_coordinator as coordinator
     import executor_birth_ownership_preflight as ownership_preflight
@@ -747,13 +751,37 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     import install.executor_birth_startup_gate as startup_gate_installer
     import install.executor_birth_startup_prerequisite as prerequisite_module
     import install.executor_birth_systemd as systemd_installer
+    from test_executor_birth_ownership_coordinator_v2 import (
+        portable_authorities, record_v2,
+    )
 
     events: list[str] = []
-    distribution = SimpleNamespace(
-        encoded=b"distribution", signature=b"s" * 64, release_sequence=1,
+    # Nominal production types exercise the real G6 entry guard. Cryptographic
+    # authentication and installed-file verification are separate tested ports.
+    header = dict(
+        closed_build_id=D("1"), previous_closed_build_id=None,
+        release_sequence=1, product_version="1.2.3", platform="linux",
+        architecture="x86_64", installation_root="/srv/release",
+        certificate_directory="/srv/certificates", boundary_inventory_hash=D("2"),
+        boundary_guard_version="test-boundary", preflight_entrypoint="deployment/admin/preflight.py",
     )
-    complete = SimpleNamespace(name="complete", maintenance_proof=b"maintenance")
-    prepared = SimpleNamespace(name="prepared")
+    encoded, signature = b"distribution", b"s" * 64
+    authenticated = manifest.AuthenticatedDistributionRecordV1(
+        **header, signing_key_id="test-key", boundary_inventory_path="boundary.json",
+        files=(), encoded=encoded, signature=signature,
+        _artifact_binding=manifest._authenticated_artifact_binding(encoded, signature),
+        _seal=manifest._AUTHENTICATED_DISTRIBUTION_SEAL,
+    )
+    distribution = manifest._verified_distribution_result_v1(
+        authenticated, header, (),
+    )
+    assert type(distribution) is manifest.VerifiedDistribution
+    complete = record_v2(1)
+    catalog = _minimal_catalog()
+    prepared = SimpleNamespace(name="prepared", materials=SimpleNamespace(
+        catalog=catalog, unit_fragments=(),
+    ))
+    catalog_reads = []
     effective = SimpleNamespace(snapshot=SimpleNamespace(effective_units_hash=D("5")))
     final = SimpleNamespace(name="final")
     result = object()
@@ -814,6 +842,21 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         else pytest.fail("legacy service identity changed"),
     )
     monkeypatch.setattr(manifest, "verify_current_installation_distribution_v1", lambda *_: distribution)
+    def authenticate(payload, signed):
+        assert payload == distribution.encoded and signed == distribution.signature
+        events.append("administrative-authenticate")
+        if authentication_fails:
+            raise manifest.DistributionManifestError(
+                "birth_ownership_distribution_invalid", "signature",
+            )
+        return authenticated
+
+    monkeypatch.setattr(manifest, "authenticate_distribution_record_v1", authenticate)
+    monkeypatch.setattr(
+        manifest, "verify_installed_distribution_record_v1",
+        lambda record: distribution if record is authenticated
+        else pytest.fail("administrative verifier received another record"),
+    )
     monkeypatch.setattr(
         manifest, "capture_current_deployment_descriptor_v1",
         lambda candidate: (candidate, descriptor),
@@ -863,7 +906,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
     monkeypatch.setattr(contract_cutover_guard, "_contract_cutover_guard_for_service_user_v1", maintenance_guard)
     monkeypatch.setattr(contract_cutover_guard, "_begin_topology_transition_v1", lambda *_: None)
-    monkeypatch.setattr(contract_cutover_guard, "_maintenance_evidence_under_transition_v1", lambda *_: b"maintenance")
+    monkeypatch.setattr(contract_cutover_guard, "_maintenance_evidence_under_transition_v1", lambda *_: complete.maintenance_proof)
     monkeypatch.setattr(
         transition_gate, "_transition_inventory_under_maintenance_v2", inventory,
     )
@@ -931,9 +974,15 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         )
         else pytest.fail("predecessor binding changed"),
     )
-    def install_administrative(candidate, session):
-        if candidate is not distribution or session != "deployment":
+    def require_deployment(session):
+        if session != "deployment":
+            pytest.fail("administrative install lost its deployment lock")
+
+    def install_administrative(candidate, **bindings):
+        if type(candidate) is not manifest.AuthenticatedDistributionRecordV1 or candidate is not authenticated:
             pytest.fail("administrative install lost its authenticated lock binding")
+        assert bindings["verify"]() is distribution
+        bindings["require_session"]()
         events.append("administrative-install")
 
     def prepare_candidate(complete_record, candidate):
@@ -943,46 +992,72 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         return prepared
 
     monkeypatch.setattr(
-        systemd_installer, "install_group6_administrative_v1",
-        install_administrative,
+        coordinator, "_require_deployment_lock_session_v1", require_deployment,
+    )
+    monkeypatch.setattr(systemd_installer, "_require_root_v1", lambda: None)
+    monkeypatch.setattr(
+        systemd_installer, "_install_locked_core_v1", install_administrative,
     )
     monkeypatch.setattr(admin, "_prepare_cutover_candidate_v2", prepare_candidate)
-    monkeypatch.setattr(coordinator, "_observe_dominant_identity_locked_v2", lambda *_: (D("1"), D("2"), D("3")))
-    monkeypatch.setattr(provisioner, "_capture_bound_transition_catalog_v2", lambda *_: SimpleNamespace(catalog=SimpleNamespace(catalog_id=D("4"))))
+    monkeypatch.setattr(coordinator, "_observe_dominant_identity_locked_v2", lambda *_: (
+        complete.request_id, complete.previous_head_id, complete.context_transition_id,
+    ))
+    def capture_catalog(candidate):
+        assert candidate is distribution
+        catalog_reads.append(candidate)
+        observed = replace(catalog, encoded=b"changed") if catalog_drifts and len(catalog_reads) == 2 else catalog
+        return SimpleNamespace(catalog=observed, unit_fragments=())
+
+    monkeypatch.setattr(service_catalog, "capture_current_service_catalog_v1", capture_catalog)
     monkeypatch.setattr(provisioner, "_observe_bound_enforcement_v2", lambda *_: D("6"))
     monkeypatch.setattr(provisioner, "_retire_bound_catalog_v2", lambda *_: D("7"))
     monkeypatch.setattr(provisioner, "_install_bound_topology_v2", lambda *_: effective)
     monkeypatch.setattr(admin, "_build_startup_prerequisite_for_cutover_v2", lambda *_: "prerequisite")
-    monkeypatch.setattr(prerequisite_module, "_publish_startup_prerequisite_locked_v2", lambda *_: "sealed")
-    monkeypatch.setattr(authorities_module, "load_root_ownership_authorities_v1", lambda: "authorities")
-    monkeypatch.setattr(coordinator, "_certificate_ready_material_v2", lambda *_args, **_kwargs: "material")
-    monkeypatch.setattr(coordinator, "_cross_certificate_boundary_locked_v2", lambda *_args, **_kwargs: "published")
+    monkeypatch.setattr(prerequisite_module, "_publish_startup_prerequisite_locked_v2", lambda *_: (
+        coordinator._startup_prerequisite_for_test(D("1"), D("2"))
+    ))
+    monkeypatch.setattr(authorities_module, "load_root_ownership_authorities_v1", portable_authorities)
+
+    def publish_certificate(session, material, **_kwargs):
+        assert session == "deployment"
+        assert material.certificate.as_proof() == complete.current_proof
+        # Contract receipts and service recipes are distinct signed catalogs.
+        assert material.certificate.catalog_id != catalog.catalog_id
+        return "published"
+
+    monkeypatch.setattr(coordinator, "_cross_certificate_boundary_locked_v2", publish_certificate)
     monkeypatch.setattr(coordinator, "_cross_head_boundary_locked_v2", lambda *_args, **_kwargs: "head")
     monkeypatch.setattr(coordinator, "_cross_preflight_boundary_locked_v2", lambda *_args, **_kwargs: final)
     monkeypatch.setattr(coordinator, "_result", lambda record: result if record is final else None)
-    monkeypatch.setattr(ownership_preflight, "canonical_maintenance_proof", lambda **_kwargs: b"maintenance")
+    monkeypatch.setattr(ownership_preflight, "canonical_maintenance_proof", lambda **_kwargs: complete.maintenance_proof)
 
-    def complete_startup(**observers):
-        events.append("composition")
-        for name in (
-            "observe_identity", "observe_catalog", "observe_enforcement",
-            "plan_retirement", "observe_topology",
-        ):
-            observers[name]()
-        for name in (
-            "observe_identity", "observe_catalog", "observe_enforcement",
-            "plan_retirement", "observe_topology",
-        ):
-            observers[name]()
-        observers["cross"](object())
+    def require_sessions(sessions):
+        assert sessions == ("deployment", "startup", maintenance)
+        if events[-1] == "candidate-prepare":
+            events.append("composition")
+        return sessions
 
-    monkeypatch.setattr(dominant, "complete_dominant_startup_v1", complete_startup)
+    monkeypatch.setattr(dominant, "_require_product_sessions_v1", require_sessions)
+    monkeypatch.setattr(dominant, "_require_live_sessions_v1", require_sessions)
 
-    assert provisioner.complete_transition_cutover_v2(
-        distribution, D("a"), service_state_root=service_state_root,
-        legacy_service_user="legacy-metnos",
+    arguments = dict(
+        service_state_root=service_state_root, legacy_service_user="legacy-metnos",
         legacy_installation_root="/opt/metnos",
-    ) is result
+    )
+    if authentication_fails:
+        with pytest.raises(manifest.DistributionManifestError) as failure:
+            provisioner.complete_transition_cutover_v2(distribution, D("a"), **arguments)
+        assert failure.value.detail == "signature"
+        assert events[-1] == "administrative-authenticate"
+        assert "administrative-install" not in events and "candidate-prepare" not in events
+        return
+    if catalog_drifts:
+        with pytest.raises(provisioner.BirthProvisioningError, match="birth_transition_catalog_changed"):
+            provisioner.complete_transition_cutover_v2(distribution, D("a"), **arguments)
+        assert len(catalog_reads) == 2
+        return
+    assert provisioner.complete_transition_cutover_v2(distribution, D("a"), **arguments) is result
+    assert len(catalog_reads) == 2
     assert events == [
         "deployment-enter", "startup-install", "startup-enter", "chain-initialize",
         "gate-snapshot",
@@ -992,7 +1067,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         "maintenance-enter", "maintenance-prove", "authoring-seed",
         "maintenance-prove", "legacy-state-inspection", "inventory-enter",
         "predecessor",
-        "administrative-install", "candidate-prepare", "composition",
+        "administrative-authenticate", "administrative-install", "candidate-prepare", "composition",
         "inventory-exit",
         "maintenance-exit", "startup-exit", "deployment-exit",
     ]

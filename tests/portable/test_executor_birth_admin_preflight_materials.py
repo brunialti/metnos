@@ -1184,12 +1184,9 @@ def test_candidate_binder_is_available_at_receipts_complete() -> None:
     )
 
 
-def test_pending_cutover_selection_uses_exact_authenticated_bytes() -> None:
-    graph = _bound_graph()
-    transaction = _receipts_complete_transaction(graph)
+def _pending_cutover_snapshot(graph, transaction, *, archived=False):
     encoded = preflight._canonical_json(transaction.as_value())
     prepared = transaction._replace(sequence=0, state="PREPARED")
-    verified = transaction._replace(sequence=6, state="PREFLIGHT_VERIFIED")
     claim = preflight._DecodedSuccessorClaimV1(
         transaction.successor_claim_id,
         transaction.previous_head_id,
@@ -1201,30 +1198,122 @@ def test_pending_cutover_selection_uses_exact_authenticated_bytes() -> None:
     authenticated_transaction = preflight._AuthenticatedTransactionSnapshotV2(
         claim,
         preflight._DecodedCoordinatorPrefixV2(
-            (prepared, transaction, verified),
-            (b"prepared", encoded, b"verified"),
+            (prepared, transaction), (b"prepared", encoded),
         ),
     )
-    snapshot = preflight._ReconciledFixedOwnershipSnapshotV1(
-        (), None, None, (graph["distribution"],), (), (), (claim,),
+    return preflight._ReconciledFixedOwnershipSnapshotV1(
+        (), None, None, (graph["distribution"],) if archived else (), (), (), (claim,),
         (authenticated_transaction,), (), None, None, graph["predecessor"],
     )
 
+
+@pytest.mark.parametrize("archived", (False, True))
+@pytest.mark.parametrize("mutation", (None, "payload", "signature", "archive-conflict"))
+def test_pending_cutover_selection_uses_exact_authenticated_bytes(archived, mutation) -> None:
+    graph = _bound_graph()
+    transaction = _receipts_complete_transaction(graph)
+    candidate = graph["distribution"]
+    if mutation == "payload":
+        transaction = transaction._replace(distribution_payload_hash=D("0"))
+    elif mutation == "signature":
+        candidate = candidate._replace(signature=b"x" * 64)
+    snapshot = _pending_cutover_snapshot(graph, transaction, archived=archived)
+    if mutation == "archive-conflict":
+        snapshot = snapshot._replace(builds=(candidate._replace(signature=b"x" * 64),))
+    arguments = dict(
+        complete_encoded=preflight._canonical_json(transaction.as_value()),
+        request_id=transaction.request_id, closed_build_id=transaction.closed_build_id,
+        release_sequence=transaction.release_sequence, distribution=candidate,
+    )
+    if mutation:
+        with pytest.raises(preflight.PreflightError, match="cutover candidate"):
+            preflight._select_cutover_candidate_from_snapshot_v2(snapshot, **arguments)
+        return
     build, selected, predecessor = (
-        preflight._select_cutover_candidate_from_snapshot_v2(
-            snapshot,
-            complete_encoded=encoded,
-            request_id=transaction.request_id,
-            closed_build_id=transaction.closed_build_id,
-            release_sequence=transaction.release_sequence,
-            distribution_encoded=graph["distribution"].encoded,
-            distribution_signature=graph["distribution"].signature,
-        )
+        preflight._select_cutover_candidate_from_snapshot_v2(snapshot, **arguments)
     )
 
     assert build is graph["distribution"]
     assert selected is transaction
     assert predecessor is graph["predecessor"]
+
+
+@pytest.mark.parametrize("signature_fails", (False, True))
+def test_product_candidate_preparation_authenticates_before_archive(monkeypatch, signature_fails):
+    from pathlib import Path
+    import executor_birth_distribution_manifest as manifest
+    import executor_birth_ownership_coordinator as coordinator
+    from executor_birth_ownership_preflight import _sealed_build_identity_for_test
+    from test_executor_birth_ownership_coordinator_v2 import record_v2
+
+    graph = _bound_graph()
+    distribution = graph["distribution"]
+    facts = distribution.facts
+    original = record_v2(1)
+    install_value = original.install_transaction_value()
+    install_value["closed_build_id"] = facts.closed_build_id
+    complete = dataclasses.replace(
+        original, closed_build_id=facts.closed_build_id,
+        previous_closed_build_id=facts.previous_closed_build_id,
+        distribution_payload_hash=preflight._raw_sha256_v1(distribution.encoded),
+        distribution_signature_hash=preflight._raw_sha256_v1(distribution.signature),
+        boundary_inventory_hash=facts.boundary_inventory_hash,
+        boundary_guard_version=facts.boundary_guard_version,
+        install_transaction_id=coordinator._install_transaction_id_v1(install_value),
+    )
+    decoded = preflight._decode_coordinator_record_v2(complete.encode())
+    snapshot = _pending_cutover_snapshot(graph, decoded)
+    assert snapshot.builds == ()
+    verified = manifest._verified_distribution_for_test(
+        _sealed_build_identity_for_test(facts.closed_build_id, facts.boundary_inventory_hash,
+                                       facts.boundary_guard_version),
+        previous_closed_build_id=facts.previous_closed_build_id,
+        release_sequence=facts.release_sequence,
+        encoded=distribution.encoded, signature=distribution.signature,
+    )
+    events = []
+    materials = preflight._bind_candidate_cutover_materials_core_v1(
+        distribution, _receipts_complete_transaction(graph), graph["predecessor"], graph["captured"],
+    )
+    tcb = preflight._CapturedAdministrativeTcbV1(SimpleNamespace(), SimpleNamespace())
+    captured = SimpleNamespace(snapshot=snapshot, administrative_tcb=SimpleNamespace(capture=tcb))
+    monkeypatch.setattr(manifest, "verify_current_installation_distribution_v1", lambda *_: verified)
+    monkeypatch.setattr(preflight, "_authenticate_fixed_ownership_snapshot_v1", lambda: captured)
+    monkeypatch.setattr(preflight, "_load_product_distribution_registry_v1", lambda: (
+        preflight.DistributionPublicKeyV1(facts.signing_key_id, b"k" * 32)
+    ))
+    monkeypatch.setattr(preflight, "_resolve_root_executable_v1", lambda *_: Path("/usr/bin/openssl"))
+
+    def verify_signature(key, payload, signature, **_kwargs):
+        assert key == b"k" * 32 and payload == preflight.SIGNATURE_DOMAIN + distribution.encoded
+        assert signature == distribution.signature
+        events.append("authenticate")
+        if signature_fails:
+            raise preflight._invalid("distribution signature")
+
+    def capture_tree(*_args, **_kwargs):
+        events.append("capture")
+        return graph["captured"]
+
+    def bind(build, transaction, predecessor, contents):
+        assert build == distribution and transaction == decoded
+        assert predecessor is graph["predecessor"] and contents is graph["captured"]
+        events.append("bind")
+        return materials
+
+    monkeypatch.setattr(preflight, "_verify_ed25519_openssl_core_v1", verify_signature)
+    monkeypatch.setattr(preflight, "_snapshot_exact_distribution_tree_v1", capture_tree)
+    monkeypatch.setattr(preflight, "_capture_verified_distribution_tree_v1", capture_tree)
+    monkeypatch.setattr(preflight, "_bind_candidate_cutover_materials_core_v1", bind)
+    monkeypatch.setattr(preflight, "_revalidate_captured_administrative_tcb_v1", lambda *_args, **_kwargs: None)
+    if signature_fails:
+        with pytest.raises(preflight.PreflightError, match="distribution signature"):
+            preflight._prepare_cutover_candidate_v2(complete, verified)
+        assert events == ["authenticate"]
+        return
+    prepared = preflight._prepare_cutover_candidate_v2(complete, verified)
+    assert prepared.materials is materials
+    assert events == ["authenticate", "capture", "capture", "bind"]
 
 
 def test_cutover_prerequisite_is_derived_from_captured_facts(monkeypatch) -> None:
