@@ -8,7 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -116,12 +116,14 @@ def _legacy() -> tuple[catalog.ServiceLegacyBindingV1, ...]:
 
 
 @pytest.mark.parametrize("entry", [
-    entry for entry in _entries(installation_root=str(RUNTIME.parent))
+    entry for entry in _entries()
     if entry.execution_kind == "python_module"
 ], ids=lambda entry: entry.entry_id)
 def test_python_targets_resolve_from_their_signed_working_directory(entry) -> None:
     # Do not import the service: ambient sys.path must not hide a bad recipe.
-    search_path = [entry.target_working_directory]
+    # The catalog describes Linux; resolve its logical path in this host's checkout.
+    relative = PurePosixPath(entry.target_working_directory).relative_to("/opt/metnos")
+    search_path = [str(RUNTIME.parent.joinpath(*relative.parts))]
     parts = entry.python_module.split(".")
     for index in range(1, len(parts) + 1):
         name = ".".join(parts[:index])

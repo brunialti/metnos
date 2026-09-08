@@ -16,9 +16,16 @@ import executor_birth_account_identity as identity
 import executor_birth_host_layout as layout
 from install import executor_birth_host_capability as capability_module
 from install import executor_birth_host_journal_posix as journal_posix
-from install import executor_birth_host_posix as posix
 from install import executor_birth_host_provisioning as provisioning
 from install import executor_birth_transition as transition
+
+
+@pytest.fixture
+def posix():
+    if sys.platform != "linux":
+        pytest.skip("Linux host effects require POSIX descriptors")
+    from install import executor_birth_host_posix
+    return executor_birth_host_posix
 
 
 def _snapshot() -> identity.PosixAccountSnapshotV1:
@@ -29,7 +36,7 @@ def _snapshot() -> identity.PosixAccountSnapshotV1:
     return identity.PosixAccountSnapshotV1(record, (992,))
 
 
-def test_layout_effect_rejects_noncanonical_requests_before_io(monkeypatch) -> None:
+def test_layout_effect_rejects_noncanonical_requests_before_io(monkeypatch, posix) -> None:
     account = _snapshot()
     target = layout.build_host_layout_spec_v1(account).objects[-1]
     kind = layout.HostLayoutStepKindV1.set_mode
@@ -111,7 +118,7 @@ def test_locked_capability_reattests_after_a_failed_effect() -> None:
     assert attestations == ["attest", "attest"]
 
 
-def test_context_reattests_each_operation_and_exit(monkeypatch) -> None:
+def test_context_reattests_each_operation_and_exit(monkeypatch, posix) -> None:
     events, locks = [], []
     monkeypatch.setattr(posix, "_ensure_bootstrap_root_v1", lambda: None)
     monkeypatch.setattr(posix, "_bootstrap_expected_v1", lambda: {})
@@ -139,7 +146,7 @@ def test_context_reattests_each_operation_and_exit(monkeypatch) -> None:
         effects.checkpoint("expired")
 
 
-def test_forked_cleanup_only_closes_inherited_descriptors(monkeypatch) -> None:
+def test_forked_cleanup_only_closes_inherited_descriptors(monkeypatch, posix) -> None:
     pid, events, locks, closed = [100], [], [], []
     monkeypatch.setattr(posix.os, "getpid", lambda: pid[0])
     monkeypatch.setattr(posix, "_ensure_bootstrap_root_v1", lambda: None)
@@ -235,6 +242,7 @@ def test_invalid_legacy_root_stops_before_host_mutation(monkeypatch) -> None:
     assert caught.value.code == "birth_ownership_deployment_invalid"
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="includes the Linux host adapter")
 def test_host_modules_import_isolated_without_path_or_environment_mutation(
     tmp_path,
 ) -> None:
@@ -259,7 +267,7 @@ assert tuple(sys.path) == before_path
 assert dict(os.environ) == before_env
 """
     completed = subprocess.run(
-        [sys.executable, "-I", "-S", "-c", program, repository.as_posix()],
+        [sys.executable, "-I", "-S", "-B", "-c", program, repository.as_posix()],
         cwd=tmp_path, capture_output=True, text=True, check=False,
     )
     assert completed.returncode == 0, completed.stderr
