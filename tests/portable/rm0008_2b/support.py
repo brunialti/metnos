@@ -640,14 +640,21 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
         get=lambda name: dependency if name == dependency.name else None,
     )
     import sign
+    import config as runtime_config
     original_keys_dir = sign.KEYS_DIR
+    original_state = runtime_config.PATH_USER_STATE
+    isolated_state = tmp_path / "user-state"
+    isolated_state.mkdir(mode=0o700)
     try:
         sign.KEYS_DIR = keys
+        # Model this fixture's authoring installation, never the runner host.
+        runtime_config.PATH_USER_STATE = isolated_state
         encoded, roots, sealed_keys = admitted_code_dependency_projection_v1(
             consumer, catalog,
         )
     finally:
         sign.KEYS_DIR = original_keys_dir
+        runtime_config.PATH_USER_STATE = original_state
     original_sandbox_file = sandbox.__file__
     try:
         # A GitHub systemd service runs as root while its checkout lives below
@@ -669,6 +676,7 @@ def exercise_authenticated_dependency_subprocess(tmp_path: Path) -> None:
     )
     environment["METNOS_RUNTIME"] = str(runtime_root)
     environment["METNOS_USER_CONFIG"] = str(user_config)
+    environment["METNOS_USER_STATE"] = str(isolated_state)
     process = subprocess.run(
         command, input="{}", capture_output=True, text=True, timeout=15,
         env=environment, check=False,

@@ -50,6 +50,7 @@ esac
 
 # --- EXCLUDE: anchored ERE su path tracciato. Cio' che NON e' run-essential. ---
 EXCLUDE='^(
+--help/|
 tests/|
 conftest\.py$|
 Documenti/|
@@ -100,8 +101,9 @@ BIN_RE='\.(gguf|onnx|safetensors|sqlite|sqlite-journal|env|key|pem|p12|db)$'
 PUBLIC_TEST_RE='^tests/(portable|windows_identity)/'
 
 # The closed release builder consumes this reviewed, non-personal inventory.
-# It is the only public exception to the otherwise private `internal/` tree.
-PUBLIC_BOUNDARY_EVIDENCE_RE='^internal/reports/rm0007-m4-boundary-inventory\.json$'
+# Certification also executes the fixed projection renderer. Only these two
+# exact files are public; no other internal tooling or reports are exported.
+PUBLIC_BOUNDARY_EVIDENCE_RE='^internal/(reports/rm0007-m4-boundary-inventory\.json|tools/render_contract_boundary_policy\.py)$'
 
 # Eccezione binari: seed RUN-ESSENTIAL all'install (i18n) che NON e' stato/modello
 # scaricabile a parte. Incluso, ma SANIFICATO via SQL piu' sotto (sed lo
@@ -288,6 +290,19 @@ while IFS= read -r -d '' f; do
     -e 's/\bnas\.local\b/host.local/g' \
     -e 's/\benp197s0\b/eth0/g' \
     -e 's,/home/roberto,/home/user,g' \
+    -e 's/pc-roberto/pc-example/gI' \
+    -e 's/telegram:roberto/telegram:example/gI' \
+    -e 's/alice_brunialti/guest_user/gI' \
+    -e 's/roberto@host\.local/user@host.example.com/gI' \
+    -e 's/user roberto pwd hunter2/user example_user pwd example_password/g' \
+    -e 's/"username": "roberto"/"username": "example_user"/g' \
+    -e 's/calendar_id=roberto/calendar_id=primary/g' \
+    -e 's/10\.0\.0\.5\/32/192.0.2.5\/32/g' \
+    -e 's/@company\.com/@example.com/g' \
+    -e 's/@co\.com/@example.com/g' \
+    -e 's/@x\.it/@example.org/g' \
+    -e 's/@dominio\.it/@example.org/g' \
+    -e 's/noreply@eniplenitude\.com/noreply@vendor.example.com/g' \
     -e 's/[Ii]acopo[_ ][Bb]runialti/guest_user/g' \
     -e 's/[Rr]oberto [Bb]runialti/the owner/g' \
     -e 's/CLAUDE\.md/the design guide/g' \
@@ -377,9 +392,8 @@ PII_NET='192\.168\.[0-9]+\.[1-9][0-9]*|192\.168\.[1-9][0-9]*\.[0-9]+|fd[0-9a-f]{
 # Topologia account di posta reale (nomi-account + host personali): rivela
 # datore/ISP/provider del proprietario. Lo scrub sopra li sostituisce; questo
 # gate aborta se qualcosa sopravvive (es. un manifest firmato non sterilizzato).
-# Canonical account identifiers (metnos_roberto/mykleos/knowcastle/tiscali)
-# are functional vocabulary values retained for backward-compatible routing;
-# they are not credentials. Real hostnames and account addresses remain gated.
+# Signed payloads are never rewritten here. The final publication gate reviews
+# inherited public examples by exact payload hash; new account identifiers fail.
 PII_MAIL='register\.it|securemail\.pro'
 # Il tunnel remoto del maintainer e' configurazione privata dell'istanza, non
 # un componente distribuibile. Il gate copre nome unit, dominio e descrizioni

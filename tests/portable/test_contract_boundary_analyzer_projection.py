@@ -303,6 +303,7 @@ def _load_render_tool_v1():
     return module
 
 
+@pytest.mark.skipif(os.name != "posix", reason="tests the POSIX projection writer")
 def test_renderer_updates_both_regions_atomically(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

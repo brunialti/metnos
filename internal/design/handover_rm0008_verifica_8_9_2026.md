@@ -107,3 +107,27 @@ localmente, non ancora pubblicato. La distribuzione precedente del sito
 Verifiche documentali: 99 HTML ammessi; 15 test del confine documentale passati.
 RM-0009 nelle due raccolte è byte-identica alla revisione 4 originale:
 SHA256 `1171c436834d06e60c2658acbc1dbc933240148616d35f4d64c37f335aee3fd3`.
+
+### Aggiornamento successivo: GitHub e sito pubblicati
+
+Il blocco di pubblicazione sopra è superato. GitHub `brunialti/metnos`, `main`:
+`de801a45b9704e2c29e41d671a06c8754c67292d`, verificato remoto dopo push
+incrementale; nessuna riscrittura della storia. Controllo GII finale passato
+con classificazione esplicita delle attribuzioni e degli esempi già pubblici
+firmati, vincolati alle loro impronte. Bonificati gli esempi locali non
+firmati; nessuna modifica logica del runtime in esercizio.
+
+2098 test pubblici passati, 43 skip motivati, zero fallimenti; altri 31 test
+del controllo di pubblicazione passati. Corrette le dipendenze mancanti
+nell'export e l'isolamento di due fixture, non le guardie produttive.
+Profilo pubblico nuovo, 742 sorgenti:
+`sha256:38c69cf53efbee1f80e2d081cb26f3fb21ce07c66f67977e8b9d1f8ab885f5a2`.
+Profilo privato 754 invariato. Firme e payload dei 106 manifest distribuiti
+verificati senza rifirma.
+
+Sito distribuito con Cloudflare `f079c956`: entrambe le roadmap online IT/EN
+contengono le nove voci verificate, compresa RM-0009, con descrizioni semplici.
+Sitemap online identica. Non dichiarare chiusa RM-0008: F5/F6 restano distinti.
+Dettagli, classificazione GII e prove in
+`internal/reports/publication-gii-20260908.md`. Non riusare il vecchio wrapper
+temporaneo `publish-final.sh`; usare il publisher privato corretto.

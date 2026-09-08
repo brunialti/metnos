@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
-import fcntl
 import os
 from pathlib import Path
 import sys
@@ -65,6 +64,10 @@ def _write_temporary_v1(content: bytes, mode: int) -> Path:
 
 @contextmanager
 def _locked_parent_v1():
+    if os.name != "posix":
+        raise OSError("projection writer requires POSIX directory locks")
+    import fcntl
+
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     descriptor = os.open(TARGET_V1.parent, flags)
     try:

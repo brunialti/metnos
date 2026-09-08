@@ -7,14 +7,13 @@
 #   2. CANCELLO DURO anti-PII/secret sull'albero da pubblicare → ABORTA se trova
 #      qualcosa (email reali, /home/roberto/, token/secret pattern, il PAT stesso)
 #   3. pubblica su GitHub:
-#        - default: commit SINGOLO + force-push (storia pulita, zero PII storica)
-#        - --incremental: mantiene la storia pubblica (commit incrementali)
+#        - conserva la storia pubblica (commit incrementali, mai force-push)
 #
 # Il PAT GitHub viene letto dal credential-store cifrato (runtime/credentials),
 # mai passato in argv (§10.1). Repo override: env METNOS_PUBLIC_REPO.
 #
 # Uso:
-#   scripts/publish-public.sh -m "messaggio"        # snapshot pulito (default)
+#   scripts/publish-public.sh -m "messaggio"        # aggiornamento incrementale
 #   scripts/publish-public.sh --incremental -m "…"  # con storia pubblica
 #   scripts/publish-public.sh --check               # solo gate, niente push
 set -euo pipefail
@@ -29,7 +28,7 @@ fi
 REPO="${METNOS_PUBLIC_REPO:-brunialti/metnos}"
 DEST="dist/metnos-public"
 MSG="Metnos — public snapshot"
-MODE="snapshot"     # snapshot | incremental
+MODE="incremental"
 CHECK_ONLY=0
 
 # RM-0008 G6-B3: the private development tree and the scrubbed public
@@ -38,7 +37,7 @@ CHECK_ONLY=0
 # requires an explicit review and an update of the corresponding fixed pin.
 PRIVATE_SOURCE_REVIEW_SHA256="sha256:2a6c978928a62f8f113d8e13c3664b31b6341df379d760a4256063fdb6256e3b"
 PRIVATE_SOURCE_REVIEW_COUNT=754
-PUBLIC_SOURCE_REVIEW_SHA256="sha256:44242641f4a4b53a413de311dff91a62b808d3ffc8094934ea057b9f7c7f5865"
+PUBLIC_SOURCE_REVIEW_SHA256="sha256:38c69cf53efbee1f80e2d081cb26f3fb21ce07c66f67977e8b9d1f8ab885f5a2"
 PUBLIC_SOURCE_REVIEW_COUNT=742
 SOURCE_REVIEW_TOOL="$REPO_ROOT/internal/tools/rm0008_public_source_review.py"
 BOUNDARY_POLICY_CHECKER="$REPO_ROOT/scripts/check_contract_boundary_policy.py"
@@ -96,13 +95,14 @@ if grep -rIliE 'cloudflared|chat\.metnos\.com|cloudflare.{0,80}tunnel|tunnel.{0,
 fi
 # il PAT stesso nell'albero
 TOK=$("$PYTHON" -c "import sys; sys.path.insert(0,'runtime'); import credentials; d=credentials.load('github'); print((d or {}).get('password',''))" 2>/dev/null || true)
-if [ -n "$TOK" ] && grep -rIlF "$TOK" "$DEST" 2>/dev/null | grep .; then
+if [ -n "$TOK" ] && GHTOKEN="$TOK" "$PYTHON" -c 'import os,sys; from pathlib import Path; token=os.environ["GHTOKEN"].encode(); found=any(token in p.read_bytes() for p in Path(sys.argv[1]).rglob("*") if p.is_file()); sys.exit(0 if found else 1)' "$DEST"; then
   echo "   !! IL TOKEN GITHUB È NELL'ALBERO ^^^"; fail=1
 fi
 if [ "$fail" != 0 ]; then
   echo "   ABORT: l'export non è pulito. Niente push."; exit 1
 fi
-echo "   gate OK: 0 PII, 0 secret, 0 file sensibili, token assente"
+echo "   filtro preliminare OK; segue classificazione GII completa"
+GHTOKEN="$TOK" "$PYTHON" -B "$REPO_ROOT/internal/tools/public_gii_gate.py" "$DEST"
 
 if [ "$CHECK_ONLY" = 1 ]; then echo "== --check: stop (nessun push) =="; exit 0; fi
 [ -z "$TOK" ] && { echo "ABORT: PAT GitHub non disponibile nel credential-store"; exit 1; }
@@ -148,20 +148,7 @@ GIT_AUTH=(-c "credential.helper=!f() { echo username=x-access-token; echo \"pass
 export GHTOKEN="$TOK"
 
 echo "== 3. pubblico su $REPO (mode=$MODE) =="
-if [ "$MODE" = "snapshot" ]; then
-  rm -rf "$DEST/.git"; write_pub_gitignore "$DEST"
-  git -C "$DEST" init -q -b main
-  git -C "$DEST" config user.name "brunialti"
-  git -C "$DEST" config user.email "brunialti@users.noreply.github.com"
-  git -C "$DEST" add -A
-  refresh_rm0008_public_inventory "$DEST"
-  source_review_gate \
-    public-index "$DEST" \
-    "$PUBLIC_SOURCE_REVIEW_SHA256" "$PUBLIC_SOURCE_REVIEW_COUNT"
-  git -C "$DEST" commit -q -m "$MSG"
-  git -C "$DEST" remote add origin "https://github.com/$REPO.git"
-  git -C "$DEST" "${GIT_AUTH[@]}" push --force -q origin main
-else
+if [ "$MODE" = "incremental" ]; then
   WC="dist/.public-repo"
   if [ ! -d "$WC/.git" ]; then
     rm -rf "$WC"
@@ -169,15 +156,17 @@ else
     git -C "$WC" config user.name "brunialti"
     git -C "$WC" config user.email "brunialti@users.noreply.github.com"
   fi
+  [ ! -e "$WC/.git/index.lock" ] || { echo "ABORT: indice pubblico occupato"; exit 1; }
   # sostituisci il contenuto tracciato col nuovo export (preserva .git)
   find "$WC" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-  cp -r "$DEST"/. "$WC"/; rm -rf "$WC/.git/index.lock" 2>/dev/null || true
+  cp -r "$DEST"/. "$WC"/
   write_pub_gitignore "$WC"
   git -C "$WC" add -A
   refresh_rm0008_public_inventory "$WC"
   source_review_gate \
     public-index "$WC" \
     "$PUBLIC_SOURCE_REVIEW_SHA256" "$PUBLIC_SOURCE_REVIEW_COUNT"
+  "$PYTHON" -B "$REPO_ROOT/internal/tools/public_gii_gate.py" "$WC" --index
   if git -C "$WC" diff --cached --quiet; then
     # Un tentativo precedente può avere creato il commit locale ma fallito il
     # push (per esempio per un'interruzione di rete). In quel caso l'export è

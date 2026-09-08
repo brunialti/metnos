@@ -179,6 +179,7 @@ def _refresh_public_boundary_inventory(tree: Path) -> None:
         _fail("public boundary guard or inventory is absent")
     base = (
         sys.executable,
+        "-B",
         str(guard),
         "--birth-closed",
         "--repository-root",

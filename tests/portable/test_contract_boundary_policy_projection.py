@@ -281,6 +281,7 @@ def test_fixed_tool_check_and_standalone_isolated_loading() -> None:
     assert isolated.stdout.strip() == GOLDEN_DIGEST_V1
 
 
+@pytest.mark.skipif(os.name != "posix", reason="tests the POSIX projection writer")
 def test_fixed_tool_check_rejects_drift(tmp_path: Path) -> None:
     replica = tmp_path / "repo"
     (replica / "runtime").mkdir(parents=True)
@@ -345,6 +346,22 @@ def test_fixed_tool_check_rejects_drift(tmp_path: Path) -> None:
     )
 
 
+def test_check_mode_never_imports_posix_write_dependencies() -> None:
+    probe = (
+        "import builtins,runpy,sys; original=builtins.__import__;"
+        "\ndef guarded(name,*args,**kwargs):\n"
+        " if name=='fcntl': raise AssertionError('POSIX dependency in check mode')\n"
+        " return original(name,*args,**kwargs)\n"
+        "builtins.__import__=guarded;"
+        "sys.argv=[sys.argv[1],'--check'];runpy.run_path(sys.argv[0],run_name='__main__')"
+    )
+    checked = subprocess.run(
+        [sys.executable, "-B", "-c", probe, str(TOOL)],
+        check=False, capture_output=True, text=True,
+    )
+    assert checked.returncode == 0, checked.stderr
+
+
 def _load_render_tool_v1():
     spec = importlib.util.spec_from_file_location("boundary_render_tool_test", TOOL)
     assert spec is not None and spec.loader is not None
@@ -353,6 +370,7 @@ def _load_render_tool_v1():
     return module
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory locks")
 def test_writer_cas_preserves_changed_target_and_cleans_temporary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -368,6 +386,7 @@ def test_writer_cas_preserves_changed_target_and_cleans_temporary(
     assert not tuple(tmp_path.glob(".preflight.py.*"))
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX fchmod")
 def test_writer_closes_descriptor_when_setup_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -392,6 +411,7 @@ def test_writer_closes_descriptor_when_setup_fails(
     assert closed and not tuple(tmp_path.glob(".preflight.py.*"))
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory fsync")
 def test_writer_fsyncs_content_and_parent_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -412,6 +432,7 @@ def test_writer_fsyncs_content_and_parent_directory(
     assert False in directory_flags and True in directory_flags
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX flock")
 def test_writer_parent_lock_excludes_a_second_process(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
