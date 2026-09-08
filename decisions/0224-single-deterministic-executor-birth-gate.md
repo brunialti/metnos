@@ -296,3 +296,33 @@ or contradictory evidence is refused. After start the measured timeout must
 still match exactly. The lifecycle fields are evidence, not part of the stable
 configuration hash; signed fragments, no-drop-in checks and reload checks are
 unchanged. No service start is performed to manufacture a preflight result.
+
+## Reader access and bounded startup analysis (8 September 2026)
+
+The r14 isolated transition reached `PREFLIGHT_VERIFIED`, but activation failed.
+The service reader tried to open the root-owned 0600 required-head writer lock;
+Playwright's preflight exceeded its 90-second startup deadline. Neither the
+signed transition records nor the earlier readiness probe proved activation.
+
+The POSIX unprivileged reader checks the lock's exact type, ownership, mode,
+link count and size without opening it. The marker remains checked by the
+administrator and in the portable test store. The lock serializes writers;
+it is not public signing authority. Making it readable would also permit an
+unprivileged process to acquire flock. Signed heads, certificates and all
+cold-chain checks remain mandatory; no permission or key is changed.
+
+Profiling identified repeated pure boundary analysis as the dominant startup
+cost. A one-entry, process-local cache now keys that analysis by the complete
+ordered paths and immutable bytes, not timestamps or caller-provided digests.
+Existing source/AST bounds remain enforced. Each observation still rereads
+the live files, authenticates signatures, checks the full metadata A/B snapshot
+and resolves local imports against the live filesystem. No persistent cache,
+new trusted helper, timeout increase or result reuse is introduced.
+
+After a signal termination, systemd reports a number plus a signal label,
+including `RTMIN+n` or a numeric fallback; exited processes have a bare number.
+The parser accepts these distinct shapes while retaining exact command, flag
+and paired-observation checks. This follows the upstream
+[systemctl formatter](https://github.com/systemd/systemd/blob/v255/src/systemctl/systemctl-show.c)
+and [signal formatter](https://github.com/systemd/systemd/blob/v255/src/basic/signal-util.c).
+Parsing a terminated process does not classify it as successfully started.

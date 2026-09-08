@@ -550,6 +550,14 @@ corrente. Nel deposito chiuso, chiavi mancanti o un contesto non valido
 interrompono la lettura: la vecchia directory delle chiavi non viene
 consultata come ripiego.</p>
 
+<p>Il servizio legge la catena firmata senza aprire il file privato con cui
+root coordina le scritture; ne verifica comunque i metadati esatti.
+Il controllo amministrativo verifica anche il byte marcatore. I controlli
+d'avvio possono riusare l'analisi pura di un solo insieme identico di percorsi
+e byte nello stesso processo, mai le verifiche dei file, delle firme o dei
+servizi vivi. Gli arresti per segnale sono letti nel formato nativo di systemd,
+senza modificare il comando firmato o considerarli un successo.</p>
+
 <p>Prima di rendere obbligatoria la nuova distribuzione, la transizione lega
 i byte autenticati del candidato alle ricevute durevoli. Non richiede in anticipo
 l'archivio che viene pubblicato soltanto dopo il certificato, ma rifiuta un

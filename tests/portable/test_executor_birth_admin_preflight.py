@@ -3240,6 +3240,37 @@ def test_direct_reviewed_boundary_api_is_not_misclassified_as_dynamic(
         assert fact.closed_dynamic_boundary is False
 
 
+def test_boundary_census_reuses_only_the_exact_latest_source_bytes(monkeypatch):
+    scan = preflight._scan_boundary_source_v1
+    calls = []
+
+    def observed_scan(path, content):
+        calls.append((path, content))
+        return scan(path, content)
+
+    monkeypatch.setattr(preflight, "_scan_boundary_source_v1", observed_scan)
+    first = {"runtime/census_reuse_probe.py": b"import runtime.sign as s\ns.sign_executor(None)\n"}
+    second = {"runtime/census_reuse_probe.py": b"VALUE = 2\n"}
+    facts = preflight._discover_boundary_from_verified_v1(first)
+    assert any("sign" in fact.capabilities for fact in facts)
+    assert preflight._discover_boundary_from_verified_v1(dict(first)) == facts
+    assert len(calls) == 1
+    assert preflight._discover_boundary_from_verified_v1(second) == ()
+    assert len(calls) == 2
+    assert preflight._discover_boundary_from_verified_v1(first) == facts
+    assert len(calls) == 3  # One candidate retained, not an unbounded history.
+    renamed = {"runtime/census_renamed_probe.py": next(iter(first.values()))}
+    assert all(fact.path in renamed for fact in preflight._discover_boundary_from_verified_v1(renamed))
+    assert len(calls) == 4
+
+
+def test_boundary_census_cache_never_bypasses_input_budget(monkeypatch):
+    content = {"runtime/census_budget_probe.py": b"VALUE = 1\n"}
+    preflight._discover_boundary_from_verified_v1(content)
+    monkeypatch.setattr(preflight, "MAX_BOUNDARY_TOTAL_SOURCE_BYTES_V1", 1)
+    _invalid(preflight._discover_boundary_from_verified_v1, content)
+
+
 def test_autonomous_manifest_source_grammar_and_budget_are_closed(
     tmp_path: Path,
 ) -> None:
@@ -3716,6 +3747,36 @@ def test_exact_tree_rejects_extra_empty_link_hardlink_special_and_bytecode(tmp_p
             "runtime_code",
         )
         _invalid(preflight._distribution_trie_v1, (bytecode,))
+
+
+@LINUX_ONLY
+def test_cached_census_does_not_cache_live_distribution_metadata(tmp_path, monkeypatch):
+    release, encoded, signature, registry, _temporary = _distribution_fixture(tmp_path)
+    record = preflight._authenticate_distribution_for_test_v1(
+        encoded, signature, registry, openssl_executable=Path("/usr/bin/openssl"),
+    )
+    preflight._scan_boundary_sources_v1.cache_clear()
+    # The signed fixture has a dummy policy; exercise the real census inside
+    # the full live-file verifier without claiming a production policy proof.
+    monkeypatch.setattr(
+        preflight, "_require_birth_closed_sources_v1",
+        lambda content, _inventory: preflight._discover_boundary_from_verified_v1(content),
+    )
+    scan = preflight._scan_boundary_source_v1
+    calls = []
+
+    def observed_scan(path, content):
+        calls.append(path)
+        return scan(path, content)
+
+    monkeypatch.setattr(preflight, "_scan_boundary_source_v1", observed_scan)
+    preflight._verify_installed_distribution_for_test_v1(record, release)
+    initial_count = len(calls)
+    assert initial_count > 0
+    preflight._verify_installed_distribution_for_test_v1(record, release)
+    assert len(calls) == initial_count
+    (release / "runtime" / "executor_birth.py").chmod(0o622)
+    _invalid(preflight._verify_installed_distribution_for_test_v1, record, release)
 
 
 @LINUX_ONLY
@@ -4358,6 +4419,38 @@ def test_exec_pair_accepts_completed_process_and_rejects_mixed_state() -> None:
         ),
         extended=False,
     )
+
+
+@pytest.mark.parametrize("code,status", [
+    ("killed", "15/TERM"), ("killed", "9/KILL"),
+    ("dumped", "11/SEGV"), ("killed", "35/RTMIN+1"),
+    ("killed", "32/32"),
+])
+def test_exec_pair_accepts_systemd_signal_exit(code, status):
+    values = tuple(
+        _exec_value(extended=extended, flags="" if extended else "no").replace(
+            "code=(null) ; status=0/0", f"code={code} ; status={status}",
+        )
+        for extended in (False, True)
+    )
+    assert preflight.validate_exec_property_pair_v1(
+        (values[0],), (values[1],), (),
+    )[0] == {"path": "/bin/x", "argv": ("/bin/x", "arg"), "flags": ()}
+    _invalid(preflight.validate_exec_property_pair_v1,
+             (values[0],), (values[1].replace(f"status={status}", "status=1/1"),), ())
+
+
+@pytest.mark.parametrize("code,status", [
+    ("exited", "0/0"), ("exited", "15/TERM"), ("(null)", "15/TERM"),
+    ("killed", "15"), ("dumped", "11"), ("killed", "15/"),
+    ("killed", "15/TERM/extra"), ("killed", "15/term"),
+    ("killed", "35/RTMIN++1"), ("dumped", "11/SEGV;injected"),
+])
+def test_exec_parser_rejects_malformed_signal_exit(code, status):
+    value = _exec_value(extended=False, flags="no").replace(
+        "code=(null) ; status=0/0", f"code={code} ; status={status}",
+    )
+    _invalid(preflight.parse_systemd_exec_v1, value, extended=False)
 
 
 def test_timer_parser_matches_real_repeated_systemd_255_shape() -> None:

@@ -558,6 +558,14 @@ canonical value; a disabled or different watchdog after start is rejected.
 Unexpected triggers, new dependencies and changes to explicitly configured
 values remain subject to strict verification.</p>
 
+<p>The service reads the signed ownership chain without opening the private
+root-owned writer lock; it still verifies the lock's exact metadata.
+Administrative checks also inspect its marker. Startup checks may reuse the
+pure source analysis for one identical set of paths and bytes in the same
+process, but never reuse live file checks, signatures or service observations.
+Signal-termination reports are parsed in systemd's native form without changing
+the signed command or interpreting termination as success.</p>
+
 <!-- ============================================================== -->
 <h1 id="cap6">6. Four origins: handwritten, generated, imported, builtin</h1>
 

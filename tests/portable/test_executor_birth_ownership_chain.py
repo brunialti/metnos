@@ -1576,6 +1576,51 @@ def test_chain_inspection_rejects_unsafe_persistent_required_lock(
     assert failure.value.detail == "required lock metadata"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX private writer lock")
+@pytest.mark.parametrize("mutation", [None, "mode", "owner", "hardlink", "size", "symlink"])
+def test_product_chain_reader_never_opens_private_writer_lock(tmp_path, monkeypatch, mutation):
+    info = SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_nlink=1,
+                           st_size=1, st_uid=0, st_gid=0, st_file_attributes=0)
+    if mutation == "mode":
+        info.st_mode = stat.S_IFREG | 0o644
+    elif mutation == "owner":
+        info.st_uid = 1234
+    elif mutation == "hardlink":
+        info.st_nlink = 2
+    elif mutation == "size":
+        info.st_size = 0
+    elif mutation == "symlink":
+        info.st_mode = stat.S_IFLNK | 0o600
+    monkeypatch.setattr(Path, "lstat", lambda _path: info)
+    monkeypatch.setattr(os, "geteuid", lambda: 1234)
+    opens = []
+
+    def forbidden_open(*args):
+        opens.append(args)
+        raise PermissionError("writer lock is intentionally root-only")
+
+    monkeypatch.setattr(chain_module, "_safe_read", forbidden_open)
+    if mutation is None:
+        chain_module._require_required_head_lock_metadata_v1(tmp_path, root_owned=True)
+    else:
+        with pytest.raises(OwnershipChainError, match="required lock metadata"):
+            chain_module._require_required_head_lock_metadata_v1(tmp_path, root_owned=True)
+    assert opens == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX administrative writer lock")
+@pytest.mark.parametrize("root_owned,euid", [(True, 0), (False, 1234)])
+def test_chain_writer_lock_owner_still_checks_marker(tmp_path, monkeypatch, root_owned, euid):
+    info = SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_nlink=1,
+                           st_size=1, st_uid=euid, st_gid=euid, st_file_attributes=0)
+    monkeypatch.setattr(Path, "lstat", lambda _path: info)
+    monkeypatch.setattr(os, "geteuid", lambda: euid)
+    monkeypatch.setattr(os, "getegid", lambda: euid)
+    monkeypatch.setattr(chain_module, "_safe_read", lambda *_args: b"x")
+    with pytest.raises(OwnershipChainError, match="required lock metadata"):
+        chain_module._require_required_head_lock_metadata_v1(tmp_path, root_owned=root_owned)
+
+
 def test_chain_inspection_delegates_complete_prefix_with_known_lock(
     authority, tmp_path, monkeypatch,
 ):

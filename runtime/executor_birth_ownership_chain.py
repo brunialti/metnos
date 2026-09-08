@@ -1814,7 +1814,12 @@ def _require_required_head_lock_metadata_v1(
     lock_path = root / REQUIRED_HEAD_LOCK_BASENAME
     try:
         info = lock_path.lstat()
-        marker = _safe_read(lock_path, 1)
+        # The POSIX service authenticates public signed chain objects, not the
+        # private writer lock. Opening this root:root 0600 file is forbidden to
+        # it; granting read access would also grant flock access. Administrative
+        # and test readers still inspect the marker; all readers check metadata.
+        private_writer_lock = root_owned and os.name != "nt" and os.geteuid() != 0
+        invalid_marker = not private_writer_lock and _safe_read(lock_path, 1) != b"\0"
     except Exception as exc:
         raise OwnershipChainError(
             "birth_ownership_recovery_required",
@@ -1826,7 +1831,7 @@ def _require_required_head_lock_metadata_v1(
         or bool(getattr(info, "st_file_attributes", 0) & 0x400)
         or info.st_nlink != 1
         or info.st_size != 1
-        or marker != b"\0"
+        or invalid_marker
     )
     if os.name != "nt":
         expected_owner = (0, 0) if root_owned else (os.geteuid(), os.getegid())

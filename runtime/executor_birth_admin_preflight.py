@@ -25,6 +25,7 @@ import sys
 import time
 import unicodedata
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Callable, Iterable, Mapping, NamedTuple, Sequence
 
@@ -821,7 +822,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:82ef18a60c3313a03bd142eddb1722f0b0faaa47d6604d497d322400a5d8857d"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:e39943d87dead33cba5abbc6d01fbf769fea18b5d2f77c1e5f884a53ae0d36db"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -10881,7 +10882,6 @@ def _scan_boundary_source_v1(
 def _discover_boundary_from_verified_v1(
     verified_content: Mapping[str, bytes],
 ) -> tuple[ScopeFacts, ...]:
-    facts: list[ScopeFacts] = []
     sources: list[tuple[str, bytes]] = []
     total_source_bytes = 0
     for relative in sorted(verified_content, key=lambda item: item.encode("utf-8")):
@@ -10904,6 +10904,16 @@ def _discover_boundary_from_verified_v1(
         or any(len(content) > MAX_BOUNDARY_SOURCE_BYTES_V1 for _, content in sources)
     ):
         raise _invalid("boundary source budget")
+    return _scan_boundary_sources_v1(tuple(sources))
+
+
+@lru_cache(maxsize=1)
+def _scan_boundary_sources_v1(
+    sources: tuple[tuple[str, bytes], ...],
+) -> tuple[ScopeFacts, ...]:
+    # Pure analysis only: exact paths and bytes, at most one bounded candidate.
+    # Live reads, signatures and the surrounding A/B checks are never cached.
+    facts: list[ScopeFacts] = []
     total_ast_nodes = 0
     for relative, content in sources:
         discovered, ast_nodes = _scan_boundary_source_v1(relative, content)
@@ -12217,7 +12227,11 @@ def parse_systemd_exec_v1(value: str, *, extended: bool) -> dict[str, object]:
         raise _invalid("Exec dynamic code")
     if (
         (code == "(null)" and re.fullmatch(r"[0-9]+/[0-9]+", status) is None)
-        or (code != "(null)" and _INTEGER_RE.fullmatch(status) is None)
+        or (code == "exited" and _INTEGER_RE.fullmatch(status) is None)
+        or (
+            code in {"killed", "dumped"}
+            and re.fullmatch(r"[0-9]+/(?:[A-Z][A-Z0-9]*|RTMIN\+[0-9]+|[0-9]+)", status) is None
+        )
     ):
         raise _invalid("Exec dynamic status")
     raw_flags = match.group("flags")
