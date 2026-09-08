@@ -206,7 +206,7 @@ _PR_CAP_AMBIENT_V1 = 47
 _PR_CAP_AMBIENT_CLEAR_ALL_V1 = 4
 _LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:3aac6d3965c3967a84cea6471b9f7a0dfa0942747fde678e4248d284c6ff4386"
+    "sha256:ef01c27393455d4d7f262f1de0778c58d68549ca56ca09efe54bf279a30a9c2c"
 )
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -816,7 +816,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:ef121ace52db2a24bb9501e5929226e9c3119f9d5320017eb89aed36f2ee8e64"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:e21f1c33f17fe9139f25bbfb8c4b032336d37326e6493f4e61fa3eef6c0da53e"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -3085,6 +3085,19 @@ def _service_source_identity_v1(
                     # the signed supplementary set is empty.  Removing it from
                     # both projections preserves one source identity.
                     continue
+                elif key == ("Service", "ReadWritePaths"):
+                    # Project signed home paths, retaining fixed runtime paths
+                    # for the exact recipe check (including the isolated cell).
+                    raw_directive["values"] = [
+                        _bound_path_projection_v1(
+                            value, descriptor.service_home, "service-home",
+                            "service writable path binding",
+                        )
+                        if value == descriptor.service_home or value.startswith(
+                            descriptor.service_home + "/"
+                        ) else value
+                        for value in values
+                    ]
                 elif key in {
                     ("Service", "ExecStartPre"),
                     ("Service", "ExecStart"),

@@ -117,7 +117,10 @@ def _assert_record_fields_match(observed: object, expected: object) -> None:
     } == expected_value
 
 
-def _catalog_bytes() -> bytes:
+def _catalog_bytes(
+    *, service_home: str = "/var/lib/metnos",
+    administrative_python: str | None = None,
+) -> bytes:
     installation_root = (
         "/var/lib/metnos/executor-birth/releases-v1/00000000000000000002"
     )
@@ -133,9 +136,10 @@ def _catalog_bytes() -> bytes:
             service_user="metnos",
             service_gid=991,
             service_supplementary_gids=(44, 991),
-            service_home="/var/lib/metnos",
+            service_home=service_home,
             systemctl_executable="/usr/bin/systemctl",
             target_hashes=target_hashes,
+            administrative_python_executable=administrative_python,
         )
     )
     legacy = tuple(
@@ -148,8 +152,13 @@ def _catalog_bytes() -> bytes:
     return catalog._encode_service_catalog_v1(entries, legacy)
 
 
-def _deployment_record() -> assembler.DeploymentDescriptorV1:
-    decoded_catalog = catalog.decode_service_catalog_v1(_catalog_bytes())
+def _deployment_record(
+    *, service_home: str = "/var/lib/metnos",
+    administrative_python: str | None = None,
+) -> assembler.DeploymentDescriptorV1:
+    decoded_catalog = catalog.decode_service_catalog_v1(_catalog_bytes(
+        service_home=service_home, administrative_python=administrative_python,
+    ))
     artifacts = (
         assembler.DeploymentArtifactV1(
             "deployment/systemd/metnos.target",
@@ -169,12 +178,12 @@ def _deployment_record() -> assembler.DeploymentDescriptorV1:
         service_uid=991,
         service_gid=991,
         service_supplementary_gids=(44, 991),
-        service_home="/var/lib/metnos",
+        service_home=service_home,
         service_shell="/usr/sbin/nologin",
         artifacts=artifacts,
         service_catalog_id=decoded_catalog.catalog_id,
         service_coverage_hash=decoded_catalog.service_coverage_hash,
-        python_executable=_MANAGED_PYTHON,
+        python_executable=administrative_python or _MANAGED_PYTHON,
         openssl_executable="/usr/bin/openssl",
         systemctl_executable="/usr/bin/systemctl",
         systemd_analyze_executable="/usr/bin/systemd-analyze",
@@ -553,14 +562,14 @@ def _isolated_g6c_records(
 
 
 def _bound_graph(
-    mutation: str | None = None,
+    mutation: str | None = None, *, service_home: str = "/var/lib/metnos",
 ) -> dict[str, object]:
     release_sequence = 1 if mutation == "release1-predecessor" else 2
     installation_root = _binder_installation_root(release_sequence)
     service_home = (
         installation_root
         if mutation == "service-home-inside-release"
-        else "/var/lib/metnos"
+        else service_home
     )
     target_bytes = _binder_target_bytes(installation_root)
     catalog_encoded = _bound_catalog_bytes(
@@ -1003,6 +1012,55 @@ def test_product_recipe_pin_admits_v3_and_rejects_rehashed_metis(engine) -> None
             preflight._service_source_identity_v1(autonomous, descriptor)
 
 
+@pytest.mark.parametrize("service_home", (
+    "/var/lib/metnos", "/var/lib/metnos-service", "/srv/assistant",
+))
+@pytest.mark.parametrize("administrative_python", (None, "/usr/bin/python3.12"))
+def test_product_recipe_identity_is_independent_of_signed_service_home(
+    service_home: str, administrative_python: str | None,
+) -> None:
+    context = dict(service_home=service_home,
+                   administrative_python=administrative_python)
+    encoded = _catalog_bytes(**context)
+    catalog.decode_service_catalog_v1(encoded)
+    descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(_deployment_record(**context)),
+    )
+    assert preflight._service_source_identity_v1(
+        preflight._decode_service_catalog_v1(encoded), descriptor,
+    ) == preflight._EXPECTED_SERVICE_SOURCE_IDENTITY_V1
+
+
+@pytest.mark.parametrize("writable_path", (
+    "/", "/var/lib/metnos-service-other/.local/share/metnos",
+    "/var/lib/metnos-service/.config/metnos",
+))
+def test_product_recipe_rejects_rehashed_writable_path_expansion(
+    writable_path: str,
+) -> None:
+    context = dict(service_home="/var/lib/metnos-service",
+                   administrative_python="/usr/bin/python3.12")
+    original = catalog.decode_service_catalog_v1(_catalog_bytes(**context))
+    entries = tuple(
+        dataclasses.replace(entry, unit_spec=catalog.make_unit_spec_v1(
+            entry.unit_name, tuple(
+                dataclasses.replace(directive, values=(writable_path,))
+                if directive.name == "ReadWritePaths" else directive
+                for directive in entry.unit_spec.directives
+            ),
+        )) if entry.entry_id == "service-telegram-daemon" else entry
+        for entry in original.entries
+    )
+    encoded = catalog._encode_service_catalog_v1(entries, original.legacy_bindings)
+    descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(_deployment_record(**context)),
+    )
+    with pytest.raises(preflight.PreflightError):
+        preflight._service_source_identity_v1(
+            preflight._decode_service_catalog_v1(encoded), descriptor,
+        )
+
+
 def test_signed_isolated_g6c_recipe_has_one_closed_namespace_and_no_links() -> None:
     encoded, descriptor = _isolated_g6c_records()
     autonomous_catalog = preflight._decode_service_catalog_v1(encoded)
@@ -1165,8 +1223,11 @@ def test_pure_material_binder_accepts_one_fully_rebound_product_graph() -> None:
     )
 
 
-def test_candidate_binder_is_available_at_receipts_complete() -> None:
-    graph = _bound_graph()
+@pytest.mark.parametrize("service_home", (
+    "/var/lib/metnos", "/var/lib/metnos-service", "/srv/assistant",
+))
+def test_candidate_binder_is_available_at_receipts_complete(service_home) -> None:
+    graph = _bound_graph(service_home=service_home)
     transaction = _receipts_complete_transaction(graph)
 
     candidate = preflight._bind_candidate_cutover_materials_core_v1(

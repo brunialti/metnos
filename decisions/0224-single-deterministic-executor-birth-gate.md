@@ -254,6 +254,15 @@ cases for invalid signatures and changed catalogs. These corrections preserve
 the publication order and authority boundaries; they introduce no new recovery
 path and do not replace the full isolated transition test.
 
+The autonomous service-source fingerprint projects home-relative
+`ReadWritePaths` onto the signed service home, just as it projects the target
+environment. The prior fingerprint accidentally retained one test home's
+literal writable paths and rejected catalogs generated for another valid home.
+The corrected single fingerprint preserves exact relative paths and fixed
+runtime paths; it grants no additional write access. Differential tests vary
+the home and administrative interpreter and reject fully rehashed writable-path
+expansions. The isolated G6 recipe remains independently constrained.
+
 ## Consequences
 
 - Local models may remain useful even when imperfect: poor output is rejected

@@ -510,6 +510,11 @@ present conflicting archive. The contract-receipt catalog and the service
 catalog have distinct identities: both are checked, without using either as
 proof of the other or advancing publication.</p>
 
+<p>The service-recipe check also binds writable paths to the account's signed
+home directory. Relocating that directory does not change the allowed recipe:
+the relative data and state paths remain exact. Additional or different paths
+are rejected even when their hashes have been recomputed.</p>
+
 <p>For code dependencies between executors, the parent process selects only
 the public keys that authenticated the requested contracts. The Linux sandbox
 exposes these keys in a private read-only mount, separate from configuration
