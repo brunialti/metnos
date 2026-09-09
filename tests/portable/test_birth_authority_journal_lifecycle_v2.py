@@ -16,9 +16,9 @@ from executor_birth_ownership_coordinator import (
 from executor_birth_ownership_preflight import _sealed_build_identity_for_test
 from executor_birth_prepared_set import load_authority_set_v1
 from install import birth_authority_provisioner as provisioner
-from rm0008_2b import support
-from test_birth_authority_provisioning_v2 import D, _claim, _transition_inputs
-from test_executor_birth_ownership_coordinator_v2 import record_v2
+from tests.portable.rm0008_2b import support
+from tests.portable.test_birth_authority_provisioning_v2 import D, _claim, _transition_inputs
+from tests.portable.test_executor_birth_ownership_coordinator_v2 import record_v2
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
 

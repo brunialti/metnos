@@ -39,7 +39,7 @@ from install.birth_authority_provisioner import (
     _prepare_transition_authority_set_v2, is_prepared_authority_set_v2,
     provisioning_source_inventory_hash_v2,
 )
-from rm0008_2b import support
+from tests.portable.rm0008_2b import support
 
 
 def D(character: str) -> str:
