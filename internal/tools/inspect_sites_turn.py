@@ -18,13 +18,12 @@ SELECTED_ARGS = ("action", "goal", "from_step", "form_hint", "ambito", "url")
 SELECTED_RESULT = ("ok", "error_class", "error", "reason_code")
 SELECTED_ENTRY = (
     "session_id", "logged_in", "reason_code", "message", "obstruction_kind",
-    "obstruction_reason", "url", "title", "screenshot_path", "error_class",
+    "obstruction_reason", "url", "final_url", "title", "target",
+    "resolved_target", "confidence", "screenshot_path", "error_class",
 )
-SELECTED_AUDIT = (
-    "ts", "event", "session_id", "domain", "procedure", "method", "outcome",
-    "reason_code", "error_class", "primitive", "purpose", "attempt", "phase",
-    "kind", "reason", "frames", "panels",
-)
+# Audit rows are sanitised where they are written: forbidden fields are
+# dropped and URLs scrubbed. Selecting again here only hides the field that
+# turns out to be the one worth having, so the whole row is shown.
 
 
 MAX_ROW_BYTES = 4 * 1024 * 1024
@@ -109,7 +108,8 @@ def main(argv):
 
     for row in rows(ROOT / "state/metnos/sites_audit.jsonl"):
         if row.get("session_id") in sessions:
-            print("AUDIT", selected(row, SELECTED_AUDIT))
+            print("AUDIT", {key: row[key] for key in sorted(row)
+                            if key != "session_id"})
     if not sessions:
         print("AUDIT none: the turn recorded no browser session")
 
