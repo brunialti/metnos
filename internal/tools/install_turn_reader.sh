@@ -2,7 +2,10 @@
 # Install the read-only turn reader where the working user can run it without
 # a password prompt, so reading a turn stops being a manual round trip.
 #
-#   sudo bash internal/tools/install_turn_reader.sh
+#   sudo bash internal/tools/install_turn_reader.sh [turno]
+#
+# With a turn id it also reads that turn straight away, so one command both
+# removes the round trip and answers the question that prompted it.
 #
 # The copy lives in a root-owned directory: the working user can run it but
 # cannot change what runs as root, which the worktree copy would allow.
@@ -39,6 +42,11 @@ if visudo -cqf "$SUDOERS.tmp"; then
     echo
     echo "Da ora il lettore si invoca senza password:"
     echo "  sudo -n /usr/bin/python3.12 $TARGET <turno>"
+    if [ "$#" -ge 1 ] && [ -n "${1:-}" ]; then
+        echo
+        echo "=== LETTURA DEL TURNO $1 ==="
+        /usr/bin/python3.12 "$TARGET" "$1"
+    fi
 else
     rm -f "$SUDOERS.tmp"
     echo "REFUSED: regola sudo non valida, nulla installato" >&2
