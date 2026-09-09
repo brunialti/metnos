@@ -423,26 +423,25 @@ def complete_tier_spec(
 
 
 def _tiers_from_config() -> dict:
-    """Cache valid documents by file identity; invalid is not unconfigured."""
+    """Cache parsing by exact file content; invalid is not unconfigured."""
     path = _default_config_path()
     try:
-        info = path.stat()
-        identity = (info.st_dev, info.st_ino, info.st_size,
-                    info.st_mtime_ns, info.st_ctime_ns)
+        content = path.read_bytes()
     except FileNotFoundError as exc:
         if path.is_symlink():
             raise TierConfigError("llm_configuration_invalid") from exc
-        identity = None
+        content = b""
     except OSError as exc:
         raise TierConfigError("llm_configuration_invalid") from exc
-    key = (str(path), identity)
+    key = (str(path), content)
     if _TIERS_FILE_CACHE["key"] != key:
         try:
-            tiers = _normalize_tiers_dict(_load_config_file(path))
+            if tomllib is None:
+                raise RuntimeError("tomllib unavailable")
+            tiers = _normalize_tiers_dict(tomllib.loads(content.decode("utf-8")))
         except (OSError, ValueError, RuntimeError) as exc:
             raise TierConfigError("llm_configuration_invalid") from exc
-        _TIERS_FILE_CACHE["key"] = key
-        _TIERS_FILE_CACHE["tiers"] = tiers
+        _TIERS_FILE_CACHE.update(key=key, tiers=tiers)
     return _TIERS_FILE_CACHE["tiers"] or {}
 
 
@@ -537,7 +536,7 @@ def tier_endpoint(tier: str = "fast", *, level: str | None = None) -> str:
     dal router (llm_helpers.call_llm, path deterministico /props +
     /apply-template). Risoluzione: llm_tiers.toml (env
     METNOS_LLM_TIERS_CONFIG > ~/.config/metnos > legacy workspace,
-    cache invalidata su mtime) -> DEFAULT_TIERS; `LOCAL_DEFAULT_ENDPOINT`
+    cache di parsing sul contenuto) -> DEFAULT_TIERS; `LOCAL_DEFAULT_ENDPOINT`
     solo come ultimo default se nulla e' configurato (tier pure-abstract,
     §7.11). `endpoint`/`base_url` sono alias come nel router."""
     tier, level = _tier_and_level(tier, level)
