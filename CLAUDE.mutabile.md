@@ -17,7 +17,9 @@
   dentro il lock, con impronte del prerequisito coincidenti (percorsi diversi
   + impronte diverse = macchina cambiata, non abbandono). I quattro lettori
   della regola restano indipendenti e il loro accordo è asserito da una prova.
-  Implementato e testato, **non ancora eseguito in esercizio**.
+  **Abbandono della Release 2 eseguito il 9/9 alle 17:00**: documento scritto e
+  riletto, transazione ferma a sequenza 5 HEAD_REQUIRED, servizi intatti. La
+  catena ora ammette la Release 3; costruzione e crociera restano da fare.
   Referto: `internal/reports/rm0008-administrative-python-20260909.md`.
 - **Cookie come precondizione semantica** (9/9, ADR 0191 addendum): il candidato
   usa `sites.cookie_resolution` sul modello locale, senza liste linguistiche.

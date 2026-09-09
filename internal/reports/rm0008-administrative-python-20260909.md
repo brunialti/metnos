@@ -216,10 +216,28 @@ l'inventario con `git ls-files` e si chiude al commit, una è il conftest
 congelato già segnalato dalla sessione precedente. Le due rosse del pin della
 revisione sorgente, presenti a metà lavoro, sono chiuse.
 
+### Eseguita in esercizio, 9 settembre ore 17:00
+
+L'abbandono e' stato registrato sulla macchina. La macchina ha dimostrato da
+se' la contraddizione e ha scritto un solo documento, 645 byte, root 0644:
+`coordinator-v1/abandoned-crossings-v2/922c17fd....json`.
+
+| campo | valore |
+|---|---|
+| richiesta | `sha256:922c17fd...58a441008` |
+| build chiusa | `sha256:608c3a45...f3c141059` |
+| head pubblicata | `sha256:d302bb32...cf3fabe32` |
+| descrittore | `sha256:bdfcc577...639412797c` |
+| motivo | `administrative_tcb_path_unsatisfiable` |
+
+Rilettura immediata coerente: la transazione resta a **sequenza 5
+HEAD_REQUIRED**, release 2. Nessun record e' stato aggiunto o riscritto,
+nessuna firma toccata, nessun servizio fermato: HTTP operativo, worker pronto,
+i quattro servizi attivi con zero riavvii dopo l'operazione.
+
 ### Cosa resta prima di usarla in esercizio
 
-L'operazione **non è stata eseguita** sulla macchina. Servono, nell'ordine:
-riallineamento dei pin della revisione sorgente, commit, esecuzione
-dell'abbandono sotto lock, costruzione della Release 3 con il costruttore
-corretto — questa volta l'interprete di build non conta più — e crociera
-completa fino all'attestazione.
+Pin riallineati, lavoro committato e **abbandono eseguito** (sopra). Resta la
+costruzione della Release 3 con il costruttore corretto — questa volta
+l'interprete di build non conta piu' — e la crociera completa fino
+all'attestazione, che comporta l'arresto e la ripartenza dei servizi.
