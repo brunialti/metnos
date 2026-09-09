@@ -532,6 +532,16 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
     )
 
 
+def _service_target_executable(fixture: _ActivationFixture) -> str:
+    entries = catalog.decode_service_catalog_v1(fixture.catalog_bytes).entries
+    selected = tuple(item for item in entries
+                     if item.entry_id == fixture.service_entry_id)
+    assert len(selected) == 1
+    executable = selected[0].target_executable
+    assert isinstance(executable, str)
+    return executable
+
+
 def _materialize_release(fixture: _ActivationFixture) -> None:
     RELEASE_ROOT.mkdir(mode=0o755, parents=True)
     for relative, content in fixture.contents.items():
@@ -1388,7 +1398,7 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
                 f"/proc/{payload['pid']}/ns/mnt",
             ) == payload["mount_namespace"]
             assert os.path.samefile(
-                f"/proc/{payload['pid']}/exe", fixture.environment.python_executable,
+                f"/proc/{payload['pid']}/exe", _service_target_executable(fixture),
             )
         finally:
             fcntl.flock(gate_descriptor, fcntl.LOCK_UN)
