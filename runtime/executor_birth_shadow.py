@@ -199,6 +199,47 @@ Observer = Callable[..., ObservedCandidate]
 _DEPENDENCY_SEAL = object()
 
 
+_CONTINUITY_SEAL_V1 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _UnchangedCurrentContinuityV1:
+    """Receipt-backed evidence for one observed, unchanged successor current."""
+
+    contract_id: str
+    candidate_id: str
+    admission_context_id: str
+    previous_receipt_hash: str
+    previous_head_id: str
+    approved_lifecycle: object
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if self._seal is not _CONTINUITY_SEAL_V1 or any(
+            _DIGEST_RE.fullmatch(value or "") is None for value in (
+                self.candidate_id, self.admission_context_id,
+                self.previous_receipt_hash, self.previous_head_id,
+            )
+        ):
+            raise ValueError("birth_current_continuity_untrusted")
+
+    def check(self, observed, decision, check_id):
+        if (
+            decision.revision_class is not RevisionClass.REATTESTATION
+            or self.contract_id != observed.contract_id.value
+            or self.candidate_id != observed.identities.candidate_id
+            or self.admission_context_id != observed.identities.admission_context_id
+        ):
+            raise ValueError("birth_current_continuity_binding_invalid")
+        return CheckResult(
+            check_id, "v1", CheckStatus.NOT_APPLICABLE, None,
+            _shadow_evidence(check_id, "unchanged-current-continuity-v1",
+                             self.previous_head_id, self.previous_receipt_hash,
+                             self.candidate_id, self.admission_context_id),
+            "unchanged_current_continuity_v1:" + self.previous_receipt_hash,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class _BirthDependencies:
     """Trusted runtime services. Construction is guarded by the module seal."""
@@ -215,10 +256,13 @@ class _BirthDependencies:
     now: datetime | None
     initial_current_adoption_transition_id: str | None
     _seal: object
+    current_continuity: _UnchangedCurrentContinuityV1 | None = None
 
     def __post_init__(self) -> None:
         if (
             self._seal is not _DEPENDENCY_SEAL
+            or (self.current_continuity is not None
+                and type(self.current_continuity) is not _UnchangedCurrentContinuityV1)
             or (
                 self.initial_current_adoption_transition_id is not None
                 and _DIGEST_RE.fullmatch(
@@ -239,6 +283,7 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
         "independent_evidence": (), "semantic_authority": None, "approval_subject": None,
         "approval_evidence": None, "now": None, "_seal": _DEPENDENCY_SEAL,
         "initial_current_adoption_transition_id": None,
+        "current_continuity": None,
     }
     if set(overrides) - set(values):
         raise ValueError("birth_dependencies_invalid")
@@ -435,6 +480,8 @@ def _closure_check(observed: ObservedCandidate, _decision: RevisionDecision,
 
 
 def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    if deps.current_continuity is not None:
+        return deps.current_continuity.check(observed, _decision, "properties")
     transition_id = deps.initial_current_adoption_transition_id
     if transition_id is not None:
         evidence = _shadow_evidence(
@@ -460,6 +507,8 @@ def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, de
 
 
 def _semantic_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    if deps.current_continuity is not None:
+        return deps.current_continuity.check(observed, _decision, "semantic_review")
     transition_id = deps.initial_current_adoption_transition_id
     if transition_id is not None:
         evidence = _shadow_evidence(

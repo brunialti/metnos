@@ -727,9 +727,10 @@ _STAGED_REATTESTATION_RUNTIME_TOKEN_V2 = object()
 class _StagedReattestationRuntimeV2:
     """A sealed transition runtime with no ordinary Birth entry points."""
 
-    __slots__ = ("_core", "_factory", "_seal")
+    __slots__ = ("_core", "_factory", "_seal", "_previous_context", "_store_root")
 
-    def __init__(self, token: object, *, core: object, factory: object) -> None:
+    def __init__(self, token: object, *, core: object, factory: object,
+                 previous_context=None, store_root=None) -> None:
         from executor_birth_operational import _is_birth_core
 
         if (
@@ -742,6 +743,8 @@ class _StagedReattestationRuntimeV2:
         self._core = core
         self._factory = factory
         self._seal = token
+        self._previous_context = previous_context
+        self._store_root = store_root
 
     @property
     def transition_id(self) -> str:
@@ -778,7 +781,10 @@ class _StagedReattestationRuntimeV2:
             raise BirthBootstrapError("birth_reattestation_request_invalid")
         request = self._factory(prepared)
         return _execute(
-            request, _assemble_reattestation_core(self._core),
+            request, _assemble_reattestation_core(
+                self._core, previous_context=self._previous_context,
+                selection=self._factory._selection, store_root=self._store_root,
+            ),
         ).receipt
 
 
@@ -853,6 +859,7 @@ def _build_staged_reattestation_runtime_v2(
     *,
     now: Callable[[], datetime],
     store_root: Path | None = None,
+    previous_context: object | None = None,
 ) -> _StagedReattestationRuntimeV2:
     """Build, but never install, the runtime for one pending transition."""
     from executor_birth_prepared_root import StagedReattestationContextV1
@@ -861,6 +868,10 @@ def _build_staged_reattestation_runtime_v2(
         raise BirthBootstrapError("birth_context_selection_invalid")
     selection = staged_context.selection
     initial_adoption = _initial_current_adoption_transition_id_v1(selection)
+    if previous_context is not None:
+        from executor_birth_reattestation import _require_continuity_context_v1
+
+        _require_continuity_context_v1(previous_context, selection)
     assembly = _prepare_sealed_birth_assembly_v1(
         staged_context.authorities, now=now, store_root=store_root,
         initial_current_adoption_transition_id=initial_adoption,
@@ -872,6 +883,7 @@ def _build_staged_reattestation_runtime_v2(
         _STAGED_REATTESTATION_RUNTIME_TOKEN_V2,
         core=assembly.core,
         factory=factory,
+        previous_context=previous_context, store_root=store_root,
     )
 
 

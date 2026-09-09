@@ -881,6 +881,7 @@ def decode_checkpoint_v1(raw: bytes) -> CheckpointV1:
 
 TRANSACTION_PREFIX_V1 = ".birth-provisioning-v1.txn."
 TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.txn."
+COMPLETED_TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.completed."
 HEADER_PENDING_PREFIX_V1 = ".transaction-v1.pending."
 HEADER_PENDING_PREFIX_V2 = ".transaction-v2.pending."
 CHECKPOINT_PENDING_PREFIX_V1 = ".checkpoint-pending-"
@@ -3861,6 +3862,7 @@ def _initialize_transition_ownership_chain_v2(descriptor: object) -> object:
 
 def _prepare_transition_authority_set_v2(
     claim: object, distribution: object, previous_set: object,
+    *, completed_predecessor: object = None,
 ) -> PreparedAuthoritySetV2:
     """Prepare or resume the sole V2 set transaction at the fixed Birth root."""
     from executor_birth_distribution_manifest import is_verified_distribution
@@ -3871,6 +3873,8 @@ def _prepare_transition_authority_set_v2(
         not isinstance(claim, SuccessorClaimV1)
         or not is_verified_distribution(distribution)
         or not is_prepared_set_v1(previous_set)
+        or claim.closed_build_id != distribution.identity.closed_build_id
+        or claim.release_sequence != distribution.release_sequence
     ):
         raise _conflict()
     layout = _open_installer_layout_v1()
@@ -3881,6 +3885,12 @@ def _prepare_transition_authority_set_v2(
         with _translated():
             lock = session.global_lock(exclusive=True, create=True)
         with lock:
+            if completed_predecessor is not None:
+                with _translated():
+                    _archive_completed_authority_journal_v2(
+                        session, claim, distribution, previous_set,
+                        completed_predecessor,
+                    )
             with _translated():
                 names = set(session.inventory(()))
             legacy = {
@@ -3934,6 +3944,103 @@ def _prepare_transition_authority_set_v2(
     if published:
         _verify_published_authority_set_v2(result)
     return result
+
+
+def _require_completed_authority_predecessor_v2(
+    claim, distribution, previous_set, completed,
+):
+    from executor_birth_ownership_coordinator import (
+        OwnershipCoordinatorRecordV2, OwnershipCoordinatorStateV1,
+    )
+
+    if (
+        type(completed) is not OwnershipCoordinatorRecordV2
+        or completed.sequence != 6
+        or completed.state is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+        or completed.release_sequence + 1 != claim.release_sequence
+        or completed.closed_build_id != distribution.previous_closed_build_id
+        or completed.head_id != claim.previous_head_id
+        or completed.provisioning_transaction_id != previous_set.provisioning_transaction_id
+        or completed.target_set_id != previous_set.set_id
+        or completed.target_admission_context_id != previous_set.prepared_admission_context_id
+        or completed.target_context_epoch != previous_set.prepared_context_epoch
+        or completed.target_context_material_sha256 != previous_set.context_material_sha256
+        or completed.target_set_json_sha256 != previous_set.set_json_sha256
+    ):
+        raise _conflict()
+
+
+def _require_completed_authority_journal_v2(
+    session, journal, previous_set, completed,
+):
+    from executor_birth_prepared_set import PreparedSetError, load_authority_set_v1
+
+    state = journal.read_state()
+    if state.header_pending or state.pending_checkpoint_sequence is not None:
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    header = state.header
+    if not isinstance(header, TransactionHeaderV2) or any(
+        getattr(header, field) != getattr(completed, field) for field in (
+            "request_id", "closed_build_id", "previous_set_id",
+            "distribution_payload_hash", "distribution_signature_hash",
+        )
+    ) or header.provisioner_build_id != previous_set.provisioner_build_id:
+        raise _conflict()
+    try:
+        observed = load_authority_set_v1(
+            session, previous_set.set_id,
+            expected_transaction_id=completed.provisioning_transaction_id,
+            expected_set_json_sha256=completed.target_set_json_sha256,
+            expected_context_material_sha256=completed.target_context_material_sha256,
+        )
+    except PreparedSetError as exc:
+        raise BirthProvisioningError(exc.code, exc) from None
+    if observed != previous_set:
+        raise _conflict()
+    prepared = _resume_published_authority_set_v2(session, journal, header)
+    if (
+        prepared is None or prepared.target_set_id != previous_set.set_id
+        or prepared.target_context_material_sha256 != previous_set.context_material_sha256
+        or prepared.target_set_json_sha256 != previous_set.set_json_sha256
+    ):
+        raise _conflict()
+
+
+def _archive_completed_authority_journal_v2(
+    session, claim, distribution, previous_set, completed,
+):
+    """Archive only the authenticated completed predecessor; never select archives."""
+    _require_completed_authority_predecessor_v2(
+        claim, distribution, previous_set, completed,
+    )
+    journal = _TransactionJournalV1.transition_v2(
+        session, completed.provisioning_transaction_id,
+    )
+    destination = (COMPLETED_TRANSACTION_PREFIX_V2 + journal.transaction_id,)
+    names = set(session.inventory(()))
+    if journal.root_components[0] not in names:
+        return
+    active = {name for name in names if name.startswith((
+        TRANSACTION_PREFIX_V1, TRANSACTION_PREFIX_V2,
+    ))}
+    expected = {
+        TRANSACTION_HEADER_BASENAME_V2, MATERIAL_PLAN_BASENAME_V2,
+        CHECKPOINTS_BASENAME_V1,
+    }
+    if (
+        active != {journal.root_components[0]} or destination[0] in names
+        or set(session.inventory(journal.root_components)) != expected
+    ):
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    _require_completed_authority_journal_v2(session, journal, previous_set, completed)
+    if (
+        set(session.inventory(())) != names
+        or set(session.inventory(journal.root_components)) != expected
+    ):
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    # One same-root, no-replacement rename preserves every confidential byte.
+    # The archive is inert forensic evidence, never a runtime or replay input.
+    session.rename_no_replace(journal.root_components, destination, directory=True)
 
 
 def _resume_published_authority_set_v2(
@@ -4184,6 +4291,7 @@ def _prepare_transition_receipt_material_locked_v2(
     with _service_owned_birth_identity_v2(descriptor):
         prepared = _prepare_transition_authority_set_v2(
             claim, verified, previous_set,
+            completed_predecessor=predecessor,
         )
     return _TransitionReceiptPreparationV2(
         verified, descriptor, previous_context, prepared,

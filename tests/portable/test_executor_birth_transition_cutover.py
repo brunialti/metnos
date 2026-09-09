@@ -1359,8 +1359,9 @@ def test_successor_receipt_preparation_binds_the_explicit_previous_context(
         events.append("service")
         yield
 
-    def prepare(selected_claim, distribution, selected_set):
+    def prepare(selected_claim, distribution, selected_set, *, completed_predecessor):
         assert selected_claim is claim and distribution is current and selected_set is previous_set
+        assert completed_predecessor is predecessor
         assert events == ["deployment", "service"]
         events.append("prepare")
         return staged

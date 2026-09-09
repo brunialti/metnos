@@ -152,6 +152,26 @@ required, an older build cannot be selected again. Recovery resumes the exact
 recorded transaction or requires a later release with a higher sequence; it
 does not restore the former publication path.
 
+Before preparing a successor, the authenticated predecessor must be at
+`PREFLIGHT_VERIFIED` (coordinator sequence 6). Under the deployment and Birth
+provisioning locks, its exact completed V2 journal is verified against the
+historical published set and moved without replacement to
+`.birth-provisioning-v2.completed.<transaction-id>` in the same Birth root.
+The atomic, durable rename preserves all bytes and permissions, including the
+confidential material plan. Incomplete, conflicting or ambiguous journals are
+never archived. Completed journals are inert evidence: they are not runtime
+authority or selectable recovery inputs. Repetition after the rename does not
+read or reactivate the archive and may prepare the next transaction normally.
+
+A successor preserves admission for an unchanged current executor only after
+verifying its exact generation and source against the signed receipt and
+authenticated context of the immediate predecessor. The prior lifecycle is
+preserved; property execution and semantic review are explicitly recorded as
+not applicable, with the prior receipt hash, rather than reported as newly
+passed. Historical receipts and producer records remain untouched. New or
+changed executors still require the full checks; missing or invalid historical
+evidence never becomes implicit initial adoption.
+
 This entry is for a release transition, not routine executor maintenance.
 After cutover, an ordinary executor edit uses
 `runtime/stack_reconcile.py deploy --executor <name> --sign`. The historical
