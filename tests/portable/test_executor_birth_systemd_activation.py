@@ -1387,6 +1387,9 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             assert os.readlink(
                 f"/proc/{payload['pid']}/ns/mnt",
             ) == payload["mount_namespace"]
+            assert os.path.samefile(
+                f"/proc/{payload['pid']}/exe", fixture.environment.python_executable,
+            )
         finally:
             fcntl.flock(gate_descriptor, fcntl.LOCK_UN)
             os.close(gate_descriptor)
@@ -1394,6 +1397,10 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         expected_groups = list(fixture.account.supplementary_gids)
         expected_environment = {
             "HOME": fixture.account.home,
+            # A real Python process performs PEP 538 locale initialization.
+            # The previous in-process runpy call did not. No ambient values
+            # are accepted: the complete environment is still compared.
+            "LC_CTYPE": "C.UTF-8",
             "LOGNAME": fixture.account.name,
             "SHELL": fixture.account.shell,
             "USER": fixture.account.name,
@@ -1405,7 +1412,8 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         assert payload["cwd"] == RELEASE_ROOT.as_posix()
         assert payload["environment"] == expected_environment
         assert payload["argv"] == [
-            "runtime.executor_birth_activation_probe",
+            # `python -m` sets argv[0] to the resolved module filename.
+            (RELEASE_ROOT / "runtime/executor_birth_activation_probe.py").as_posix(),
             fixture.marker_path.as_posix(),
         ]
         status = payload["status"]

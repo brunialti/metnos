@@ -4,6 +4,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import site
+import sys
+import json
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -240,6 +243,40 @@ def test_python_bootstrap_executes_selected_interpreter_without_user_packages(
     assert calls == [(plan.entry.target_executable,
                       [plan.entry.target_executable, "-E", "-s", "-B", "-m",
                        "probe.main", "--probe"], dict(plan.environment))]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="real Linux Python startup")
+def test_managed_python_process_initializes_locale_and_module_argv(tmp_path, monkeypatch):
+    module = tmp_path / "startup_probe.py"
+    module.write_text(
+        "import json, os, sys\n"
+        "print(json.dumps({'environment': dict(os.environ), 'argv': sys.argv, "
+        "'executable': sys.executable, 'flags': [sys.flags.ignore_environment, "
+        "sys.flags.no_user_site, sys.flags.dont_write_bytecode]}))\n",
+        encoding="utf-8",
+    )
+    entry = _entry()._replace(target_executable=sys.executable,
+                              python_module="startup_probe")
+    plan = _plan(entry)._replace(target_working_directory=str(tmp_path))
+    observed = []
+
+    def execute(executable, argv, environment):
+        result = subprocess.run(argv, executable=executable, env=environment,
+                                cwd=plan.target_working_directory, check=True,
+                                capture_output=True, text=True, timeout=15)
+        observed.append(json.loads(result.stdout))
+        raise SystemExit(0)
+
+    monkeypatch.setenv("UNSIGNED", "must-not-reach-service")
+    monkeypatch.setattr(preflight.os, "execve", execute)
+    with pytest.raises(SystemExit):
+        preflight._launch_python_target_v1(plan)
+    assert observed == [{
+        "environment": {**dict(plan.environment), "LC_CTYPE": "C.UTF-8"},
+        "argv": [str(module), "--probe"],
+        "executable": sys.executable,
+        "flags": [1, 1, 1],
+    }]
 
 
 @pytest.mark.parametrize("mutated", (False, True))
