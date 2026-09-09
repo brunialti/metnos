@@ -564,6 +564,13 @@ authentication, status and allowed configuration remain available, while
 execution, publication and background producers stay suspended. Health explicitly
 reports this condition; it is not equivalent to a fully operational system.</p>
 
+<p>In the updated service catalog, a failed overall readiness check reports
+the problem without shutting down the other services. Automatic monitoring
+does not restart an HTTP server that explicitly reports maintenance mode,
+or act through an unverified service catalog. After repair, an authorized
+restart retries initialization. Service-local startup checks remain required;
+an old installed catalog changes only through a verified update.</p>
+
 <p>The service configuration is signed before its timers start. The automatic
 activation and ordering links of an exact signed timer may appear when it is
 loaded or started without requiring another signature. Equivalent disabled

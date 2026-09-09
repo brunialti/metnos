@@ -661,6 +661,15 @@ class StackReconciler:
         composite = _json_request(
             f"{self.endpoints.http}/agent/stack/health", admin_key=key,
         )
+        if (composite.get("http") or {}).get("operational") is False:
+            # This authenticated observation precedes executor catalog loading,
+            # which may be unavailable during repair. Liveness is not
+            # readiness, and a watchdog restart cannot repair configuration.
+            checks.append({"name": "http_runtime", "ok": False,
+                           "maintenance_only": True})
+            return self._finish_check(
+                started, checks, write_report, error_code="runtime_maintenance",
+            )
         checks.append({
             "name": "http_contract",
             "ok": bool((composite.get("http") or {}).get("contract_aligned")),
@@ -754,6 +763,11 @@ class StackReconciler:
             "pending_opens": int(sidecar.get("pending_opens") or 0),
         })
 
+        return self._finish_check(started, checks, write_report)
+
+    def _finish_check(self, started: float, checks: list[dict],
+                      write_report: bool | None, *,
+                      error_code: str = "stack_not_ready") -> dict:
         ok = all(check["ok"] for check in checks)
         report = {
             "schema_version": SCHEMA_VERSION,
@@ -771,7 +785,7 @@ class StackReconciler:
         if not ok:
             failed = [check["name"] for check in checks if not check["ok"]]
             raise StackFailure(
-                "stack_not_ready", "composite readiness failed",
+                error_code, "composite readiness failed",
                 details={"failed_checks": failed, "report": report},
             )
         return report
@@ -1044,6 +1058,11 @@ class StackReconciler:
             result["service_monitor"] = monitoring
             return result
         except StackFailure as exc:
+            if exc.code in {"runtime_maintenance", "service_catalog_unavailable"}:
+                # Preserve authenticated repair and the failure report. Only
+                # an explicit maintenance restart should retry bootstrap; an
+                # unverified service catalog cannot authorize a restart either.
+                raise
             failed = set(exc.details.get("failed_checks") or [])
             prefix = "service_health:"
             watched_checks = {f"{prefix}{key}" for key in WATCHED_SERVICE_KEYS}

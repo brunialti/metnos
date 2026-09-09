@@ -115,6 +115,21 @@ def _legacy() -> tuple[catalog.ServiceLegacyBindingV1, ...]:
     ) for item in catalog.legacy_bindings_from_source_v1())
 
 
+def test_readiness_failure_preserves_services_and_their_startup_checks():
+    entries = _entries()
+    readiness = next(item for item in entries if item.readiness_owner)
+    assert not any(directive.name == "OnFailure"
+                   for directive in readiness.unit_spec.directives)
+    # Removing the aggregate shutdown is not an admission or startup bypass.
+    for entry in entries:
+        if entry.class_name != "gated_service":
+            continue
+        start = next(item for item in entry.unit_spec.directives
+                     if item.section == "Service" and item.name == "ExecStart")
+        assert "/usr/libexec/metnos/executor-birth-v1/preflight.py" in start.values
+        assert ("launch", "--entry-id", entry.entry_id) == start.values[-3:]
+
+
 @pytest.mark.parametrize("entry", [
     entry for entry in _entries()
     if entry.execution_kind == "python_module"

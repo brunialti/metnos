@@ -585,7 +585,9 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             ),
             _unit_relation("Before", "target-stack"),
             _unit_relation("PartOf", "target-stack"),
-            _unit_relation("OnFailure", "stop-stack-quarantine"),
+            # Aggregate readiness reports a degraded stack. It must not stop
+            # the authenticated control plane needed to repair a dependency.
+            # Each service still passes its own signed startup checks.
         ),
         settings=(
             _source_directive("Service", "RemainAfterExit", "yes"),
@@ -995,6 +997,8 @@ _CURRENT_UNIT_DIRECTIVE_DISPOSITIONS_V1 = MappingProxyType({
         "drop_nonoperational_legacy_metadata",
     ("metnos-stack-ready.service", "Service", "Environment"):
         "move_to_signed_target_or_minimum_environment",
+    ("metnos-stack-ready.service", "Unit", "OnFailure"):
+        "report_degraded_readiness_without_stopping_authenticated_maintenance",
     ("metnos-stack-watchdog.service", "Service", "Environment"):
         "move_to_signed_target_or_minimum_environment",
     ("metnos-telegram-daemon.service", "Service", "Environment"):

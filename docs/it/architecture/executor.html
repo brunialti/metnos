@@ -637,6 +637,14 @@ configurazioni ammesse rimangono disponibili, mentre esecuzione, pubblicazione
 e attivit&agrave; automatiche restano sospese. La salute dichiara esplicitamente
 questa condizione; non equivale a un sistema pienamente operativo.</p>
 
+<p>Nel catalogo dei servizi aggiornato, un controllo generale non riuscito
+segnala il problema senza spegnere gli altri servizi. Il controllo automatico
+non riavvia HTTP quando dichiara la modalit&agrave; manutenzione e non agisce
+attraverso un catalogo dei servizi non verificato. Dopo la riparazione, un
+riavvio autorizzato riprova l'inizializzazione. Restano obbligatori i controlli
+di avvio di ogni servizio; un vecchio catalogo installato cambia solo mediante
+un aggiornamento verificato.</p>
+
 <p>La configurazione dei servizi viene firmata prima dell'avvio dei timer. I
 collegamenti automatici di attivazione e ordinamento di un preciso timer firmato
 possono comparire al caricamento o all'avvio senza richiedere una nuova firma.

@@ -1078,6 +1078,29 @@ def test_product_recipe_rejects_rehashed_wrong_worker_directory() -> None:
         )
 
 
+def test_product_recipe_rejects_reintroduced_stack_wide_failure_stop() -> None:
+    original = catalog.decode_service_catalog_v1(_catalog_bytes())
+    entries = tuple(
+        dataclasses.replace(entry, unit_spec=catalog.make_unit_spec_v1(
+            entry.unit_name, tuple(sorted((*entry.unit_spec.directives,
+                catalog.ServiceDirectiveV1(
+                    "Unit", "OnFailure", "unit_list",
+                    ("metnos-stop-stack-quarantine.service",),
+                ),
+            ), key=catalog._directive_sort_key)),
+        )) if entry.entry_id == "service-stack-ready" else entry
+        for entry in original.entries
+    )
+    encoded = catalog._encode_service_catalog_v1(entries, original.legacy_bindings)
+    descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(_deployment_record()),
+    )
+    with pytest.raises(preflight.PreflightError, match="service source recipe"):
+        preflight._service_source_identity_v1(
+            preflight._decode_service_catalog_v1(encoded), descriptor,
+        )
+
+
 def test_signed_isolated_g6c_recipe_has_one_closed_namespace_and_no_links() -> None:
     encoded, descriptor = _isolated_g6c_records()
     autonomous_catalog = preflight._decode_service_catalog_v1(encoded)

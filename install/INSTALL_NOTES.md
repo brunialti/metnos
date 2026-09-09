@@ -415,6 +415,13 @@ and `maintenance_only=true`; composite readiness remains false. A controlled
 restart after repair reevaluates bootstrap. This application behavior does not
 bypass an external systemd startup check or repair a broken Python installation.
 
+In the closed service catalog, aggregate readiness failure must not invoke the
+stack-wide stop unit. Each service retains its signed startup verification.
+The watchdog leaves an authenticated maintenance-only HTTP process running and
+does not restart through an unverified service catalog. Readiness remains false;
+an explicit authorized restart retries initialization after repair. Deploying
+this policy requires a coherent signed catalog update, not an extra drop-in.
+
 The public installer does not install, own or document a maintainer-specific
 remote-access service. Its supported browser path is direct access from the
 server or the same trusted private LAN. The default HTTP listener must never be

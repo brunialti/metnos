@@ -42,6 +42,10 @@ possible without silently weakening executor admission or confinement.
   credentials. Bad mail settings do not prevent opening administration.
 - Service display and lifecycle commands use the same selected catalog scope.
   This does not broaden the operator's accepted commands.
+- Aggregate readiness no longer invokes the stack-wide stop unit on failure.
+  Per-service startup authentication remains mandatory. The watchdog reports
+  authenticated HTTP maintenance or an unavailable service catalog without
+  restarting the stack; an explicit authorized restart can retry bootstrap.
 
 ## Alternatives considered
 
@@ -55,8 +59,9 @@ history as historical evidence, not a permanent freeze of the operating system.
 
 This is not a general bypass for modifying signed units, immutable releases or
 executor code. Those updates still need a bounded authorized maintenance path.
-The existing readiness quarantine relation and incomplete administrative update
-commands need separate treatment; this decision does not claim they are fixed.
+The revised catalog removes the readiness quarantine relation, but existing
+signed units do not change until a verified release update installs them.
+Incomplete administrative update commands still need separate treatment.
 Boot prerequisites must be recreated by the OS before services start. A live
 start and an enabled target are not a completed reboot test.
 
