@@ -243,7 +243,11 @@ Risultato: una release sopra cui **tutti possono costruire** e che
   (`_abandonment_for_predecessor_locked_v2`), non deducendola dallo stato del
   record: dedurla trasformerebbe un rifiuto in un salto silenzioso.
 
-### Prova
+### Prova e stato
+
+Committato in `9a3d35e0`, con lo scopo nuovo dichiarato nell'inventario di
+confine e nella politica compilata, proiezione rigenerata e riferimenti
+sorgenti riallineati (privato `sha256:0a27b038…`, pubblico `sha256:9180f62d…`).
 
 `tests/portable/test_executor_birth_ownership_coordinator_v2.py::
 test_the_crossing_admits_the_predecessor_the_builder_already_admitted`.
@@ -274,6 +278,65 @@ repository non la sblocca. Serve, nell'ordine:
 Il costruttore verifica la **sequenza attesa**: se dopo il ritiro la catena
 offre ancora la 3, resta `EXPECTED_SEQUENCE = 3`; se offre la 4, va aggiornata,
 e va aggiornato anche il percorso della release nel completatore.
+
+## 6-ter. Reperti della sessione, uno per riga
+
+Ordinati per gravita'. Ognuno e' stato misurato, non dedotto.
+
+1. **Il login si fermava per un'etichetta ARIA sbagliata del sito.** Il nome
+   accessibile del vero collegamento era una chiave di traduzione mai risolta;
+   gli unici nodi con scritto «Accedi» erano involucri senza destinazione,
+   identici fra loro. Corretto: il testo visibile e' parte del nome di un
+   controllo. **Generale**: vale per ogni sito con un'etichetta sbagliata.
+2. **L'uscita in avanti era implementata a meta'.** Tre lettori su sei. La
+   Release 3 era costruibile e non attraversabile. Corretto e provato (§6-bis).
+   *Lezione*: quando una regola vive in piu' lettori, contarli **prima**, e la
+   prova che li tiene d'accordo deve enumerare i lettori, non i decodificatori.
+   La prova che avevo scritto stamattina teneva d'accordo i due *decodificatori*
+   del documento di abbandono: non poteva accorgersi di questo.
+3. **L'accesso di Telepass si apre in una scheda nuova su un host diverso**
+   (`login.telepass.com`, `target="_blank"`). Il broker adotta la finestra ma
+   chiede il consenso per il nuovo host: attendersi **un passaggio in piu'**.
+4. **Un pannello dei cookie chiuso veniva contato come mai visto.** I conteggi
+   venivano sovrascritti dal giro successivo, e la registrazione di cio' che si
+   e' osservato non si scriveva proprio nel caso riuscito. Corretto: i conteggi
+   sono il massimo osservato nel flusso.
+5. **Una prova rotta invisibile.** La mia modifica ai contesti annidati aveva
+   rotto `test_cookie_redaction_preserves_ids_and_json_structure`, che gira solo
+   con `METNOS_SITES_SIM=1`. *Regola pratica*: far girare `tests/runtime/sites`
+   almeno una volta con quella variabile (**454 verdi, 3 saltate**).
+6. **L'elenco firmato dei file Python era indietro di 31 file**, 30 non miei,
+   accumulati da sessioni precedenti. Rigenerato.
+7. **Il costruttore rifiutava per motivi di messa in scena**, due volte: codice
+   compilato lasciato dalle mie verifiche dentro le sorgenti, e permessi di
+   gruppo del repository (il ricevitore accetta solo 644/755). Ora il
+   costruttore vieta il bytecode e controlla i permessi **prima**, nominando il
+   file.
+8. **Il banner dei cookie di Telepass non si riproduce fuori dalla produzione.**
+   Atteso 24 secondi, mai apparso nel mio browser. Non indagato oltre: la prova
+   e' su copia fedele. Chi riprende non ci perda tempo credendo di sbagliare
+   qualcosa.
+9. **Un'osservazione utile sulla chiave amministrativa**: l'intestazione che
+   funziona e' `Authorization: Bearer`, non `X-Admin-Key`.
+10. **`sudo` senza password non c'e'** in questo ambiente: cinque prove del
+    gruppo 2A non girano per questo, e non sono difetti di prodotto.
+
+## 6-quater. Cosa resta da fare, in ordine
+
+1. **Ritirare la rivendicazione pendente della Release 3.** Finche' c'e', il
+   costruttore rifiuta qualunque sorgente diversa. Precedente da **leggere e
+   non copiare**: `/tmp/metnos-rm0008-withdraw-n2-20260909.py`.
+2. **Rigenerare e sigillare l'esportazione** (§5) e **ricostruire**, dopo aver
+   aggiornato i sigilli di `internal/tools/rm0008_build_release3.py`:
+   censimento, numero file, radice rivista, sequenza attesa.
+3. **Aggiornare i sigilli** di `internal/tools/rm0008_complete_release3.py` con
+   le nuove identita' (release, descrittore, controllo, prove) e **attraversare**
+   con `audit` e poi `complete`.
+4. **Turno reale** su Telepass: e' la verifica richiesta da §8.5 ed e' cio' che
+   Roberto aspetta.
+5. Documentazione IT/EN, roadmap, GII, pubblicazione incrementale in inglese.
+6. Decidere sul sigillo di `tests/portable/conftest.py` (§7) e sull'accesso di
+   Roberto alle directory d'installazione (§9).
 
 ## 7. Prove rosse, classificate con onesta'
 
@@ -309,10 +372,12 @@ d498cad6 il testo visibile fa parte del nome di un controllo   <- login
 18832452 strumento di attraversamento della release 3
 d2346b34 un pannello chiuso resta un pannello visto           <- conteggi
 45ac6e5f riallineamento riferimenti dopo la correzione
+2cc0c0b6 questa consegna
+9a3d35e0 l'attraversamento legge l'uscita in avanti come il costruttore
 ```
 
 Riferimenti sorgenti correnti nel repository:
-privato `sha256:8b69da9a…` (755), pubblico `sha256:7ed2a8d2…` (743).
+privato `sha256:0a27b038…` (755), pubblico `sha256:9180f62d…` (743).
 **Sono avanti rispetto alla Release 3**, che porta la propria copia firmata:
 appartengono alla versione successiva.
 
