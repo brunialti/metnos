@@ -23,6 +23,7 @@ SELECTED_ENTRY = (
 SELECTED_AUDIT = (
     "ts", "event", "session_id", "domain", "procedure", "method", "outcome",
     "reason_code", "error_class", "primitive", "purpose", "attempt", "phase",
+    "kind", "reason", "frames", "panels",
 )
 
 

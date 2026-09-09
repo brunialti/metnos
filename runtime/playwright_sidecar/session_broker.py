@@ -2769,6 +2769,15 @@ async def _dismiss_privacy_obstruction(entry: dict, *,
             session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
             procedure="privacy_reject", method="semantic",
             outcome=outcome.status == "resolved", reason=outcome.reason)
+    # Without this, a page left covered is indistinguishable from a page with
+    # no panel at all: both are silent. Counts only, never observed text.
+    if outcome.panels or outcome.status == "blocked":
+        sites_audit.record(
+            "cookie_observation", owner=entry.get("owner", ""),
+            session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
+            procedure="privacy_reject", phase=outcome.status,
+            kind=outcome.kind, reason=outcome.reason,
+            frames=outcome.frames, panels=outcome.panels)
     return outcome
 
 

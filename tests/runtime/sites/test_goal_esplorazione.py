@@ -98,6 +98,9 @@ class _Pagina:
         self.url = url
         self.candidati = candidati
         self._testo = testo
+        # A page with no nested context is its own single browsing context,
+        # exactly as Playwright reports it.
+        self.frames = [self]
 
     async def evaluate_handle(self, script):
         # This goal fixture contains no cookie panel; the semantic cookie

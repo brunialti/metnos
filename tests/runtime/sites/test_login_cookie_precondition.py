@@ -355,3 +355,109 @@ def test_cookie_redaction_preserves_ids_and_json_structure(monkeypatch):
 
     _browser_scenario(_document("password", "Reject all").replace(
         "fixture-user fixture-password", "p1 true"), check)
+
+
+class _Handle:
+    """Minimal stand-in for one context's JSHandle."""
+
+    def __init__(self, panels, commit="clicked"):
+        self.panels = panels
+        self.commit = commit
+        self.commits = []
+        self.disposed = False
+
+    async def evaluate(self, script, argument=None):
+        # Exact scripts: the commit script embeds the observation one, so a
+        # substring match would answer the wrong question.
+        if script == "(saved) => saved.public":
+            return self.panels
+        if script == "(saved) => saved.url !== location.href":
+            return False
+        self.commits.append(argument)
+        if isinstance(argument, dict) and argument.get("check_only"):
+            return "unchanged"
+        if self.commit == "clicked":
+            self.panels = []  # A real dismissal removes the panel.
+        return self.commit
+
+    async def dispose(self):
+        self.disposed = True
+
+
+class _Frame:
+    def __init__(self, panels, commit="clicked", detached=False):
+        self.detached = detached
+        self.handle = _Handle(panels, commit)
+
+    async def evaluate_handle(self, _script):
+        if self.detached:
+            raise RuntimeError("frame detached")
+        return self.handle
+
+
+class _Page:
+    def __init__(self, frames):
+        self.frames = frames
+
+    async def wait_for_timeout(self, _milliseconds):
+        return None
+
+
+def _panel(identifier, name="Solo necessari"):
+    return {"id": identifier, "text": "Che biscotti vuoi?",
+            "controls": [{"id": identifier + "c1", "name": name, "safe": True}]}
+
+
+def test_cookie_panel_in_a_nested_context_is_observed_and_rejected(monkeypatch):
+    """The panel a main-document observation cannot see must still be resolved."""
+    page = _Page([_Frame([]), _Frame([_panel("p1")])])
+    seen = []
+
+    def classify(panels, _timeout):
+        seen.append(panels)
+        return {"kind": "cookie", "panel_id": panels[0]["id"],
+                "control_id": panels[0]["controls"][0]["id"],
+                "effect": "reject_optional"}
+
+    monkeypatch.setattr(cp, "_classify", classify)
+    outcome = asyncio.run(cp.reject_cookies(page, {}))
+
+    assert outcome.status == "resolved" and outcome.kind == "cookie"
+    assert seen[0][0]["id"] == "f1p1"
+    assert seen[0][0]["controls"][0]["id"] == "f1p1c1"
+    # The click is committed in the owning context, with that context's own ids.
+    assert page.frames[1].handle.commits[-1]["panel_id"] == "p1"
+    assert page.frames[1].handle.commits[-1]["control_id"] == "p1c1"
+    assert page.frames[0].handle.commits == []
+    assert all(frame.handle.disposed for frame in page.frames[1:])
+
+
+def test_cookie_panel_budget_stays_global_across_contexts(monkeypatch):
+    """Reading more contexts must not widen what the model is shown."""
+    frames = [_Frame([_panel("p1"), _panel("p2")]) for _ in range(3)]
+    seen = []
+
+    def classify(panels, _timeout):
+        seen.append(panels)
+        return {"kind": "other", "panel_id": "", "control_id": "", "effect": "none"}
+
+    monkeypatch.setattr(cp, "_classify", classify)
+    outcome = asyncio.run(cp.reject_cookies(_Page(frames), {}))
+
+    assert len(seen[0]) == cp.MAX_OBSERVED_PANELS
+    assert [panel["id"] for panel in seen[0]] == ["f0p1", "f0p2", "f1p1"]
+    assert outcome.status == "clear" and outcome.panels == cp.MAX_OBSERVED_PANELS
+
+
+def test_cookie_outcome_reports_what_was_observed(monkeypatch):
+    """A covered page and a page with no panel must not be equally silent."""
+    monkeypatch.setattr(cp, "_classify", lambda *_a: {
+        "kind": "cookie", "panel_id": "nope", "control_id": "nope",
+        "effect": "reject_optional"})
+    covered = asyncio.run(cp.reject_cookies(
+        _Page([_Frame([], detached=True), _Frame([_panel("p1")])]), {}))
+    assert covered.status == "blocked" and covered.reason == "unknown_panel"
+    assert (covered.frames, covered.panels) == (1, 1)
+
+    empty = asyncio.run(cp.reject_cookies(_Page([_Frame([])]), {}))
+    assert empty.status == "clear" and (empty.frames, empty.panels) == (0, 0)
