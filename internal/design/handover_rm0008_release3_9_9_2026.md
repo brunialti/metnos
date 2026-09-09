@@ -325,7 +325,28 @@ Ordinati per gravita'. Ognuno e' stato misurato, non dedotto.
 
 1. **Ritirare la rivendicazione pendente della Release 3.** Finche' c'e', il
    costruttore rifiuta qualunque sorgente diversa. Precedente da **leggere e
-   non copiare**: `/tmp/metnos-rm0008-withdraw-n2-20260909.py`.
+   non copiare** (e' sigillato su identita' vecchie):
+   `/tmp/metnos-rm0008-withdraw-n2-20260909.py`.
+
+   Stato reale su disco, misurato stanotte — il ritiro e' **piu' piccolo** di
+   quello del tentativo N2, perche' l'attraversamento si e' fermato al primo
+   lettore e non ha aperto nessuna transazione:
+
+   ```
+   coordinator-v1/transactions-v2/      sha256:59f0a756…  (release 1)
+                                        sha256:922c17fd…  (release 2, abbandonata)
+   coordinator-v1/successor-claims-v1/  initial.json
+                                        469df47a….json    (rivendicazione della 2)
+                                        d302bb32….json    <- rivendicazione della 3
+   coordinator-v1/abandoned-crossings-v2/ 922c17fd….json
+   releases-v1/                         …0001  …0002  …0003
+   ```
+
+   Devono spostarsi **due soli oggetti**: la rivendicazione `d302bb32….json` e
+   la directory `releases-v1/00000000000000000003`. Nessuna transazione, nessuna
+   ricevuta, nessun giornale di nascita da toccare. Verificare comunque
+   `/var/lib/metnos-service/.config/metnos/birth/` per un eventuale `.txn.`
+   residuo prima di dichiararlo.
 2. **Rigenerare e sigillare l'esportazione** (§5) e **ricostruire**, dopo aver
    aggiornato i sigilli di `internal/tools/rm0008_build_release3.py`:
    censimento, numero file, radice rivista, sequenza attesa.

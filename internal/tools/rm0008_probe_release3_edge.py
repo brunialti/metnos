@@ -20,9 +20,10 @@ import sys
 WORKTREE = Path("/opt/metnos/.claude/worktrees/rm0008-reboot")
 PINNED = {
     "runtime/executor_birth_ownership_coordinator.py":
-        "5aeb0755566f50ddbabcdd6c4e17ed980feb4d8709c2615030a53d209deb88db",
+        "5891ace87982ad82e34770e58d8fb46bfc624f04a34ddade0cdde789fd0df7a0",
 }
 OWNERSHIP = Path("/var/lib/metnos/executor-birth/coordinator-v1")
+RELEASES = Path("/var/lib/metnos/executor-birth/releases-v1")
 
 
 def require(condition: bool, detail: str) -> None:
@@ -44,7 +45,18 @@ def main() -> int:
 
     graph = _resolve_ownership_coordinator_at_v2(OWNERSHIP, root_owned=True)
     print("PENDING_CLAIMS", len(graph.pending_claims), flush=True)
+    for pending in graph.pending_claims:
+        # What a withdrawal would have to move, named rather than guessed.
+        print("PENDING", json.dumps({
+            "release_sequence": pending.release_sequence,
+            "source_id": pending.source_id,
+            "closed_build_id": pending.closed_build_id,
+            "previous_head_id": pending.previous_head_id,
+            "request_id": pending.request_id,
+        }, sort_keys=True), flush=True)
     print("TRANSACTIONS", len(graph.transactions), flush=True)
+    for name in sorted(RELEASES.iterdir()) if RELEASES.is_dir() else ():
+        print("RELEASE_DIRECTORY", name.name, flush=True)
     require(bool(graph.transactions), "no transaction to read")
 
     current = graph.transactions[-1]
