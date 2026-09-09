@@ -365,12 +365,15 @@ Suite runtime completa: **91 rosse su 8652**, tutte preesistenti a questa
 sessione (contracts 70, i18n 7, infra 6, tutor 4, executors 3, skills 1).
 **Zero** nel dominio siti.
 
-Suite portable: 2504 verdi, 7 rosse, di cui
+Suite portable a fine sessione: **2506 verdi, 6 rosse, 43 saltate**, di cui
 
 - **5** chiedono `sudo` senza password per cambiare proprietario a file finti:
   limite d'ambiente, non difetto di prodotto;
 - **1** era l'elenco firmato dei file Python, rimasto indietro di 31 file (30
-  non miei): **rigenerato**, ora verde;
+  non miei): **rigenerato**, ora verde. Dichiarare uno scopo nuovo muove per
+  costruzione quattro valori congelati (digest della proiezione, inventario
+  reso, numero dei rilievi 161→162 e loro digest): aggiornarli **e'** l'atto di
+  approvare lo scopo, e in `ef26477b` non c'e' nient'altro;
 - **1** resta rossa **di proposito**: il sigillo di
   `tests/portable/conftest.py`. Quel file ha preso due righe con il lavoro
   ereditato (`329d51b3`) che aggiungono `tests/portable` al percorso di
