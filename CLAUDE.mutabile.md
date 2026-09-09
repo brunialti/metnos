@@ -6,6 +6,19 @@
 
 ## S. Stato corrente (23/8/2026)
 
+- **Interprete amministrativo fisso e uscita in avanti** (9/9, ADR 0226):
+  il costruttore ricava l'interprete amministrativo dal collegamento fisso del
+  sistema operativo, mai da quello che esegue il build; la transizione rifiuta
+  un descrittore incoerente PRIMA di fermare qualsiasi servizio. Una crociera
+  che ha pubblicato la head e che la macchina dimostra non attestabile viene
+  registrata da un documento immutabile accanto alla transazione, che conserva
+  il suo ultimo record: la release successiva si apre sopra, senza riscrivere
+  nulla di firmato. Motivo da vocabolario CHIUSO, dimostrato dal verificatore
+  dentro il lock, con impronte del prerequisito coincidenti (percorsi diversi
+  + impronte diverse = macchina cambiata, non abbandono). I quattro lettori
+  della regola restano indipendenti e il loro accordo è asserito da una prova.
+  Implementato e testato, **non ancora eseguito in esercizio**.
+  Referto: `internal/reports/rm0008-administrative-python-20260909.md`.
 - **Cookie come precondizione semantica** (9/9, ADR 0191 addendum): il candidato
   usa `sites.cookie_resolution` sul modello locale, senza liste linguistiche.
   Osservazione Unicode limitata, due clic/quattro decisioni per flusso e

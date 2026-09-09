@@ -166,3 +166,6 @@ for format and discipline; see `_template.md` for the template.
 > `0224` establishes the single Executor Birth admission boundary. `0225`
 > separates installed-service startup and authenticated maintenance from full
 > certification, retaining signed code, identity and service confinement checks.
+> `0226` fixes the administrative interpreter of a release to the operating
+> system trusted base and gives the chain a forward exit from a crossing the
+> machine proves it can never attest, without rewriting signed history.

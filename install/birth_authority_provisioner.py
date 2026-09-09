@@ -5290,6 +5290,44 @@ def _resume_required_transition_v2(session, distribution, descriptor, legacy_ide
             ))
 
 
+def abandon_unattestable_transition_v2():
+    """Record that the current crossing can never be attested on this machine.
+
+    The chain is forward only: a crossing that published its head and cannot
+    reach its attestation would otherwise block every later release forever.
+    This operation stops nothing and rewrites nothing. It takes the deployment
+    lock, lets the preflight prove the permanent contradiction itself, and
+    publishes one immutable abandonment next to the transaction, which keeps
+    its truthful last record. Only after that may the next release be built.
+    """
+    from executor_birth_admin_preflight import _prove_unattestable_crossing_v1
+    from executor_birth_ownership_coordinator import (
+        _abandon_crossing_locked_v2, _deployment_lock_v1,
+    )
+
+    with _deployment_lock_v1() as deployment_session:
+        return _abandon_crossing_locked_v2(
+            deployment_session,
+            prove_unattestable=_prove_unattestable_crossing_v1,
+        )
+
+
+def _require_administrative_python_bound_to_tcb_v1(descriptor: object) -> None:
+    """Refuse a crossing whose descriptor names a non-TCB administrative python.
+
+    The administrative TCB binding compares the descriptor against the fixed
+    operating-system interpreter captured through the product links. Detecting
+    the divergence here, before the edge is reserved and before any service is
+    stopped, keeps a release that can never be attested from taking the stack
+    down and leaving a published head that no attestation can close.
+    """
+    from executor_birth_admin_preflight import PYTHON_LINK
+
+    declared = getattr(descriptor, "python_executable", None)
+    if not isinstance(declared, str) or declared != os.path.realpath(PYTHON_LINK):
+        raise _reject("birth_transition_administrative_python_mismatch")
+
+
 def complete_transition_cutover_v2(
     distribution: object, source_id: object, *, service_state_root: object,
     legacy_service_user: object, legacy_installation_root: object,
@@ -5366,6 +5404,7 @@ def complete_transition_cutover_v2(
         verified, signed_descriptor = (
             capture_current_deployment_descriptor_v1(verified)
         )
+        _require_administrative_python_bound_to_tcb_v1(signed_descriptor)
         from config import PATH_USER_STATE
 
         signed_state_root = Path(os.path.abspath(

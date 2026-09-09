@@ -277,3 +277,48 @@ def test_current_reviewed_source_assembles_and_passes_static_verification(
         ),
     )
     assert verified.files == staged.files
+
+
+@LINUX_ONLY
+def test_administrative_python_is_the_fixed_link_not_the_build_interpreter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The administrative interpreter belongs to the operating system TCB.
+
+    A build performed with the managed product environment used to sign its
+    own interpreter into the descriptor, which the administrative binding can
+    never accept and which would have run the root helper on the product's
+    mutable environment.
+    """
+    operating_system = tmp_path / "usr" / "bin" / "python3.12"
+    operating_system.parent.mkdir(parents=True)
+    operating_system.write_bytes(b"os-python\n")
+    operating_system.chmod(0o755)
+    link = tmp_path / "usr" / "bin" / "python3"
+    link.symlink_to(operating_system.name)
+    managed = tmp_path / "managed" / "bin" / "python"
+    managed.parent.mkdir(parents=True)
+    managed.write_bytes(b"managed-python\n")
+    managed.chmod(0o755)
+
+    monkeypatch.setattr(release, "_PYTHON_LINK_V1", link.as_posix())
+    monkeypatch.setattr(sys, "executable", managed.as_posix())
+    assert release._administrative_python_executable_v1() == (
+        operating_system.as_posix()
+    )
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("kind", ("missing", "directory", "dangling"))
+def test_administrative_python_refuses_a_link_without_a_regular_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str,
+) -> None:
+    target = tmp_path / "python3"
+    if kind == "directory":
+        target.mkdir()
+    elif kind == "dangling":
+        target.symlink_to(tmp_path / "absent")
+    monkeypatch.setattr(release, "_PYTHON_LINK_V1", target.as_posix())
+    with pytest.raises(assembler.DistributionAssemblerError) as failure:
+        release._administrative_python_executable_v1()
+    assert failure.value.detail == "administrative python executable"

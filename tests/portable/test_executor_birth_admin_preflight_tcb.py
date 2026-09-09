@@ -541,6 +541,7 @@ def _minimal_bound_materials(
     capture: preflight._CapturedAdministrativeTcbV1,
     *, mutate_hash: str | None = None,
     external_target: tuple[str, bytes] | None = None,
+    descriptor_python: str | None = None,
 ) -> preflight._BoundPreflightMaterialsForTestV1:
     executables = capture.executables
     hashes = {
@@ -553,7 +554,10 @@ def _minimal_bound_materials(
     if mutate_hash is not None:
         hashes[mutate_hash] = "sha256:" + "f" * 64
     descriptor = SimpleNamespace(
-        python_executable=executables.python.resolved.canonical_path,
+        python_executable=(
+            executables.python.resolved.canonical_path
+            if descriptor_python is None else descriptor_python
+        ),
         openssl_executable=executables.openssl.resolved.canonical_path,
         systemctl_executable=executables.systemctl.resolved.canonical_path,
         systemd_analyze_executable=(
@@ -614,6 +618,100 @@ def test_binding_uses_every_signed_administrative_tcb_hash(
             )
         assert failure.value.code == preflight.CODE_INVALID, field
         assert failure.value.detail == "administrative TCB signed binding", field
+
+
+@LINUX_ONLY
+def test_unattestable_paths_separate_a_wrong_release_from_a_changed_machine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a wrong release is permanent; a changed machine may still recover.
+
+    The abandonment must not become a way out of a transient failure. The
+    predicate therefore requires the measured contents to still agree with the
+    prerequisite: when they do not, it is the machine that moved.
+    """
+    tree = _synthetic_tcb_tree(tmp_path)
+    _install_fake_tcb_runner(monkeypatch, tree)
+    managed = tree.root / "bin" / "managed-python"
+    _write_fixture_file(managed, b"managed-python-v1", 0o755)
+    captured = _capture_administrative_tcb_for_test_v1_or_skip(tree)
+    capture = captured.capture
+    operating_system = capture.executables.python.resolved.canonical_path
+
+    assert not preflight._unattestable_administrative_paths_v1(
+        _minimal_bound_materials(capture).materials, capture,
+    )
+    assert preflight._unattestable_administrative_paths_v1(
+        _minimal_bound_materials(
+            capture, descriptor_python=managed.as_posix(),
+        ).materials,
+        capture,
+    )
+    for field in (
+        "python_binary_hash", "openssl_binary_hash", "openssl_tcb_hash",
+        "systemctl_binary_hash", "systemd_analyze_binary_hash",
+    ):
+        assert not preflight._unattestable_administrative_paths_v1(
+            _minimal_bound_materials(
+                capture, descriptor_python=managed.as_posix(),
+                mutate_hash=field,
+            ).materials,
+            capture,
+        ), field
+    assert operating_system != managed.as_posix()
+
+
+def _capture_administrative_tcb_for_test_v1_or_skip(tree):
+    return preflight._capture_administrative_tcb_for_test_v1(
+        tree.links, architecture="x86_64", trusted_root=tree.root,
+    )
+
+
+@LINUX_ONLY
+def test_binding_refuses_a_managed_interpreter_as_administrative_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A release built with the managed environment must not be attestable.
+
+    The descriptor names the administrative interpreter that runs the root
+    helper. Declaring the product's own managed interpreter there, while the
+    fixed links still resolve to the operating-system one, is the concrete
+    production defect: the crossing published a head no attestation can close.
+    """
+    tree = _synthetic_tcb_tree(tmp_path)
+    _install_fake_tcb_runner(monkeypatch, tree)
+    managed = tree.root / "bin" / "managed-python"
+    managed_content = b"managed-python-v1"
+    _write_fixture_file(managed, managed_content, 0o755)
+    captured = preflight._capture_administrative_tcb_for_test_v1(
+        tree.links, architecture="x86_64", trusted_root=tree.root,
+    )
+    operating_system_python = captured.capture.executables.python.resolved.canonical_path
+    assert managed.as_posix() != operating_system_python
+
+    with pytest.raises(preflight.PreflightError) as failure:
+        preflight._bind_administrative_tcb_for_test_v1(
+            _minimal_bound_materials(
+                captured.capture,
+                descriptor_python=managed.as_posix(),
+                external_target=(managed.as_posix(), managed_content),
+            ),
+            captured, tree.links, trusted_root=tree.root,
+        )
+    assert failure.value.code == preflight.CODE_INVALID
+    assert failure.value.detail == "administrative TCB signed binding"
+
+    observed = preflight._bind_administrative_tcb_for_test_v1(
+        _minimal_bound_materials(
+            captured.capture,
+            descriptor_python=operating_system_python,
+            external_target=(managed.as_posix(), managed_content),
+        ),
+        captured, tree.links, trusted_root=tree.root,
+    ).observation
+    assert tuple(
+        item.declared_path for item in observed.external_targets
+    ) == (managed.as_posix(),)
 
 
 @LINUX_ONLY
