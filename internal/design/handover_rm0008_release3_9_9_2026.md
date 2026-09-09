@@ -1,4 +1,9 @@
-# Consegna RM-0008 — Release 3 costruita, non ancora attraversata (9/9/2026, sera)
+# Consegna RM-0008 — Release 3 costruita, attraversamento bloccato e corretto (9/9/2026, notte)
+
+> Aggiornato dopo il tentativo reale di attraversamento. La sezione **§6-bis**
+> e' la piu' importante: l'attraversamento e' stato rifiutato dalla macchina,
+> la causa e' stata trovata e corretta nel repository, ma **la Release 3 gia'
+> costruita porta ancora la regola sbagliata** e va rifatta.
 
 Documento per l'agente che subentra. Stato reale al momento della scrittura,
 niente promesse: ogni affermazione qui sotto e' stata misurata, e dove non lo
@@ -7,9 +12,13 @@ e' stata c'e' scritto.
 ## 1. Dove siamo in una riga
 
 La Release 3 e' **costruita, firmata e installata** accanto a quella in
-esercizio. Non e' stata attraversata: i servizi girano ancora sul codice
-precedente. Il passaggio finale e' pronto, ha una modalita' di sola verifica,
-e va lanciato da Roberto con `sudo`.
+esercizio, e il suo descrittore dichiara finalmente l'interprete giusto. Il
+tentativo di attraversarla e' stato **rifiutato dalla catena**: l'uscita in
+avanti introdotta stamattina era stata insegnata al costruttore ma non ai
+lettori che attraversano. Causa trovata, corretta e coperta da prova nel
+repository; la release costruita porta pero' ancora il codice vecchio, quindi
+va ritirata la rivendicazione e ricostruita. Produzione **mai toccata**: zero
+riavvii, servizi tutti su.
 
 ## 2. Ordini dell'utente in questa sessione, nell'ordine
 
@@ -178,6 +187,93 @@ Dopo l'attraversamento, in quest'ordine: salute dei quattro servizi, catena di
 proprieta', `metnos.target`, HTTP pubblico, **un turno reale** sul dominio
 toccato (§8.5) — cioe' proprio l'accesso a Telepass — poi documentazione,
 GII e pubblicazione incrementale con note in inglese.
+
+## 6-bis. L'attraversamento rifiutato: causa, correzione, conseguenza
+
+### Cosa ha detto la macchina
+
+Con la macchina ferma, l'esame e' passato per intero:
+
+```
+EXACT_SIGNED_SUCCESSOR_VERIFIED sha256:0f71b233...
+ADMINISTRATIVE_PYTHON /usr/bin/python3.12
+SUCCESSOR_AUDIT_OK units 12 retirement sha256:c4092078... previous_head sha256:d302bb32...
+RELEASE3_REFUSED OwnershipCoordinatorError birth_ownership_request_conflict
+  FRAME executor_birth_ownership_coordinator.py 3677 _transition_edge_from_graph_v2
+```
+
+Le prime due righe sono la prova che la Release 3 risolve il blocco che aveva
+fermato la Release 2. La terza e' il rifiuto.
+
+### Causa: l'uscita in avanti conosciuta solo da meta' del sistema
+
+L'abbandono della Release 2 (ADR 0226) dice che una traversata dimostrata
+inattestabile **conserva la testa pubblicata e il proprio ultimo record**, e
+che la release successiva si costruisce **sopra** di essa. Quella regola
+stamattina e' stata insegnata a tre lettori:
+
+- `_next_release_edge_v1` (costruttore),
+- `_successor_claim_for_transition_v2` (rivendicazione),
+- la regola del predecessore in `_resolve_ownership_coordinator_at_v2`.
+
+Ne mancavano **tre**, tutti sul percorso dell'attraversamento, e tutti
+esigono un predecessore `PREFLIGHT_VERIFIED`:
+
+1. `executor_birth_ownership_coordinator.py::_transition_edge_from_graph_v2`
+   — quello che ha rifiutato;
+2. `executor_birth_ownership_coordinator.py::_prepared_record_v2` — avrebbe
+   rifiutato subito dopo;
+3. `birth_authority_provisioner.py::_require_completed_authority_predecessor_v2`
+   — raggiunto dall'archiviazione del giornale del predecessore.
+
+Risultato: una release sopra cui **tutti possono costruire** e che
+**nessuno puo' attraversare**. Non e' un'uscita, e' un vicolo cieco.
+
+### Correzione (nel repository, non ancora in una release)
+
+- (1) e (2) ammettono un predecessore abbandonato. In (2) la verifica non si
+  fida di un booleano: pretende il **documento di abbandono legato esattamente
+  a quel record** (`_abandonment_binds_record_v2`), cosi' un abbandono di
+  un'altra traversata non puo' fare da passi-passi.
+- (3) non viene piu' raggiunto: un predecessore abbandonato **non e'** un
+  predecessore completato, quindi il suo giornale non si archivia — e' proprio
+  il record veritiero che l'uscita in avanti conserva. Il rifiuto resta intatto
+  per un predecessore che non e' ne' completato ne' abbandonato. La domanda
+  «questo predecessore e' abbandonato?» si fa al coordinatore sotto il lock
+  (`_abandonment_for_predecessor_locked_v2`), non deducendola dallo stato del
+  record: dedurla trasformerebbe un rifiuto in un salto silenzioso.
+
+### Prova
+
+`tests/portable/test_executor_birth_ownership_coordinator_v2.py::
+test_the_crossing_admits_the_predecessor_the_builder_already_admitted`.
+**Verificata in negativo**: senza la correzione fallisce con esattamente
+l'errore visto stasera; con la correzione passa. Conserva il confine: senza
+documento di abbandono il rifiuto e' quello di prima.
+
+### Conseguenza operativa, da non sottovalutare
+
+L'attraversamento gira sul codice **della release installata**
+(`sys.path[:0] = [RELEASE, RELEASE/runtime]`), non su quello del repository.
+La Release 3 gia' costruita **porta ancora la regola sbagliata**: correggere il
+repository non la sblocca. Serve, nell'ordine:
+
+1. **ritirare la rivendicazione pendente** della Release 3 (con una
+   rivendicazione pendente il costruttore rifiuta qualunque sorgente diversa:
+   vedi `_next_release_edge_v1`, ramo `pending`). Esiste un precedente:
+   `/tmp/metnos-rm0008-withdraw-n2-20260909.py`, usato per il tentativo N2 —
+   **leggerlo prima, non eseguirlo alla cieca**: e' pinnato su identita' vecchie;
+2. riallineare i riferimenti sorgenti (il codice del coordinatore e del
+   provisioner e' cambiato) con `internal/tools/rm0008_repin_source_roots.py`;
+3. rigenerare e sigillare l'esportazione (§5), ricostruire con
+   `internal/tools/rm0008_build_release3.py` **dopo averne aggiornato i quattro
+   sigilli** (censimento, numero file, radice rivista, sequenza attesa);
+4. aggiornare i sigilli di `internal/tools/rm0008_complete_release3.py` con le
+   nuove identita' e attraversare.
+
+Il costruttore verifica la **sequenza attesa**: se dopo il ritiro la catena
+offre ancora la 3, resta `EXPECTED_SEQUENCE = 3`; se offre la 4, va aggiornata,
+e va aggiornato anche il percorso della release nel completatore.
 
 ## 7. Prove rosse, classificate con onesta'
 

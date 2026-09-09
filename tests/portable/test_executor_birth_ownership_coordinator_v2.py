@@ -4253,3 +4253,61 @@ def test_both_readers_agree_on_every_abandonment_verdict(
         )
         if end_sequence == 5 else ("admitted", "", False)
     )
+
+
+@LINUX_ONLY
+def test_the_crossing_admits_the_predecessor_the_builder_already_admitted(
+    tmp_path,
+):
+    """L'uscita in avanti deve valere anche per chi attraversa (9/9/2026).
+
+    Misurato sulla macchina: la Release 3 si costruiva sopra la Release 2
+    abbandonata — costruttore e rivendicazione leggevano la catena cosi' — e
+    poi l'attraversamento la rifiutava con `birth_ownership_request_conflict`,
+    perche' il predecessore non era PREFLIGHT_VERIFIED. Una release che
+    nessuno puo' attraversare e sopra cui tutti possono costruire non e'
+    un'uscita: e' un vicolo cieco.
+
+    Il confine resta: senza il documento di abbandono il rifiuto e' quello di
+    prima, e un documento che appartiene a un'altra traversata non vale.
+    """
+    from executor_birth_ownership_coordinator import (
+        _resolve_ownership_coordinator_at_v2, _transition_edge_from_graph_v2,
+    )
+
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory, claim, records = _head_required_transaction(ownership_root)
+        successor, reserve = _successor_reservation(
+            session, ownership_root, claim, records,
+        )
+        distribution = verified_distribution(
+            successor, deployment_descriptor(2),
+            previous_closed_build_id=records[-1].closed_build_id,
+        )
+
+        # Prima dell'abbandono la catena non ammette nessun successore.
+        with pytest.raises(OwnershipCoordinatorError) as failure:
+            reserve()
+        assert failure.value.code == "birth_ownership_successor_conflict"
+
+        _abandon_crossing_locked_for_test_v2(
+            session, ownership_root,
+            prove_unattestable=lambda: (
+                records[-1].request_id,
+                "administrative_tcb_path_unsatisfiable",
+            ),
+        )
+        reserved = reserve()
+        assert reserved.release_sequence == 2
+
+        graph = _resolve_ownership_coordinator_at_v2(
+            directory, root_owned=False,
+        )
+        edge_claim, predecessor = _transition_edge_from_graph_v2(
+            graph, distribution,
+        )
+        assert edge_claim.release_sequence == 2
+        assert predecessor is not None
+        assert predecessor.closed_build_id == records[-1].closed_build_id
+        assert predecessor.head_id == edge_claim.previous_head_id

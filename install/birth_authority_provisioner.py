@@ -4260,6 +4260,7 @@ def _prepare_transition_receipt_material_locked_v2(
         authenticate_distribution_record_v1, capture_current_deployment_descriptor_v1,
     )
     from executor_birth_ownership_coordinator import (
+        _abandonment_for_predecessor_locked_v2,
         _require_deployment_lock_session_v1, _transition_edge_locked_v2,
     )
     from executor_birth_prepared_root import (
@@ -4289,9 +4290,17 @@ def _prepare_transition_receipt_material_locked_v2(
         previous_context = required.selection
         previous_set = required.authorities.prepared
     with _service_owned_birth_identity_v2(descriptor):
+        # An abandoned predecessor is not a completed one: its journal is the
+        # truthful record of a crossing that stopped, and archiving it would
+        # erase exactly what the forward exit preserves. A predecessor that is
+        # neither completed nor abandoned is still refused, as before.
         prepared = _prepare_transition_authority_set_v2(
             claim, verified, previous_set,
-            completed_predecessor=predecessor,
+            completed_predecessor=(
+                None
+                if _abandonment_for_predecessor_locked_v2(
+                    session, predecessor) is not None
+                else predecessor),
         )
     return _TransitionReceiptPreparationV2(
         verified, descriptor, previous_context, prepared,

@@ -134,6 +134,7 @@ BIRTH_AUTHORITY_POLICY_V1 = BirthAuthorityPolicyV1(
         'runtime/executor_birth_ownership_coordinator.py:_abandon_crossing_core_v2',
         'runtime/executor_birth_ownership_coordinator.py:_abandon_crossing_locked_for_test_v2',
         'runtime/executor_birth_ownership_coordinator.py:_abandon_crossing_locked_v2',
+        'runtime/executor_birth_ownership_coordinator.py:_abandonment_for_predecessor_locked_v2',
         'runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1',
         'runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_for_test_v2',
         'runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_v2',

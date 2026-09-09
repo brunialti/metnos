@@ -689,6 +689,22 @@ def _abandonment_for_record_v2(
     return abandonment
 
 
+def _abandonment_binds_record_v2(
+    abandonment: object, record: object,
+) -> bool:
+    """Is this abandonment the one that closes exactly this record?
+
+    Identity, not presence: a caller that already holds a record must be able
+    to check the binding without the graph, and an abandonment belonging to
+    another crossing must never stand in for the missing verification.
+    """
+    return (
+        type(abandonment) is AbandonedCrossingV2
+        and type(record) is OwnershipCoordinatorRecordV2
+        and abandonment is _abandonment_for_record_v2((abandonment,), record)
+    )
+
+
 def _abandonment_for_transaction_v2(
     graph: object, transaction: object,
 ) -> AbandonedCrossingV2 | None:
@@ -3363,6 +3379,7 @@ def _prepared_record_v2(
     previous_context: object, prepared_authority_set: object,
     current_inventory: object, deployment_descriptor: object,
     initial_legacy_state_record_sha256: object = None,
+    predecessor_abandonment: object = None,
 ) -> tuple[OwnershipCoordinatorRecordV2, object]:
     """Bind one exact staged set and frozen inventory before publication."""
     from executor_birth_admin_preflight import (
@@ -3422,10 +3439,16 @@ def _prepared_record_v2(
             "legacy_state_record_sha256",
         )
     else:
+        # Same rule as the crossing edge, proved again from the document
+        # itself: an abandonment counts only when it binds exactly this
+        # record, so a predecessor that never verified cannot be waved
+        # through by an abandonment that belongs to another crossing.
         if (
             type(predecessor) is not OwnershipCoordinatorRecordV2
-            or predecessor.state
-            is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            or (predecessor.state
+                is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+                and not _abandonment_binds_record_v2(
+                    predecessor_abandonment, predecessor))
             or predecessor.release_sequence + 1 != claim.release_sequence
             or predecessor.head_id != claim.previous_head_id
             or predecessor.closed_build_id
@@ -3668,9 +3691,16 @@ def _transition_edge_from_graph_v2(
                 "predecessor_transaction_missing",
             ) from exc
         predecessor = predecessor_transaction.latest
+        # A crossing proved unattestable keeps its published head and its
+        # truthful last record, and the next release is opened over that head.
+        # The builder and the claim already read the chain that way; a crossing
+        # that refused it would leave the forward exit half implemented, with
+        # a release nobody can build over and nobody can cross.
         if (
-            predecessor.state
-            is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            (predecessor.state
+             is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+             and _abandonment_for_transaction_v2(
+                 graph, predecessor_transaction) is None)
             or predecessor.release_sequence + 1 != claim.release_sequence
             or predecessor.head_id != claim.previous_head_id
         ):
@@ -4003,6 +4033,25 @@ def _reserve_transition_edge_locked_for_test_v2(
     )
 
 
+def _abandonment_for_predecessor_locked_v2(
+    session: _DeploymentLockSessionV1, predecessor: object,
+) -> AbandonedCrossingV2 | None:
+    """The abandonment that closes this predecessor, read under the lock.
+
+    The graph stays inside the coordinator: a caller that must treat an
+    abandoned predecessor differently asks here instead of deciding from the
+    record's state alone, which would turn a refusal into a silent skip.
+    """
+    # Anything that is not a record cannot carry an abandonment: answering
+    # "not abandoned" keeps the caller's own refusal in force instead of
+    # failing here with a shape error.
+    if type(predecessor) is not OwnershipCoordinatorRecordV2:
+        return None
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    return _abandonment_for_record_v2(graph.abandoned_crossings, predecessor)
+
+
 def _transition_edge_locked_v2(
     session: _DeploymentLockSessionV1, distribution: object,
 ) -> tuple[SuccessorClaimV1, OwnershipCoordinatorRecordV2 | None]:
@@ -4109,6 +4158,10 @@ def _prepared_transition_from_graph_v2(
         claim=claim,
         distribution=distribution,
         predecessor=predecessor,
+        predecessor_abandonment=(
+            None if predecessor is None
+            else _abandonment_for_record_v2(
+                graph.abandoned_crossings, predecessor)),
         previous_context=previous_context,
         prepared_authority_set=prepared_authority_set,
         current_inventory=current_inventory,
