@@ -7,6 +7,8 @@ and refuses an ambiguous prefix rather than guessing.
     sudo /usr/bin/python3.12 internal/tools/inspect_sites_turn.py <turn-id>
 """
 import json
+import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -16,7 +18,7 @@ SELECTED_ARGS = ("action", "goal", "from_step", "form_hint", "ambito", "url")
 SELECTED_RESULT = ("ok", "error_class", "error", "reason_code")
 SELECTED_ENTRY = (
     "session_id", "logged_in", "reason_code", "message", "obstruction_kind",
-    "obstruction_reason", "url", "title",
+    "obstruction_reason", "url", "title", "screenshot_path", "error_class",
 )
 SELECTED_AUDIT = (
     "ts", "event", "session_id", "domain", "procedure", "method", "outcome",
@@ -79,6 +81,7 @@ def main(argv):
     identifier, found = next(iter(matches.items()))
     print("TURN", identifier)
     sessions = set()
+    shots = set()
     for row in found:
         print("INTENT", row.get("intent"))
         print("USER_QUERY", row.get("user_query"))
@@ -97,12 +100,33 @@ def main(argv):
                     print("  ENTRY", picked)
                     if picked.get("session_id"):
                         sessions.add(picked["session_id"])
+                    if picked.get("screenshot_path"):
+                        shots.add(picked["screenshot_path"])
+            for key in ("screenshot_path",):
+                if result.get(key):
+                    shots.add(result[key])
 
     for row in rows(ROOT / "state/metnos/sites_audit.jsonl"):
         if row.get("session_id") in sessions:
             print("AUDIT", selected(row, SELECTED_AUDIT))
     if not sessions:
         print("AUDIT none: the turn recorded no browser session")
+
+    if shots:
+        copied = Path(f"/tmp/metnos-turn-{identifier}")
+        copied.mkdir(mode=0o755, exist_ok=True)
+        owner = Path(__file__).resolve().stat()
+        for source in sorted(shots):
+            path = Path(source)
+            if not path.is_file():
+                print("SHOT missing", source)
+                continue
+            target = copied / path.name
+            shutil.copyfile(path, target)
+            os.chmod(target, 0o644)
+            os.chown(target, owner.st_uid, owner.st_gid)
+            print("SHOT", target)
+        os.chown(copied, owner.st_uid, owner.st_gid)
     return 0
 
 
