@@ -611,13 +611,31 @@ sezione <code>[mail]</code> &egrave; una stringa non vuota, con valore predefini
 prevalgono sui rispettivi valori nel file; per Telos soltanto il valore esatto
 <code>1</code> nell'ambiente abilita l'attivit&agrave; notturna.</p>
 
-<p>HTTP risolve una sola volta il conto SMTP dopo la verifica Birth e prima
-dell'avvio dei processi di lavoro: gli executor ereditano il nome risolto,
-senza ricevere il file privato, mentre un conto esplicito nell'invocazione
-continua a prevalere. Un conto predefinito vuoto o di tipo errato e un'impostazione
-Telos non booleana nel file vengono rifiutati, senza scegliere silenziosamente
-un altro valore. Questa precedenza non autorizza modifiche alle unit&agrave;
-firmate n&eacute; inserisce valori personali nel catalogo pubblico.</p>
+<p>Il conto SMTP viene risolto quando una richiesta deve inviare posta, non
+all'avvio di HTTP. Un conto esplicito continua a prevalere; il nome risolto e
+le credenziali esposte alla sandbox appartengono allo stesso conto. Un valore
+predefinito non valido blocca quell'invio, senza impedire l'accesso alla
+configurazione. La selezione non modifica l'ambiente globale dei turni e non
+autorizza cambiamenti alle unit&agrave; firmate.</p>
+
+<h2 id="avvio-manutenzione">Avvio e manutenzione non sono una nuova nascita</h2>
+
+<p>Avviare un servizio gi&agrave; installato non certifica nuovamente l'intera
+macchina. Il controllo autentica la cronologia firmata e i file immutabili,
+poi verifica eseguibile, identit&agrave; e protezioni di quel servizio.
+Un aggiornamento compatibile del Python amministrativo di sistema o del
+verificatore non deve invalidare una ricevuta storica. Restano rifiutati codice
+alterato e modifiche non autorizzate alle protezioni del servizio.
+Le operazioni amministrative di certificazione completa restano distinte:
+un avvio riuscito non produce una nuova attestazione e non ammette nuovi executor.</p>
+
+<p>I servizi Python usano realmente l'interprete gestito indicato nel catalogo,
+dopo la rinuncia ai privilegi amministrativi. Se il sottosistema Birth o i
+prerequisiti dei prompt non si inizializzano, il nuovo server HTTP pu&ograve;
+restare in modalit&agrave; di sola manutenzione: autenticazione, stato e
+configurazioni ammesse rimangono disponibili, mentre esecuzione, pubblicazione
+e attivit&agrave; automatiche restano sospese. La salute dichiara esplicitamente
+questa condizione; non equivale a un sistema pienamente operativo.</p>
 
 <p>La configurazione dei servizi viene firmata prima dell'avvio dei timer. I
 collegamenti automatici di attivazione e ordinamento di un preciso timer firmato

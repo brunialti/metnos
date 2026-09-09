@@ -16,7 +16,6 @@ import json
 import os
 import platform
 import re
-import runpy
 import selectors
 import stat
 import struct
@@ -822,7 +821,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:38c69cf53efbee1f80e2d081cb26f3fb21ce07c66f67977e8b9d1f8ab885f5a2"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:898acf9322dd586972e8a434fba346ba042b51b66cbd943491e80d6b7be85038"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
@@ -11731,7 +11730,20 @@ def _verify_installed_distribution_for_test_v1(
 def _load_bound_preflight_materials_v1(
     authenticated: _AuthenticatedFixedOwnershipSnapshotV1,
 ) -> tuple[_SelectedOwnershipEpochV1, _BoundPreflightMaterialsV1]:
-    """Read and bind the installed tree selected only by fixed ownership state."""
+    """Bind installed material and require the current complete source review."""
+    return _load_installed_preflight_materials_v1(authenticated, review_sources=True)
+
+
+def _load_installed_preflight_materials_v1(
+    authenticated: _AuthenticatedFixedOwnershipSnapshotV1, *, review_sources: bool,
+) -> tuple[_SelectedOwnershipEpochV1, _BoundPreflightMaterialsV1]:
+    """Authenticate immutable history, without requiring it to be today's code.
+
+    Only whole-installation certification requests a new source review. Service
+    startup authenticates the selected signed file inventory and exact bytes;
+    upgrading this root-owned verifier does not invalidate historical evidence.
+    This internal policy is not a command-line override of certification.
+    """
     if type(authenticated) is not _AuthenticatedFixedOwnershipSnapshotV1:
         raise _invalid("product preflight materials")
     selected = _select_ownership_epoch_v1(authenticated.snapshot)
@@ -11760,12 +11772,18 @@ def _load_bound_preflight_materials_v1(
         _required_material_capture_paths_v1(build, catalog)
         | frozenset(item.source_path for item in descriptor.artifacts)
     )
-    captured = _capture_verified_distribution_tree_v1(
-        build.facts, build.files, root,
-        expected_type=_AuthenticatedDistributionObjectV1,
-        uid=0, gid=0, chain_stop=None,
-        extra_capture_paths=capture_paths, require_compiled_review=True,
-    )
+    if review_sources:
+        captured = _capture_verified_distribution_tree_v1(
+            build.facts, build.files, root,
+            expected_type=_AuthenticatedDistributionObjectV1,
+            uid=0, gid=0, chain_stop=None,
+            extra_capture_paths=capture_paths, require_compiled_review=True,
+        )
+    else:
+        captured = _snapshot_exact_distribution_tree_v1(
+            root, build.files, uid=0, gid=0, chain_stop=None,
+            capture_paths=capture_paths,
+        )
     latest = selected.transaction.prefix.records[-1]
     prerequisite_path = (
         OWNERSHIP_ROOT / "startup-prerequisites-v1"
@@ -11813,7 +11831,7 @@ _PUBLIC_FAILURE_EXIT_V1 = {
 
 
 def _run_operational_command_v1(command: CliCommandV1) -> None:
-    """Run only fixed-root checks; launch remains closed until its bootstrap."""
+    """Separate installed-service startup from whole-installation attestation."""
     if type(command) is not CliCommandV1:
         raise _invalid("operational command")
     if command.command == "check-all":
@@ -11832,13 +11850,12 @@ def _run_operational_command_v1(command: CliCommandV1) -> None:
         raise _invalid("operational command")
     lease = _LaunchGateLeaseV1(_acquire_startup_gate_shared_v1())
     try:
-        operational = _attest_operational_preflight_v1()
-        entry = _require_preflight_entry_v1(operational, command.entry_id)
+        materials, entry = _attest_service_startup_v1(command.entry_id)
         if command.command == "launch":
             if entry.class_name != "gated_service":
                 raise _missing("B3 entrypoint supervision is incomplete")
             _launch_gated_service_v1(
-                _make_launch_plan_v1(operational, entry), lease,
+                _make_launch_plan_v1(materials, entry), lease,
             )
     finally:
         lease.close()
@@ -14149,6 +14166,85 @@ def _require_preflight_entry_v1(
     return entries[0]
 
 
+def _attest_service_startup_v1(
+    entry_id: str,
+) -> tuple[_BoundPreflightMaterialsV1, _ServiceCatalogEntryV1]:
+    """Authenticate an installed target without renewing historical host proof.
+
+    The root-owned OS tools are measured as they exist now to authenticate the
+    release. Their old installation hashes and unrelated effective units do
+    not decide whether this service can start. No new attestation is issued.
+    """
+    identifier = validate_entry_id_v1(entry_id)
+    authenticated = _authenticate_fixed_ownership_snapshot_v1()
+    selected, materials = _load_installed_preflight_materials_v1(
+        authenticated, review_sources=False,
+    )
+    entries = tuple(item for item in materials.catalog.entries
+                    if item.entry_id == identifier)
+    if len(entries) != 1 or not entries[0].requires_preflight:
+        raise _invalid("service startup entry")
+    entry = entries[0]
+    if entry.class_name != "gated_service":
+        # Administrative operations and timers keep their complete evidence;
+        # this service-local boundary cannot authorize publication or cutover.
+        operational = _attest_operational_preflight_v1()
+        _require_preflight_entry_v1(operational, identifier)
+        return materials, entry
+    _check_installed_service_v1(materials, entry)
+    final_selected, final_materials = _load_installed_preflight_materials_v1(
+        authenticated, review_sources=False,
+    )
+    if final_selected != selected or final_materials != materials:
+        raise _invalid("service startup selection changed")
+    return materials, entry
+
+
+def _check_installed_service_v1(
+    materials: _BoundPreflightMaterialsV1, entry: _ServiceCatalogEntryV1,
+) -> None:
+    """Retain this service's code, explicit systemd policy and trusted paths."""
+    if (type(materials) is not _BoundPreflightMaterialsV1
+            or type(entry) is not _ServiceCatalogEntryV1
+            or entry.class_name != "gated_service" or entry.unit_name is None
+            or entry.target_executable is None):
+        raise _invalid("service startup materials")
+    executable = _capture_trusted_file_v1(
+        Path(entry.target_executable), executable=True, uid=0, gid=0,
+        chain_stop=None, maximum=MAX_DISTRIBUTION_FILE_BYTES,
+        require_single_link=False,
+    )
+    if (_target_executable_hash_v1(entry.target_executable, executable.content)
+            != entry.target_executable_hash):
+        raise _invalid("service target executable changed")
+    logical_path = f"{SYSTEM_UNIT_ROOT_TEXT_V1}/{entry.unit_name}"
+    fragment = _capture_exact_systemd_file_v1(
+        logical_path, live_root=Path("/"), uid=0, gid=0,
+        maximum=MAX_UNIT_FRAGMENT_BYTES_V1,
+    )
+    if fragment.captured.content != dict(materials.unit_fragments).get(entry.unit_name):
+        raise _invalid("service unit fragment changed")
+    plan = _systemd_property_plan_v1(entry)
+    observed = _run_systemctl_show_v1(
+        materials.descriptor.systemctl_executable, entry.unit_name,
+        plan.requested_properties,
+    )
+    if any(_systemd_single_property_v1(observed, key) != expected for key, expected in (
+        ("FragmentPath", logical_path), ("DropInPaths", ""),
+        ("LoadState", "loaded"), ("NeedDaemonReload", "no"),
+    )):
+        raise _invalid("service unit not loaded from protected configuration")
+    _compile_systemd_manager_projection_v1(entry, observed, catalog=materials.catalog)
+    _revalidate_captured_file_v1(
+        executable, executable=True, uid=0, gid=0, chain_stop=None,
+        maximum=MAX_DISTRIBUTION_FILE_BYTES, require_single_link=False,
+    )
+    _revalidate_captured_file_v1(
+        fragment.captured, executable=False, uid=0, gid=0, chain_stop=None,
+        maximum=MAX_UNIT_FRAGMENT_BYTES_V1, require_single_link=True,
+    )
+
+
 def _trusted_python_path_v1(
     installation_root: str, working_directory: str,
     service_python_executable: str | None = None,
@@ -14237,11 +14333,11 @@ def _launch_dynamic_environment_v1(
 
 
 def _make_launch_plan_v1(
-    operational: _OperationalPreflightV1,
+    materials: _BoundPreflightMaterialsV1,
     entry: _ServiceCatalogEntryV1,
 ) -> _LaunchPlanV1:
     if (
-        type(operational) is not _OperationalPreflightV1
+        type(materials) is not _BoundPreflightMaterialsV1
         or type(entry) is not _ServiceCatalogEntryV1
         or entry.class_name != "gated_service"
         or entry.execution_kind not in {"python_module", "native_executable"}
@@ -14249,8 +14345,6 @@ def _make_launch_plan_v1(
         or entry.target_working_directory is None
     ):
         raise _invalid("launch plan")
-    materials = operational.observation.observation.administrative_tcb.materials
-    capture = operational.observation.observation.administrative_tcb.capture
     descriptor = materials.descriptor
     directives = _service_directive_index_v1(entry.unit_spec)
     user = directives.get(("Service", "User"))
@@ -14263,7 +14357,6 @@ def _make_launch_plan_v1(
         running_executable = validate_absolute_path_v1(
             os.readlink("/proc/self/exe"),
         )
-        captured_python = capture.executables.python.resolved.canonical_path
     except (AttributeError, OSError) as exc:
         raise _invalid("launch Python identity") from exc
     if (
@@ -14277,7 +14370,6 @@ def _make_launch_plan_v1(
             )
         )
         or running_executable != descriptor.python_executable
-        or captured_python != descriptor.python_executable
     ):
         raise _invalid("launch identity binding")
     environment = {
@@ -14435,9 +14527,21 @@ def _launch_python_target_v1(plan: _LaunchPlanV1) -> None:
         or plan.python_module is None or not plan.python_path
     ):
         raise _invalid("launch Python target")
-    sys.path[:] = list(plan.python_path)
-    sys.argv[:] = [plan.python_module, *plan.target_args]
-    runpy.run_module(plan.python_module, run_name="__main__", alter_sys=False)
+    executable = plan.entry.target_executable
+    assert executable is not None
+    # Run the interpreter selected for the service, not this administrative
+    # process with another environment's site-packages grafted onto sys.path.
+    # The working directory is authenticated and root-owned. -E/-s reject
+    # Python environment overrides and the service account's user packages.
+    try:
+        os.execve(
+            executable,
+            [executable, "-E", "-s", "-B", "-m", plan.python_module, *plan.target_args],
+            dict(plan.environment),
+        )
+    except OSError as exc:
+        raise _invalid("launch managed Python target") from exc
+    raise _recovery("launch managed Python target returned")
 
 
 def _launch_gated_service_v1(

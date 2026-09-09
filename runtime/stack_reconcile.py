@@ -855,6 +855,8 @@ class StackReconciler:
     def restart(self, *, executor_names: list[str] | None = None,
                 sign_first: bool = False, automatic: bool = False,
                 require_sidecar: str = "auto") -> dict:
+        from services_registry import stack_scope
+
         names = executor_names or []
         locks = contextlib.ExitStack()
         locks.enter_context(catalog_reconcile_lock(wait_s=2))
@@ -864,13 +866,17 @@ class StackReconciler:
                 breaker.assert_closed()
             self.require_quiescent()
             signed = verify_named_executors(names, sign_first=sign_first)
-            target = self.systemctl.show(TARGET_UNIT)
+            scope = stack_scope()
+            target = self.systemctl.show(TARGET_UNIT, scope)
             if target.get("LoadState") in {"not-found", "error", ""}:
                 raise StackFailure(
                     "target_not_installed",
                     "metnos.target is not installed; use the migration pilot first",
                 )
-            legacy_http = self.systemctl.show("metnos-http.service", "system")
+            legacy_http = (
+                self.systemctl.show("metnos-http.service", "system")
+                if scope == "user" else {}
+            )
             if legacy_http.get("ActiveState") in {
                 "active", "activating", "reloading",
             }:
@@ -878,7 +884,7 @@ class StackReconciler:
                     "legacy_baseline_active",
                     "refusing to start the user target beside active system HTTP",
                 )
-            result = self.systemctl.run("user", "restart", TARGET_UNIT, timeout_s=180)
+            result = self.systemctl.run(scope, "restart", TARGET_UNIT, timeout_s=180)
             if result.returncode != 0:
                 raise StackFailure(
                     "target_restart_failed", "systemd rejected target restart",

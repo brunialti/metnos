@@ -53,7 +53,7 @@ def _entry(
     )
 
 
-def _operational(entry: preflight._ServiceCatalogEntryV1):
+def _materials(entry: preflight._ServiceCatalogEntryV1):
     descriptor = SimpleNamespace(
         installation_root="/release", service_user="metnos",
         service_uid=990, service_gid=991,
@@ -61,23 +61,10 @@ def _operational(entry: preflight._ServiceCatalogEntryV1):
         service_home="/var/lib/metnos", service_shell="/usr/sbin/nologin",
         python_executable="/usr/bin/python3",
     )
-    materials = SimpleNamespace(
-        descriptor=descriptor, catalog=SimpleNamespace(entries=(entry,)),
-    )
-    observed = preflight._ObservedEffectiveSystemdV1(
-        SimpleNamespace(
-            materials=materials,
-            capture=SimpleNamespace(executables=SimpleNamespace(
-                python=SimpleNamespace(resolved=SimpleNamespace(
-                    canonical_path="/usr/bin/python3",
-                )),
-            )),
-        ), SimpleNamespace(),
-        SimpleNamespace(),
-    )
-    return preflight._OperationalPreflightV1(
+    return preflight._BoundPreflightMaterialsV1(
         SimpleNamespace(), SimpleNamespace(),
-        preflight._ObservedEffectiveSystemdProductV1(observed),
+        SimpleNamespace(entries=(entry,)), descriptor, SimpleNamespace(),
+        SimpleNamespace(), (), D("3"), D("4"),
     )
 
 
@@ -102,7 +89,7 @@ def test_launch_plan_uses_only_signed_identity_environment_and_root(
     monkeypatch.setattr(preflight.os, "readlink", lambda _path: "/usr/bin/python3")
     monkeypatch.setenv("ATTACKER_PATH", "/tmp/attacker")
 
-    plan = preflight._make_launch_plan_v1(_operational(entry), entry)
+    plan = preflight._make_launch_plan_v1(_materials(entry), entry)
 
     assert plan.service_uid == 990
     assert plan.service_gid == 991
@@ -115,6 +102,80 @@ def test_launch_plan_uses_only_signed_identity_environment_and_root(
     assert "ATTACKER_PATH" not in dict(plan.environment)
     assert plan.python_path == ("/release", "/release/runtime")
     assert plan.umask == 0o027
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_service_startup_does_not_renew_global_host_certificate(monkeypatch, changed):
+    entry = _entry()
+    materials = _materials(entry)
+    calls = []
+    monkeypatch.setattr(preflight, "_authenticate_fixed_ownership_snapshot_v1", object)
+
+    def read(_snapshot, *, review_sources):
+        assert review_sources is False
+        calls.append("read")
+        return ("changed" if changed and len(calls) > 2 else "required"), materials
+
+    def global_proof(*args, **kwargs):
+        pytest.fail("ordinary service start must not compare historical host hashes")
+
+    monkeypatch.setattr(preflight, "_load_installed_preflight_materials_v1", read)
+    monkeypatch.setattr(preflight, "_bind_administrative_tcb_v1", global_proof)
+    monkeypatch.setattr(preflight, "_attest_operational_preflight_v1", global_proof)
+    monkeypatch.setattr(preflight, "_observe_effective_systemd_v1", global_proof)
+    monkeypatch.setattr(preflight, "_check_installed_service_v1",
+                        lambda value, target: calls.append((value, target)))
+    if changed:
+        with pytest.raises(preflight.PreflightError, match="selection changed"):
+            preflight._attest_service_startup_v1(entry.entry_id)
+    else:
+        assert preflight._attest_service_startup_v1(entry.entry_id) == (materials, entry)
+    assert calls == ["read", (materials, entry), "read"]
+
+
+@pytest.mark.parametrize("fault", ["none", "target", "fragment", "dropin", "reload", "policy"])
+def test_service_startup_checks_only_its_own_loaded_policy(monkeypatch, fault):
+    payload = b"approved binary"
+    fragment = b"approved unit"
+    entry = _entry()._replace(target_executable_hash=preflight._target_executable_hash_v1(
+        "/usr/bin/python3", payload,
+    ))
+    materials = _materials(entry)._replace(
+        descriptor=SimpleNamespace(systemctl_executable="/usr/bin/systemctl"),
+        unit_fragments=((entry.unit_name, fragment),),
+    )
+    monkeypatch.setattr(preflight, "_capture_trusted_file_v1", lambda *a, **kw:
+                        SimpleNamespace(content=b"changed" if fault == "target" else payload))
+    monkeypatch.setattr(preflight, "_capture_exact_systemd_file_v1", lambda *a, **kw:
+                        SimpleNamespace(captured=SimpleNamespace(
+                            content=b"changed" if fault == "fragment" else fragment)))
+    monkeypatch.setattr(preflight, "_systemd_property_plan_v1", lambda value:
+                        SimpleNamespace(requested_properties=("test",)))
+    observed = {"FragmentPath": ("/etc/systemd/system/probe.service",),
+                "DropInPaths": ("/tmp/untrusted.conf" if fault == "dropin" else "",),
+                "LoadState": ("loaded",),
+                "NeedDaemonReload": ("yes" if fault == "reload" else "no",)}
+    units = []
+
+    def show(executable, unit, properties):
+        units.append(unit)
+        return observed
+
+    def policy(target, value, *, catalog):
+        assert target == entry and value == observed
+        if fault == "policy":
+            raise preflight._invalid("service identity or confinement changed")
+
+    monkeypatch.setattr(preflight, "_run_systemctl_show_v1", show)
+    monkeypatch.setattr(preflight, "_compile_systemd_manager_projection_v1", policy)
+    monkeypatch.setattr(preflight, "_revalidate_captured_file_v1", lambda *a, **kw: None)
+    if fault == "none":
+        preflight._check_installed_service_v1(materials, entry)
+        assert units == ["probe.service"]
+    else:
+        with pytest.raises(preflight.PreflightError):
+            preflight._check_installed_service_v1(materials, entry)
+        assert units in ([], ["probe.service"])
 
 
 def test_python_launch_path_keeps_only_trusted_system_packages(
@@ -160,25 +221,25 @@ def test_notify_environment_is_closed_and_pid_bound(
     assert failure.value.code == preflight.CODE_INVALID
 
 
-def test_python_bootstrap_has_one_exact_authenticated_runpy_door(
+def test_python_bootstrap_executes_selected_interpreter_without_user_packages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     plan = _plan(_entry())
     calls = []
     monkeypatch.setattr(preflight.sys, "path", ["attacker"])
     monkeypatch.setattr(preflight.sys, "argv", ["attacker"])
-    monkeypatch.setattr(
-        preflight.runpy, "run_module",
-        lambda *args, **kwargs: calls.append((args, kwargs)),
-    )
+    def execute(*args):
+        calls.append(args)
+        raise SystemExit(0)
 
-    preflight._launch_python_target_v1(plan)
-
-    assert preflight.sys.path == list(plan.python_path)
-    assert preflight.sys.argv == ["probe.main", "--probe"]
-    assert calls == [(("probe.main",), {
-        "run_name": "__main__", "alter_sys": False,
-    })]
+    monkeypatch.setattr(preflight.os, "execve", execute)
+    with pytest.raises(SystemExit):
+        preflight._launch_python_target_v1(plan)
+    assert preflight.sys.path == ["attacker"]  # No in-process runpy execution.
+    assert preflight.sys.argv == ["attacker"]
+    assert calls == [(plan.entry.target_executable,
+                      [plan.entry.target_executable, "-E", "-s", "-B", "-m",
+                       "probe.main", "--probe"], dict(plan.environment))]
 
 
 @pytest.mark.parametrize("mutated", (False, True))
@@ -244,7 +305,7 @@ def test_native_exec_failure_keeps_gate_for_caller_cleanup(
     ]
 
 
-def test_python_launch_closes_gate_immediately_before_runpy(
+def test_python_launch_closes_gate_immediately_before_managed_exec(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     plan = _plan(_entry())
@@ -264,12 +325,12 @@ def test_python_launch_closes_gate_immediately_before_runpy(
     )
     monkeypatch.setattr(
         preflight, "_launch_python_target_v1",
-        lambda selected: events.append(("runpy", selected)),
+        lambda selected: events.append(("managed_exec", selected)),
     )
 
     preflight._launch_gated_service_v1(plan, lease)
 
     assert lease.descriptor == -1
     assert events == [
-        ("drop", plan), ("release", 11), ("close", None), ("runpy", plan),
+        ("drop", plan), ("release", 11), ("close", None), ("managed_exec", plan),
     ]

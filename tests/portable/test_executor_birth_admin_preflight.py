@@ -3415,6 +3415,7 @@ def test_operational_dispatch_keeps_check_all_read_only_under_shared_gate(
     )
     entry = SimpleNamespace(class_name="gated_service")
     plan = object()
+    materials = object()
 
     monkeypatch.setattr(
         preflight, "_acquire_startup_gate_shared_v1",
@@ -3433,6 +3434,10 @@ def test_operational_dispatch_keeps_check_all_read_only_under_shared_gate(
         lambda authority, entry_id: events.append(
             ("entry", authority, entry_id),
         ) or entry,
+    )
+    monkeypatch.setattr(
+        preflight, "_attest_service_startup_v1",
+        lambda entry_id: events.append(("service", entry_id)) or (materials, entry),
     )
     monkeypatch.setattr(
         preflight, "_preflight_attestation_bytes_v1",
@@ -3463,7 +3468,7 @@ def test_operational_dispatch_keeps_check_all_read_only_under_shared_gate(
         preflight.CliCommandV1("check", "service-http"),
     )
     assert events == [
-        "gate", "attest", ("entry", operational, "service-http"),
+        "gate", ("service", "service-http"),
         ("release", 41),
     ]
 
@@ -3472,8 +3477,8 @@ def test_operational_dispatch_keeps_check_all_read_only_under_shared_gate(
         preflight.CliCommandV1("launch", "service-http"),
     )
     assert events == [
-        "gate", "attest", ("entry", operational, "service-http"),
-        ("plan", operational, entry), ("launch", plan, 41),
+        "gate", ("service", "service-http"),
+        ("plan", materials, entry), ("launch", plan, 41),
         ("release", 41),
     ]
 

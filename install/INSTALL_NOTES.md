@@ -125,6 +125,16 @@ This read-only verification does not construct a historical Birth runtime.
 Any contract requiring publication still needs the strict runtime context
 check; the transition never executes old authority under changed source.
 
+The startup lock is volatile, not an authority record. The administrative
+installer also publishes an exact root-owned tmpfiles rule in
+`/etc/tmpfiles.d/metnos-executor-birth-v1.conf`. At boot, systemd prepares the
+private directory and empty lock before `sysinit.target` and therefore before
+the gated services. The boot-only, non-truncating rule never unlinks an existing
+lock or grants permission to bypass preflight. An unexpected existing rule is
+rejected, not overwritten. Acceptance must include startup after volatile
+runtime state is absent, preservation of held lock identities, and an actual
+reboot; a successful transition alone is not reboot certification.
+
 Legacy retirement bindings identify required files of the previous installation,
 not every entry point of the candidate. The new contract-convergence module is
 covered by the candidate's signed runtime inventory and preflight, but is not
@@ -169,10 +179,12 @@ setting; Telos preserves the exact environment opt-in `1`, with every other
 environment value disabling it. The mail value must be a nonempty string and
 the Telos file value a boolean; empty mail overrides and incorrectly typed file
 settings fail instead of silently selecting another account or enablement state.
-HTTP resolves the SMTP default once after its Birth check and before acquiring
-its process lock or starting workers, then shares the resolved account name
-through the environment with child executors, which retain explicit
-invocation-account precedence and do not receive `runtime.toml`.
+Each local mail-send invocation without an explicit account resolves the SMTP
+default once and uses that same account for credential mounts and the child
+environment. Explicit invocation accounts keep precedence. Children do not
+receive `runtime.toml`, and the HTTP process environment is not mutated.
+Invalid optional mail configuration blocks that invocation, not HTTP startup
+or unrelated channels; it never silently selects another account.
 Environment precedence is not permission to modify a signed unit or restore
 its legacy drop-ins; preserve private choices in the existing configuration.
 
@@ -394,6 +406,14 @@ during this transition. They are the same units later owned by
 The HTTP health endpoint proves reachability, not planning quality or end-to-end
 operation. A release installation is complete only after a harmless natural-
 language request passes through the chat and returns a normal answer.
+
+If Birth or prompt bootstrap fails inside HTTP, the application retains its
+existing authenticated maintenance routes for model configuration and bounded
+service control. It starts no scheduler or producer-dependent background jobs
+and rejects execution/publication requests. Health reports `operational=false`
+and `maintenance_only=true`; composite readiness remains false. A controlled
+restart after repair reevaluates bootstrap. This application behavior does not
+bypass an external systemd startup check or repair a broken Python installation.
 
 The public installer does not install, own or document a maintainer-specific
 remote-access service. Its supported browser path is direct access from the

@@ -540,12 +540,29 @@ is a boolean, defaulting to <code>false</code>.
 override their respective file settings; only the exact environment value
 <code>1</code> enables nightly Telos activity.</p>
 
-<p>HTTP resolves the SMTP account once, after the Birth check and before workers
-start: executors inherit the resolved name without receiving the private file,
-while an explicit invocation account still takes precedence. An empty or wrongly
-typed default account and a non-boolean Telos file setting are rejected rather
-than silently replaced with another value. This precedence does not authorize
-changes to signed units or put personal values in the public catalog.</p>
+<p>The SMTP account is resolved when a request needs to send mail, not when HTTP
+starts. An explicit account still takes precedence; the selected name and the
+credentials exposed to the sandbox belong to the same account. An invalid
+default blocks that send without preventing access to configuration. Selection
+does not mutate the global environment of concurrent turns or authorize changes
+to signed service units.</p>
+
+<h2 id="startup-maintenance">Startup and maintenance are not a new birth</h2>
+
+<p>Starting an installed service does not recertify the entire machine. The
+check authenticates signed history and immutable files, then verifies that
+service's executable, identity and protections. A compatible update of the
+administrative system Python or verifier must not invalidate a historical
+receipt. Altered code and unauthorized changes to service protections remain
+rejected. Full administrative certification stays separate: successful startup
+does not issue a new attestation or admit new executors.</p>
+
+<p>Python services actually run the managed interpreter selected by the catalog,
+after dropping administrative privileges. If Birth or prompt prerequisites fail
+to initialize, the updated HTTP server can remain in maintenance-only mode:
+authentication, status and allowed configuration remain available, while
+execution, publication and background producers stay suspended. Health explicitly
+reports this condition; it is not equivalent to a fully operational system.</p>
 
 <p>The service configuration is signed before its timers start. The automatic
 activation and ordering links of an exact signed timer may appear when it is
