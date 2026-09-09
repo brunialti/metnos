@@ -339,7 +339,11 @@ def test_cookie_limits_and_unchanged_panel_postcondition(monkeypatch):
 @_BROWSER
 def test_cookie_redaction_preserves_ids_and_json_structure(monkeypatch):
     def classify(panels, _timeout):
-        assert panels[0]["id"] == "p1"
+        # Da quando si osservano anche i contesti annidati, l'identita' di un
+        # pannello porta il contesto che lo contiene: due contesti possono
+        # usare lo stesso identificatore locale. Cio' che questa prova misura
+        # resta lo stesso: l'oscuramento tocca il testo, non l'identita'.
+        assert panels[0]["id"] == cp._global_id(0, "p1")
         assert panels[0]["controls"][-1]["safe"] is True
         assert "p1" not in panels[0]["text"]
         assert "true" not in panels[0]["text"]
@@ -461,3 +465,35 @@ def test_cookie_outcome_reports_what_was_observed(monkeypatch):
 
     empty = asyncio.run(cp.reject_cookies(_Page([_Frame([])]), {}))
     assert empty.status == "clear" and (empty.frames, empty.panels) == (0, 0)
+
+
+@_BROWSER
+def test_a_dismissed_panel_is_still_counted_as_seen(monkeypatch):
+    """Il conteggio dice quanto si e' visto, non quanto e' rimasto (9/9/2026).
+
+    Misurato su una copia fedele del pannello di Telepass del turno
+    `ed846e59`: il pannello veniva riconosciuto e chiuso correttamente, ma il
+    giro successivo non vedeva piu' niente e sovrascriveva i conteggi a zero.
+    La registrazione di cio' che il browser ha osservato si scrive solo se un
+    pannello c'era: azzerarla dopo averlo chiuso cancellava proprio il caso
+    riuscito, cioe' quello che serve per sapere se la precondizione ha agito.
+    """
+    monkeypatch.setattr(cp, "_classify",
+                        lambda panels, _timeout: _reject_decision(panels))
+
+    async def check(page):
+        esito = await cp.reject_cookies(page, {}, timeout_s=1.0)
+        assert esito.status == "resolved", esito
+        assert esito.kind == "cookie"
+        assert esito.panels >= 1, esito     # il pannello c'era davvero
+        assert esito.frames >= 1, esito
+        assert await page.evaluate(
+            "() => !document.querySelector('dialog')")
+
+    _browser_scenario(
+        '<dialog open id="p"><h1>Che biscotti vuoi?</h1>'
+        '<button>Accetta tutti</button><button>Solo necessari</button>'
+        '</dialog>'
+        '<script>for (const b of document.querySelectorAll("button"))'
+        ' b.addEventListener("click", () =>'
+        ' document.getElementById("p").remove());</script>', check)

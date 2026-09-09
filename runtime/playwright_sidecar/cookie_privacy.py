@@ -14,8 +14,9 @@ class CookieOutcome:
     status: Literal["clear", "resolved", "blocked"]
     kind: Literal["cookie", "other", "unknown"] = "unknown"
     reason: str = ""
-    # Counts only, never observed text: a caller that resolved nothing must be
-    # able to tell "no panel exists" from "panels exist and none was actable".
+    # Counts only, never observed text, and the largest seen during the flow:
+    # a caller must be able to tell "no panel exists" from "panels exist and
+    # none was actable", and from "a panel existed and was dismissed".
     frames: int = 0
     panels: int = 0
 
@@ -205,13 +206,18 @@ async def reject_cookies(page, state: dict, *, redact=None,
     frames = panels_seen = 0
     for _ in range(3):
         observed = await _observe_frames(page)
-        frames = len(observed)
-        panels_seen = sum(len(items) for _i, _h, items in observed)
+        # The most this flow ever saw, not what is left at the end: a panel
+        # that was found and dismissed did exist, and a run that reported zero
+        # after resolving one would hide the only case worth recording.
+        frames = max(frames, len(observed))
+        panels_seen = max(
+            panels_seen, sum(len(items) for _i, _h, items in observed))
         try:
             if not observed:
                 return CookieOutcome(
                     "resolved" if resolved else "clear",
-                    "cookie" if resolved else "unknown")
+                    "cookie" if resolved else "unknown", "",
+                    frames, panels_seen)
             # Redact only observed text, never IDs or JSON structure: a short
             # credential can coincide with an ID or the literal ``true``.
             clean = redact if redact is not None else lambda text: text
