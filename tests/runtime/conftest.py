@@ -78,6 +78,16 @@ _SAFE_CONFIG_FILES = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_installed_service_profile(monkeypatch, tmp_path):
+    """Unit tests must not inspect the host's root-owned deployment chain."""
+    import executor_birth_ownership_chain as ownership
+
+    monkeypatch.setattr(
+        ownership, "DEFAULT_OWNERSHIP_CHAIN_ROOT_V1", tmp_path / "ownership",
+    )
+
+
 def _copy_if_present(source: Path, destination: Path) -> None:
     if source.is_file():
         destination.parent.mkdir(parents=True, exist_ok=True)

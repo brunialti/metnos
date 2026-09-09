@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import stat
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +29,11 @@ from install.executor_birth_source_receiver import (
 _GATE_SEAL_V1 = object()
 _GATE_TEST_SEAL_V1 = object()
 _GATE_BASENAME_V1 = "startup-v1.lock"
+STARTUP_BOOT_RULE_NAME_V1 = "metnos-executor-birth-v1.conf"
+STARTUP_BOOT_RULE_V1 = (
+    f"d! {RUNTIME_ROOT} 0700 0 0 -\n"
+    f"f! {STARTUP_GATE_PATH_V1} 0600 0 0 -\n"
+).encode("ascii")
 _FILE_FLAGS_V1 = (
     os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     | getattr(os, "O_CLOEXEC", 0)
@@ -80,6 +86,59 @@ def _require_linux_v1() -> None:
         raise DistributionAssemblerError(
             "birth_ownership_platform_unsupported",
         )
+
+
+def _require_boot_rule_v1(path: Path, owner: tuple[int, int]) -> bool:
+    try:
+        descriptor = os.open(path, _FILE_FLAGS_V1)
+    except FileNotFoundError:
+        if path.is_symlink():
+            raise _fail("boot rule symlink")
+        return False
+    try:
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+            or (info.st_uid, info.st_gid) != owner
+            or stat.S_IMODE(info.st_mode) != 0o644
+            or os.read(descriptor, len(STARTUP_BOOT_RULE_V1) + 1)
+            != STARTUP_BOOT_RULE_V1
+        ):
+            raise _fail("boot rule changed")
+    finally:
+        os.close(descriptor)
+    return True
+
+
+def _install_boot_rule_v1(directory: Path, owner, require_session) -> None:
+    """Publish one persistent boot-only rule; never replace an existing rule."""
+    require_session()
+    info = directory.lstat()
+    if (
+        not stat.S_ISDIR(info.st_mode) or directory.is_symlink()
+        or (info.st_uid, info.st_gid) != owner or info.st_mode & 0o022
+    ):
+        raise _fail("boot rule directory")
+    target = directory / STARTUP_BOOT_RULE_NAME_V1
+    if _require_boot_rule_v1(target, owner):
+        return
+    descriptor, temporary = tempfile.mkstemp(prefix=".metnos-boot-", dir=directory)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            os.fchmod(stream.fileno(), 0o644)
+            stream.write(STARTUP_BOOT_RULE_V1)
+            stream.flush()
+            os.fsync(stream.fileno())
+        require_session()
+        os.link(temporary, target, follow_symlinks=False)
+    finally:
+        os.unlink(temporary)
+    parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(parent)
+    finally:
+        os.close(parent)
+    _require_boot_rule_v1(target, owner)
 
 
 def _install_startup_gate_core_v1(
@@ -188,6 +247,7 @@ def install_startup_gate_v1(session: object) -> InstalledStartupGateV1:
     )
 
     require_session = lambda: _require_deployment_lock_session_v1(session)
+    _install_boot_rule_v1(Path("/etc/tmpfiles.d"), (0, 0), require_session)
     _install_startup_gate_core_v1(
         runtime_root=RUNTIME_ROOT, owner=(0, 0),
         require_session=require_session,

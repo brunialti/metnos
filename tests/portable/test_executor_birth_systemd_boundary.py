@@ -13,6 +13,7 @@ _WRITE_APIS = (
     "_install_locked_core_v1",
     "_install_signed_isolated_systemd_for_test_v1",
     "_open_parent_v1",
+    "_prepare_administrative_stage_v1",
     "_publish_administrative_tree_v1",
     "_publish_isolated_units_for_test_v1",
     "install_group6_administrative_v1",

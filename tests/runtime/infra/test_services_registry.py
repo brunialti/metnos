@@ -121,21 +121,27 @@ def _verified_readiness_chain(monkeypatch, tmp_path):
     return VerifiedChain
 
 
-def test_readiness_catalog_uses_signed_targets_without_changing_control_policy(
+def test_installed_catalog_unifies_observation_control_and_policy(
     monkeypatch, tmp_path,
 ):
     _verified_readiness_chain(monkeypatch, tmp_path)
-    policy_before = registry.render_polkit_rule("metnos-test")
     profile = {spec.key: spec for spec in registry.readiness_catalog()}
     for key in ("playwright", "telegram", "side_display", "i18n", "durable_workloads"):
-        original = registry.get(key)
+        original = registry._BY_KEY[key]
         assert profile[key].targets == (registry.ServiceTarget(original.targets[0].unit, "system"),)
         assert original.targets[0].scope == "user"
         assert profile[key].required == original.required
         assert profile[key].base_url == original.base_url
+        assert registry.get(key) == profile[key]
     for key in ("http", "llm", "searxng", "photon"):
-        assert profile[key].targets == (registry.get(key).targets[-1],)
-    assert registry.render_polkit_rule("metnos-test") == policy_before
+        assert profile[key].targets == (registry._BY_KEY[key].targets[-1],)
+    assert registry.catalog() == registry.readiness_catalog()
+    assert registry.stack_scope() == "system"
+    rule = registry.render_polkit_rule("metnos-test")
+    for service in profile.values():
+        assert service.targets[0].unit in registry.system_units()
+        assert service.targets[0].unit in rule
+    assert 'true && unit === "metnos.target" && verb === "restart"' in rule
 
 
 def test_readiness_catalog_rejects_another_release_root(monkeypatch, tmp_path):
@@ -149,6 +155,59 @@ def test_readiness_catalog_rejects_another_release_root(monkeypatch, tmp_path):
     )
     with pytest.raises(ValueError, match="root mismatch"):
         registry.readiness_catalog()
+
+
+@pytest.mark.parametrize("key", ["telegram", "playwright", "durable_workloads"])
+def test_control_uses_signed_system_targets(monkeypatch, tmp_path, key):
+    _verified_readiness_chain(monkeypatch, tmp_path)
+    unit = registry.get(key).targets[0].unit
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        if "show" in command:
+            return _show(unit=unit)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(registry.subprocess, "run", run)
+    monkeypatch.setattr(registry, "_record_desired_state", lambda *_: None)
+    assert registry.control(key, "restart") == (True, "")
+    assert calls[-1] == ["systemctl", "--no-block", "restart", unit]
+    assert all("--user" not in command for command in calls)
+
+
+def test_lre_configuration_restarts_installed_system_worker(monkeypatch, tmp_path):
+    _verified_readiness_chain(monkeypatch, tmp_path)
+    monkeypatch.delenv("METNOS_DURABLE_WORKLOADS_ENABLED", raising=False)
+    monkeypatch.setattr(registry._C, "PATH_USER_CONFIG", tmp_path)
+    registry.write_feature_configuration(False)
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        if "show" in command:
+            return _show(unit="metnos-durable-worker.service")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(registry.subprocess, "run", run)
+    assert registry.configure_lre_feature(True) == (True, "")
+    assert registry.read_feature_configuration(environ={}).enabled is True
+    assert calls[-1] == [
+        "systemctl", "--no-block", "restart", "metnos-durable-worker.service",
+    ]
+
+
+def test_snapshots_use_installed_targets(monkeypatch, tmp_path):
+    _verified_readiness_chain(monkeypatch, tmp_path)
+    observed = []
+
+    def snapshot(service, _probe, *_args):
+        observed.extend(service.targets)
+        return {"key": service.key, "status": "running"}
+
+    monkeypatch.setattr(registry, "_safe_snapshot", snapshot)
+    assert len(registry.snapshots(probe_endpoints=False)) == len(registry.SERVICES)
+    assert observed and all(target.scope == "system" for target in observed)
 
 
 def test_readiness_catalog_never_falls_back_after_chain_failure(monkeypatch, tmp_path):
@@ -594,6 +653,7 @@ def test_control_is_non_blocking_and_uses_resolved_target(monkeypatch):
         },
     )
     monkeypatch.setitem(registry._BY_KEY, "standalone", spec)
+    monkeypatch.setattr(registry, "catalog", lambda: (spec,))
     monkeypatch.setattr(registry, "_record_desired_state", lambda *_: None)
     seen = {}
 

@@ -1733,3 +1733,161 @@ def test_product_chain_inspection_fails_off_linux_before_io(monkeypatch):
         inspect_ownership_chain_state_v1()
 
     assert failure.value.code == "birth_ownership_platform_unsupported"
+
+
+def _successor_cold_fixture(tmp_path, authority, *, advanced):
+    root = tmp_path / "ownership"
+    root.mkdir(mode=0o755)
+    releases = root / "releases-v1"
+    releases.mkdir(mode=0o755)
+    store = _OwnershipChainStoreForTest._initialize_with_authorities(
+        root / "chain-v1", authority.public,
+    )
+    distributions, heads = [], []
+    previous_cutover = previous_transition = previous_build = None
+    for sequence in (1, 2):
+        distribution = _cold_distribution(
+            releases / f"{sequence:020d}", authority,
+            sequence=sequence, previous_closed_build_id=previous_build,
+        )
+        distributions.append(distribution)
+        store.append_authenticated_build(distribution)
+        encoded, signature, certificate, transition = cutover(
+            authority, previous=previous_cutover,
+            build=distribution.identity.closed_build_id,
+            request=D(str(sequence)), previous_transition=previous_transition,
+        )
+        store.append_cutover(encoded, signature)
+        store.append_context_transition(
+            transition.encoded, expected_proof=certificate.as_proof(),
+        )
+        if sequence == 1:
+            for name, payload in (
+                (PAYLOAD_BASENAME, encoded), (SIGNATURE_BASENAME, signature),
+            ):
+                path = root / name
+                path.write_bytes(payload)
+                path.chmod(0o644)
+        head_bytes, head_signature = issue_ownership_head(
+            release_sequence=sequence, cutover_id=certificate.cutover_id,
+            closed_build_id=distribution.identity.closed_build_id,
+            previous_head_id=None if not heads else heads[-1].head_id,
+            signing_key_id=authority.head_key_id, private_key=authority.head_private,
+        )
+        head = store.append_head(head_bytes, head_signature)
+        if sequence == 1 or advanced:
+            store.update_required_head(
+                head_bytes, head_signature,
+                expected_head_id=None if not heads else heads[-1].head_id,
+            )
+        heads.append(head)
+        previous_cutover, previous_transition = certificate.cutover_id, transition
+        previous_build = distribution.identity.closed_build_id
+    return store, distributions, heads
+
+
+@pytest.mark.skipif(os.name == "nt", reason="cold ownership store is Linux-only")
+@pytest.mark.parametrize("advanced", (False, True))
+def test_transition_cold_reader_uses_only_the_actual_selected_verifier(
+    authority, tmp_path, advanced,
+):
+    store, distributions, heads = _successor_cold_fixture(
+        tmp_path, authority, advanced=advanced,
+    )
+    calls = []
+
+    def authenticate(encoded, signature):
+        return distribution_module._authenticate_distribution_record_for_test(
+            encoded, signature, registry=authority.distribution_registry,
+        )
+
+    current = authenticate(distributions[1].encoded, distributions[1].signature)
+
+    def verify(record):
+        return distribution_module._verify_authenticated_distribution_record_for_test(
+            record, environment=distribution_module._environment_for_test(
+                "linux", "x86_64", Path(record.installation_root),
+            ),
+        )
+
+    def previous(candidate, record):
+        assert candidate == current
+        assert candidate.previous_closed_build_id == record.closed_build_id
+        assert candidate.release_sequence == record.release_sequence + 1
+        calls.append("previous")
+        return verify(record)
+
+    def current_only(record):
+        assert record == current
+        calls.append("current")
+        return verify(record)
+
+    pointer = store.root / REQUIRED_HEAD_BASENAME
+    before = pointer.read_bytes()
+    result = store._read_transition_chain_cold_core_v1(
+        current, authenticate_record=authenticate, verify_current_record=current_only,
+        verify_previous_record=previous, for_test=True,
+    )
+    assert result.required_head == heads[int(advanced)]
+    assert calls == ["current" if advanced else "previous"]
+    assert pointer.read_bytes() == before
+
+    def strict_current(record):
+        if record != current:
+            raise DistributionManifestError("birth_ownership_distribution_invalid", "current pins")
+        return verify(record)
+
+    if advanced:
+        assert store._read_required_chain_cold_core_v1(
+            authenticate_record=authenticate, verify_live_record=strict_current,
+            for_test=True,
+        ) == result
+    else:
+        with pytest.raises(OwnershipChainError):
+            store._read_required_chain_cold_core_v1(
+                authenticate_record=authenticate, verify_live_record=strict_current,
+                for_test=True,
+            )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="cold ownership store is Linux-only")
+@pytest.mark.parametrize("mutation", ("candidate_signature", "head_signature", "anchor", "previous_bytes"))
+def test_transition_cold_reader_preserves_signature_chain_and_byte_checks(
+    authority, tmp_path, mutation,
+):
+    store, distributions, heads = _successor_cold_fixture(
+        tmp_path, authority, advanced=False,
+    )
+
+    def authenticate(encoded, signature):
+        return distribution_module._authenticate_distribution_record_for_test(
+            encoded, signature, registry=authority.distribution_registry,
+        )
+
+    current = authenticate(distributions[1].encoded, distributions[1].signature)
+    if mutation == "candidate_signature":
+        object.__setattr__(current, "signature", b"x" * 64)
+    elif mutation == "head_signature":
+        stem = f"{1:020d}-{heads[0].cutover_id.removeprefix('sha256:')}"
+        (store.root / "heads-v1" / f"{stem}.sig").write_bytes(b"x" * 64)
+    elif mutation == "anchor":
+        (store.root.parent / PAYLOAD_BASENAME).write_bytes(b"changed")
+    else:
+        distribution = distributions[0]
+        path = Path(distribution.installation_root) / distribution.files[0].path
+        path.write_bytes(path.read_bytes() + b"changed")
+
+    def previous(candidate, record):
+        assert candidate == current
+        return distribution_module._verify_authenticated_distribution_record_for_test(
+            record, environment=distribution_module._environment_for_test(
+                "linux", "x86_64", Path(record.installation_root),
+            ),
+        )
+
+    with pytest.raises((OwnershipChainError, DistributionManifestError)):
+        store._read_transition_chain_cold_core_v1(
+            current, authenticate_record=authenticate,
+            verify_current_record=lambda _: pytest.fail("wrong selected head"),
+            verify_previous_record=previous, for_test=True,
+        )

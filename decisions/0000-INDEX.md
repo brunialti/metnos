@@ -162,3 +162,7 @@ for format and discipline; see `_template.md` for the template.
 > pointer, verified manifest bytes, pure signing and portable writer locking;
 > technical code packaging remains outside its KISS boundary. It complements
 > ADR 0220 without reopening RM-0005.
+>
+> `0224` establishes the single Executor Birth admission boundary. `0225`
+> separates installed-service startup and authenticated maintenance from full
+> certification, retaining signed code, identity and service confinement checks.

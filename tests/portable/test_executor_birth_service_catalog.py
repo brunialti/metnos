@@ -8,7 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -115,13 +115,30 @@ def _legacy() -> tuple[catalog.ServiceLegacyBindingV1, ...]:
     ) for item in catalog.legacy_bindings_from_source_v1())
 
 
+def test_readiness_failure_preserves_services_and_their_startup_checks():
+    entries = _entries()
+    readiness = next(item for item in entries if item.readiness_owner)
+    assert not any(directive.name == "OnFailure"
+                   for directive in readiness.unit_spec.directives)
+    # Removing the aggregate shutdown is not an admission or startup bypass.
+    for entry in entries:
+        if entry.class_name != "gated_service":
+            continue
+        start = next(item for item in entry.unit_spec.directives
+                     if item.section == "Service" and item.name == "ExecStart")
+        assert "/usr/libexec/metnos/executor-birth-v1/preflight.py" in start.values
+        assert ("launch", "--entry-id", entry.entry_id) == start.values[-3:]
+
+
 @pytest.mark.parametrize("entry", [
-    entry for entry in _entries(installation_root=str(RUNTIME.parent))
+    entry for entry in _entries()
     if entry.execution_kind == "python_module"
 ], ids=lambda entry: entry.entry_id)
 def test_python_targets_resolve_from_their_signed_working_directory(entry) -> None:
     # Do not import the service: ambient sys.path must not hide a bad recipe.
-    search_path = [entry.target_working_directory]
+    # The catalog describes Linux; resolve its logical path in this host's checkout.
+    relative = PurePosixPath(entry.target_working_directory).relative_to("/opt/metnos")
+    search_path = [str(RUNTIME.parent.joinpath(*relative.parts))]
     parts = entry.python_module.split(".")
     for index in range(1, len(parts) + 1):
         name = ".".join(parts[:index])
@@ -835,6 +852,7 @@ def test_public_surface_contains_only_product_loader() -> None:
     assert catalog.__all__ == [
         "capture_current_service_catalog_v1",
         "load_service_catalog_v1",
+        "load_previous_service_catalog_v1",
     ]
 
 

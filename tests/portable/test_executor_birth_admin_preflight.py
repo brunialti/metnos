@@ -660,6 +660,7 @@ def _fixed_ownership_fixture(
 def _authenticated_fixed_ownership_fixture(
     tmp_path: Path, *, release_count: int = 1, final_record_sequence: int = 5,
     chain_mutation: str | None = None, required_after_cas: bool = False,
+    different_bundles: bool = False,
 ) -> tuple[Path, Path]:
     """Build signed, mutually bound durable bytes; no live state is asserted."""
     from cryptography.hazmat.primitives import serialization
@@ -795,11 +796,15 @@ def _authenticated_fixed_ownership_fixture(
     initial_transaction = None
     initial_catalog_id = None
     initial_coverage_hash = None
-    bundle_hash = preflight._raw_sha256_v1(b"administrative-bundle-v1")
+    initial_bundle_hash = preflight._raw_sha256_v1(b"administrative-bundle-v1")
 
     for release_sequence, (manifest, manifest_signature) in enumerate(
         distributions, start=1,
     ):
+        bundle_hash = (
+            preflight._raw_sha256_v1(f"administrative-bundle-v{release_sequence}".encode())
+            if different_bundles else initial_bundle_hash
+        )
         distribution = json.loads(manifest)
         closed_build_id = distribution["closed_build_id"]
         build_stem = closed_build_id.removeprefix("sha256:")
@@ -1110,7 +1115,7 @@ def _authenticated_fixed_ownership_fixture(
         service_commands=(PredecessorServiceCommandV1(
             "idle", "none", None, None, None, (), None, (),
         ),),
-        administrative_bundle_hash=bundle_hash,
+        administrative_bundle_hash=initial_bundle_hash,
         service_catalog_id=initial_catalog_id,
         service_coverage_hash=initial_coverage_hash,
     )
@@ -1240,6 +1245,113 @@ def test_fixed_ownership_authentication_accepts_coherent_durable_graphs(
     assert snapshot.transactions[-1].prefix.records[-1].sequence == (
         final_record_sequence
     )
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("terminal", (4, 5, 6))
+def test_fixed_ownership_authenticates_release_local_historical_bundles(
+    tmp_path: Path, terminal: int,
+) -> None:
+    # Real signatures authenticate the graph. Historical bundles remain claims
+    # of protected records/attestations; selected artifact binding is tested in
+    # test_executor_birth_admin_preflight_materials, not claimed by this seam.
+    root, _temporary = _authenticated_fixed_ownership_fixture(
+        tmp_path, release_count=2, final_record_sequence=terminal,
+        different_bundles=True,
+    )
+    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    result = preflight._authenticate_fixed_ownership_snapshot_for_test_v1(
+        root, openssl_executable=Path("/usr/bin/openssl"),
+    )
+    transactions = result.snapshot.transactions
+    initial, successor = (item.prefix.records[0] for item in transactions)
+    assert initial.administrative_bundle_hash != successor.administrative_bundle_hash
+    assert result.snapshot.predecessor.administrative_bundle_hash == initial.administrative_bundle_hash
+    assert transactions[0].prefix.records[-1].state == "PREFLIGHT_VERIFIED"
+    assert successor.previous_head_id == transactions[0].prefix.records[-1].head_id
+    assert {path: path.read_bytes() for path in before} == before
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("mutation", (
+    "record_bundle", "attestation_bundle", "attestation_document", "record_document",
+    "manifest_hash", "manifest_document", "manifest_signature", "head", "certificate_signature",
+))
+def test_release_local_history_rejects_swapped_evidence(tmp_path: Path, mutation: str) -> None:
+    from executor_birth_ownership_coordinator import (
+        _INSTALL_TRANSACTION_KEYS_V1, _install_transaction_id_v1,
+    )
+
+    root, _temporary = _authenticated_fixed_ownership_fixture(
+        tmp_path, release_count=2, final_record_sequence=6, different_bundles=True,
+    )
+    transactions = {
+        json.loads((path / "record-000-v2.json").read_bytes())["release_sequence"]: path
+        for path in (root / "coordinator-v1/transactions-v2").iterdir()
+    }
+    initial = json.loads((transactions[1] / "record-000-v2.json").read_bytes())
+    initial_head = json.loads((transactions[1] / "record-005-v2.json").read_bytes())
+    successor = json.loads((transactions[2] / "record-000-v2.json").read_bytes())
+    changed_attestation_hash = None
+    if mutation.startswith("attestation_"):
+        selected = root / "preflight-attestations-v1" / f"{successor['request_id']}.json"
+        if mutation == "attestation_document":
+            encoded = (root / "preflight-attestations-v1" / f"{initial['request_id']}.json").read_bytes()
+        else:
+            value = json.loads(selected.read_bytes())
+            value["administrative_bundle_hash"] = initial["administrative_bundle_hash"]
+            value["attestation_id"] = preflight._deployment_document_id_v1(
+                preflight.PREFLIGHT_ATTESTATION_DOMAIN_V1, value, "attestation_id",
+            )
+            encoded = preflight._canonical_json(value)
+        _write_control_file(selected, encoded)
+        changed_attestation_hash = preflight._digest(
+            preflight.PREFLIGHT_ATTESTATION_RECORD_DOMAIN_V1, encoded,
+        )
+
+    def mutate(record):
+        if record["release_sequence"] != 2:
+            return
+        if mutation == "record_bundle":
+            record["administrative_bundle_hash"] = initial["administrative_bundle_hash"]
+            record["install_transaction_id"] = _install_transaction_id_v1({
+                **{key: record[key] for key in _INSTALL_TRANSACTION_KEYS_V1},
+                "schema_version": 1,
+            })
+        elif mutation == "manifest_hash":
+            record["distribution_payload_hash"] = initial["distribution_payload_hash"]
+        elif mutation == "head" and record["sequence"] >= 5:
+            record["head_id"] = initial_head["head_id"]
+        if changed_attestation_hash is not None and record["sequence"] == 6:
+            record["preflight_attestation_hash"] = changed_attestation_hash
+
+    _rewrite_v2_transactions(root, mutate)
+    if mutation == "record_document":
+        _write_control_file(
+            transactions[2] / "record-000-v2.json",
+            (transactions[1] / "record-000-v2.json").read_bytes(),
+        )
+    elif mutation in {"manifest_document", "manifest_signature", "certificate_signature"}:
+        archive = "cutovers-v1" if mutation == "certificate_signature" else "builds-v1"
+        identifier = "cutover_id" if archive == "cutovers-v1" else "closed_build_id"
+        old = initial_head[identifier].removeprefix("sha256:")
+        new_record = json.loads((transactions[2] / "record-005-v2.json").read_bytes())
+        new = new_record[identifier].removeprefix("sha256:")
+        suffixes = ("json", "sig") if mutation == "manifest_document" else ("sig",)
+        for suffix in suffixes:
+            _write_control_file(
+                root / "chain-v1" / archive / f"{new}.{suffix}",
+                (root / "chain-v1" / archive / f"{old}.{suffix}").read_bytes(),
+            )
+    with pytest.raises(preflight.PreflightError) as denied:
+        preflight._authenticate_fixed_ownership_snapshot_for_test_v1(
+            root, openssl_executable=Path("/usr/bin/openssl"),
+        )
+    assert denied.value.code == preflight.CODE_RECOVERY
+    if mutation in {"record_bundle", "attestation_bundle"}:
+        # Hashes and record chains have been rebuilt: this is a semantic
+        # per-release mismatch, not a malformed-document rejection.
+        assert denied.value.detail == "preflight attestation journal binding"
 
 
 @LINUX_ONLY
@@ -1987,6 +2099,7 @@ def test_fixed_ownership_capture_rejects_legacy_state_posix_acl(
 def test_control_acl_presence_is_rejected_without_filesystem_acl_support(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, acl_name: str,
 ) -> None:
+    monkeypatch.setattr(errno, "ENODATA", 61, raising=False)
     target = tmp_path / "control"
     target.write_bytes(b"")
     descriptor = os.open(target, os.O_RDONLY)
@@ -1997,7 +2110,7 @@ def test_control_acl_presence_is_rejected_without_filesystem_acl_support(
             return b"acl"
         raise OSError(errno.ENODATA, "absent")
 
-    monkeypatch.setattr(preflight.os, "getxattr", getxattr)
+    monkeypatch.setattr(preflight.os, "getxattr", getxattr, raising=False)
     try:
         _recovery(
             preflight._require_no_control_acl_v1,
@@ -2010,6 +2123,7 @@ def test_control_acl_presence_is_rejected_without_filesystem_acl_support(
 def test_control_acl_observation_error_is_typed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(errno, "ENODATA", 61, raising=False)
     target = tmp_path / "control"
     target.write_bytes(b"")
     descriptor = os.open(target, os.O_RDONLY)
@@ -2017,6 +2131,7 @@ def test_control_acl_observation_error_is_typed(
     monkeypatch.setattr(
         preflight.os, "getxattr",
         lambda *_args: (_ for _ in ()).throw(OSError(errno.EIO, "injected")),
+        raising=False,
     )
     try:
         _recovery(
@@ -2363,6 +2478,8 @@ def test_legacy_state_decoders_reject_rehashed_relinked_semantic_drift(
 def test_control_descriptor_cleanup_attempts_all_and_preserves_active_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    target = tmp_path / "control"
+    target.write_bytes(b"")
     real_close = os.close
     attempts = []
 
@@ -2371,7 +2488,7 @@ def test_control_descriptor_cleanup_attempts_all_and_preserves_active_error(
         real_close(descriptor)
         raise OSError(errno.EIO, "injected close failure")
 
-    first = tuple(os.open(tmp_path, os.O_RDONLY) for _ in range(3))
+    first = tuple(os.open(target, os.O_RDONLY) for _ in range(3))
     monkeypatch.setattr(preflight.os, "close", failing_close)
     failure = _recovery(
         preflight._close_control_descriptors_v1,
@@ -2381,7 +2498,7 @@ def test_control_descriptor_cleanup_attempts_all_and_preserves_active_error(
     assert isinstance(failure.__cause__, OSError)
 
     attempts.clear()
-    second = tuple(os.open(tmp_path, os.O_RDONLY) for _ in range(3))
+    second = tuple(os.open(target, os.O_RDONLY) for _ in range(3))
     primary = ValueError("primary failure")
     preflight._close_control_descriptors_v1(
         second, active_error=primary,
@@ -3410,6 +3527,7 @@ def test_operational_dispatch_keeps_check_all_read_only_under_shared_gate(
     )
     entry = SimpleNamespace(class_name="gated_service")
     plan = object()
+    materials = object()
 
     monkeypatch.setattr(
         preflight, "_acquire_startup_gate_shared_v1",
@@ -3428,6 +3546,10 @@ def test_operational_dispatch_keeps_check_all_read_only_under_shared_gate(
         lambda authority, entry_id: events.append(
             ("entry", authority, entry_id),
         ) or entry,
+    )
+    monkeypatch.setattr(
+        preflight, "_attest_service_startup_v1",
+        lambda entry_id: events.append(("service", entry_id)) or (materials, entry),
     )
     monkeypatch.setattr(
         preflight, "_preflight_attestation_bytes_v1",
@@ -3458,7 +3580,7 @@ def test_operational_dispatch_keeps_check_all_read_only_under_shared_gate(
         preflight.CliCommandV1("check", "service-http"),
     )
     assert events == [
-        "gate", "attest", ("entry", operational, "service-http"),
+        "gate", ("service", "service-http"),
         ("release", 41),
     ]
 
@@ -3467,8 +3589,8 @@ def test_operational_dispatch_keeps_check_all_read_only_under_shared_gate(
         preflight.CliCommandV1("launch", "service-http"),
     )
     assert events == [
-        "gate", "attest", ("entry", operational, "service-http"),
-        ("plan", operational, entry), ("launch", plan, 41),
+        "gate", ("service", "service-http"),
+        ("plan", materials, entry), ("launch", plan, 41),
         ("release", 41),
     ]
 

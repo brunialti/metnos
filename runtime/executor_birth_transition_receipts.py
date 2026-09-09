@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import Callable
 
 from executor_birth_cutover import CurrentReceiptProof
@@ -121,12 +122,23 @@ def _build_staged_current_receipts_v2(
     from executor_birth_bootstrap import (
         _build_staged_reattestation_runtime_v2,
     )
+    from executor_birth_distribution_manifest import authenticate_distribution_record_v1
+    from executor_birth_prepared_root import load_previous_context_runtime_v1
+
+    distribution = staged_context.selection.distribution
+    # The caller has released its Birth session. Read the authenticated
+    # predecessor once as administrator, before adopting the service identity.
+    previous_context = None
+    if distribution.release_sequence > 1:
+        previous_context = load_previous_context_runtime_v1(
+            authenticate_distribution_record_v1(distribution.encoded, distribution.signature),
+        )
 
     staged_runtime = _staged_owner_call_v2(
         identity_scope,
         catalog_owner,
         lambda: _build_staged_reattestation_runtime_v2(
-            staged_context, now=now,
+            staged_context, now=now, previous_context=previous_context,
         ),
     )
     return _prepare_staged_current_receipts_v2(

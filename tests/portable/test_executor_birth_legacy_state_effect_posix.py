@@ -7,9 +7,13 @@ import os
 from pathlib import PurePosixPath
 import pickle
 import stat
+import sys
 from types import SimpleNamespace
 
 import pytest
+
+if sys.platform != "linux":
+    pytest.skip("Linux ownership effects require POSIX descriptors", allow_module_level=True)
 
 import contract_cutover_guard as cutover_guard
 import executor_birth_account_identity as identity

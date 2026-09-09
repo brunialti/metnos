@@ -2,7 +2,8 @@
 
 Reattestation is deliberately separate from normal Birth publication.  It
 copies the bytes of an authenticated current generation, consumes one fresh
-ProducerReceipt, reruns every applicable F3 check, and may write only the
+ProducerReceipt, runs applicable F3 checks or proves unchanged-current
+continuity from the immediate predecessor, and may write only the
 AdmissionReceipt for that same generation.  The contract store rechecks the
 current pointer and authenticated bytes at the persistence linearization
 point; no API in this module can install a generation or move ``current``.
@@ -182,6 +183,9 @@ class _ReattestationCore:
     _seal: object
     persist_v2: object | None = None
     read_v2: object | None = None
+    previous_context: object | None = None
+    selection: object | None = None
+    store_root: object | None = None
 
     def __post_init__(self) -> None:
         if self._seal is not _SEAL or not _is_birth_core(self.birth):
@@ -194,6 +198,8 @@ class _ReattestationCore:
             not callable(value) for value in (self.persist_v2, self.read_v2)
         ):
             raise BirthReattestationError("birth_reattestation_core_invalid", "v2")
+        if self.previous_context is not None:
+            _require_continuity_context_v1(self.previous_context, self.selection)
 
     def persist_receipt(self, request: "ReattestationRequest", encoded, expected):
         """Route to the context-bound writer when the request carries one."""
@@ -234,13 +240,17 @@ def _sealed_reattestation_core_for_test(
     *, birth: _BirthCore, capture: Capture, persist: Persist,
     read_receipt: ReadReceipt, persist_v2: object | None = None,
     read_v2: object | None = None,
+    previous_context=None, selection=None, store_root=None,
 ) -> _ReattestationCore:
     return _ReattestationCore(
         birth, capture, persist, read_receipt, _SEAL, persist_v2, read_v2,
+        previous_context, selection, store_root,
     )
 
 
-def _assemble_reattestation_core(birth: _BirthCore) -> _ReattestationCore:
+def _assemble_reattestation_core(
+    birth: _BirthCore, *, previous_context=None, selection=None, store_root=None,
+) -> _ReattestationCore:
     """Use only the three restricted ports of the sealed Birth publisher."""
     from executor_birth_commit_publisher import _is_birth_reattestation_port
 
@@ -254,7 +264,104 @@ def _assemble_reattestation_core(birth: _BirthCore) -> _ReattestationCore:
         raise BirthReattestationError("birth_reattestation_trust_missing", "v2 pair")
     return _ReattestationCore(
         birth, port.capture, port.persist, port.read, _SEAL, persist_v2, read_v2,
+        previous_context, selection, store_root,
     )
+
+
+def _require_continuity_context_v1(previous, selection) -> None:
+    from executor_birth_context_selection import is_context_selection_v1
+    from executor_birth_prepared_root import PreviousContextRuntimeV1
+
+    if (
+        type(previous) is not PreviousContextRuntimeV1
+        or not is_context_selection_v1(selection, allow_staged=True)
+        or not selection.staged_reattestation_only
+        or selection.distribution.release_sequence
+        != previous.selection.distribution.release_sequence + 1
+        or selection.distribution.previous_closed_build_id
+        != previous.selection.distribution.identity.closed_build_id
+        or selection.admission_context_id == previous.selection.admission_context_id
+    ):
+        raise BirthReattestationError("birth_current_continuity_context_invalid")
+
+
+def _current_continuity_v1(core, request, observed):
+    """Authenticate the old admission against the exact owned current bytes.
+
+    Reading a deterministic old request never issues or claims a producer
+    receipt. Missing old evidence selects the ordinary checks, not adoption.
+    Malformed or contradictory signed evidence is a precise refusal.
+    """
+    if core.previous_context is None:
+        return None
+    from contract_store import read_current_birth_receipt_v2
+    from executor_birth_producer_context import build_producer_request_v2
+    from executor_birth_shadow import _UnchangedCurrentContinuityV1, _CONTINUITY_SEAL_V1
+
+    previous, selected = core.previous_context, core.selection
+    _require_continuity_context_v1(previous, selected)
+    source_id = _candidate_source_id_from_snapshot(observed.snapshot)
+    expected_request = build_producer_request_v2(
+        selected, contract_id=request.current.ref.contract_id,
+        generation_id=request.current.generation_id, candidate_source_id=source_id,
+    )
+    if request.producer_request != expected_request:
+        raise BirthReattestationError("birth_current_continuity_request_invalid")
+    old_request = build_producer_request_v2(
+        previous.selection, contract_id=request.current.ref.contract_id,
+        generation_id=request.current.generation_id, candidate_source_id=source_id,
+    )
+    encoded = read_current_birth_receipt_v2(
+        request.current.ref, request=old_request,
+        trusted_publics=tuple(previous.authorities.author.verifier_keys.items()),
+        store_root=core.store_root,
+    )
+    if encoded is None:
+        return None
+    receipt = verify_admission_receipt(
+        encoded, verifier_keys=previous.authorities.admission.verifier_keys,
+    )
+    _verify_continuity_receipt_v1(previous, request, observed, old_request, receipt)
+    return _UnchangedCurrentContinuityV1(
+        request.current.ref.contract_id.value, observed.identities.candidate_id,
+        observed.identities.admission_context_id,
+        "sha256:" + hashlib.sha256(encoded).hexdigest(), previous.required_head_id,
+        receipt.approved_lifecycle, _CONTINUITY_SEAL_V1,
+    )
+
+
+def _verify_continuity_receipt_v1(previous, request, observed, old_request, receipt):
+    from executor_birth_intent import _INSTALLER
+    from executor_birth_producer_table_v1 import producer_author_v1
+
+    snapshot = observed.snapshot
+    old_identities = compute_candidate_identities(CandidateIdentityInput(
+        contract_id=request.current.ref.contract_id,
+        manifest_bytes=snapshot.manifest_bytes,
+        language_state_bytes=snapshot.language_state_bytes,
+        code_files=snapshot.code_files, executor_origin=observed.executor_origin,
+        revision_authorship=producer_author_v1(_INSTALLER.producer_id, _INSTALLER.operation),
+        objective_hash=old_request.objective_hash,
+    ), previous.authorities.material.context)
+    expected = {
+        "contract_id": request.current.ref.contract_id.value,
+        "generation_id": request.current.generation_id,
+        "predecessor_id": request.current.generation_id,
+        "birth_request_id": old_request.request_id,
+        "admission_context_id": previous.selection.admission_context_id,
+        "candidate_id": old_identities.candidate_id,
+        "semantic_core_id": observed.identities.semantic_core_id,
+        "kind": AdmissionKind.REATTESTATION,
+        "revision_class": ReceiptRevisionClass.REATTESTATION,
+    }
+    if any(getattr(receipt, key) != value for key, value in expected.items()):
+        raise BirthReattestationError("birth_current_continuity_receipt_invalid")
+    checks = receipt.check_results
+    marker = checks.get("reattestation_current_generation_v1")
+    if marker is None or marker.status is not AdmittedCheckStatus.PASSED or any(
+        name not in checks for name in ("properties", "semantic_review")
+    ):
+        raise BirthReattestationError("birth_current_continuity_receipt_invalid")
 
 
 def _expected(request: ReattestationRequest, observed: ObservedCandidate,
@@ -422,8 +529,9 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             )
 
         shadow = birth.shadow_dependencies
+        continuity = _current_continuity_v1(core, request, observed)
         property_runner = shadow.property_runner
-        if property_runner is None and initial_adoption is None:
+        if property_runner is None and initial_adoption is None and continuity is None:
             property_runner = ObservedPropertyRunner(
                 observed, windows_registry=shadow.windows_sandbox_registry,
                 linux_registry=shadow.linux_sandbox_registry,
@@ -437,6 +545,7 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             property_runner=property_runner,
             approval_subject=approval_subject, approval_evidence=approval_evidence,
             now=instant,
+            current_continuity=continuity,
         )
         report = _observe_birth_for_test(
             request.current.ref.manifest_dir,
@@ -464,6 +573,12 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
         checks["reattestation_current_generation_v1"] = AdmissionCheck(
             "1", AdmittedCheckStatus.PASSED, evidence,
         )
+        if continuity is not None:
+            # This evidence is the real old signed receipt, not a new check run.
+            checks["unchanged_current_continuity_v1"] = AdmissionCheck(
+                "1", AdmittedCheckStatus.NOT_APPLICABLE,
+                continuity.previous_receipt_hash,
+            )
         if initial_adoption is not None:
             checks["initial_current_generation_adoption_v1"] = (
                 _initial_adoption_check(request, observed, initial_adoption)
@@ -488,6 +603,7 @@ def _execute(request: ReattestationRequest, core: _ReattestationCore) -> Reattes
             semantic_review_hash=semantic_hash,
             approval_hash=None,
             approved_lifecycle=(
+                continuity.approved_lifecycle if continuity is not None else
                 ApprovedLifecycle.PREEXERCISE
                 if report.outcome is BirthOutcome.PREEXERCISE
                 else ApprovedLifecycle.ACTIVE

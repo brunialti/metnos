@@ -99,7 +99,18 @@ class _Pagina:
         self.candidati = candidati
         self._testo = testo
 
+    async def evaluate_handle(self, script):
+        # This goal fixture contains no cookie panel; the semantic cookie
+        # precondition now keeps a DOM handle until its observation is used.
+        assert script == sb.cookie_privacy._OBSERVE_JS
+        return self
+
+    async def dispose(self):
+        pass
+
     async def evaluate(self, script, _arg=None):
+        if script == '(saved) => saved.public':
+            return []
         if script == sb._ENUMERATE_ACTION_TARGETS_JS:
             return self.candidati
         if script == sb._GOAL_EVIDENCE_JS:

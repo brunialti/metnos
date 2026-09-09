@@ -359,7 +359,7 @@ def test_mail_account_argument_without_capability_grants_nothing():
     ex = _mail_ex()
     assert sandbox.mail_extras(
         ex, {"account": "all", "client": "metnos"},
-    ) == ([], False)
+    ) == ([], False, {})
 
 
 @pytest.mark.parametrize("mail_capability", ["mail:read", "mail:write", "mail:send"])
@@ -388,12 +388,13 @@ def test_mail_local_binds_only_selected_account_read_only(
     monkeypatch.setattr(credentials, "CRED_DIR", vault)
     monkeypatch.setattr(credentials, "ADMIN_KEY_PATH", admin_key)
 
-    paths, net = sandbox.mail_extras(
+    paths, net, environment = sandbox.mail_extras(
         _mail_ex(caps=[{"name": mail_capability, "hint": ["work"]}]),
         {"account": "work", "client": "metnos", "via_channel": "email"},
     )
 
     assert net is True
+    assert environment == {}
     assert paths == [admin_key, selected, selected_env]
     assert unrelated_mail not in paths
     assert unrelated_web not in paths
@@ -433,7 +434,7 @@ def test_mail_sender_default_matches_child_without_exposing_other_accounts(
     monkeypatch.setattr(credentials, "CRED_DIR", vault)
     monkeypatch.setattr(credentials, "ADMIN_KEY_PATH", tmp_path / "absent.key")
     monkeypatch.setenv("METNOS_DEFAULT_MAIL_ACCOUNT", "work")
-    paths, network = sandbox.mail_extras(
+    paths, network, environment = sandbox.mail_extras(
         _mail_ex(caps=[{"name": capability}]),
         {"account": account, "via_channel": channel},
     )
@@ -441,6 +442,47 @@ def test_mail_sender_default_matches_child_without_exposing_other_accounts(
     assert network is (selected is not None)
     assert foreign not in paths
     assert vault not in paths
+    assert environment == (
+        {"METNOS_DEFAULT_MAIL_ACCOUNT": "work"}
+        if capability == "mail:send" and channel in {"email", "auto"}
+        and account is None else {}
+    )
+
+
+def test_mail_configuration_is_scoped_to_invocation_and_repairable(monkeypatch, tmp_path):
+    import runtime_settings as settings
+    import subprocess
+
+    path = tmp_path / "runtime.toml"
+    path.write_text('[mail]\ndefault_account = false\n')
+    monkeypatch.setattr(settings, "_TOML_PATH", path)
+    monkeypatch.setattr(settings, "_CACHE", {})
+    monkeypatch.setattr(settings, "_CACHE_MTIME", 0.0)
+    monkeypatch.delenv("METNOS_DEFAULT_MAIL_ACCOUNT", raising=False)
+    sender = _mail_ex(caps=[{"name": "mail:send"}])
+
+    with pytest.raises(ValueError, match="mail.default_account"):
+        sandbox.mail_extras(sender, {})
+    assert sandbox.mail_extras(_mail_ex(), {}) == ([], False, {})
+    assert sandbox.mail_extras(sender, {"via_channel": "telegram"}) == ([], False, {})
+    # An explicit account needs no default lookup; invalid optional settings
+    # cannot silently replace it or block a different channel.
+    assert sandbox.mail_extras(sender, {"account": "personal"})[2] == {}
+
+    for account in ("work", "personal"):
+        path.write_text(f'[mail]\ndefault_account = "{account}"\n')
+        os.utime(path, (1000 if account == "work" else 1001,) * 2)
+        _paths, network, environment = sandbox.mail_extras(sender, {})
+        assert network is True
+        assert environment == {"METNOS_DEFAULT_MAIL_ACCOUNT": account}
+        child = subprocess.run(
+            [sys.executable, "-I", "-B", "-c",
+             'import os; print(os.environ["METNOS_DEFAULT_MAIL_ACCOUNT"])'],
+            env={**os.environ, **environment}, capture_output=True, text=True,
+            check=True, timeout=10,
+        )
+        assert child.stdout.strip() == account
+        assert "METNOS_DEFAULT_MAIL_ACCOUNT" not in os.environ
 
 
 @pytest.mark.parametrize("account", ["all", "ALL", ["work", "personal"], ["all"]])
@@ -464,7 +506,7 @@ def test_mail_send_never_expands_multiple_credentials(tmp_path, monkeypatch, acc
         assert manifest["args"]["properties"]["account"]["type"] == "string"
         executor = _ex(manifest["name"], schema=manifest["args"],
                        caps=manifest["capabilities"], standard_state="declared")
-    assert sandbox.mail_extras(executor, {"account": account}) == ([], True)
+    assert sandbox.mail_extras(executor, {"account": account}) == ([], True, {})
 
 
 def test_mail_send_conditional_capability_does_not_grant_outside_condition(monkeypatch):
@@ -472,7 +514,7 @@ def test_mail_send_conditional_capability_does_not_grant_outside_condition(monke
     executor = _mail_ex(caps=[{
         "name": "mail:send", "when": {"arg": "via_channel", "values": ["email"]},
     }])
-    assert sandbox.mail_extras(executor, {"via_channel": "auto"}) == ([], False)
+    assert sandbox.mail_extras(executor, {"via_channel": "auto"}) == ([], False, {})
 
 
 def test_mail_all_expands_only_mail_credentials(tmp_path, monkeypatch):
@@ -497,7 +539,7 @@ def test_mail_all_expands_only_mail_credentials(tmp_path, monkeypatch):
     monkeypatch.setattr(credentials, "CRED_DIR", vault)
     monkeypatch.setattr(credentials, "ADMIN_KEY_PATH", admin_key)
 
-    paths, net = sandbox.mail_extras(
+    paths, net, environment = sandbox.mail_extras(
         _mail_ex(caps=[{"name": "mail:read", "hint": ["all"]}]),
         {"account": "all", "client": "metnos"},
     )
@@ -516,7 +558,7 @@ def test_mail_all_expands_only_mail_credentials(tmp_path, monkeypatch):
 )
 def test_mail_non_imap_branch_gets_no_local_credentials_or_network(args):
     ex = _mail_ex(caps=[{"name": "mail:read", "hint": ["all"]}])
-    assert sandbox.mail_extras(ex, args) == ([], False)
+    assert sandbox.mail_extras(ex, args) == ([], False, {})
 
 
 def test_mail_unsafe_account_never_derives_a_path(tmp_path, monkeypatch):
@@ -528,7 +570,7 @@ def test_mail_unsafe_account_never_derives_a_path(tmp_path, monkeypatch):
     monkeypatch.setattr(credentials, "ADMIN_KEY_PATH", tmp_path / "missing.key")
     ex = _mail_ex(caps=[{"name": "mail:read", "hint": ["mail"]}])
 
-    paths, net = sandbox.mail_extras(
+    paths, net, environment = sandbox.mail_extras(
         ex, {"account": "../../admin.key", "client": "metnos"},
     )
     assert paths == []

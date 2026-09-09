@@ -1,9 +1,7 @@
-"""HTTP preserves private SMTP settings without exposing the config to children."""
+"""Optional SMTP settings cannot prevent the HTTP repair surface from starting."""
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
 from types import SimpleNamespace
 
 import pytest
@@ -30,45 +28,37 @@ def startup(monkeypatch, tmp_path):
     ))
 
     async def serve(_host, _port):
-        # A real, harmless child observes exactly the existing env contract.
-        result = subprocess.run(
-            [sys.executable, "-I", "-B", "-c",
-             'import os; print(os.environ["METNOS_DEFAULT_MAIL_ACCOUNT"])'],
-            capture_output=True, text=True, check=True, timeout=10,
-        )
-        events.append(("child", result.stdout.strip()))
+        events.append("serve")
 
     monkeypatch.setattr(server, "_serve", serve)
     return server, birth, path, events
 
 
-@pytest.mark.parametrize("explicit,expected", [(None, "work"), ("secondary", "secondary")])
-def test_birth_then_private_setting_then_workers_and_child(startup, monkeypatch, explicit, expected):
+@pytest.mark.parametrize("explicit", [None, "secondary"])
+def test_http_does_not_materialize_optional_mail_settings(startup, monkeypatch, explicit):
     server, _birth, _path, events = startup
     if explicit is not None:
         monkeypatch.setenv("METNOS_DEFAULT_MAIL_ACCOUNT", explicit)
     server.run_standalone()
-    assert events == ["birth", "lock", ("child", expected), "unlock"]
-    assert os.environ["METNOS_DEFAULT_MAIL_ACCOUNT"] == expected
+    assert events == ["lock", "serve", "unlock"]
+    assert os.environ.get("METNOS_DEFAULT_MAIL_ACCOUNT") == explicit
 
 
-def test_invalid_setting_stops_before_workers_without_fallback(startup):
+def test_invalid_mail_setting_does_not_stop_http_or_select_another_account(startup):
     server, _birth, path, events = startup
     path.write_text('[mail]\ndefault_account = false\n', encoding="utf-8")
-    with pytest.raises(ValueError, match="mail.default_account"):
-        server.run_standalone()
-    assert events == ["birth"]
+    server.run_standalone()
+    assert events == ["lock", "serve", "unlock"]
     assert "METNOS_DEFAULT_MAIL_ACCOUNT" not in os.environ
 
 
-def test_birth_refusal_prevents_setting_and_workers(startup, monkeypatch):
+def test_runner_leaves_birth_check_to_http_application(startup, monkeypatch):
     server, birth, _path, events = startup
 
     def refuse():
         raise RuntimeError("birth refused")
 
     monkeypatch.setattr(birth, "require_birth_runtime_before_workers", refuse)
-    with pytest.raises(RuntimeError, match="birth refused"):
-        server.run_standalone()
-    assert events == []
+    server.run_standalone()
+    assert events == ["lock", "serve", "unlock"]
     assert "METNOS_DEFAULT_MAIL_ACCOUNT" not in os.environ

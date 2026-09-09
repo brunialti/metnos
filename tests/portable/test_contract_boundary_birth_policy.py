@@ -126,6 +126,29 @@ def test_authoring_records_are_frozen() -> None:
         role_policy.BOUNDARY_ROLE_POLICY_V1.valid_roles = ()  # type: ignore[misc]
 
 
+@pytest.mark.parametrize("scope", (
+    "install/executor_birth_systemd.py:_prepare_administrative_stage_v1",
+    "runtime/executor_birth_ownership_chain.py:inspect_transition_ownership_chain_v1",
+    "runtime/executor_birth_ownership_coordinator.py:_head_required_transition_locked_v2",
+))
+def test_successor_store_owners_have_exact_inventory_classification(scope: str) -> None:
+    inventory = json.loads(
+        (ROOT / "internal/reports/rm0007-m4-boundary-inventory.json").read_bytes()
+    )
+    entries = [
+        entry for entry in inventory["entries"]
+        if f"{entry['path']}:{entry['scope']}" == scope
+    ]
+    assert len(entries) == 1
+    assert entries[0]["role"] == "store_owner"
+    assert entries[0]["capabilities"] == ["store_write"]
+    assert entries[0]["destination"]
+    assert "closed_exception" not in entries[0]
+    assert scope in facade.BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
+    assert scope not in facade.BIRTH_CLOSED_EXCEPTION_SCOPES
+    assert inventory["birth_closed"] == birth_policy.birth_closed_inventory_value_v1()
+
+
 def _valid_inventory_v1() -> dict[str, object]:
     entries = []
     rows = [(facade.BIRTH_CLOSED_OWNER, "birth_owner", ("birth",), None)]

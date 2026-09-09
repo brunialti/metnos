@@ -7,6 +7,7 @@ from pathlib import Path
 import runpy
 import subprocess
 import sys
+import venv
 
 import pytest
 
@@ -220,7 +221,11 @@ def test_framed_file_hash_is_path_size_and_content_bound() -> None:
             environment.python_environment_file_hash_v1(path, size, chunks)
 
 
-def test_isolated_launcher_without_dash_s_loads_the_venv_site() -> None:
+def test_isolated_launcher_without_dash_s_loads_the_venv_site(tmp_path) -> None:
+    # The runner may itself use a base interpreter; own the tested environment.
+    root = tmp_path / "launch-env"
+    venv.EnvBuilder(with_pip=False).create(root)
+    executable = root / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     script = (
         "import json,site,sys;"
         "print(json.dumps([sys.flags.isolated,sys.flags.dont_write_bytecode,"
@@ -228,14 +233,15 @@ def test_isolated_launcher_without_dash_s_loads_the_venv_site() -> None:
         "any('site-packages' in item for item in sys.path)]))"
     )
     completed = subprocess.run(
-        [sys.executable, "-I", "-B", "-c", script], check=True,
-        capture_output=True, text=True,
+        [str(executable), "-I", "-B", "-c", script], check=True,
+        capture_output=True, text=True, timeout=30,
     )
     isolated, no_bytecode, no_site, loaded, prefix, base, has_site = json.loads(
         completed.stdout,
     )
     assert (isolated, no_bytecode, no_site, loaded) == (1, 1, 0, True)
-    assert prefix == sys.prefix and base == sys.base_prefix and prefix != base
+    assert Path(prefix).resolve() == root.resolve()
+    assert base == sys.base_prefix and prefix != base
     assert has_site is True
     assert environment.PYTHON_ENVIRONMENT_LAUNCH_FLAGS_V1 == ("-I", "-B")
 

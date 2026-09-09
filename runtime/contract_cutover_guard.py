@@ -87,15 +87,35 @@ def _prove_transition_stack_stopped_v1(reconciler) -> dict:
     )
 
 
+def _prove_release_stopped_v1(reconciler, catalog) -> None:
+    """Keep successor-only observations outside the historical proof schema."""
+    from install.executor_birth_systemd_quiescence import (
+        _plan_release_systemd_quiescence_v1,
+    )
+
+    plan = _plan_release_systemd_quiescence_v1(catalog)
+    for unit in plan.batches[0].units:
+        state = reconciler.systemctl.show(unit, "system")
+        try:
+            pid = int(state.get("MainPID") or 0)
+        except (TypeError, ValueError):
+            pid = -1
+        if (
+            state.get("LoadState") != "loaded" or state.get("ManagerError")
+            or state.get("ActiveState") not in _QUIESCENT_STATES or pid != 0
+        ):
+            raise ContractCutoverGuardError("cutover_blocked", unit)
+
+
 class _MaintenanceProofV1:
     """Preserve the legacy boolean guard and expose fresh canonical evidence."""
 
     __slots__ = (
         "_reconciler", "_token", "_owner_process", "_active", "_seal",
-        "_transition_evidence",
+        "_transition_evidence", "_release_catalog",
     )
 
-    def __init__(self, reconciler, token: object, seal: object) -> None:
+    def __init__(self, reconciler, token: object, seal: object, release_catalog=None) -> None:
         if seal is not _MAINTENANCE_SESSION_SEAL_V1:
             raise ContractCutoverGuardError("cutover_session_invalid")
         self._reconciler = reconciler
@@ -104,6 +124,7 @@ class _MaintenanceProofV1:
         self._active = True
         self._seal = seal
         self._transition_evidence = None
+        self._release_catalog = release_catalog
 
     def __copy__(self):
         raise TypeError("maintenance sessions cannot be copied")
@@ -118,6 +139,8 @@ class _MaintenanceProofV1:
         raise TypeError("maintenance sessions cannot be serialized")
 
     def observe(self) -> dict:
+        if self._release_catalog is not None:
+            _prove_release_stopped_v1(self._reconciler, self._release_catalog)
         if self._transition_evidence is not None:
             return _prove_transition_stack_stopped_v1(self._reconciler)
         return prove_stack_stopped(self._reconciler)
@@ -183,6 +206,7 @@ def _maintenance_evidence_under_transition_v1(session: object) -> bytes:
 @contextmanager
 def _contract_cutover_guard_core_v1(
     reconciler, *, catalog_trusted_owner: tuple[int, int] | None = None,
+    release_catalog=None,
 ):
     """Hold lifecycle exclusion for one already bound service observer."""
     if sys.platform != "linux":
@@ -207,9 +231,18 @@ def _contract_cutover_guard_core_v1(
             "cutover_lock_unavailable", str(exc),
         ) from exc
     try:
+        if release_catalog is not None:
+            from install.executor_birth_systemd_quiescence import (
+                _quiesce_release_systemd_core_v1, _SubprocessSystemdEffectsV1,
+            )
+
+            _quiesce_release_systemd_core_v1(
+                release_catalog, _SubprocessSystemdEffectsV1(),
+                lambda: reconciler.require_quiescent().get("ok") is True,
+            )
         token = object()
         proof = _MaintenanceProofV1(
-            reconciler, token, _MAINTENANCE_SESSION_SEAL_V1,
+            reconciler, token, _MAINTENANCE_SESSION_SEAL_V1, release_catalog,
         )
         with _MAINTENANCE_SESSION_GUARD_V1:
             _ACTIVE_MAINTENANCE_SESSIONS_V1[token] = proof
@@ -239,6 +272,7 @@ def contract_cutover_guard():
 def _contract_cutover_guard_for_service_user_v1(
     service_user: str,
     *, catalog_trusted_owner: tuple[int, int] | None = None,
+    release_catalog=None,
 ):
     """Bind user-scope observations to the verified deployment account."""
     if (
@@ -259,6 +293,7 @@ def _contract_cutover_guard_for_service_user_v1(
     )
     with _contract_cutover_guard_core_v1(
         reconciler, catalog_trusted_owner=catalog_trusted_owner,
+        release_catalog=release_catalog,
     ) as boundary:
         yield boundary
 

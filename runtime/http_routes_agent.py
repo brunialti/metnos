@@ -263,6 +263,9 @@ async def chat_root(request: web.Request) -> web.Response:
 
 async def health(request: web.Request) -> web.Response:
     """GET /agent/health"""
+    from http_app_state import STARTUP_FAILURE
+
+    startup_failure = app_get(request.app, STARTUP_FAILURE, "")
     started = app_get(request.app, STARTED_AT, time.time())
     try:
         from durable_workloads.service import health_snapshot as _durable_health
@@ -279,6 +282,8 @@ async def health(request: web.Request) -> web.Response:
         }
     return web.json_response(
         {"ok": True, "version": VERSION, "uptime_s": round(time.time() - started, 1),
+         "operational": not bool(startup_failure),
+         "maintenance_only": bool(startup_failure),
          "durable_workloads": durable_health, **_metnos_version_info()}
     )
 

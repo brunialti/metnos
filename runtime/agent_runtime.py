@@ -3469,7 +3469,16 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # Local IMAP authority is capability-derived and account-scoped.  The
     # resolver returns only read-only mail credential files; it never exposes
     # the shared web-credential vault directory to an executor.
-    _extra_ro, _mail_net = _sandbox.mail_extras(executor, args)
+    try:
+        _extra_ro, _mail_net, _mail_environment = _sandbox.mail_extras(executor, args)
+    except ValueError:
+        log.warning("mail configuration unavailable for this invocation")
+        return {
+            "ok": False,
+            "error": msg("UI_VIRT_EDIT_ERROR_INVALID"),
+            "error_class": "configuration_invalid",
+            "error_code": "mail_configuration_invalid",
+        }
     _extra_ro.extend(_dependency_roots)
     # Dynamic filesystem inputs remain exact and capability-derived: only
     # signed ``fs:read`` hints such as ``arg:reference_images`` can add them.
@@ -3507,6 +3516,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # ModuleNotFoundError. Vedi caso live 29/4/2026 sera (move_messages errore in
     # esecuzione anche dopo birth tests verdi).
     env = os.environ.copy()
+    env.update(_mail_environment)
     env.pop("METNOS_ADMITTED_EXECUTORS_V1", None)
     if _admitted_dependencies:
         env["METNOS_ADMITTED_EXECUTORS_V1"] = _admitted_dependencies

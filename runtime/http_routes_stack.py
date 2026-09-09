@@ -15,7 +15,7 @@ import urllib.request
 
 from aiohttp import web
 
-from http_app_state import CATALOG_PROVIDER, app_get
+from http_app_state import CATALOG_PROVIDER, STARTUP_FAILURE, app_get
 from playwright_sidecar import contract as _contract
 from turn_events import TurnEventLog
 
@@ -104,6 +104,7 @@ async def stack_health(request: web.Request) -> web.Response:
     if request.get("role", "anonymous") != "admin":
         return _error(403, "forbidden", "admin role required")
 
+    startup_failure = app_get(request.app, STARTUP_FAILURE, "")
     local_contract = _contract.source_status()
     sidecar = await asyncio.to_thread(_probe_sidecar)
     turns = TurnEventLog.get().stats()
@@ -121,10 +122,15 @@ async def stack_health(request: web.Request) -> web.Response:
     )
     return web.json_response({
         "ok": True,
-        "ready": bool(sidecar.get("ok") and contract_aligned and catalog_names),
+        "ready": bool(
+            not startup_failure and sidecar.get("ok")
+            and contract_aligned and catalog_names
+        ),
         "quiescent": bool(turns.get("active", 0) == 0 and broker_quiescent),
         "http": {
             "ok": True,
+            "operational": not bool(startup_failure),
+            "startup_failure": startup_failure,
             "active_turns": int(turns.get("active", 0)),
             "contract_loaded": local_contract.get("contract_loaded", ""),
             "contract_current": local_contract.get("contract_current", ""),

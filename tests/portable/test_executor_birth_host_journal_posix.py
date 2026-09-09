@@ -14,6 +14,9 @@ import executor_birth_host_provisioning_journal as journal
 from executor_birth_posix_metadata import snapshot_stat_v1
 
 
+LINUX_ONLY = pytest.mark.skipif(os.name != "posix", reason="real POSIX journal storage")
+
+
 def _open_directory(path) -> int:
     return os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
 
@@ -26,6 +29,7 @@ def _store(path):
     return store, descriptor
 
 
+@LINUX_ONLY
 def test_pending_bytes_conflict_is_preserved_fail_closed(tmp_path) -> None:
     store, descriptor = _store(tmp_path)
     pending = tmp_path / ".record-000.pending"
@@ -46,6 +50,7 @@ def test_pending_bytes_conflict_is_preserved_fail_closed(tmp_path) -> None:
         os.close(descriptor)
 
 
+@LINUX_ONLY
 def test_partial_0600_stage_after_kill_is_rewritten_and_published(
     tmp_path, monkeypatch,
 ) -> None:
@@ -76,6 +81,7 @@ def test_partial_0600_stage_after_kill_is_rewritten_and_published(
         os.close(descriptor)
 
 
+@LINUX_ONLY
 def test_crash_after_link_before_unlink_resumes_without_rewrite(tmp_path) -> None:
     store, descriptor = _store(tmp_path)
     encoded = journal.encode_host_provisioning_record_v1(
@@ -114,6 +120,7 @@ def test_lock_descriptor_is_closed_when_metadata_read_fails(monkeypatch) -> None
     assert closed == [47]
 
 
+@LINUX_ONLY
 def test_lock_binding_is_rechecked_after_publication_name_changes(tmp_path) -> None:
     root = _open_directory(tmp_path)
     descriptor = journal_posix.open_journal_lock_v1(
@@ -135,6 +142,7 @@ def test_lock_binding_is_rechecked_after_publication_name_changes(tmp_path) -> N
         os.close(root)
 
 
+@LINUX_ONLY
 def test_append_rejects_invalid_existing_prefix_and_sequence_gap(tmp_path) -> None:
     store, descriptor = _store(tmp_path)
     planned = journal.plan_host_provisioning_v1()
@@ -163,6 +171,7 @@ def test_append_rejects_invalid_existing_prefix_and_sequence_gap(tmp_path) -> No
         os.close(descriptor)
 
 
+@LINUX_ONLY
 def test_journal_inventory_stops_at_first_unadmitted_name(
     tmp_path, monkeypatch,
 ) -> None:
@@ -209,6 +218,7 @@ def test_stable_journal_snapshot_rejects_every_metadata_change(field) -> None:
     assert snapshot_stat_v1(first) != snapshot_stat_v1(second)
 
 
+@LINUX_ONLY
 def test_journal_read_rejects_a_stable_snapshot_change(tmp_path, monkeypatch) -> None:
     target = tmp_path / "record-000.json"
     target.write_bytes(b"record")
@@ -246,6 +256,7 @@ def test_journal_read_rejects_a_stable_snapshot_change(tmp_path, monkeypatch) ->
         os.close(root)
 
 
+@LINUX_ONLY
 def test_root_metadata_change_during_acl_check_is_rejected(tmp_path, monkeypatch) -> None:
     descriptor = _open_directory(tmp_path)
     store = append_journal.BoundPosixAppendJournalV1(
@@ -268,6 +279,7 @@ def test_root_metadata_change_during_acl_check_is_rejected(tmp_path, monkeypatch
         os.close(descriptor)
 
 
+@LINUX_ONLY
 def test_lock_metadata_change_during_acl_check_is_rejected(tmp_path, monkeypatch) -> None:
     root = _open_directory(tmp_path)
     lock = tmp_path / "journal.lock"
@@ -317,6 +329,7 @@ def test_append_close_failure_is_translated(monkeypatch) -> None:
     assert isinstance(denied.value.__cause__, posix_directory.PosixDirectoryError)
 
 
+@LINUX_ONLY
 def test_stage_rebinds_again_after_final_acl_observation(tmp_path, monkeypatch) -> None:
     store, descriptor = _store(tmp_path)
     encoded = journal.encode_host_provisioning_record_v1(

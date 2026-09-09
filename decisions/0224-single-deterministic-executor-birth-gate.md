@@ -14,6 +14,9 @@ complements:
 
 ## Context
 
+The service-startup coupling is modified by ADR 0225. Executor admission and
+publication authority described here remain required.
+
 RM-0007 created an authenticated, immutable and atomic publisher, but several
 trusted producers could still reach that publisher directly. Human-authored
 executors, Synt candidates, imported skills, specializations and maintenance

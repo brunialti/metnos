@@ -486,13 +486,14 @@ def deploy_source_v1(
     provision_root_ownership_authorities_v1()
     source_id = _receive_source_v1(source, selected_user)
     distribution = build_and_install_received_source_v1(source_id)
-    from install.executor_birth_systemd_quiescence import (
-        quiesce_legacy_systemd_v1,
-    )
-    legacy_snapshot = _account_identity.resolve_posix_account_snapshot_v1(
-        selected_legacy_user,
-    )
-    quiesce_legacy_systemd_v1(legacy_snapshot)
+    if distribution.release_sequence == 1:
+        from install.executor_birth_systemd_quiescence import (
+            quiesce_legacy_systemd_v1,
+        )
+        legacy_snapshot = _account_identity.resolve_posix_account_snapshot_v1(
+            selected_legacy_user,
+        )
+        quiesce_legacy_systemd_v1(legacy_snapshot)
     return _invoke_closed_release_v1(
         distribution=distribution, source_id=source_id,
         service_user=selected_user,

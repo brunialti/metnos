@@ -6,6 +6,10 @@
 > Aggiornare QUI (non in CLAUDE.md) quando si aggiunge/rimuove un meccanismo.
 
 **Naming / vocab / grammatica**
+- **Avvio e manutenzione separati dalla certificazione** (ADR 0225):
+  `executor_birth_admin_preflight._attest_service_startup_v1`,
+  `metnos_http_server.maintenance_middleware`, `sandbox.mail_extras`;
+  test preflight/launch, HTTP maintenance e selezione SMTP per invocazione.
 - **Ammissione linguistica versionata e atomica** (ADR 0219-0220, RM-0005):
   `i18n_registry` censisce risorse e lease; `i18n_materializer` enumera prompt,
   contratti, messaggi/UI, lessico, documenti, device e Tutor;

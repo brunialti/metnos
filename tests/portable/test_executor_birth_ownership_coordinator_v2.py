@@ -743,7 +743,7 @@ def test_transition_verified_chain_uses_required_context_authority(
         state=OwnershipCoordinatorStateV1.HEAD_REQUIRED,
         head_id=D("1"),
     )
-    chain = SimpleNamespace(required_head=SimpleNamespace(head_id=D("1")))
+    chain = SimpleNamespace(required_head=SimpleNamespace(head_id=D("1"), release_sequence=1))
     verifier, expected = object(), object()
     sealed = SimpleNamespace(
         author=SimpleNamespace(verifier_keys={"author-v1": verifier}),
@@ -2824,6 +2824,39 @@ def test_completed_transition_selection_returns_only_the_exact_final_release():
         ),
         distribution,
     ) is None
+
+    assert coordinator_module._head_required_transition_from_graph_v2(
+        graph, distribution,
+    ) is None
+    for end_sequence in range(6):
+        prefix = records[:end_sequence + 1]
+        pending = coordinator_module._ResolvedOwnershipTransactionV2(
+            claim, prefix, tuple(record.encode() for record in prefix),
+        )
+        candidate_graph = _ObservedOwnershipCoordinatorGraphV2(
+            (claim,), (), (pending,), (), (), None,
+        )
+        assert coordinator_module._head_required_transition_from_graph_v2(
+            candidate_graph, distribution,
+        ) == (prefix[-1] if end_sequence == 5 else None)
+        if end_sequence != 5:
+            continue
+        for field in (
+            "distribution_payload_hash", "distribution_signature_hash",
+            "boundary_inventory_hash", "boundary_guard_version",
+        ):
+            changed = replace(prefix[-1], **{field: D("f")})
+            changed_prefix = (*prefix[:-1], changed)
+            swapped = coordinator_module._ResolvedOwnershipTransactionV2(
+                claim, changed_prefix,
+                tuple(record.encode() for record in changed_prefix),
+            )
+            with pytest.raises(OwnershipCoordinatorError):
+                coordinator_module._head_required_transition_from_graph_v2(
+                    _ObservedOwnershipCoordinatorGraphV2(
+                        (claim,), (), (swapped,), (), (), None,
+                    ), distribution,
+                )
 
 
 def legacy_records(

@@ -23,6 +23,51 @@ def D(character: str) -> str:
     return "sha256:" + character * 64
 
 
+@pytest.mark.parametrize("sequence", [1, 2, 3])
+def test_deploy_disables_legacy_units_only_for_the_initial_release(
+    monkeypatch, tmp_path, sequence,
+):
+    from install import birth_ownership_authority_provisioner as authorities
+    from install import executor_birth_distribution_release as release
+    from install import executor_birth_source_receiver as receiver
+    from install import executor_birth_systemd_quiescence as quiescence
+
+    events = []
+    candidate = SimpleNamespace(release_sequence=sequence)
+    account = object()
+    monkeypatch.setattr(transition, "_require_root_linux_v1", lambda: None)
+    monkeypatch.setattr(transition, "_validated_legacy_inputs_v1", lambda *_: (
+        "legacy", {}, tmp_path,
+    ))
+    monkeypatch.setattr(transition, "_provisioned_service_environment_v1", lambda *_: (
+        "metnos", {},
+    ))
+    # deploy updates this one environment variable, restored after the proof.
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", tmp_path.as_posix())
+    monkeypatch.setattr(transition, "_prepare_service_authorities_v1", lambda *_: None)
+    monkeypatch.setattr(authorities, "provision_root_ownership_authorities_v1", lambda: None)
+    monkeypatch.setattr(receiver, "_receive_source_v1", lambda *_: D("1"))
+    monkeypatch.setattr(release, "build_and_install_received_source_v1", lambda *_: candidate)
+    monkeypatch.setattr(
+        transition._account_identity, "resolve_posix_account_snapshot_v1",
+        lambda *_: account if sequence == 1 else pytest.fail("legacy census on update"),
+    )
+    monkeypatch.setattr(quiescence, "quiesce_legacy_systemd_v1", lambda value: (
+        events.append(("legacy", value)),
+    ))
+    monkeypatch.setattr(transition, "_invoke_closed_release_v1", lambda **kwargs: (
+        events.append(("closed", kwargs["distribution"])) or {"state": "PREFLIGHT_VERIFIED"}
+    ))
+
+    assert transition.deploy_source_v1("source", "metnos", "legacy", tmp_path) == {
+        "state": "PREFLIGHT_VERIFIED",
+    }
+    assert events == (
+        [("legacy", account), ("closed", candidate)] if sequence == 1
+        else [("closed", candidate)]
+    )
+
+
 def test_handoff_frame_is_exact_bounded_and_round_trips() -> None:
     encoded = b'{"release_sequence":1}'
     signature = b"s" * 64

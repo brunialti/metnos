@@ -493,6 +493,147 @@ def receipt_digest_v1(entries: Sequence[NeutralizedEntryV1]) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
+def _observe_regular_v1(
+    path: Path, *, maximum: int = 128 * 1024 * 1024,
+) -> _FileEvidenceV1:
+    """Reread one unchanged regular name without creating recovery artifacts."""
+    before = path.lstat()
+    if (
+        not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+        or before.st_size > maximum
+    ):
+        raise _invalid("neutralizer_evidence_invalid", path.name)
+    evidence = _regular_file_evidence_v1(path)
+    after = path.lstat()
+    fields = (
+        "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+        "st_size", "st_mtime_ns", "st_ctime_ns",
+    )
+    if any(getattr(before, key) != getattr(after, key) for key in fields):
+        raise _invalid("neutralizer_evidence_changed", path.name)
+    if (evidence.device, evidence.inode, evidence.size) != (
+        before.st_dev, before.st_ino, before.st_size,
+    ):
+        raise _invalid("neutralizer_evidence_changed", path.name)
+    return evidence
+
+
+def _observe_mask_v1(path: Path, legacy_id: str) -> None:
+    before = _entry_evidence_v1(path)
+    if (
+        not path.is_symlink() or path.lstat().st_nlink != 1
+        or (before.uid, before.gid) != (os.geteuid(), os.getegid())
+        or os.readlink(path) != MASK_TARGET_V1
+    ):
+        raise _invalid("neutralizer_mask_unconfirmed", legacy_id)
+    _observe_preserved_v1(path, legacy_id, required=False)
+    if _entry_evidence_v1(path) != before:
+        raise _invalid("neutralizer_evidence_changed", path.name)
+
+
+def _observe_revoked_v1(path: Path, expected: object) -> None:
+    if os.path.lexists(path):
+        raise _invalid("neutralizer_entrypoint_occupied", path.name)
+    observed = _observe_regular_v1(path.with_name(path.name + RETIRED_EXTENSION_V1))
+    if (
+        (observed.uid, observed.gid) != (os.geteuid(), os.getegid())
+        or observed.mode & 0o022
+        or expected != (observed.size, observed.content_hash)
+    ):
+        raise _invalid("neutralizer_entrypoint_invalid", path.name)
+
+
+def _observe_replaced_v1(path: Path, legacy_id: str, choices: tuple) -> None:
+    _observe_preserved_v1(path, legacy_id, required=True)
+    observed = _observe_regular_v1(path)
+    if (
+        any(type(value) is not bytes or not value for value in choices)
+        or observed.mode != 0o644
+        or (observed.uid, observed.gid) != (os.geteuid(), os.getegid())
+        or (observed.size, observed.content_hash) not in {
+            (len(value), "sha256:" + hashlib.sha256(value).hexdigest())
+            for value in choices
+        }
+    ):
+        raise _invalid("neutralizer_preservation_conflict", path.name)
+
+
+def _observe_preserved_v1(path: Path, legacy_id: str, *, required: bool) -> None:
+    preserved = path.with_name(path.name + PRESERVED_EXTENSION_V1)
+    record = preserved.with_name(preserved.name + ".receipt.json")
+    present = os.path.lexists(preserved), os.path.lexists(record)
+    if present == (False, False) and not required:
+        return
+    if present != (True, True):
+        raise _invalid("neutralizer_preservation_missing", path.name)
+    recorded = _observe_regular_v1(record, maximum=16384)
+    if (
+        recorded.mode != 0o600 or recorded.size > 16384
+        or (recorded.uid, recorded.gid) != (os.geteuid(), os.getegid())
+    ):
+        raise _invalid("neutralizer_preservation_record_invalid", path.name)
+    descriptor = os.open(record, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        encoded = os.read(descriptor, 16385)
+    finally:
+        os.close(descriptor)
+    if (
+        len(encoded) != recorded.size
+        or "sha256:" + hashlib.sha256(encoded).hexdigest() != recorded.content_hash
+        or _observe_regular_v1(record) != recorded
+    ):
+        raise _invalid("neutralizer_preservation_record_invalid", path.name)
+    expected = _evidence_from_record_v1(
+        encoded, legacy_id=legacy_id, path=path, preserved=preserved,
+    )
+    if _observe_regular_v1(preserved) != expected:
+        raise _invalid("neutralizer_preservation_conflict", path.name)
+
+
+def _observe_retired_core_v1(
+    root: Path, steps: Sequence[object], *, previous_steps: Sequence[object],
+    previous_replacement_fragments: Mapping[tuple[str, str], bytes],
+    replacement_fragments: Mapping[tuple[str, str], bytes],
+    expected_retired_files: Mapping[str, tuple[int, str]],
+) -> str:
+    """Verify an existing retirement for a successor, with no filesystem writes.
+
+    The wrapper binds both plans and replacement maps to authenticated releases,
+    and ``expected_retired_files`` to the initial predecessor's signed size/hash
+    census.  An overlap accepts exactly N or N+1, never a missing current unit.
+    Masks created from absent names legitimately have no preservation pair; this
+    observer cannot reconstruct a historical pair omitted from durable evidence.
+    """
+    from executor_birth_legacy_retirement import plan_digest_v1
+
+    _require_supported_platform_v1()
+    if (
+        not isinstance(root, Path) or not root.is_absolute()
+        or root.is_symlink() or not root.is_dir()
+        or not steps or tuple(steps) != tuple(previous_steps)
+        or any(not isinstance(value, Mapping) for value in (
+            previous_replacement_fragments, replacement_fragments,
+            expected_retired_files,
+        ))
+    ):
+        raise _invalid("neutralizer_successor_plan_invalid")
+    digest = plan_digest_v1(steps)
+    for step in steps:
+        path = _require_contained_v1(root, step.locator)
+        if step.action in _MASK_ACTIONS_V1:
+            _observe_mask_v1(path, step.legacy_id)
+        elif step.action in _REVOKE_ACTIONS_V1:
+            _observe_revoked_v1(path, expected_retired_files.get(step.locator))
+        elif step.action == _PRESERVE_ACTION_V1:
+            choices = tuple(mapping.get((step.scope, step.locator)) for mapping in (
+                previous_replacement_fragments, replacement_fragments,
+            ))
+            _observe_replaced_v1(path, step.legacy_id, choices)
+        else:
+            raise _invalid("neutralizer_action_unknown", str(step.action))
+    return digest
+
+
 @dataclass(frozen=True, slots=True)
 class _TestOnlyNeutralizationCapabilityV1:
     """Nominally distinct capability; the productive graph never mints it."""

@@ -201,3 +201,58 @@ non dalla dismissione «sicura».
   `credential_origins` §4. Fino ad allora resta `proposed` (@3 #12).
 - Analisi implementativa (destinata a Opus + prossimo giro adversarial):
   `internal/design/analysis_intelligent_sites_robot_2026-07-14.md` (v4 autonoma).
+
+## Addendum 9 settembre 2026 — cookie come precondizione semantica del login
+
+Il mandato di login comprende il rifiuto dei cookie facoltativi prima della
+ricerca dell'accesso e prima di ogni modulo credenziale, anche su URL diretto
+e nel passaggio nome utente → password. `cookie_privacy.py` concentra questa
+procedura e la condivide con la preparazione delle azioni del browser, senza
+consumare i passi riservati alla navigazione di login.
+
+La struttura DOM individua soltanto pannelli plausibili: dialoghi o livelli
+fissi/sovrapposti, con controlli visibili in primo piano. I normali moduli di
+accesso sono esclusi. Nessuna lista di parole, in una o più lingue, determina
+il significato dei cookie. Il modello locale interpreta testo Unicode e
+controlli osservati tramite `sites.cookie_resolution`, registrato nel router,
+con prompt IT/EN. Restituisce tipo `cookie|other|unknown`, ID di pannello e
+controllo, effetto `reject_optional|none`; non possiede selettori, strumenti
+o autorità aggiuntiva.
+
+Il browser accetta soltanto un ID osservato e ricontrolla identità dei nodi,
+testo, attributi, gestore diretto del clic, visibilità e controlli HTML che
+inviano moduli o navigano. Una X priva di nome semantico è esclusa. Un esito
+`other` vale soltanto per un'osservazione ancora attuale. Il pannello deve
+scomparire dopo il clic; una pagina cambiata o un pannello invariato non
+diventano successo. I collegamenti e gli invii di moduli non ricevono clic;
+gli effetti arbitrari degli script del sito restano soggetti al normale
+confine di rete del broker e alla verifica successiva della pagina.
+
+Limiti per flusso: quattro decisioni locali, due clic, sei secondi per
+decisione come valore predefinito del limite configurabile del risolutore;
+le osservazioni uguali riutilizzano la decisione. In assenza di pannelli non
+si invoca il modello. I prompt contengono soltanto porzioni limitate del
+pannello e nomi dei controlli: esclusi valori editabili, moduli, aree oscurate,
+URL, cookie di sessione e resto della pagina. La funzione di redazione resta
+in `credential_injection` ed elimina anche eventuali valori credenziali
+riportati nel testo del pannello; il broker ne conserva solo il riferimento
+per la durata del login.
+
+`CookieOutcome` distingue superficie libera, rifiuto completato e ostacolo
+irrisolto. L'ultimo caso ferma la digitazione con errore esplicito e motivo
+osservativo; indisponibilità del modello, timeout, ID non valido, DOM mutato
+e limite esaurito restano distinguibili. Non aggiunge una procedura CAPTCHA
+né esplora pannelli di preferenze. Il DOM considerato è quello principale:
+iframe e alberi shadow non sono risolti da questo aiutante.
+
+Verifica del candidato, senza distribuzione: Chromium reale con pagine
+sintetiche intercettate prova login diretto e a due pagine in IT/EN/cinese/
+arabo, assenza di valori credenziali, budget, cache, mancato rifiuto, controlli
+non ammessi e sostituzione del DOM. La suite di sicurezza mantiene invariati
+i controlli non legati ai cookie; i suoi doppi di pagina simulano esplicitamente
+la nuova dipendenza, mentre la geometria è verificata nel browser reale.
+Sei prove seriali sul modello locale reale, precedute ciascuna da controllo
+di inattività di HTTP/browser e slot LLM, hanno riconosciuto cinque lingue
+(IT/EN/cinese/arabo/hindi) e rifiutato un pannello senza scelta sicura con
+istruzioni ostili. Durate osservate 0,624–1,263 secondi; sono prove sintetiche,
+non una garanzia per tutti i siti né un accesso a un account reale.

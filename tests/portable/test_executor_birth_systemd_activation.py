@@ -532,6 +532,16 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
     )
 
 
+def _service_target_executable(fixture: _ActivationFixture) -> str:
+    entries = catalog.decode_service_catalog_v1(fixture.catalog_bytes).entries
+    selected = tuple(item for item in entries
+                     if item.entry_id == fixture.service_entry_id)
+    assert len(selected) == 1
+    executable = selected[0].target_executable
+    assert isinstance(executable, str)
+    return executable
+
+
 def _materialize_release(fixture: _ActivationFixture) -> None:
     RELEASE_ROOT.mkdir(mode=0o755, parents=True)
     for relative, content in fixture.contents.items():
@@ -1155,12 +1165,27 @@ def _demote(account: _ServiceAccountV1):
     return demote
 
 
+def _prepare_activation_catalog(tmp_path, account, monkeypatch) -> Path:
+    """Prepare a real service-owned catalog lock, outside root's own state."""
+    import contract_store
+
+    state = tmp_path / "service-state"
+    state.mkdir(mode=0o700)
+    os.chown(state, account.uid, account.gid)
+    lock = contract_store._catalog_lock_path(state / contract_store.STORE_RELATIVE)
+    lock.touch(mode=0o600, exist_ok=False)
+    os.chown(lock, account.uid, account.gid)
+    monkeypatch.setattr(contract_store._C, "PATH_USER_STATE", state)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
+    return lock
+
+
 def test_signed_systemd_cell_denies_then_admits_real_timer(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import fcntl
 
-    del tmp_path  # fixed roots are intentional and the VM is disposable.
+    # Signed installation roots are fixed; mutable test state stays isolated.
     assert os.geteuid() == 0
     assert Path("/run/systemd/system").is_dir()
     assert shutil.which("systemctl") == "/usr/bin/systemctl"
@@ -1170,14 +1195,22 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
     namespace = os.urandom(8).hex()
     repository = Path(__file__).resolve().parents[2]
     fixture = _activation_fixture(repository, namespace)
+    _prepare_activation_catalog(tmp_path, fixture.account, monkeypatch)
     unit_paths = tuple(UNIT_ROOT / name for name, _ in fixture.unit_fragments)
     assert all(not path.exists() for path in unit_paths)
     assert not fixture.marker_root.exists()
     assert not STARTUP_GATE.exists()
     assert not ATTESTATION_ROOT.exists()
 
+    # The maintenance proof inspects the real user manager as well as PID 1.
+    # A nologin account on a fresh VM has no manager until explicitly started.
+    user_manager = f"user@{fixture.account.uid}.service"
+    assert _systemctl(
+        "show", user_manager, "--property=ActiveState", "--value",
+    ).stdout.strip() == "inactive"
     installed = False
     try:
+        _systemctl("start", user_manager)
         _materialize_release(fixture)
         _install_administrative_and_units(fixture)
         installed = True
@@ -1364,6 +1397,9 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
             assert os.readlink(
                 f"/proc/{payload['pid']}/ns/mnt",
             ) == payload["mount_namespace"]
+            assert os.path.samefile(
+                f"/proc/{payload['pid']}/exe", _service_target_executable(fixture),
+            )
         finally:
             fcntl.flock(gate_descriptor, fcntl.LOCK_UN)
             os.close(gate_descriptor)
@@ -1371,6 +1407,10 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         expected_groups = list(fixture.account.supplementary_gids)
         expected_environment = {
             "HOME": fixture.account.home,
+            # A real Python process performs PEP 538 locale initialization.
+            # The previous in-process runpy call did not. No ambient values
+            # are accepted: the complete environment is still compared.
+            "LC_CTYPE": "C.UTF-8",
             "LOGNAME": fixture.account.name,
             "SHELL": fixture.account.shell,
             "USER": fixture.account.name,
@@ -1382,7 +1422,8 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         assert payload["cwd"] == RELEASE_ROOT.as_posix()
         assert payload["environment"] == expected_environment
         assert payload["argv"] == [
-            "runtime.executor_birth_activation_probe",
+            # `python -m` sets argv[0] to the resolved module filename.
+            (RELEASE_ROOT / "runtime/executor_birth_activation_probe.py").as_posix(),
             fixture.marker_path.as_posix(),
         ]
         status = payload["status"]
@@ -1534,3 +1575,4 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         if fixture.marker_root.exists():
             assert tuple(fixture.marker_root.iterdir()) == ()
             fixture.marker_root.rmdir()
+        _systemctl("stop", user_manager, check=False)

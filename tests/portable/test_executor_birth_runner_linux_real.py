@@ -243,7 +243,29 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         pytest.skip("delegated Linux certification step only")
     monkeypatch.setenv("METNOS_REQUIRE_REAL_G6C_SYSTEMD", "1")
     module = _group6c_activation_test_module()
-    module.test_signed_systemd_cell_denies_then_admits_real_timer(tmp_path)
+    module.test_signed_systemd_cell_denies_then_admits_real_timer(tmp_path, monkeypatch)
+
+
+def test_activation_catalog_uses_the_real_lock_in_isolated_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    import contract_store
+
+    account = SimpleNamespace(uid=os.geteuid(), gid=os.getegid())
+    original = contract_store._C.PATH_USER_STATE
+    with monkeypatch.context() as isolated:
+        lock = _group6c_activation_test_module()._prepare_activation_catalog(
+            tmp_path, account, isolated,
+        )
+        assert lock.parent == tmp_path / "service-state"
+        assert (lock.stat().st_uid, lock.stat().st_gid) == (account.uid, account.gid)
+        assert lock.stat().st_mode & 0o777 == 0o600
+        with contract_store.catalog_admission_lock(
+            trusted_owner=(account.uid, account.gid),
+        ):
+            assert lock.read_bytes() == b"\0"
+    assert contract_store._C.PATH_USER_STATE == original
 
 
 def test_real_linux_timeout_terminates_child_and_grandchild_cgroup() -> None:

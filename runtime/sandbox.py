@@ -1042,7 +1042,7 @@ def _safe_mail_accounts(raw) -> tuple[list[str], bool]:
     return out, False
 
 
-def mail_extras(executor, args) -> tuple[list[Path], bool]:
+def mail_extras(executor, args) -> tuple[list[Path], bool, dict[str, str]]:
     """Read-only credential binds and network authority for local mail.
 
     The grant exists only when the signed manifest declares an effective
@@ -1055,6 +1055,10 @@ def mail_extras(executor, args) -> tuple[list[Path], bool]:
     this resolver binds individual ``smtp_<account>.json.age`` files, never
     the whole vault. ``account='all'`` expands only the ``smtp_*`` subset and
     configured mail env files.
+
+    A local sender's default is read once per invocation. The returned child
+    environment carries that same selection, without exporting private config
+    or changing the server's environment across concurrent invocations.
     """
     from capabilities import effective_capabilities
 
@@ -1065,7 +1069,7 @@ def mail_extras(executor, args) -> tuple[list[Path], bool]:
     )
     mail_modes = {cap.get("name") for cap in effective}
     if not mail_modes.intersection({"mail:read", "mail:write", "mail:send"}):
-        return [], False
+        return [], False, {}
 
     invocation = args if isinstance(args, dict) else {}
     channel = str(invocation.get("via_channel") or "email").casefold()
@@ -1073,26 +1077,28 @@ def mail_extras(executor, args) -> tuple[list[Path], bool]:
     sending = "mail:send" in mail_modes
     channels = {"email", "mail", "auto"} if sending else {"email", "mail"}
     if channel not in channels or client != "metnos":
-        return [], False
+        return [], False, {}
 
     account = invocation.get("account")
+    environment: dict[str, str] = {}
     if sending and account is None:
-        # The HTTP startup resolves this private preference once; the child
-        # inherits it unchanged. Reading mail keeps its declared default.
-        account = os.environ.get("METNOS_DEFAULT_MAIL_ACCOUNT") or "metnos_system"
+        from runtime_settings import mail_default_account
+
+        account = mail_default_account()
+        environment["METNOS_DEFAULT_MAIL_ACCOUNT"] = account
     accounts, all_accounts = _safe_mail_accounts(account)
     if sending and not mail_modes.intersection({"mail:read", "mail:write"}):
         # SMTP sending selects one account; the reader's 'all' expansion
         # must not expose other credentials before an invalid send fails.
         if all_accounts or isinstance(account, list):
-            return [], True
+            return [], True, environment
     try:
         import config as _config
         import credentials as _credentials
     except ImportError:
         # Keep the network decision capability-derived. The executor will
         # report missing credentials honestly if canonical paths cannot resolve.
-        return [], True
+        return [], True, environment
 
     config_root = Path(_config.PATH_USER_CONFIG)
     vault_root = Path(_credentials.CRED_DIR)
@@ -1132,7 +1138,7 @@ def mail_extras(executor, args) -> tuple[list[Path], bool]:
             continue
         seen.add(key)
         paths.append(path)
-    return paths, True
+    return paths, True, environment
 
 
 def dialog_extras(executor, *, actor: str | None,

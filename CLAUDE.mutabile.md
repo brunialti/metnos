@@ -6,6 +6,22 @@
 
 ## S. Stato corrente (23/8/2026)
 
+- **Cookie come precondizione semantica** (9/9, ADR 0191 addendum): il candidato
+  usa `sites.cookie_resolution` sul modello locale, senza liste linguistiche.
+  Osservazione Unicode limitata, due clic/quattro decisioni per flusso e
+  ricontrollo dei nodi prima dell'effetto; nessuna chiamata LLM senza pannelli.
+  Credenziali e autorità restano nel login. Test sintetici Chromium/modello
+  superati; non ancora distribuito. Iframe, shadow DOM e CAPTCHA restano fuori.
+- **Avvio distinto dalla certificazione** (9/9, ADR 0225): il verificatore
+  amministrativo installato autentica il servizio esistente senza confrontare
+  impronte storiche degli strumenti del sistema operativo o ricertificare
+  unità estranee. Conserva firme, identità, file immutabili e protezioni del
+  servizio. L'interprete gestito viene realmente eseguito dopo la rinuncia ai
+  privilegi. HTTP, Telegram, browser e LRE hanno superato la ripartenza e il
+  controllo completo; non è una prova di reboot né chiusura RM-0008.
+  Modalità HTTP di manutenzione, configurazione SMTP per invocazione e comandi
+  sullo stesso catalogo selezionato sono testati ma non ancora distribuiti.
+  Checkpoint privato: `/opt/metnos/internal/reports/rm0008-maintenance-analysis-20260909.md`.
 - **RM-0008: transizione F4 verificata in esercizio** (8/9, ADR 0224):
   release chiusa, catena e sette record durevoli riletti; HTTP, browser e LRE
   attivi, turni reali dell'ora e Tutor riusciti. LRE resta abilitato.
@@ -20,7 +36,9 @@
   `internal/tools/request_analysis_lab/README.md`; contengono il checkpoint
   corrente, i blocker e le varianti da non rieseguire. È lavoro shadow, non
   ancora runtime.
-- **Host**: `.33` (Strix Halo 96GB unified). Servizi: `metnos-http.service` (SYSTEM, porta 8770) + telegram-daemon (unit USER) + llama-server `:8080`.
+- **Host**: `.33` (Strix Halo 96GB unified). Dopo la transizione RM-0008,
+  HTTP (porta 8770), Telegram e worker sono unità SYSTEM del catalogo selezionato;
+  llama-server risponde su `:8080`. Non usare i precedenti comandi USER.
 - **LLM**: `fast` (`micro|procedural|fidelity`), `middle`, `wise`, `creative` e `frontier` sono contratti logici risolti centralmente da `runtime/llm_router.py`; ogni consumer sceglie un workload registrato in `runtime/llm_workloads.py`. Provider, modello, endpoint, temperatura, thinking e reasoning budget appartengono al router; al consumer restano tetto di output, deadline, grammatica e schema dei tool. I tre livelli fast, `middle` e `wise` condividono oggi Qwen 3.6 35B-A3B Q4_K_M/MTP `:8080` e la stessa policy deterministica, ma i livelli fast hanno default e override indipendenti in `[fast.level.<nome>]`; `creative` eredita il binding di `wise` finché non materializzato e usa `temperature=0.35`, mentre `middle` e `wise` restano a `0`. Frontier = Anthropic Opus opt-in. SoT: `runtime/llm_router.py::{DEFAULT_TIERS,DEFAULT_FAST_LEVELS}`, registro workload e ADR 0207; MAI nomi modello o override di policy nei consumer.
 - **Slot LLM condivisi** (14/8, ADR 0120): Giorgio2 usa sempre lo slot 0
   (voce, observer e servizi); Metnos usa lo slot configurato da

@@ -6,9 +6,13 @@ import errno
 import os
 from pathlib import Path, PurePosixPath
 import stat
+import sys
 from types import SimpleNamespace
 
 import pytest
+
+if sys.platform != "linux":
+    pytest.skip("Linux host adapter requires POSIX descriptors and ACLs", allow_module_level=True)
 
 from install import executor_birth_host_journal_posix as journal_posix
 from install import executor_birth_host_posix as posix

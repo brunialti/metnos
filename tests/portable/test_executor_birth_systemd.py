@@ -4,11 +4,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import stat
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -89,18 +90,22 @@ class _Fixture:
     record: object
     environment: object
     account: _ServiceAccountV1
+    registry: object
 
 
 def _fixture(
     tmp_path: Path, *, namespace: str = "0123456789abcdef",
     unit_root: Path | None = None,
+    release_sequence: int = 1, previous_closed_build_id: str | None = None,
+    preflight: bytes = b"#!/usr/bin/python3\nraise SystemExit(0)\n",
+    account: _ServiceAccountV1 | None = None,
 ) -> _Fixture:
+    tmp_path.mkdir(mode=0o755, exist_ok=True)
     release_root = tmp_path / "release"
     ownership_root = tmp_path / "ownership"
     administrative_root = tmp_path / "admin" / "executor-birth-v1"
     unit_root = tmp_path / "systemd" if unit_root is None else unit_root
-    preflight = b"#!/usr/bin/python3\nraise SystemExit(0)\n"
-    account = _ServiceAccountV1(
+    account = account or _ServiceAccountV1(
         "metnos", 12345, 12345, (12345,),
         "/var/lib/metnos", "/usr/sbin/nologin",
     )
@@ -208,8 +213,8 @@ def _fixture(
         ),
         *unit_artifacts,
     )
-    descriptor = build_deployment_descriptor_v1(
-        release_sequence=1, service_user=account.name,
+    descriptor_arguments = dict(
+        release_sequence=release_sequence, service_user=account.name,
         service_uid=account.uid, service_gid=account.gid,
         service_supplementary_gids=account.supplementary_gids,
         service_home=account.home, service_shell=account.shell,
@@ -221,6 +226,7 @@ def _fixture(
         systemctl_executable="/usr/bin/systemctl",
         systemd_analyze_executable="/usr/bin/systemd-analyze",
     )
+    descriptor = build_deployment_descriptor_v1(**descriptor_arguments)
     descriptor_bytes = encode_deployment_descriptor_v1(descriptor)
     inventory = _inventory_bytes()
     values = {
@@ -281,6 +287,40 @@ def _fixture(
         "deployment/systemd/" + unit_name: ("service_unit", fragment)
         for unit_name, fragment in unit_fragments
     })
+    # Exercise historical verification with a self-consistent signed review,
+    # independent of the candidate process's compiled source digest.
+    placeholder = "sha256:" + "0" * 64
+    preflight = re.sub(
+        rb'(?m)^_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:[0-9a-f]{64}"\n',
+        b"", preflight,
+    ) + f'_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "{placeholder}"\n'.encode()
+    values["runtime/executor_birth_admin_preflight.py"] = ("runtime_code", preflight)
+    values["runtime/contract_boundary_guard.py"] = (
+        "boundary_guard", f'BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "{placeholder}"\n'.encode(),
+    )
+    reviewed = distribution.closed_python_source_review_sha256({
+        path: content for path, (_role, content) in values.items()
+    })
+    for path in ("runtime/executor_birth_admin_preflight.py", "runtime/contract_boundary_guard.py"):
+        role, content = values[path]
+        values[path] = role, content.replace(placeholder.encode(), reviewed.encode())
+    preflight = values["runtime/executor_birth_admin_preflight.py"][1]
+    values[installer.ADMINISTRATIVE_PROGRAM_SOURCE_V1] = "preflight", preflight
+    descriptor_arguments["artifacts"] = (
+        replace(artifacts[0], size=len(preflight), content_hash=distribution.file_content_hash(
+            installer.ADMINISTRATIVE_PROGRAM_SOURCE_V1, preflight,
+        )), *unit_artifacts,
+    )
+    descriptor = build_deployment_descriptor_v1(**descriptor_arguments)
+    values["deployment/executor-birth-deployment-v1.json"] = (
+        "deployment_descriptor", encode_deployment_descriptor_v1(descriptor),
+    )
+    inventory_value = json.loads(inventory)
+    inventory_value["source_census"] = reviewed
+    inventory = _canonical(inventory_value)
+    values["share/metnos/executor-birth/birth-closed-boundary-inventory-v1.json"] = (
+        "boundary_inventory", inventory,
+    )
     files = []
     for path, (role, content) in values.items():
         destination = release_root.joinpath(*path.split("/"))
@@ -297,8 +337,8 @@ def _fixture(
     manifest = {
         "schema_version": 1,
         "closed_build_id": None,
-        "previous_closed_build_id": None,
-        "release_sequence": 1,
+        "previous_closed_build_id": previous_closed_build_id,
+        "release_sequence": release_sequence,
         "product_version": "1.2.3",
         "platform": "linux",
         "architecture": "x86_64",
@@ -342,7 +382,7 @@ def _fixture(
             release_root / "deployment" / "systemd" / unit_name
             for unit_name, _fragment in unit_fragments
         ),
-        unit_fragments, descriptor, record, environment, account,
+        unit_fragments, descriptor, record, environment, account, registry,
     )
 
 
@@ -532,6 +572,241 @@ def test_product_and_platform_boundaries_refuse_before_administrative_io(
         )
     assert platform.value.code == "birth_ownership_platform_unsupported"
     assert not fixture.administrative_root.exists()
+
+
+def _successor(tmp_path: Path, previous: _Fixture, **kwargs) -> _Fixture:
+    options = {
+        "release_sequence": previous.record.release_sequence + 1,
+        "previous_closed_build_id": previous.record.closed_build_id,
+        "preflight": b"#!/usr/bin/python3\nraise SystemExit(1)\n",
+    }
+    options.update(kwargs)
+    return replace(
+        _fixture(tmp_path, **options),
+        administrative_root=previous.administrative_root,
+        ownership_root=previous.ownership_root,
+    )
+
+
+def _install_successor(candidate: _Fixture, previous: _Fixture, session, **kwargs):
+    return _install(
+        candidate, session, previous_record=previous.record,
+        previous_environment=previous.environment,
+        previous_registry=previous.registry, **kwargs,
+    )
+
+
+def _backup(candidate: _Fixture) -> Path:
+    return candidate.administrative_root.parent / (
+        installer._STAGING_PREFIX_V1
+        + candidate.descriptor.descriptor_id.removeprefix("sha256:") + ".previous"
+    )
+
+
+def test_successor_requires_exact_predecessor_and_preserves_it(tmp_path: Path) -> None:
+    previous = _fixture(tmp_path / "old")
+    candidate = _successor(tmp_path / "new", previous)
+    with _deployment_lock_for_test_v1(previous.ownership_root) as session:
+        _install(previous, session)
+        installed = previous.administrative_root / "preflight.py"
+        before = installed.stat()
+        with pytest.raises(DistributionAssemblerError):
+            _install(candidate, session)
+        assert installed.read_bytes() == previous.preflight
+        first = _install_successor(candidate, previous, session)
+        identity = installed.stat().st_ino
+        assert _install_successor(candidate, previous, session) == first
+        assert installed.stat().st_ino == identity
+    assert installed.read_bytes() == candidate.preflight
+    saved = _backup(candidate) / "preflight.py"
+    assert saved.read_bytes() == previous.preflight
+    assert saved.stat().st_ino == before.st_ino
+    assert saved.stat().st_nlink == 1
+    assert stat.S_IMODE(saved.stat().st_mode) == 0o755
+
+
+@pytest.mark.parametrize("seam", [
+    "administrative_stage_created", "administrative_stage_written",
+    "administrative_stage_ready", "administrative_previous_saved",
+    "administrative_published",
+])
+def test_successor_resumes_each_publication_boundary(tmp_path: Path, seam: str) -> None:
+    previous = _fixture(tmp_path / "old")
+    candidate = _successor(tmp_path / "new", previous)
+
+    def interrupt(name: str) -> None:
+        if name == seam:
+            raise RuntimeError(name)
+
+    with _deployment_lock_for_test_v1(previous.ownership_root) as session:
+        _install(previous, session)
+        before = (previous.administrative_root / "preflight.py").stat()
+        with pytest.raises(RuntimeError, match=seam):
+            _install_successor(candidate, previous, session, crash_seam=interrupt)
+        if seam.startswith("administrative_stage_"):
+            assert (previous.administrative_root / "preflight.py").read_bytes() == previous.preflight
+            assert not _backup(candidate).exists()
+        _install_successor(candidate, previous, session)
+        _install_successor(candidate, previous, session)
+    assert (candidate.administrative_root / "preflight.py").read_bytes() == candidate.preflight
+    saved = _backup(candidate) / "preflight.py"
+    assert saved.read_bytes() == previous.preflight
+    assert saved.stat().st_ino == before.st_ino
+
+
+@pytest.mark.parametrize("change", [
+    "wrong_build", "skipped_sequence", "old_source", "signature", "account",
+])
+def test_successor_authentication_failure_has_no_administrative_effects(
+    tmp_path: Path, change: str,
+) -> None:
+    previous = _fixture(tmp_path / "old")
+    options = {}
+    if change == "wrong_build":
+        options["previous_closed_build_id"] = "sha256:" + "7" * 64
+    if change == "skipped_sequence":
+        options["release_sequence"] = 3
+    if change == "account":
+        options["account"] = replace(previous.account, uid=12346)
+    candidate = _successor(tmp_path / "new", previous, **options)
+    with _deployment_lock_for_test_v1(previous.ownership_root) as session:
+        _install(previous, session)
+        before = (previous.administrative_root / "preflight.py").stat()
+        if change == "old_source":
+            (previous.release_root / installer.ADMINISTRATIVE_PROGRAM_SOURCE_V1).write_bytes(b"changed")
+        if change == "signature":
+            object.__setattr__(previous.record, "signature", b"!" * 64)
+        with pytest.raises((DistributionAssemblerError, distribution.DistributionManifestError)):
+            _install_successor(candidate, previous, session)
+        installed = previous.administrative_root / "preflight.py"
+        assert installed.read_bytes() == previous.preflight
+        assert installed.stat().st_ino == before.st_ino
+        assert sorted(p.name for p in previous.administrative_root.parent.iterdir()) == [
+            "executor-birth-v1",
+        ]
+
+
+def test_successor_rechecks_previous_distribution_before_effects(tmp_path: Path) -> None:
+    previous = _fixture(tmp_path / "old")
+    candidate = _successor(tmp_path / "new", previous)
+
+    def mutate() -> None:
+        (previous.release_root / installer.ADMINISTRATIVE_PROGRAM_SOURCE_V1).write_bytes(b"changed")
+
+    with _deployment_lock_for_test_v1(previous.ownership_root) as session:
+        _install(previous, session)
+        with pytest.raises(distribution.DistributionManifestError):
+            _install_successor(candidate, previous, session, between_verifications=mutate)
+    assert (previous.administrative_root / "preflight.py").read_bytes() == previous.preflight
+    assert not _backup(candidate).exists()
+
+
+@pytest.mark.parametrize("change", [
+    "content", "mode", "hardlink", "symlink", "extra", "missing", "fifo",
+])
+def test_successor_refuses_unrecognized_installed_previous_without_stage(
+    tmp_path: Path, change: str,
+) -> None:
+    previous = _fixture(tmp_path / "old")
+    candidate = _successor(tmp_path / "new", previous)
+    with _deployment_lock_for_test_v1(previous.ownership_root) as session:
+        _install(previous, session)
+        installed = previous.administrative_root / "preflight.py"
+        if change == "content":
+            installed.write_bytes(b"operator repair")
+        elif change == "mode":
+            installed.chmod(0o644)
+        elif change == "hardlink":
+            os.link(installed, tmp_path / "linked")
+        elif change == "symlink":
+            installed.rename(tmp_path / "moved")
+            installed.symlink_to(tmp_path / "moved")
+        elif change == "extra":
+            (previous.administrative_root / "extra").write_bytes(b"extra")
+        elif change == "fifo":
+            installed.unlink()
+            os.mkfifo(installed, mode=0o755)
+        else:
+            installed.unlink()
+            previous.administrative_root.rmdir()
+        with pytest.raises(DistributionAssemblerError):
+            _install_successor(candidate, previous, session)
+    assert not _backup(candidate).exists()
+    assert not list(previous.administrative_root.parent.glob("*.tmp"))
+
+
+def test_successor_does_not_replace_same_helper_or_create_backup(tmp_path: Path) -> None:
+    previous = _fixture(tmp_path / "old")
+    candidate = _successor(tmp_path / "new", previous, preflight=previous.preflight)
+    with _deployment_lock_for_test_v1(previous.ownership_root) as session:
+        _install(previous, session)
+        identity = (previous.administrative_root / "preflight.py").stat().st_ino
+        _install_successor(candidate, previous, session)
+    assert (candidate.administrative_root / "preflight.py").stat().st_ino == identity
+    assert not _backup(candidate).exists()
+
+
+def test_successor_refuses_foreign_staging_before_preserving_old(tmp_path: Path) -> None:
+    previous = _fixture(tmp_path / "old")
+    candidate = _successor(tmp_path / "new", previous)
+    with _deployment_lock_for_test_v1(previous.ownership_root) as session:
+        _install(previous, session)
+        stage = _backup(candidate).with_suffix(".tmp")
+        stage.mkdir(mode=0o700)
+        (stage / "preflight.py").write_bytes(b"foreign")
+        (stage / "preflight.py").chmod(0o600)
+        with pytest.raises(DistributionAssemblerError):
+            _install_successor(candidate, previous, session)
+    assert (stage / "preflight.py").read_bytes() == b"foreign"
+    assert (previous.administrative_root / "preflight.py").read_bytes() == previous.preflight
+    assert not _backup(candidate).exists()
+
+
+def test_successor_refuses_changed_backup_after_publication(tmp_path: Path) -> None:
+    previous = _fixture(tmp_path / "old")
+    candidate = _successor(tmp_path / "new", previous)
+    with _deployment_lock_for_test_v1(previous.ownership_root) as session:
+        _install(previous, session)
+        _install_successor(candidate, previous, session)
+        (_backup(candidate) / "preflight.py").write_bytes(b"changed")
+        with pytest.raises(DistributionAssemblerError):
+            _install_successor(candidate, previous, session)
+    assert (candidate.administrative_root / "preflight.py").read_bytes() == candidate.preflight
+
+
+def test_successor_recovers_partial_write_without_first_removing_previous(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous = _fixture(tmp_path / "old")
+    candidate = _successor(tmp_path / "new", previous)
+
+    def partial_write(descriptor: int, content: bytes) -> None:
+        os.write(descriptor, content[:9])
+        raise OSError("simulated interrupted write")
+
+    with _deployment_lock_for_test_v1(previous.ownership_root) as session:
+        _install(previous, session)
+        with monkeypatch.context() as patch:
+            patch.setattr(installer, "_write_all_v1", partial_write)
+            with pytest.raises(DistributionAssemblerError):
+                _install_successor(candidate, previous, session)
+        assert (previous.administrative_root / "preflight.py").read_bytes() == previous.preflight
+        assert not _backup(candidate).exists()
+        _install_successor(candidate, previous, session)
+    assert (_backup(candidate) / "preflight.py").read_bytes() == previous.preflight
+    assert (candidate.administrative_root / "preflight.py").read_bytes() == candidate.preflight
+
+
+def test_successor_refuses_duplicate_old_tree_and_backup(tmp_path: Path) -> None:
+    previous = _fixture(tmp_path / "old")
+    candidate = _successor(tmp_path / "new", previous)
+    with _deployment_lock_for_test_v1(previous.ownership_root) as session:
+        _install(previous, session)
+        shutil.copytree(previous.administrative_root, _backup(candidate))
+        with pytest.raises(DistributionAssemblerError):
+            _install_successor(candidate, previous, session)
+    assert (previous.administrative_root / "preflight.py").read_bytes() == previous.preflight
+    assert (_backup(candidate) / "preflight.py").read_bytes() == previous.preflight
 
 
 def test_signed_isolated_capability_installs_exact_names_and_bytes(

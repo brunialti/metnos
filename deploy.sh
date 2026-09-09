@@ -16,9 +16,18 @@
 #   chmod 600 /etc/metnos/deploy.env
 set -euo pipefail
 
-REPO="/opt/metnos"
+REPO="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ENV_FILE="${METNOS_DEPLOY_ENV:-/etc/metnos/deploy.env}"
 PYTHON="${METNOS_VENV:-${REPO}/.venv}/bin/python"
+export PATH="${REPO}/node_modules/.bin:$PATH"
+
+# An audited public checkout can publish static pages without changing the
+# local Tutor database or requiring its private signing authority.
+STATIC_ONLY=0
+if [ "${1:-}" = "--static-only" ]; then
+    STATIC_ONLY=1
+    shift
+fi
 
 if [ ! -f "$ENV_FILE" ]; then
     echo "ERROR: $ENV_FILE non esiste." >&2
@@ -49,12 +58,20 @@ if [ ! -x "$PYTHON" ]; then
 fi
 
 cd "$REPO"
-"$PYTHON" scripts/generate_executor_catalog.py
-"$PYTHON" scripts/generate_domain_reference.py
-"$PYTHON" scripts/generate_ui_reference.py
+GENERATOR_ARGS=()
+if [ "$STATIC_ONLY" = 1 ]; then
+    GENERATOR_ARGS=(--check)
+fi
+"$PYTHON" scripts/generate_executor_catalog.py "${GENERATOR_ARGS[@]}"
+"$PYTHON" scripts/generate_domain_reference.py "${GENERATOR_ARGS[@]}"
+"$PYTHON" scripts/generate_ui_reference.py "${GENERATOR_ARGS[@]}"
 "$PYTHON" runtime/published_docs.py validate
-"$PYTHON" scripts/compile_tutor_catalog.py --force
-exec node_modules/.bin/wrangler pages deploy docs \
+if [ "$STATIC_ONLY" = 0 ]; then
+    "$PYTHON" scripts/compile_tutor_catalog.py --force
+else
+    echo "Static documentation only: the local Tutor catalog is unchanged."
+fi
+exec wrangler pages deploy docs \
     --project-name="$CLOUDFLARE_PAGES_PROJECT" \
     --commit-dirty=true \
     --branch=main \

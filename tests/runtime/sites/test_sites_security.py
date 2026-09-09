@@ -34,6 +34,20 @@ def _supply_test_owner_identity(monkeypatch):
     monkeypatch.setattr(broker, "op_open", scoped_open)
 
 
+@pytest.fixture(autouse=True)
+def _supply_empty_cookie_surface(monkeypatch):
+    """Unit page doubles have no DOM handles; cookie DOM checks live in the
+    real-browser test_login_cookie_precondition suite. Cookie adapter tests
+    below explicitly replace this dependency with their own typed outcomes.
+    """
+    from playwright_sidecar import cookie_privacy
+
+    async def clear(*_args, **_kwargs):
+        return cookie_privacy.CookieOutcome("clear")
+
+    monkeypatch.setattr(cookie_privacy, "reject_cookies", clear)
+
+
 
 def _blocked_observation(types, **provenance):
     """Osservazione `blocked_requests` nella forma strutturata del broker."""
@@ -3001,48 +3015,40 @@ def test_safe_overlay_dismiss_uses_translated_exact_exit(monkeypatch):
     assert audit[0][1]["procedure"] == "safe_exit"
 
 
-def test_privacy_obstruction_is_rejected_with_a_separate_bounded_budget(
+def test_privacy_obstruction_shares_its_own_cookie_budget(
         monkeypatch):
     import asyncio
     from playwright_sidecar import session_broker as sb
 
     calls = []
 
-    async def dismiss(_entry, **kwargs):
-        calls.append(kwargs)
-        return True
+    async def dismiss(page, state, **kwargs):
+        calls.append((page, state, kwargs))
+        return sb.cookie_privacy.CookieOutcome("resolved", "cookie")
 
-    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", dismiss)
-    monkeypatch.setattr(sb.action_resolver, "privacy_reject_forms",
-                        lambda: ("decline",))
-    monkeypatch.setattr(sb.action_resolver, "privacy_overlay_marker_forms",
-                        lambda: ("privacy", "cookie"))
-    entry = {}
-
-    for _ in range(sb._MAX_PRIVACY_DISMISSALS):
-        assert asyncio.run(sb._dismiss_privacy_obstruction(entry)) is True
-    assert asyncio.run(sb._dismiss_privacy_obstruction(entry)) is False
-
-    assert len(calls) == sb._MAX_PRIVACY_DISMISSALS
-    assert calls[0] == {
-        "settle": False, "forms": ("decline",),
-        "markers": ("privacy", "cookie"), "procedure": "privacy_reject"}
-    assert entry["privacy_action_dismissals"] == sb._MAX_PRIVACY_DISMISSALS
+    monkeypatch.setattr(sb.cookie_privacy, "reject_cookies", dismiss)
+    entry = {"page": object(), "login_flow": {"steps": 1}}
+    for _ in range(2):
+        assert asyncio.run(sb._dismiss_privacy_obstruction(entry)).status == "resolved"
+    assert all(call[0] is entry["page"] for call in calls)
+    assert calls[0][1] is calls[1][1] is entry["login_flow"]["cookie_state"]
+    assert entry["login_flow"]["steps"] == 1
 
 
 def test_login_rechecks_late_privacy_overlay_before_target_resolution(
         monkeypatch):
     """Un banner asincrono puo' comparire dopo il probe iniziale. Il resolver
-    login lo verifica di nuovo, con lessico tipizzato, prima di enumerare."""
+    login lo verifica di nuovo, con esito semantico tipizzato, prima di enumerare."""
     import asyncio
     import time
     from playwright_sidecar import session_broker as sb
 
     calls = []
 
-    async def dismiss(_entry, **kwargs):
+    async def dismiss(_page, state, **kwargs):
         calls.append(("dismiss", kwargs))
-        return sum(1 for call in calls if call[0] == "dismiss") == 1
+        state["clicks"] = 1
+        return sb.cookie_privacy.CookieOutcome("resolved", "cookie")
 
     async def prepare(_entry, _sid, action, _value_ref, **kwargs):
         calls.append(("prepare", action, kwargs))
@@ -3057,16 +3063,12 @@ def test_login_rechecks_late_privacy_overlay_before_target_resolution(
     async def no_capture(_entry):
         return None
 
-    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", dismiss)
+    monkeypatch.setattr(sb.cookie_privacy, "reject_cookies", dismiss)
     monkeypatch.setattr(sb, "_prepare_action", prepare)
     monkeypatch.setattr(sb, "_prepare_action_with_resource_fallback", prepare)
     monkeypatch.setattr(sb, "_REVEAL_SETTLE_MS", sb._REVEAL_POLL_MS * 2)
     monkeypatch.setattr(sb.credential_injection, "perform_login", fake_login)
     monkeypatch.setattr(sb, "_capture_screenshot", no_capture)
-    monkeypatch.setattr(sb.action_resolver, "privacy_reject_forms",
-                        lambda: ("decline",))
-    monkeypatch.setattr(sb.action_resolver, "privacy_overlay_marker_forms",
-                        lambda: ("privacy",))
 
     entry = {
         "owner": "alice", "domain": "example.test",
@@ -3086,32 +3088,27 @@ def test_login_rechecks_late_privacy_overlay_before_target_resolution(
         sb._sessions.pop("sid-late-privacy", None)
 
     assert out["reason_code"] == "two_factor_required"
-    assert calls[0] == ("dismiss", {
-        "settle": False, "forms": ("decline",),
-        "markers": ("privacy",), "procedure": "privacy_reject"})
+    assert calls[0][0] == "dismiss"
     assert calls[1][0:2] == ("prepare", "click login")
-    # La dismissione overlay usa il proprio budget (privacy_dismissals) e NON
+    # La dismissione overlay usa il proprio budget (cookie_state) e NON
     # consuma il budget di step d'ingresso login: cosi' un overlay non affama
     # la navigazione verso "accedi".
-    assert entry["login_flow"]["privacy_dismissals"] == 1
+    assert entry["login_flow"]["cookie_state"]["clicks"] == 1
     assert entry["login_flow"].get("steps", 0) == 0
 
 
-def test_reappearing_privacy_overlay_does_not_starve_login_entry(monkeypatch):
-    """Regressione turn e69dca8e (simulatore): un overlay privacy che RIAPPARE
-    (reject navigante -> reload) NON deve esaurire il budget di step d'ingresso
-    login e far scattare `login_step_limit` prima ancora di provare a cliccare
-    "accedi". Le dismissioni hanno un budget PROPRIO e bounded
-    (`_MAX_PRIVACY_DISMISSALS`); il target login viene comunque enumerato e non
-    consuma quel budget."""
+def test_unresolved_privacy_overlay_stops_before_login_entry(monkeypatch):
+    """Cookie resolution has its own bound; an unresolved obstacle cannot
+    authorize login discovery/fill by falling through to another resolver."""
     import asyncio
     import time
     from playwright_sidecar import session_broker as sb
 
     prepared_actions = []
 
-    async def dismiss(_entry, **_kwargs):
-        return True  # overlay sempre presente (worst case)
+    async def dismiss(_page, state, **_kwargs):
+        state["clicks"] = 2
+        return sb.cookie_privacy.CookieOutcome("blocked", "cookie", "dismissal_limit")
 
     async def prepare(_entry, _sid, action, _value_ref, **_kwargs):
         prepared_actions.append(action)
@@ -3126,16 +3123,12 @@ def test_reappearing_privacy_overlay_does_not_starve_login_entry(monkeypatch):
     async def no_capture(_entry):
         return None
 
-    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", dismiss)
+    monkeypatch.setattr(sb.cookie_privacy, "reject_cookies", dismiss)
     monkeypatch.setattr(sb, "_prepare_action", prepare)
     monkeypatch.setattr(sb, "_prepare_action_with_resource_fallback", prepare)
     monkeypatch.setattr(sb, "_REVEAL_SETTLE_MS", sb._REVEAL_POLL_MS * 2)
     monkeypatch.setattr(sb.credential_injection, "perform_login", fake_login)
     monkeypatch.setattr(sb, "_capture_screenshot", no_capture)
-    monkeypatch.setattr(sb.action_resolver, "privacy_reject_forms",
-                        lambda: ("decline",))
-    monkeypatch.setattr(sb.action_resolver, "privacy_overlay_marker_forms",
-                        lambda: ("privacy",))
 
     entry = {
         "owner": "alice", "domain": "example.test",
@@ -3155,11 +3148,9 @@ def test_reappearing_privacy_overlay_does_not_starve_login_entry(monkeypatch):
         sb._sessions.pop("sid-privacy-bound", None)
 
     assert out["reason_code"] == "selector_missing"
-    # Il target login E' stato enumerato: l'overlay non l'ha affamato.
-    assert "click login" in prepared_actions
-    # Dismissioni bounded dal budget proprio, senza toccare gli step login.
-    assert (entry["login_flow"]["privacy_dismissals"]
-            <= sb._MAX_PRIVACY_DISMISSALS)
+    assert out["error_class"] == "cookie_precondition_unresolved"
+    assert prepared_actions == []
+    assert entry["login_flow"]["cookie_state"]["clicks"] == 2
     assert entry["login_flow"].get("steps", 0) == 0
 
 

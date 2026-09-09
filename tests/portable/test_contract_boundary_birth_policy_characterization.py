@@ -17,9 +17,9 @@ POLICY_NAMES = (
     "BIRTH_CLOSED_EXCEPTION_SCOPES", "BIRTH_CLOSED_EXCEPTION_CAPABILITIES",
     "VALID_ROLES", "LIVE_MUTATIONS",
 )
-POLICY_SHA256 = "659e1ce04b61139ddf526379cd879aebf90a23218d081e6b30c2276dc823f34a"
-INVENTORY_SHA256 = "57de6351d0974192b675db054facebb7dcb4ad9782f4173520d653eb14b6be74"
-FINDINGS_SHA256 = "b07168ba480ee37709e931398a04f627f14eed068809f96121875ee86d1c7e8e"
+POLICY_SHA256 = "f4479349dc80f78455b238dffb53a66856d78b4bf922981fd4a63a331b971982"
+INVENTORY_SHA256 = "0a8f401e001b8a852c28895a2b1cd42fc31f6e342d81ea280c23ba70b6354889"
+FINDINGS_SHA256 = "911b582a05c3117fbed401f15a4061900882aa7e1a05ed82c8a7a9003dd17874"
 
 DIRECT_MANIFEST_ROLES = frozenset({
     "migration_boundary", "offline_authoring", "store_owner",
@@ -115,7 +115,7 @@ def test_inventory_and_findings_outputs_are_frozen() -> None:
     embedded = standalone.birth_closed_findings((), inventory)
     first = [(item.code, item.scope, item.message) for item in imported]
     second = [(item.code, item.scope, item.message) for item in embedded]
-    assert first == second and len(first) == 154
+    assert first == second and len(first) == 157
     assert _sha256(first) == FINDINGS_SHA256
 
 

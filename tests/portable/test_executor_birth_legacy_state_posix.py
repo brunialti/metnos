@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import errno
 import os
 import inspect
 from pathlib import Path, PurePosixPath
@@ -16,6 +17,9 @@ import executor_birth_host_path_policy as host_path_policy
 import executor_birth_posix_acl as posix_acl
 import install.executor_birth_legacy_state_posix as adapter
 from executor_birth_authoring import authoring_paths
+
+
+LINUX_ONLY = pytest.mark.skipif(os.name != "posix", reason="real POSIX state observation")
 
 
 def _request(root: Path) -> legacy.LegacyStateRequestV1:
@@ -58,6 +62,7 @@ def _materialize_real_authoring(root: Path) -> Path:
     return canonical
 
 
+@LINUX_ONLY
 def test_fresh_observation_ignores_every_non_reserved_name(tmp_path: Path) -> None:
     root = tmp_path / "state"
     _mkdir(root)
@@ -70,6 +75,7 @@ def test_fresh_observation_ignores_every_non_reserved_name(tmp_path: Path) -> No
     ) is legacy.LegacyStateDispositionV1.fresh
 
 
+@LINUX_ONLY
 def test_real_authoring_and_store_replica_are_observed_exactly(tmp_path: Path) -> None:
     root = tmp_path / "state"
     _mkdir(root)
@@ -86,6 +92,7 @@ def test_real_authoring_and_store_replica_are_observed_exactly(tmp_path: Path) -
 
 
 @pytest.mark.parametrize("mutation", ("extra", "symlink", "hardlink", "staging"))
+@LINUX_ONLY
 def test_unsafe_authoring_residue_is_invalid(tmp_path: Path, mutation: str) -> None:
     root = tmp_path / mutation
     _mkdir(root)
@@ -105,6 +112,7 @@ def test_unsafe_authoring_residue_is_invalid(tmp_path: Path, mutation: str) -> N
     ) is legacy.LegacyStateDispositionV1.invalid
 
 
+@LINUX_ONLY
 def test_observer_has_no_mutating_calls(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "state"
     _mkdir(root)
@@ -119,6 +127,7 @@ def test_observer_has_no_mutating_calls(tmp_path: Path, monkeypatch) -> None:
     _observe(request)
 
 
+@LINUX_ONLY
 def test_concurrent_reserved_root_replacement_is_rejected(
     tmp_path: Path, monkeypatch,
 ) -> None:
@@ -150,6 +159,7 @@ def test_adapter_is_small_and_functions_are_bounded() -> None:
             assert len(inspect.getsource(value).splitlines()) <= 40
 
 
+@LINUX_ONLY
 def test_raw_request_is_refused_by_product_observer(tmp_path: Path) -> None:
     root = tmp_path / "state"
     _mkdir(root)
@@ -171,6 +181,7 @@ def test_invalid_inventory_names_fail_with_typed_error(monkeypatch, name) -> Non
         adapter._names(3, 1)
 
 
+@LINUX_ONLY
 def test_acl_mutation_after_file_snapshot_is_rejected(tmp_path, monkeypatch) -> None:
     root = tmp_path / "state"
     _mkdir(root)
@@ -193,6 +204,7 @@ def test_acl_mutation_after_file_snapshot_is_rejected(tmp_path, monkeypatch) -> 
     assert changed
 
 
+@LINUX_ONLY
 def test_acl_mutation_after_directory_snapshot_is_rejected(tmp_path, monkeypatch) -> None:
     root = tmp_path / "state"
     _mkdir(root / "contract-publications/v1")
@@ -214,6 +226,7 @@ def test_acl_mutation_after_directory_snapshot_is_rejected(tmp_path, monkeypatch
     assert changed
 
 
+@LINUX_ONLY
 def test_open_chain_closes_unbound_child_descriptor(monkeypatch) -> None:
     opened, closed = iter((10, 11)), []
     monkeypatch.setattr(adapter.os, "open", lambda *_args, **_kwargs: next(opened))
@@ -264,9 +277,9 @@ def test_platform_contract_fails_closed_with_typed_error(monkeypatch, mutation) 
     if mutation == "platform":
         monkeypatch.setattr(adapter.sys, "platform", "darwin")
     elif mutation == "flag":
-        monkeypatch.delattr(adapter.os, "O_NOFOLLOW")
+        monkeypatch.delattr(adapter.os, "O_NOFOLLOW", raising=False)
     elif mutation == "getxattr":
-        monkeypatch.setattr(adapter.os, "getxattr", None)
+        monkeypatch.setattr(adapter.os, "getxattr", None, raising=False)
     else:
         monkeypatch.setattr(adapter.os, "supports_dir_fd", frozenset())
     with pytest.raises(adapter.LegacyStatePosixError):
@@ -274,6 +287,7 @@ def test_platform_contract_fails_closed_with_typed_error(monkeypatch, mutation) 
 
 
 def test_acl_adapter_is_intentionally_stricter_than_directory_owner(monkeypatch) -> None:
+    monkeypatch.setattr(errno, "ENODATA", 61, raising=False)
     base = struct.pack("<I", 2) + b"".join(
         struct.pack("<HHI", tag, 0o7, 0xFFFFFFFF)
         for tag in (0x01, 0x04, 0x20)
@@ -284,7 +298,7 @@ def test_acl_adapter_is_intentionally_stricter_than_directory_owner(monkeypatch)
             return base
         raise OSError(getattr(os, "ENODATA", 61), "absent")
 
-    monkeypatch.setattr(adapter.os, "getxattr", getxattr)
+    monkeypatch.setattr(adapter.os, "getxattr", getxattr, raising=False)
     assert adapter._acl(3) == (True, False)
     assert posix_acl.observe_posix_directory_acl_v1(3) == (
         posix_acl.PosixAclSnapshotV1(False, False)

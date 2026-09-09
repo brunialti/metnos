@@ -51,7 +51,7 @@ from http_app_state import (
     ADMIN_KEY, CATALOG_PROVIDER, DURABLE_ARTIFACT_DOWNLOADS,
     DURABLE_ARTIFACT_STORE_FACTORY, DURABLE_SSE_COUNTS,
     DURABLE_WORKLOAD_STORE_FACTORY, SCHEDULER_V2, SSE_RESPONSES, STARTED_AT,
-    TURN_POOL, TUTOR_BOOTSTRAP_TASK, app_get,
+    TURN_POOL, TUTOR_BOOTSTRAP_TASK, STARTUP_FAILURE, app_get,
 )
 from http_turn_pool import HttpTurnPool
 from logging_setup import get_logger
@@ -108,14 +108,50 @@ def _build_catalog_provider():
     return get
 
 
+@web.middleware
+async def maintenance_middleware(request: web.Request, handler):
+    """Keep authenticated repair, not arbitrary execution, after failed boot."""
+    failure = app_get(request.app, STARTUP_FAILURE, "")
+    if not failure or getattr(request.match_info, "http_exception", None):
+        return await handler(request)
+    allowed = {
+        http_routes_agent.health, http_routes_agent.well_known,
+        http_routes_stack.stack_health,
+        http_routes_admin.admin_login, http_routes_admin.admin_logout,
+        http_routes_admin.admin_home, http_routes_admin.admin_services,
+        http_routes_admin.admin_service_action,
+        http_routes_admin.admin_lre_feature_action,
+        http_routes_admin.admin_virt, http_routes_admin.admin_virt_save,
+        http_routes_admin.admin_virt_reset,
+    }
+    if request.match_info.handler not in allowed:
+        return web.json_response(
+            {"error": "runtime_unavailable", "reason": failure}, status=503,
+        )
+    return await handler(request)
+
+
 # --- app factory -------------------------------------------------------------
 
 def make_app(*, admin_key: str | None = None) -> web.Application:
     """Costruisce l'app aiohttp con middleware auth + routes registrate."""
-    # ADR 0092: invariante "stesso set di file" enforced al boot. Boot fail
-    # se una lingua secondaria (en/, xx/) ha un file mancante rispetto a it/.
+    # Authority-dependent execution stays closed on failure, but the operator
+    # must retain authenticated access to configuration and lifecycle repair.
+    startup_failure = ""
+    from executor_birth_bootstrap import require_birth_runtime_before_workers
+    try:
+        require_birth_runtime_before_workers()
+    except Exception as exc:
+        startup_failure = "birth_runtime_unavailable"
+        log.error("HTTP maintenance only: Birth startup failed (%s)", type(exc).__name__)
+
+    # Prompt integrity is required for agent work, not authenticated repair.
     import prompt_loader
-    prompt_loader.validate_invariant()
+    try:
+        prompt_loader.validate_invariant()
+    except Exception as exc:
+        startup_failure = startup_failure or "prompt_catalog_invalid"
+        log.error("HTTP maintenance only: prompt validation failed (%s)", type(exc).__name__)
 
     # client_max_size: cap del body request. 50 MB per accomodare upload
     # multipart di foto reference (drag&drop ADR 0092). Foto JPEG/HEIC/PNG
@@ -123,12 +159,13 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
     # copre il caso comune (≤ 5 foto media risoluzione).
     app = web.Application(
         client_max_size=50 * 1024 * 1024,
-        middlewares=[auth_middleware, user_language_middleware],
+        middlewares=[auth_middleware, user_language_middleware, maintenance_middleware],
     )
     app[STARTED_AT] = time.time()
+    app[STARTUP_FAILURE] = startup_failure
     app[ADMIN_KEY] = (
         admin_key if admin_key is not None else get_or_create_admin_key())
-    app[CATALOG_PROVIDER] = _build_catalog_provider()
+    app[CATALOG_PROVIDER] = (lambda: []) if startup_failure else _build_catalog_provider()
     from durable_workloads.storage import DurableWorkloadStore
     from durable_workloads.artifacts import ArtifactDownloadRegistry, ArtifactRepository, ArtifactStore
     app[DURABLE_WORKLOAD_STORE_FACTORY] = DurableWorkloadStore.open
@@ -169,6 +206,11 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
     # close_active_sse per chiudere pulitamente al shutdown del server.
     app[SSE_RESPONSES] = set()
     app.on_shutdown.append(http_routes_agent.close_active_sse)
+
+    if startup_failure:
+        # No scheduler, producer-dependent jobs, index upgrades or automatic
+        # identity synchronization may run in maintenance-only mode.
+        return app
 
     # RM-0003: documentazione pubblicata, fonti supplementari selezionate,
     # manifest ammessi e registri runtime formano un solo artefatto firmato.
@@ -360,14 +402,8 @@ def run_standalone(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> None:
         level=os.environ.get("METNOS_LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
-    # RM-0008: recover and atomically install the complete Birth authority
-    # before the HTTP application can start any mutating background worker.
-    from executor_birth_bootstrap import require_birth_runtime_before_workers
-    require_birth_runtime_before_workers()
-    # Resolve the private SMTP preference once. Existing executor processes
-    # inherit this same value; they do not need access to runtime.toml.
-    from runtime_settings import mail_default_account
-    os.environ["METNOS_DEFAULT_MAIL_ACCOUNT"] = mail_default_account()
+    # Optional domain settings are validated at their invocation boundary;
+    # an invalid SMTP preference must not make its repair UI unstartable.
     lock = ProcessLock(LOCKFILE)
     lock.acquire()
     try:

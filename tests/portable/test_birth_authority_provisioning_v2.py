@@ -1138,7 +1138,8 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
 
     original_prepare = provisioning._prepare_transition_authority_set_v2
 
-    def prepare(*args):
+    def prepare(*args, completed_predecessor):
+        assert completed_predecessor is None
         assert args[2] == previous
         order.append("stage")
         return original_prepare(*args)

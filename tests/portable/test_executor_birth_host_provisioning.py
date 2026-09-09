@@ -334,7 +334,7 @@ def test_product_wrapper_requires_linux_root_and_exact_service_name(monkeypatch)
         provisioning.provision_executor_birth_host_v1("metnos")
     assert unsupported.value.code == "birth_ownership_platform_unsupported"
     monkeypatch.setattr(provisioning.sys, "platform", "linux")
-    monkeypatch.setattr(provisioning.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(provisioning.os, "geteuid", lambda: 1000, raising=False)
     with pytest.raises(provisioning.HostProvisioningError) as unprivileged:
         provisioning.provision_executor_birth_host_v1("metnos")
     assert unprivileged.value.code == "birth_ownership_administrative_required"

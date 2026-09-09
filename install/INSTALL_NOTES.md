@@ -125,6 +125,16 @@ This read-only verification does not construct a historical Birth runtime.
 Any contract requiring publication still needs the strict runtime context
 check; the transition never executes old authority under changed source.
 
+The startup lock is volatile, not an authority record. The administrative
+installer also publishes an exact root-owned tmpfiles rule in
+`/etc/tmpfiles.d/metnos-executor-birth-v1.conf`. At boot, systemd prepares the
+private directory and empty lock before `sysinit.target` and therefore before
+the gated services. The boot-only, non-truncating rule never unlinks an existing
+lock or grants permission to bypass preflight. An unexpected existing rule is
+rejected, not overwritten. Acceptance must include startup after volatile
+runtime state is absent, preservation of held lock identities, and an actual
+reboot; a successful transition alone is not reboot certification.
+
 Legacy retirement bindings identify required files of the previous installation,
 not every entry point of the candidate. The new contract-convergence module is
 covered by the candidate's signed runtime inventory and preflight, but is not
@@ -141,6 +151,26 @@ signed destination rather than masked as a retired alias. Once the new head is
 required, an older build cannot be selected again. Recovery resumes the exact
 recorded transaction or requires a later release with a higher sequence; it
 does not restore the former publication path.
+
+Before preparing a successor, the authenticated predecessor must be at
+`PREFLIGHT_VERIFIED` (coordinator sequence 6). Under the deployment and Birth
+provisioning locks, its exact completed V2 journal is verified against the
+historical published set and moved without replacement to
+`.birth-provisioning-v2.completed.<transaction-id>` in the same Birth root.
+The atomic, durable rename preserves all bytes and permissions, including the
+confidential material plan. Incomplete, conflicting or ambiguous journals are
+never archived. Completed journals are inert evidence: they are not runtime
+authority or selectable recovery inputs. Repetition after the rename does not
+read or reactivate the archive and may prepare the next transaction normally.
+
+A successor preserves admission for an unchanged current executor only after
+verifying its exact generation and source against the signed receipt and
+authenticated context of the immediate predecessor. The prior lifecycle is
+preserved; property execution and semantic review are explicitly recorded as
+not applicable, with the prior receipt hash, rather than reported as newly
+passed. Historical receipts and producer records remain untouched. New or
+changed executors still require the full checks; missing or invalid historical
+evidence never becomes implicit initial adoption.
 
 This entry is for a release transition, not routine executor maintenance.
 After cutover, an ordinary executor edit uses
@@ -169,10 +199,12 @@ setting; Telos preserves the exact environment opt-in `1`, with every other
 environment value disabling it. The mail value must be a nonempty string and
 the Telos file value a boolean; empty mail overrides and incorrectly typed file
 settings fail instead of silently selecting another account or enablement state.
-HTTP resolves the SMTP default once after its Birth check and before acquiring
-its process lock or starting workers, then shares the resolved account name
-through the environment with child executors, which retain explicit
-invocation-account precedence and do not receive `runtime.toml`.
+Each local mail-send invocation without an explicit account resolves the SMTP
+default once and uses that same account for credential mounts and the child
+environment. Explicit invocation accounts keep precedence. Children do not
+receive `runtime.toml`, and the HTTP process environment is not mutated.
+Invalid optional mail configuration blocks that invocation, not HTTP startup
+or unrelated channels; it never silently selects another account.
 Environment precedence is not permission to modify a signed unit or restore
 its legacy drop-ins; preserve private choices in the existing configuration.
 
@@ -394,6 +426,21 @@ during this transition. They are the same units later owned by
 The HTTP health endpoint proves reachability, not planning quality or end-to-end
 operation. A release installation is complete only after a harmless natural-
 language request passes through the chat and returns a normal answer.
+
+If Birth or prompt bootstrap fails inside HTTP, the application retains its
+existing authenticated maintenance routes for model configuration and bounded
+service control. It starts no scheduler or producer-dependent background jobs
+and rejects execution/publication requests. Health reports `operational=false`
+and `maintenance_only=true`; composite readiness remains false. A controlled
+restart after repair reevaluates bootstrap. This application behavior does not
+bypass an external systemd startup check or repair a broken Python installation.
+
+In the closed service catalog, aggregate readiness failure must not invoke the
+stack-wide stop unit. Each service retains its signed startup verification.
+The watchdog leaves an authenticated maintenance-only HTTP process running and
+does not restart through an unverified service catalog. Readiness remains false;
+an explicit authorized restart retries initialization after repair. Deploying
+this policy requires a coherent signed catalog update, not an extra drop-in.
 
 The public installer does not install, own or document a maintainer-specific
 remote-access service. Its supported browser path is direct access from the

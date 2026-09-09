@@ -23,7 +23,7 @@ def _legacy_readiness_catalog(monkeypatch):
     import services_registry
 
     monkeypatch.setattr(
-        services_registry, "readiness_catalog", services_registry.catalog,
+        services_registry, "readiness_catalog", lambda: services_registry.SERVICES,
         raising=False,
     )
 
@@ -177,6 +177,34 @@ def test_check_accepts_an_identity_scoped_catalog_provider(monkeypatch, tmp_path
         catalog_names_provider=lambda: {"delete_files", "read_sites"},
     )
     assert rec.check()["ok"] is True
+
+
+def test_watchdog_keeps_authenticated_maintenance_available(monkeypatch, tmp_path):
+    import service_health_monitor
+
+    composite = _composite(names=[])
+    composite["http"].update(operational=False, startup_failure="birth")
+    composite["catalog"]["names"] = []
+    _wire(monkeypatch, composite)
+    monkeypatch.setattr(service_health_monitor, "run", lambda: {"ok": True})
+
+    def unavailable(*args, **kwargs):
+        pytest.fail("maintenance must not load or restart the broken runtime")
+
+    monkeypatch.setattr(sr, "CircuitBreaker", unavailable)
+    systemctl = FakeSystemctl()
+    report_path = tmp_path / "maintenance.json"
+    rec = sr.StackReconciler(systemctl=systemctl, report_path=report_path,
+                            catalog_names_provider=unavailable)
+    monkeypatch.setattr(rec, "restart", unavailable)
+    for _ in range(2):
+        with pytest.raises(sr.StackFailure) as failure:
+            rec.watchdog()
+        assert failure.value.code == "runtime_maintenance"
+        report = json.loads(report_path.read_text())
+        assert report["ready"] is False and report["ok"] is False
+        assert failure.value.details["failed_checks"] == ["http_runtime"]
+    assert not systemctl.calls
 
 
 def test_check_rejects_functionally_unhealthy_searx(monkeypatch, tmp_path):
@@ -688,18 +716,28 @@ def test_readiness_passes_the_same_signed_profile_to_watched_services(
     assert observed == [(key, by_key[key]) for key in sr.WATCHED_SERVICE_KEYS]
 
 
-def test_signed_readiness_does_not_authorize_new_watchdog_mutation_scopes(monkeypatch):
+def test_watchdog_controls_only_the_installed_profile(monkeypatch):
     _signed_readiness_catalog(monkeypatch)
-    with pytest.raises(sr.StackFailure) as caught:
-        sr.StackReconciler._validate_watched_target("durable_workloads", {
-            "unit": "metnos-durable-worker.service", "scope": "system",
-        })
-    assert caught.value.code == "invalid_service_target"
+    validate = sr.StackReconciler._validate_watched_target
+    assert validate("durable_workloads", {
+        "unit": "metnos-durable-worker.service", "scope": "system",
+    }) == ("system", "metnos-durable-worker.service")
+    for unit, scope in (
+        ("metnos-durable-worker.service", "user"),
+        ("unrelated.service", "system"),
+    ):
+        with pytest.raises(sr.StackFailure) as caught:
+            validate("durable_workloads", {"unit": unit, "scope": scope})
+        assert caught.value.code == "invalid_service_target"
 
 
-def test_readiness_rejects_invalid_signed_profile_before_observation(monkeypatch, tmp_path):
+@pytest.mark.parametrize("operation", ["check", "watchdog"])
+def test_readiness_rejects_invalid_signed_profile_before_observation(
+        monkeypatch, tmp_path, operation):
     import services_registry
+    import service_health_monitor
 
+    monkeypatch.setattr(service_health_monitor, "run", lambda: {"ok": True})
     monkeypatch.setattr(
         services_registry, "readiness_catalog",
         lambda: (_ for _ in ()).throw(ValueError("invalid chain")),
@@ -707,8 +745,9 @@ def test_readiness_rejects_invalid_signed_profile_before_observation(monkeypatch
     monkeypatch.setattr(sr, "_json_request", lambda *a, **k: pytest.fail("no probe"))
     fake = FakeSystemctl()
     rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
+    monkeypatch.setattr(rec, "restart", lambda **kwargs: pytest.fail("no restart"))
     with pytest.raises(sr.StackFailure) as caught:
-        rec.check()
+        getattr(rec, operation)()
     assert caught.value.code == "service_catalog_unavailable"
     assert fake.calls == []
 
@@ -763,8 +802,11 @@ def test_restart_refuses_non_quiescent_stack(monkeypatch, tmp_path):
     assert not any(call[0] == "run" for call in fake.calls)
 
 
-def test_restart_uses_only_integrated_target(monkeypatch, tmp_path):
-    fake = FakeSystemctl()
+@pytest.mark.parametrize("scope", ["user", "system"])
+def test_restart_uses_only_installed_integrated_target(monkeypatch, tmp_path, scope):
+    if scope == "system":
+        _signed_readiness_catalog(monkeypatch)
+    fake = FakeSystemctl(system_http_active=scope == "system")
     rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
     lock_type = sr.ReconcileLock
     monkeypatch.setattr(sr, "ReconcileLock", lambda: lock_type(tmp_path / "lock"))
@@ -781,7 +823,10 @@ def test_restart_uses_only_integrated_target(monkeypatch, tmp_path):
     )
     out = rec.restart()
     assert out["ok"] is True
-    assert ("run", "user", "restart", "metnos.target") in fake.calls
+    assert ("run", scope, "restart", "metnos.target") in fake.calls
+    assert not any(
+        call[0] == "run" and call[1] != scope for call in fake.calls
+    )
     assert not any("metnos-http.service" in call for call in fake.calls if call[0] == "run")
 
 

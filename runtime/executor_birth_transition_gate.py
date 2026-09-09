@@ -111,6 +111,7 @@ def _transition_gate_snapshot_locked_v2(session, distribution):
     """Observe the coordinator phase and chain under one exact outer lock."""
     from executor_birth_ownership_chain import (
         OwnershipChainError, inspect_ownership_chain_state_v1,
+        inspect_transition_ownership_chain_v1,
     )
 
     snapshot = _resolve_ownership_coordinator_locked_v2(session)
@@ -120,7 +121,14 @@ def _transition_gate_snapshot_locked_v2(session, distribution):
     )
     chain, partial = None, False
     try:
-        chain = inspect_ownership_chain_state_v1()
+        if distribution.release_sequence > 1:
+            from executor_birth_distribution_manifest import authenticate_distribution_record_v1
+
+            chain = inspect_transition_ownership_chain_v1(
+                authenticate_distribution_record_v1(distribution.encoded, distribution.signature),
+            )
+        else:
+            chain = inspect_ownership_chain_state_v1()
     except OwnershipChainError as exc:
         if not (
             exc.code == "birth_ownership_recovery_required"
@@ -291,9 +299,24 @@ def _transition_current_enumerator_v2(gate, session):
     authority_source = _transition_chain_authority_source_v2(observed)
     sealed = None
     if authority_source == "required":
-        from executor_birth_prepared_root import load_required_context_runtime_v1
+        from executor_birth_prepared_root import (
+            load_previous_context_runtime_v1, load_required_context_runtime_v1,
+        )
 
-        required = load_required_context_runtime_v1()
+        if (
+            observed.distribution.release_sequence > 1
+            and observed.chain.required_head.release_sequence
+            < observed.distribution.release_sequence
+        ):
+            from executor_birth_distribution_manifest import authenticate_distribution_record_v1
+
+            required = load_previous_context_runtime_v1(
+                authenticate_distribution_record_v1(
+                    observed.distribution.encoded, observed.distribution.signature,
+                ),
+            )
+        else:
+            required = load_required_context_runtime_v1()
         if required.required_head_id != observed.chain.required_head.head_id:
             raise OwnershipCoordinatorError(
                 "birth_ownership_recovery_required", "chain phase",

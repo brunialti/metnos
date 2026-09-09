@@ -17,6 +17,9 @@ import executor_birth_preflight_attestation_store as store
 import executor_birth_preflight_store_authority as authority_owner
 
 
+LINUX_ONLY = pytest.mark.skipif(os.name != "posix", reason="real POSIX attestation store")
+
+
 def D(character: str) -> str:
     return "sha256:" + character * 64
 
@@ -106,6 +109,7 @@ def test_product_sessions_are_checked_before_and_after_each_effect(monkeypatch) 
     assert calls == [sessions, sessions, "effect", sessions]
 
 
+@LINUX_ONLY
 def test_store_is_no_replace_idempotent_bounded_and_detects_residue(
     tmp_path, monkeypatch,
 ) -> None:
@@ -163,6 +167,7 @@ def test_import_has_no_filesystem_effect(tmp_path) -> None:
     assert completed.returncode == 0, completed.stderr
 
 
+@LINUX_ONLY
 def test_inventory_is_bounded_before_publication(tmp_path, monkeypatch) -> None:
     root = _root(tmp_path)
     request_id, encoded = _attestation()
@@ -176,6 +181,7 @@ def test_inventory_is_bounded_before_publication(tmp_path, monkeypatch) -> None:
     assert failure.value.code == preflight.CODE_RECOVERY
 
 
+@LINUX_ONLY
 def test_inventory_reserves_capacity_for_a_new_final_name(tmp_path, monkeypatch) -> None:
     root = _root(tmp_path)
     request_id, encoded = _attestation()
@@ -191,6 +197,7 @@ def test_inventory_reserves_capacity_for_a_new_final_name(tmp_path, monkeypatch)
     assert {path.name for path in root.iterdir()} == {"existing.json"}
 
 
+@LINUX_ONLY
 def test_inventory_at_capacity_allows_exact_existing_attestation(
     tmp_path, monkeypatch,
 ) -> None:
@@ -204,6 +211,7 @@ def test_inventory_at_capacity_allows_exact_existing_attestation(
     ) == encoded
 
 
+@LINUX_ONLY
 def test_publication_releases_lock_only_by_closing_its_descriptor(
     tmp_path, monkeypatch,
 ) -> None:
@@ -219,6 +227,7 @@ def test_publication_releases_lock_only_by_closing_its_descriptor(
 
 
 @pytest.mark.parametrize("crash_state", ("incomplete", "complete", "linked"))
+@LINUX_ONLY
 def test_exact_crash_states_are_recovered(tmp_path, crash_state) -> None:
     root = _root(tmp_path)
     request_id, encoded = _attestation()
@@ -243,6 +252,7 @@ def test_exact_crash_states_are_recovered(tmp_path, crash_state) -> None:
 @pytest.mark.parametrize(
     "invalid_state", ("mismatch", "symlink", "mode", "distinct"),
 )
+@LINUX_ONLY
 def test_untrusted_crash_states_fail_closed(tmp_path, invalid_state) -> None:
     root = _root(tmp_path)
     request_id, encoded = _attestation()
@@ -266,6 +276,7 @@ def test_untrusted_crash_states_fail_closed(tmp_path, invalid_state) -> None:
 
 
 @pytest.mark.parametrize("acl_name", store._ACL_NAMES_V1)
+@LINUX_ONLY
 def test_acl_and_unsupported_acl_query_fail_closed(
     tmp_path, monkeypatch, acl_name,
 ) -> None:
@@ -294,6 +305,7 @@ def test_acl_and_unsupported_acl_query_fail_closed(
         store._read_preflight_attestation_for_test_v1(request_id, root)
 
 
+@LINUX_ONLY
 def test_basename_and_root_rebinding_are_rejected(tmp_path, monkeypatch) -> None:
     root = _root(tmp_path)
     request_id, encoded = _attestation()
@@ -330,6 +342,7 @@ def test_basename_and_root_rebinding_are_rejected(tmp_path, monkeypatch) -> None
         store._read_preflight_attestation_for_test_v1(request_id, root)
 
 
+@LINUX_ONLY
 def test_root_swap_during_final_chain_recheck_is_rejected(tmp_path, monkeypatch) -> None:
     root = _root(tmp_path)
     request_id, encoded = _attestation()
@@ -350,6 +363,7 @@ def test_root_swap_during_final_chain_recheck_is_rejected(tmp_path, monkeypatch)
         store._read_preflight_attestation_for_test_v1(request_id, root)
 
 
+@LINUX_ONLY
 def test_child_swap_after_initial_read_is_rejected(tmp_path, monkeypatch) -> None:
     root = _root(tmp_path)
     request_id, encoded = _attestation()
@@ -367,6 +381,7 @@ def test_child_swap_after_initial_read_is_rejected(tmp_path, monkeypatch) -> Non
         store._read_preflight_attestation_for_test_v1(request_id, root)
 
 
+@LINUX_ONLY
 def test_final_binding_order_is_root_child_root(tmp_path, monkeypatch) -> None:
     root = _root(tmp_path)
     request_id, encoded = _attestation()
@@ -401,6 +416,7 @@ def test_final_binding_order_is_root_child_root(tmp_path, monkeypatch) -> None:
     assert closed.value.errno == errno.EBADF
 
 
+@LINUX_ONLY
 def test_post_authorization_failure_closes_store_descriptor(
     tmp_path, monkeypatch,
 ) -> None:
@@ -437,6 +453,7 @@ def test_post_authorization_failure_closes_store_descriptor(
     assert closed.value.errno == errno.EBADF
 
 
+@LINUX_ONLY
 def test_staging_open_closes_fd_when_post_authorization_expires(
     tmp_path, monkeypatch,
 ) -> None:
@@ -473,6 +490,7 @@ def test_staging_open_closes_fd_when_post_authorization_expires(
     os.close(directory)
 
 
+@LINUX_ONLY
 def test_mutation_port_is_narrow_nontransferable_and_name_bound(tmp_path) -> None:
     root = _root(tmp_path)
     selected = store._test_authority_v1(root)
@@ -494,6 +512,7 @@ def test_mutation_port_is_narrow_nontransferable_and_name_bound(tmp_path) -> Non
         os.close(directory)
 
 
+@LINUX_ONLY
 def test_mutation_port_rebinds_root_after_each_effect(tmp_path, monkeypatch) -> None:
     root = _root(tmp_path)
     selected = store._test_authority_v1(root)
@@ -523,6 +542,7 @@ def test_mutation_port_rebinds_root_after_each_effect(tmp_path, monkeypatch) -> 
         os.close(directory)
 
 
+@LINUX_ONLY
 def test_wrong_file_owner_and_symlink_root_fail_closed(tmp_path, monkeypatch) -> None:
     root = _root(tmp_path)
     request_id, encoded = _attestation()
@@ -562,5 +582,7 @@ def test_platform_gate_precedes_filesystem_io(monkeypatch) -> None:
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("I/O")),
     )
     with pytest.raises(preflight.PreflightError) as failure:
-        store._read_preflight_attestation_for_test_v1(D("1"), Path("/tmp/x"))
+        # The product entry uses its fixed root and identities; the POSIX-only
+        # test helper calls os.getuid() before entering this platform guard.
+        store._read_preflight_attestation_v1(D("1"))
     assert failure.value.code == preflight.CODE_PLATFORM

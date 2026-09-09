@@ -65,7 +65,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y bubblewrap
+          sudo apt-get install -y bubblewrap python3.12-venv
 
       - name: Calibrate real identities and the independent ACL oracle
         if: runner.os == 'Windows'
@@ -83,6 +83,20 @@ jobs:
           --confcutdir=tests/portable
           --ignore=tests/portable/rm0008_2a_acceptance
           tests/portable
+
+      - name: Prepare the locked offline Python wheelhouse for the Linux service proof
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python -m pip download --disable-pip-version-check \
+            --require-hashes --no-deps --only-binary=:all: \
+            --requirement requirements-linux-x86_64.lock \
+            --dest "$RUNNER_TEMP/metnos-wheelhouse"
+          sudo install -d -o root -g root -m 0755 \
+            /var/lib/metnos/python-wheelhouse-v1/linux-x86_64-cpython-312
+          sudo install -o root -g root -m 0644 \
+            "$RUNNER_TEMP/metnos-wheelhouse/"*.whl \
+            /var/lib/metnos/python-wheelhouse-v1/linux-x86_64-cpython-312/
 
       - name: Certify the real delegated Linux Birth runner
         if: runner.os == 'Linux'

@@ -16,6 +16,24 @@ import executor_birth_distribution_assembler as assembler
 import executor_birth_legacy_state as legacy
 
 
+def test_g6_probe_executable_comes_from_service_catalog(monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parent))
+    import test_executor_birth_admin_preflight_materials as materials
+    import test_executor_birth_systemd_activation as activation
+
+    fixture = SimpleNamespace(
+        service_entry_id="service-http",
+        catalog_bytes=materials._catalog_bytes(
+            administrative_python="/usr/bin/python3.12",
+        ),
+        environment=object(),  # Verification context, not the managed runtime.
+    )
+    assert activation._service_target_executable(fixture) == materials._MANAGED_PYTHON
+    fixture.service_entry_id = "missing-service"
+    with pytest.raises(AssertionError):
+        activation._service_target_executable(fixture)
+
+
 @pytest.mark.parametrize("mutation", (None, "missing-record", "wrong-binding"))
 def test_g6_fixture_history_is_complete_and_bound(tmp_path, monkeypatch, mutation):
     portable = Path(__file__).resolve().parent
