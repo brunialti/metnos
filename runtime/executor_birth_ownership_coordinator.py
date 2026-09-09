@@ -3648,10 +3648,10 @@ def _transition_edge_locked_v2(
     return _transition_edge_from_graph_v2(graph, distribution)
 
 
-def _completed_transition_from_graph_v2(
+def _terminal_transition_from_graph_v2(
     graph: object, distribution: object,
 ) -> OwnershipCoordinatorRecordV2 | None:
-    """Return only the final transaction for the exact current release."""
+    """Bind the terminal record to the exact current signed distribution."""
     if (
         type(graph) is not _ObservedOwnershipCoordinatorGraphV2
         or not is_verified_distribution(distribution)
@@ -3674,11 +3674,8 @@ def _completed_transition_from_graph_v2(
     ):
         raise OwnershipCoordinatorError("birth_ownership_request_conflict")
     latest = transaction.latest
-    if latest.sequence != 6:
-        return None
     if (
-        latest.state is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
-        or latest.distribution_payload_hash != _digest(distribution.encoded)
+        latest.distribution_payload_hash != _digest(distribution.encoded)
         or latest.distribution_signature_hash != _digest(distribution.signature)
         or latest.previous_closed_build_id
         != distribution.previous_closed_build_id
@@ -3689,6 +3686,40 @@ def _completed_transition_from_graph_v2(
     ):
         raise OwnershipCoordinatorError("birth_ownership_request_conflict")
     return latest
+
+
+def _completed_transition_from_graph_v2(
+    graph: object, distribution: object,
+) -> OwnershipCoordinatorRecordV2 | None:
+    """Return only the final transaction for the exact current release."""
+    latest = _terminal_transition_from_graph_v2(graph, distribution)
+    if latest is None or latest.sequence != 6:
+        return None
+    if latest.state is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED:
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    return latest
+
+
+def _head_required_transition_from_graph_v2(
+    graph: object, distribution: object,
+) -> OwnershipCoordinatorRecordV2 | None:
+    """Select the exact unfinished 5→6 boundary without replaying cutover."""
+    latest = _terminal_transition_from_graph_v2(graph, distribution)
+    if latest is None or latest.sequence != 5:
+        return None
+    if latest.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED:
+        raise OwnershipCoordinatorError("birth_ownership_request_conflict")
+    return latest
+
+
+def _head_required_transition_locked_v2(
+    session: _DeploymentLockSessionV1, distribution: object,
+) -> OwnershipCoordinatorRecordV2 | None:
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    selected = _head_required_transition_from_graph_v2(graph, distribution)
+    _require_deployment_lock_session_v1(session)
+    return selected
 
 
 def _completed_transition_locked_v2(

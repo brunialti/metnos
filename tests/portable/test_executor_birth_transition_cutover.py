@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import replace
+import hashlib
 import os
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
@@ -678,14 +679,19 @@ def test_retirement_preserves_the_occupied_fragment_before_replacement(
 
 
 @LINUX_ONLY
+@pytest.mark.parametrize("successor", (False, True))
 def test_topology_helper_installs_reloads_and_returns_the_live_measurement(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, successor: bool,
 ):
     import executor_birth_admin_preflight as admin
 
     system = tmp_path / "system"
-    system.mkdir()
+    system.mkdir(mode=0o755)
     fragment = b"[Service]\nExecStart=/bin/true\n"
+    previous_fragment = b"[Service]\nExecStart=/bin/false\n"
+    if successor:
+        (system / "metnos-http.service").write_bytes(previous_fragment)
+        (system / "metnos-http.service").chmod(0o644)
     loaded = SimpleNamespace(
         unit_fragments=(("metnos-http.service", fragment),),
     )
@@ -724,17 +730,87 @@ def test_topology_helper_installs_reloads_and_returns_the_live_measurement(
 
     assert provisioner._install_bound_topology_v2(
         object(), prepared,
+        **({"previous_fragments": {"metnos-http.service": previous_fragment}} if successor else {}),
     ) is measurement
     assert (system / "metnos-http.service").read_bytes() == fragment
     assert calls[0][0][0] == ["/usr/bin/systemctl", "daemon-reload"]
 
 
 @LINUX_ONLY
-@pytest.mark.parametrize(("authentication_fails", "catalog_drifts"), (
-    (False, False), (True, False), (False, True),
+@pytest.mark.parametrize("live_version", ("previous", "current", "changed", "missing"))
+def test_successor_retirement_wrapper_only_observes_exact_preserved_files(
+    tmp_path, monkeypatch, live_version,
+):
+    import executor_birth_legacy_neutralizer as neutralizer
+
+    roots = {scope: tmp_path / scope for scope in ("system", "user", "repository")}
+    for root in roots.values():
+        root.mkdir(mode=0o755)
+    fragment = roots["system"] / "metnos-http.service"
+    script = roots["repository"] / "legacy.sh"
+    fragment.write_bytes(b"old legacy unit")
+    script.write_bytes(b"old legacy script")
+    fragment.chmod(0o644)
+    script.chmod(0o644)
+    previous_fragment, current_fragment = b"previous signed unit", b"current signed unit"
+    catalog = _minimal_catalog()
+    previous = SimpleNamespace(catalog=catalog, unit_fragments=((fragment.name, previous_fragment),))
+    current = SimpleNamespace(catalog=catalog, unit_fragments=((fragment.name, current_fragment),))
+    historical_file = SimpleNamespace(
+        path=script.name, size=script.stat().st_size,
+        content_hash="sha256:" + hashlib.sha256(script.read_bytes()).hexdigest(),
+    )
+    prepared = SimpleNamespace(materials=SimpleNamespace(
+        predecessor=SimpleNamespace(files=(historical_file,)),
+    ))
+    monkeypatch.setattr(provisioner, "_capture_bound_transition_catalog_v2", lambda *_: current)
+    monkeypatch.setattr(provisioner, "_transition_roots_v2", lambda *_: roots)
+    monkeypatch.setattr(provisioner, "_process_tree_references_entries_v2", lambda *_: False)
+    # Establish the historical backup and receipt using the real initial writer.
+    expected = provisioner._retire_bound_catalog_v2(object(), prepared, _Maintenance(), object())
+    if live_version != "missing":
+        fragment.write_bytes({
+            "previous": previous_fragment, "current": current_fragment, "changed": b"unexpected unit",
+        }[live_version])
+        fragment.chmod(0o644)
+
+    def snapshot():
+        return {
+            path.relative_to(tmp_path): (path.lstat(), path.read_bytes())
+            for path in tmp_path.rglob("*") if path.is_file()
+        }
+
+    before = snapshot()
+    monkeypatch.setattr(
+        neutralizer, "_neutralize_core_v1",
+        lambda *_args, **_kwargs: pytest.fail("successor repeated initial retirement writes"),
+    )
+    if live_version in {"changed", "missing"}:
+        with pytest.raises((neutralizer.LegacyNeutralizerError, OSError)):
+            provisioner._retire_bound_catalog_v2(
+                object(), prepared, _Maintenance(), object(), previous_catalog=previous,
+            )
+    else:
+        assert provisioner._retire_bound_catalog_v2(
+            object(), prepared, _Maintenance(), object(), previous_catalog=previous,
+        ) == expected
+    after = snapshot()
+    assert before.keys() == after.keys()
+    for path, (info, content) in before.items():
+        repeated, repeated_content = after[path]
+        assert (info.st_ino, info.st_mode, info.st_uid, info.st_gid, info.st_mtime_ns) == (
+            repeated.st_ino, repeated.st_mode, repeated.st_uid, repeated.st_gid, repeated.st_mtime_ns,
+        )
+        assert repeated_content == content
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize(("release_sequence", "failure_point"), (
+    (1, None), (1, "authentication"), (1, "catalog"),
+    (2, None), (2, "authentication"), (2, "catalog"), (2, "previous"),
 ))
 def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
-    monkeypatch: pytest.MonkeyPatch, authentication_fails: bool, catalog_drifts: bool,
+    monkeypatch: pytest.MonkeyPatch, release_sequence: int, failure_point: str | None,
 ):
     import config
     import contract_cutover_guard
@@ -757,11 +833,15 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
 
     events: list[str] = []
+    held: list[str] = []
+    successor = release_sequence > 1
+    authentication_fails = failure_point == "authentication"
+    catalog_drifts = failure_point == "catalog"
     # Nominal production types exercise the real G6 entry guard. Cryptographic
     # authentication and installed-file verification are separate tested ports.
     header = dict(
-        closed_build_id=D("1"), previous_closed_build_id=None,
-        release_sequence=1, product_version="1.2.3", platform="linux",
+        closed_build_id=D("1"), previous_closed_build_id=D("0") if successor else None,
+        release_sequence=release_sequence, product_version="1.2.3", platform="linux",
         architecture="x86_64", installation_root="/srv/release",
         certificate_directory="/srv/certificates", boundary_inventory_hash=D("2"),
         boundary_guard_version="test-boundary", preflight_entrypoint="deployment/admin/preflight.py",
@@ -776,6 +856,18 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     distribution = manifest._verified_distribution_result_v1(
         authenticated, header, (),
     )
+    previous_bytes = b"previous distribution"
+    previous_record = replace(
+        authenticated, closed_build_id=D("0"), previous_closed_build_id=None,
+        release_sequence=1, installation_root="/srv/previous-release", encoded=previous_bytes,
+        _artifact_binding=manifest._authenticated_artifact_binding(previous_bytes, signature),
+    )
+    previous_distribution = manifest._verified_distribution_result_v1(
+        previous_record, {
+            **header, "closed_build_id": D("0"), "previous_closed_build_id": None,
+            "release_sequence": 1, "installation_root": previous_record.installation_root,
+        }, (),
+    )
     assert type(distribution) is manifest.VerifiedDistribution
     complete = record_v2(1)
     catalog = _minimal_catalog()
@@ -783,6 +875,11 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         catalog=catalog, unit_fragments=(),
     ))
     catalog_reads = []
+    previous_reads = []
+    previous_catalog = SimpleNamespace(
+        catalog=catalog, unit_fragments=(("metnos-http.service", b"previous unit"),),
+    )
+    previous_artifacts = SimpleNamespace(record=previous_record)
     effective = SimpleNamespace(snapshot=SimpleNamespace(effective_units_hash=D("5")))
     final = SimpleNamespace(name="final")
     result = object()
@@ -790,13 +887,18 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     @contextmanager
     def deployment_lock():
         events.append("deployment-enter")
+        held.append("deployment")
         yield "deployment"
+        assert held.pop() == "deployment"
         events.append("deployment-exit")
 
     @contextmanager
     def startup_lock():
+        assert held == ["deployment"]
         events.append("startup-enter")
+        held.append("startup")
         yield "startup"
+        assert held.pop() == "startup"
         events.append("startup-exit")
 
     class Maintenance:
@@ -810,10 +912,14 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     transition_current = object()
 
     @contextmanager
-    def maintenance_guard(_service_user, *, catalog_trusted_owner):
+    def maintenance_guard(_service_user, *, catalog_trusted_owner, release_catalog=None):
         assert catalog_trusted_owner == (41, 42)
+        assert held == ["deployment", "startup"]
+        assert release_catalog is (previous_catalog if successor else None)
         events.append("maintenance-enter")
+        held.append("maintenance")
         yield maintenance, _Maintenance().observe()
+        assert held.pop() == "maintenance"
         events.append("maintenance-exit")
 
     @contextmanager
@@ -832,7 +938,9 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         service_home="/srv/metnos", service_shell="/usr/sbin/nologin",
         service_supplementary_gids=(42,),
     )
-    preparation = SimpleNamespace(descriptor=descriptor)
+    preparation = SimpleNamespace(
+        descriptor=descriptor, previous_context=SimpleNamespace(distribution=previous_distribution),
+    )
     service_state_root = Path("/srv/metnos/.local/state/metnos")
     monkeypatch.setattr(config, "PATH_USER_STATE", service_state_root)
     legacy_identity = SimpleNamespace(name="legacy-metnos")
@@ -844,6 +952,9 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
     monkeypatch.setattr(manifest, "verify_current_installation_distribution_v1", lambda *_: distribution)
     def authenticate(payload, signed):
+        if payload == previous_bytes:
+            assert successor and signed == signature
+            return previous_record
         assert payload == distribution.encoded and signed == distribution.signature
         events.append("administrative-authenticate")
         if authentication_fails:
@@ -862,6 +973,26 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         manifest, "capture_current_deployment_descriptor_v1",
         lambda candidate: (candidate, descriptor),
     )
+    def capture_previous(current, previous):
+        assert successor and current is authenticated and previous is previous_record
+        assert held == (["deployment"] if not previous_reads else ["deployment", "startup", "maintenance"])
+        previous_reads.append(previous)
+        if failure_point == "previous" and len(previous_reads) == 2:
+            return SimpleNamespace(record=previous_record, changed=True)
+        return previous_artifacts
+
+    monkeypatch.setattr(manifest, "capture_previous_release_artifacts_v1", capture_previous)
+    monkeypatch.setattr(
+        service_catalog, "load_previous_service_catalog_v1",
+        lambda artifacts: previous_catalog if artifacts is previous_artifacts
+        else pytest.fail("historical catalog lost its authenticated capture"),
+    )
+    monkeypatch.setattr(
+        manifest, "verify_previous_distribution_record_v1",
+        lambda current, previous: previous_distribution
+        if current is authenticated and previous is previous_record
+        else pytest.fail("G6 historical verification edge changed"),
+    )
     monkeypatch.setattr(coordinator, "_deployment_lock_v1", deployment_lock)
     monkeypatch.setattr(
         source_receiver, "_load_received_source_with_product_session_v1",
@@ -871,6 +1002,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         coordinator, "_reserve_transition_edge_locked_v2", lambda *_args, **_kwargs: object(),
     )
     monkeypatch.setattr(coordinator, "_completed_transition_locked_v2", lambda *_: None)
+    monkeypatch.setattr(coordinator, "_head_required_transition_locked_v2", lambda *_: None)
     monkeypatch.setattr(
         transition_gate, "_transition_gate_snapshot_locked_v2",
         lambda *_: events.append("gate-snapshot") or object(),
@@ -935,6 +1067,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         else pytest.fail("contract convergence lost the signed descriptor"),
     )
     def prepare_legacy(candidate, verified, proof, *, require_live_ready):
+        assert not successor, "successor repeated the initial legacy adoption"
         if candidate is not descriptor or verified is not distribution or proof is not maintenance:
             pytest.fail("legacy adoption lost its ordered lock binding")
         assert require_live_ready is True
@@ -942,6 +1075,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         return SimpleNamespace(record_sha256=D("7"), ready=False)
 
     def complete_legacy(candidate, verified, prepared_record, proof, *, live):
+        assert not successor, "successor repeated initial legacy inspection"
         if (
             candidate is not descriptor or verified is not distribution
             or prepared_record.record_sha256 != D("7")
@@ -959,7 +1093,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
     )
     monkeypatch.setattr(provisioner, "_prepare_transition_receipt_material_locked_v2", lambda *_: preparation)
     def complete_receipts(*_args, **kwargs):
-        assert kwargs["initial_legacy_state_record_sha256"] == D("8")
+        assert kwargs["initial_legacy_state_record_sha256"] == (None if successor else D("8"))
         return complete
 
     monkeypatch.setattr(
@@ -984,6 +1118,11 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
             pytest.fail("administrative install lost its authenticated lock binding")
         assert bindings["verify"]() is distribution
         bindings["require_session"]()
+        assert held == ["deployment", "startup", "maintenance"]
+        assert bindings["previous_record"] is (previous_record if successor else None)
+        if successor:
+            assert bindings["verify_previous"]() is previous_distribution
+            assert bindings["previous_source_root"] == Path(previous_record.installation_root)
         events.append("administrative-install")
 
     def prepare_candidate(complete_record, candidate):
@@ -1011,8 +1150,24 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
 
     monkeypatch.setattr(service_catalog, "capture_current_service_catalog_v1", capture_catalog)
     monkeypatch.setattr(provisioner, "_observe_bound_enforcement_v2", lambda *_: D("6"))
-    monkeypatch.setattr(provisioner, "_retire_bound_catalog_v2", lambda *_: D("7"))
-    monkeypatch.setattr(provisioner, "_install_bound_topology_v2", lambda *_: effective)
+    effect_calls = []
+
+    def retire(candidate, selected, proof, identity, **bindings):
+        assert (candidate, selected, proof, identity) == (distribution, prepared, maintenance, legacy_identity)
+        assert held == ["deployment", "startup", "maintenance"]
+        assert bindings.get("previous_catalog") is (previous_catalog if successor else None)
+        effect_calls.append("retirement")
+        return D("7")
+
+    def topology(candidate, selected, **bindings):
+        assert candidate is distribution and selected is prepared
+        assert held == ["deployment", "startup", "maintenance"]
+        assert bindings.get("previous_fragments") == (dict(previous_catalog.unit_fragments) if successor else None)
+        effect_calls.append("topology")
+        return effective
+
+    monkeypatch.setattr(provisioner, "_retire_bound_catalog_v2", retire)
+    monkeypatch.setattr(provisioner, "_install_bound_topology_v2", topology)
     monkeypatch.setattr(admin, "_build_startup_prerequisite_for_cutover_v2", lambda *_: "prerequisite")
     monkeypatch.setattr(prerequisite_module, "_publish_startup_prerequisite_locked_v2", lambda *_: (
         coordinator._startup_prerequisite_for_test(D("1"), D("2"))
@@ -1057,8 +1212,26 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
             provisioner.complete_transition_cutover_v2(distribution, D("a"), **arguments)
         assert len(catalog_reads) == 2
         return
+    if failure_point == "previous":
+        with pytest.raises(provisioner.BirthProvisioningError, match="birth_transition_previous_release_changed"):
+            provisioner.complete_transition_cutover_v2(distribution, D("a"), **arguments)
+        assert len(previous_reads) == 2
+        assert effect_calls == []
+        return
     assert provisioner.complete_transition_cutover_v2(distribution, D("a"), **arguments) is result
     assert len(catalog_reads) == 2
+    assert effect_calls == ["retirement", "topology"] * 2
+    assert len(previous_reads) == (3 if successor else 0)
+    assert held == []
+    if successor:
+        assert events == [
+            "deployment-enter", "administrative-authenticate", "startup-install", "startup-enter",
+            "gate-snapshot", "service-enter", "current-enumerator", "service-exit",
+            "maintenance-enter", "inventory-enter", "predecessor", "administrative-authenticate",
+            "administrative-install", "candidate-prepare", "composition", "inventory-exit",
+            "maintenance-exit", "startup-exit", "deployment-exit",
+        ]
+        return
     assert events == [
         "deployment-enter", "startup-install", "startup-enter", "chain-initialize",
         "gate-snapshot",
@@ -1072,6 +1245,138 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         "inventory-exit",
         "maintenance-exit", "startup-exit", "deployment-exit",
     ]
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("pending", (True, False))
+def test_required_head_resume_only_crosses_preflight_under_all_locks(monkeypatch, pending):
+    import contract_cutover_guard as guard
+    import executor_birth_ownership_coordinator as coordinator
+    import executor_birth_service_catalog as catalog_module
+    import executor_birth_startup_gate as gate
+    import install.executor_birth_startup_gate as installer
+
+    events, held = [], []
+    candidate, catalog, head, result = object(), object(), object(), object()
+    descriptor = SimpleNamespace(service_uid=41, service_gid=42)
+    identity = SimpleNamespace(name="legacy-metnos")
+
+    def select(session, distribution):
+        assert session == "deployment" and distribution is candidate
+        return head if pending else None
+
+    def load(distribution):
+        assert distribution is candidate
+        events.append("catalog")
+        return catalog
+
+    @contextmanager
+    def startup():
+        held.append("startup")
+        try:
+            yield "startup"
+        finally:
+            held.pop()
+
+    @contextmanager
+    def maintenance(name, *, catalog_trusted_owner, release_catalog):
+        assert held == ["startup"]
+        assert (name, catalog_trusted_owner, release_catalog) == (identity.name, (41, 42), catalog)
+        held.append("maintenance")
+        try:
+            yield "maintenance", {}
+        finally:
+            held.pop()
+
+    def cross(sessions, selected):
+        assert sessions == ("deployment", "startup", "maintenance")
+        assert held == ["startup", "maintenance"] and selected is head
+        events.append("preflight")
+        return result
+
+    monkeypatch.setattr(coordinator, "_head_required_transition_locked_v2", select)
+    monkeypatch.setattr(catalog_module, "capture_current_service_catalog_v1", load)
+    monkeypatch.setattr(installer, "install_startup_gate_v1", lambda session: events.append(session))
+    monkeypatch.setattr(gate, "_exclusive_startup_gate_v1", startup)
+    monkeypatch.setattr(guard, "_contract_cutover_guard_for_service_user_v1", maintenance)
+    monkeypatch.setattr(coordinator, "_cross_preflight_boundary_locked_v2", cross)
+    monkeypatch.setattr(coordinator, "_result", lambda record: record)
+
+    assert provisioner._resume_required_transition_v2(
+        "deployment", candidate, descriptor, identity,
+    ) is (result if pending else None)
+    assert events == (["catalog", "deployment", "preflight"] if pending else [])
+    assert not held
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("mismatch", (None, "claim", "predecessor"))
+def test_successor_receipt_preparation_binds_the_explicit_previous_context(
+    monkeypatch, mismatch,
+):
+    import executor_birth_distribution_manifest as manifest
+    import executor_birth_ownership_coordinator as coordinator
+    import executor_birth_prepared_root as prepared_root
+    from test_executor_birth_ownership_coordinator_v2 import prepared_target
+
+    current = SimpleNamespace(encoded=b"candidate", signature=b"s" * 64)
+    descriptor, authenticated, previous_selection = object(), object(), object()
+    previous_set = SimpleNamespace(set_id="1" * 64)
+    claim = SimpleNamespace(request_id=D("1"), closed_build_id=D("2"), previous_head_id=D("3"))
+    predecessor = SimpleNamespace(head_id=D("3"))
+    if mismatch == "claim":
+        claim.previous_head_id = D("4")
+    elif mismatch == "predecessor":
+        predecessor.head_id = D("4")
+    previous = SimpleNamespace(
+        required_head_id=D("3"), selection=previous_selection,
+        authorities=SimpleNamespace(prepared=previous_set),
+    )
+    staged = prepared_target(claim, current, previous_set_id=previous_set.set_id)
+    events = []
+    monkeypatch.setattr(coordinator, "_require_deployment_lock_session_v1", lambda session: events.append(session))
+    monkeypatch.setattr(manifest, "capture_current_deployment_descriptor_v1", lambda candidate: (candidate, descriptor))
+    monkeypatch.setattr(coordinator, "_transition_edge_locked_v2", lambda *_: (claim, predecessor))
+    monkeypatch.setattr(
+        manifest, "authenticate_distribution_record_v1",
+        lambda encoded, signature: authenticated
+        if (encoded, signature) == (current.encoded, current.signature)
+        else pytest.fail("candidate authentication changed"),
+    )
+    monkeypatch.setattr(
+        prepared_root, "load_previous_context_runtime_v1",
+        lambda candidate: previous if candidate is authenticated
+        else pytest.fail("previous context lacks authenticated successor"),
+    )
+    monkeypatch.setattr(
+        prepared_root, "load_required_context_runtime_v1",
+        lambda: pytest.fail("successor preparation selected live N+1 instead of predecessor N"),
+    )
+
+    @contextmanager
+    def service_identity(candidate):
+        assert candidate is descriptor
+        events.append("service")
+        yield
+
+    def prepare(selected_claim, distribution, selected_set):
+        assert selected_claim is claim and distribution is current and selected_set is previous_set
+        assert events == ["deployment", "service"]
+        events.append("prepare")
+        return staged
+
+    monkeypatch.setattr(provisioner, "_service_owned_birth_identity_v2", service_identity)
+    monkeypatch.setattr(provisioner, "_prepare_transition_authority_set_v2", prepare)
+    if mismatch:
+        with pytest.raises(provisioner.BirthProvisioningError):
+            provisioner._prepare_transition_receipt_material_locked_v2("deployment", current)
+        assert events == ["deployment"]
+        return
+    result = provisioner._prepare_transition_receipt_material_locked_v2("deployment", current)
+    assert result.distribution is current
+    assert result.previous_context is previous_selection
+    assert result.prepared_authority_set is staged
+    assert events == ["deployment", "service", "prepare"]
 
 
 @LINUX_ONLY

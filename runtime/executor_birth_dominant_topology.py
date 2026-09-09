@@ -95,6 +95,13 @@ def _content_hash_v1(payload: bytes) -> str:
     return f"sha256:{hashlib.sha256(payload).hexdigest()}"
 
 
+def _require_fragment_v1(name: str, payload: bytes) -> None:
+    if type(payload) is not bytes or not payload:
+        raise _invalid("topology_fragment_invalid", name)
+    if len(payload) > MAX_UNIT_FRAGMENT_BYTES_V1:
+        raise _invalid("topology_fragment_too_large", name)
+
+
 def _write_all_v1(descriptor: int, payload: bytes, position: int = 0) -> None:
     while position < len(payload):
         written = os.write(descriptor, payload[position:])
@@ -104,7 +111,7 @@ def _write_all_v1(descriptor: int, payload: bytes, position: int = 0) -> None:
 
 
 def _read_regular_v1(path: Path, maximum: int) -> tuple[bytes, os.stat_result]:
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         descriptor = os.open(path, flags)
     except OSError as exc:
@@ -154,12 +161,10 @@ def _publish_staged_v1(temporary: Path, final: Path) -> None:
 def _install_one_v1(
     root: Path, name: str, payload: bytes, *,
     _crash_seam: Callable[[str], None] | None,
+    _replacement: bool = False,
 ) -> InstalledUnitV1:
     """Write, or agree that the same bytes are already there."""
-    if type(payload) is not bytes or not payload:
-        raise _invalid("topology_fragment_invalid", name)
-    if len(payload) > MAX_UNIT_FRAGMENT_BYTES_V1:
-        raise _invalid("topology_fragment_too_large", name)
+    _require_fragment_v1(name, payload)
     path = root / name
     if path.is_symlink():
         raise _invalid("topology_unit_link", name)
@@ -176,9 +181,14 @@ def _install_one_v1(
             raise _invalid("topology_unit_collision", name)
         repeated = True
     else:
-        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+        flags = (
+            os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
         descriptor = os.open(temporary, flags, 0o600)
         try:
+            if _replacement:
+                _require_replacement_metadata_v1(os.fstat(descriptor), temporary=True)
             observed = os.read(descriptor, len(payload) + 1)
             if not payload.startswith(observed):
                 raise _invalid("topology_temporary_conflict", name)
@@ -197,6 +207,8 @@ def _install_one_v1(
             os.close(directory_fd)
         if _crash_seam is not None:
             _crash_seam("dominant_fragment_staged")
+        if _replacement and _replacement_file_v1(temporary) != payload:
+            raise _invalid("topology_temporary_conflict", name)
         _publish_staged_v1(temporary, path)
         if _crash_seam is not None:
             _crash_seam("dominant_fragment_published")
@@ -210,8 +222,73 @@ def _install_one_v1(
     )
 
 
+def _require_replacement_metadata_v1(
+    status: os.stat_result, *, temporary: bool = False,
+) -> None:
+    if (
+        not stat.S_ISREG(status.st_mode) or status.st_nlink != 1
+        or (status.st_uid, status.st_gid) != (os.geteuid(), os.getegid())
+        or stat.S_IMODE(status.st_mode) not in (
+            (0o600, UNIT_MODE_V1) if temporary else (UNIT_MODE_V1,)
+        )
+    ):
+        raise _invalid("topology_replacement_metadata_invalid")
+
+
+def _replacement_file_v1(path: Path, *, temporary: bool = False) -> bytes | None:
+    try:
+        before = path.lstat()
+    except FileNotFoundError:
+        return None
+    _require_replacement_metadata_v1(before, temporary=temporary)
+    observed, after = _read_regular_v1(path, MAX_UNIT_FRAGMENT_BYTES_V1)
+    # Reading may update atime, but no other identity/metadata may change.
+    fields = ("st_dev", "st_ino", "st_size", "st_mode", "st_nlink", "st_uid",
+              "st_gid", "st_mtime_ns", "st_ctime_ns")
+    final = path.lstat()
+    if any(getattr(before, key) != getattr(item, key)
+           for key in fields for item in (after, final)):
+        raise _invalid("topology_unit_unconfirmed", path.name)
+    return observed
+
+
+def _previous_fragment_path_v1(
+    root: Path, name: str, previous: bytes, candidate: bytes,
+) -> Path:
+    # Bounded filename, even for a maximum-length unit name. Historical backups
+    # are never removed or reused for a different content transition.
+    digest = hashlib.sha256(
+        name.encode("utf-8") + b"\0" + hashlib.sha256(previous).digest()
+        + hashlib.sha256(candidate).digest()
+    ).hexdigest()
+    return root / f".metnos-unit-{digest}.previous"
+
+
+def _replacement_state_v1(
+    root: Path, name: str, previous: bytes, candidate: bytes,
+) -> str:
+    current = _replacement_file_v1(root / name)
+    temporary = _replacement_file_v1(root / f".{name}.installing", temporary=True)
+    if previous == candidate:
+        if current == candidate and temporary is None:
+            return "current"
+    else:
+        backup = _replacement_file_v1(
+            _previous_fragment_path_v1(root, name, previous, candidate),
+        )
+        if current == previous and backup is None and temporary is None:
+            return "previous"
+        if backup == previous:
+            if current is None and (temporary is None or candidate.startswith(temporary)):
+                return "pending"
+            if current == candidate and temporary is None:
+                return "current"
+    raise _invalid("topology_replacement_conflict", name)
+
+
 def _install_core_v1(
     root: Path, fragments: Mapping[str, bytes], *,
+    previous_fragments: Mapping[str, bytes] | None = None,
     _crash_seam: Callable[[str], None] | None = None,
 ) -> tuple[InstalledUnitV1, ...]:
     _require_supported_platform_v1()
@@ -224,6 +301,48 @@ def _install_core_v1(
         raise _invalid("topology_fragments_invalid", "shape")
     if len(fragments) > MAX_TOPOLOGY_UNITS_V1:
         raise _invalid("topology_too_many_units", str(len(fragments)))
+    if previous_fragments is not None:
+        # The caller authenticates these bytes; this core never infers an
+        # authority from whatever happens to occupy the destination directory.
+        if not isinstance(previous_fragments, Mapping) or set(previous_fragments) != set(fragments):
+            raise _invalid("topology_previous_fragments_invalid", "unit_set")
+        root_status = root.lstat()
+        if (
+            not stat.S_ISDIR(root_status.st_mode)
+            or (root_status.st_uid, root_status.st_gid) != (os.geteuid(), os.getegid())
+            or stat.S_IMODE(root_status.st_mode) & 0o7022
+        ):
+            raise _invalid("topology_root_invalid", str(root))
+        fragments, previous_fragments = dict(fragments), dict(previous_fragments)
+        names = sorted(fragments, key=lambda item: str(item).encode("utf-8"))
+        # Preflight the WHOLE set before preserving even the first predecessor.
+        for name in names:
+            _require_unit_name_v1(name)
+            _require_fragment_v1(name, fragments[name])
+            _require_fragment_v1(name, previous_fragments[name])
+            _replacement_state_v1(root, name, previous_fragments[name], fragments[name])
+        installed = []
+        for name in names:
+            previous, candidate = previous_fragments[name], fragments[name]
+
+            def checked_seam(stage: str) -> None:
+                if _crash_seam is not None:
+                    _crash_seam(stage)
+                _replacement_state_v1(root, name, previous, candidate)
+
+            if _replacement_state_v1(root, name, previous, candidate) == "previous":
+                checked_seam("dominant_fragment_preserve_before")
+                _publish_staged_v1(
+                    root / name,
+                    _previous_fragment_path_v1(root, name, previous, candidate),
+                )
+                checked_seam("dominant_fragment_preserved")
+            receipt = _install_one_v1(
+                root, name, candidate, _crash_seam=checked_seam, _replacement=True,
+            )
+            _replacement_state_v1(root, name, previous, candidate)
+            installed.append(receipt)
+        return tuple(installed)
     installed = [
         _install_one_v1(
             root, _require_unit_name_v1(name), fragments[name],
@@ -391,13 +510,15 @@ class _TestOnlyTopologyCapabilityV1:
 
 def install_for_test_v1(
     capability: _TestOnlyTopologyCapabilityV1, fragments: Mapping[str, bytes],
-    *, _crash_seam: Callable[[str], None] | None = None,
+    *, previous_fragments: Mapping[str, bytes] | None = None,
+    _crash_seam: Callable[[str], None] | None = None,
 ) -> tuple[InstalledUnitV1, ...]:
     """Exercise the core through a capability no productive caller can hold."""
     if type(capability) is not _TestOnlyTopologyCapabilityV1:
         raise _invalid("topology_capability_invalid", type(capability).__name__)
     return _install_core_v1(
-        capability.root, fragments, _crash_seam=_crash_seam,
+        capability.root, fragments, previous_fragments=previous_fragments,
+        _crash_seam=_crash_seam,
     )
 
 

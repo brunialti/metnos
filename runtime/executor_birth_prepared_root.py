@@ -430,6 +430,18 @@ class RequiredContextRuntimeV1:
 
 
 @dataclass(frozen=True, slots=True)
+class PreviousContextRuntimeV1:
+    """Transition-only N context; ``required_head_id`` identifies N, not live N+1."""
+
+    selection: object
+    authorities: SealedAuthoritiesV1
+    required_head_id: str
+
+    def __post_init__(self) -> None:
+        RequiredContextRuntimeV1(self.selection, self.authorities, self.required_head_id)
+
+
+@dataclass(frozen=True, slots=True)
 class StagedReattestationContextV1:
     """Authorities for one verified transition, scoped to reattestation."""
 
@@ -587,6 +599,56 @@ def load_required_context_runtime_v1() -> RequiredContextRuntimeV1:
     if loaded.required_head_id != after.required_head.head_id:
         raise PreparedRootError("birth_context_selection_changed")
     return loaded
+
+
+def _previous_chain_for_transition_v1(chain, current_record):
+    """Select an already authenticated prefix as evidence, never as a live head."""
+    from executor_birth_distribution_manifest import verify_previous_distribution_record_v1
+    from executor_birth_ownership_chain import VerifiedOwnershipChain
+
+    count = current_record.release_sequence - 1
+    if (
+        type(chain) is not VerifiedOwnershipChain or count < 1
+        or len(chain.heads) not in {count, count + 1}
+        or len(chain.authenticated_records) != len(chain.heads)
+        or len(chain.context_transitions) != len(chain.heads)
+    ):
+        raise PreparedRootError("birth_context_selection_invalid")
+    previous = chain.authenticated_records[count - 1]
+    if (
+        previous.closed_build_id != current_record.previous_closed_build_id
+        or previous.release_sequence != count
+        or chain.heads[count - 1].closed_build_id != previous.closed_build_id
+        or len(chain.heads) == count + 1 and (
+            chain.authenticated_records[-1] != current_record
+            or chain.heads[-1].previous_head_id != chain.heads[count - 1].head_id
+        )
+    ):
+        raise PreparedRootError("birth_context_selection_invalid")
+    distribution = verify_previous_distribution_record_v1(current_record, previous)
+    return VerifiedOwnershipChain(
+        chain.anchor_cutover_id, chain.heads[:count],
+        chain.authenticated_records[:count], distribution,
+        chain.context_transitions[:count],
+    )
+
+
+def load_previous_context_runtime_v1(current_record) -> PreviousContextRuntimeV1:
+    """Read N's exact context twice around acquisition during an explicit N+1 update."""
+    from executor_birth_ownership_chain import inspect_transition_ownership_chain_v1
+
+    before = inspect_transition_ownership_chain_v1(current_record)
+    previous = _previous_chain_for_transition_v1(before, current_record)
+    loaded = _load_context_runtime_from_chain_v1(previous)
+    after = inspect_transition_ownership_chain_v1(current_record)
+    repeated = _previous_chain_for_transition_v1(after, current_record)
+    if after != before or repeated != previous:
+        raise PreparedRootError("birth_context_selection_changed")
+    if loaded.required_head_id != repeated.required_head.head_id:
+        raise PreparedRootError("birth_context_selection_changed")
+    return PreviousContextRuntimeV1(
+        loaded.selection, loaded.authorities, loaded.required_head_id,
+    )
 
 
 def _public_inventory_from_stores_v1(stores) -> frozenset[bytes]:

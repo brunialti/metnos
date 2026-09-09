@@ -533,6 +533,143 @@ def test_staged_runtime_reverifies_inventory_and_cannot_become_required(
         )
 
 
+def _previous_context_fixture(monkeypatch, *, advanced):
+    import executor_birth_distribution_manifest as manifest
+    import executor_birth_prepared_root as root
+    from executor_birth_ownership_chain import VerifiedOwnershipChain
+
+    transition, prepared, distribution = _evidence()
+    previous = SimpleNamespace(closed_build_id=D("2"), release_sequence=1)
+    current = SimpleNamespace(
+        closed_build_id=D("e"), previous_closed_build_id=D("2"), release_sequence=2,
+    )
+    head = SimpleNamespace(closed_build_id=D("2"), head_id=D("b"))
+    next_head = SimpleNamespace(
+        closed_build_id=D("e"), head_id=D("c"), previous_head_id=D("b"),
+    )
+    chain = VerifiedOwnershipChain(
+        D("a"), (head, next_head) if advanced else (head,),
+        (previous, current) if advanced else (previous,), distribution,
+        (transition, object()) if advanced else (transition,),
+    )
+    authorities = root.SealedAuthoritiesV1(
+        prepared, object(), object(), {}, object(), object(), None,
+        prepared.prepared_context_epoch, object(),
+    )
+    checks = []
+
+    def verify_previous(candidate, predecessor):
+        assert candidate is current and predecessor is previous
+        checks.append("historical-byte-verification")
+        return distribution
+
+    monkeypatch.setattr(manifest, "verify_previous_distribution_record_v1", verify_previous)
+    monkeypatch.setattr(root, "open_prepared_root_session_v1", lambda: _ContextSession())
+    monkeypatch.setattr(
+        prepared_module, "load_authority_set_v1", lambda *_args, **_kwargs: prepared,
+    )
+    monkeypatch.setattr(
+        root, "_load_sealed_authorities_from_set_v1", lambda *_args, **_kwargs: authorities,
+    )
+    return chain, current, checks
+
+
+class _ContextSession:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def global_lock(self, **_kwargs):
+        return nullcontext()
+
+
+@pytest.mark.parametrize("advanced", (False, True))
+def test_previous_context_is_transition_evidence_on_either_side_of_pointer(
+    monkeypatch, advanced,
+):
+    import executor_birth_ownership_chain as chain_module
+    import executor_birth_prepared_root as root
+
+    chain, current, checks = _previous_context_fixture(monkeypatch, advanced=advanced)
+    inspections = []
+
+    def inspect(candidate):
+        assert candidate is current
+        inspections.append(chain.required_head.head_id)
+        return chain
+
+    monkeypatch.setattr(chain_module, "inspect_transition_ownership_chain_v1", inspect)
+    monkeypatch.setattr(
+        chain_module, "inspect_ownership_chain_state_v1",
+        lambda: pytest.fail("transition evidence changed the ordinary selector"),
+    )
+    result = root.load_previous_context_runtime_v1(current)
+    assert type(result) is root.PreviousContextRuntimeV1
+    assert not isinstance(result, root.RequiredContextRuntimeV1)
+    assert result.required_head_id == D("b")
+    assert result.selection.distribution.identity.closed_build_id == D("2")
+    assert is_context_selection_v1(result.selection)
+    assert not result.selection.staged_reattestation_only
+    assert checks == ["historical-byte-verification"] * 2
+    assert inspections == [chain.required_head.head_id] * 2
+    assert chain.required_head.head_id == (D("c") if advanced else D("b"))
+
+
+@pytest.mark.parametrize("mutation", ("gap", "wrong_previous", "wrong_head", "wrong_current", "wrong_edge"))
+def test_previous_context_rejects_nonexact_predecessor_prefix(monkeypatch, mutation):
+    import executor_birth_prepared_root as root
+
+    chain, current, checks = _previous_context_fixture(monkeypatch, advanced=True)
+    if mutation == "gap":
+        chain = replace(chain, authenticated_records=chain.authenticated_records[:1])
+    elif mutation == "wrong_previous":
+        current.previous_closed_build_id = D("f")
+    elif mutation == "wrong_head":
+        chain.heads[0].closed_build_id = D("f")
+    elif mutation == "wrong_current":
+        chain = replace(chain, authenticated_records=(chain.authenticated_records[0], object()))
+    else:
+        chain.heads[1].previous_head_id = D("f")
+    with pytest.raises(root.PreparedRootError, match="birth_context_selection_invalid"):
+        root._previous_chain_for_transition_v1(chain, current)
+    assert checks == []
+
+
+def test_previous_context_rejects_live_pointer_change_during_acquisition(monkeypatch):
+    import executor_birth_ownership_chain as chain_module
+    import executor_birth_prepared_root as root
+
+    chain, current, _checks = _previous_context_fixture(monkeypatch, advanced=True)
+    before = replace(
+        chain, heads=chain.heads[:1], authenticated_records=chain.authenticated_records[:1],
+        context_transitions=chain.context_transitions[:1],
+    )
+    observations = iter((before, chain))
+    monkeypatch.setattr(
+        chain_module, "inspect_transition_ownership_chain_v1", lambda _: next(observations),
+    )
+    with pytest.raises(root.PreparedRootError, match="birth_context_selection_changed"):
+        root.load_previous_context_runtime_v1(current)
+
+
+def test_ordinary_context_has_no_historical_verification_fallback(monkeypatch):
+    import executor_birth_ownership_chain as chain_module
+    import executor_birth_prepared_root as root
+
+    def strict_failure():
+        raise chain_module.OwnershipChainError("birth_ownership_distribution_invalid", "current pins")
+
+    monkeypatch.setattr(chain_module, "inspect_ownership_chain_state_v1", strict_failure)
+    monkeypatch.setattr(
+        chain_module, "inspect_transition_ownership_chain_v1",
+        lambda _: pytest.fail("ordinary runtime tried the predecessor door"),
+    )
+    with pytest.raises(chain_module.OwnershipChainError, match="current pins"):
+        root.load_required_context_runtime_v1()
+
+
 def test_direct_construction_cannot_create_a_selection():
     transition, _prepared, distribution = _evidence()
     with pytest.raises(ContextSelectionError, match="birth_context_selection_invalid"):

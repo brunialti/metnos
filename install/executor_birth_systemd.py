@@ -64,7 +64,7 @@ _DIRECTORY_FLAGS_V1 = (
 )
 _READ_FLAGS_V1 = (
     os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-    | getattr(os, "O_CLOEXEC", 0)
+    | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
 )
 
 
@@ -459,7 +459,7 @@ def _verify_installed_tree_v1(
 
 
 def _remove_recoverable_stage_file_v1(
-    stage_fd: int, *, content_size: int, owner: tuple[int, int],
+    stage_fd: int, *, content: bytes, owner: tuple[int, int],
 ) -> None:
     with os.scandir(stage_fd) as entries:
         names = tuple(sorted(entry.name for entry in entries))
@@ -476,12 +476,25 @@ def _remove_recoverable_stage_file_v1(
             not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
             or (info.st_uid, info.st_gid) != owner
             or stat.S_IMODE(info.st_mode) not in {0o600, 0o755}
-            or info.st_size > content_size
+            or info.st_size > len(content)
             or (info.st_dev, info.st_ino) != (rebound.st_dev, rebound.st_ino)
         ):
             raise _fail(
                 "birth_ownership_recovery_required", "administrative stage",
             )
+        observed = bytearray()
+        while len(observed) <= info.st_size:
+            chunk = os.read(descriptor, min(65536, info.st_size + 1 - len(observed)))
+            if not chunk:
+                break
+            observed.extend(chunk)
+        if (
+            bytes(observed) != content[:info.st_size]
+            or not snapshot_stat_v1(info).same_stable_metadata_as(
+                snapshot_stat_v1(os.fstat(descriptor)),
+            )
+        ):
+            raise _fail("birth_ownership_recovery_required", "administrative stage")
     finally:
         os.close(descriptor)
     os.unlink(name, dir_fd=stage_fd)
@@ -489,7 +502,7 @@ def _remove_recoverable_stage_file_v1(
 
 
 def _recover_incomplete_administrative_stage_v1(
-    parent_fd: int, stage_name: str, *, content_size: int,
+    parent_fd: int, stage_name: str, *, content: bytes,
     owner: tuple[int, int], require_session: Callable[[], None],
 ) -> None:
     require_session()
@@ -507,7 +520,7 @@ def _recover_incomplete_administrative_stage_v1(
                 "birth_ownership_recovery_required", "administrative stage",
             )
         _remove_recoverable_stage_file_v1(
-            stage_fd, content_size=content_size, owner=owner,
+            stage_fd, content=content, owner=owner,
         )
         require_session()
         os.rmdir(stage_name, dir_fd=parent_fd)
@@ -522,102 +535,138 @@ def _recover_incomplete_administrative_stage_v1(
         os.close(stage_fd)
 
 
+def _prepare_administrative_stage_v1(
+    parent_fd: int, stage_name: str, *, content: bytes, content_hash: str,
+    owner: tuple[int, int], require_session: Callable[[], None],
+    crash_seam: Callable[[str], None],
+) -> int:
+    if _name_status_v1(parent_fd, stage_name) is not None:
+        try:
+            return _verify_installed_tree_v1(
+                parent_fd, stage_name, content=content, content_hash=content_hash,
+                owner=owner, error_code="birth_ownership_recovery_required",
+            )
+        except DistributionAssemblerError:
+            _recover_incomplete_administrative_stage_v1(
+                parent_fd, stage_name, content=content,
+                owner=owner, require_session=require_session,
+            )
+    require_session()
+    stage_fd, _identity = _create_private_directory_v1(
+        parent_fd, stage_name, owner=owner,
+    )
+    try:
+        crash_seam("administrative_stage_created")
+        file_fd = os.open(
+            ADMINISTRATIVE_PROGRAM_BASENAME_V1,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+            0o600, dir_fd=stage_fd,
+        )
+        try:
+            os.fchown(file_fd, *owner)
+            _write_all_v1(file_fd, content)
+            crash_seam("administrative_stage_written")
+            os.fchmod(file_fd, 0o755)
+            os.fsync(file_fd)
+        finally:
+            os.close(file_fd)
+        os.fchmod(stage_fd, 0o755)
+        os.fsync(stage_fd)
+        os.fsync(parent_fd)
+    except OSError as exc:
+        raise _fail("birth_ownership_recovery_required", "administrative write") from exc
+    finally:
+        os.close(stage_fd)
+    return _verify_installed_tree_v1(
+        parent_fd, stage_name, content=content, content_hash=content_hash,
+        owner=owner, error_code="birth_ownership_recovery_required",
+    )
+
+
 def _publish_administrative_tree_v1(
     administrative_root: Path, *, descriptor_id: str, content: bytes,
     content_hash: str, owner: tuple[int, int], require_session: Callable[[], None],
+    previous_content: bytes | None = None,
+    _crash_seam: Callable[[str], None] | None = None,
 ) -> None:
     parent_fd = _open_parent_v1(
         administrative_root, owner=owner, require_session=require_session,
     )
     final_name = administrative_root.name
-    stage_name = (
-        _STAGING_PREFIX_V1 + descriptor_id.removeprefix("sha256:")
-        + _STAGING_SUFFIX_V1
-    )
+    transaction_name = _STAGING_PREFIX_V1 + descriptor_id.removeprefix("sha256:")
+    stage_name = transaction_name + _STAGING_SUFFIX_V1
+    backup_name = transaction_name + ".previous"
+    replacing = previous_content is not None and previous_content != content
+    crash_seam = _crash_seam or (lambda _name: None)
     stage_fd: int | None = None
-    try:
-        final_info = _name_status_v1(parent_fd, final_name)
-        stage_info = _name_status_v1(parent_fd, stage_name)
-        if final_info is not None:
-            if stage_info is not None:
-                raise _fail("birth_ownership_recovery_required", "duplicate transaction")
-            installed_fd = _verify_installed_tree_v1(
-                parent_fd, final_name, content=content, content_hash=content_hash,
-                owner=owner, error_code="birth_ownership_recovery_required",
-            )
-            os.close(installed_fd)
-            require_session()
-            return
-        if stage_info is not None:
-            try:
-                stage_fd = _verify_installed_tree_v1(
-                    parent_fd, stage_name, content=content,
-                    content_hash=content_hash, owner=owner,
-                    error_code="birth_ownership_recovery_required",
-                )
-            except DistributionAssemblerError:
-                _recover_incomplete_administrative_stage_v1(
-                    parent_fd, stage_name, content_size=len(content),
-                    owner=owner, require_session=require_session,
-                )
-                stage_info = None
-        if stage_info is None:
-            require_session()
-            stage_fd, _identity = _create_private_directory_v1(
-                parent_fd, stage_name, owner=owner,
-            )
-            file_fd: int | None = None
-            try:
-                file_fd = os.open(
-                    ADMINISTRATIVE_PROGRAM_BASENAME_V1,
-                    os.O_WRONLY | os.O_CREAT | os.O_EXCL
-                    | getattr(os, "O_NOFOLLOW", 0)
-                    | getattr(os, "O_CLOEXEC", 0),
-                    0o600, dir_fd=stage_fd,
-                )
-                os.fchown(file_fd, *owner)
-                _write_all_v1(file_fd, content)
-                os.fchmod(file_fd, 0o755)
-                os.fsync(file_fd)
-            except DistributionAssemblerError:
-                raise
-            except OSError as exc:
-                raise _fail(
-                    "birth_ownership_recovery_required", "administrative write",
-                ) from exc
-            finally:
-                if file_fd is not None:
-                    os.close(file_fd)
-            os.fchmod(stage_fd, 0o755)
-            os.fsync(stage_fd)
-            os.fsync(parent_fd)
-            os.close(stage_fd)
-            stage_fd = _verify_installed_tree_v1(
-                parent_fd, stage_name, content=content, content_hash=content_hash,
-                owner=owner, error_code="birth_ownership_recovery_required",
-            )
-        require_session()
-        try:
-            _rename_no_replace_v1(
-                parent_fd, stage_name, parent_fd, final_name,
-                expected_fd=stage_fd, sync_source_parent=False,
-            )
-        except FileExistsError as exc:
-            raise _fail(
-                "birth_ownership_recovery_required", "publication collision",
-            ) from exc
-        os.close(stage_fd)
-        stage_fd = None
-        installed_fd = _verify_installed_tree_v1(
-            parent_fd, final_name, content=content, content_hash=content_hash,
+    previous_fd: int | None = None
+
+    def verified_tree(name: str, expected: bytes) -> int:
+        return _verify_installed_tree_v1(
+            parent_fd, name, content=expected,
+            content_hash=distribution_manifest.file_content_hash(
+                ADMINISTRATIVE_PROGRAM_SOURCE_V1, expected,
+            ),
             owner=owner, error_code="birth_ownership_recovery_required",
         )
-        os.close(installed_fd)
+
+    try:
+        final_exists = _name_status_v1(parent_fd, final_name) is not None
+        stage_exists = _name_status_v1(parent_fd, stage_name) is not None
+        backup_exists = (
+            replacing and _name_status_v1(parent_fd, backup_name) is not None
+        )
+        if backup_exists:
+            os.close(verified_tree(backup_name, previous_content))
+        if final_exists:
+            if replacing and not backup_exists:
+                previous_fd = verified_tree(final_name, previous_content)
+            else:
+                if stage_exists:
+                    raise _fail("birth_ownership_recovery_required", "duplicate transaction")
+                installed_fd = _verify_installed_tree_v1(
+                    parent_fd, final_name, content=content, content_hash=content_hash,
+                    owner=owner, error_code="birth_ownership_recovery_required",
+                )
+                os.close(installed_fd)
+                require_session()
+                return
+        elif replacing and not backup_exists:
+            raise _fail("birth_ownership_recovery_required", "previous artifact missing")
+        stage_fd = _prepare_administrative_stage_v1(
+            parent_fd, stage_name, content=content, content_hash=content_hash,
+            owner=owner, require_session=require_session, crash_seam=crash_seam,
+        )
+        crash_seam("administrative_stage_ready")
+        if previous_fd is not None:
+            require_session()
+            os.close(verified_tree(final_name, previous_content))
+            _rename_no_replace_v1(
+                parent_fd, final_name, parent_fd, backup_name,
+                expected_fd=previous_fd, sync_source_parent=False,
+            )
+            crash_seam("administrative_previous_saved")
         require_session()
+        _rename_no_replace_v1(
+            parent_fd, stage_name, parent_fd, final_name,
+            expected_fd=stage_fd, sync_source_parent=False,
+        )
+        crash_seam("administrative_published")
+        os.close(verified_tree(final_name, content))
+        if replacing:
+            os.close(verified_tree(backup_name, previous_content))
+        require_session()
+    except FileExistsError as exc:
+        raise _fail("birth_ownership_recovery_required", "publication collision") from exc
     finally:
+        if previous_fd is not None:
+            os.close(previous_fd)
         if stage_fd is not None:
             os.close(stage_fd)
         os.close(parent_fd)
+
+
 def _install_locked_core_v1(
     record: object, *, verify: Callable[[], object], source_root: Path,
     administrative_root: Path,
@@ -626,6 +675,10 @@ def _install_locked_core_v1(
     owner: tuple[int, int],
     require_session: Callable[[], None], between_verifications: Callable[[], None] | None,
     for_test: bool,
+    previous_record: object | None = None,
+    verify_previous: Callable[[], object] | None = None,
+    previous_source_root: Path | None = None,
+    crash_seam: Callable[[str], None] | None = None,
 ):
     require_session()
     verified_before = verify()
@@ -636,9 +689,39 @@ def _install_locked_core_v1(
     descriptor, artifact = _require_descriptor_binding_v1(
         verified_before, decoded_descriptor, preflight_bytes, account,
     )
+    previous_verified = None
+    previous_content = None
+    if previous_record is not None:
+        if verify_previous is None or previous_source_root is None:
+            raise _fail("birth_ownership_deployment_invalid", "previous authority")
+        previous_verified = verify_previous()
+        previous_descriptor, previous_content = _capture_descriptor_and_preflight_v1(
+            previous_record, previous_source_root,
+        )
+        _require_descriptor_binding_v1(
+            previous_verified, previous_descriptor, previous_content, account,
+        )
+        if (
+            verified_before.previous_closed_build_id
+            != previous_verified.identity.closed_build_id
+            or verified_before.release_sequence != previous_verified.release_sequence + 1
+            or Path(verified_before.installation_root).parent
+            != Path(previous_verified.installation_root).parent
+            or verified_before.installation_root == previous_verified.installation_root
+            or (
+                verified_before.platform, verified_before.architecture,
+                verified_before.certificate_directory,
+            ) != (
+                previous_verified.platform, previous_verified.architecture,
+                previous_verified.certificate_directory,
+            )
+        ):
+            raise _fail("birth_ownership_deployment_invalid", "previous release edge")
     if between_verifications is not None:
         between_verifications()
     verified_after = verify()
+    if verify_previous is not None and verify_previous() != previous_verified:
+        raise _fail("birth_ownership_deployment_unsafe", "previous verification changed")
     if verified_before != verified_after or account_again(account) != account:
         raise _fail("birth_ownership_deployment_unsafe", "verification changed")
     require_session()
@@ -646,6 +729,7 @@ def _install_locked_core_v1(
         administrative_root, descriptor_id=descriptor.descriptor_id,
         content=preflight_bytes, content_hash=artifact.content_hash,
         owner=owner, require_session=require_session,
+        previous_content=previous_content, _crash_seam=crash_seam,
     )
     values = (
         verified_after.identity.closed_build_id, descriptor.descriptor_id,
@@ -669,12 +753,18 @@ def _install_locked_core_v1(
 
 def install_group6_administrative_v1(
     record: distribution_manifest.AuthenticatedDistributionRecordV1,
-    session: object,
+    session: object, *,
+    previous_record: distribution_manifest.AuthenticatedDistributionRecordV1 | None = None,
 ) -> InstalledGroup6AdministrativeV1:
     """Install the sole G6 administrative artifact under the live outer lock."""
     _require_linux_v1()
     _require_root_v1()
-    if type(record) is not distribution_manifest.AuthenticatedDistributionRecordV1:
+    if (
+        type(record) is not distribution_manifest.AuthenticatedDistributionRecordV1
+        or previous_record is not None
+        and type(previous_record)
+        is not distribution_manifest.AuthenticatedDistributionRecordV1
+    ):
         raise _fail("birth_ownership_distribution_invalid", "authenticated artifact")
     from executor_birth_ownership_coordinator import (
         _require_deployment_lock_session_v1,
@@ -694,6 +784,17 @@ def install_group6_administrative_v1(
         require_session=lambda: _require_deployment_lock_session_v1(session),
         between_verifications=None,
         for_test=False,
+        previous_record=previous_record,
+        verify_previous=(
+            None if previous_record is None else
+            lambda: distribution_manifest.verify_previous_distribution_record_v1(
+                record, previous_record,
+            )
+        ),
+        previous_source_root=(
+            None if previous_record is None
+            else Path(previous_record.installation_root)
+        ),
     )
 
 
@@ -702,6 +803,10 @@ def _install_group6_administrative_for_test_v1(
     ownership_root: Path, administrative_root: Path,
     account: _ServiceAccountV1,
     between_verifications: Callable[[], None] | None = None,
+    previous_record: object | None = None,
+    previous_environment: object | None = None,
+    previous_registry: object | None = None,
+    crash_seam: Callable[[str], None] | None = None,
 ) -> _InstalledGroup6AdministrativeForTestV1:
     """Nominally isolated portable seam; never accepts productive authority."""
     _require_linux_v1()
@@ -713,6 +818,17 @@ def _install_group6_administrative_for_test_v1(
         or type(account) is not _ServiceAccountV1
         or between_verifications is not None
         and not callable(between_verifications)
+        or crash_seam is not None and not callable(crash_seam)
+        or (previous_record is None) != (previous_environment is None)
+        or (previous_record is None) != (previous_registry is None)
+        or previous_record is not None and (
+            type(previous_record)
+            is not distribution_manifest._AuthenticatedDistributionRecordForTestV1
+            or type(previous_environment)
+            is not distribution_manifest._VerificationEnvironment
+            or previous_environment._seal is not distribution_manifest._ENVIRONMENT_SEAL
+            or type(previous_registry) is not distribution_manifest.DistributionRegistry
+        )
     ):
         raise _fail("birth_ownership_deployment_invalid", "test authority")
     from executor_birth_ownership_coordinator import (
@@ -735,6 +851,19 @@ def _install_group6_administrative_for_test_v1(
         ),
         between_verifications=between_verifications,
         for_test=True,
+        previous_record=previous_record,
+        verify_previous=(
+            None if previous_record is None else
+            lambda: distribution_manifest._verify_previous_distribution_record_for_test_v1(
+                record, previous_record, environment=previous_environment,
+                registry=previous_registry,
+            )
+        ),
+        previous_source_root=(
+            None if previous_environment is None
+            else Path(previous_environment.installation_root)
+        ),
+        crash_seam=crash_seam,
     )
 
 

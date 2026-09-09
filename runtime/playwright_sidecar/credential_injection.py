@@ -42,6 +42,7 @@ import credentials  # runtime/credentials.py — vault cifrato (dentro il broker
 import sites_audit
 import sites_origin  # ADR 0191 P2 — origine credenziale (scheme,host,port)
 from playwright_sidecar import factor_resolvers
+from playwright_sidecar.cookie_privacy import CookieOutcome
 from sites_url_scrub import scrub_url
 
 try:
@@ -1287,7 +1288,8 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                         reach_login=None, authorize_origin=None,
                         approved_origin: str | None = None,
                         max_entry_steps: int = 3,
-                        page_provider=None, factor_state: dict | None = None,
+                        page_provider=None, prepare_page=None,
+                        factor_state: dict | None = None,
                         checkpoint=None,
                         total_timeout_s: float | None = None,
                         stealth_techniques=()) -> dict:
@@ -1371,7 +1373,32 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             return previous
         return candidate if candidate is not None else previous
 
-    page = current_page(page)
+    async def prepared_page(previous):
+        # A rendered form may still be covered by an asynchronously loaded
+        # cookie banner. Keep that browser precondition before discovery/fill,
+        # including direct login URLs and forms split across several pages.
+        def redact(text):
+            for secret in (username, password, totp_secret, one_time_code):
+                if secret:
+                    text = text.replace(str(secret), "[redacted]")
+            return text
+
+        if prepare_page is not None:
+            outcome = await prepare_page(redact=redact)
+            if not isinstance(outcome, CookieOutcome):
+                outcome = CookieOutcome("blocked", reason="invalid_precondition_outcome")
+            if outcome.status == "blocked":
+                return current_page(previous), {
+                    "ok": True, "logged_in": False,
+                    "reason_code": "selector_missing",
+                    "error_class": "cookie_precondition_unresolved",
+                    "obstruction_kind": outcome.kind,
+                    "obstruction_reason": outcome.reason}
+        return current_page(previous), None
+
+    page, obstruction = await prepared_page(page)
+    if obstruction:
+        return obstruction
     # Fix adversarial #5: cattura lo status HTTP del documento top-level (submit
     # e goto NON restituivano la Response). Listener bounded: aggiorna un attributo
     # sulla pagina, riletto da `_observe_post_submit` → alimenta `rate_limited`.
@@ -1458,7 +1485,9 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             return {"ok": True, "logged_in": False,
                     "reason_code": "login_timeout",
                     "error_class": "timeout"}
-        page = current_page(page)
+        page, obstruction = await prepared_page(page)
+        if obstruction:
+            return obstruction
         if password_visible:
             break
         if login_url and not login_url_attempted:
@@ -1471,6 +1500,9 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                     timeout=goto_timeout)
             except Exception:
                 pass
+            page, obstruction = await prepared_page(page)
+            if obstruction:
+                return obstruction
             password_visible = await _has_toplevel_password(page)
             if password_visible:
                 break
@@ -1641,6 +1673,9 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
 
     # 3. CRITICO-1 — verifica ORIGINE prima di digitare. Il JS tagga anche i
     #    campi (CRITICO-2: risoluzione autonoma del broker, mai selettori LLM).
+    page, obstruction = await prepared_page(page)
+    if obstruction:
+        return obstruction
     info = await page.evaluate(_LOCATE_LOGIN_FORM_JS)
     if not info or not info.get("found"):
         return {"ok": True, "logged_in": False, "reason_code": "selector_missing",

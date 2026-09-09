@@ -2533,10 +2533,58 @@ def capture_current_service_catalog_v1(
     return loaded
 
 
+def load_previous_service_catalog_v1(historical: object) -> LoadedServiceCatalogV1:
+    """Decode signed predecessor artifacts, never compile today's recipe on N."""
+    from executor_birth_distribution_manifest import (
+        HistoricalReleaseArtifactsV1, _HISTORICAL_ARTIFACTS_SEAL_V1,
+        file_content_hash,
+    )
+    from executor_birth_distribution_assembler import (
+        DEPLOYMENT_DESCRIPTOR_PATH_V1, decode_deployment_descriptor_v1,
+    )
+
+    if (type(historical) is not HistoricalReleaseArtifactsV1
+            or historical._seal is not _HISTORICAL_ARTIFACTS_SEAL_V1):
+        raise ServiceCatalogError("birth_ownership_service_catalog_invalid", "historical capture")
+    files = {item.path: item for item in historical.record.files}
+
+    def reread(path: str, role: str) -> bytes:
+        content, item = historical.contents.get(path), files.get(path)
+        if (type(content) is not bytes or item is None or item.role != role
+                or len(content) != item.size or file_content_hash(path, content) != item.content_hash):
+            raise ServiceCatalogError("birth_ownership_service_catalog_invalid", "historical artifact")
+        return content
+
+    descriptor = decode_deployment_descriptor_v1(reread(
+        DEPLOYMENT_DESCRIPTOR_PATH_V1, "deployment_descriptor",
+    ))
+    catalog = decode_service_catalog_v1(reread(CATALOG_PATH_V1, "service_catalog"))
+    if (descriptor != historical.descriptor
+            or descriptor.release_sequence != historical.record.release_sequence
+            or descriptor.installation_root != historical.record.installation_root
+            or catalog.catalog_id != descriptor.service_catalog_id
+            or catalog.service_coverage_hash != descriptor.service_coverage_hash):
+        raise ServiceCatalogError("birth_ownership_service_catalog_invalid", "historical descriptor")
+    entries = {item.unit_name: item for item in catalog.entries if item.unit_spec is not None}
+    if {f"deployment/systemd/{name}" for name in entries} != {
+        item.path for item in files.values() if item.role == "service_unit"
+    }:
+        raise ServiceCatalogError("birth_ownership_service_catalog_invalid", "historical unit coverage")
+    fragments = []
+    for name, entry in sorted(entries.items()):
+        fragment = reread(f"deployment/systemd/{name}", "service_unit")
+        if (parse_unit_fragment_v1(name, fragment) != entry.unit_spec
+                or render_unit_spec_v1(name, entry.unit_spec) != fragment):
+            raise ServiceCatalogError("birth_ownership_service_catalog_invalid", "historical unit binding")
+        fragments.append((name, fragment))
+    return LoadedServiceCatalogV1(catalog, tuple(fragments), _LOADED_CATALOG_SEAL)
+
+
 _validate_service_source_v1()
 
 
 __all__ = [
     "capture_current_service_catalog_v1",
     "load_service_catalog_v1",
+    "load_previous_service_catalog_v1",
 ]

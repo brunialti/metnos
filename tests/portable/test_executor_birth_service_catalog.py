@@ -852,6 +852,7 @@ def test_public_surface_contains_only_product_loader() -> None:
     assert catalog.__all__ == [
         "capture_current_service_catalog_v1",
         "load_service_catalog_v1",
+        "load_previous_service_catalog_v1",
     ]
 
 

@@ -147,6 +147,22 @@ def _side_browser_available() -> bool:
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
+def _browser_environment() -> dict[str, str]:
+    """Keep Chromium's configuration/crash database inside writable app roots."""
+    environment = dict(os.environ)
+    if sys.platform.startswith("linux"):
+        import config as C
+
+        config_root = C.PATH_USER_CONFIG / "browser"
+        cache_root = C.PATH_USER_CACHE / "browser"
+        for path in (config_root, cache_root):
+            path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        environment.update(XDG_CONFIG_HOME=str(config_root),
+                           CHROME_CONFIG_HOME=str(config_root),
+                           XDG_CACHE_HOME=str(cache_root))
+    return environment
+
+
 async def _get_browser(browser_mode: str, launch_stealth: bool):
     """Ritorna la variante esatta richiesta, lanciandola lazy.
 
@@ -185,7 +201,8 @@ async def _get_browser(browser_mode: str, launch_stealth: bool):
                 args, techniques=("webdriver_launch_arg",))
         try:
             browser = await _playwright.chromium.launch(
-                headless=(browser_mode == "headless"), args=args)
+                headless=(browser_mode == "headless"), args=args,
+                env=_browser_environment())
         except Exception as exc:  # noqa: BLE001
             logger.error("%s chromium launch failed (launch_stealth=%s): %s",
                          browser_mode, launch_stealth, exc)
@@ -624,7 +641,7 @@ async def _on_startup(app: web.Application) -> None:
     for attempt in range(1, 4):
         try:
             _browser = await _playwright.chromium.launch(
-                headless=True, args=launch_args)
+                headless=True, args=launch_args, env=_browser_environment())
             break
         except Exception as exc:  # noqa: BLE001
             last_error = exc

@@ -39,6 +39,7 @@ from playwright_sidecar import credential_injection
 from playwright_sidecar import redaction
 from playwright_sidecar import action_resolver
 from playwright_sidecar import browser_surface
+from playwright_sidecar import cookie_privacy
 import sites_audit
 import sites_observed  # ADR 0191 P4 — codici osservativi navigazione
 import task_mandates
@@ -191,8 +192,6 @@ _MAX_COLLECTION_SCROLLS = _bounded_int_env(
     minimum=1, maximum=100)
 _MAX_ACTION_REPLANS = 2
 _MAX_LOGIN_ENTRY_STEPS = 4
-_MAX_PRIVACY_DISMISSALS = 2   # budget PROPRIO (non login-step): un overlay che
-                             # riappare non deve affamare la navigazione login
 _MAX_GOAL_STEPS = 4           # steps that MOVED something
 _MAX_GOAL_STERILE = 3         # own budget for empty steps: a click that moves
                               # nothing must neither starve the four
@@ -470,7 +469,9 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
     const rawName = nameOf(el).trim();
     const name = normalize(rawName);
     const exactExit = allowed.has(name);
-    const icon = iconExit(el, root, rawName);
+    // Closing a privacy panel does not prove that optional cookies were
+    // rejected. That procedure requires an exact rejection label.
+    const icon = !markers.length && iconExit(el, root, rawName);
     if (!exactExit && !icon) continue;
     const rootText = ` ${normalize(root.innerText || root.textContent || '')} `;
     if (markers.length && !markers.some(marker =>
@@ -1796,37 +1797,27 @@ async def op_login(*, session_id: str, owner: str | None = None,
             if executed.get("credential_origin"):
                 flow["approved_origin"] = executed["credential_origin"]
 
+        async def _reject_privacy_overlay(*, settle: bool = False,
+                                          redact=None) -> cookie_privacy.CookieOutcome:
+            # Discovery and credential filling share the same bounded cookie
+            # precondition; dismissals never consume login navigation steps.
+            if redact is not None:
+                entry["_cookie_redact"] = redact
+            return await _dismiss_privacy_obstruction(entry, settle=settle)
+
         async def _reach_login_area(purpose: str = "login") -> dict:
             if int(flow.get("steps", 0)) >= _MAX_LOGIN_ENTRY_STEPS:
                 return {"ok": False, "error_class": "login_step_limit"}
 
-            async def _reject_privacy_overlay(*, settle: bool) -> bool:
-                # Rimuovere un overlay privacy e' una PRECONDIZIONE per
-                # raggiungere l'ingresso login, non un passo di navigazione
-                # login. Usa un budget PROPRIO e piccolo: un overlay che
-                # riappare (reject navigante -> reload) non deve esaurire il
-                # budget d'ingresso e far scattare login_step_limit PRIMA ancora
-                # di cliccare "accedi" (bug turn e69dca8e; simulatore). Bounded
-                # §7.4.
-                if int(flow.get("privacy_dismissals", 0)) >= _MAX_PRIVACY_DISMISSALS:
-                    return False
-                rejected = await _dismiss_obstructing_overlay(
-                    entry, settle=settle,
-                    forms=action_resolver.privacy_reject_forms(),
-                    markers=action_resolver.privacy_overlay_marker_forms(),
-                    procedure="privacy_reject")
-                if rejected:
-                    flow["privacy_dismissals"] = int(
-                        flow.get("privacy_dismissals", 0)) + 1
-                return rejected
-
             if purpose == "privacy_reject":
-                if await _reject_privacy_overlay(settle=True):
-                    return {"ok": True, "executed": True,
-                            "primitive": "click"}
+                outcome = await _reject_privacy_overlay(settle=True)
+                return {"ok": outcome.status != "blocked",
+                        "executed": outcome.status == "resolved",
+                        "error_class": ("cookie_precondition_unresolved"
+                                        if outcome.status == "blocked" else ""),
+                        "primitive": "click"}
             action = {
                 "login": "click login",
-                "privacy_reject": "click privacy reject",
                 "continue": "click login continue",
             }.get(purpose)
             if not action:
@@ -1838,15 +1829,17 @@ async def op_login(*, session_id: str, owner: str | None = None,
                         if purpose == "login" else 1)
             prepared = {"ok": False, "error_class": "selector_missing"}
             for attempt in range(attempts):
-                # Il banner puo' apparire dopo il primo probe privacy. Prima di
-                # ogni riosservazione login rimuovilo solo se struttura, marker
-                # e target esatto continuano a provarne la natura. Il ciclo e'
-                # gia' bounded da `attempts` e dal limite globale dei passi.
+                # Reobserve late panels without consuming login entry steps.
                 if purpose == "login":
                     # L'overlay puo' apparire dopo il primo probe: tentane la
                     # rimozione (budget proprio, sopra) prima di ogni
                     # riosservazione, senza consumare il budget d'ingresso.
-                    await _reject_privacy_overlay(settle=False)
+                    outcome = await _reject_privacy_overlay(settle=False)
+                    if outcome.status == "blocked":
+                        return {"ok": False,
+                                "error_class": "cookie_precondition_unresolved",
+                                "obstruction_kind": outcome.kind,
+                                "obstruction_reason": outcome.reason}
                 prepared = await _prepare_action(
                     entry, session_id, action, None, allow_model=False)
                 if (prepared.get("ok") or prepared.get("error_class")
@@ -1926,6 +1919,7 @@ async def op_login(*, session_id: str, owner: str | None = None,
                     approved_origin=flow.get("approved_origin"),
                     max_entry_steps=_MAX_LOGIN_ENTRY_STEPS,
                     page_provider=lambda: entry.get("page"),
+                    prepare_page=_reject_privacy_overlay,
                     factor_state=flow.setdefault("factor_state", {}),
                     checkpoint=_login_checkpoint,
                     total_timeout_s=_LOGIN_TIMEOUT_S,
@@ -1944,6 +1938,7 @@ async def op_login(*, session_id: str, owner: str | None = None,
                 "error_class": "timeout",
             }
         finally:
+            entry.pop("_cookie_redact", None)
             entry["gate_pending"] = bool(
                 isinstance(res, dict) and res.get("approval_required"))
             await _touch(entry)
@@ -2759,26 +2754,33 @@ async def _dismiss_obstructing_overlay(entry: dict, *,
 
 
 async def _dismiss_privacy_obstruction(entry: dict, *,
-                                       settle: bool = False) -> bool:
+                                       settle: bool = False) -> cookie_privacy.CookieOutcome:
     """Reject a privacy overlay as a bounded precondition for any action."""
-    count = int(entry.get("privacy_action_dismissals", 0))
-    if count >= _MAX_PRIVACY_DISMISSALS:
-        return False
-    dismissed = await _dismiss_obstructing_overlay(
-        entry, settle=settle,
-        forms=action_resolver.privacy_reject_forms(),
-        markers=action_resolver.privacy_overlay_marker_forms(),
-        procedure="privacy_reject")
-    if dismissed:
-        entry["privacy_action_dismissals"] = count + 1
-    return dismissed
+    flow = entry.get("login_flow")
+    state = (flow if isinstance(flow, dict) else entry).setdefault("cookie_state", {})
+    clicks_before = state.get("clicks", 0)
+    outcome = await cookie_privacy.reject_cookies(
+        entry["page"], state, redact=entry.get("_cookie_redact"),
+        timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0,
+        enabled=_MODEL_FALLBACKS_ENABLED)
+    if state.get("clicks", 0) > clicks_before:
+        sites_audit.record(
+            "overlay_dismiss", owner=entry.get("owner", ""),
+            session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
+            procedure="privacy_reject", method="semantic",
+            outcome=outcome.status == "resolved", reason=outcome.reason)
+    return outcome
 
 
 async def _prepare_action(entry: dict, session_id: str, action: str,
                           value_ref: str | None, primitive_override: str | None = None,
                           target_override: str | None = None,
                           allow_model: bool = True) -> dict:
-    await _dismiss_privacy_obstruction(entry)
+    privacy = await _dismiss_privacy_obstruction(entry)
+    if isinstance(privacy, cookie_privacy.CookieOutcome) and privacy.status == "blocked":
+        return {"ok": False, "error_class": "cookie_precondition_unresolved",
+                "obstruction_kind": privacy.kind,
+                "obstruction_reason": privacy.reason}
     await _dismiss_obstructing_overlay(entry)
     parsed = action_resolver.parse_action(action)
     if primitive_override:

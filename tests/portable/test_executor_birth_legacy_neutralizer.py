@@ -17,6 +17,141 @@ POSIX_ONLY = pytest.mark.skipif(
 )
 
 
+@pytest.fixture
+def retired_successor(tmp_path):
+    from executor_birth_legacy_retirement import LegacyRetirementStepV1
+
+    root = _tree(tmp_path)
+    step = LegacyRetirementStepV1
+    steps = (
+        step("a-script", "a", "script", "repository", "scripts/legacy.sh", "revoke_repository_entrypoint"),
+        step("b-mask", "b", "system_unit", "system", "systemd/old.service", "mask_system_unit"),
+        step("c-overlap", "c", "system_unit", "system", "systemd/http.service", "preserve_replaced_system_unit"),
+    )
+    for name in ("old.service", "http.service"):
+        path = root / "systemd" / name
+        path.write_bytes(b"legacy")
+        path.chmod(0o644)
+    script = root / "scripts/legacy.sh"
+    script.chmod(0o644)
+    expected = {steps[0].locator: (script.stat().st_size, "sha256:" + hashlib.sha256(script.read_bytes()).hexdigest())}
+    previous = {("system", steps[2].locator): b"release N"}
+    current = {("system", steps[2].locator): b"release N+1"}
+    _apply(root, steps, previous)
+    (root / steps[2].locator).write_bytes(b"release N")
+    (root / steps[2].locator).chmod(0o644)
+    return root, steps, previous, current, expected
+
+
+def _observe_retired(fixture, **changes):
+    root, steps, previous, current, expected = fixture
+    options = dict(
+        previous_steps=steps, previous_replacement_fragments=previous,
+        replacement_fragments=current, expected_retired_files=expected,
+    )
+    options.update(changes)
+    return neutralizer._observe_retired_core_v1(root, steps, **options)
+
+
+def _read_only_snapshot(root):
+    import stat
+
+    result = {}
+    for path in root.rglob("*"):
+        info = path.lstat()
+        payload = os.readlink(path) if stat.S_ISLNK(info.st_mode) else (
+            path.read_bytes() if stat.S_ISREG(info.st_mode) else None
+        )
+        result[str(path.relative_to(root))] = (
+            info.st_ino, info.st_mode, info.st_uid, info.st_gid, info.st_nlink,
+            info.st_size, info.st_mtime_ns, info.st_ctime_ns, payload,
+        )
+    return result
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("current", [b"release N", b"release N+1"])
+def test_successor_observer_accepts_exact_previous_or_current_without_writes(
+    retired_successor, monkeypatch, current,
+):
+    from executor_birth_legacy_retirement import plan_digest_v1
+
+    root, steps, *_rest = retired_successor
+    (root / steps[2].locator).write_bytes(current)
+    before = _read_only_snapshot(root)
+    for name in ("_neutralize_core_v1", "_mask_v1", "_revoke_v1", "_preserve_regular_name_v1"):
+        monkeypatch.setattr(neutralizer, name, lambda *_a, **_k: pytest.fail("observer wrote"))
+    assert _observe_retired(retired_successor) == plan_digest_v1(steps)
+    assert _observe_retired(retired_successor) == plan_digest_v1(steps)
+    assert _read_only_snapshot(root) == before
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("case", [
+    "missing_mask", "wrong_mask", "missing_retired", "changed_retired", "original_recreated",
+    "missing_current", "wrong_current", "current_mode", "current_link", "current_hardlink",
+    "missing_preserved", "changed_preserved", "preserved_mode", "missing_record",
+    "changed_record", "record_mode", "record_link", "record_hardlink", "half_mask_history",
+])
+def test_successor_observer_refuses_drift_without_repair(retired_successor, case):
+    root, steps, *_rest = retired_successor
+    script, mask, current = (root / item.locator for item in steps)
+    retired = script.with_name(script.name + neutralizer.RETIRED_EXTENSION_V1)
+    preserved = current.with_name(current.name + neutralizer.PRESERVED_EXTENSION_V1)
+    record = preserved.with_name(preserved.name + ".receipt.json")
+    if case.startswith("missing_"):
+        {"missing_mask": mask, "missing_retired": retired, "missing_current": current,
+         "missing_preserved": preserved, "missing_record": record}[case].unlink()
+    elif case in {"changed_retired", "wrong_current", "changed_preserved", "changed_record"}:
+        {"changed_retired": retired, "wrong_current": current,
+         "changed_preserved": preserved, "changed_record": record}[case].write_bytes(b"changed")
+    elif case == "original_recreated":
+        script.write_bytes(b"again")
+    elif case in {"current_mode", "record_mode", "preserved_mode"}:
+        {"current_mode": current, "record_mode": record, "preserved_mode": preserved}[case].chmod(0o666)
+    elif case == "wrong_mask":
+        mask.unlink()
+        mask.symlink_to("/wrong")
+    elif case.endswith("_link"):
+        target = current if case == "current_link" else record
+        content = target.read_bytes()
+        target.unlink()
+        other = root / "other"
+        other.write_bytes(content)
+        target.symlink_to(other)
+    elif case.endswith("_hardlink"):
+        os.link(current if case == "current_hardlink" else record, root / "hardlink")
+    else:
+        mask.with_name(mask.name + neutralizer.PRESERVED_EXTENSION_V1).unlink()
+    before = _read_only_snapshot(root)
+    with pytest.raises((neutralizer.LegacyNeutralizerError, OSError)):
+        _observe_retired(retired_successor)
+    assert _read_only_snapshot(root) == before
+
+
+@POSIX_ONLY
+def test_successor_observer_rejects_changed_plan_and_unbound_inputs(retired_successor):
+    _root, steps, *_rest = retired_successor
+    for changed in (
+        {"previous_steps": steps[:-1]}, {"expected_retired_files": {}},
+        {"previous_replacement_fragments": {}}, {"replacement_fragments": {}},
+    ):
+        with pytest.raises(neutralizer.LegacyNeutralizerError):
+            _observe_retired(retired_successor, **changed)
+
+
+@POSIX_ONLY
+def test_successor_observer_accepts_mask_created_from_absent_name(tmp_path):
+    from executor_birth_legacy_retirement import LegacyRetirementStepV1
+
+    root = _tree(tmp_path)
+    steps = (LegacyRetirementStepV1(
+        "absent", "a", "system_unit", "system", "systemd/absent.service", "mask_system_unit",
+    ),)
+    _apply(root, steps)
+    assert _observe_retired((root, steps, {}, {}, {})).startswith("sha256:")
+
+
 class _Step:
     __slots__ = ("legacy_id", "action", "locator", "scope")
 

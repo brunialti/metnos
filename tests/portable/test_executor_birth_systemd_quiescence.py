@@ -163,3 +163,151 @@ def test_core_partitions_actions_and_reobserves_between_them(
         ("stop", "user", ("static.service",)),
     ]
     assert quiescence._is_quiescent_v1(proof.observations)
+
+
+@pytest.fixture
+def release_catalog():
+    import executor_birth_service_catalog as catalog
+
+    python = "/var/lib/metnos/python-envs-v1/" + "0" * 64 + "/bin/python"
+    executables = (python, "/usr/bin/systemctl", "/usr/bin/Xvfb")
+    built = catalog._build_service_catalog_v1(
+        installation_root="/srv/release", python_executable=python,
+        service_user="metnos", service_gid=1000,
+        service_supplementary_gids=(1000,), service_home="/srv/service",
+        systemctl_executable="/usr/bin/systemctl",
+        target_executables=tuple((path, path.encode()) for path in executables),
+    )
+    return catalog.LoadedServiceCatalogV1(
+        catalog.decode_service_catalog_v1(built.encoded),
+        built.unit_fragments, catalog._LOADED_CATALOG_SEAL,
+    )
+
+
+class ReleaseEffects:
+    def __init__(self, loaded):
+        self.states = {
+            name: ("loaded", "active", "enabled", 17 if name.endswith(".service") else 0)
+            for name, _content in loaded.unit_fragments
+        }
+        self.actions = []
+        self.after_stop = None
+
+    def observe(self, scope, unit, snapshot):
+        assert scope == "system" and snapshot is None
+        return quiescence.SystemdUnitObservationV1(scope, unit, *self.states[unit])
+
+    def apply(self, action, batch, snapshot):
+        assert action == "stop" and batch.scope == "system" and snapshot is None
+        self.actions.append((action, batch.units))
+        for unit in batch.units:
+            load, _active, state, _pid = self.states[unit]
+            self.states[unit] = load, "inactive", state, 0
+        if self.after_stop:
+            self.after_stop(self)
+
+
+def test_release_quiescence_stops_exact_catalog_without_disabling(release_catalog):
+    effects = ReleaseEffects(release_catalog)
+    idle_checks = []
+
+    def idle():
+        assert effects.actions == []
+        idle_checks.append(True)
+        return True
+
+    proof = quiescence._quiesce_release_systemd_core_v1(
+        release_catalog, effects, idle,
+    )
+    expected = tuple(name for name, _content in release_catalog.unit_fragments)
+    assert effects.actions == [("stop", expected)]
+    assert idle_checks == [True]
+    assert all(item.unit_file_state == "enabled" for item in proof.observations)
+    assert all(item.active_state == "inactive" and item.main_pid == 0 for item in proof.observations)
+    assert {item.unit for item in proof.observations} == set(expected)
+    # The legacy projection omits system consumers; it cannot substitute this plan.
+    assert set(expected) - {
+        unit for scope, unit in quiescence._catalog_targets_v1() if scope == "system"
+    }
+    again = quiescence._quiesce_release_systemd_core_v1(
+        release_catalog, effects, lambda: True,
+    )
+    assert again == proof
+    assert effects.actions == [("stop", expected)]
+
+
+@pytest.mark.parametrize("idle", [False, None, {"ok": True}])
+def test_release_busy_or_ambiguous_idle_denies_before_any_stop(release_catalog, idle):
+    effects = ReleaseEffects(release_catalog)
+    with pytest.raises(quiescence.SystemdQuiescenceError):
+        quiescence._quiesce_release_systemd_core_v1(
+            release_catalog, effects, lambda: idle,
+        )
+    assert effects.actions == []
+
+
+@pytest.mark.parametrize("stage", ["release_units_stopped", "release_quiescence_proven"])
+def test_release_stop_interruption_replays_without_disabling(release_catalog, stage):
+    effects = ReleaseEffects(release_catalog)
+
+    def interrupt(observed):
+        if observed == stage:
+            raise RuntimeError("interrupted")
+
+    with pytest.raises(RuntimeError, match="interrupted"):
+        quiescence._quiesce_release_systemd_core_v1(
+            release_catalog, effects, lambda: True, interrupt,
+        )
+    proof = quiescence._quiesce_release_systemd_core_v1(
+        release_catalog, effects, lambda: True,
+    )
+    assert len(effects.actions) == 1
+    assert all(item.unit_file_state == "enabled" for item in proof.observations)
+
+
+@pytest.mark.parametrize("state", [
+    ("error", "inactive", "enabled", 0),
+    ("not-found", "inactive", "not-found", 0),
+    ("masked", "inactive", "masked", 0),
+    ("loaded", "unknown", "enabled", 0),
+    ("loaded", "inactive", "unknown", 0),
+])
+def test_release_unknown_state_denies_before_any_stop(release_catalog, state):
+    effects = ReleaseEffects(release_catalog)
+    effects.states[next(iter(effects.states))] = state
+    with pytest.raises(quiescence.SystemdQuiescenceError):
+        quiescence._quiesce_release_systemd_core_v1(
+            release_catalog, effects, lambda: True,
+        )
+    assert effects.actions == []
+
+
+@pytest.mark.parametrize("state", [
+    ("loaded", "active", "enabled", 17),
+    ("loaded", "inactive", "enabled", 17),
+    ("loaded", "inactive", "disabled", 0),
+    ("error", "inactive", "enabled", 0),
+])
+def test_release_stop_requires_final_state_and_unchanged_enablement(release_catalog, state):
+    effects = ReleaseEffects(release_catalog)
+
+    def interfere(port):
+        port.states[next(iter(port.states))] = state
+
+    effects.after_stop = interfere
+    with pytest.raises(quiescence.SystemdQuiescenceError):
+        quiescence._quiesce_release_systemd_core_v1(
+            release_catalog, effects, lambda: True,
+        )
+
+
+def test_release_plan_rejects_unsealed_or_missing_catalog_fragments(release_catalog):
+    from dataclasses import replace
+
+    for candidate in (object(), replace(release_catalog, unit_fragments=())):
+        effects = ReleaseEffects(release_catalog)
+        with pytest.raises(quiescence.SystemdQuiescenceError):
+            quiescence._quiesce_release_systemd_core_v1(
+                candidate, effects, lambda: True,
+            )
+        assert effects.actions == []

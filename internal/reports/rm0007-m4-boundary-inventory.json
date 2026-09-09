@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:35d3bc72194b4c8602b5a207651abdebef6b88b1bfec8fcf4a8ec5cc8090ef8d",
+  "source_census": "sha256:6c345ff71a66fa5f81b4d94618a35d177cc53fda9ab7681430eb51c5e9dfa2d6",
   "scan_roots": [
     "runtime",
     "install",
@@ -816,6 +816,16 @@
         "store_write"
       ],
       "destination": "locked byte-identical G6 administrative installation",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_systemd.py",
+      "scope": "_prepare_administrative_stage_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "staged exact G6 helper replacement before preserving the authenticated predecessor",
       "phase": "M4"
     },
     {
@@ -2644,6 +2654,16 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "inspect_transition_ownership_chain_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "fixed-root transition chain observation through the sealed ownership-state boundary",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/executor_birth_ownership_coordinator.py",
       "scope": "OwnershipCoordinatorJournalV1.append",
       "role": "store_owner",
@@ -3032,6 +3052,16 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership transition coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_head_required_transition_locked_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed locked observation of the exact unfinished required-head transition",
       "phase": "M4"
     },
     {
@@ -4872,6 +4902,7 @@
       "install/executor_birth_systemd.py:_install_locked_core_v1",
       "install/executor_birth_systemd.py:_install_signed_isolated_systemd_for_test_v1",
       "install/executor_birth_systemd.py:_open_parent_v1",
+      "install/executor_birth_systemd.py:_prepare_administrative_stage_v1",
       "install/executor_birth_systemd.py:_publish_administrative_tree_v1",
       "install/executor_birth_systemd.py:_publish_isolated_units_for_test_v1",
       "install/executor_birth_systemd.py:install_group6_administrative_v1",
@@ -4895,6 +4926,7 @@
       "runtime/executor_birth_ownership_chain.py:_replace_required_pointer",
       "runtime/executor_birth_ownership_chain.py:_required_head_lock",
       "runtime/executor_birth_ownership_chain.py:inspect_ownership_chain_state_v1",
+      "runtime/executor_birth_ownership_chain.py:inspect_transition_ownership_chain_v1",
       "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.append",
       "runtime/executor_birth_ownership_coordinator.py:OwnershipCoordinatorJournalV1.load",
       "runtime/executor_birth_ownership_coordinator.py:_DeploymentLockLeaseV1",
@@ -4930,6 +4962,7 @@
       "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_for_test_v1",
       "runtime/executor_birth_ownership_coordinator.py:_deployment_lock_v1",
       "runtime/executor_birth_ownership_coordinator.py:_ensure_coordinator_child_directory_v2",
+      "runtime/executor_birth_ownership_coordinator.py:_head_required_transition_locked_v2",
       "runtime/executor_birth_ownership_coordinator.py:_observe_dominant_identity_locked_v2",
       "runtime/executor_birth_ownership_coordinator.py:_prepare_under_maintenance_v1",
       "runtime/executor_birth_ownership_coordinator.py:_proof_from_values",

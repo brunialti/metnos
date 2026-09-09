@@ -12,7 +12,9 @@ import builtins
 import dataclasses
 import hashlib
 import json
+import sys
 from collections.abc import Mapping
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable
 
@@ -563,8 +565,11 @@ def _isolated_g6c_records(
 
 def _bound_graph(
     mutation: str | None = None, *, service_home: str = "/var/lib/metnos",
+    release_sequence: int = 2, helper_bytes: bytes = b"preflight-v1",
+    previous_closed_build_id: str | None = None, signing_key=None,
 ) -> dict[str, object]:
-    release_sequence = 1 if mutation == "release1-predecessor" else 2
+    if mutation == "release1-predecessor":
+        release_sequence = 1
     installation_root = _binder_installation_root(release_sequence)
     service_home = (
         installation_root
@@ -622,9 +627,9 @@ def _bound_graph(
     artifacts = [assembler.DeploymentArtifactV1(
         "deployment/admin/preflight.py",
         "/usr/libexec/metnos/executor-birth-v1/preflight.py",
-        "administrative_program", "group6_admin", len(b"preflight-v1"),
+        "administrative_program", "group6_admin", len(helper_bytes),
         preflight.distribution_file_hash_v1(
-            "deployment/admin/preflight.py", b"preflight-v1",
+            "deployment/admin/preflight.py", helper_bytes,
         ),
         0o755, 0, 0,
     )]
@@ -683,7 +688,7 @@ def _bound_graph(
     )
 
     contents = {
-        "deployment/admin/preflight.py": b"preflight-v1",
+        "deployment/admin/preflight.py": helper_bytes,
         "deployment/executor-birth-deployment-v1.json": descriptor_encoded,
         "deployment/executor-birth-service-catalog-v1.json": catalog_encoded,
         "internal/reports/boundary.json": b"{}",
@@ -751,17 +756,21 @@ def _bound_graph(
         ),
         "role": roles.get(path, "runtime_code"),
     } for path in sorted(contents, key=lambda item: item.encode("utf-8"))]
+    signing_key_id = "distribution-ed25519-v1-sha256-" + "e" * 64
+    if signing_key is not None:
+        from executor_birth_distribution_manifest import distribution_key_id
+        signing_key_id = distribution_key_id(signing_key.public_key())
     manifest = {
         "schema_version": 1,
         "closed_build_id": None,
         "previous_closed_build_id": (
-            None if release_sequence == 1 else D("d")
+            None if release_sequence == 1 else (previous_closed_build_id or D("d"))
         ),
         "release_sequence": release_sequence,
         "product_version": "1.2.3",
         "platform": "linux",
         "architecture": "x86_64",
-        "signing_key_id": "distribution-ed25519-v1-sha256-" + "e" * 64,
+        "signing_key_id": signing_key_id,
         "installation_root": installation_root,
         "certificate_directory": "/var/lib/metnos/executor-birth",
         "boundary_inventory_path": "internal/reports/boundary.json",
@@ -779,9 +788,13 @@ def _bound_graph(
     manifest_value, distribution_files = preflight._parse_distribution_manifest_v1(
         manifest_encoded
     )
+    signature = (
+        signing_key.sign(preflight.SIGNATURE_DOMAIN + manifest_encoded)
+        if signing_key is not None else b"s" * 64
+    )
     distribution = preflight._AuthenticatedDistributionObjectV1(
         preflight._distribution_facts_v1(manifest_value),
-        distribution_files, manifest_encoded, b"s" * 64,
+        distribution_files, manifest_encoded, signature,
     )
 
     predecessor_is_initially_different = mutation in {
@@ -848,7 +861,7 @@ def _bound_graph(
             "sha256:" + hashlib.sha256(manifest_encoded).hexdigest()
         ),
         distribution_signature_hash=(
-            "sha256:" + hashlib.sha256(b"s" * 64).hexdigest()
+            "sha256:" + hashlib.sha256(signature).hexdigest()
         ),
         boundary_inventory_hash=distribution.facts.boundary_inventory_hash,
         boundary_guard_version=distribution.facts.boundary_guard_version,
@@ -1261,6 +1274,116 @@ def test_pure_material_binder_accepts_one_fully_rebound_product_graph() -> None:
     assert materials.prerequisite.candidate_units_hash == (
         materials.candidate_units.candidate_units_hash
     )
+
+
+@pytest.mark.parametrize("changed_path", (None, "unit", "helper", "descriptor"))
+def test_selected_service_keeps_its_signed_recipe_when_new_helper_is_staged(
+    monkeypatch, changed_path,
+) -> None:
+    graph = _bound_graph()
+    # The newly installed helper contains the NEXT recipe, while the required
+    # head still selects this old signed release. New admission stays strict.
+    monkeypatch.setattr(preflight, "_EXPECTED_SERVICE_SOURCE_IDENTITY_V1", D("0"))
+    with pytest.raises(preflight.PreflightError, match="service source recipe"):
+        _bind_graph(graph)
+    captured = dict(graph["captured"])
+    if changed_path is not None:
+        path = {
+            "unit": next(path for path in captured if path.startswith("deployment/systemd/")),
+            "helper": "deployment/admin/preflight.py",
+            "descriptor": preflight.DEPLOYMENT_DESCRIPTOR_PATH_V1,
+        }[changed_path]
+        captured[path] += b"\n"
+    def bind_selected():
+        return preflight._bind_preflight_materials_core_v1(
+            graph["distribution"], graph["transaction"], graph["predecessor"],
+            captured, graph["prerequisite_encoded"], review_service_source=False,
+        )
+    if changed_path is not None:
+        with pytest.raises(preflight.PreflightError):
+            bind_selected()
+    else:
+        materials = bind_selected()
+        assert materials.distribution is graph["distribution"]
+        assert materials.catalog.catalog_id == graph["decoded_catalog"].catalog_id
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="real OpenSSL fixture")
+@pytest.mark.parametrize("helper_bytes", (b"preflight-v1", b"preflight-v2"))
+def test_successor_materials_bind_their_own_artifacts_not_the_legacy_bundle(helper_bytes) -> None:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from executor_birth_ownership_authorities import encode_ownership_registry_v1
+
+    key = Ed25519PrivateKey.generate()
+    initial = _bound_graph(release_sequence=1, signing_key=key)
+    initial_materials = _bind_graph(initial).materials
+    successor = _bound_graph(
+        release_sequence=2, helper_bytes=helper_bytes, service_home="/srv/assistant",
+        previous_closed_build_id=initial["distribution"].facts.closed_build_id,
+        signing_key=key,
+    )
+    registry = encode_ownership_registry_v1("distribution", key.public_key())
+    for graph in (initial, successor):
+        distribution = graph["distribution"]
+        authenticated = preflight._authenticate_distribution_for_test_v1(
+            distribution.encoded, distribution.signature, registry,
+            openssl_executable=Path("/usr/bin/openssl"),
+        )
+        assert authenticated.facts == distribution.facts
+    # The legacy descriptor is immutable history, not a declaration of N+1.
+    candidate = preflight._bind_candidate_cutover_materials_core_v1(
+        successor["distribution"], _receipts_complete_transaction(successor),
+        initial["predecessor"], successor["captured"],
+    )
+    assert candidate.predecessor is initial["predecessor"]
+    assert candidate.administrative_bundle_hash != initial_materials.administrative_bundle_hash
+    assert candidate.unit_fragments != initial_materials.unit_fragments
+    assert candidate.administrative_bundle_hash == successor["transaction"].administrative_bundle_hash
+    assert successor["captured"]["deployment/admin/preflight.py"] == helper_bytes
+    assert _bind_graph(initial).materials == initial_materials
+
+
+@pytest.mark.parametrize("mutation", (
+    "transaction_bundle", "descriptor", "helper", "unit", "payload", "signature",
+    "transaction_release", "legacy_release1_bundle",
+))
+def test_release_local_material_binding_rejects_swapped_evidence(mutation) -> None:
+    initial = _bound_graph(release_sequence=1)
+    graph = _bound_graph(helper_bytes=b"preflight-v2", service_home="/srv/assistant")
+    predecessor = initial["predecessor"]
+    if mutation == "legacy_release1_bundle":
+        graph = initial
+        predecessor = predecessor._replace(administrative_bundle_hash=D("0"))
+    transaction = _receipts_complete_transaction(graph)
+    distribution = graph["distribution"]
+    captured = dict(graph["captured"])
+    if mutation == "transaction_bundle":
+        transaction = transaction._replace(
+            administrative_bundle_hash=initial["transaction"].administrative_bundle_hash,
+        )
+    elif mutation == "unit":
+        path = next(
+            path for path, content in captured.items()
+            if path.startswith("deployment/systemd/")
+            and content != initial["captured"][path]
+        )
+        captured[path] = initial["captured"][path]
+    elif mutation in {"descriptor", "helper"}:
+        path = {
+            "descriptor": preflight.DEPLOYMENT_DESCRIPTOR_PATH_V1,
+            "helper": "deployment/admin/preflight.py",
+        }[mutation]
+        captured[path] = initial["captured"][path]
+    elif mutation == "payload":
+        transaction = transaction._replace(distribution_payload_hash=D("0"))
+    elif mutation == "signature":
+        distribution = distribution._replace(signature=b"x" * 64)
+    elif mutation == "transaction_release":
+        transaction = transaction._replace(release_sequence=1)
+    with pytest.raises(preflight.PreflightError):
+        preflight._bind_candidate_cutover_materials_core_v1(
+            distribution, transaction, predecessor, captured,
+        )
 
 
 @pytest.mark.parametrize("service_home", (

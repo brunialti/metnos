@@ -4150,14 +4150,14 @@ def _prepare_transition_receipt_material_locked_v2(
 ) -> _TransitionReceiptPreparationV2:
     """Complete reversible preparation before entering maintenance."""
     from executor_birth_distribution_manifest import (
-        capture_current_deployment_descriptor_v1,
+        authenticate_distribution_record_v1, capture_current_deployment_descriptor_v1,
     )
     from executor_birth_ownership_coordinator import (
         _require_deployment_lock_session_v1, _transition_edge_locked_v2,
     )
     from executor_birth_prepared_root import (
         _load_historical_transition_anchor_v1,
-        load_required_context_runtime_v1,
+        load_previous_context_runtime_v1,
     )
 
     _require_deployment_lock_session_v1(session)
@@ -4171,7 +4171,9 @@ def _prepare_transition_receipt_material_locked_v2(
         previous_set = _load_historical_transition_anchor_v1()
         previous_context = previous_set
     else:
-        required = load_required_context_runtime_v1()
+        required = load_previous_context_runtime_v1(
+            authenticate_distribution_record_v1(verified.encoded, verified.signature),
+        )
         if (
             required.required_head_id != claim.previous_head_id
             or required.required_head_id != predecessor.head_id
@@ -4816,7 +4818,7 @@ def _transition_roots_v2(
 
 def _retire_bound_catalog_v2(
     distribution: object, prepared: object, maintenance: object,
-    legacy_identity: object,
+    legacy_identity: object, *, previous_catalog=None,
 ) -> str:
     """Prove quiescence, apply the signed plan and return its stable digest."""
     from executor_birth_legacy_neutralizer import _neutralize_core_v1
@@ -4854,6 +4856,11 @@ def _retire_bound_catalog_v2(
     })
     require_no_legacy_in_flight_v1(plan.steps, states)
 
+    if previous_catalog is not None:
+        return _observe_previous_retirement_v2(
+            loaded, previous_catalog, prepared.materials.predecessor, roots,
+        )
+
     preserve_action = "preserve_replaced_system_unit"
     ordinary = tuple(
         step for step in plan.steps if step.action != preserve_action
@@ -4875,8 +4882,40 @@ def _retire_bound_catalog_v2(
     return plan_digest_v1(plan.steps)
 
 
+def _observe_previous_retirement_v2(loaded, previous, predecessor, roots) -> str:
+    """Reread initial retirement without repeating any legacy mutation."""
+    from executor_birth_legacy_neutralizer import _observe_retired_core_v1
+    from executor_birth_legacy_retirement import (
+        plan_catalog_retirement_v1, plan_digest_v1,
+    )
+
+    plan = plan_catalog_retirement_v1(loaded.catalog)
+    old_plan = plan_catalog_retirement_v1(previous.catalog)
+    if plan.steps != old_plan.steps:
+        raise _reject("birth_transition_legacy_plan_changed")
+    old_units = dict(previous.unit_fragments)
+    new_units = dict(loaded.unit_fragments)
+    retired_files = {
+        item.path: (item.size, item.content_hash) for item in predecessor.files
+    }
+    for scope in ("repository", "user", "system"):
+        steps = tuple(step for step in plan.steps if step.scope == scope)
+        if steps:
+            _observe_retired_core_v1(
+                roots[scope], steps, previous_steps=steps,
+                previous_replacement_fragments={
+                    (scope, name): content for name, content in old_units.items()
+                },
+                replacement_fragments={
+                    (scope, name): content for name, content in new_units.items()
+                },
+                expected_retired_files=retired_files,
+            )
+    return plan_digest_v1(plan.steps)
+
+
 def _install_bound_topology_v2(
-    distribution: object, prepared: object,
+    distribution: object, prepared: object, *, previous_fragments=None,
 ):
     """Install, reload and measure the exact signed dominant topology."""
     from executor_birth_admin_preflight import (
@@ -4902,7 +4941,10 @@ def _install_bound_topology_v2(
     )
     if tuple(sorted(fragments)) != tuple(sorted(expected_units)):
         raise _reject("birth_transition_topology_invalid")
-    _install_core_v1(system_root, fragments)
+    if previous_fragments is None:
+        _install_core_v1(system_root, fragments)
+    else:
+        _install_core_v1(system_root, fragments, previous_fragments=previous_fragments)
     links = tuple(sorted(
         (
             link for entry in materials.candidate_units.entries
@@ -5113,6 +5155,33 @@ def _complete_transition_legacy_state_v2(
         raise _reject("birth_legacy_state_recovery_required", exc) from None
 
 
+def _resume_required_transition_v2(session, distribution, descriptor, legacy_identity):
+    """Finish only an already published head; never repeat earlier effects."""
+    from contract_cutover_guard import _contract_cutover_guard_for_service_user_v1
+    from executor_birth_ownership_coordinator import (
+        _cross_preflight_boundary_locked_v2, _head_required_transition_locked_v2,
+        _result,
+    )
+    from executor_birth_service_catalog import capture_current_service_catalog_v1
+    from executor_birth_startup_gate import _exclusive_startup_gate_v1
+    from install.executor_birth_startup_gate import install_startup_gate_v1
+
+    head = _head_required_transition_locked_v2(session, distribution)
+    if head is None:
+        return None
+    catalog = capture_current_service_catalog_v1(distribution)
+    install_startup_gate_v1(session)
+    with _exclusive_startup_gate_v1() as startup:
+        with _contract_cutover_guard_for_service_user_v1(
+            legacy_identity.name,
+            catalog_trusted_owner=(descriptor.service_uid, descriptor.service_gid),
+            release_catalog=catalog,
+        ) as (maintenance, _evidence):
+            return _result(_cross_preflight_boundary_locked_v2(
+                (session, startup, maintenance), head,
+            ))
+
+
 def complete_transition_cutover_v2(
     distribution: object, source_id: object, *, service_state_root: object,
     legacy_service_user: object, legacy_installation_root: object,
@@ -5131,6 +5200,7 @@ def complete_transition_cutover_v2(
     from executor_birth_distribution_manifest import (
         authenticate_distribution_record_v1,
         capture_current_deployment_descriptor_v1,
+        capture_previous_release_artifacts_v1,
         verify_current_installation_distribution_v1,
     )
     from executor_birth_bootstrap import verify_initial_installer_store_v1
@@ -5156,6 +5226,7 @@ def complete_transition_cutover_v2(
         BirthAuthorityGateClosed, require_closed_build_v1,
     )
     from executor_birth_startup_gate import _exclusive_startup_gate_v1
+    from executor_birth_service_catalog import load_previous_service_catalog_v1
     from install.executor_birth_source_receiver import (
         _load_received_source_with_product_session_v1,
     )
@@ -5217,12 +5288,31 @@ def complete_transition_cutover_v2(
                 raise _reject("birth_transition_final_state_changed")
             return _result(completed)
 
+        resumed = _resume_required_transition_v2(
+            deployment_session, verified, signed_descriptor, legacy_identity,
+        )
+        if resumed is not None:
+            return resumed
+
         preparation = _prepare_transition_receipt_material_locked_v2(
             deployment_session, verified,
         )
         descriptor = preparation.descriptor
         if descriptor != signed_descriptor:
             raise _reject("birth_transition_service_identity_changed")
+        previous_artifacts = previous_catalog = None
+        if verified.release_sequence > 1:
+            current_record = authenticate_distribution_record_v1(
+                verified.encoded, verified.signature,
+            )
+            previous = preparation.previous_context.distribution
+            previous_record = authenticate_distribution_record_v1(
+                previous.encoded, previous.signature,
+            )
+            previous_artifacts = capture_previous_release_artifacts_v1(
+                current_record, previous_record,
+            )
+            previous_catalog = load_previous_service_catalog_v1(previous_artifacts)
         install_startup_gate_v1(deployment_session)
         with _exclusive_startup_gate_v1() as startup_session:
             legacy_preparation = None
@@ -5272,6 +5362,8 @@ def complete_transition_cutover_v2(
             with _contract_cutover_guard_for_service_user_v1(
                 legacy_identity.name,
                 catalog_trusted_owner=catalog_owner,
+                **({"release_catalog": previous_catalog}
+                   if previous_catalog is not None else {}),
             ) as (maintenance, evidence):
                 if (
                     _resolve_legacy_service_identity_v2(legacy_identity.name)
@@ -5319,6 +5411,8 @@ def complete_transition_cutover_v2(
                             verified.encoded, verified.signature,
                         ),
                         deployment_session,
+                        **({"previous_record": previous_artifacts.record}
+                           if previous_artifacts is not None else {}),
                     )
                     prepared = _prepare_cutover_candidate_v2(
                         complete, verified,
@@ -5351,6 +5445,16 @@ def complete_transition_cutover_v2(
                         return _observe_bound_enforcement_v2(prepared)
 
                     def plan_retirement() -> str:
+                        if previous_artifacts is not None:
+                            repeated = capture_previous_release_artifacts_v1(
+                                current_record, previous_record,
+                            )
+                            if repeated != previous_artifacts:
+                                raise _reject("birth_transition_previous_release_changed")
+                            return _retire_bound_catalog_v2(
+                                verified, prepared, maintenance, legacy_identity,
+                                previous_catalog=previous_catalog,
+                            )
                         return _retire_bound_catalog_v2(
                             verified, prepared, maintenance, legacy_identity,
                         )
@@ -5358,6 +5462,8 @@ def complete_transition_cutover_v2(
                     def observe_topology() -> str:
                         observed = _install_bound_topology_v2(
                             verified, prepared,
+                            **({"previous_fragments": dict(previous_catalog.unit_fragments)}
+                               if previous_catalog is not None else {}),
                         )
                         effective_observations.append(observed)
                         return observed.snapshot.effective_units_hash

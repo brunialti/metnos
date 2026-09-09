@@ -1824,6 +1824,7 @@ def _record_matches_parsed_value(
 def _verify_distribution_content_semantics_v1(
     value: Mapping[str, object], files: tuple[DistributionFile, ...],
     environment: _VerificationEnvironment, verified_content: Mapping[str, bytes],
+    *, historical_review: bool = False,
 ) -> None:
     inventory_path = str(value["boundary_inventory_path"])
     inventory_hash = "sha256:" + hashlib.sha256(
@@ -1833,12 +1834,15 @@ def _verify_distribution_content_semantics_v1(
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", "boundary inventory",
         )
-    inventory = _canonical_inventory(verified_content[inventory_path])
-    if value["boundary_guard_version"] != BIRTH_CLOSED_GUARD_VERSION:
+    if historical_review:
+        _require_historical_source_review_v1(value, verified_content)
+    else:
+        inventory = _canonical_inventory(verified_content[inventory_path])
+    if not historical_review and value["boundary_guard_version"] != BIRTH_CLOSED_GUARD_VERSION:
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", "boundary guard version",
         )
-    if environment.verify_static_boundary:
+    if not historical_review and environment.verify_static_boundary:
         if not _source_review_is_exact_v1(verified_content):
             raise DistributionManifestError(
                 "birth_ownership_distribution_file_mismatch", "source review",
@@ -1861,9 +1865,50 @@ def _verify_distribution_content_semantics_v1(
         raise DistributionManifestError(
             "birth_ownership_distribution_file_mismatch", "product version",
         )
-    _verify_local_import_closure(
-        environment.installation_root, files, verified_content,
-    )
+    if not historical_review:
+        _verify_local_import_closure(
+            environment.installation_root, files, verified_content,
+        )
+
+
+def _require_historical_source_review_v1(
+    value: Mapping[str, object], contents: Mapping[str, bytes],
+) -> None:
+    """Recheck N's signed review commitment without executing N's policy.
+
+    This is NOT candidate certification: only the immediate-predecessor API
+    reaches it. The V1 framing and source roots remain the supported format.
+    """
+    try:
+        reviewed = closed_python_source_review_sha256(contents)
+        encoded = contents[str(value["boundary_inventory_path"])]
+        inventory = json.loads(encoded.decode("ascii"), object_pairs_hook=_pairs)
+        pins = [re.findall(
+            rb'(?m)^' + name + rb' = "(sha256:[0-9a-f]{64})"$', contents[path],
+        ) for path, name in (
+            ("runtime/contract_boundary_guard.py", b"BIRTH_CLOSED_SOURCE_REVIEW_SHA256"),
+            ("runtime/executor_birth_admin_preflight.py", b"_BIRTH_CLOSED_SOURCE_REVIEW_SHA256"),
+        )]
+        valid = (
+            type(inventory) is dict and _canonical(inventory) == encoded
+            and inventory.get("schema") == BOUNDARY_INVENTORY_SCHEMA
+            and inventory.get("scan_roots") == list(SCAN_ROOTS)
+            and type(inventory.get("entries")) is list
+            and type(inventory.get("birth_closed")) is dict
+            and inventory["birth_closed"].get("guard_version") == value["boundary_guard_version"]
+            and inventory.get("source_census") == reviewed
+            and all(pin == [reviewed.encode("ascii")] for pin in pins)
+            and contents[_BOUNDARY_PREFLIGHT_ENTRYPOINT_V1]
+            == contents["runtime/executor_birth_admin_preflight.py"]
+        )
+    except (KeyError, ValueError, UnicodeError, TypeError) as exc:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "historical source review",
+        ) from exc
+    if not valid:
+        raise DistributionManifestError(
+            "birth_ownership_distribution_file_mismatch", "historical source review",
+        )
 
 
 def _source_review_is_exact_v1(verified_content: Mapping[str, bytes]) -> bool:
@@ -1900,6 +1945,7 @@ def _verified_distribution_result_v1(
 def _verify_authenticated_distribution_record(
     record: AuthenticatedDistributionRecordV1 | _AuthenticatedDistributionRecordForTestV1,
     environment: _VerificationEnvironment, *, for_test: bool,
+    _historical_review: bool = False,
 ) -> VerifiedDistribution:
     expected_type = (
         _AuthenticatedDistributionRecordForTestV1
@@ -1966,6 +2012,7 @@ def _verify_authenticated_distribution_record(
             verified_content[item.path] = content
         _verify_distribution_content_semantics_v1(
             value, files, environment, verified_content,
+            historical_review=_historical_review,
         )
         after = _snapshot_exact_distribution_tree_v1(anchor, tree)
         if before != after:
@@ -2019,6 +2066,156 @@ def verify_current_installation_distribution_v1(
     return _verify_authenticated_distribution_record(
         record, environment, for_test=False,
     )
+
+
+def _require_previous_distribution_edge_v1(
+    current: object, previous: object, *, for_test: bool,
+) -> None:
+    for record in (current, previous):
+        if not _is_authenticated_distribution_record_v1(record, for_test=for_test):
+            raise DistributionManifestError("birth_ownership_distribution_invalid", "previous record")
+        value, files = _parse(record.encoded)
+        if not _record_matches_parsed_value(record, value, files) or record.installation_root != (
+            DEFAULT_RELEASE_DIRECTORY_V1 / f"{record.release_sequence:020d}"
+        ).as_posix():
+            raise DistributionManifestError("birth_ownership_distribution_invalid", "previous root binding")
+    if (
+        current.previous_closed_build_id != previous.closed_build_id
+        or current.release_sequence != previous.release_sequence + 1
+        or (current.platform, current.architecture) != (previous.platform, previous.architecture)
+    ):
+        raise DistributionManifestError("birth_ownership_distribution_chain_invalid", "previous edge")
+
+
+def verify_previous_distribution_record_v1(
+    current: AuthenticatedDistributionRecordV1,
+    previous: AuthenticatedDistributionRecordV1,
+) -> VerifiedDistribution:
+    """Verify only N immediately preceding signed N+1, under N's signed review.
+
+    Chain/head/completed-preflight selection remains the coordinator's duty.
+    This does not certify N+1; current verifiers retain their compiled policy.
+    """
+    if not sys.platform.startswith("linux"):
+        raise DistributionManifestError("birth_ownership_platform_unsupported")
+    _require_previous_distribution_edge_v1(current, previous, for_test=False)
+    if any(authenticate_distribution_record_v1(item.encoded, item.signature) != item
+           for item in (current, previous)):
+        raise DistributionManifestError("birth_ownership_distribution_invalid", "previous authentication")
+    root = DEFAULT_RELEASE_DIRECTORY_V1 / f"{previous.release_sequence:020d}"
+    _require_product_release_metadata_v1(root)
+    observed = _runtime_environment()
+    environment = _VerificationEnvironment(
+        observed.platform, observed.architecture, root, root.as_posix(),
+        True, True, _ENVIRONMENT_SEAL,
+    )
+    return _verify_authenticated_distribution_record(
+        previous, environment, for_test=False, _historical_review=True,
+    )
+
+
+def _verify_previous_distribution_record_for_test_v1(
+    current: _AuthenticatedDistributionRecordForTestV1,
+    previous: _AuthenticatedDistributionRecordForTestV1, *,
+    registry: DistributionRegistry, environment: _VerificationEnvironment,
+) -> VerifiedDistribution:
+    _require_previous_distribution_edge_v1(current, previous, for_test=True)
+    if any(_authenticate_distribution_record_for_test(
+        item.encoded, item.signature, registry=registry,
+    ) != item for item in (current, previous)):
+        raise DistributionManifestError("birth_ownership_distribution_invalid", "previous authentication")
+    return _verify_authenticated_distribution_record(
+        previous, environment, for_test=True, _historical_review=True,
+    )
+
+
+_HISTORICAL_ARTIFACTS_SEAL_V1 = object()
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalReleaseArtifactsV1:
+    """Read-only predecessor bytes, never a current deployment capability."""
+
+    record: AuthenticatedDistributionRecordV1
+    descriptor: object
+    contents: Mapping[str, bytes]
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if self._seal is not _HISTORICAL_ARTIFACTS_SEAL_V1:
+            raise DistributionManifestError("birth_ownership_distribution_invalid", "historical artifacts")
+
+
+def _capture_previous_release_artifacts_core_v1(
+    previous: object, verified: VerifiedDistribution, root: Path, *, administrative: bool,
+) -> HistoricalReleaseArtifactsV1:
+    from executor_birth_distribution_assembler import DEPLOYMENT_DESCRIPTOR_PATH_V1
+
+    selected = {item.path: item for item in verified.files if item.role in {
+        "service_catalog", "deployment_descriptor", "service_unit",
+    } or item.path == verified.preflight_entrypoint}
+    anchor = _open_distribution_tree_anchor_v1(root, administrative=administrative)
+    try:
+        tree = _closed_distribution_tree_v1(verified.files)
+        before = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        contents = {}
+        for path, item in selected.items():
+            content = _read_anchored_distribution_file_v1(anchor, item, before)
+            if file_content_hash(path, content) != item.content_hash:
+                raise DistributionManifestError("birth_ownership_distribution_file_mismatch", path)
+            contents[path] = content
+        descriptor = _decode_bound_deployment_descriptor_v1(
+            verified, contents[DEPLOYMENT_DESCRIPTOR_PATH_V1],
+        )
+        if {item.source_path for item in descriptor.artifacts} != {
+            path for path, item in selected.items()
+            if item.role == "service_unit" or path == verified.preflight_entrypoint
+        } or any(
+            item.size != selected[item.source_path].size
+            or item.content_hash != selected[item.source_path].content_hash
+            for item in descriptor.artifacts
+        ):
+            raise DistributionManifestError("birth_ownership_distribution_file_mismatch", "historical artifacts")
+        after = _snapshot_exact_distribution_tree_v1(anchor, tree)
+        if before != after:
+            raise DistributionManifestError("birth_ownership_distribution_file_mismatch", "historical tree")
+        _require_distribution_root_binding_v1(anchor, after[""])
+        return HistoricalReleaseArtifactsV1(
+            previous, descriptor, MappingProxyType(contents), _HISTORICAL_ARTIFACTS_SEAL_V1,
+        )
+    finally:
+        _close_distribution_tree_anchor_v1(anchor)
+
+
+def capture_previous_release_artifacts_v1(
+    current: AuthenticatedDistributionRecordV1, previous: AuthenticatedDistributionRecordV1,
+) -> HistoricalReleaseArtifactsV1:
+    verified = verify_previous_distribution_record_v1(current, previous)
+    captured = _capture_previous_release_artifacts_core_v1(
+        previous, verified, Path(verified.installation_root), administrative=True,
+    )
+    if verify_previous_distribution_record_v1(current, previous) != verified:
+        raise DistributionManifestError("birth_ownership_distribution_file_mismatch", "previous distribution")
+    return captured
+
+
+def _capture_previous_release_artifacts_for_test_v1(
+    current: _AuthenticatedDistributionRecordForTestV1,
+    previous: _AuthenticatedDistributionRecordForTestV1, *,
+    registry: DistributionRegistry, environment: _VerificationEnvironment,
+) -> HistoricalReleaseArtifactsV1:
+    verified = _verify_previous_distribution_record_for_test_v1(
+        current, previous, registry=registry, environment=environment,
+    )
+    captured = _capture_previous_release_artifacts_core_v1(
+        previous, verified, environment.installation_root,
+        administrative=environment.require_administrative_metadata,
+    )
+    if _verify_previous_distribution_record_for_test_v1(
+        current, previous, registry=registry, environment=environment,
+    ) != verified:
+        raise DistributionManifestError("birth_ownership_distribution_file_mismatch", "previous distribution")
+    return captured
 
 
 def _verify_authenticated_distribution_record_for_test(
@@ -2234,4 +2431,6 @@ __all__ = [
     "file_content_hash", "installed_tree_hash_v1", "is_verified_distribution",
     "verify_current_installation_distribution_v1",
     "verify_installed_distribution_record_v1",
+    "verify_previous_distribution_record_v1", "HistoricalReleaseArtifactsV1",
+    "capture_previous_release_artifacts_v1",
 ]

@@ -263,6 +263,7 @@ BOUNDARY_API_OWNERS_V1 = (
         ('_install_locked_core_v1', ('store_write',)),
         ('_install_signed_isolated_systemd_for_test_v1', ('store_write',)),
         ('_open_parent_v1', ('store_write',)),
+        ('_prepare_administrative_stage_v1', ('store_write',)),
         ('_publish_administrative_tree_v1', ('store_write',)),
         ('_publish_isolated_units_for_test_v1', ('store_write',)),
         ('install_group6_administrative_v1', ('store_write',)),

@@ -392,6 +392,91 @@ def quiesce_legacy_systemd_v1(
     return proof
 
 
+def _plan_release_systemd_quiescence_v1(loaded) -> SystemdQuiescencePlanV1:
+    """Derive a stop-only plan from a reread, authenticated release catalog."""
+    from executor_birth_service_catalog import (
+        LoadedServiceCatalogV1, _LOADED_CATALOG_SEAL,
+    )
+
+    if (
+        type(loaded) is not LoadedServiceCatalogV1
+        or loaded._seal is not _LOADED_CATALOG_SEAL
+    ):
+        _fail("release catalog")
+    entries = tuple(item for item in loaded.catalog.entries if item.unit_spec is not None)
+    units = tuple(sorted(item.unit_name for item in entries))
+    if (
+        not units or any(item.scope != "system" for item in entries)
+        or len(set(units)) != len(units)
+        or tuple(name for name, _content in loaded.unit_fragments) != units
+    ):
+        _fail("release unit coverage")
+    batches = (SystemdQuiescenceBatchV1("system", units),)
+    payload = encode_canonical_ascii_v1({
+        "catalog_id": loaded.catalog.catalog_id,
+        "operations": ["stop", "verify"],
+        "protocol": SYSTEMD_QUIESCENCE_PROTOCOL_V1,
+        "targets": [{"scope": "system", "units": list(units)}],
+    })
+    return SystemdQuiescencePlanV1(
+        batches, framed_sha256_v1(_PLAN_DOMAIN_V1, payload),
+    )
+
+
+def _require_release_observations_v1(observed) -> None:
+    """An unknown or missing installed unit is not evidence of safe shutdown."""
+    active_states = {
+        "active", "activating", "deactivating", "failed", "inactive", "reloading",
+    }
+    file_states = {
+        "enabled", "enabled-runtime", "linked", "linked-runtime", "alias",
+        "static", "disabled", "indirect",
+    }
+    if not observed or any(
+        item.load_state != "loaded" or item.active_state not in active_states
+        or item.unit_file_state not in file_states
+        for item in observed
+    ):
+        _fail("release unit state")
+
+
+def _quiesce_release_systemd_core_v1(
+    loaded, effects, require_idle, crash_seam=None,
+) -> SystemdQuiescenceProofV1:
+    """Stop the selected predecessor without altering its signed enablement.
+
+    The G7 caller authenticates the immediate predecessor and retains deployment,
+    startup and lifecycle exclusion.  ``require_idle`` must prove that no HTTP
+    turn or browser operation will be interrupted before this core stops units.
+    This private effect core neither selects a release nor grants those locks.
+    """
+    if (
+        not callable(require_idle) or not callable(getattr(effects, "apply", None))
+        or not callable(getattr(effects, "observe", None))
+        or crash_seam is not None and not callable(crash_seam)
+    ):
+        _fail("release effects port")
+    plan = _plan_release_systemd_quiescence_v1(loaded)
+    before = _observations_v1(plan, None, effects)
+    _require_release_observations_v1(before)
+    if require_idle() is not True:
+        _fail("release work not idle")
+    batch = _action_batch_v1("stop", plan.batches[0], before)
+    if batch is not None:
+        effects.apply("stop", batch, None)
+    _checkpoint_v1(crash_seam, "release_units_stopped")
+    after = _observations_v1(plan, None, effects)
+    _require_release_observations_v1(after)
+    if any(
+        item.active_state not in _QUIESCENT_STATES_V1 or item.main_pid != 0
+        or item.unit_file_state != previous.unit_file_state
+        for previous, item in zip(before, after, strict=True)
+    ):
+        _fail("release units not quiescent")
+    _checkpoint_v1(crash_seam, "release_quiescence_proven")
+    return SystemdQuiescenceProofV1(plan.plan_digest, after)
+
+
 __all__ = [
     "SYSTEMD_QUIESCENCE_PROTOCOL_V1",
     "SystemdQuiescenceBatchV1",

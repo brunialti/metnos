@@ -17,6 +17,74 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.mark.parametrize("idle", (True, False))
+def test_successor_stops_under_exclusion_and_rechecks_additional_units(monkeypatch, idle):
+    import stack_reconcile
+    from install import executor_birth_systemd_quiescence as quiescence
+    from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
+    from executor_birth_ownership_preflight import canonical_maintenance_proof
+
+    unit, catalog = "metnos-future.timer", object()
+    events, held = [], []
+    state = {"active": "active"}
+    plan = quiescence.SystemdQuiescencePlanV1(
+        (quiescence.SystemdQuiescenceBatchV1("system", (unit,)),),
+        "sha256:" + "1" * 64,
+    )
+    monkeypatch.setattr(quiescence, "_plan_release_systemd_quiescence_v1", lambda value: (
+        plan if value is catalog else pytest.fail("release catalog changed")
+    ))
+
+    class Effects:
+        def observe(self, scope, name, _snapshot):
+            assert held == [True] and (scope, name) == ("system", unit)
+            return quiescence.SystemdUnitObservationV1(
+                scope, name, "loaded", state["active"], "enabled", 0,
+            )
+
+        def apply(self, action, batch, _snapshot):
+            assert held == [True] and action == "stop" and batch.units == (unit,)
+            events.append("stop")
+            state["active"] = "inactive"
+
+    class Systemctl:
+        def show(self, name, _scope):
+            assert held == [True]
+            return {
+                "LoadState": "loaded", "MainPID": 0,
+                "ActiveState": state["active"] if name == unit else "inactive",
+            }
+
+    @contextmanager
+    def exclusion(**_kwargs):
+        held.append(True)
+        try:
+            yield
+        finally:
+            held.pop()
+
+    reconciler = SimpleNamespace(systemctl=Systemctl(), require_quiescent=lambda: {
+        "ok": idle, "source": "inactive_http_and_inactive_sidecar",
+    })
+    monkeypatch.setattr(stack_reconcile, "catalog_reconcile_lock", exclusion)
+    monkeypatch.setattr(quiescence, "_SubprocessSystemdEffectsV1", Effects)
+    if not idle:
+        with pytest.raises(quiescence.SystemdQuiescenceError):
+            with guard._contract_cutover_guard_core_v1(reconciler, release_catalog=catalog):
+                pytest.fail("busy release entered maintenance")
+        assert not events and not held
+        return
+    with guard._contract_cutover_guard_core_v1(reconciler, release_catalog=catalog) as (proof, evidence):
+        assert events == ["stop"]
+        assert tuple((item["scope"], item["unit"]) for item in evidence["units"]) == MAINTENANCE_TARGETS_V1
+        encoded = canonical_maintenance_proof(**evidence)
+        guard._begin_topology_transition_v1(proof, encoded)
+        state["active"] = "active"
+        with pytest.raises(guard.ContractCutoverGuardError):
+            guard._require_maintenance_session_v1(proof)
+    assert not held
+
+
 def test_maintenance_session_is_live_only_inside_the_held_guard(monkeypatch):
     import stack_reconcile
 

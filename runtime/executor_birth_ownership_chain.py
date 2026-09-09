@@ -1699,8 +1699,8 @@ class OwnershipChainStore:
             required_distribution=required_distribution, for_test=for_test,
         )
 
-    def read_required_chain_cold_v1(self) -> VerifiedOwnershipChain:
-        """Reconstruct product trust from fixed storage and fixed authorities."""
+    def _require_product_reader_v1(self) -> None:
+        """Keep the fixed-root and authority checks common to both read doors."""
         _require_linux_product_v1()
         if type(self) is not OwnershipChainStore or self.root != DEFAULT_OWNERSHIP_CHAIN_ROOT_V1:
             raise OwnershipChainError(
@@ -1718,12 +1718,57 @@ class OwnershipChainStore:
                 "authority snapshot",
             )
         _require_product_chain_metadata_v1(self.root)
+
+    def read_required_chain_cold_v1(self) -> VerifiedOwnershipChain:
+        """Reconstruct product trust from fixed storage and fixed authorities."""
+        self._require_product_reader_v1()
         return self._read_required_chain_cold_core_v1(
             authenticate_record=lambda encoded, signature:
                 _authenticate_distribution_record_from_fixed_snapshot_v1(
                     encoded, signature, self._fixed_authority_snapshot,
                 ),
             verify_live_record=verify_installed_distribution_record_v1,
+            for_test=False,
+        )
+
+    def _read_transition_chain_cold_core_v1(
+        self, current_record, *, authenticate_record, verify_current_record,
+        verify_previous_record, for_test: bool,
+    ) -> VerifiedOwnershipChain:
+        """Read the actual pointer, admitting historical bytes only for its N edge."""
+        if (
+            not _is_authenticated_distribution_record_v1(current_record, for_test=for_test)
+            or current_record.release_sequence <= 1
+            or authenticate_record(current_record.encoded, current_record.signature)
+            != current_record
+        ):
+            raise OwnershipChainError("birth_ownership_distribution_chain_invalid", "transition build")
+
+        def verify_selected(record):
+            if record.closed_build_id == current_record.closed_build_id:
+                if record != current_record:
+                    raise OwnershipChainError("birth_ownership_distribution_chain_invalid", "transition build")
+                return verify_current_record(record)
+            return verify_previous_record(current_record, record)
+
+        return self._read_required_chain_cold_core_v1(
+            authenticate_record=authenticate_record, verify_live_record=verify_selected,
+            for_test=for_test,
+        )
+
+    def read_transition_chain_cold_v1(self, current_record) -> VerifiedOwnershipChain:
+        """Explicit transition read; ordinary runtime verification stays strict."""
+        from executor_birth_distribution_manifest import verify_previous_distribution_record_v1
+
+        self._require_product_reader_v1()
+        return self._read_transition_chain_cold_core_v1(
+            current_record,
+            authenticate_record=lambda encoded, signature:
+                _authenticate_distribution_record_from_fixed_snapshot_v1(
+                    encoded, signature, self._fixed_authority_snapshot,
+                ),
+            verify_current_record=verify_installed_distribution_record_v1,
+            verify_previous_record=verify_previous_distribution_record_v1,
             for_test=False,
         )
 
@@ -1847,7 +1892,7 @@ def _require_required_head_lock_metadata_v1(
 
 
 def _inspect_ownership_chain_state_core_v1(
-    store: OwnershipChainStore, *, for_test: bool,
+    store: OwnershipChainStore, *, for_test: bool, transition_record=None,
 ) -> (
     _InitialOwnershipChainStateV1
     | _InitialOwnershipChainStateForTestV1
@@ -1988,6 +2033,10 @@ def _inspect_ownership_chain_state_core_v1(
             "partial chain",
         )
     try:
+        if transition_record is not None:
+            if for_test:
+                raise OwnershipChainError("birth_ownership_recovery_required", "transition reader")
+            return store.read_transition_chain_cold_v1(transition_record)
         return (
             store._read_required_chain_cold_for_test()
             if for_test
@@ -2018,6 +2067,23 @@ def inspect_ownership_chain_state_v1() -> (
             "productive store",
         )
     return _inspect_ownership_chain_state_core_v1(store, for_test=False)
+
+
+def inspect_transition_ownership_chain_v1(current_record) -> VerifiedOwnershipChain:
+    """Read the fixed chain for N→N+1 without changing its required selector."""
+    _require_linux_product_v1()
+    if (
+        type(current_record) is not AuthenticatedDistributionRecordV1
+        or current_record.release_sequence <= 1
+    ):
+        raise OwnershipChainError("birth_ownership_distribution_chain_invalid", "transition build")
+    store = OwnershipChainStore()
+    result = _inspect_ownership_chain_state_core_v1(
+        store, for_test=False, transition_record=current_record,
+    )
+    if type(result) is not VerifiedOwnershipChain:
+        raise OwnershipChainError("birth_ownership_recovery_required", "predecessor chain")
+    return result
 
 
 def _inspect_ownership_chain_state_for_test_v1(
