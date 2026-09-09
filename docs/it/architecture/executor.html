@@ -637,6 +637,15 @@ configurazioni ammesse rimangono disponibili, mentre esecuzione, pubblicazione
 e attivit&agrave; automatiche restano sospese. La salute dichiara esplicitamente
 questa condizione; non equivale a un sistema pienamente operativo.</p>
 
+<p>Le impostazioni dei modelli restano modificabili dalla pagina amministrativa
+anche in modalit&agrave; manutenzione. Valori non validi o modifiche basate su
+una versione superata non sovrascrivono il file; il ripristino conserva una
+copia delle impostazioni precedenti. Un file danneggiato non fa scegliere
+silenziosamente un modello predefinito. Dopo la correzione, la lettura successiva
+usa le nuove impostazioni, anche se il file sostituito conserva la stessa data.
+Questo non richiede una nuova certificazione e non autorizza nuove esecuzioni
+finch&eacute; i prerequisiti mancanti non sono stati riparati.</p>
+
 <p>Nel catalogo dei servizi aggiornato, un controllo generale non riuscito
 segnala il problema senza spegnere gli altri servizi. Il controllo automatico
 non riavvia HTTP quando dichiara la modalit&agrave; manutenzione e non agisce

@@ -40,6 +40,13 @@ possible without silently weakening executor admission or confinement.
   authentication substrate is not made safe by this fallback.
 - SMTP defaults are resolved per mail invocation, consistently with mounted
   credentials. Bad mail settings do not prevent opening administration.
+- A malformed or unreadable model configuration is not an absent configuration:
+  model calls report the fault instead of silently selecting factory endpoints.
+  File-identity-based caching observes atomic replacements, even with a preserved
+  modification time. Repair takes effect on the next resolution.
+- Authenticated model save/reset remain usable in HTTP maintenance mode. Invalid
+  input and stale revisions preserve the existing file; reset preserves a backup
+  of damaged input. Editing configuration does not bypass failed execution startup.
 - Service display and lifecycle commands use the same selected catalog scope.
   This does not broaden the operator's accepted commands.
 - Aggregate readiness no longer invokes the stack-wide stop unit on failure.

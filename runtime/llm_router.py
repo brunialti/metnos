@@ -423,21 +423,24 @@ def complete_tier_spec(
 
 
 def _tiers_from_config() -> dict:
-    """tiers da llm_tiers.toml, con cache invalidata su (path, mtime): il file
-    viene RI-LETTO solo se cambia (prima si ri-parsava il TOML a OGNI call_llm,
-    hot path). Mantiene la semantica «config reload prende effetto» §2.8."""
-    import os
+    """Cache valid documents by file identity; invalid is not unconfigured."""
     path = _default_config_path()
     try:
-        mtime = os.path.getmtime(path)
-    except OSError:
-        mtime = None
-    key = (str(path), mtime)
+        info = path.stat()
+        identity = (info.st_dev, info.st_ino, info.st_size,
+                    info.st_mtime_ns, info.st_ctime_ns)
+    except FileNotFoundError as exc:
+        if path.is_symlink():
+            raise TierConfigError("llm_configuration_invalid") from exc
+        identity = None
+    except OSError as exc:
+        raise TierConfigError("llm_configuration_invalid") from exc
+    key = (str(path), identity)
     if _TIERS_FILE_CACHE["key"] != key:
         try:
             tiers = _normalize_tiers_dict(_load_config_file(path))
-        except Exception:
-            tiers = {}
+        except (OSError, ValueError, RuntimeError) as exc:
+            raise TierConfigError("llm_configuration_invalid") from exc
         _TIERS_FILE_CACHE["key"] = key
         _TIERS_FILE_CACHE["tiers"] = tiers
     return _TIERS_FILE_CACHE["tiers"] or {}
