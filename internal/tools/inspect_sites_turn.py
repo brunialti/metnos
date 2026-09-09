@@ -112,6 +112,14 @@ def main(argv):
     if not sessions:
         print("AUDIT none: the turn recorded no browser session")
 
+    # The failure screenshot is written by the broker but its path is stripped
+    # from the turn record as sensitive, so it is found by session identity.
+    for session in sorted(sessions):
+        for shot in sorted(
+            (ROOT / "share/metnos/sites-shots").glob(f"*/{session}_*")
+        ):
+            shots.add(str(shot))
+
     if shots:
         copied = Path(f"/tmp/metnos-turn-{identifier}")
         copied.mkdir(mode=0o755, exist_ok=True)
