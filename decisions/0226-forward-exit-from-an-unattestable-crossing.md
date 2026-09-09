@@ -49,11 +49,24 @@ machine kept running; it could no longer be updated.
 - The proof names the crossing it examined; the writer refuses a proof taken
   about another request, because the prover selects through the required head
   while the writer reads the journal.
-- The four independent readers of the predecessor rule — the release edge, the
-  successor claim, the coordinator graph resolution and the preflight snapshot
-  authentication — admit an abandoned predecessor on the same terms. Their
-  agreement is itself asserted by a test that asks the two independent decoders
-  the same question about the same bytes and requires the identical verdict.
+- Every reader of the predecessor rule admits an abandoned predecessor on the
+  same terms. Building over the exit and crossing it are the same decision:
+  a release everyone can build over and nobody can cross is not an exit.
+  The readers are seven — the release edge, the successor claim, the
+  coordinator graph resolution, the preflight snapshot authentication, the
+  crossing edge, the prepared record, and the archiving of the predecessor's
+  journal, which declines an abandoned journal instead of refusing the
+  crossing, because that journal is the truthful record this decision
+  preserves. A reader that holds a record without the graph proves the
+  abandonment binds exactly that record, so one taken about another crossing
+  can never stand in for the missing verification.
+- Amended 9/9/2026, after the first real crossing was refused: the decision had
+  been implemented in the first four readers only, and the last three still
+  demanded a verified predecessor. The agreement test written with the original
+  decision compared the two *decoders* of the control document and therefore
+  could not see the gap; a test now exercises the crossing edge itself over an
+  abandoned predecessor, and fails without the repair with the exact error the
+  machine produced.
 - Startup selection is unchanged. An abandoned epoch keeps serving until its
   successor is attested; an abandonment removes nothing.
 
