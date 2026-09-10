@@ -23,10 +23,76 @@ from pathlib import Path
 import shutil
 import stat
 import sys
+from types import SimpleNamespace
 
 TOOL = Path(__file__).with_name("rm0008_release_cycle.py")
+WORKTREE = Path(__file__).resolve().parents[2]
 LIVE = Path("/var/lib/metnos/executor-birth")
 LOCK_NAME = ".required-head-v1.lock"
+sys.path[:0] = [str(WORKTREE), str(WORKTREE / "runtime")]
+
+
+def seed_pending_attempt(cycle) -> dict:
+    """Put one un-opened attempt on the copy, the way a failed run leaves it.
+
+    This used to read the residue of a real failed crossing off the live
+    chain. Once the crossing finally succeeded there was no residue left and
+    the rehearsal stopped running at all: a proof that only works while the
+    defect is present proves nothing. The attempt is now built on the copy,
+    from the shape the chain already carries - a claim whose request the
+    coordinator never opened, and the release directory it reserved.
+    """
+    claims = cycle.pending_claims()
+    if claims:
+        return claims[0][1]
+    directory = cycle.COORD / "successor-claims-v1"
+    # The newest claim by release, not by file name: the very first one is
+    # called `initial` and has no predecessor head, which is exactly the field
+    # a superseded attempt must carry.
+    template = max((json.loads(path.read_bytes()) for path in directory.iterdir()),
+                   key=lambda value: value["release_sequence"])
+    installed = sorted((cycle.ROOT / "releases-v1").iterdir())[-1]
+    sequence = int(installed.name) + 1
+    reserved = cycle.ROOT / "releases-v1" / f"{sequence:020d}"
+    shutil.copytree(installed, reserved)
+    descriptor = reserved / "deployment/executor-birth-deployment-v1.json"
+    value = json.loads(descriptor.read_bytes())
+    value["release_sequence"] = sequence
+    descriptor.write_bytes(
+        json.dumps(value, separators=(",", ":"), sort_keys=True).encode())
+    # Distinct from the second attempt scenario 4 adds over the same head:
+    # two attempts must never share an archive, and identical fixtures would
+    # hide exactly that.
+    claim = {**template, "request_id": "sha256:" + "1" * 64,
+             "source_id": "sha256:" + "2" * 64, "release_sequence": sequence}
+    (directory / ("3" * 64 + ".json")).write_bytes(
+        json.dumps(claim, separators=(",", ":"), sort_keys=True).encode())
+    return claim
+
+
+def write_journal(cycle, suffix: str, request: str) -> Path:
+    """Write a journal header with the product's own encoder.
+
+    The cycle reads these with `decode_transaction_header_v2`, so a hand-made
+    document would be refused for its shape and never reach the rule under
+    test. Only the request distinguishes the fixtures; the rest is filler of
+    the exact form the decoder demands.
+    """
+    from install.birth_authority_provisioner import TransactionHeaderV2
+
+    journal = cycle.BIRTH / (cycle.JOURNAL_PREFIX + suffix)
+    journal.mkdir(exist_ok=True)
+    (journal / "transaction-v2.json").write_bytes(TransactionHeaderV2(
+        transaction_id="1" * 32,
+        provisioner_build_id="sha256:" + "2" * 64,
+        request_id=request,
+        closed_build_id="sha256:" + "3" * 64,
+        previous_set_id="4" * 64,
+        distribution_payload_hash="sha256:" + "5" * 64,
+        distribution_signature_hash="sha256:" + "6" * 64,
+        source_inventory_hash="sha256:" + "7" * 64,
+    ).encode())
+    return journal
 
 
 def copy_chain(destination: Path) -> None:
@@ -86,15 +152,13 @@ def bind(work: Path):
     cycle.BIRTH = work / "birth"
     cycle.BIRTH.mkdir(exist_ok=True)
     cycle.BIRTH_OWNERS = cycle.OWNERS
-    # One journal of an attempt the coordinator never recorded, one belonging to
-    # a crossing it did - the abandoned release. Only the first may be retired.
+    # One journal of the attempt about to be withdrawn, one belonging to a
+    # crossing the coordinator did record - the abandoned release. Only the
+    # first may be retired, and only because this run withdrew its claim.
     recorded = sorted((cycle.COORD / "transactions-v2").iterdir())[-1].name
-    for suffix, request in (("a" * 32, "sha256:" + "9" * 64),
-                            ("b" * 32, recorded)):
-        journal = cycle.BIRTH / (cycle.JOURNAL_PREFIX + suffix)
-        journal.mkdir(exist_ok=True)
-        (journal / "transaction-v2.json").write_bytes(
-            json.dumps({"request_id": request}).encode())
+    withdrawable = seed_pending_attempt(cycle)["request_id"]
+    for suffix, request in (("a" * 32, withdrawable), ("b" * 32, recorded)):
+        write_journal(cycle, suffix, request)
     # The live attestation is read-only and answers the same thing throughout;
     # the rehearsal only needs it to be stable, which is the property asserted.
     cycle.startup_fingerprint = lambda: ("rehearsal", 0)
@@ -134,7 +198,7 @@ def rehearse(source: Path, work: Path) -> None:
 
     print("2. a superseded source withdraws exactly two objects")
     withdrawn = cycle.withdraw_superseded_claim("sha256:" + "0" * 64)
-    cycle.require(withdrawn == claim["source_id"], "withdrew the wrong claim")
+    cycle.require(withdrawn == claim["request_id"], "withdrew the wrong claim")
     reserved = f"{claim['release_sequence']:020d}"
     cycle.require(
         {path.name for path in (cycle.ROOT / "releases-v1").iterdir()}
@@ -147,14 +211,14 @@ def rehearse(source: Path, work: Path) -> None:
     after = {str(path): cycle.snapshot(path) for path in cycle.preserved_paths()}
     cycle.require(after == before, "preserved history changed")
     print(f"  two objects moved, {len(after)} preserved objects byte-identical")
-    cycle.require(cycle.retire_orphan_journals()
+    cycle.require(cycle.retire_orphan_journals(withdrawn)
                   == (cycle.JOURNAL_PREFIX + "a" * 32,),
                   "the orphan journal was not the only one retired")
     open_journals = sorted(name for name in os.listdir(cycle.BIRTH)
                            if name.startswith(cycle.JOURNAL_PREFIX))
     cycle.require(open_journals == [cycle.JOURNAL_PREFIX + "b" * 32],
                   "a journal the coordinator records was moved")
-    cycle.require(cycle.retire_orphan_journals() == (), "retired twice")
+    cycle.require(cycle.retire_orphan_journals(withdrawn) == (), "retired twice")
     print("  orphan journal retired, the recorded one left alone")
 
     print("3. nothing left to withdraw is not an error")
@@ -174,10 +238,34 @@ def rehearse(source: Path, work: Path) -> None:
         json.dumps(successor, separators=(",", ":"), sort_keys=True).encode())
     cycle.require(
         cycle.withdraw_superseded_claim("sha256:" + "0" * 64)
-        == successor["source_id"], "the second attempt was not withdrawn")
+        == successor["request_id"], "the second attempt was not withdrawn")
     cycle.require(len(list(cycle.WITHDRAWN_ROOT.iterdir())) == 2,
                   "the two attempts share one archive")
     print("  two attempts, two archives, nothing overwritten")
+
+    print("5. torn release evidence is resumed, not stared at")
+    build = SimpleNamespace(encoded=b'{"release": 5}', signature=b"s" * 64)
+    evidence = work / "evidence"
+    cycle.publish_evidence(build, evidence)
+    cycle.require(sorted(path.name for path in evidence.iterdir())
+                  == ["distribution.json", "distribution.sig"],
+                  "the evidence pair is incomplete")
+    cycle.publish_evidence(build, evidence)
+    print("  an identical pair is verified, not rewritten")
+    (evidence / "distribution.sig").chmod(0o600)
+    (evidence / "distribution.sig").unlink()
+    cycle.publish_evidence(build, evidence)
+    cycle.require((evidence / "distribution.sig").read_bytes() == build.signature,
+                  "the torn pair was not written again")
+    cycle.require([path.name for path in work.iterdir()
+                   if path.name.startswith("evidence.torn-")]
+                  == ["evidence.torn-01"], "the torn set was not set aside")
+    cycle.require((work / "evidence.torn-01/distribution.json").read_bytes()
+                  == build.encoded, "the torn set was not preserved whole")
+    print("  a torn pair is set aside and written again, nothing deleted")
+    other = SimpleNamespace(encoded=b'{"release": 6}', signature=b"s" * 64)
+    expect_refusal("evidence that is not this build",
+                   lambda: cycle.publish_evidence(other, evidence))
 
 
 def rehearse_refusals(source: Path, work: Path) -> None:
@@ -214,6 +302,23 @@ def rehearse_refusals(source: Path, work: Path) -> None:
     expect_refusal("an archive slot already taken",
                    lambda: cycle.withdraw_superseded_claim(other))
 
+    # A residue nobody can name is not an authorisation to proceed: absence of
+    # a transaction says the coordinator never saw that request, not whose the
+    # journal is.
+    cycle = fresh()
+    withdrawn = cycle.withdraw_superseded_claim(other)
+    write_journal(cycle, "c" * 32, "sha256:" + "d" * 64)
+    expect_refusal("an open journal this run did not withdraw",
+                   lambda: cycle.retire_orphan_journals(withdrawn))
+
+    cycle = fresh()
+    withdrawn = cycle.withdraw_superseded_claim(other)
+    (cycle.BIRTH / (cycle.JOURNAL_PREFIX + "e" * 32)).mkdir()
+    (cycle.BIRTH / (cycle.JOURNAL_PREFIX + "e" * 32)
+     / "transaction-v2.json").write_bytes(b'{"request_id": "sha256:x"}')
+    expect_refusal("a journal header the canonical decoder rejects",
+                   lambda: cycle.retire_orphan_journals(withdrawn))
+
 
 def main() -> None:
     if len(sys.argv) != 2:
@@ -224,7 +329,7 @@ def main() -> None:
     print("copying the live chain objects (read-only)")
     copy_chain(pristine)
     rehearse(pristine, work)
-    print("5. what it must refuse")
+    print("6. what it must refuse")
     rehearse_refusals(pristine, work)
     shutil.rmtree(work, ignore_errors=True)
     shutil.rmtree(pristine, ignore_errors=True)

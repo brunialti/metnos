@@ -43,14 +43,36 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import pwd
 import stat
 import subprocess
 import sys
 
+
+def _preparer() -> pwd.struct_passwd:
+    """The account that prepares a release, seen from either stage.
+
+    `prepare` runs as the developer and `apply` as root through `sudo`, and
+    the two must agree on one directory without either of them guessing a
+    name. `SUDO_UID` is the account sudo was invoked from; outside sudo the
+    caller is the account itself.
+    """
+    value = os.environ.get("SUDO_UID", "")
+    if os.geteuid() == 0 and value.isdigit():
+        return pwd.getpwuid(int(value))
+    return pwd.getpwuid(os.getuid())
+
+
 WORKTREE = Path(__file__).resolve().parents[2]
-STAGING = Path("/tmp/metnos-release-cycle-export")
-HANDOFF = Path("/tmp/metnos-release-cycle-handoff.json")
+# Not /tmp: a world-writable directory puts every local account in the trust
+# set of a command that runs as root.  The developer's own state directory
+# has no such visitors, and `apply` proves it before reading anything.
+PREPARER = _preparer()
+CYCLE_DIR = Path(PREPARER.pw_dir) / ".local/state/metnos-release-cycle"
+STAGING = CYCLE_DIR / "export"
+HANDOFF = CYCLE_DIR / "handoff.json"
 EVIDENCE_ROOT = Path("/var/lib/metnos-admin")
+CANDIDATE_ROOT = Path("/var/lib/metnos-admin")
 ROOT = Path("/var/lib/metnos/executor-birth")
 COORD = ROOT / "coordinator-v1"
 BIRTH = Path("/var/lib/metnos-service/.config/metnos/birth")
@@ -217,6 +239,10 @@ def prepare() -> int:
                     private[1])
 
     say("== staging ==")
+    # 0700, and the preparer's own: what `apply` will later read as root must
+    # not be a directory other accounts can write.
+    CYCLE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    CYCLE_DIR.chmod(0o700)
     stage(scratch, STAGING)
     files, digest = census(STAGING)
     HANDOFF.write_text(json.dumps({
@@ -441,24 +467,37 @@ def retire_orphan_journals(withdrawn_request: str | None) -> tuple[str, ...]:
 
 
 def publish_evidence(distribution, directory: Path) -> None:
-    """Write the evidence pair whole, or prove the one already there is it.
+    """Write the evidence pair whole, verify one already there, resume a torn one.
 
     Presence is not proof. The pair is two separate writes: an attempt
-    interrupted between them leaves the directory holding one file of two, and
-    a retry that skips on presence alone hands the next step half an evidence
-    set. An existing directory is therefore read back and compared byte for
-    byte with the build just made; a mismatch or a missing half stops the run.
+    interrupted between them leaves the directory holding one file of two.
+    Skipping on presence alone handed the next step half an evidence set;
+    refusing on it, which was the first correction, only turned a torn write
+    into a permanently stuck retry - the evidence is derived from the build
+    just made, so there is nothing to lose and no reason to stop.
+
+    So: a complete pair is read back and compared byte for byte, and a
+    complete pair that differs still stops the run, because the same build
+    cannot have two contents. A torn one is moved aside under a name that says
+    what it is - never deleted - and written again.
     """
     expected = {"distribution.json": distribution.encoded,
                 "distribution.sig": distribution.signature}
     if directory.exists():
         present = sorted(item.name for item in directory.iterdir())
-        require(present == sorted(expected),
-                f"incomplete release evidence: {present}")
-        for name in sorted(expected):
-            require((directory / name).read_bytes() == expected[name],
-                    f"release evidence is not this build: {name}")
-        return
+        if present == sorted(expected):
+            for name in sorted(expected):
+                require((directory / name).read_bytes() == expected[name],
+                        f"release evidence is not this build: {name}")
+            return
+        for attempt in range(1, 100):
+            torn = directory.with_name(f"{directory.name}.torn-{attempt:02d}")
+            if not os.path.lexists(torn):
+                break
+        else:
+            raise RuntimeError("too many torn evidence sets to set aside")
+        rename_no_replace(directory, torn)
+        say("SET_ASIDE_TORN_EVIDENCE", str(torn), present)
     directory.mkdir(mode=0o700)
     for name in sorted(expected):
         handle = os.open(directory / name,
@@ -477,6 +516,44 @@ def publish_evidence(distribution, directory: Path) -> None:
         os.close(handle)
 
 
+def adopt_candidate(staging: Path, files: int, expected: str) -> Path:
+    """Copy the measured tree where only root can write, and measure it there.
+
+    The staged tree is written by the developer and read by this process as
+    root. Measuring it and then importing from it leaves a window in which the
+    bytes checked and the bytes executed need not be the same, and the
+    directory holding them is not root's. So the tree is copied into a
+    root-owned directory first, the copy is re-measured, and everything after
+    this point - the boundary guard, the source receiver, the interpreter -
+    reads the copy. A copy left by an interrupted run is reused only if it
+    still measures the same.
+
+    This does not make an untrusted preparer safe: whoever writes the staging
+    tree decides which code a later crossing will run. It makes the decision
+    final at this line instead of open until the last import.
+    """
+    trusted = CANDIDATE_ROOT / ("rm0008-cycle-candidate-" + expected[:16])
+    if not trusted.exists():
+        incoming = CANDIDATE_ROOT / ".rm0008-cycle-candidate-incoming"
+        subprocess.run(["rm", "-rf", str(incoming)], check=True)
+        subprocess.run(["cp", "-a", str(staging), str(incoming)], check=True)
+        subprocess.run(["chown", "-R", "root:root", str(incoming)], check=True)
+        for path in incoming.rglob("*"):
+            info = path.lstat()
+            if stat.S_ISDIR(info.st_mode):
+                path.chmod(0o755)
+            elif stat.S_ISREG(info.st_mode):
+                path.chmod(0o755 if info.st_mode & 0o100 else 0o644)
+        incoming.chmod(0o755)
+        os.rename(incoming, trusted)
+    os.close(open_parent(trusted))
+    seen_files, seen_digest = census(trusted)
+    require((seen_files, seen_digest) == (files, expected),
+            f"the root-owned candidate does not measure the same: "
+            f"{seen_files} {seen_digest}")
+    return trusted
+
+
 def apply_cycle(cross: bool) -> int:
     require(os.geteuid() == 0, "apply requires root")
     handoff = json.loads(HANDOFF.read_bytes())
@@ -485,6 +562,9 @@ def apply_cycle(cross: bool) -> int:
     require((files, digest) == (handoff["files"], handoff["census"]),
             f"the staged tree changed since prepare: {files} {digest}")
     say("STAGED_TREE_OK", files, digest)
+
+    staging = adopt_candidate(staging, files, digest)
+    say("CANDIDATE_ADOPTED", str(staging))
 
     live_before = hashlib.sha256(LIVE_HELPER.read_bytes()).hexdigest()
     sys.dont_write_bytecode = True
