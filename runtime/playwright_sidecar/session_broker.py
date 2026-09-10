@@ -584,6 +584,11 @@ _GOAL_EVIDENCE_JS = r"""
 }
 """
 
+_GOAL_LINKS_JS = r"""
+() => Array.from(document.querySelectorAll('a[href]'))
+        .map(a => a.href).slice(0, 400)
+"""
+
 _TRANSIENT_LOADING_JS = r"""
 (markers) => {
   const normalize = value => (value || '').normalize('NFKD')
@@ -2365,7 +2370,45 @@ async def _goal_content_signature(entry: dict) -> str:
         payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
 
-async def _wait_for_goal_content_change(entry: dict, before: str) -> tuple[bool, str]:
+async def _goal_facet_signature(entry: dict) -> str:
+    """The CONTENT of a facet: its evidence and the places it leads to.
+
+    Not the whole body text, which `_goal_content_signature` signs: a toolbar
+    that appears when a tab gets selected changes the body text without the
+    content having moved an inch, and that is exactly the case to recognise.
+    The destinations answer the opposite case: a list made of links alone
+    leaves no textual evidence, but changes every place it points at.
+    """
+    page = entry["page"]
+    try:
+        evidence = await page.evaluate(_GOAL_EVIDENCE_JS)
+    except Exception:
+        evidence = []
+    try:
+        destinations = await page.evaluate(_GOAL_LINKS_JS)
+    except Exception:
+        destinations = []
+    payload = [action_resolver.url_place_key(page.url) or scrub_url(page.url),
+               evidence if isinstance(evidence, list) else [],
+               sorted(destinations) if isinstance(destinations, list) else []]
+    return hashlib.sha256(json.dumps(
+        payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _ritira_il_passo(flow: dict) -> None:
+    """The budget is spent on progress: a step that moved nothing is taken back.
+
+    Not an amnesty: the step returns to the exploration budget but weighs on
+    the sterile ceiling, because not even nothing may repeat forever.
+    """
+    flow["steps"] = max(0, int(flow.get("steps", 0)) - 1)
+    flow["sterile"] = int(flow.get("sterile", 0)) + 1
+
+
+async def _wait_for_goal_content_change(
+        entry: dict, before: str, firma=None) -> tuple[bool, str]:
+    """Wait, bounded, for the page to differ from `before` by `firma`."""
+    firma = firma or _goal_content_signature
     attempts = max(1, _REVEAL_SETTLE_MS // _REVEAL_POLL_MS)
     current = before
     for _ in range(attempts):
@@ -2373,7 +2416,7 @@ async def _wait_for_goal_content_change(entry: dict, before: str) -> tuple[bool,
             await entry["page"].wait_for_timeout(_REVEAL_POLL_MS)
         else:
             await asyncio.sleep(_REVEAL_POLL_MS / 1000)
-        current = await _goal_content_signature(entry)
+        current = await firma(entry)
         if current != before:
             return True, current
     return False, current
@@ -3012,16 +3055,14 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
         stato = _goal_state_signature(url_corrente, candidates)
         if (flow.pop("navigazione_da_verificare", False)
                 and stato == flow.get("last_state")):
-            flow["steps"] = max(0, int(flow.get("steps", 0)) - 1)
-            flow["sterile"] = int(flow.get("sterile", 0)) + 1
+            _ritira_il_passo(flow)
         # Un clic che non ha cambiato il contenuto non e' un passo, e
         # soprattutto non e' un arrivo: il candidato e' gia' fra i visitati,
         # quindi il giro successivo prova un altro modo di aprire la stessa
         # cosa invece di dichiarare fatto e leggere quel che c'era prima.
         arrivo_non_provato = bool(flow.pop("facet_unchanged", False))
         if arrivo_non_provato:
-            flow["steps"] = max(0, int(flow.get("steps", 0)) - 1)
-            flow["sterile"] = int(flow.get("sterile", 0)) + 1
+            _ritira_il_passo(flow)
         flow["last_state"] = stato
         flow_steps = int(flow.get("steps", 0))
         at_goal_limit = (flow_steps >= _MAX_GOAL_STEPS
@@ -3380,7 +3421,7 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
         # che il clic avesse fatto qualcosa. Turno reale del 10/9/2026: il
         # clic su «FATTURE» non ha aperto la scheda, la tabella dei movimenti
         # e' rimasta li', e il turno l'ha letta credendo fossero le fatture.
-        plan["content_sig_before"] = await _goal_content_signature(entry)
+        plan["facet_sig_before"] = await _goal_facet_signature(entry)
         plan["place_before"] = action_resolver.url_place_key(
             getattr(entry.get("page"), "url", "") or "")
     if candidate:
@@ -4490,11 +4531,12 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             # davvero aperta. Se non cambia, il clic non e' avvenuto - e
             # leggere quel che c'era prima significa leggere la scheda
             # sbagliata credendo di essere sull'altra.
-            prima = str(plan.get("content_sig_before") or "")
+            prima = str(plan.get("facet_sig_before") or "")
             if prima and action_resolver.url_place_key(
                     getattr(entry.get("page"), "url", "") or ""
                     ) == str(plan.get("place_before") or ""):
-                mosso, _dopo = await _wait_for_goal_content_change(entry, prima)
+                mosso, _dopo = await _wait_for_goal_content_change(
+                    entry, prima, _goal_facet_signature)
                 if not mosso:
                     goal_flow["facet_unchanged"] = True
                     sites_audit.record(
