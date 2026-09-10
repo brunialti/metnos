@@ -175,6 +175,21 @@ def test_un_aggancio_peggiore_sullo_stesso_posto_non_e_progresso() -> None:
     assert sb._is_goal_drift(flow, "https://esempio.it/altro", 0.10) is False
 
 
+def test_la_soglia_si_misura_sul_ramo_che_cliccherebbe_davvero() -> None:
+    """Il drilldown ha la precedenza: e' li' che va guardata la soglia.
+
+    Prima tornata di correzione, turno `ac7d0cea`: il controllo guardava solo
+    la classifica testuale, ma i clic che portavano via uscivano dal ramo
+    drilldown, che sta prima. La deriva passava indisturbata e la ricerca
+    tornava sulla scheda sbagliata.
+    """
+    assert sb._prossimo_aggancio({"ok": True, "confidence": 0.686},
+                                 {"ok": True, "confidence": 0.9}) == 0.686
+    assert sb._prossimo_aggancio({"ok": False},
+                                 {"ok": True, "confidence": 0.42}) == 0.42
+    assert sb._prossimo_aggancio({"ok": False}, {"ok": False}) == 0.0
+
+
 class _Pagina:
     """Pagina finta: solo un URL e un'attesa che non dorme davvero."""
 

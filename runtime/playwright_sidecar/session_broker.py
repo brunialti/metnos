@@ -2872,6 +2872,20 @@ async def _dismiss_privacy_obstruction(entry: dict, *,
     return outcome
 
 
+def _prossimo_aggancio(drilldown: dict, chosen: dict) -> float:
+    """Quanto vale il clic che si sta per fare, da qualunque ramo venga.
+
+    Il drilldown ha la precedenza sulla classifica testuale, quindi la soglia
+    va misurata su quello quando c'e': guardare solo `chosen` lasciava passare
+    proprio i clic che portavano via (turno `ac7d0cea`).
+    """
+    if drilldown.get("ok"):
+        return float(drilldown.get("confidence", 0.0))
+    if chosen.get("ok"):
+        return float(chosen.get("confidence", 0.0))
+    return 0.0
+
+
 def _is_goal_drift(flow: dict, url: str, confidence: float) -> bool:
     """Un aggancio PEGGIORE, sullo stesso posto, non e' un passo avanti.
 
@@ -3174,20 +3188,21 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
             confidence = float(continuation.get("confidence", 0.0))
             collection_facet_key = str(
                 continuation.get("facet_key") or "")
+        elif (int(flow.get("steps", 0)) > 0
+                and _is_goal_drift(flow, url_corrente, _prossimo_aggancio(
+                    goal_drilldown, chosen))):
+            # Si e' gia' fatto meglio, qui: quello che resta porta altrove.
+            # Si dichiara l'arrivo invece di consumare un altro passo per
+            # peggiorare - e invece di fallire, perche' un posto raggiunto
+            # resta raggiunto. Sopra il drilldown, non sotto: i clic che
+            # portavano via venivano proprio da li'.
+            primitive = "observe"
+            plan_kind = "goal_complete"
         elif goal_drilldown.get("ok"):
             candidate = goal_drilldown["candidate"]
             primitive = "click"
             plan_kind = "goal_navigation"
             confidence = float(goal_drilldown.get("confidence", 0.0))
-        elif (chosen.get("ok") and int(flow.get("steps", 0)) > 0
-                and _is_goal_drift(flow, url_corrente,
-                                   float(chosen.get("confidence", 0.0)))):
-            # Si e' gia' fatto meglio, qui: quello che resta porta altrove.
-            # Si dichiara l'arrivo invece di consumare un altro passo per
-            # peggiorare - e invece di fallire, perche' un posto raggiunto
-            # resta raggiunto.
-            primitive = "observe"
-            plan_kind = "goal_complete"
         elif (chosen.get("ok") and not (
                 goal_satisfied and not action_resolver.goal_candidate_is_exact(
                     parsed.get("target", ""), chosen["candidate"]))):
