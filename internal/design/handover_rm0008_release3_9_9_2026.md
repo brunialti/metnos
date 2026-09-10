@@ -852,11 +852,18 @@ prima parte, fallisce:
     {"error": "authoring_version_invalid: missing",
      "error_code": "birth_unavailable", "ok": false}
 
-Il record di redazione di `core:login_sites` nel negozio di redazione contiene
-solo un lucchetto: sorgente canonica e versione non sono mai state popolate.
-La facciata di consegna e' pensata per i contratti nati **dal prodotto**; gli
-executor di prima parte, che vivono nell'albero del repository, oggi non hanno
-quel record. E' una lacuna di RM-0008, non una regola da riscrivere.
+E non solo per questo executor. Le radici di redazione dei contratti di prima
+parte stanno in `~/.local/state/metnos/contract-authoring/v1/<origine>`
+(`manifest_inventory`, riga 258) e su questa macchina **non esistevano
+affatto**: le ha create il mio tentativo delle 22:10, che ha lasciato soltanto
+il proprio lucchetto. Nessun `version.json`, nessuna sorgente canonica.
+
+La catena e' coerente ma incompleta: in `STORE_ONLY` la consegna prende il
+riferimento dal negozio delle pubblicazioni e poi materializza il candidato
+**dall'albero di redazione dietro quel riferimento** — albero che non e' mai
+stato popolato. Quindi `deploy --executor <nome> --sign` non puo' funzionare
+per **nessun** executor di prima parte, non solo per `login_sites`. E' una
+lacuna di RM-0008, non una regola da riscrivere.
 
 **Cosa vale intanto.** L'edit a `login_sites.py` e' vivo ed e' coperto dalla
 firma della catena di rilascio: in `STORE_ONLY` il manifest arriva dalla
