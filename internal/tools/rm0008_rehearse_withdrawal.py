@@ -64,13 +64,13 @@ def bind(work: Path):
     cycle.WITHDRAWN_ROOT = work / "withdrawn"
     cycle.OWNERS = {(os.getuid(), os.getgid())}
 
-    def open_parent(path: Path) -> int:
+    def open_parent(path: Path, owners=None) -> int:
         item = path
         while True:
             info = item.lstat()
             cycle.require(stat.S_ISDIR(info.st_mode)
-                          and (info.st_uid, info.st_gid) in cycle.OWNERS,
-                          "unsafe parent")
+                          and (info.st_uid, info.st_gid)
+                          in (owners or cycle.OWNERS), "unsafe parent")
             if item == work:
                 break
             item = item.parent
@@ -80,6 +80,21 @@ def bind(work: Path):
         return handle
 
     cycle.open_parent = open_parent
+    # The birth root is service-private; the copy carries a stand-in holding the
+    # open journal of the attempt about to be withdrawn, plus one that is not
+    # ours to move.
+    cycle.BIRTH = work / "birth"
+    cycle.BIRTH.mkdir(exist_ok=True)
+    cycle.BIRTH_OWNERS = cycle.OWNERS
+    # One journal of an attempt the coordinator never recorded, one belonging to
+    # a crossing it did - the abandoned release. Only the first may be retired.
+    recorded = sorted((cycle.COORD / "transactions-v2").iterdir())[-1].name
+    for suffix, request in (("a" * 32, "sha256:" + "9" * 64),
+                            ("b" * 32, recorded)):
+        journal = cycle.BIRTH / (cycle.JOURNAL_PREFIX + suffix)
+        journal.mkdir(exist_ok=True)
+        (journal / "transaction-v2.json").write_bytes(
+            json.dumps({"request_id": request}).encode())
     # The live attestation is read-only and answers the same thing throughout;
     # the rehearsal only needs it to be stable, which is the property asserted.
     cycle.startup_fingerprint = lambda: ("rehearsal", 0)
@@ -132,6 +147,15 @@ def rehearse(source: Path, work: Path) -> None:
     after = {str(path): cycle.snapshot(path) for path in cycle.preserved_paths()}
     cycle.require(after == before, "preserved history changed")
     print(f"  two objects moved, {len(after)} preserved objects byte-identical")
+    cycle.require(cycle.retire_orphan_journals()
+                  == (cycle.JOURNAL_PREFIX + "a" * 32,),
+                  "the orphan journal was not the only one retired")
+    open_journals = sorted(name for name in os.listdir(cycle.BIRTH)
+                           if name.startswith(cycle.JOURNAL_PREFIX))
+    cycle.require(open_journals == [cycle.JOURNAL_PREFIX + "b" * 32],
+                  "a journal the coordinator records was moved")
+    cycle.require(cycle.retire_orphan_journals() == (), "retired twice")
+    print("  orphan journal retired, the recorded one left alone")
 
     print("3. nothing left to withdraw is not an error")
     cycle.require(cycle.withdraw_superseded_claim("sha256:" + "0" * 64) is None,

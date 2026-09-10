@@ -57,6 +57,10 @@ BIRTH = Path("/var/lib/metnos-service/.config/metnos/birth")
 LIVE_HELPER = Path("/usr/libexec/metnos/executor-birth-v1/preflight.py")
 WITHDRAWN_ROOT = Path("/var/lib/metnos-admin/rm0008-withdrawn-claims")
 OWNERS = {(0, 0)}
+# The birth root belongs to the service account; its parents to root.
+BIRTH_OWNERS = {(0, 0), (995, 985)}
+JOURNAL_PREFIX = ".birth-provisioning-v2.txn."
+SUPERSEDED_JOURNAL_PREFIX = ".birth-provisioning-v2.superseded."
 READ = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
 
 
@@ -108,11 +112,12 @@ def stamp(info: os.stat_result) -> tuple:
             info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
-def open_parent(path: Path) -> int:
+def open_parent(path: Path, owners: set | None = None) -> int:
     for item in (path, *path.parents):
         info = item.lstat()
         require(stat.S_ISDIR(info.st_mode) and not info.st_mode & 0o7022
-                and (info.st_uid, info.st_gid) in OWNERS, "unsafe parent")
+                and (info.st_uid, info.st_gid) in (owners or OWNERS),
+                "unsafe parent")
     handle = os.open(path, READ | os.O_DIRECTORY)
     try:
         require(stamp(os.fstat(handle)) == stamp(path.lstat()), "parent changed")
@@ -327,8 +332,9 @@ def load_live_helper():
     return module
 
 
-def rename_no_replace(source: Path, target: Path) -> None:
-    left, right = open_parent(source.parent), open_parent(target.parent)
+def rename_no_replace(source: Path, target: Path, owners: set | None = None) -> None:
+    left = open_parent(source.parent, owners)
+    right = open_parent(target.parent, owners)
     try:
         require(os.fstat(left).st_dev == os.fstat(right).st_dev,
                 "cross-device archive")
@@ -394,6 +400,37 @@ def withdraw_superseded_claim(source_id: str) -> str | None:
     return claim["source_id"]
 
 
+def retire_orphan_journals() -> tuple[str, ...]:
+    """Retire every open journal the coordinator never recorded.
+
+    A failed attempt leaves three things: a claim, an installed release and a
+    provisioning journal, opened before the coordinator records anything.
+    Withdrawing the first two and leaving the third makes the next crossing
+    adopt a journal written for another release and refuse - twice now.
+
+    The rule is the one the chain can answer on its own: a journal whose
+    request has a transaction is part of a crossing the coordinator knows,
+    abandoned ones included, and is never touched. A journal with no
+    transaction is the residue of an attempt nothing depends on. It is renamed
+    under a prefix that says so, never deleted.
+    """
+    known = {name[7:] if name.startswith("sha256:") else name
+             for name in os.listdir(COORD / "transactions-v2")}
+    retired = []
+    for name in sorted(os.listdir(BIRTH)):
+        if not name.startswith(JOURNAL_PREFIX):
+            continue
+        header = json.loads((BIRTH / name / "transaction-v2.json").read_bytes())
+        request = str(header.get("request_id") or "")
+        if request[7:] in known and request.startswith("sha256:"):
+            continue
+        target = BIRTH / (SUPERSEDED_JOURNAL_PREFIX + name[len(JOURNAL_PREFIX):])
+        require(not os.path.lexists(target), "superseded journal slot already taken")
+        rename_no_replace(BIRTH / name, target, BIRTH_OWNERS)
+        retired.append(name)
+    return tuple(retired)
+
+
 def save_evidence(distribution, directory: Path) -> dict[str, str]:
     directory.mkdir(mode=0o700)
     digests = {}
@@ -449,6 +486,8 @@ def apply_cycle(cross: bool) -> int:
     with ExitStack() as locks:
         acquire_locks(locks)
         withdraw_superseded_claim(source_id)
+        for journal in retire_orphan_journals():
+            say("RETIRED_JOURNAL", journal)
 
     from install.executor_birth_distribution_release import (
         build_and_install_received_source_v1,
