@@ -99,7 +99,7 @@ _DIRECT_STAGING_RE = re.compile(
     r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.tmp\Z"
 )
 _PROCESS_LOCKS_GUARD = threading.Lock()
-_PROCESS_LOCKS: dict[str, threading.Lock] = {}
+_PROCESS_LOCKS: dict[str, "_ProcessRWLock"] = {}
 _CATALOG_LOCK_LOCAL = threading.local()
 
 
@@ -1807,10 +1807,55 @@ def current_manifest(
     return current
 
 
-def _process_lock_for(path: Path) -> threading.Lock:
+class _ProcessRWLock:
+    """In-process half of a store lock, with readers admitted together.
+
+    The file lock below is the cross-process boundary; this one keeps the
+    threads of a single process in the same discipline, so that two threads
+    reading the catalog do not serialise on each other while a writer still
+    excludes everybody.  Waiting writers block new readers, so a steady
+    stream of readers cannot starve a publication.
+    """
+
+    def __init__(self) -> None:
+        self.condition = threading.Condition()
+        self.readers = 0
+        self.writer = False
+        self.waiting_writers = 0
+
+    def acquire(self, exclusive: bool, deadline: float) -> bool:
+        with self.condition:
+            if exclusive:
+                self.waiting_writers += 1
+                try:
+                    while self.writer or self.readers:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0 or not self.condition.wait(remaining):
+                            return False
+                    self.writer = True
+                finally:
+                    self.waiting_writers -= 1
+            else:
+                while self.writer or self.waiting_writers:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 or not self.condition.wait(remaining):
+                        return False
+                self.readers += 1
+            return True
+
+    def release(self, exclusive: bool) -> None:
+        with self.condition:
+            if exclusive:
+                self.writer = False
+            else:
+                self.readers -= 1
+            self.condition.notify_all()
+
+
+def _process_lock_for(path: Path) -> _ProcessRWLock:
     key = os.path.normcase(os.path.abspath(path))
     with _PROCESS_LOCKS_GUARD:
-        return _PROCESS_LOCKS.setdefault(key, threading.Lock())
+        return _PROCESS_LOCKS.setdefault(key, _ProcessRWLock())
 
 
 def _lock_conflict(exc: OSError) -> bool:
@@ -1889,13 +1934,17 @@ def _pointer_replace_conflict(
     )
 
 
-def _try_system_lock(handle: Any) -> bool:
+def _try_system_lock(handle: Any, exclusive: bool) -> bool:
     handle.seek(0)
     if os.name == "nt":
         import msvcrt
 
         try:
-            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            msvcrt.locking(
+                handle.fileno(),
+                msvcrt.LK_NBLCK if exclusive else msvcrt.LK_NBRLCK,
+                1,
+            )
             return True
         except OSError as exc:
             if _lock_conflict(exc):
@@ -1904,7 +1953,10 @@ def _try_system_lock(handle: Any) -> bool:
     import fcntl
 
     try:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(
+            handle.fileno(),
+            (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB,
+        )
         return True
     except OSError as exc:
         if _lock_conflict(exc):
@@ -1925,16 +1977,23 @@ def _release_system_lock(handle: Any) -> None:
 
 
 @contextlib.contextmanager
-def _exclusive_file_lock(
+def _store_file_lock(
     lock_path: Path,
     *,
+    exclusive: bool = True,
     timeout: float = DEFAULT_LOCK_TIMEOUT,
     timeout_code: str,
     invalid_code: str,
     detail: str,
     trusted_owner: tuple[int, int] | None = None,
 ) -> Iterator[None]:
-    """Hold one finite cross-process lock without following redirected paths."""
+    """Hold one finite cross-process lock without following redirected paths.
+
+    ``exclusive=False`` asks for the reader half: it still excludes every
+    writer, and no longer excludes another reader.  Every check on the lock
+    object itself — no links, plain regular file, expected owner, unchanged
+    identity across the open — is the same in both modes.
+    """
     if timeout < 0:
         raise ValueError("timeout must be non-negative")
     if trusted_owner is not None and (
@@ -1947,8 +2006,7 @@ def _exclusive_file_lock(
     _require_no_link_components(lock_path.parent, code=invalid_code)
     process_lock = _process_lock_for(lock_path)
     deadline = time.monotonic() + timeout
-    remaining = max(0.0, deadline - time.monotonic())
-    if not process_lock.acquire(timeout=remaining):
+    if not process_lock.acquire(exclusive, deadline):
         raise ContractStoreError(timeout_code, detail)
     handle = None
     system_locked = False
@@ -2024,7 +2082,7 @@ def _exclusive_file_lock(
             os.fsync(handle.fileno())
         elif size != 1:
             raise ContractStoreError(invalid_code, str(lock_path))
-        while not _try_system_lock(handle):
+        while not _try_system_lock(handle, exclusive):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ContractStoreError(timeout_code, detail)
@@ -2040,7 +2098,7 @@ def _exclusive_file_lock(
                 finally:
                     handle.close()
         finally:
-            process_lock.release()
+            process_lock.release(exclusive)
 
 
 @contextlib.contextmanager
@@ -2055,7 +2113,7 @@ def _writer_lock(
         contract_id,
         store_root=store_root,
     )
-    with _exclusive_file_lock(
+    with _store_file_lock(
         contract_dir / "writer.lock",
         timeout=timeout,
         timeout_code="lock_timeout",
@@ -2079,6 +2137,7 @@ def _catalog_lock_path(root: Path) -> Path:
 def catalog_admission_lock(
     *,
     store_root: Path | str | None = None,
+    exclusive: bool = True,
     timeout: float = DEFAULT_LOCK_TIMEOUT,
     trusted_owner: tuple[int, int] | None = None,
 ) -> Iterator[None]:
@@ -2087,6 +2146,14 @@ def catalog_admission_lock(
     The fixed acquisition order is this global lock first, followed by the
     contract writer lock or the external visibility-policy lock.  Keeping the
     sidecar outside ``v1`` preserves the immutable store grammar.
+
+    ``exclusive=False`` is the reader half, for a caller that only wants to
+    observe the catalog.  A read still never overlaps a transition, but two
+    readers no longer exclude each other: authenticating the whole store is
+    seconds of work, and a turn that only needs the names must not queue
+    behind a periodic audit doing the same reading.  Reentering as a reader
+    while holding the writer is allowed; the reverse would be a lock
+    upgrade, which deadlocks, and is refused.
     """
     root = _store_root(store_root)
     _require_no_link_components(root, code="store_root_invalid")
@@ -2098,7 +2165,11 @@ def catalog_admission_lock(
         held = {}
         _CATALOG_LOCK_LOCAL.held = held
     if key in held:
-        count, established_owner = held[key]
+        count, established_owner, established_exclusive = held[key]
+        if exclusive and not established_exclusive:
+            raise ContractStoreError(
+                "catalog_lock_invalid", "reentrant lock upgrade",
+            )
         delegated_reentry = (
             established_owner is not None
             and trusted_owner is None
@@ -2109,11 +2180,11 @@ def catalog_admission_lock(
             raise ContractStoreError(
                 "catalog_lock_invalid", "reentrant owner mismatch",
             )
-        held[key] = (count + 1, established_owner)
+        held[key] = (count + 1, established_owner, established_exclusive)
         try:
             yield
         finally:
-            held[key] = (count, established_owner)
+            held[key] = (count, established_owner, established_exclusive)
             if delegated_reentry and (
                 os.geteuid(), os.getegid()
             ) != established_owner:
@@ -2122,8 +2193,9 @@ def catalog_admission_lock(
                 )
         return
 
-    lock = _exclusive_file_lock(
+    lock = _store_file_lock(
         lock_path,
+        exclusive=exclusive,
         timeout=timeout,
         timeout_code="catalog_lock_timeout",
         invalid_code="catalog_lock_invalid",
@@ -2131,7 +2203,7 @@ def catalog_admission_lock(
         trusted_owner=trusted_owner,
     )
     lock.__enter__()
-    held[key] = (1, trusted_owner)
+    held[key] = (1, trusted_owner, exclusive)
     try:
         yield
     finally:

@@ -39,7 +39,7 @@ from install.birth_authority_provisioner import (
     _prepare_transition_authority_set_v2, is_prepared_authority_set_v2,
     provisioning_source_inventory_hash_v2,
 )
-from tests.portable.rm0008_2b import support
+from rm0008_2b import support
 
 
 def D(character: str) -> str:
@@ -1138,8 +1138,10 @@ def test_v2_product_composition_reaches_receipts_after_set_publication(
 
     original_prepare = provisioning._prepare_transition_authority_set_v2
 
-    def prepare(*args, completed_predecessor):
+    def prepare(*args, completed_predecessor, abandoned_predecessor=None,
+                predecessor_abandonment=None):
         assert completed_predecessor is None
+        assert abandoned_predecessor is None and predecessor_abandonment is None
         assert args[2] == previous
         order.append("stage")
         return original_prepare(*args)

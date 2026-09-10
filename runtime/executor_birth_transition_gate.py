@@ -11,6 +11,7 @@ from executor_birth_ownership_coordinator import (
     OwnershipCoordinatorError,
     _require_deployment_lock_session_v1,
     _require_locked_coordinator_graph_snapshot_v2,
+    _abandonment_for_record_v2,
     _resolve_ownership_coordinator_locked_v2,
     _transition_edge_from_graph_v2,
 )
@@ -37,6 +38,10 @@ class _TransitionGateObservationV2:
     distribution: object
     claim: object
     predecessor: object
+    # Resolved once, here, from the graph the snapshot was taken under. Every
+    # reader downstream asks this field instead of re-deriving the answer, so
+    # the forward exit cannot be known by some of them and not by others.
+    predecessor_abandonment: object
     phase: object
     chain: object
     partial: bool
@@ -119,6 +124,10 @@ def _transition_gate_snapshot_locked_v2(session, distribution):
     claim, predecessor, phase = _transition_gate_edge_phase_v2(
         graph, distribution,
     )
+    abandonment = (
+        None if predecessor is None
+        else _abandonment_for_record_v2(graph.abandoned_crossings, predecessor)
+    )
     chain, partial = None, False
     try:
         if distribution.release_sequence > 1:
@@ -140,7 +149,7 @@ def _transition_gate_snapshot_locked_v2(session, distribution):
     return _issue_transition_gate_snapshot_locked_v2(
         session,
         _TransitionGateObservationV2(
-            distribution, claim, predecessor, phase, chain, partial,
+            distribution, claim, predecessor, abandonment, phase, chain, partial,
         ),
     )
 

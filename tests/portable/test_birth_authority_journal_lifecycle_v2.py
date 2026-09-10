@@ -16,9 +16,9 @@ from executor_birth_ownership_coordinator import (
 from executor_birth_ownership_preflight import _sealed_build_identity_for_test
 from executor_birth_prepared_set import load_authority_set_v1
 from install import birth_authority_provisioner as provisioner
-from tests.portable.rm0008_2b import support
-from tests.portable.test_birth_authority_provisioning_v2 import D, _claim, _transition_inputs
-from tests.portable.test_executor_birth_ownership_coordinator_v2 import record_v2
+from rm0008_2b import support
+from test_birth_authority_provisioning_v2 import D, _claim, _transition_inputs
+from test_executor_birth_ownership_coordinator_v2 import record_v2
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason=support.POSIX_SCENARIO_ONLY_V1)
 
@@ -252,3 +252,67 @@ def test_preexisting_archive_is_inert_not_authority_for_replay(published, monkey
     with pytest.raises(provisioner.BirthProvisioningError):
         provisioner._prepare_transition_authority_set_v2(_claim(), distribution, previous)
     assert _snapshot(archive) == before
+
+
+def test_an_abandoned_crossing_retires_its_journal_instead_of_blocking_the_next(
+    published,
+):
+    """L'uscita in avanti deve liberare la casella, non solo conservare (10/9/2026).
+
+    Misurato sulla macchina: la Release 2 abbandonata lasciava il suo giornale
+    nell'unica casella attiva. La traversata successiva adottava quel giornale,
+    ci confrontava un'intestazione scritta per un'altra release e rifiutava con
+    `birth_provisioning_transaction_conflict`. Conservare non significa tenere
+    aperto: il giornale si ritira sotto un nome che dice cos'e', e resta li'
+    byte per byte come prova inerte.
+
+    Il confine resta: senza il documento di abbandono legato a QUESTO record il
+    rifiuto e' quello di prima, e il giornale non si muove.
+    """
+    from executor_birth_ownership_coordinator import (
+        _abandoned_crossing_for_record_v2,
+    )
+
+    root, previous, completed, claim, distribution = published
+    predecessor = replace(
+        record_v2(5),
+        provisioning_transaction_id=completed.provisioning_transaction_id,
+    )
+    abandonment = _abandoned_crossing_for_record_v2(
+        predecessor, "administrative_tcb_path_unsatisfiable",
+    )
+    source = root / (
+        provisioner.TRANSACTION_PREFIX_V2 + completed.provisioning_transaction_id
+    )
+    archive = root / (
+        provisioner.ABANDONED_TRANSACTION_PREFIX_V2
+        + completed.provisioning_transaction_id
+    )
+    before = _snapshot(source)
+
+    with pytest.raises(provisioner.BirthProvisioningError):
+        provisioner._prepare_transition_authority_set_v2(
+            claim, distribution, previous,
+            abandoned_predecessor=predecessor, predecessor_abandonment=None,
+        )
+    assert _snapshot(source) == before and not archive.exists()
+
+    with pytest.raises(provisioner.BirthProvisioningError):
+        provisioner._prepare_transition_authority_set_v2(
+            claim, distribution, previous,
+            completed_predecessor=completed,
+            abandoned_predecessor=predecessor,
+            predecessor_abandonment=abandonment,
+        )
+    assert _snapshot(source) == before and not archive.exists()
+
+    prepared = provisioner._prepare_transition_authority_set_v2(
+        claim, distribution, previous,
+        abandoned_predecessor=predecessor, predecessor_abandonment=abandonment,
+    )
+    assert not source.exists()
+    assert _snapshot(archive) == before
+    assert prepared.transaction_id != completed.provisioning_transaction_id
+    assert len(tuple(root.glob(provisioner.TRANSACTION_PREFIX_V2 + "*"))) == 1
+    assert len(tuple(root.glob(
+        provisioner.ABANDONED_TRANSACTION_PREFIX_V2 + "*"))) == 1

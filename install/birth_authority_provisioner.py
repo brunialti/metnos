@@ -882,6 +882,7 @@ def decode_checkpoint_v1(raw: bytes) -> CheckpointV1:
 TRANSACTION_PREFIX_V1 = ".birth-provisioning-v1.txn."
 TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.txn."
 COMPLETED_TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.completed."
+ABANDONED_TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.abandoned."
 HEADER_PENDING_PREFIX_V1 = ".transaction-v1.pending."
 HEADER_PENDING_PREFIX_V2 = ".transaction-v2.pending."
 CHECKPOINT_PENDING_PREFIX_V1 = ".checkpoint-pending-"
@@ -3863,6 +3864,7 @@ def _initialize_transition_ownership_chain_v2(descriptor: object) -> object:
 def _prepare_transition_authority_set_v2(
     claim: object, distribution: object, previous_set: object,
     *, completed_predecessor: object = None,
+    abandoned_predecessor: object = None, predecessor_abandonment: object = None,
 ) -> PreparedAuthoritySetV2:
     """Prepare or resume the sole V2 set transaction at the fixed Birth root."""
     from executor_birth_distribution_manifest import is_verified_distribution
@@ -3885,11 +3887,18 @@ def _prepare_transition_authority_set_v2(
         with _translated():
             lock = session.global_lock(exclusive=True, create=True)
         with lock:
+            if completed_predecessor is not None and abandoned_predecessor is not None:
+                raise _conflict()
             if completed_predecessor is not None:
                 with _translated():
                     _archive_completed_authority_journal_v2(
                         session, claim, distribution, previous_set,
                         completed_predecessor,
+                    )
+            if abandoned_predecessor is not None:
+                with _translated():
+                    _archive_abandoned_authority_journal_v2(
+                        session, predecessor_abandonment, abandoned_predecessor,
                     )
             with _translated():
                 names = set(session.inventory(()))
@@ -4036,6 +4045,50 @@ def _archive_completed_authority_journal_v2(
     if (
         set(session.inventory(())) != names
         or set(session.inventory(journal.root_components)) != expected
+    ):
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    # One same-root, no-replacement rename preserves every confidential byte.
+    # The archive is inert forensic evidence, never a runtime or replay input.
+    session.rename_no_replace(journal.root_components, destination, directory=True)
+
+
+def _archive_abandoned_authority_journal_v2(session, abandonment, predecessor):
+    """Retire the journal of an abandoned crossing; preserve it, never select it.
+
+    The forward exit keeps the truthful last record of a crossing that stopped,
+    and that record includes its provisioning journal. Leaving it in the active
+    slot is not preservation, though: it is a permanent block. The next crossing
+    adopts the single open transaction it finds and then conflicts with a header
+    written for another release, so no successor could ever be prepared again.
+
+    The journal is therefore renamed under a prefix that says what it is, on the
+    authority of the abandonment document bound to this exact record - never on
+    the state of the record alone, which is what tells a crossing that was
+    abandoned apart from one that merely stopped.
+    """
+    from executor_birth_ownership_coordinator import (
+        OwnershipCoordinatorRecordV2, _abandonment_binds_record_v2,
+    )
+    if (
+        type(predecessor) is not OwnershipCoordinatorRecordV2
+        or not _abandonment_binds_record_v2(abandonment, predecessor)
+    ):
+        raise _conflict()
+    journal = _TransactionJournalV1.transition_v2(
+        session, predecessor.provisioning_transaction_id,
+    )
+    destination = (ABANDONED_TRANSACTION_PREFIX_V2 + journal.transaction_id,)
+    names = set(session.inventory(()))
+    if journal.root_components[0] not in names:
+        return
+    active = {name for name in names if name.startswith((
+        TRANSACTION_PREFIX_V1, TRANSACTION_PREFIX_V2,
+    ))}
+    state = journal.read_state()
+    if (
+        active != {journal.root_components[0]} or destination[0] in names
+        or state.header is None
+        or state.header.transaction_id != journal.transaction_id
     ):
         raise _reject("birth_provisioning_recovery_ambiguous")
     # One same-root, no-replacement rename preserves every confidential byte.
@@ -4260,6 +4313,7 @@ def _prepare_transition_receipt_material_locked_v2(
         authenticate_distribution_record_v1, capture_current_deployment_descriptor_v1,
     )
     from executor_birth_ownership_coordinator import (
+        _abandonment_for_predecessor_locked_v2,
         _require_deployment_lock_session_v1, _transition_edge_locked_v2,
     )
     from executor_birth_prepared_root import (
@@ -4288,10 +4342,18 @@ def _prepare_transition_receipt_material_locked_v2(
             raise _conflict()
         previous_context = required.selection
         previous_set = required.authorities.prepared
+    abandonment = _abandonment_for_predecessor_locked_v2(session, predecessor)
     with _service_owned_birth_identity_v2(descriptor):
+        # An abandoned predecessor is not a completed one: its journal is not
+        # archived as a completion, because that is the record the forward exit
+        # preserves. It is retired as what it is instead, which frees the single
+        # active slot the next crossing needs. A predecessor that is neither
+        # completed nor abandoned is still refused, as before.
         prepared = _prepare_transition_authority_set_v2(
             claim, verified, previous_set,
-            completed_predecessor=predecessor,
+            completed_predecessor=None if abandonment is not None else predecessor,
+            abandoned_predecessor=predecessor if abandonment is not None else None,
+            predecessor_abandonment=abandonment,
         )
     return _TransitionReceiptPreparationV2(
         verified, descriptor, previous_context, prepared,
@@ -5290,6 +5352,44 @@ def _resume_required_transition_v2(session, distribution, descriptor, legacy_ide
             ))
 
 
+def abandon_unattestable_transition_v2():
+    """Record that the current crossing can never be attested on this machine.
+
+    The chain is forward only: a crossing that published its head and cannot
+    reach its attestation would otherwise block every later release forever.
+    This operation stops nothing and rewrites nothing. It takes the deployment
+    lock, lets the preflight prove the permanent contradiction itself, and
+    publishes one immutable abandonment next to the transaction, which keeps
+    its truthful last record. Only after that may the next release be built.
+    """
+    from executor_birth_admin_preflight import _prove_unattestable_crossing_v1
+    from executor_birth_ownership_coordinator import (
+        _abandon_crossing_locked_v2, _deployment_lock_v1,
+    )
+
+    with _deployment_lock_v1() as deployment_session:
+        return _abandon_crossing_locked_v2(
+            deployment_session,
+            prove_unattestable=_prove_unattestable_crossing_v1,
+        )
+
+
+def _require_administrative_python_bound_to_tcb_v1(descriptor: object) -> None:
+    """Refuse a crossing whose descriptor names a non-TCB administrative python.
+
+    The administrative TCB binding compares the descriptor against the fixed
+    operating-system interpreter captured through the product links. Detecting
+    the divergence here, before the edge is reserved and before any service is
+    stopped, keeps a release that can never be attested from taking the stack
+    down and leaving a published head that no attestation can close.
+    """
+    from executor_birth_admin_preflight import PYTHON_LINK
+
+    declared = getattr(descriptor, "python_executable", None)
+    if not isinstance(declared, str) or declared != os.path.realpath(PYTHON_LINK):
+        raise _reject("birth_transition_administrative_python_mismatch")
+
+
 def complete_transition_cutover_v2(
     distribution: object, source_id: object, *, service_state_root: object,
     legacy_service_user: object, legacy_installation_root: object,
@@ -5366,6 +5466,7 @@ def complete_transition_cutover_v2(
         verified, signed_descriptor = (
             capture_current_deployment_descriptor_v1(verified)
         )
+        _require_administrative_python_bound_to_tcb_v1(signed_descriptor)
         from config import PATH_USER_STATE
 
         signed_state_root = Path(os.path.abspath(

@@ -34,7 +34,7 @@ from executor_birth_receipts import (
     ReceiptError, RevisionClass, issue_admission_receipt,
 )
 from manifest_inventory import ContractId, ManifestOrigin, ManifestRef, ManifestStatus
-from tests.portable.test_executor_birth_context_selection import D, _evidence, _prepared_with
+from test_executor_birth_context_selection import D, _evidence, _prepared_with
 
 
 def _context(character):

@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:9cd1bb441ff4c1b91745bcc9e482be6df415ad93b92faac9e2e3d7d7ad981de8",
+  "source_census": "sha256:ab5c31a12b882a2028345045a24d968e223a479be3e7919d93638ce2b889a9d8",
   "scan_roots": [
     "runtime",
     "install",
@@ -60,6 +60,16 @@
         "store_write"
       ],
       "destination": "sealed initial predecessor record under the deployment lock",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_authority_provisioner.py",
+      "scope": "abandon_unattestable_transition_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed abandonment of a proved unattestable crossing",
       "phase": "M4"
     },
     {
@@ -1504,16 +1514,6 @@
     },
     {
       "path": "runtime/contract_store.py",
-      "scope": "_exclusive_file_lock",
-      "role": "store_owner",
-      "capabilities": [
-        "store_write"
-      ],
-      "destination": "sole portable lock-file authority for immutable publication and catalog transitions",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/contract_store.py",
       "scope": "_install_generation",
       "role": "store_owner",
       "capabilities": [
@@ -1714,6 +1714,16 @@
         "verified_store_read"
       ],
       "destination": "one-way exact authoring seed outside the immutable release before ownership cutover",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_store_file_lock",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole portable lock-file authority for immutable publication and catalog transitions, as writer or as reader",
       "phase": "M4"
     },
     {
@@ -2755,6 +2765,46 @@
     },
     {
       "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_abandon_crossing_core_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed root-owned abandonment of an unattestable crossing",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_abandon_crossing_locked_for_test_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "portable abandonment seam outside the productive root",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_abandon_crossing_locked_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed abandonment under the live deployment lock",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_abandonment_for_predecessor_locked_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "read-only abandonment lookup for one predecessor under the live deployment lock",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
       "scope": "_advance_to_preflight_verified_v1",
       "role": "store_owner",
       "capabilities": [
@@ -3152,6 +3202,16 @@
         "store_write"
       ],
       "destination": "sealed root-owned ownership transition coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_coordinator.py",
+      "scope": "_read_abandoned_crossings_snapshot_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "read-only validation of root-owned abandoned crossings",
       "phase": "M4"
     },
     {
@@ -4854,6 +4914,7 @@
     "owner": "runtime/executor_birth_operational.py:birth_executor",
     "coordinator_store_owners": [
       "install/birth_authority_provisioner.py:_publish_initial_predecessor_v2",
+      "install/birth_authority_provisioner.py:abandon_unattestable_transition_v2",
       "install/birth_ownership_authority_provisioner.py:_discard_temporary",
       "install/birth_ownership_authority_provisioner.py:_load_or_create_pair",
       "install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_at_v1",
@@ -4936,6 +4997,10 @@
       "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._committed",
       "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._inventory",
       "runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.append_transaction_record",
+      "runtime/executor_birth_ownership_coordinator.py:_abandon_crossing_core_v2",
+      "runtime/executor_birth_ownership_coordinator.py:_abandon_crossing_locked_for_test_v2",
+      "runtime/executor_birth_ownership_coordinator.py:_abandon_crossing_locked_v2",
+      "runtime/executor_birth_ownership_coordinator.py:_abandonment_for_predecessor_locked_v2",
       "runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1",
       "runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_for_test_v2",
       "runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_v2",

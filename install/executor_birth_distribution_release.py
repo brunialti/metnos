@@ -63,6 +63,7 @@ from executor_birth_ownership_authorities import (
 from executor_birth_ownership_coordinator import (
     COORDINATOR_DIRECTORY_BASENAME_V1,
     OwnershipCoordinatorStateV1,
+    _abandonment_for_transaction_v2,
     _deployment_lock_v1,
     _ensure_coordinator_child_directory_v2,
     _require_deployment_lock_session_v1,
@@ -98,6 +99,7 @@ _SOURCE_ROOTS_V1 = frozenset({
     "docs", "runtime", "install", "scripts", "executors", "tutor",
 })
 _EXCLUDED_SUFFIXES_V1 = (".pyc", ".pyo")
+_PYTHON_LINK_V1 = "/usr/bin/python3"
 _OPENSSL_V1 = "/usr/bin/openssl"
 _SYSTEMCTL_V1 = "/usr/bin/systemctl"
 _SYSTEMD_ANALYZE_V1 = "/usr/bin/systemd-analyze"
@@ -120,6 +122,27 @@ class _StagedReleaseV1:
     final_root: Path
     encoded: bytes
     files: tuple[DistributionFile, ...]
+
+
+def _administrative_python_executable_v1() -> str:
+    """Resolve the fixed operating-system interpreter of the administrative TCB.
+
+    The interpreter that runs the root birth helper belongs to the operating
+    system trusted base, not to whichever interpreter happens to execute this
+    build. Deriving it from ``sys.executable`` let a build performed with the
+    managed product environment sign a descriptor the verifier can never bind,
+    and would have run the administrative gate on the product's own mutable
+    environment. The managed interpreter stays the service interpreter and is
+    verified as a signed external target of the service catalog.
+    """
+    resolved = os.path.realpath(_PYTHON_LINK_V1)
+    if (
+        not PurePosixPath(resolved).is_absolute()
+        or not os.path.isfile(resolved)
+        or os.path.islink(resolved)
+    ):
+        raise _fail("administrative python executable")
+    return resolved
 
 
 def _fail(detail: str, *, recovery: bool = False) -> DistributionAssemblerError:
@@ -254,10 +277,15 @@ def _next_release_edge_v1(graph: object, source_id: str) -> _ReleaseEdgeV1:
                 current.claim.release_sequence,
                 latest.previous_closed_build_id,
             )
-        if (
-            latest.state is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
-            or latest.sequence != 6
-        ):
+        verified = (
+            latest.state is OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            and latest.sequence == 6
+        )
+        # An abandoned crossing keeps its published head and its truthful last
+        # record; the next release is built over it instead of rewriting it.
+        if not verified and _abandonment_for_transaction_v2(
+            graph, current,
+        ) is None:
             raise _fail("successor edge")
         return _ReleaseEdgeV1(
             latest.release_sequence + 1, latest.closed_build_id,
@@ -477,9 +505,9 @@ def _assemble_staging_v1(
         raise _fail("release path collision")
     content.update(generated)
 
-    python_executable = os.path.realpath(sys.executable)
+    python_executable = _administrative_python_executable_v1()
     service_python = (
-        python_executable
+        os.path.realpath(sys.executable)
         if service_python_executable is None else service_python_executable
     )
     target_executables = tuple((path, payload) for path, payload in (

@@ -4,8 +4,11 @@
 #     ln -s /opt/metnos/scripts/pre-commit-prompts.sh /opt/metnos/.git/hooks/pre-commit
 # (oppure copiare il file).
 set -e
+# The staged paths belong to the checkout being committed, which is not the
+# install root when the commit comes from a git worktree. Read the files there
+# and keep the install root only for the interpreter, which is shared.
 INSTALL_ROOT="${METNOS_INSTALL_ROOT:-/opt/metnos}"
-cd "$INSTALL_ROOT"
+cd "$(git rev-parse --show-toplevel)"
 files=$(git diff --cached --name-only --diff-filter=ACM | grep '^runtime/prompts/.*\.j2$' || true)
 if [ -z "$files" ]; then exit 0; fi
 "${METNOS_VENV:-$INSTALL_ROOT/.venv}/bin/python" - "$files" <<'PYEOF'

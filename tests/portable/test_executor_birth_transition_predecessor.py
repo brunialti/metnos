@@ -21,7 +21,9 @@ def test_transition_snapshot_uses_explicit_historical_door_only_for_successor(
     calls = []
     monkeypatch.setattr(gate_module, "_require_deployment_lock_session_v1", lambda _: None)
     monkeypatch.setattr(gate_module, "_resolve_ownership_coordinator_locked_v2", lambda _: object())
-    monkeypatch.setattr(gate_module, "_require_locked_coordinator_graph_snapshot_v2", lambda *_: object())
+    # The graph the gate resolves the abandonment from; this scenario has none.
+    graph = SimpleNamespace(abandoned_crossings=())
+    monkeypatch.setattr(gate_module, "_require_locked_coordinator_graph_snapshot_v2", lambda *_: graph)
     monkeypatch.setattr(gate_module, "_transition_gate_edge_phase_v2", lambda *_: (object(), object(), None))
     monkeypatch.setattr(
         manifest, "authenticate_distribution_record_v1",

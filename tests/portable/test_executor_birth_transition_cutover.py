@@ -25,6 +25,9 @@ LINUX_ONLY = pytest.mark.skipif(
 )
 
 
+_TCB_PYTHON = os.path.realpath("/usr/bin/python3")
+
+
 def D(character: str) -> str:
     return "sha256:" + character * 64
 
@@ -937,6 +940,7 @@ def test_product_wrapper_keeps_the_crossing_inside_all_three_sessions(
         service_user="metnos", service_uid=41, service_gid=42,
         service_home="/srv/metnos", service_shell="/usr/sbin/nologin",
         service_supplementary_gids=(42,),
+        python_executable=_TCB_PYTHON,
     )
     preparation = SimpleNamespace(
         descriptor=descriptor, previous_context=SimpleNamespace(distribution=previous_distribution),
@@ -1359,9 +1363,14 @@ def test_successor_receipt_preparation_binds_the_explicit_previous_context(
         events.append("service")
         yield
 
-    def prepare(selected_claim, distribution, selected_set, *, completed_predecessor):
+    def prepare(selected_claim, distribution, selected_set, *,
+                completed_predecessor, abandoned_predecessor,
+                predecessor_abandonment):
         assert selected_claim is claim and distribution is current and selected_set is previous_set
+        # No abandonment binds this predecessor, so it crosses as a completed
+        # one and nothing is handed to the abandoned branch.
         assert completed_predecessor is predecessor
+        assert abandoned_predecessor is None and predecessor_abandonment is None
         assert events == ["deployment", "service"]
         events.append("prepare")
         return staged
@@ -1398,7 +1407,7 @@ def test_completed_cutover_only_reattests_and_skips_administrative_install(
     )
     descriptor = SimpleNamespace(
         service_user="metnos", service_uid=41, service_gid=42,
-        service_home="/srv/metnos",
+        service_home="/srv/metnos", python_executable=_TCB_PYTHON,
     )
     completed, result = object(), object()
     expected_distribution = distribution
@@ -1887,3 +1896,73 @@ def test_maintenance_session_retains_quiescence_across_named_load_states(
             match="cutover_blocked",
         ):
             contract_cutover_guard._require_maintenance_session_v1(session)
+
+
+@LINUX_ONLY
+def test_cutover_refuses_a_descriptor_naming_a_managed_administrative_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Detect the unattestable descriptor before any service is stopped.
+
+    The production crossing discovered the divergence only after publishing a
+    head, when the stack was already down. The same comparison made against
+    the fixed link refuses the crossing while everything is still running.
+    """
+    import executor_birth_admin_preflight as preflight
+
+    operating_system = tmp_path / "usr" / "bin" / "python3.12"
+    operating_system.parent.mkdir(parents=True)
+    operating_system.write_bytes(b"os-python\n")
+    link = tmp_path / "usr" / "bin" / "python3"
+    link.symlink_to(operating_system.name)
+    monkeypatch.setattr(preflight, "PYTHON_LINK", link)
+
+    provisioner._require_administrative_python_bound_to_tcb_v1(
+        SimpleNamespace(python_executable=operating_system.as_posix()),
+    )
+
+    for declared in (
+        "/var/lib/metnos/python-envs-v1/" + "a" * 64 + "/bin/python",
+        link.as_posix(),
+        None,
+    ):
+        with pytest.raises(provisioner.BirthProvisioningError) as failure:
+            provisioner._require_administrative_python_bound_to_tcb_v1(
+                SimpleNamespace(python_executable=declared),
+            )
+        assert failure.value.code == (
+            "birth_transition_administrative_python_mismatch"
+        ), declared
+
+
+@LINUX_ONLY
+def test_abandonment_operation_holds_the_lock_and_takes_the_real_proof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The operation may not invent a reason, and may not skip the lock."""
+    import executor_birth_admin_preflight as preflight
+    from executor_birth_ownership_coordinator import (
+        _abandon_crossing_locked_v2,
+    )
+    import executor_birth_ownership_coordinator as coordinator
+
+    events: list[str] = []
+
+    @contextmanager
+    def deployment_lock():
+        events.append("lock-enter")
+        yield "deployment"
+        events.append("lock-exit")
+
+    def abandon(session, *, prove_unattestable):
+        events.append("abandon")
+        assert session == "deployment"
+        assert prove_unattestable is preflight._prove_unattestable_crossing_v1
+        return "abandonment"
+
+    monkeypatch.setattr(coordinator, "_deployment_lock_v1", deployment_lock)
+    monkeypatch.setattr(coordinator, "_abandon_crossing_locked_v2", abandon)
+
+    assert provisioner.abandon_unattestable_transition_v2() == "abandonment"
+    assert events == ["lock-enter", "abandon", "lock-exit"]
+    assert _abandon_crossing_locked_v2 is not abandon

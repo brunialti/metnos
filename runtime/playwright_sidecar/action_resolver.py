@@ -298,7 +298,23 @@ def parse_action(action: str) -> dict:
 
 def _candidate_text(candidate: dict) -> str:
     return normalize(" ".join(str(candidate.get(k) or "") for k in (
-        "name", "label", "role", "tag", "type", "placeholder")))
+        "name", "text", "label", "role", "tag", "type", "placeholder")))
+
+
+def _candidate_names(candidate: dict) -> set[str]:
+    """Every label that names this control, not only the one ARIA settled on.
+
+    The accessible name is authored by hand and can be wrong — an unresolved
+    translation key, a leftover placeholder — while the visible text is what
+    the page actually shows. Both name the control here, so an authoring
+    mistake in one cannot hide the other. Naming is not choosing: a control
+    still has to win on score, and a wrapper still loses to the real control.
+    """
+    return {name for name in (
+        normalize(str(candidate.get("name") or "")),
+        normalize(str(candidate.get("label") or "")),
+        normalize(str(candidate.get("text") or "")),
+    ) if name}
 
 
 def active_goal_control_label(candidate: dict) -> str:
@@ -372,11 +388,12 @@ def _candidate_score_single(target: str, candidate: dict,
     if not hay:
         return 0.0
     score = 0.0
-    name = normalize(str(candidate.get("name") or candidate.get("label") or ""))
-    if target_n and target_n == name:
+    names = _candidate_names(candidate)
+    if target_n and target_n in names:
         score = 1.0
     elif target_n and (_contains_phrase(hay, target_n)
-                       or _contains_phrase(target_n, name)):
+                       or any(_contains_phrase(target_n, name)
+                              for name in names)):
         score = 0.88
     else:
         wanted = set(target_n.split())
@@ -404,10 +421,10 @@ def candidate_score(target: str, candidate: dict, primitive: str) -> float:
 
 
 def _candidate_has_unique_exact_name(target: str, candidate: dict) -> bool:
-    name = normalize(str(
-        candidate.get("name") or candidate.get("label") or ""))
-    return bool(name and any(
-        name == normalize(variant) for variant in _target_variants(target)))
+    names = _candidate_names(candidate)
+    return bool(names and any(
+        name == normalize(variant)
+        for name in names for variant in _target_variants(target)))
 
 
 def _is_login_target(target: str) -> bool:

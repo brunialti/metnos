@@ -240,6 +240,16 @@ _ACCESSIBLE_ACTION_NAME_JS = r"""
 _ENUMERATE_ACTION_TARGETS_JS = r"""
 () => {
 """ + _ACCESSIBLE_ACTION_NAME_JS + r"""
+  // An accessible name is authored by hand and can be wrong: a page may ship
+  // an unresolved translation key as its aria-label, which then hides the
+  // label the page actually displays. The visible text travels next to the
+  // name instead of being replaced by it, so neither can hide the other. It
+  // is bounded like the pointer fallback: a control label is short.
+  const metnosTextOf = el => {
+    const text = (el.innerText || el.textContent || '').trim()
+      .replace(/\s+/g, ' ');
+    return text.length <= 160 ? text : '';
+  };
   document.querySelectorAll('[data-metnos-action-id]').forEach(
     el => el.removeAttribute('data-metnos-action-id'));
   const standard = Array.from(document.querySelectorAll(
@@ -349,6 +359,7 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
       id, tag: el.tagName.toLowerCase(), type: (el.type || '').toLowerCase(),
       role: el.getAttribute('role') || '',
       name: metnosNameOf(el),
+      text: metnosTextOf(el),
       label, context_name: contextOf(el),
       placeholder: el.getAttribute('placeholder') || '',
       href: el.href || '', download: el.hasAttribute('download'),
@@ -2769,6 +2780,15 @@ async def _dismiss_privacy_obstruction(entry: dict, *,
             session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
             procedure="privacy_reject", method="semantic",
             outcome=outcome.status == "resolved", reason=outcome.reason)
+    # Without this, a page left covered is indistinguishable from a page with
+    # no panel at all: both are silent. Counts only, never observed text.
+    if outcome.panels or outcome.status == "blocked":
+        sites_audit.record(
+            "cookie_observation", owner=entry.get("owner", ""),
+            session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
+            procedure="privacy_reject", phase=outcome.status,
+            kind=outcome.kind, reason=outcome.reason,
+            frames=outcome.frames, panels=outcome.panels)
     return outcome
 
 
@@ -3868,8 +3888,8 @@ def _plan_audit_fields(plan: dict) -> dict:
         "resolved_tag": str(candidate.get("tag") or "")[:20],
         "resolved_role": str(candidate.get("role")
                              or candidate.get("tag") or "")[:40],
-        "resolved_name": str(candidate.get("name")
-                             or candidate.get("label") or "")[:160],
+        "resolved_name": str(candidate.get("name") or candidate.get("label")
+                             or candidate.get("text") or "")[:160],
         "verifiable_destination": bool(
             action_resolver._safe_navigation_identity(candidate)),
         "confidence": confidence,
@@ -4444,6 +4464,7 @@ async def _handle_prepared_action(entry: dict, session_id: str, action: str,
             description = f"{description} [allowlist: {', '.join(additions)}]"
         elif plan.get("kind") == "reveal_target":
             reveal_name = str((plan.get("candidate") or {}).get("name") or
+                              (plan.get("candidate") or {}).get("text") or
                               (plan.get("candidate") or {}).get("role") or
                               (plan.get("candidate") or {}).get("tag") or "control")
             description = f"{description} [reveal: {reveal_name}]"
@@ -4457,8 +4478,12 @@ async def _handle_prepared_action(entry: dict, session_id: str, action: str,
         }
         candidate = plan.get("candidate") or {}
         if candidate:
+            # The label a person reads must be one a person can read: an
+            # accessible name can be an unresolved translation key, and the
+            # visible text is then the only honest description of the control.
             out["resolved_target"] = str(
-                candidate.get("name") or candidate.get("label") or "")[:160]
+                candidate.get("name") or candidate.get("label")
+                or candidate.get("text") or "")[:160]
             out["resolved_role"] = str(
                 candidate.get("role") or candidate.get("tag") or "")[:40]
         if shot:

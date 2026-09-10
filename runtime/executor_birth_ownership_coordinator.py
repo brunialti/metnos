@@ -55,6 +55,7 @@ DEFAULT_COORDINATOR_DIRECTORY_V1 = (
 SUCCESSOR_CLAIMS_DIRECTORY_BASENAME_V1 = "successor-claims-v1"
 TRANSACTIONS_DIRECTORY_BASENAME_V2 = "transactions-v2"
 LEGACY_DISPOSITION_BASENAME_V2 = "legacy-disposition-v2.json"
+ABANDONED_CROSSINGS_DIRECTORY_BASENAME_V2 = "abandoned-crossings-v2"
 DEPLOYMENT_LOCK_BASENAME_V1 = "ownership-deployment-v1.lock"
 MAX_RECORD_BYTES_V1 = 8 * 1024 * 1024
 MAX_COORDINATOR_CONTROL_BYTES_V2 = 16 * 1024
@@ -75,6 +76,7 @@ _TEMPORARY_TRANSACTION_DIRECTORY_RE_V2 = re.compile(
 _SUCCESSOR_CLAIM_BASENAME_RE_V1 = re.compile(
     r"(?:initial|[0-9a-f]{64})\.json\Z"
 )
+_ABANDONED_CROSSING_BASENAME_RE_V2 = re.compile(r"[0-9a-f]{64}\.json\Z")
 _RECORD_DOMAIN = b"metnos.executor-birth.ownership-coordinator-record/v1\0"
 _RECORD_DOMAIN_V2 = b"metnos.executor-birth.ownership-coordinator-record/v2\0"
 _REQUEST_DOMAIN = b"metnos.executor-birth.ownership-coordinator-request/v1\0"
@@ -82,6 +84,9 @@ _SUCCESSOR_CLAIM_DOMAIN_V1 = b"metnos.executor-birth.successor-claim/v1\0"
 _LEGACY_JOURNAL_DOMAIN_V2 = b"metnos.executor-birth.legacy-journal/v2\0"
 _LEGACY_DISPOSITION_DOMAIN_V2 = (
     b"metnos.executor-birth.legacy-disposition/v2\0"
+)
+_ABANDONED_CROSSING_DOMAIN_V2 = (
+    b"metnos.executor-birth.abandoned-crossing/v2\0"
 )
 _INSTALL_TRANSACTION_DOMAIN_V1 = (
     b"metnos.executor-birth.install-transaction/v1\0"
@@ -115,6 +120,11 @@ _LEGACY_DISPOSITION_KEYS_V2 = frozenset({
     "schema_version", "disposition_id", "legacy_journal_hash",
     "legacy_request_id", "legacy_state", "successor_request_id", "reason",
 })
+_ABANDONED_CROSSING_KEYS_V2 = frozenset({
+    "schema_version", "abandonment_id", "request_id", "release_sequence",
+    "closed_build_id", "head_id", "deployment_descriptor_id",
+    "abandoned_record_sha256", "reason",
+})
 _INSTALL_TRANSACTION_KEYS_V1 = frozenset({
     "schema_version", "request_id", "source_id", "closed_build_id",
     "release_sequence", "previous_head_id", "successor_claim_id",
@@ -136,6 +146,9 @@ _RECORD_KEYS_V2 = _RECORD_KEYS | frozenset({
     "dominant_startup_receipt", "legacy_state_record_sha256",
 })
 _LEGACY_DISPOSITION_REASON_V2 = "superseded_before_certificate"
+_ABANDONED_CROSSING_REASONS_V2 = frozenset({
+    "administrative_tcb_path_unsatisfiable",
+})
 
 
 class OwnershipCoordinatorError(RuntimeError):
@@ -512,6 +525,203 @@ class LegacyDispositionV2:
 
     def encode(self) -> bytes:
         return _canonical(self.as_value())
+
+
+@dataclass(frozen=True, slots=True)
+class AbandonedCrossingV2:
+    """One crossing that reached a published head and can never be attested.
+
+    The journal ladder has exactly one state per sequence, so a refusal cannot
+    be written into it without inventing a state the grammar forbids. The
+    abandonment is therefore a separate immutable control document: the
+    transaction keeps its truthful last record at HEAD_REQUIRED, and this
+    document records that the machine proved the crossing unattestable, so the
+    next release may be opened over the head this one published.
+    """
+
+    abandonment_id: str
+    request_id: str
+    release_sequence: int
+    closed_build_id: str
+    head_id: str
+    deployment_descriptor_id: str
+    abandoned_record_sha256: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        for field in (
+            "abandonment_id", "request_id", "closed_build_id", "head_id",
+            "deployment_descriptor_id", "abandoned_record_sha256",
+        ):
+            _require_digest(getattr(self, field), field)
+        if (
+            type(self.release_sequence) is not int
+            or self.release_sequence <= 0
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "release_sequence",
+            )
+        if (
+            type(self.reason) is not str
+            or self.reason not in _ABANDONED_CROSSING_REASONS_V2
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "abandonment reason",
+            )
+        expected = _abandoned_crossing_id_v2(self.as_value(include_id=False))
+        if self.abandonment_id != expected:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_journal_invalid", "abandonment_id",
+            )
+
+    def as_value(self, *, include_id: bool = True) -> dict[str, object]:
+        value: dict[str, object] = {
+            "schema_version": 2,
+            "request_id": self.request_id,
+            "release_sequence": self.release_sequence,
+            "closed_build_id": self.closed_build_id,
+            "head_id": self.head_id,
+            "deployment_descriptor_id": self.deployment_descriptor_id,
+            "abandoned_record_sha256": self.abandoned_record_sha256,
+            "reason": self.reason,
+        }
+        if include_id:
+            value["abandonment_id"] = self.abandonment_id
+        return value
+
+    def encode(self) -> bytes:
+        return _canonical(self.as_value())
+
+
+def _abandoned_crossing_id_v2(value_without_id: dict[str, object]) -> str:
+    if set(value_without_id) != _ABANDONED_CROSSING_KEYS_V2 - {"abandonment_id"}:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_invalid", "abandonment identity",
+        )
+    return _digest(
+        _ABANDONED_CROSSING_DOMAIN_V2 + _canonical(value_without_id),
+    )
+
+
+def _decode_abandoned_crossing_v2(encoded: bytes) -> AbandonedCrossingV2:
+    value = _decode_control_document_v2(
+        encoded, keys=_ABANDONED_CROSSING_KEYS_V2, schema_version=2,
+        label="abandoned crossing",
+    )
+    return AbandonedCrossingV2(
+        abandonment_id=value.get("abandonment_id"),
+        request_id=value.get("request_id"),
+        release_sequence=value.get("release_sequence"),
+        closed_build_id=value.get("closed_build_id"),
+        head_id=value.get("head_id"),
+        deployment_descriptor_id=value.get("deployment_descriptor_id"),
+        abandoned_record_sha256=value.get("abandoned_record_sha256"),
+        reason=value.get("reason"),
+    )
+
+
+def _abandoned_crossing_basename_v2(request_id: object) -> str:
+    return _require_digest(request_id, "request_id")[7:] + ".json"
+
+
+def _abandoned_crossing_for_record_v2(
+    record: OwnershipCoordinatorRecordV2, reason: str,
+) -> AbandonedCrossingV2:
+    """Derive the only abandonment that can describe one exact record."""
+    if (
+        type(record) is not OwnershipCoordinatorRecordV2
+        or record.sequence != 5
+        or record.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED
+        or record.head_id is None
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "abandonment record",
+        )
+    value = {
+        "schema_version": 2,
+        "request_id": record.request_id,
+        "release_sequence": record.release_sequence,
+        "closed_build_id": record.closed_build_id,
+        "head_id": record.head_id,
+        "deployment_descriptor_id": record.deployment_descriptor_id,
+        "abandoned_record_sha256": _record_hash_v2(record.encode()),
+        "reason": reason,
+    }
+    return AbandonedCrossingV2(
+        abandonment_id=_abandoned_crossing_id_v2(value),
+        request_id=value["request_id"],
+        release_sequence=value["release_sequence"],
+        closed_build_id=value["closed_build_id"],
+        head_id=value["head_id"],
+        deployment_descriptor_id=value["deployment_descriptor_id"],
+        abandoned_record_sha256=value["abandoned_record_sha256"],
+        reason=reason,
+    )
+
+
+def _abandonment_for_record_v2(
+    abandonments: tuple[AbandonedCrossingV2, ...],
+    latest: OwnershipCoordinatorRecordV2,
+) -> AbandonedCrossingV2 | None:
+    """Bind an abandonment to the exact last record of one transaction.
+
+    Anything that is not a V2 record has no abandonment, which leaves the
+    caller's own refusal in force. Callers resolve this once, at the
+    observation, and hand the answer downstream; asking about a value that is
+    not a record must not raise on their behalf.
+    """
+    if (
+        type(latest) is not OwnershipCoordinatorRecordV2
+        or latest.sequence != 5
+        or latest.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED
+    ):
+        return None
+    matches = tuple(
+        item for item in abandonments
+        if item.request_id == latest.request_id
+    )
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "abandonment inventory",
+        )
+    abandonment = matches[0]
+    if abandonment != _abandoned_crossing_for_record_v2(
+        latest, abandonment.reason,
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "abandonment binding",
+        )
+    return abandonment
+
+
+def _abandonment_binds_record_v2(
+    abandonment: object, record: object,
+) -> bool:
+    """Is this abandonment the one that closes exactly this record?
+
+    Identity, not presence: a caller that already holds a record must be able
+    to check the binding without the graph, and an abandonment belonging to
+    another crossing must never stand in for the missing verification.
+    """
+    return (
+        type(abandonment) is AbandonedCrossingV2
+        and type(record) is OwnershipCoordinatorRecordV2
+        and abandonment is _abandonment_for_record_v2((abandonment,), record)
+    )
+
+
+def _abandonment_for_transaction_v2(
+    graph: object, transaction: object,
+) -> AbandonedCrossingV2 | None:
+    if type(graph) is not _ObservedOwnershipCoordinatorGraphV2:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "abandonment lookup",
+        )
+    return _abandonment_for_record_v2(
+        graph.abandoned_crossings, transaction.latest,
+    )
 
 
 def _legacy_disposition_id_v2(value_without_id: dict[str, object]) -> str:
@@ -1193,6 +1403,7 @@ class _ObservedOwnershipCoordinatorGraphV2:
     legacy_records: tuple[OwnershipCoordinatorRecordV1, ...]
     legacy_record_bytes: tuple[bytes, ...]
     legacy_disposition: LegacyDispositionV2 | None
+    abandoned_crossings: tuple[AbandonedCrossingV2, ...] = ()
 
 
 class _LockedOwnershipCoordinatorGraphSnapshotV2:
@@ -1409,6 +1620,42 @@ def _read_legacy_journal_snapshot_v2(
             "birth_ownership_recovery_required", "legacy request",
         )
     return tuple(records), tuple(encoded_records)
+
+
+def _read_abandoned_crossings_snapshot_v2(
+    directory: Path | None, *, root_owned: bool,
+) -> tuple[AbandonedCrossingV2, ...]:
+    if directory is None:
+        return ()
+    _require_read_only_directory_v2(directory, root_owned=root_owned)
+    abandonments: list[AbandonedCrossingV2] = []
+    seen_request_ids: set[str] = set()
+    for path in _read_directory_entries_v2(directory):
+        if _ABANDONED_CROSSING_BASENAME_RE_V2.fullmatch(path.name) is None:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "abandonment inventory",
+            )
+        encoded = _read_control_file_v2(
+            path, MAX_COORDINATOR_CONTROL_BYTES_V2, root_owned=root_owned,
+        )
+        try:
+            abandonment = _decode_abandoned_crossing_v2(encoded)
+        except Exception as exc:
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "abandoned crossing",
+            ) from exc
+        if (
+            path.name != _abandoned_crossing_basename_v2(abandonment.request_id)
+            or abandonment.request_id in seen_request_ids
+        ):
+            raise OwnershipCoordinatorError(
+                "birth_ownership_recovery_required", "abandonment binding",
+            )
+        seen_request_ids.add(abandonment.request_id)
+        abandonments.append(abandonment)
+    return tuple(sorted(
+        abandonments, key=lambda item: item.request_id.encode("utf-8"),
+    ))
 
 
 def _read_successor_claims_snapshot_v1(
@@ -2218,6 +2465,7 @@ def _resolve_ownership_coordinator_at_v2(
     claim_directory = None
     transaction_directory = None
     disposition_path = None
+    abandonment_directory = None
     for path in entries:
         if _LEGACY_RECORD_RE_V1.fullmatch(path.name):
             legacy_paths.append(path)
@@ -2235,6 +2483,12 @@ def _resolve_ownership_coordinator_at_v2(
             transaction_directory = path
         elif path.name == LEGACY_DISPOSITION_BASENAME_V2:
             disposition_path = path
+        elif path.name == ABANDONED_CROSSINGS_DIRECTORY_BASENAME_V2:
+            if abandonment_directory is not None:
+                raise OwnershipCoordinatorError(
+                    "birth_ownership_recovery_required", "abandonment root",
+                )
+            abandonment_directory = path
         else:
             raise OwnershipCoordinatorError(
                 "birth_ownership_recovery_required", "coordinator inventory",
@@ -2245,6 +2499,9 @@ def _resolve_ownership_coordinator_at_v2(
     )
     claims = _read_successor_claims_snapshot_v1(
         claim_directory, root_owned=root_owned,
+    )
+    abandoned_crossings = _read_abandoned_crossings_snapshot_v2(
+        abandonment_directory, root_owned=root_owned,
     )
     raw_transactions, encoded_transactions = _read_transactions_snapshot_v2(
         transaction_directory, root_owned=root_owned,
@@ -2302,10 +2559,18 @@ def _resolve_ownership_coordinator_at_v2(
                 claim.closed_build_id, None, None,
             )
         else:
+            # A predecessor is admissible either because it completed its
+            # attestation or because the machine proved it never could; in
+            # both cases the head it published is the one this claim extends.
             if (
                 previous_transaction is None
-                or previous_transaction.latest.sequence != 6
                 or claim.previous_head_id != previous_transaction.latest.head_id
+                or (
+                    previous_transaction.latest.sequence != 6
+                    and _abandonment_for_record_v2(
+                        abandoned_crossings, previous_transaction.latest,
+                    ) is None
+                )
             ):
                 raise OwnershipCoordinatorError(
                     "birth_ownership_recovery_required", "claim predecessor",
@@ -2381,7 +2646,7 @@ def _resolve_ownership_coordinator_at_v2(
         )
     return _ObservedOwnershipCoordinatorGraphV2(
         claims, tuple(pending), tuple(resolved_transactions), legacy_records,
-        legacy_bytes, disposition,
+        legacy_bytes, disposition, abandoned_crossings,
     )
 
 
@@ -3121,6 +3386,7 @@ def _prepared_record_v2(
     previous_context: object, prepared_authority_set: object,
     current_inventory: object, deployment_descriptor: object,
     initial_legacy_state_record_sha256: object = None,
+    predecessor_abandonment: object = None,
 ) -> tuple[OwnershipCoordinatorRecordV2, object]:
     """Bind one exact staged set and frozen inventory before publication."""
     from executor_birth_admin_preflight import (
@@ -3180,10 +3446,16 @@ def _prepared_record_v2(
             "legacy_state_record_sha256",
         )
     else:
+        # Same rule as the crossing edge, proved again from the document
+        # itself: an abandonment counts only when it binds exactly this
+        # record, so a predecessor that never verified cannot be waved
+        # through by an abandonment that belongs to another crossing.
         if (
             type(predecessor) is not OwnershipCoordinatorRecordV2
-            or predecessor.state
-            is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            or (predecessor.state
+                is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+                and not _abandonment_binds_record_v2(
+                    predecessor_abandonment, predecessor))
             or predecessor.release_sequence + 1 != claim.release_sequence
             or predecessor.head_id != claim.previous_head_id
             or predecessor.closed_build_id
@@ -3426,9 +3698,16 @@ def _transition_edge_from_graph_v2(
                 "predecessor_transaction_missing",
             ) from exc
         predecessor = predecessor_transaction.latest
+        # A crossing proved unattestable keeps its published head and its
+        # truthful last record, and the next release is opened over that head.
+        # The builder and the claim already read the chain that way; a crossing
+        # that refused it would leave the forward exit half implemented, with
+        # a release nobody can build over and nobody can cross.
         if (
-            predecessor.state
-            is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            (predecessor.state
+             is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+             and _abandonment_for_transaction_v2(
+                 graph, predecessor_transaction) is None)
             or predecessor.release_sequence + 1 != claim.release_sequence
             or predecessor.head_id != claim.previous_head_id
         ):
@@ -3472,11 +3751,17 @@ def _successor_claim_for_transition_v2(
                     "birth_ownership_successor_conflict",
                 )
             return existing
-        if (
+        verified = (
             latest.state
-            is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
-            or latest.sequence != 6
-        ):
+            is OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+            and latest.sequence == 6
+        )
+        # A crossing that published its head and was then proved unattestable
+        # keeps its truthful last record; the abandonment lets the next
+        # release be opened over the head it published, without rewriting it.
+        if not verified and _abandonment_for_transaction_v2(
+            graph, current,
+        ) is None:
             raise OwnershipCoordinatorError(
                 "birth_ownership_successor_conflict",
             )
@@ -3612,6 +3897,122 @@ def _reserve_transition_edge_core_v2(
     return matches[0]
 
 
+def _abandon_crossing_core_v2(
+    session: object, ownership_root: Path, *, root_owned: bool,
+    prove_unattestable: Callable[[], tuple[str, str]],
+    require_session: Callable[[], None],
+) -> AbandonedCrossingV2:
+    """Record one proved abandonment; the proof is taken, never assumed.
+
+    The reason is obtained by calling the prover here, inside the lock, so a
+    caller cannot present a reason it did not earn. The prover also names the
+    crossing it examined: a proof taken about another request is refused,
+    because the prover selects through the required head while this writer
+    reads the journal, and the two must be talking about the same crossing.
+    A repeated abandonment is idempotent because the document is immutable and
+    published without replacement.
+    """
+    if not callable(prove_unattestable):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "abandonment prover",
+        )
+    require_session()
+    coordinator, _created = _ensure_coordinator_child_directory_v2(
+        ownership_root, COORDINATOR_DIRECTORY_BASENAME_V1,
+        root_owned=root_owned,
+    )
+    require_session()
+    graph = _resolve_ownership_coordinator_at_v2(
+        coordinator, root_owned=root_owned,
+    )
+    if not graph.transactions:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "abandonment transaction",
+        )
+    current = graph.transactions[-1]
+    latest = current.latest
+    if (
+        latest.sequence != 5
+        or latest.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "abandonment state",
+        )
+    existing = _abandonment_for_transaction_v2(graph, current)
+    proved = prove_unattestable()
+    if (
+        type(proved) is not tuple or len(proved) != 2
+        or type(proved[1]) is not str
+        or proved[1] not in _ABANDONED_CROSSING_REASONS_V2
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "abandonment reason",
+        )
+    if proved[0] != latest.request_id:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "abandonment request",
+        )
+    reason = proved[1]
+    abandonment = _abandoned_crossing_for_record_v2(latest, reason)
+    if existing is not None and existing != abandonment:
+        raise OwnershipCoordinatorError(
+            "birth_ownership_journal_conflict", "abandoned crossing",
+        )
+    require_session()
+    directory, _made = _ensure_coordinator_child_directory_v2(
+        coordinator, ABANDONED_CROSSINGS_DIRECTORY_BASENAME_V2,
+        root_owned=root_owned,
+    )
+    _publish_control_no_replace_v2(
+        directory,
+        _abandoned_crossing_basename_v2(abandonment.request_id),
+        abandonment.encode(), maximum=MAX_COORDINATOR_CONTROL_BYTES_V2,
+        root_owned=root_owned,
+    )
+    require_session()
+    reread = _resolve_ownership_coordinator_at_v2(
+        coordinator, root_owned=root_owned,
+    )
+    if (
+        not reread.transactions
+        or reread.transactions[-1].latest != latest
+        or _abandonment_for_transaction_v2(
+            reread, reread.transactions[-1],
+        ) != abandonment
+    ):
+        raise OwnershipCoordinatorError(
+            "birth_ownership_recovery_required", "abandonment reread",
+        )
+    return abandonment
+
+
+def _abandon_crossing_locked_v2(
+    session: _DeploymentLockSessionV1, *,
+    prove_unattestable: Callable[[], tuple[str, str]],
+) -> AbandonedCrossingV2:
+    """Abandon the fixed-root crossing under the live deployment lock."""
+    return _abandon_crossing_core_v2(
+        session, DEFAULT_OWNERSHIP_ROOT_V1, root_owned=True,
+        prove_unattestable=prove_unattestable,
+        require_session=lambda: _require_deployment_lock_session_v1(session),
+    )
+
+
+def _abandon_crossing_locked_for_test_v2(
+    session: _DeploymentLockSessionForTestV1, ownership_root: Path, *,
+    prove_unattestable: Callable[[], tuple[str, str]],
+) -> AbandonedCrossingV2:
+    """Portable seam with a nominally separate lock session and root."""
+    root = Path(ownership_root)
+    return _abandon_crossing_core_v2(
+        session, root, root_owned=False,
+        prove_unattestable=prove_unattestable,
+        require_session=lambda: _require_test_deployment_lock_session_v1(
+            session, root,
+        ),
+    )
+
+
 def _reserve_transition_edge_locked_v2(
     session: _DeploymentLockSessionV1, *, distribution: object,
     source_id: object,
@@ -3637,6 +4038,25 @@ def _reserve_transition_edge_locked_for_test_v2(
             session, root,
         ),
     )
+
+
+def _abandonment_for_predecessor_locked_v2(
+    session: _DeploymentLockSessionV1, predecessor: object,
+) -> AbandonedCrossingV2 | None:
+    """The abandonment that closes this predecessor, read under the lock.
+
+    The graph stays inside the coordinator: a caller that must treat an
+    abandoned predecessor differently asks here instead of deciding from the
+    record's state alone, which would turn a refusal into a silent skip.
+    """
+    # Anything that is not a record cannot carry an abandonment: answering
+    # "not abandoned" keeps the caller's own refusal in force instead of
+    # failing here with a shape error.
+    if type(predecessor) is not OwnershipCoordinatorRecordV2:
+        return None
+    snapshot = _resolve_ownership_coordinator_locked_v2(session)
+    graph = _require_locked_coordinator_graph_snapshot_v2(snapshot, session)
+    return _abandonment_for_record_v2(graph.abandoned_crossings, predecessor)
 
 
 def _transition_edge_locked_v2(
@@ -3745,6 +4165,10 @@ def _prepared_transition_from_graph_v2(
         claim=claim,
         distribution=distribution,
         predecessor=predecessor,
+        predecessor_abandonment=(
+            None if predecessor is None
+            else _abandonment_for_record_v2(
+                graph.abandoned_crossings, predecessor)),
         previous_context=previous_context,
         prepared_authority_set=prepared_authority_set,
         current_inventory=current_inventory,

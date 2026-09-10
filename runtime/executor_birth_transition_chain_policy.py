@@ -6,6 +6,7 @@ from executor_birth_distribution_manifest import (
     is_verified_distribution,
 )
 from executor_birth_ownership_coordinator import (
+    _abandonment_binds_record_v2,
     OwnershipCoordinatorError,
     OwnershipCoordinatorRecordV2,
     OwnershipCoordinatorStateV1,
@@ -81,8 +82,25 @@ def _record_head_binding_v2(chain, head, record, frame) -> bool:
     )
 
 
-def _required_chain_matches_record_v2(chain, record) -> bool:
-    """Bind a verified required chain to one completed coordinator record."""
+def _record_state_admits_binding_v2(record, abandonment) -> bool:
+    """A crossing that completed, or one the machine proved it never could.
+
+    An abandoned crossing published its head, and its last record carries that
+    head and the frame that required it - which is exactly what this binding
+    reads. What it must never accept is a crossing that merely stopped, so the
+    abandonment has to bind this exact record: the presence of some abandonment
+    somewhere is not a permission.
+    """
+    if record.state is OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED:
+        return True
+    return (
+        record.state is OwnershipCoordinatorStateV1.HEAD_REQUIRED
+        and _abandonment_binds_record_v2(abandonment, record)
+    )
+
+
+def _required_chain_matches_record_v2(chain, record, abandonment) -> bool:
+    """Bind a verified required chain to one admissible coordinator record."""
     from executor_birth_ownership_chain import (
         OwnershipHead, encode_required_head,
     )
@@ -90,7 +108,7 @@ def _required_chain_matches_record_v2(chain, record) -> bool:
     required, head = chain.required_distribution, chain.required_head
     if (
         type(record) is not OwnershipCoordinatorRecordV2
-        or record.state is not OwnershipCoordinatorStateV1.PREFLIGHT_VERIFIED
+        or not _record_state_admits_binding_v2(record, abandonment)
         or type(head) is not OwnershipHead
         or not is_verified_distribution(required)
     ):
@@ -220,7 +238,7 @@ def _transition_chain_authority_source_v2(observed) -> str:
             distribution.release_sequence > 1
             and state in _PREDECESSOR_CHAIN_PHASES_V2
             and _required_chain_matches_record_v2(
-                chain, observed.predecessor,
+                chain, observed.predecessor, observed.predecessor_abandonment,
             )
         ):
             return "required"

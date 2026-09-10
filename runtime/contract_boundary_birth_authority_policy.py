@@ -48,6 +48,7 @@ BIRTH_AUTHORITY_POLICY_V1 = BirthAuthorityPolicyV1(
     ),
     coordinator_store_owners=(
         'install/birth_authority_provisioner.py:_publish_initial_predecessor_v2',
+        'install/birth_authority_provisioner.py:abandon_unattestable_transition_v2',
         'install/birth_ownership_authority_provisioner.py:_discard_temporary',
         'install/birth_ownership_authority_provisioner.py:_load_or_create_pair',
         'install/birth_ownership_authority_provisioner.py:_provision_ownership_authorities_at_v1',
@@ -130,6 +131,10 @@ BIRTH_AUTHORITY_POLICY_V1 = BirthAuthorityPolicyV1(
         'runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._committed',
         'runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2._inventory',
         'runtime/executor_birth_ownership_coordinator.py:_OwnershipCoordinatorTransactionJournalV2.append_transaction_record',
+        'runtime/executor_birth_ownership_coordinator.py:_abandon_crossing_core_v2',
+        'runtime/executor_birth_ownership_coordinator.py:_abandon_crossing_locked_for_test_v2',
+        'runtime/executor_birth_ownership_coordinator.py:_abandon_crossing_locked_v2',
+        'runtime/executor_birth_ownership_coordinator.py:_abandonment_for_predecessor_locked_v2',
         'runtime/executor_birth_ownership_coordinator.py:_append_coordinator_record_v1',
         'runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_for_test_v2',
         'runtime/executor_birth_ownership_coordinator.py:_append_ownership_transaction_locked_v2',

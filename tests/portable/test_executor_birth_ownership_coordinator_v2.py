@@ -62,6 +62,9 @@ from executor_birth_ownership_coordinator import (
     _resolve_ownership_coordinator_locked_for_test_v2,
     _require_locked_coordinator_graph_snapshot_v2,
     _reserve_transition_edge_locked_for_test_v2,
+    AbandonedCrossingV2, _abandon_crossing_locked_for_test_v2,
+    _abandoned_crossing_basename_v2, _abandoned_crossing_for_record_v2,
+    _decode_abandoned_crossing_v2,
 )
 from executor_birth_dominant_startup import (
     _complete_dominant_startup_for_test_v1,
@@ -2446,9 +2449,11 @@ def selector_chain_material(
 
 def selector_observation(
     distribution, claim, phase, chain, *, predecessor=None, partial=False,
+    predecessor_abandonment=None,
 ):
     return SimpleNamespace(
         distribution=distribution, claim=claim, predecessor=predecessor,
+        predecessor_abandonment=predecessor_abandonment,
         phase=phase, chain=chain, partial=partial,
     )
 
@@ -2493,6 +2498,83 @@ def test_initial_and_partial_chain_phase_matrix(monkeypatch, phase_state):
     else:
         with pytest.raises(OwnershipCoordinatorError, match="chain phase"):
             transition_chain_policy_module._transition_chain_authority_source_v2(partial)
+
+
+def test_the_chain_policy_binds_the_predecessor_the_forward_exit_preserved():
+    """La politica di catena era il nono lettore dell'uscita in avanti (10/9/2026).
+
+    Misurato sulla macchina: la Release 3 si costruiva, si esaminava e poi
+    l'attraversamento rifiutava con `chain phase`, perche' questo legame
+    pretendeva un predecessore PREFLIGHT_VERIFIED. Una traversata abbandonata
+    ha pero' **pubblicato la sua testa**, e il suo ultimo record la porta
+    insieme alla cornice che l'ha richiesta: e' esattamente cio' che questo
+    legame legge.
+
+    Il confine resta: senza il documento di abbandono legato a QUEL record il
+    rifiuto e' quello di prima.
+    """
+    from executor_birth_ownership_coordinator import (
+        _abandoned_crossing_for_record_v2,
+    )
+
+    first = payload_bound_distribution_v2()
+    first_claim = bound_claim(
+        release_sequence=1, previous_head_id=None,
+        closed_build_id=first.identity.closed_build_id, source_id=D("2"),
+        previous_closed_build_id=None, previous_cutover_id=None,
+    )
+    first_records, predecessor_chain = selector_chain_material(
+        first, first_claim, cutover_id=D("3"), head_id=D("8"),
+    )
+    second_claim = bound_claim(
+        release_sequence=2, previous_head_id=D("8"),
+        closed_build_id=D("c"), source_id=D("d"),
+        previous_closed_build_id=first.identity.closed_build_id,
+        previous_cutover_id=D("3"),
+    )
+    second = replace(
+        verified_distribution(
+            second_claim, deployment_descriptor(2),
+            previous_closed_build_id=first.identity.closed_build_id,
+        ),
+        files=first.files,
+    )
+    abandoned = first_records[5]
+    assert abandoned.state is OwnershipCoordinatorStateV1.HEAD_REQUIRED
+    abandonment = _abandoned_crossing_for_record_v2(
+        abandoned, "administrative_tcb_path_unsatisfiable",
+    )
+
+    without = selector_observation(
+        second, second_claim, None, predecessor_chain, predecessor=abandoned,
+    )
+    with pytest.raises(OwnershipCoordinatorError, match="chain phase"):
+        transition_chain_policy_module._transition_chain_authority_source_v2(
+            without,
+        )
+
+    second_records, _target_chain = selector_chain_material(
+        second, second_claim, cutover_id=D("4"), head_id=D("9"),
+        previous_cutover_id=D("3"), previous_heads=predecessor_chain.heads,
+    )
+    foreign = selector_observation(
+        second, second_claim, None, predecessor_chain, predecessor=abandoned,
+        predecessor_abandonment=_abandoned_crossing_for_record_v2(
+            second_records[5], "administrative_tcb_path_unsatisfiable",
+        ),
+    )
+    with pytest.raises(OwnershipCoordinatorError, match="chain phase"):
+        transition_chain_policy_module._transition_chain_authority_source_v2(
+            foreign,
+        )
+
+    bound = selector_observation(
+        second, second_claim, None, predecessor_chain, predecessor=abandoned,
+        predecessor_abandonment=abandonment,
+    )
+    assert transition_chain_policy_module._transition_chain_authority_source_v2(
+        bound,
+    ) == "required"
 
 
 def test_verified_chain_phase_matrix_binds_predecessor_and_target():
@@ -3942,3 +4024,369 @@ def test_legacy_v1_codec_rejects_boolean_schema_version():
     value["extra"] = None
     with pytest.raises(OwnershipCoordinatorError):
         _decode_record_v2(canonical(value))
+
+
+def _head_required_transaction(ownership_root: Path):
+    """One claim and one transaction stopped exactly at the published head."""
+    ownership_root.mkdir(mode=0o755, parents=True, exist_ok=True)
+    directory = make_coordinator_root(ownership_root)
+    claim = bound_claim(
+        release_sequence=1, previous_head_id=None,
+        closed_build_id=D("3"), source_id=D("2"),
+        previous_closed_build_id=None, previous_cutover_id=None,
+    )
+    records = transaction_records(
+        claim, end_sequence=5, previous_closed_build_id=None,
+        previous_cutover_id=None, cutover_id=D("3"), head_id=D("4"),
+    )
+    write_claim(directory, claim)
+    write_transaction(directory, claim, records)
+    return directory, claim, records
+
+
+def _successor_reservation(session, ownership_root: Path, claim, records):
+    successor = bound_claim(
+        release_sequence=2, previous_head_id=records[-1].head_id,
+        closed_build_id=D("e"), source_id=D("f"),
+        previous_closed_build_id=records[-1].closed_build_id,
+        previous_cutover_id=records[-1].cutover_id,
+    )
+    distribution = verified_distribution(
+        successor, deployment_descriptor(2),
+        previous_closed_build_id=records[-1].closed_build_id,
+    )
+    return successor, lambda: _reserve_transition_edge_locked_for_test_v2(
+        session, ownership_root, distribution=distribution,
+        source_id=successor.source_id,
+    )
+
+
+@LINUX_ONLY
+def test_abandoned_crossing_binds_one_exact_record_and_round_trips(tmp_path):
+    _directory, _claim, records = _head_required_transaction(
+        tmp_path / "ownership",
+    )
+    latest = records[-1]
+    abandonment = _abandoned_crossing_for_record_v2(
+        latest, "administrative_tcb_path_unsatisfiable",
+    )
+    assert _decode_abandoned_crossing_v2(abandonment.encode()) == abandonment
+    assert abandonment.abandoned_record_sha256 == _record_hash_v2(
+        latest.encode(),
+    )
+    assert _abandoned_crossing_basename_v2(abandonment.request_id) == (
+        latest.request_id[7:] + ".json"
+    )
+
+    with pytest.raises(OwnershipCoordinatorError) as failure:
+        _abandoned_crossing_for_record_v2(latest, "because_i_said_so")
+    assert failure.value.code == "birth_ownership_journal_invalid"
+
+    for sequence in (4, 6):
+        earlier = transaction_records(
+            _claim, end_sequence=sequence, previous_closed_build_id=None,
+            previous_cutover_id=None, cutover_id=D("3"), head_id=D("4"),
+        )[-1]
+        with pytest.raises(OwnershipCoordinatorError) as failure:
+            _abandoned_crossing_for_record_v2(
+                earlier, "administrative_tcb_path_unsatisfiable",
+            )
+        assert failure.value.code == "birth_ownership_recovery_required"
+
+
+@LINUX_ONLY
+def test_successor_is_refused_at_head_required_until_the_crossing_is_abandoned(
+    tmp_path,
+):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory, claim, records = _head_required_transaction(ownership_root)
+        expected, reserve = _successor_reservation(
+            session, ownership_root, claim, records,
+        )
+        before = tree_snapshot(directory)
+
+        with pytest.raises(OwnershipCoordinatorError) as failure:
+            reserve()
+        assert failure.value.code == "birth_ownership_successor_conflict"
+        assert tree_snapshot(directory) == before
+
+        abandonment = _abandon_crossing_locked_for_test_v2(
+            session, ownership_root,
+            prove_unattestable=(
+                lambda: (
+                    records[-1].request_id,
+                    "administrative_tcb_path_unsatisfiable",
+                )
+            ),
+        )
+        assert abandonment == _abandoned_crossing_for_record_v2(
+            records[-1], "administrative_tcb_path_unsatisfiable",
+        )
+        assert reserve() == expected
+
+
+@LINUX_ONLY
+def test_abandonment_takes_its_proof_and_writes_nothing_without_one(tmp_path):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory, _claim, _records = _head_required_transaction(
+            ownership_root,
+        )
+        before = tree_snapshot(directory)
+
+        def refuse():
+            raise RuntimeError("the machine may still attest this crossing")
+
+        for prover, detail in (
+            (lambda: "administrative_tcb_path_unsatisfiable", "abandonment reason"),
+            (lambda: (_records[-1].request_id, "because_i_said_so"),
+             "abandonment reason"),
+            (lambda: None, "abandonment reason"),
+            (lambda: (D("c"), "administrative_tcb_path_unsatisfiable"),
+             "abandonment request"),
+        ):
+            with pytest.raises(OwnershipCoordinatorError) as failure:
+                _abandon_crossing_locked_for_test_v2(
+                    session, ownership_root, prove_unattestable=prover,
+                )
+            assert failure.value.code == "birth_ownership_recovery_required"
+            assert failure.value.detail == detail
+            assert tree_snapshot(directory) == before
+
+        with pytest.raises(RuntimeError):
+            _abandon_crossing_locked_for_test_v2(
+                session, ownership_root, prove_unattestable=refuse,
+            )
+        assert tree_snapshot(directory) == before
+
+
+@LINUX_ONLY
+def test_abandonment_is_idempotent_and_refuses_a_foreign_document(tmp_path):
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory, _claim, records = _head_required_transaction(ownership_root)
+        def prove():
+            return (
+                records[-1].request_id,
+                "administrative_tcb_path_unsatisfiable",
+            )
+        first = _abandon_crossing_locked_for_test_v2(
+            session, ownership_root, prove_unattestable=prove,
+        )
+        snapshot = tree_snapshot(directory)
+        assert _abandon_crossing_locked_for_test_v2(
+            session, ownership_root, prove_unattestable=prove,
+        ) == first
+        assert tree_snapshot(directory) == snapshot
+
+        foreign = _abandoned_crossing_for_record_v2(
+            replace(records[-1], head_id=D("c"), verified_chain_head_id=D("c")),
+            "administrative_tcb_path_unsatisfiable",
+        )
+        path = (
+            directory / "abandoned-crossings-v2"
+            / _abandoned_crossing_basename_v2(foreign.request_id)
+        )
+        path.write_bytes(foreign.encode())
+        expected, reserve = _successor_reservation(
+            session, ownership_root, _claim, records,
+        )
+        with pytest.raises(OwnershipCoordinatorError) as failure:
+            reserve()
+        assert failure.value.code == "birth_ownership_recovery_required"
+        assert failure.value.detail == "abandonment binding"
+
+
+@LINUX_ONLY
+def test_release_edge_opens_the_next_sequence_only_after_an_abandonment(
+    tmp_path,
+):
+    """The builder and the coordinator must agree on the same admission."""
+    from install.executor_birth_distribution_release import (
+        _next_release_edge_v1,
+    )
+    from executor_birth_distribution_assembler import (
+        DistributionAssemblerError,
+    )
+    from executor_birth_ownership_coordinator import (
+        _resolve_ownership_coordinator_at_v2,
+    )
+
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory, _claim, records = _head_required_transaction(ownership_root)
+        graph = _resolve_ownership_coordinator_at_v2(
+            directory, root_owned=False,
+        )
+        with pytest.raises(DistributionAssemblerError) as failure:
+            _next_release_edge_v1(graph, D("f"))
+        assert failure.value.detail == "successor edge"
+
+        _abandon_crossing_locked_for_test_v2(
+            session, ownership_root,
+            prove_unattestable=(
+                lambda: (
+                    records[-1].request_id,
+                    "administrative_tcb_path_unsatisfiable",
+                )
+            ),
+        )
+        edge = _next_release_edge_v1(
+            _resolve_ownership_coordinator_at_v2(directory, root_owned=False),
+            D("f"),
+        )
+        assert edge.sequence == records[-1].release_sequence + 1
+        assert edge.previous_closed_build_id == records[-1].closed_build_id
+
+
+def _abandonment_verdicts(records, abandonments):
+    """Ask the two independent readers the same question about the same bytes.
+
+    The coordinator decides for the builder and for the claim; the preflight
+    decides again for the attestation, from its own decoders, because it must
+    not trust the module that wrote the document. Two implementations of one
+    rule are two chances to disagree, so the agreement itself is pinned here.
+    """
+    from executor_birth_ownership_coordinator import (
+        _abandonment_for_record_v2,
+    )
+    import executor_birth_admin_preflight as preflight
+
+    encoded = tuple(record.encode() for record in records)
+    prefix = preflight._decode_coordinator_prefix_v2(encoded)
+    decoded = tuple(
+        preflight._decode_abandoned_crossing_v2(item.encode())
+        for item in abandonments
+    )
+    verdicts = []
+    for ask in (
+        lambda: _abandonment_for_record_v2(abandonments, records[-1]),
+        lambda: preflight._abandonment_for_prefix_v2(decoded, prefix),
+    ):
+        try:
+            outcome = ask()
+        except Exception as error:  # both readers must refuse the same way
+            verdicts.append((
+                "refused", getattr(error, "code", ""),
+                getattr(error, "detail", ""),
+            ))
+        else:
+            verdicts.append((
+                "admitted", "" if outcome is None else outcome.reason,
+                outcome is not None,
+            ))
+    return verdicts
+
+
+@LINUX_ONLY
+@pytest.mark.parametrize("end_sequence", (4, 5, 6))
+def test_both_readers_agree_on_every_abandonment_verdict(
+    tmp_path, end_sequence,
+):
+    ownership_root = tmp_path / "ownership"
+    ownership_root.mkdir(mode=0o755, parents=True)
+    claim = bound_claim(
+        release_sequence=1, previous_head_id=None,
+        closed_build_id=D("3"), source_id=D("2"),
+        previous_closed_build_id=None, previous_cutover_id=None,
+    )
+    records = transaction_records(
+        claim, end_sequence=end_sequence, previous_closed_build_id=None,
+        previous_cutover_id=None, cutover_id=D("3"), head_id=D("4"),
+    )
+    reason = "administrative_tcb_path_unsatisfiable"
+    at_five = transaction_records(
+        claim, end_sequence=5, previous_closed_build_id=None,
+        previous_cutover_id=None, cutover_id=D("3"), head_id=D("4"),
+    )
+    sound = _abandoned_crossing_for_record_v2(at_five[-1], reason)
+
+    absent = _abandonment_verdicts(records, ())
+    assert absent[0] == absent[1] == ("admitted", "", False)
+
+    bound = _abandonment_verdicts(records, (sound,))
+    assert bound[0] == bound[1]
+    assert bound[0] == (
+        ("admitted", reason, True) if end_sequence == 5
+        else ("admitted", "", False)
+    )
+
+    foreign = _abandoned_crossing_for_record_v2(
+        replace(at_five[-1], head_id=D("c"), verified_chain_head_id=D("c")),
+        reason,
+    )
+    mismatched = _abandonment_verdicts(records, (foreign,))
+    assert mismatched[0] == mismatched[1]
+    assert mismatched[0] == (
+        ("refused", "birth_ownership_recovery_required", "abandonment binding")
+        if end_sequence == 5 else ("admitted", "", False)
+    )
+
+    duplicated = _abandonment_verdicts(records, (sound, replace(sound)))
+    assert duplicated[0] == duplicated[1]
+    assert duplicated[0] == (
+        (
+            "refused", "birth_ownership_recovery_required",
+            "abandonment inventory",
+        )
+        if end_sequence == 5 else ("admitted", "", False)
+    )
+
+
+@LINUX_ONLY
+def test_the_crossing_admits_the_predecessor_the_builder_already_admitted(
+    tmp_path,
+):
+    """L'uscita in avanti deve valere anche per chi attraversa (9/9/2026).
+
+    Misurato sulla macchina: la Release 3 si costruiva sopra la Release 2
+    abbandonata — costruttore e rivendicazione leggevano la catena cosi' — e
+    poi l'attraversamento la rifiutava con `birth_ownership_request_conflict`,
+    perche' il predecessore non era PREFLIGHT_VERIFIED. Una release che
+    nessuno puo' attraversare e sopra cui tutti possono costruire non e'
+    un'uscita: e' un vicolo cieco.
+
+    Il confine resta: senza il documento di abbandono il rifiuto e' quello di
+    prima, e un documento che appartiene a un'altra traversata non vale.
+    """
+    from executor_birth_ownership_coordinator import (
+        _resolve_ownership_coordinator_at_v2, _transition_edge_from_graph_v2,
+    )
+
+    ownership_root = tmp_path / "ownership"
+    with _deployment_lock_for_test_v1(ownership_root) as session:
+        directory, claim, records = _head_required_transaction(ownership_root)
+        successor, reserve = _successor_reservation(
+            session, ownership_root, claim, records,
+        )
+        distribution = verified_distribution(
+            successor, deployment_descriptor(2),
+            previous_closed_build_id=records[-1].closed_build_id,
+        )
+
+        # Prima dell'abbandono la catena non ammette nessun successore.
+        with pytest.raises(OwnershipCoordinatorError) as failure:
+            reserve()
+        assert failure.value.code == "birth_ownership_successor_conflict"
+
+        _abandon_crossing_locked_for_test_v2(
+            session, ownership_root,
+            prove_unattestable=lambda: (
+                records[-1].request_id,
+                "administrative_tcb_path_unsatisfiable",
+            ),
+        )
+        reserved = reserve()
+        assert reserved.release_sequence == 2
+
+        graph = _resolve_ownership_coordinator_at_v2(
+            directory, root_owned=False,
+        )
+        edge_claim, predecessor = _transition_edge_from_graph_v2(
+            graph, distribution,
+        )
+        assert edge_claim.release_sequence == 2
+        assert predecessor is not None
+        assert predecessor.closed_build_id == records[-1].closed_build_id
+        assert predecessor.head_id == edge_claim.previous_head_id
