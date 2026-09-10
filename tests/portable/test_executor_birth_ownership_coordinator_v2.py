@@ -2449,9 +2449,11 @@ def selector_chain_material(
 
 def selector_observation(
     distribution, claim, phase, chain, *, predecessor=None, partial=False,
+    predecessor_abandonment=None,
 ):
     return SimpleNamespace(
         distribution=distribution, claim=claim, predecessor=predecessor,
+        predecessor_abandonment=predecessor_abandonment,
         phase=phase, chain=chain, partial=partial,
     )
 
@@ -2496,6 +2498,83 @@ def test_initial_and_partial_chain_phase_matrix(monkeypatch, phase_state):
     else:
         with pytest.raises(OwnershipCoordinatorError, match="chain phase"):
             transition_chain_policy_module._transition_chain_authority_source_v2(partial)
+
+
+def test_the_chain_policy_binds_the_predecessor_the_forward_exit_preserved():
+    """La politica di catena era il nono lettore dell'uscita in avanti (10/9/2026).
+
+    Misurato sulla macchina: la Release 3 si costruiva, si esaminava e poi
+    l'attraversamento rifiutava con `chain phase`, perche' questo legame
+    pretendeva un predecessore PREFLIGHT_VERIFIED. Una traversata abbandonata
+    ha pero' **pubblicato la sua testa**, e il suo ultimo record la porta
+    insieme alla cornice che l'ha richiesta: e' esattamente cio' che questo
+    legame legge.
+
+    Il confine resta: senza il documento di abbandono legato a QUEL record il
+    rifiuto e' quello di prima.
+    """
+    from executor_birth_ownership_coordinator import (
+        _abandoned_crossing_for_record_v2,
+    )
+
+    first = payload_bound_distribution_v2()
+    first_claim = bound_claim(
+        release_sequence=1, previous_head_id=None,
+        closed_build_id=first.identity.closed_build_id, source_id=D("2"),
+        previous_closed_build_id=None, previous_cutover_id=None,
+    )
+    first_records, predecessor_chain = selector_chain_material(
+        first, first_claim, cutover_id=D("3"), head_id=D("8"),
+    )
+    second_claim = bound_claim(
+        release_sequence=2, previous_head_id=D("8"),
+        closed_build_id=D("c"), source_id=D("d"),
+        previous_closed_build_id=first.identity.closed_build_id,
+        previous_cutover_id=D("3"),
+    )
+    second = replace(
+        verified_distribution(
+            second_claim, deployment_descriptor(2),
+            previous_closed_build_id=first.identity.closed_build_id,
+        ),
+        files=first.files,
+    )
+    abandoned = first_records[5]
+    assert abandoned.state is OwnershipCoordinatorStateV1.HEAD_REQUIRED
+    abandonment = _abandoned_crossing_for_record_v2(
+        abandoned, "administrative_tcb_path_unsatisfiable",
+    )
+
+    without = selector_observation(
+        second, second_claim, None, predecessor_chain, predecessor=abandoned,
+    )
+    with pytest.raises(OwnershipCoordinatorError, match="chain phase"):
+        transition_chain_policy_module._transition_chain_authority_source_v2(
+            without,
+        )
+
+    second_records, _target_chain = selector_chain_material(
+        second, second_claim, cutover_id=D("4"), head_id=D("9"),
+        previous_cutover_id=D("3"), previous_heads=predecessor_chain.heads,
+    )
+    foreign = selector_observation(
+        second, second_claim, None, predecessor_chain, predecessor=abandoned,
+        predecessor_abandonment=_abandoned_crossing_for_record_v2(
+            second_records[5], "administrative_tcb_path_unsatisfiable",
+        ),
+    )
+    with pytest.raises(OwnershipCoordinatorError, match="chain phase"):
+        transition_chain_policy_module._transition_chain_authority_source_v2(
+            foreign,
+        )
+
+    bound = selector_observation(
+        second, second_claim, None, predecessor_chain, predecessor=abandoned,
+        predecessor_abandonment=abandonment,
+    )
+    assert transition_chain_policy_module._transition_chain_authority_source_v2(
+        bound,
+    ) == "required"
 
 
 def test_verified_chain_phase_matrix_binds_predecessor_and_target():

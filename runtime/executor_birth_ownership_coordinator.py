@@ -663,9 +663,16 @@ def _abandonment_for_record_v2(
     abandonments: tuple[AbandonedCrossingV2, ...],
     latest: OwnershipCoordinatorRecordV2,
 ) -> AbandonedCrossingV2 | None:
-    """Bind an abandonment to the exact last record of one transaction."""
+    """Bind an abandonment to the exact last record of one transaction.
+
+    Anything that is not a V2 record has no abandonment, which leaves the
+    caller's own refusal in force. Callers resolve this once, at the
+    observation, and hand the answer downstream; asking about a value that is
+    not a record must not raise on their behalf.
+    """
     if (
-        latest.sequence != 5
+        type(latest) is not OwnershipCoordinatorRecordV2
+        or latest.sequence != 5
         or latest.state is not OwnershipCoordinatorStateV1.HEAD_REQUIRED
     ):
         return None
