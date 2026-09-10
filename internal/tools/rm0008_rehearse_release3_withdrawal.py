@@ -97,6 +97,15 @@ def bind(work: Path):
         return handle
 
     tool.open_parent = open_parent
+    # The real birth directory is service-private and is never touched by the
+    # withdrawal, so the copy carries a stand-in holding the one journal the
+    # abandoned crossing keeps: that inventory is the rule worth rehearsing.
+    tool.BIRTH = work / "birth"
+    tool.BIRTH.mkdir(exist_ok=True)
+    record = json.loads((tool.COORD / "transactions-v2" / tool.RELEASE_2
+                         / "record-000-v2.json").read_bytes())
+    (tool.BIRTH / (tool.JOURNAL_PREFIX
+                   + record["provisioning_transaction_id"])).write_bytes(b"")
     tool.PINS = {str(path): tool.snapshot(path)
                  for path in (*[pair[0] for pair in tool.PAIRS], *tool.PRESERVED)}
     tool.ARCHIVE.mkdir(mode=0o700, parents=True)
@@ -191,6 +200,20 @@ def rehearse_refusals(source: Path, work: Path) -> None:
     expect_refusal("an archive slot already taken",
                    lambda: tool.move_fixed_prefix(tool.PAIRS, moving_pins(tool),
                                                   tool.coordinator_state))
+
+    # The abandoned crossing's own journal must be there and must be the only
+    # one: a second journal would belong to release 3 and would mean the
+    # crossing moved further than the two objects this tool knows about.
+    tool = fresh()
+    tool.journal_guard()
+    print("  ACCEPTS the journal the abandoned crossing keeps")
+    (tool.BIRTH / (tool.JOURNAL_PREFIX + "0" * 32)).write_bytes(b"")
+    expect_refusal("a second birth journal", tool.journal_guard)
+
+    tool = fresh()
+    for stale in list(tool.BIRTH.iterdir()):
+        stale.unlink()
+    expect_refusal("the abandoned crossing's journal gone", tool.journal_guard)
 
 
 def main() -> None:

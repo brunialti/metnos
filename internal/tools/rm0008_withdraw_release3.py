@@ -325,10 +325,27 @@ def coordinator_state():
 
 
 def journal_guard():
-    """The crossing opened no birth journal; a residual one refuses, never moves."""
-    residual = sorted(name for name in os.listdir(BIRTH)
-                      if name.startswith(JOURNAL_PREFIX))
-    require(not residual, f'residual birth journal: {residual[:1]}')
+    """The abandoned crossing keeps its birth journal; nothing else may exist.
+
+    The forward exit preserves the truthful last record of an unattestable
+    crossing, and that record includes its provisioning journal: a predecessor
+    that was abandoned is not a predecessor that completed, so its journal is
+    never archived. Exactly one journal is therefore expected here, and which
+    one is read from the abandoned crossing itself instead of being pinned.
+
+    A second journal would belong to release 3, and would mean the crossing got
+    further than the two objects this tool moves. That is refused by name, not
+    guessed at: the topology would be wrong and the census would have to be
+    made again.
+    """
+    record = json.loads((COORD / 'transactions-v2' / RELEASE_2
+                         / 'record-000-v2.json').read_bytes())
+    expected = record.get('provisioning_transaction_id')
+    require(isinstance(expected, str) and expected,
+            'the abandoned crossing declares no birth journal')
+    found = sorted(name[len(JOURNAL_PREFIX):] for name in os.listdir(BIRTH)
+                   if name.startswith(JOURNAL_PREFIX))
+    require(found == [expected], f'unexpected birth journals: {found}')
 
 
 def startup_fingerprint(helper):
