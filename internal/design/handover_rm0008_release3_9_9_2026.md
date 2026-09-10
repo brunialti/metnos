@@ -887,7 +887,7 @@ condizioni di integrità e concorrenza, poi F5-F6.
 | A-12 | **contenuto**: modifica a `login_sites` tolta; la Release 20 l'ha tolta dall'esercizio; digest dichiarato = calcolato sulla release installata. La mia affermazione «il digest non viene controllato» era falsa ed è corretta | `7fb40857`, `cbd9d3d4` |
 | O-04 | **chiuso**: un ritiro fermato fra i due spostamenti si riprende; l'archivio di un altro tentativo resta rifiutato | `669d3082` |
 | O-03 (precisazione) | **chiuso nel codice**: la copia rifiutata è conservata davvero, la prova verifica esattamente una copia coi byte rifiutati | `669d3082` |
-| A-02 | **chiuso**: l'abbandono confronta le cinque identità condivise intestazione/record, e soltanto quelle | `25a71db8` |
+| A-02 | **chiuso e in esercizio**: l'abbandono confronta le cinque identità condivise intestazione/record, e soltanto quelle; attraversato con la Release 21 (build `6401e300…`, `CUTOVER_OK`, servizi pronti) | `25a71db8`, `368813c7` |
 | A-05 | **scritto e provato, non spedito**: il guardiano del confine rifiuta due funzioni nuove, non classificate, che toccano il blocco di deployment; classificarle è una decisione di Roberto (§17). Conservato sul ramo locale `rm0008/a05-held-lock`, tolto dal ramo di rilascio | `7124c3f9` → revert |
 | A-11 | **correzione scritta, bloccata** dal classificatore di sicurezza (sceglie quali byte entrano nel negozio); decisione di Roberto | — |
 | A-10 | **chiuso**: stati R4/R5 marcati storici | `baeaae5b` |

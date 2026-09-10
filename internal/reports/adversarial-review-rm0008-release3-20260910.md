@@ -1499,6 +1499,12 @@ prova, come nella sonda originale; preparazione, archiviazione e filesystem del
 giornale sono reali. La correzione entra in esercizio con il prossimo
 attraversamento, perché il provveditore viaggia con la release.
 
+**In esercizio (11/9, notte).** Release 21, build
+`sha256:6401e3002647e4e100dbd3c26a373e163929ffff92bc861629a6e4fbeeb51b08`:
+`prepare` e attraversamento concatenati, `CUTOVER_OK`, servizi e prontezza
+verdi. Letta la release installata: contiene il confronto di A-02 e **non**
+contiene A-05.
+
 ## A-05 — corretto (11 settembre 2026, notte)
 
 L'ingresso della transizione prende ora il blocco di deployment **una volta
