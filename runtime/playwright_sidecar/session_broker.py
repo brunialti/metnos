@@ -3014,6 +3014,14 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
                 and stato == flow.get("last_state")):
             flow["steps"] = max(0, int(flow.get("steps", 0)) - 1)
             flow["sterile"] = int(flow.get("sterile", 0)) + 1
+        # Un clic che non ha cambiato il contenuto non e' un passo, e
+        # soprattutto non e' un arrivo: il candidato e' gia' fra i visitati,
+        # quindi il giro successivo prova un altro modo di aprire la stessa
+        # cosa invece di dichiarare fatto e leggere quel che c'era prima.
+        arrivo_non_provato = bool(flow.pop("facet_unchanged", False))
+        if arrivo_non_provato:
+            flow["steps"] = max(0, int(flow.get("steps", 0)) - 1)
+            flow["sterile"] = int(flow.get("sterile", 0)) + 1
         flow["last_state"] = stato
         flow_steps = int(flow.get("steps", 0))
         at_goal_limit = (flow_steps >= _MAX_GOAL_STEPS
@@ -3188,7 +3196,7 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
             confidence = float(continuation.get("confidence", 0.0))
             collection_facet_key = str(
                 continuation.get("facet_key") or "")
-        elif (int(flow.get("steps", 0)) > 0
+        elif (int(flow.get("steps", 0)) > 0 and not arrivo_non_provato
                 and _is_goal_drift(flow, url_corrente, _prossimo_aggancio(
                     goal_drilldown, chosen))):
             # Si e' gia' fatto meglio, qui: quello che resta porta altrove.
@@ -3365,6 +3373,16 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
         plan["content_sig_before"] = await _goal_content_signature(entry)
         if collection_facet_key:
             plan["collection_facet_key"] = collection_facet_key
+    elif plan_kind == "goal_navigation":
+        # Anche una navigazione va verificata quando resta sulla stessa
+        # pagina: una scheda, un filtro, una fisarmonica cambiano il
+        # CONTENUTO senza cambiare indirizzo, e finora nessuno controllava
+        # che il clic avesse fatto qualcosa. Turno reale del 10/9/2026: il
+        # clic su «FATTURE» non ha aperto la scheda, la tabella dei movimenti
+        # e' rimasta li', e il turno l'ha letta credendo fossero le fatture.
+        plan["content_sig_before"] = await _goal_content_signature(entry)
+        plan["place_before"] = action_resolver.url_place_key(
+            getattr(entry.get("page"), "url", "") or "")
     if candidate:
         try:
             handle = await entry["page"].locator(
@@ -4467,6 +4485,22 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             # page controls are already enumerated and measuring costs
             # nothing.
             goal_flow["navigazione_da_verificare"] = True
+            # Un clic che resta sullo stesso indirizzo deve provare di aver
+            # cambiato il CONTENUTO: e' l'unica prova che una scheda si sia
+            # davvero aperta. Se non cambia, il clic non e' avvenuto - e
+            # leggere quel che c'era prima significa leggere la scheda
+            # sbagliata credendo di essere sull'altra.
+            prima = str(plan.get("content_sig_before") or "")
+            if prima and action_resolver.url_place_key(
+                    getattr(entry.get("page"), "url", "") or ""
+                    ) == str(plan.get("place_before") or ""):
+                mosso, _dopo = await _wait_for_goal_content_change(entry, prima)
+                if not mosso:
+                    goal_flow["facet_unchanged"] = True
+                    sites_audit.record(
+                        "goal_facet_unchanged", owner=entry.get("owner", ""),
+                        session_id=entry.get("_sid", ""),
+                        domain=entry.get("domain", ""), outcome=False)
             visited = goal_flow.setdefault("visited", set())
             # Si segna il POSTO, non l'etichetta dell'elemento: la seconda
             # cambia fra due render dello stesso link, il primo no. E si segna
