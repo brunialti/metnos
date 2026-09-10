@@ -349,10 +349,28 @@ def journal_guard():
 
 
 def startup_fingerprint(helper):
-    materials, _entry = helper._attest_service_startup_v1('service-http')
+    """What the services attest right now, a refusal included, taken verbatim.
+
+    The property this tool owes is that the withdrawal does not change what a
+    service start would see. Whether that is an attestation or a refusal is not
+    for the withdrawal to decide: it records what it finds and requires it
+    unchanged afterwards.
+
+    Today it is a refusal. The installed helper is the one Release 2 left, and
+    it predates the abandonment record, so it rejects the coordinator inventory
+    and no service can start until the crossing installs a helper that knows
+    it. Refusing to withdraw on those grounds would close the only way out:
+    the withdrawal is the first step of the repair. The refusal is returned,
+    printed and compared, never swallowed.
+    """
+    try:
+        materials, _entry = helper._attest_service_startup_v1('service-http')
+    except Exception as error:  # noqa: BLE001 - the refusal is the observation
+        return ('refused', type(error).__name__,
+                str(getattr(error, 'code', '') or error)[:80])
     facts = materials.distribution.facts
     require(facts.release_sequence != SEQUENCE, 'release 3 is already selected')
-    return (facts.release_sequence, materials.transaction.head_id)
+    return ('attested', facts.release_sequence, materials.transaction.head_id)
 
 
 def semantic_guard(helper, expected=None):
@@ -415,7 +433,7 @@ def main():
             require(snapshot(path) == pins[index], 'attempt changed')
         if operation == 'audit':
             print('RELEASE3_WITHDRAWAL_AUDIT_OK moved', topology(PAIRS),
-                  'selected', first[0])
+                  'startup', *first)
             return
         if not os.path.lexists(ARCHIVE):
             parent = open_parent(ARCHIVE.parent)
@@ -434,7 +452,7 @@ def main():
         move_fixed_prefix(PAIRS, pins, lambda: semantic_guard(helper, first))
         require(topology(PAIRS) == len(PAIRS), 'withdrawal incomplete')
         print('RELEASE3_CLAIM_WITHDRAWN; HEADS_UNCHANGED; NO_SERVICE_STOP;'
-              ' RECEIPTS_RETAINED; selected', first[0])
+              ' RECEIPTS_RETAINED; startup', *first)
 
 
 if __name__ == '__main__':

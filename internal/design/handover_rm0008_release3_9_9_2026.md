@@ -325,6 +325,20 @@ Ordinati per gravita'. Ognuno e' stato misurato, non dedotto.
    funziona e' `Authorization: Bearer`, non `X-Admin-Key`.
 10. **`sudo` senza password non c'e'** in questo ambiente: cinque prove del
     gruppo 2A non girano per questo, e non sono difetti di prodotto.
+0. **URGENTE — da ieri alle 17:00 nessun servizio Metnos puo' PARTIRE**
+   (misurato il 10/9). Il verificatore amministrativo vivo
+   (`/usr/libexec/metnos/executor-birth-v1/preflight.py`, `35b3dc13…`) e' quello
+   installato dalla Release 2 e **non conosce** `abandoned-crossings-v2`: il suo
+   inventario ammesso del coordinatore e' `{record legacy, successor-claims-v1,
+   transactions-v2, legacy-disposition-v2.json}`. L'abbandono ha creato quella
+   directory alle 17:00:28, e da quel momento
+   `_attest_service_startup_v1` rifiuta con `coordinator inventory`. **E'
+   esattamente la funzione che `ExecStartPre`/`ExecStart` chiamano** (riga 11859
+   del verificatore vivo): `check` e `launch` passano di li'.
+   I cinque servizi girano perche' sono partiti alle **15:23:50**, prima
+   dell'abbandono. **Un riavvio o un solo `restart` adesso lascia tutto giu'.**
+   Il codice della Release 3 ammette quella directory: **l'attraversamento e' il
+   rimedio**, ed e' anche l'unico. Fino ad allora: non riavviare nulla.
 11. **Le sorgenti ricevute non fanno parte di un ritiro** (misurato il 10/9).
     `incoming-v1/sources-v1/` conserva **dieci** sorgenti ricevute dal 2 al 9
     settembre, compresa quella del tentativo N2 che il ritiro precedente non
@@ -447,6 +461,12 @@ congelati nel file).
    non supposta.
 3. Le sorgenti ricevute sono ora **undici**: quella in piu' e' innocua
    (reperto 11), il deposito e' indirizzato per contenuto.
+4. Al secondo giro il ritiro si e' fermato su `PreflightError coordinator
+   inventory`: non un suo difetto, ma **il reperto 0**. La guardia semantica
+   pretendeva un'attestazione riuscita; ora registra **cio' che il verificatore
+   dice**, rifiuto compreso, e pretende che sia identico prima e dopo. Rifiutare
+   il ritiro per quel motivo avrebbe chiuso l'unica via d'uscita: il ritiro e'
+   il primo passo della riparazione. Il rifiuto viene stampato, non ingoiato.
 
 ### La prova su copia fedele (il pezzo che conta)
 
