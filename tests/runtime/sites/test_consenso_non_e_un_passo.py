@@ -215,3 +215,30 @@ def test_una_nuova_origine_e_un_consenso_nuovo(monkeypatch) -> None:
     _precondizione(entry)
     assert visti[-1].get("clicks") in (None, 0)   # nuova origine, budget nuovo
     assert entry["cookie_state"]["origin"] == "https://login.esempio.it:443"
+
+
+def test_il_consenso_non_e_l_unica_cosa_che_copre_il_login(monkeypatch) -> None:
+    """Tolto il banner, il modulo puo' restare sotto un altro strato.
+
+    Turno `b6c37087` (10/9/2026): banner chiuso, modulo compilato, pulsante
+    «Accedi» visibilmente scoperto — e il login fallisce lo stesso, perche' un
+    modale promozionale accanto teneva un fondale a tutto schermo che si
+    mangiava il clic. Il percorso ordinario ha sempre fatto le due cose in
+    quest'ordine; quello di login faceva solo la prima.
+    """
+    fatti = []
+
+    async def privacy(entry, settle=False):
+        fatti.append(("consenso", settle))
+        return cp.CookieOutcome("resolved", "cookie", "", 1, 1)
+
+    async def overlay(entry, settle=False, **_kw):
+        fatti.append(("strato", settle))
+        return True
+
+    monkeypatch.setattr(sb, "_dismiss_privacy_obstruction", privacy)
+    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", overlay)
+
+    esito = asyncio.run(sb._clear_login_surface(_sessione(), settle=True))
+    assert fatti == [("consenso", True), ("strato", True)]
+    assert esito.status == "resolved"   # il rifiuto puo' venire solo dal primo

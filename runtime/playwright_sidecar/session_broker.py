@@ -1815,7 +1815,7 @@ async def op_login(*, session_id: str, owner: str | None = None,
             # precondition; dismissals never consume login navigation steps.
             if redact is not None:
                 entry["_cookie_redact"] = redact
-            return await _dismiss_privacy_obstruction(entry, settle=settle)
+            return await _clear_login_surface(entry, settle=settle)
 
         async def _reach_login_area(purpose: str = "login") -> dict:
             if int(flow.get("steps", 0)) >= _MAX_LOGIN_ENTRY_STEPS:
@@ -2824,6 +2824,24 @@ async def _dismiss_privacy_obstruction(entry: dict, *,
             procedure="privacy_reject", phase=outcome.status,
             kind=outcome.kind, reason=outcome.reason,
             frames=outcome.frames, panels=outcome.panels)
+    return outcome
+
+
+async def _clear_login_surface(
+        entry: dict, *, settle: bool = False) -> cookie_privacy.CookieOutcome:
+    """Clear what covers a login form: consent first, then any other overlay.
+
+    Consent is not the only thing that can sit over it. Turn `b6c37087`
+    (10/9/2026): with the banner gone, the form filled and the submit button
+    plainly uncovered, the login still failed - an app-promotion modal beside
+    it kept a full-viewport backdrop that swallowed the click.
+
+    `_prepare_action` has always done both, in this order, for every ordinary
+    action; the login path did only the first. The consent outcome is the one
+    returned, because only that one can refuse.
+    """
+    outcome = await _dismiss_privacy_obstruction(entry, settle=settle)
+    await _dismiss_obstructing_overlay(entry, settle=settle)
     return outcome
 
 
