@@ -26,43 +26,114 @@ class CookieOutcome:
 # instead of an obstruction and the caller proceeds against a covered page.
 MAX_OBSERVED_FRAMES = 8
 MAX_OBSERVED_PANELS = 3
+# The same blindness a second time, one level down: a consent platform that
+# renders its banner into an open shadow root is invisible to a light-DOM
+# query, and the observation reports a clear page while the page is covered.
+# Observed on a real site: zero panels seen, no obstruction recorded, and the
+# login discovery that followed found no form because a modal was over it.
+MAX_OBSERVED_SHADOW_ROOTS = 24
 
 
 # References remain inside a JSHandle, so identical replacement nodes cannot
 # inherit a model decision. Text is bounded and excludes editable/secret areas.
 _OBSERVE_JS = r"""() => {
+  const SHADOW_ROOT_BUDGET = %d;
   const visible = el => {
     const r = el.getBoundingClientRect(), s = getComputedStyle(el);
     return r.width >= 2 && r.height >= 2 && s.display !== 'none' &&
       s.visibility !== 'hidden' && Number(s.opacity) >= .05 &&
       r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
   };
+  // Upwards through the composed tree: a shadow root has no parent element,
+  // its host does. Plain `parentElement` stops at the boundary and would make
+  // every control inside a shadow root look like a top-level one.
+  const up = el => {
+    const parent = el.parentElement;
+    if (parent) return parent;
+    const root = el.getRootNode();
+    return (root && root.host) ? root.host : null;
+  };
+  const within = (outer, inner) => {
+    for (let n = inner; n; n = up(n)) if (n === outer) return true;
+    return false;
+  };
+  // `elementFromPoint` answers per root, so on a shadow host it returns the
+  // host and never the control the user would actually hit. Descend until it
+  // stops changing.
+  const deepFromPoint = (x, y) => {
+    let node = document.elementFromPoint(x, y);
+    for (let depth = 0; node && node.shadowRoot && depth < 14; depth++) {
+      const inner = node.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === node) break;
+      node = inner;
+    }
+    return node;
+  };
   const topmost = el => {
     const r = el.getBoundingClientRect();
-    const top = document.elementFromPoint(
+    const top = deepFromPoint(
       Math.max(0, Math.min(innerWidth - 1, r.x + r.width / 2)),
       Math.max(0, Math.min(innerHeight - 1, r.y + r.height / 2)));
-    return top === el || !!(top && el.contains(top));
+    return top === el || !!(top && within(el, top));
   };
   const excluded = 'input:not([type=button]):not([type=submit]),textarea,select,' +
     '[contenteditable=true],[data-metnos-redact],script,style,form';
   const text = root => {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const parts = [];
-    for (let node = walker.nextNode(), n = 0; node && n < 400;
-         node = walker.nextNode(), n++) {
-      if (!node.parentElement.closest(excluded) && visible(node.parentElement))
-        parts.push(node.textContent);
-    }
+    let seen = 0;
+    const walk = node => {
+      if (seen >= 400 || !node) return;
+      if (node.nodeType === 3) {
+        const parent = node.parentElement;
+        if (parent && !parent.closest(excluded) && visible(parent)) {
+          parts.push(node.textContent);
+          seen++;
+        }
+        return;
+      }
+      if (node.nodeType !== 1 && node.nodeType !== 11) return;
+      if (node.nodeType === 1 && node.shadowRoot) walk(node.shadowRoot);
+      for (const child of node.childNodes) walk(child);
+    };
+    walk(root);
     return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
   };
+  const editableInside = root => {
+    const selector =
+      'input:not([type=button]):not([type=submit]):not([type=checkbox]):not([type=radio]),' +
+      'textarea,[contenteditable=true]';
+    const stack = [root];
+    for (let guard = 0; stack.length && guard < 4000; guard++) {
+      const node = stack.pop();
+      if (!node.querySelectorAll) continue;
+      for (const el of node.querySelectorAll(selector)) if (visible(el)) return true;
+      for (const el of node.querySelectorAll('*')) if (el.shadowRoot) stack.push(el.shadowRoot);
+    }
+    return false;
+  };
+  const searchRoots = [document];
+  for (let index = 0; index < searchRoots.length; index++) {
+    const node = searchRoots[index];
+    if (!node.querySelectorAll) continue;
+    for (const el of node.querySelectorAll('*')) {
+      if (!el.shadowRoot) continue;
+      if (searchRoots.length >= SHADOW_ROOT_BUDGET + 1) break;
+      searchRoots.push(el.shadowRoot);
+    }
+  }
+  const candidates = [];
+  const selector = 'button,input[type=button],input[type=submit],a,[role=button]';
+  for (const node of searchRoots) {
+    if (candidates.length >= 640) break;
+    if (node.querySelectorAll) candidates.push(...node.querySelectorAll(selector));
+  }
   const roots = new Map();
-  for (const el of Array.from(document.querySelectorAll(
-      'button,input[type=button],input[type=submit],a,[role=button]')).slice(0, 640)) {
+  for (const el of candidates.slice(0, 640)) {
     if (!visible(el) || !topmost(el)) continue;
     let root = null;
-    for (let p = el.parentElement, depth = 0; p && p !== document.body && depth < 14;
-         p = p.parentElement, depth++) {
+    for (let p = up(el), depth = 0;
+         p && p !== document.body && p !== document.documentElement && depth < 14;
+         p = up(p), depth++) {
       const r = p.getBoundingClientRect(), s = getComputedStyle(p);
       const ratio = r.width * r.height / (innerWidth * innerHeight);
       if (p.matches('dialog,[role=dialog],[role=alertdialog],[aria-modal=true]') && ratio >= .03) {
@@ -70,9 +141,7 @@ _OBSERVE_JS = r"""() => {
       }
       if ((s.position === 'fixed' || s.position === 'sticky') && ratio >= .12) root = p;
     }
-    if (!root || Array.from(root.querySelectorAll(
-        'input:not([type=button]):not([type=submit]):not([type=checkbox]):not([type=radio]),' +
-        'textarea,[contenteditable=true]')).some(visible)) continue;
+    if (!root || editableInside(root)) continue;
     if (!roots.has(root)) {
       if (roots.size >= 3) continue;
       roots.set(root, []);
@@ -83,8 +152,11 @@ _OBSERVE_JS = r"""() => {
   for (const [root, controls] of roots) {
     const panel_id = 'p' + (panels.length + 1);
     const items = controls.map((el, i) => {
+      const scope = el.getRootNode();
+      const byId = id => (scope && scope.getElementById)
+        ? scope.getElementById(id) : document.getElementById(id);
       const labelled = (el.getAttribute('aria-labelledby') || '').split(/\s+/)
-        .map(id => document.getElementById(id)).filter(x => x && root.contains(x))
+        .map(byId).filter(x => x && within(root, x))
         .map(text).join(' ');
       const name = (el.getAttribute('aria-label') || labelled ||
         el.getAttribute('title') || text(el) ||
@@ -102,7 +174,7 @@ _OBSERVE_JS = r"""() => {
     panels.push({id: panel_id, text: text(root), controls: items});
   }
   return {nodes, public: panels, url: location.href};
-}"""
+}""" % (MAX_OBSERVED_SHADOW_ROOTS,)
 
 _COMMIT_JS = r"""(saved, choice) => {
   const fresh = (""" + _OBSERVE_JS + r""")();

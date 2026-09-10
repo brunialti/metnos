@@ -497,3 +497,42 @@ def test_a_dismissed_panel_is_still_counted_as_seen(monkeypatch):
         '<script>for (const b of document.querySelectorAll("button"))'
         ' b.addEventListener("click", () =>'
         ' document.getElementById("p").remove());</script>', check)
+
+
+@_BROWSER
+def test_a_panel_inside_an_open_shadow_root_is_seen_and_dismissed(monkeypatch):
+    """Un pannello dentro uno shadow root era invisibile all'osservazione.
+
+    Misurato dal vivo il 10/9/2026, turno `72026c02`: la piattaforma di
+    consenso disegna il banner dentro uno shadow root aperto, la pagina
+    risultava libera perche' una query sul solo DOM chiaro non attraversa quel
+    confine, e nessun pannello veniva registrato. Il turno proseguiva contro
+    una pagina coperta e la scoperta del login non trovava alcun modulo.
+
+    La prima asserzione tiene onesta la fixture: se il pannello fosse
+    raggiungibile dal DOM chiaro, il caso non sarebbe questo.
+    """
+    monkeypatch.setattr(cp, "_classify",
+                        lambda panels, _timeout: _reject_decision(panels))
+
+    async def check(page):
+        assert await page.evaluate(
+            "() => document.querySelectorAll('button').length") == 0
+        esito = await cp.reject_cookies(page, {}, timeout_s=1.0)
+        assert esito.status == "resolved", esito
+        assert esito.kind == "cookie"
+        assert esito.panels >= 1, esito
+        assert await page.evaluate(
+            "() => !document.getElementById('cmp').shadowRoot"
+            ".querySelector('button')")
+
+    _browser_scenario(
+        '<h1>Landing</h1><div id="cmp"></div>'
+        '<script>const r = document.getElementById("cmp")'
+        '.attachShadow({mode: "open"});'
+        ' r.innerHTML = \'<div id="p" style="position:fixed;inset:0;'
+        'background:#fff;z-index:99"><h2>Che biscotti vuoi?</h2>'
+        '<button>Accetta tutti</button><button>Solo necessari</button></div>\';'
+        ' for (const b of r.querySelectorAll("button"))'
+        '  b.addEventListener("click", () => r.getElementById("p").remove());'
+        '</script>', check)
