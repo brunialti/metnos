@@ -44,6 +44,19 @@ def _collect_session_ids(args: dict) -> list[str]:
     return [one] if isinstance(one, str) and one else []
 
 
+# Failures a PERSON can resolve: they own the credentials, the second factor,
+# the authorisation. Everything else - the site unreachable, stalled, rate
+# limited, or a cause we did not identify - is the environment's state, and
+# telling the user to act on it would be an outcome that does not match
+# reality. Closed registry, slugs only: it never grows by adding a site.
+_REASONS_THE_PERSON_RESOLVES = frozenset({
+    "credentials_missing", "credential_use_disabled", "password_rejected",
+    "password_wrong", "account_locked", "captcha_required",
+    "challenge_observed", "two_factor_required", "two_factor_push_required",
+    "origin_unverified", "mandate_scope_exceeded", "vault_error",
+})
+
+
 def _reason_message(reason_code: str | None) -> str | None:
     """Mappa lo slug della tassonomia fallimento (§9) al messaggio i18n.
     Nessun eco di credenziali. Fallback onesto se lo slug non ha una chiave."""
@@ -248,7 +261,16 @@ def invoke(args: dict) -> dict:
                         or _msg("ERR_OP_FAILED", reason="login_sites"))
         # Credenziali mancanti/errate, CAPTCHA e 2FA non si correggono
         # riproponendo lo stesso piano: il Terminator deve cedere all'utente.
-        out["error_class"] = "needs_user_action"
+        # Ma un sito che non si muove non e' la stessa cosa, e dire a chi
+        # chiede che «serve un'azione fisica» quando il portale e' in
+        # manutenzione e' un esito che non corrisponde alla realta' (§2.8).
+        # Misurato sul turno `ab0ebb39` (10/9/2026). Fuori dall'elenco di cio'
+        # che una PERSONA puo' risolvere - causa ignota compresa - il guasto e'
+        # operativo: il piano si chiude lo stesso, ma il rimedio detto e'
+        # «riprova piu' tardi», non un'accusa a chi ha chiesto.
+        out["error_class"] = ("needs_user_action"
+                              if first_reason in _REASONS_THE_PERSON_RESOLVES
+                              else "service_unavailable")
     return out
 
 
