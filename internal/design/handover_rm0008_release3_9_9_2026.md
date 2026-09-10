@@ -687,6 +687,67 @@ dello sviluppatore a `0700`.
 Prima esecuzione completa senza intervento umano: Release 5, 10/9,
 `CANDIDATE_ADOPTED` → `SIGNED_SUCCESSOR_BUILT 5` → `CUTOVER_OK`.
 
+## 6-nonies. La sera del 10/9: dieci difetti trovati usando il prodotto
+
+Roberto ha provato un turno vero — «apri telepass.com, fai login e mostrami le
+fatture del 2026» — e ogni esecuzione ha superato il muro precedente
+scoprendone uno nuovo. **Dieci difetti**, tutti generali, tutti con la prova
+che fallisce se si toglie la correzione, **nessuno** trovato da una suite.
+
+| # | difetto | dove |
+|---|---|---|
+| 1 | il consenso veniva **pianificato come un passo**: senza piu' un controllo da colpire agganciava «Apri chat» a 0,62 | siti |
+| 2 | `settle` — «aspetta un pannello tardivo» — era **accettato e mai usato** | siti |
+| 3 | il consenso era tenuto **per sessione, non per origine**: la pagina di login ha il suo banner | siti |
+| 4 | il percorso di login puliva **solo** il consenso, non gli altri strati | siti |
+| 5 | la chiusura riconosciuta solo se etichettata «x»: quella vera e' uno `span` **muto** | siti |
+| 6 | un **intermezzo** letto come rifiuto: si attraversa, non si chiude | siti |
+| 7 | «apri» diventa `read`, quindi un piano corretto per un sito era **incapace** | motore |
+| 8 | il **tetto ai clic** azzerato dai rimbalzi fra origini | siti |
+| 9 | «vai alla cookie policy» scambiato per **precondizione** | siti |
+| 10 | **deriva**: preso l'aggancio giusto, la ricerca continuava a peggiorare | siti |
+
+Piu' i tre della review (O-01/O-02/O-03), tutti «rileva ma non riprende».
+
+### Le tre regole generali che ne sono uscite
+
+Valgono per qualunque sito e non contengono il nome di nessuno.
+
+1. **Uno strato si chiude, un intermezzo si attraversa, un consenso si
+   risponde.** Sono tre cose diverse e trattarne una come un'altra fallisce
+   sempre. Il consenso ha autorita' (puo' rifiutare) e appartiene a
+   un'**origine**; lo strato ha un'uscita; l'intermezzo ha solo una
+   continuazione.
+2. **Si riconosce per ruolo, mai per selettore.** Una chiusura e' un
+   controllo piccolo, muto, col cursore a mano, nell'angolo di una radice
+   modale, in cima nel punto di contatto, mai un controllo che invii o
+   navighi. Un consenso e' il marcatore del contenitore preso dal lessico.
+3. **Il budget si spende sul progresso.** Sullo stesso posto, un aggancio che
+   vale meno di quello gia' preso non e' un passo avanti: si dichiara
+   l'arrivo invece di peggiorare.
+
+### La replica, e perche' conta piu' delle correzioni
+
+`tests/runtime/sites/test_replica_accesso_completo.py` ricostruisce in locale,
+con Chromium vero, la catena a **sette stadi** misurata sul portale reale con
+una sonda in sola lettura: consenso in shadow root, salto d'origine, consenso
+della seconda origine in altra lingua, strato a tutto schermo con uscita muta,
+modulo, intermezzo, area riservata. **Struttura e geometria soltanto**: nessun
+testo, nessun marchio, niente che appartenga a qualcun altro.
+
+Gira in **14 secondi** invece di 135, senza account e senza il sito vero, e ha
+un tetto di tempo perche' il guasto per cui e' nata era uno stallo che in
+produzione nessuno vedeva. **La struttura del sito vive qui, l'euristica negli
+executor**: e' la separazione che Roberto ha chiesto e il criterio con cui
+giudicare ogni aggiunta futura.
+
+### Dove starei attento
+
+Le costanti numeriche introdotte (≤64 px, ≥12% dello schermo, 4 strati, 400
+nodi, 24 shadow root) sono tetti di costo, non conoscenza di un sito, ma sono
+tarate su cio' che si e' misurato quel giorno. E' li' che l'«ad hoc» puo'
+rientrare dalla finestra.
+
 ## 7. Prove rosse, classificate con onesta'
 
 Suite runtime completa: **91 rosse su 8652**, tutte preesistenti a questa
