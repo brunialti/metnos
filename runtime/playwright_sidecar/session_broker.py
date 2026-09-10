@@ -42,6 +42,7 @@ from playwright_sidecar import browser_surface
 from playwright_sidecar import cookie_privacy
 import sites_audit
 import sites_observed  # ADR 0191 P4 — codici osservativi navigazione
+import sites_origin  # ADR 0191 P2 — il consenso appartiene a un'ORIGINE
 import task_mandates
 import credential_mandates
 from sites_url_scrub import scrub_url
@@ -2766,14 +2767,48 @@ async def _dismiss_obstructing_overlay(entry: dict, *,
 
 async def _dismiss_privacy_obstruction(entry: dict, *,
                                        settle: bool = False) -> cookie_privacy.CookieOutcome:
-    """Reject a privacy overlay as a bounded precondition for any action."""
+    """Reject a privacy overlay as a bounded precondition for any action.
+
+    Consent belongs to an ORIGIN, not to a session. Crossing to the login
+    origin raises that origin's own banner, and the state of the previous one
+    says nothing about it: a new origin gets a new budget, and is worth
+    waiting for. Carrying the old state across made the second banner look
+    like a repeat of the first, which is already dismissed.
+
+    `settle` was accepted and never used, so every caller that asked to wait
+    for a late panel got no wait at all - and a consent platform renders after
+    its own script has loaded, which is exactly the case worth waiting for.
+
+    Measured on turn `a8dbe80b` (10/9/2026): the banner on `www` was
+    dismissed, the click to `login.` navigated, the credentials were filled
+    three seconds later, and the submit landed underneath that origin's own
+    consent banner and an app promotion. The site reported a failed login.
+    """
     flow = entry.get("login_flow")
-    state = (flow if isinstance(flow, dict) else entry).setdefault("cookie_state", {})
+    holder = flow if isinstance(flow, dict) else entry
+    state = holder.setdefault("cookie_state", {})
+    origin = sites_origin.origin_of_url(
+        getattr(entry.get("page"), "url", "") or "")
+    if origin and state.get("origin") not in (None, origin):
+        state = {}
+        holder["cookie_state"] = state
+        settle = True
+    if origin:
+        state["origin"] = origin
     clicks_before = state.get("clicks", 0)
-    outcome = await cookie_privacy.reject_cookies(
-        entry["page"], state, redact=entry.get("_cookie_redact"),
-        timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0,
-        enabled=_MODEL_FALLBACKS_ENABLED)
+    deadline = _monotonic() + (_REVEAL_SETTLE_MS / 1000.0 if settle else 0.0)
+    while True:
+        outcome = await cookie_privacy.reject_cookies(
+            entry["page"], state, redact=entry.get("_cookie_redact"),
+            timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0,
+            enabled=_MODEL_FALLBACKS_ENABLED)
+        if (outcome.panels or outcome.status == "blocked"
+                or _monotonic() >= deadline):
+            break
+        if hasattr(entry["page"], "wait_for_timeout"):
+            await entry["page"].wait_for_timeout(_REVEAL_POLL_MS)
+        else:
+            await asyncio.sleep(_REVEAL_POLL_MS / 1000)
     if state.get("clicks", 0) > clicks_before:
         sites_audit.record(
             "overlay_dismiss", owner=entry.get("owner", ""),

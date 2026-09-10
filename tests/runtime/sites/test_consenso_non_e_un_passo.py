@@ -126,3 +126,92 @@ def test_un_consenso_che_non_si_risolve_resta_un_rifiuto(monkeypatch) -> None:
     assert esito["ok"] is False
     assert esito["error_class"] == "cookie_precondition_unresolved"
     assert esito["obstruction_reason"] == "dismissal_limit"
+
+
+class _Pagina:
+    """Pagina finta: solo un URL e un'attesa che non dorme davvero."""
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+
+    async def wait_for_timeout(self, _ms) -> None:
+        return None
+
+
+def _precondizione(entry, **kw):
+    return asyncio.run(sb._dismiss_privacy_obstruction(entry, **kw))
+
+
+def test_un_pannello_tardivo_viene_atteso(monkeypatch) -> None:
+    """`settle` deve attendere davvero: era accettato e ignorato.
+
+    Una piattaforma di consenso disegna il banner DOPO che il suo script si e'
+    caricato. Chi chiedeva di aspettare non aspettava, quindi osservava una
+    pagina ancora pulita e proseguiva: sul turno `a8dbe80b` le credenziali
+    sono finite sotto al banner dell'origine di login.
+    """
+    monkeypatch.setattr(sb.sites_audit, "record", lambda *_a, **_kw: None)
+    esiti = [cp.CookieOutcome("clear", "unknown", "", 1, 0),
+             cp.CookieOutcome("clear", "unknown", "", 1, 0),
+             cp.CookieOutcome("resolved", "cookie", "", 1, 1)]
+    visti = []
+
+    async def reject(_page, _state, **_kw):
+        out = esiti[min(len(visti), len(esiti) - 1)]
+        visti.append(out)
+        return out
+
+    monkeypatch.setattr(sb.cookie_privacy, "reject_cookies", reject)
+
+    entry = _sessione()
+    entry["page"] = _Pagina("https://www.esempio.it/")
+    esito = _precondizione(entry, settle=True)
+    assert esito.panels == 1
+    assert len(visti) == 3       # ha riosservato, non si e' fermato al primo
+
+
+def test_senza_settle_si_osserva_una_volta_sola(monkeypatch) -> None:
+    """L'attesa e' un costo: la si paga solo dove e' stata chiesta."""
+    monkeypatch.setattr(sb.sites_audit, "record", lambda *_a, **_kw: None)
+    visti = []
+
+    async def reject(_page, _state, **_kw):
+        visti.append(1)
+        return cp.CookieOutcome("clear", "unknown", "", 1, 0)
+
+    monkeypatch.setattr(sb.cookie_privacy, "reject_cookies", reject)
+
+    entry = _sessione()
+    entry["page"] = _Pagina("https://www.esempio.it/")
+    _precondizione(entry)
+    assert len(visti) == 1
+
+
+def test_una_nuova_origine_e_un_consenso_nuovo(monkeypatch) -> None:
+    """Il consenso appartiene a un'ORIGINE, non alla sessione.
+
+    Passando a `login.` compare il banner di QUELL'origine, e lo stato del
+    precedente non dice niente su di esso. Ereditare il budget faceva sembrare
+    il secondo banner una ripetizione del primo, gia' chiuso.
+    """
+    monkeypatch.setattr(sb.sites_audit, "record", lambda *_a, **_kw: None)
+    visti = []
+
+    async def reject(_page, state, **_kw):
+        visti.append(dict(state))
+        state["clicks"] = state.get("clicks", 0) + 1
+        return cp.CookieOutcome("resolved", "cookie", "", 1, 1)
+
+    monkeypatch.setattr(sb.cookie_privacy, "reject_cookies", reject)
+
+    entry = _sessione()
+    entry["page"] = _Pagina("https://www.esempio.it/")
+    _precondizione(entry)
+    _precondizione(entry)
+    speso = visti[-1].get("clicks")
+    assert speso == 1                      # stessa origine: il budget resta
+
+    entry["page"].url = "https://login.esempio.it/"
+    _precondizione(entry)
+    assert visti[-1].get("clicks") in (None, 0)   # nuova origine, budget nuovo
+    assert entry["cookie_state"]["origin"] == "https://login.esempio.it:443"
