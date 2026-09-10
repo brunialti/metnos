@@ -689,13 +689,19 @@ ac8f5841 l'archivio del ritiro prende il nome dal tentativo, non dalla head
          questa consegna
 ```
 
-Riferimenti sorgenti **del candidato** nel worktree (10/9, dopo `prepare`):
-privato `sha256:0fe09130…` (755), pubblico `sha256:e5745238…` (743).
-**Non sono quelli della release in esercizio**: la Release 3 porta la propria
-copia firmata (`sha256:0a27b038…` privato, `sha256:9180f62d…` pubblico) e
-resta valida com'e'. Questi appartengono alla versione successiva, quella con
-le due correzioni di §6-sexies. Chi legge deve tenere distinti i due:
-candidato e release installata non coincidono mai durante un ciclo aperto.
+Riferimenti sorgenti, letti dove vivono davvero e non dedotti:
+
+| | valore | dove si legge |
+|---|---|---|
+| Release 3 (precedente) | `sha256:b430908b…` | `releases-v1/…3/runtime/contract_boundary_guard.py` |
+| Release 4 (in esercizio) | `sha256:e5745238…` | `releases-v1/…4/runtime/contract_boundary_guard.py` |
+| candidato nel worktree | privato `sha256:0fe09130…` (755), pubblico `sha256:e5745238…` (743) | `scripts/publish-public.sh` |
+
+Attenzione a una trappola gia' caduta una volta: la copia installata porta
+**solo** il riferimento pubblico, perche' l'esportazione riscrive quello nel
+candidato. Un riferimento privato (`0a27b038…`, `0fe09130…`) non compare mai in
+una release installata: confrontarlo con essa e' una categoria sbagliata, non
+un numero sbagliato.
 
 ## 9. Decisioni aperte per Roberto
 

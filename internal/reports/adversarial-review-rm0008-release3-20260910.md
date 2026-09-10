@@ -712,3 +712,73 @@ Resta vero, e lo scrivo qui perché non vada perso: **le prove integrate del
 ciclo mancano ancora**. La prova generale dell'attraversamento su copia della
 catena (§6-quater punto 4) è il lavoro che avrebbe reso questa review meno
 necessaria, ed è il prossimo che va fatto.
+
+---
+
+# Seconda tornata di controdeduzioni (10 settembre 2026, dopo il commit 71d173c1)
+
+Le tre precisazioni sono **tutte e tre corrette**. Nessuna contestata.
+
+## A-06 — accolto: rilevare non è riprendere
+
+Aveva ragione: rifiutare un'evidenza incompleta trasformava una scrittura
+interrotta in un **tentativo bloccato per sempre**. Avevo corretto il difetto
+opposto e creato il suo gemello.
+
+La regola giusta distingue tre casi, e ora è quella implementata in
+`publish_evidence`:
+
+- **coppia completa e identica** → si rilegge, si confronta, si prosegue;
+- **coppia completa e diversa** → si rifiuta, e resta un rifiuto: la stessa
+  build non può avere due contenuti;
+- **coppia lacera** → si **sposta di lato** sotto `…​.torn-NN`, mai si
+  cancella, e si riscrive. L'evidenza è derivata dalla build appena fatta:
+  non c'è niente da perdere e nessuna ragione per fermarsi.
+
+Provato nella prova generale, scenario 5: una coppia identica viene verificata
+e non riscritta; una coppia lacera viene messa da parte (`SET_ASIDE_TORN_EVIDENCE`)
+e riscritta, con il pezzo superstite conservato per intero; una coppia completa
+ma di un'altra build viene rifiutata. Due tentativi consecutivi ora passano.
+
+## A-03 — accolto: la prova era rimasta indietro, e per due motivi
+
+Il primo lo aveva visto lei: la prova confrontava ancora `source_id` e chiamava
+`retire_orphan_journals()` senza il nuovo argomento. Difetto mio, e grave nel
+modo peggiore — **una correzione consegnata con la sua prova rotta**.
+
+Il secondo è emerso correggendo il primo, e vale più del primo: la prova
+generale **dipendeva dal residuo del guasto reale sulla catena viva**. Chiuso
+l'attraversamento, di rivendicazioni pendenti non ce n'erano più e la prova non
+partiva affatto. *Una prova che funziona solo finché il difetto è presente non
+prova nulla.* Ora il tentativo superato viene **costruito sulla copia**
+(`seed_pending_attempt`), quindi la prova gira su una catena sana.
+
+Aggiunte anche le due prove negative che mancavano alla regola nuova: un
+journal aperto che questa esecuzione **non** ha ritirato ferma il ciclo col
+proprio nome nel messaggio, e un header che il decoder canonico rifiuta ferma
+il ciclo invece di passare per orfano. Le fixture usano ora `TransactionHeaderV2`,
+cioè l'encoder del prodotto: un documento fatto a mano verrebbe scartato per la
+forma e non arriverebbe mai alla regola sotto prova.
+
+Esito: `REHEARSAL_OK`, sei scenari, cinque rifiuti attesi su cinque.
+
+## A-10 — accolto: il valore che avevo scritto non è quello installato
+
+Verificato sulla macchina. Nella copia installata della Release 3,
+`runtime/contract_boundary_guard.py` dichiara
+`BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:b430908b…"`, non `9180f62d…`.
+Nella Release 4, ora in esercizio, dichiara `sha256:e5745238…`.
+
+L'errore aveva anche una causa che vale la pena scrivere: `0a27b038…` è un
+riferimento **privato**, e la copia installata non lo porta affatto — l'export
+riscrive nel candidato il solo riferimento pubblico. Confrontare un valore
+privato con una release installata è una categoria sbagliata, non un numero
+sbagliato. La consegna è stata corretta di conseguenza.
+
+## Una nota sul metodo
+
+Tre rilievi su tre erano difetti reali, e due erano **miei difetti introdotti
+correggendo i suoi rilievi precedenti**. Lo registro perché è il dato più utile
+di questa tornata: in questo sottosistema una correzione senza la sua prova
+rieseguita ha una probabilità alta di essere sbagliata, e la prova va
+rieseguita *sulla catena com'è oggi*, non su quella che aveva il guasto.
