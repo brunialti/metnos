@@ -17,7 +17,7 @@ e' stata c'e' scritto.
 
 ## 1. Dove siamo in una riga
 
-**Release 5 in esercizio**, terza traversata della giornata del 10/9 e la prima
+**[Storico: oggi in esercizio c'e' la Release 20, vedi §6-decies.]** Release 5 in esercizio, terza traversata della giornata del 10/9 e la prima
 eseguita **senza che nessuno digitasse una password** (§6-octies). Tutti i
 servizi e i due timer attivi, HTTP `operational`, interprete amministrativo
 `/usr/bin/python3.12`. I tre difetti trovati **usando il prodotto**, non dalle
@@ -865,14 +865,15 @@ stato popolato. Quindi `deploy --executor <nome> --sign` non puo' funzionare
 per **nessun** executor di prima parte, non solo per `login_sites`. E' una
 lacuna di RM-0008, non una regola da riscrivere.
 
-**Cosa vale intanto.** L'edit a `login_sites.py` e' vivo ed e' coperto dalla
-firma della catena di rilascio: in `STORE_ONLY` il manifest arriva dalla
-pubblicazione firmata e `verify_executor` — cioe' il controllo del digest del
-codice — **non viene chiamato**; quel ramo e' solo della modalita' di
-redazione. Resta pero' che `[code].digest` nel manifest committato non combacia
-piu' col codice committato: innocuo in produzione, sbagliato il giorno in cui
-qualcuno lavora in modalita' di redazione. Da riallineare quando la lacuna
-sopra e' chiusa.
+**Correzione, dalla revisione 4 della review (A-12).** Avevo scritto che in
+`STORE_ONLY` il digest del codice non viene controllato e che la discordanza
+era quindi innocua in produzione. **Era sbagliato.** `current_manifest` passa
+dalla verifica della generazione, che ricalcola e confronta il digest del
+codice (`contract_store.py`, `_verify_payloads`): l'assenza della vecchia
+chiamata a `verify_executor` non provava niente. La modifica a `login_sites` e'
+stata tolta dal repository e la **Release 20** l'ha tolta dall'esercizio: sulla
+release installata digest dichiarato e calcolato coincidono di nuovo, misurati
+con la funzione del prodotto (`sha256:373df2e9…`).
 
 ## 7. Prove rosse, classificate con onesta'
 
@@ -949,7 +950,7 @@ Riferimenti sorgenti, letti dove vivono davvero e non dedotti:
 | | valore | dove si legge |
 |---|---|---|
 | Release 3 (precedente) | `sha256:b430908b…` | `releases-v1/…3/runtime/contract_boundary_guard.py` |
-| Release 4 (in esercizio) | `sha256:e5745238…` | `releases-v1/…4/runtime/contract_boundary_guard.py` |
+| Release 4 (storica; oggi in esercizio la 20) | `sha256:e5745238…` | `releases-v1/…4/runtime/contract_boundary_guard.py` |
 | candidato nel worktree | privato `sha256:0fe09130…` (755), pubblico `sha256:e5745238…` (743) | `scripts/publish-public.sh` |
 
 Attenzione a una trappola gia' caduta una volta: la copia installata porta
@@ -960,7 +961,7 @@ un numero sbagliato.
 
 ## 9. Decisioni aperte per Roberto
 
-1. **Rilasciare le due correzioni vive** (§6-sexies) col ciclo a due comandi.
+1. **[Fatto nella Release 4, 10/9.]** Rilasciare le due correzioni vive (§6-sexies) col ciclo a due comandi.
    Fino ad allora Telegram non esegue nulla e il turno Telepass riesce circa
    due volte su tre. L'attraversamento ferma e riavvia i servizi: va fatto
    quando non c'e' un turno in corso.
