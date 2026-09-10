@@ -371,10 +371,10 @@ def _hold_writer_lock(
         release.wait(5.0)
 
 
-def _try_catalog_lock_after_fork(store: str, result) -> None:
+def _try_catalog_lock_after_fork(store: str, result, exclusive: bool) -> None:
     try:
         with contract_store_module.catalog_admission_lock(
-            store_root=Path(store), timeout=0.05,
+            store_root=Path(store), exclusive=exclusive, timeout=0.05,
         ):
             result.send("acquired")
     except ContractStoreError as exc:
@@ -1710,7 +1710,7 @@ def test_catalog_lock_bookkeeping_is_reset_after_fork(tmp_path: Path) -> None:
     receive, send = context.Pipe(duplex=False)
     process = context.Process(
         target=_try_catalog_lock_after_fork,
-        args=(str(store), send),
+        args=(str(store), send, True),
     )
 
     with contract_store_module.catalog_admission_lock(
@@ -1725,6 +1725,67 @@ def test_catalog_lock_bookkeeping_is_reset_after_fork(tmp_path: Path) -> None:
         process.terminate()
         process.join(2.0)
     assert process.exitcode == 0
+
+
+@pytest.mark.skipif(
+    "fork" not in multiprocessing.get_all_start_methods(),
+    reason="requires POSIX fork inheritance",
+)
+@pytest.mark.parametrize(
+    "held_exclusive, expected",
+    [(False, "acquired"), (True, "catalog_lock_timeout")],
+)
+def test_a_catalog_reader_waits_for_a_writer_but_not_for_another_reader(
+    tmp_path: Path, held_exclusive: bool, expected: str,
+) -> None:
+    """Two processes may read the catalog together; a publication excludes both.
+
+    Authenticating the whole store is seconds of work.  While readers
+    excluded each other, a turn that only needed the executor names expired
+    waiting for a periodic audit that was reading the same thing, and the
+    turn failed with an unavailable dependency.
+    """
+    store = tmp_path / "store"
+    context = multiprocessing.get_context("fork")
+    receive, send = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_try_catalog_lock_after_fork,
+        args=(str(store), send, False),
+    )
+
+    with contract_store_module.catalog_admission_lock(
+        store_root=store, exclusive=held_exclusive, timeout=0.2,
+    ):
+        process.start()
+        send.close()
+        assert receive.poll(2.0)
+        assert receive.recv() == expected
+    process.join(3.0)
+    if process.is_alive():
+        process.terminate()
+        process.join(2.0)
+    assert process.exitcode == 0
+
+
+def test_a_catalog_reader_is_never_upgraded_to_a_writer(tmp_path: Path) -> None:
+    """A reader reentering as a writer would deadlock; it is refused instead.
+
+    The other direction is legitimate and stays allowed: a transition holds
+    the writer and may read the catalog it is about to change.
+    """
+    store = tmp_path / "store"
+    with contract_store_module.catalog_admission_lock(
+        store_root=store, exclusive=False,
+    ):
+        with pytest.raises(ContractStoreError, match="reentrant lock upgrade"):
+            with contract_store_module.catalog_admission_lock(store_root=store):
+                pass
+
+    with contract_store_module.catalog_admission_lock(store_root=store):
+        with contract_store_module.catalog_admission_lock(
+            store_root=store, exclusive=False,
+        ):
+            pass
 
 
 def test_two_process_publishers_commit_one_complete_generation(

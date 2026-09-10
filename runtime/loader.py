@@ -1424,7 +1424,15 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
                  include_synth=True, include_verb_unique=True,
                  lang: str | None = None,
                  catalog_trusted_owner: tuple[int, int] | None = None) -> Catalog:
-    """Load one catalog from a stable publication and visibility snapshot."""
+    """Load one catalog from a stable publication and visibility snapshot.
+
+    The store boundary is taken as a reader.  Loading authenticates every
+    revision and takes seconds when nothing is cached, and a turn that needs
+    the catalog must not queue behind another process reading the very same
+    thing: a periodic audit did exactly that, and turns expired waiting.  A
+    publication still excludes every reader, and the snapshot is checked
+    before and after the load, so a read never returns a mixed catalog.
+    """
     layout = resolve_manifest_layout()
     _validate_catalog_read_options(
         layout,
@@ -1433,7 +1441,9 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
     if layout is ManifestLayout.STORE_ONLY:
         from contract_store import catalog_admission_lock
 
-        with catalog_admission_lock(trusted_owner=catalog_trusted_owner):
+        with catalog_admission_lock(
+            exclusive=False, trusted_owner=catalog_trusted_owner,
+        ):
             return _load_catalog_under_catalog_lock(
                 executors_dir,
                 verify,
@@ -1470,7 +1480,9 @@ def _load_catalog_for_cutover_audit_v1(
         raise ValueError("cutover audit requires trusted public keys")
     from contract_store import catalog_admission_lock
 
-    with catalog_admission_lock(trusted_owner=catalog_trusted_owner):
+    with catalog_admission_lock(
+        exclusive=False, trusted_owner=catalog_trusted_owner,
+    ):
         return _load_catalog_under_catalog_lock(
             _executors_dir,
             verify=True,
