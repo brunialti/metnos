@@ -428,6 +428,28 @@ def withdraw_superseded_claim(source_id: str) -> str | None:
     return claim["request_id"]
 
 
+def withdrawn_requests() -> set[str]:
+    """Attempts this machine has already withdrawn, read from disk.
+
+    The link between a withdrawn claim and its journal used to live only in
+    memory. An interruption between the two moves - the claim archived, the
+    journal not yet retired - left the next run treating that journal as
+    foreign and refusing for ever, while the proof was sitting on disk the
+    whole time: the archive holds the claim itself. The resume reads it.
+    """
+    found: set[str] = set()
+    if not WITHDRAWN_ROOT.is_dir():
+        return found
+    for archive in sorted(WITHDRAWN_ROOT.iterdir()):
+        claim = archive / "successor-claim.json"
+        if not claim.is_file():
+            continue
+        request = json.loads(claim.read_bytes()).get("request_id")
+        if isinstance(request, str) and request:
+            found.add(request)
+    return found
+
+
 def retire_orphan_journals(withdrawn_request: str | None) -> tuple[str, ...]:
     """Retire the journal of the attempt this run withdrew; refuse any other.
 
@@ -449,6 +471,12 @@ def retire_orphan_journals(withdrawn_request: str | None) -> tuple[str, ...]:
 
     known = {name[7:] if name.startswith("sha256:") else name
              for name in os.listdir(COORD / "transactions-v2")}
+    # The attempts this run withdrew, plus the ones any earlier run did: an
+    # interruption between the two moves must not turn a journal we ourselves
+    # orphaned into a residue nobody may touch.
+    retirable = withdrawn_requests()
+    if withdrawn_request:
+        retirable.add(withdrawn_request)
     retired = []
     for name in sorted(os.listdir(BIRTH)):
         if not name.startswith(JOURNAL_PREFIX):
@@ -457,13 +485,22 @@ def retire_orphan_journals(withdrawn_request: str | None) -> tuple[str, ...]:
             (BIRTH / name / "transaction-v2.json").read_bytes()).request_id
         if request.startswith("sha256:") and request[7:] in known:
             continue
-        require(withdrawn_request is not None and request == withdrawn_request,
-                f"open journal of an attempt this run did not withdraw: {name}")
+        require(request in retirable,
+                f"open journal of an attempt no withdrawal accounts for: {name}")
         target = BIRTH / (SUPERSEDED_JOURNAL_PREFIX + name[len(JOURNAL_PREFIX):])
         require(not os.path.lexists(target), "superseded journal slot already taken")
         rename_no_replace(BIRTH / name, target, BIRTH_OWNERS)
         retired.append(name)
     return tuple(retired)
+
+
+def unique_sibling(path: Path, tag: str) -> Path:
+    """A free name beside `path`; nothing is ever replaced or deleted."""
+    for attempt in range(1, 100):
+        candidate = path.with_name(f"{path.name}.{tag}-{attempt:02d}")
+        if not os.path.lexists(candidate):
+            return candidate
+    raise RuntimeError(f"too many {tag} objects beside {path}")
 
 
 def publish_evidence(distribution, directory: Path) -> None:
@@ -476,28 +513,37 @@ def publish_evidence(distribution, directory: Path) -> None:
     into a permanently stuck retry - the evidence is derived from the build
     just made, so there is nothing to lose and no reason to stop.
 
-    So: a complete pair is read back and compared byte for byte, and a
-    complete pair that differs still stops the run, because the same build
-    cannot have two contents. A torn one is moved aside under a name that says
-    what it is - never deleted - and written again.
+    So: an identical pair is reused, a torn one is moved aside under a name
+    that says what it is - never deleted - and written again, and a pair that
+    contradicts this build still stops the run, because one build cannot have
+    two contents.
+
+    Torn is not only a missing name. A write interrupted mid-file leaves both
+    names present and one of them short, which the first correction read as a
+    contradiction and refused for ever: two consecutive retries stayed stuck
+    on the same directory. Shorter than expected is the signature of an
+    interrupted write; the same length with different bytes, or longer, is a
+    contradiction and stays one.
     """
     expected = {"distribution.json": distribution.encoded,
                 "distribution.sig": distribution.signature}
     if directory.exists():
         present = sorted(item.name for item in directory.iterdir())
+        content = {name: (directory / name).read_bytes()
+                   for name in present if name in expected}
         if present == sorted(expected):
-            for name in sorted(expected):
-                require((directory / name).read_bytes() == expected[name],
+            if content == expected:
+                return
+            # Nomi tutti presenti: e' una scrittura interrotta se OGNI file e'
+            # quello atteso oppure piu' corto di esso. Stessa lunghezza con
+            # byte diversi, o piu' lungo, resta una contraddizione.
+            for name, seen in sorted(content.items()):
+                require(seen == expected[name]
+                        or len(seen) < len(expected[name]),
                         f"release evidence is not this build: {name}")
-            return
-        for attempt in range(1, 100):
-            torn = directory.with_name(f"{directory.name}.torn-{attempt:02d}")
-            if not os.path.lexists(torn):
-                break
-        else:
-            raise RuntimeError("too many torn evidence sets to set aside")
-        rename_no_replace(directory, torn)
-        say("SET_ASIDE_TORN_EVIDENCE", str(torn), present)
+        aside = unique_sibling(directory, "torn")
+        rename_no_replace(directory, aside)
+        say("SET_ASIDE_TORN_EVIDENCE", str(aside), present)
     directory.mkdir(mode=0o700)
     for name in sorted(expected):
         handle = os.open(directory / name,
@@ -533,6 +579,16 @@ def adopt_candidate(staging: Path, files: int, expected: str) -> Path:
     final at this line instead of open until the last import.
     """
     trusted = CANDIDATE_ROOT / ("rm0008-cycle-candidate-" + expected[:16])
+    if trusted.exists():
+        # A copy left by an earlier run is reused only if it still measures
+        # the same. One that does not is set aside, never deleted and never
+        # kept in the reusable place: it used to stay there and block that
+        # identity for good, so a transient change during preparation made
+        # every later run fail on a copy nobody could replace.
+        os.close(open_parent(trusted))
+        if census(trusted) != (files, expected):
+            rename_no_replace(trusted, unique_sibling(trusted, "rejected"))
+            say("SET_ASIDE_REJECTED_CANDIDATE", str(trusted))
     if not trusted.exists():
         incoming = CANDIDATE_ROOT / ".rm0008-cycle-candidate-incoming"
         subprocess.run(["rm", "-rf", str(incoming)], check=True)
@@ -545,6 +601,11 @@ def adopt_candidate(staging: Path, files: int, expected: str) -> Path:
             elif stat.S_ISREG(info.st_mode):
                 path.chmod(0o755 if info.st_mode & 0o100 else 0o644)
         incoming.chmod(0o755)
+        # Measured BEFORE it becomes the reusable identity: a copy that does
+        # not match never occupies the path it would block.
+        seen = census(incoming)
+        require(seen == (files, expected),
+                f"the root-owned copy does not measure the same: {seen}")
         os.rename(incoming, trusted)
     os.close(open_parent(trusted))
     seen_files, seen_digest = census(trusted)

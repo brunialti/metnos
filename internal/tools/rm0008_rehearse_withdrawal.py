@@ -182,6 +182,12 @@ def expect_refusal(label: str, action) -> None:
 
 
 def rehearse(source: Path, work: Path) -> None:
+    def fresh_chain():
+        """Una catena pulita: le riprese partono da dove si erano rotte."""
+        shutil.rmtree(work, ignore_errors=True)
+        shutil.copytree(source, work, symlinks=True)
+        return bind(work)
+
     shutil.rmtree(work, ignore_errors=True)
     shutil.copytree(source, work, symlinks=True)
     cycle = bind(work)
@@ -267,6 +273,72 @@ def rehearse(source: Path, work: Path) -> None:
     expect_refusal("evidence that is not this build",
                    lambda: cycle.publish_evidence(other, evidence))
 
+    print("6. una scrittura interrotta A META' si riprende")
+    # Il caso che la review ha riprodotto: il nome c'e', il contenuto e'
+    # troncato. Prima veniva letto come contraddizione e rifiutato per
+    # sempre - due tentativi di fila bloccati sulla stessa directory.
+    troncato = work / "evidence-troncata"
+    cycle.publish_evidence(build, troncato)
+    (troncato / "distribution.sig").chmod(0o600)
+    (troncato / "distribution.sig").write_bytes(build.signature[:8])
+    for giro in (1, 2):
+        cycle.publish_evidence(build, troncato)
+        cycle.require(
+            (troncato / "distribution.sig").read_bytes() == build.signature,
+            f"la coppia troncata non e' stata riscritta al giro {giro}")
+    print("  due tentativi di fila, entrambi riprendono")
+
+    print("7. il legame col ritiro sopravvive a un'interruzione")
+    # Interruzione fra il ritiro della rivendicazione e quello del giornale:
+    # il valore in memoria e' perso, ma la prova e' sull'archivio.
+    ripresa = fresh_chain()
+    claim = seed_pending_attempt(ripresa)
+    write_journal(ripresa, "a" * 32, claim["request_id"])
+    ripresa.withdraw_superseded_claim("sha256:" + "0" * 64)
+    cycle.require(
+        ripresa.retire_orphan_journals(None)
+        == (ripresa.JOURNAL_PREFIX + "a" * 32,),
+        "la ripresa non ha riconosciuto il proprio ritiro")
+    print("  ritirato senza il valore in memoria, letto dall'archivio")
+
+    print("8. una copia candidata rifiutata non blocca l'identita'")
+    # Misura -> cambio transitorio -> rifiuto -> ripristino -> due tentativi.
+    # Prima la copia rifiutata restava nel percorso riutilizzabile e ogni giro
+    # successivo rimisurava lei: quell'identita' non tornava piu' usabile.
+    sorgente = work / "candidato"
+    sorgente.mkdir()
+    (sorgente / "uno.txt").write_bytes(b"originale")
+    (sorgente / "uno.txt").chmod(0o644)
+    sorgente.chmod(0o755)
+    cycle.CANDIDATE_ROOT = work / "adozioni"
+    cycle.CANDIDATE_ROOT.mkdir()
+    reale = cycle.subprocess.run
+
+    def senza_chown(comando, **kw):
+        # Il solo passaggio privilegiato: il resto e' copia e misura vere.
+        if comando[:1] == ["chown"]:
+            return reale(["true"], **kw)
+        return reale(comando, **kw)
+
+    cycle.subprocess.run = senza_chown
+    try:
+        misura = cycle.census(sorgente)
+        (sorgente / "uno.txt").write_bytes(b"cambiata")   # cambio transitorio
+        expect_refusal("una copia che non misura come l'atteso",
+                       lambda: cycle.adopt_candidate(sorgente, *misura))
+        (sorgente / "uno.txt").write_bytes(b"originale")  # ripristino
+        for giro in (1, 2):
+            adottata = cycle.adopt_candidate(sorgente, *misura)
+            cycle.require(cycle.census(adottata) == misura,
+                          f"la copia adottata non misura come l'atteso ({giro})")
+        rifiutate = [p.name for p in cycle.CANDIDATE_ROOT.iterdir()
+                     if ".rejected-" in p.name]
+        cycle.require(len(rifiutate) <= 1,
+                      "la copia rifiutata non e' stata conservata una volta sola")
+    finally:
+        cycle.subprocess.run = reale
+    print("  rifiutata, messa da parte, e l'identita' torna adottabile")
+
 
 def rehearse_refusals(source: Path, work: Path) -> None:
     def fresh():
@@ -329,7 +401,7 @@ def main() -> None:
     print("copying the live chain objects (read-only)")
     copy_chain(pristine)
     rehearse(pristine, work)
-    print("6. what it must refuse")
+    print("9. what it must refuse")
     rehearse_refusals(pristine, work)
     shutil.rmtree(work, ignore_errors=True)
     shutil.rmtree(pristine, ignore_errors=True)
