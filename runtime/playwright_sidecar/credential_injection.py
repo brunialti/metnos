@@ -507,6 +507,28 @@ async def _wait_for_login_surface(page, op_timeout_s: float) -> str:
     return ""
 
 
+async def _login_progress_signature(page) -> str:
+    """What the pilot can observe from here: the place and the text on it.
+
+    Used to tell a login entry step that MOVED something from one that did
+    nothing at all. The place alone would not do - a login modal opens without
+    changing the address - and the text alone would not do either, since two
+    pages can read the same. Deliberately blunt: any change at all counts as
+    progress, so the rule only fires when literally nothing happened.
+    """
+    try:
+        from playwright_sidecar import action_resolver
+        posto = action_resolver.url_place_key(getattr(page, "url", "") or "")
+    except Exception:  # noqa: BLE001 -- senza resolver resta l'indirizzo grezzo
+        posto = str(getattr(page, "url", "") or "")
+    try:
+        body = await page.locator("body").inner_text(timeout=1500)
+    except Exception:
+        body = ""
+    return hashlib.sha256(
+        "\0".join([posto, str(body or "")[:50000]]).encode("utf-8")).hexdigest()
+
+
 async def _page_matches_concept(page, concept: str) -> bool:
     if _detlex is None:
         return False
@@ -1702,6 +1724,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                 page = current_page(page)
                 password_visible = await _has_toplevel_password(page)
                 continue
+        prima_del_clic = await _login_progress_signature(page)
         reached = await reach_login("login")
         entry_steps += 1
         if reached.get("approval_required"):
@@ -1717,9 +1740,20 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                         else "selector_missing"),
                     "error_class": error_class}
         page = current_page(page)
-        await _wait_for_login_surface(
+        superficie = await _wait_for_login_surface(
             page, budget.remaining(_LOGIN_SURFACE_SETTLE_S))
         password_visible = await _has_toplevel_password(page)
+        # The budget is spent on progress here too. A click that reveals no
+        # login stage AND leaves the page exactly as it was did not happen:
+        # repeating it cannot end differently. Turn `ab0ebb39` (10/9/2026),
+        # portal under maintenance: the entry was clicked four times, each
+        # time from the maintenance page onto the maintenance page, and the
+        # turn then told the user to take physical action.
+        if not superficie and await _login_progress_signature(
+                page) == prima_del_clic:
+            return {"ok": True, "logged_in": False,
+                    "reason_code": "login_entry_stalled",
+                    "error_class": "login_entry_stalled"}
 
     if not password_visible:
         return {"ok": True, "logged_in": False,
