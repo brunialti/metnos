@@ -2872,6 +2872,34 @@ async def _dismiss_privacy_obstruction(entry: dict, *,
     return outcome
 
 
+def _is_goal_drift(flow: dict, url: str, confidence: float) -> bool:
+    """Un aggancio PEGGIORE, sullo stesso posto, non e' un passo avanti.
+
+    Misurato sul turno `f33eb0da` (10/9/2026): la pagina delle fatture ha due
+    schede, la ricerca ha cliccato «FATTURE» a 0,78 - quella giusta - e poi ha
+    continuato sulla stessa pagina con 0,686 e infine «MOVIMENTI» a 0,56,
+    tornando sulla scheda sbagliata. Poi ha letto quella. Le confidenze
+    scendono in fila: non e' cecita', e' deriva.
+
+    Il budget si spende sul progresso, e un candidato che sullo stesso posto
+    vale meno di quello gia' preso non ne e' uno: la ricerca si ferma li' e
+    lascia decidere all'arrivo. Vale per qualunque sito con schede o filtri,
+    non serve sapere quali siano.
+    """
+    if confidence <= 0:
+        return False
+    migliore = (flow.get("best_by_place") or {}).get(url)
+    return migliore is not None and confidence < float(migliore)
+
+
+def _record_goal_progress(flow: dict, url: str, confidence: float) -> None:
+    """Il miglior aggancio accettato su questo posto: la soglia da battere."""
+    if confidence <= 0 or not url:
+        return
+    posti = flow.setdefault("best_by_place", {})
+    posti[url] = max(float(posti.get(url, 0.0)), confidence)
+
+
 async def _clear_login_surface(
         entry: dict, *, settle: bool = False) -> cookie_privacy.CookieOutcome:
     """Clear what covers a login form: consent first, then any other overlay.
@@ -3151,6 +3179,15 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
             primitive = "click"
             plan_kind = "goal_navigation"
             confidence = float(goal_drilldown.get("confidence", 0.0))
+        elif (chosen.get("ok") and int(flow.get("steps", 0)) > 0
+                and _is_goal_drift(flow, url_corrente,
+                                   float(chosen.get("confidence", 0.0)))):
+            # Si e' gia' fatto meglio, qui: quello che resta porta altrove.
+            # Si dichiara l'arrivo invece di consumare un altro passo per
+            # peggiorare - e invece di fallire, perche' un posto raggiunto
+            # resta raggiunto.
+            primitive = "observe"
+            plan_kind = "goal_complete"
         elif (chosen.get("ok") and not (
                 goal_satisfied and not action_resolver.goal_candidate_is_exact(
                     parsed.get("target", ""), chosen["candidate"]))):
@@ -3199,6 +3236,10 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
                         "selector_missing"),
                         "observed_candidates": _goal_candidate_diagnostics(
                             chosen)}
+        # La soglia da battere sul posto in cui ci si trova: un aggancio piu'
+        # debole di questo, qui, sarebbe deriva e non progresso.
+        if plan_kind in ("goal_navigation", "goal_continuation"):
+            _record_goal_progress(flow, url_corrente, confidence)
     elif primitive not in ("goto", "wait") and not (
             primitive == "fill" and (value_ref or "").startswith("cred:")):
         candidates = await _enumerate_candidates(entry["page"])

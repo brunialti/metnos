@@ -149,6 +149,32 @@ def test_un_consenso_che_non_si_risolve_resta_un_rifiuto(monkeypatch) -> None:
     assert esito["obstruction_reason"] == "dismissal_limit"
 
 
+def test_un_aggancio_peggiore_sullo_stesso_posto_non_e_progresso() -> None:
+    """La ricerca a obiettivo non deve peggiorare per non fermarsi.
+
+    Turno reale `f33eb0da` (10/9/2026), pagina con due schede: la ricerca ha
+    cliccato «FATTURE» a 0,78 — quella giusta — poi ha continuato sulla stessa
+    pagina con 0,686 e infine «MOVIMENTI» a 0,56, tornando sulla scheda
+    sbagliata, che e' quella che il turno ha poi letto. Le confidenze scendono
+    in fila: non e' cecita', e' deriva.
+
+    Il budget si spende sul progresso. Un candidato che sullo stesso posto vale
+    meno di quello gia' preso non ne e' uno.
+    """
+    flow: dict = {}
+    posto = "https://esempio.it/movimenti-fatture"
+
+    # 0,86 e' stato speso ALTROVE: qui non fa soglia.
+    sb._record_goal_progress(flow, "https://esempio.it/dashboard", 0.86)
+    assert sb._is_goal_drift(flow, posto, 0.78) is False
+
+    sb._record_goal_progress(flow, posto, 0.78)          # la scheda giusta
+    assert sb._is_goal_drift(flow, posto, 0.686) is True  # 3o clic reale
+    assert sb._is_goal_drift(flow, posto, 0.56) is True   # il ritorno indietro
+    assert sb._is_goal_drift(flow, posto, 0.90) is False  # meglio: si prosegue
+    assert sb._is_goal_drift(flow, "https://esempio.it/altro", 0.10) is False
+
+
 class _Pagina:
     """Pagina finta: solo un URL e un'attesa che non dorme davvero."""
 
