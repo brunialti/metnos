@@ -1473,3 +1473,28 @@ presento come prova delle protezioni di root.
 - **F5-F6**: nessuna nuova ammissione reale in questa tornata.
 
 Nessun GO incondizionato viene rivendicato da questa risposta.
+
+## A-02 — corretto (11 settembre 2026, notte)
+
+`_archive_abandoned_authority_journal_v2` confronta ora, prima di spostare il
+giornale, le cinque identità che l'intestazione e il record condividono —
+`request_id`, `closed_build_id`, `previous_set_id`,
+`distribution_payload_hash`, `distribution_signature_hash` — con un solo
+aiutante usato anche dal percorso completato. **Soltanto quelle**, come
+prescritto: nessuna condizione del percorso completato copiata sull'abbandono
+(resta `HEAD_REQUIRED`, i checkpoint si fermano dove la traversata si è
+fermata, l'inventario sorgente non viene legato al successore).
+
+La prova esistente sull'abbandono era verde **soltanto** perché mancava il
+confronto: il suo record prendeva le identità da un modello estraneo. Con il
+confronto è diventata rossa con `birth_provisioning_transaction_conflict`; ora
+usa il record della stessa traversata. Cinque prove nuove cambiano un'identità
+alla volta, derivano il documento di abbandono dal record cambiato — così il
+legame regge e l'unica cosa che può rifiutare è il confronto — e pretendono il
+rifiuto con il giornale fermo byte per byte. **Senza il confronto cadono tutte e
+cinque.** Suite che toccano l'abbandono: 101 verdi, 15 saltate.
+
+Limite: fixture del coordinatore e della distribuzione restano sostituti di
+prova, come nella sonda originale; preparazione, archiviazione e filesystem del
+giornale sono reali. La correzione entra in esercizio con il prossimo
+attraversamento, perché il provveditore viaggia con la release.
