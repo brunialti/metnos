@@ -4216,7 +4216,16 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         _dl_match("sites.structured_record_request", query)
         or _dl_match("sites.collection_search_request", query)
         or (_dl_match("sites.search_action_verb", query)
-            and _dl_match("sites.goal_scope_quantifier", query)))
+            and _dl_match("sites.goal_scope_quantifier", query))
+        # A request verb plus a scope quantifier asks for the SET, not for one
+        # specimen: that is a collection request as much as an enumerating
+        # verb is. The flat lexicon forms bind the verb to the article, so a
+        # quantifier between the two breaks the form; composing the two
+        # registered concepts covers the word order without adding a single
+        # surface form. Symmetric to the search-verb rule just above.
+        or (_dl_match("sites.goal_request_verb", query)
+            and (_dl_match("sites.goal_scope_quantifier", query)
+                 or _dl_match("text.plural_determiner", query))))
     has_site_context = ("open_sites" in tools_present
                         or root_object == "sites"
                         or "sites" in action_objects)

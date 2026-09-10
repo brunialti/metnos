@@ -1011,6 +1011,17 @@ def register_all() -> None:
           "quanti", "quante", "come", "dove", "quando", "perche"],
       en=["what", "which", "who", "whom", "whose", "how", "where", "when",
           "why"])
+    # The determiner that says MANY, in the shape a request has: a verb, then
+    # what is asked for. It is what separates "the invoice" from "the
+    # invoices", and it is general like the interrogatives above - no domain
+    # names it. Italian marks the plural on the determiner itself; English
+    # marks it on the noun, so there the determiner is read together with the
+    # word that follows it.
+    R("text.plural_determiner", "regex",
+      it=[r"\b(?:i|gli|le|dei|degli|delle|miei|mie|tuoi|tue|nostri|nostre"
+          r"|questi|queste|quali)\b"],
+      en=[r"\b(?:my|our|your|these|those|the|all)\s+"
+          r"(?:[\w'-]+\s+){0,2}[\w'-]+s\b"])
     R("sites.goal_scope_quantifier", "phrases", match_mode="word",
       it=["tutto", "tutta", "tutti", "tutte", "ogni", "intero", "intera",
           "interi", "intere"],
