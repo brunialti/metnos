@@ -1,13 +1,15 @@
-# Consegna RM-0008 — Release 3 costruita, attraversamento bloccato e corretto (9-10/9/2026)
+# Consegna RM-0008 — Release 3 attraversata, e i due difetti che ha rivelato (9-10/9/2026)
 
-> Aggiornato **la notte del 10/9**: la ricostruzione e' **preparata e pronta**,
-> non eseguita. Vedi **§6-quinquies** per cosa e' stato preparato e
-> **§6-quater** per l'ordine dei passi che restano.
+> Aggiornato **il 10/9 verso mezzogiorno**. L'attraversamento e' **riuscito**:
+> vedi **§6-sexies**, che e' ora la sezione da leggere per prima. Le sezioni
+> §6-bis e §6-quinquies restano il racconto di *come* ci si e' arrivati e
+> vanno lette solo per capire il perche' delle scelte.
 >
-> La sezione **§6-bis** resta la piu' importante per capire *perche'*:
-> l'attraversamento e' stato rifiutato dalla macchina, la causa e' stata trovata
-> e corretta nel repository, ma **la Release 3 gia' costruita porta ancora la
-> regola sbagliata** e va rifatta.
+> Subito dopo l'attraversamento sono emersi **due difetti veri, entrambi
+> preesistenti e nessuno dei due causato dall'attraversamento**: i turni si
+> bloccavano a intermittenza sul lucchetto del catalogo, e Telegram non
+> riusciva ad avviare la sandbox. Cause trovate, correzioni scritte, in attesa
+> del prossimo giro di rilascio (§6-sexies).
 
 Documento per l'agente che subentra. Stato reale al momento della scrittura,
 niente promesse: ogni affermazione qui sotto e' stata misurata, e dove non lo
@@ -15,15 +17,14 @@ e' stata c'e' scritto.
 
 ## 1. Dove siamo in una riga
 
-La Release 3 e' **costruita, firmata e installata** accanto a quella in
-esercizio, e il suo descrittore dichiara finalmente l'interprete giusto. Il
-tentativo di attraversarla e' stato **rifiutato dalla catena**: l'uscita in
-avanti introdotta stamattina era stata insegnata al costruttore ma non ai
-lettori che attraversano. Causa trovata, corretta e coperta da prova nel
-repository; la release costruita porta pero' ancora il codice vecchio, quindi
-va ritirata la rivendicazione e ricostruita. **Tutto cio' che serve per farlo
-e' pronto** (§6-quinquies): manca solo il via di Roberto e tre comandi.
-Produzione **mai toccata**: zero riavvii, servizi tutti su.
+La Release 3 e' **in esercizio**: attraversata il 10/9 alle 09:38 con
+`CUTOVER_OK`, stato `PREFLIGHT_VERIFIED`, `metnos.target` **attivo** per la
+prima volta dalle 14:21 del 9/9, tutti i servizi e i due timer su, tre head
+pubblicate, nessuna rivendicazione pendente, interprete amministrativo
+`/usr/bin/python3.12`. Le correzioni del login e dei cookie sono vive. Restano
+due difetti trovati **provando davvero** subito dopo — contesa sul lucchetto
+del catalogo e sandbox vietata a Telegram — corretti nel repository e in attesa
+del prossimo ciclo di rilascio.
 
 ## 2. Ordini dell'utente in questa sessione, nell'ordine
 
@@ -383,6 +384,22 @@ Ordinati per gravita'. Ognuno e' stato misurato, non dedotto.
     Sostituito da un comando solo (§6-quinquies). *Resta aperto* il criterio di
     Roberto: dev'essere una capacita' del prodotto, non uno strumento da
     sviluppatore (§9.4).
+18. **Un rilascio non si prova finche' non si usa il prodotto** (10/9). I due
+    difetti di §6-sexies non li ha trovati nessuna suite: sono usciti al primo
+    turno reale dalla chat e al primo messaggio da Telegram, entrambi entro
+    dieci minuti dall'attraversamento. Entrambi **preesistenti**, entrambi
+    nascosti da un servizio che era giu'. Rimettere in piedi il bersaglio non
+    ha creato i difetti: **ha smesso di nasconderli**.
+19. **Una lettura non deve prendere un lucchetto di scrittura** (10/9). E' la
+    forma generale del primo difetto: il caricamento del catalogo era gia'
+    protetto da solo (impronta prima e dopo, rifiuto esplicito se lo store si
+    muove), e il lucchetto esclusivo non aggiungeva correttezza — toglieva
+    disponibilita' a chiunque leggesse nello stesso momento.
+20. **Un servizio non puo' vietare cio' su cui si regge** (10/9). Forma
+    generale del secondo: la sandbox degli executor **e'** un insieme di spazi
+    dei nomi. `RestrictNamespaces` su un servizio che esegue turni non aggiunge
+    un secondo confinamento, toglie l'unico che c'e'. Ora e' una prova che lo
+    vieta a qualunque servizio del catalogo.
 15. **La catena e' leggibile senza `sudo`.** Tutto `/var/lib/metnos/executor-birth`
     e' `root:root 755/644`, con **una sola** eccezione: il lucchetto
     `chain-v1/.required-head-v1.lock`, `600`. Un censimento di verifica si puo'
@@ -391,30 +408,38 @@ Ordinati per gravita'. Ognuno e' stato misurato, non dedotto.
 
 ## 6-quater. Cosa resta da fare, in ordine
 
-**Aggiornato il 10/9 dopo il terzo rifiuto.** I quattro strumenti a colpo
-singolo sono stati **ritirati** e sostituiti da uno solo:
-`internal/tools/rm0008_release_cycle.py`.
+**Aggiornato il 10/9 dopo l'attraversamento riuscito.** I quattro strumenti a
+colpo singolo sono stati **ritirati** e sostituiti da uno solo:
+`internal/tools/rm0008_release_cycle.py`. I passi 1-2 sono **fatti**; restano
+i seguenti, in quest'ordine.
 
-1. `prepare` — **gia' eseguito**, non serve `sudo`. Riallinea le radici
-   riviste, rigenera l'elenco firmato dei file Python, ricostruisce e sigilla
-   l'esportazione, la mette in scena coi permessi che il ricevitore accetta e la
-   misura. Verificato **idempotente**: due esecuzioni di fila danno lo stesso
-   censimento e lasciano l'albero pulito.
-2. `apply --cross` — **l'unico comando con `sudo`**:
+1. ~~`prepare` + `apply --cross` per la Release 3~~ — **fatto il 10/9**,
+   esito in §6-sexies.
+2. **Rilasciare le due correzioni vive** (§6-sexies): lucchetto del catalogo e
+   sandbox di Telegram. Stesso ciclo, due comandi:
 
    ```
+   # agente, senza sudo
+   /opt/metnos/.venv/bin/python /opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_release_cycle.py prepare
+   # Roberto, dal suo terminale
    sudo /usr/bin/python3.12 /opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_release_cycle.py apply --cross
    ```
 
-   Rimisura l'albero in scena, lo riceve, **ritira da solo** la rivendicazione
-   pendente se nomina una sorgente superata, costruisce e installa il successore
-   firmato, lo **esamina**, e solo allora attraversa. Senza `--cross` si ferma
-   dopo l'esame e non ferma niente.
-3. **Turno reale** su Telepass (§8.5).
-4. **Riavvio vero**: l'unica prova onesta del «tutto disponibile senza
+   Sara' anche la **prima misura vera** di quanto costa una modifica ordinaria
+   ora che il rituale e' sparito: se costa piu' di due comandi, il difetto e'
+   nel ciclo, non nella modifica.
+3. **Turno reale** su Telepass (§8.5) — la frase esatta e' `accedi a telepass`.
+   Da rifare **dopo** il punto 2, e da rifare **anche da Telegram**, che oggi
+   non puo' eseguire nulla.
+4. **Prova generale dell'attraversamento**: far girare l'attraversamento vero
+   su una copia della catena, fermandosi prima della cucitura con systemd,
+   com'e' gia' fatto per il ritiro. I tre rifiuti del 10/9 sarebbero costati
+   secondi invece che cicli interi in produzione. **Promesso, non ancora
+   scritto.**
+5. **Riavvio vero**: l'unica prova onesta del «tutto disponibile senza
    interventi a mano» (reperto 12).
-5. Documentazione IT/EN, roadmap, GII, pubblicazione incrementale in inglese.
-6. Decidere sul sigillo di `tests/portable/conftest.py` (§7) e sull'accesso di
+6. Documentazione IT/EN, roadmap, GII, pubblicazione incrementale in inglese.
+7. Decidere sul sigillo di `tests/portable/conftest.py` (§7) e sull'accesso di
    Roberto alle directory d'installazione (§9).
 
 ## 6-quinquies. Il ciclo unico: perche' esiste e cosa non e' ancora
@@ -467,6 +492,133 @@ si aggiorna da solo e riferisce l'esito, senza terminale, senza radice
 d'installazione, senza impronte. E' il vero criterio di chiusura di RM-0008 ed
 e' un lavoro di progettazione, non un ritocco: vedi §9.4.
 
+## 6-sexies. L'attraversamento riuscito, e i due difetti che ha rivelato
+
+### L'esito, verbatim
+
+Il 10/9 il ciclo unico ha risposto:
+
+```
+CUTOVER_OK {"closed_build_id": "sha256:efeffa1e…",
+            "cutover_id": "sha256:e5ca0c06…",
+            "readiness_unit": "metnos-stack-ready.service",
+            "request_id": "sha256:22adf6d9…",
+            "state": "PREFLIGHT_VERIFIED",
+            "target_unit": "metnos.target"}
+```
+
+Verificato **dopo**, non dedotto: `metnos.target` attivo (prima volta dalle
+14:21 del 9/9), tutti i servizi del catalogo attivi, i due timer attivi, tre
+head pubblicate, nessuna rivendicazione pendente, interprete amministrativo
+`/usr/bin/python3.12`, HTTP `operational: true`, correzioni di login e cookie
+vive nella release in esercizio.
+
+Il ciclo ha richiesto **tre tentativi**, e nessuno dei tre e' fallito per la
+regola della catena: archivio nominato per la head invece che per il tentativo,
+poi un giornale orfano lasciato da un tentativo precedente. Entrambi difetti
+**miei**, entrambi corretti dentro lo strumento, entrambi coperti dalla prova
+generale del ritiro. La lezione e' quella gia' scritta in §6-bis e vale ancora:
+*quando si toglie un permesso, dire subito che cosa succede al posto suo*.
+
+### Difetto vivo 1 — il guardiano teneva in ostaggio il catalogo
+
+**Sintomo.** Dalla chat, `open_sites` (il turno Telepass) falliva circa **un
+turno su tre** con «una o piu' dipendenze non sono disponibili», mentre
+`che ore sono` passava. Nessuna differenza fra i due: **solo tempismo**.
+
+**Causa, misurata al secondo.** Nel giornale del servizio HTTP:
+
+```
+contract_store.ContractStoreError: catalog_lock_timeout:
+  …/.contract-publications-v1.catalog-admission.lock
+  ← runtime/loader.py:1436 load_catalog
+  ← runtime/agent_runtime.py:3448 _admitted_code_dependency_projection
+```
+
+`metnos-stack-watchdog.timer` parte **ogni 2 minuti**; ogni giro dura 36-43 s e
+il suo controllo del catalogo (`duration_ms` letto dal giornale: 3,2-3,3 s di
+norma) prendeva il **lucchetto di ammissione in modo esclusivo**. Il turno
+aspetta 5 s e rinuncia. Le due finestre coincidono esattamente: guardiano
+09:44:54→09:45:37, con quel giro salito a **6.877 ms**; turno `edc10ae9`
+09:45:24→09:45:29, `run_ms=5013`.
+
+**Perche' sembrava nuovo.** Il guardiano era **giu' dal 9/9 alle 14:21**
+insieme al bersaglio. L'attraversamento lo ha riacceso — correttamente — e il
+difetto, che c'era gia', e' tornato visibile. **Non e' una regressione
+dell'attraversamento.**
+
+**Correzione (nel repository, non ancora in una release).** Il difetto vero non
+e' il guardiano: e' che **una lettura prendeva un lucchetto di scrittura**, per
+cui due lettori si escludevano a vicenda. Il confine del catalogo ha ora due
+meta':
+
+- `contract_store.catalog_admission_lock(exclusive=False)` — la meta' del
+  lettore: esclude ancora ogni pubblicazione, non esclude piu' un altro
+  lettore. In processo la disciplina e' la stessa (`_ProcessRWLock`), e uno
+  scrittore in attesa blocca i nuovi lettori, cosi' una fila di letture non
+  puo' affamare una pubblicazione. Un lettore che rientra chiedendo la
+  scrittura sarebbe una promozione di lucchetto — si rifiuta, invece di
+  bloccarsi.
+- `loader.load_catalog` e l'esame a freddo del passaggio la usano. Tutto il
+  resto (firma, pubblicazione, riconciliazione, ritiro) resta esclusivo.
+
+E' sicuro perche' la lettura era **gia'** protetta da sola: il caricamento
+calcola l'impronta dello store prima e dopo e accetta il catalogo solo se
+coincidono, altrimenti riprova e infine rifiuta (`store_snapshot_unstable`).
+Il lucchetto esclusivo non aggiungeva correttezza a un lettore: toglieva
+disponibilita'.
+
+Prove nuove in `tests/runtime/contracts/test_contract_store.py`: due processi
+leggono insieme, e con lo stesso codice un lettore **scade** se il confine e'
+tenuto da uno scrittore (verificata anche in negativo); la promozione da
+lettore a scrittore e' rifiutata, la direzione opposta resta lecita.
+
+### Difetto vivo 2 — Telegram vietava a se' stesso la sandbox
+
+**Sintomo.** Da Telegram, anche `che ore sono` rispondeva:
+`bwrap: No permissions to create new namespace`.
+
+**Causa.** L'unita' `service-telegram-daemon` dichiarava
+`RestrictNamespaces=yes`. Il demone Telegram esegue `run_turn` **in processo**,
+come il server HTTP: ogni executor gira in una sandbox, e una sandbox **e'** un
+insieme di spazi dei nomi nuovi. Vietarli a livello di unita' non aggiunge un
+secondo strato di confinamento: **toglie l'unico che c'e'**, e il turno muore
+prima dell'executor.
+
+**Non e' una regressione dell'attraversamento**: la direttiva sta identica nel
+catalogo della Release 2 e in quello della Release 3. `service-http` e
+`service-durable-worker`, che ospitano la stessa identica catena, non l'hanno
+mai avuta. Era una **copia** ereditata dalla vecchia unita' scritta a mano, mai
+una politica.
+
+**Correzione.** Direttiva rimossa dalla sorgente del catalogo e dalla vecchia
+unita' nel repository, con il motivo scritto accanto. La regola e' tenuta da una
+prova generale — `test_no_service_forbids_the_namespaces_its_own_sandbox_needs`
+— che vieta `RestrictNamespaces` a **qualunque** servizio del catalogo: un
+servizio che non deve eseguire executor si esprime con cio' che esegue, non
+rompendo la sandbox.
+
+**Il sigillo della topologia si e' mosso, ed e' il meccanismo che funziona.**
+Cambiare il catalogo muove per costruzione
+`_EXPECTED_SERVICE_SOURCE_IDENTITY_V1` in
+`runtime/executor_birth_admin_preflight.py`: e' il riferimento rivisto
+dell'**unica** topologia firmata che il verificatore ammette, e riscriverlo
+**e'** l'atto di approvare la modifica. Nuovo valore
+`sha256:9ea904e1…` (prima `sha256:ad3854f5…`), ricalcolato con una sonda in
+sola lettura e verificato dalle prove che lo vogliono indipendente da casa del
+servizio e interprete amministrativo (sei combinazioni, tutte verdi).
+Da sapere per non spaventarsi: l'aiutante amministrativo vivo
+(`/usr/libexec/metnos/executor-birth-v1/preflight.py`) **viene sostituito
+dall'attraversamento** — quello attuale porta la data del 10/9 09:41 — quindi
+dopo il passaggio sigillo e catalogo restano d'accordo.
+
+### Cosa manca ancora, su questi due
+
+Entrambe le correzioni sono nel worktree e **non nella release in esercizio**.
+Partono col ciclo ormai a due comandi: `prepare` (agente) + `apply --cross`
+(Roberto). Fino ad allora Telegram resta senza executor e il turno Telepass
+riesce circa due volte su tre, fuori dalla finestra del guardiano.
+
 ## 7. Prove rosse, classificate con onesta'
 
 Suite runtime completa: **91 rosse su 8652**, tutte preesistenti a questa
@@ -517,32 +669,49 @@ d2346b34 un pannello chiuso resta un pannello visto           <- conteggi
 a4d4fe2d la sonda nomina cosa dovrebbe muovere un ritiro
 ef26477b approvazione degli esiti congelati mossi dallo scopo nuovo
 3df76f9f chiusura della consegna sullo stato misurato della suite
---- 10/9, preparazione della ricostruzione (§6-quinquies) ---
-         strumento di ritiro della rivendicazione della Release 3
-         costruttore riallineato sull'esportazione nuova
-         completatore disarmato fino alla ricostruzione
+--- 10/9, la ricostruzione e l'attraversamento (§6-quinquies, §6-sexies) ---
+9bd360ea strumento di ritiro della rivendicazione della Release 3
+b2999c20 la crociera abbandonata conserva il proprio giornale di nascita
+60b4d6c8 costruttore puntato sulla seconda esportazione rivista
+0109d9b3 il ritiro registra cio' che dice l'aiutante, rifiuto compreso
+ef14fb2a la ricostruzione preparata e cio' che ha misurato l'operatore
+8a5f4a7c completatore armato sulla Release 3 ricostruita
+d5416649 una crociera abbandonata ritira il giornale invece di bloccare
+c3e8a193 un solo comando di ciclo, senza impronte ricopiate a mano
+2eab08e0 elenco firmato dei file Python dopo il ritiro degli strumenti
+f33cbe58 l'ottavo lettore, e il rituale che era esso stesso il difetto
+6714383a la politica della catena lega il predecessore conservato
+ac8f5841 l'archivio del ritiro prende il nome dal tentativo, non dalla head
+959b275e un tentativo fallito lascia anche un giornale, e va ritirato
+--- 10/9, non ancora committato (§6-sexies) ---
+         il confine del catalogo ha una meta' per il lettore
+         nessun servizio vieta gli spazi dei nomi che la sua sandbox usa
+         questa consegna
 ```
 
-Riferimenti sorgenti correnti nel repository:
-privato `sha256:0a27b038…` (755), pubblico `sha256:9180f62d…` (743).
-**Sono avanti rispetto alla Release 3**, che porta la propria copia firmata:
-appartengono alla versione successiva.
+Riferimenti sorgenti **del candidato** nel worktree (10/9, dopo `prepare`):
+privato `sha256:0fe09130…` (755), pubblico `sha256:e5745238…` (743).
+**Non sono quelli della release in esercizio**: la Release 3 porta la propria
+copia firmata (`sha256:0a27b038…` privato, `sha256:9180f62d…` pubblico) e
+resta valida com'e'. Questi appartengono alla versione successiva, quella con
+le due correzioni di §6-sexies. Chi legge deve tenere distinti i due:
+candidato e release installata non coincidono mai durante un ciclo aperto.
 
 ## 9. Decisioni aperte per Roberto
 
-1. **Ritirare, ricostruire, attraversare** — tutto preparato (§6-quinquies),
-   serve solo il suo via. Il ritiro e la ricostruzione **non fermano niente**;
-   solo l'ultimo passo, l'attraversamento, ferma e riavvia i servizi, e va
-   fatto quando non c'e' un turno in corso.
+1. **Rilasciare le due correzioni vive** (§6-sexies) col ciclo a due comandi.
+   Fino ad allora Telegram non esegue nulla e il turno Telepass riesce circa
+   due volte su tre. L'attraversamento ferma e riavvia i servizi: va fatto
+   quando non c'e' un turno in corso.
 2. **Sigillo di `tests/portable/conftest.py`** — vedi §7.
-4. **L'aggiornamento di Metnos deve diventare una capacita' del prodotto.**
+3. **L'aggiornamento di Metnos deve diventare una capacita' del prodotto.**
    Criterio di Roberto, 10/9: *«robusta, semplice, automatica e trasparente
    all'utente, altrimenti Metnos e' inutilizzabile»*. Oggi c'e' un comando solo
    invece di sette passaggi, ma resta un comando con `sudo` da un albero di
    lavoro. Il fine e': lo si chiede dall'interfaccia o dalla chat, il prodotto
    si aggiorna e riferisce l'esito. E' progettazione, non un ritocco, e va messa
    in roadmap come criterio di chiusura di RM-0008.
-3. `internal/tools/grant_roberto_access_to_install_root.sh` — scritto,
+4. `internal/tools/grant_roberto_access_to_install_root.sh` — scritto,
    approvato in linea di principio, **mai eseguito**. Rimedio provvisorio: la
    vera correzione e' separare la radice d'installazione dall'albero di
    sviluppo, cosa su cui Roberto e' d'accordo.
