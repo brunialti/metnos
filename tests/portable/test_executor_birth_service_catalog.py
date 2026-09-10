@@ -1014,3 +1014,33 @@ def test_product_loader_rejects_wrong_type_or_off_linux_before_authority(monkeyp
         with pytest.raises(catalog.ServiceCatalogError, match="platform_unsupported"):
             catalog.load_service_catalog_v1(object())
     assert called == []
+
+
+def test_no_service_forbids_the_namespaces_its_own_sandbox_needs() -> None:
+    """`RestrictNamespaces` must not appear in the catalog, on any service.
+
+    The product confines every executor in a sandbox, and a sandbox *is* a
+    set of new namespaces.  A unit-level ban does not add a second layer of
+    confinement: it removes the only one there is, and the turn dies before
+    the executor runs.  `service-telegram-daemon` carried the directive over
+    from a hand-written legacy unit, while `service-http` and
+    `service-durable-worker`, which host the very same pipeline, never had
+    it: the ban was a copy, never a policy.
+
+    This test is deliberately wider than that one service, and that is a
+    policy over a closed catalog, not a claim about each entry.  The two
+    narrower forms are worse today: a list of "services that run turns" is
+    the hardcoding that produced the defect in the first place, and a typed
+    capability in the signed catalog changes the catalog schema for one
+    directive.  The way out is named and cheap: a service that genuinely
+    needs namespace restriction amends this test together with itself, and
+    writes down why — the same regime as every other reviewed pin here.
+    """
+    offenders = sorted(
+        item.entry_id
+        for item in catalog.SERVICE_SOURCE_V1
+        for directive in item.unit_recipe
+        if (directive.section, directive.name)
+        == ("Service", "RestrictNamespaces")
+    )
+    assert offenders == []

@@ -643,7 +643,13 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             _source_directive("Service", "ProtectSystem", "strict"),
             _source_directive("Service", "Restart", "on-failure"),
             _source_directive("Service", "RestartSec", "10s"),
-            _source_directive("Service", "RestrictNamespaces", "yes"),
+            # `RestrictNamespaces` is deliberately absent.  This service hosts
+            # the turn pipeline, and the pipeline confines every executor in
+            # its own sandbox, which is a set of new namespaces.  Forbidding
+            # them at the unit level does not add confinement: it removes the
+            # only confinement there is, and the turn fails before the
+            # executor runs.  `service-http` and `service-durable-worker`,
+            # which host the same pipeline, never declared it.
             _source_directive("Service", "RestrictRealtime", "yes"),
             _source_directive("Service", "StandardError", "journal"),
             _source_directive("Service", "StandardOutput", "journal"),
