@@ -900,6 +900,12 @@ per voce, con numero, data e totale ripetuti, e la chiusura dice «Totale: 12».
 La cura generale sta nel formato compatto di `describe_entries` (raggruppare i
 campi comuni dei record che condividono l'identificativo), ma è un builtin
 firmato: la modifica aspetta lo stesso percorso di pubblicazione di A-11.
+La cura è scritta e provata sul ramo locale `sites/compact-grouping` (7
+prove nuove verdi). Il caricatore la rifiuta finché il contratto builtin non
+rinasce: codice del modulo e copia firmata devono coincidere, e nessuna
+modifica a un builtin è passata da questa strada dopo il cambio dell'8/9. Due
+prove di contratto sono rosse sul ramo per questa ragione, e soltanto per
+questa.
 
 Due fatti misurati che cambiano il quadro:
 
