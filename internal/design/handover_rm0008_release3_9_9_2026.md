@@ -748,6 +748,73 @@ nodi, 24 shadow root) sono tetti di costo, non conoscenza di un sito, ma sono
 tarate su cio' che si e' misurato quel giorno. E' li' che l'«ad hoc» puo'
 rientrare dalla finestra.
 
+## 6-decies. Ancora la sera del 10/9: la prova dovuta, e l'elenco al posto della prosa
+
+Due cose lasciate aperte poche ore prima, chiuse qui.
+
+### La prova che mancava, e cosa ha trovato
+
+La verifica «una scheda che non si apre non e' un arrivo» era partita **senza
+una prova propria** — dichiarato nel commit invece di nasconderlo. Costruirla
+ha mostrato che la verifica **misurava la cosa sbagliata**.
+
+La firma che confrontava comprendeva tutto il testo della pagina, comandi
+inclusi. Una scheda che si seleziona e fa comparire la propria barra di
+strumenti — un'icona, senza testo — cambia quella firma senza che il contenuto
+si sia mosso di un millimetro. Ed e' esattamente la forma del portale vero: li'
+la vecchia prova di movimento (il posto piu' i controlli) vede gia' progresso,
+quindi la prova sul contenuto era l'unica rimasta a poter dire di no — e non lo
+diceva.
+
+Ora la scheda ha una firma sua: **le evidenze non interattive** — quelle da cui
+l'osservatore della pagina gia' esclude i comandi — piu' **le mete a cui la
+pagina porta**. Le prime rispondono a «il contenuto e' cambiato?»; le seconde
+al caso opposto, un elenco fatto di soli collegamenti, che non lascia evidenza
+testuale ma cambia tutte le sue destinazioni.
+
+`tests/runtime/sites/test_una_scheda_che_non_si_apre.py` e' la replica: una
+scheda che si seleziona, mette su una barra e non apre niente, accanto a una
+strada che funziona ma ha un nome piu' lungo e quindi vale meno. **Senza** la
+verifica la ricerca conta il clic a vuoto, legge la seconda strada come deriva,
+dichiara l'arrivo e legge i movimenti — il turno di Roberto, riprodotto.
+**Con** la verifica il passo viene ritirato, la deriva sospesa per quel giro,
+e la seconda strada presa.
+
+### «Elenco in caso di dati multipli»
+
+Roberto, due volte: la risposta a «mostrami tutte le fatture» non puo' essere
+un paragrafo; e poi, in una riga: *elenco in caso di dati multipli*.
+
+Il confine c'era gia'. Una collezione da mostrare passa per `extract_entries`,
+che scopre il piccolo schema, e solo dopo si presenta — una riga per record,
+in modo deterministico. Mancava il **riconoscimento della richiesta**: il
+lessico lega il verbo all'articolo in forme piatte, quindi un quantificatore in
+mezzo spezzava la forma, e l'intera figura era enumerata a mano per tre verbi
+su diciotto.
+
+Due composizioni sostituiscono quell'elenco:
+
+- verbo di richiesta **+ quantificatore di ambito** («tutte», «ogni», «all»);
+- verbo di richiesta **+ determinante plurale** — ed e' la meta' generale:
+  l'italiano segna il plurale sul determinante, l'inglese sul nome, quindi il
+  concetto nuovo legge il determinante da solo in una lingua e il determinante
+  con la parola che segue nell'altra. Sta accanto agli interrogativi, non lo
+  nomina nessun dominio.
+
+Copertura da tre formulazioni a dieci, nelle due lingue. Il **singolare resta
+fuori**: «mostrami la fattura di giugno» o «mostrami il saldo» continuano a
+ricevere una frase, perche' estrarre record da li' risponderebbe «nessun
+risultato» dove una frase era la risposta onesta.
+
+### Un difetto latente trovato per strada
+
+L'inventario delle sorgenti dello stack saltava i file nascosti leggendo le
+parti **assolute** del percorso: una radice d'installazione sotto una
+directory con il punto (un albero di lavoro sotto `.claude/`, qualunque cosa
+sotto `~/.local`) escludeva **ogni** file e la migrazione falliva con
+inventario vuoto. Cinque prove rosse per una ragione che non le riguardava.
+Ora le parti si leggono relative alla radice percorsa.
+
 ## 7. Prove rosse, classificate con onesta'
 
 Suite runtime completa: **91 rosse su 8652**, tutte preesistenti a questa
