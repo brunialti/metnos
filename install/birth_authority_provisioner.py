@@ -882,6 +882,7 @@ def decode_checkpoint_v1(raw: bytes) -> CheckpointV1:
 TRANSACTION_PREFIX_V1 = ".birth-provisioning-v1.txn."
 TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.txn."
 COMPLETED_TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.completed."
+ABANDONED_TRANSACTION_PREFIX_V2 = ".birth-provisioning-v2.abandoned."
 HEADER_PENDING_PREFIX_V1 = ".transaction-v1.pending."
 HEADER_PENDING_PREFIX_V2 = ".transaction-v2.pending."
 CHECKPOINT_PENDING_PREFIX_V1 = ".checkpoint-pending-"
@@ -3863,6 +3864,7 @@ def _initialize_transition_ownership_chain_v2(descriptor: object) -> object:
 def _prepare_transition_authority_set_v2(
     claim: object, distribution: object, previous_set: object,
     *, completed_predecessor: object = None,
+    abandoned_predecessor: object = None, predecessor_abandonment: object = None,
 ) -> PreparedAuthoritySetV2:
     """Prepare or resume the sole V2 set transaction at the fixed Birth root."""
     from executor_birth_distribution_manifest import is_verified_distribution
@@ -3885,11 +3887,18 @@ def _prepare_transition_authority_set_v2(
         with _translated():
             lock = session.global_lock(exclusive=True, create=True)
         with lock:
+            if completed_predecessor is not None and abandoned_predecessor is not None:
+                raise _conflict()
             if completed_predecessor is not None:
                 with _translated():
                     _archive_completed_authority_journal_v2(
                         session, claim, distribution, previous_set,
                         completed_predecessor,
+                    )
+            if abandoned_predecessor is not None:
+                with _translated():
+                    _archive_abandoned_authority_journal_v2(
+                        session, predecessor_abandonment, abandoned_predecessor,
                     )
             with _translated():
                 names = set(session.inventory(()))
@@ -4036,6 +4045,50 @@ def _archive_completed_authority_journal_v2(
     if (
         set(session.inventory(())) != names
         or set(session.inventory(journal.root_components)) != expected
+    ):
+        raise _reject("birth_provisioning_recovery_ambiguous")
+    # One same-root, no-replacement rename preserves every confidential byte.
+    # The archive is inert forensic evidence, never a runtime or replay input.
+    session.rename_no_replace(journal.root_components, destination, directory=True)
+
+
+def _archive_abandoned_authority_journal_v2(session, abandonment, predecessor):
+    """Retire the journal of an abandoned crossing; preserve it, never select it.
+
+    The forward exit keeps the truthful last record of a crossing that stopped,
+    and that record includes its provisioning journal. Leaving it in the active
+    slot is not preservation, though: it is a permanent block. The next crossing
+    adopts the single open transaction it finds and then conflicts with a header
+    written for another release, so no successor could ever be prepared again.
+
+    The journal is therefore renamed under a prefix that says what it is, on the
+    authority of the abandonment document bound to this exact record - never on
+    the state of the record alone, which is what tells a crossing that was
+    abandoned apart from one that merely stopped.
+    """
+    from executor_birth_ownership_coordinator import (
+        OwnershipCoordinatorRecordV2, _abandonment_binds_record_v2,
+    )
+    if (
+        type(predecessor) is not OwnershipCoordinatorRecordV2
+        or not _abandonment_binds_record_v2(abandonment, predecessor)
+    ):
+        raise _conflict()
+    journal = _TransactionJournalV1.transition_v2(
+        session, predecessor.provisioning_transaction_id,
+    )
+    destination = (ABANDONED_TRANSACTION_PREFIX_V2 + journal.transaction_id,)
+    names = set(session.inventory(()))
+    if journal.root_components[0] not in names:
+        return
+    active = {name for name in names if name.startswith((
+        TRANSACTION_PREFIX_V1, TRANSACTION_PREFIX_V2,
+    ))}
+    state = journal.read_state()
+    if (
+        active != {journal.root_components[0]} or destination[0] in names
+        or state.header is None
+        or state.header.transaction_id != journal.transaction_id
     ):
         raise _reject("birth_provisioning_recovery_ambiguous")
     # One same-root, no-replacement rename preserves every confidential byte.
@@ -4289,18 +4342,18 @@ def _prepare_transition_receipt_material_locked_v2(
             raise _conflict()
         previous_context = required.selection
         previous_set = required.authorities.prepared
+    abandonment = _abandonment_for_predecessor_locked_v2(session, predecessor)
     with _service_owned_birth_identity_v2(descriptor):
-        # An abandoned predecessor is not a completed one: its journal is the
-        # truthful record of a crossing that stopped, and archiving it would
-        # erase exactly what the forward exit preserves. A predecessor that is
-        # neither completed nor abandoned is still refused, as before.
+        # An abandoned predecessor is not a completed one: its journal is not
+        # archived as a completion, because that is the record the forward exit
+        # preserves. It is retired as what it is instead, which frees the single
+        # active slot the next crossing needs. A predecessor that is neither
+        # completed nor abandoned is still refused, as before.
         prepared = _prepare_transition_authority_set_v2(
             claim, verified, previous_set,
-            completed_predecessor=(
-                None
-                if _abandonment_for_predecessor_locked_v2(
-                    session, predecessor) is not None
-                else predecessor),
+            completed_predecessor=None if abandonment is not None else predecessor,
+            abandoned_predecessor=predecessor if abandonment is not None else None,
+            predecessor_abandonment=abandonment,
         )
     return _TransitionReceiptPreparationV2(
         verified, descriptor, previous_context, prepared,

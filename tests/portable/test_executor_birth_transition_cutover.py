@@ -1363,9 +1363,14 @@ def test_successor_receipt_preparation_binds_the_explicit_previous_context(
         events.append("service")
         yield
 
-    def prepare(selected_claim, distribution, selected_set, *, completed_predecessor):
+    def prepare(selected_claim, distribution, selected_set, *,
+                completed_predecessor, abandoned_predecessor,
+                predecessor_abandonment):
         assert selected_claim is claim and distribution is current and selected_set is previous_set
+        # No abandonment binds this predecessor, so it crosses as a completed
+        # one and nothing is handed to the abandoned branch.
         assert completed_predecessor is predecessor
+        assert abandoned_predecessor is None and predecessor_abandonment is None
         assert events == ["deployment", "service"]
         events.append("prepare")
         return staged
