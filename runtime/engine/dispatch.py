@@ -4426,7 +4426,27 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     # planner non ha emesso una navigazione, recluta act_sites in modalita'
     # fine semantico. La query resta linguaggio naturale; la riduzione bounded
     # avviene dentro l'executor intelligente e il planner non vede nuovi tipi.
-    if structured_record_request and not post_login_acts:
+    # Consent is a PRECONDITION, not a step: the broker settles it before any
+    # action, and an act that names it has no control of its own left to hit.
+    # It must not count as the navigation the plan already has, either -
+    # otherwise a request that mentions the cookie banner loses the step that
+    # would reach what was actually asked for, and the reading lands on
+    # whatever page the login left open. Recognition is the resolver's own, so
+    # planner and broker answer the question the same way.
+    def _e_una_precondizione(step) -> bool:
+        azione = str((getattr(step, "args", {}) or {}).get("action") or "")
+        if not azione:
+            return False
+        try:
+            from playwright_sidecar.action_resolver import (
+                names_privacy_container)
+            return bool(names_privacy_container(azione))
+        except Exception:  # noqa: BLE001 -- senza resolver non si deduce nulla
+            return False
+
+    navigating_acts = [step for step in post_login_acts
+                       if not _e_una_precondizione(step)]
+    if structured_record_request and not navigating_acts:
         # Se nel piano si entra con le credenziali, ci si entra per vedere la
         # PROPRIA area: e' il motivo per cui si fa un accesso. Dichiararlo
         # risparmia al pilota di dedurlo da un possessivo nella frase, che in
