@@ -93,13 +93,30 @@ def names_privacy_container(action: str) -> bool:
     Recognition uses the container marker from the detection lexicon - the
     same source the structural locator uses - so it covers every language the
     lexicon covers and no list lives here.
+
+    Naming the panel is not enough. Whoever asks to REACH a document about
+    consent is asking for a destination, not giving an answer, and treating
+    that as a precondition would take their navigation away. A navigation verb
+    or an explicit URL says the destination is the point.
+
+    Declared residue: "apri la cookie policy" is still captured, because in
+    this vocabulary "apri" is a click verb and the browser boundary has no
+    concept for "consult". Adding one is a vocabulary decision (§2.2), not one
+    to take here.
     """
     text = normalize(action)
     if not text:
         return False
-    return any(
+    if not any(
         marker and marker in text
         for marker in (normalize(form) for form in privacy_overlay_marker_forms())
+    ):
+        return False
+    if re.search(r"https?://", action or "", re.I):
+        return False
+    return not any(
+        re.search(rf"\b{re.escape(normalize(verbo))}\b", text)
+        for verbo in _verbs().get("goto", ())
     )
 
 

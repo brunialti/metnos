@@ -71,6 +71,26 @@ def test_un_azione_ordinaria_non_lo_e(action) -> None:
     assert action_resolver.names_privacy_container(action) is False
 
 
+@pytest.mark.parametrize("action", [
+    "vai alla cookie policy",
+    "naviga alla pagina privacy",
+    "visit the cookie policy",
+    "apri https://esempio.it/cookie-policy",
+])
+def test_chiedere_il_documento_non_e_rispondere_al_pannello(action) -> None:
+    """Nominare il pannello non basta: una destinazione resta una destinazione.
+
+    Riconoscere il consenso col marcatore del contenitore cattura anche
+    «privacy» e «cookie» dentro una richiesta di NAVIGAZIONE. Senza questa
+    distinzione, chi chiede di raggiungere l'informativa riceverebbe «gia'
+    fatto» e non ci arriverebbe mai: una regressione silenziosa introdotta
+    dalla correzione precedente, trovata rileggendola.
+
+    Il segnale e' un verbo di navigazione del lessico, o un URL esplicito.
+    """
+    assert action_resolver.names_privacy_container(action) is False
+
+
 def test_il_consenso_non_viene_risolto_contro_i_controlli_della_pagina(
         monkeypatch) -> None:
     """La prova che conta: quel percorso non deve proprio essere imboccato."""
@@ -216,6 +236,37 @@ def test_una_nuova_origine_e_un_consenso_nuovo(monkeypatch) -> None:
     _precondizione(entry)
     assert visti[-1].get("clicks") in (None, 0)   # nuova origine, budget nuovo
     assert entry["cookie_state"]["origin"] == "https://login.esempio.it:443"
+    # Il tetto della SESSIONE non si azzera col salto: quel che si e' speso
+    # sull'origine precedente viaggia con la sessione.
+    assert visti[-1].get("carried") == 2
+
+
+def test_i_rimbalzi_fra_origini_non_disarmano_il_tetto(monkeypatch) -> None:
+    """Il tetto per origine si azzera, quello della sessione no.
+
+    Difetto trovato rileggendo la mia stessa correzione: il tetto ai clic
+    viveva DENTRO lo stato che il cambio d'origine azzera, quindi un sito che
+    rimbalza fra due origini non lo raggiungeva mai e si poteva cliccare
+    all'infinito. Ora il conteggio speso viaggia con la sessione.
+    """
+    monkeypatch.setattr(sb.sites_audit, "record", lambda *_a, **_kw: None)
+    speso = []
+
+    async def reject(_page, state, **_kw):
+        speso.append(state.get("clicks", 0) + state.get("carried", 0))
+        state["clicks"] = state.get("clicks", 0) + 1
+        return cp.CookieOutcome("resolved", "cookie", "", 1, 1)
+
+    monkeypatch.setattr(sb.cookie_privacy, "reject_cookies", reject)
+
+    entry = _sessione()
+    entry["page"] = _Pagina("https://a.esempio.it/")
+    for giro in range(4):                       # quattro rimbalzi a/b
+        entry["page"].url = f"https://{'ab'[giro % 2]}.esempio.it/"
+        _precondizione(entry)
+    # Senza il conteggio portato appresso questa sequenza sarebbe 0,0,0,0.
+    assert speso == [0, 1, 2, 3]
+    assert speso[-1] < cp.MAX_SESSION_DISMISSALS   # il tetto esiste ed e' vicino
 
 
 def test_il_consenso_non_e_l_unica_cosa_che_copre_il_login(monkeypatch) -> None:

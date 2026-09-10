@@ -2829,7 +2829,13 @@ async def _dismiss_privacy_obstruction(entry: dict, *,
     origin = sites_origin.origin_of_url(
         getattr(entry.get("page"), "url", "") or "")
     if origin and state.get("origin") not in (None, origin):
-        state = {}
+        # Il tetto NON si azzera con l'origine. Lo stato si', perche' il
+        # pannello dell'origine nuova e' un pannello nuovo; ma il conteggio
+        # dei clic vive nello stesso stato, e un sito che rimbalza fra due
+        # origini lo riportava a zero a ogni salto senza raggiungere mai il
+        # limite. Quello che si porta dietro e' il tetto dell'intera sessione.
+        state = {"carried": int(state.get("clicks", 0))
+                 + int(state.get("carried", 0))}
         holder["cookie_state"] = state
         settle = True
     if origin:
