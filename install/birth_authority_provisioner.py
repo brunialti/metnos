@@ -3979,6 +3979,23 @@ def _require_completed_authority_predecessor_v2(
         raise _conflict()
 
 
+# The identities a provisioning journal header and the coordinator record of
+# the same crossing both carry. Only these are shared: everything else either
+# belongs to one side or means something different on each (review A-02).
+_JOURNAL_RECORD_SHARED_IDENTITIES_V2 = (
+    "request_id", "closed_build_id", "previous_set_id",
+    "distribution_payload_hash", "distribution_signature_hash",
+)
+
+
+def _journal_matches_record_v2(header, record) -> bool:
+    """Whether a journal header states the same crossing as a record."""
+    return isinstance(header, TransactionHeaderV2) and all(
+        getattr(header, field) == getattr(record, field)
+        for field in _JOURNAL_RECORD_SHARED_IDENTITIES_V2
+    )
+
+
 def _require_completed_authority_journal_v2(
     session, journal, previous_set, completed,
 ):
@@ -3988,12 +4005,9 @@ def _require_completed_authority_journal_v2(
     if state.header_pending or state.pending_checkpoint_sequence is not None:
         raise _reject("birth_provisioning_recovery_ambiguous")
     header = state.header
-    if not isinstance(header, TransactionHeaderV2) or any(
-        getattr(header, field) != getattr(completed, field) for field in (
-            "request_id", "closed_build_id", "previous_set_id",
-            "distribution_payload_hash", "distribution_signature_hash",
-        )
-    ) or header.provisioner_build_id != previous_set.provisioner_build_id:
+    if not _journal_matches_record_v2(header, completed) or (
+        header.provisioner_build_id != previous_set.provisioner_build_id
+    ):
         raise _conflict()
     try:
         observed = load_authority_set_v1(
@@ -4091,6 +4105,15 @@ def _archive_abandoned_authority_journal_v2(session, abandonment, predecessor):
         or state.header.transaction_id != journal.transaction_id
     ):
         raise _reject("birth_provisioning_recovery_ambiguous")
+    # The journal must state the crossing this record abandoned (review A-02).
+    # Selected by transaction id alone, a header written for another request,
+    # build, set or distribution was archived as if it were this one's, and
+    # the successor was prepared over the contradiction. Only the shared
+    # identities are compared - not the completed path's conditions: an
+    # abandonment lawfully stays HEAD_REQUIRED, and its checkpoints stop
+    # wherever the crossing stopped.
+    if not _journal_matches_record_v2(state.header, predecessor):
+        raise _conflict()
     # One same-root, no-replacement rename preserves every confidential byte.
     # The archive is inert forensic evidence, never a runtime or replay input.
     session.rename_no_replace(journal.root_components, destination, directory=True)

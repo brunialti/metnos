@@ -58,6 +58,39 @@ def _completed(claim, distribution, previous, prepared):
     )
 
 
+_INSTALL_KEYS = (
+    "request_id", "source_id", "closed_build_id", "release_sequence",
+    "previous_head_id", "successor_claim_id",
+)
+
+
+def _abandoned_record(completed, **override):
+    """The HEAD_REQUIRED record of the crossing whose journal is on disk.
+
+    Built from the completed record of the SAME crossing, so its identities
+    are the journal header's. The fixture used before took them from an
+    unrelated template, and the abandonment test passed only because nothing
+    compared them (review A-02). ``override`` changes one identity on purpose.
+    """
+    template = record_v2(5)
+    shared = {key: getattr(completed, key) for key in _INSTALL_KEYS}
+    shared.update({k: v for k, v in override.items() if k in _INSTALL_KEYS})
+    install = {**template.install_transaction_value(), **shared}
+    rest = dict(
+        distribution_payload_hash=completed.distribution_payload_hash,
+        distribution_signature_hash=completed.distribution_signature_hash,
+        provisioning_transaction_id=completed.provisioning_transaction_id,
+        previous_set_id=completed.previous_set_id,
+    )
+    rest.update({k: v for k, v in override.items() if k not in _INSTALL_KEYS})
+    return replace(
+        template,
+        **{key: value for key, value in install.items() if key != "schema_version"},
+        install_transaction_id=_install_transaction_id_v1(install),
+        **rest,
+    )
+
+
 def _successor(distribution, completed):
     sequence = distribution.release_sequence + 1
     encoded = f"distribution-{sequence}".encode()
@@ -274,10 +307,7 @@ def test_an_abandoned_crossing_retires_its_journal_instead_of_blocking_the_next(
     )
 
     root, previous, completed, claim, distribution = published
-    predecessor = replace(
-        record_v2(5),
-        provisioning_transaction_id=completed.provisioning_transaction_id,
-    )
+    predecessor = _abandoned_record(completed)
     abandonment = _abandoned_crossing_for_record_v2(
         predecessor, "administrative_tcb_path_unsatisfiable",
     )
@@ -316,3 +346,45 @@ def test_an_abandoned_crossing_retires_its_journal_instead_of_blocking_the_next(
     assert len(tuple(root.glob(provisioner.TRANSACTION_PREFIX_V2 + "*"))) == 1
     assert len(tuple(root.glob(
         provisioner.ABANDONED_TRANSACTION_PREFIX_V2 + "*"))) == 1
+
+
+@pytest.mark.parametrize(
+    "field", provisioner._JOURNAL_RECORD_SHARED_IDENTITIES_V2,
+)
+def test_an_abandoned_journal_must_state_the_crossing_its_record_names(
+    published, field,
+):
+    """Review A-02: one identity changed, and the journal must not move.
+
+    Selected by transaction id alone, a journal written for another request,
+    build, set or distribution was archived as if it were this crossing's,
+    and the successor was prepared over the contradiction. Each of the five
+    identities the header and the record share is changed on its own; the
+    abandonment document is derived from the changed record, so the binding
+    still holds and the only thing that can refuse is the comparison itself.
+    """
+    from executor_birth_ownership_coordinator import (
+        _abandoned_crossing_for_record_v2,
+    )
+
+    root, previous, completed, claim, distribution = published
+    other = "e" * 64 if field == "previous_set_id" else D("e")
+    predecessor = _abandoned_record(completed, **{field: other})
+    abandonment = _abandoned_crossing_for_record_v2(
+        predecessor, "administrative_tcb_path_unsatisfiable",
+    )
+    source = root / (
+        provisioner.TRANSACTION_PREFIX_V2 + completed.provisioning_transaction_id
+    )
+    archive = root / (
+        provisioner.ABANDONED_TRANSACTION_PREFIX_V2
+        + completed.provisioning_transaction_id
+    )
+    before = _snapshot(source)
+    with pytest.raises(provisioner.BirthProvisioningError):
+        provisioner._prepare_transition_authority_set_v2(
+            claim, distribution, previous,
+            abandoned_predecessor=predecessor,
+            predecessor_abandonment=abandonment,
+        )
+    assert _snapshot(source) == before and not archive.exists()
