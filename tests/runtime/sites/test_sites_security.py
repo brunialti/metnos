@@ -5039,8 +5039,10 @@ def test_sites_guard_derives_http_from_bare_ip_for_login():
         "extract_entries", "describe_entries"]
     assert out.steps[0].args == {"urls": ["http://192.168.1.10"]}
     assert out.steps[1].args == {"from_step": 1}
+    # Il fine e' la clausola che chiede: l'accesso e' gia' un passo del piano
+    # e come obiettivo e' solo rumore (turno `b04f266f`, 10/9/2026).
     assert out.steps[2].args == {
-        "action": "login a 192.168.1.10 e dimmi i device attivi",
+        "action": "dimmi i device attivi",
         "_goal_mode": True, "from_step": 2, "ambito": "personale"}
     assert out.steps[3].args == {
         "include_screenshot": False, "from_step": 3}

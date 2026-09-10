@@ -147,6 +147,7 @@ def test_sites_guard_recruits_read_and_extract_from_semantic_request():
     from engine.types import Framework, Intent, StepSpec
 
     query = "entra nel sito shop.example e mostrami gli elementi disponibili"
+    clausola = "mostrami gli elementi disponibili"
     out = _ensure_site_session_precursor(
         Framework(steps=[StepSpec(tool="open_sites", args={
             "urls": ["https://shop.example"]})]),
@@ -158,7 +159,12 @@ def test_sites_guard_recruits_read_and_extract_from_semantic_request():
         "extract_entries", "describe_entries",
     ]
     assert out.steps[2].args == {
-        "from_step": 2, "action": query, "_goal_mode": True,
+        # Il fine e' la CLAUSOLA che chiede, non la frase intera: l'ingresso
+        # nel sito e' gia' un altro passo del piano e come obiettivo e' solo
+        # rumore. Misurato sul turno `b04f266f` (10/9/2026), dove la frase
+        # intera - sito, consenso, accesso e richiesta insieme - ha lasciato
+        # il pilota fermo sulla pagina d'arrivo.
+        "from_step": 2, "action": clausola, "_goal_mode": True,
         # Si entra con le credenziali per vedere la PROPRIA area: e' un fatto
         # del piano, e dichiararlo risparmia al pilota di dedurlo da un
         # possessivo che in una richiesta ordinaria non c'e' (8/8/2026).
@@ -325,6 +331,7 @@ def test_canonical_live_query_gets_goal_before_typed_read():
 
     query = ("entra nel sito amazon e dimmi quali sono gli articoli "
              "nel carrello")
+    clausola = "dimmi quali sono gli articoli nel carrello"
     out = _ensure_site_session_precursor(
         Framework(steps=[StepSpec(tool="open_sites", args={
             "urls": ["https://www.amazon.it"]})]),
@@ -339,7 +346,12 @@ def test_canonical_live_query_gets_goal_before_typed_read():
         "extract_entries", "describe_entries",
     ]
     assert out.steps[2].args == {
-        "from_step": 2, "action": query, "_goal_mode": True,
+        # Il fine e' la CLAUSOLA che chiede, non la frase intera: l'ingresso
+        # nel sito e' gia' un altro passo del piano e come obiettivo e' solo
+        # rumore. Misurato sul turno `b04f266f` (10/9/2026), dove la frase
+        # intera - sito, consenso, accesso e richiesta insieme - ha lasciato
+        # il pilota fermo sulla pagina d'arrivo.
+        "from_step": 2, "action": clausola, "_goal_mode": True,
         # Si entra con le credenziali per vedere la PROPRIA area: e' un fatto
         # del piano, e dichiararlo risparmia al pilota di dedurlo da un
         # possessivo che in una richiesta ordinaria non c'e' (8/8/2026).

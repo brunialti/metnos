@@ -49,6 +49,18 @@ def test_una_clausola_di_consenso_non_sostituisce_la_navigazione() -> None:
     assert any("fatture" in a for a in azioni), azioni
 
 
+def test_il_fine_e_la_clausola_che_chiede_non_la_frase_intera() -> None:
+    """Turno `b04f266f`: il pilota ha ricevuto tutta la frase come fine.
+
+    Sito, consenso e accesso nella stessa richiesta seppelliscono l'unica cosa
+    da trovare, e il pilota non si e' mosso dalla pagina d'arrivo. Il divisore
+    di clausole c'e' gia' ed e' gia' usato poche righe sopra.
+    """
+    azioni = _azioni(_riscrivi(_piano("accetta cookie solo necessari")))
+    fine = next(a for a in azioni if "fatture" in a)
+    assert fine == "mostrami tutte le fatture", fine
+
+
 def test_una_navigazione_vera_resta_l_unica_e_non_viene_duplicata() -> None:
     """Se il piano naviga gia', non se ne aggiunge una seconda."""
     azioni = _azioni(_riscrivi(_piano("vai alle fatture")))
