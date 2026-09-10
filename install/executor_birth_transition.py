@@ -348,9 +348,6 @@ def _complete_closed_v1(
         capture_current_deployment_descriptor_v1,
         verify_current_installation_distribution_v1,
     )
-    from executor_birth_ownership_coordinator import (
-        _completed_transition_locked_v2, _deployment_lock_v1,
-    )
     from install.birth_authority_provisioner import complete_transition_cutover_v2
 
     distribution = verify_current_installation_distribution_v1(encoded, signature)
@@ -371,33 +368,15 @@ def _complete_closed_v1(
         != Path(os.path.abspath(signed_state_root))
     ):
         raise _fail("birth_ownership_request_conflict")
-    # Held once, from before completion until the started topology has been
-    # checked against the selection (review A-05). Completion used to take and
-    # drop this lock itself, so an administrative N+1 could advance between
-    # completion and activation and this entry would still report N as the
-    # release it had started. Completion releases the startup gate and the
-    # catalog before returning, and the services need only those to start;
-    # nothing on their start path takes the deployment lock.
-    with _deployment_lock_v1() as deployment_session:
-        result = complete_transition_cutover_v2(
-            distribution, source_id,
-            service_state_root=selected_state_root,
-            legacy_service_user=expected_legacy_service_user,
-            legacy_installation_root=expected_legacy_installation_root,
-            deployment_session=deployment_session,
-        )
-        if getattr(getattr(result, "state", None), "value", None) != "PREFLIGHT_VERIFIED":
-            raise _fail("birth_transition_final_state_missing")
-        activated = _activate_signed_topology_v1(distribution, descriptor)
-        # The final transaction for this exact release, reread under the same
-        # lock: the identity this entry reports is the one that is selected.
-        final = _completed_transition_locked_v2(deployment_session, distribution)
-        if (
-            final is None
-            or final.request_id != result.request_id
-            or final.cutover_id != result.cutover_id
-        ):
-            raise _fail("birth_transition_selection_changed")
+    result = complete_transition_cutover_v2(
+        distribution, source_id,
+        service_state_root=selected_state_root,
+        legacy_service_user=expected_legacy_service_user,
+        legacy_installation_root=expected_legacy_installation_root,
+    )
+    if getattr(getattr(result, "state", None), "value", None) != "PREFLIGHT_VERIFIED":
+        raise _fail("birth_transition_final_state_missing")
+    activated = _activate_signed_topology_v1(distribution, descriptor)
     return {
         **activated,
         "closed_build_id": distribution.identity.closed_build_id,

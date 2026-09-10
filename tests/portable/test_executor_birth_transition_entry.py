@@ -1,8 +1,6 @@
 """Focused proofs for the closed-release transition process handoff."""
 from __future__ import annotations
 
-from contextlib import contextmanager
-
 import json
 import os
 from pathlib import Path
@@ -203,7 +201,7 @@ def test_closed_release_timeout_covers_convergence_and_activation() -> None:
 
 @LINUX_ONLY
 def test_closed_process_binds_distribution_source_user_and_final_state(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import executor_birth_distribution_manifest as manifest
     from install import birth_authority_provisioner as provisioner
@@ -218,16 +216,6 @@ def test_closed_process_binds_distribution_source_user_and_final_state(
         state=SimpleNamespace(value="PREFLIGHT_VERIFIED"),
         cutover_id=D("4"), request_id=D("5"),
     )
-    held = _hold_test_deployment_lock(monkeypatch, tmp_path)
-    import executor_birth_ownership_coordinator as coordinator
-
-    monkeypatch.setattr(
-        coordinator, "_completed_transition_locked_v2",
-        lambda session, candidate: SimpleNamespace(
-            request_id=D("5"), cutover_id=D("4"),
-        ) if session is held["session"] and candidate is distribution
-        else pytest.fail("final identity binding changed"),
-    )
     monkeypatch.setattr(
         manifest, "verify_current_installation_distribution_v1",
         lambda encoded, signature: distribution
@@ -241,10 +229,9 @@ def test_closed_process_binds_distribution_source_user_and_final_state(
     monkeypatch.setattr(
         provisioner, "complete_transition_cutover_v2",
         lambda candidate, source_id, *, service_state_root,
-        legacy_service_user, legacy_installation_root, deployment_session: result
+        legacy_service_user, legacy_installation_root: result
         if (
-            deployment_session is held["session"]
-            and candidate is distribution
+            candidate is distribution
             and source_id == D("6")
             and legacy_service_user == "legacy-metnos"
             and legacy_installation_root == "/opt/metnos"
@@ -281,148 +268,6 @@ def test_closed_process_binds_distribution_source_user_and_final_state(
         "request_id": D("5"),
         "state": "PREFLIGHT_VERIFIED",
     }
-
-
-def _lock_root(base: Path) -> Path:
-    """A directory the product accepts as a deployment lock root: exactly 0o755."""
-    root = base / "ownership"
-    root.mkdir(exist_ok=True)
-    root.chmod(0o755)
-    return root
-
-
-def _hold_test_deployment_lock(monkeypatch, base: Path) -> dict:
-    """Swap the fixed root-owned deployment lock for the same lock on a test root."""
-    import executor_birth_ownership_coordinator as coordinator
-
-    root = _lock_root(base)
-    held: dict = {}
-
-    @contextmanager
-    def lock():
-        with coordinator._deployment_lock_for_test_v1(root) as session:
-            held["session"] = session
-            yield session
-
-    monkeypatch.setattr(coordinator, "_deployment_lock_v1", lock)
-    return held
-
-
-def _deployment_lock_is_free(base: Path) -> bool:
-    """Try the deployment lock from another open file description, never waiting."""
-    import fcntl
-    import executor_birth_ownership_coordinator as coordinator
-
-    fd = os.open(
-        _lock_root(base) / coordinator.DEPLOYMENT_LOCK_BASENAME_V1, os.O_RDWR,
-    )
-    try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return False
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        return True
-    finally:
-        os.close(fd)
-
-
-def _closed_process(monkeypatch, root: Path, *, final, during_activation=None):
-    """The closed entry with completion, activation and selection simulated."""
-    import executor_birth_distribution_manifest as manifest
-    import executor_birth_ownership_coordinator as coordinator
-    from install import birth_authority_provisioner as provisioner
-
-    distribution = SimpleNamespace(identity=SimpleNamespace(closed_build_id=D("3")))
-    descriptor = SimpleNamespace(service_user="metnos", service_home="/srv/metnos")
-    held = _hold_test_deployment_lock(monkeypatch, root)
-    monkeypatch.setattr(
-        manifest, "verify_current_installation_distribution_v1",
-        lambda *_args: distribution,
-    )
-    monkeypatch.setattr(
-        manifest, "capture_current_deployment_descriptor_v1",
-        lambda candidate: (candidate, descriptor),
-    )
-    monkeypatch.setattr(
-        provisioner, "complete_transition_cutover_v2",
-        lambda *_args, deployment_session, **_kwargs: SimpleNamespace(
-            state=SimpleNamespace(value="PREFLIGHT_VERIFIED"),
-            cutover_id=D("4"), request_id=D("5"),
-        ) if deployment_session is held["session"]
-        else pytest.fail("completion did not receive the held session"),
-    )
-
-    def activate(*_args):
-        if during_activation is not None:
-            during_activation()
-        return {"target_unit": "metnos.target",
-                "readiness_unit": "metnos-stack-ready.service"}
-
-    monkeypatch.setattr(transition, "_activate_signed_topology_v1", activate)
-    monkeypatch.setattr(
-        coordinator, "_completed_transition_locked_v2",
-        lambda session, _candidate: final
-        if session is held["session"]
-        else pytest.fail("final identity not reread under the held session"),
-    )
-    frame = transition._handoff_frame_v1(
-        source_id=D("6"), encoded=b"distribution", signature=b"s" * 64,
-    )
-    return lambda: transition._complete_closed_v1(
-        expected_source_id=D("6"),
-        expected_service_user="metnos",
-        expected_legacy_service_user="legacy-metnos",
-        expected_legacy_installation_root="/opt/metnos",
-        expected_service_state_root="/srv/metnos/.local/state/metnos",
-        frame=frame,
-    )
-
-
-@LINUX_ONLY
-def test_the_deployment_lock_is_held_through_activation(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
-) -> None:
-    """Review A-05: completion used to take and drop the lock by itself.
-
-    Between completion and activation an administrative N+1 could advance,
-    and the entry would still report N as the release it had started. The
-    lock is now taken once by the entry and still held while the topology
-    starts; a competitor on another file description cannot take it.
-    """
-    observed = []
-    run = _closed_process(
-        monkeypatch, tmp_path,
-        final=SimpleNamespace(request_id=D("5"), cutover_id=D("4")),
-        during_activation=lambda: observed.append(
-            _deployment_lock_is_free(tmp_path)),
-    )
-    assert run()["closed_build_id"] == D("3")
-    assert observed == [False]
-    assert _deployment_lock_is_free(tmp_path)
-
-
-@LINUX_ONLY
-@pytest.mark.parametrize("final", (
-    None,
-    SimpleNamespace(request_id=D("9"), cutover_id=D("4")),
-    SimpleNamespace(request_id=D("5"), cutover_id=D("9")),
-))
-def test_a_selection_that_moved_is_not_reported_as_started(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, final,
-) -> None:
-    """The reviewer's interleaving: the selection is already N+1 at the end.
-
-    The entry must not return N's identity as the one it started. Reread under
-    the same lock, the final transaction for this release is gone or belongs
-    to another request, and that is a failure with its own name.
-    """
-    run = _closed_process(monkeypatch, tmp_path, final=final)
-    with pytest.raises(
-        transition.TransitionEntryError,
-        match="birth_transition_selection_changed",
-    ):
-        run()
 
 
 def test_closed_process_rejects_a_state_root_outside_the_signed_home(
