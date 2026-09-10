@@ -815,6 +815,58 @@ sotto `~/.local`) escludeva **ogni** file e la migrazione falliva con
 inventario vuoto. Cinque prove rosse per una ragione che non le riguardava.
 Ora le parti si leggono relative alla radice percorsa.
 
+### Coda della notte: un sito fermo, e due difetti che ha rivelato
+
+Il portale e' andato in **manutenzione** proprio mentre si verificava, e questo
+ha reso impossibile la prova dal vivo — ma ha mostrato due cose nostre.
+
+**Un esito che non corrispondeva alla realta'.** `login_sites` marcava OGNI
+fallimento `needs_user_action`, cioe' «tocca alla persona», e la catena lo
+traduceva in «richiede azione fisica o capability non installata». Con il sito
+fermo era falso due volte. Ora c'e' un elenco chiuso di cio' che una persona
+risolve davvero — credenziali, CAPTCHA, secondo fattore, autorizzazione — e
+tutto il resto, **causa ignota compresa**, e' un guasto operativo, per il quale
+la catena aveva gia' il rimedio giusto: dire cosa e' successo e suggerire di
+riprovare. «Serve un'azione fisica» e' un'affermazione forte e si dichiara solo
+dove la si conosce.
+
+**Quattro clic identici.** Il ciclo d'ingresso cliccava «accedi» fino a
+esaurire il budget senza mai chiedersi se il clic avesse fatto qualcosa. La
+regola era gia' scritta per la ricerca a obiettivo e mancava qui: un clic che
+non fa comparire nessuna superficie di accesso **e** lascia la pagina identica
+non e' avvenuto. La firma e' volutamente grossolana — qualunque cambiamento
+conta come progresso — cosi' la regola scatta solo quando non e' successo
+letteralmente niente. La replica conta i **clic**, non solo l'esito: il primo
+e' un movimento, il secondo no e li' si smette; un terzo sarebbe il difetto.
+
+**Correzione di una mia affermazione sbagliata.** Avevo detto che §7.10 fosse
+superata perche' prescrive `runtime/sign.py publish`. Non e' cosi': la regola in
+questo albero e' **gia' aggiornata** e prescrive
+`runtime/stack_reconcile.py deploy --executor <name> --sign`. Avevo letto la
+copia vecchia di `CLAUDE.md` caricata a inizio sessione. `CLAUDE.md` non e'
+stato toccato.
+
+**Quello che pero' non funziona.** Il comando prescritto, su un executor di
+prima parte, fallisce:
+
+    {"error": "authoring_version_invalid: missing",
+     "error_code": "birth_unavailable", "ok": false}
+
+Il record di redazione di `core:login_sites` nel negozio di redazione contiene
+solo un lucchetto: sorgente canonica e versione non sono mai state popolate.
+La facciata di consegna e' pensata per i contratti nati **dal prodotto**; gli
+executor di prima parte, che vivono nell'albero del repository, oggi non hanno
+quel record. E' una lacuna di RM-0008, non una regola da riscrivere.
+
+**Cosa vale intanto.** L'edit a `login_sites.py` e' vivo ed e' coperto dalla
+firma della catena di rilascio: in `STORE_ONLY` il manifest arriva dalla
+pubblicazione firmata e `verify_executor` — cioe' il controllo del digest del
+codice — **non viene chiamato**; quel ramo e' solo della modalita' di
+redazione. Resta pero' che `[code].digest` nel manifest committato non combacia
+piu' col codice committato: innocuo in produzione, sbagliato il giorno in cui
+qualcuno lavora in modalita' di redazione. Da riallineare quando la lacuna
+sopra e' chiusa.
+
 ## 7. Prove rosse, classificate con onesta'
 
 Suite runtime completa: **91 rosse su 8652**, tutte preesistenti a questa
