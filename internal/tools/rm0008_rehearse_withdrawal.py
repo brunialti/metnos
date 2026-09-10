@@ -331,13 +331,48 @@ def rehearse(source: Path, work: Path) -> None:
             adottata = cycle.adopt_candidate(sorgente, *misura)
             cycle.require(cycle.census(adottata) == misura,
                           f"la copia adottata non misura come l'atteso ({giro})")
-        rifiutate = [p.name for p in cycle.CANDIDATE_ROOT.iterdir()
+        rifiutate = [p for p in cycle.CANDIDATE_ROOT.iterdir()
                      if ".rejected-" in p.name]
-        cycle.require(len(rifiutate) <= 1,
-                      "la copia rifiutata non e' stata conservata una volta sola")
+        # Esattamente una, ed e' proprio quella rifiutata. L'asserzione di prima
+        # ammetteva zero, e zero era cio' che il codice produceva (review O-03).
+        cycle.require(len(rifiutate) == 1,
+                      f"copie rifiutate conservate: {len(rifiutate)}, attesa una")
+        cycle.require((rifiutate[0] / "uno.txt").read_bytes() == b"cambiata",
+                      "la copia conservata non e' quella rifiutata")
     finally:
         cycle.subprocess.run = reale
     print("  rifiutata, messa da parte, e l'identita' torna adottabile")
+
+    print("9. un ritiro fermato fra i due spostamenti si riprende")
+    # La release e' gia' nell'archivio del proprio tentativo, la rivendicazione
+    # e' ancora pendente: prima ogni nuova chiamata falliva con «the pending
+    # claim reserved no release directory» (review O-04).
+    altro = "sha256:" + "0" * 64
+    fermo = fresh_chain()
+    claim = seed_pending_attempt(fermo)
+    release = fermo.ROOT / "releases-v1" / f"{claim['release_sequence']:020d}"
+    archivio = fermo.WITHDRAWN_ROOT / claim["request_id"][7:]
+    archivio.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fermo.rename_no_replace(release, archivio / "unselected-release")
+    cycle.require(fermo.withdraw_superseded_claim(altro) == claim["request_id"],
+                  "il ritiro fermato a meta' non e' stato ripreso")
+    cycle.require(fermo.withdraw_superseded_claim(altro) is None,
+                  "la ripetizione dopo la ripresa non e' innocua")
+    cycle.require(not fermo.pending_claims()
+                  and (archivio / "successor-claim.json").is_file()
+                  and (archivio / "unselected-release").is_dir(),
+                  "l'archivio non contiene i due oggetti del tentativo")
+    # L'archivio di un ALTRO tentativo non si adotta: la release manca dal suo
+    # posto e il solo archivio che la contiene porta un altro nome.
+    estraneo = fresh_chain()
+    claim = seed_pending_attempt(estraneo)
+    release = estraneo.ROOT / "releases-v1" / f"{claim['release_sequence']:020d}"
+    altrui = estraneo.WITHDRAWN_ROOT / ("f" * 64)
+    altrui.mkdir(mode=0o700, parents=True, exist_ok=True)
+    estraneo.rename_no_replace(release, altrui / "unselected-release")
+    expect_refusal("l'archivio di un altro tentativo",
+                   lambda: estraneo.withdraw_superseded_claim(altro))
+    print("  ripreso, ripetuto senza danno; l'archivio altrui rifiutato")
 
 
 def rehearse_refusals(source: Path, work: Path) -> None:
@@ -401,7 +436,7 @@ def main() -> None:
     print("copying the live chain objects (read-only)")
     copy_chain(pristine)
     rehearse(pristine, work)
-    print("9. what it must refuse")
+    print("10. what it must refuse")
     rehearse_refusals(pristine, work)
     shutil.rmtree(work, ignore_errors=True)
     shutil.rmtree(pristine, ignore_errors=True)

@@ -397,24 +397,37 @@ def withdraw_superseded_claim(source_id: str) -> str | None:
     if claim["source_id"] == source_id:
         return None
     release = ROOT / "releases-v1" / f"{claim['release_sequence']:020d}"
-    require(release.is_dir(), "the pending claim reserved no release directory")
+    # Named by the attempt, not by the head it would have succeeded. The head
+    # does not move while attempts fail, so naming the archive after it made
+    # the second withdrawal collide with the first.
+    archive = WITHDRAWN_ROOT / claim["request_id"][7:]
+    parked = archive / "unselected-release"
+    # Stopped between the two moves (review O-04): the release already sits in
+    # THIS attempt's archive while the claim still stands. That state is
+    # resumed, not refused - but only when the parked release is exactly the
+    # one this claim reserved. An archive is named by its own attempt, so
+    # another attempt's archive is never this path, and a release missing
+    # from both places is still a refusal.
+    resumed = (not os.path.lexists(release)
+               and parked.is_dir() and not parked.is_symlink())
+    reserved = parked if resumed else release
+    require(reserved.is_dir(), "the pending claim reserved no release directory")
     descriptor = json.loads(
-        (release / "deployment/executor-birth-deployment-v1.json").read_bytes())
+        (reserved / "deployment/executor-birth-deployment-v1.json").read_bytes())
     require(descriptor.get("release_sequence") == claim["release_sequence"],
             "the reserved release is not the one the claim names")
 
     before = {str(item): snapshot(item) for item in preserved_paths()}
     first = startup_fingerprint()
-    # Named by the attempt, not by the head it would have succeeded. The head
-    # does not move while attempts fail, so naming the archive after it made
-    # the second withdrawal collide with the first.
-    archive = WITHDRAWN_ROOT / claim["request_id"][7:]
     archive.mkdir(mode=0o700, parents=True, exist_ok=True)
     info = archive.lstat()
     require((info.st_uid, info.st_gid) in OWNERS
             and stat.S_IMODE(info.st_mode) == 0o700, "unsafe archive")
-    pairs = ((release, archive / "unselected-release"),
-             (path, archive / "successor-claim.json"))
+    claim_slot = archive / "successor-claim.json"
+    pairs = (((path, claim_slot),) if resumed
+             else ((release, parked), (path, claim_slot)))
+    if resumed:
+        say("RESUMING_WITHDRAWAL", claim["source_id"])
     for origin, target in pairs:
         require(not os.path.lexists(target), "archive slot already taken")
     for origin, target in pairs:
@@ -604,6 +617,13 @@ def adopt_candidate(staging: Path, files: int, expected: str) -> Path:
         # Measured BEFORE it becomes the reusable identity: a copy that does
         # not match never occupies the path it would block.
         seen = census(incoming)
+        if seen != (files, expected):
+            # Refused, and kept: nothing this tool touches is deleted. The next
+            # preparation empties the incoming slot, so a refused copy left
+            # there was erased by the run after (review, O-03 precision).
+            aside = unique_sibling(trusted, "rejected")
+            os.rename(incoming, aside)
+            say("SET_ASIDE_REJECTED_CANDIDATE", str(aside))
         require(seen == (files, expected),
                 f"the root-owned copy does not measure the same: {seen}")
         os.rename(incoming, trusted)
