@@ -2218,6 +2218,20 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
     _PRODUCERS = {"find", "read", "get", "list"}
     if (dropped & _PRODUCERS) and (fw_verbs & _PRODUCERS):
         dropped -= _PRODUCERS
+    # Aprire un SITO e' aprire una sessione, non leggere un documento. Il
+    # rilevatore lessicale porta «apri» a `read` — giusto per un file, dove
+    # aprire *e'* leggere; sbagliato per il browser, dove il produttore del
+    # dominio e' `open_sites` (ADR 0218: `open` resta la sessione `sites`).
+    # Senza questo, un piano corretto «apri → accedi → naviga» veniva
+    # dichiarato incapace PRIMA di eseguire un solo passo, con zero passi e
+    # `capability_missing` (turno reale 7f6bddbd, 10/9/2026). La frase piu'
+    # lunga sopravviveva solo perche' includeva anche una lettura.
+    if "read" in dropped and any(
+            (s.tool or "") == "open_sites" for s in framework.steps):
+        _sites_objects = {(a.get("object") or "") for a in intent_actions}
+        _sites_objects.add(str(getattr(intent, "object", "") or ""))
+        if "sites" in _sites_objects:
+            dropped.discard("read")
     # Famiglia SCRITTORI-FILE interscambiabile (create/write) — OBJECT-scoped
     # (FIX-5, turn 697d1d08 «...metti i path in uno spreadsheet»): l'intent
     # decompone (write,files) ma il proposer compone create_files_spreadsheet

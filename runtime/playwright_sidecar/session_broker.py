@@ -42,6 +42,7 @@ from playwright_sidecar import browser_surface
 from playwright_sidecar import cookie_privacy
 import sites_audit
 import sites_observed  # ADR 0191 P4 — codici osservativi navigazione
+import sites_origin  # ADR 0191 P2 — il consenso appartiene a un'ORIGINE
 import task_mandates
 import credential_mandates
 from sites_url_scrub import scrub_url
@@ -433,8 +434,18 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
     el.getAttribute('title') || el.innerText ||
     ((el.type === 'button' || el.type === 'submit') ? el.value : '') || '';
   const iconExit = (el, root, rawName) => {
-    if (!/^[x\u00d7\u2715\u2716]$/i.test((rawName || '').trim())) return false;
+    const glyph = /^[x\u00d7\u2715\u2716]$/i.test((rawName || '').trim());
+    // A close control is very often a bare SVG with no accessible name at
+    // all: requiring a literal "x" left those modals standing. Measured on
+    // turn 6a4a16c3 (10/9/2026), where the app-promotion modal over the login
+    // form was never dismissed and its backdrop swallowed the submit.
+    // Namelessness alone decides nothing: the geometry below still requires
+    // the close corner of a modal root, `visible` requires it to be topmost,
+    // and a submitter or navigating control is refused before this point.
     const er = el.getBoundingClientRect();
+    const nameless = !normalize(rawName) &&
+      er.width <= 64 && er.height <= 64;
+    if (!glyph && !nameless) return false;
     for (let p = el.parentElement, depth = 0; p && p !== root.parentElement && depth < 10;
          p = p.parentElement, depth++) {
       const r = p.getBoundingClientRect();
@@ -471,6 +482,35 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
   const controls = Array.from(document.querySelectorAll(
     'button,[role=button],input[type=button],input[type=submit],'
     + 'input[type=image],a'));
+  // A close affordance is often not a control at all. Measured on the real
+  // page (10/9/2026): `<span class="popup-close">`, 24x32, pointer cursor, no
+  // text and no accessible name, over a fixed full-viewport overlay at
+  // z-index 999999 - so every click on the form underneath went into it.
+  // A semantic-only query cannot see that node, so nothing was ever
+  // dismissed. These candidates are added, never preferred: they must still
+  // pass `visible` (topmost at their centre), the close-corner geometry of a
+  // modal root, and the submitter/navigation refusals below.
+  const layers = [];
+  for (const el of document.querySelectorAll('div,section,aside')) {
+    const st = getComputedStyle(el);
+    if (st.position !== 'fixed' && st.position !== 'sticky') continue;
+    const r = el.getBoundingClientRect();
+    if (r.width * r.height < innerWidth * innerHeight * 0.12) continue;
+    layers.push(el);
+    if (layers.length >= 4) break;
+  }
+  for (const layer of layers) {
+    let scanned = 0;
+    for (const el of layer.querySelectorAll('*')) {
+      if (++scanned > 400) break;
+      if (el.closest('svg') || controls.includes(el)) continue;
+      if (getComputedStyle(el).cursor !== 'pointer') continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 8 || r.height < 8 || r.width > 64 || r.height > 64) continue;
+      if (normalize(el.textContent || '')) continue;   // muto, non etichettato
+      controls.push(el);
+    }
+  }
   const ranked = [];
   const navigating = [];
   for (const el of controls) {
@@ -1814,7 +1854,7 @@ async def op_login(*, session_id: str, owner: str | None = None,
             # precondition; dismissals never consume login navigation steps.
             if redact is not None:
                 entry["_cookie_redact"] = redact
-            return await _dismiss_privacy_obstruction(entry, settle=settle)
+            return await _clear_login_surface(entry, settle=settle)
 
         async def _reach_login_area(purpose: str = "login") -> dict:
             if int(flow.get("steps", 0)) >= _MAX_LOGIN_ENTRY_STEPS:
@@ -2766,14 +2806,54 @@ async def _dismiss_obstructing_overlay(entry: dict, *,
 
 async def _dismiss_privacy_obstruction(entry: dict, *,
                                        settle: bool = False) -> cookie_privacy.CookieOutcome:
-    """Reject a privacy overlay as a bounded precondition for any action."""
+    """Reject a privacy overlay as a bounded precondition for any action.
+
+    Consent belongs to an ORIGIN, not to a session. Crossing to the login
+    origin raises that origin's own banner, and the state of the previous one
+    says nothing about it: a new origin gets a new budget, and is worth
+    waiting for. Carrying the old state across made the second banner look
+    like a repeat of the first, which is already dismissed.
+
+    `settle` was accepted and never used, so every caller that asked to wait
+    for a late panel got no wait at all - and a consent platform renders after
+    its own script has loaded, which is exactly the case worth waiting for.
+
+    Measured on turn `a8dbe80b` (10/9/2026): the banner on `www` was
+    dismissed, the click to `login.` navigated, the credentials were filled
+    three seconds later, and the submit landed underneath that origin's own
+    consent banner and an app promotion. The site reported a failed login.
+    """
     flow = entry.get("login_flow")
-    state = (flow if isinstance(flow, dict) else entry).setdefault("cookie_state", {})
+    holder = flow if isinstance(flow, dict) else entry
+    state = holder.setdefault("cookie_state", {})
+    origin = sites_origin.origin_of_url(
+        getattr(entry.get("page"), "url", "") or "")
+    if origin and state.get("origin") not in (None, origin):
+        # Il tetto NON si azzera con l'origine. Lo stato si', perche' il
+        # pannello dell'origine nuova e' un pannello nuovo; ma il conteggio
+        # dei clic vive nello stesso stato, e un sito che rimbalza fra due
+        # origini lo riportava a zero a ogni salto senza raggiungere mai il
+        # limite. Quello che si porta dietro e' il tetto dell'intera sessione.
+        state = {"carried": int(state.get("clicks", 0))
+                 + int(state.get("carried", 0))}
+        holder["cookie_state"] = state
+        settle = True
+    if origin:
+        state["origin"] = origin
     clicks_before = state.get("clicks", 0)
-    outcome = await cookie_privacy.reject_cookies(
-        entry["page"], state, redact=entry.get("_cookie_redact"),
-        timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0,
-        enabled=_MODEL_FALLBACKS_ENABLED)
+    deadline = _monotonic() + (_REVEAL_SETTLE_MS / 1000.0 if settle else 0.0)
+    while True:
+        outcome = await cookie_privacy.reject_cookies(
+            entry["page"], state, redact=entry.get("_cookie_redact"),
+            timeout_s=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0,
+            enabled=_MODEL_FALLBACKS_ENABLED)
+        if (outcome.panels or outcome.status == "blocked"
+                or _monotonic() >= deadline):
+            break
+        if hasattr(entry["page"], "wait_for_timeout"):
+            await entry["page"].wait_for_timeout(_REVEAL_POLL_MS)
+        else:
+            await asyncio.sleep(_REVEAL_POLL_MS / 1000)
     if state.get("clicks", 0) > clicks_before:
         sites_audit.record(
             "overlay_dismiss", owner=entry.get("owner", ""),
@@ -2789,6 +2869,52 @@ async def _dismiss_privacy_obstruction(entry: dict, *,
             procedure="privacy_reject", phase=outcome.status,
             kind=outcome.kind, reason=outcome.reason,
             frames=outcome.frames, panels=outcome.panels)
+    return outcome
+
+
+def _is_goal_drift(flow: dict, url: str, confidence: float) -> bool:
+    """Un aggancio PEGGIORE, sullo stesso posto, non e' un passo avanti.
+
+    Misurato sul turno `f33eb0da` (10/9/2026): la pagina delle fatture ha due
+    schede, la ricerca ha cliccato «FATTURE» a 0,78 - quella giusta - e poi ha
+    continuato sulla stessa pagina con 0,686 e infine «MOVIMENTI» a 0,56,
+    tornando sulla scheda sbagliata. Poi ha letto quella. Le confidenze
+    scendono in fila: non e' cecita', e' deriva.
+
+    Il budget si spende sul progresso, e un candidato che sullo stesso posto
+    vale meno di quello gia' preso non ne e' uno: la ricerca si ferma li' e
+    lascia decidere all'arrivo. Vale per qualunque sito con schede o filtri,
+    non serve sapere quali siano.
+    """
+    if confidence <= 0:
+        return False
+    migliore = (flow.get("best_by_place") or {}).get(url)
+    return migliore is not None and confidence < float(migliore)
+
+
+def _record_goal_progress(flow: dict, url: str, confidence: float) -> None:
+    """Il miglior aggancio accettato su questo posto: la soglia da battere."""
+    if confidence <= 0 or not url:
+        return
+    posti = flow.setdefault("best_by_place", {})
+    posti[url] = max(float(posti.get(url, 0.0)), confidence)
+
+
+async def _clear_login_surface(
+        entry: dict, *, settle: bool = False) -> cookie_privacy.CookieOutcome:
+    """Clear what covers a login form: consent first, then any other overlay.
+
+    Consent is not the only thing that can sit over it. Turn `b6c37087`
+    (10/9/2026): with the banner gone, the form filled and the submit button
+    plainly uncovered, the login still failed - an app-promotion modal beside
+    it kept a full-viewport backdrop that swallowed the click.
+
+    `_prepare_action` has always done both, in this order, for every ordinary
+    action; the login path did only the first. The consent outcome is the one
+    returned, because only that one can refuse.
+    """
+    outcome = await _dismiss_privacy_obstruction(entry, settle=settle)
+    await _dismiss_obstructing_overlay(entry, settle=settle)
     return outcome
 
 
@@ -3053,6 +3179,15 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
             primitive = "click"
             plan_kind = "goal_navigation"
             confidence = float(goal_drilldown.get("confidence", 0.0))
+        elif (chosen.get("ok") and int(flow.get("steps", 0)) > 0
+                and _is_goal_drift(flow, url_corrente,
+                                   float(chosen.get("confidence", 0.0)))):
+            # Si e' gia' fatto meglio, qui: quello che resta porta altrove.
+            # Si dichiara l'arrivo invece di consumare un altro passo per
+            # peggiorare - e invece di fallire, perche' un posto raggiunto
+            # resta raggiunto.
+            primitive = "observe"
+            plan_kind = "goal_complete"
         elif (chosen.get("ok") and not (
                 goal_satisfied and not action_resolver.goal_candidate_is_exact(
                     parsed.get("target", ""), chosen["candidate"]))):
@@ -3101,6 +3236,10 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
                         "selector_missing"),
                         "observed_candidates": _goal_candidate_diagnostics(
                             chosen)}
+        # La soglia da battere sul posto in cui ci si trova: un aggancio piu'
+        # debole di questo, qui, sarebbe deriva e non progresso.
+        if plan_kind in ("goal_navigation", "goal_continuation"):
+            _record_goal_progress(flow, url_corrente, confidence)
     elif primitive not in ("goto", "wait") and not (
             primitive == "fill" and (value_ref or "").startswith("cred:")):
         candidates = await _enumerate_candidates(entry["page"])
@@ -4612,6 +4751,24 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
             return result
         if entry.get("gate_pending"):
             return {"ok": False, "error_class": "approval_pending"}
+        # Consent is a precondition, never a step. When the action names the
+        # panel, the answer is the state of that precondition - not a control
+        # hunted across the page, which is how "accept necessary cookies"
+        # became a click on "Open chat". `executed` stays honest: true only if
+        # a panel was actually dismissed here.
+        if action_resolver.names_privacy_container(action):
+            outcome = await _dismiss_privacy_obstruction(entry, settle=True)
+            if outcome.status == "blocked":
+                return await _with_action_failure_evidence(entry, {
+                    "ok": False,
+                    "error_class": "cookie_precondition_unresolved",
+                    "obstruction_kind": outcome.kind,
+                    "obstruction_reason": outcome.reason})
+            return {"ok": True, "executed": outcome.status == "resolved",
+                    "primitive": "privacy reject",
+                    "precondition": "privacy_consent",
+                    "panels": outcome.panels, "frames": outcome.frames,
+                    "url": getattr(entry.get("page"), "url", "") or ""}
         goal_target = ""
         explicit_goal = (goal_query if isinstance(goal_query, str)
                          and goal_query.strip() else None)

@@ -32,6 +32,12 @@ MAX_OBSERVED_PANELS = 3
 # Observed on a real site: zero panels seen, no obstruction recorded, and the
 # login discovery that followed found no form because a modal was over it.
 MAX_OBSERVED_SHADOW_ROOTS = 24
+# The per-origin budget above is two clicks. Consent state belongs to an
+# origin and is reset when one is crossed - correctly, because a new origin's
+# banner is a new panel - but the ceiling lived inside that same state, so a
+# site bouncing between two origins reset it every time and never reached it.
+# This one is carried across the resets: it is the whole session's ceiling.
+MAX_SESSION_DISMISSALS = 6
 
 
 # References remain inside a JSHandle, so identical replacement nodes cannot
@@ -351,6 +357,10 @@ async def reject_cookies(page, state: dict, *, redact=None,
             handle = next(item[1] for item in observed if item[0] == index)
             if state.get("clicks", 0) >= 2:
                 return CookieOutcome("blocked", "cookie", "dismissal_limit",
+                                     frames, panels_seen)
+            if (state.get("clicks", 0) + state.get("carried", 0)
+                    >= MAX_SESSION_DISMISSALS):
+                return CookieOutcome("blocked", "cookie", "session_limit",
                                      frames, panels_seen)
             outcome = await handle.evaluate(_COMMIT_JS, {
                 **decision,
