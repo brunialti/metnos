@@ -1528,3 +1528,27 @@ cade la prima. Suite di transizione, provveditore, coordinatore e systemd:
 Limite: completamento, attivazione e selezione sono simulati nelle prove,
 come nella sonda originale; il blocco è reale. La prova in esercizio è il
 prossimo attraversamento, che esegue questo ingresso da root.
+
+## A-05 — rettifica: scritto e provato, **non spedito**
+
+La sezione precedente dice «corretto». È vero nel codice e nelle prove, non
+nella release. Al primo `prepare` dopo il commit il guardiano del confine, in
+profilo `--birth-closed`, ha rifiutato l'inventario pubblico:
+
+    inventory_role_invalid: install/birth_authority_provisioner.py:_held_or_new_deployment_lock_v2: unsupported role 'unclassified'
+    inventory_role_invalid: install/executor_birth_transition.py:_complete_closed_v1: unsupported role 'unclassified'
+
+Il rimedio prescritto — l'ingresso che prende il blocco e passa la sessione al
+nucleo — rende l'ingresso **detentore diretto** del blocco di deployment.
+Classificare quelle due funzioni equivale a dichiarare un nuovo detentore di
+un'autorità: è una condizione di arresto del §17 della roadmap, e la decisione
+è di Roberto. Il lavoro è conservato intatto sul ramo locale
+`rm0008/a05-held-lock`; sul ramo di rilascio è stato annullato con un commit
+di revert, perché A-02 possa uscire da solo.
+
+Una nota di processo, detta per intero: il primo `prepare` è fallito, e il mio
+comando non era concatenato con `&&`, così l'attraversamento è partito sul
+candidato precedente e ha rifatto la Release 20 identica (stessa build, nuovo
+cutover). Nessun danno — catena coerente, servizi pronti — ma nessuna Release
+21, e dunque nessuna «prova in esercizio» di A-05. La frase che la annunciava
+era prematura.

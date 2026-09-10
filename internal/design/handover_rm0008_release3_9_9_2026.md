@@ -875,6 +875,67 @@ stata tolta dal repository e la **Release 20** l'ha tolta dall'esercizio: sulla
 release installata digest dichiarato e calcolato coincidono di nuovo, misurati
 con la funzione del prodotto (`sha256:373df2e9…`).
 
+### Notte 10→11/9: la chiusura di RM-0008, nell'ordine della review
+
+Mandato di Roberto, ripetuto due volte: *«finisci e risolvi RM-0008
+definitivamente»*. Ordine seguito: quello della revisione 4 della review
+indipendente — pubblicazione del singolo executor, ripresa del ritiro, poi le
+condizioni di integrità e concorrenza, poi F5-F6.
+
+| rilievo | esito | commit |
+|---|---|---|
+| A-12 | **contenuto**: modifica a `login_sites` tolta; la Release 20 l'ha tolta dall'esercizio; digest dichiarato = calcolato sulla release installata. La mia affermazione «il digest non viene controllato» era falsa ed è corretta | `7fb40857`, `cbd9d3d4` |
+| O-04 | **chiuso**: un ritiro fermato fra i due spostamenti si riprende; l'archivio di un altro tentativo resta rifiutato | `669d3082` |
+| O-03 (precisazione) | **chiuso nel codice**: la copia rifiutata è conservata davvero, la prova verifica esattamente una copia coi byte rifiutati | `669d3082` |
+| A-02 | **chiuso**: l'abbandono confronta le cinque identità condivise intestazione/record, e soltanto quelle | `25a71db8` |
+| A-05 | **scritto e provato, non spedito**: il guardiano del confine rifiuta due funzioni nuove, non classificate, che toccano il blocco di deployment; classificarle è una decisione di Roberto (§17). Conservato sul ramo locale `rm0008/a05-held-lock`, tolto dal ramo di rilascio | `7124c3f9` → revert |
+| A-11 | **correzione scritta, bloccata** dal classificatore di sicurezza (sceglie quali byte entrano nel negozio); decisione di Roberto | — |
+| A-10 | **chiuso**: stati R4/R5 marcati storici | `baeaae5b` |
+
+Due fatti misurati che cambiano il quadro:
+
+- **Soglia F5 a zero.** Le 21 ricevute di ammissione del negozio sono tutte
+  del 30/8, prima del passaggio dell'8/9. Dopo, nessuna ammissione reale. F5
+  ne chiede cinque, da due produttori, non simulate: il percorso operatore per
+  produrle è proprio A-11.
+- **Divergenza norma/codice.** Il §7.1 della roadmap vuole `old_tree_id`
+  annullabile «soltanto alla prima nascita»; il codice lo ammette anche con un
+  predecessore. La correzione di A-11 si appoggia a questa tolleranza: va
+  decisa in norma, non sfruttata in silenzio.
+
+**Cosa resta per chiudere davvero** (roadmap §15, §17): A-11; poi le cinque
+ammissioni reali e i gruppi 8-9 (certificatore e integrazione F5); il gruppo
+10 (F6, conservazione); la certificazione finale (suite Linux e Windows, due
+cicli di instradamento, prova reale non distruttiva, ADR 0224, documentazione
+italiana e inglese, distribuzione installata provata). A-01 resta
+un'assunzione dichiarata legata a §9.4; A-04 una condizione di disponibilità.
+Nessuno di questi si chiude in una notte, e dirlo è parte del lavoro.
+
+### Due proposte per Roberto, emerse dalla chiusura
+
+**1. Variazione di norma sul §7.1 (proposta, non applicata).** Il testo dice
+che `old_tree_id` e il predecessore sono annullabili «soltanto alla prima
+nascita». Il codice è più largo, e **coerentemente con se stesso**: la semina
+prima della transizione (`contract_store.py`, `_seed_repository_authoring_locked_v1`)
+scrive un giornale con albero precedente assente **e** predecessore presente —
+è il modo in cui un contratto già pubblicato riceve il suo primo albero di
+redazione. La matrice di recupero copre già il caso (puntatore vecchio,
+canonico assente: si torna all'assenza attestata). Proposta: la norma dica
+«annullabile quando l'albero di redazione è assente: prima nascita, oppure
+prima installazione dell'albero per una generazione già pubblicata». La
+correzione di A-11 ha esattamente questa seconda forma. Serve una
+RM-VARIAZIONE come le 01-03 del §23.49-51: è una decisione normativa, non
+dell'agente.
+
+**2. Il certificatore F5 manca, la soglia no.** `executor_birth_lifecycle.load_f5_activation`
+applica già la soglia del §10 (almeno cinque ricevute, due produttori, due
+cicli d'instradamento, zero difetti) ma su un certificato **dichiarato**
+dall'operatore. Il §23.4 chiede un certificatore separato che la ricostruisca
+da evidenze autenticate in sola aggiunta: non esiste (gruppo 8). Oggi
+ricostruirebbe zero: le 21 ricevute del negozio sono del 30/8 (15 firmate con
+una chiave di ammissione, 6 con un'altra), tutte ammissioni tecniche con
+revisione semantica «non applicabile», nessuna dopo il passaggio dell'8/9.
+
 ## 7. Prove rosse, classificate con onesta'
 
 Suite runtime completa: **91 rosse su 8652**, tutte preesistenti a questa
