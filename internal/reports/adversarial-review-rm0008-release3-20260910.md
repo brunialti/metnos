@@ -1498,3 +1498,33 @@ Limite: fixture del coordinatore e della distribuzione restano sostituti di
 prova, come nella sonda originale; preparazione, archiviazione e filesystem del
 giornale sono reali. La correzione entra in esercizio con il prossimo
 attraversamento, perché il provveditore viaggia con la release.
+
+## A-05 — corretto (11 settembre 2026, notte)
+
+L'ingresso della transizione prende ora il blocco di deployment **una volta
+sola** e lo tiene per completamento, attivazione e rilettura finale; il
+completamento riceve la sessione posseduta invece di riprenderla (il blocco
+non è rientrante: una seconda acquisizione nello stesso processo resterebbe
+ferma sul proprio `flock`) e continua a prenderla da sé se chiamato senza.
+Dopo l'avvio, sotto la stessa sessione, `_completed_transition_locked_v2`
+rilegge la transazione finale **di questa esatta release**: se manca o porta
+un'altra richiesta o un altro cutover, la traversata fallisce con
+`birth_transition_selection_changed` invece di attribuire il successo a N.
+
+Il blocco dei avvii e il catalogo restano liberati prima dello start, come
+prescritto: li libera il completamento al ritorno. Tenere il blocco di
+deployment durante lo start è sicuro perché nessuno sul percorso d'avvio dei
+servizi lo prende — i soli utenti sono ricevitore della sorgente, costruttore
+della release, completamento e abbandono (verificato per ricerca sul codice).
+
+Prove d'integrazione dell'interleaving: un concorrente su un'altra descrizione
+di file **non** riesce a prendere il blocco mentre la topologia parte, e ci
+riesce subito dopo; una selezione spostata (transazione finale assente, o di
+un'altra richiesta, o di un altro cutover) è rifiutata. **Controprove:** senza
+la rilettura finale cadono tre prove; con il blocco non tenuto dall'ingresso
+cade la prima. Suite di transizione, provveditore, coordinatore e systemd:
+190 verdi, 16 saltate.
+
+Limite: completamento, attivazione e selezione sono simulati nelle prove,
+come nella sonda originale; il blocco è reale. La prova in esercizio è il
+prossimo attraversamento, che esegue questo ingresso da root.
