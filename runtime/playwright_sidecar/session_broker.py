@@ -4612,6 +4612,24 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
             return result
         if entry.get("gate_pending"):
             return {"ok": False, "error_class": "approval_pending"}
+        # Consent is a precondition, never a step. When the action names the
+        # panel, the answer is the state of that precondition - not a control
+        # hunted across the page, which is how "accept necessary cookies"
+        # became a click on "Open chat". `executed` stays honest: true only if
+        # a panel was actually dismissed here.
+        if action_resolver.names_privacy_container(action):
+            outcome = await _dismiss_privacy_obstruction(entry, settle=True)
+            if outcome.status == "blocked":
+                return await _with_action_failure_evidence(entry, {
+                    "ok": False,
+                    "error_class": "cookie_precondition_unresolved",
+                    "obstruction_kind": outcome.kind,
+                    "obstruction_reason": outcome.reason})
+            return {"ok": True, "executed": outcome.status == "resolved",
+                    "primitive": "privacy reject",
+                    "precondition": "privacy_consent",
+                    "panels": outcome.panels, "frames": outcome.frames,
+                    "url": getattr(entry.get("page"), "url", "") or ""}
         goal_target = ""
         explicit_goal = (goal_query if isinstance(goal_query, str)
                          and goal_query.strip() else None)

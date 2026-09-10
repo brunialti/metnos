@@ -76,6 +76,28 @@ def privacy_overlay_marker_forms() -> tuple[str, ...]:
     return _concept_forms("sites.privacy_overlay_marker")
 
 
+def names_privacy_container(action: str) -> bool:
+    """Does this action name the consent panel the broker already resolves?
+
+    Consent is a precondition of every action, settled before any of them, so
+    an action that names it asks for something already done and has no control
+    of its own left to hit. Resolving it against the page then picks whatever
+    is nearest: measured on turn `715e08e6` (10/9/2026), "accetta cookie
+    necessari" resolved to the button "Apri chat" at 0.62 and clicked it.
+
+    Recognition uses the container marker from the detection lexicon - the
+    same source the structural locator uses - so it covers every language the
+    lexicon covers and no list lives here.
+    """
+    text = normalize(action)
+    if not text:
+        return False
+    return any(
+        marker and marker in text
+        for marker in (normalize(form) for form in privacy_overlay_marker_forms())
+    )
+
+
 def loading_marker_forms() -> tuple[str, ...]:
     """Testi brevi che indicano contenuto asincrono non ancora stabile."""
     return _concept_forms("sites.loading_marker")
