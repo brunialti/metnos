@@ -25,17 +25,22 @@ import traceback
 
 RELEASE = Path(
     "/var/lib/metnos/executor-birth/releases-v1/00000000000000000003")
-# The identities below belong to the release the rebuild produces. They are
-# deliberately empty: the first attempt at sequence 3 built a release no reader
-# could cross, and that release is withdrawn, not corrected. Reusing its digests
-# here would aim this tool at bytes that no longer exist.
-SOURCE_ID: str | None = None
-BUILD_ID: str | None = None
-DESCRIPTOR_SHA: str | None = None
-HELPER_SHA: str | None = None
+# The identities of the release the rebuild of 10/9 produced, printed by the
+# builder and re-measured on the installed bytes. They are not those of the
+# first attempt at sequence 3: that one built a release no reader could cross,
+# and it was withdrawn rather than corrected.
+SOURCE_ID = "sha256:93c296e97f0eece76286b067f2d11e46fb36204bb051f23769493d3253bf7948"
+BUILD_ID = "sha256:28fb5158f4bd62b84fbd154bf1b1de4adfd432cee7b6297f2605332cd3ea1402"
+DESCRIPTOR_SHA = "20d1fbd13847cb0ee29ebe81ef8aec419daa548cb5acb94c4c1a53e084e3e0db"
+HELPER_SHA = "9478914610631aa1a25164b425ac7463c53a0a951e31db41253960e0ef531c39"
 EXPECTED_SEQUENCE = 3
 EVIDENCE = Path("/var/lib/metnos-admin/rm0008-release3-evidence-20260910")
-EVIDENCE_SHA: dict[str, str] = {}
+EVIDENCE_SHA = {
+    "distribution.json":
+        "eca5c8c55c87ca2be3e3de8057e437733000c9e529db9dc626295d2083382f0f",
+    "distribution.sig":
+        "218240b36c095a492ce09c47f8b08c7969c2602f80d69a258ed933f981507804",
+}
 MAX_EVIDENCE_BYTES = 16_000_000
 
 

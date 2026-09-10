@@ -468,6 +468,30 @@ congelati nel file).
    il ritiro per quel motivo avrebbe chiuso l'unica via d'uscita: il ritiro e'
    il primo passo della riparazione. Il rifiuto viene stampato, non ingoiato.
 
+### Il ritiro e la ricostruzione sono AVVENUTI (10/9)
+
+```
+RELEASE3_CLAIM_WITHDRAWN; HEADS_UNCHANGED; NO_SERVICE_STOP; RECEIPTS_RETAINED
+SIGNED_SUCCESSOR_BUILT 3 sha256:28fb5158…
+BUILD_ONLY_OK; NO HEAD CHANGE OR SERVICE STOP
+```
+
+Identita' della Release 3 **ricostruita**, tutte rimisurate sui byte installati:
+
+| voce | valore |
+|---|---|
+| sorgente ricevuta | `sha256:93c296e9…` |
+| build chiusa | `sha256:28fb5158…` |
+| descrittore | `20d1fbd1…` |
+| verificatore della release | `94789146…` |
+| prove di build | `eca5c8c5…` / `218240b3…` |
+| testa richiesta | `sha256:d302bb32…` (invariata) |
+| `python_executable` | **`/usr/bin/python3.12`** |
+
+Il verificatore di questa release **conosce** `abandoned-crossings-v2`: e' il
+rimedio al reperto 0. I sigilli di `rm0008_complete_release3.py` sono armati con
+questi valori. Resta solo `audit` e poi `complete`.
+
 ### La prova su copia fedele (il pezzo che conta)
 
 `internal/tools/rm0008_rehearse_release3_withdrawal.py <cartella>`. Legge la
