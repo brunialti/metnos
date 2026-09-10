@@ -892,6 +892,15 @@ condizioni di integrità e concorrenza, poi F5-F6.
 | A-11 | **correzione scritta, bloccata** dal classificatore di sicurezza (sceglie quali byte entrano nel negozio); decisione di Roberto | — |
 | A-10 | **chiuso**: stati R4/R5 marcati storici | `baeaae5b` |
 
+**Telepass dal vivo con la Release 21** (turno `bdbdac234236445b`, 71 s): la
+frase esatta di Roberto arriva in fondo — consenso «solo necessari», accesso,
+scheda FATTURE, lettura, estrazione, **elenco**. Sette passi tutti riusciti.
+Resta un difetto di presentazione: le 5 fatture escono come **12 righe**, una
+per voce, con numero, data e totale ripetuti, e la chiusura dice «Totale: 12».
+La cura generale sta nel formato compatto di `describe_entries` (raggruppare i
+campi comuni dei record che condividono l'identificativo), ma è un builtin
+firmato: la modifica aspetta lo stesso percorso di pubblicazione di A-11.
+
 Due fatti misurati che cambiano il quadro:
 
 - **Soglia F5 a zero.** Le 21 ricevute di ammissione del negozio sono tutte
