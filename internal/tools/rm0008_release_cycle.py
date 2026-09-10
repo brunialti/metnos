@@ -373,7 +373,10 @@ def withdraw_superseded_claim(source_id: str) -> str | None:
 
     before = {str(item): snapshot(item) for item in preserved_paths()}
     first = startup_fingerprint()
-    archive = WITHDRAWN_ROOT / claim["previous_head_id"][7:]
+    # Named by the attempt, not by the head it would have succeeded. The head
+    # does not move while attempts fail, so naming the archive after it made
+    # the second withdrawal collide with the first.
+    archive = WITHDRAWN_ROOT / claim["request_id"][7:]
     archive.mkdir(mode=0o700, parents=True, exist_ok=True)
     info = archive.lstat()
     require((info.st_uid, info.st_gid) in OWNERS

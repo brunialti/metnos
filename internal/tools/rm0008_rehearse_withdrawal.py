@@ -125,7 +125,7 @@ def rehearse(source: Path, work: Path) -> None:
         {path.name for path in (cycle.ROOT / "releases-v1").iterdir()}
         == releases - {reserved}, "the reserved release is still installed")
     cycle.require(not cycle.pending_claims(), "the claim is still pending")
-    archive = cycle.WITHDRAWN_ROOT / claim["previous_head_id"][7:]
+    archive = cycle.WITHDRAWN_ROOT / claim["request_id"][7:]
     cycle.require(sorted(path.name for path in archive.iterdir())
                   == ["successor-claim.json", "unselected-release"],
                   "the archive is incomplete")
@@ -137,6 +137,23 @@ def rehearse(source: Path, work: Path) -> None:
     cycle.require(cycle.withdraw_superseded_claim("sha256:" + "0" * 64) is None,
                   "withdrew twice")
     print("  a second run is a no-op")
+
+    print("4. a second failed attempt over the same head withdraws too")
+    # The head does not move while attempts fail, so two attempts share their
+    # previous_head_id. Only the attempt's own identity separates them.
+    shutil.copytree(archive / "unselected-release",
+                    cycle.ROOT / "releases-v1" / reserved)
+    successor = dict(claim, request_id="sha256:" + "a" * 64,
+                     source_id="sha256:" + "b" * 64)
+    (cycle.COORD / "successor-claims-v1"
+     / (claim["previous_head_id"][7:] + ".json")).write_bytes(
+        json.dumps(successor, separators=(",", ":"), sort_keys=True).encode())
+    cycle.require(
+        cycle.withdraw_superseded_claim("sha256:" + "0" * 64)
+        == successor["source_id"], "the second attempt was not withdrawn")
+    cycle.require(len(list(cycle.WITHDRAWN_ROOT.iterdir())) == 2,
+                  "the two attempts share one archive")
+    print("  two attempts, two archives, nothing overwritten")
 
 
 def rehearse_refusals(source: Path, work: Path) -> None:
@@ -167,7 +184,7 @@ def rehearse_refusals(source: Path, work: Path) -> None:
 
     cycle = fresh()
     claim = pending(cycle)
-    archive = cycle.WITHDRAWN_ROOT / claim["previous_head_id"][7:]
+    archive = cycle.WITHDRAWN_ROOT / claim["request_id"][7:]
     archive.mkdir(mode=0o700, parents=True)
     (archive / "unselected-release").mkdir()
     expect_refusal("an archive slot already taken",
@@ -183,7 +200,7 @@ def main() -> None:
     print("copying the live chain objects (read-only)")
     copy_chain(pristine)
     rehearse(pristine, work)
-    print("4. what it must refuse")
+    print("5. what it must refuse")
     rehearse_refusals(pristine, work)
     shutil.rmtree(work, ignore_errors=True)
     shutil.rmtree(pristine, ignore_errors=True)
