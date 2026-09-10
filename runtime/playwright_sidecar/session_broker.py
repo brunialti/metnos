@@ -584,6 +584,11 @@ _GOAL_EVIDENCE_JS = r"""
 }
 """
 
+_GOAL_LINKS_JS = r"""
+() => Array.from(document.querySelectorAll('a[href]'))
+        .map(a => a.href).slice(0, 400)
+"""
+
 _TRANSIENT_LOADING_JS = r"""
 (markers) => {
   const normalize = value => (value || '').normalize('NFKD')
@@ -2365,7 +2370,45 @@ async def _goal_content_signature(entry: dict) -> str:
         payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
 
-async def _wait_for_goal_content_change(entry: dict, before: str) -> tuple[bool, str]:
+async def _goal_facet_signature(entry: dict) -> str:
+    """The CONTENT of a facet: its evidence and the places it leads to.
+
+    Not the whole body text, which `_goal_content_signature` signs: a toolbar
+    that appears when a tab gets selected changes the body text without the
+    content having moved an inch, and that is exactly the case to recognise.
+    The destinations answer the opposite case: a list made of links alone
+    leaves no textual evidence, but changes every place it points at.
+    """
+    page = entry["page"]
+    try:
+        evidence = await page.evaluate(_GOAL_EVIDENCE_JS)
+    except Exception:
+        evidence = []
+    try:
+        destinations = await page.evaluate(_GOAL_LINKS_JS)
+    except Exception:
+        destinations = []
+    payload = [action_resolver.url_place_key(page.url) or scrub_url(page.url),
+               evidence if isinstance(evidence, list) else [],
+               sorted(destinations) if isinstance(destinations, list) else []]
+    return hashlib.sha256(json.dumps(
+        payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _ritira_il_passo(flow: dict) -> None:
+    """The budget is spent on progress: a step that moved nothing is taken back.
+
+    Not an amnesty: the step returns to the exploration budget but weighs on
+    the sterile ceiling, because not even nothing may repeat forever.
+    """
+    flow["steps"] = max(0, int(flow.get("steps", 0)) - 1)
+    flow["sterile"] = int(flow.get("sterile", 0)) + 1
+
+
+async def _wait_for_goal_content_change(
+        entry: dict, before: str, firma=None) -> tuple[bool, str]:
+    """Wait, bounded, for the page to differ from `before` by `firma`."""
+    firma = firma or _goal_content_signature
     attempts = max(1, _REVEAL_SETTLE_MS // _REVEAL_POLL_MS)
     current = before
     for _ in range(attempts):
@@ -2373,7 +2416,7 @@ async def _wait_for_goal_content_change(entry: dict, before: str) -> tuple[bool,
             await entry["page"].wait_for_timeout(_REVEAL_POLL_MS)
         else:
             await asyncio.sleep(_REVEAL_POLL_MS / 1000)
-        current = await _goal_content_signature(entry)
+        current = await firma(entry)
         if current != before:
             return True, current
     return False, current
@@ -2872,6 +2915,20 @@ async def _dismiss_privacy_obstruction(entry: dict, *,
     return outcome
 
 
+def _prossimo_aggancio(drilldown: dict, chosen: dict) -> float:
+    """Quanto vale il clic che si sta per fare, da qualunque ramo venga.
+
+    Il drilldown ha la precedenza sulla classifica testuale, quindi la soglia
+    va misurata su quello quando c'e': guardare solo `chosen` lasciava passare
+    proprio i clic che portavano via (turno `ac7d0cea`).
+    """
+    if drilldown.get("ok"):
+        return float(drilldown.get("confidence", 0.0))
+    if chosen.get("ok"):
+        return float(chosen.get("confidence", 0.0))
+    return 0.0
+
+
 def _is_goal_drift(flow: dict, url: str, confidence: float) -> bool:
     """Un aggancio PEGGIORE, sullo stesso posto, non e' un passo avanti.
 
@@ -2998,8 +3055,14 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
         stato = _goal_state_signature(url_corrente, candidates)
         if (flow.pop("navigazione_da_verificare", False)
                 and stato == flow.get("last_state")):
-            flow["steps"] = max(0, int(flow.get("steps", 0)) - 1)
-            flow["sterile"] = int(flow.get("sterile", 0)) + 1
+            _ritira_il_passo(flow)
+        # Un clic che non ha cambiato il contenuto non e' un passo, e
+        # soprattutto non e' un arrivo: il candidato e' gia' fra i visitati,
+        # quindi il giro successivo prova un altro modo di aprire la stessa
+        # cosa invece di dichiarare fatto e leggere quel che c'era prima.
+        arrivo_non_provato = bool(flow.pop("facet_unchanged", False))
+        if arrivo_non_provato:
+            _ritira_il_passo(flow)
         flow["last_state"] = stato
         flow_steps = int(flow.get("steps", 0))
         at_goal_limit = (flow_steps >= _MAX_GOAL_STEPS
@@ -3174,20 +3237,21 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
             confidence = float(continuation.get("confidence", 0.0))
             collection_facet_key = str(
                 continuation.get("facet_key") or "")
+        elif (int(flow.get("steps", 0)) > 0 and not arrivo_non_provato
+                and _is_goal_drift(flow, url_corrente, _prossimo_aggancio(
+                    goal_drilldown, chosen))):
+            # Si e' gia' fatto meglio, qui: quello che resta porta altrove.
+            # Si dichiara l'arrivo invece di consumare un altro passo per
+            # peggiorare - e invece di fallire, perche' un posto raggiunto
+            # resta raggiunto. Sopra il drilldown, non sotto: i clic che
+            # portavano via venivano proprio da li'.
+            primitive = "observe"
+            plan_kind = "goal_complete"
         elif goal_drilldown.get("ok"):
             candidate = goal_drilldown["candidate"]
             primitive = "click"
             plan_kind = "goal_navigation"
             confidence = float(goal_drilldown.get("confidence", 0.0))
-        elif (chosen.get("ok") and int(flow.get("steps", 0)) > 0
-                and _is_goal_drift(flow, url_corrente,
-                                   float(chosen.get("confidence", 0.0)))):
-            # Si e' gia' fatto meglio, qui: quello che resta porta altrove.
-            # Si dichiara l'arrivo invece di consumare un altro passo per
-            # peggiorare - e invece di fallire, perche' un posto raggiunto
-            # resta raggiunto.
-            primitive = "observe"
-            plan_kind = "goal_complete"
         elif (chosen.get("ok") and not (
                 goal_satisfied and not action_resolver.goal_candidate_is_exact(
                     parsed.get("target", ""), chosen["candidate"]))):
@@ -3350,6 +3414,16 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
         plan["content_sig_before"] = await _goal_content_signature(entry)
         if collection_facet_key:
             plan["collection_facet_key"] = collection_facet_key
+    elif plan_kind == "goal_navigation":
+        # Anche una navigazione va verificata quando resta sulla stessa
+        # pagina: una scheda, un filtro, una fisarmonica cambiano il
+        # CONTENUTO senza cambiare indirizzo, e finora nessuno controllava
+        # che il clic avesse fatto qualcosa. Turno reale del 10/9/2026: il
+        # clic su «FATTURE» non ha aperto la scheda, la tabella dei movimenti
+        # e' rimasta li', e il turno l'ha letta credendo fossero le fatture.
+        plan["facet_sig_before"] = await _goal_facet_signature(entry)
+        plan["place_before"] = action_resolver.url_place_key(
+            getattr(entry.get("page"), "url", "") or "")
     if candidate:
         try:
             handle = await entry["page"].locator(
@@ -4452,6 +4526,23 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             # page controls are already enumerated and measuring costs
             # nothing.
             goal_flow["navigazione_da_verificare"] = True
+            # Un clic che resta sullo stesso indirizzo deve provare di aver
+            # cambiato il CONTENUTO: e' l'unica prova che una scheda si sia
+            # davvero aperta. Se non cambia, il clic non e' avvenuto - e
+            # leggere quel che c'era prima significa leggere la scheda
+            # sbagliata credendo di essere sull'altra.
+            prima = str(plan.get("facet_sig_before") or "")
+            if prima and action_resolver.url_place_key(
+                    getattr(entry.get("page"), "url", "") or ""
+                    ) == str(plan.get("place_before") or ""):
+                mosso, _dopo = await _wait_for_goal_content_change(
+                    entry, prima, _goal_facet_signature)
+                if not mosso:
+                    goal_flow["facet_unchanged"] = True
+                    sites_audit.record(
+                        "goal_facet_unchanged", owner=entry.get("owner", ""),
+                        session_id=entry.get("_sid", ""),
+                        domain=entry.get("domain", ""), outcome=False)
             visited = goal_flow.setdefault("visited", set())
             # Si segna il POSTO, non l'etichetta dell'elemento: la seconda
             # cambia fra due render dello stesso link, il primo no. E si segna

@@ -4212,11 +4212,26 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     strong_login_intent = (
         _dl_match("sites.login_intent", query)
         or _dl_match("sites.session_entry_intent", query))
-    structured_record_request = (
-        _dl_match("sites.structured_record_request", query)
-        or _dl_match("sites.collection_search_request", query)
-        or (_dl_match("sites.search_action_verb", query)
-            and _dl_match("sites.goal_scope_quantifier", query)))
+    def _chiede_una_collezione(text: str) -> bool:
+        """Does this text ask for a SET of records rather than one thing?
+
+        A request verb plus a scope quantifier asks for the set, and so does a
+        request verb plus a plural determiner: the flat lexicon forms bind the
+        verb to the article, so anything between the two breaks the form, and
+        composing registered concepts covers the word order without adding a
+        single surface form. Italian marks the plural on the determiner,
+        English on the noun, and the concept reads each accordingly.
+        """
+        return bool(
+            _dl_match("sites.structured_record_request", text)
+            or _dl_match("sites.collection_search_request", text)
+            or (_dl_match("sites.search_action_verb", text)
+                and _dl_match("sites.goal_scope_quantifier", text))
+            or (_dl_match("sites.goal_request_verb", text)
+                and (_dl_match("sites.goal_scope_quantifier", text)
+                     or _dl_match("text.plural_determiner", text))))
+
+    structured_record_request = _chiede_una_collezione(query)
     has_site_context = ("open_sites" in tools_present
                         or root_object == "sites"
                         or "sites" in action_objects)
@@ -4417,14 +4432,49 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     # planner non ha emesso una navigazione, recluta act_sites in modalita'
     # fine semantico. La query resta linguaggio naturale; la riduzione bounded
     # avviene dentro l'executor intelligente e il planner non vede nuovi tipi.
-    if structured_record_request and not post_login_acts:
+    # Consent is a PRECONDITION, not a step: the broker settles it before any
+    # action, and an act that names it has no control of its own left to hit.
+    # It must not count as the navigation the plan already has, either -
+    # otherwise a request that mentions the cookie banner loses the step that
+    # would reach what was actually asked for, and the reading lands on
+    # whatever page the login left open. Recognition is the resolver's own, so
+    # planner and broker answer the question the same way.
+    def _e_una_precondizione(step) -> bool:
+        azione = str((getattr(step, "args", {}) or {}).get("action") or "")
+        if not azione:
+            return False
+        try:
+            from playwright_sidecar.action_resolver import (
+                names_privacy_container)
+            return bool(names_privacy_container(azione))
+        except Exception:  # noqa: BLE001 -- senza resolver non si deduce nulla
+            return False
+
+    navigating_acts = [step for step in post_login_acts
+                       if not _e_una_precondizione(step)]
+    if structured_record_request and not navigating_acts:
         # Se nel piano si entra con le credenziali, ci si entra per vedere la
         # PROPRIA area: e' il motivo per cui si fa un accesso. Dichiararlo
         # risparmia al pilota di dedurlo da un possessivo nella frase, che in
         # una richiesta ordinaria («mostrami le prenotazioni») non c'e'. E' un
         # fatto del piano, non un indovinello.
+        # The goal is the clause that ASKS, not the whole sentence. A compound
+        # request carries the site, the consent and the login in the same
+        # breath, and handing all of it to the pilot buries the one thing it
+        # has to find: measured on turn `b04f266f` (10/9/2026), the pilot got
+        # the entire sentence as its goal and never left the landing page.
+        # The splitter is the one already used a few lines above.
+        try:
+            from compound_decomposer import split_query_chunks
+            clausole = [chunk.strip(" ,.;")
+                        for chunk in split_query_chunks(query or "")]
+        except Exception:  # noqa: BLE001 -- senza split resta la frase intera
+            clausole = []
+        chiedenti = [chunk for chunk in clausole
+                     if chunk and _chiede_una_collezione(chunk)]
         post_login_acts.append(StepSpec(tool="act_sites", args={
-            "action": query, "_goal_mode": True,
+            "action": chiedenti[-1] if chiedenti else query,
+            "_goal_mode": True,
             **({"ambito": "personale"} if want_login else {}),
         }))
         want_act = True
