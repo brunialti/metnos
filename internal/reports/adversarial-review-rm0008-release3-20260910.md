@@ -791,6 +791,73 @@ rieseguita *sulla catena com'è oggi*, non su quella che aveva il guasto.
 
 ---
 
+# Terza tornata: O-01, O-02, O-03 chiusi (10 settembre 2026, sera)
+
+Tutti e tre accolti, tutti e tre corretti, ciascuno con la propria prova nella
+prova generale — che passa così da sei scenari a **nove**. `REHEARSAL_OK`.
+
+## O-01 — accolto e corretto: troncato non è contraddetto
+
+Aveva ragione due volte. La prima correzione distingueva i **nomi** mancanti,
+non le scritture interrotte: con entrambi i nomi presenti e uno dei due file
+troncato, il confronto byte per byte lo leggeva come contraddizione e
+rifiutava per sempre.
+
+La regola ora distingue tre casi e non due:
+
+- coppia identica → si riusa;
+- ogni file **uguale all'atteso oppure più corto** → scrittura interrotta: si
+  mette da parte e si riscrive;
+- stessa lunghezza con byte diversi, oppure più lungo → **contraddizione**, e
+  resta un rifiuto: una build non può avere due contenuti.
+
+*Scenario 6 della prova generale*: firma troncata a 8 byte, due tentativi
+consecutivi, entrambi riprendono. È esattamente la sequenza che lei aveva
+riprodotto.
+
+## O-02 — accolto e corretto: il legame ora è durevole
+
+Il punto centrale era suo: *«la prova non è persa dal disco, ma il percorso di
+ripresa non la usa»*. L'archivio del ritiro conserva `successor-claim.json`,
+cioè l'identità esatta del tentativo. La ripresa ora lo legge.
+
+`retire_orphan_journals` accetta un giornale la cui richiesta compare fra i
+ritiri **già archiviati su disco**, oltre a quello di questa esecuzione.
+`this run` non è più un'identità: lo è il ritiro, e quello sopravvive
+all'interruzione.
+
+*Scenario 7*: rivendicazione ritirata, valore in memoria buttato via, ripresa
+chiamata con `None` — il giornale viene riconosciuto e ritirato.
+
+## O-03 — accolto e corretto: la copia rifiutata non occupa più il posto
+
+Due cambiamenti, non uno. La copia viene **misurata prima** di diventare
+l'identità riutilizzabile, così una che non corrisponde non occupa mai il
+percorso che bloccherebbe. E una copia già presente che non misura più uguale
+viene **messa da parte** sotto `.rejected-NN` — mai cancellata, mai lasciata in
+mezzo.
+
+*Scenario 8*: misura → cambio transitorio → rifiuto → ripristino → due
+tentativi, entrambi adottano; e la copia rifiutata è conservata una volta sola.
+
+## Nota su una sua osservazione che ho verificato
+
+Il ramo di rimozione neutralizzato nella sua sonda e i controlli di proprietà
+adattati all'utente della prova erano le stesse due deroghe che la prova
+generale dichiara in testa. Le ho tenute identiche anche nello scenario nuovo,
+sostituendo soltanto il cambio di proprietario privilegiato: copia, rinomina e
+censimento restano quelli veri.
+
+## Ciò che resta aperto da questa review
+
+A-01 (provenienza dei byte privilegiati, mitigata ma non chiusa), A-02
+(confronto delle cinque identità dell'header) e A-05 (serializzazione fino al
+risultato osservato). Nessuno dei tre è stato toccato oggi, e nessuno dei tre
+è un rischio di integrità: sono le tre condizioni da soddisfare **prima** che
+l'aggiornamento diventi automatico e concorrente.
+
+---
+
 # Riscontro sulle note dell'agente esterno — 10 settembre 2026
 
 ## Perimetro e risultato
