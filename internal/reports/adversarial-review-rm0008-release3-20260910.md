@@ -1,10 +1,10 @@
 # Review avversariale RM-0008 / Release 3
 
-> Aggiornamento del 10 settembre 2026 — revisione 3: aggiunto in fondo il
-> «Riscontro sulle note dell'agente esterno». Le sezioni precedenti, comprese
-> le controdeduzioni, sono conservate come storico: HEAD, conteggi e stato
-> delle release lì indicati non descrivono necessariamente lo stato attuale.
-> Per l'esito aggiornato dei singoli rilievi vale il riscontro finale.
+> Revisione 4 — stato verificato il 10 settembre 2026, sera: sistema operativo,
+> RM-0008 non chiuso. Il riferimento aggiornato è la sezione finale
+> «Stato attuale RM-0008 — revisione 4». Le review e le controdeduzioni
+> precedenti sono conservate come storico, anche quando compaiono fuori ordine
+> cronologico: i loro conteggi, riferimenti e verdetti non sono lo stato attuale.
 
 Data: 10 settembre 2026. Revisione: 2 — consolidamento dopo tre revisioni
 indipendenti per ambito.
@@ -1111,3 +1111,256 @@ il ciclo automaticamente riprendibile, chiudere O-01/O-02/O-03 con prove dei
 punti di interruzione e mantenere il rifiuto dei materiali realmente estranei.
 Restano le condizioni architetturali A-02/A-04/A-05 già esplicitate e il modello
 di fiducia di A-01. Nessun GO operativo viene rilasciato da questa verifica.
+
+---
+
+# Stato attuale RM-0008 — revisione 4
+
+Verifica del **10 settembre 2026, sera**, conclusioni riferite al controllo
+delle **22:50 CEST**. Worktree
+[/opt/metnos/.claude/worktrees/rm0008-reboot](/opt/metnos/.claude/worktrees/rm0008-reboot),
+HEAD `2a583cdb0af3912981d19f62a9e3670945d27334`.
+Confronto con il precedente controllo a `4b361ed3`, con la terza tornata
+dell'autore e con le aggiunte serali alla consegna.
+
+## Esito sintetico
+
+**Metnos risponde come operativo, ma RM-0008 non è chiuso.**
+I tre casi esatti O-01/O-02/O-03 sono ora corretti e verificati. Restano:
+
+- **A-11 — P1:** il percorso documentato di pubblicazione del singolo executor
+  non dispone della redazione versionata necessaria nel contesto
+  dell'operatore; anche predisponendola, il comando non acquisisce
+  automaticamente l'edit nel worktree.
+- **O-04 / A-03 — P2:** un'interruzione un passo prima di quella corretta da
+  O-02 lascia ancora il ritiro bloccato.
+- **A-12 — P2:** codice e digest del manifest di `login_sites` nella Release
+  19 non coincidono. L'assenza di una chiamata a `verify_executor` non prova
+  che il codice modificato sia quello ammesso ed eseguito in `STORE_ONLY`.
+- Le condizioni precedenti A-01/A-02/A-04/A-05 e il disallineamento
+  documentale A-10, con le qualificazioni riportate sotto.
+
+Il controllo del sorgente privato è **rosso sul worktree già modificato
+all'inizio della review**. Non è una regressione introdotta da questa verifica
+e non è stato aggirato riallineando le impronte.
+
+## Stato osservato: selezione, servizi e sorgenti non sono la stessa prova
+
+| Oggetto | Riscontro di questa verifica |
+|---|---|
+| Selezione durevole | Il [puntatore richiesto](/var/lib/metnos/executor-birth/chain-v1/required-head-v1.bin) seleziona **Release 19**. Firma verificata con il [registro pubblico della head](/var/lib/metnos/executor-birth/authorities-v1/head-registry-v1.json), tramite i decoder del prodotto. |
+| Identità selezionata | Head `sha256:d919d597b3c56ad2a67673b2548283c179d501ede54b53f1e85235ab046dce55`; build `sha256:4dc2d93890b52b32d0565a8d18b6516055a8fbe1c6590f58aa3002a0fec39f5a`. |
+| Servizi | HTTP, Telegram, browser e lavoratore durevole attivi; `metnos.target` attivo; timer traduttore e sorvegliante attivi/in attesa. Osservazione systemd in sola lettura. |
+| Risposta del prodotto | `/agent/health`: `operational=true`, `maintenance_only=false`; lavoratore durevole `ready`, disponibile e senza causa di errore. Nessun turno utente eseguito. |
+| Sorgenti Python di R19 | Censiti **743 file**: `sha256:2f84944a91183ccb273f56d18ce1c23732cf6e667fa3b186783e3eadc49e2ea4`, coincidente con il [riferimento pubblico installato](/var/lib/metnos/executor-birth/releases-v1/00000000000000000019/runtime/contract_boundary_guard.py:55). |
+| Worktree privato | Riferimento approvato `sha256:924f27ffd719ce8ac4abb424fe07b9c74b9cc9b4794aa51bbf9bae8a382fcd07`, 755 file; censimento effettivo `sha256:8ee399d346a1ae8592de28060d4e2e4d29bd292b2f546463902b3ad1a916ba56`: controllo rifiutato. |
+| Lavoro locale preesistente | Cinque percorsi già modificati, fra cui codice e test di `login_sites` già nell'indice, un test eliminato e due risorse i18n modificate. Conservati byte per byte, senza modificare l'indice. |
+
+Il controllo della firma del puntatore non è una nuova certificazione
+dell'intera catena, delle protezioni del filesystem o dell'identità di ciascun
+processo vivo. Non si deduce dalla sola salute HTTP che ogni executor sia
+disponibile o che ogni correzione serale sia stata eseguita.
+
+La [roadmap](/opt/metnos/.claude/worktrees/rm0008-reboot/internal/roadmap/RM-0008-porta-unica-nascita-executor.md:3)
+resta `in_progress`: F4 non chiude F5-F6, né sostituisce le cinque ammissioni
+reali da almeno due produttori. Questa review non produce quelle prove.
+
+## Riconciliazione dei rilievi precedenti
+
+| Rilievo | Stato alla revisione 4 |
+|---|---|
+| O-01 / A-06 | **Chiuso il caso riprodotto:** firma appena creata vuota e firma troncata a 8 byte vengono conservate e ricostruite; due ripetizioni riescono. Restano fuori dalla prova spegnimento fisico e verifica esaustiva di tutte le scritture. |
+| O-02 / A-03 | **Chiuso il caso riprodotto:** dopo entrambi gli spostamenti, il journal viene riconosciuto dal ritiro su disco senza il valore in memoria. La famiglia di ripresa A-03 resta aperta per O-04. |
+| O-03 / A-01 | **Chiuso il blocco di identità:** nuova copia misurata prima della pubblicazione; vecchia copia definitiva difforme spostata di lato; due ripetizioni riescono. La conservazione di ogni copia rifiutata, però, non è quanto il codice fa: precisazione sotto. |
+| A-01 | Resta il modello di fiducia amministrativa nell'account, nello strumento e nella preparazione. Non è stata dimostrata l'autenticazione di un preparatore meno fidato; nessun P0 ripristinato. |
+| A-02 | Aperto: il confronto delle cinque identità manca ancora. Il codice non è cambiato dal controllo precedente. La suite ordinaria del journal passa, ma non rende superflue le controprove sui campi discordanti. |
+| A-04 | Resta condizione di disponibilità sotto contesa fra processi, non regressione dimostrata. Non è corretto eliminarla dal riepilogo soltanto perché gli altri tre rilievi sono stati corretti. |
+| A-05 | Aperto sotto concorrenza amministrativa: completamento, attivazione e identità restituita non sono ancora un'unica operazione protetta. Codice invariato. |
+| A-07 / A-08 | Restano rispettivamente politica esplicita accolta e osservazione contrattuale; non riaperti. |
+| A-09 | Correzione confermata: i due test originari passano anche in questo giro. |
+| A-10 | Aperto come P3 documentale: la consegna annuncia R5 in testa, R4 nella tabella, mentre la selezione osservata è R19. |
+
+La frase della terza controdeduzione «nessuno dei tre è un rischio di
+integrità» è troppo generale: A-02 riguarda proprio la coerenza del recupero
+con il predecessore. Resta vero che non sono state provate ammissioni di
+autorità estranee o alterazioni della catena valida. I due giudizi non vanno
+confusi.
+
+## A-11 — P1 — Il comando documentato non chiude il percorso edit → pubblicazione
+
+La [consegna](/opt/metnos/.claude/worktrees/rm0008-reboot/internal/design/handover_rm0008_release3_9_9_2026.md:849)
+segnala `birth_unavailable / authoring_version_invalid: missing`. Il codice
+spiega il risultato:
+
+1. [verify_named_executors](/opt/metnos/.claude/worktrees/rm0008-reboot/runtime/stack_reconcile.py:522),
+   in `STORE_ONLY`, prende il riferimento dal catalogo e mette a `None` la
+   directory dell'executor nel worktree.
+2. [La preparazione](/opt/metnos/.claude/worktrees/rm0008-reboot/runtime/executor_birth_snapshot.py:412)
+   legge l'albero di redazione versionato dietro quel riferimento.
+3. [Il lettore](/opt/metnos/.claude/worktrees/rm0008-reboot/runtime/executor_birth_authoring.py:644)
+   rifiuta l'assenza di `version.json` prima di acquisire il candidato.
+4. [La radice delle origini del repository](/opt/metnos/.claude/worktrees/rm0008-reboot/runtime/manifest_inventory.py:258)
+   è sotto lo stato dell'account, non dentro la release installata.
+
+Nel contesto di Roberto, la lettura della directory
+[/home/roberto/.local/state/metnos/contract-authoring](/home/roberto/.local/state/metnos/contract-authoring)
+ha trovato soltanto il lucchetto del tentativo di `login_sites`, nessun albero
+canonico e nessuna versione. La directory omologa dell'account di servizio
+non è leggibile da questo contesto: **non si estende l'osservazione a tutti
+gli account della macchina**.
+
+**Due sonde isolate confermano il difetto di raccordo:**
+
+- Senza versione, la vera funzione di verifica del comando fallisce con
+  `birth_unavailable` prima di consegnare qualsiasi richiesta a Birth.
+- Con una versione valida contenente byte precedenti e un edit distinto nel
+  worktree, consegna i byte precedenti della redazione, non quelli modificati
+  nel worktree. Sono simulate soltanto la selezione dell'inventario,
+  l'ammissione finale e la lettura finale del catalogo: non si è pubblicato
+  nulla in produzione.
+
+Il [test ordinario](/opt/metnos/.claude/worktrees/rm0008-reboot/tests/runtime/infra/test_stack_reconcile.py:885)
+crea esplicitamente la versione prima di chiamare il comando: dimostra che la
+preparazione funziona quando il prerequisito esiste, non che il percorso
+operativo lo produca.
+
+**Impatto e chiusura richiesta:** P1 per il percorso di manutenzione prescritto,
+non per la disponibilità generale del servizio. Non basta creare cartelle
+vuote o ripopolare una vecchia sorgente: occorre legare esplicitamente
+l'edit candidato, l'account produttore, la versione di redazione e la
+generazione ammessa. Provare il comando documentato dall'edit fino a una
+generazione nuova riletta, con assenza iniziale della redazione e con
+redazione già esistente ma diversa dal candidato.
+
+Esiste già una
+[materializzazione prima della transizione](/opt/metnos/.claude/worktrees/rm0008-reboot/runtime/contract_store.py:3421),
+ma si chiude dopo la comparsa della proprietà/head
+([rifiuto previsto](/opt/metnos/.claude/worktrees/rm0008-reboot/runtime/contract_store.py:3451)).
+Non è un rimedio da invocare forzatamente su R19; il recupero post-transizione
+richiede un percorso autorizzato che conservi quel confine.
+
+## O-04 / A-03 — P2 — Arresto fra i due spostamenti: ritiro ancora non riprendibile
+
+La [sequenza di ritiro](/opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_release_cycle.py:416)
+sposta prima la release, poi la rivendicazione. La nuova lettura dei ritiri
+archiviati risolve il caso **successivo a entrambi gli spostamenti**, non
+l'interruzione fra i due.
+
+Sonda: il primo spostamento reale riesce; si inietta un errore prima del
+secondo. Restano release nell'archivio, rivendicazione nella posizione
+originaria e journal aperto. Due nuove chiamate falliscono entrambe alla
+[verifica della release originaria](/opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_release_cycle.py:400)
+con `the pending claim reserved no release directory`.
+Il lettore dei ritiri non può ricostruire il legame: il
+[file della rivendicazione archiviata](/opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_release_cycle.py:444)
+non è ancora stato scritto/spostato.
+
+**Impatto:** disponibilità del ciclo interrotta fino a trattamento esplicito
+del residuo; nessuna cancellazione o ammissione indebita dimostrata.
+O-02 resta chiuso nel suo caso esatto: non si cambia retroattivamente ciò
+che quella prova dimostra.
+
+**Chiusura richiesta:** rendere riconoscibile e riprendibile lo stato parziale
+release archiviata/rivendicazione ancora pendente, verificandone identità e
+destinazione senza sovrascrivere conflitti. Provare separatamente arresti dopo
+ogni spostamento e relativa sincronizzazione, due ripetizioni e il rifiuto
+di archivi appartenenti ad altri tentativi.
+
+## A-12 — P2 — R19 contiene codice e manifest discordanti; la consegna non prova l'esecuzione del fix
+
+Rilettura e calcolo con la funzione del prodotto sui file dichiarati dal
+[manifest installato](/var/lib/metnos/executor-birth/releases-v1/00000000000000000019/executors/login_sites/manifest.toml:24):
+
+| Profilo di `login_sites` | Digest dichiarato | Digest calcolato |
+|---|---|---|
+| R19 installata e HEAD `2a583cdb` | `sha256:373df2e979a4bf9f82cc5d9251c52cffe8df77b097b33550ba9ec23620fe2286` | `sha256:342c6fd4f4871f4c85fd79d11ffba16abe33c85e836a5f1500a6b59fe82ab543` |
+| Worktree con modifica locale preesistente | `sha256:373df2e979a4bf9f82cc5d9251c52cffe8df77b097b33550ba9ec23620fe2286` | Uguale al dichiarato |
+
+La modifica locale ha quindi una situazione diversa dal commit e dalla
+release selezionata. Non prova di per sé un aggiornamento del processo vivo.
+
+La [spiegazione della consegna](/opt/metnos/.claude/worktrees/rm0008-reboot/internal/design/handover_rm0008_release3_9_9_2026.md:868)
+salta un controllo: in `STORE_ONLY` il caricatore non usa
+`sign.verify_executor`, ma passa da
+[current_manifest](/opt/metnos/.claude/worktrees/rm0008-reboot/runtime/loader.py:2259)
+alla [verifica della generazione](/opt/metnos/.claude/worktrees/rm0008-reboot/runtime/contract_store.py:1581).
+Questa [ricalcola e confronta il digest del codice](/opt/metnos/.claude/worktrees/rm0008-reboot/runtime/contract_store.py:1261).
+Non è corretto dedurre «non verifica il codice» dall'assenza della chiamata
+storica, né dire per questo che la discordanza sia innocua in produzione.
+
+**Impatto provato:** incoerenza del contratto presente nell'artefatto e
+insufficienza della prova di consegna del fix. **Non provato:** quale
+generazione di `login_sites` sia effettivamente ammessa dal catalogo vivo,
+un'esecuzione di codice non autorizzato o un blocco effettivo dell'executor
+in produzione. Se la generazione ammessa lega altre copie dei byte, occorre
+mostrarlo: la firma dell'intera release non sostituisce quel legame.
+
+**Chiusura richiesta:** riconciliare candidato, manifest, generazione
+pubblicata e ricevuta di ammissione nel percorso Birth; verificare il digest
+della generazione realmente caricata e una postcondizione sul comportamento
+corretto. Non alterare la release immutabile o saltare il controllo del digest.
+
+## Precisazioni sul report e sulle prove
+
+- **A-10:** riferimenti R4/R5 e decisione di «rilasciare le due correzioni»
+  sono rimasti nella consegna
+  ([tabella](/opt/metnos/.claude/worktrees/rm0008-reboot/internal/design/handover_rm0008_release3_9_9_2026.md:947),
+  [decisioni](/opt/metnos/.claude/worktrees/rm0008-reboot/internal/design/handover_rm0008_release3_9_9_2026.md:961)).
+  Vanno dichiarati storici o aggiornati; lo stato attuale non si ricava
+  dall'ultima sezione aggiunta né dal solo numero di release nel titolo.
+- **Conservazione O-03:** una vecchia copia difforme già definitiva viene
+  conservata in `.rejected-NN`. Una copia nuova rifiutata prima della
+  rinomina resta invece in `.rm0008-cycle-candidate-incoming` ed è eliminata
+  dalla preparazione successiva
+  ([codice](/opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_release_cycle.py:594)).
+  Riprodotti entrambi i casi: rispettivamente uno e zero archivi.
+  L'[asserzione `len(rifiutate) <= 1`](/opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_rehearse_withdrawal.py:336)
+  ammette zero e non dimostra «conservata una volta sola». Correggere la
+  promessa o provare effettivamente la conservazione; questo non riapre il
+  blocco di identità già risolto.
+- **Limiti della prova generale:** il
+  [sostituto di open_parent](/opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_rehearse_withdrawal.py:133)
+  controlla tipo, proprietario e identità, ma non ripete tutti i controlli dei
+  permessi della funzione reale. Nello scenario candidato neutralizza
+  `chown`, non il comando di rimozione, che opera sulla copia temporanea.
+  Non chiamare quindi queste deroghe identiche alle precedenti sonde della
+  review, né presentarle come una prova completa delle protezioni root.
+
+## Prove, riproducibilità e limiti
+
+- Prova generale del progetto: **9 scenari, REHEARSAL_OK**, su copia temporanea
+  della catena; 27 oggetti preservati identici nel controllo di ritiro.
+  Stavolta la catena copiata non aveva una rivendicazione pendente: è stato
+  esercitato anche il ramo che la prepara sinteticamente.
+- **98 test del prodotto superati** in due esecuzioni: 66 su redazione,
+  riconciliazione e regressioni A-07/A-09; 32 sul ciclo di vita del journal
+  e sull'autenticazione delle generazioni. Non è la suite completa e non
+  riconferma i conteggi storici di migliaia di test.
+- **8 sonde isolate superate**, nel senso che le asserzioni confermano
+  correzioni e difetti descritti. File:
+  [/tmp/metnos-rm008-status.7IiRMU/test_review_state.py](/tmp/metnos-rm008-status.7IiRMU/test_review_state.py).
+  Le prove di ritiro usano header canonici, rinomine e file reali, con
+  proprietà adattata all'utente e radici temporanee; non sono arresti fisici.
+  Nessuna richiesta raggiunge l'ammissione produttiva nei test del comando.
+- Firma del puntatore, censimento R19 e digest dei tre profili:
+  [/tmp/metnos-rm008-status.7IiRMU/collect_state.py](/tmp/metnos-rm008-status.7IiRMU/collect_state.py).
+  Usa soltanto registro pubblico e dati leggibili; non legge chiavi private.
+- Controllo del sorgente privato: **rifiutato** per la divergenza già descritta.
+  Nessuna modifica a riferimenti approvati, firme o sorgenti per farlo passare.
+- Stato del servizio letto, senza riavvio, attraversamento, pubblicazione o
+  turno reale. Nessuna nuova verifica Windows o di aggiornamenti concorrenti.
+
+Le differenze locali preesistenti, incluse quelle nell'indice Git, sono
+rimaste identiche durante la review. Le sole scritture di questa attività
+sono questo report e gli artefatti diagnostici nella directory temporanea.
+
+Identità dei file amministrativi provati: ciclo
+`65beb1f30c9665a4047053e5df09362ba7f5e2ebff4abac9718ba8718d3ecfeb`;
+prova generale
+`c4df05b3b7b8e5e144a1d518db90bed00f7090bb8d989030e789c517d94afecd`.
+
+**Ordine di chiusura consigliato:** rendere utilizzabile e verificabile la
+pubblicazione puntuale (A-11/A-12), completare la ripresa del ritiro (O-04),
+poi soddisfare le condizioni di fiducia/concorrenza e le prove F5-F6 prima
+di dichiarare l'aggiornamento una capacità autonoma del prodotto.
+Nessun GO incondizionato al prossimo rilascio viene emesso da questo report.
