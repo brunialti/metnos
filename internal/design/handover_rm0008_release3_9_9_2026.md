@@ -370,6 +370,19 @@ Ordinati per gravita'. Ognuno e' stato misurato, non dedotto.
     (`_activate_signed_topology_v1`) e rifiuta di dichiarare successo se
     bersaglio e prontezza non risultano attivi: non c'e' un difetto da
     correggere, c'e' una traversata da finire.
+16. **L'uscita in avanti aveva un OTTAVO lettore, e l'ha creato la correzione
+    del 9/9.** Vietando di archiviare il giornale del predecessore abbandonato
+    *come completato* — giusto — non si era detto cosa farne. Restava nell'unica
+    casella attiva; la traversata successiva adottava quel giornale e rifiutava
+    con `birth_provisioning_transaction_conflict`. **Regola imparata**: quando si
+    toglie un permesso, dire subito che cosa succede al posto suo, altrimenti si
+    e' spostato il blocco, non risolto. Corretto in
+    `_archive_abandoned_authority_journal_v2`, provato in negativo.
+17. **Il rituale di rilascio era esso stesso un difetto** (10/9). Sette passaggi
+    manuali, sei impronte ricopiate a mano, tre cicli persi in un giorno.
+    Sostituito da un comando solo (§6-quinquies). *Resta aperto* il criterio di
+    Roberto: dev'essere una capacita' del prodotto, non uno strumento da
+    sviluppatore (§9.4).
 15. **La catena e' leggibile senza `sudo`.** Tutto `/var/lib/metnos/executor-birth`
     e' `root:root 755/644`, con **una sola** eccezione: il lucchetto
     `chain-v1/.required-head-v1.lock`, `600`. Un censimento di verifica si puo'
@@ -378,193 +391,81 @@ Ordinati per gravita'. Ognuno e' stato misurato, non dedotto.
 
 ## 6-quater. Cosa resta da fare, in ordine
 
-I passi 1-3 sono **preparati**: strumenti scritti, sigilli congelati,
-esportazione rigenerata. Restano tre comandi con `sudo`, che lancia Roberto.
+**Aggiornato il 10/9 dopo il terzo rifiuto.** I quattro strumenti a colpo
+singolo sono stati **ritirati** e sostituiti da uno solo:
+`internal/tools/rm0008_release_cycle.py`.
 
-1. **Ritirare la rivendicazione pendente.**
-   `internal/tools/rm0008_withdraw_release3.py`, tre modi:
-   `census` (qualunque utente, sola lettura, nessun lucchetto — gia' eseguito:
-   i sigilli dentro il file sono il suo risultato), `audit` e `withdraw` (da
-   root, sotto i tre lucchetti del prodotto). Muove **due soli oggetti**, la
-   rivendicazione **per ultima**: finche' c'e', la porta resta chiusa, quindi
-   un'interruzione lascia un rifiuto e non una catena socchiusa. **Non ferma
-   nessun servizio** e non cancella niente: i due oggetti vengono conservati
-   sotto `/var/lib/metnos-admin/rm0008-withdrawn-release3-20260910`.
-2. **Ricostruire.** L'esportazione e' gia' rigenerata, sigillata e messa in
-   scena in `/tmp/metnos-release3-export-2` (modi 644/755, niente bytecode,
-   niente collegamenti); i quattro sigilli del costruttore sono gia' aggiornati.
-   Serve solo lanciare `internal/tools/rm0008_build_release3.py`.
-3. **Attraversare.** La ricostruzione stampa le identita' nuove: vanno messe nei
-   sigilli di `internal/tools/rm0008_complete_release3.py`, che oggi sono
-   **volutamente vuoti** e rifiutano per nome (`pins not updated after the
-   rebuild: …`). Poi `audit` e infine `complete`, che **ferma e riavvia i
-   servizi**: non con un turno in corso (§8.6), e non senza il via di Roberto.
-4. **Turno reale** su Telepass: e' la verifica richiesta da §8.5 ed e' cio' che
-   Roberto aspetta.
+1. `prepare` — **gia' eseguito**, non serve `sudo`. Riallinea le radici
+   riviste, rigenera l'elenco firmato dei file Python, ricostruisce e sigilla
+   l'esportazione, la mette in scena coi permessi che il ricevitore accetta e la
+   misura. Verificato **idempotente**: due esecuzioni di fila danno lo stesso
+   censimento e lasciano l'albero pulito.
+2. `apply --cross` — **l'unico comando con `sudo`**:
+
+   ```
+   sudo /usr/bin/python3.12 /opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_release_cycle.py apply --cross
+   ```
+
+   Rimisura l'albero in scena, lo riceve, **ritira da solo** la rivendicazione
+   pendente se nomina una sorgente superata, costruisce e installa il successore
+   firmato, lo **esamina**, e solo allora attraversa. Senza `--cross` si ferma
+   dopo l'esame e non ferma niente.
+3. **Turno reale** su Telepass (§8.5).
+4. **Riavvio vero**: l'unica prova onesta del «tutto disponibile senza
+   interventi a mano» (reperto 12).
 5. Documentazione IT/EN, roadmap, GII, pubblicazione incrementale in inglese.
 6. Decidere sul sigillo di `tests/portable/conftest.py` (§7) e sull'accesso di
    Roberto alle directory d'installazione (§9).
 
-### I tre comandi, in fila
+## 6-quinquies. Il ciclo unico: perche' esiste e cosa non e' ancora
 
-```
-sudo /usr/bin/python3.12 /opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_withdraw_release3.py audit
-sudo /usr/bin/python3.12 /opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_withdraw_release3.py withdraw
-sudo /usr/bin/python3.12 /opt/metnos/.claude/worktrees/rm0008-reboot/internal/tools/rm0008_build_release3.py
-```
+### Il rituale era il difetto
 
-`audit` si puo' rilanciare quante volte si vuole: legge e confronta soltanto.
+Ogni modifica al codice di nascita chiedeva **sette passaggi manuali con sei
+impronte ricopiate a mano**: riallineare le radici, rigenerare l'elenco firmato,
+rigenerare e sigillare l'esportazione, metterla in scena, riscrivere il
+censimento nel costruttore, ritirare la rivendicazione, riscrivere le identita'
+della build nello strumento di attraversamento, attraversare.
 
-## 6-quinquies. Preparazione della notte del 10/9 (catena non toccata)
+Il 10/9 sono andati persi **tre cicli completi**, e nessuno dei tre per un
+difetto vero: due per lettori mancanti dell'uscita in avanti, uno per il
+rituale stesso. Un'impronta che una persona ricopia non e' una revisione: e'
+un'occasione per sbagliare. La revisione che conta e' quella dell'albero
+sorgente, e si esprime una volta sola, eseguendo il ciclo.
 
-Nessun oggetto della catena e' stato spostato, nessun servizio fermato,
-nessun `sudo` eseguito. Tutto quello che segue e' lavoro nel repository e in
-`/tmp`.
+### Cosa garantisce, e cosa no
 
-### Lo strumento di ritiro (nuovo)
+Il passaggio di consegne fra `prepare` e `apply` **non e' un'autorita'**:
+l'albero in scena viene rimisurato da root, il controllo della radice rivista
+del prodotto gira comunque dentro la costruzione, e la distribuzione la firma
+la chiave del prodotto. Il passaggio serve solo a rifiutare un albero cambiato
+fra le due fasi.
 
-`internal/tools/rm0008_withdraw_release3.py`. Nasce dal precedente del
-tentativo N2 (`/tmp/metnos-rm0008-withdraw-n2-20260909.py`), che era sigillato
-su identita' vecchie: l'architettura e' la stessa, le identita' e la topologia
-no. Differenze reali:
+L'attraversamento gira come **figlio dello stesso file**: la costruzione deve
+importare il codice del candidato e l'attraversamento quello della release
+appena installata, e i due non stanno in un solo interprete. Le identita'
+arrivano al figlio come **argomenti prodotti dalla costruzione**, mai come
+costanti che qualcuno mantiene.
 
-- **due oggetti invece di quattro**: l'attraversamento della 3 si e' fermato al
-  primo lettore, quindi non esiste nessuna transazione. Verificato leggendo
-  `transactions-v2`, che contiene ancora **solo** le due traversate note
-  (release 1 e release 2 abbandonata);
-- il giornale di nascita non si **sposta** mai. Ne esiste **uno**, ed e' quello
-  della traversata abbandonata: l'uscita in avanti lo conserva apposta. Lo
-  strumento legge dalla traversata abbandonata **quale** sia, invece di
-  sigillarlo, e pretende che sia l'unico. Un secondo giornale apparterrebbe alla
-  3 e verrebbe **rifiutato per nome**, non indovinato (reperto 13);
-- la catena e' sigillata **membro per membro** e non come un albero unico,
-  perche' il suo lucchetto e' leggibile solo da root e un lucchetto non e'
-  storia. L'inventario della directory e' controllato a parte, cosi' nulla puo'
-  comparire di fianco;
-- la guardia semantica non e' sigillata su un numero indovinato: **misura cosa
-  attestano i servizi prima del ritiro e pretende che sia identico dopo**.
-  E' la proprieta' che ci interessa davvero — «ritirare la Release 3 non cambia
-  cosa parte» — e non richiede di sapere in anticipo quale release e' selezionata.
+Il ritiro conserva tutte le proprieta' della versione sigillata — due oggetti,
+la rivendicazione per ultima, niente cancellato, storia conservata e
+attestazione dei servizi invariate — ma **legge ogni identita' dalla catena al
+momento**. La sua prova generale
+(`internal/tools/rm0008_rehearse_withdrawal.py`) fa girare il codice vero su una
+copia fedele della catena viva, senza root: due oggetti spostati, dieci
+conservati identici, la stessa sorgente non e' un ritiro, un secondo giro non fa
+niente, tre rifiuti attesi su tre.
 
-Verificato: il censimento e' **riproducibile** (rieseguito, identico ai sigilli
-congelati nel file).
+### Cosa NON e' ancora, e va deciso
 
-### Cosa e' successo quando Roberto ha lanciato i comandi (10/9, mattina)
-
-1. `withdraw` si e' **fermato**, correttamente, sul giornale di nascita
-   (reperto 13). Nessun oggetto spostato.
-2. La ricostruzione ha superato censimento e radice rivista, ha **ricevuto la
-   sorgente nuova** (`93c296e9…`) e si e' fermata su
-   `birth_ownership_deployment_invalid: successor edge`. E' il ramo `pending`
-   di `_next_release_edge_v1`: c'e' una rivendicazione e la sua sorgente non e'
-   questa. **Conferma che il ritiro e' il rimedio giusto**, letta nel codice e
-   non supposta.
-3. Le sorgenti ricevute sono ora **undici**: quella in piu' e' innocua
-   (reperto 11), il deposito e' indirizzato per contenuto.
-4. Al secondo giro il ritiro si e' fermato su `PreflightError coordinator
-   inventory`: non un suo difetto, ma **il reperto 0**. La guardia semantica
-   pretendeva un'attestazione riuscita; ora registra **cio' che il verificatore
-   dice**, rifiuto compreso, e pretende che sia identico prima e dopo. Rifiutare
-   il ritiro per quel motivo avrebbe chiuso l'unica via d'uscita: il ritiro e'
-   il primo passo della riparazione. Il rifiuto viene stampato, non ingoiato.
-
-### Il ritiro e la ricostruzione sono AVVENUTI (10/9)
-
-```
-RELEASE3_CLAIM_WITHDRAWN; HEADS_UNCHANGED; NO_SERVICE_STOP; RECEIPTS_RETAINED
-SIGNED_SUCCESSOR_BUILT 3 sha256:28fb5158…
-BUILD_ONLY_OK; NO HEAD CHANGE OR SERVICE STOP
-```
-
-Identita' della Release 3 **ricostruita**, tutte rimisurate sui byte installati:
-
-| voce | valore |
-|---|---|
-| sorgente ricevuta | `sha256:93c296e9…` |
-| build chiusa | `sha256:28fb5158…` |
-| descrittore | `20d1fbd1…` |
-| verificatore della release | `94789146…` |
-| prove di build | `eca5c8c5…` / `218240b3…` |
-| testa richiesta | `sha256:d302bb32…` (invariata) |
-| `python_executable` | **`/usr/bin/python3.12`** |
-
-Il verificatore di questa release **conosce** `abandoned-crossings-v2`: e' il
-rimedio al reperto 0. I sigilli di `rm0008_complete_release3.py` sono armati con
-questi valori. Resta solo `audit` e poi `complete`.
-
-### La prova su copia fedele (il pezzo che conta)
-
-`internal/tools/rm0008_rehearse_release3_withdrawal.py <cartella>`. Legge la
-catena viva, **non ci scrive**, non chiede root e non ferma niente: copia gli
-oggetti che il ritiro tocca in una cartella di lavoro e ci fa girare **il
-codice vero** dello strumento di ritiro. Rieseguibile quando si vuole.
-
-Cosa ha dimostrato, eseguito il 10/9:
-
-1. **il ritiro** sposta esattamente due oggetti e lascia i **dodici** oggetti
-   conservati **identici byte per byte**; rilanciarlo non muove piu' nulla;
-2. **un ritiro interrotto a meta'** riprende, e a meta' strada la
-   rivendicazione e' **ancora al suo posto**: la porta resta chiusa, il
-   costruttore continua a rifiutare;
-3. cinque rifiuti attesi avvengono davvero: una traversata aperta per la 3, una
-   rivendicazione diversa da quella rifiutata, una testa pubblicata nuova, la
-   storia che si muove **durante** il ritiro, un posto d'archivio gia' occupato.
-
-Sono rilassate solo due cose sulla copia, ed e' scritto nello strumento: chi
-possiede i file (una copia appartiene a chi l'ha fatta) e il controllo che
-rifiuta le cartelle scrivibili da tutti, limitato alla radice di lavoro perche'
-`/tmp` lo e' per costruzione. Tutto il resto e' controllato come in esercizio.
-
-### L'esportazione rigenerata
-
-| voce | valore |
-|---|---|
-| percorso | `/tmp/metnos-release3-export-2` |
-| file | 1747 (invariato) |
-| censimento | `10b8ef54f5c404ca0f7a40eb2d939a1e05509eaa24a3826638520ac7d4977109` |
-| radice rivista scritta dentro | `sha256:9180f62d…` |
-| collegamenti, modi anomali, collegamenti duri, bytecode | 0 |
-
-La vecchia esportazione (`/tmp/metnos-release3-export`) e' stata **lasciata
-dov'era**: sono i byte esatti della Release 3 gia' installata, e servono per
-confronto se qualcosa non torna.
-
-**Le prove di nascita girano dentro l'esportazione stessa.** Copiata in una
-cartella di lavoro (per non lasciare bytecode nella messa in scena) e lanciate
-le tre suite che riguardano proprieta', provisioning e attraversamento:
-**241 verdi, 15 saltate**, compresa la prova nuova
-`test_the_crossing_admits_the_predecessor_the_builder_already_admitted`.
-I byte che stiamo per installare **sanno attraversare**. Il censimento della
-messa in scena e' stato ricontrollato dopo: invariato.
-
-Verificato che l'esportazione nuova porta davvero le correzioni:
-`_abandonment_binds_record_v2` e `predecessor_abandonment` nel coordinatore,
-`_abandonment_for_predecessor_locked_v2` anche nel provisioner e nella politica
-compilata, il testo visibile nel nome dei controlli del sidecar, e i conteggi
-dei cookie al massimo osservato.
-
-### I sigilli del costruttore
-
-| sigillo | prima | adesso |
-|---|---|---|
-| sorgente | `/tmp/metnos-release3-export` | `/tmp/metnos-release3-export-2` |
-| censimento | `5238b5a7…` | `10b8ef54…` |
-| numero file | 1747 | 1747 |
-| radice rivista | `sha256:4b8a659c…` | `sha256:9180f62d…` |
-| sequenza attesa | 3 | 3 |
-| prove di build | `…-20260909` | `…-20260910` |
-
-La sequenza attesa **resta 3**: la testa pubblicata e' ancora quella della
-Release 2 (`d302bb32…`, sequenza 2) e l'abbandono la conserva, quindi dopo il
-ritiro la catena torna a offrire esattamente la 3.
-
-### Il completatore disarmato
-
-`internal/tools/rm0008_complete_release3.py` aveva i sigilli del **primo**
-tentativo. Quei byte non esistono piu' dopo il ritiro: lasciarli avrebbe fatto
-fallire lo strumento su un confronto qualsiasi, molto dopo, con un messaggio
-che non dice la verita'. Ora i sigilli sono vuoti e c'e' un controllo che
-**rifiuta per nome**, prima di tutto il resto e senza bisogno di root.
+Questo resta uno strumento **per chi sviluppa**: un comando con `sudo` da un
+albero di lavoro. Roberto ha posto il criterio giusto — *«robusta, semplice,
+automatica e trasparente all'utente, altrimenti Metnos e' inutilizzabile»* — e
+**questo non lo soddisfa ancora**. L'aggiornamento di Metnos deve diventare una
+**capacita' del prodotto**: si chiede dall'interfaccia o dalla chat, il prodotto
+si aggiorna da solo e riferisce l'esito, senza terminale, senza radice
+d'installazione, senza impronte. E' il vero criterio di chiusura di RM-0008 ed
+e' un lavoro di progettazione, non un ritocco: vedi §9.4.
 
 ## 7. Prove rosse, classificate con onesta'
 
@@ -634,6 +535,13 @@ appartengono alla versione successiva.
    solo l'ultimo passo, l'attraversamento, ferma e riavvia i servizi, e va
    fatto quando non c'e' un turno in corso.
 2. **Sigillo di `tests/portable/conftest.py`** — vedi §7.
+4. **L'aggiornamento di Metnos deve diventare una capacita' del prodotto.**
+   Criterio di Roberto, 10/9: *«robusta, semplice, automatica e trasparente
+   all'utente, altrimenti Metnos e' inutilizzabile»*. Oggi c'e' un comando solo
+   invece di sette passaggi, ma resta un comando con `sudo` da un albero di
+   lavoro. Il fine e': lo si chiede dall'interfaccia o dalla chat, il prodotto
+   si aggiorna e riferisce l'esito. E' progettazione, non un ritocco, e va messa
+   in roadmap come criterio di chiusura di RM-0008.
 3. `internal/tools/grant_roberto_access_to_install_root.sh` — scritto,
    approvato in linea di principio, **mai eseguito**. Rimedio provvisorio: la
    vera correzione e' separare la radice d'installazione dall'albero di
@@ -653,5 +561,9 @@ appartengono alla versione successiva.
 - Mai riportare la password di Roberto in file, comandi o registri.
 - In questo albero di lavoro **non c'e' `.venv`**: `scripts/export-public.sh` va
   lanciato con `METNOS_VENV=/opt/metnos/.venv`, altrimenti si ferma subito.
-- La catena si legge senza `sudo` (reperto 12): un censimento di verifica non
+- La catena si legge senza `sudo` (reperto 15): un censimento di verifica non
   richiede un giro di privilegi.
+- Quattro strumenti a colpo singolo (`rm0008_build_release3`,
+  `rm0008_complete_release3`, `rm0008_withdraw_release3`,
+  `rm0008_rehearse_release3_withdrawal`) sono stati **rimossi**: se li trovi
+  citati in un documento piu' vecchio, il sostituto e' `rm0008_release_cycle`.
