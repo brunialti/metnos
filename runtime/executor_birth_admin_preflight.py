@@ -206,8 +206,13 @@ _PR_SET_NO_NEW_PRIVS_V1 = 38
 _PR_CAP_AMBIENT_V1 = 47
 _PR_CAP_AMBIENT_CLEAR_ALL_V1 = 4
 _LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
+# The one signed topology this verifier admits.  It is a reviewed pin: the
+# value moves whenever `SERVICE_SOURCE_V1` changes, and moving it here *is*
+# the act of approving that change.  Never derive it from the candidate.
+# 10/9/2026: `RestrictNamespaces` removed from `service-telegram-daemon`,
+# which forbade the namespaces the executor sandbox creates.
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:ad3854f5d6bdb71911c202485d3a5159d97572adc59064ba6c4f2bd83547763d"
+    "sha256:9ea904e14fb597a32c0f033dedfa40e7cff0cdd10a2112606c6fc226e4798a19"
 )
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -831,7 +836,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:963930868ed635823a09ca0818bb16b3ea637cd60c7acba7f513e45400fc7fa9"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:0fe09130ec866e53083b4453251e913122ac3272853e4182b8ccd555983edbaf"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )
