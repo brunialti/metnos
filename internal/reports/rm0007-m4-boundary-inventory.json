@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:8f0940e2f039c5cf953ee2a1d34a79392737f843374d1e4987fdf6541c80de10",
+  "source_census": "sha256:cb0c7e3eef0fc932cb4461c5b7e5f45c2d6dd7ddd2e1905f2f1a60ce262eb52e",
   "scan_roots": [
     "runtime",
     "install",
