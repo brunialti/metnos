@@ -11,6 +11,14 @@ Everything it trusts is pinned and re-measured here: the installed
 administrative helper, the exported tree, the reviewed source root and the
 release sequence. A single divergence refuses the build instead of assembling
 an unreviewed release.
+
+This is the second reviewed export for sequence 3. The first one built a
+release that no reader could cross: three readers on the crossing path did not
+know the forward exit from the abandoned Release 2, so they demanded a
+completed predecessor that no longer exists. The crossing runs the code of the
+installed release, not of the repository, so the correction only arrives by
+rebuilding. The pending claim of the first attempt must be withdrawn first:
+while it stands the builder refuses every other source.
 """
 from __future__ import annotations
 
@@ -21,14 +29,14 @@ import stat
 import sys
 import traceback
 
-SOURCE = Path("/tmp/metnos-release3-export")
-SOURCE_CENSUS = "5238b5a7ad7c8d579d2a7f554be005c66e61bfff98ee1c8540e5771884d567c3"
+SOURCE = Path("/tmp/metnos-release3-export-2")
+SOURCE_CENSUS = "10b8ef54f5c404ca0f7a40eb2d939a1e05509eaa24a3826638520ac7d4977109"
 SOURCE_FILES = 1747
-REVIEW = "sha256:4b8a659ce29f83e231fa28e8dfb812aa4fdfd63ee039c6036d16ca3e961cd604"
+REVIEW = "sha256:9180f62dcf4ebc73f2f5f498a42e674e2cbacde684813dfe39b8b1825dd5b9ec"
 LIVE = Path("/usr/libexec/metnos/executor-birth-v1/preflight.py")
 LIVE_SHA = "35b3dc13800799b5dd2278600f9968b78ad19f4a8d7b1c8a64e7d80ca0c15d90"
 EXPECTED_SEQUENCE = 3
-EVIDENCE = Path("/var/lib/metnos-admin/rm0008-release3-evidence-20260909")
+EVIDENCE = Path("/var/lib/metnos-admin/rm0008-release3-evidence-20260910")
 
 
 def require(condition: bool, detail: str) -> None:

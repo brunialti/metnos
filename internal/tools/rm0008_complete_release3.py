@@ -10,6 +10,8 @@ re-measured here: the installed release, its administrative helper, the signed
 build evidence and the release sequence. Unlike Release 2 this carries no
 out-of-band repair: the live administrative helper is now an installed signed
 one, so the crossing runs the product path and nothing else.
+
+The pins are empty until the rebuild fills them: see `require_pinned`.
 """
 from __future__ import annotations
 
@@ -23,24 +25,37 @@ import traceback
 
 RELEASE = Path(
     "/var/lib/metnos/executor-birth/releases-v1/00000000000000000003")
-SOURCE_ID = "sha256:5d6448ec8b98b4bac7ae86f03c01dac84978c873ea9a88839a7e767e830332ad"
-BUILD_ID = "sha256:0f71b2331bbe31e80fb49370c6779ada49d82b6ca219bfa51e93f2b83b201eeb"
-DESCRIPTOR_SHA = "b77128fe5333c86ec7d609c05649c8d7c4c2b1b588108db5044d4554d41404c4"
-HELPER_SHA = "3669ed5fd0887b35670fb7d4152b0ba2e1a40d094d2868a604f21433a5fef739"
+# The identities below belong to the release the rebuild produces. They are
+# deliberately empty: the first attempt at sequence 3 built a release no reader
+# could cross, and that release is withdrawn, not corrected. Reusing its digests
+# here would aim this tool at bytes that no longer exist.
+SOURCE_ID: str | None = None
+BUILD_ID: str | None = None
+DESCRIPTOR_SHA: str | None = None
+HELPER_SHA: str | None = None
 EXPECTED_SEQUENCE = 3
-EVIDENCE = Path("/var/lib/metnos-admin/rm0008-release3-evidence-20260909")
-EVIDENCE_SHA = {
-    "distribution.json":
-        "a97a2e23fd28628ca99bfeb086f7c4a120f593fbe6dd2bee62e402ed2a53f788",
-    "distribution.sig":
-        "97d1f3d6f643be67b6d246cbd06f654244293e971a19434b0c10d050b5797227",
-}
+EVIDENCE = Path("/var/lib/metnos-admin/rm0008-release3-evidence-20260910")
+EVIDENCE_SHA: dict[str, str] = {}
 MAX_EVIDENCE_BYTES = 16_000_000
 
 
 def require(condition: bool, detail: str) -> None:
     if not condition:
         raise RuntimeError(detail)
+
+
+def require_pinned() -> None:
+    """Refuse by name, not by digest mismatch, while the pins are still empty.
+
+    The build prints every value this needs. Filling them in is the act of
+    accepting that exact release for the crossing, so the tool says which one
+    is missing instead of failing later on an unrelated comparison.
+    """
+    missing = [name for name, value in (
+        ("SOURCE_ID", SOURCE_ID), ("BUILD_ID", BUILD_ID),
+        ("DESCRIPTOR_SHA", DESCRIPTOR_SHA), ("HELPER_SHA", HELPER_SHA),
+        ("EVIDENCE_SHA", EVIDENCE_SHA or None)) if not value]
+    require(not missing, "pins not updated after the rebuild: " + ", ".join(missing))
 
 
 def _stamp(info: os.stat_result) -> tuple:
@@ -204,6 +219,7 @@ def complete(distribution, descriptor):
 
 if __name__ == "__main__":
     try:
+        require_pinned()
         candidate = bootstrap()
         current_descriptor = audit(candidate)
         if sys.argv[1] == "complete":
