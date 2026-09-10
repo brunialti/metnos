@@ -386,6 +386,11 @@ class HttpScopeMigration:
             digest.update(result.stdout.encode("utf-8", errors="surrogateescape"))
             digest.update(b"\0")
         install_root = Path(__file__).resolve().parents[1]
+        # Hidden files are skipped RELATIVE to the root being walked: the
+        # absolute path can itself sit under a dotted directory (a worktree
+        # under `.claude/`, an install below `~/.local`), and reading the
+        # absolute parts would then exclude every source and leave the
+        # inventory empty.
         sources = sorted(
             path
             for root in STACK_SOURCE_ROOTS
@@ -393,8 +398,9 @@ class HttpScopeMigration:
             if (
                 path.is_file()
                 and path.suffix in STACK_SOURCE_SUFFIXES
-                and not any(part.startswith(".") for part in path.parts)
-                and "__pycache__" not in path.parts
+                and not any(part.startswith(".")
+                            for part in path.relative_to(root).parts)
+                and "__pycache__" not in path.relative_to(root).parts
             )
         )
         if not sources:
