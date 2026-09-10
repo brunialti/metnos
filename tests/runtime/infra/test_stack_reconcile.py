@@ -890,6 +890,7 @@ def test_named_executor_store_verification_uses_live_catalog(
         paths, contract_id.value, authoring_tree_id(observe_tree(directory)),
     )
     inventory = manifest_inventory.ManifestInventory((ref,), ())
+    monkeypatch.setattr(sr, "_repo_root", lambda: tmp_path / "repo")
     monkeypatch.setattr(
         manifest_inventory,
         "resolve_manifest_layout",
@@ -947,6 +948,102 @@ def test_named_executor_store_verification_uses_live_catalog(
     assert result == [{
         "name": "read_files", "ok": True, "digest": "sha256:live",
     }]
+
+
+def _store_only_deploy(monkeypatch, tmp_path, *, authored, edited):
+    """Deploy one executor under STORE_ONLY and return what reached Birth.
+
+    ``authored`` are the bytes of the authoring tree behind the store
+    reference (None: never materialised, as on the host of 10/9/2026);
+    ``edited`` the operator's working copy (None: no local directory).
+    """
+    import loader
+    import manifest_inventory
+    import sign
+    import executor_birth_intent
+    from executor_birth_authoring import (
+        advance_version, authoring_paths, authoring_tree_id, observe_tree,
+    )
+
+    authoring = tmp_path / "authoring" / "core" / "read_files"
+    contract_id = manifest_inventory.ContractId(
+        manifest_inventory.ManifestOrigin.CORE, "read_files/manifest.toml",
+    )
+    if authored is not None:
+        _signed_authoring_executor(authoring, "read_files")
+        (authoring / "main.py").write_bytes(authored)
+        advance_version(
+            authoring_paths(authoring, contract_id.value), contract_id.value,
+            authoring_tree_id(observe_tree(authoring)),
+        )
+    ref = manifest_inventory.ManifestRef(
+        contract_id=contract_id,
+        origin=contract_id.origin,
+        status=manifest_inventory.ManifestStatus.ADMITTED,
+        source_root=authoring.parent,
+        manifest_path=authoring / "manifest.toml",
+        manifest_relative=contract_id.relative_manifest,
+        allowed_code_roots=(authoring.parent,),
+    )
+    repo = tmp_path / "repo"
+    (repo / "executors").mkdir(parents=True)
+    if edited is not None:
+        working = repo / "executors" / "read_files"
+        _signed_authoring_executor(working, "read_files")
+        (working / "main.py").write_bytes(edited)
+    monkeypatch.setattr(sr, "_repo_root", lambda: repo)
+    monkeypatch.setattr(
+        manifest_inventory, "resolve_manifest_layout",
+        lambda **_kwargs: manifest_inventory.ManifestLayout.STORE_ONLY,
+    )
+    monkeypatch.setattr(
+        manifest_inventory, "inventory_manifests",
+        lambda **_kwargs: manifest_inventory.ManifestInventory((ref,), ()),
+    )
+    reached = []
+
+    def accept_birth(intent):
+        candidate = intent.candidate_source_root
+        reached.append({
+            "code": (candidate / "main.py").read_bytes(),
+            "manifest": (candidate / "manifest.toml").read_text(encoding="utf-8"),
+        })
+        return SimpleNamespace(
+            error_code=None, publication=SimpleNamespace(operation="publish"),
+        )
+
+    monkeypatch.setattr(
+        executor_birth_intent, "submit_stack_reconcile_birth", accept_birth,
+    )
+    monkeypatch.setattr(
+        sign, "verify_executor",
+        lambda _path: (_ for _ in ()).throw(
+            AssertionError("store-only must not verify unsigned authoring bytes"),
+        ),
+    )
+    monkeypatch.setattr(
+        loader, "load_catalog",
+        lambda **_kwargs: SimpleNamespace(
+            executors={"read_files": SimpleNamespace(digest="sha256:live")},
+        ),
+    )
+    sr.verify_named_executors(["read_files"], sign_first=True)
+    return reached
+
+
+def test_store_only_deploy_without_an_edit_readmits_what_is_authored(
+        monkeypatch, tmp_path):
+    authored = b"print('ok')\n"
+    reached = _store_only_deploy(
+        monkeypatch, tmp_path, authored=authored, edited=None)
+    assert [item["code"] for item in reached] == [authored]
+
+
+def test_store_only_deploy_with_nothing_to_admit_fails_closed(
+        monkeypatch, tmp_path):
+    with pytest.raises(sr.StackFailure) as caught:
+        _store_only_deploy(monkeypatch, tmp_path, authored=None, edited=None)
+    assert caught.value.code == "birth_unavailable"
 
 
 def test_named_executor_legacy_verification_keeps_signature_boundary(
