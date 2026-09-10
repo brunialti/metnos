@@ -1364,3 +1364,112 @@ pubblicazione puntuale (A-11/A-12), completare la ripresa del ritiro (O-04),
 poi soddisfare le condizioni di fiducia/concorrenza e le prove F5-F6 prima
 di dichiarare l'aggiornamento una capacità autonoma del prodotto.
 Nessun GO incondizionato al prossimo rilascio viene emesso da questo report.
+
+# Quarta tornata: risposta alla revisione 4 (11 settembre 2026, notte)
+
+Risposta alle conclusioni del controllo delle 22:50. Rispetto a quel HEAD
+(`2a583cdb`) i commit nuovi sono `bbc83784` (questo report, conservato così
+com'è) e da `7fb40857` a `baeaae5b`.
+
+## A-12 — accolto, e avevo torto
+
+Avevo scritto che in `STORE_ONLY` il digest del codice non viene controllato e
+che la discordanza era perciò innocua in produzione. **Era sbagliato**, per la
+ragione indicata: `current_manifest` passa dalla verifica della generazione,
+e `_verify_payloads` ricalcola il digest del codice e rifiuta con
+`code_digest_mismatch`. Dall'assenza della vecchia chiamata a
+`verify_executor` non si poteva dedurre niente.
+
+Contenimento, non prova retroattiva:
+
+- la modifica a `login_sites` è stata tolta dal repository (`7fb40857`);
+- la **Release 20** l'ha tolta dall'esercizio (cutover
+  `sha256:980e5998…`); sulla release installata il digest dichiarato e quello
+  calcolato con `manifest_code_digest.compute_code_digest` coincidono:
+  `sha256:373df2e979a4bf9f82cc5d9251c52cffe8df77b097b33550ba9ec23620fe2286`.
+
+Resta **non provato**, come scrive la review, quale generazione il catalogo
+vivo abbia ammesso durante la Release 19. Con la 20 il quesito non ha più
+effetto, ma non diventa per questo dimostrato.
+
+## A-11 — accolto; correzione scritta, applicazione in attesa di decisione
+
+La causa è quella descritta. Tre fatti in più, verificati sul codice e sulla
+macchina:
+
+1. `commit_birth_snapshot` accetta un albero canonico assente anche quando
+   esiste una generazione predecessore: `old_tree_id` diventa `None`.
+2. `AuthoringInstallJournalV1` non lo vieta: `old_tree_id` e predecessore
+   sono annullabili **indipendentemente**. Il §7.1 della roadmap dice invece
+   «nullable soltanto alla prima nascita». È una **divergenza fra norma e
+   codice**, e la correzione proposta sotto ci si appoggia: la prima consegna
+   dopo la transizione di un contratto esistente è proprio «albero assente,
+   predecessore presente». Va decisa in norma, non sfruttata in silenzio.
+3. Questo account ha l'autorità Birth predisposta
+   (`birth_authority_is_prepared_v1() → True`): il contesto dell'operatore
+   può avviare il runtime Birth.
+
+Correzione proposta, una sola funzione (`verify_named_executors`): in
+`STORE_ONLY` il candidato è la cartella dell'operatore `executors/<nome>`
+quando esiste — con `materialize_birth_candidate_from_authoring`, che la
+stessa funzione usa già in modalità di redazione — altrimenti si riammette
+l'albero redatto, e con nessuno dei due si chiude con `birth_unavailable`.
+Nessuna autorità nuova: la cartella è una proposta, Birth ammette o rifiuta,
+la generazione lega quei byte.
+
+**Stato:** la modifica a `runtime/stack_reconcile.py` è stata **bloccata dal
+classificatore di sicurezza** della sessione — è il punto che sceglie quali
+byte entrano nel negozio di produzione. Non l'ho aggirata; la decisione è di
+Roberto. Le due prove dei due casi della review (redazione assente; redazione
+presente ma diversa dal candidato) sono scritte e messe da parte. Nella suite
+ci sono le due che descrivono il comando com'è: senza cartella locale
+riammette l'albero redatto; senza niente da ammettere rifiuta. **Non è
+provato** il percorso dalla modifica a una generazione nuova riletta: richiede
+la modifica.
+
+## O-04 — accolto e corretto
+
+`withdraw_superseded_claim` riconosce ora lo stato «release già nell'archivio
+di **questo** tentativo, rivendicazione ancora pendente» e sposta soltanto la
+rivendicazione, dopo aver verificato che il descrittore della release
+parcheggiata nomini la sequenza della rivendicazione. L'archivio porta il nome
+del proprio tentativo, quindi quello di un altro non è mai lo stesso percorso;
+una release assente da entrambi i posti resta un rifiuto.
+
+Prova generale, scenario 9: primo spostamento reale, poi due chiamate — la
+prima riprende e restituisce la richiesta, la seconda non trova niente da fare;
+l'archivio contiene i due oggetti. Un archivio intestato a un altro tentativo
+è rifiutato con l'errore originale. Lo scenario 10 conserva tutti i rifiuti
+precedenti, compreso «a claim with no release directory». **REHEARSAL_OK, 10
+scenari.** Limite invariato: non è un arresto fisico.
+
+## Precisazione O-03 — corretto il codice, non la promessa
+
+Una copia in arrivo rifiutata viene ora messa da parte (`.rejected-NN`)
+**prima** del rifiuto: prima restava nello slot che la preparazione successiva
+svuota. «Niente viene cancellato» diventa vero anche in questo caso. La prova
+generale verifica **esattamente una** copia conservata e che contenga i byte
+rifiutati, non più `<= 1`.
+
+## A-10 — corretto
+
+Nella consegna le affermazioni su Release 4 e 5 sono marcate storiche, la
+decisione «rilasciare le due correzioni» è segnata come fatta, e lo stato
+corrente rimanda alla Release 20.
+
+## Sui limiti della prova generale
+
+Accolti come scritti: il sostituto di `open_parent` non ripete tutti i
+controlli dei permessi, e lo scenario candidato neutralizza `chown`. Non li
+presento come prova delle protezioni di root.
+
+## Ciò che resta aperto dopo questa tornata
+
+- **A-11**: applicazione (decisione di Roberto), poi la prova dalla modifica
+  alla generazione riletta; e la divergenza norma/codice su `old_tree_id`.
+- **A-02** e **A-05**: codice di prodotto, non ancora toccato.
+- **A-01**: il modello di fiducia amministrativa resta un'assunzione
+  dichiarata; **A-04** resta condizione di disponibilità.
+- **F5-F6**: nessuna nuova ammissione reale in questa tornata.
+
+Nessun GO incondizionato viene rivendicato da questa risposta.
