@@ -4,8 +4,35 @@
 >
 > **QUANDO AGGIORNARLO** (ex §13): nuova decisione di runtime (tier LLM, helper universale, vincolo dominio, gate/env); chiusura fase o nuovo macro-topic; sezione contraddetta dal codice (aggiornare PRIMA della PR). **NON aggiornarlo per**: bug fix puntuali (commit message); decisioni temporanee/sperimentali e stato di sessione (→ memorie); dettagli di un singolo ADR (→ l'ADR). Stile: una decisione = poche righe operative + puntatore ADR/spec/test.
 
-## S. Stato corrente (23/8/2026)
+## S. Stato corrente (10/9/2026)
 
+- **Aggiornare Metnos e' diventato un ciclo a due comandi** (10/9): Release 3,
+  4 e 5 attraversate in giornata. `internal/tools/rm0008_release_cycle.py
+  prepare` (senza privilegi) riallinea radici riviste, elenco firmato,
+  esportazione sigillata e messa in scena; `apply --cross` (radice) copia il
+  candidato in una cartella di root, lo **rimisura li'** e solo da quella copia
+  costruisce, esamina e attraversa. `internal/tools/install_release_authority.sh`
+  installa una volta un lanciatore di root e una regola sudo ristretta ai due
+  soli comandi: nessuna password memorizzata, nessun segreto, revoca con un
+  file. Prova generale del ritiro: `rm0008_rehearse_withdrawal.py`, sei
+  scenari sulla copia della catena viva. **Non e' ancora la capacita' di
+  prodotto di §9.4**: resta uno strumento da albero di lavoro.
+- **Due difetti vivi trovati provando, non dalle suite** (10/9): il caricamento
+  del catalogo prendeva il lucchetto di ammissione **in modo esclusivo**, cosi'
+  due lettori si escludevano e il guardiano dello stack affamava i turni (un
+  `open_sites` su tre rifiutato); ora la lettura ha la propria meta' condivisa
+  (`catalog_admission_lock(exclusive=False)`) e la riconciliazione libera il
+  catalogo prima di passare a systemd. E `service-telegram-daemon` dichiarava
+  `RestrictNamespaces=yes`, vietando gli spazi dei nomi che la sandbox degli
+  executor crea: Telegram non poteva eseguire nulla. Entrambi **preesistenti**,
+  entrambi nascosti da un servizio fermo. Una prova vieta ora la direttiva a
+  qualunque servizio del catalogo.
+- **Il consenso dentro uno shadow DOM ora si vede** (10/9, ADR 0191 addendum):
+  l'osservazione della pagina attraversa gli shadow root aperti (tetto 24) e
+  segue l'albero composto per punto di contatto, contenimento e testo. Un
+  banner disegnato in uno shadow root era invisibile: la pagina risultava
+  libera mentre era coperta e la scoperta del login non trovava il modulo.
+  Iframe erano gia' gestiti; restano fuori i CAPTCHA.
 - **Interprete amministrativo fisso e uscita in avanti** (9/9, ADR 0226):
   il costruttore ricava l'interprete amministrativo dal collegamento fisso del
   sistema operativo, mai da quello che esegue il build; la transizione rifiuta
@@ -200,6 +227,17 @@ Il nucleo dei manifest generati e' centralizzato in `generated_executor_contract
 - **Tutor F2 locale** (23-24/7, ADR 0197-0198): un catalogo firmato unifica manifest ammessi, ogni HTML indicizzabile nell'esatta radice pubblicata `docs/` inventariata da `runtime/published_docs.py`, fonti supplementari selezionate in `tutor/sources.toml`, registri runtime esplicitamente proiettati e guide curate; le schede F1 sono compatibilità transitoria, non il limite della copertura. Rifiniture 24/7 sera: audience di CONOSCENZA distinta dall'audience di ACCESSO (`UiSurfaceSpec.knowledge_audience`, contratto `audience_minima` F1; devices=`user`); inventario capacità = unit testa + parti con finalità dai manifest, ricongiunto in selezione (espansione fratelli con membri protetti); ledger di copertura da TUTTE le fonti strutturate selezionate; banda `METNOS_TUTOR_KNOWLEDGE_BAND` (default 0,06); registro superfici con guardia anti-deriva `structure_sha` (refresh: `python3 runtime/ui_surfaces.py`; analisi e fine-stato manutenzione 0 in RM-0003 §5.3). L'inventario valida `canonical` HTTPS `metnos.com`, `html lang`, gruppi `hreflang`, confini e assenza di symlink; `noindex` e dati non pubblici restano esclusi. I documenti sono segmentati per struttura e dimensione; al compositore arrivano solo segmenti semanticamente pertinenti e, in modo bounded, quelli adiacenti. Ranking BGE-M3 e ingresso `EXPLAIN|ACT|MIXED|UNKNOWN` senza frasi/affinity, fallback lingua per-concetto verso EN, audience prima del modello; i workload registrati sono `tutor.mode` → `fast.micro` e `tutor.compose` → `wise`, entrambi attraverso il gateway LLM centrale e lo slot `llm` classe 0. `precise` non è una chiave di tier. Il composer usa il contratto d'uscita `public`, che rifiuta marker strutturali interni. Un solo scambio Tutor, isolato per principal+conversazione, resta in RAM per 15 minuti ed entra nel contesto soltanto con guadagno semantico. Lacuna documentale e indisponibilità tecnica sono esiti distinti; se il sottosistema fallisce, una richiesta semanticamente Tutor riceve un messaggio tecnico esplicito senza eseguire operazioni, mentre un'azione ricade nel motore. Il Tutor non possiede strumenti; azioni o casi dubbi ricadono nel motore. I blocchi pubblici `tutor-exclude` mostrano roadmap senza indicizzarla come capacità corrente. Notte 24/7: **correttore di bozze deterministico** post-composizione (rilettura meccanica del ledger, UNA ricomposizione con i buchi elencati, consegna comunque, fail-soft; parole distintive per frequenza documentale interna; telemetria `tutor_repair_pass`/`tutor_repair_missing`; RM-0003 §5.7) + gate del corpus a radice flessiva (`lex:tutor_gate.*` in `detection_lexicon`, 8 concept regex it+en) con skip DOCUMENTATI nel certificatore (photos=card curata c1, overview EN=pari-fallimento F1). 25/7: prompt del Tutor in §6 a SOLI segnaposto (mode v3, composer v9; un esempio letterale produce imitazioni semantiche — misurato 103→106/134, admin_ui 17→21), confine procedure co-tematico (si scarta solo se la primaria è un'altra pagina), budget composer 2048 per-call; guida pubblica all'interfaccia `docs/{it,en}/interface.html` generata da `ui_surfaces` (mappa SVG; dettaglio pagine NON duplicato, autorità unica al registro; freschezza da test + preflight `deploy.sh`). 26/7: la sonda di compagnia è la **congiunzione** della domanda precedente con quella corrente in UNA sola classifica (non due), unica leva sopravvissuta a sette tentate; il ledger del composer è un **budget saturo** — aggiungere una famiglia di voci al prompt costa più di quanto renda, una variante deve agire FUORI dal prompt; si certifica a macchina scarica e non si emettono verdetti sotto i 3 casi (banda di rumore misurata = 1 caso a vuoto, 2 sotto contesa di GPU). cert31 = 115+7/134, `boundary` 12/12; RM-0003 §9-septies. **16/8: zero fonti non e' una lacuna.** Il Tutor e' un'uscita anticipata prima del motore: con `gap_reason=no_source` (nessuna fonte ammissibile) restituisce `None` e il turno torna al motore, invece di chiudersi con «non ho una guida». La lacuna resta un esito dichiarato dove e' PROVATA — il compositore ha le fonti e non riesce a rispondere. Misura sullo storico: 13 turni su 167 chiusi a vuoto, «dov'e' il Duomo di Milano» fra questi. Il turno Tutor registra ora `user_query` come un turno del motore (l'impronta resta chiave del registro F4): senza, l'ammissione non e' verificabile a posteriori. Decisione accolta da Roberto e messa a verbale in ADR 0208; il ledger F4 resta senza domanda in chiaro (ADR 0202), che e' un'altra cosa dal registro dei turni.
 - **Tutor F3/F4** (28/7, ADR 0202): fonti firmate richiamano soltanto quattro sonde chiuse e in sola lettura (executor ammessi, servizi, dispositivi posseduti, task dell'attore); capsule tipizzate con audience, limiti, TTL e stato esplicito entrano solo nella composizione finale. Le richieste `MIXED` vengono separate in una clausola `EXPLAIN` e una `ACT` letterali; la seconda passa al normale motore soltanto tramite pending monouso owner-bound, dopo conferma. Il riscontro promuove o rimuove associazioni query-vettore→fonte per il solo utente; ledger delle lacune, quote, TTL, invalidazione di fonte/embedder, cancellazione e replay controfattuale restano fuori da planner e cache L0/L1.
 - **Tutor: identità delle fonti pubblicate** (28/7, ADR 0203): nome completo, percorso relativo o URL canonico di una pagina ammessa vengono risolti deterministicamente prima del mode gate. Lettura/descrizione resta `EXPLAIN`, modifica/uso concreto resta `ACT`; il retrieval informativo è vincolato allo `source_ref` esatto e la similarità ordina solo le sezioni di quella fonte. Nomi assenti o ambigui ricadono nel normale dominio file, senza ereditare un dispositivo remoto per una domanda documentale riconosciuta.
+- **Il confine del catalogo ha due meta'** (10/9): una lettura prende
+  `catalog_admission_lock(exclusive=False)` — esclude ogni pubblicazione, non
+  esclude un altro lettore; scrittura, firma, pubblicazione, riconciliazione e
+  ritiro restano esclusivi. E' sicuro perche' il caricamento era gia' protetto
+  da se': impronta dello store prima e dopo, rifiuto esplicito
+  (`store_snapshot_unstable`) se si muove. Il lucchetto esclusivo non
+  aggiungeva correttezza a un lettore, toglieva disponibilita'. Un lettore che
+  rientra chiedendo la scrittura e' una promozione di lucchetto e viene
+  rifiutata; il contrario resta lecito. Chi riconcilia rilascia il catalogo
+  **prima** di passare a systemd: tenerlo durante riavvio e attesa di prontezza
+  affamava il server che stava avviando.
 - **Cache-validity** (ADR 0182): ogni piano cachato (L0/L1/alternative-LRU) porta `tools_sig`+`pool_sig` VERIFICATE A LETTURA → mismatch=MISS; re-sign o capacità nuova invalidano per costruzione. Firmare SEMPRE col catalogo del chiamante.
 - **Undo** (ADR 0183): scrittore al choke-point `invoke_executor` (`_undo_pending`/`_undo_done`, campo `device`); reverse device-aware accodato allo STESSO device; `restore_blob_backup` non remotabile. **Self-update client** firmato+idempotente (ADR 0184).
 - **Learning-loop W1** (ADR 0185): turno costoso ripetuto → autopath **shadow** (il ✓ umano conferma); lacuna ricorrente → change_intent PROPOSED (triage umano su /admin/changes); review notturna TTL 21gg. Soglie via env; SEED_STEPS=4 (confermato 7/7).

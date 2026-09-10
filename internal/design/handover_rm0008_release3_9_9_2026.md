@@ -17,14 +17,13 @@ e' stata c'e' scritto.
 
 ## 1. Dove siamo in una riga
 
-La Release 3 e' **in esercizio**: attraversata il 10/9 alle 09:38 con
-`CUTOVER_OK`, stato `PREFLIGHT_VERIFIED`, `metnos.target` **attivo** per la
-prima volta dalle 14:21 del 9/9, tutti i servizi e i due timer su, tre head
-pubblicate, nessuna rivendicazione pendente, interprete amministrativo
-`/usr/bin/python3.12`. Le correzioni del login e dei cookie sono vive. Restano
-due difetti trovati **provando davvero** subito dopo — contesa sul lucchetto
-del catalogo e sandbox vietata a Telegram — corretti nel repository e in attesa
-del prossimo ciclo di rilascio.
+**Release 5 in esercizio**, terza traversata della giornata del 10/9 e la prima
+eseguita **senza che nessuno digitasse una password** (§6-octies). Tutti i
+servizi e i due timer attivi, HTTP `operational`, interprete amministrativo
+`/usr/bin/python3.12`. I tre difetti trovati **usando il prodotto**, non dalle
+suite — lucchetto del catalogo, sandbox vietata a Telegram, consenso dentro
+uno shadow DOM — sono corretti e distribuiti. RM-0008 **non e' chiuso**: vedi
+§9 punto 3 per il criterio che manca.
 
 ## 2. Ordini dell'utente in questa sessione, nell'ordine
 
@@ -612,12 +611,81 @@ Da sapere per non spaventarsi: l'aiutante amministrativo vivo
 dall'attraversamento** — quello attuale porta la data del 10/9 09:41 — quindi
 dopo il passaggio sigillo e catalogo restano d'accordo.
 
-### Cosa manca ancora, su questi due
+### Esito: distribuite e verificate
 
-Entrambe le correzioni sono nel worktree e **non nella release in esercizio**.
-Partono col ciclo ormai a due comandi: `prepare` (agente) + `apply --cross`
-(Roberto). Fino ad allora Telegram resta senza executor e il turno Telepass
-riesce circa due volte su tre, fuori dalla finestra del guardiano.
+Entrambe sono **in esercizio dalla Release 4** (10/9). Verificato dopo:
+`RestrictNamespaces=no` sull'unita' viva e Telegram che risponde (confermato
+da Roberto), zero `catalog_lock_timeout` nel giornale, `open_sites` che
+riesce. Il turno Telepass ha smesso di fallire per le dipendenze ed e'
+arrivato al passo successivo — dove ha trovato il terzo difetto, §6-septies.
+
+## 6-septies. Il terzo difetto: il consenso dentro uno shadow DOM
+
+**Sintomo.** Turno `72026c02`: `open_sites` riesce, `login_sites` risponde
+«non ho trovato un modulo di login», `reason_code selector_missing`. La
+fotografia della pagina mostra il banner dei cookie **ancora aperto** sopra
+tutto.
+
+**Causa.** L'osservazione della pagina interrogava il solo DOM chiaro
+(`document.querySelectorAll`). La piattaforma di consenso disegna il banner
+dentro uno **shadow root aperto**: una query sul DOM chiaro non attraversa
+quel confine, quindi l'osservazione riportava **zero pannelli** e dichiarava
+la pagina libera mentre era coperta. Nel registro del turno non c'e' nessun
+`cookie_observation`, che e' la firma esatta di «non visto», non di «visto e
+non cliccabile». Gli iframe erano gia' gestiti; lo shadow DOM era un limite
+dichiarato in ADR 0191.
+
+**Correzione.** L'osservazione attraversa gli shadow root aperti, con tetto a
+24, e tre funzioni hanno dovuto seguire l'albero **composto** invece di quello
+degli elementi: `elementFromPoint` risponde per radice e restituisce l'ospite
+invece del controllo, quindi scende finche' non si stabilizza; contenimento e
+risalita alla radice del pannello saltano dallo shadow root al suo ospite, che
+`parentElement` non fa mai; la raccolta del testo ricorre negli shadow root,
+che un `TreeWalker` non fa.
+
+**Prova, anche in negativo.** Con il tetto degli shadow root a zero la prova
+nuova osserva `clear, frames=0, panels=0` — il sintomo dal vivo, identico.
+Gruppo siti con Chromium reale: **455 verdi, 3 saltate, 0 rosse**. Distribuita
+nella Release 5.
+
+## 6-octies. Il ciclo di rilascio senza password
+
+Dalla Release 5 l'aggiornamento non richiede piu' che un umano digiti nulla.
+
+`internal/tools/install_release_authority.sh`, eseguito **una volta sola** con
+`sudo`, installa un lanciatore di proprieta' della radice a percorso fisso e
+una regola `sudoers` ristretta a due sole forme di comando. **Nessuna password
+viene memorizzata**, e non deve esserlo: una regola ristretta non ha niente da
+far uscire, si revoca cancellando un file e lascia ogni esecuzione nel
+giornale. Il file `sudoers` viene validato con `visudo -cf` prima di essere
+messo in posizione, quindi una regola malformata non puo' chiudere fuori
+dall'amministrazione.
+
+Da allora il ciclo e':
+
+```
+<strumento> prepare                                  # nessun privilegio
+sudo -n /usr/local/lib/metnos-admin/metnos-release-authority apply --cross
+```
+
+**Cosa concede, senza eufemismi.** Il lanciatore fissa interprete, strumento e
+argomenti, ma lo strumento sta nell'albero di lavoro dello sviluppatore ed
+esegue come radice il codice del candidato — e' cio' che *significa*
+rilasciare. In pratica concede a quell'account la radice senza password. Su
+una macchina con un solo amministratore cambia la comodita', non di chi ci si
+fida; toglie pero' il controllo «un umano ha digitato la password», e non va
+installato dove l'account di sviluppo e' meno fidato della radice.
+
+**Mitigazione applicata insieme** (rilievo A-01 della review): `apply` copia
+l'albero in scena in una directory di proprieta' della radice, lo **rimisura
+li'** e legge solo quella copia da quel punto in poi. La doppia misura chiude
+la finestra fra controllo e uso: un albero cambiato dopo il primo censimento
+non puo' produrre una copia che misura uguale. La messa in scena e' inoltre
+uscita da `/tmp`, che e' scrivibile da chiunque, verso la directory di stato
+dello sviluppatore a `0700`.
+
+Prima esecuzione completa senza intervento umano: Release 5, 10/9,
+`CANDIDATE_ADOPTED` → `SIGNED_SUCCESSOR_BUILT 5` → `CUTOVER_OK`.
 
 ## 7. Prove rosse, classificate con onesta'
 
