@@ -434,8 +434,18 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
     el.getAttribute('title') || el.innerText ||
     ((el.type === 'button' || el.type === 'submit') ? el.value : '') || '';
   const iconExit = (el, root, rawName) => {
-    if (!/^[x\u00d7\u2715\u2716]$/i.test((rawName || '').trim())) return false;
+    const glyph = /^[x\u00d7\u2715\u2716]$/i.test((rawName || '').trim());
+    // A close control is very often a bare SVG with no accessible name at
+    // all: requiring a literal "x" left those modals standing. Measured on
+    // turn 6a4a16c3 (10/9/2026), where the app-promotion modal over the login
+    // form was never dismissed and its backdrop swallowed the submit.
+    // Namelessness alone decides nothing: the geometry below still requires
+    // the close corner of a modal root, `visible` requires it to be topmost,
+    // and a submitter or navigating control is refused before this point.
     const er = el.getBoundingClientRect();
+    const nameless = !normalize(rawName) &&
+      er.width <= 64 && er.height <= 64;
+    if (!glyph && !nameless) return false;
     for (let p = el.parentElement, depth = 0; p && p !== root.parentElement && depth < 10;
          p = p.parentElement, depth++) {
       const r = p.getBoundingClientRect();
@@ -472,6 +482,35 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
   const controls = Array.from(document.querySelectorAll(
     'button,[role=button],input[type=button],input[type=submit],'
     + 'input[type=image],a'));
+  // A close affordance is often not a control at all. Measured on the real
+  // page (10/9/2026): `<span class="popup-close">`, 24x32, pointer cursor, no
+  // text and no accessible name, over a fixed full-viewport overlay at
+  // z-index 999999 - so every click on the form underneath went into it.
+  // A semantic-only query cannot see that node, so nothing was ever
+  // dismissed. These candidates are added, never preferred: they must still
+  // pass `visible` (topmost at their centre), the close-corner geometry of a
+  // modal root, and the submitter/navigation refusals below.
+  const layers = [];
+  for (const el of document.querySelectorAll('div,section,aside')) {
+    const st = getComputedStyle(el);
+    if (st.position !== 'fixed' && st.position !== 'sticky') continue;
+    const r = el.getBoundingClientRect();
+    if (r.width * r.height < innerWidth * innerHeight * 0.12) continue;
+    layers.push(el);
+    if (layers.length >= 4) break;
+  }
+  for (const layer of layers) {
+    let scanned = 0;
+    for (const el of layer.querySelectorAll('*')) {
+      if (++scanned > 400) break;
+      if (el.closest('svg') || controls.includes(el)) continue;
+      if (getComputedStyle(el).cursor !== 'pointer') continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 8 || r.height < 8 || r.width > 64 || r.height > 64) continue;
+      if (normalize(el.textContent || '')) continue;   // muto, non etichettato
+      controls.push(el);
+    }
+  }
   const ranked = [];
   const navigating = [];
   for (const el of controls) {

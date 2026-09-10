@@ -20,6 +20,7 @@ ogni lingua coperta dal lessico e non c'e' nessun elenco nel codice.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 
 import pytest
@@ -242,3 +243,168 @@ def test_il_consenso_non_e_l_unica_cosa_che_copre_il_login(monkeypatch) -> None:
     esito = asyncio.run(sb._clear_login_surface(_sessione(), settle=True))
     assert fatti == [("consenso", True), ("strato", True)]
     assert esito.status == "resolved"   # il rifiuto puo' venire solo dal primo
+
+
+_MODALE_SENZA_NOME = """
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  .fondale { position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 9; }
+  .modale { position: fixed; left: 26%; top: 22%; width: 46%; height: 56%;
+            background: #fff; z-index: 10; }
+  .chiudi { position: absolute; right: 10px; top: 10px; width: 24px;
+            height: 24px; border: 0; background: transparent; }
+</style>
+<form action="/entra" method="post">
+  <label>Username <input name="u"></label>
+  <label>Password <input type="password" name="p"></label>
+  <button type="submit" id="accedi">Accedi</button>
+</form>
+<div class="fondale"></div>
+<div class="modale" role="dialog" aria-modal="true">
+  <h2>Inquadra il QR code</h2>
+  <button class="chiudi" type="button"><svg width="16" height="16"
+    viewBox="0 0 16 16"><path d="M2 2 L14 14 M14 2 L2 14"
+    stroke="#000"/></svg></button>
+</div>
+<script>
+  document.querySelector('.chiudi').addEventListener('click', () => {
+    document.querySelector('.modale').remove();
+    document.querySelector('.fondale').remove();
+  });
+</script>
+"""
+
+
+# Replica STRUTTURALE della pagina di accesso osservata il 10/9/2026: la
+# geometria e i ruoli DOM che contano, non i testi ne' il marchio di nessuno.
+# Misure prese dal vivo con una sonda in sola lettura, senza credenziali:
+# `div.popup-overlay` fisso a tutto schermo con z-index 999999, dentro
+# `div.popup-body` 600x450, e come unica chiusura `span.popup-close` 24x32 col
+# cursore a mano, SENZA testo, senza nome e senza ruolo. Il modulo di accesso
+# resta sotto: ogni clic su «Accedi» finisce nell'overlay.
+_REPLICA_ACCESSO = """
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  .popup-overlay { position: fixed; inset: 0; z-index: 999999;
+                   background: rgba(0,0,0,.35); }
+  .popup-body { position: absolute; left: 340px; top: 175px;
+                width: 600px; height: 450px; background: #fff; }
+  .popup-close { position: absolute; left: 559px; top: 17px;
+                 width: 24px; height: 32px; cursor: pointer; }
+  form { padding: 24px; }
+</style>
+<form action="/entra" method="post">
+  <label>Username <input name="u"></label>
+  <label>Password <input type="password" name="p"></label>
+  <button type="submit" id="accedi">Accedi</button>
+</form>
+<div class="popup-overlay">
+  <div class="popup-body">
+    <h2>Scarica l'applicazione</h2>
+    <p>Gestisci qui tutte le tue operazioni</p>
+    <span class="popup-close"></span>
+  </div>
+</div>
+<script>
+  document.querySelector('.popup-close').addEventListener('click', () => {
+    document.querySelector('.popup-overlay').remove();
+  });
+</script>
+"""
+
+
+@pytest.mark.skipif(os.environ.get("METNOS_SITES_SIM") != "1",
+                    reason="prova opt-in con Chromium reale")
+def test_una_chiusura_muta_che_non_e_un_controllo(monkeypatch) -> None:
+    """Sulla replica: la chiusura e' uno `span`, e va comunque riconosciuta.
+
+    Il localizzatore interrogava soltanto controlli semantici — `button`,
+    `[role=button]`, link — e quel nodo non compariva mai. Nessuna chiusura
+    veniva tentata, l'overlay restava, e il clic su «Accedi» ci finiva dentro:
+    login fallito senza che il sito mostrasse alcun errore (turni `b6c37087` e
+    `6a4a16c3`).
+
+    Il riconoscimento resta per RUOLO, non per selettore: cursore a mano,
+    piccolo, muto, nell'angolo di chiusura di una radice modale, in cima nel
+    proprio punto di contatto, e mai un controllo che invii o navighi.
+    """
+    from playwright.async_api import async_playwright
+
+    monkeypatch.setattr(sb.sites_audit, "record", lambda *_a, **_kw: None)
+
+    async def esegui():
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch()
+            page = await browser.new_page(
+                viewport={"width": 1280, "height": 800})
+            await page.route("**/*", lambda route: route.abort())
+            await page.set_content(_REPLICA_ACCESSO)
+            entry = _sessione()
+            entry["page"] = page
+            try:
+                coperto = await page.evaluate(
+                    "() => { const r = document.getElementById('accedi')"
+                    "  .getBoundingClientRect();"
+                    "  const el = document.elementFromPoint("
+                    "    r.left + r.width / 2, r.top + r.height / 2);"
+                    "  return el ? el.className : ''; }")
+                assert "popup-overlay" in coperto   # il clic finirebbe li'
+                assert await sb._dismiss_obstructing_overlay(
+                    entry, settle=True) is True
+                assert await page.evaluate(
+                    "() => !document.querySelector('.popup-overlay')")
+                scoperto = await page.evaluate(
+                    "() => { const r = document.getElementById('accedi')"
+                    "  .getBoundingClientRect();"
+                    "  const el = document.elementFromPoint("
+                    "    r.left + r.width / 2, r.top + r.height / 2);"
+                    "  return el ? el.id : ''; }")
+                assert scoperto == "accedi"        # ora il clic arriva
+            finally:
+                await browser.close()
+
+    asyncio.run(esegui())
+
+
+@pytest.mark.skipif(os.environ.get("METNOS_SITES_SIM") != "1",
+                    reason="prova opt-in con Chromium reale")
+def test_una_x_senza_nome_e_comunque_un_uscita(monkeypatch) -> None:
+    """La X di chiusura e' quasi sempre un'icona senza nome accessibile.
+
+    Turno `6a4a16c3` (10/9/2026): il modale promozionale sopra il modulo di
+    login non veniva mai chiuso, perche' la regola accettava solo una «x»
+    testuale. Il suo fondale si mangiava il clic su «Accedi» e il login
+    falliva senza che il sito mostrasse alcun errore.
+
+    L'assenza di nome da sola non decide niente: restano la geometria
+    dell'angolo di chiusura dentro una radice modale, il vincolo di essere
+    l'elemento in cima nel punto di contatto, e il rifiuto di ogni controllo
+    che invii un modulo o navighi.
+    """
+    from playwright.async_api import async_playwright
+
+    monkeypatch.setattr(sb.sites_audit, "record", lambda *_a, **_kw: None)
+
+    async def esegui():
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch()
+            page = await browser.new_page()
+            await page.route("**/*", lambda route: route.abort())
+            await page.set_content(_MODALE_SENZA_NOME)
+            entry = _sessione()
+            entry["page"] = page
+            try:
+                coperto = await page.evaluate(
+                    "() => document.elementFromPoint("
+                    "  ...(([r]) => [r.left + r.width / 2, r.top + r.height / 2])"
+                    "  ([document.getElementById('accedi')"
+                    "    .getBoundingClientRect()])).className")
+                assert "fondale" in coperto      # il clic finirebbe li'
+                assert await sb._dismiss_obstructing_overlay(
+                    entry, settle=True) is True
+                assert await page.evaluate(
+                    "() => !document.querySelector('.modale')")
+            finally:
+                await browser.close()
+
+    asyncio.run(esegui())
