@@ -678,6 +678,68 @@ def _is_auth_entry_route(url: str) -> bool:
     return bool(compact & {"login", "signin", "signon", "signup"})
 
 
+_CROSS_INTERSTITIAL_JS = r"""
+(forms) => {
+  document.querySelectorAll('[data-metnos-continue]').forEach(
+    el => el.removeAttribute('data-metnos-continue'));
+  const normalize = value => (value || '').normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+  const ammessi = (forms || []).map(normalize).filter(Boolean);
+  if (!ammessi.length) return false;
+  const visibile = el => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width >= 2 && r.height >= 2 && s.display !== 'none' &&
+      s.visibility !== 'hidden' && Number(s.opacity || '1') >= .05;
+  };
+  // Una pagina che porta ancora un campo password non e' un intermezzo: e' il
+  // modulo, e proseguire da li' sarebbe un secondo invio, non un passaggio.
+  for (const campo of document.querySelectorAll('input[type=password]'))
+    if (visibile(campo)) return false;
+  for (const el of document.querySelectorAll('a,button,[role=button]')) {
+    if (!visibile(el)) continue;
+    const nome = normalize(el.getAttribute('aria-label') || el.innerText || '');
+    if (!nome) continue;
+    // Il nome DEVE cominciare con la forma di continuazione: «continua qui»
+    // prosegue, «continua senza accettare» risponde a un consenso.
+    if (!ammessi.some(forma => nome === forma || nome.startsWith(forma + ' ')))
+      continue;
+    el.setAttribute('data-metnos-continue', '1');
+    return true;
+  }
+  return false;
+}"""
+
+
+async def _cross_interstitial(page, *, op_timeout_s: float) -> bool:
+    """Attraversa una pagina-intermezzo: non si chiude, si prosegue.
+
+    Un sito puo' accettare le credenziali e interporre una promozione fra
+    l'accesso e la destinazione. Non ha un'uscita da chiudere - chiuderla
+    sarebbe sbagliato - ha una **continuazione**, e chi non la prende legge la
+    pagina come un accesso fallito. Osservato dal vivo il 10/9/2026.
+
+    Il riconoscimento e' quello del lessico (`sites.login_continue_target`),
+    quindi vale in ogni lingua che il lessico copre; nessun testo di un sito
+    entra qui. Un solo attraversamento, e mai su una pagina che porti ancora
+    un campo password: quello sarebbe un secondo invio.
+    """
+    from playwright_sidecar import action_resolver
+
+    forme = list(action_resolver.login_continue_forms())
+    try:
+        if not await page.evaluate(_CROSS_INTERSTITIAL_JS, forme):
+            return False
+        prima = page.url
+        await page.locator('[data-metnos-continue="1"]').first.click(
+            timeout=min(4000, max(1000, int(op_timeout_s * 1000))))
+        await page.wait_for_timeout(600)
+        return page.url != prima
+    except Exception:
+        return False
+
+
 async def _observe_post_submit(*, page, context, cookies_before: dict,
                                url_before: str,
                                op_timeout_s: float,
@@ -1844,6 +1906,22 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     # l'autenticazione: il segnale deve essere nuovo o ruotato dal submit.
     outcome = post_submit_outcome(observed, session_cookie_names)
     logged_in = (outcome == "login_verified")
+
+    # Un intermezzo NON e' un rifiuto. Il sito puo' accettare le credenziali e
+    # interporre una pagina promozionale: non ha niente da chiudere, ha solo
+    # una via in avanti, e chi si aspetta la destinazione la legge come un
+    # accesso fallito. Misurato sulla replica: strati tutti sgombrati, modulo
+    # inviato, pagina `/intermezzo`, verdetto `login_failed`.
+    if (not logged_in and not (captcha or otp or push or forced_reason)
+            and not observed["password_rejected"]):
+        if await _cross_interstitial(page, op_timeout_s=budget.remaining(
+                _LOGIN_SURFACE_SETTLE_S)):
+            observed = await _observe_post_submit(
+                page=page, context=context, cookies_before=cookies_before,
+                url_before=url_before,
+                op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S))
+            outcome = post_submit_outcome(observed, session_cookie_names)
+            logged_in = (outcome == "login_verified")
 
     reason = None
     if not logged_in:

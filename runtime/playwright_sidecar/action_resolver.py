@@ -71,6 +71,11 @@ def privacy_reject_forms() -> tuple[str, ...]:
             + _concept_forms("sites.privacy_reject_noun_target"))
 
 
+def login_continue_forms() -> tuple[str, ...]:
+    """Translated controls that carry a page forward instead of closing it."""
+    return _concept_forms("sites.login_continue_target")
+
+
 def privacy_overlay_marker_forms() -> tuple[str, ...]:
     """Translated evidence that a fixed panel is a privacy overlay."""
     return _concept_forms("sites.privacy_overlay_marker")
