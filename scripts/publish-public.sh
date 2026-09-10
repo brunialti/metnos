@@ -17,6 +17,12 @@
 #   scripts/publish-public.sh --incremental -m "…"  # con storia pubblica
 #   scripts/publish-public.sh --check               # solo gate, niente push
 set -euo pipefail
+# Every child of this script runs against a tree that a later gate measures.
+# Bytecode written along the way is ignored by the public .gitignore, so it
+# ends up present on disk and absent from the index, and the publication stops
+# on `filesystem-index-divergence` - which is what the gate is for, but the
+# divergence is ours. Not creating it is simpler than cleaning it up.
+export PYTHONDONTWRITEBYTECODE=1
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 PYTHON="${METNOS_VENV:-${REPO_ROOT}/.venv}/bin/python"
@@ -56,7 +62,7 @@ while [ $# -gt 0 ]; do
 done
 
 echo "== -1. verifico proiezione policy del Birth gate =="
-"$PYTHON" -I -S "$BOUNDARY_POLICY_CHECKER"
+"$PYTHON" -I -B -S "$BOUNDARY_POLICY_CHECKER"
 
 echo "== 0. verifico radice sorgenti privata RM-0008 =="
 source_review_gate \
@@ -66,7 +72,7 @@ echo "   radice privata: $PRIVATE_SOURCE_REVIEW_SHA256 ($PRIVATE_SOURCE_REVIEW_C
 
 echo "== 1. rigenero export =="
 bash scripts/export-public.sh "$DEST" >/dev/null
-"$PYTHON" -I -S "$DEST/scripts/check_contract_boundary_policy.py"
+"$PYTHON" -I -B -S "$DEST/scripts/check_contract_boundary_policy.py"
 source_review_gate \
   public-fs-pin "$DEST" \
   "$PUBLIC_SOURCE_REVIEW_SHA256" "$PUBLIC_SOURCE_REVIEW_COUNT" \
@@ -137,9 +143,13 @@ refresh_rm0008_public_inventory() {
     echo "ABORT: gate RM-0008 incompleto nell'export pubblico" >&2
     return 1
   fi
+  # -B, and not a cleanup afterwards: this runs inside the very tree the next
+  # gate measures, and the bytecode it would otherwise leave behind is ignored
+  # by the public .gitignore. Present on disk, absent from the index, the gate
+  # reports `filesystem-index-divergence` and the publication stops.
   (
     cd "$public_tree"
-    "$PYTHON" "$generator" --write
+    PYTHONDONTWRITEBYTECODE=1 "$PYTHON" -B "$generator" --write
   )
   git -C "$public_tree" add "$inventory"
 }
