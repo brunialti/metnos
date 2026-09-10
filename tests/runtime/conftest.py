@@ -80,11 +80,22 @@ _SAFE_CONFIG_FILES = (
 
 @pytest.fixture(autouse=True)
 def _isolate_installed_service_profile(monkeypatch, tmp_path):
-    """Unit tests must not inspect the host's root-owned deployment chain."""
+    """Unit tests must not inspect the host's root-owned deployment chain.
+
+    The chain root was isolated; the ownership certificate beside it was not,
+    so once this machine had actually crossed a release, two authoring tests
+    met `authoring_seed_transition_closed` — the production rule that closes
+    authoring after ownership moves — instead of what they were asserting.
+    The rule is right and stays; what was wrong is reading the host's answer.
+    """
+    import executor_birth_ownership_authorities as authorities
     import executor_birth_ownership_chain as ownership
 
     monkeypatch.setattr(
         ownership, "DEFAULT_OWNERSHIP_CHAIN_ROOT_V1", tmp_path / "ownership",
+    )
+    monkeypatch.setattr(
+        authorities, "DEFAULT_OWNERSHIP_ROOT_V1", tmp_path / "authorities",
     )
 
 

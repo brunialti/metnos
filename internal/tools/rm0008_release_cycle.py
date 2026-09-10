@@ -397,33 +397,42 @@ def withdraw_superseded_claim(source_id: str) -> str | None:
     require(after == before, "preserved history changed during the withdrawal")
     require(startup_fingerprint() == first, "service startup selection moved")
     say("WITHDREW_CLAIM", claim["source_id"], "->", str(archive))
-    return claim["source_id"]
+    # The request, not the source: it is what binds this attempt to the
+    # provisioning journal it opened before the coordinator recorded anything.
+    return claim["request_id"]
 
 
-def retire_orphan_journals() -> tuple[str, ...]:
-    """Retire every open journal the coordinator never recorded.
+def retire_orphan_journals(withdrawn_request: str | None) -> tuple[str, ...]:
+    """Retire the journal of the attempt this run withdrew; refuse any other.
 
     A failed attempt leaves three things: a claim, an installed release and a
     provisioning journal, opened before the coordinator records anything.
     Withdrawing the first two and leaving the third makes the next crossing
     adopt a journal written for another release and refuse - twice now.
 
-    The rule is the one the chain can answer on its own: a journal whose
-    request has a transaction is part of a crossing the coordinator knows,
-    abandoned ones included, and is never touched. A journal with no
-    transaction is the residue of an attempt nothing depends on. It is renamed
-    under a prefix that says so, never deleted.
+    The absence of a transaction says the coordinator never recorded that
+    request. It does not say whose the residue is, so on its own it is not a
+    licence to move it: only the attempt this run has just withdrawn is
+    retired, matched on the exact request. A journal the coordinator knows -
+    abandoned crossings included - is never touched, and anything else stops
+    the run instead of being guessed. The header is read with the canonical
+    decoder, so a malformed one is a refusal, not an orphan. Nothing is
+    deleted: a retired journal is renamed under a prefix that says so.
     """
+    from install.birth_authority_provisioner import decode_transaction_header_v2
+
     known = {name[7:] if name.startswith("sha256:") else name
              for name in os.listdir(COORD / "transactions-v2")}
     retired = []
     for name in sorted(os.listdir(BIRTH)):
         if not name.startswith(JOURNAL_PREFIX):
             continue
-        header = json.loads((BIRTH / name / "transaction-v2.json").read_bytes())
-        request = str(header.get("request_id") or "")
-        if request[7:] in known and request.startswith("sha256:"):
+        request = decode_transaction_header_v2(
+            (BIRTH / name / "transaction-v2.json").read_bytes()).request_id
+        if request.startswith("sha256:") and request[7:] in known:
             continue
+        require(withdrawn_request is not None and request == withdrawn_request,
+                f"open journal of an attempt this run did not withdraw: {name}")
         target = BIRTH / (SUPERSEDED_JOURNAL_PREFIX + name[len(JOURNAL_PREFIX):])
         require(not os.path.lexists(target), "superseded journal slot already taken")
         rename_no_replace(BIRTH / name, target, BIRTH_OWNERS)
@@ -431,20 +440,41 @@ def retire_orphan_journals() -> tuple[str, ...]:
     return tuple(retired)
 
 
-def save_evidence(distribution, directory: Path) -> dict[str, str]:
+def publish_evidence(distribution, directory: Path) -> None:
+    """Write the evidence pair whole, or prove the one already there is it.
+
+    Presence is not proof. The pair is two separate writes: an attempt
+    interrupted between them leaves the directory holding one file of two, and
+    a retry that skips on presence alone hands the next step half an evidence
+    set. An existing directory is therefore read back and compared byte for
+    byte with the build just made; a mismatch or a missing half stops the run.
+    """
+    expected = {"distribution.json": distribution.encoded,
+                "distribution.sig": distribution.signature}
+    if directory.exists():
+        present = sorted(item.name for item in directory.iterdir())
+        require(present == sorted(expected),
+                f"incomplete release evidence: {present}")
+        for name in sorted(expected):
+            require((directory / name).read_bytes() == expected[name],
+                    f"release evidence is not this build: {name}")
+        return
     directory.mkdir(mode=0o700)
-    digests = {}
-    for name, payload in (("distribution.json", distribution.encoded),
-                          ("distribution.sig", distribution.signature)):
-        target = directory / name
-        handle = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
+    for name in sorted(expected):
+        handle = os.open(directory / name,
+                         os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
         try:
-            os.write(handle, payload)
+            os.write(handle, expected[name])
             os.fsync(handle)
         finally:
             os.close(handle)
-        digests[name] = hashlib.sha256(payload).hexdigest()
-    return digests
+    # The two files are durable; the directory entries naming them are not
+    # until the directory itself is synchronised.
+    handle = os.open(directory, READ | os.O_DIRECTORY)
+    try:
+        os.fsync(handle)
+    finally:
+        os.close(handle)
 
 
 def apply_cycle(cross: bool) -> int:
@@ -485,8 +515,8 @@ def apply_cycle(cross: bool) -> int:
 
     with ExitStack() as locks:
         acquire_locks(locks)
-        withdraw_superseded_claim(source_id)
-        for journal in retire_orphan_journals():
+        withdrawn = withdraw_superseded_claim(source_id)
+        for journal in retire_orphan_journals(withdrawn):
             say("RETIRED_JOURNAL", journal)
 
     from install.executor_birth_distribution_release import (
@@ -500,8 +530,7 @@ def apply_cycle(cross: bool) -> int:
 
     evidence = EVIDENCE_ROOT / (
         "rm0008-cycle-evidence-" + distribution.identity.closed_build_id[7:23])
-    if not evidence.exists():
-        save_evidence(distribution, evidence)
+    publish_evidence(distribution, evidence)
     say("BUILD_OK", str(evidence))
 
     child = [sys.executable, str(Path(__file__).resolve()), "_cross",
