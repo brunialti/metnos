@@ -23,11 +23,14 @@ Two stages, split by the privilege each actually needs.
                      installs the signed successor, and audits it. With
                      --cross it then performs the crossing, which stops and
                      restarts the services, then admits changed executors as
-                     the service user through the installed deploy CLI. The
-                     audit prints a no-admission preview first. A later
-                     admission/activation refusal does not undo the crossing.
-                     A failed preview still permits the crossing with --cross,
-                     but prevents every executor admission in that attempt.
+                     the service user through the installed deploy CLI.
+                     The audit never launches that CLI: until the crossing
+                     selects N+1, its reviewed policy cannot verify the
+                     still-selected N (review C15). After the verified
+                     cutover the plan runs first and admission follows only
+                     if it succeeds; a refused plan ships the release and
+                     admits nothing. A later admission/activation refusal
+                     does not undo the crossing.
 
 Nothing in the handoff is authority. The staged tree is measured again in
 `apply`, the product's own reviewed-root gate still runs inside the build, and
@@ -703,16 +706,12 @@ def apply_cycle(cross: bool) -> int:
 
     child = [sys.executable, str(Path(__file__).resolve()), "_cross",
              distribution.installation_root, source_id, str(evidence)]
-    audit_result = run_child(child + ["audit"])
-    if audit_result not in {0, AUDIT_PREVIEW_REFUSED}:
+    if run_child(child + ["audit"]) != 0:
         return 78
     if not cross:
-        if audit_result != 0:
-            return 78
-        say("APPLY_OK; NO HEAD CHANGE OR SERVICE STOP")
+        say("APPLY_OK; NO HEAD CHANGE OR SERVICE STOP; RELEASE EDITS PLAN DEFERRED TO CUTOVER")
         return 0
-    mode = "complete-no-admission" if audit_result == AUDIT_PREVIEW_REFUSED else "complete"
-    return run_child(child + [mode])
+    return run_child(child + ["complete"])
 
 
 def run_child(command: list[str]) -> int:
@@ -722,9 +721,6 @@ def run_child(command: list[str]) -> int:
 
 RELEASE_EDITS_PLAN_TIMEOUT_S = 120
 RELEASE_EDITS_DEPLOY_TIMEOUT_S = 600
-# Internal audit result: structural checks passed, only the preview failed.
-# Never convert another audit failure to this non-blocking result.
-AUDIT_PREVIEW_REFUSED = 79
 SERVICE_RESTART_POLICY = Path("/etc/polkit-1/rules.d/49-metnos-services.rules")
 RELEASE_EDITS_ENTRY = "service-stack-watchdog"
 
@@ -860,26 +856,28 @@ def _run_release_edits(distribution, descriptor, catalog, *, plan_only: bool) ->
         "phase": "plan" if plan_only else "admit_and_activate",
         "timeout_s": (RELEASE_EDITS_PLAN_TIMEOUT_S if plan_only
                       else RELEASE_EDITS_DEPLOY_TIMEOUT_S),
-        "cutover_completed": not plan_only,
+        # Both children run only after CUTOVER_OK (review C15).
+        "cutover_completed": True,
         "admission_attempted": False,
     }
     error_code = "release_edits_unavailable"
     try:
         require(os.geteuid() == 0, "release edits wrapper requires root")
+        # Being installed is not being selected. This existing read-only
+        # service proof rechecks the live selection before either child: the
+        # successor's CLI can verify only the release it belongs to.
+        materials, _entry = load_live_helper()._attest_service_startup_v1(
+            RELEASE_EDITS_ENTRY,
+        )
+        facts = materials.distribution.facts
+        error_code = "release_selection_changed"
+        require((facts.closed_build_id, facts.installation_root,
+                 facts.release_sequence) == (
+                    distribution.identity.closed_build_id,
+                    distribution.installation_root,
+                    distribution.release_sequence), error_code)
+        summary["head_id"] = materials.transaction.head_id
         if not plan_only:
-            # Being installed is not being selected. This existing read-only
-            # service proof rechecks the live selection before returning.
-            materials, _entry = load_live_helper()._attest_service_startup_v1(
-                RELEASE_EDITS_ENTRY,
-            )
-            facts = materials.distribution.facts
-            error_code = "release_selection_changed"
-            require((facts.closed_build_id, facts.installation_root,
-                     facts.release_sequence) == (
-                        distribution.identity.closed_build_id,
-                        distribution.installation_root,
-                        distribution.release_sequence), error_code)
-            summary["head_id"] = materials.transaction.head_id
             error_code = "service_restart_not_granted"
             require(_service_restart_granted(descriptor.service_user), error_code)
         error_code = "release_edits_child_failed"
@@ -1025,15 +1023,12 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
     require(idle.get("ok") is True, "stack busy or unobservable")
     say("SUCCESSOR_AUDIT_OK", "units", len(old_units),
         "previous_head", previous.required_head_id, "quiescence", idle["source"])
-    # A preview refusal does not block shipping a repair release. It does
-    # prohibit admission for this attempt, even if a retry might now succeed.
-    preview_refused = mode == "complete-no-admission"
-    if not preview_refused:
-        preview_refused = _run_release_edits(
-            distribution, descriptor, new_catalog, plan_only=True,
-        ) != 0
     if mode == "audit":
-        return AUDIT_PREVIEW_REFUSED if preview_refused else 0
+        # The successor's deploy CLI verifies with N+1's reviewed policy, so it
+        # cannot authenticate the still-selected N: the plan waits for the
+        # crossing instead of failing here (review C15).
+        say("RELEASE_EDITS_PLAN_DEFERRED", "until_cutover")
+        return 0
 
     from install.executor_birth_transition import (
         _complete_closed_v1, _handoff_frame_v1,
@@ -1050,15 +1045,9 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
                                 signature=distribution.signature),
     )
     say("CUTOVER_OK", json.dumps(result, sort_keys=True))
-    if preview_refused:
-        say("RELEASE_EDITS_REFUSED", "preview_failed", json.dumps({
-            "error_code": "preview_failed",
-            "closed_build_id": distribution.identity.closed_build_id,
-            "installation_root": distribution.installation_root,
-            "release_sequence": distribution.release_sequence,
-            "cutover_completed": True, "admission_attempted": False,
-            "effects": "no_admissions",
-        }, sort_keys=True))
+    # The plan gates admission: a refused plan ships the release and admits
+    # nothing in this attempt.
+    if _run_release_edits(distribution, descriptor, new_catalog, plan_only=True) != 0:
         return 78
     return _run_release_edits(distribution, descriptor, new_catalog, plan_only=False)
 
@@ -1066,9 +1055,7 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
 def main() -> int:
     arguments = sys.argv[1:]
     if arguments[:1] == ["_cross"]:
-        require(len(arguments) == 5 and arguments[4] in {
-            "audit", "complete", "complete-no-admission",
-        },
+        require(len(arguments) == 5 and arguments[4] in {"audit", "complete"},
                 "internal crossing arguments")
         return cross(*arguments[1:])
     if arguments == ["prepare"]:

@@ -152,8 +152,8 @@ def test_success_keeps_receipts_and_activation(monkeypatch, release, capsys, res
     assert summary["head_id"] == "test-head" and summary["timeout_s"] == 600
 
 
-def test_plan_does_not_require_live_selection_or_restart_permission(monkeypatch, release, capsys):
-    monkeypatch.setattr(cycle, "load_live_helper", lambda: pytest.fail("live proof"))
+def test_plan_rechecks_live_selection_but_not_restart_permission(monkeypatch, release, capsys):
+    """Review C15: the plan runs after the cutover, on the release now selected."""
     monkeypatch.setattr(cycle, "_service_restart_granted", lambda u: pytest.fail("policy"))
     calls = []
 
@@ -167,18 +167,22 @@ def test_plan_does_not_require_live_selection_or_restart_permission(monkeypatch,
     assert calls == [True]
     summary = json.loads(capsys.readouterr().out.split(" ", 1)[1])
     assert summary["admission_attempted"] is False and summary["timeout_s"] == 120
+    assert summary["cutover_completed"] is True and summary["head_id"] == "test-head"
 
 
+@pytest.mark.parametrize("plan", [False, True])
 @pytest.mark.parametrize("field,value", [
     ("closed_build_id", "different"), ("installation_root", "/other"),
     ("release_sequence", 43),
 ])
-def test_changed_live_selection_never_reaches_child(monkeypatch, release, capsys, field, value):
+def test_changed_live_selection_never_reaches_child(monkeypatch, release, capsys, field, value, plan):
+    """A still-selected predecessor (N, not N+1) never reaches either child."""
     setattr(release.live.distribution.facts, field, value)
     monkeypatch.setattr(cycle, "_release_edits_child", lambda *a, **k: pytest.fail("launched"))
-    assert run_edits(release) == 78
+    assert run_edits(release, plan=plan) == 78
     out = capsys.readouterr().out
-    assert "RELEASE_EDITS_REFUSED release_selection_changed" in out
+    marker = "RELEASE_EDITS_PLAN_REFUSED" if plan else "RELEASE_EDITS_REFUSED"
+    assert f"{marker} release_selection_changed" in out
     assert '"effects": "no_admissions"' in out
     assert '"cutover_completed": true' in out
 
@@ -452,60 +456,34 @@ def crossing(monkeypatch, release, tmp_path):
                                            "source-test", str(evidence), mode))
 
 
-def test_audit_only_previews(crossing):
+def test_audit_never_launches_the_successor_cli(crossing, capsys):
+    """Review C15: N+1's CLI cannot verify the still-selected N before the crossing."""
     assert crossing.run("audit") == 0
-    assert crossing.events == ["plan"]
+    assert crossing.events == []
+    assert "RELEASE_EDITS_PLAN_DEFERRED until_cutover" in capsys.readouterr().out
 
 
-def test_admission_is_strictly_after_successful_cutover(crossing, capsys):
+def test_plan_then_admission_strictly_after_successful_cutover(crossing, capsys):
     assert crossing.run("complete") == 0
-    assert crossing.events == ["plan", "cutover", "admit"]
+    assert crossing.events == ["cutover", "plan", "admit"]
     assert "CUTOVER_OK" in capsys.readouterr().out
 
 
-def test_failed_cutover_never_launches_admission(crossing, capsys):
-    crossing.control["cutover_fails"] = True
+@pytest.mark.parametrize("plan_fails", [False, True])
+def test_failed_cutover_never_launches_plan_or_admission(crossing, capsys, plan_fails):
+    crossing.control.update(cutover_fails=True, plan_fails=plan_fails)
     with pytest.raises(RuntimeError, match="test cutover failure"):
         crossing.run("complete")
-    assert crossing.events == ["plan", "cutover"]
+    assert crossing.events == ["cutover"]
     assert "CUTOVER_OK" not in capsys.readouterr().out
 
 
-def test_failed_preview_ships_the_release_but_admits_nothing(crossing, capsys):
+def test_refused_plan_ships_the_release_but_admits_nothing(crossing, capsys):
     crossing.control["plan_fails"] = True
     assert crossing.run("complete") == 78
-    assert crossing.events == ["plan", "cutover"]
+    assert crossing.events == ["cutover", "plan"]
     out = capsys.readouterr().out
-    assert out.index("CUTOVER_OK") < out.index("RELEASE_EDITS_REFUSED preview_failed")
-    summary = json.loads(out.split("RELEASE_EDITS_REFUSED preview_failed ", 1)[1])
-    assert summary["cutover_completed"] is True
-    assert summary["admission_attempted"] is False and summary["effects"] == "no_admissions"
-
-
-def test_audit_preview_refusal_has_a_distinct_internal_result(crossing):
-    crossing.control["plan_fails"] = True
-    assert crossing.run("audit") == cycle.AUDIT_PREVIEW_REFUSED == 79
-    assert crossing.events == ["plan"]
-
-
-def test_complete_without_admission_never_launches_any_deploy_child(crossing, capsys):
-    # Even a preview that would succeed cannot clear an earlier refusal.
-    crossing.control["plan_fails"] = False
-    assert crossing.run("complete-no-admission") == 78
-    assert crossing.events == ["cutover"]
-    out = capsys.readouterr().out
-    assert out.index("CUTOVER_OK") < out.index("RELEASE_EDITS_REFUSED preview_failed")
-    assert '"effects": "no_admissions"' in out
-
-
-@pytest.mark.parametrize("mode", ["complete", "complete-no-admission"])
-def test_failed_crossing_never_claims_completed_release_after_preview_refusal(crossing, capsys, mode):
-    crossing.control.update(plan_fails=True, cutover_fails=True)
-    with pytest.raises(RuntimeError, match="test cutover failure"):
-        crossing.run(mode)
-    assert crossing.events == (["plan", "cutover"] if mode == "complete" else ["cutover"])
-    out = capsys.readouterr().out
-    assert "CUTOVER_OK" not in out and "RELEASE_EDITS_REFUSED preview_failed" not in out
+    assert out.index("CUTOVER_OK") < out.index("RELEASE_EDITS_PLAN_REFUSED")
 
 
 def test_structural_audit_refusal_is_not_a_preview_only_result(crossing):
@@ -516,8 +494,8 @@ def test_structural_audit_refusal_is_not_a_preview_only_result(crossing):
     assert crossing.events == []
 
 
-@pytest.mark.parametrize("mode", ["audit", "complete", "complete-no-admission"])
-def test_main_accepts_only_the_three_closed_crossing_modes(monkeypatch, mode):
+@pytest.mark.parametrize("mode", ["audit", "complete"])
+def test_main_accepts_only_the_two_closed_crossing_modes(monkeypatch, mode):
     calls = []
     monkeypatch.setattr(cycle.sys, "argv", ["cycle", "_cross", "release", "source", "evidence", mode])
     monkeypatch.setattr(cycle, "cross", lambda *args: calls.append(args) or 17)
@@ -525,7 +503,8 @@ def test_main_accepts_only_the_three_closed_crossing_modes(monkeypatch, mode):
     assert calls == [("release", "source", "evidence", mode)]
 
 
-@pytest.mark.parametrize("mode", ["", "complete-unchecked", "skip-auth", "audit --sign"])
+@pytest.mark.parametrize("mode", ["", "complete-unchecked", "skip-auth", "audit --sign",
+                                  "complete-no-admission"])
 def test_main_refuses_every_unrecognised_crossing_mode(monkeypatch, mode):
     monkeypatch.setattr(cycle.sys, "argv", ["cycle", "_cross", "release", "source", "evidence", mode])
     monkeypatch.setattr(cycle, "cross", lambda *args: pytest.fail("unrecognised mode crossed"))
@@ -574,7 +553,7 @@ def applying(monkeypatch, release, tmp_path):
     monkeypatch.setattr(builder, "build_and_install_received_source_v1", lambda s: release.distribution)
     monkeypatch.setattr(cycle, "publish_evidence", lambda *args: None)
     calls = []
-    control = {"audit": 0, "complete": 0, "complete-no-admission": 78}
+    control = {"audit": 0, "complete": 0}
 
     def child(command):
         calls.append(command)
@@ -586,14 +565,12 @@ def applying(monkeypatch, release, tmp_path):
 
 @pytest.mark.parametrize("cross", [False, True])
 @pytest.mark.parametrize("audit_result", [0, 79, 78, 1, 124, -9])
-def test_parent_preserves_audit_refusal_across_processes(applying, cross, audit_result):
+def test_parent_stops_on_every_audit_refusal(applying, cross, audit_result):
     applying.control["audit"] = audit_result
     result = cycle.apply_cycle(cross)
     modes = [command[-1] for command in applying.calls]
     if cross and audit_result == 0:
         assert result == 0 and modes == ["audit", "complete"]
-    elif cross and audit_result == 79:
-        assert result == 78 and modes == ["audit", "complete-no-admission"]
     else:
         assert result == (0 if audit_result == 0 else 78) and modes == ["audit"]
     if len(applying.calls) == 2:
