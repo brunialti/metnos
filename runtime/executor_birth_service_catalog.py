@@ -483,7 +483,10 @@ SERVICE_SOURCE_V1 = tuple(sorted((
     _service(
         "service-http", "metnos-http.service",
         target_recipe=_python_target(
-            "runtime.metnos_http_server", "--host", "127.0.0.1", "--port", "8770",
+            # All interfaces, as the legacy unit ran it (drop-in of 24/8):
+            # the console is reached from the home network, the public
+            # tunnel keeps reaching it on loopback.
+            "runtime.metnos_http_server", "--host", "0.0.0.0", "--port", "8770",
             environment=_target_environment(
                 *_TARGET_DATA_ENVIRONMENT_V1,
                 ("METNOS_ENGINE", "v3"),
@@ -622,9 +625,15 @@ SERVICE_SOURCE_V1 = tuple(sorted((
         # forbids systemd specifiers, so the same two directories are named
         # through the bindings the compiler resolves from the service home.
         writable_paths=("@service_state@", "@service_data@"),
+        # The device server this daemon hosts is how paired devices reach
+        # Metnos: it listens on the home network (legacy
+        # METNOS_AGENT_HOST=0.0.0.0), never through the public tunnel.
         target_recipe=_python_target(
             "runtime.channels.daemon",
-            environment=_TARGET_DATA_ENVIRONMENT_V1,
+            environment=_target_environment(
+                *_TARGET_DATA_ENVIRONMENT_V1,
+                ("METNOS_AGENT_HOST", "0.0.0.0"),
+            ),
         ),
         relations=(
             _unit_relation("After", "external-network-online", "service-http"),

@@ -211,8 +211,11 @@ _LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
 # the act of approving that change.  Never derive it from the candidate.
 # 10/9/2026: `RestrictNamespaces` removed from `service-telegram-daemon`,
 # which forbade the namespaces the executor sandbox creates.
+# 11/9/2026: the console and the device server listen on every interface
+# again, as the legacy units did (authorized by the owner): the first
+# signed catalog had dropped both addresses and paired devices were cut off.
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:9ea904e14fb597a32c0f033dedfa40e7cff0cdd10a2112606c6fc226e4798a19"
+    "sha256:05cea0891f8a76124445323db30976e38569bf2d801e9c184aedbf4b8f3060cb"
 )
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
