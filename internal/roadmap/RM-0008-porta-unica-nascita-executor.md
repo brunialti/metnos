@@ -431,8 +431,10 @@ ordinata per byte UTF-8 degli oggetti `{relative_path,size,sha256}`.
 `semantic_core_id`, `admission_context_id`, `predecessor_generation_id`,
 `new_generation_id`, `staging_basename`, `backup_basename`,
 `recovery_action="restore_old_until_new_pointer"` e `state="prepared"`.
-Gli identificatori sono digest canonici; `old_tree_id` e predecessore sono
-nullable soltanto alla prima nascita. I basename sono core-generated come
+Gli identificatori sono digest canonici. `old_tree_id` è nullable quando
+l'albero di redazione è assente: alla prima nascita, oppure alla prima
+installazione dell'albero per una generazione già pubblicata; il predecessore
+è nullable soltanto alla prima nascita (RM-VARIAZIONE-04, §23.52). I basename sono core-generated come
 `.birth-stage-<64-hex-request-id>` e `.birth-backup-<64-hex-request-id>` e non
 contengono separatori. Nessun percorso libero entra nel journal.
 
@@ -1388,6 +1390,7 @@ sviluppo.
 | 2026-09-01 | `done` | RM-VARIAZIONE-02 approvata: proposta A `5a323981`, allineamento di stato `efe999e2`, accettazione B `3541d675` e decisione dell'autorita' in `internal/design/decisione_rm0008_variazione_02_1_9_2026.md`. Il codice del gruppo 7 puo' applicare la regola; il sistema vivo resta invariato fino alla chiusura di tutti i gate. |
 | 2026-09-01 | `active` | Il rilievo B `de054b93` sulla provenienza della decisione e' stato recepito riportando nel verbale i tre input testuali ricevuti direttamente nella task Codex principale RM-0008. Il verbale non attribuisce piu' i messaggi alla task separata di B ed e' offerto alla nuova revisione incrociata. |
 | 2026-09-07 | `active` | RM-VARIAZIONE-03 isola la regressione del runner delle proprieta': l'adozione delle correnti pre-F4 e' esplicita, limitata alla prima distribuzione staged e attestata senza modificare i 24 executor revertibili. Il candidato ha 193 test mirati verdi; recovery e passaggio sul clone restano obbligatori prima del live (§23.51). |
+| 2026-09-11 | `done` | RM-VARIAZIONE-04 approvata da Roberto: `old_tree_id` nullable anche alla prima installazione dell'albero di redazione per una generazione gia' pubblicata; il predecessore resta obbligatorio fuori dalla prima nascita (§7.1, §23.52). |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 
@@ -3437,3 +3440,27 @@ senza introdurre nuove astrazioni: la convergenza usa l'unico Python di servizio
 firmato, e il processo padre dispone di un budget maggiore dei timeout interni
 che racchiude. I timeout esterni dell'operatore devono rispettare la stessa
 gerarchia e non possono troncare un recupero o un passaggio ancora valido.
+
+
+### 23.52 RM-VARIAZIONE-04: il primo albero di una generazione già pubblicata
+
+Il §7.1 rendeva `old_tree_id` nullable «soltanto alla prima nascita». Il
+codice è più largo, e coerente con se stesso: la semina che precede la
+transizione (`contract_store.py`, `_seed_repository_authoring_locked_v1`)
+scrive un journal con albero precedente assente e predecessore presente. È il
+modo in cui un contratto già pubblicato riceve il suo primo albero di
+redazione. La matrice di recupero copre già il caso: puntatore vecchio e
+canonico assente riportano all'assenza attestata.
+
+La norma segue ora il codice: `old_tree_id` è nullable quando l'albero di
+redazione è assente, cioè alla prima nascita oppure alla prima installazione
+dell'albero per una generazione già pubblicata. Il predecessore resta nullable
+soltanto alla prima nascita. Nessun'altra combinazione cambia: un albero
+presente richiede il suo identificatore, e un journal che dichiara assente un
+albero presente resta rifiutato.
+
+La correzione di A-11 (pubblicazione della modifica dell'operatore in
+`STORE_ONLY`) ha esattamente questa seconda forma. Roberto ha approvato la
+variazione l'11 settembre 2026, su proposta della consegna
+`internal/design/handover_rm0008_release3_9_9_2026.md` («Due proposte per
+Roberto», punto 1).
