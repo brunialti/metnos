@@ -495,12 +495,23 @@ def _watched_service_ok(key: str, row: dict) -> bool:
     return False
 
 
-def verify_named_executors(names: list[str], *, sign_first: bool = False) -> list[dict]:
+def verify_named_executors(
+        names: list[str], *, sign_first: bool = False,
+        changed_only: bool = False, plan_only: bool = False) -> list[dict]:
     """Admit/verify explicitly named direct children of ``executors/``.
 
     ``sign_first`` is retained as the public compatibility flag.  It now
     means admission through the sealed Executor Birth service; it never
     selects a technical publisher.
+
+    ``changed_only`` compares each first-party executor of this installation
+    with the generation the store serves - manifest, language state and every
+    declared file by name - and admits only those that differ. ``plan_only``
+    reports that comparison without any Birth request. Each row carries one
+    outcome: ``unchanged``, ``not_installed``, ``changed`` (plan),
+    ``store_verified`` (admitted, and the store now serves that generation),
+    ``error`` or ``not_attempted``. Publications are per contract: a refusal
+    after an admission leaves the earlier admission in place and reported.
     """
     from manifest_inventory import (
         ContractId, ManifestLayout, ManifestOrigin, inventory_manifests,
@@ -514,6 +525,117 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
         inventory_manifests().by_id()
         if layout is ManifestLayout.STORE_ONLY else {}
     )
+    if changed_only or plan_only:
+        if layout is not ManifestLayout.STORE_ONLY or not (sign_first or plan_only):
+            raise StackFailure(
+                "changed_only_invalid",
+                "changed-only admission needs the store-only layout and --sign or --plan",
+            )
+        from contract_store import (
+            ContractStoreError, VerifiedManifest,
+            acquire_current_reattestation_snapshot, current_contract,
+        )
+        from executor_birth_intent import BirthIntent, submit_stack_reconcile_birth
+        from executor_birth_snapshot import (
+            LANGUAGE_STATE_FILE, MANIFEST_FILE, CandidateSnapshotError,
+            _declared_code_files, _read_regular,
+            materialize_birth_candidate_from_authoring,
+        )
+        from sign import list_trusted_publics
+
+        trusted = tuple(list_trusted_publics())
+        pending = list(names) or sorted(
+            path.name for path in root.iterdir()
+            if (path / MANIFEST_FILE).is_file()
+        )
+        outcomes: list[dict] = []
+        with tempfile.TemporaryDirectory(prefix="metnos-reconcile-release-") as raw:
+            for index, name in enumerate(pending):
+                if not name or name in {".", ".."} or "/" in name or "\\" in name:
+                    raise StackFailure("invalid_executor", "executor name is not canonical")
+                contract_id = ContractId(ManifestOrigin.CORE, f"{name}/manifest.toml")
+                ref = store_refs.get(contract_id)
+                try:
+                    current = (
+                        None if ref is None
+                        else current_contract(ref, trusted_publics=trusted)
+                    )
+                    if not isinstance(current, VerifiedManifest):
+                        outcomes.append({"name": name, "outcome": "not_installed"})
+                        continue
+                    # The closed candidate check refuses anything undeclared,
+                    # caches included: an installation carries none.
+                    candidate = materialize_birth_candidate_from_authoring(
+                        root / name, Path(raw) / f"candidate-{name}",
+                    )
+                    prepared = _read_regular(candidate, MANIFEST_FILE)
+                    language_state = _read_regular(candidate, LANGUAGE_STATE_FILE)
+                    declared = _declared_code_files(prepared)
+                    code = {item: _read_regular(candidate, item) for item in declared}
+                    with acquire_current_reattestation_snapshot(
+                            ref, current.generation_id,
+                            trusted_publics=trusted) as served:
+                        same = (
+                            served.manifest_bytes == prepared
+                            and served.language_state_bytes == language_state
+                            and dict(served.code_files) == code
+                        )
+                except (OSError, CandidateSnapshotError, ContractStoreError) as exc:
+                    outcomes.append({"name": name, "outcome": "error", "error": str(exc)})
+                    outcomes.extend({"name": later, "outcome": "not_attempted"}
+                                    for later in pending[index + 1:])
+                    raise StackFailure(
+                        "candidate_unavailable", f"{name}: {exc}",
+                        details={"outcomes": outcomes},
+                    ) from exc
+                if same:
+                    outcomes.append({"name": name, "outcome": "unchanged",
+                                     "generation_id": current.generation_id})
+                    continue
+                if plan_only:
+                    outcomes.append({"name": name, "outcome": "changed",
+                                     "generation_id": current.generation_id})
+                    continue
+                failure = ""
+                try:
+                    birth = submit_stack_reconcile_birth(BirthIntent(
+                        candidate_source_root=candidate,
+                        contract_id=contract_id,
+                        reason=f"release edit admission executor={name}",
+                    ))
+                except Exception as exc:
+                    birth, failure = None, str(exc)
+                row = {"name": name, "outcome": "error",
+                       "request_id": getattr(birth, "request_id", None)}
+                publication = getattr(birth, "publication", None)
+                if birth is None or birth.error_code or publication is None:
+                    row["error"] = failure or (birth.error_code if birth else "") \
+                        or "publication_missing"
+                else:
+                    row.update({
+                        "candidate_id": birth.report.candidate_id,
+                        "previous_generation_id": publication.previous_generation_id,
+                        "current_generation_id": publication.current_generation_id,
+                    })
+                    try:
+                        reread = current_contract(ref, trusted_publics=trusted)
+                    except ContractStoreError as exc:
+                        reread, row["error"] = None, str(exc)
+                    if (isinstance(reread, VerifiedManifest) and reread.generation_id
+                            == publication.current_generation_id):
+                        row["outcome"] = "store_verified"
+                    else:
+                        row.setdefault("error", "store_generation_mismatch")
+                outcomes.append(row)
+                if row["outcome"] == "error":
+                    outcomes.extend({"name": later, "outcome": "not_attempted"}
+                                    for later in pending[index + 1:])
+                    raise StackFailure(
+                        "birth_admission_failed", f"{name}: {row['error']}",
+                        details={"outcomes": outcomes},
+                    )
+        return outcomes
+
     selected: list[tuple[str, Path | None, object | None]] = []
     for name in names:
         if not name or name in {".", ".."} or "/" in name or "\\" in name:
@@ -616,6 +738,60 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
             details={"executors": failed},
         )
     return results
+
+
+class PendingActivation:
+    """A restart owed to generations the store may already serve.
+
+    The intent is written before the first Birth request and cleared only
+    once the stack is restarted and ready - or once the batch is known to
+    have admitted nothing. Anything in between (a refused restart, a reread
+    that failed after publication, a process killed mid-batch) leaves the
+    intent behind, and the next changed-only deploy restarts even when it
+    admits nothing new. Rows keep the outcome they were reported with: an
+    uncertain publication stays uncertain. An unreadable record counts as
+    owed: doubt costs one restart, never a silent no-op.
+    """
+
+    _INTENT = {"name": "*", "outcome": "intent"}
+    _UNREADABLE = {"name": "?", "outcome": "unreadable_record"}
+
+    def __init__(self, path: Path | None = None):
+        self.path = path or _state_dir() / "stack_reconcile_pending_activation.json"
+
+    def rows(self) -> list[dict]:
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return []
+        except (OSError, ValueError):
+            return [dict(self._UNREADABLE)]
+        rows = payload.get("rows") if isinstance(payload, dict) else None
+        if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+            return [dict(self._UNREADABLE)]
+        return rows
+
+    def begin(self) -> None:
+        self._write([dict(self._INTENT)])
+
+    def record(self, outcomes: list) -> None:
+        """Keep every row whose publication happened, verified or not."""
+        self._write([row for row in outcomes if isinstance(row, dict)
+                     and row.get("current_generation_id")])
+
+    def published(self) -> list[dict]:
+        return [row for row in self.rows() if row.get("current_generation_id")]
+
+    def clear(self) -> None:
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+
+    def _write(self, rows: list[dict]) -> None:
+        if rows:
+            merged = {row.get("name"): row for row in (*self.rows(), *rows)}
+            _atomic_json(self.path, {"rows": list(merged.values())})
 
 
 class CircuitBreaker:
@@ -911,18 +1087,38 @@ class StackReconciler:
 
     def restart(self, *, executor_names: list[str] | None = None,
                 sign_first: bool = False, automatic: bool = False,
-                require_sidecar: str = "auto") -> dict:
+                require_sidecar: str = "auto",
+                changed_only: bool = False) -> dict:
         from services_registry import stack_scope
 
         names = executor_names or []
         locks = contextlib.ExitStack()
         boundaries = locks.enter_context(catalog_reconcile_lock(wait_s=2))
         breaker = CircuitBreaker()
+        pending = PendingActivation() if changed_only else None
+        signed: list[dict] = []
         try:
             if automatic:
                 breaker.assert_closed()
             self.require_quiescent()
-            signed = verify_named_executors(names, sign_first=sign_first)
+            owed = pending.rows() if pending is not None else []
+            if pending is not None:
+                # Before any effect: from here a restart is owed until the
+                # batch proves it published nothing, or the stack is ready.
+                pending.begin()
+            try:
+                signed = verify_named_executors(
+                    names, sign_first=sign_first, changed_only=changed_only,
+                )
+            except StackFailure as exc:
+                if pending is not None:
+                    pending.record(exc.details.get("outcomes") or [])
+                raise
+            if pending is not None:
+                pending.record(signed)
+                if not owed and not pending.published():
+                    pending.clear()
+                    return {"ok": True, "signed": signed, "restarted": False}
             scope = stack_scope()
             target = self.systemctl.show(TARGET_UNIT, scope)
             if target.get("LoadState") in {"not-found", "error", ""}:
@@ -954,8 +1150,20 @@ class StackReconciler:
                 )
             ready = self.wait_ready(require_sidecar=require_sidecar)
             breaker.success()
-            return {"ok": True, "signed": signed, "readiness": ready}
+            if pending is None:
+                return {"ok": True, "signed": signed, "readiness": ready}
+            activated = pending.published()
+            pending.clear()
+            return {"ok": True, "signed": signed, "readiness": ready,
+                    "restarted": True, "activated": activated}
         except StackFailure as exc:
+            if pending is not None and pending.rows():
+                details = dict(exc.details)
+                if signed and "outcomes" not in details:
+                    details["outcomes"] = signed
+                details["activation_pending"] = pending.published()
+                details["restart_owed"] = True
+                exc.details = details
             # ``assert_closed`` is itself the circuit's refusal to attempt a
             # restart.  Recording that refusal as a new restart failure moves
             # ``opened_until`` forward on every watchdog tick, so the circuit
@@ -1152,6 +1360,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--executor", action="append", default=[])
     parser.add_argument("--sign", action="store_true")
+    parser.add_argument("--changed-only", action="store_true")
+    parser.add_argument("--plan", action="store_true")
     parser.add_argument("--require-sidecar", choices=("auto", "yes", "no"), default="auto")
     parser.add_argument("--require-quiescent", action="store_true")
     parser.add_argument("--timeout", type=float, default=120)
@@ -1162,6 +1372,11 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     reconciler = StackReconciler()
     try:
+        if args.command != "deploy" and (args.plan or args.changed_only or args.sign):
+            raise StackFailure(
+                "option_invalid",
+                "--plan, --changed-only and --sign belong to deploy only",
+            )
         if args.command == "check":
             out = reconciler.check(
                 require_sidecar=args.require_sidecar,
@@ -1173,13 +1388,25 @@ def main(argv: list[str] | None = None) -> int:
                 require_sidecar=args.require_sidecar,
             )
         elif args.command == "deploy":
-            if args.sign and not args.executor:
-                raise StackFailure("executor_required", "--sign requires at least one --executor")
-            out = reconciler.restart(
-                executor_names=args.executor,
-                sign_first=args.sign,
-                require_sidecar=args.require_sidecar,
-            )
+            if args.plan:
+                if not args.changed_only or args.sign:
+                    raise StackFailure(
+                        "plan_invalid", "--plan needs --changed-only and no --sign",
+                    )
+                out = {"ok": True, "plan": verify_named_executors(
+                    args.executor, changed_only=True, plan_only=True,
+                )}
+            else:
+                if args.sign and not args.executor and not args.changed_only:
+                    raise StackFailure(
+                        "executor_required", "--sign requires at least one --executor",
+                    )
+                out = reconciler.restart(
+                    executor_names=args.executor,
+                    sign_first=args.sign,
+                    require_sidecar=args.require_sidecar,
+                    changed_only=args.changed_only,
+                )
         elif args.command == "watchdog":
             out = reconciler.watchdog(require_sidecar=args.require_sidecar)
         elif args.command == "inventory":

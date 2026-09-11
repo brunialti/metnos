@@ -812,7 +812,7 @@ def test_restart_uses_only_installed_integrated_target(monkeypatch, tmp_path, sc
     monkeypatch.setattr(sr, "ReconcileLock", lambda: lock_type(tmp_path / "lock"))
     monkeypatch.setattr(rec, "require_quiescent", lambda: {"ok": True})
     monkeypatch.setattr(rec, "wait_ready", lambda **_kwargs: {"ok": True})
-    monkeypatch.setattr(sr, "verify_named_executors", lambda names, sign_first=False: [])
+    monkeypatch.setattr(sr, "verify_named_executors", lambda names, sign_first=False, changed_only=False: [])
     monkeypatch.setattr(
         sr, "CircuitBreaker",
         lambda: type("Breaker", (), {
@@ -836,7 +836,7 @@ def test_restart_refuses_when_target_is_not_installed(monkeypatch, tmp_path):
     lock_type = sr.ReconcileLock
     monkeypatch.setattr(sr, "ReconcileLock", lambda: lock_type(tmp_path / "lock"))
     monkeypatch.setattr(rec, "require_quiescent", lambda: {"ok": True})
-    monkeypatch.setattr(sr, "verify_named_executors", lambda names, sign_first=False: [])
+    monkeypatch.setattr(sr, "verify_named_executors", lambda names, sign_first=False, changed_only=False: [])
     with pytest.raises(sr.StackFailure) as caught:
         rec.restart()
     assert caught.value.code == "target_not_installed"
@@ -1229,7 +1229,7 @@ def test_restart_frees_the_catalog_before_handing_over_to_systemd(
     fake = RecordingSystemctl()
     rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
     monkeypatch.setattr(rec, "require_quiescent", lambda: {"ok": True})
-    monkeypatch.setattr(sr, "verify_named_executors", lambda names, sign_first=False: [])
+    monkeypatch.setattr(sr, "verify_named_executors", lambda names, sign_first=False, changed_only=False: [])
     monkeypatch.setattr(
         sr, "CircuitBreaker",
         lambda: type("Breaker", (), {
@@ -1375,3 +1375,460 @@ def test_store_only_deploy_admits_the_edit_not_the_stale_authoring(
     assert _declares(reached[0]["manifest"], edit)
 
 
+
+
+# --- changed-only admission from an installation (I-001 v3) -----------------
+# The capture reads real files; Birth, the verified store reads and the reread
+# are substitutes. "store_verified" is proven against those substitutes only.
+
+def _contract_bytes(name, spec):
+    files = spec["files"]
+    manifest = (
+        f'name = "{name}"\ndescription = "{spec.get("description", "d")}"\n'
+        "[code]\nfiles = [" + ", ".join(f'"{item}"' for item in files) + "]\n"
+        f'digest = "sha256:{"0" * 64}"\n'
+    ).encode("utf-8")
+    return manifest, spec.get("lang", b'{"version":1}\n'), dict(files)
+
+
+def _contract_name(contract_id):
+    return contract_id.value.rsplit("/", 1)[0].split(":", 1)[-1]
+
+
+def _release_store(monkeypatch, tmp_path, *, working, served):
+    import contract_store
+    import executor_birth_intent
+    import manifest_inventory
+    import sign
+    import tomllib
+    from types import MappingProxyType
+    from executor_birth_snapshot import CandidateSnapshot
+    from manifest_code_digest import prepare_manifest_digest_v1
+
+    executors = tmp_path / "repo" / "executors"
+    executors.mkdir(parents=True)
+    for name, spec in working.items():
+        manifest, lang, files = _contract_bytes(name, spec)
+        for relative, payload in {
+            "manifest.toml": manifest, "manifest.lang_state.json": lang,
+            "manifest.toml.sig": b"stale-signature", **files,
+        }.items():
+            path = executors / name / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+    refs = {}
+    state = {}
+    for name, spec in served.items():
+        contract_id = manifest_inventory.ContractId(
+            manifest_inventory.ManifestOrigin.CORE, f"{name}/manifest.toml")
+        refs[name] = manifest_inventory.ManifestRef(
+            contract_id=contract_id, origin=contract_id.origin,
+            status=manifest_inventory.ManifestStatus.ADMITTED,
+            source_root=tmp_path / "store",
+            manifest_path=tmp_path / "store" / name / "manifest.toml",
+            manifest_relative=contract_id.relative_manifest,
+            allowed_code_roots=(tmp_path / "store",),
+        )
+        manifest, lang, files = _contract_bytes(name, spec)
+        state[name] = {
+            "generation": f"g-{name}-1", "reread": f"g-{name}-1",
+            "payloads": (prepare_manifest_digest_v1(manifest, files), lang, files),
+        }
+    reached: list[str] = []
+    control = {"refuse": set(), "reread_previous": False}
+
+    def owner(ref):
+        return _contract_name(ref.contract_id)
+
+    def current_contract(ref, *, trusted_publics, **_kwargs):
+        assert trusted_publics
+        return contract_store.VerifiedManifest(
+            contract_id=ref.contract_id, generation_id=state[owner(ref)]["reread"],
+            source_manifest_dir=tmp_path / "store", allowed_code_roots=(),
+            manifest_bytes=b"", manifest_hash="", parsed={}, signature_bytes=b"",
+            signature_hash="", language_state_bytes=b"", language_state={},
+            signed_by="test", declared_code_digest="", verified_code_digest="",
+        )
+
+    def served_snapshot(ref, generation_identifier, *, trusted_publics, **_kwargs):
+        entry = state[owner(ref)]
+        assert generation_identifier == entry["generation"]
+        private = tmp_path / f"served-{owner(ref)}-{generation_identifier}"
+        private.mkdir(exist_ok=True)
+        manifest, lang, files = entry["payloads"]
+        return CandidateSnapshot(
+            private_root=private, manifest_bytes=manifest,
+            language_state_bytes=lang, code_files=MappingProxyType(dict(files)),
+        )
+
+    def birth(intent):
+        name = _contract_name(intent.contract_id)
+        reached.append(name)
+        if name in control["refuse"]:
+            return SimpleNamespace(request_id=f"r-{name}", error_code="birth_refused",
+                                   publication=None, report=None)
+        candidate = intent.candidate_source_root
+        manifest = (candidate / "manifest.toml").read_bytes()
+        declared = tomllib.loads(manifest.decode("utf-8"))["code"]["files"]
+        entry = state[name]
+        previous = entry["generation"]
+        entry["generation"] = f"{previous}+"
+        entry["payloads"] = (
+            manifest, (candidate / "manifest.lang_state.json").read_bytes(),
+            {item: (candidate / item).read_bytes() for item in declared},
+        )
+        if not control["reread_previous"]:
+            entry["reread"] = entry["generation"]
+        return SimpleNamespace(
+            request_id=f"r-{name}", error_code=None,
+            report=SimpleNamespace(candidate_id=f"c-{name}"),
+            publication=SimpleNamespace(
+                previous_generation_id=previous,
+                current_generation_id=entry["generation"], operation="publish"),
+        )
+
+    monkeypatch.setattr(sr, "_repo_root", lambda: executors.parent)
+    monkeypatch.setattr(
+        manifest_inventory, "resolve_manifest_layout",
+        lambda **_kwargs: manifest_inventory.ManifestLayout.STORE_ONLY)
+    monkeypatch.setattr(
+        manifest_inventory, "inventory_manifests",
+        lambda **_kwargs: manifest_inventory.ManifestInventory(tuple(refs.values()), ()))
+    monkeypatch.setattr(sign, "list_trusted_publics", lambda: [("test", object())])
+    monkeypatch.setattr(contract_store, "current_contract", current_contract)
+    monkeypatch.setattr(
+        contract_store, "acquire_current_reattestation_snapshot", served_snapshot)
+    monkeypatch.setattr(executor_birth_intent, "submit_stack_reconcile_birth", birth)
+
+    def run(*, plan=False):
+        return sr.verify_named_executors(
+            [], sign_first=not plan, changed_only=not plan, plan_only=plan)
+
+    return run, reached, control, executors
+
+
+def test_release_admission_publishes_an_edit_and_rereads_its_generation(
+        monkeypatch, tmp_path):
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={"alpha": {"files": {"main.py": b"new\n"}}},
+        served={"alpha": {"files": {"main.py": b"old\n"}}})
+    assert run() == [{
+        "name": "alpha", "outcome": "store_verified", "request_id": "r-alpha",
+        "candidate_id": "c-alpha", "previous_generation_id": "g-alpha-1",
+        "current_generation_id": "g-alpha-1+",
+    }]
+    assert reached == ["alpha"]
+
+
+@pytest.mark.parametrize("change", ["manifest", "language", "split"])
+def test_release_admission_sees_what_the_code_digest_hides(
+        monkeypatch, tmp_path, change):
+    from manifest_code_digest import code_digest_of_payloads
+
+    served = {"files": {"a.py": b"ab", "b.py": b"c"}}
+    working = {
+        "manifest": {"files": served["files"], "description": "changed"},
+        "language": {"files": served["files"], "lang": b'{"version":2}\n'},
+        "split": {"files": {"a.py": b"a", "b.py": b"bc"}},
+    }[change]
+    if change == "split":
+        assert code_digest_of_payloads(["a.py", "b.py"], working["files"]) == \
+            code_digest_of_payloads(["a.py", "b.py"], served["files"])
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path, working={"alpha": working}, served={"alpha": served})
+    assert [row["outcome"] for row in run()] == ["store_verified"]
+    assert reached == ["alpha"]
+
+
+def test_release_admission_leaves_an_unchanged_executor_alone(monkeypatch, tmp_path):
+    spec = {"files": {"main.py": b"same\n"}}
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path, working={"alpha": spec}, served={"alpha": spec})
+    assert run() == [{"name": "alpha", "outcome": "unchanged", "generation_id": "g-alpha-1"}]
+    assert reached == []
+
+
+def test_release_admission_names_an_executor_the_store_never_admitted(
+        monkeypatch, tmp_path):
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={"beta": {"files": {"main.py": b"new\n"}}}, served={})
+    assert run() == [{"name": "beta", "outcome": "not_installed"}]
+    assert reached == []
+
+
+def test_release_plan_lists_every_outcome_without_birth(monkeypatch, tmp_path):
+    same = {"files": {"main.py": b"same\n"}}
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={"alpha": {"files": {"main.py": b"new\n"}}, "beta": same, "gamma": same},
+        served={"alpha": {"files": {"main.py": b"old\n"}}, "gamma": same})
+    assert [(row["name"], row["outcome"]) for row in run(plan=True)] == [
+        ("alpha", "changed"), ("beta", "not_installed"), ("gamma", "unchanged")]
+    assert reached == []
+
+
+def test_release_admission_refuses_a_reread_of_the_previous_generation(
+        monkeypatch, tmp_path):
+    run, _reached, control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={"alpha": {"files": {"main.py": b"new\n"}}},
+        served={"alpha": {"files": {"main.py": b"old\n"}}})
+    control["reread_previous"] = True
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    assert caught.value.code == "birth_admission_failed"
+    [row] = caught.value.details["outcomes"]
+    assert row["outcome"] == "error" and row["error"] == "store_generation_mismatch"
+    assert row["current_generation_id"] == "g-alpha-1+"
+
+
+def test_release_admission_reports_a_partial_failure_and_resumes(monkeypatch, tmp_path):
+    run, reached, control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={name: {"files": {"main.py": b"new\n"}} for name in ("alpha", "beta", "gamma")},
+        served={name: {"files": {"main.py": b"old\n"}} for name in ("alpha", "beta", "gamma")})
+    control["refuse"] = {"beta"}
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    assert [(row["name"], row["outcome"]) for row in caught.value.details["outcomes"]] == [
+        ("alpha", "store_verified"), ("beta", "error"), ("gamma", "not_attempted")]
+    control["refuse"] = set()
+    assert [(row["name"], row["outcome"]) for row in run()] == [
+        ("alpha", "unchanged"), ("beta", "store_verified"), ("gamma", "store_verified")]
+    assert reached == ["alpha", "beta", "beta", "gamma"]
+
+
+def test_release_admission_names_a_cache_in_the_working_copy(monkeypatch, tmp_path):
+    """An installation carries no caches; a development tree does, and the
+    closed candidate refuses it by name instead of publishing around it."""
+    run, reached, _control, root = _release_store(
+        monkeypatch, tmp_path,
+        working={"alpha": {"files": {"main.py": b"new\n"}}},
+        served={"alpha": {"files": {"main.py": b"old\n"}}})
+    (root / "alpha" / "__pycache__").mkdir()
+    (root / "alpha" / "__pycache__" / "main.cpython-312.pyc").write_bytes(b"cache")
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    assert caught.value.code == "candidate_unavailable"
+    assert "candidate_file_extra: __pycache__" in str(caught.value)
+    assert caught.value.details["outcomes"] == [{
+        "name": "alpha", "outcome": "error",
+        "error": "candidate_file_extra: __pycache__"}]
+    assert reached == []
+
+
+@pytest.mark.parametrize("link", ["symbolic", "hard"])
+def test_release_admission_refuses_links_in_the_working_copy(monkeypatch, tmp_path, link):
+    run, reached, _control, root = _release_store(
+        monkeypatch, tmp_path,
+        working={"alpha": {"files": {"main.py": b"new\n"}}},
+        served={"alpha": {"files": {"main.py": b"old\n"}}})
+    outside = tmp_path / "outside.py"
+    outside.write_bytes(b"new\n")
+    target = root / "alpha" / "main.py"
+    target.unlink()
+    (target.symlink_to if link == "symbolic" else target.hardlink_to)(outside)
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    assert caught.value.code == "candidate_unavailable"
+    assert reached == []
+
+
+def test_release_admission_refuses_a_file_that_changes_during_capture(
+        monkeypatch, tmp_path):
+    import executor_birth_snapshot
+
+    run, reached, _control, root = _release_store(
+        monkeypatch, tmp_path,
+        working={"alpha": {"files": {"main.py": b"new\n"}}},
+        served={"alpha": {"files": {"main.py": b"old\n"}}})
+    original = executor_birth_snapshot._read_regular
+
+    def racing(directory, relative):
+        payload = original(directory, relative)
+        if Path(directory) == root / "alpha" and relative == "main.py":
+            (root / "alpha" / "main.py").write_bytes(payload + b"# raced\n")
+        return payload
+
+    monkeypatch.setattr(executor_birth_snapshot, "_read_regular", racing)
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    assert caught.value.code == "candidate_unavailable"
+    assert reached == []
+
+
+def test_restart_does_not_restart_when_nothing_was_admitted(monkeypatch, tmp_path):
+    monkeypatch.setattr(sr, "_state_dir", lambda: tmp_path)
+    fake = FakeSystemctl()
+    rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
+    lock_type = sr.ReconcileLock
+    monkeypatch.setattr(sr, "ReconcileLock", lambda: lock_type(tmp_path / "lock"))
+    monkeypatch.setattr(rec, "require_quiescent", lambda: {"ok": True})
+    monkeypatch.setattr(
+        sr, "verify_named_executors",
+        lambda names, **_kwargs: [{"name": "alpha", "outcome": "unchanged"}])
+    out = rec.restart(sign_first=True, changed_only=True)
+    assert out == {"ok": True, "signed": [{"name": "alpha", "outcome": "unchanged"}],
+                   "restarted": False}
+    assert not any(call[0] == "run" for call in fake.calls)
+
+
+def test_changed_only_refuses_to_run_without_birth_or_plan(monkeypatch):
+    import manifest_inventory
+
+    monkeypatch.setattr(
+        manifest_inventory, "resolve_manifest_layout",
+        lambda **_kwargs: manifest_inventory.ManifestLayout.STORE_ONLY)
+    monkeypatch.setattr(
+        manifest_inventory, "inventory_manifests",
+        lambda **_kwargs: manifest_inventory.ManifestInventory((), ()))
+    with pytest.raises(sr.StackFailure) as caught:
+        sr.verify_named_executors([], changed_only=True)
+    assert caught.value.code == "changed_only_invalid"
+
+
+def _activation_rig(monkeypatch, tmp_path, outcomes):
+    """A reconciler whose restart can be refused, over scripted admissions."""
+    monkeypatch.setattr(sr, "_state_dir", lambda: tmp_path)
+    fake = FakeSystemctl()
+    control = {"refuse_restart": False}
+
+    def run(scope, *args, timeout_s=120):
+        fake.calls.append(("run", scope, *args))
+        refused = control["refuse_restart"] and args[:1] == ("restart",)
+        return subprocess.CompletedProcess(
+            args, 1 if refused else 0, stdout="", stderr="refused" if refused else "")
+
+    fake.run = run
+    rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
+    lock_type = sr.ReconcileLock
+    monkeypatch.setattr(sr, "ReconcileLock", lambda: lock_type(tmp_path / "lock"))
+    monkeypatch.setattr(rec, "require_quiescent", lambda: {"ok": True})
+    monkeypatch.setattr(rec, "wait_ready", lambda **_kwargs: {"ok": True})
+    script = iter(outcomes)
+
+    def verify(names, **_kwargs):
+        step = next(script)
+        if isinstance(step, BaseException):
+            raise step
+        return step
+
+    monkeypatch.setattr(sr, "verify_named_executors", verify)
+
+    def restarts():
+        return sum(1 for call in fake.calls if call[0] == "run" and "restart" in call)
+
+    return rec, control, restarts
+
+
+def test_a_refused_restart_leaves_the_admission_pending_until_activated(
+        monkeypatch, tmp_path):
+    admitted = {"name": "alpha", "outcome": "store_verified",
+                "current_generation_id": "g-alpha-2"}
+    rec, control, restarts = _activation_rig(monkeypatch, tmp_path, [
+        [admitted], [{"name": "alpha", "outcome": "unchanged"}],
+    ])
+    control["refuse_restart"] = True
+    with pytest.raises(sr.StackFailure) as caught:
+        rec.restart(sign_first=True, changed_only=True)
+    assert caught.value.code == "target_restart_failed"
+    assert caught.value.details["outcomes"] == [admitted]
+    assert caught.value.details["activation_pending"] == [admitted]
+    control["refuse_restart"] = False
+    out = rec.restart(sign_first=True, changed_only=True)
+    assert out["restarted"] is True and out["activated"] == [admitted]
+    assert restarts() == 2
+    assert sr.PendingActivation(tmp_path / "stack_reconcile_pending_activation.json").rows() == []
+
+
+def test_a_partial_admission_failure_still_owes_a_restart(monkeypatch, tmp_path):
+    admitted = {"name": "alpha", "outcome": "store_verified",
+                "current_generation_id": "g-alpha-2"}
+    failure = sr.StackFailure("birth_admission_failed", "beta", details={"outcomes": [
+        admitted, {"name": "beta", "outcome": "error", "error": "refused"}]})
+    rec, _control, restarts = _activation_rig(monkeypatch, tmp_path, [
+        failure, [{"name": "alpha", "outcome": "unchanged"}],
+    ])
+    with pytest.raises(sr.StackFailure) as caught:
+        rec.restart(sign_first=True, changed_only=True)
+    assert [row["name"] for row in caught.value.details["outcomes"]] == ["alpha", "beta"]
+    assert admitted in caught.value.details["activation_pending"]
+    assert restarts() == 0
+    out = rec.restart(sign_first=True, changed_only=True)
+    assert out["activated"] == [admitted] and restarts() == 1
+
+
+def test_an_unreadable_activation_record_restarts_rather_than_skip(monkeypatch, tmp_path):
+    rec, _control, restarts = _activation_rig(monkeypatch, tmp_path, [
+        [{"name": "alpha", "outcome": "unchanged"}],
+    ])
+    (tmp_path / "stack_reconcile_pending_activation.json").write_text("{not json")
+    out = rec.restart(sign_first=True, changed_only=True)
+    assert out["restarted"] is True and restarts() == 1
+
+
+def test_undecodable_activation_record_restarts_rather_than_crash(monkeypatch, tmp_path):
+    rec, _control, restarts = _activation_rig(monkeypatch, tmp_path, [
+        [{"name": "alpha", "outcome": "unchanged"}],
+    ])
+    (tmp_path / "stack_reconcile_pending_activation.json").write_bytes(b"\xff\xfe")
+    out = rec.restart(sign_first=True, changed_only=True)
+    assert out["restarted"] is True and restarts() == 1
+
+
+def test_a_publication_whose_reread_failed_is_still_owed_a_restart(monkeypatch, tmp_path):
+    uncertain = {"name": "alpha", "outcome": "error", "error": "store_generation_mismatch",
+                 "current_generation_id": "g-alpha-2"}
+    failure = sr.StackFailure("birth_admission_failed", "alpha",
+                              details={"outcomes": [uncertain]})
+    rec, _control, restarts = _activation_rig(monkeypatch, tmp_path, [
+        failure, [{"name": "alpha", "outcome": "unchanged"}],
+    ])
+    with pytest.raises(sr.StackFailure) as caught:
+        rec.restart(sign_first=True, changed_only=True)
+    assert caught.value.details["outcomes"] == [uncertain]
+    out = rec.restart(sign_first=True, changed_only=True)
+    # Owed and restarted, but never relabelled as verified.
+    assert out["activated"] == [uncertain] and restarts() == 1
+
+
+def test_a_process_killed_mid_batch_leaves_the_restart_owed(monkeypatch, tmp_path):
+    """The intent precedes every effect: a death between Birth and any
+    record still leaves a restart owed to the next deploy."""
+    rec, _control, restarts = _activation_rig(monkeypatch, tmp_path, [
+        KeyboardInterrupt(), [{"name": "alpha", "outcome": "unchanged"}],
+    ])
+    with pytest.raises(KeyboardInterrupt):
+        rec.restart(sign_first=True, changed_only=True)
+    assert restarts() == 0
+    out = rec.restart(sign_first=True, changed_only=True)
+    assert out["restarted"] is True and restarts() == 1
+
+
+def test_a_batch_that_published_nothing_clears_its_intent(monkeypatch, tmp_path):
+    rec, _control, restarts = _activation_rig(monkeypatch, tmp_path, [
+        [{"name": "alpha", "outcome": "unchanged"}],
+    ])
+    assert rec.restart(sign_first=True, changed_only=True)["restarted"] is False
+    assert restarts() == 0
+    assert not (tmp_path / "stack_reconcile_pending_activation.json").exists()
+
+
+def test_preview_and_admission_options_belong_to_deploy_only(monkeypatch, capsys):
+    reached = []
+
+    class Recorder:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __getattr__(self, name):
+            return lambda **kwargs: reached.append((name, kwargs)) or {"ok": True}
+
+    monkeypatch.setattr(sr, "StackReconciler", Recorder)
+    for argv in (["watchdog", "--plan", "--changed-only"], ["check", "--sign"],
+                 ["watchdog", "--changed-only"], ["wait-ready", "--plan"]):
+        assert sr.main(argv) == 1, argv
+        assert "option_invalid" in capsys.readouterr().out
+    assert reached == []
