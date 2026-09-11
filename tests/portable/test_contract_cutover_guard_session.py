@@ -17,14 +17,35 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture
+def service_binding(monkeypatch, tmp_path):
+    import config
+    import pwd
+    import executor_birth_account_identity as accounts
+
+    account = accounts.PosixAccountRecordV1(
+        "metnos-test", 41, 42, str(tmp_path / "service"), "/bin/false",
+    )
+    layout = accounts.metnos_xdg_layout_v1(account)
+    monkeypatch.setattr(pwd, "getpwuid", lambda uid: SimpleNamespace(pw_name=account.name))
+    monkeypatch.setattr(accounts, "resolve_posix_account_v1", lambda name: (
+        account if name == account.name else pytest.fail("unexpected account lookup")
+    ))
+    monkeypatch.setattr(config, "PATH_USER_STATE", layout.state)
+    return account, layout
+
+
 @pytest.mark.parametrize("idle", (True, False))
-def test_successor_stops_under_exclusion_and_rechecks_additional_units(monkeypatch, idle):
+def test_successor_stops_under_exclusion_and_rechecks_additional_units(
+        monkeypatch, idle, service_binding):
     import stack_reconcile
     from install import executor_birth_systemd_quiescence as quiescence
     from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
     from executor_birth_ownership_preflight import canonical_maintenance_proof
 
     unit, catalog = "metnos-future.timer", object()
+    account, layout = service_binding
+    owner = (account.uid, account.gid)
     events, held = [], []
     state = {"active": "active"}
     plan = quiescence.SystemdQuiescencePlanV1(
@@ -56,7 +77,12 @@ def test_successor_stops_under_exclusion_and_rechecks_additional_units(monkeypat
             }
 
     @contextmanager
-    def exclusion(**_kwargs):
+    def exclusion(**kwargs):
+        assert kwargs == {
+            "wait_s": 2, "catalog_trusted_owner": owner,
+            "path": layout.state / "metnos-stack-reconcile.lock",
+            "owner_uid": account.uid,
+        }
         held.append(True)
         try:
             yield
@@ -70,11 +96,13 @@ def test_successor_stops_under_exclusion_and_rechecks_additional_units(monkeypat
     monkeypatch.setattr(quiescence, "_SubprocessSystemdEffectsV1", Effects)
     if not idle:
         with pytest.raises(quiescence.SystemdQuiescenceError):
-            with guard._contract_cutover_guard_core_v1(reconciler, release_catalog=catalog):
+            with guard._contract_cutover_guard_core_v1(
+                    reconciler, release_catalog=catalog, catalog_trusted_owner=owner):
                 pytest.fail("busy release entered maintenance")
         assert not events and not held
         return
-    with guard._contract_cutover_guard_core_v1(reconciler, release_catalog=catalog) as (proof, evidence):
+    with guard._contract_cutover_guard_core_v1(
+            reconciler, release_catalog=catalog, catalog_trusted_owner=owner) as (proof, evidence):
         assert events == ["stop"]
         assert tuple((item["scope"], item["unit"]) for item in evidence["units"]) == MAINTENANCE_TARGETS_V1
         encoded = canonical_maintenance_proof(**evidence)
@@ -83,6 +111,29 @@ def test_successor_stops_under_exclusion_and_rechecks_additional_units(monkeypat
         with pytest.raises(guard.ContractCutoverGuardError):
             guard._require_maintenance_session_v1(proof)
     assert not held
+
+
+@pytest.mark.parametrize("changed", ["uid", "gid"])
+def test_successor_rejects_an_owner_inconsistent_with_layout(
+        monkeypatch, service_binding, changed):
+    import stack_reconcile
+    from install import executor_birth_systemd_quiescence as quiescence
+
+    account, _layout = service_binding
+    owner = (account.uid + (changed == "uid"), account.gid + (changed == "gid"))
+    catalog = object()
+    monkeypatch.setattr(quiescence, "_plan_release_systemd_quiescence_v1", lambda value: (
+        None if value is catalog else pytest.fail("release catalog changed")
+    ))
+    monkeypatch.setattr(stack_reconcile, "catalog_reconcile_lock",
+                        lambda **kwargs: pytest.fail("unbound lifecycle lock acquired"))
+    monkeypatch.setattr(quiescence, "_quiesce_release_systemd_core_v1",
+                        lambda *args: pytest.fail("unbound release stopped"))
+    with pytest.raises(guard.ContractCutoverGuardError, match="identity or state changed") as refused:
+        with guard._contract_cutover_guard_core_v1(
+                SimpleNamespace(), release_catalog=catalog, catalog_trusted_owner=owner):
+            pytest.fail("changed service identity accepted")
+    assert refused.value.code == "cutover_lock_unavailable"
 
 
 def test_maintenance_session_is_live_only_inside_the_held_guard(monkeypatch):

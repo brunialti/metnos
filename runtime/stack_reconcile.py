@@ -132,8 +132,32 @@ class ReconcileLock:
     """Process lock hardened against symlink substitution."""
 
     def __init__(self, path: Path | None = None, *, owner_uid: int | None = None):
-        runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
-        self.path = path or runtime / "metnos-stack-reconcile.lock"
+        if path is None:
+            from services_registry import service_user, stack_scope
+
+            try:
+                scope = stack_scope()
+            except ValueError as exc:
+                raise StackFailure(
+                    "stack_profile_unavailable", "installed stack profile is unavailable",
+                ) from exc
+            if scope == "system":
+                # Administrative callers and the service (including watchdog)
+                # must hold the same lock, without requiring a login session.
+                path = _state_dir() / "metnos-stack-reconcile.lock"
+                if owner_uid is None:
+                    try:
+                        owner_uid = pwd.getpwnam(service_user()).pw_uid
+                    except KeyError as exc:
+                        raise StackFailure(
+                            "service_user_invalid", "Metnos service user does not exist",
+                        ) from exc
+            else:
+                runtime = Path(os.environ.get(
+                    "XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}",
+                ))
+                path = runtime / "metnos-stack-reconcile.lock"
+        self.path = path
         self.owner_uid = os.getuid() if owner_uid is None else owner_uid
         self.fd: int | None = None
 

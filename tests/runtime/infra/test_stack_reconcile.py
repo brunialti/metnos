@@ -63,6 +63,140 @@ def test_catalog_lifecycle_guard_acquires_catalog_before_reconcile(
     ]
 
 
+def _system_lock_profile(monkeypatch, tmp_path):
+    import pwd
+    import services_registry
+
+    owner = pwd.getpwuid(os.getuid())
+    monkeypatch.setattr(services_registry, "stack_scope", lambda: "system")
+    monkeypatch.setattr(services_registry, "service_user", lambda: owner.pw_name)
+    monkeypatch.setattr(sr._C, "PATH_USER_STATE", tmp_path / "state")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "must-not-create"))
+    return owner
+
+
+def test_system_lifecycle_lock_has_one_path_and_owner_for_root_and_service(
+        monkeypatch, tmp_path):
+    owner = _system_lock_profile(monkeypatch, tmp_path)
+    monkeypatch.setattr(sr.os, "getuid", lambda: 0)
+    administrative = sr.ReconcileLock()
+    monkeypatch.setattr(sr.os, "getuid", lambda: owner.pw_uid)
+    service = sr.ReconcileLock()
+    assert administrative.path == service.path == tmp_path / "state/metnos-stack-reconcile.lock"
+    assert administrative.owner_uid == service.owner_uid == owner.pw_uid
+    # These are two real open file descriptions, not replacement lock objects.
+    with administrative:
+        with pytest.raises(sr.StackFailure, match="another stack reconcile") as caught:
+            service.acquire()
+        assert caught.value.code == "reconcile_busy"
+    with service:
+        assert service.path.stat().st_uid == owner.pw_uid
+    assert not (tmp_path / "must-not-create").exists()
+
+
+def test_system_lifecycle_lock_does_not_depend_on_login_runtime_dir(monkeypatch, tmp_path):
+    _system_lock_profile(monkeypatch, tmp_path)
+    monkeypatch.delenv("XDG_RUNTIME_DIR")
+    original = Path.mkdir
+    attempts = []
+
+    def mkdir(path, *args, **kwargs):
+        attempts.append(path)
+        assert path.is_relative_to(tmp_path), "attempted a host runtime directory"
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+    with sr.ReconcileLock():
+        pass
+    assert attempts and all(path.is_relative_to(tmp_path) for path in attempts)
+
+
+def test_user_and_explicit_lifecycle_paths_remain_explicit(monkeypatch, tmp_path):
+    import services_registry
+
+    monkeypatch.setattr(services_registry, "stack_scope", lambda: "user")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "user-runtime"))
+    legacy = sr.ReconcileLock()
+    assert legacy.path == tmp_path / "user-runtime/metnos-stack-reconcile.lock"
+    assert legacy.owner_uid == os.getuid()
+    monkeypatch.delenv("XDG_RUNTIME_DIR")
+    assert sr.ReconcileLock().path == Path(f"/run/user/{os.getuid()}/metnos-stack-reconcile.lock")
+    monkeypatch.setattr(services_registry, "stack_scope", lambda: pytest.fail("profile lookup"))
+    explicit = sr.ReconcileLock(tmp_path / "maintenance", owner_uid=23456)
+    assert explicit.path == tmp_path / "maintenance" and explicit.owner_uid == 23456
+
+
+def test_watchdog_restart_uses_real_system_lifecycle_lock(monkeypatch, tmp_path):
+    import contract_store
+    import service_health_monitor
+
+    _system_lock_profile(monkeypatch, tmp_path)
+    monkeypatch.delenv("XDG_RUNTIME_DIR")
+    monkeypatch.setattr(service_health_monitor, "run", lambda: {"ok": True})
+    events = []
+
+    @contextlib.contextmanager
+    def catalog_lock(**kwargs):
+        events.append("catalog_enter")
+        yield
+        events.append("catalog_exit")
+
+    monkeypatch.setattr(contract_store, "catalog_admission_lock", catalog_lock)
+    fake = FakeSystemctl()
+    rec = sr.StackReconciler(systemctl=fake, report_path=tmp_path / "report.json")
+
+    def unready(**kwargs):
+        raise sr.StackFailure("stack_not_ready", "test unhealthy HTTP")
+
+    def verify(names, **kwargs):
+        assert events == ["catalog_enter"]
+        with pytest.raises(sr.StackFailure) as caught:
+            sr.ReconcileLock().acquire()
+        assert caught.value.code == "reconcile_busy"
+        return []
+
+    def ready(**kwargs):
+        assert events == ["catalog_enter", "catalog_exit"]
+        with pytest.raises(sr.StackFailure) as caught:
+            sr.ReconcileLock().acquire()
+        assert caught.value.code == "reconcile_busy"
+        return {"ok": True}
+
+    monkeypatch.setattr(rec, "check", unready)
+    monkeypatch.setattr(rec, "require_quiescent", lambda: {"ok": True})
+    monkeypatch.setattr(rec, "wait_ready", ready)
+    monkeypatch.setattr(sr, "verify_named_executors", verify)
+    assert rec.watchdog()["ok"] is True
+    assert ("run", "system", "restart", sr.TARGET_UNIT) in fake.calls
+    with sr.ReconcileLock():
+        pass  # The watchdog releases the lifecycle boundary after readiness.
+    assert not (tmp_path / "must-not-create").exists()
+
+
+@pytest.mark.parametrize("command", ["deploy", "watchdog"])
+def test_invalid_stack_profile_is_a_structured_cli_failure(monkeypatch, tmp_path, capsys, command):
+    import contract_store
+    import service_health_monitor
+    import services_registry
+
+    def invalid_profile():
+        raise ValueError("readiness distribution root mismatch")
+
+    def unready(self, **kwargs):
+        raise sr.StackFailure("stack_not_ready", "test HTTP unavailable")
+
+    monkeypatch.setattr(sr._C, "PATH_USER_STATE", tmp_path / "state")
+    monkeypatch.setattr(services_registry, "stack_scope", invalid_profile)
+    monkeypatch.setattr(contract_store, "catalog_admission_lock",
+                        lambda **kw: contextlib.nullcontext())
+    monkeypatch.setattr(service_health_monitor, "run", lambda: {"ok": True})
+    monkeypatch.setattr(sr.StackReconciler, "check", unready)
+    monkeypatch.setattr(sr, "verify_named_executors", lambda *a, **k: pytest.fail("admission"))
+    assert sr.main([command]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False and payload["error_code"] == "stack_profile_unavailable"
+
+
 class FakeSystemctl:
     def __init__(self, *, target_loaded: bool = True,
                  playwright_loaded: bool = True,

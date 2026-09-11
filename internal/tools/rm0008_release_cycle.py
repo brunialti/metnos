@@ -22,7 +22,12 @@ Two stages, split by the privilege each actually needs.
                      a pending claim that names a superseded source, builds and
                      installs the signed successor, and audits it. With
                      --cross it then performs the crossing, which stops and
-                     restarts the services.
+                     restarts the services, then admits changed executors as
+                     the service user through the installed deploy CLI. The
+                     audit prints a no-admission preview first. A later
+                     admission/activation refusal does not undo the crossing.
+                     A failed preview still permits the crossing with --cross,
+                     but prevents every executor admission in that attempt.
 
 Nothing in the handoff is authority. The staged tree is measured again in
 `apply`, the product's own reviewed-root gate still runs inside the build, and
@@ -696,17 +701,187 @@ def apply_cycle(cross: bool) -> int:
 
     child = [sys.executable, str(Path(__file__).resolve()), "_cross",
              distribution.installation_root, source_id, str(evidence)]
-    if run_child(child + ["audit"]) != 0:
+    audit_result = run_child(child + ["audit"])
+    if audit_result not in {0, AUDIT_PREVIEW_REFUSED}:
         return 78
     if not cross:
+        if audit_result != 0:
+            return 78
         say("APPLY_OK; NO HEAD CHANGE OR SERVICE STOP")
         return 0
-    return run_child(child + ["complete"])
+    mode = "complete-no-admission" if audit_result == AUDIT_PREVIEW_REFUSED else "complete"
+    return run_child(child + [mode])
 
 
 def run_child(command: list[str]) -> int:
     result = subprocess.run(command, stdin=subprocess.DEVNULL)
     return result.returncode
+
+
+RELEASE_EDITS_PLAN_TIMEOUT_S = 120
+RELEASE_EDITS_DEPLOY_TIMEOUT_S = 600
+# Internal audit result: structural checks passed, only the preview failed.
+# Never convert another audit failure to this non-blocking result.
+AUDIT_PREVIEW_REFUSED = 79
+SERVICE_RESTART_POLICY = Path("/etc/polkit-1/rules.d/49-metnos-services.rules")
+RELEASE_EDITS_ENTRY = "service-stack-watchdog"
+
+
+def _service_restart_granted(service_user: str) -> bool:
+    """Read an existing rule; never install permissions as part of a release."""
+    from services_registry import render_polkit_rule
+
+    expected = render_polkit_rule(service_user).encode("utf-8")
+    try:
+        with os.fdopen(os.open(SERVICE_RESTART_POLICY, READ), "rb") as handle:
+            before = os.fstat(handle.fileno())
+            if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0
+                    or before.st_mode & 0o022 or before.st_nlink != 1):
+                return False
+            actual = handle.read(len(expected) + 1)
+            return (actual == expected
+                    and stamp(before) == stamp(os.fstat(handle.fileno()))
+                    and stamp(before) == stamp(SERVICE_RESTART_POLICY.lstat()))
+    except OSError:
+        return False
+
+
+def _release_edits_child(distribution, descriptor, catalog, *, plan_only: bool):
+    """Use only signed launch data; drop root before the interpreter starts."""
+    from executor_birth_account_identity import resolve_posix_account_snapshot_v1
+
+    account = resolve_posix_account_snapshot_v1(descriptor.service_user)
+    record = account.record
+    require((record.name, record.uid, record.gid, record.home, record.shell,
+             account.supplementary_gids) == (
+                descriptor.service_user, descriptor.service_uid,
+                descriptor.service_gid, descriptor.service_home,
+                descriptor.service_shell, descriptor.service_supplementary_gids),
+            "release service account changed")
+    require(record.uid != 0, "release service cannot run as root")
+    require(descriptor.installation_root == distribution.installation_root,
+            "release descriptor root mismatch")
+    entries = [item for item in catalog.catalog.entries
+               if item.entry_id == RELEASE_EDITS_ENTRY]
+    require(len(entries) == 1, "release deploy entry is not unique")
+    entry = entries[0]
+    require(entry.scope == "system" and entry.execution_kind == "python_module"
+            and entry.python_module == "stack_reconcile"
+            and entry.target_executable and entry.target_working_directory,
+            "release deploy entry is not the system reconciler")
+    env = {"HOME": record.home, "USER": record.name, "LOGNAME": record.name,
+           "SHELL": record.shell,
+           "METNOS_INSTALL_ROOT": distribution.installation_root}
+    for item in entry.target_environment:
+        require(item.name not in env, "duplicate release environment field")
+        env[item.name] = item.value
+    command = [entry.target_executable, "-E", "-s", "-B", "-m",
+               entry.python_module, "deploy", "--changed-only",
+               "--plan" if plan_only else "--sign"]
+    return subprocess.run(
+        command, stdin=subprocess.DEVNULL, capture_output=True, check=False,
+        cwd=entry.target_working_directory, env=env,
+        user=record.uid, group=record.gid,
+        extra_groups=list(account.supplementary_gids), umask=0o027,
+        close_fds=True,
+        timeout=(RELEASE_EDITS_PLAN_TIMEOUT_S if plan_only
+                 else RELEASE_EDITS_DEPLOY_TIMEOUT_S),
+    )
+
+
+def _run_release_edits(distribution, descriptor, catalog, *, plan_only: bool) -> int:
+    """Report the CLI's structured result without inventing atomic rollback."""
+    summary = {
+        "closed_build_id": distribution.identity.closed_build_id,
+        "installation_root": distribution.installation_root,
+        "release_sequence": distribution.release_sequence,
+        "phase": "plan" if plan_only else "admit_and_activate",
+        "timeout_s": (RELEASE_EDITS_PLAN_TIMEOUT_S if plan_only
+                      else RELEASE_EDITS_DEPLOY_TIMEOUT_S),
+        "cutover_completed": not plan_only,
+        "admission_attempted": False,
+    }
+    error_code = "release_edits_unavailable"
+    try:
+        require(os.geteuid() == 0, "release edits wrapper requires root")
+        if not plan_only:
+            # Being installed is not being selected. This existing read-only
+            # service proof rechecks the live selection before returning.
+            materials, _entry = load_live_helper()._attest_service_startup_v1(
+                RELEASE_EDITS_ENTRY,
+            )
+            facts = materials.distribution.facts
+            error_code = "release_selection_changed"
+            require((facts.closed_build_id, facts.installation_root,
+                     facts.release_sequence) == (
+                        distribution.identity.closed_build_id,
+                        distribution.installation_root,
+                        distribution.release_sequence), error_code)
+            summary["head_id"] = materials.transaction.head_id
+            error_code = "service_restart_not_granted"
+            require(_service_restart_granted(descriptor.service_user), error_code)
+        error_code = "release_edits_child_failed"
+        # Conservative on timeout or launch failure: do not infer that earlier
+        # Birth publications rolled back, or clear I-001's activation record.
+        summary["admission_attempted"] = not plan_only
+        result = _release_edits_child(
+            distribution, descriptor, catalog, plan_only=plan_only,
+        )
+        summary["returncode"] = result.returncode
+        error_code = "release_edits_output_invalid"
+        payload = json.loads(result.stdout)
+        require(isinstance(payload, dict) and type(payload.get("ok")) is bool,
+                error_code)
+        summary["result"] = payload
+        if result.returncode != 0 or payload["ok"] is not True:
+            error_code = "release_edits_child_failed"
+            if isinstance(payload.get("error_code"), str):
+                summary["child_error_code"] = payload["error_code"]
+            raise RuntimeError(error_code)
+        rows = payload.get("plan" if plan_only else "signed")
+        allowed = {"unchanged", "not_installed",
+                   "changed" if plan_only else "store_verified"}
+        require(isinstance(rows, list) and all(
+            isinstance(row, dict) and isinstance(row.get("name"), str)
+            and bool(row["name"]) and row.get("outcome") in allowed
+            for row in rows), error_code)
+        if not plan_only:
+            require(type(payload.get("restarted")) is bool, error_code)
+            published = [row for row in rows if row["outcome"] == "store_verified"]
+            require(all(
+                isinstance(row.get(key), str) and bool(row[key])
+                for row in published
+                for key in ("request_id", "candidate_id", "current_generation_id")
+            ), error_code)
+            if payload["restarted"]:
+                ready = payload.get("readiness")
+                activated = payload.get("activated")
+                require(isinstance(ready, dict) and ready.get("ok") is True
+                        and isinstance(activated, list) and all(
+                            isinstance(row, dict)
+                            and isinstance(row.get("name"), str)
+                            and isinstance(row.get("current_generation_id"), str)
+                            for row in activated), error_code)
+                require({(row["name"], row["current_generation_id"]) for row in published}
+                        <= {(row["name"], row["current_generation_id"]) for row in activated},
+                        error_code)
+            else:
+                require(not published, error_code)
+        say("RELEASE_EDITS_PLAN" if plan_only else "RELEASE_EDITS_ADMITTED",
+            json.dumps(summary, sort_keys=True))
+        return 0
+    except subprocess.TimeoutExpired:
+        error_code = "release_edits_timeout"
+    except Exception as exc:
+        summary["failure_type"] = type(exc).__name__
+    summary["error_code"] = error_code
+    summary["effects"] = (
+        "unknown_check_pending_activation" if summary["admission_attempted"]
+        else "no_admissions"
+    )
+    say("RELEASE_EDITS_PLAN_REFUSED" if plan_only else "RELEASE_EDITS_REFUSED",
+        error_code, json.dumps(summary, sort_keys=True))
+    return 78
 
 
 # --------------------------------------------------------------------------
@@ -739,6 +914,8 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
             (directory / "distribution.json").read_bytes(),
             (directory / "distribution.sig").read_bytes()),
     )
+    require(str(release) == distribution.installation_root,
+            "crossing release does not match authenticated distribution")
     say("EXACT_SIGNED_SUCCESSOR_VERIFIED", distribution.identity.closed_build_id)
     current = authenticate_distribution_record_v1(
         distribution.encoded, distribution.signature)
@@ -780,8 +957,15 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
     require(idle.get("ok") is True, "stack busy or unobservable")
     say("SUCCESSOR_AUDIT_OK", "units", len(old_units),
         "previous_head", previous.required_head_id, "quiescence", idle["source"])
+    # A preview refusal does not block shipping a repair release. It does
+    # prohibit admission for this attempt, even if a retry might now succeed.
+    preview_refused = mode == "complete-no-admission"
+    if not preview_refused:
+        preview_refused = _run_release_edits(
+            distribution, descriptor, new_catalog, plan_only=True,
+        ) != 0
     if mode == "audit":
-        return 0
+        return AUDIT_PREVIEW_REFUSED if preview_refused else 0
 
     from install.executor_birth_transition import (
         _complete_closed_v1, _handoff_frame_v1,
@@ -798,13 +982,25 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
                                 signature=distribution.signature),
     )
     say("CUTOVER_OK", json.dumps(result, sort_keys=True))
-    return 0
+    if preview_refused:
+        say("RELEASE_EDITS_REFUSED", "preview_failed", json.dumps({
+            "error_code": "preview_failed",
+            "closed_build_id": distribution.identity.closed_build_id,
+            "installation_root": distribution.installation_root,
+            "release_sequence": distribution.release_sequence,
+            "cutover_completed": True, "admission_attempted": False,
+            "effects": "no_admissions",
+        }, sort_keys=True))
+        return 78
+    return _run_release_edits(distribution, descriptor, new_catalog, plan_only=False)
 
 
 def main() -> int:
     arguments = sys.argv[1:]
     if arguments[:1] == ["_cross"]:
-        require(len(arguments) == 5 and arguments[4] in {"audit", "complete"},
+        require(len(arguments) == 5 and arguments[4] in {
+            "audit", "complete", "complete-no-admission",
+        },
                 "internal crossing arguments")
         return cross(*arguments[1:])
     if arguments == ["prepare"]:
