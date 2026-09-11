@@ -1341,3 +1341,37 @@ def test_repairing_one_dependency_frees_the_catalog_too(
     assert rec._repair_watched(["searxng"])["ok"] is True
     assert observed == [("run", False, True), ("wait_ready", False, True)]
     assert catalog_held[0] is False
+
+
+def _declares(manifest: str, code: bytes) -> bool:
+    return f'digest = "sha256:{hashlib.sha256(code).hexdigest()}"' in manifest
+
+
+def test_store_only_deploy_admits_the_edit_where_nothing_was_authored(
+        monkeypatch, tmp_path):
+    """Review A-11, first probe: the host had no authoring tree at all.
+
+    The documented command failed with ``authoring_version_invalid: missing``
+    before reaching Birth, for every first-party executor.
+    """
+    edit = b"print('edit')\n"
+    reached = _store_only_deploy(
+        monkeypatch, tmp_path, authored=None, edited=edit)
+    assert [item["code"] for item in reached] == [edit]
+    assert _declares(reached[0]["manifest"], edit)
+
+
+def test_store_only_deploy_admits_the_edit_not_the_stale_authoring(
+        monkeypatch, tmp_path):
+    """Review A-11, second probe: an authoring tree holding older bytes.
+
+    The command delivered the authored bytes and silently dropped the edit -
+    a publication that reports success while shipping the previous code.
+    """
+    edit = b"print('new')\n"
+    reached = _store_only_deploy(
+        monkeypatch, tmp_path, authored=b"print('old')\n", edited=edit)
+    assert [item["code"] for item in reached] == [edit]
+    assert _declares(reached[0]["manifest"], edit)
+
+

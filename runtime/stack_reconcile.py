@@ -523,7 +523,20 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
             ref = store_refs.get(contract_id)
             if ref is None:
                 raise StackFailure("unknown_executor", f"executor {name!r} is not installed")
-            directory = None
+            # A deploy publishes the operator's working copy; without one it
+            # re-admits the bytes the store already names.
+            working = root / name
+            directory = (
+                working.resolve() if (working / "manifest.toml").is_file()
+                else None
+            )
+            if directory is not None:
+                try:
+                    directory.relative_to(root)
+                except ValueError as exc:
+                    raise StackFailure(
+                        "invalid_executor", "executor escapes the catalog root",
+                    ) from exc
         else:
             ref = None
             directory = (root / name).resolve()
@@ -546,11 +559,11 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
                     )
 
                     staging = (
-                        materialize_birth_candidate_from_manifest_ref(
-                            ref, Path(raw_staging) / name,
-                        ) if ref is not None else
                         materialize_birth_candidate_from_authoring(
                             directory, Path(raw_staging) / name,
+                        ) if directory is not None else
+                        materialize_birth_candidate_from_manifest_ref(
+                            ref, Path(raw_staging) / name,
                         )
                     )
                     birth = submit_stack_reconcile_birth(BirthIntent(
