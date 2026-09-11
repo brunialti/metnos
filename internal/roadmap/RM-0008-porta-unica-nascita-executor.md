@@ -1391,6 +1391,7 @@ sviluppo.
 | 2026-09-01 | `active` | Il rilievo B `de054b93` sulla provenienza della decisione e' stato recepito riportando nel verbale i tre input testuali ricevuti direttamente nella task Codex principale RM-0008. Il verbale non attribuisce piu' i messaggi alla task separata di B ed e' offerto alla nuova revisione incrociata. |
 | 2026-09-07 | `active` | RM-VARIAZIONE-03 isola la regressione del runner delle proprieta': l'adozione delle correnti pre-F4 e' esplicita, limitata alla prima distribuzione staged e attestata senza modificare i 24 executor revertibili. Il candidato ha 193 test mirati verdi; recovery e passaggio sul clone restano obbligatori prima del live (§23.51). |
 | 2026-09-11 | `done` | RM-VARIAZIONE-04 approvata da Roberto: `old_tree_id` nullable anche alla prima installazione dell'albero di redazione per una generazione gia' pubblicata; il predecessore resta obbligatorio fuori dalla prima nascita (§7.1, §23.52). |
+| 2026-09-11 | `done` | RM-VARIAZIONE-05 approvata da Roberto: l'ingresso della transizione tiene il blocco di deployment dal completamento fino all'attivazione e alla rilettura finale della selezione; due nuovi detentori classificati con la sola capacita' `store_write` (review A-05, §17, §23.53). |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 
@@ -3464,3 +3465,31 @@ La correzione di A-11 (pubblicazione della modifica dell'operatore in
 variazione l'11 settembre 2026, su proposta della consegna
 `internal/design/handover_rm0008_release3_9_9_2026.md` («Due proposte per
 Roberto», punto 1).
+
+### 23.53 RM-VARIAZIONE-05: l'attraversamento tiene il blocco fino alla verifica finale
+
+La review avversariale della Release 3 (A-05) ha mostrato un intervallo
+scoperto. Il completamento prendeva il blocco di deployment e lo lasciava al
+ritorno; l'ingresso della transizione avviava poi la topologia e riportava
+l'identità della release completata, senza tenere nulla nel mezzo. Un
+avanzamento amministrativo N+1 poteva inserirsi fra completamento e avvio, e
+l'ingresso avrebbe attribuito il successo a N.
+
+L'ingresso della transizione (`install/executor_birth_transition.py`,
+`_complete_closed_v1`) prende ora il blocco una sola volta e lo tiene
+attraverso completamento, attivazione e rilettura finale della transazione
+della release esatta. Se la selezione è cambiata, l'attraversamento fallisce
+con `birth_transition_selection_changed`. Il completamento
+(`install/birth_authority_provisioner.py`, `_held_or_new_deployment_lock_v2`)
+accetta la sessione già tenuta invece di riprenderla, perché il blocco non è
+rientrante; chiamato senza sessione, continua a prenderla da sé. Nessun
+percorso d'avvio dei servizi usa il blocco di deployment, e il completamento
+libera ancora il blocco degli avvii e il catalogo prima di ritornare.
+
+Le due funzioni sono nuovi detentori del blocco di deployment, cioè una nuova
+autorità ai sensi del §17. L'11 settembre 2026 Roberto ha scelto l'opzione (a),
+aggiungere il blocco, fra tre opzioni scritte per esteso: (a) aggiungere il
+blocco; (b) accettare il rischio finché c'è un solo amministratore; (c) un
+disegno diverso senza nuovo detentore. L'inventario dei confini classifica le
+due funzioni con la sola capacità `store_write`; nessun'altra eccezione è
+concessa.

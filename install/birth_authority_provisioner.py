@@ -5413,11 +5413,36 @@ def _require_administrative_python_bound_to_tcb_v1(descriptor: object) -> None:
         raise _reject("birth_transition_administrative_python_mismatch")
 
 
+@contextmanager
+def _held_or_new_deployment_lock_v2(session: object | None):
+    """Yield the caller's live deployment session, or hold one for the call."""
+    from executor_birth_ownership_coordinator import (
+        _deployment_lock_v1, _require_deployment_lock_session_v1,
+    )
+
+    if session is None:
+        with _deployment_lock_v1() as owned:
+            yield owned
+        return
+    _require_deployment_lock_session_v1(session)
+    yield session
+
+
 def complete_transition_cutover_v2(
     distribution: object, source_id: object, *, service_state_root: object,
     legacy_service_user: object, legacy_installation_root: object,
+    deployment_session: object | None = None,
 ):
-    """Complete one reserved V2 crossing under the ordered lock protocol."""
+    """Complete one reserved V2 crossing under the ordered lock protocol.
+
+    ``deployment_session`` is the fixed deployment lock already held by the
+    caller. The transition orchestrator holds it from before completion until
+    the started topology has been checked against the selection (review A-05):
+    released here, an administrative N+1 could advance between completion and
+    activation, and the orchestrator would report N as what it had started.
+    The lock is not reentrant - a second acquisition in the same process
+    blocks on its own flock - so a held session is passed, never re-taken.
+    """
     from contract_cutover_guard import (
         _begin_topology_transition_v1,
         _contract_cutover_guard_for_service_user_v1,
@@ -5480,7 +5505,7 @@ def complete_transition_cutover_v2(
     if not selected_state_root.is_absolute() or selected_state_root == Path("/"):
         raise _reject("birth_transition_service_identity_changed")
     selected_state_root = Path(os.path.abspath(selected_state_root))
-    with _deployment_lock_v1() as deployment_session:
+    with _held_or_new_deployment_lock_v2(deployment_session) as deployment_session:
         verified = verify_current_installation_distribution_v1(
             distribution.encoded, distribution.signature,
         )

@@ -42,6 +42,16 @@
     },
     {
       "path": "install/birth_authority_provisioner.py",
+      "scope": "_held_or_new_deployment_lock_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "caller-held or call-scoped deployment lock session for completion (review A-05, §17 decision of Roberto 2026-09-11)",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_authority_provisioner.py",
       "scope": "_prepare_transition_legacy_state_v2",
       "role": "store_owner",
       "capabilities": [
@@ -876,6 +886,16 @@
         "store_write"
       ],
       "destination": "one-shot handoff to the verified release and signed topology activation",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_transition.py",
+      "scope": "_complete_closed_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "deployment lock held from completion through activation and the final selection reread (review A-05, §17 decision of Roberto 2026-09-11)",
       "phase": "M4"
     },
     {
