@@ -83,6 +83,7 @@ executors/_retired/|
 tutor/cards/retired/|
 CLAUDE(\.mutabile)?\.md$|
 AGENTS\.md$|
+BACHECA$|
 \.review_status\.md$|
 report_llm_locale_vs_opus.*\.md$|
 bench_prefilter_new_rules\.py$|

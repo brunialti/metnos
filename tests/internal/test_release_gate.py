@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -252,6 +253,16 @@ def test_public_export_includes_only_the_public_documentation_boundary() -> None
     assert '"100644:0"' in exporter
     assert '"100755:0"' in exporter
     assert "mode/stage Git non regolare per Python pubblico" in exporter
+
+
+def test_public_export_drops_the_internal_coordination_board() -> None:
+    # The agents' shared board sits at the repository root, untracked; the
+    # exporter lists untracked files too, so only EXCLUDE keeps it private.
+    exporter = (ROOT / "scripts" / "export-public.sh").read_text(encoding="utf-8")
+    block = exporter.split("EXCLUDE='", 1)[1].split("'", 1)[0]
+    excluded = re.compile(block.replace("\n", "").replace(" ", ""))
+    assert excluded.search("BACHECA")
+    assert not excluded.search("runtime/config.py")
 
 
 def test_public_publisher_refreshes_rm0008_inventory_fail_closed() -> None:
