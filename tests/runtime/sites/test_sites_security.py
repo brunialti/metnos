@@ -5219,7 +5219,16 @@ def test_login_failure_is_not_recoverable_and_closes_session(monkeypatch):
     closed = []
     monkeypatch.setattr(module.session_client, "session_close", lambda **kw: (
         closed.append(kw["session_id"]) or {"ok": True, "count": 1}))
-    for reason in ("credentials_missing", "selector_missing", "login_timeout"):
+    from engine.recovery import classify_error  # noqa: F401  (import check)
+    from engine.types import OPERATIONAL_ERROR_CLASSES
+    # Un guasto che la PERSONA risolve si cede a lei; uno stato del sito no.
+    # Dire «serve un'azione fisica» quando il portale e' fermo e' un esito che
+    # non corrisponde alla realta' (§2.8, turno `ab0ebb39` del 10/9/2026).
+    atteso = {"credentials_missing": "needs_user_action",
+              "selector_missing": "service_unavailable",
+              "login_timeout": "service_unavailable",
+              "login_entry_stalled": "service_unavailable"}
+    for reason in atteso:
         monkeypatch.setattr(
             module.session_client, "session_login", lambda **_kw: {
                 "ok": True, "logged_in": False, "reason_code": reason,
@@ -5227,11 +5236,15 @@ def test_login_failure_is_not_recoverable_and_closes_session(monkeypatch):
                 "sensitive": True,
             })
         out = module.invoke({"session_ids": [reason]})
-        assert out["error_class"] == "needs_user_action"
+        assert out["error_class"] == atteso[reason], reason
+        # In entrambi i casi il turno si chiude: nessun piano alternativo
+        # ripara credenziali mancanti ne' un sito che non risponde.
+        assert (out["error_class"] in OPERATIONAL_ERROR_CLASSES
+                or out["error_class"] == "needs_user_action")
         assert out["entries"][0]["session_closed"] is True
         assert out["attachments"][0]["path"] == \
             "/tmp/redacted-login-failure.png"
-    assert closed == ["credentials_missing", "selector_missing", "login_timeout"]
+    assert closed == list(atteso)
 
     from engine.recovery import classify_error, is_recoverable
     from engine.types import RunResult, StepRun
