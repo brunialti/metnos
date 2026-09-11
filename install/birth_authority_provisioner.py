@@ -5414,18 +5414,18 @@ def _require_administrative_python_bound_to_tcb_v1(descriptor: object) -> None:
 
 
 @contextmanager
-def _held_or_new_deployment_lock_v2(session: object | None):
+def _held_or_new_deployment_lock_v2(deployment_session: object | None):
     """Yield the caller's live deployment session, or hold one for the call."""
     from executor_birth_ownership_coordinator import (
         _deployment_lock_v1, _require_deployment_lock_session_v1,
     )
 
-    if session is None:
+    if deployment_session is None:
         with _deployment_lock_v1() as owned:
             yield owned
         return
-    _require_deployment_lock_session_v1(session)
-    yield session
+    _require_deployment_lock_session_v1(deployment_session)
+    yield deployment_session
 
 
 def complete_transition_cutover_v2(
