@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import contextlib
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -37,7 +38,9 @@ def release(monkeypatch, tmp_path):
     )
     distribution = NS(installation_root=root, release_sequence=42,
                       identity=NS(closed_build_id="sha256:test-release"),
-                      encoded=b"distribution", signature=b"signature")
+                      encoded=b"distribution", signature=b"signature",
+                      files=(NS(path="runtime/stack_reconcile.py"),
+                             NS(path="runtime/config.py")))
     environment = {"METNOS_USER_DATA": record.home + "/data",
                    "METNOS_USER_STATE": record.home + "/state",
                    "METNOS_USER_CONFIG": record.home + "/config",
@@ -215,6 +218,114 @@ def test_malformed_output_never_claims_success(monkeypatch, release, capsys, std
     assert '"effects": "unknown_check_pending_activation"' in out
 
 
+def _traceback(root, secret):
+    return (
+        b"Traceback (most recent call last):\n"
+        b'  File "/usr/lib/python3.12/runpy.py", line 198, in _run_module_as_main\n'
+        + f'  File "{root}/runtime/stack_reconcile.py", line 31, in <module>\n'.encode()
+        + f'  File "{root}/runtime/config.py", line 389, in read\n'.encode()
+        + b"    if not target.exists():\n"
+        + f"PermissionError: [Errno 13] Permission denied: '/home/x/{secret}'\n".encode()
+        + b"\xff\x00\x1b[31m" + b"x" * 5000 + b"\n")
+
+
+@pytest.mark.parametrize("plan", [True, False])
+def test_child_failure_is_located_without_quoting_it(monkeypatch, release, capsys, plan):
+    """Review C15: the refusal says where the child failed, never what it said."""
+    secret = "sentinel-secret-91c2"
+    root = release.distribution.installation_root
+    stderr = _traceback(root, secret)
+    monkeypatch.setattr(cycle, "_release_edits_child", lambda *a, **k:
+                        subprocess.CompletedProcess([], 1, b"", stderr))
+    assert run_edits(release, plan=plan) == 78
+    out = capsys.readouterr().out
+    assert "release_edits_output_invalid" in out
+    streams = json.loads(out.split(" ", 2)[2])["child_streams"]
+    assert streams["stdout_bytes"] == 0
+    assert streams["stderr_bytes"] == len(stderr)
+    assert streams["stderr_sha256"] == hashlib.sha256(stderr).hexdigest()
+    assert streams["exception_type"] == "PermissionError"
+    assert streams["release_frames"] == ["runtime/stack_reconcile.py:31",
+                                         "runtime/config.py:389"]
+    for leaked in (secret, "/home/x", "runpy.py", "target.exists", "Errno"):
+        assert leaked not in out
+
+
+def test_import_failure_before_main_is_located(monkeypatch, release, capsys):
+    root = release.distribution.installation_root
+    stderr = (b"Traceback (most recent call last):\n"
+              + f'  File "{root}/runtime/stack_reconcile.py", line 31, in <module>\n'.encode()
+              + b"ModuleNotFoundError: No module named 'sentinel_module'\n")
+    monkeypatch.setattr(cycle, "_release_edits_child", lambda *a, **k:
+                        subprocess.CompletedProcess([], 1, b"", stderr))
+    assert run_edits(release, plan=True) == 78
+    out = capsys.readouterr().out
+    streams = json.loads(out.split(" ", 2)[2])["child_streams"]
+    assert streams["exception_type"] == "ModuleNotFoundError"
+    assert streams["release_frames"] == ["runtime/stack_reconcile.py:31"]
+    assert "sentinel_module" not in out
+
+
+def _located(monkeypatch, release, capsys, stderr):
+    monkeypatch.setattr(cycle, "_release_edits_child", lambda *a, **k:
+                        subprocess.CompletedProcess([], 1, b"", stderr))
+    assert run_edits(release, plan=True) == 78
+    out = capsys.readouterr().out
+    return out, json.loads(out.split(" ", 2)[2])["child_streams"]
+
+
+def test_a_message_line_never_passes_as_the_exception_type(monkeypatch, release, capsys):
+    """Review I-008 v2: an unindented line of the message was reported as a type."""
+    root = release.distribution.installation_root
+    stderr = (b"Traceback (most recent call last):\n"
+              + f'  File "{root}/runtime/stack_reconcile.py", line 1444, in main\n'.encode()
+              + b"ValueError: a message on\nPrivateTokenAbc123\n")
+    out, streams = _located(monkeypatch, release, capsys, stderr)
+    assert streams["exception_type"] == "ValueError"
+    assert "PrivateTokenAbc123" not in out
+
+
+def test_only_authenticated_release_files_are_frames(monkeypatch, release, capsys):
+    """Review I-008 v2: a forged File line under the root was reported."""
+    root = release.distribution.installation_root
+    stderr = (b"Traceback (most recent call last):\n"
+              + f'  File "{root}/runtime/stack_reconcile.py", line 1444, in main\n'.encode()
+              + b"ValueError: user text follows:\n"
+              + f'  File "{root}/runtime/PrivateFilenameAbc123.py", line 25, in x\n'.encode())
+    out, streams = _located(monkeypatch, release, capsys, stderr)
+    assert streams["release_frames"] == ["runtime/stack_reconcile.py:1444"]
+    assert "PrivateFilenameAbc123" not in out
+
+
+@pytest.mark.parametrize("type_line", [b"a" * 20000 + b".ValueError: x",
+                                       b"project.module.CustomError: x",
+                                       b"E" * 20000 + b": x"])
+def test_unknown_or_unbounded_types_report_nothing(monkeypatch, release, capsys, type_line):
+    stderr = b"Traceback (most recent call last):\n" + type_line + b"\n"
+    out, streams = _located(monkeypatch, release, capsys, stderr)
+    assert streams["exception_type"] is None
+    assert len(out) < 4096
+
+
+def test_without_an_inventory_no_frame_is_reported():
+    stderr = (b"Traceback (most recent call last):\n"
+              b'  File "/r/runtime/stack_reconcile.py", line 1, in m\nValueError: x\n')
+    streams = cycle._child_streams(b"", stderr, "/r")
+    assert (streams["release_frames"], streams["exception_type"]) == ([], "ValueError")
+
+
+@pytest.mark.parametrize("stderr", [b"", b"no traceback here: secret", b"\xff" * 64,
+                                    b"Traceback (most recent call last):\nlowercase: secret\n"])
+def test_streams_without_a_located_failure_report_nothing_more(monkeypatch, release, capsys, stderr):
+    monkeypatch.setattr(cycle, "_release_edits_child", lambda *a, **k:
+                        subprocess.CompletedProcess([], 1, b"not json", stderr))
+    assert run_edits(release, plan=True) == 78
+    out = capsys.readouterr().out
+    streams = json.loads(out.split(" ", 2)[2])["child_streams"]
+    assert (streams["exception_type"], streams["release_frames"]) == (None, [])
+    assert "secret" not in out and "lowercase" not in out
+
+
 @pytest.mark.parametrize("invalid", ["nonzero_exit", "missing_receipt", "not_activated",
                                     "malformed_activation", "no_restart", "not_ready"])
 def test_success_requires_receipts_and_actual_activation(monkeypatch, release, capsys, invalid):
@@ -239,7 +350,8 @@ def test_success_requires_receipts_and_actual_activation(monkeypatch, release, c
 @pytest.mark.parametrize("plan", [False, True])
 def test_timeout_reports_declared_limit_and_uncertainty(monkeypatch, release, capsys, plan):
     def child(*args, **kwargs):
-        raise subprocess.TimeoutExpired("test", 120 if plan else 600)
+        raise subprocess.TimeoutExpired("test", 120 if plan else 600,
+                                        output=b"partial", stderr=b"secret-tail")
 
     monkeypatch.setattr(cycle, "_release_edits_child", child)
     assert run_edits(release, plan=plan) == 78
@@ -249,6 +361,8 @@ def test_timeout_reports_declared_limit_and_uncertainty(monkeypatch, release, ca
     assert summary["error_code"] == "release_edits_timeout"
     assert summary["timeout_s"] == (120 if plan else 600)
     assert summary["effects"] == ("no_admissions" if plan else "unknown_check_pending_activation")
+    assert summary["child_streams"]["stdout_bytes"] == len(b"partial")
+    assert "secret-tail" not in output
 
 
 @pytest.mark.parametrize("content", [None, b"different", b"expected\n"])

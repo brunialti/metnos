@@ -45,7 +45,9 @@ from contextlib import ExitStack
 import ctypes
 import fcntl
 import hashlib
+import builtins
 import json
+import re
 import os
 from pathlib import Path
 import pwd
@@ -789,6 +791,66 @@ def _release_edits_child(distribution, descriptor, catalog, *, plan_only: bool):
     )
 
 
+_TRACE_FRAME_RE = re.compile(rb'^[ \t]+File "([^"\n]{1,512})", line ([0-9]{1,7})', re.M)
+_TRACE_TYPE_RE = re.compile(rb"^([A-Za-z_][A-Za-z0-9_]{0,80})(?::|$)")
+# The only exception types ever named: Python's own, derived from the
+# interpreter rather than listed. Any other line - a message, a note, a
+# project class - reports nothing, so no text can pass as a type.
+_BUILTIN_EXCEPTION_NAMES = frozenset(
+    name for name, value in vars(builtins).items()
+    if isinstance(value, type) and issubclass(value, BaseException))
+_RELEASE_FRAME_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_./-]{0,255}")
+RELEASE_FRAMES_KEPT = 6
+
+
+def _child_streams(stdout, stderr, installation_root: str, *,
+                   release_files: frozenset = frozenset()) -> dict:
+    """Bounded, non-sensitive facts about the child's output (review C15).
+
+    Never the text: a few stderr lines can carry secrets, arguments or
+    environment values. Lengths and hashes identify the streams. A frame is
+    reported only for a path of the authenticated release inventory
+    (``release_files``) and a type only when it is a Python builtin
+    exception, so a line of the message can pass as neither.
+    """
+    streams = {}
+    for name, data in (("stdout", stdout), ("stderr", stderr)):
+        data = data if isinstance(data, bytes) else b""
+        streams[name + "_bytes"] = len(data)
+        streams[name + "_sha256"] = hashlib.sha256(data).hexdigest()
+    err = stderr if isinstance(stderr, bytes) else b""
+    prefix = os.fsencode(installation_root.rstrip("/") + "/")
+    frames = []
+    for path, line in _TRACE_FRAME_RE.findall(err):
+        if not path.startswith(prefix):
+            continue
+        try:
+            relative = path[len(prefix):].decode("ascii")
+        except UnicodeDecodeError:
+            continue
+        if (_RELEASE_FRAME_RE.fullmatch(relative)
+                and ".." not in relative.split("/")
+                and relative in release_files):
+            frames.append(f"{relative}:{int(line)}")
+    streams["release_frames"] = frames[-RELEASE_FRAMES_KEPT:]
+    exception_type = None
+    if b"Traceback (most recent call last):" in err:
+        for raw in reversed(err.splitlines()):
+            match = _TRACE_TYPE_RE.match(raw)
+            if match and match.group(1).decode("ascii") in _BUILTIN_EXCEPTION_NAMES:
+                exception_type = match.group(1).decode("ascii")
+                break
+    streams["exception_type"] = exception_type
+    return streams
+
+
+def _release_files(distribution) -> frozenset:
+    """Relative paths of the authenticated release inventory, in memory."""
+    return frozenset(
+        item.path for item in getattr(distribution, "files", ())
+        if isinstance(getattr(item, "path", None), str))
+
+
 def _run_release_edits(distribution, descriptor, catalog, *, plan_only: bool) -> int:
     """Report the CLI's structured result without inventing atomic rollback."""
     summary = {
@@ -828,6 +890,9 @@ def _run_release_edits(distribution, descriptor, catalog, *, plan_only: bool) ->
             distribution, descriptor, catalog, plan_only=plan_only,
         )
         summary["returncode"] = result.returncode
+        summary["child_streams"] = _child_streams(
+            result.stdout, result.stderr, distribution.installation_root,
+            release_files=_release_files(distribution))
         error_code = "release_edits_output_invalid"
         payload = json.loads(result.stdout)
         require(isinstance(payload, dict) and type(payload.get("ok")) is bool,
@@ -870,8 +935,11 @@ def _run_release_edits(distribution, descriptor, catalog, *, plan_only: bool) ->
         say("RELEASE_EDITS_PLAN" if plan_only else "RELEASE_EDITS_ADMITTED",
             json.dumps(summary, sort_keys=True))
         return 0
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as expired:
         error_code = "release_edits_timeout"
+        summary["child_streams"] = _child_streams(
+            expired.stdout, expired.stderr, distribution.installation_root,
+            release_files=_release_files(distribution))
     except Exception as exc:
         summary["failure_type"] = type(exc).__name__
     summary["error_code"] = error_code

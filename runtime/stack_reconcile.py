@@ -17,6 +17,7 @@ import fcntl
 import json
 import os
 import pwd
+import re
 import signal
 import stat
 import subprocess
@@ -1373,6 +1374,33 @@ def _failure_payload(exc: StackFailure) -> dict:
     }
 
 
+_ERROR_TYPE_MAX = 256
+_ERROR_TYPE_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
+
+
+def _unexpected_failure_payload(exc: Exception) -> dict:
+    """Report an unforeseen failure by type only.
+
+    The message is withheld: it can quote paths, values or secrets, and the
+    caller (the release wrapper) forwards this report to operators.
+    """
+    kind = type(exc)
+    name = kind.__qualname__
+    if kind.__module__ not in ("builtins", "__main__"):
+        name = f"{kind.__module__}.{name}"
+    if len(name) > _ERROR_TYPE_MAX or not _ERROR_TYPE_RE.fullmatch(name):
+        # A name that cannot be shown whole is not shown at all: truncating
+        # it could still copy part of whatever it was built from.
+        name = "unrepresentable"
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "ok": False,
+        "error_code": "unexpected_failure",
+        "error_type": name,
+        "details": {},
+    }
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1394,8 +1422,10 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    reconciler = StackReconciler()
     try:
+        # Built inside the report boundary: a failure here must reach the
+        # caller as a JSON report, not as an empty stdout (review C15).
+        reconciler = StackReconciler()
         if args.command != "deploy" and (args.plan or args.changed_only or args.sign):
             raise StackFailure(
                 "option_invalid",
@@ -1451,6 +1481,12 @@ def main(argv: list[str] | None = None) -> int:
             }
     except StackFailure as exc:
         print(json.dumps(_failure_payload(exc), ensure_ascii=False, sort_keys=True))
+        return 1
+    except Exception as exc:  # noqa: BLE001 - reported, never turned into success
+        # KeyboardInterrupt and SystemExit are not Exception: they still stop
+        # the process as before.
+        print(json.dumps(_unexpected_failure_payload(exc),
+                         ensure_ascii=False, sort_keys=True))
         return 1
     print(json.dumps(out, ensure_ascii=False, sort_keys=True))
     return 0

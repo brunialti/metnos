@@ -197,6 +197,64 @@ def test_invalid_stack_profile_is_a_structured_cli_failure(monkeypatch, tmp_path
     assert payload["ok"] is False and payload["error_code"] == "stack_profile_unavailable"
 
 
+@pytest.mark.parametrize("where", ["construction", "preview"])
+def test_unexpected_failure_is_a_structured_report_without_its_message(
+        monkeypatch, capsys, where):
+    """Review C15: an empty stdout hid the child's failure from the wrapper."""
+    secret = "sentinel-secret-7f3a"
+
+    def boom(*args, **kwargs):
+        raise ValueError(secret)
+
+    if where == "construction":
+        monkeypatch.setattr(sr, "StackReconciler", boom)
+    else:
+        monkeypatch.setattr(sr, "StackReconciler", lambda: object())
+        monkeypatch.setattr(sr, "verify_named_executors", boom)
+    assert sr.main(["deploy", "--changed-only", "--plan"]) == 1
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert (payload["error_code"], payload["error_type"]) == (
+        "unexpected_failure", "ValueError")
+    assert secret not in out
+
+
+@pytest.mark.parametrize("name", ["E" * 20000, "Bad-Name", "Line\nBreak"])
+def test_unrepresentable_type_names_are_not_reported(name):
+    """Review I-008 v2: the qualified name had no total bound."""
+    payload = sr._unexpected_failure_payload(type(name, (Exception,), {})("withheld"))
+    assert payload["error_type"] == "unrepresentable"
+
+
+def test_local_classes_are_not_reported_by_partial_name():
+    class Local(Exception):
+        pass
+
+    assert sr._unexpected_failure_payload(Local())["error_type"] == "unrepresentable"
+
+
+def test_system_exit_still_stops_the_process(monkeypatch):
+    def stop():
+        raise SystemExit(7)
+
+    monkeypatch.setattr(sr, "StackReconciler", stop)
+    with pytest.raises(SystemExit) as found:
+        sr.main(["deploy", "--changed-only", "--plan"])
+    assert found.value.code == 7
+
+
+def test_interrupts_still_stop_the_process(monkeypatch):
+    monkeypatch.setattr(sr, "StackReconciler", lambda: object())
+
+    def interrupted(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(sr, "verify_named_executors", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        sr.main(["deploy", "--changed-only", "--plan"])
+
+
 class FakeSystemctl:
     def __init__(self, *, target_loaded: bool = True,
                  playwright_loaded: bool = True,
