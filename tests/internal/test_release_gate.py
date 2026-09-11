@@ -274,13 +274,13 @@ def test_public_publisher_refreshes_rm0008_inventory_fail_closed() -> None:
     assert '[ ! -f "$public_tree/$generator" ] || [ ! -f "$public_tree/$inventory" ]' in function
     assert "return 1" in function
     assert "return 0" not in function
-    assert publisher.count('refresh_rm0008_public_inventory "$DEST"') == 1
+    assert publisher.count('refresh_rm0008_public_inventory "$DEST"') == 0
     assert publisher.count('refresh_rm0008_public_inventory "$WC"') == 1
-    assert publisher.index('refresh_rm0008_public_inventory "$DEST"') > publisher.index(
-        'git -C "$DEST" add -A'
-    )
     assert publisher.index('refresh_rm0008_public_inventory "$WC"') > publisher.index(
         'git -C "$WC" add -A'
+    )
+    assert publisher.index('refresh_rm0008_public_inventory "$WC"') < publisher.index(
+        'public-index "$WC"'
     )
 
 

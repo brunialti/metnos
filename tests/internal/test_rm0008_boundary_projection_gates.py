@@ -194,11 +194,11 @@ def test_repin_stops_before_review_when_projection_is_invalid(
 def test_publication_checks_projection_before_private_source_root() -> None:
     source = PUBLISHER.read_text(encoding="utf-8")
     private_projection = source.index(
-        '"$PYTHON" -I -S "$BOUNDARY_POLICY_CHECKER"',
+        '"$PYTHON" -I -B -S "$BOUNDARY_POLICY_CHECKER"',
     )
     private = source.index('source_review_gate \\\n  private-fs')
     public_projection = source.index(
-        '"$PYTHON" -I -S "$DEST/scripts/check_contract_boundary_policy.py"',
+        '"$PYTHON" -I -B -S "$DEST/scripts/check_contract_boundary_policy.py"',
     )
     public = source.index("public-fs-pin")
     assert private_projection < private
