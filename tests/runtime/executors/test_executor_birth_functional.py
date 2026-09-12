@@ -189,11 +189,17 @@ def test_candidate_is_a_readonly_mount_not_just_mode_bits(tmp_path):
     assert command[position - 1:position + 2] == ("--ro-bind", str(candidate), "/work/candidate")
 
 
-def test_matcher_and_support_sources_are_in_context_commitment():
+def test_functional_precheck_preserves_published_runner_v1_membership():
     from executor_birth_context_v1 import CONTEXT_CATALOG_V1
-    files = next(value[2] for value in CONTEXT_CATALOG_V1 if value[0] == "runner")
-    assert {"executor_birth_functional.py", "test_runner.py"}.issubset(files)
-    assert set(functional.FUNCTIONAL_SUPPORT_FILES_V1).issubset(files)
+    version, files = next((value[1], value[2]) for value in CONTEXT_CATALOG_V1
+                          if value[0] == "runner")
+    # Synth prechecks precede admission; their sources remain release-bound.
+    # Historical context reconstruction still needs the published V1 members.
+    assert version == "1"
+    assert files == (
+        "executor_birth_runner.py", "executor_birth_runner_windows_v1.py",
+        "bounded_subprocess.py",
+    )
 
 
 def test_real_functional_stdio_with_runtime_helpers_and_private_fixtures():

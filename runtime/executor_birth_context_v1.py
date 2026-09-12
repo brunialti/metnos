@@ -64,9 +64,7 @@ CONTEXT_CATALOG_V1: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
         "runner", "1",
         (
             "executor_birth_runner.py", "executor_birth_runner_windows_v1.py",
-            "bounded_subprocess.py", "executor_birth_functional.py", "test_runner.py",
-            "executor_helpers.py", "messages.py", "i18n.py", "config.py",
-            "logging_setup.py", "worker_policy.py", "hashutil.py",
+            "bounded_subprocess.py",
         ),
         "productive",
     ),
