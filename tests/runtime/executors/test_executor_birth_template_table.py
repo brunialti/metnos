@@ -11,10 +11,10 @@ from executor_birth_template_table_v1 import (
 )
 
 
-def test_the_table_holds_exactly_the_two_internal_templates():
-    """Two, named: the launcher of the runner and the reviewer's instruction."""
+def test_the_table_holds_exactly_the_three_internal_templates():
+    """Closed launchers and review instruction; no caller-selected template."""
     assert sorted(TEMPLATE_TABLE_V1) == [
-        "runner.linux_launcher", "semantic_review.system",
+        "runner.functional_stdin", "runner.linux_launcher", "semantic_review.system",
     ]
 
 
@@ -46,5 +46,5 @@ def test_each_digest_comes_from_the_text_itself():
 def test_the_table_carries_one_stable_digest():
     """The digest the context component will carry at the last step."""
     assert template_table_digest_v1() == (
-        "sha256:96eea4ebdb920b34128f00cbbd07ae95077e4a92660211e2c50e03df89f72443"
+        "sha256:2ef4d33cd2d43228405c46289a879dc1ab5919406e0d871a6e2e30d7ceeb3736"
     )

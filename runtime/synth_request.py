@@ -22,7 +22,9 @@ from synt_multistage import run_full as multistage_run_full
 from loader import SYNTHESIZED_EXECUTORS_DIR
 from executor_birth_synth import (
     SynthBirthData, require_synth_birth_service, submit_synth_multistage,
+    SynthTestData, validate_synth_tests,
 )
+from executor_birth_functional import validate_functional_cases
 from vocab import render_actions_pipe, render_objects_pipe, render_qualifiers_pipe
 from messages import get as _msg
 from generated_executor_contract import (
@@ -59,53 +61,31 @@ def _toml_value(v):
 
 
 def _validate_birth_tests(executor_dir):
-    """Esegue il test_runner.py sul manifest dell'executor sintetizzato.
-    Ritorna None se tutti i test passano, una stringa di errore se almeno uno
-    fallisce o se il runner stesso esplode (es. import error nel code).
-    """
-    import subprocess
-    from pathlib import Path
-    manifest_path = Path(executor_dir) / "manifest.toml"
-    if not manifest_path.exists():
-        return f"manifest non trovato in {executor_dir}"
+    """Validate private staging bytes before Birth, never execute on the host."""
+    import tomllib
+    root = Path(executor_dir)
+    source_name = root.name + ".py"
     try:
-        result = subprocess.run(
-            ["python3", str(_C.PATH_RUNTIME / "test_runner.py"), str(manifest_path)],
-            capture_output=True, text=True, timeout=60,
+        manifest = tomllib.loads((root / "manifest.toml").read_text(encoding="utf-8"))
+        if manifest.get("code", {}).get("files") != [source_name]:
+            return "synth_test_entrypoint_invalid"
+        data = SynthTestData.from_cases(
+            source_name, (root / source_name).read_bytes(), manifest.get("tests"),
         )
-    except subprocess.TimeoutExpired:
-        return "test_runner timeout (>60s)"
-    except Exception as ex:
-        return f"test_runner exception: {type(ex).__name__}: {ex}"
-    out = (result.stdout or "") + (result.stderr or "")
-    # Il runner stampa 'X/Y passati' come summary; se X != Y, almeno uno fallito.
-    import re
-    m = re.search(r"(\d+)/(\d+)\s+passati", out)
-    if m:
-        passed, total = int(m.group(1)), int(m.group(2))
-        if passed < total:
-            # Estrai i nomi dei test falliti per feedback al synt
-            failed = re.findall(r"\s+X\s+(\w+)", out)
-            return f"{passed}/{total} passati; falliti: {failed[:5]}"
-        return None
-    if result.returncode != 0:
-        return f"test_runner exit {result.returncode}: {out[:300]}"
-    return None  # nessun summary trovato, ma exit 0 — assumi ok
+    except (OSError, ValueError, TypeError, AttributeError):
+        return "synth_test_candidate_invalid"
+    report = validate_synth_tests(data)
+    return None if report.all_passed else report.summary
 
 
 def _install_synthesized(run, intent, user_query):
-    """Scrive e firma un candidato in SYNTHESIZED_EXECUTORS_DIR/<name>/.
+    """Prepara e prova il candidato privato, poi lo consegna alla porta Birth.
 
-    Il lifecycle resta ``synthesized``: il composer non lo espone finche' un
-    successivo gate di ammissione non completa traduzioni, contratto, autorita'
-    e prove richieste dallo standard. Idempotente: se la cartella esiste viene
-    sovrascritta (oggi e' OK perche' il flusso del turno produce un solo
-    install per query).
-
-    PRE-CHECK: il code_text DEVE compilare come Python valido. Se non
-    compila, fallisce l'install: meglio rigettare il synth che installare
-    un executor con SyntaxError che fallira' sempre a runtime
-    (`feedback_no_silent_failure`).
+    La sintassi viene controllata senza eseguire codice. I test funzionali
+    devono riuscire nel runner isolato PRIMA di qualsiasi ammissione.
+    Soltanto il pubblicatore Birth puo' creare o sostituire l'authoring;
+    questa funzione elimina esclusivamente il proprio staging temporaneo.
+    Il lifecycle ``synthesized`` non rende il candidato visibile al planner.
     """
     require_synth_birth_service()
     if not run.name or not run.code_text:
@@ -123,6 +103,11 @@ def _install_synthesized(run, intent, user_query):
     s1 = (run.stages[0].output or {}) if len(run.stages) >= 1 else {}
     s2 = (run.stages[1].output or {}) if len(run.stages) >= 2 else {}
     s4 = (run.stages[3].output or {}) if len(run.stages) >= 4 else {}
+    stage_tests = ((run.stages[2].output or {}).get("tests") or []) \
+        if len(run.stages) >= 3 else []
+    # Reject unsupported fields, including empty setup/teardown, before a
+    # renderer can discard them and make an unsafe proposal look declarative.
+    validate_functional_cases(stage_tests)
 
     import tempfile
     # Candidate bytes live outside authoring.  Only commit_birth_snapshot may
@@ -240,11 +225,7 @@ def _install_synthesized(run, intent, user_query):
         'overflow = "notice"',
     ])
 
-    stage_tests = ((run.stages[2].output or {}).get("tests") or []) \
-        if len(run.stages) >= 3 else []
     for test in stage_tests:
-        if not isinstance(test, dict):
-            continue
         lines.extend([
             '',
             '[[tests]]',
@@ -252,10 +233,6 @@ def _install_synthesized(run, intent, user_query):
             f'input = {_toml_value(test.get("input") or {})}',
             f'expect = {_toml_value(test.get("expect") or {})}',
         ])
-        if test.get("setup"):
-            lines.append(f'setup = {_toml_value(test["setup"])}')
-        if test.get("teardown"):
-            lines.append(f'teardown = {_toml_value(test["teardown"])}')
 
     _manifest_text = "\n".join(lines) + "\n"
     validate_generated_manifest_text(
@@ -276,6 +253,9 @@ def _install_synthesized(run, intent, user_query):
 
     import shutil
     try:
+        test_error = _validate_birth_tests(out_dir)
+        if test_error is not None:
+            raise RuntimeError(f"birth tests failed: {test_error}")
         birth = submit_synth_multistage(SynthBirthData(
             candidate_root=out_dir,
             contract_id=ContractId(ManifestOrigin.USER, f"{run.name}/manifest.toml"),
@@ -718,25 +698,6 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             install_error = f"{type(ex).__name__}: {ex}"
             if verbose:
                 print(f"[synth_request] install fallito: {install_error}")
-
-        # Test-driven validation: dopo install, esegue i birth test del manifest.
-        # Se uno o piu' test falliscono, rifiuta l'install (rimuove la dir) e
-        # ritorna error con dettaglio dei fallimenti. Cosi' il pianificatore
-        # riceve un'observation onesta invece di chiamare un executor broken.
-        # `feedback_no_silent_failure`: meglio dichiarare il fallimento di
-        # generazione che installare un broken.
-        if install_error is None:
-            test_error = _validate_birth_tests(SYNTHESIZED_EXECUTORS_DIR / run.name)
-            if test_error:
-                # Rimuovi l'install fallito per non lasciare un executor broken in catalog.
-                import shutil
-                try:
-                    shutil.rmtree(SYNTHESIZED_EXECUTORS_DIR / run.name)
-                except Exception as _e:  # silent swallow (auto-fixed)
-                    log.warning("silent exception in %s: %s", __name__, _e)
-                install_error = f"birth tests failed: {test_error}"
-                if verbose:
-                    print(f"[synth_request] test fallito: {install_error}")
 
         if progress is not None:
             if install_error:

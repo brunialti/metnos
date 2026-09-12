@@ -791,6 +791,21 @@ def _runtime_author_trusted_publics_v1() -> tuple | None:
     return tuple(sorted(bundle.author_verifier_keys.items()))
 
 
+def _validate_synth_tests(data):
+    """Use the sealed backend without exporting the bundle to a producer."""
+    from executor_birth_functional import SynthTestData, SynthTestReport, _run_synth_tests
+    if type(data) is not SynthTestData:
+        raise ValueError("synth_test_data_invalid")
+    bundle = _runtime_bundle_snapshot()
+    if bundle is None:
+        return SynthTestReport(error_code="test_environment_unavailable")
+    shadow = bundle.core.shadow_dependencies
+    return _run_synth_tests(
+        data, linux_registry=shadow.linux_sandbox_registry,
+        windows_registry=shadow.windows_sandbox_registry,
+    )
+
+
 def _execute_intent_with_capability(
     intent: "BirthIntent", capability: "_ProducerCapability",
 ) -> BirthResult:

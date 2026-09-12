@@ -368,6 +368,11 @@ def _bwrap_command(bwrap: str, work: Path, command: tuple[str, ...]) -> tuple[st
     for host_path in ("/usr", "/bin", "/lib", "/lib64"):
         if Path(host_path).exists():
             args.extend(("--ro-bind", host_path, host_path))
+    candidate = work / "candidate"
+    if candidate.is_dir():
+        # Mode 0400 alone is not read-only: the owner could chmod or replace
+        # its own source, harness or input. Pin the whole input mount read-only.
+        args.extend(("--ro-bind", str(candidate), "/work/candidate"))
     args.append("--")
     args.extend(command)
     return tuple(args)

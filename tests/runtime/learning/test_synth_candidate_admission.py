@@ -74,6 +74,7 @@ def test_reactive_synth_is_signed_as_quarantined_standard_candidate(
     admitted = []
     admitted_manifests = []
     monkeypatch.setattr(synth_request, "require_synth_birth_service", lambda: None)
+    monkeypatch.setattr(synth_request, "_validate_birth_tests", lambda _root: None)
     monkeypatch.setattr(
         synth_request,
         "submit_synth_multistage",
@@ -113,6 +114,7 @@ def test_rejected_reactive_birth_leaves_authoring_byte_identical(
     before = sentinel.read_bytes()
     monkeypatch.setattr(synth_request, "SYNTHESIZED_EXECUTORS_DIR", tmp_path)
     monkeypatch.setattr(synth_request, "require_synth_birth_service", lambda: None)
+    monkeypatch.setattr(synth_request, "_validate_birth_tests", lambda _root: None)
     monkeypatch.setattr(
         synth_request, "submit_synth_multistage",
         lambda _data: SimpleNamespace(

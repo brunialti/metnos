@@ -2,19 +2,15 @@ role: synt_tests
 tier: middle
 lang: en
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-13
-sha_prev: ""
+updated: 2026-09-12
+sha_prev: "6cc75382cbfa4aa82"
 
 section:
   name: synt_tests
   header: "Stage 3 TESTS of synt-multistage"
-  preamble: |
-    MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown fences,
-    NO comments. The response MUST start with `{` and end with `}`. Nothing
-    at all before the first `{`, nothing at all after the last `}`.
-
+  preamble: "One JSON object only, without prose, markdown or comments."
 context:
   decisions_locked:
     name: "{{ name }}"
@@ -24,26 +20,19 @@ context:
     revertible: "{{ revertible }}"
     reverse_pattern: "{{ reverse_pattern }}"
   user_request: "{{ user_request }}"
-
 rules:
   - name: test_count
-    body: "produce 4-6 birth tests."
-  - name: test_fields
+    body: "Produce 4-6 tests with unique names."
+  - name: declarative_only
     body: |
-      Each test:
-        - "name": unique snake_case string.
-        - "input": dict with concrete args (real values, no placeholder).
-        - "expect": dict with keys from {ok, ok_count_eq, fail_count_eq, error_contains}.
-        - "setup": shell string (empty if not needed).
-        - "teardown": shell string (empty if not needed).
+      MUST: use only name, input and expect, with at least one expectation.
+      MUST NOT: emit setup, teardown, env, reference, shell commands or dependencies on host network, keys or data.
+      OK: {"name":"empty_list","input":{"entries":[]},"expect":{"ok":true,"ok_count_eq":0}}.
+      ERROR: preparing or cleaning up files through shell, even with an empty string.
+  - name: private_fixture
+    body: "Each case gets a fresh private environment without network: fixture/input.txt contains \"birth fixture\\\\n\", fixture/empty.txt is empty and fixture/output is an empty directory. Use paths relative to this environment when files are needed; other inputs are concrete data. Host files are unavailable."
   - name: mandatory_cases
-    body: |
-      MANDATORY CASES (at least these 4):
-        1. basic happy case (1 element, ok=true).
-        2. empty list if the main arg is a list (ok=true, ok_count_eq=0).
-        3. invalid args (ok=false, error_contains="...").
-        4. domain-specific edge case (non-existent path/url, scope violation, etc.).
-
+    body: "One item, empty list when applicable, invalid arguments and a domain edge case."
 output_schema:
   type: object
   required: [tests]
@@ -54,16 +43,28 @@ output_schema:
       maxItems: 6
       items:
         type: object
+        additionalProperties: false
         required: [name, input, expect]
-
+        properties:
+          name: {type: string}
+          input: {type: object}
+          expect:
+            type: object
+            minProperties: 1
+            additionalProperties: false
+            properties:
+              ok: {type: boolean}
+              ok_count_eq: {type: integer}
+              fail_count_eq: {type: integer}
+              error_contains: {type: string}
 examples:
-  - name_for: delete_files
+  - name_for: change_texts
+    note: "Shape only: do not copy names, input or expectations literally."
     output:
       tests:
-        - {name: "delete_single_file", setup: "mkdir -p /tmp/t && echo x > /tmp/t/a.txt", input: {paths: ["/tmp/t/a.txt"]}, expect: {ok: true, ok_count_eq: 1}, teardown: "rm -rf /tmp/t"}
-        - {name: "empty_list_ok", setup: "", input: {paths: []}, expect: {ok: true, ok_count_eq: 0}, teardown: ""}
-        - {name: "path_not_a_list_fails", setup: "", input: {paths: "/tmp/x"}, expect: {ok: false, error_contains: "must be a list"}, teardown: ""}
-        - {name: "non_existent_path_fails_only_that_one", setup: "", input: {paths: ["/tmp/non_existent_xyz"]}, expect: {ok: false, fail_count_eq: 1, error_contains: "does not exist"}, teardown: ""}
-
+        - {"name":"one_item","input":{"entries":["Ab"]},"expect":{"ok":true,"ok_count_eq":1}}
+        - {"name":"empty_list","input":{"entries":[]},"expect":{"ok":true,"ok_count_eq":0}}
+        - {"name":"invalid_type","input":{"entries":42},"expect":{"ok":false,"error_contains":"list"}}
+        - {"name":"empty_text","input":{"entries":[""]},"expect":{"ok":true,"ok_count_eq":1}}
 footer:
-  instruction: "NOW produce the JSON for `{{ name }}`. ONLY JSON, nothing else."
+  instruction: "NOW produce the JSON for {{ name }}. ONLY JSON."
