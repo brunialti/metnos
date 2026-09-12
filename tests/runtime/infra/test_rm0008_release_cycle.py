@@ -549,6 +549,7 @@ def applying(monkeypatch, release, tmp_path):
     monkeypatch.setattr(receiver, "_receive_source_v1", lambda *args: "test-source")
     monkeypatch.setattr(cycle, "acquire_locks", lambda locks: None)
     monkeypatch.setattr(cycle, "withdraw_superseded_claim", lambda source: None)
+    monkeypatch.setattr(cycle, "withdraw_unclaimed_release", lambda source_id: None)
     monkeypatch.setattr(cycle, "retire_orphan_journals", lambda withdrawn: [])
     monkeypatch.setattr(builder, "build_and_install_received_source_v1", lambda s: release.distribution)
     monkeypatch.setattr(cycle, "publish_evidence", lambda *args: None)

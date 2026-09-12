@@ -101,6 +101,8 @@ def copy_chain(destination: Path) -> None:
         shutil.rmtree(destination)
     (destination / "releases-v1").mkdir(parents=True)
     (destination / "coordinator-v1").mkdir()
+    # The coordinator reader demands the mode the live directory has.
+    (destination / "coordinator-v1").chmod(0o755)
     (destination / "chain-v1").mkdir()
     for name in sorted(path.name for path in (LIVE / "releases-v1").iterdir()):
         shutil.copytree(LIVE / "releases-v1" / name,
@@ -129,6 +131,7 @@ def bind(work: Path):
     cycle.ROOT, cycle.COORD = work, work / "coordinator-v1"
     cycle.WITHDRAWN_ROOT = work / "withdrawn"
     cycle.OWNERS = {(os.getuid(), os.getgid())}
+    cycle.ROOT_OWNED = False
 
     def open_parent(path: Path, owners=None) -> int:
         item = path
@@ -427,6 +430,166 @@ def rehearse_refusals(source: Path, work: Path) -> None:
                    lambda: cycle.retire_orphan_journals(withdrawn))
 
 
+def renumber(release: Path, sequence: int) -> None:
+    descriptor = release / "deployment/executor-birth-deployment-v1.json"
+    value = json.loads(descriptor.read_bytes())
+    value["release_sequence"] = sequence
+    descriptor.write_bytes(
+        json.dumps(value, separators=(",", ":"), sort_keys=True).encode())
+
+
+def seed_unclaimed_release(cycle) -> Path:
+    """Leave the next slot installed and unclaimed, the way an audit refusal does.
+
+    Taken from the copy when the live chain still carries one, built on the
+    copy otherwise, so the proof keeps running once the live residue is gone.
+    """
+    claimed = max(json.loads(path.read_bytes())["release_sequence"]
+                  for path in (cycle.COORD / "successor-claims-v1").iterdir())
+    releases = cycle.ROOT / "releases-v1"
+    release = releases / f"{claimed + 1:020d}"
+    if not release.exists():
+        shutil.copytree(releases / f"{claimed:020d}", release)
+        renumber(release, claimed + 1)
+    return release
+
+
+def write_pending_claim(cycle, sequence: int) -> None:
+    """A reservation of `sequence` that the product's own reader accepts."""
+    from executor_birth_ownership_coordinator import (
+        SuccessorClaimV1, _coordinator_request_id_v1,
+        _resolve_ownership_coordinator_at_v2, _successor_claim_id_v1,
+    )
+    graph = _resolve_ownership_coordinator_at_v2(cycle.COORD, root_owned=False)
+    current = graph.transactions[-1]
+    closed = "sha256:" + "4" * 64
+    value = {
+        "schema_version": 1,
+        "previous_head_id": current.latest.head_id,
+        "release_sequence": sequence,
+        "request_id": _coordinator_request_id_v1(
+            closed, current.records[0].closed_build_id,
+            current.latest.cutover_id),
+        "source_id": "sha256:" + "5" * 64,
+        "closed_build_id": closed,
+    }
+    fields = {key: item for key, item in value.items() if key != "schema_version"}
+    claim = SuccessorClaimV1(claim_id=_successor_claim_id_v1(value), **fields)
+    path = (cycle.COORD / "successor-claims-v1"
+            / (current.latest.head_id[7:] + ".json"))
+    path.write_bytes(claim.encode())
+    path.chmod(0o644)
+
+
+def rehearse_unclaimed(source: Path, work: Path) -> None:
+    new_source = "sha256:" + "0" * 64
+
+    def fresh():
+        shutil.rmtree(work, ignore_errors=True)
+        shutil.copytree(source, work, symlinks=True)
+        cycle = bind(work)
+        # The cycle withdraws a pending attempt first; do the same, so the
+        # unclaimed release is the only residue left.
+        cycle.withdraw_superseded_claim(new_source)
+        release = seed_unclaimed_release(cycle)
+        sequence = int(release.name)
+        cycle.startup_fingerprint = lambda: ("attested", sequence - 1, "head")
+        return cycle, release
+
+    def names(cycle) -> set[str]:
+        return {path.name for path in (cycle.ROOT / "releases-v1").iterdir()}
+
+    def beyond(release: Path) -> Path:
+        return release.with_name(f"{int(release.name) + 1:020d}")
+
+    def leaves(label: str, cycle, source_id: str = new_source) -> None:
+        before = names(cycle)
+        cycle.require(cycle.withdraw_unclaimed_release(source_id) is None
+                      and names(cycle) == before, f"moved {label}")
+        print(f"  LEAVES {label}")
+
+    def refuses(label: str, cycle, release: Path) -> None:
+        expect_refusal(label, lambda: cycle.withdraw_unclaimed_release(new_source))
+        cycle.require(release.is_dir(), f"moved {label}")
+
+    print("11. the slot the builder fills next is parked, once")
+    cycle, release = fresh()
+    before = {str(path): cycle.snapshot(path) for path in cycle.preserved_paths()}
+    others = names(cycle) - {release.name}
+    archive = Path(cycle.withdraw_unclaimed_release(new_source))
+    cycle.require(names(cycle) == others, "the wrong releases moved")
+    cycle.require(sorted(path.name for path in archive.iterdir())
+                  == ["unselected-release"], "the archive is incomplete")
+    after = {str(path): cycle.snapshot(path) for path in cycle.preserved_paths()}
+    cycle.require(after == before, "preserved history changed")
+    cycle.require(cycle.withdraw_unclaimed_release(new_source) is None,
+                  "parked twice")
+    print(f"  slot {int(release.name)} moved, {len(others)} releases and"
+          f" {len(after)} preserved objects untouched; a second run is a no-op")
+
+    print("  a second failed build in the same slot, same descriptor, other files")
+    parked = archive / "unselected-release"
+    shutil.copytree(parked, release)
+    lock = release / "requirements.lock"
+    lock.write_bytes(lock.read_bytes() + b"# a second build\n")
+    second = Path(cycle.withdraw_unclaimed_release(new_source))
+    cycle.require(second != archive and not os.path.lexists(release)
+                  and parked.is_dir(), "the second build collided with the first")
+    print(f"  parked apart: {archive.name} and {second.name}")
+
+    print("12. what it leaves where it is")
+    cycle, release = fresh()
+    jumped = beyond(release)
+    release.rename(jumped)
+    renumber(jumped, int(jumped.name))
+    leaves("a release beyond the empty slot", cycle)
+
+    cycle, release = fresh()
+    jumped = beyond(release)
+    shutil.copytree(release, jumped)
+    renumber(jumped, int(jumped.name))
+    cycle.withdraw_unclaimed_release(new_source)
+    cycle.require(jumped.is_dir() and not release.exists(), "the wrong release moved")
+    print("  LEAVES a release beyond the slot while parking the slot")
+
+    cycle, release = fresh()
+    write_pending_claim(cycle, int(release.name))
+    leaves("the slot a standing claim reserves", cycle)
+
+    cycle, release = fresh()
+    claims = cycle.COORD / "successor-claims-v1"
+    published = max((json.loads(path.read_bytes()) for path in claims.iterdir()),
+                    key=lambda value: value["release_sequence"])["source_id"]
+    leaves("everything when the source is the one already published",
+           cycle, published)
+
+    print("13. what it must refuse")
+    cycle, release = fresh()
+    sequence = int(release.name)
+    cycle.startup_fingerprint = lambda: ("attested", sequence, "head")
+    refuses("the release the service starts", cycle, release)
+
+    cycle, release = fresh()
+    cycle.startup_fingerprint = lambda: ("refused", "Error", "unobservable")
+    refuses("an unobservable startup selection", cycle, release)
+
+    cycle, release = fresh()
+    archive = Path(cycle.withdraw_unclaimed_release(new_source))
+    shutil.copytree(archive / "unselected-release", release)
+    refuses("the same build parked twice", cycle, release)
+
+    cycle, release = fresh()
+    renumber(release, int(release.name) + 1)
+    refuses("a descriptor naming another release", cycle, release)
+
+    cycle, release = fresh()
+    claims = cycle.COORD / "successor-claims-v1"
+    latest = max((json.loads(path.read_bytes()) for path in claims.iterdir()),
+                 key=lambda value: value["release_sequence"])["request_id"]
+    sorted((cycle.COORD / "transactions-v2" / latest).iterdir())[-1].unlink()
+    refuses("a crossing neither completed nor abandoned", cycle, release)
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit("usage: rm0008_rehearse_withdrawal.py <scratch-directory>")
@@ -438,6 +601,7 @@ def main() -> None:
     rehearse(pristine, work)
     print("10. what it must refuse")
     rehearse_refusals(pristine, work)
+    rehearse_unclaimed(pristine, work)
     shutil.rmtree(work, ignore_errors=True)
     shutil.rmtree(pristine, ignore_errors=True)
     print("REHEARSAL_OK")

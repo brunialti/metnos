@@ -89,6 +89,8 @@ BIRTH = Path("/var/lib/metnos-service/.config/metnos/birth")
 LIVE_HELPER = Path("/usr/libexec/metnos/executor-birth-v1/preflight.py")
 WITHDRAWN_ROOT = Path("/var/lib/metnos-admin/rm0008-withdrawn-claims")
 OWNERS = {(0, 0)}
+# The coordinator is root's; the rehearsal reads a copy the developer owns.
+ROOT_OWNED = True
 # The birth root belongs to the service account; its parents to root.
 BIRTH_OWNERS = {(0, 0), (995, 985)}
 JOURNAL_PREFIX = ".birth-provisioning-v2.txn."
@@ -451,6 +453,71 @@ def withdraw_superseded_claim(source_id: str) -> str | None:
     return claim["request_id"]
 
 
+def withdraw_unclaimed_release(source_id: str) -> str | None:
+    """Park the release in the slot the builder fills next; move nothing else.
+
+    A crossing refused before the coordinator records anything (Release 26,
+    12/9: the audit refused after the build) leaves its release installed and
+    no claim naming it. The builder numbers the next release from the chain,
+    not from the directories, so it targets that same name and the no-replace
+    publication refuses it for ever.
+
+    The slot is the builder's own: its reader of the coordinator and its edge,
+    taken under the same locks, so no second numbering rule exists. Any other
+    directory is not what blocks the build and stays where it is. The slot is
+    parked only when no claim stands or names it, it carries its own number in
+    its descriptor and the service is positively attested to start another
+    release. Nothing is deleted: one no-replace rename moves it under an
+    archive named by its number and the census of the whole tree, which is
+    measured again once it has moved.
+    """
+    from install.executor_birth_distribution_release import (
+        _next_release_edge_v1, _resolve_ownership_coordinator_at_v2,
+    )
+    graph = _resolve_ownership_coordinator_at_v2(COORD, root_owned=ROOT_OWNED)
+    # A standing claim names its own slot, and the builder resumes it.
+    if graph.pending_claims:
+        return None
+    sequence = _next_release_edge_v1(graph, source_id).sequence
+    release = ROOT / "releases-v1" / f"{sequence:020d}"
+    if (not os.path.lexists(release)
+            or sequence in {claim.release_sequence for claim in graph.claims}):
+        return None
+    require(stat.S_ISDIR(release.lstat().st_mode),
+            "the unclaimed release is not a directory")
+    # The census refuses links anywhere below, the descriptor included.
+    measured = census(release)
+    descriptor = release / "deployment/executor-birth-deployment-v1.json"
+    require(stat.S_ISREG(descriptor.lstat().st_mode),
+            "the unclaimed release has no descriptor")
+    require(json.loads(descriptor.read_bytes()).get("release_sequence") == sequence,
+            "the unclaimed release is not the one its name says")
+    first = startup_fingerprint()
+    # Only a positive attestation says which release starts; a refusal, even
+    # a stable one, is a refusal here rather than a licence to move.
+    require(first[0] == "attested" and first[1] != sequence,
+            "the unclaimed release may be the one the service starts")
+
+    before = {str(item): snapshot(item) for item in preserved_paths()}
+    # The descriptor binds units and preflight, not every published file:
+    # two builds in one slot can share it, so the whole census names the
+    # archive.
+    archive = WITHDRAWN_ROOT / f"unclaimed-{release.name}-{measured[1][:16]}"
+    archive.mkdir(mode=0o700, parents=True, exist_ok=True)
+    folder = archive.lstat()
+    require((folder.st_uid, folder.st_gid) in OWNERS
+            and stat.S_IMODE(folder.st_mode) == 0o700, "unsafe archive")
+    parked = archive / "unselected-release"
+    require(not os.path.lexists(parked), "archive slot already taken")
+    rename_no_replace(release, parked)
+    require(census(parked) == measured, "the parked release measures differently")
+    after = {str(item): snapshot(item) for item in preserved_paths()}
+    require(after == before, "preserved history changed during the withdrawal")
+    require(startup_fingerprint() == first, "service startup selection moved")
+    say("WITHDREW_UNCLAIMED_RELEASE", sequence, "->", str(archive))
+    return str(archive)
+
+
 def withdrawn_requests() -> set[str]:
     """Attempts this machine has already withdrawn, read from disk.
 
@@ -687,6 +754,7 @@ def apply_cycle(cross: bool) -> int:
     with ExitStack() as locks:
         acquire_locks(locks)
         withdrawn = withdraw_superseded_claim(source_id)
+        withdraw_unclaimed_release(source_id)
         for journal in retire_orphan_journals(withdrawn):
             say("RETIRED_JOURNAL", journal)
 
