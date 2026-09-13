@@ -206,6 +206,12 @@ _PR_SET_NO_NEW_PRIVS_V1 = 38
 _PR_CAP_AMBIENT_V1 = 47
 _PR_CAP_AMBIENT_CLEAR_ALL_V1 = 4
 _LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
+# The only capability left in the final bounding set: CAP_NET_RAW (13).
+# 13/9/2026, owner decision: protections follow the allowed-command list,
+# and `ping` is its only binary carrying a file capability (`cap_net_raw=ep`).
+# An empty bounding set makes execve of such a binary fail with EPERM.
+# NoNewPrivileges keeps it out of every permitted/effective set.
+_SERVICE_BOUNDING_STATUS_V1 = "0000000000002000"
 # The one signed topology this verifier admits.  It is a reviewed pin: the
 # value moves whenever `SERVICE_SOURCE_V1` changes, and moving it here *is*
 # the act of approving that change.  Never derive it from the candidate.
@@ -214,8 +220,10 @@ _LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
 # 11/9/2026: the console and the device server listen on every interface
 # again, as the legacy units did (authorized by the owner): the first
 # signed catalog had dropped both addresses and paired devices were cut off.
+# 13/9/2026: every gated service keeps CAP_NET_RAW in its bounding set, so a
+# command on the allowed list (`ping`) can start (authorized by the owner).
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:05cea0891f8a76124445323db30976e38569bf2d801e9c184aedbf4b8f3060cb"
+    "sha256:467d690b959ff44fbd69cf3c041ffe2cbdda4b0d6791efe9ead4ae5db8cfb11b"
 )
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -2630,7 +2638,7 @@ def _require_gated_service_shape_v1(entry: _ServiceCatalogEntryV1) -> None:
         raise _invalid("gated service kill mode")
     if (
         directives[("Service", "CapabilityBoundingSet")].values
-        != ("CAP_SETGID CAP_SETPCAP CAP_SETUID",)
+        != ("CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID",)
         or directives[("Service", "NoNewPrivileges")].values != ("yes",)
     ):
         raise _invalid("gated service launcher capabilities")
@@ -3233,7 +3241,7 @@ def _require_isolated_g6c_source_recipe_v1(
         ("Unit", "Description", "scalar", ("isolated signed G6-C probe",)),
         (
             "Service", "CapabilityBoundingSet", "scalar",
-            ("CAP_SETGID CAP_SETPCAP CAP_SETUID",),
+            ("CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID",),
         ),
         (
             "Service", "ExecStart", "argv",
@@ -14706,6 +14714,25 @@ def _read_proc_status_v1() -> dict[str, str]:
     return result
 
 
+def _launch_status_matches_v1(status: dict[str, str], plan: _LaunchPlanV1) -> bool:
+    """True only for the exact service identity with no usable privilege."""
+    try:
+        observed_groups = tuple(
+            int(item) for item in status.get("Groups", "").split())
+    except ValueError:
+        return False
+    return (
+        status.get("Uid") == "\t".join((str(plan.service_uid),) * 4)
+        and status.get("Gid") == "\t".join((str(plan.service_gid),) * 4)
+        and observed_groups == plan.service_supplementary_gids
+        and status.get("NoNewPrivs") == "1"
+        and status.get("CapBnd") == _SERVICE_BOUNDING_STATUS_V1
+        and all(status.get(name) == "0000000000000000" for name in (
+            "CapInh", "CapPrm", "CapEff", "CapAmb",
+        ))
+    )
+
+
 def _drop_service_privileges_v1(plan: _LaunchPlanV1) -> None:
     if type(plan) is not _LaunchPlanV1 or plan.entry.class_name != "gated_service":
         raise _invalid("launch privilege plan")
@@ -14725,17 +14752,8 @@ def _drop_service_privileges_v1(plan: _LaunchPlanV1) -> None:
         raise
     except (OSError, ValueError) as exc:
         raise _invalid("launch privilege transition") from exc
-    status = _read_proc_status_v1()
-    expected_uid = "\t".join((str(plan.service_uid),) * 4)
-    expected_gid = "\t".join((str(plan.service_gid),) * 4)
-    observed_groups = tuple(int(item) for item in status.get("Groups", "").split())
     if (
-        status.get("Uid") != expected_uid or status.get("Gid") != expected_gid
-        or observed_groups != plan.service_supplementary_gids
-        or status.get("NoNewPrivs") != "1"
-        or any(status.get(name) != "0000000000000000" for name in (
-            "CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb",
-        ))
+        not _launch_status_matches_v1(_read_proc_status_v1(), plan)
         or os.getuid() != plan.service_uid or os.geteuid() != plan.service_uid
         or os.getgid() != plan.service_gid or os.getegid() != plan.service_gid
         or tuple(os.getgroups()) != plan.service_supplementary_gids

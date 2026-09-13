@@ -81,6 +81,46 @@ def _plan(entry: preflight._ServiceCatalogEntryV1) -> preflight._LaunchPlanV1:
     )
 
 
+
+def _launch_status(plan: preflight._LaunchPlanV1, **changes: str) -> dict[str, str]:
+    status = {
+        "Uid": "\t".join((str(plan.service_uid),) * 4),
+        "Gid": "\t".join((str(plan.service_gid),) * 4),
+        "Groups": " ".join(str(gid) for gid in plan.service_supplementary_gids),
+        "NoNewPrivs": "1",
+        "CapInh": "0000000000000000",
+        "CapPrm": "0000000000000000",
+        "CapEff": "0000000000000000",
+        "CapBnd": "0000000000002000",
+        "CapAmb": "0000000000000000",
+    }
+    status.update(changes)
+    return status
+
+
+def test_launch_status_keeps_only_net_raw_in_the_bounding_set() -> None:
+    plan = _plan(_entry())
+    assert preflight._launch_status_matches_v1(_launch_status(plan), plan)
+
+
+@pytest.mark.parametrize("changes", (
+    {"CapBnd": "0000000000000000"},
+    {"CapBnd": "0000000000002001"},
+    {"CapBnd": "000001ffffffffff"},
+    {"CapPrm": "0000000000002000"},
+    {"CapEff": "0000000000002000"},
+    {"CapInh": "0000000000002000"},
+    {"CapAmb": "0000000000002000"},
+    {"NoNewPrivs": "0"},
+    {"Uid": "0\t0\t0\t0"},
+    {"Groups": "44"},
+))
+def test_launch_status_refuses_any_other_privilege(changes: dict[str, str]) -> None:
+    plan = _plan(_entry())
+    assert not preflight._launch_status_matches_v1(
+        _launch_status(plan, **changes), plan,
+    )
+
 def test_launch_plan_uses_only_signed_identity_environment_and_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

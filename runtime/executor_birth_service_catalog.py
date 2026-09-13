@@ -380,7 +380,7 @@ def _service_unit_recipe(
         ),
         _source_directive(
             "Service", "CapabilityBoundingSet",
-            "CAP_SETGID CAP_SETPCAP CAP_SETUID",
+            "CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID",
         ),
         _source_directive("Service", "Group", "@service_gid@"),
         _source_directive("Service", "KillMode", "control-group"),
@@ -1785,7 +1785,7 @@ def _require_gated_service_unit_shape(entry: ServiceCatalogEntryV1) -> None:
         )
     if (
         directives[("Service", "CapabilityBoundingSet")].values
-        != ("CAP_SETGID CAP_SETPCAP CAP_SETUID",)
+        != ("CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID",)
         or directives[("Service", "NoNewPrivileges")].values != ("yes",)
     ):
         raise ServiceCatalogError(

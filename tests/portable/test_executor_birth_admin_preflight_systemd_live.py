@@ -720,7 +720,7 @@ def _timer_materials(
             *commands,
             *(service_catalog.ServiceDirectiveV1("Service", name, kind, (value,))
               for name, kind, value in (
-                  ("CapabilityBoundingSet", "scalar", "CAP_SETGID CAP_SETPCAP CAP_SETUID"),
+                  ("CapabilityBoundingSet", "scalar", "CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID"),
                   ("Group", "scalar", "1"), ("KillMode", "scalar", "control-group"),
                   ("NoNewPrivileges", "boolean", "yes"), ("Type", "scalar", "oneshot"),
                   ("User", "scalar", "daemon"), ("WorkingDirectory", "path_list", "/"),

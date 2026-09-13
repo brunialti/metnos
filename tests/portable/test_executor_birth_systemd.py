@@ -121,7 +121,7 @@ def _fixture(
         ),
         catalog.ServiceDirectiveV1(
             "Service", "CapabilityBoundingSet", "scalar",
-            ("CAP_SETGID CAP_SETPCAP CAP_SETUID",),
+            ("CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID",),
         ),
         catalog.ServiceDirectiveV1(
             "Service", "ExecStart", "argv",
