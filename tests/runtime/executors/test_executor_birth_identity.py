@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -181,6 +182,38 @@ def test_semantic_core_is_fail_closed_for_unknown_and_unsupported_types():
     dated = MANIFEST.replace(b'version="1.0.0"', b'version=1979-05-27T07:32:00Z')
     with pytest.raises(IdentityError, match="semantic_core_type_unsupported"):
         semantic_core_id(sample(manifest_bytes=dated))
+
+
+RUN_PROCESSES_MANIFEST = Path("executors/run_processes/manifest.toml")
+CANDIDATES_KEY = b'from_entries_candidates_key = "candidates"\n'
+
+
+def _real_run_processes(manifest: bytes | None = None):
+    return sample(
+        contract_id=ContractId(ManifestOrigin.USER, "run_processes/manifest.toml"),
+        manifest_bytes=(RUN_PROCESSES_MANIFEST.read_bytes()
+                        if manifest is None else manifest),
+        code_files={"run_processes.py": RUN_PROCESSES_MANIFEST.with_name(
+            "run_processes.py").read_bytes()},
+    )
+
+
+def test_semantic_core_accepts_and_binds_the_candidates_key_of_run_processes():
+    """The real signed manifest declares where candidate identities are listed."""
+    real = RUN_PROCESSES_MANIFEST.read_bytes()
+    assert real.count(CANDIDATES_KEY) == 1
+    base = semantic_core_id(_real_run_processes())
+    assert semantic_core_id(
+        _real_run_processes(real.replace(CANDIDATES_KEY, b""))) != base
+    assert semantic_core_id(_real_run_processes(real.replace(
+        CANDIDATES_KEY, b'from_entries_candidates_key = "alternatives"\n'))) != base
+
+
+def test_semantic_core_still_refuses_a_neighbouring_unknown_key():
+    neighbour = RUN_PROCESSES_MANIFEST.read_bytes().replace(
+        CANDIDATES_KEY, b'from_entries_candidates_keys = "candidates"\n')
+    with pytest.raises(IdentityError, match="semantic_core_unknown_field"):
+        semantic_core_id(_real_run_processes(neighbour))
 
 
 def test_candidate_and_semantic_core_accept_and_bind_finite_manifest_floats():

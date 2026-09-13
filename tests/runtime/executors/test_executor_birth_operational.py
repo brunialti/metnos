@@ -81,9 +81,8 @@ def _context() -> AdmissionContextV1:
     })
 
 
-def _candidate(tmp_path: Path) -> Path:
+def _candidate(tmp_path: Path, source: Path = Path("executors/consult_frontier")) -> Path:
     # Tests consume the tracked source tree, never an optional build artifact.
-    source = Path("executors/consult_frontier")
     destination = tmp_path / "candidate"
     destination.mkdir()
     manifest = tomllib.loads((source / "manifest.toml").read_text())
@@ -94,8 +93,8 @@ def _candidate(tmp_path: Path) -> Path:
     return destination
 
 
-def _fixture(tmp_path: Path, publisher):
-    candidate = _candidate(tmp_path)
+def _fixture(tmp_path: Path, publisher, source: Path = Path("executors/consult_frontier")):
+    candidate = _candidate(tmp_path, source)
     contract_id = ContractId(ManifestOrigin.USER, "demo/manifest.toml")
     context = _context()
     producer_private = Ed25519PrivateKey.generate()
@@ -382,6 +381,66 @@ def test_terminal_envelope_tampering_fails_closed_before_checks_or_publish(monke
     replay = _birth_executor_for_test(request, _core=core)
     assert replay.error_code == "birth_unavailable"
     assert calls == [1]
+
+
+RUN_PROCESSES_SOURCE = Path("executors/run_processes")
+CANDIDATES_KEY = b'from_entries_candidates_key = "candidates"\n'
+
+
+def test_real_run_processes_with_its_candidates_key_is_observed(tmp_path):
+    candidate = _candidate(tmp_path, RUN_PROCESSES_SOURCE)
+    assert CANDIDATES_KEY in (candidate / "manifest.toml").read_bytes()
+    observed = observe_candidate(
+        candidate, contract_id=ContractId(ManifestOrigin.USER, "run_processes/manifest.toml"),
+        executor_origin=ExecutorOrigin.HUMAN, revision_authorship=RevisionAuthor.HUMAN,
+        objective_hash=D, admission_context=_context(),
+    )
+    try:
+        assert candidate_source_id(observed).startswith("sha256:")
+    finally:
+        observed.close()
+
+
+def test_unknown_manifest_field_is_refused_before_any_receipt_claim(monkeypatch, tmp_path):
+    """Observation refuses first: no receipt is claimed, nothing is published."""
+    published = []
+    request, core = _fixture(
+        tmp_path, lambda *args, **kwargs: published.append(1), RUN_PROCESSES_SOURCE)
+    manifest = request.candidate_source_root / "manifest.toml"
+    manifest.write_bytes(manifest.read_bytes().replace(
+        CANDIDATES_KEY, b'from_entries_candidates_keys = "candidates"\n'))
+    claims = []
+    real_claim = operational.claim_producer_receipt
+    monkeypatch.setattr(
+        operational, "claim_producer_receipt",
+        lambda *args, **kwargs: claims.append(1) or real_claim(*args, **kwargs))
+    result = _birth_executor_for_test(request, _core=core)
+    assert result.report.outcome is BirthOutcome.REJECTED
+    assert result.publication is None
+    assert claims == [] and published == []
+
+
+def test_real_run_processes_with_its_candidates_key_is_admitted(tmp_path):
+    """The real manifest crosses the isolated Birth core up to a verified receipt."""
+    calls = []
+
+    def publisher(ref, *, expected_generation_id, snapshot, request_id,
+                  birth_authorization, **_options):
+        calls.append(snapshot)
+        generation = "sha256:" + "3" * 64
+        encoded = birth_authorization.issuer(
+            generation, {}, request_id, "sha256:" + "4" * 64)
+        receipt = birth_authorization.verifier(encoded)
+        assert receipt.candidate_id == birth_authorization.candidate_id
+        return PublicationResult(ref.contract_id, expected_generation_id, generation,
+                                 "commit_birth_snapshot", False)
+
+    request, core = _fixture(tmp_path, publisher, RUN_PROCESSES_SOURCE)
+    result = _birth_executor_for_test(request, _core=core)
+    assert result.error_code is None
+    assert result.report.outcome is BirthOutcome.ADMITTED
+    assert result.publication is not None
+    assert len(calls) == 1
 
 
 def test_source_binding_rejection_reports_and_never_calls_publisher(tmp_path):
