@@ -51,6 +51,7 @@ minItems    = 1
 maxItems    = 10
 from_entries_key = "resolved_id"
 from_entries_complete = true
+from_entries_candidates_key = "candidates"
 items       = { type = "string", maxLength = 132 }
 
 [args.properties.programs.description]

@@ -6807,6 +6807,12 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
             if isinstance(callback, dict) and _device and _device != "server":
                 callback.setdefault("target_device", _device)
             if (isinstance(callback, dict)
+                    and callback.get("type") == "resume_executor_with_values"):
+                # The resumed executor belongs to the conversation that
+                # paused it, with or without a tail.
+                callback.setdefault("conversation_id", str(
+                    (runtime_ctx or {}).get("conversation_id") or ""))
+            if (isinstance(callback, dict)
                     and callback.get("type") == "resume_executor_with_values"
                     and callback.get("executor") == paused_tool):
                 paused_idx = int(getattr(paused_input, "step_idx", 0) or 0)

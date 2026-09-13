@@ -742,6 +742,58 @@ def _referenced_producer(step, history: list):
     return None
 
 
+def _identity_choice_obs(tool: str, args: dict, context_errors: list,
+                         runtime_ctx: dict) -> dict | None:
+    """needs_inputs asking which identity each ambiguous entry denotes.
+
+    Only for a single vector projection whose unresolved entries all offer
+    distinct identities (see from_step_projection._identity_slots).  The step
+    has not run, so the callback carries the destination and conversation
+    chosen by the runtime, never an observed host.
+    """
+    if len(context_errors) != 1 or not isinstance(context_errors[0], dict):
+        return None
+    arg = context_errors[0].get("arg")
+    slots = context_errors[0].get("slots")
+    if not isinstance(arg, str) or not arg or not isinstance(slots, list):
+        return None
+    dialog: list[dict] = []
+    composed: list = []
+    for position, slot in enumerate(slots, start=1):
+        if not isinstance(slot, list):
+            composed.append(slot)
+            continue
+        var = f"{arg}_{position}"
+        dialog.append({
+            "var": var,
+            "prompt": _msg("MSG_ROUTE_DISAMBIG_PROMPT"),
+            "schema": {"kind": "choice", "choices": [{
+                "label": " ".join(part for part in (
+                    option["name"], option["version"],
+                    f"({option['value']})") if part),
+                "value": option["value"],
+            } for option in slot]},
+        })
+        composed.append({"var": var})
+    if not dialog:
+        return None
+    callback = {
+        "type": "resume_executor_with_values",
+        "executor": tool,
+        "args_base": {key: value for key, value in args.items() if key != arg},
+        "list_args": {arg: composed},
+        "conversation_id": str(runtime_ctx.get("conversation_id") or ""),
+    }
+    device = str(runtime_ctx.get("target_device") or "")
+    if device and device != "server":
+        callback["target_device"] = device
+    return {"decision": "needs_inputs", "needs_inputs": {
+        "title": _msg("MSG_ROUTE_DISAMBIG_TITLE"),
+        "dialog": dialog, "fmt": "auto", "on_complete": callback,
+        "timeout_s": 3600,
+    }}
+
+
 def _data_host_for_step(step, history: list, execution_host: str) -> str:
     """Autorita' dati dello step, distinta dall'host che esegue il codice."""
     if (execution_host == "server"
@@ -2372,6 +2424,19 @@ class Executor:
             _context_errors = args.pop(
                 _FROM_STEP_CONTEXT_ERRORS_KEY, None)
             if isinstance(_context_errors, list) and _context_errors:
+                _choice = _identity_choice_obs(
+                    step.tool, args, _context_errors, runtime_ctx or {})
+                if _choice is not None:
+                    # The consumer has not run: ask which identity is meant.
+                    log.info("Executor: %s asks to choose an identity",
+                             step.tool)
+                    result.steps.append(StepRun(
+                        step_idx=len(result.steps) + 1, tool=step.tool,
+                        args=args, result=_choice, ok=False, latency_ms=0,
+                    ))
+                    result.final_kind = "ask"
+                    result.final_text = ""
+                    break
                 fields = ", ".join(sorted({
                     str(item.get("arg"))
                     for item in _context_errors
