@@ -2600,6 +2600,30 @@ def _v2_reattestation_receipt(
     )
 
 
+def _persist_v2_test_receipt(ref, generation_id, request, private, trusted, store):
+    encoded = _v2_reattestation_receipt(ref, generation_id, request, private)
+    authorization = BirthCommitAuthorization(
+        _birth_digest("6"), _birth_digest("7"),
+        request.admission_context_id, generation_id,
+        lambda *_args: encoded,
+        lambda wire: verify_admission_receipt(
+            wire, public_key=private.public_key(),
+            expected_key_id="birth-test-key",
+        ),
+    )
+    return persist_current_reattestation_receipt_v2(
+        ref, encoded, request=request, authorization=authorization,
+        verifier=authorization.verifier,
+        expected_bindings={
+            "contract_id": ref.contract_id.value,
+            "generation_id": generation_id,
+            "admission_context_id": request.admission_context_id,
+            "birth_request_id": request.request_id,
+        },
+        trusted_publics=trusted, store_root=store,
+    )
+
+
 def test_v2_reattestation_receipts_from_two_contexts_coexist(tmp_path: Path) -> None:
     _root, ref, _private, trusted = _create_source(tmp_path)
     store = tmp_path / "store"
@@ -2619,28 +2643,8 @@ def test_v2_reattestation_receipts_from_two_contexts_coexist(tmp_path: Path) -> 
     admission_private = Ed25519PrivateKey.generate()
 
     def persist(request) -> bytes:
-        encoded = _v2_reattestation_receipt(
-            ref, generation_id, request, admission_private,
-        )
-        authorization = BirthCommitAuthorization(
-            _birth_digest("6"), _birth_digest("7"),
-            request.admission_context_id, generation_id,
-            lambda *_args: encoded,
-            lambda wire: verify_admission_receipt(
-                wire, public_key=admission_private.public_key(),
-                expected_key_id="birth-test-key",
-            ),
-        )
-        return persist_current_reattestation_receipt_v2(
-            ref, encoded, request=request, authorization=authorization,
-            verifier=authorization.verifier,
-            expected_bindings={
-                "contract_id": ref.contract_id.value,
-                "generation_id": generation_id,
-                "admission_context_id": request.admission_context_id,
-                "birth_request_id": request.request_id,
-            },
-            trusted_publics=trusted, store_root=store,
+        return _persist_v2_test_receipt(
+            ref, generation_id, request, admission_private, trusted, store,
         )
 
     first_wire = persist(first)
@@ -2660,6 +2664,156 @@ def test_v2_reattestation_receipts_from_two_contexts_coexist(tmp_path: Path) -> 
         ref, request=second, trusted_publics=trusted, store_root=store,
     ) == second_wire
     assert len(tuple(store.rglob("admission-receipts-v2/**/*.json"))) == 2
+
+    # A legitimate reattestation namespace is not abandoned publication staging.
+    # Exercise both the writer and the read-only diagnostic after V2 persists.
+    for request, wire in ((first, first_wire), (second, second_wire)):
+        repeated = publish_signed_source(
+            ref, expected_generation_id=generation_id,
+            trusted_publics=trusted, store_root=store,
+        )
+        assert repeated.repeated and repeated.current_generation_id == generation_id
+        assert read_current_birth_receipt_v2(
+            ref, request=request, trusted_publics=trusted, store_root=store,
+        ) == wire
+    assert diagnose_store((ref,), trusted_publics=trusted, store_root=store) == ()
+
+
+def test_technical_publication_preserves_existing_v2_receipts(tmp_path: Path) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None, trusted_publics=trusted, store_root=store,
+    )
+    request = _v2_request(
+        ref, initial.current_generation_id,
+        context=_birth_digest("b"), transition=_birth_digest("c"),
+    )
+    wire = _persist_v2_test_receipt(
+        ref, initial.current_generation_id, request,
+        Ed25519PrivateKey.generate(), trusted, store,
+    )
+    receipt_path, = store.rglob("admission-receipts-v2/**/*.json")
+    before = (receipt_path.stat().st_ino, receipt_path.stat().st_mtime_ns, wire)
+    (ref.manifest_dir / "sample.py").write_text(
+        "def invoke(args):\n    return {'results': [], 'revision': 2}\n",
+        encoding="utf-8",
+    )
+    published = publish_technical_update(
+        ref, expected_generation_id=initial.current_generation_id,
+        draft=prepare_technical_draft(ref), private_key=private,
+        trusted_publics=trusted, store_root=store,
+    )
+    assert published.current_generation_id != initial.current_generation_id
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    ).generation_id == published.current_generation_id
+    assert before == (
+        receipt_path.stat().st_ino, receipt_path.stat().st_mtime_ns,
+        receipt_path.read_bytes(),
+    )
+    assert "contract_entry_unknown" not in {
+        item.code for item in diagnose_store((ref,), trusted_publics=trusted, store_root=store)
+    }
+
+
+@pytest.mark.parametrize("receipt_versions", ((1,), (2,), (1, 2)))
+def test_activation_preserves_supported_receipt_namespaces(
+    tmp_path: Path, monkeypatch, receipt_versions: tuple[int, ...],
+) -> None:
+    _root, ref, private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    generation = initial.current_generation_id
+    admission_private = Ed25519PrivateKey.generate()
+    if 1 in receipt_versions:
+        generation = commit_birth_snapshot(
+            ref, expected_generation_id=generation,
+            snapshot=_birth_snapshot(ref, tmp_path),
+            request_id=_birth_digest("8"), private_key=private,
+            trusted_publics=trusted, store_root=shadow,
+            birth_authorization=_birth_authorization(ref, generation, admission_private),
+        ).current_generation_id
+    if 2 in receipt_versions:
+        request = _v2_request(
+            ref, generation, context=_birth_digest("b"), transition=_birth_digest("c"),
+        )
+        _persist_v2_test_receipt(
+            ref, generation, request, admission_private, trusted, shadow,
+        )
+    before = {path.relative_to(shadow): path.read_bytes()
+              for path in shadow.rglob("*.json") if "admission-receipts" in str(path)}
+    assert len(before) == len(receipt_versions)
+    assert {item.code for item in diagnose_store(
+        (ref,), trusted_publics=trusted, store_root=shadow,
+    )} <= {"generation_orphan"}
+    expected = {ref.contract_id: generation}
+    activate_store(
+        expected, shadow_root=shadow, trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    productive = contract_store_module._C.PATH_USER_STATE / "contract-publications" / "v1"
+    assert before == {path: (productive / path).read_bytes() for path in before}
+    assert {item.code for item in diagnose_store(
+        (ref,), trusted_publics=trusted, store_root=productive,
+    )} <= {"generation_orphan"}
+    # Also exercise verification of an already activated store, not just shadow.
+    activate_store(
+        expected, shadow_root=shadow, trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    assert before == {path: (productive / path).read_bytes() for path in before}
+
+
+@pytest.mark.parametrize("entry_kind", ("file", "link", "unknown"))
+def test_invalid_v2_or_unknown_namespace_fails_all_shape_checks(
+    tmp_path: Path, monkeypatch, entry_kind: str,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    contract_dir = shadow / contract_storage_key(ref.contract_id)
+    entry = contract_dir / (
+        "foreign-receipts" if entry_kind == "unknown" else "admission-receipts-v2"
+    )
+    if entry_kind == "file":
+        entry.write_bytes(b"not a receipt directory")
+    elif entry_kind == "link":
+        target = tmp_path / "outside-receipts"
+        target.mkdir()
+        (target / "keep").write_bytes(b"must not be touched")
+        try:
+            entry.symlink_to(target, target_is_directory=True)
+        except OSError:
+            pytest.skip("symlinks unavailable")
+    else:
+        entry.mkdir()
+    valid_staging = contract_dir / ".binding.json.1.2.3.tmp"
+    binding = encode_binding(ref.contract_id)
+    valid_staging.write_bytes(binding)
+    with pytest.raises(ContractStoreError, match="staging_invalid"):
+        publish_signed_source(
+            ref, expected_generation_id=initial.current_generation_id,
+            trusted_publics=trusted, store_root=shadow,
+        )
+    assert valid_staging.read_bytes() == binding
+    # Remove only this test's valid temporary file to test the activation
+    # shape independently from its earlier staging-recovery guard.
+    valid_staging.unlink()
+    with pytest.raises(ContractStoreError, match="activation_contract_invalid"):
+        contract_store_module._verify_activation_catalog(
+            shadow, {ref.contract_id: initial.current_generation_id},
+            trusted_publics=trusted,
+        )
+    expected_code = "contract_entry_unknown" if entry_kind == "unknown" else "birth_receipt_store_invalid"
+    assert expected_code in {
+        item.code for item in diagnose_store((ref,), trusted_publics=trusted, store_root=shadow)
+    }
+    assert os.path.lexists(entry)
+    if entry_kind == "link":
+        assert entry.is_symlink() and (target / "keep").read_bytes() == b"must not be touched"
+    elif entry_kind == "file":
+        assert entry.read_bytes() == b"not a receipt directory"
 
 
 def _birth_authorization(

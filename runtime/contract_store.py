@@ -68,6 +68,7 @@ from sign import (
 
 SHADOW_RELATIVE = Path("contract-publications-shadow")
 BINDING_FILE = "binding.json"
+_ADMISSION_RECEIPTS_V2 = "admission-receipts-v2"
 _CODE_PAYLOAD_UNAVAILABLE_CODES = frozenset({
     "code_file_missing", "code_file_invalid", "code_file_unreadable",
 })
@@ -2721,9 +2722,11 @@ def _direct_staging_recovery_plan(
         if not reserved:
             if entry.name not in {
                 BINDING_FILE, "current", "writer.lock", "generations",
-                "admission-receipts",
+                "admission-receipts", _ADMISSION_RECEIPTS_V2,
             }:
                 raise ContractStoreError("staging_invalid", str(entry))
+            if entry.name == _ADMISSION_RECEIPTS_V2:
+                _require_plain_directory(entry, code="staging_invalid")
             continue
         match = _DIRECT_STAGING_RE.fullmatch(entry.name)
         if match is None or _is_link_like(entry) or not entry.is_file():
@@ -3071,14 +3074,17 @@ def _verify_activation_catalog(
         }
         if (
             not required_contract_names.issubset(contract_names)
-            or contract_names - required_contract_names != (
-                {"admission-receipts"}
-                if "admission-receipts" in contract_names
-                else set()
+            or not (contract_names - required_contract_names).issubset(
+                {"admission-receipts", _ADMISSION_RECEIPTS_V2}
             )
         ):
             raise ContractStoreError(
                 "activation_contract_invalid", str(contract_dir),
+            )
+        if _ADMISSION_RECEIPTS_V2 in contract_names:
+            _require_plain_directory(
+                contract_dir / _ADMISSION_RECEIPTS_V2,
+                code="activation_contract_invalid",
             )
         binding = read_binding(contract_dir)
         if binding.contract_id != contract_id:
@@ -4161,9 +4167,6 @@ def read_current_birth_receipt(
 # act gets None when it is absent, which is a fact the caller must handle
 # rather than a gap to paper over with the older receipt.
 # ---------------------------------------------------------------------------
-
-_ADMISSION_RECEIPTS_V2 = "admission-receipts-v2"
-
 
 def admission_receipt_hash(encoded: bytes) -> str:
     """Canonical hash of the exact receipt bytes on the wire."""
@@ -6285,13 +6288,15 @@ def diagnose_store(
                 raise ContractStoreError("binding_invalid", str(ref.contract_id))
             allowed_contract_entries = {
                 BINDING_FILE, "writer.lock", "current", "generations",
-                "admission-receipts",
+                "admission-receipts", _ADMISSION_RECEIPTS_V2,
             }
             for child in contract_dir.iterdir():
                 if child.name not in allowed_contract_entries:
                     diagnostics.append(StoreDiagnostic(
                         "contract_entry_unknown", ref.contract_id, str(child),
                     ))
+                elif child.name == _ADMISSION_RECEIPTS_V2:
+                    _require_plain_directory(child, code="birth_receipt_store_invalid")
             lock_file = contract_dir / "writer.lock"
             if not lock_file.exists():
                 diagnostics.append(StoreDiagnostic(
