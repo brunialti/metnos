@@ -134,11 +134,29 @@ def _hash(domain: bytes, *parts: str) -> str:
 
 def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
                      db_path: Path, ttl_seconds: int, now: Callable[[], datetime],
-                     context_builder: object):
+                     context_builder: object, *, selection: object | None = None):
+    from executor_birth_context_selection import is_context_selection_v1
+    from executor_birth_intent import _STACK_RECONCILE
+
+    if selection is not None and not is_context_selection_v1(selection):
+        raise BirthBootstrapError("birth_context_selection_invalid")
+    release_build_id = (
+        selection.distribution.identity.closed_build_id
+        if selection is not None and authority.capability is _STACK_RECONCILE
+        else None
+    )
+
     def create(intent: BirthIntent) -> BirthRequest:
         if not isinstance(intent, BirthIntent):
             raise BirthBootstrapError("birth_intent_invalid")
         objective = _hash(b"metnos.executor-birth.objective/v1\0", intent.reason, *intent.approval_refs)
+        if release_build_id is not None:
+            # Same-build retries retain their identity; a new verified build
+            # gets its own release edit without replacing any old receipt.
+            objective = _hash(
+                b"metnos.executor-birth.release-edit-objective/v1\0",
+                objective, release_build_id,
+            )
         context, _pin = context_builder.preview(intent)
         # The kind of the executor is not a property of who asks for it: it
         # comes from where the manifest of that contract lives, which the
@@ -920,6 +938,7 @@ def _build_sealed(
     assembly = _prepare_sealed_birth_assembly_v1(
         sealed, now=now, store_root=store_root,
     )
+    selection = None if required_context is None else required_context.selection
     factories = {
         cap: _request_factory(
             auth,
@@ -928,14 +947,12 @@ def _build_sealed(
             assembly.ttl_seconds,
             assembly.now,
             assembly.context_builder,
+            selection=selection,
         )
         for cap, auth in assembly.authorities.items()
     }
     reattestation_factory = _reattestation_factory_for_assembly_v1(
-        assembly,
-        selection=(
-            None if required_context is None else required_context.selection
-        ),
+        assembly, selection=selection,
     )
     return _assemble_birth_runtime_bundle(
         assembly.core, factories, reattestation_factory,

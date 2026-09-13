@@ -3,8 +3,10 @@ from __future__ import annotations
 import threading
 import json
 import contextlib
+import sqlite3
+from dataclasses import replace
 from types import SimpleNamespace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -113,6 +115,15 @@ def test_closed_bootstrap_refuses_the_historical_context_without_a_head(
         match="birth_context_transition_required",
     ):
         bootstrap._required_context_runtime_for_bootstrap_v1()
+    monkeypatch.setattr(
+        prepared_root, "load_sealed_authorities_v1",
+        lambda: pytest.fail("closed bootstrap fell back to historical authorities"),
+    )
+    with pytest.raises(
+        bootstrap.BirthBootstrapError,
+        match="birth_context_transition_required",
+    ):
+        bootstrap._build_sealed(now=lambda: datetime.now(timezone.utc))
 
 
 def test_open_bootstrap_retains_the_initial_context_before_transition(
@@ -602,3 +613,252 @@ def test_a_loose_state_directory_is_refused(tmp_path: Path) -> None:
     with pytest.raises(bootstrap.BirthBootstrapError,
                        match="birth_state_permissions"):
         bootstrap._secure_state_dir(state)
+
+
+def _release_selection(build: str, *, transition_request: str = "1", staged=False):
+    """Use nominal selection evidence, with explicitly test-sealed builds."""
+    from executor_birth_context_selection import (
+        _context_selection_for_staged_reattestation_v1,
+        _context_selection_from_required_chain_v1,
+    )
+    from executor_birth_context_transition import issue_context_transition_v1
+    from executor_birth_cutover import CurrentReceiptProof
+    from executor_birth_distribution_manifest import _verified_distribution_for_test
+    from executor_birth_identity import admission_context_id
+    from executor_birth_ownership_preflight import _sealed_build_identity_for_test
+    from tests.portable.test_executor_birth_context_selection import _evidence, _prepared_with
+    from tests.runtime.executors.test_executor_birth_operational import D, _context
+
+    previous, prepared, _distribution = _evidence()
+    prepared = _prepared_with(
+        prepared, prepared_admission_context_id=admission_context_id(_context()),
+        prepared_context_epoch=D,
+    )
+    build_id = "sha256:" + build * 64
+    _, transition = issue_context_transition_v1(
+        request_id="sha256:" + transition_request * 64,
+        closed_build_id=build_id,
+        previous_cutover_id=previous.previous_cutover_id,
+        previous_set_id=previous.previous_set_id,
+        previous_admission_context_id=previous.previous_admission_context_id,
+        previous_context_epoch=previous.previous_context_epoch,
+        set_id=prepared.set_id,
+        prepared_admission_context_id=prepared.prepared_admission_context_id,
+        prepared_context_epoch=prepared.prepared_context_epoch,
+        context_material_sha256=prepared.context_material_sha256,
+        set_json_sha256=prepared.set_json_sha256,
+        current_inventory=CurrentReceiptProof((), {}).inventory,
+    )
+    distribution = _verified_distribution_for_test(
+        _sealed_build_identity_for_test(build_id, "sha256:" + "d" * 64, "closed-v1"),
+        previous_closed_build_id=None, release_sequence=1,
+        encoded=b"distribution", signature=b"s" * 64,
+    )
+    mint = (_context_selection_for_staged_reattestation_v1 if staged
+            else _context_selection_from_required_chain_v1)
+    return mint(transition, prepared, distribution)
+
+
+@pytest.fixture
+def release_factory(monkeypatch, tmp_path):
+    """Real factory/issuance and bootstrap wiring; no live authority or store."""
+    import executor_birth_prepared_root as prepared_root
+    from executor_birth_identity import admission_context_id
+    from executor_birth_intent import _STACK_RECONCILE
+    from executor_birth_predecessor import AdmissionContextPin
+    from tests.runtime.executors.test_executor_birth_operational import D, NOW, _candidate, _context
+
+    sealed = _sealed_producers(tmp_path)
+    sealed.author = SimpleNamespace(verifier_keys={})
+    authorities, registry = bootstrap._sealed_authorities(sealed)
+    candidate = _candidate(tmp_path)
+    contract = ContractId(ManifestOrigin.CORE, "consult_frontier/manifest.toml")
+    ref = ManifestRef(
+        contract, ManifestOrigin.CORE, ManifestStatus.ADMITTED,
+        candidate, candidate / "manifest.toml", "consult_frontier/manifest.toml", (candidate,),
+    )
+    context = _context()
+    pin = AdmissionContextPin(admission_context_id(context), D)
+    state = SimpleNamespace(selection=None, instant=NOW)
+    assembly = SimpleNamespace(
+        authorities=authorities, registry=registry,
+        producer_db=tmp_path / "producer.sqlite", ttl_seconds=3600,
+        now=lambda: state.instant,
+        context_builder=SimpleNamespace(preview=lambda _intent: (context, pin)),
+        core=object(),
+    )
+    monkeypatch.setattr(bootstrap, "_manifest_ref", lambda _intent: ref)
+    monkeypatch.setattr(
+        bootstrap, "_required_context_runtime_for_bootstrap_v1",
+        lambda: None if state.selection is None else SimpleNamespace(
+            authorities=sealed, selection=state.selection,
+        ),
+    )
+    monkeypatch.setattr(prepared_root, "load_sealed_authorities_v1", lambda: sealed)
+    monkeypatch.setattr(bootstrap, "_prepare_sealed_birth_assembly_v1", lambda *_args, **_kw: assembly)
+    monkeypatch.setattr(bootstrap, "_reattestation_factory_for_assembly_v1", lambda *_args, **_kw: None)
+    monkeypatch.setattr(
+        bootstrap, "_assemble_birth_runtime_bundle",
+        lambda _core, factories, _reattestation, **_kw: SimpleNamespace(producer_factories=factories),
+    )
+
+    def factory(selection, capability=_STACK_RECONCILE):
+        state.selection = selection
+        return bootstrap._build_sealed(now=assembly.now).producer_factories[capability]
+
+    return SimpleNamespace(
+        factory=factory, assembly=assembly, state=state, context=context, pin=pin,
+        intent=BirthIntent(candidate, contract, "publish changed executors"),
+    )
+
+
+@pytest.mark.parametrize("elapsed", (600, 7200))
+def test_release_request_is_stable_for_the_same_build_id(release_factory, elapsed):
+    fixture = release_factory
+    first_selection = _release_selection("2")
+    second_selection = _release_selection("2", transition_request="3")
+    assert first_selection is not second_selection
+    assert first_selection.distribution is not second_selection.distribution
+    assert first_selection.transition_id != second_selection.transition_id
+    first_factory = fixture.factory(first_selection)
+    first = first_factory(fixture.intent)
+    fixture.state.instant += timedelta(seconds=elapsed)
+    second_factory = fixture.factory(second_selection)
+    assert first_factory is not second_factory
+    second = second_factory(fixture.intent)
+    assert second.request_id == first.request_id
+    assert second.producer_receipt == first.producer_receipt
+
+
+@pytest.mark.parametrize("capability", _producer_capabilities_for_bootstrap(),
+                         ids=lambda cap: f"{cap.producer_id}:{cap.operation}")
+def test_only_stack_release_requests_change_between_builds(release_factory, capability):
+    from executor_birth_intent import _STACK_RECONCILE
+    from executor_birth_receipts import verify_producer_receipt
+
+    fixture = release_factory
+    requests = [fixture.factory(selection, capability)(fixture.intent)
+                for selection in (None, _release_selection("2"), _release_selection("3"))]
+    receipts = [verify_producer_receipt(
+        request.producer_receipt, registry=fixture.assembly.registry, now=fixture.state.instant,
+    ) for request in requests]
+    legacy_objective = bootstrap._hash(
+        b"metnos.executor-birth.objective/v1\0", fixture.intent.reason,
+        *fixture.intent.approval_refs,
+    )
+    assert receipts[0].objective_hash == legacy_objective
+    assert len({receipt.candidate_source_id for receipt in receipts}) == 1
+    if capability is _STACK_RECONCILE:
+        assert len({request.request_id for request in requests}) == 3
+        assert len({receipt.objective_hash for receipt in receipts}) == 3
+    else:
+        assert len({request.request_id for request in requests}) == 1
+        assert len({request.producer_receipt for request in requests}) == 1
+
+
+@pytest.mark.parametrize("staged", (False, True))
+def test_release_factory_refuses_nonrequired_selections(release_factory, staged):
+    selection = _release_selection("2", staged=staged)
+    if not staged:
+        selection = SimpleNamespace(**{
+            field: getattr(selection, field) for field in selection.__dataclass_fields__
+        })
+    with pytest.raises(bootstrap.BirthBootstrapError, match="birth_context_selection_invalid"):
+        release_factory.factory(selection)
+    assert not release_factory.assembly.producer_db.exists()
+
+
+def test_release_scope_requires_capability_identity_not_matching_fields(release_factory):
+    from executor_birth_intent import _STACK_RECONCILE
+
+    fixture = release_factory
+    authority = fixture.assembly.authorities[_STACK_RECONCILE]
+    lookalike = SimpleNamespace(
+        producer_id=_STACK_RECONCILE.producer_id, operation=_STACK_RECONCILE.operation,
+        _seal=_STACK_RECONCILE._seal,
+    )
+    legacy = fixture.factory(None)(fixture.intent)
+    fixture.assembly.authorities = {
+        _STACK_RECONCILE: replace(authority, capability=lookalike),
+    }
+    for selection in (_release_selection("2"), _release_selection("3")):
+        request = fixture.factory(selection)(fixture.intent)
+        assert request.request_id == legacy.request_id
+        assert request.producer_receipt == legacy.producer_receipt
+
+
+def _producer_rows(db_path, request_id):
+    """Read complete rows, including receipt and signed terminal bytes, in a fixture DB."""
+    with sqlite3.connect(db_path) as db:
+        return (
+            db.execute("SELECT * FROM birth_producer_issuance WHERE request_id=?", (request_id,)).fetchone(),
+            db.execute("SELECT * FROM birth_producer_receipts WHERE request_id=?", (request_id,)).fetchone(),
+        )
+
+
+@pytest.mark.parametrize("legacy", (True, False), ids=("historical-unscoped", "release-scoped"))
+def test_new_build_can_claim_after_expired_terminal_staging_rejection(release_factory, tmp_path, legacy):
+    from contract_store import ContractStoreError
+    from executor_birth_producer_store import ProducerReceiptBinding, claim_producer_receipt
+    from executor_birth_receipts import ReceiptError, verify_producer_receipt
+    from executor_birth_shadow import _sealed_dependencies_for_test
+
+    fixture = release_factory
+    first = fixture.factory(None if legacy else _release_selection("2"))(fixture.intent)
+    admission_key = Ed25519PrivateKey.generate()
+
+    def staging_invalid(_request):
+        raise ContractStoreError("staging_invalid")
+
+    core = operational._sealed_core_for_test(
+        producer_registry=fixture.assembly.registry, producer_db=fixture.assembly.producer_db,
+        context_resolver=lambda _request: (fixture.context, fixture.pin),
+        context_epoch_resolver=lambda: fixture.pin.context_epoch,
+        predecessor_resolver=staging_invalid,
+        shadow_dependencies=_sealed_dependencies_for_test(),
+        admission_private_key=admission_key, admission_public_key=admission_key.public_key(),
+        admission_key_id="admission", policy_version="birth-policy-v1",
+        now=fixture.assembly.now,
+        publisher=lambda *_args, **_kw: pytest.fail("publication started before predecessor validation"),
+        publisher_options={"store_root": tmp_path / "store"},
+    )
+    rejected = operational._birth_executor_for_test(first, _core=core)
+    assert rejected.error_code == "staging_invalid"
+    old_rows = _producer_rows(fixture.assembly.producer_db, first.request_id)
+    assert all(row is not None for row in old_rows)
+    with sqlite3.connect(fixture.assembly.producer_db) as db:
+        assert db.execute(
+            "SELECT state,rejection_code,terminal_envelope IS NOT NULL,terminal_auth IS NOT NULL "
+            "FROM birth_producer_receipts WHERE request_id=?", (first.request_id,),
+        ).fetchone() == ("rejected", "staging_invalid", 1, 1)
+    first_receipt = verify_producer_receipt(
+        first.producer_receipt, registry=fixture.assembly.registry, now=fixture.state.instant,
+    )
+    fixture.state.instant += timedelta(hours=2)
+    with pytest.raises(ReceiptError, match="producer_receipt_expired"):
+        verify_producer_receipt(
+            first.producer_receipt, registry=fixture.assembly.registry, now=fixture.state.instant,
+        )
+    second = fixture.factory(_release_selection("3"))(fixture.intent)
+    assert second.request_id != first.request_id
+    second_receipt = verify_producer_receipt(
+        second.producer_receipt, registry=fixture.assembly.registry, now=fixture.state.instant,
+    )
+    assert second_receipt.candidate_source_id == first_receipt.candidate_source_id
+    assert second_receipt.receipt_id != first_receipt.receipt_id
+    assert second_receipt.expires_at > first_receipt.expires_at
+    with sqlite3.connect(fixture.assembly.producer_db) as db:
+        assert db.execute(
+            "SELECT state FROM birth_producer_receipts WHERE receipt_id=?", (second_receipt.receipt_id,),
+        ).fetchone() == ("available",)
+    claim = claim_producer_receipt(
+        second.producer_receipt, registry=fixture.assembly.registry,
+        binding=ProducerReceiptBinding(
+            second_receipt.objective_hash, second_receipt.candidate_source_id,
+            second_receipt.executor_origin, second_receipt.revision_authorship,
+        ),
+        request_id=second.request_id, now=fixture.state.instant, db_path=fixture.assembly.producer_db,
+    )
+    assert claim.state == "in_progress"
+    assert claim.request_id == second.request_id
+    assert _producer_rows(fixture.assembly.producer_db, first.request_id) == old_rows
