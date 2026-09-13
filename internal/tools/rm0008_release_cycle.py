@@ -52,6 +52,7 @@ import builtins
 import json
 import re
 import os
+import secrets
 from pathlib import Path
 import pwd
 import stat
@@ -791,6 +792,16 @@ RELEASE_EDITS_PLAN_TIMEOUT_S = 120
 RELEASE_EDITS_DEPLOY_TIMEOUT_S = 600
 SERVICE_RESTART_POLICY = Path("/etc/polkit-1/rules.d/49-metnos-services.rules")
 RELEASE_EDITS_ENTRY = "service-stack-watchdog"
+# Birth runs its tests inside the reconciler and needs a delegated cgroup
+# (<unit>.service/metnos-birth-host) that a plain child of this root process
+# lacks. The step therefore runs in one transient system unit; the controller
+# uses fixed tools and a minimal environment of its own.
+SYSTEMD_RUN = "/usr/bin/systemd-run"
+SYSTEMCTL = "/usr/bin/systemctl"
+ENV_TOOL = "/usr/bin/env"
+RELEASE_UNIT_STOP_S = 5
+CONTROLLER_ENVIRONMENT = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                          "LANG": "C", "LC_ALL": "C"}
 
 
 def _service_restart_granted(service_user: str) -> bool:
@@ -812,8 +823,61 @@ def _service_restart_granted(service_user: str) -> bool:
         return False
 
 
+def _release_unit_command(unit, account, working_directory, environment,
+                          command, limit):
+    """systemd-run argv for one transient delegated unit; values stay literal."""
+    record = account.record
+    properties = (
+        "Type=exec", f"User={record.uid}", f"Group={record.gid}",
+        "SupplementaryGroups=" + " ".join(
+            str(gid) for gid in account.supplementary_gids),
+        "Delegate=yes", "DelegateSubgroup=metnos-birth-host", "UMask=0027",
+        "KillMode=control-group", f"TimeoutStopSec={RELEASE_UNIT_STOP_S}",
+        # Same bound as the controller's: no extra run time if it is gone.
+        # TimeoutStopSec above is the separate budget for stopping.
+        f"RuntimeMaxSec={limit}",
+        "NoNewPrivileges=yes",
+        "CapabilityBoundingSet=CAP_SETGID CAP_SETPCAP CAP_SETUID",
+        "MemoryAccounting=yes", "TasksAccounting=yes",
+        f"WorkingDirectory={working_directory}",
+    )
+    service = [ENV_TOOL, "-i",
+               *(f"{name}={value}" for name, value in environment.items()),
+               *command]
+    # systemd resolves %-specifiers in unit settings; signed values carry none.
+    require(all("%" not in part for part in (*properties, *service)),
+            "release launch value unsafe")
+    argv = [SYSTEMD_RUN, "--wait", "--pipe", "--collect", "--quiet",
+            "--expand-environment=no", f"--unit={unit}"]
+    for item in properties:
+        argv += ["-p", item]
+    return argv + ["--", *service]
+
+
+def _stop_release_unit(unit) -> bool:
+    """Stop only this execution's unit; True only when systemd confirms it gone."""
+    try:
+        subprocess.run([SYSTEMCTL, "stop", unit], stdin=subprocess.DEVNULL,
+                       capture_output=True, check=False,
+                       env=CONTROLLER_ENVIRONMENT, close_fds=True,
+                       timeout=2 * RELEASE_UNIT_STOP_S)
+        shown = subprocess.run(
+            [SYSTEMCTL, "show", "--property=LoadState,ActiveState", unit],
+            stdin=subprocess.DEVNULL, capture_output=True, check=False,
+            env=CONTROLLER_ENVIRONMENT, close_fds=True,
+            timeout=RELEASE_UNIT_STOP_S)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    state = dict(line.split("=", 1) for line in
+                 shown.stdout.decode("ascii", "replace").splitlines() if "=" in line)
+    return shown.returncode == 0 and (
+        state.get("LoadState") == "not-found"
+        or state.get("ActiveState") in {"inactive", "failed"})
+
+
 def _release_edits_child(distribution, descriptor, catalog, *, plan_only: bool):
-    """Use only signed launch data; drop root before the interpreter starts."""
+    """Use only signed launch data; the reconciler runs as the service account
+    in one delegated transient unit, never as a child of this root process."""
     from executor_birth_account_identity import resolve_posix_account_snapshot_v1
 
     account = resolve_posix_account_snapshot_v1(descriptor.service_user)
@@ -844,15 +908,29 @@ def _release_edits_child(distribution, descriptor, catalog, *, plan_only: bool):
     command = [entry.target_executable, "-E", "-s", "-B", "-m",
                entry.python_module, "deploy", "--changed-only",
                "--plan" if plan_only else "--sign"]
-    return subprocess.run(
-        command, stdin=subprocess.DEVNULL, capture_output=True, check=False,
-        cwd=entry.target_working_directory, env=env,
-        user=record.uid, group=record.gid,
-        extra_groups=list(account.supplementary_gids), umask=0o027,
-        close_fds=True,
-        timeout=(RELEASE_EDITS_PLAN_TIMEOUT_S if plan_only
-                 else RELEASE_EDITS_DEPLOY_TIMEOUT_S),
-    )
+    limit = (RELEASE_EDITS_PLAN_TIMEOUT_S if plan_only
+             else RELEASE_EDITS_DEPLOY_TIMEOUT_S)
+    unit = (f"metnos-release-edits-{'plan' if plan_only else 'sign'}-"
+            f"{secrets.token_hex(8)}.service")
+    argv = _release_unit_command(unit, account, entry.target_working_directory,
+                                 env, command, limit)
+    try:
+        return subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True,
+                              check=False, env=CONTROLLER_ENVIRONMENT,
+                              close_fds=True, timeout=limit)
+    except subprocess.TimeoutExpired as expired:
+        # The client ending is not the unit ending: stop and confirm it.
+        expired.release_unit = unit
+        expired.release_unit_stopped = _stop_release_unit(unit)
+        raise
+    except BaseException:
+        # Nobody downstream reports an interruption: record it here, with
+        # only the generated unit name and whether its stop was confirmed.
+        stopped = _stop_release_unit(unit)
+        say("RELEASE_UNIT_STOP", json.dumps(
+            {"cause": "interrupted", "unit": unit,
+             "stop": "confirmed" if stopped else "unconfirmed"}, sort_keys=True))
+        raise
 
 
 _TRACE_FRAME_RE = re.compile(rb'^[ \t]+File "([^"\n]{1,512})", line ([0-9]{1,7})', re.M)
@@ -1003,6 +1081,11 @@ def _run_release_edits(distribution, descriptor, catalog, *, plan_only: bool) ->
         return 0
     except subprocess.TimeoutExpired as expired:
         error_code = "release_edits_timeout"
+        summary["unit_stop"] = ("confirmed" if getattr(
+            expired, "release_unit_stopped", False) is True else "unconfirmed")
+        unit = getattr(expired, "release_unit", None)
+        if isinstance(unit, str):
+            summary["release_unit"] = unit
         summary["child_streams"] = _child_streams(
             expired.stdout, expired.stderr, distribution.installation_root,
             release_files=_release_files(distribution))

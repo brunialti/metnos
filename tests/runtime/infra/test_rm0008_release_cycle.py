@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -81,32 +82,158 @@ def run_edits(release, *, plan=False):
                                     release.catalog, plan_only=plan)
 
 
+def _unit_parts(argv):
+    """Split a transient-unit argv into flags, properties and service argv."""
+    split = argv.index("--")
+    head, service = argv[:split], argv[split + 1:]
+    properties = [head[i + 1] for i, item in enumerate(head) if item == "-p"]
+    flags = [item for i, item in enumerate(head)
+             if item != "-p" and (i == 0 or head[i - 1] != "-p")]
+    return flags, properties, service
+
+
+def _capture_runs(monkeypatch, results):
+    calls = []
+
+    def run(argv, **kw):
+        calls.append((argv, kw))
+        outcome = results.pop(0) if results else subprocess.CompletedProcess(argv, 0, b"{}", b"")
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(cycle.subprocess, "run", run)
+    return calls
+
+
 @pytest.mark.parametrize("plan", [False, True])
-def test_child_uses_signed_identity_and_no_inherited_environment(
-        monkeypatch, release, plan):
+def test_child_runs_in_one_delegated_transient_unit(monkeypatch, release, plan):
     monkeypatch.setenv("PYTHONPATH", "/untrusted/module")
     monkeypatch.setenv("LD_PRELOAD", "/untrusted/library")
     monkeypatch.setenv("METNOS_SERVICE_USER", "root")
-    calls = []
-    monkeypatch.setattr(cycle.subprocess, "run",
-                        lambda command, **kw: calls.append((command, kw)))
+    calls = _capture_runs(monkeypatch, [])
     cycle._release_edits_child(release.distribution, release.descriptor,
                               release.catalog, plan_only=plan)
     assert len(calls) == 1
-    command, kw = calls[0]
-    assert command == [release.entry.target_executable, "-E", "-s", "-B", "-m",
+    argv, kw = calls[0]
+    assert kw == dict(stdin=subprocess.DEVNULL, capture_output=True, check=False,
+                      env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                           "LANG": "C", "LC_ALL": "C"},
+                      close_fds=True, timeout=120 if plan else 600)
+    flags, properties, service = _unit_parts(argv)
+    unit = flags[-1].removeprefix("--unit=")
+    assert flags[:-1] == ["/usr/bin/systemd-run", "--wait", "--pipe", "--collect",
+                          "--quiet", "--expand-environment=no"]
+    assert re.fullmatch(r"metnos-release-edits-(plan|sign)-[0-9a-f]{16}\.service", unit)
+    assert ("-plan-" in unit) is plan
+    limit = 120 if plan else 600
+    assert properties == [
+        "Type=exec", "User=23100", "Group=23101", "SupplementaryGroups=23101 23102",
+        "Delegate=yes", "DelegateSubgroup=metnos-birth-host", "UMask=0027",
+        "KillMode=control-group", "TimeoutStopSec=5", f"RuntimeMaxSec={limit}",
+        "NoNewPrivileges=yes", "CapabilityBoundingSet=CAP_SETGID CAP_SETPCAP CAP_SETUID",
+        "MemoryAccounting=yes", "TasksAccounting=yes",
+        f"WorkingDirectory={release.entry.target_working_directory}"]
+    record = release.account.record
+    environment = {"HOME": record.home, "USER": record.name, "LOGNAME": record.name,
+                   "SHELL": record.shell,
+                   "METNOS_INSTALL_ROOT": release.distribution.installation_root,
+                   **release.environment}
+    assert service == ["/usr/bin/env", "-i",
+                       *(f"{k}={v}" for k, v in environment.items()),
+                       release.entry.target_executable, "-E", "-s", "-B", "-m",
                        "stack_reconcile", "deploy", "--changed-only",
                        "--plan" if plan else "--sign"]
-    record = release.account.record
-    assert kw == dict(
-        stdin=subprocess.DEVNULL, capture_output=True, check=False,
-        cwd=release.entry.target_working_directory,
-        env={"HOME": record.home, "USER": record.name, "LOGNAME": record.name,
-             "SHELL": record.shell,
-             "METNOS_INSTALL_ROOT": release.distribution.installation_root,
-             **release.environment},
-        user=23100, group=23101, extra_groups=[23101, 23102],
-        umask=0o027, close_fds=True, timeout=120 if plan else 600)
+
+
+def test_each_execution_gets_a_fresh_unit_name(monkeypatch, release):
+    calls = _capture_runs(monkeypatch, [])
+    for _ in range(2):
+        cycle._release_edits_child(release.distribution, release.descriptor,
+                                  release.catalog, plan_only=False)
+    assert len({_unit_parts(argv)[0][-1] for argv, _ in calls}) == 2
+
+
+def test_signed_dollar_values_pass_literally(monkeypatch, release):
+    release.entry.target_environment = (NS(name="METNOS_WORKSPACE",
+                                           value="/srv/x$HOME/${USER}"),)
+    calls = _capture_runs(monkeypatch, [])
+    cycle._release_edits_child(release.distribution, release.descriptor,
+                              release.catalog, plan_only=True)
+    argv = calls[0][0]
+    assert "--expand-environment=no" in argv
+    assert "METNOS_WORKSPACE=/srv/x$HOME/${USER}" in _unit_parts(argv)[2]
+
+
+def test_specifier_character_is_refused_before_launch(monkeypatch, release):
+    release.entry.target_environment = (NS(name="METNOS_WORKSPACE", value="/srv/%n"),)
+    monkeypatch.setattr(cycle.subprocess, "run", lambda *a, **k: pytest.fail("launched"))
+    with pytest.raises(RuntimeError):
+        cycle._release_edits_child(release.distribution, release.descriptor,
+                                  release.catalog, plan_only=False)
+
+
+@pytest.mark.parametrize("shown,stopped", [
+    (b"LoadState=not-found\nActiveState=inactive\n", True),
+    (b"LoadState=loaded\nActiveState=failed\n", True),
+    (b"LoadState=loaded\nActiveState=deactivating\n", False),
+])
+def test_timeout_stops_and_confirms_only_this_unit(monkeypatch, release, shown, stopped):
+    expired = subprocess.TimeoutExpired("systemd-run", 600, output=b"partial")
+    calls = _capture_runs(monkeypatch, [
+        expired, subprocess.CompletedProcess([], 0, b"", b""),
+        subprocess.CompletedProcess([], 0, shown, b"")])
+    with pytest.raises(subprocess.TimeoutExpired) as raised:
+        cycle._release_edits_child(release.distribution, release.descriptor,
+                                  release.catalog, plan_only=False)
+    unit = _unit_parts(calls[0][0])[0][-1].removeprefix("--unit=")
+    assert [argv for argv, _ in calls[1:]] == [
+        ["/usr/bin/systemctl", "stop", unit],
+        ["/usr/bin/systemctl", "show", "--property=LoadState,ActiveState", unit]]
+    assert raised.value is expired and expired.release_unit_stopped is stopped
+    assert expired.release_unit == unit and expired.output == b"partial"
+
+
+def test_failed_stop_leaves_the_residue_unconfirmed(monkeypatch, release):
+    expired = subprocess.TimeoutExpired("systemd-run", 120)
+    _capture_runs(monkeypatch, [expired, OSError("stop unavailable")])
+    with pytest.raises(subprocess.TimeoutExpired):
+        cycle._release_edits_child(release.distribution, release.descriptor,
+                                  release.catalog, plan_only=True)
+    assert expired.release_unit_stopped is False
+
+
+@pytest.mark.parametrize("stop_outcomes,expected", [
+    ([subprocess.CompletedProcess([], 0, b"", b""),
+      subprocess.CompletedProcess([], 0, b"LoadState=not-found\n", b"")], "confirmed"),
+    ([OSError("stop unavailable")], "unconfirmed"),
+    ([subprocess.CompletedProcess([], 0, b"", b""),
+      subprocess.CompletedProcess([], 0, b"LoadState=loaded\nActiveState=active\n", b"")],
+     "unconfirmed"),
+])
+def test_interruption_records_the_stop_of_this_unit_and_propagates(
+        monkeypatch, release, capsys, stop_outcomes, expected):
+    interrupted = KeyboardInterrupt()
+    calls = _capture_runs(monkeypatch, [interrupted, *stop_outcomes])
+    with pytest.raises(KeyboardInterrupt) as raised:
+        cycle._release_edits_child(release.distribution, release.descriptor,
+                                  release.catalog, plan_only=False)
+    assert raised.value is interrupted
+    unit = _unit_parts(calls[0][0])[0][-1].removeprefix("--unit=")
+    assert calls[1][0] == ["/usr/bin/systemctl", "stop", unit]
+    output = capsys.readouterr().out
+    tag, record = output.rstrip("\n").split(" ", 1)
+    assert tag == "RELEASE_UNIT_STOP" and output.count("\n") == 1
+    assert json.loads(record) == {"cause": "interrupted", "stop": expected, "unit": unit}
+    assert release.entry.target_executable not in output and "METNOS_" not in output
+
+
+def test_unit_name_conflict_is_one_refused_attempt(monkeypatch, release, capsys):
+    calls = _capture_runs(monkeypatch, [subprocess.CompletedProcess(
+        [], 1, b"", b"Failed to start transient service unit: Unit already exists.")])
+    assert run_edits(release) == 78
+    assert len(calls) == 1
+    assert "RELEASE_EDITS_ADMITTED" not in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("field,value", [
@@ -366,7 +493,37 @@ def test_timeout_reports_declared_limit_and_uncertainty(monkeypatch, release, ca
     assert summary["timeout_s"] == (120 if plan else 600)
     assert summary["effects"] == ("no_admissions" if plan else "unknown_check_pending_activation")
     assert summary["child_streams"]["stdout_bytes"] == len(b"partial")
+    assert summary["unit_stop"] == "unconfirmed"
     assert "secret-tail" not in output
+
+
+@pytest.mark.parametrize("stopped,expected", [(True, "confirmed"), (False, "unconfirmed")])
+def test_timeout_summary_reports_whether_the_unit_stopped(monkeypatch, release, capsys,
+                                                         stopped, expected):
+    def child(*args, **kwargs):
+        expired = subprocess.TimeoutExpired("test", 600)
+        expired.release_unit_stopped = stopped
+        raise expired
+
+    monkeypatch.setattr(cycle, "_release_edits_child", child)
+    assert run_edits(release) == 78
+    summary = json.loads(capsys.readouterr().out.split(" ", 2)[2])
+    assert summary["unit_stop"] == expected and summary["error_code"] == "release_edits_timeout"
+    assert "release_unit" not in summary
+
+
+def test_unconfirmed_timeout_names_the_unit_to_check(monkeypatch, release, capsys):
+    def child(*args, **kwargs):
+        expired = subprocess.TimeoutExpired("test", 600)
+        expired.release_unit = "metnos-release-edits-sign-0123456789abcdef.service"
+        expired.release_unit_stopped = False
+        raise expired
+
+    monkeypatch.setattr(cycle, "_release_edits_child", child)
+    assert run_edits(release) == 78
+    summary = json.loads(capsys.readouterr().out.split(" ", 2)[2])
+    assert summary["unit_stop"] == "unconfirmed"
+    assert summary["release_unit"] == "metnos-release-edits-sign-0123456789abcdef.service"
 
 
 @pytest.mark.parametrize("content", [None, b"different", b"expected\n"])
