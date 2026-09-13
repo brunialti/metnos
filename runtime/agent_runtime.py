@@ -4523,6 +4523,7 @@ class TurnLog:
             "cap_suggested": cap_suggested,
             "args_suggested": args_suggested,
             "preview_label": preview_label,
+            "conversation_id": self.conversation_id,
         }
 
         sender_id = (
