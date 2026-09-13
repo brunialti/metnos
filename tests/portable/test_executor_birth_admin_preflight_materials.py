@@ -1000,6 +1000,60 @@ def test_candidate_units_match_independent_hash_and_exact_enablement_links() -> 
     )) == _EXPECTED_ENABLEMENT_LINKS
 
 
+OLD_BOUNDING = "CAP_SETGID CAP_SETPCAP CAP_SETUID"
+
+
+def _with_launcher_bounding(encoded: bytes, value: str) -> bytes:
+    """The same catalog with every gated unit declaring `value`."""
+    original = catalog.decode_service_catalog_v1(encoded)
+    entries = []
+    for entry in original.entries:
+        spec = entry.unit_spec
+        if spec is not None and any(
+                item.name == "CapabilityBoundingSet" for item in spec.directives):
+            spec = catalog.make_unit_spec_v1(entry.unit_name, tuple(
+                dataclasses.replace(item, values=(value,))
+                if item.name == "CapabilityBoundingSet" else item
+                for item in spec.directives
+            ))
+            entry = dataclasses.replace(entry, unit_spec=spec)
+        entries.append(entry)
+    return catalog._encode_service_catalog_v1(
+        tuple(entries), original.legacy_bindings)
+
+
+def test_predecessor_launcher_bounding_set_decodes_in_both_readers() -> None:
+    """Release N+1 must read release N's signed catalog (transition 28→29)."""
+    encoded = _with_launcher_bounding(_catalog_bytes(), OLD_BOUNDING)
+    decoded = catalog.decode_service_catalog_v1(encoded)
+    autonomous = preflight._decode_service_catalog_v1(encoded)
+    assert decoded.catalog_id == autonomous.catalog_id
+
+
+def test_new_recipe_with_the_predecessor_bounding_set_fails_its_identity() -> None:
+    encoded = _with_launcher_bounding(_catalog_bytes(), OLD_BOUNDING)
+    descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(_deployment_record()))
+    with pytest.raises(preflight.PreflightError, match="service source recipe"):
+        preflight._service_source_identity_v1(
+            preflight._decode_service_catalog_v1(encoded), descriptor)
+    with pytest.raises(catalog.ServiceCatalogError, match="source recipe"):
+        catalog._source_identity(
+            catalog.decode_service_catalog_v1(encoded),
+            "/var/lib/metnos/executor-birth/releases-v1/00000000000000000002")
+
+
+@pytest.mark.parametrize("value", (
+    "CAP_SYS_ADMIN CAP_SETGID CAP_SETPCAP CAP_SETUID",
+    "CAP_SETUID CAP_SETPCAP CAP_SETGID", "",
+))
+def test_unknown_launcher_bounding_set_is_refused(value: str) -> None:
+    # An empty value is refused earlier, by the generic directive checks.
+    with pytest.raises(catalog.ServiceCatalogError):
+        catalog.decode_service_catalog_v1(
+            _with_launcher_bounding(_catalog_bytes(), value))
+
+
 @pytest.mark.parametrize("engine", ("v3", "metis"))
 def test_product_recipe_pin_admits_v3_and_rejects_rehashed_metis(engine) -> None:
     original = catalog.decode_service_catalog_v1(_catalog_bytes())

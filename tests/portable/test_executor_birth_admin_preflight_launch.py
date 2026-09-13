@@ -18,8 +18,13 @@ def D(character: str) -> str:
     return "sha256:" + character * 64
 
 
+OLD_BOUNDING = "CAP_SETGID CAP_SETPCAP CAP_SETUID"
+NEW_BOUNDING = "CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID"
+
+
 def _entry(
     *, execution_kind: str = "python_module", notify: bool = False,
+    bounding: str | None = NEW_BOUNDING,
 ) -> preflight._ServiceCatalogEntryV1:
     directives = [
         preflight._ServiceDirectiveV1(
@@ -35,6 +40,10 @@ def _entry(
             "Service", "SupplementaryGroups", "scalar", ("44 991",),
         ),
     ]
+    if bounding is not None:
+        directives.append(preflight._ServiceDirectiveV1(
+            "Service", "CapabilityBoundingSet", "scalar", (bounding,),
+        ))
     if notify:
         directives.extend((
             preflight._ServiceDirectiveV1(
@@ -120,6 +129,36 @@ def test_launch_status_refuses_any_other_privilege(changes: dict[str, str]) -> N
     assert not preflight._launch_status_matches_v1(
         _launch_status(plan, **changes), plan,
     )
+
+
+@pytest.mark.parametrize("bounding,cap_bnd,accepted", (
+    (OLD_BOUNDING, "0000000000000000", True),
+    (OLD_BOUNDING, "0000000000002000", False),
+    (NEW_BOUNDING, "0000000000002000", True),
+    (NEW_BOUNDING, "0000000000000000", False),
+))
+def test_launch_status_follows_the_declared_bounding_set(
+    bounding: str, cap_bnd: str, accepted: bool,
+) -> None:
+    """A predecessor unit (no CAP_NET_RAW) still launches during a transition."""
+    plan = _plan(_entry(bounding=bounding))
+    assert preflight._launch_status_matches_v1(
+        _launch_status(plan, CapBnd=cap_bnd), plan,
+    ) is accepted
+
+
+@pytest.mark.parametrize("bounding", (
+    None, "", "CAP_SYS_ADMIN CAP_SETGID CAP_SETPCAP CAP_SETUID",
+    "CAP_SETUID CAP_SETPCAP CAP_SETGID",
+))
+def test_launch_status_refuses_a_missing_or_unknown_bounding_set(
+    bounding: str | None,
+) -> None:
+    plan = _plan(_entry(bounding=bounding))
+    for cap_bnd in ("0000000000000000", "0000000000002000"):
+        assert not preflight._launch_status_matches_v1(
+            _launch_status(plan, CapBnd=cap_bnd), plan,
+        )
 
 def test_launch_plan_uses_only_signed_identity_environment_and_root(
     monkeypatch: pytest.MonkeyPatch,

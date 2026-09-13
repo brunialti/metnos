@@ -1758,6 +1758,16 @@ def _directive_index(
     }
 
 
+# The launcher bounding sets a signed catalog may declare: releases before 29
+# and from 29 on (CAP_NET_RAW kept so allowed tools such as ping can start).
+# Both stay readable so a crossing can decode its predecessor; the recipe of
+# a new catalog is fixed to the current one by SERVICE_SOURCE_V1.
+LAUNCHER_BOUNDING_SETS_V1 = (
+    "CAP_SETGID CAP_SETPCAP CAP_SETUID",
+    "CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID",
+)
+
+
 def _require_gated_service_unit_shape(entry: ServiceCatalogEntryV1) -> None:
     directives = _directive_index(entry.unit_spec)
     required = {
@@ -1785,7 +1795,7 @@ def _require_gated_service_unit_shape(entry: ServiceCatalogEntryV1) -> None:
         )
     if (
         directives[("Service", "CapabilityBoundingSet")].values
-        != ("CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID",)
+        not in {(value,) for value in LAUNCHER_BOUNDING_SETS_V1}
         or directives[("Service", "NoNewPrivileges")].values != ("yes",)
     ):
         raise ServiceCatalogError(

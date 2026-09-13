@@ -72,6 +72,16 @@ def _release(root, sequence, previous_id, key, key_id, registry, *, mutation=Non
             for directive in item.unit_spec.directives
         )
         entries[index] = dataclasses.replace(item, unit_spec=catalog.make_unit_spec_v1(item.unit_name, directives))
+    if mutation == "pre_net_raw_launcher":
+        # The signed launcher of releases before 29 had no CAP_NET_RAW.
+        entries = [
+            dataclasses.replace(item, unit_spec=catalog.make_unit_spec_v1(item.unit_name, tuple(
+                dataclasses.replace(directive, values=("CAP_SETGID CAP_SETPCAP CAP_SETUID",))
+                if directive.name == "CapabilityBoundingSet" else directive
+                for directive in item.unit_spec.directives
+            ))) if item.unit_spec is not None else item
+            for item in entries
+        ]
     contents[catalog.CATALOG_PATH_V1] = catalog._encode_service_catalog_v1(tuple(entries), _legacy())
     decoded = catalog.decode_service_catalog_v1(contents[catalog.CATALOG_PATH_V1])
     artifacts = [assembler.DeploymentArtifactV1(
@@ -172,6 +182,26 @@ def test_historical_review_and_recipe_differ_without_running_old_code(tmp_path, 
         catalog.load_service_catalog_v1(artifacts)
     with pytest.raises(TypeError):
         artifacts.contents[_HELPER] = b"modified"
+
+
+def test_predecessor_catalog_without_net_raw_is_read_by_the_real_loader(tmp_path):
+    """The 28→29 crossing failed here: the previous catalog must stay readable."""
+    current, previous, registry, environment, _old, _new, contents = _pair(
+        tmp_path, mutation="pre_net_raw_launcher")
+    artifacts = distribution._capture_previous_release_artifacts_for_test_v1(
+        current, previous, registry=registry, environment=environment,
+    )
+    loaded = catalog.load_previous_service_catalog_v1(artifacts)
+    assert loaded.catalog.encoded == contents[catalog.CATALOG_PATH_V1]
+    declared = {
+        directive.values
+        for entry in loaded.catalog.entries if entry.unit_spec is not None
+        for directive in entry.unit_spec.directives
+        if directive.name == "CapabilityBoundingSet"
+    }
+    assert declared == {("CAP_SETGID CAP_SETPCAP CAP_SETUID",)}
+    with pytest.raises(catalog.ServiceCatalogError, match="source recipe"):
+        catalog._source_identity(loaded.catalog, previous.installation_root)
 
 
 @pytest.mark.parametrize("mutation", (

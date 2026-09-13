@@ -206,12 +206,18 @@ _PR_SET_NO_NEW_PRIVS_V1 = 38
 _PR_CAP_AMBIENT_V1 = 47
 _PR_CAP_AMBIENT_CLEAR_ALL_V1 = 4
 _LAUNCHER_BOUNDING_CAPABILITIES_V1 = (6, 7, 8)  # SETGID, SETUID, SETPCAP
-# The only capability left in the final bounding set: CAP_NET_RAW (13).
-# 13/9/2026, owner decision: protections follow the allowed-command list,
-# and `ping` is its only binary carrying a file capability (`cap_net_raw=ep`).
-# An empty bounding set makes execve of such a binary fail with EPERM.
-# NoNewPrivileges keeps it out of every permitted/effective set.
-_SERVICE_BOUNDING_STATUS_V1 = "0000000000002000"
+# Final bounding set expected for each launcher bounding set a signed unit may
+# declare (the same closed set as the catalog).  Releases before 29 declared
+# only the launcher capabilities, which the launch drops: nothing is left.
+# From 29 on CAP_NET_RAW (13) stays, by owner decision (13/9/2026):
+# protections follow the allowed-command list, and `ping` is its only binary
+# carrying a file capability (`cap_net_raw=ep`), which an empty bounding set
+# cannot execve.  NoNewPrivileges keeps it out of every usable set.  Reading
+# the predecessor's value keeps a crossing and a return to it launchable.
+_SERVICE_BOUNDING_STATUS_V1 = {
+    "CAP_SETGID CAP_SETPCAP CAP_SETUID": "0000000000000000",
+    "CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID": "0000000000002000",
+}
 # The one signed topology this verifier admits.  It is a reviewed pin: the
 # value moves whenever `SERVICE_SOURCE_V1` changes, and moving it here *is*
 # the act of approving that change.  Never derive it from the candidate.
@@ -2638,7 +2644,7 @@ def _require_gated_service_shape_v1(entry: _ServiceCatalogEntryV1) -> None:
         raise _invalid("gated service kill mode")
     if (
         directives[("Service", "CapabilityBoundingSet")].values
-        != ("CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID",)
+        not in {(value,) for value in _SERVICE_BOUNDING_STATUS_V1}
         or directives[("Service", "NoNewPrivileges")].values != ("yes",)
     ):
         raise _invalid("gated service launcher capabilities")
@@ -14715,7 +14721,21 @@ def _read_proc_status_v1() -> dict[str, str]:
 
 
 def _launch_status_matches_v1(status: dict[str, str], plan: _LaunchPlanV1) -> bool:
-    """True only for the exact service identity with no usable privilege."""
+    """True only for the exact service identity with no usable privilege.
+
+    The expected bounding set comes from the authenticated unit of the plan,
+    never from the observed process: a missing or unknown declaration fails.
+    """
+    spec = plan.entry.unit_spec
+    declared = [
+        item.values for item in (spec.directives if spec is not None else ())
+        if (item.section, item.name) == ("Service", "CapabilityBoundingSet")
+    ]
+    if len(declared) != 1 or len(declared[0]) != 1:
+        return False
+    expected_bounding = _SERVICE_BOUNDING_STATUS_V1.get(declared[0][0])
+    if expected_bounding is None:
+        return False
     try:
         observed_groups = tuple(
             int(item) for item in status.get("Groups", "").split())
@@ -14726,7 +14746,7 @@ def _launch_status_matches_v1(status: dict[str, str], plan: _LaunchPlanV1) -> bo
         and status.get("Gid") == "\t".join((str(plan.service_gid),) * 4)
         and observed_groups == plan.service_supplementary_gids
         and status.get("NoNewPrivs") == "1"
-        and status.get("CapBnd") == _SERVICE_BOUNDING_STATUS_V1
+        and status.get("CapBnd") == expected_bounding
         and all(status.get(name) == "0000000000000000" for name in (
             "CapInh", "CapPrm", "CapEff", "CapAmb",
         ))
