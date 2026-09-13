@@ -346,14 +346,38 @@ def _detect_unfulfilled_mutating_intent(log) -> str:
     return ""
 
 
-def _compose_honest_from_last_error(log) -> str:
+def _compose_honest_from_last_error(log, *, fallback: bool = True) -> str:
     """Compose messaggio onesto user-facing dall'ultimo step ok=False.
 
     Salta step "meta" del runtime (duplicate_call_blocked, cap_same, ecc.)
     e risale al VERO step con error semantico. Riusa il path priority
     error-first dell'invariante TurnLog.write (`MSG_VALIDATION_LOOP_FINAL`
-    o `MSG_FINAL_FALLBACK_FROM_ERROR`). Fallback MSG_FINAL_FALLBACK_GENERIC.
+    o `MSG_FINAL_FALLBACK_FROM_ERROR`). Summary e' l'ultimo ripiego, solo
+    su ok=False. Con fallback=False l'assenza di fatti restituisce vuoto.
     """
+    def _safe_detail(text: str) -> str:
+        if not isinstance(text, str) or not text.strip():
+            return ""
+        try:
+            cleaned, _ = _scrub_credentials(text.strip())
+            if _has_runtime_internal_leak(cleaned):
+                return ""
+            return cleaned.strip()
+        except Exception:
+            return ""  # mai ripiegare su dettagli non oscurati
+
+    def _humanize_error_class(raw: str) -> str:
+        # Stessa traduzione del precedente fallback terminale vuoto.
+        key = raw.split(":", 1)[0].strip()
+        if key and key.replace("_", "").isalnum():
+            try:
+                human = msg(f"ERR_{key.upper()}")
+                if human and not human.startswith("<missing:"):
+                    return human
+            except Exception:
+                pass
+        return raw
+
     for _s in reversed(getattr(log, "steps", []) or []):
         if _is_meta_step(_s):
             continue
@@ -367,42 +391,49 @@ def _compose_honest_from_last_error(log) -> str:
             # dell'executor (gia' i18n, es. "Nessuna persona 'X' nel registro").
             # Ha priorita' sull'`error` grezzo (spesso un codice tipo
             # "unknown_name") e sul fallback generico.
-            _hint = _obs.get("final_message_hint")
-            if isinstance(_hint, str) and _hint.strip():
-                return _hint.strip()
-            _err = _obs.get("error") or ""
+            _hint = _safe_detail(_obs.get("final_message_hint"))
+            if _hint:
+                return _hint
+            _err = _safe_detail(str(_obs.get("error") or ""))
+            if _err:
+                _err = _humanize_error_class(_err)
             _failed = _obs.get("failed") or []
             if not _err and isinstance(_failed, list) and _failed:
-                _err = ", ".join(
-                    str((f or {}).get("error", "")).strip()
-                    for f in _failed
-                    if isinstance(f, dict) and f.get("error")
-                )
+                _parts = [
+                    _humanize_error_class(detail)
+                    for f in _failed if isinstance(f, dict)
+                    if (detail := _safe_detail(str(f.get("error") or "")))
+                ]
+                _err = " ".join(dict.fromkeys(_parts))
             _vfails = _obs.get("validation_failures") or []
             if _vfails and isinstance(_vfails, list):
-                try:
-                    return msg(
-                        "MSG_VALIDATION_LOOP_FINAL",
-                        tool=_s.chosen_tool or "",
-                        fails="; ".join(str(v) for v in _vfails),
-                    )
-                except Exception:
-                    pass
+                _detail = _safe_detail("; ".join(str(v) for v in _vfails))
+                if _detail:
+                    try:
+                        return msg(
+                            "MSG_VALIDATION_LOOP_FINAL",
+                            tool=_s.chosen_tool or "", fails=_detail,
+                        )
+                    except Exception:
+                        pass
+            if not _err:
+                # Il riepilogo dell'executor puo' essere l'unica causa
+                # disponibile (nessun error/hint). Oscurare PRIMA del cap:
+                # tagliare un token grezzo ne impedirebbe il riconoscimento.
+                _err = _safe_detail(_obs.get("summary"))
+                if len(_err) > 1200:
+                    _err = _err[:1200].rstrip() + "…"
             if _err:
-                # Scrub leak runtime-internal dall'error stesso §2.8:
-                # se l'error contiene marker runtime (request_new_executor
-                # rejected, DUPLICATE_CALL, jaccard, ...) emettere generic
-                # fallback invece di propagare il leak nel template.
-                if _has_runtime_internal_leak(str(_err)):
-                    continue  # cerca step precedente
                 try:
                     return msg(
                         "MSG_FINAL_FALLBACK_FROM_ERROR",
                         tool=_s.chosen_tool or "",
-                        error=str(_err).strip(),
+                        error=_err,
                     )
                 except Exception:
                     return f"{_s.chosen_tool}: {_err}"
+    if not fallback:
+        return ""
     try:
         return msg("MSG_FINAL_FALLBACK_GENERIC")
     except Exception:
@@ -5086,21 +5117,11 @@ class TurnLog:
             # Sostituisci con dichiarazione esplicita di incompletezza.
             _mutating_pending = _detect_unfulfilled_mutating_intent(self)
             if _mutating_pending:
-                # §2.8: se lo step mutante FALLITO porta un messaggio
-                # user-facing ESPLICITO (`final_message_hint`, es. delete_persons
-                # "Nessuna persona 'X' nel registro."), mostralo — NON mascherarlo
-                # col generico "azione non completata" (che maschera la causa
-                # reale e azionabile, come faceva "Pipeline malformata").
-                _mut_hint = ""
-                for _s in reversed(getattr(self, "steps", []) or []):
-                    _o = _s.result if isinstance(_s.result, dict) else None
-                    if isinstance(_o, dict) and _o.get("ok") is False:
-                        _h = _o.get("final_message_hint")
-                        if isinstance(_h, str) and _h.strip():
-                            _mut_hint = _h.strip()
-                            break
-                if _mut_hint:
-                    self.final_message = _mut_hint
+                # Riusa il motivo osservato, non il successo narrato dal
+                # finalizer. Senza fatti utili restano le guardie precedenti.
+                _failure = _compose_honest_from_last_error(self, fallback=False)
+                if _failure:
+                    self.final_message = _failure
                 elif self.error_class in _AUTHORITATIVE_UNFULFILLED_CLASSES:
                     # The engine already explained WHY the action did not
                     # happen (no tool can perform it).  Replacing that with
@@ -5371,76 +5392,10 @@ class TurnLog:
         #      `_compose_final_message_from_obs` (path auto-final ufficiale).
         #   3. Fallback generico MSG_FINAL_FALLBACK_GENERIC.
         # `needs_inputs` ha dialog UX dedicata: non rientra qui.
-        def _humanize_error_class(raw: str) -> str:
-            """Traduce error_class technical (es. `no_verified_channel`) in
-            testo user-facing via i18n key `ERR_<UPPERCASE>`. Fallback al
-            raw string se la chiave non esiste. Generale §7.3: ogni
-            executor che ritorna un error_class registrato come ERR_
-            i18n diventa automaticamente user-friendly senza modifiche.
-            """
-            if not raw or not isinstance(raw, str):
-                return raw or ""
-            # Strip prefisso colon-separated tipo "channel_not_paired:telegram"
-            _key_part = raw.split(":", 1)[0].strip()
-            if not _key_part or not _key_part.replace("_", "").isalnum():
-                return raw
-            _i18n_key = f"ERR_{_key_part.upper()}"
-            try:
-                _human = msg(_i18n_key)
-            except Exception:
-                return raw
-            # `msg()` ritorna `<missing:KEY>` se assente: distingui
-            if _human and not _human.startswith("<missing:"):
-                return _human
-            return raw
-
-        def _extract_error(obs: dict) -> str:
-            if not isinstance(obs, dict):
-                return ""
-            _e = obs.get("error")
-            if isinstance(_e, str) and _e.strip():
-                return _humanize_error_class(_e.strip())
-            _failed = obs.get("failed") or []
-            if isinstance(_failed, list):
-                parts = [
-                    _humanize_error_class(str((f or {}).get("error", "")).strip())
-                    for f in _failed
-                    if isinstance(f, dict) and f.get("error")
-                ]
-                # dedup conservando ordine (stessa error_class su piu' target)
-                seen = set()
-                deduped = []
-                for p in parts:
-                    if p and p not in seen:
-                        seen.add(p)
-                        deduped.append(p)
-                if deduped:
-                    return " ".join(deduped)
-            return ""
-
         if (self.final_kind in ("answer", "ask", "error", "loop_break")
                 and not (self.final_message or "").strip()):
-            _fallback = ""
-            # (1) priorita': ultimo step ok=False con error → onestamente
-            #     reporta il fail. Non degradare a "completato (0 elementi)".
-            for _s in reversed(self.steps):
-                _obs = _s.result if isinstance(_s.result, dict) else {}
-                if not _obs:
-                    continue
-                if _s.chosen_tool == "final_answer":
-                    continue
-                if _obs.get("ok") is False:
-                    _err = _extract_error(_obs)
-                    if _err:
-                        try:
-                            _fallback = msg(
-                                "MSG_FINAL_FALLBACK_FROM_ERROR",
-                                tool=_s.chosen_tool or "",
-                                error=_err,
-                            )
-                        except Exception:
-                            _fallback = f"{_s.chosen_tool}: {_err}"
-                        break
+            # (1) Stessa priorita' e redazione della guardia unfulfilled.
+            _fallback = _compose_honest_from_last_error(self, fallback=False)
             # (2) successo silente: usa compose_from_obs
             if not _fallback:
                 for _s in reversed(self.steps):
