@@ -167,6 +167,22 @@ class TestPrefilterShellIntent:
         )
         assert "admin" in effective
 
+    def test_quantified_command_survives_an_imprecise_numeric_intent(self, seeded_db):
+        from engine.proposer import SimpleProposer
+        from engine.types import Intent
+        from loader import load_catalog
+        from prefilter import rank_adaptive
+
+        query = "fai 2 ping a 192.0.2.10"
+        catalog = load_catalog(verify=False, include_synth=False)
+        selected, _ = rank_adaptive(query, catalog, k_min=3, k_max=8, llm_call=None)
+        pool = [executor.name for executor in selected]
+        assert "admin" in pool
+        effective = SimpleProposer()._effective_pool(
+            query=query, intent=Intent(kind="action", verb="compute", object="numbers",
+                confidence=1.0, lang="it"), pool=pool, catalog=list(catalog), exclude_tools=())
+        assert "admin" in effective
+
     def test_message_ping_does_not_expose_admin(self, seeded_db):
         from loader import load_catalog
         from prefilter import rank_adaptive

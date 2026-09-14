@@ -308,7 +308,11 @@ def _named_device_mentions(qn: str, devices,
                 if not any(
                         begin <= match.start() and match.end() <= stop
                         for begin, stop in ranges):
-                    candidates.append((match, True))
+                    # A bare identity may be an operand, not an execution
+                    # adjunct. Keep it in the planner's request, just as a
+                    # nominal mention is kept. Only a locative span can be
+                    # removed without dropping the object of the operation.
+                    candidates.append((match, False))
         for match, strip in candidates:
             out.append(_TargetMention(
                 identity=str(getattr(device, "id", "")),

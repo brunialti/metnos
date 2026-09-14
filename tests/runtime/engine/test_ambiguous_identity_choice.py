@@ -141,7 +141,22 @@ def test_fewer_than_two_identities_keeps_the_explicit_error(candidates):
 
     assert calls == ["find_packages"]
     result = run.steps[-1].result
-    assert result["error_class"] == "ambiguous_source_context"
+    assert result["error_class"] == "source_identity_unresolved"
+    assert result["error_code"] == "ERR_FROM_STEP_IDENTITIES_UNRESOLVED"
+    assert "decision" not in result
+
+
+def test_unresolved_software_does_not_claim_an_ambiguous_machine_context():
+    run, calls = _run([{"package_id": "editor", "name": "editor",
+                        "installed": False, "source": "winget"}])
+
+    assert calls == ["find_packages"]
+    result = run.steps[-1].result
+    assert result["error_class"] == "source_identity_unresolved"
+    assert result["error_code"] == "ERR_FROM_STEP_IDENTITIES_UNRESOLVED"
+    assert "<missing:" not in result["error"]
+    assert "programs" in result["error"]
+    assert result["context_errors"][0]["reason"] == "incomplete_vector_projection"
     assert "decision" not in result
 
 

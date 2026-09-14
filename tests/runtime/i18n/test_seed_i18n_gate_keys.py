@@ -26,6 +26,8 @@ _REQUIRED_FROM_STEP_KEYS = (
     "ERR_FROM_STEP_RANGE",
     "ERR_FROM_STEP_RESULT_INVALID",
     "ERR_FROM_STEP_LIST_MISSING",
+    "ERR_FROM_STEP_CONTEXT_AMBIGUOUS",
+    "ERR_FROM_STEP_IDENTITIES_UNRESOLVED",
 )
 
 # La chat e' una superficie i18n completa: il gate ricava le chiavi dal

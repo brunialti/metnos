@@ -141,6 +141,12 @@ def declared_numeric_option_values(
 
 
 
+def command_grammar_numeric_binaries() -> frozenset[str]:
+    """Commands with declared numeric arguments; syntax, never permission."""
+    return frozenset(binary for binary, options in _OPTION_NUMERIC_VALUES.items()
+                     if options)
+
+
 def command_grammar_binaries() -> frozenset[str]:
     """Return every binary with an explicit canonicalisation grammar.
 

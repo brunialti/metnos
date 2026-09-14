@@ -61,6 +61,26 @@ class ResolveTargetTests(unittest.TestCase):
         self.assertEqual(r.target, td.SERVER)
         self.assertFalse(r.explicit)
 
+    def test_bare_technical_identity_is_preserved_as_request_data(self):
+        for query in (
+            "fa ping a portatile-ufficio",
+            "fai ping a portatile-ufficio",
+            "ping portatile-ufficio",
+            "check connectivity to portatile-ufficio",
+            "confronta portatile-ufficio con il risultato precedente",
+        ):
+            with self.subTest(query=query):
+                r = R(query, [self.pc])
+                self.assertEqual(r.status, "ok")
+                self.assertEqual(r.target, self.pc.id)
+                self.assertEqual(r.cleaned_query, query)
+
+    def test_bare_identity_is_preserved_beside_explicit_execution_adjunct(self):
+        query = "ping portatile-ufficio sul fisso-casa"
+        r = R(query, [self.pc, self.casa])
+        self.assertEqual(r.target, self.casa.id)
+        self.assertEqual(r.cleaned_query, "ping portatile-ufficio")
+
     def test_named_device_offline_is_unreachable(self):
         self.pc.online = False
         r = R("comprimi documenti sul portatile-ufficio", [self.pc])

@@ -187,6 +187,38 @@ class TestShellIntentWordBoundary:
             "fai ping example.net", command_names={"ping"},
         ) is False
 
+    def test_stated_quantity_keeps_the_registered_command_discoverable(self):
+        from prefilter import _detect_command_grammar_intent
+
+        for query in (
+            "fai 2 ping a example.net",
+            "esegui 7 ping example.net",
+            "run 3 ping example.net",
+            "do not execute mount, then execute 2 ping example.net",
+        ):
+            assert _detect_command_grammar_intent(query), query
+        for query in (
+            "non eseguire 2 ping example.net",
+            "do not run 3 ping example.net",
+            "avoid executing 3 ping example.net",
+            "run 3 ping example.net; do not do it",
+            "run ping example.net; do not run 3 ping example.net",
+            "fai 2 file PDF",
+            "fai 2 date per il calendario",
+            "run. 3 ping example.net",
+            "fai 2 3 ping example.net",
+        ):
+            assert not _detect_command_grammar_intent(query), query
+
+    def test_quantity_support_follows_the_central_grammar(self, monkeypatch):
+        import safety.canonicalize as grammar
+        from prefilter import _detect_command_grammar_intent
+
+        query = "esegui 3 futurectl example.net"
+        assert not _detect_command_grammar_intent(query, command_names={"futurectl"})
+        monkeypatch.setattr(grammar, "_OPTION_NUMERIC_VALUES", {"futurectl": {"-n": 1.0}})
+        assert _detect_command_grammar_intent(query, command_names={"futurectl"})
+
     def test_time_intent_word_boundary(self):
         from prefilter import _detect_time_intent
         assert _detect_time_intent("che ora è") is True

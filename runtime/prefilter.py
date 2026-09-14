@@ -732,6 +732,26 @@ _CLI_FIRST_ARGUMENT_RE = re.compile(
 )
 
 
+def _command_invocation_before(query: str, start: int, binary: str):
+    """Keep one stated quantity between a native invocation and a command.
+
+    Only the central command grammar can admit the numeric form. Ordinary
+    nouns shared with binaries do not acquire command meaning from a number.
+    This exposes a planning candidate; it does not select arguments or grant
+    execution permission.
+    """
+    import detection_lexicon as _detlex
+    from safety.canonicalize import command_grammar_numeric_binaries
+
+    span = _detlex.phrase_before("syntax.command_invocation", query, start)
+    if span is None and binary in command_grammar_numeric_binaries():
+        quantity = re.search(r"(?<!\S)[0-9]+\s+\Z", query[:start])
+        if quantity is not None:
+            span = _detlex.phrase_before(
+                "syntax.command_invocation", query, quantity.start())
+    return span
+
+
 def _clause_end(query: str, start: int) -> int:
     end = len(query)
     for boundary in ",.;:!?":
@@ -773,9 +793,7 @@ def _explicit_command_targets(
         if token in command_names and polarity_stop <= match.start() < end
     ]
     for index, (match, token) in enumerate(candidates):
-        invocation = _detlex.phrase_before(
-            "syntax.command_invocation", query, match.start(),
-        )
+        invocation = _command_invocation_before(query, match.start(), token)
         if (invocation is not None and invocation[0] >= polarity_stop
                 and not query[polarity_stop:invocation[0]].strip()):
             return {item for _match, item in candidates[index:]}
@@ -875,12 +893,12 @@ def _detect_command_grammar_intent(query: str, *, command_names=None) -> bool:
             if not _detlex.native_ready_forms(
                     "syntax.command_invocation", require_manual=True):
                 continue
-            invocation_span = _detlex.phrase_before(
-                "syntax.command_invocation", query or "", match.start())
+            invocation_span = _command_invocation_before(
+                query or "", match.start(), token)
             asserted = (
                 invocation_span is not None
                 and _detlex.asserted_at(
-                    query or "", match.start(), command_scope=True,
+                    query or "", invocation_span[1], command_scope=True,
                 )
             )
             revoked_later = _later_polarity_revokes_operation(

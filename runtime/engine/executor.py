@@ -2442,12 +2442,20 @@ class Executor:
                     for item in _context_errors
                     if isinstance(item, dict) and item.get("arg")
                 })) or "?"
+                unresolved_identities = all(
+                    isinstance(item, dict)
+                    and item.get("reason") == "incomplete_vector_projection"
+                    for item in _context_errors)
+                failure_code = ("ERR_FROM_STEP_IDENTITIES_UNRESOLVED"
+                                if unresolved_identities
+                                else "ERR_FROM_STEP_CONTEXT_AMBIGUOUS")
                 failure = {
                     "ok": False,
-                    "error_class": "ambiguous_source_context",
-                    "error_code": "ERR_FROM_STEP_CONTEXT_AMBIGUOUS",
-                    "error": _msg(
-                        "ERR_FROM_STEP_CONTEXT_AMBIGUOUS", fields=fields),
+                    "error_class": ("source_identity_unresolved"
+                                    if unresolved_identities
+                                    else "ambiguous_source_context"),
+                    "error_code": failure_code,
+                    "error": _msg(failure_code, fields=fields),
                     "context_errors": _context_errors,
                 }
                 log.warning(

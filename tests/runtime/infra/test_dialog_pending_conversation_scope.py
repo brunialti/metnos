@@ -156,6 +156,34 @@ def _stub_completion(monkeypatch):
     return calls
 
 
+@pytest.mark.parametrize("query", ["turno:f35ee3d1", "avvio temporaneo?", "I did not confirm"])
+def test_unrelated_text_never_selects_a_pending_launch_mode(dp, monkeypatch, query):
+    import http_routes_agent as routes
+
+    dialog_id = "e" * 16
+    _save(dp, dialog_id, conversation=CONV_A)
+    state = dp.load_pending(LEGACY, dialog_id, owner_user_id=OWNER)
+    state["dialog"] = [{"var": "decision", "prompt": "Choose", "schema": {
+        "kind": "choice", "choices": [
+            {"value": "session", "label": "Avvio temporaneo"},
+            {"value": "persistent", "label": "Automatic startup"},
+            {"value": "reject", "label": "Reject"},
+        ]}}]
+    state["on_complete"] = {"type": "gate_dispatch", "conversation_id": CONV_A}
+    dp.save_pending(LEGACY, dialog_id, state)
+    calls = _stub_completion(monkeypatch)
+
+    assert routes._apply_dialog_pending(
+        _sender(CONV_A), query, actor="host", channel="http",
+        conversation_id=CONV_A, owner_user_id=OWNER,
+        admit_only_valid_closed=True) is None
+    unchanged = dp.load_pending(LEGACY, dialog_id, owner_user_id=OWNER)
+    assert unchanged["values_collected"] == {}
+    assert unchanged["completed"] is False
+    assert unchanged["step_index"] == 0
+    assert calls == []
+
+
 def test_cap_expand_question_answers_only_in_its_chat(dp, monkeypatch):
     import http_routes_agent as routes
 
