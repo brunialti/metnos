@@ -19,8 +19,11 @@ from manifest_lint import (  # noqa: E402
 @pytest.mark.parametrize("name", ["get_location", "find_packages", "run_processes"])
 @pytest.mark.parametrize("language", ["it", "en"])
 def test_repaired_turn_manifests_pass_the_actual_birth_linter(name, language):
+    from i18n_materializer import decode_language_state
     path = RUNTIME.parent / "executors" / name / "manifest.toml"
     manifest = tomllib.loads(path.read_text())
+    decode_language_state(path.with_name("manifest.lang_state.json").read_bytes(),
+                          manifest=manifest)
     failures = [item for item in lint_manifest(manifest, language=language)
                 if item.severity == "error"]
     assert failures == []
