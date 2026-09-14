@@ -25,8 +25,45 @@ collocazione e ripresa: 129 superati, 1 saltato, 1166 sottocasi superati.
 Dopo l'aggiunta della prova del punto comune di invocazione e della conservazione
 dell'UUID nella ripresa: 34 superati, di cui 31 già coperti (non sommare i gruppi).
 L'integrazione usa dialoghi e registro reali in ambiente isolato e un trasporto
-simulato: non è un collaudo Windows e2e. Rilascio e nuovo consenso reale ancora
-da verificare. Decisione: ADR 0218; messaggi e documentazione IT/EN aggiornati.
+simulato: non è un collaudo Windows e2e. Ulteriori 32 test di manifest, digest,
+stato linguistico e documentazione superati. Il gruppo confine/proiezione
+ha 131 superati e un fallimento dipendente dall'ordine: il test preesistente
+`test_contract_convergence_birth_and_source_owner_are_guarded_mutants` rimuove
+e ripristina una voce del dizionario condiviso, cambiandone l'ordine; il
+controllo di proiezione passa eseguito da solo. Nessuna modifica per mascherarlo.
+
+Correzione `e09f324b`, release **41** in esercizio: `CUTOVER_OK`,
+`PREFLIGHT_VERIFIED`, ammissione `run_processes=store_verified`, attivazione
+completata, rc0. Salute successiva HTTP `ok=true`, stack `ok=true, ready=true`.
+Il primo `prepare` si è fermato sul nuovo lettore non classificato; dichiarato
+esplicitamente `remember_verified_dialog` come `live_reader` del catalogo
+verificato, senza eccezioni né cambiamenti alla policy. Secondo prepare riuscito:
+1756 file, census `15fbcfc5a104801424b2183922b4f2ce44bf5039691ff44d6d8f157d0ae4ef83`.
+
+Build `sha256:7a3fb6aa04113da561dc74deda70bf28273eb7d637b26f2ba632536f9c7239db`,
+sorgente `sha256:8c1464b6af9577e755f360790f348ade1d16f0f4eb81091eef73ec72c267cd06`,
+cutover `sha256:0d71bf7ed1c786aaf3ffdbee98c96eb2bf57b47ef05f473f46f2515c2941e8cf`,
+richiesta `sha256:a48e0922ead975907c106b64b7d8cf7094a1cc67a97d5c599857d48260b51d3c`.
+Generazione `run_processes`:
+`sha256:8e073464055f0849379e984d383881fb50a57c76dc79cf242b031518630f36fe`.
+Evidenza: `/var/lib/metnos-admin/rm0008-cycle-evidence-7a3fb6aa04113da5`.
+
+Decisione ADR 0218, messaggi e documentazione IT/EN aggiornati. Pubblicazione
+statica verificata su `https://ad2c1d86.mykleos.pages.dev`; catalogo Tutor
+locale non ricompilato. Nuova scelta reale e ciclo chiudi/riapri ancora da
+verificare con il consenso dell'utente; nessuna autorizzazione inviata da Codex.
+
+Prova reale R41 alle 00:08 del 15 settembre: turno `84634de29cc1446e`,
+«avvia Word su pc-roberto», 43,370 secondi, percorso engine. HTTP e record
+persistente concordano sul nuovo dialogo `5c1306e1395646ec`: opzioni `once`,
+`until_restart`, `always`, `reject`. `find_packages` risolve Word dal menu
+Start; `run_processes` osserva Windows boot `134334326285000000` sul device
+`7bd3da08649e43c2b7e0a6bdecc66ecd` e lega il callback allo stesso UUID,
+non al nome del PC. Ricevuta `inv-18d54f60bf76f39d3e205b4a`: `started=false`,
+`_undo.outcome=no_effect`; turno `final_kind=ask`, `mutations=0`, `failures=0`,
+nessuna classe d'errore. Diagnostica in sola lettura `run-n2y9i0a_`.
+Questa prova dimostra la nuova domanda e l'osservazione del boot sul PC reale,
+non ancora la persistenza dopo una scelta dell'utente né un riavvio fisico.
 
 ## Aggiornamento serale: chiusura applicazioni e risposte veritiere
 
