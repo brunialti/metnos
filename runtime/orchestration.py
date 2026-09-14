@@ -472,13 +472,56 @@ def process_completion_callback(sender_id: str, dialog_id: str,
                                   ) -> "CompletionResult":
     """Wrapper pubblico: normalizza l'esito dei dispatch a CompletionResult
     (i dispatch legacy ritornano str; quelli full-turn CompletionResult)."""
-    out = _dispatch_completion(
-        sender_id, dialog_id, actor=actor, channel=channel,
-        owner_user_id=owner_user_id,
-        host_override=host_override)
-    if isinstance(out, CompletionResult):
-        return out
-    return CompletionResult(text=str(out) if out is not None else "")
+    state = dialog_pending.load_pending(
+        sender_id, dialog_id, owner_user_id=owner_user_id) or {}
+    callback = state.get("on_complete")
+    callback = callback if isinstance(callback, dict) else {}
+    gated = callback.get("type") in {
+        "gate_dispatch", "managed_dependency_resume", "resume_engine_gate",
+        "resume_executor_gate_tail",
+    }
+    nonce = str(callback.get("nonce") or dialog_id)
+    if gated:
+        # Stored values alone are not evidence of a submission. In particular
+        # never replay old completed gates whose accepting boundary is absent.
+        submitted = state.get("submissions") or {}
+        steps = state.get("dialog") or []
+        if not steps or any(
+                not isinstance(submitted.get(step.get("var")), dict)
+                or submitted[step.get("var")].get("source") not in {
+                    "http_chat", "http_form_owner", "http_form_capability",
+                    "telegram_chat", "telegram_button"}
+                for step in steps):
+            return CompletionResult(text=_msg(
+                "MSG_ORCH_CONTINUATION_FAILED", detail="consent_submission_unverified"))
+        claim = dialog_pending.begin_callback_once(
+            sender_id, dialog_id, nonce, owner_user_id=owner_user_id)
+        if claim.get("status") == "completed":
+            return _completion_from_receipt(claim["receipt"])
+        if claim.get("status") != "claimed":
+            return CompletionResult(text=_msg(
+                "MSG_ORCH_CONTINUATION_FAILED",
+                detail="callback_" + str(claim.get("status") or "invalid")))
+    try:
+        out = _dispatch_completion(
+            sender_id, dialog_id, actor=actor, channel=channel,
+            owner_user_id=owner_user_id,
+            host_override=host_override)
+        result = (out if isinstance(out, CompletionResult) else
+                  CompletionResult(text=str(out) if out is not None else ""))
+    except Exception:
+        if not gated:
+            raise
+        log.exception("Consent continuation failed dialog=%s", dialog_id)
+        result = CompletionResult(text=_msg(
+            "MSG_ORCH_CONTINUATION_FAILED", detail="callback_failed"))
+    if gated:
+        result.turn_id = result.turn_id or str(state.get("origin_turn_id") or "")
+        if not dialog_pending.complete_callback_once(
+                sender_id, dialog_id, nonce, _completion_receipt(result),
+                owner_user_id=owner_user_id):
+            log.error("Consent result outbox commit failed dialog=%s", dialog_id)
+    return result
 
 
 def _dispatch_completion(sender_id: str, dialog_id: str,
@@ -525,6 +568,8 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
         return _msg("MSG_ORCH_DIALOG_NOT_FOUND", dialog_id=dialog_id)
     if not state.get("completed"):
         return _msg("MSG_ORCH_DIALOG_INCOMPLETE")
+    if state.get("cancelled") or dialog_pending.is_expired(state):
+        return _msg("MSG_DIALOG_EXPIRED")
     on_complete = state.get("on_complete")
     if not isinstance(on_complete, dict):
         # Niente callback dichiarato: solo conferma generica.

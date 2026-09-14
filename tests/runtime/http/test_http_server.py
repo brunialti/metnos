@@ -461,6 +461,40 @@ class HttpServerTests(AioHTTPTestCase):
             owner_user_id="other-user-id")
         self.assertTrue(final["completed"])
         self.assertEqual(final["values_collected"], {"value": "ok"})
+        self.assertEqual(final["submissions"]["value"]["source"], "http_form_capability")
+
+    async def test_consent_form_requires_a_choice_and_runs_once(self):
+        import dialog_pending as dp
+        import orchestration as orch
+        owner = self.host_id()
+        with mock.patch.object(dp, "DIALOG_DIR", Path(self._tmpdir.name) / "consent-dialogs"):
+            proposal = orch.invoke_get_inputs_internal(
+                sender_id="http:consent", title="Test consent", description=None,
+                owner_user_id=owner, channel="http", origin_turn_id="consent-origin",
+                dialog=[{"var": "decision", "schema": {"kind": "choice", "choices": [
+                    {"value": "session", "label": "Session"},
+                    {"value": "reject", "label": "Reject"}]}}],
+                on_complete={"type": "gate_dispatch", "branches": {
+                    "session": {"tool": "test_tool", "args": {}}}})
+            dialog_id = proposal["dialog_id"]
+            route = f"/agent/dialog/{dialog_id}/submit"
+            with mock.patch.object(orch, "_esegui_ramo", return_value={
+                    "ok": False, "error": "launch refused"}) as effect:
+                missing = await self.client.post(route, data={}, headers=self.admin_hdr())
+                self.assertEqual(missing.status, 400)
+                effect.assert_not_called()
+                submitted = await self.client.post(route, data={"decision": "session"},
+                                                   headers=self.admin_hdr())
+                self.assertEqual(submitted.status, 200, await submitted.text())
+                self.assertIn("launch refused", await submitted.text())
+                duplicate = await self.client.post(route, data={"decision": "session"},
+                                                   headers=self.admin_hdr())
+                self.assertEqual(duplicate.status, 410)
+                effect.assert_called_once()
+            final = dp.load_pending("http:consent", dialog_id, owner_user_id=owner)
+            self.assertEqual(final["submissions"]["decision"]["source"], "http_form_owner")
+            self.assertIn("launch refused", final["callback_receipt"]["text"])
+            self.assertEqual(final["callback_receipt"]["turn_id"], "consent-origin")
 
     # ── /admin/praxis/fastpaths/{id}/delete (valvola L0) ───────────
 

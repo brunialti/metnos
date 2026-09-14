@@ -163,10 +163,11 @@ def open_parent(path: Path, owners: set | None = None) -> int:
         raise
 
 
-def snapshot(path: Path) -> dict:
+def snapshot(path: Path, owners: set | None = None) -> dict:
     """Hash exact inode metadata and content; never expose confidential bytes."""
     rows, total = [], 0
-    parent = open_parent(path.parent)
+    accepted_owners = owners or OWNERS
+    parent = open_parent(path.parent, accepted_owners)
     device = os.fstat(parent).st_dev
 
     def visit(container: int, name: str, relative: str) -> None:
@@ -174,7 +175,7 @@ def snapshot(path: Path) -> dict:
         handle = os.open(name, READ, dir_fd=container)
         try:
             before = os.fstat(handle)
-            require((before.st_uid, before.st_gid) in OWNERS
+            require((before.st_uid, before.st_gid) in accepted_owners
                     and before.st_dev == device and not before.st_mode & 0o7022
                     and not os.listxattr(handle), "unsafe member metadata")
             row = [relative, *stamp(before)[:-1]]
@@ -508,6 +509,120 @@ def withdraw_superseded_claim(source_id: str) -> str | None:
     return claim["request_id"]
 
 
+def withdraw_superseded_prepared(source_id: str) -> str | None:
+    """Archive an unselected PREPARED attempt, with its claim moved last.
+
+    No selected record, receipt, authority set or producer decision is reset.
+    The canonical reader must prove sequence zero and the running predecessor
+    must still attest. A new source is required; replaying the failed source
+    is not recovery. Each interrupted prefix resumes from its exact archive.
+    The caller holds deployment, startup and provisioning locks.
+    """
+    from executor_birth_ownership_coordinator import (
+        _decode_record_v2, _resolve_ownership_coordinator_at_v2,
+        _successor_claim_basename_v1, OwnershipCoordinatorStateV1,
+    )
+    from install.birth_authority_provisioner import decode_transaction_header_v2
+
+    graph = _resolve_ownership_coordinator_at_v2(COORD, root_owned=ROOT_OWNED)
+    candidate = None
+    if graph.transactions:
+        last = graph.transactions[-1]
+        if last.latest.state is OwnershipCoordinatorStateV1.PREPARED:
+            candidate = last.claim
+    resumed = [claim for claim in graph.pending_claims if (
+        WITHDRAWN_ROOT / claim.request_id[7:] / "prepared-transaction").exists()]
+    require(len(resumed) <= 1 and not (resumed and candidate),
+            "multiple prepared withdrawals")
+    candidate = candidate or (resumed[0] if resumed else None)
+    if candidate is None or candidate.source_id == source_id:
+        return None
+    claim = candidate
+    require(claim.previous_head_id is not None, "initial release is not withdrawable")
+    archive = WITHDRAWN_ROOT / claim.request_id[7:]
+    transaction = COORD / "transactions-v2" / claim.request_id
+
+    def location(origin, target):
+        live, saved = os.path.lexists(origin), os.path.lexists(target)
+        require(live != saved, "duplicate or missing prepared withdrawal object")
+        return target if saved else origin
+
+    record_path = location(transaction, archive / "prepared-transaction")
+    snapshot(record_path)
+    require({item.name for item in record_path.iterdir()} == {"record-000-v2.json"},
+            "prepared attempt advanced")
+    record = _decode_record_v2((record_path / "record-000-v2.json").read_bytes())
+    require(record.state is OwnershipCoordinatorStateV1.PREPARED
+            and record.sequence == 0 and record.current_proof is None
+            and record.head_id is None and record.certificate_payload_hash is None
+            and (record.request_id, record.source_id, record.closed_build_id,
+                 record.successor_claim_id, record.previous_head_id,
+                 record.release_sequence) == (
+                     claim.request_id, claim.source_id, claim.closed_build_id,
+                     claim.claim_id, claim.previous_head_id, claim.release_sequence),
+            "prepared attempt does not bind the claim")
+    journal = BIRTH / (JOURNAL_PREFIX + record.provisioning_transaction_id)
+    release = ROOT / "releases-v1" / f"{claim.release_sequence:020d}"
+    claim_path = COORD / "successor-claims-v1" / _successor_claim_basename_v1(
+        claim.release_sequence, claim.previous_head_id)
+    pairs = ((transaction, archive / "prepared-transaction"),
+             (journal, archive / "unselected-birth-journal"),
+             (release, archive / "unselected-release"),
+             (claim_path, archive / "successor-claim.json"))
+    paths = [location(*pair) for pair in pairs]
+    moved = [path == pair[1] for path, pair in zip(paths, pairs)]
+    require(moved == sorted(moved, reverse=True), "non-monotone prepared withdrawal")
+    header = decode_transaction_header_v2((paths[1] / "transaction-v2.json").read_bytes())
+    require((header.request_id, header.closed_build_id, header.transaction_id,
+             header.distribution_payload_hash, header.distribution_signature_hash) == (
+                record.request_id, record.closed_build_id, record.provisioning_transaction_id,
+                record.distribution_payload_hash, record.distribution_signature_hash),
+            "prepared journal identity changed")
+    descriptor = json.loads((paths[2] / "deployment/executor-birth-deployment-v1.json").read_bytes())
+    require(descriptor.get("release_sequence") == claim.release_sequence
+            and descriptor.get("descriptor_id") == record.deployment_descriptor_id,
+            "prepared release identity changed")
+    require(json.loads(paths[3].read_bytes()) == claim.as_value(),
+            "prepared claim identity changed")
+    first = startup_fingerprint()
+    require(first == ("attested", claim.release_sequence - 1, claim.previous_head_id),
+            "prepared predecessor is not the selected release")
+    preserved = tuple(item for item in preserved_paths() if item != transaction)
+    before = {str(item): snapshot(item) for item in preserved}
+    pins = [snapshot(path, BIRTH_OWNERS if index == 1 else OWNERS)
+            for index, path in enumerate(paths)]
+    archive.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = archive.lstat()
+    require(stat.S_ISDIR(info.st_mode) and (info.st_uid, info.st_gid) in OWNERS
+            and stat.S_IMODE(info.st_mode) == 0o700, "unsafe prepared archive")
+    require({item.name for item in archive.iterdir()} == {
+        pair[1].name for pair, saved in zip(pairs, moved) if saved},
+        "prepared archive inventory changed")
+
+    def unchanged():
+        require({str(item): snapshot(item) for item in preserved} == before,
+                "selected history changed during prepared withdrawal")
+        require(startup_fingerprint() == first, "prepared startup selection moved")
+
+    for index, (origin, target) in enumerate(pairs):
+        owners = BIRTH_OWNERS if index == 1 else OWNERS
+        if not moved[index]:
+            unchanged()
+            require(snapshot(origin, owners) == pins[index], "prepared object changed")
+            rename_no_replace(origin, target, owners)
+        require(snapshot(target, owners) == pins[index], "prepared archive changed")
+        # Also flush a rename completed just before an interrupted fsync.
+        for parent in (origin.parent, target.parent):
+            fd = open_parent(parent, owners)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+    unchanged()
+    say("WITHDREW_UNSELECTED_PREPARED", claim.request_id, "->", str(archive))
+    return claim.request_id
+
+
 def withdraw_unclaimed_release(source_id: str) -> str | None:
     """Park the release in the slot the builder fills next; move nothing else.
 
@@ -808,6 +923,7 @@ def apply_cycle(cross: bool) -> int:
 
     with ExitStack() as locks:
         acquire_locks(locks)
+        withdraw_superseded_prepared(source_id)
         withdrawn = withdraw_superseded_claim(source_id)
         withdraw_unclaimed_release(source_id)
         for journal in retire_orphan_journals(withdrawn):
@@ -834,7 +950,7 @@ def apply_cycle(cross: bool) -> int:
     if not cross:
         say("APPLY_OK; PREVIEW_COMPLETE; NO HEAD CHANGE OR SERVICE STOP")
         return 0
-    return run_child(child + ["complete"])
+    return _run_cutover_child(child + ["complete"])
 
 
 def run_child(command: list[str]) -> int:
@@ -856,6 +972,95 @@ ENV_TOOL = "/usr/bin/env"
 RELEASE_UNIT_STOP_S = 5
 CONTROLLER_ENVIRONMENT = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
                           "LANG": "C", "LC_ALL": "C"}
+CUTOVER_TIMEOUT_S = 1200
+CUTOVER_UNIT_PREFIX = "metnos-rm0008-cutover-"
+
+
+def _run_cutover_child(command: list[str]) -> int:
+    """The administrator and its unprivileged Birth checks share one delegate.
+
+    A plain root subprocess has no service cgroup. Admission's user-only unit
+    cannot perform the administrative crossing either. Give this crossing its
+    own transient root service; after authenticating the descriptor it hands
+    only that service's delegated subtree to the signed service identity.
+    """
+    unit = CUTOVER_UNIT_PREFIX + secrets.token_hex(8) + ".service"
+    properties = (
+        "Type=exec", "User=0", "Group=0", "Delegate=yes",
+        "DelegateSubgroup=metnos-birth-host", "UMask=0027",
+        "KillMode=control-group", f"TimeoutStopSec={RELEASE_UNIT_STOP_S}",
+        f"RuntimeMaxSec={CUTOVER_TIMEOUT_S}", "MemoryAccounting=yes",
+        "TasksAccounting=yes", "NoNewPrivileges=yes",
+    )
+    require(all("%" not in part for part in command), "cutover launch value unsafe")
+    argv = [SYSTEMD_RUN, "--wait", "--pipe", "--collect", "--quiet",
+            "--expand-environment=no", f"--unit={unit}"]
+    for property_value in properties:
+        argv += ["-p", property_value]
+    argv += ["--", ENV_TOOL, "-i", *(
+        f"{name}={value}" for name, value in CONTROLLER_ENVIRONMENT.items()),
+        *command]
+    try:
+        result = subprocess.run(
+            argv, stdin=subprocess.DEVNULL, check=False, close_fds=True,
+            env=CONTROLLER_ENVIRONMENT,
+            timeout=CUTOVER_TIMEOUT_S + 2 * RELEASE_UNIT_STOP_S)
+        return result.returncode
+    except BaseException:
+        stopped = _stop_release_unit(unit)
+        say("CUTOVER_UNIT_STOP", unit, "confirmed" if stopped else "unconfirmed")
+        raise
+
+
+def _delegate_cutover_checks(descriptor) -> None:
+    """Transfer only our systemd-created delegate, never a global cgroup.
+
+    systemd initially owns this root service's cgroup. The coordinator drops
+    to the signed account for ordinary property checks. That account needs
+    the same limited delegation systemd gives a User= service, including its
+    occupied subgroup so the runner can return processes there for cleanup.
+    """
+    import executor_birth_runner as runner
+    from executor_birth_account_identity import resolve_posix_account_snapshot_v1
+
+    account = resolve_posix_account_snapshot_v1(descriptor.service_user)
+    require((account.record.uid, account.record.gid, account.record.home,
+             account.record.shell, account.supplementary_gids) == (
+                descriptor.service_uid, descriptor.service_gid,
+                descriptor.service_home, descriptor.service_shell,
+                descriptor.service_supplementary_gids)
+            and descriptor.service_uid > 0 and descriptor.service_gid > 0,
+            "cutover service account changed")
+    current = runner._current_unified_cgroup()
+    require(current is not None and current.name == runner._CGROUP_HOST_SUBGROUP
+            and re.fullmatch(CUTOVER_UNIT_PREFIX + r"[0-9a-f]{16}\.service",
+                             current.parent.name), "cutover delegate missing")
+    delegate = runner._CGROUP_V2_MOUNT.joinpath(*current.parent.parts[1:])
+    with ExitStack() as handles:
+        parent_fd = os.open(delegate, READ | os.O_DIRECTORY)
+        handles.callback(os.close, parent_fd)
+        require(os.getxattr(parent_fd, "user.delegate") == b"1",
+                "cutover cgroup is not delegated by systemd")
+        subgroup_fd = os.open(current.name, READ | os.O_DIRECTORY, dir_fd=parent_fd)
+        handles.callback(os.close, subgroup_fd)
+        descriptors = [parent_fd, subgroup_fd]
+        for directory_fd in (parent_fd, subgroup_fd):
+            for name in ("cgroup.procs", "cgroup.threads", "cgroup.subtree_control"):
+                fd = os.open(name, READ, dir_fd=directory_fd)
+                handles.callback(os.close, fd)
+                descriptors.append(fd)
+        require(all(os.fstat(fd).st_uid == 0 for fd in descriptors),
+                "cutover cgroup ownership changed")
+        for fd in descriptors:
+            os.fchown(fd, descriptor.service_uid, descriptor.service_gid)
+    # Verify the real runner's precondition under the same temporary identity
+    # used by the coordinator. Fail before any service is stopped.
+    from install.birth_authority_provisioner import _service_owned_birth_identity_v2
+    with _service_owned_birth_identity_v2(descriptor):
+        observed, error = runner._cgroup_v2_delegate()
+        require(observed == delegate and error is None,
+                "cutover native runner unavailable: " + str(error))
+    say("CUTOVER_NATIVE_DELEGATE_OK")
 
 
 def _service_restart_granted(service_user: str) -> bool:
@@ -1280,6 +1485,8 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
     if mode == "audit":
         _run_release_preview(distribution, descriptor, new_catalog)
         return 0
+
+    _delegate_cutover_checks(descriptor)
 
     from install.executor_birth_transition import (
         _complete_closed_v1, _handoff_frame_v1,

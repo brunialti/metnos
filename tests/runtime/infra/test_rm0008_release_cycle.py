@@ -612,6 +612,7 @@ def crossing(monkeypatch, release, tmp_path):
     monkeypatch.setattr(transition, "_complete_closed_v1", complete)
     monkeypatch.setattr(cycle, "_run_release_edits", edits)
     monkeypatch.setattr(cycle, "_run_release_preview", lambda *a: events.append("preview"))
+    monkeypatch.setattr(cycle, "_delegate_cutover_checks", lambda descriptor: None)
     return NS(events=events, control=control, release=release,
               run=lambda mode: cycle.cross(release.distribution.installation_root,
                                            "source-test", str(evidence), mode))
@@ -747,6 +748,7 @@ def applying(monkeypatch, release, tmp_path):
     monkeypatch.setattr(accounts, "resolve_posix_account_v1", lambda n: account)
     monkeypatch.setattr(receiver, "_receive_source_v1", lambda *args: "test-source")
     monkeypatch.setattr(cycle, "acquire_locks", lambda locks: None)
+    monkeypatch.setattr(cycle, "withdraw_superseded_prepared", lambda source: None)
     monkeypatch.setattr(cycle, "withdraw_superseded_claim", lambda source: None)
     monkeypatch.setattr(cycle, "withdraw_unclaimed_release", lambda source_id: None)
     monkeypatch.setattr(cycle, "retire_orphan_journals", lambda withdrawn: [])
@@ -760,7 +762,189 @@ def applying(monkeypatch, release, tmp_path):
         return control[command[-1]]
 
     monkeypatch.setattr(cycle, "run_child", child)
+    monkeypatch.setattr(cycle, "_run_cutover_child", child)
     return NS(calls=calls, control=control)
+
+
+def test_cutover_checks_run_before_stopping_services(crossing, monkeypatch):
+    def unavailable(_descriptor):
+        raise RuntimeError("native runner unavailable")
+    monkeypatch.setattr(cycle, "_delegate_cutover_checks", unavailable)
+    with pytest.raises(RuntimeError, match="native runner unavailable"):
+        crossing.run("complete")
+    assert crossing.events == []
+
+
+@pytest.fixture
+def prepared_withdrawal(monkeypatch, tmp_path):
+    import executor_birth_ownership_coordinator as coordinator
+    from install import birth_authority_provisioner as provisioner
+    root, birth, archive_root = (tmp_path / part for part in ("root", "birth", "archive"))
+    coord = root / "coordinator-v1"
+    values = {"schema_version": 1, "request_id": "sha256:" + "1" * 64,
+              "source_id": "sha256:" + "2" * 64, "closed_build_id": "sha256:" + "3" * 64,
+              "previous_head_id": "sha256:" + "4" * 64, "release_sequence": 42}
+    claim = coordinator._decode_successor_claim_v1(coordinator._canonical({
+        **values, "claim_id": coordinator._successor_claim_id_v1(values)}))
+    nonce = "5" * 32
+    tx = coord / "transactions-v2" / claim.request_id
+    journal = birth / (cycle.JOURNAL_PREFIX + nonce)
+    release = root / "releases-v1" / f"{claim.release_sequence:020d}"
+    claim_path = coord / "successor-claims-v1" / (claim.previous_head_id[7:] + ".json")
+    for directory in (tx, journal, release / "deployment", claim_path.parent):
+        directory.mkdir(parents=True)
+    encoded = b'{"fixture":"prepared"}'
+    (tx / "record-000-v2.json").write_bytes(encoded)
+    record = NS(**{key: value for key, value in values.items() if key != "schema_version"},
+        successor_claim_id=claim.claim_id, state=coordinator.OwnershipCoordinatorStateV1.PREPARED,
+        sequence=0, provisioning_transaction_id=nonce, current_proof=None, head_id=None,
+        certificate_payload_hash=None, distribution_payload_hash="sha256:" + "6" * 64,
+        distribution_signature_hash="sha256:" + "7" * 64, deployment_descriptor_id="sha256:" + "8" * 64)
+    header = provisioner.TransactionHeaderV2(nonce, "test-build", claim.request_id,
+        claim.closed_build_id, "9" * 64, record.distribution_payload_hash,
+        record.distribution_signature_hash, "sha256:" + "a" * 64)
+    (journal / "transaction-v2.json").write_bytes(header.encode())
+    (release / "deployment/executor-birth-deployment-v1.json").write_text(json.dumps({
+        "release_sequence": 42, "descriptor_id": record.deployment_descriptor_id}))
+    claim_path.write_bytes(claim.encode())
+    preserved = tmp_path / "selected-history"
+    preserved.write_bytes(b"must stay byte-identical")
+    for item in tmp_path.rglob("*"):
+        item.chmod(0o755 if item.is_dir() else 0o644)
+    ownership = {(os.getuid(), os.getgid()), (0, 0)}
+    for key, value in {"ROOT": root, "COORD": coord, "BIRTH": birth,
+                       "WITHDRAWN_ROOT": archive_root, "OWNERS": ownership,
+                       "BIRTH_OWNERS": ownership}.items():
+        monkeypatch.setattr(cycle, key, value)
+    monkeypatch.setattr(cycle, "open_parent", lambda path, owners=None:
+                        os.open(path, cycle.READ | os.O_DIRECTORY))
+    monkeypatch.setattr(cycle, "preserved_paths", lambda: (preserved, tx) if tx.exists() else (preserved,))
+    monkeypatch.setattr(cycle, "startup_fingerprint", lambda:
+                        ("attested", 41, claim.previous_head_id))
+    def decode(payload):
+        assert payload == encoded
+        return record
+    monkeypatch.setattr(coordinator, "_decode_record_v2", decode)
+    def graph(*args, **kwargs):
+        return NS(transactions=(NS(claim=claim, latest=record),) if tx.exists() else (),
+                  pending_claims=(claim,) if not tx.exists() and claim_path.exists() else ())
+    monkeypatch.setattr(coordinator, "_resolve_ownership_coordinator_at_v2", graph)
+    archive = archive_root / claim.request_id[7:]
+    origins = (tx, journal, release, claim_path)
+    return NS(claim=claim, record=record, tx=tx, journal=journal, release=release,
+              archive=archive, origins=origins, preserved=preserved)
+
+
+@pytest.mark.parametrize("crash_after", [None, 0, 1, 2, 3])
+def test_prepared_archive_resumes_each_prefix_without_resetting_history(
+        prepared_withdrawal, monkeypatch, crash_after):
+    fixture = prepared_withdrawal
+    before = cycle.snapshot(fixture.preserved)
+    expected = [cycle.snapshot(path) for path in fixture.origins]
+    actual_rename = cycle.rename_no_replace
+    moved = []
+    def move(origin, target, owners=None):
+        actual_rename(origin, target, owners)
+        moved.append(origin)
+        if len(moved) - 1 == crash_after:
+            raise RuntimeError("interrupted after rename")
+    monkeypatch.setattr(cycle, "rename_no_replace", move)
+    if crash_after is not None:
+        with pytest.raises(RuntimeError, match="interrupted after rename"):
+            cycle.withdraw_superseded_prepared("new-source")
+        monkeypatch.setattr(cycle, "rename_no_replace", actual_rename)
+    cycle.withdraw_superseded_prepared("new-source")
+    assert all(not path.exists() for path in fixture.origins)
+    targets = ("prepared-transaction", "unselected-birth-journal",
+               "unselected-release", "successor-claim.json")
+    assert [cycle.snapshot(fixture.archive / name) for name in targets] == expected
+    assert cycle.snapshot(fixture.preserved) == before
+    assert cycle.withdraw_superseded_prepared("new-source") is None
+
+
+@pytest.mark.parametrize("bad", ["advanced", "same_source", "selected", "wrong_release"])
+def test_prepared_withdrawal_never_retries_or_moves_selected_state(
+        prepared_withdrawal, monkeypatch, bad):
+    fixture = prepared_withdrawal
+    source = "new-source"
+    if bad == "advanced":
+        (fixture.tx / "record-001-v2.json").write_bytes(b"advanced")
+        (fixture.tx / "record-001-v2.json").chmod(0o644)
+    elif bad == "same_source":
+        source = fixture.claim.source_id
+    elif bad == "selected":
+        monkeypatch.setattr(cycle, "startup_fingerprint", lambda: ("attested", 42, "new-head"))
+    else:
+        fixture.record.deployment_descriptor_id = "different-descriptor"
+    before = [cycle.snapshot(path) for path in fixture.origins]
+    if bad == "same_source":
+        assert cycle.withdraw_superseded_prepared(source) is None
+    else:
+        with pytest.raises(RuntimeError):
+            cycle.withdraw_superseded_prepared(source)
+    assert [cycle.snapshot(path) for path in fixture.origins] == before
+    assert not fixture.archive.exists()
+
+
+def test_cutover_uses_bounded_root_delegate_without_inherited_environment(monkeypatch):
+    calls = _capture_runs(monkeypatch, [subprocess.CompletedProcess([], 17)])
+    command = ["/usr/bin/python3.12", "/controller.py", "_cross", "release",
+               "source", "evidence", "complete"]
+    assert cycle._run_cutover_child(command) == 17
+    flags, properties, service = _unit_parts(calls[0][0])
+    assert "User=0" in properties and "Group=0" in properties
+    assert "Delegate=yes" in properties
+    assert "DelegateSubgroup=metnos-birth-host" in properties
+    assert f"RuntimeMaxSec={cycle.CUTOVER_TIMEOUT_S}" in properties
+    assert service[-len(command):] == command
+    assert service[:2] == ["/usr/bin/env", "-i"]
+    assert calls[0][1]["env"] == cycle.CONTROLLER_ENVIRONMENT
+    assert re.fullmatch(r"--unit=metnos-rm0008-cutover-[0-9a-f]{16}\.service", flags[-1])
+
+
+def test_cutover_timeout_confirms_its_own_unit_stopped(monkeypatch):
+    _capture_runs(monkeypatch, [subprocess.TimeoutExpired([], 1200)])
+    stopped = []
+    monkeypatch.setattr(cycle, "_stop_release_unit", lambda u: stopped.append(u) or True)
+    with pytest.raises(subprocess.TimeoutExpired):
+        cycle._run_cutover_child(["/controller", "complete"])
+    assert len(stopped) == 1
+    assert stopped[0].startswith(cycle.CUTOVER_UNIT_PREFIX)
+
+
+@pytest.mark.parametrize("failure", [None, "wrong_unit", "not_delegated", "wrong_owner"])
+def test_cutover_delegates_only_its_owned_systemd_boundary(release, monkeypatch, tmp_path, failure):
+    import executor_birth_runner as runner
+    from install import birth_authority_provisioner as provisioner
+    unit = cycle.CUTOVER_UNIT_PREFIX + "a" * 16 + ".service"
+    current = Path("/system.slice") / unit / "metnos-birth-host"
+    delegate = tmp_path / "system.slice" / unit
+    subgroup = delegate / current.name
+    subgroup.mkdir(parents=True)
+    for directory in (delegate, subgroup):
+        for name in ("cgroup.procs", "cgroup.threads", "cgroup.subtree_control"):
+            (directory / name).touch()
+    monkeypatch.setattr(runner, "_CGROUP_V2_MOUNT", tmp_path)
+    monkeypatch.setattr(runner, "_current_unified_cgroup", lambda: (
+        Path("/system.slice/unrelated.service/metnos-birth-host")
+        if failure == "wrong_unit" else current))
+    monkeypatch.setattr(cycle.os, "getxattr", lambda fd, name: (
+        b"0" if failure == "not_delegated" else b"1"))
+    monkeypatch.setattr(cycle.os, "fstat", lambda fd: NS(
+        st_uid=1000 if failure == "wrong_owner" else 0))
+    changed = []
+    monkeypatch.setattr(cycle.os, "fchown", lambda fd, uid, gid: changed.append((uid, gid)))
+    monkeypatch.setattr(provisioner, "_service_owned_birth_identity_v2",
+                        lambda d: contextlib.nullcontext())
+    monkeypatch.setattr(runner, "_cgroup_v2_delegate", lambda: (delegate, None))
+    if failure:
+        with pytest.raises(RuntimeError):
+            cycle._delegate_cutover_checks(release.descriptor)
+        assert changed == []
+    else:
+        cycle._delegate_cutover_checks(release.descriptor)
+        assert changed == [(release.descriptor.service_uid,
+                            release.descriptor.service_gid)] * 8
 
 
 @pytest.mark.parametrize("cross", [False, True])
