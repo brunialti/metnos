@@ -1706,6 +1706,12 @@ def _release_store(monkeypatch, tmp_path, *, working, served,
         lambda **_kwargs: manifest_inventory.ManifestInventory(tuple(refs.values()), ()))
     monkeypatch.setattr(sign, "list_trusted_publics", lambda: [("test", object())])
     monkeypatch.setattr(contract_store, "current_contract", current_contract)
+    monkeypatch.setattr(sr, "_release_plan_context", lambda evidence=None: SimpleNamespace(
+        required_head_id="test-head", selection=SimpleNamespace(admission_context_id="test-context"),
+        authorities=SimpleNamespace(author=SimpleNamespace(verifier_keys={"test": object()})),
+    ))
+    monkeypatch.setattr(sr, "_release_plan_snapshot", lambda ref, current, trusted:
+                        served_snapshot(ref, current.generation_id, trusted_publics=trusted))
     monkeypatch.setattr(
         contract_store, "acquire_current_reattestation_snapshot", served_snapshot)
     monkeypatch.setattr(executor_birth_intent, "submit_stack_reconcile_birth", birth)
@@ -1783,6 +1789,99 @@ def test_release_plan_lists_every_outcome_without_birth(monkeypatch, tmp_path):
     assert reached == []
 
 
+def test_release_preview_continues_after_a_bad_candidate_without_state_changes(monkeypatch, tmp_path):
+    same = {"files": {"main.py": b"same\n"}}
+    run, reached, _control, root = _release_store(
+        monkeypatch, tmp_path, working={"alpha": same, "beta": same, "gamma": same},
+        served={"alpha": same, "beta": same, "gamma": same})
+    (root / "beta" / "undeclared.txt").write_text("private input")
+    before = {str(path): (path.read_bytes(), path.stat().st_mtime_ns)
+              for path in root.rglob("*") if path.is_file()}
+    rows = run(plan=True)
+    assert [(row["name"], row["outcome"]) for row in rows] == [
+        ("alpha", "unchanged"), ("beta", "error"), ("gamma", "unchanged")]
+    assert rows[1]["diagnostic"]["code"] == "candidate_file_extra"
+    assert "undeclared.txt" not in json.dumps(rows) and "private input" not in json.dumps(rows)
+    after = {str(path): (path.read_bytes(), path.stat().st_mtime_ns)
+             for path in root.rglob("*") if path.is_file()}
+    assert before == after and reached == []
+
+
+def test_release_preview_missing_authority_is_not_evaluated_not_green(monkeypatch, tmp_path):
+    same = {"files": {"main.py": b"same\n"}}
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path, working={"alpha": same, "beta": same},
+        served={"alpha": same, "beta": same})
+
+    def unavailable(_evidence):
+        raise ValueError("private authority detail")
+
+    monkeypatch.setattr(sr, "_release_plan_context", unavailable)
+    rows = run(plan=True)
+    assert [row["outcome"] for row in rows] == ["not_evaluated", "not_evaluated"]
+    assert all(row["diagnostic"]["phase"] == "context" for row in rows)
+    assert "private authority" not in json.dumps(rows) and reached == []
+
+
+def test_release_plan_exposes_versions_bytes_and_unknown_future(monkeypatch, tmp_path):
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={"alpha": {"files": {"main.py": b"new\n"}, "version": "2.0.0"}},
+        served={"alpha": {"files": {"main.py": b"old\n"}, "version": "1.0.0"}})
+    [row] = sr.verify_named_executors([], plan_only=True, preview_evidence=b"test-evidence")
+    assert row["served_version"] == "1.0.0" and row["candidate_version"] == "2.0.0"
+    assert row["changes"] == ["manifest", "code"]
+    assert len(row["candidate_manifest_sha256"]) == 64
+    assert row["destination_context"] == {
+        "status": "not_evaluated", "reason": "cutover_not_completed"}
+    assert reached == []
+
+
+def test_release_plan_owned_snapshot_never_creates_store_locks(monkeypatch, tmp_path):
+    import contract_store as store
+    import tomllib
+    from manifest_code_digest import prepare_manifest_digest_v1
+
+    state = tmp_path / "state"
+    state.mkdir()
+    manifest, lang, files = _contract_bytes("alpha", {"files": {"main.py": b"pass\n"}})
+    manifest = prepare_manifest_digest_v1(manifest, files)
+    payloads = {"manifest.toml": manifest, "manifest.lang_state.json": lang,
+                "manifest.toml.sig": b"authenticated-signature", **files}
+    for relative, content in payloads.items():
+        (state / relative).write_bytes(content)
+    current = SimpleNamespace(manifest_bytes=manifest, language_state_bytes=lang,
+                              signature_bytes=payloads["manifest.toml.sig"],
+                              parsed=tomllib.loads(manifest.decode()),
+                              declared_code_digest="sha256:" + hashlib.sha256(files["main.py"]).hexdigest())
+    monkeypatch.setattr(store, "current_contract", lambda *a, **k: current)
+    monkeypatch.setattr(store, "catalog_admission_lock", lambda *a, **k: pytest.fail("store lock"))
+    monkeypatch.setattr(store, "_writer_lock", lambda *a, **k: pytest.fail("writer lock"))
+    before = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in state.iterdir()}
+    with sr._release_plan_snapshot(SimpleNamespace(manifest_dir=state), current, ()) as snapshot:
+        assert snapshot.manifest_bytes == manifest and dict(snapshot.code_files) == files
+        private = snapshot.private_root
+    assert not private.exists()
+    assert before == {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in state.iterdir()}
+
+
+def test_release_preview_verifies_successor_before_reading_previous_context(monkeypatch, tmp_path):
+    import executor_birth_distribution_manifest as distribution
+    import executor_birth_prepared_root as prepared
+
+    evidence = json.dumps({"distribution": "candidate", "signature": b"signature".hex()}).encode()
+    calls = []
+    monkeypatch.setattr(distribution, "verify_current_installation_distribution_v1",
+                        lambda *a: calls.append("verify_successor"))
+    monkeypatch.setattr(distribution, "authenticate_distribution_record_v1", lambda *a: "record")
+    monkeypatch.setattr(prepared, "load_previous_context_runtime_v1", lambda record:
+                        calls.append(("previous", record)) or "context")
+    monkeypatch.setattr(prepared, "load_required_context_runtime_v1", lambda:
+                        pytest.fail("live bootstrap before cutover"))
+    assert sr._release_plan_context(evidence) == "context"
+    assert calls == ["verify_successor", ("previous", "record")]
+
+
 def test_release_admission_refuses_a_reread_of_the_previous_generation(
         monkeypatch, tmp_path):
     run, _reached, control, _root = _release_store(
@@ -1827,9 +1926,10 @@ def test_release_admission_names_a_cache_in_the_working_copy(monkeypatch, tmp_pa
         run()
     assert caught.value.code == "candidate_unavailable"
     assert "candidate_file_extra: __pycache__" in str(caught.value)
-    assert caught.value.details["outcomes"] == [{
-        "name": "alpha", "outcome": "error",
-        "error": "candidate_file_extra: __pycache__"}]
+    [row] = caught.value.details["outcomes"]
+    assert row["name"] == "alpha" and row["outcome"] == "error"
+    assert row["error"] == "candidate_file_extra: __pycache__"
+    assert row["diagnostic"]["code"] == "candidate_file_extra"
     assert reached == []
 
 

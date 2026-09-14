@@ -463,6 +463,81 @@ def test_publisher_failure_is_a_rejection_not_a_false_admission(tmp_path):
     assert result.report.outcome is BirthOutcome.REJECTED
     assert result.report.error_code == "birth_unavailable"
     assert result.publication is None
+    assert result.diagnostic.phase == "publication"
+    assert "publisher unavailable" not in result.diagnostic.cause
+
+
+def test_failure_diagnostic_keeps_chained_codes_not_messages_or_arguments(tmp_path):
+    import json
+    from dataclasses import asdict
+    from executor_birth_receipts import ReceiptError
+
+    secret = "password=private123 /private/customer/file --token=private456"
+
+    def unavailable(*_args, **_kwargs):
+        try:
+            raise ReceiptError("receipt_invalid", secret)
+        except ReceiptError as exc:
+            raise ContractStoreError("birth_receipt_invalid", secret) from exc
+
+    request, core = _fixture(tmp_path, unavailable)
+    result = _birth_executor_for_test(request, _core=core)
+    diagnostic = result.diagnostic
+    assert diagnostic.phase == "publication" and diagnostic.code == "birth_receipt_invalid"
+    assert "receipt_invalid" in diagnostic.cause
+    assert all(value not in json.dumps(asdict(result.diagnostic))
+               for value in ("private123", "private456", "/private", "--token"))
+    # Ambiguous publication keeps the original, immutable admitted hint.
+    with sqlite3.connect(core.producer_db) as db:
+        state, encoded = db.execute(
+            "SELECT state, terminal_envelope FROM birth_producer_receipts").fetchone()
+    hint = json.loads(encoded)
+    assert state == "in_progress" and hint["report"]["outcome"] == "admitted"
+    assert "diagnostic" not in hint
+
+
+def test_prepublication_diagnostic_is_signed_persisted_and_replayed(tmp_path):
+    import json
+
+    def unavailable(_request):
+        raise ContractStoreError("birth_predecessor_unavailable", "private detail")
+
+    request, core = _fixture(tmp_path, lambda *a, **k: pytest.fail("published"))
+    core = replace(core, predecessor_resolver=unavailable)
+    first = _birth_executor_for_test(request, _core=core)
+    assert first.diagnostic.phase == "predecessor"
+    with sqlite3.connect(core.producer_db) as db:
+        state, envelope, signature = db.execute(
+            "SELECT state, terminal_envelope, terminal_auth FROM birth_producer_receipts").fetchone()
+    decoded, _ = operational._verify_terminal(core, envelope, signature, request)
+    assert state == "rejected" and decoded.diagnostic == first.diagnostic
+    assert json.loads(envelope)["diagnostic"]["code"] == first.error_code
+    assert b"private detail" not in envelope
+    assert _birth_executor_for_test(request, _core=core).diagnostic == first.diagnostic
+
+
+def test_schema_two_terminal_without_diagnostic_remains_readable(tmp_path):
+    import json
+
+    request, core = _fixture(tmp_path, lambda *a, **k: None)
+    report = BirthReport(1, request.manifest_ref.contract_id, None, None, None,
+                         None, (), (), BirthOutcome.REJECTED, "birth_not_admitted")
+    old = operational.BirthResult(request.request_id, report, None, "birth_not_admitted")
+    envelope = operational._terminal_envelope(core, old)
+    assert json.loads(envelope)["schema_version"] == 2
+    assert "diagnostic" not in json.loads(envelope)
+    assert operational._decode_terminal_envelope(envelope, request)[0] == old
+
+
+@pytest.mark.parametrize("field,value", [
+    ("phase", "publication\npassword=value"), ("code", "secret/argv"),
+    ("cause", "https://user:password@example.invalid"), ("cause", "a" * 1025),
+])
+def test_terminal_diagnostic_refuses_unbounded_or_unstructured_fields(field, value):
+    fields = dict(phase="publication", code="birth_unavailable", cause="")
+    fields[field] = value
+    with pytest.raises(ValueError, match="birth_diagnostic_invalid"):
+        operational.BirthDiagnostic(**fields)
 
 
 def test_ambiguous_publisher_failure_keeps_claim_for_exact_retry(tmp_path):

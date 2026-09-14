@@ -529,9 +529,138 @@ def _watched_service_ok(key: str, row: dict) -> bool:
     return False
 
 
+def _release_plan_context(evidence: bytes | None = None):
+    """Read sealed authority only; never bootstrap, recover or select a head."""
+    from executor_birth_prepared_root import (
+        load_previous_context_runtime_v1, load_required_context_runtime_v1,
+    )
+    if evidence is None:
+        return load_required_context_runtime_v1()
+    from executor_birth_distribution_manifest import (
+        authenticate_distribution_record_v1, verify_current_installation_distribution_v1,
+    )
+    pair = json.loads(evidence)
+    encoded = pair["distribution"].encode("utf-8")
+    signature = bytes.fromhex(pair["signature"])
+    # Verify the successor's bytes with its reviewed policy, and N's context
+    # through the existing explicit transition reader. Never pretend N+1 is
+    # selected or feed N into N+1's live runtime bootstrap (C15).
+    verify_current_installation_distribution_v1(encoded, signature)
+    return load_previous_context_runtime_v1(
+        authenticate_distribution_record_v1(encoded, signature))
+
+
+def _release_plan_snapshot(ref, current, trusted):
+    """Owned read snapshot; no store lock creation, repair or state writes."""
+    from contract_store import ContractStoreError, current_contract
+    from executor_birth_snapshot import _acquire_authenticated_current_snapshot
+    from manifest_code_digest import code_digest_of_payloads
+
+    snapshot, signature = _acquire_authenticated_current_snapshot(ref.manifest_dir)
+    try:
+        if (snapshot.manifest_bytes != current.manifest_bytes
+                or snapshot.language_state_bytes != current.language_state_bytes
+                or signature != current.signature_bytes
+                or code_digest_of_payloads(
+                    current.parsed["code"]["files"], snapshot.code_files
+                ) != current.declared_code_digest
+                or current_contract(ref, trusted_publics=trusted) != current):
+            raise ContractStoreError("birth_reattestation_source_changed")
+        return snapshot
+    except BaseException:
+        snapshot.close()
+        raise
+
+
+def _release_plan_receipt(ref, generation, context):
+    from contract_store import (
+        _birth_receipt_path_for_context, _existing_contract_directory, _read_regular_file,
+    )
+    from executor_birth_operational import birth_failure_diagnostic
+    from executor_birth_receipts import ReceiptError, verify_admission_receipt
+
+    try:
+        path = _birth_receipt_path_for_context(
+            _existing_contract_directory(ref.contract_id, store_root=None),
+            generation, context.selection,
+        )
+        encoded = _read_regular_file(path, code="birth_receipt_invalid")
+        receipt = verify_admission_receipt(
+            encoded, verifier_keys=context.authorities.admission.verifier_keys)
+        if (receipt.contract_id != ref.contract_id.value
+                or receipt.generation_id != generation
+                or receipt.admission_context_id != context.selection.admission_context_id
+                or encoded != _read_regular_file(path, code="birth_receipt_invalid")):
+            raise ReceiptError("birth_receipt_binding_invalid", "preview")
+        return {"status": "verified", "format": "v2", "generation_id": generation,
+                "admission_context_id": receipt.admission_context_id}
+    except Exception as exc:
+        return {"status": "error", "format": "v2", "generation_id": generation,
+                "diagnostic": dataclasses.asdict(birth_failure_diagnostic(exc, "receipt"))}
+
+
+def _release_plan_details(ref, current, served, prepared, language, code, context):
+    """Informational projection of bytes, not an admission or future promise."""
+    import hashlib
+    import tomllib
+    from contract_store import (
+        _existing_contract_directory, _load_generation_for_commit,
+    )
+    from executor_birth_operational import birth_failure_diagnostic
+
+    candidate, previous = tomllib.loads(prepared.decode()), tomllib.loads(served.manifest_bytes.decode())
+    changes = [key for key, before, after in (
+        ("manifest", served.manifest_bytes, prepared),
+        ("language_state", served.language_state_bytes, language),
+        ("code", dict(served.code_files), code),
+    ) if before != after]
+    row = {
+        "changes": changes, "served_version": previous.get("version"),
+        "candidate_version": candidate.get("version"),
+        "candidate_manifest_sha256": hashlib.sha256(prepared).hexdigest(),
+        "candidate_language_sha256": hashlib.sha256(language).hexdigest(),
+        "candidate_code_digest": candidate.get("code", {}).get("digest"),
+        "served_code_digest": previous.get("code", {}).get("digest"),
+        "selected_head_id": context.required_head_id,
+        "selected_context_id": context.selection.admission_context_id,
+        "receipt": _release_plan_receipt(ref, current.generation_id, context),
+        "destination": {"status": "not_evaluated", "reason": "candidate_not_admitted"},
+        "runtime_module": {"status": "not_evaluated", "reason": "verified_by_loader_at_activation"},
+    }
+    # Find an exact historical destination under the ACTIVE author key only.
+    # This neither signs a candidate nor treats old admission keys as current.
+    matches = []
+    history = {"status": "complete", "matches": matches, "unverified_generations": 0}
+    row["historical_collision"] = history
+    try:
+        directory = _existing_contract_directory(ref.contract_id, store_root=None)
+        author = context.authorities.author
+        active = ((author.active_key_id, author.verifier_keys[author.active_key_id]),)
+        for entry in sorted((directory / "generations").iterdir()):
+            generation = "sha256:" + entry.name
+            try:
+                payloads = _load_generation_for_commit(
+                    ref, generation, trusted_publics=active, store_root=None)
+            except Exception:
+                # A historical generation signed by another author is not an
+                # exact destination under the active key. No old key adoption.
+                history["unverified_generations"] += 1
+                continue
+            if (payloads["manifest.toml"] == prepared
+                    and payloads["manifest.lang_state.json"] == language):
+                matches.append(_release_plan_receipt(ref, generation, context))
+        if history["unverified_generations"]:
+            history.update(status="not_evaluated", reason="some_historical_signatures_unverified")
+    except Exception as exc:
+        history.update(status="not_evaluated", diagnostic=dataclasses.asdict(
+            birth_failure_diagnostic(exc, "history")))
+    return row
+
+
 def verify_named_executors(
         names: list[str], *, sign_first: bool = False,
-        changed_only: bool = False, plan_only: bool = False) -> list[dict]:
+        changed_only: bool = False, plan_only: bool = False,
+        preview_evidence: bytes | None = None) -> list[dict]:
     """Admit/verify explicitly named direct children of ``executors/``.
 
     ``sign_first`` is retained as the public compatibility flag.  It now
@@ -581,7 +710,15 @@ def verify_named_executors(
         from contract_store import _editable_manifest
         import tomlkit
 
-        trusted = tuple(list_trusted_publics())
+        from executor_birth_operational import birth_failure_diagnostic
+        context, context_error = None, None
+        if plan_only:
+            try:
+                context = _release_plan_context(preview_evidence)
+            except Exception as exc:
+                context_error = dataclasses.asdict(birth_failure_diagnostic(exc, "context"))
+        trusted = (tuple(context.authorities.author.verifier_keys.items()) if context
+                   else () if plan_only else tuple(list_trusted_publics()))
         core, builtin = ManifestOrigin.CORE, ManifestOrigin.BUILTIN
         # ``prepare`` derives each builtin copy from the reviewed code, and
         # Birth admits it with the builtin capability.  One list and one loop
@@ -621,6 +758,10 @@ def verify_named_executors(
                 base = identity(origin, name)
                 contract_id = ContractId(origin, f"{name}/manifest.toml")
                 ref = store_refs.get(contract_id)
+                if plan_only and context is None:
+                    outcomes.append({**base, "outcome": "not_evaluated",
+                                     "diagnostic": context_error})
+                    continue
                 try:
                     current = (
                         None if ref is None
@@ -644,9 +785,11 @@ def verify_named_executors(
                     language_state = _read_regular(candidate, LANGUAGE_STATE_FILE)
                     declared = _declared_code_files(prepared)
                     code = {item: _read_regular(candidate, item) for item in declared}
-                    with acquire_current_reattestation_snapshot(
+                    snapshot = (_release_plan_snapshot(ref, current, trusted) if plan_only
+                                else acquire_current_reattestation_snapshot(
                             ref, current.generation_id,
-                            trusted_publics=trusted) as served:
+                            trusted_publics=trusted))
+                    with snapshot as served:
                         if origin is builtin:
                             # Regeneration owns code/schema, not the served
                             # line's version. Normalize before changed-only
@@ -665,8 +808,21 @@ def verify_named_executors(
                             and served.language_state_bytes == language_state
                             and dict(served.code_files) == code
                         )
+                        if plan_only:
+                            base.update(_release_plan_details(
+                                ref, current, served, prepared, language_state, code, context))
+                            base["destination_context"] = (
+                                {"status": "not_evaluated", "reason": "cutover_not_completed"}
+                                if preview_evidence is not None else
+                                {"status": "selected", "admission_context_id": context.selection.admission_context_id})
                 except (OSError, CandidateSnapshotError, ContractStoreError) as exc:
-                    outcomes.append({**base, "outcome": "error", "error": str(exc)})
+                    outcomes.append({**base, "outcome": "error", "diagnostic": dataclasses.asdict(
+                        birth_failure_diagnostic(exc, "candidate"))})
+                    if plan_only:
+                        continue
+                    # Preserve the existing admission failure shape. The
+                    # read-only preview emits only the redacted diagnostic.
+                    outcomes[-1]["error"] = str(exc)
                     if not isinstance(exc, CandidateSnapshotError):
                         raise refuse(index, "candidate_unavailable", f"{name}: {exc}") from exc
                     if first_failure is None:
@@ -690,6 +846,8 @@ def verify_named_executors(
                     birth, failure = None, str(exc)
                 row = {**base, "outcome": "error",
                        "request_id": getattr(birth, "request_id", None)}
+                if getattr(birth, "diagnostic", None) is not None:
+                    row["diagnostic"] = dataclasses.asdict(birth.diagnostic)
                 publication = getattr(birth, "publication", None)
                 if birth is None or birth.error_code or publication is None:
                     row["error"] = failure or (birth.error_code if birth else "") \
@@ -1480,6 +1638,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--sign", action="store_true")
     parser.add_argument("--changed-only", action="store_true")
     parser.add_argument("--plan", action="store_true")
+    parser.add_argument("--preview", action="store_true")
     parser.add_argument("--require-sidecar", choices=("auto", "yes", "no"), default="auto")
     parser.add_argument("--require-quiescent", action="store_true")
     parser.add_argument("--timeout", type=float, default=120)
@@ -1491,7 +1650,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # Built inside the report boundary: a failure here must reach the
         # caller as a JSON report, not as an empty stdout (review C15).
-        reconciler = StackReconciler()
+        if args.preview and not (
+                args.command == "deploy" and args.plan and args.changed_only and not args.sign):
+            raise StackFailure("option_invalid", "preview requires a read-only release plan")
+        reconciler = None if args.plan else StackReconciler()
         if args.command != "deploy" and (args.plan or args.changed_only or args.sign):
             raise StackFailure(
                 "option_invalid",
@@ -1513,9 +1675,13 @@ def main(argv: list[str] | None = None) -> int:
                     raise StackFailure(
                         "plan_invalid", "--plan needs --changed-only and no --sign",
                     )
-                out = {"ok": True, "plan": verify_named_executors(
+                rows = verify_named_executors(
                     args.executor, changed_only=True, plan_only=True,
-                )}
+                    preview_evidence=sys.stdin.buffer.read() if args.preview else None,
+                )
+                out = {"ok": all(row["outcome"] in {"unchanged", "changed", "not_installed"}
+                                 for row in rows), "plan": rows,
+                       "admission_attempted": False}
             else:
                 if args.sign and not args.executor and not args.changed_only:
                     raise StackFailure(
@@ -1555,7 +1721,7 @@ def main(argv: list[str] | None = None) -> int:
                          ensure_ascii=False, sort_keys=True))
         return 1
     print(json.dumps(out, ensure_ascii=False, sort_keys=True))
-    return 0
+    return 1 if args.plan and out.get("ok") is False else 0
 
 
 if __name__ == "__main__":

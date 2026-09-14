@@ -24,9 +24,9 @@ Two stages, split by the privilege each actually needs.
                      --cross it then performs the crossing, which stops and
                      restarts the services, then admits changed executors as
                      the service user through the installed deploy CLI.
-                     The audit never launches that CLI: until the crossing
-                     selects N+1, its reviewed policy cannot verify the
-                     still-selected N (review C15). After the verified
+                     The audit runs a read-only preview using the explicit
+                     previous-context reader, without selecting N+1 or
+                     invoking its live bootstrap (review C15). After the verified
                      cutover the plan runs first and admission follows only
                      if it succeeds; a refused plan ships the release and
                      admits nothing. A later admission/activation refusal
@@ -46,6 +46,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 import ctypes
+import dataclasses
 import fcntl
 import hashlib
 import builtins
@@ -831,7 +832,7 @@ def apply_cycle(cross: bool) -> int:
     if run_child(child + ["audit"]) != 0:
         return 78
     if not cross:
-        say("APPLY_OK; NO HEAD CHANGE OR SERVICE STOP; RELEASE EDITS PLAN DEFERRED TO CUTOVER")
+        say("APPLY_OK; PREVIEW_COMPLETE; NO HEAD CHANGE OR SERVICE STOP")
         return 0
     return run_child(child + ["complete"])
 
@@ -877,7 +878,7 @@ def _service_restart_granted(service_user: str) -> bool:
 
 
 def _release_unit_command(unit, account, working_directory, environment,
-                          command, limit):
+                          command, limit, *, read_only=False):
     """systemd-run argv for one transient delegated unit; values stay literal."""
     record = account.record
     properties = (
@@ -894,6 +895,11 @@ def _release_unit_command(unit, account, working_directory, environment,
         "MemoryAccounting=yes", "TasksAccounting=yes",
         f"WorkingDirectory={working_directory}",
     )
+    if read_only:
+        # Both plan variants may create owned temporary snapshots, never
+        # change the installation, user state, receipts, claims or services.
+        properties += ("ProtectSystem=strict", "ProtectHome=read-only",
+                       "PrivateTmp=yes", "ReadWritePaths=/tmp /var/tmp")
     service = [ENV_TOOL, "-i",
                *(f"{name}={value}" for name, value in environment.items()),
                *command]
@@ -928,7 +934,8 @@ def _stop_release_unit(unit) -> bool:
         or state.get("ActiveState") in {"inactive", "failed"})
 
 
-def _release_edits_child(distribution, descriptor, catalog, *, plan_only: bool):
+def _release_edits_child(distribution, descriptor, catalog, *, plan_only: bool,
+                         preview: bool = False):
     """Use only signed launch data; the reconciler runs as the service account
     in one delegated transient unit, never as a child of this root process."""
     from executor_birth_account_identity import resolve_posix_account_snapshot_v1
@@ -961,14 +968,24 @@ def _release_edits_child(distribution, descriptor, catalog, *, plan_only: bool):
     command = [entry.target_executable, "-E", "-s", "-B", "-m",
                entry.python_module, "deploy", "--changed-only",
                "--plan" if plan_only else "--sign"]
+    if preview:
+        require(plan_only, "preview cannot admit")
+        command += ["--preview"]
     limit = (RELEASE_EDITS_PLAN_TIMEOUT_S if plan_only
              else RELEASE_EDITS_DEPLOY_TIMEOUT_S)
     unit = (f"metnos-release-edits-{'plan' if plan_only else 'sign'}-"
             f"{secrets.token_hex(8)}.service")
     argv = _release_unit_command(unit, account, entry.target_working_directory,
-                                 env, command, limit)
+                                 env, command, limit, read_only=plan_only)
+    # The evidence directory is root-private. Pass the already authenticated
+    # PUBLIC distribution pair through the existing pipe, not argv and not a
+    # new readable copy of that directory. The child re-verifies the pair.
+    channel = ({"input": json.dumps({
+        "distribution": distribution.encoded.decode("utf-8"),
+        "signature": distribution.signature.hex(),
+    }).encode("utf-8")} if preview else {"stdin": subprocess.DEVNULL})
     try:
-        return subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True,
+        return subprocess.run(argv, **channel, capture_output=True,
                               check=False, env=CONTROLLER_ENVIRONMENT,
                               close_fds=True, timeout=limit)
     except subprocess.TimeoutExpired as expired:
@@ -1044,6 +1061,34 @@ def _release_files(distribution) -> frozenset:
     return frozenset(
         item.path for item in getattr(distribution, "files", ())
         if isinstance(getattr(item, "path", None), str))
+
+
+def _run_release_preview(distribution, descriptor, catalog) -> None:
+    """One informational read as the service user, before any cutover.
+
+    The authenticated audit already succeeded. Preview failures are reported,
+    not a substitute for (or a weakening of) the authoritative cutover checks.
+    """
+    summary = {"cutover_completed": False, "admission_attempted": False,
+               "closed_build_id": distribution.identity.closed_build_id,
+               "release_sequence": distribution.release_sequence}
+    try:
+        result = _release_edits_child(
+            distribution, descriptor, catalog, plan_only=True,
+            preview=True)
+        summary["child_streams"] = _child_streams(
+            result.stdout, result.stderr, distribution.installation_root,
+            release_files=_release_files(distribution))
+        report = json.loads(result.stdout)
+        require(isinstance(report, dict) and isinstance(report.get("plan"), list),
+                "preview report unavailable")
+        summary.update(status="evaluated", returncode=result.returncode, result=report)
+    except Exception as exc:
+        from executor_birth_operational import birth_failure_diagnostic
+
+        summary.update(status="not_evaluated", diagnostic=dataclasses.asdict(
+            birth_failure_diagnostic(exc, "preview")))
+    say("RELEASE_EDITS_PREVIEW", json.dumps(summary, sort_keys=True))
 
 
 def _run_release_edits(distribution, descriptor, catalog, *, plan_only: bool) -> int:
@@ -1233,10 +1278,7 @@ def cross(release_root: str, source_id: str, evidence: str, mode: str) -> int:
     say("SUCCESSOR_AUDIT_OK", "units", len(old_units),
         "previous_head", previous.required_head_id, "quiescence", idle["source"])
     if mode == "audit":
-        # The successor's deploy CLI verifies with N+1's reviewed policy, so it
-        # cannot authenticate the still-selected N: the plan waits for the
-        # crossing instead of failing here (review C15).
-        say("RELEASE_EDITS_PLAN_DEFERRED", "until_cutover")
+        _run_release_preview(distribution, descriptor, new_catalog)
         return 0
 
     from install.executor_birth_transition import (

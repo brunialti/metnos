@@ -19,6 +19,7 @@ SOURCE = Path(__file__).resolve().parents[3] / "internal/tools/rm0008_release_cy
 spec = importlib.util.spec_from_file_location("rm0008_release_cycle_tested", SOURCE)
 cycle = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cycle)
+ORIGINAL_RELEASE_PREVIEW = cycle._run_release_preview
 
 
 @pytest.fixture
@@ -133,7 +134,9 @@ def test_child_runs_in_one_delegated_transient_unit(monkeypatch, release, plan):
         "KillMode=control-group", "TimeoutStopSec=5", f"RuntimeMaxSec={limit}",
         "NoNewPrivileges=yes", "CapabilityBoundingSet=CAP_SETGID CAP_SETPCAP CAP_SETUID",
         "MemoryAccounting=yes", "TasksAccounting=yes",
-        f"WorkingDirectory={release.entry.target_working_directory}"]
+        f"WorkingDirectory={release.entry.target_working_directory}"] + (
+            ["ProtectSystem=strict", "ProtectHome=read-only", "PrivateTmp=yes",
+             "ReadWritePaths=/tmp /var/tmp"] if plan else [])
     record = release.account.record
     environment = {"HOME": record.home, "USER": record.name, "LOGNAME": record.name,
                    "SHELL": record.shell,
@@ -608,16 +611,55 @@ def crossing(monkeypatch, release, tmp_path):
 
     monkeypatch.setattr(transition, "_complete_closed_v1", complete)
     monkeypatch.setattr(cycle, "_run_release_edits", edits)
+    monkeypatch.setattr(cycle, "_run_release_preview", lambda *a: events.append("preview"))
     return NS(events=events, control=control, release=release,
               run=lambda mode: cycle.cross(release.distribution.installation_root,
                                            "source-test", str(evidence), mode))
 
 
-def test_audit_never_launches_the_successor_cli(crossing, capsys):
-    """Review C15: N+1's CLI cannot verify the still-selected N before the crossing."""
+def test_audit_runs_only_the_read_only_transition_preview(crossing, capsys):
+    """C15: preview uses N's explicit reader, not N+1's live bootstrap."""
+    assert crossing.run("audit") == 0
+    assert crossing.events == ["preview"]
+    assert "CUTOVER_OK" not in capsys.readouterr().out
+
+
+def test_preview_child_cannot_select_the_admission_flag(monkeypatch, release, tmp_path):
+    calls = _capture_runs(monkeypatch, [])
+    cycle._release_edits_child(release.distribution, release.descriptor,
+                              release.catalog, plan_only=True, preview=True)
+    _, properties, service = _unit_parts(calls[0][0])
+    assert "ProtectSystem=strict" in properties
+    assert service[-2:] == ["--plan", "--preview"]
+    assert json.loads(calls[0][1]["input"]) == {
+        "distribution": "distribution", "signature": b"signature".hex()}
+    assert "stdin" not in calls[0][1]
+    with pytest.raises(RuntimeError, match="preview cannot admit"):
+        cycle._release_edits_child(release.distribution, release.descriptor,
+                                  release.catalog, plan_only=False, preview=True)
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("valid", [False, True])
+def test_refused_preview_is_reported_without_blocking_the_audit(
+        monkeypatch, release, crossing, capsys, tmp_path, valid):
+    report = {"ok": False, "plan": [{"name": "alpha", "outcome": "error"}],
+              "admission_attempted": False}
+    monkeypatch.setattr(cycle, "_release_edits_child", lambda *a, **kw:
+                        subprocess.CompletedProcess([], 1,
+                            json.dumps(report).encode() if valid else b"private stdout",
+                            b"private stderr --password=secret"))
+    # The real preview returns normally for an unavailable report as well.
+    preview = ORIGINAL_RELEASE_PREVIEW
+    monkeypatch.setattr(cycle, "_run_release_preview", preview)
     assert crossing.run("audit") == 0
     assert crossing.events == []
-    assert "RELEASE_EDITS_PLAN_DEFERRED until_cutover" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    line = next(item for item in output.splitlines() if item.startswith("RELEASE_EDITS_PREVIEW "))
+    summary = json.loads(line.split(" ", 1)[1])
+    assert summary["status"] == ("evaluated" if valid else "not_evaluated")
+    assert summary["admission_attempted"] is False and summary["cutover_completed"] is False
+    assert "private stdout" not in output and "secret" not in output
 
 
 def test_plan_then_admission_strictly_after_successful_cutover(crossing, capsys):
