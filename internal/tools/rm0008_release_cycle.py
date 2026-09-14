@@ -1060,7 +1060,26 @@ def _delegate_cutover_checks(descriptor) -> None:
         observed, error = runner._cgroup_v2_delegate()
         require(observed == delegate and error is None,
                 "cutover native runner unavailable: " + str(error))
-    say("CUTOVER_NATIVE_DELEGATE_OK")
+        _probe_cutover_runner()
+    say("CUTOVER_NATIVE_PROBE_OK")
+
+
+def _probe_cutover_runner() -> None:
+    """Exercise the native isolation before stopping services, without admission.
+
+    This disposable backend measurement is diagnostic only. It neither
+    supplies nor replaces the staged context's authenticated registry.
+    """
+    from executor_birth_sandbox_registry_v1 import (
+        measure_sandbox_backend_v1, decode_sandbox_registry_v1,
+    )
+    from executor_birth_runner import run_birth_phase, RunnerStatus
+    backend = decode_sandbox_registry_v1(measure_sandbox_backend_v1())
+    require(backend is not None, "cutover native backend unavailable")
+    result = run_birth_phase(
+        (str(backend.interpreter_path), "-I", "-c", "pass"), linux_registry=backend)
+    require(result.status is RunnerStatus.PASSED,
+            "cutover native runner unavailable: " + str(result.error_code))
 
 
 def _service_restart_granted(service_user: str) -> bool:

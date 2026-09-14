@@ -315,6 +315,9 @@ _PUBLIC_UNAVAILABLE_REASONS = frozenset({
     "linux_sandbox_program_mismatch", "platform_backend_unavailable",
     "property_support_unavailable",
     "property_case_unavailable",
+    "sandbox_setup_unattested", "candidate_process_failed",
+    "cgroup_delegate_subgroup_missing", "cgroup_delegate_not_writable",
+    "cgroup_scope_unavailable", "phase_timeout", "total_timeout",
 })
 
 

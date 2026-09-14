@@ -912,6 +912,28 @@ def test_cutover_timeout_confirms_its_own_unit_stopped(monkeypatch):
     assert stopped[0].startswith(cycle.CUTOVER_UNIT_PREFIX)
 
 
+@pytest.mark.parametrize("status", ["passed", "failed", "test_environment_unavailable"])
+def test_cutover_probe_requires_real_phase_success(monkeypatch, status):
+    import executor_birth_runner as runner
+    import executor_birth_sandbox_registry_v1 as registry
+    backend = NS(interpreter_path=Path("/registered/python"))
+    monkeypatch.setattr(registry, "measure_sandbox_backend_v1", lambda: b"diagnostic")
+    monkeypatch.setattr(registry, "decode_sandbox_registry_v1", lambda value: backend)
+    calls = []
+
+    def phase(command, *, linux_registry):
+        calls.append((command, linux_registry))
+        return NS(status=runner.RunnerStatus(status), error_code="sandbox_setup_unattested")
+
+    monkeypatch.setattr(runner, "run_birth_phase", phase)
+    if status == "passed":
+        cycle._probe_cutover_runner()
+    else:
+        with pytest.raises(RuntimeError, match="sandbox_setup_unattested"):
+            cycle._probe_cutover_runner()
+    assert calls == [(("/registered/python", "-I", "-c", "pass"), backend)]
+
+
 @pytest.mark.parametrize("failure", [None, "wrong_unit", "not_delegated", "wrong_owner"])
 def test_cutover_delegates_only_its_owned_systemd_boundary(release, monkeypatch, tmp_path, failure):
     import executor_birth_runner as runner
@@ -937,6 +959,7 @@ def test_cutover_delegates_only_its_owned_systemd_boundary(release, monkeypatch,
     monkeypatch.setattr(provisioner, "_service_owned_birth_identity_v2",
                         lambda d: contextlib.nullcontext())
     monkeypatch.setattr(runner, "_cgroup_v2_delegate", lambda: (delegate, None))
+    monkeypatch.setattr(cycle, "_probe_cutover_runner", lambda: None)
     if failure:
         with pytest.raises(RuntimeError):
             cycle._delegate_cutover_checks(release.descriptor)

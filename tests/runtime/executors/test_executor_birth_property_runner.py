@@ -548,6 +548,9 @@ def test_missing_or_invalid_support_is_public_unavailability_before_runner(
     "linux_sandbox_registry_unavailable", "linux_sandbox_program_unavailable",
     "linux_sandbox_program_mismatch", "platform_backend_unavailable",
     "property_support_unavailable",
+    "sandbox_setup_unattested", "candidate_process_failed",
+    "cgroup_delegate_subgroup_missing", "cgroup_delegate_not_writable",
+    "cgroup_scope_unavailable", "phase_timeout", "total_timeout",
 ])
 def test_only_closed_infrastructure_reasons_are_exposed(code):
     evidence = run_property(

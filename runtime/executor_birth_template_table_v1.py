@@ -26,6 +26,12 @@ TEMPLATE_TABLE_DOMAIN_V1 = b"metnos.executor-birth.template-table/v1\0"
 _RUNNER_LAUNCHER_V1 = """
 import json, os, subprocess, sys
 scope, status, *args = sys.argv[1:]
+# The administrator temporarily adopts the service's effective identity.
+# A child must not retain its real/saved root identity: bwrap refuses mixed
+# IDs, and a candidate must never be able to regain administrative rights.
+uid, gid = os.geteuid(), os.getegid()
+os.setresgid(gid, gid, gid)
+os.setresuid(uid, uid, uid)
 open(scope + '/cgroup.procs', 'w').write(str(os.getpid()))
 r, w = os.pipe()
 args = [str(w) if item == '{STATUS_FD}' else item for item in args]

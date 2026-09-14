@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import sys
 
 import pytest
 
@@ -46,5 +48,36 @@ def test_each_digest_comes_from_the_text_itself():
 def test_the_table_carries_one_stable_digest():
     """The digest the context component will carry at the last step."""
     assert template_table_digest_v1() == (
-        "sha256:2ef4d33cd2d43228405c46289a879dc1ab5919406e0d871a6e2e30d7ceeb3736"
+        "sha256:428c88b20a0a519a0efc13b001b37ef7380a4e9e73b0d8d6e68c278fd3f12983"
     )
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux launcher identity")
+@pytest.mark.parametrize("refused", [None, "gid", "uid"])
+def test_linux_launcher_drops_saved_identity_before_any_effect(monkeypatch, refused):
+    """The mixed administrative identity must never reach bwrap or a candidate."""
+    events = []
+    monkeypatch.setattr(os, "geteuid", lambda: 12345)
+    monkeypatch.setattr(os, "getegid", lambda: 23456)
+    monkeypatch.setattr(sys, "argv", ["launcher", "/scope", "/status", "bwrap"])
+
+    def change(kind, values):
+        events.append((kind, values))
+        if refused == kind:
+            raise PermissionError(kind)
+
+    monkeypatch.setattr(os, "setresgid", lambda *ids: change("gid", ids))
+    monkeypatch.setattr(os, "setresuid", lambda *ids: change("uid", ids))
+
+    class ScopeReached(Exception):
+        pass
+
+    def open_scope(path, mode):
+        assert (path, mode) == ("/scope/cgroup.procs", "w")
+        events.append(("scope", None))
+        raise ScopeReached
+
+    with pytest.raises(PermissionError if refused else ScopeReached):
+        exec(template_v1("runner.linux_launcher"), {"open": open_scope})
+    expected = [("gid", (23456,) * 3), ("uid", (12345,) * 3), ("scope", None)]
+    assert events == expected[:{"gid": 1, "uid": 2, None: 3}[refused]]
