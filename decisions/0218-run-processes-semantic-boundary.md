@@ -115,6 +115,14 @@ running, including a tray application or save prompt, is not a successful
 closure; success requires a fresh absence check. Closing an application is
 not reliably undoable, even when it held no documents.
 
+The terminal executor's localized `final_message_hint`, when accompanied by
+a typed per-execution effect receipt, takes precedence over a pre-execution
+answer template. An observed already-closed state must not become a claim
+that the runtime closed the application. The shared effect counter treats
+`_undo.outcome="no_effect"` as zero mutations even when the desired-state
+check returned successful items. This rule is independent of application,
+executor name and language; ordinary read-only templates are unchanged.
+
 Required-action coverage checks both canonical verb and object, including
 signed planning aliases. `set_preferences` cannot satisfy `set_processes`.
 Single-action intents receive the same lexical repair as compound actions

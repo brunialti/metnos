@@ -59,8 +59,14 @@ def _step_result(s) -> dict | None:
 
 
 def _mutation_count(res: dict) -> int | None:
-    """Effetto contabile di uno step mutante: primo counter MUTATE_COUNT_KEYS
-    presente, fallback len(results). None = output non contabile."""
+    """Explicit no-effect receipt, then counters, then len(results).
+
+    A successful desired-state check is not itself a mutation. None means
+    the output cannot be counted, preserving conservative retry protection.
+    """
+    metadata = res.get("_undo")
+    if isinstance(metadata, dict) and metadata.get("outcome") == "no_effect":
+        return 0
     for k in MUTATE_COUNT_KEYS:
         if isinstance(res.get(k), int):
             return res[k]

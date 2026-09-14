@@ -10,9 +10,14 @@ Correzione `fc83fa31`, successiva alla release 37. Release **38** attraversata
 con `CUTOVER_OK`; salute HTTP `ok=true`, stack `ok=true, ready=true`.
 La prima pubblicazione di `set_processes` è stata rifiutata con
 `birth_authoring_target_unavailable`: la costruzione della richiesta cercava
-un contratto già pubblicato anche per una prima ammissione. Nessuna capacità
-attivata; correzione in preparazione. Non viene dichiarata riuscita una
-chiusura reale sul PC.
+un contratto già pubblicato anche per una prima ammissione. Corretto con
+`0dc85e88`: la release **39** ha attraversato la verifica e ammesso e attivato
+`set_processes` tramite Producer/Birth (`store_verified`, nessun bypass).
+HTTP `ok=true`, stack `ok=true, ready=true`.
+
+La prova reale della 39 ha trovato un ulteriore errore nella risposta finale.
+La correzione è in preparazione per la 40: non viene dichiarata riuscita una
+chiusura di un processo effettivamente aperto sul PC.
 
 Evidenze riesaminate:
 
@@ -22,6 +27,8 @@ Evidenze riesaminate:
 | `7a4c989a008c4a25` | ExpressVPN: Roberto conferma di avere scelto «Fino al prossimo riavvio». Invio registrato `http_form_owner`, continuazione completata, `already_running=true`: riutilizzo di un'app già aperta, non prova di un nuovo processo. |
 | `39aafb8eb4ab471b` | «chiudi expressvpn su pc-roberto» ha modificato `sites_stealth=off` e dichiarato falsamente la disattivazione della VPN. Nessuna chiusura. Il precedente valore della preferenza non è noto: nessun ripristino arbitrario. |
 | `c04d1548c671462c` | «chiudi word su pc-roberto» ha proposto `taskkill /F /IM winword.exe` senza mantenere la destinazione. Non eseguito. Roberto precisa che Word non aveva documenti: non cambia l'errore di comportamento e risposta. |
+| `f50d00eb0bcf48b8` (R39) | Ricerca e `set_processes` sul PC corretto. Word osservato già chiuso: `_undo.no_effect`, messaggio dell'esecutore «Risultano già chiusi…». Il template finale lo ha falsificato in «Ho chiuso Word.»: errore riprodotto, nessun processo terminato. |
+| `aa1b75c9d56b45de` (R39) | ExpressVPN risolto e interrogato sul PC; chiesta conferma per chiusura normale/forzata con avviso sui dati. `final_kind=ask`, dialogo `a61bb0888a414b1b`. Nessuna scelta inviata da Codex, nessuna chiusura dichiarata. |
 
 La conferma sul turno serale non rettifica retroattivamente il consenso
 contestato del turno pomeridiano `f35ee3d12afa4d57`.
@@ -39,6 +46,9 @@ Correzioni generali, senza nomi applicativi nel runtime:
   pubblicazione diretta. Rilettura obbligatoria dal catalogo verificato.
 - Messaggi IT/EN e documentazione riallineati; il catalogo pubblico descrive
   sorgenti, non pretende di attestare la disponibilità nell'istanza.
+- Ricevuta terminale d'effetto autorevole rispetto al testo scritto prima
+  dell'esecuzione. Lo stato `no_effect` prevale su contatori di elementi
+  riusciti: zero modifiche reali, nessun falso apprendimento di efficacia.
 
 Prove locali: gruppo snapshot/authoring/riconciliazione/rilascio/proprietà/
 chiusura/routing: 405 superati e 1 saltato; i 9 casi che richiedevano socket
@@ -46,6 +56,20 @@ locali sono poi passati nell'ambiente autorizzato. Confine e catalogo:
 83 superati; manifest e documentazione dei domini: 35 superati.
 Questi conteggi non si sommano ai gruppi precedenti sovrapposti e non
 sostituiscono la prova Windows reale. Nessun consenso inviato da Codex.
+
+Correzione della risposta: 242 test superati e 7 sottocasi nel gruppo iniziale;
+il test storico `test_recovery_challenger_realigned_to_intent` fallisce anche
+eseguendo in memoria le versioni HEAD precedenti dei due moduli modificati
+(nessuna modifica del codice per nascondere il risultato). Ulteriore prova
+IT/EN della risposta completa, incluso `TurnLog.write`: gruppo mirato di
+59 test e 9 sottocasi superati. Gruppi sovrapposti, non sommare.
+
+Release 39: build
+`sha256:802dc2205294f2e6aa6e369fd44185f9911182ca79fbfa9c7de4a3a877885280`,
+cutover `sha256:a0a2ed8d1b390a55ad44e9cbe7c3cc404b1cd117dda57cb5a83df8aa850b96f2`.
+Evidenza `/var/lib/metnos-admin/rm0008-cycle-evidence-802dc2205294f2e6`.
+Generazione ammessa `set_processes`:
+`sha256:495db5b22011c3450f78ae6e67575b3a1c1368417ee243ad4fe8bbd686642296`.
 
 Release 38: build
 `sha256:2411c210be65440f913e4a07f518d2475ed443f2b6c6f49692048ce1503524ae`,

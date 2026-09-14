@@ -205,6 +205,33 @@ class TestFinalMessageInvariant(unittest.TestCase):
         self.assertEqual(log.final_message, "ciao",
                          "non sovrascrivere final_message non vuoto")
 
+    def test_no_effect_receipt_survives_turn_log_honesty_guards(self):
+        from agent_runtime import StepLog, TurnLog
+        from engine.executor import _finalize_answer_text
+        from engine.types import Framework, StepRun
+
+        for hint in ("Risultano già chiusi sul dispositivo: Example.",
+                     "Already closed on the device: Example."):
+            with self.subTest(hint=hint):
+                result = {"ok": True, "ok_count": 1, "fail_count": 0,
+                          "results": [{"already_closed": True, "closed": True}],
+                          "_undo": {"outcome": "no_effect"},
+                          "final_message_hint": hint}
+                step = StepRun(step_idx=1, tool="set_processes", args={},
+                               result=result, ok=True, latency_ms=1)
+                final = _finalize_answer_text(
+                    Framework(steps=[], final_message="Ho chiuso Example."),
+                    [step], "q", lambda *a, **k: self.fail("Unexpected LLM"))
+                log = TurnLog(ts_start=0.0, ts_end=0.1, turn_id="t_no_effect",
+                              user_query="q", intent_verb="set", final_kind="answer",
+                              final_message=final, steps=[StepLog(
+                                  step_num=1, chosen_tool="set_processes",
+                                  result=result)])
+                log.write()
+                self.assertEqual(log.final_message, hint)
+                self.assertEqual(log.effect_counts["mutations"], 0)
+                self.assertFalse(log.false_success_detected)
+
     def test_successful_admin_receipt_is_authoritative_for_admin_only_turn(self):
         from agent_runtime import StepLog, TurnLog, _finalize_engine_result
 

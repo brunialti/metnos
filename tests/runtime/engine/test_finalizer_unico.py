@@ -12,6 +12,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 os.environ.setdefault("METNOS_ENGINE", "v3")
@@ -102,6 +104,54 @@ def test_static_text_kept():
     st = _steps({"ok": True})
     out = _finalize_answer_text(fw, st, "q", _no_llm)
     assert out == "Operazione pianificata."
+
+
+@pytest.mark.parametrize("template", ["Ho chiuso il programma.",
+                                     "Closed ${step1.ok_count} applications."])
+@pytest.mark.parametrize("outcome", ["no_effect", "reversible", "irreversible"])
+def test_terminal_effect_receipt_outranks_pre_execution_claim(template, outcome):
+    from engine.executor import _finalize_answer_text
+    hint = "Already closed on the requested device: Example."
+    st = _steps({"ok": True, "ok_count": 1, "results": [{}],
+                 "_undo": {"outcome": outcome}, "final_message_hint": hint})
+    assert _finalize_answer_text(_fw(template), st, "q", _no_llm) == hint
+
+
+def test_effect_receipt_ignores_final_answer_pseudostep():
+    from engine.executor import _finalize_answer_text
+    hint = "Risulta già chiuso sul dispositivo richiesto."
+    st = _steps({"ok": True, "_undo": {"outcome": "no_effect"},
+                 "final_message_hint": hint}, {"ok": True})
+    st[-1].tool = "final_answer"
+    assert _finalize_answer_text(_fw("Eseguito."), st, "q", _no_llm) == hint
+
+
+@pytest.mark.parametrize("metadata", [None, {}, {"outcome": "invalid"},
+                                      {"outcome": []}])
+def test_only_typed_effect_receipt_overrides_read_presentation(metadata):
+    from engine.executor import _finalize_answer_text
+    st = _steps({"ok": True, "value": 42, "_undo": metadata,
+                 "final_message_hint": "An optional read-only summary."})
+    assert _finalize_answer_text(
+        _fw("Value: ${step1.value}."), st, "q", _no_llm) == "Value: 42."
+
+
+@pytest.mark.parametrize("hint", [None, "", "  ", "<missing:MSG_RECEIPT>"])
+def test_effect_receipt_without_usable_hint_preserves_render(hint):
+    from engine.executor import _finalize_answer_text
+    st = _steps({"ok": True, "_undo": {"outcome": "no_effect"},
+                 "final_message_hint": hint})
+    assert _finalize_answer_text(
+        _fw("Nothing changed."), st, "q", _no_llm) == "Nothing changed."
+
+
+def test_prior_effect_receipt_does_not_replace_terminal_read_result():
+    from engine.executor import _finalize_answer_text
+    st = _steps({"ok": True, "_undo": {"outcome": "reversible"},
+                 "final_message_hint": "Earlier action completed."},
+                {"ok": True, "value": 42})
+    assert _finalize_answer_text(
+        _fw("Value: ${step2.value}."), st, "q", _no_llm) == "Value: 42."
 
 
 # 5. Contratto call-site: nessun blocco gemello residuo — la logica

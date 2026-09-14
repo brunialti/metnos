@@ -30,6 +30,7 @@ from typing import Any, Callable, Optional
 
 from .types import Framework, StepSpec, StepRun, RunResult
 from messages import get as _msg  # §11: render user-facing via DB i18n
+from undo import UNDO_OUTCOMES
 import detection_lexicon_seed_runtime_safety as _runtime_safety_lexicon
 
 log = logging.getLogger(__name__)
@@ -1801,7 +1802,9 @@ def _finalize_answer_text(framework, steps: list, query: str,
     """FINALIZER unico (ADR 0177 T5, CP2·M2): l'UNICA fonte del testo di un
     turno `answer`. Strategia dichiarata, in ordine:
 
-      1. RENDER del template del proposer (`${stepN.*}`) sulle observation;
+      1. presentazione canonica della ricevuta d'effetto terminale, se
+         dichiarata; altrimenti RENDER del template del proposer
+         (`${stepN.*}`) sulle observation;
       2. arricchimento COUNT-ONLY→bullets: render vuoto/solo-conteggio ma
          l'ultimo step ha `entries` → lista puntata onesta (§2.7,
          `MSG_RENDER_AND_MORE` per il resto oltre il cap);
@@ -1827,6 +1830,12 @@ def _finalize_answer_text(framework, steps: list, query: str,
     scalar = _deterministic_scalar_result(steps)
     if scalar:
         return scalar
+    # A pre-execution template cannot turn an observed no-op into a performed
+    # action, or overstate a partial effect. The terminal executor owns its
+    # localized receipt; read-only formatting keeps the existing render path.
+    receipt = _last_self_presentation(steps, effect_receipt_only=True)
+    if receipt:
+        return receipt
     rendered = _render_final_message(framework.final_message, steps)
     # 2. count-only → bullets (universal §7.9)
     if steps:
@@ -1864,7 +1873,8 @@ def _finalize_answer_text(framework, steps: list, query: str,
     return rendered
 
 
-def _last_self_presentation(steps: list) -> str:
+def _last_self_presentation(steps: list, *,
+                            effect_receipt_only: bool = False) -> str:
     """`final_message_hint` dell'ultimo step produttivo (non final_answer), se
     presente e non-degenere. È la presentazione canonica che il produttore fa
     del proprio output (§7.9 deterministico). "" se nessuno si auto-presenta."""
@@ -1872,6 +1882,11 @@ def _last_self_presentation(steps: list) -> str:
         if (getattr(s, "tool", "") or "") == "final_answer":
             continue
         res = getattr(s, "result", None)
+        if effect_receipt_only:
+            metadata = res.get("_undo") if isinstance(res, dict) else None
+            outcome = metadata.get("outcome") if isinstance(metadata, dict) else None
+            if not isinstance(outcome, str) or outcome not in UNDO_OUTCOMES:
+                return ""
         hint = res.get("final_message_hint") if isinstance(res, dict) else None
         if isinstance(hint, str) and hint.strip() \
                 and not hint.lstrip().startswith("<missing:"):

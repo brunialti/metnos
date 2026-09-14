@@ -169,6 +169,30 @@ class TestEfficacyGate(_FastpathDbCase):
 # ── pipeline_effects: predicato condiviso, shape-agnostic ──────────────────
 
 class TestIneffectiveMutations(unittest.TestCase):
+    def test_no_effect_receipt_overrides_successful_item_counters(self):
+        for counter in ({"ok_count": 1}, {"results": [{"ok": True}]}):
+            with self.subTest(counter=counter):
+                steps = [StepRun(
+                    step_idx=1, tool="set_processes", args={}, ok=True,
+                    latency_ms=1, result={"ok": True, **counter,
+                                         "_undo": {"outcome": "no_effect"}})]
+                counts = pipeline_effect_counts(steps)
+                self.assertEqual(counts["mutations"], 0)
+                self.assertTrue(counts["mutating_attempted"])
+                self.assertEqual(ineffective_mutations(steps), ["set_processes"])
+                self.assertEqual(committed_mutations(steps), [])
+
+    def test_effect_receipt_keeps_actual_mutations_and_retry_protection(self):
+        for metadata in (None, {}, {"outcome": "invalid"},
+                         {"outcome": "reversible"},
+                         {"outcome": "irreversible"}):
+            with self.subTest(metadata=metadata):
+                steps = [{"chosen_tool": "set_processes", "result": {
+                    "ok": True, "ok_count": 1, "_undo": metadata}}]
+                self.assertEqual(pipeline_effect_counts(steps)["mutations"], 1)
+                self.assertEqual(ineffective_mutations(steps), [])
+                self.assertEqual(committed_mutations(steps), ["set_processes"])
+
     def test_engine_steprun_shape(self):
         steps = [StepRun(step_idx=1, tool="delete_credentials", args={},
                          result={"ok": True, "n_deleted": 0}, ok=True,
