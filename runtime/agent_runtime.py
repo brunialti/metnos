@@ -3404,6 +3404,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             return {"ok": False, "error": _pmsg(e.code, **e.fmt),
                     "error_class": "placement"}
         if _target != _placement.SERVER:
+            from program_start_consent import apply_saved
+            args = apply_saved(executor, args, owner=_who, device_id=str(_target))
             # Il wire firmato device vieta i float JSON.  I soli carrier di
             # dati runtime sono normalizzati centralmente; gli argomenti di
             # controllo float restano intatti e falliscono chiusi.
@@ -3434,6 +3436,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                 turn_id=turn_id,
                 env_injections=_remote_env or None,
                 actor=actor or "", channel=channel or "", **_remote_kwargs)
+            from program_start_consent import bind_prompt
+            _obs = bind_prompt(executor, _obs, device_id=str(_target))
             # Marca l'esecuzione REALE sul device: il tag/campo del turno si
             # basa su questo (mai un tag ottimistico su un'operazione locale).
             if isinstance(_obs, dict) and target_device:
@@ -6020,22 +6024,24 @@ def _bind_managed_dependency_resume(
         return None
 
     branches: dict[str, dict] = {}
-    for lifetime in ("session", "persistent"):
-        branch = raw_branches.get(lifetime)
+    for scope in ("once", "until_restart", "always"):
+        branch = raw_branches.get(scope)
         if not isinstance(branch, dict) or branch.get("tool") != starter_tool:
             return None
         branch_args = branch.get("args")
         if (not isinstance(branch_args, dict)
                 or set(branch_args) != {
-                    "programs", "lifetime", "actor_consent_token"}
+                    "programs", "lifetime", "authorization_scope",
+                    "authorization_boot_id", "actor_consent_token"}
                 or branch_args.get("programs") != [package_id]
-                or branch_args.get("lifetime") != lifetime):
+                or branch_args.get("lifetime") != "session"
+                or branch_args.get("authorization_scope") != scope):
             return None
         token = branch_args.get("actor_consent_token")
         if (not isinstance(token, str) or len(token) != 64
                 or any(char not in "0123456789abcdef" for char in token)):
             return None
-        branches[lifetime] = {
+        branches[scope] = {
             "tool": starter_tool,
             "args": dict(branch_args),
         }
@@ -6045,7 +6051,7 @@ def _bind_managed_dependency_resume(
         "type": "managed_dependency_resume",
         "branches": branches,
         "resume": {"tool": resume_tool, "args": dict(resume_args)},
-        "target_device": target_device,
+        "target_device": original_callback.get("target_device") or target_device,
     }
     return {
         **start_result,

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 import agent_runtime
 import orchestration
 from loader import ManagedDependency, _managed_dependencies
@@ -14,7 +16,7 @@ def _start_dialog(package_id: str) -> dict:
     return {
         "ok": True,
         "decision": "needs_inputs",
-        "needs_inputs": run_processes._approval_dialog([package_id]),
+        "needs_inputs": run_processes._approval_dialog([package_id], "133700000000000000"),
     }
 
 
@@ -116,13 +118,17 @@ def test_provider_dependency_never_enters_process_start_flow():
     assert agent_runtime._declared_managed_package(executor, observation) == ""
 
 
-def test_start_dialog_is_bound_to_one_exact_retry(monkeypatch):
+@pytest.mark.parametrize("observed_device", [None, "immutable-device-id"])
+def test_start_dialog_is_bound_to_one_exact_retry(monkeypatch, observed_device):
     monkeypatch.setattr(
         "executors.run_processes.run_processes._machine_name",
         lambda: "PC-TEST",
     )
+    result = _start_dialog("Vendor.Sensor")
+    if observed_device:
+        result["needs_inputs"]["on_complete"]["target_device"] = observed_device
     bound = agent_runtime._bind_managed_dependency_resume(
-        _start_dialog("Vendor.Sensor"),
+        result,
         package_id="Vendor.Sensor",
         resume_tool="get_processes",
         resume_args={
@@ -144,13 +150,13 @@ def test_start_dialog_is_bound_to_one_exact_retry(monkeypatch):
             "top": 1,
         },
     }
-    assert callback["target_device"] == "PC-TEST"
-    assert set(callback["branches"]) == {"session", "persistent"}
+    assert callback["target_device"] == (observed_device or "PC-TEST")
+    assert set(callback["branches"]) == {"once", "until_restart", "always"}
 
 
 def test_tampered_start_branch_is_rejected():
     result = _start_dialog("Vendor.Sensor")
-    result["needs_inputs"]["on_complete"]["branches"]["session"][
+    result["needs_inputs"]["on_complete"]["branches"]["until_restart"][
         "args"]["programs"] = ["Other.Package"]
 
     assert agent_runtime._bind_managed_dependency_resume(
@@ -208,7 +214,7 @@ def test_completion_starts_then_retries_once_on_same_device(monkeypatch):
     )
     callback = {
         "branches": {
-            "session": {
+            "until_restart": {
                 "tool": "run_processes",
                 "args": {"programs": ["Vendor.Sensor"], "lifetime": "session"},
             },
@@ -226,11 +232,11 @@ def test_completion_starts_then_retries_once_on_same_device(monkeypatch):
     }
 
     rendered = orchestration._process_managed_dependency_resume(
-        callback, {"decision": "session"}, actor="host", channel="http")
+        callback, {"decision": "until_restart"}, actor="host", channel="http")
 
     assert rendered == "PC-TEST:51.2"
     assert [call[:2] for call in calls] == [
-        ("run_processes", callback["branches"]["session"]["args"]),
+        ("run_processes", callback["branches"]["until_restart"]["args"]),
         ("get_processes", callback["resume"]["args"]),
     ]
     assert all(call[2] == "PC-TEST" for call in calls)

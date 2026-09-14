@@ -503,6 +503,9 @@ def process_completion_callback(sender_id: str, dialog_id: str,
                 "MSG_ORCH_CONTINUATION_FAILED",
                 detail="callback_" + str(claim.get("status") or "invalid")))
     try:
+        if gated:
+            from program_start_consent import remember_verified_dialog
+            remember_verified_dialog(state, actor=actor, owner=owner_user_id)
         out = _dispatch_completion(
             sender_id, dialog_id, actor=actor, channel=channel,
             owner_user_id=owner_user_id,
@@ -1266,7 +1269,7 @@ def _process_managed_dependency_resume(
     decision = next(iter(values.values()), None) if values else None
     branches = on_complete.get("branches")
     branch = branches.get(decision) if isinstance(branches, dict) else None
-    if decision not in {"session", "persistent"} or not isinstance(branch, dict):
+    if decision not in {"once", "until_restart", "always"} or not isinstance(branch, dict):
         return _msg("MSG_GATE_NO_ACTION")
     owner = str(on_complete.get("owner_user_id") or "")
     target = str(on_complete.get("target_device") or "") or None

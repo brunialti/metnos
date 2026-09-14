@@ -6,6 +6,11 @@
 
 ## S. Stato corrente (10/9/2026)
 
+- **Permesso di avvio distinto dall'avvio automatico** (14/9, ADR 0218):
+  una volta, fino al riavvio del PC o sempre fino a revoca. Riutilizzo per
+  utente/app registrata/UUID del PC nel registro grants esistente; verifica
+  dell'avvio Windows sul device, non della sessione Metnos. Vecchi consensi
+  non promossi; installazione e chiusura restano separate.
 - **Aggiornare Metnos e' diventato un ciclo a due comandi** (10/9): Release 3,
   4 e 5 attraversate in giornata. `internal/tools/rm0008_release_cycle.py
   prepare` (senza privilegi) riallinea radici riviste, elenco firmato,

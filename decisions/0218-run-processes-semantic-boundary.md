@@ -135,3 +135,38 @@ previous signature. Authoring materialization remains a closed-tree capture,
 not admission; authenticated-current readers still require signed evidence.
 The generated documentation explicitly describes source metadata, whereas
 the live instance catalog shows only admitted contracts.
+
+## Reusable launch permission (2026-09-14)
+
+Explicit user requirement: closing and reopening an application must not ask
+again while an until-restart or permanent launch permission remains valid.
+The dialog now separates permission duration from process lifetime:
+`once`, `until_restart`, or `always` (until revoked). All three start in
+`session` mode; none registers automatic startup. Closure, forced termination,
+installation and startup registration remain separate permissions.
+
+The authenticated dialog completion records reusable permission in the
+existing policy grant registry, under its own channel namespace, for the
+exact owner, immutable device UUID, registered program identity and admitted
+starter. Selection requires a current owner-verified submission, not a stored
+completed flag or a token supplied by a planner. The existing once-only
+callback claim prevents double execution. Old choices and tokens do not
+migrate to reusable permission. Revocation uses the existing administrative
+policy grants/revoke interface; this change adds no end-user revocation UI.
+
+After owned placement, the common invocation boundary projects a matching
+grant into runtime-owned arguments. The device independently checks the
+current Windows boot for `until_restart` before any launch. A different boot
+returns a fresh question; an unavailable boot observation fails without an
+effect. The identity uses the read-only OS `LastBootUpTime`, converted to a
+numeric UTC file time by a fixed local CIM query, not uptime of Metnos or a
+cached heartbeat. See [Microsoft's OS property contract](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-operatingsystem).
+An `always` grant survives OS and Metnos restarts. Neither application closure
+nor a channel change consumes a reusable grant.
+
+The adapter is selected by the signed `managed-package-start` role and
+runtime-owned argument contract, not an executor or application name. No new
+database, service, client protocol or privileged helper operation is added.
+Tests cover the real HTTP/Telegram completion path with isolated persistence,
+scope boundaries, revocation, replay and simulated OS reboot; only a new
+selection made by the user can validate reuse end to end on their actual PC.

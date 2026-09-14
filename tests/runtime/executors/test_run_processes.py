@@ -37,18 +37,21 @@ def windows(monkeypatch):
     monkeypatch.setattr(run_processes.sys, "platform", "win32")
     monkeypatch.setattr(run_processes, "_helper_call", helper)
     monkeypatch.setattr(run_processes, "_machine_name", lambda: "PC-TEST")
+    monkeypatch.setattr(run_processes, "_boot_id", lambda: "133700000000000000")
     return calls
 
 
-def _approved(package_ids, lifetime):
+def _approved(package_ids, lifetime, scope="once", boot_id=""):
     return {
         "programs": package_ids,
         "lifetime": lifetime,
-        "actor_consent_token": run_processes._consent_token(package_ids, lifetime),
+        "authorization_scope": scope,
+        "authorization_boot_id": boot_id,
+        "actor_consent_token": run_processes._consent_token(package_ids, lifetime, scope, boot_id),
     }
 
 
-def test_phase_one_only_queries_and_returns_two_explicit_choices(windows):
+def test_phase_one_only_queries_and_returns_permission_duration_choices(windows):
     result = run_processes.invoke({"programs": ["Vendor.Sensor"]})
 
     assert result["decision"] == "needs_inputs"
@@ -57,8 +60,70 @@ def test_phase_one_only_queries_and_returns_two_explicit_choices(windows):
     assert windows == [("query", "--package-id", "Vendor.Sensor")]
     choices = result["needs_inputs"]["dialog"][0]["schema"]["choices"]
     assert [choice["value"] for choice in choices] == [
-        "session", "persistent", "reject",
+        "once", "until_restart", "always", "reject",
     ]
+    for branch in result["needs_inputs"]["on_complete"]["branches"].values():
+        assert branch["args"]["lifetime"] == "session"
+
+
+def test_until_restart_can_be_reused_for_multiple_launches(windows):
+    args = _approved(["Vendor.Sensor"], "session", "until_restart", "133700000000000000")
+    for _ in range(2):
+        result = run_processes.invoke(args)
+        assert result["ok"] and result["started"]
+        assert "needs_inputs" not in result
+    assert windows == [("start", "--package-id", "Vendor.Sensor", "--lifetime", "session")] * 2
+
+
+def test_until_restart_expires_on_pc_boot_change_before_any_launch(windows, monkeypatch):
+    monkeypatch.setattr(run_processes, "_boot_id", lambda: "200")
+    result = run_processes.invoke(_approved(["Vendor.Sensor"], "session", "until_restart", "100"))
+    assert result["decision"] == "needs_inputs"
+    assert not result["started"] and result["_undo"]["outcome"] == "no_effect"
+    assert windows == [("query", "--package-id", "Vendor.Sensor")]
+    branch = result["needs_inputs"]["on_complete"]["branches"]["until_restart"]
+    assert branch["args"]["authorization_boot_id"] == "200"
+
+
+def test_always_does_not_expire_with_pc_or_metnos_restart(windows, monkeypatch):
+    monkeypatch.setattr(run_processes, "_boot_id", lambda: pytest.fail("permanent permission must not depend on boot"))
+    args = _approved(["Vendor.Sensor"], "session", "always")
+    assert run_processes.invoke(args)["started"]
+    assert run_processes.invoke(dict(args))["started"]
+
+
+def test_boot_unavailable_cannot_reuse_temporary_permission(windows, monkeypatch):
+    monkeypatch.setattr(run_processes, "_boot_id", lambda: "")
+    result = run_processes.invoke(_approved(["Vendor.Sensor"], "session", "until_restart", "100"))
+    assert result["error_code"] == "boot_unverified"
+    assert windows == []
+
+
+@pytest.mark.parametrize("field,value", [("authorization_scope", "always"),
+                                         ("authorization_boot_id", "200")])
+def test_permission_duration_and_boot_are_bound_to_the_reviewed_choice(windows, field, value):
+    args = _approved(["Vendor.Sensor"], "session", "until_restart", "100")
+    args[field] = value
+    assert run_processes.invoke(args)["error_code"] == "consent_invalid"
+    assert windows == []
+
+
+def test_boot_probe_is_fixed_local_and_locale_independent(tmp_path, monkeypatch):
+    import base64
+    from types import SimpleNamespace
+    monkeypatch.setenv("SystemRoot", str(tmp_path))
+    calls = []
+    def execute(args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(returncode=0, stdout="133700000000000000\n")
+    monkeypatch.setattr(run_processes.subprocess, "run", execute)
+    assert run_processes._boot_id() == "133700000000000000"
+    args, options = calls[0]
+    source = base64.b64decode(args[-1]).decode("utf-16le")
+    assert "Win32_OperatingSystem" in source and "LastBootUpTime" in source
+    assert "ToUniversalTime().ToFileTimeUtc()" in source
+    assert "-ComputerName" not in source
+    assert options["shell"] is False and options["timeout"] == 10
 
 
 def test_portable_provider_does_not_import_unrelated_desktop_dependencies(windows, monkeypatch):
@@ -75,8 +140,8 @@ def test_portable_provider_does_not_import_unrelated_desktop_dependencies(window
 @pytest.mark.parametrize(
     ("language", "session_text", "persistent_text"),
     [
-        ("it", "riavvio", "accensione"),
-        ("en", "restart", "startup"),
+        ("it", "riavvio", "sempre"),
+        ("en", "restart", "always"),
     ],
 )
 def test_consent_card_is_localized(windows, monkeypatch, language,
@@ -85,8 +150,8 @@ def test_consent_card_is_localized(windows, monkeypatch, language,
     monkeypatch.setenv("METNOS_LANG", language)
     result = run_processes.invoke({"programs": ["Vendor.Sensor"]})
     choices = result["needs_inputs"]["dialog"][0]["schema"]["choices"]
-    assert session_text in choices[0]["label"].lower()
-    assert persistent_text in choices[1]["label"].lower()
+    assert session_text in choices[1]["label"].lower()
+    assert persistent_text in choices[2]["label"].lower()
     assert "PC-TEST" in result["needs_inputs"]["description"]
 
 
@@ -145,7 +210,7 @@ def test_session_undo_stops_only_exact_receipt_identity(windows):
     )
 
 
-def test_appx_uses_user_session_client_and_offers_only_session(monkeypatch):
+def test_appx_uses_user_session_client_and_offers_permission_scopes(monkeypatch, windows):
     calls = []
     package_id = (
         "appx:Microsoft.WindowsNotepad_11.2606.15.0_x64__8wekyb3d8bbwe")
@@ -181,8 +246,8 @@ def test_appx_uses_user_session_client_and_offers_only_session(monkeypatch):
 
     phase_one = run_processes.invoke({"programs": [package_id]})
     choices = phase_one["needs_inputs"]["dialog"][0]["schema"]["choices"]
-    assert [choice["value"] for choice in choices] == ["session", "reject"]
-    assert set(phase_one["needs_inputs"]["on_complete"]["branches"]) == {"session"}
+    assert [choice["value"] for choice in choices] == ["once", "until_restart", "always", "reject"]
+    assert set(phase_one["needs_inputs"]["on_complete"]["branches"]) == {"once", "until_restart", "always"}
     assert calls == [("query", "--package-id", package_id)]
 
     forward = run_processes.invoke(_approved([package_id], "session"))
@@ -269,7 +334,7 @@ def test_desktop_requires_consent_visible_window_and_exact_undo(monkeypatch, win
     assert gate["started"] is False and gate["_undo"]["outcome"] == "no_effect"
     card = gate["needs_inputs"]
     assert "Éditeur" in card["description"] and "PC-TEST" in card["description"]
-    assert [c["value"] for c in card["dialog"][0]["schema"]["choices"]] == ["session", "reject"]
+    assert [c["value"] for c in card["dialog"][0]["schema"]["choices"]] == ["once", "until_restart", "always", "reject"]
     assert run_processes.invoke(_approved([package_id], "persistent"))["error_code"] == "consent_invalid"
     assert len(calls) == 1
     started = run_processes.invoke(_approved([package_id], "session"))

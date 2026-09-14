@@ -36,6 +36,19 @@ from worker_policy import bounded_worker_count
 ASSUMED_YEAR_MARK = "*"
 
 
+def approval_digest(arguments: dict) -> str:
+    """Bind a reviewed choice to exact arguments; not proof of user consent.
+
+    Only the authenticated runtime may supply the resulting runtime-owned
+    argument. A digest alone never authorizes creating a reusable permission.
+    """
+    import hashlib
+    import json
+    payload = json.dumps(arguments, ensure_ascii=True, sort_keys=True,
+                         separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def date_text(value):
     """The date under an assumed-year mark, for parsing and comparison."""
     if isinstance(value, str):

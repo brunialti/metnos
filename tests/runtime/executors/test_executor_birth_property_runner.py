@@ -837,7 +837,8 @@ def test_appx_helper_contract_preserves_preexisting_processes(
     manifest = tomllib.loads(observed.snapshot.manifest_bytes.decode())
     args = next(case["input"] for case in manifest["tests"] if case["expect"].get("ok") is True)
     package = "appx:Metnos.BirthFixture_1.0_x64__fixture"
-    token = hashlib.sha256(json.dumps({"packages": [package], "lifetime": "session"},
+    token = hashlib.sha256(json.dumps({"programs": [package], "lifetime": "session",
+                                      "authorization_scope": "once", "authorization_boot_id": ""},
                                     sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     changed = observed.snapshot.manifest_bytes.replace(
         args["programs"][0].encode(), package.encode()).replace(

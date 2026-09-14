@@ -4,6 +4,30 @@ Autore: Codex. Sviluppo individuale autorizzato da Roberto; controllo periodico
 BACHECA disattivato. Questo rapporto **non certifica la chiusura di RM0008**.
 Il checkpoint pomeridiano riportato più sotto è storico, non lo stato corrente.
 
+## Permessi di avvio riutilizzabili: richiesta successiva alla R40
+
+Roberto richiede che «fino al prossimo riavvio» non chieda di nuovo consenso
+dopo chiusura e riapertura e che «sempre» duri senza ulteriori richieste.
+La nuova scelta è una durata del permesso, non la registrazione dell'avvio
+automatico. Implementati `once`, `until_restart`, `always`; tutte le scelte
+avviano in modalità sessione. Permessi isolati per proprietario, app registrata,
+UUID del PC e starter ammesso; riuso comune ai canali web e Telegram.
+
+Il registro policy esistente conserva e revoca i permessi. L'avvio temporaneo
+viene verificato sul Windows remoto tramite identità dell'avvio OS, non uptime
+del server/client. Un nuovo boot chiede di nuovo, una lettura non verificabile
+non avvia. Un permesso permanente resta fino a revoca amministrativa: nessuna
+nuova interfaccia di revoca chat è stata implementata. I vecchi consensi non
+sono promossi e Codex non invia nuove scelte per conto dell'utente.
+
+Prove: 102 test mirati superati; gruppo complementare ammissione/proprietà,
+collocazione e ripresa: 129 superati, 1 saltato, 1166 sottocasi superati.
+Dopo l'aggiunta della prova del punto comune di invocazione e della conservazione
+dell'UUID nella ripresa: 34 superati, di cui 31 già coperti (non sommare i gruppi).
+L'integrazione usa dialoghi e registro reali in ambiente isolato e un trasporto
+simulato: non è un collaudo Windows e2e. Rilascio e nuovo consenso reale ancora
+da verificare. Decisione: ADR 0218; messaggi e documentazione IT/EN aggiornati.
+
 ## Aggiornamento serale: chiusura applicazioni e risposte veritiere
 
 Correzione `fc83fa31`, successiva alla release 37. Release **38** attraversata
