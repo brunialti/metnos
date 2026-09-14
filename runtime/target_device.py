@@ -134,6 +134,21 @@ def _server_aliases(values=None) -> tuple[str, ...]:
     return tuple(aliases)
 
 
+def is_server_reference(value: object) -> bool:
+    """An exact server identity, not a place merely containing its name.
+
+    Reuse the reviewed language resource and configured instance identities.
+    This does not change placement: a geographic centre is request data.
+    """
+    if not isinstance(value, str):
+        return False
+    name = _norm(value)
+    if name == SERVER or name in _server_aliases():
+        return True
+    lexicon = _target_lexicon() or {}
+    return any(name == _norm(form) for form in lexicon.get("server_nominal", ()))
+
+
 def _has_machine_focus(query: str) -> bool:
     """Whether the request asks about machine state or hardware.
 

@@ -196,6 +196,30 @@ Roberto: «nel resume approfitta per integrare e migliorare. non un resume ma un
 
 ## Riferimenti
 
+### Correzione geografica RM0008, 15 settembre 2026
+
+Il turno `ee4fc62c` trattava il server come una città (`near="server metnos"`).
+L'esistente `ensure_proximity_center` distingue ora identità del server e luoghi,
+usando il lessico centrale del resolver e gli alias configurati, senza categorie
+POI o nomi d'installazione nel motore. Il produttore `get_location` riceve il
+soggetto richiesto (`actor`/`server`); un produttore dell'altro soggetto non viene
+riutilizzato. Coordinate e luoghi espliciti restano invariati. L'indicazione di
+dove eseguire la ricerca non diventa il suo centro geografico.
+
+Due guasti indipendenti impedivano anche la catena corretta: Photon conservava
+un indirizzo privato storico anziché il registro servizi; la configurazione
+Google presente nell'istanza non era dichiarata per la sandbox di `find_places`.
+Il servizio ora usa `services_registry.endpoint("photon")`; il manifest dichiara
+lettura di `geo_provider_config:local`, che concede esclusivamente il file
+canonico `google_maps.env` in sola lettura, mai archivio credenziali, chiave
+amministrativa o cartella superiore. Nessuna nuova domanda di consenso.
+
+Il primo errore di trasporto/quota interrompe l'espansione del raggio Photon.
+Un'eccezione del provider resta un fallimento, non una ricerca vuota riuscita.
+I timeout dell'invocazione ordinaria usano il messaggio i18n già esistente,
+senza comandi interni o percorsi nella risposta. I test isolati non sostituiscono
+il collaudo della richiesta originale sul rilascio ammesso.
+
 - [[project-engine-architecture-review]] (brief + scaffolding), [[project-compound-planning-refactor]] (sottoinsieme + P0/P1 fatti).
 - ADR 0174 (cache-discipline guard su hit), 0175 (engine v3 compound), 0176 (mail-read completeness).
 - Prod = `f0b96f2`; gate suite 2828/0, routing 29/29 (v3).

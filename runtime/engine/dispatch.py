@@ -1282,7 +1282,7 @@ def _enrich_move_source_dir(framework: Framework, query: str,
 # contract, not a tool name: any executor declaring it takes part in the guard
 # below, and `find_places` is only its first consumer.
 _GEO_CENTER_ARG = "near"
-# The single authority on where the asking user is.  The guard never reads a
+# The single authority on where the requested subject is. The guard never reads a
 # position itself: it wires the plan to this producer, so freshness, source
 # ranking and the "I do not know where you are" outcome stay in one place.
 _GEO_CENTER_PRODUCER = "get_location"
@@ -1354,12 +1354,10 @@ def _ensure_proximity_center(framework: Framework, query: str,
     in Rome.  The machine did know where it stood — `get_location` reads the
     installation position — but nothing in the plan asked it.
 
-    The guard inserts that producer and wires the centre to it.  It fires only
-    when the request carries a proximity form referred to the asker
-    (`geo.self_proximity`, multilingual lexicon) and the step declares the
-    centre argument without a value: a request that names its own place
-    ("pharmacy in Padova") keeps it, and an explicit centre is never
-    overwritten.  Idempotent, so re-running the pipeline is a no-op.
+    Missing centres use the actor, or the explicitly requested server subject.
+    A centre naming that server is an identity to resolve, not a city to append
+    to a POI query. Real coordinates, named places and producer references stay
+    intact. Reuse only a producer for the same subject. Idempotent on cache hits.
     """
     try:
         if not (query and _dl_match("geo.self_proximity", query)):
@@ -1370,6 +1368,14 @@ def _ensure_proximity_center(framework: Framework, query: str,
         steps = list(getattr(framework, "steps", None) or [])
         if not steps:
             return framework
+        import target_device
+        target = target_device.resolve_target(query, [])
+        # Execution adjuncts ("search on the server near me") do not make the
+        # server the geographic subject. Nominal subject mentions stay intact
+        # in the resolver's cleaned query; execution adjuncts are removed.
+        query_subject = ("server" if target.status == "ok" and target.explicit
+                         and target.target == target_device.SERVER
+                         and target.cleaned_query == query else "actor")
         from .types import StepSpec
         for consumer in list(steps):
             tool = getattr(consumer, "tool", "") or ""
@@ -1377,8 +1383,25 @@ def _ensure_proximity_center(framework: Framework, query: str,
                 continue
             args = getattr(consumer, "args", None)
             args = args if isinstance(args, dict) else {}
-            if _geo_center_is_usable(args.get(_GEO_CENTER_ARG)):
+            centre = args.get(_GEO_CENTER_ARG)
+            server_centre = target_device.is_server_reference(centre)
+            # A planned reference is not authority to substitute the actor
+            # for an explicitly requested server. Repair only references to
+            # the known location producer, leaving all other data untouched.
+            wrong_subject = False
+            ref = (re.fullmatch(r"\$\{step([1-9][0-9]*)(?:\.location)?\}", centre)
+                   if isinstance(centre, str) else None)
+            if query_subject == "server" and ref:
+                current_steps = list(framework.steps)
+                index = int(ref.group(1)) - 1
+                if index < len(current_steps):
+                    source = current_steps[index]
+                    wrong_subject = (source.tool == _GEO_CENTER_PRODUCER
+                                     and ((source.args or {}).get("subject", "actor") != "server"
+                                          or (source.args or {}).get("verify")))
+            if not server_centre and not wrong_subject and _geo_center_is_usable(centre):
                 continue
+            subject = "server" if server_centre else query_subject
             # Identity, not equality: two structurally identical steps are
             # distinct positions in the plan and `index()` would return the
             # first one for both.
@@ -1387,18 +1410,22 @@ def _ensure_proximity_center(framework: Framework, query: str,
             if pos < 0:
                 continue
             producer_1b = next(
-                (i + 1 for i, s in enumerate(steps[:pos])
-                 if (getattr(s, "tool", "") or "") == _GEO_CENTER_PRODUCER),
+                (i + 1 for i, s in reversed(list(enumerate(steps[:pos])))
+                 if (getattr(s, "tool", "") or "") == _GEO_CENTER_PRODUCER
+                 and (s.args or {}).get("subject", "actor") == subject
+                 and not (s.args or {}).get("verify")),
                 0)
             if not producer_1b:
                 insert_steps(framework, pos,
-                             [StepSpec(tool=_GEO_CENTER_PRODUCER, args={})])
+                             [StepSpec(tool=_GEO_CENTER_PRODUCER,
+                                       args={"subject": subject})])
                 producer_1b = pos + 1
-            consumer.args = dict(args)
+            # insert_steps has already remapped any other step references.
+            consumer.args = dict(consumer.args or {})
             consumer.args[_GEO_CENTER_ARG] = (
                 "${step%d.%s}" % (producer_1b, _GEO_CENTER_FIELD))
             log.info("[proximity §7.9] %s: search centre taken from the "
-                     "actor position (step %d)", tool, producer_1b)
+                     "%s position (step %d)", tool, subject, producer_1b)
         return framework
     except Exception as ex:  # noqa: BLE001 — best-effort
         log.warning("ensure_proximity_center noop (best-effort): %r", ex)
@@ -6287,8 +6314,8 @@ GUARD_PIPELINE: tuple = (
     Guard("ensure_proximity_center",
           lambda fw, i, q, c: _ensure_proximity_center(fw, q, c),
           scope="cross-clause", writes=frozenset({"args.near", "step"}),
-          reads=frozenset({"query", "catalog", "step.tool", "args.near"}),
-          rationale="§7.9 (turn 7e0f69a1): «the nearest pharmacy to where I am» without a centre makes the provider rank by fame — namesakes across the whole country. Concept geo.self_proximity plus a declared and empty `near` argument insert get_location and wire the centre to it. A request naming its own place does not match, and an explicit centre is never overwritten",
+          reads=frozenset({"query", "catalog", "step.tool", "args.near", "args.subject", "args.verify"}),
+          rationale="§7.9: proximity searches need a real centre. Empty near or an exact server identity resolve through get_location for the requested actor/server subject. Reuse only a matching producer; preserve coordinates, named places and existing references",
           adr="0177"),
     Guard("route_folder_size",
           lambda fw, i, q, c: _route_folder_size(fw, q, c),

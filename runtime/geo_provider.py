@@ -69,7 +69,7 @@ def forward_search(query, max_results=5, near=None, radius_km=None,
                 query, max_results=max_results, near=near,
                 radius_km=radius_km, bounded=bounded, lang=lang)
         except Exception:
-            failure = failure or f"{name}_provider_error"
+            failure = failure or "error"
             continue
         if matches:
             return matches, name

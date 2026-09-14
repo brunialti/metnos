@@ -4,6 +4,37 @@ Autore: Codex. Sviluppo individuale autorizzato da Roberto; controllo periodico
 BACHECA disattivato. Questo rapporto **non certifica la chiusura di RM0008**.
 Il checkpoint pomeridiano riportato più sotto è storico, non lo stato corrente.
 
+## Ricerca geografica: turno ee4fc62c, 15 settembre
+
+Richiesta originale: «farmacia piu vicina a dove è il server metnos».
+La ricevuta `ee4fc62c8f4c480b` mostra `find_places` con `near="server metnos"`,
+senza produttore di posizione. Google non riceve coordinate; Photon fallisce.
+La controprova esplicita `056281079e95428d` legge la posizione configurata ma
+la ricerca scade dopo 30 secondi, esponendo il comando della sandbox nella
+risposta. Non è una verifica riuscita della richiesta originale.
+
+La diagnostica `run-eleeqg0w` conferma: configurazione Google presente, chiave
+non nell'ambiente, archivio cifrato Google assente; Photon locale raggiungibile,
+mentre il client conservava un vecchio indirizzo privato. Nessun segreto letto
+in uscita. Roberto ha autorizzato l'uso della posizione con i provider configurati;
+non viene chiesto un nuovo consenso per gli stessi controlli.
+
+Correzioni: riuso della guardia e del resolver d'identità esistenti, produttori
+di posizione separati per soggetto, schema `near` coerente con le forme accettate,
+indirizzo Photon dal registro servizi, file di configurazione geografica esatto
+in sola lettura nella sandbox. Archivio credenziali e chiave amministrativa non
+concessi. Primo errore di trasporto interrompe l'espansione del raggio; errori
+dei provider e timeout restano fallimenti espliciti con messaggi i18n.
+
+Verifiche locali: primo gruppo 53 superati; secondo gruppo 114 superati e
+5 sottocasi (comprende nuovamente il modulo centro geografico dopo tre casi
+aggiunti; non sommare i gruppi). Manifest, registro servizi e provenienza:
+68 superati, 1 saltato. Nessun test fallito. `prepare` riuscito al primo
+tentativo: 1756 file, census
+`7aa60758e8d9bd4947b5815f30f67559f9cee45fd2b3db619678f42622eae97b`.
+Nuovo rilascio e richiesta originale e2e ancora da completare: non viene
+dichiarato risolto sulla base delle sole simulazioni.
+
 ## Permessi di avvio riutilizzabili: richiesta successiva alla R40
 
 Roberto richiede che «fino al prossimo riavvio» non chieda di nuovo consenso

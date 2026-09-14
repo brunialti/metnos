@@ -26,6 +26,26 @@ def _executor(**changes):
     return SimpleNamespace(**values)
 
 
+def test_geographic_config_is_exact_read_only_and_never_the_vault(tmp_path, monkeypatch):
+    import config
+    monkeypatch.setattr(config, "PATH_USER_CONFIG", tmp_path)
+    provider = tmp_path / "google_maps.env"
+    provider.write_text("GOOGLE_MAPS_API_KEY=test-not-a-real-key")
+    (tmp_path / "admin.key").write_text("not-a-real-key")
+    (tmp_path / "credentials").mkdir()
+    hints = ["geo_provider_config:local"]
+    assert sandbox._managed_local_resource_paths(hints, writable=False) == [provider]
+    assert sandbox._managed_local_resource_paths(hints, writable=True) == []
+    assert sandbox._managed_local_resource_paths(["unknown:local"], writable=False) == []
+    args = sandbox._build_bwrap_args(
+        Path(__file__), capabilities=[{"name": "metnos:read", "hint": hints}])
+    index = args.index(str(provider))
+    assert args[index - 1:index + 2] == ["--ro-bind", str(provider), str(provider)]
+    assert str(tmp_path / "admin.key") not in args
+    assert str(tmp_path / "credentials") not in args
+    assert str(tmp_path) not in args
+
+
 def test_runtime_is_bound_read_only_outside_system_roots(tmp_path, monkeypatch):
     runtime_dir = tmp_path / "relocated-metnos" / "runtime"
     runtime_dir.mkdir(parents=True)

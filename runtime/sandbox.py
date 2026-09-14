@@ -150,6 +150,11 @@ def _managed_local_resource_paths(hints: list[str], *, writable: bool) -> list[P
             "file_hash_cache": ((
                 Path(_C.PATH_USER_CACHE) / "file_hashes",
             ), True),
+            # Exact provider configuration, read-only. Never expose the
+            # credential vault, its master key, or the parent config tree.
+            "geo_provider_config": ((
+                Path(_C.PATH_USER_CONFIG) / "google_maps.env",
+            ), False),
         }
     except Exception:
         return []

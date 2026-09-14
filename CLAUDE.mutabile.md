@@ -215,7 +215,7 @@ Il nucleo dei manifest generati e' centralizzato in `generated_executor_contract
 - **FOTO/EXIF/GPS** → `get_files`.
 - **IDENTITÀ/PROFILO** → `read_persons(name="${RUNTIME:actor}")` per "chi sono io"; `read_persons(role="guest")` per lista paired; distinto da `get_persons` (registro biometrico). ADR 0163.
 - **ENROLLMENT** → dominio `*_persons` (elenco=`get_persons()`; «cancella l'enrollment di X»=`delete_persons(names=["X"])`). MAI `*_credentials`.
-- **POSIZIONE** → `get_location`. **TEMPO/DATA** → `get_now`. Una ricerca di luoghi riferita a chi chiede («la più vicina», «qui vicino») NON porta il centro nella query: lo aggiunge la guardia `ensure_proximity_center` incatenando `get_location`. Un luogo nominato nella richiesta resta il centro e non viene toccato.
+- **POSIZIONE** → `get_location`. **TEMPO/DATA** → `get_now`. Una ricerca di luoghi riferita a chi chiede («la più vicina», «qui vicino») NON porta il centro nella query: lo aggiunge la guardia `ensure_proximity_center` incatenando `get_location`. Il server nominato come centro risolve `subject=server`, separato dalla posizione dell'utente e dalla collocazione dell'esecuzione. Un luogo nominato nella richiesta resta il centro e non viene toccato. Photon usa l'indirizzo del registro servizi; errori di trasporto non fanno ripetere l'espansione del raggio.
 - **DESTINAZIONE spam/cestino/archivio** → nome utente come `dst_folder`; l'executor risolve via `M.list`. Non hardcodare `INBOX.Junk`.
 
 ## 11. Decisioni di runtime

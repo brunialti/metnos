@@ -178,6 +178,24 @@ def test_durable_invocation_converts_subprocess_timeout_for_retry_classification
         )
 
 
+def test_ordinary_invocation_timeout_never_exposes_host_command(tmp_path, monkeypatch):
+    import agent_runtime
+    import sandbox
+    from messages import get as msg
+
+    monkeypatch.setattr(sandbox, "wrap_command", lambda *a, **k: ["bwrap", "/private/host/path"])
+    def timeout(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+    monkeypatch.setattr(agent_runtime.subprocess, "run", timeout)
+    result = agent_runtime._invoke_executor_impl(_executor(tmp_path), {}, timeout_s=5)
+    assert result == {
+        "ok": False, "error_class": "timeout",
+        "error": msg("ERR_EXECUTOR_TIMEOUT", tool="bounded_fixture", seconds=5),
+    }
+    assert "bwrap" not in result["error"]
+    assert "/private" not in result["error"]
+
+
 def test_unreaped_process_group_requires_attention_instead_of_another_spawn(
     tmp_path,
     monkeypatch,

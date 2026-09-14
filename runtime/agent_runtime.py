@@ -3596,10 +3596,19 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     _t_start = time.perf_counter()
     parsed_result = None
     if execution_context is None:
-        result = subprocess.run(
-            cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
-            env=env,
-        )
+        try:
+            result = subprocess.run(
+                cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
+                env=env,
+            )
+        except subprocess.TimeoutExpired:
+            # Normalize at the common invocation boundary, including callers
+            # outside the engine. Never expose bwrap commands or host paths.
+            parsed_result = {
+                "ok": False, "error_class": "timeout",
+                "error": msg("ERR_EXECUTOR_TIMEOUT", tool=executor.name,
+                             seconds=int(timeout_s)),
+            }
     else:
         from bounded_subprocess import (
             SubprocessOutputLimitExceeded,
