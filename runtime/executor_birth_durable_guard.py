@@ -50,11 +50,13 @@ class DurableBirthAttemptGuard:
         trusted_publics: Iterable[object],
         admission_verifier_keys: Mapping[str, object],
         store_root: Path | str | None = None,
+        context_selection: object | None = None,
     ) -> None:
         self._epoch_db_path = Path(epoch_db_path)
         self._trusted_publics = tuple(trusted_publics)
         self._admission_verifier_keys = dict(admission_verifier_keys)
         self._store_root = store_root
+        self._context_selection = context_selection
 
     def __call__(self, executor: object) -> ExecutionEpochAttestation:
         name = getattr(executor, "name", None)
@@ -71,6 +73,7 @@ class DurableBirthAttemptGuard:
                 trusted_publics=self._trusted_publics,
                 admission_verifier_keys=self._admission_verifier_keys,
                 store_root=self._store_root,
+                context_selection=self._context_selection,
             )
         except Exception as exc:
             raise DurableBirthGuardError("execution.runner_absent", "generation") from exc
@@ -91,4 +94,3 @@ class DurableBirthAttemptGuard:
             }:
                 code = "execution.runner_absent"
             raise DurableBirthGuardError(code) from exc
-

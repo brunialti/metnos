@@ -334,6 +334,54 @@ def _verify_continuity_receipt_v1(previous, request, observed, old_request, rece
     from executor_birth_intent import _INSTALLER
     from executor_birth_producer_table_v1 import producer_author_v1
 
+    if receipt.kind is AdmissionKind.ADMISSION:
+        # Ordinary Birth has its own producer/objective/predecessor, not the
+        # deterministic Installer reattestation request. The prior issuer
+        # authenticates those assertions; continuity binds its exact admitted
+        # generation, semantic content, context and complete check evidence.
+        from executor_birth_policy_v1 import BIRTH_POLICY_VERSION_V1
+        from executor_birth_shadow import _CHECK_CATALOG_V1
+
+        expected = {
+            "contract_id": request.current.ref.contract_id.value,
+            "generation_id": request.current.generation_id,
+            "admission_context_id": previous.selection.admission_context_id,
+            "semantic_core_id": observed.identities.semantic_core_id,
+            "policy_version": BIRTH_POLICY_VERSION_V1,
+        }
+        checks = receipt.check_results
+        journal = checks.get("authoring_install_journal_v1")
+        valid = (
+            all(getattr(receipt, key) == value for key, value in expected.items())
+            and receipt.revision_class is not ReceiptRevisionClass.REATTESTATION
+            and (receipt.predecessor_id is None)
+                == (receipt.revision_class is ReceiptRevisionClass.FIRST_BIRTH)
+            and journal is not None
+            and journal.rule_version == "1"
+            and journal.status is AdmittedCheckStatus.PASSED
+            and journal.evidence_hash == receipt.authoring_journal_hash
+            and all(name in checks and checks[name].rule_version == version
+                    for name, version, *_ in _CHECK_CATALOG_V1)
+        )
+        if not valid:
+            raise BirthReattestationError("birth_current_continuity_receipt_invalid")
+        for name in ("manifest_standard", "manifest_lint", "dependency_closure"):
+            if checks[name].status is not AdmittedCheckStatus.PASSED:
+                raise BirthReattestationError("birth_current_continuity_receipt_invalid")
+        if (checks["properties"].status is not AdmittedCheckStatus.PASSED
+                and receipt.revision_class not in {
+                    ReceiptRevisionClass.LOCALIZATION_REVISION,
+                    ReceiptRevisionClass.EQUIVALENT_REPUBLISH,
+                }):
+            raise BirthReattestationError("birth_current_continuity_receipt_invalid")
+        for name, evidence in (("semantic_review", receipt.semantic_review_hash),
+                               ("approval", receipt.approval_hash)):
+            check = checks[name]
+            if evidence != (check.evidence_hash
+                            if check.status is AdmittedCheckStatus.PASSED else None):
+                raise BirthReattestationError("birth_current_continuity_receipt_invalid")
+        return
+
     snapshot = observed.snapshot
     old_identities = compute_candidate_identities(CandidateIdentityInput(
         contract_id=request.current.ref.contract_id,

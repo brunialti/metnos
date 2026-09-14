@@ -281,3 +281,20 @@ def test_repair_review_returns_clean_typed_birth_request_only():
             FailureReviewVerdict.MISALIGNED, receipt().receipt_id, D1, D2, D3, D4,
             "Mismatch", None, 90,
         ))
+
+
+def test_dispatch_binding_uses_owned_publisher_not_obsolete_core_options(monkeypatch):
+    import executor_birth_operational as operational
+    from contract_store import ExecutionContractBinding
+
+    calls = []
+    class Publisher:
+        def authenticate_execution_binding(self, contract_id, generation_id):
+            calls.append((contract_id, generation_id))
+            return ExecutionContractBinding(contract_id, generation_id, "demo", D1)
+    core = SimpleNamespace(commit_publisher=Publisher())
+    monkeypatch.setattr(operational, "_runtime_bundle_snapshot", lambda: SimpleNamespace(core=core))
+    executor = SimpleNamespace(name="demo")
+    assert agent_runtime._authenticated_dispatch_candidate_id(executor, CID, D3) == D1
+    assert calls == [(CID, D3)]
+    assert not hasattr(core, "publisher_options")

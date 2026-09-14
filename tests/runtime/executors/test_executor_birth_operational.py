@@ -767,3 +767,105 @@ def test_forged_actor_cannot_be_expressed_or_select_another_capability(tmp_path)
     forged = object()
     assert capability is not forged
     assert not intent_api._is_producer_capability(forged)
+
+
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_in_progress_claim_can_return_to_historical_generation_with_context_receipt(
+    tmp_path, monkeypatch, ambiguous,
+):
+    import contract_store as store_api
+    import executor_birth_bootstrap as bootstrap
+    import tomlkit
+    from tests.runtime.contracts.test_contract_store import (
+        _birth_authorization, _required_receipt_selection,
+    )
+    from executor_birth_commit_publisher import _BirthCommitPublisher, _PUBLISHER_TOKEN
+    from executor_birth_snapshot import acquire_candidate_snapshot, materialize_birth_candidate_from_authoring
+
+    request, core = _fixture(tmp_path, lambda *_a, **_k: pytest.fail("unused publisher"))
+    source_root = tmp_path / "authoring"
+    canonical = source_root / "demo"
+    shutil.copytree(request.manifest_ref.manifest_dir, canonical)
+    ref = replace(request.manifest_ref, source_root=source_root,
+                  manifest_path=canonical / "manifest.toml", allowed_code_roots=(source_root,))
+    request = replace(request, manifest_ref=ref)
+    store = tmp_path / "store"
+    author = Ed25519PrivateKey.generate()
+    old_admission = Ed25519PrivateKey.generate()
+    trusted = (("author", author.public_key()),)
+    (ref.manifest_dir / "manifest.toml.sig").write_bytes(store_api.sign_manifest_bytes(
+        (ref.manifest_dir / "manifest.toml").read_bytes(), private_key=author,
+    ))
+    source_a = materialize_birth_candidate_from_authoring(ref.manifest_dir, tmp_path / "return-a")
+    source_b = materialize_birth_candidate_from_authoring(ref.manifest_dir, tmp_path / "line-b")
+    document = tomlkit.parse((source_b / "manifest.toml").read_text())
+    document["version"] = "9.0.0"
+    (source_b / "manifest.toml").write_text(tomlkit.dumps(document))
+    with acquire_candidate_snapshot(source_a, private_parent=tmp_path) as snapshot:
+        first = store_api.commit_birth_snapshot(
+            ref, expected_generation_id=None, snapshot=snapshot,
+            request_id="sha256:" + "a" * 64, private_key=author, trusted_publics=trusted,
+            birth_authorization=_birth_authorization(ref, None, old_admission),
+            store_root=store)
+    with acquire_candidate_snapshot(source_b, private_parent=tmp_path) as snapshot:
+        second = store_api.commit_birth_snapshot(
+            ref, expected_generation_id=first.current_generation_id, snapshot=snapshot,
+            request_id="sha256:" + "b" * 64, private_key=author, trusted_publics=trusted,
+            birth_authorization=_birth_authorization(ref, first.current_generation_id, old_admission),
+            store_root=store)
+    historical = {p: p.read_bytes() for p in store.rglob("admission-receipts/*.json")}
+    selection = replace(
+        _required_receipt_selection(admission_context_id(_context())), context_epoch=D,
+    )
+    attempts = []
+    def commit(ref, **kwargs):
+        attempts.append(1)
+        if len(attempts) == 1 and not ambiguous:
+            raise ContractStoreError("birth_receipt_invalid", "historical response unavailable")
+        result = store_api.commit_birth_snapshot(ref, **kwargs)
+        if len(attempts) == 1:
+            raise OSError("lost response after durable publication")
+        return result
+    publisher = _BirthCommitPublisher(
+        _PUBLISHER_TOKEN, author_private=author, author_ring=trusted,
+        admission_private=core.admission_private_key, admission_key_id=core.admission_key_id,
+        admission_verifiers=core.admission_verifier_keys,
+        prepared_admission_context_id=selection.admission_context_id,
+        prepared_context_epoch=D, context_selection=selection,
+        primitive=commit, store_root=store, registry_reconciler=lambda _revision: None)
+    verifier = bootstrap._PostconditionAdapter(
+        trusted_publics=trusted, verifier_keys=core.admission_verifier_keys,
+        store_root=store, context_selection=selection)
+    core = replace(core, commit_publisher=publisher,
+                   predecessor_resolver=publisher.resolve_predecessor,
+                   postcondition_verifier=verifier.verify)
+    request = replace(request, candidate_source_root=source_a)
+    failed = _birth_executor_for_test(request, _core=core)
+    assert failed.error_code == ("birth_unavailable" if ambiguous else "birth_receipt_invalid")
+    with sqlite3.connect(core.producer_db) as connection:
+        assert connection.execute("SELECT state FROM birth_producer_receipts").fetchone()[0] == "in_progress"
+    retried = _birth_executor_for_test(request, _core=core)
+    if ambiguous:
+        assert retried.error_code is None
+        assert retried.publication.current_generation_id == first.current_generation_id
+        assert retried.publication.previous_generation_id == second.current_generation_id
+        assert attempts == [1]
+        import agent_runtime
+        import manifest_inventory
+        from types import SimpleNamespace
+        monkeypatch.setattr(
+            manifest_inventory, "inventory_authoring_manifests",
+            lambda: manifest_inventory.ManifestInventory((ref,), ()),
+        )
+        monkeypatch.setattr(operational, "_runtime_bundle_snapshot", lambda: SimpleNamespace(core=core))
+        executor = SimpleNamespace(name=tomllib.loads((source_a / "manifest.toml").read_text())["name"])
+        assert agent_runtime._authenticated_dispatch_candidate_id(
+            executor, ref.contract_id, first.current_generation_id,
+        ) == retried.report.candidate_id
+    else:
+        # A failed pre-publication hint may be replayed only against a matching
+        # durable result; an explicit conflict is allowed, never silent repair.
+        assert retried.error_code == "birth_postcondition_receipt_missing"
+        assert store_api.current_revision_id(ref, store_root=store) == second.current_generation_id
+        assert attempts == [1]
+    assert {p: p.read_bytes() for p in historical} == historical

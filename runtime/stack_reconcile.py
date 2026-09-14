@@ -75,6 +75,15 @@ _DURABLE_NON_RESTARTABLE_REASONS = frozenset({
     "runtime_bindings_unavailable",
     "schema_incompatible",
 })
+# These refusals invalidate the shared admission authority, not just a
+# candidate. Unexpected exceptions and failed store rereads also stop the
+# sweep; ordinary contract refusals are collected before reporting failure.
+_GLOBAL_BIRTH_FAILURE_PREFIXES = (
+    "birth_context_", "birth_bootstrap_", "birth_authority_",
+    "birth_producer_registry_", "birth_commit_link_", "birth_unavailable",
+    "catalog_", "lock_", "unsafe_lock", "productive_",
+    "installation_", "store_integrity_",
+)
 
 
 class StackFailure(RuntimeError):
@@ -569,6 +578,8 @@ def verify_named_executors(
             materialize_birth_candidate_from_authoring,
         )
         from sign import list_trusted_publics
+        from contract_store import _editable_manifest
+        import tomlkit
 
         trusted = tuple(list_trusted_publics())
         core, builtin = ManifestOrigin.CORE, ManifestOrigin.BUILTIN
@@ -596,6 +607,7 @@ def verify_named_executors(
             return {"name": name} if origin is core else {"name": name, "origin": origin.value}
 
         outcomes: list[dict] = []
+        first_failure: StackFailure | None = None
 
         def refuse(index, code, detail):
             outcomes.extend({**identity(*item), "outcome": "not_attempted"}
@@ -635,6 +647,19 @@ def verify_named_executors(
                     with acquire_current_reattestation_snapshot(
                             ref, current.generation_id,
                             trusted_publics=trusted) as served:
+                        if origin is builtin:
+                            # Regeneration owns code/schema, not the served
+                            # line's version. Normalize before changed-only
+                            # and before Birth, after the stale-copy check.
+                            document = _editable_manifest(prepared)
+                            served_document = _editable_manifest(served.manifest_bytes)
+                            version = served_document.get("version")
+                            if not isinstance(version, str) or not version:
+                                raise CandidateSnapshotError("builtin_version_invalid", name)
+                            if document.get("version") != version:
+                                document["version"] = version
+                                prepared = tomlkit.dumps(document).encode("utf-8")
+                                (candidate / MANIFEST_FILE).write_bytes(prepared)
                         same = (
                             served.manifest_bytes == prepared
                             and served.language_state_bytes == language_state
@@ -642,7 +667,13 @@ def verify_named_executors(
                         )
                 except (OSError, CandidateSnapshotError, ContractStoreError) as exc:
                     outcomes.append({**base, "outcome": "error", "error": str(exc)})
-                    raise refuse(index, "candidate_unavailable", f"{name}: {exc}") from exc
+                    if not isinstance(exc, CandidateSnapshotError):
+                        raise refuse(index, "candidate_unavailable", f"{name}: {exc}") from exc
+                    if first_failure is None:
+                        first_failure = StackFailure(
+                            "candidate_unavailable", f"{name}: {exc}", details={"outcomes": outcomes},
+                        )
+                    continue
                 if same or plan_only:
                     outcomes.append({**base, "outcome": "unchanged" if same else "changed",
                                      "generation_id": current.generation_id})
@@ -680,7 +711,19 @@ def verify_named_executors(
                         row.setdefault("error", "store_generation_mismatch")
                 outcomes.append(row)
                 if row["outcome"] == "error":
-                    raise refuse(index, "birth_admission_failed", f"{name}: {row['error']}")
+                    # A returned contract refusal is local. An unexpected
+                    # exception, lost authority or invalid publication
+                    # postcondition cannot authorize the next mutation.
+                    if (birth is None or publication is not None
+                            or str(row["error"]).startswith(_GLOBAL_BIRTH_FAILURE_PREFIXES)):
+                        raise refuse(index, "birth_admission_failed", f"{name}: {row['error']}")
+                    if first_failure is None:
+                        first_failure = StackFailure(
+                            "birth_admission_failed", f"{name}: {row['error']}",
+                            details={"outcomes": outcomes},
+                        )
+        if first_failure is not None:
+            raise first_failure
         return outcomes
 
     selected: list[tuple[str, Path | None, object | None]] = []

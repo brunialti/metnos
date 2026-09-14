@@ -2822,6 +2822,8 @@ def _birth_authorization(
     admission_private: Ed25519PrivateKey,
     *,
     observed: list[tuple[str, Mapping[str, str]]] | None = None,
+    context_id: str = _BIRTH_DIGEST,
+    context_selection: object | None = None,
 ) -> BirthCommitAuthorization:
     public = admission_private.public_key()
 
@@ -2837,7 +2839,7 @@ def _birth_authorization(
             generation_id=identifier,
             candidate_id=_BIRTH_DIGEST,
             semantic_core_id=_BIRTH_DIGEST,
-            admission_context_id=_BIRTH_DIGEST,
+            admission_context_id=context_id,
             birth_request_id=_request_id,
             authoring_journal_hash=journal_hash,
             predecessor_id=predecessor_id,
@@ -2861,12 +2863,13 @@ def _birth_authorization(
     return BirthCommitAuthorization(
         candidate_id=_BIRTH_DIGEST,
         semantic_core_id=_BIRTH_DIGEST,
-        admission_context_id=_BIRTH_DIGEST,
+        admission_context_id=context_id,
         predecessor_id=predecessor_id,
         issuer=issue,
         verifier=lambda encoded: verify_admission_receipt(
             encoded, public_key=public, expected_key_id="birth-test-key",
         ),
+        context_selection=context_selection,
     )
 
 
@@ -5633,3 +5636,112 @@ def test_registry_converges_when_manifest_callback_finishes_after_retirement(
         "retirement", current.retirement_id,
     )
     assert calls[-1] == ("outer", "retirement", current.retirement_id)
+
+
+def _required_receipt_selection(context_id=_BIRTH_DIGEST):
+    from tests.portable.test_executor_birth_context_selection import _evidence
+    from executor_birth_context_selection import _context_selection_from_required_chain_v1
+
+    return replace(_context_selection_from_required_chain_v1(*_evidence()),
+                   admission_context_id=context_id)
+
+
+def _historical_birth_return(tmp_path):
+    from executor_birth_snapshot import materialize_birth_candidate_from_authoring
+
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    source_a = materialize_birth_candidate_from_authoring(ref.manifest_dir, tmp_path / "candidate-a")
+    snapshot_a = acquire_candidate_snapshot(source_a, private_parent=tmp_path)
+    old_key = Ed25519PrivateKey.generate()
+    first = commit_birth_snapshot(
+        ref, expected_generation_id=None, snapshot=snapshot_a,
+        request_id=_birth_digest("1"), private_key=private, trusted_publics=trusted,
+        birth_authorization=_birth_authorization(ref, None, old_key, context_id=_birth_digest("1")),
+        store_root=store)
+    snapshot_b = _birth_snapshot(ref, tmp_path)
+    second = commit_birth_snapshot(
+        ref, expected_generation_id=first.current_generation_id, snapshot=snapshot_b,
+        request_id=_birth_digest("2"), private_key=private, trusted_publics=trusted,
+        birth_authorization=_birth_authorization(
+            ref, first.current_generation_id, old_key, context_id=_birth_digest("2")),
+        store_root=store)
+    snapshot_b.close()
+    selection = _required_receipt_selection()
+    key = Ed25519PrivateKey.generate()
+    auth = _birth_authorization(ref, second.current_generation_id, key, context_selection=selection)
+    options = dict(
+        expected_generation_id=second.current_generation_id, snapshot=snapshot_a,
+        request_id=_birth_digest("3"), private_key=private, trusted_publics=trusted,
+        birth_authorization=auth, store_root=store)
+    return ref, store, first, second, selection, key, options
+
+
+@pytest.mark.parametrize("boundary", [None, "receipt", "journal", "current", "cleanup"])
+def test_v2_historical_return_preserves_v1_and_recovers_exactly(tmp_path, monkeypatch, boundary):
+    from types import SimpleNamespace
+    from executor_birth_postcondition import verify_birth_postcondition
+
+    ref, store, first, second, selection, key, options = _historical_birth_return(tmp_path)
+    historical = {path: path.read_bytes() for path in store.rglob("admission-receipts/*.json")}
+    assert len(historical) == 2
+    if boundary is not None:
+        _inject_birth_commit_crash(monkeypatch, boundary)
+        with pytest.raises(RuntimeError, match=f"after {boundary}"):
+            commit_birth_snapshot(ref, **options)
+    restored = commit_birth_snapshot(ref, **options)
+    assert restored.current_generation_id == first.current_generation_id
+    assert restored.previous_generation_id == second.current_generation_id
+    assert {path: path.read_bytes() for path in historical} == historical
+    receipts = tuple(store.rglob("admission-receipts-v2/*/*.json"))
+    assert len(receipts) == 1
+    encoded = receipts[0].read_bytes()
+    receipt = verify_admission_receipt(encoded, verifier_keys={"birth-test-key": key.public_key()})
+    assert receipt.admission_context_id == selection.admission_context_id
+    assert receipt.birth_request_id == options["request_id"]
+    publication, reread = verify_birth_postcondition(
+        SimpleNamespace(manifest_ref=ref, request_id=options["request_id"]),
+        None, None, trusted_publics=options["trusted_publics"],
+        admission_verifier_keys={"birth-test-key": key.public_key()},
+        store_root=store, context_selection=selection)
+    assert publication.current_generation_id == first.current_generation_id
+    assert reread == encoded
+    monkeypatch.setattr(
+        manifest_inventory_module, "inventory_authoring_manifests",
+        lambda: ManifestInventory((ref,), ()))
+    binding = authenticate_execution_binding(
+        ref.contract_id, first.current_generation_id, trusted_publics=options["trusted_publics"],
+        admission_verifier_keys={"birth-test-key": key.public_key()},
+        store_root=store, context_selection=selection)
+    assert binding.candidate_id == receipt.candidate_id
+    with pytest.raises(ContractStoreError, match="birth_receipt_binding_invalid"):
+        commit_birth_snapshot(ref, **(options | {"request_id": _birth_digest("4")}))
+    assert receipts[0].read_bytes() == encoded
+    options["snapshot"].close()
+
+
+@pytest.mark.parametrize("fault", ["missing_context", "wrong_context", "wrong_key", "unsealed"])
+def test_v2_binding_never_falls_back_to_a_historical_receipt(tmp_path, monkeypatch, fault):
+    from types import SimpleNamespace
+
+    ref, store, first, _second, selection, key, options = _historical_birth_return(tmp_path)
+    commit_birth_snapshot(ref, **options)
+    monkeypatch.setattr(manifest_inventory_module, "inventory_authoring_manifests",
+                        lambda: ManifestInventory((ref,), ()))
+    keys = {"birth-test-key": key.public_key()}
+    if fault == "missing_context":
+        selection = _required_receipt_selection(_birth_digest("f"))
+    elif fault == "wrong_context":
+        path = next(store.rglob("admission-receipts-v2/*/*.json"))
+        other = _required_receipt_selection(_birth_digest("f"))
+        path.rename(path.with_name(other.admission_context_id[7:] + ".json"))
+        selection = other
+    elif fault == "wrong_key":
+        keys = {"birth-test-key": Ed25519PrivateKey.generate().public_key()}
+    else:
+        selection = SimpleNamespace(admission_context_id=selection.admission_context_id)
+    with pytest.raises(ContractStoreError):
+        authenticate_execution_binding(
+            ref.contract_id, first.current_generation_id, trusted_publics=options["trusted_publics"],
+            admission_verifier_keys=keys, store_root=store, context_selection=selection)
+    options["snapshot"].close()

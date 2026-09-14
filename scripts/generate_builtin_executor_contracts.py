@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "runtime"
 OUT = RUNTIME / "builtin_executor_contracts"
+INITIAL_BUILTIN_VERSION = "1.0.0"
 sys.path.insert(0, str(RUNTIME))
 
 
@@ -390,7 +391,7 @@ def _all_specs():
     return specs
 
 
-def _render(name: str, tool_spec: dict) -> str:
+def _render(name: str, tool_spec: dict, *, version: str = INITIAL_BUILTIN_VERSION) -> str:
     purpose_it, purpose_en, caps, output = _META[name]
     if "error_class" not in output:
         output = output[:-1] + ", error_class?: str, error_code?: str}"
@@ -409,7 +410,7 @@ def _render(name: str, tool_spec: dict) -> str:
         'manifest_format = "1.0"',
         'executor_standard = "metnos.executor/1.0"',
         f'name = {_q(name)}',
-        'version = "1.0.0"',
+        f'version = {_q(version)}',
         *([f'intelligence = {_q(_INTELLIGENCE[name])}']
           if name in _INTELLIGENCE else []),
         'author = "Metnos builtin maintainers"',
@@ -573,7 +574,13 @@ def main() -> None:
         directory.mkdir(parents=True, exist_ok=True)
         tool_spec, module_path = specs[name]
         implementation = module_path.read_bytes()
-        rendered = _render(name, tool_spec).encode("utf-8")
+        source_manifest = OUT / name / "manifest.toml"
+        version = INITIAL_BUILTIN_VERSION
+        if source_manifest.is_file():
+            version = tomllib.loads(source_manifest.read_text(encoding="utf-8")).get("version")
+            if not isinstance(version, str) or not version:
+                raise ValueError("builtin_version_invalid")
+        rendered = _render(name, tool_spec, version=version).encode("utf-8")
         from manifest_code_digest import prepare_manifest_digest_v1
         rendered = prepare_manifest_digest_v1(
             rendered, {"implementation.py.src": implementation},

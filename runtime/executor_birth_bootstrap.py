@@ -461,16 +461,19 @@ def _is_cutover_reattestation_factory_v2(value: object) -> bool:
 
 class _PostconditionAdapter:
     def __init__(self, *, trusted_publics: tuple, verifier_keys: Mapping[str, Ed25519PublicKey],
-                 store_root: Path | None = None) -> None:
+                 store_root: Path | None = None,
+                 context_selection: object | None = None) -> None:
         self.trusted_publics = trusted_publics
         self.verifier_keys = verifier_keys
         self.store_root = store_root
+        self.context_selection = context_selection
 
     def verify(self, request: BirthRequest, expected: object, admission: bytes | None):
         from executor_birth_postcondition import verify_birth_postcondition
         return verify_birth_postcondition(
             request, expected, admission, trusted_publics=self.trusted_publics,
             admission_verifier_keys=self.verifier_keys, store_root=self.store_root,
+            context_selection=self.context_selection,
         )
 
     def recover_authoring(self) -> None:
@@ -483,7 +486,8 @@ class _PostconditionAdapter:
         )
         from contract_store import (
             DEFAULT_LOCK_TIMEOUT,
-            _birth_receipt_path, _publication_base_locked, _writer_lock,
+            _birth_receipt_path_for_context, _publication_base_locked,
+            _read_regular_file, _writer_lock,
             catalog_admission_lock,
         )
         from executor_birth_receipts import verify_admission_receipt
@@ -507,9 +511,10 @@ class _PostconditionAdapter:
                             store_root=self.store_root, technical_base=True,
                         )
                         try:
-                            encoded = _birth_receipt_path(
-                                contract_dir, pending.new_generation_id,
-                            ).read_bytes()
+                            receipt_path = _birth_receipt_path_for_context(
+                                contract_dir, pending.new_generation_id, self.context_selection,
+                            )
+                            encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
                             receipt = verify_admission_receipt(
                                 encoded, verifier_keys=self.verifier_keys,
                             )
@@ -526,6 +531,9 @@ class _PostconditionAdapter:
                             "admission_context_id": pending.admission_context_id,
                         }
                         if any(getattr(receipt, field) != wanted for field, wanted in bindings.items()):
+                            raise BirthBootstrapError("birth_authoring_recovery_receipt_conflict")
+                        if (self.context_selection is not None and receipt.admission_context_id
+                                != self.context_selection.admission_context_id):
                             raise BirthBootstrapError("birth_authoring_recovery_receipt_conflict")
                         if current == pending.new_generation_id:
                             if authoring_tree_id(observe_tree(control.canonical)) != pending.new_tree_id:
@@ -619,6 +627,7 @@ def _prepare_sealed_birth_assembly_v1(
     now: Callable[[], datetime],
     store_root: Path | None = None,
     initial_current_adoption_transition_id: str | None = None,
+    context_selection: object | None = None,
 ) -> _SealedBirthAssemblyV1:
     """Build one core from authorities read once under the root barrier.
 
@@ -663,6 +672,7 @@ def _prepare_sealed_birth_assembly_v1(
         prepared_admission_context_id=sealed.prepared.prepared_admission_context_id,
         prepared_context_epoch=sealed.prepared.prepared_context_epoch,
         store_root=store_root,
+        context_selection=context_selection,
     )
     context_builder = ProductionContextBuilder(
         BuiltAdmissionContext(sealed.material.context, sealed.material.pin, {})
@@ -672,6 +682,7 @@ def _prepare_sealed_birth_assembly_v1(
         trusted_publics=trusted_publics,
         verifier_keys=sealed.admission.verifier_keys,
         store_root=store_root,
+        context_selection=context_selection,
     )
     verifier.recover_authoring()
 
@@ -893,6 +904,7 @@ def _build_staged_reattestation_runtime_v2(
     assembly = _prepare_sealed_birth_assembly_v1(
         staged_context.authorities, now=now, store_root=store_root,
         initial_current_adoption_transition_id=initial_adoption,
+        context_selection=selection,
     )
     factory = _reattestation_factory_for_assembly_v1(
         assembly, selection=selection,
@@ -935,10 +947,10 @@ def _build_sealed(
         if required_context is not None
         else load_sealed_authorities_v1()
     )
-    assembly = _prepare_sealed_birth_assembly_v1(
-        sealed, now=now, store_root=store_root,
-    )
     selection = None if required_context is None else required_context.selection
+    assembly = _prepare_sealed_birth_assembly_v1(
+        sealed, now=now, store_root=store_root, context_selection=selection,
+    )
     factories = {
         cap: _request_factory(
             auth,

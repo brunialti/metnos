@@ -299,6 +299,14 @@ def _normalize_capabilities(raw) -> list[dict]:
     return out
 
 
+class BuiltinContractError(ValueError):
+    """A typed refusal of one builtin, caught by the catalog's local boundary."""
+
+    def __init__(self, code: str, name: str):
+        self.code = code
+        super().__init__(f"{code}: {name}")
+
+
 def _load_builtin_contract(
     name: str,
     module_path: Path,
@@ -394,6 +402,11 @@ def _load_builtin_contract(
             f"builtin contract code mismatch for {name!r}: runtime module "
             "differs from the admitted implementation"
         )
+    from manifest_code_digest import code_digest_of_payloads
+    if code_digest_of_payloads(code_files, {"implementation.py.src": module_bytes}) != (
+        manifest.get("code") or {}
+    ).get("digest"):
+        raise BuiltinContractError("builtin_contract_code_unadmitted", name)
     return manifest, path, signed_by, generation_id
 
 

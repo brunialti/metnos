@@ -1577,6 +1577,7 @@ def _contract_bytes(name, spec):
     files = spec["files"]
     manifest = (
         f'name = "{name}"\ndescription = "{spec.get("description", "d")}"\n'
+        f'version = "{spec.get("version", "1.0.0")}"\n'
         "[code]\nfiles = [" + ", ".join(f'"{item}"' for item in files) + "]\n"
         f'digest = "sha256:{"0" * 64}"\n'
     ).encode("utf-8")
@@ -1674,7 +1675,7 @@ def _release_store(monkeypatch, tmp_path, *, working, served,
         label = label or name
         reached.append(label)
         if label in control["refuse"]:
-            return SimpleNamespace(request_id=f"r-{name}", error_code="birth_refused",
+            return SimpleNamespace(request_id=f"r-{name}", error_code=control.get("error_code", "birth_refused"),
                                    publication=None, report=None)
         candidate = intent.candidate_source_root
         manifest = (candidate / "manifest.toml").read_bytes()
@@ -1806,11 +1807,11 @@ def test_release_admission_reports_a_partial_failure_and_resumes(monkeypatch, tm
     with pytest.raises(sr.StackFailure) as caught:
         run()
     assert [(row["name"], row["outcome"]) for row in caught.value.details["outcomes"]] == [
-        ("alpha", "store_verified"), ("beta", "error"), ("gamma", "not_attempted")]
+        ("alpha", "store_verified"), ("beta", "error"), ("gamma", "store_verified")]
     control["refuse"] = set()
     assert [(row["name"], row["outcome"]) for row in run()] == [
-        ("alpha", "unchanged"), ("beta", "store_verified"), ("gamma", "store_verified")]
-    assert reached == ["alpha", "beta", "beta", "gamma"]
+        ("alpha", "unchanged"), ("beta", "store_verified"), ("gamma", "unchanged")]
+    assert reached == ["alpha", "beta", "gamma", "beta"]
 
 
 def test_release_admission_names_a_cache_in_the_working_copy(monkeypatch, tmp_path):
@@ -2109,7 +2110,7 @@ def test_same_name_keeps_distinct_core_and_builtin_identities(monkeypatch, tmp_p
     assert len(pending.published()) == 2
 
 
-def test_builtin_refusal_stops_and_keeps_what_was_published(monkeypatch, tmp_path):
+def test_builtin_refusal_continues_and_keeps_what_was_published(monkeypatch, tmp_path):
     run, reached, control, _root = _release_store(
         monkeypatch, tmp_path, working={}, served={},
         builtin_working={name: {"files": {"implementation.py.src": b"new\n"}}
@@ -2121,8 +2122,8 @@ def test_builtin_refusal_stops_and_keeps_what_was_published(monkeypatch, tmp_pat
         run()
     assert caught.value.code == "birth_admission_failed"
     assert _builtin_rows(caught.value.details["outcomes"]) == [
-        ("alpha", "store_verified"), ("beta", "error"), ("gamma", "not_attempted")]
-    assert reached == ["builtin:alpha", "builtin:beta"]
+        ("alpha", "store_verified"), ("beta", "error"), ("gamma", "store_verified")]
+    assert reached == ["builtin:alpha", "builtin:beta", "builtin:gamma"]
 
 
 def test_a_copy_not_derived_from_its_code_is_refused_before_birth(monkeypatch, tmp_path):
@@ -2138,7 +2139,7 @@ def test_a_copy_not_derived_from_its_code_is_refused_before_birth(monkeypatch, t
     assert reached == []
 
 
-def test_a_core_refusal_reports_later_builtins_as_not_attempted(monkeypatch, tmp_path):
+def test_a_core_refusal_does_not_block_later_builtins(monkeypatch, tmp_path):
     run, reached, control, _root = _release_store(
         monkeypatch, tmp_path,
         working={name: {"files": {"main.py": b"new\n"}} for name in ("alpha", "beta", "gamma")},
@@ -2151,8 +2152,8 @@ def test_a_core_refusal_reports_later_builtins_as_not_attempted(monkeypatch, tmp
     rows = caught.value.details["outcomes"]
     assert [(row["name"], row.get("origin", "core"), row["outcome"]) for row in rows] == [
         ("alpha", "core", "store_verified"), ("beta", "core", "error"),
-        ("gamma", "core", "not_attempted"), ("admin", "builtin", "not_attempted")]
-    assert reached == ["alpha", "beta"]
+        ("gamma", "core", "store_verified"), ("admin", "builtin", "store_verified")]
+    assert reached == ["alpha", "beta", "gamma", "builtin:admin"]
 
 
 def test_a_candidate_write_error_keeps_the_receipts_already_published(monkeypatch, tmp_path):
@@ -2195,3 +2196,31 @@ def test_an_undeclared_file_in_a_builtin_copy_is_refused_like_core(monkeypatch, 
         run()
     assert caught.value.code == "candidate_unavailable"
     assert reached == []
+
+
+@pytest.mark.parametrize("plan", [False, True])
+def test_regenerated_builtin_uses_served_version_before_comparison(monkeypatch, tmp_path, plan):
+    files = {"implementation.py.src": b"same\n"}
+    run, reached, _control, root = _release_store(
+        monkeypatch, tmp_path, working={}, served={},
+        builtin_working={"alpha": {"files": files, "version": "1.0.0"}},
+        builtin_served={"alpha": {"files": files, "version": "1.0.1"}})
+    source = root.parent / "runtime" / "builtin_executor_contracts" / "alpha" / "manifest.toml"
+    original = source.read_bytes()
+    assert _builtin_rows(run(plan=plan)) == [("alpha", "unchanged")]
+    assert reached == []
+    assert source.read_bytes() == original
+
+
+def test_lost_birth_context_stops_following_contracts(monkeypatch, tmp_path):
+    run, reached, control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={name: {"files": {"main.py": b"new\n"}} for name in ("alpha", "beta", "gamma")},
+        served={name: {"files": {"main.py": b"old\n"}} for name in ("alpha", "beta", "gamma")})
+    control["refuse"].add("beta")
+    control["error_code"] = "birth_context_changed"
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    assert [row["outcome"] for row in caught.value.details["outcomes"]] == [
+        "store_verified", "error", "not_attempted"]
+    assert reached == ["alpha", "beta"]

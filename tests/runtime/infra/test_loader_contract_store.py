@@ -794,3 +794,30 @@ def test_store_cache_never_caches_snapshot_loaded_under_another_pointer(
     )
     assert cached is catalog
     assert calls == 2
+
+
+def test_store_only_rejects_equal_packaged_bytes_not_admitted_in_store(tmp_path, monkeypatch):
+    runtime_root, module_path, ref, trusted = _builtin_source(tmp_path)
+    state, _generation = _activate_published_store(tmp_path, ref, trusted)
+    contracts = runtime_root / "builtin_executor_contracts"
+    replacement = b"def invoke(args):\n    return {'ok': False}\n"
+    module_path.write_bytes(replacement)
+    (contracts / "list_tasks" / "implementation.py.src").write_bytes(replacement)
+    monkeypatch.setattr(loader._C, "PATH_USER_STATE", state)
+    monkeypatch.setenv("METNOS_INSTALL_ROOT", str(loader._C.PATH_ROOT))
+    monkeypatch.setattr(loader._C, "PATH_RUNTIME", runtime_root)
+    monkeypatch.setattr(loader, "BUILTIN_EXECUTOR_CONTRACTS_DIR", contracts)
+    monkeypatch.setattr(loader, "list_trusted_publics", lambda: list(trusted))
+    with pytest.raises(loader.BuiltinContractError) as caught:
+        loader._load_builtin_contract("list_tasks", module_path)
+    assert caught.value.code == "builtin_contract_code_unadmitted"
+    # The existing catalog catches this ValueError subtype per builtin.
+    catalog = loader.Catalog()
+    spec = {"name": "list_tasks", "tool_spec": {}}
+    module = type("Module", (), {"__file__": str(module_path), "BUILTIN_INPROC_SPECS": [spec]})
+    monkeypatch.setattr(loader, "_INPROC_TOOL_MODULE_PATHS", ("test",))
+    monkeypatch.setattr(loader, "_inproc_tool_module", lambda _name: module)
+    loader._inject_inproc_tool_specs(catalog, current_lang="en")
+    assert "list_tasks" not in catalog.executors
+    assert len(catalog.rejected) == 1
+    assert "builtin_contract_code_unadmitted" in catalog.rejected[0][1]

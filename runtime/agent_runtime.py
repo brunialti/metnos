@@ -82,18 +82,14 @@ def _authenticated_dispatch_candidate_id(
     identifier.  The productive Birth bundle owns the verifier keyring, and
     the receipt adjacent to the immutable generation is the sole authority.
     """
-    from contract_store import authenticate_execution_binding
     from executor_birth_operational import _runtime_bundle_snapshot
 
     bundle = _runtime_bundle_snapshot()
     if bundle is None:
         raise FeedbackError("feedback_binding_invalid", "candidate_id")
     try:
-        binding = authenticate_execution_binding(
-            contract_id,
-            generation_id,
-            trusted_publics=bundle.core.publisher_options["trusted_publics"],
-            admission_verifier_keys=bundle.core.admission_verifier_keys,
+        binding = bundle.core.commit_publisher.authenticate_execution_binding(
+            contract_id, generation_id,
         )
     except Exception as exc:
         raise FeedbackError("feedback_binding_invalid", "candidate_id") from exc

@@ -374,3 +374,24 @@ def test_installed_github_builtin_birth_suite_is_hermetic(name: str) -> None:
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "4/4 passati" in proc.stdout
+
+
+@pytest.mark.parametrize("existing", [None, "2.3.4"])
+def test_builtin_generator_preserves_source_version(tmp_path, monkeypatch, existing):
+    import scripts.generate_builtin_executor_contracts as generator
+
+    output = tmp_path / "contracts"
+    source = output / "compare_entries" / "manifest.toml"
+    if existing is not None:
+        source.parent.mkdir(parents=True)
+        source.write_text(f'version = "{existing}"\n')
+    module = tmp_path / "implementation.py"
+    module.write_bytes(b"VALUE = 1\n")
+    spec = {"function": {"name": "compare_entries", "parameters": {"type": "object"}}}
+    monkeypatch.setattr(generator, "OUT", output)
+    monkeypatch.setattr(generator, "_all_specs", lambda: {"compare_entries": (spec, module)})
+    monkeypatch.setattr(generator, "_META", {"compare_entries": generator._META["compare_entries"]})
+    monkeypatch.setattr(sys, "argv", ["generate"])
+    generator.main()
+    manifest = tomllib.loads(source.read_text())
+    assert manifest["version"] == (existing or generator.INITIAL_BUILTIN_VERSION)
