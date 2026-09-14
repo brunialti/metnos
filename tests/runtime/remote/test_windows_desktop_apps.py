@@ -62,7 +62,7 @@ def test_stop_carries_only_the_owned_receipt(monkeypatch):
                       "preexisting_processes": [{"pid": 2, "creation_time": 18}]}]
 
 
-@pytest.mark.parametrize("operation", ["start", "query"])
+@pytest.mark.parametrize("operation", ["start", "query", "close"])
 def test_timeout_does_not_claim_that_a_start_had_no_effect(monkeypatch, operation):
     monkeypatch.setattr(desktop.sys, "platform", "win32")
     monkeypatch.setenv("SystemRoot", "C:/Windows")
@@ -71,4 +71,22 @@ def test_timeout_does_not_claim_that_a_start_had_no_effect(monkeypatch, operatio
     monkeypatch.setattr(desktop.subprocess, "run", timeout)
     result = desktop._call({"operation": operation, "package_id": PACKAGE})
     assert result["ok"] is False
-    assert result["effects_attempted"] is (operation == "start")
+    assert result["effects_attempted"] is (operation in {"start", "close"})
+
+
+@pytest.mark.parametrize("processes", [None, [{}], [{"pid": True, "creation_time": 1}],
+    [{"pid": 1, "creation_time": 0}], [{"pid": 1, "creation_time": 1, "path": "x"}],
+    [{"pid": 1, "creation_time": 1}] * 2])
+def test_close_rejects_untyped_receipts_before_native_call(monkeypatch, processes):
+    monkeypatch.setattr(desktop, "_call", lambda _: pytest.fail("must not execute"))
+    assert desktop.close(PACKAGE, processes)["ok"] is False
+
+
+def test_close_is_normal_unless_force_is_explicit(monkeypatch):
+    calls = []
+    monkeypatch.setattr(desktop, "_call", lambda request: calls.append(request) or {"ok": True})
+    processes = [{"pid": 1, "creation_time": 20}]
+    desktop.close(PACKAGE, processes)
+    desktop.close(PACKAGE, processes, force=True)
+    assert [request["force"] for request in calls] == [False, True]
+    assert all(request["processes"] == processes for request in calls)

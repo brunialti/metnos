@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:52528c6ab691e8feafadf20057b276906f118ab392da1aab9dd6154aba5e09e0",
+  "source_census": "sha256:213cde52b889e76a64d19623c147153b9666e45927853ec1d6fb4bef97d7b8bf",
   "scan_roots": [
     "runtime",
     "install",
@@ -3526,6 +3526,16 @@
         "store_write"
       ],
       "destination": "explicitly authorized recovery of one incomplete publication container",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_snapshot.py",
+      "scope": "materialize_birth_candidate_from_authoring",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write"
+      ],
+      "destination": "closed untrusted candidate staging only; no signing, store mutation or live admission",
       "phase": "M4"
     },
     {

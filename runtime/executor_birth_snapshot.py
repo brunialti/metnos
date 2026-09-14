@@ -359,11 +359,11 @@ def materialize_birth_candidate_from_authoring(
     source_root: Path | str,
     destination: Path | str,
 ) -> Path:
-    """Create an exact Birth candidate from a signed authoring tree.
+    """Create an exact, untrusted Birth candidate from an authoring tree.
 
     The current signature is evidence for the installed source, not an input
-    to a new admission.  This function captures the complete signed envelope,
-    removes that derived evidence from the candidate, and derives the code
+    to a new admission. New sources have no previous signature. This function
+    captures the closed envelope, removes any previous signature, and derives the code
     digest from the same immutable bytes that it writes to staging.
     """
     from manifest_code_digest import prepare_manifest_digest_v1
@@ -371,7 +371,12 @@ def materialize_birth_candidate_from_authoring(
     target = Path(destination)
     if os.path.lexists(target):
         raise CandidateSnapshotError("candidate_destination_invalid", str(target))
-    snapshot, _signature = _acquire_authenticated_current_snapshot(source_root)
+    auxiliary = ("manifest.toml.sig",) if os.path.lexists(
+        Path(source_root) / "manifest.toml.sig",
+    ) else ()
+    snapshot, _previous = _acquire_snapshot(
+        source_root, private_parent=None, fixed_auxiliary_files=auxiliary,
+    )
     try:
         manifest = prepare_manifest_digest_v1(
             snapshot.manifest_bytes, snapshot.code_files,

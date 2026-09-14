@@ -99,3 +99,31 @@ meanings and requires domain branches. Accepting a path, command line, script,
 or guessed executable was rejected by the ADR 0210/0211 authority boundary.
 Starting the shortest ambiguous name match was rejected because ranking is not
 identity proof.
+
+## Desktop closure and action coverage (2026-09-14)
+
+`set_processes(state="closed")` closes registered desktop Win32 applications
+through the same opaque identity source used for launch. It does not accept
+executable names, paths, wildcards or arbitrary commands. AppX and portable
+package closure are not provided by this executor.
+
+The device first observes exact PID/creation-time identities and asks the user
+to choose normal closure, forced termination (with an unsaved-data warning),
+or cancellation. The runtime binds the choice to those identities and that
+device. Normal closure never escalates to forced termination. A process left
+running, including a tray application or save prompt, is not a successful
+closure; success requires a fresh absence check. Closing an application is
+not reliably undoable, even when it held no documents.
+
+Required-action coverage checks both canonical verb and object, including
+signed planning aliases. `set_preferences` cannot satisfy `set_processes`.
+Single-action intents receive the same lexical repair as compound actions
+when their original verb/object has no executable candidate; the localized
+canonical vocabulary remains the sole source of action surfaces.
+
+New first-party sources enter the normal changed-only release admission
+through Producer/Birth, then a verified store reread. They need no invented
+previous signature. Authoring materialization remains a closed-tree capture,
+not admission; authenticated-current readers still require signed evidence.
+The generated documentation explicitly describes source metadata, whereas
+the live instance catalog shows only admitted contracts.

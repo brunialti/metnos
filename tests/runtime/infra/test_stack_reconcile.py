@@ -211,7 +211,9 @@ def test_unexpected_failure_is_a_structured_report_without_its_message(
     else:
         monkeypatch.setattr(sr, "StackReconciler", lambda: object())
         monkeypatch.setattr(sr, "verify_named_executors", boom)
-    assert sr.main(["deploy", "--changed-only", "--plan"]) == 1
+    # Preview deliberately bypasses StackReconciler construction.
+    argv = ["check"] if where == "construction" else ["deploy", "--changed-only", "--plan"]
+    assert sr.main(argv) == 1
     out = capsys.readouterr().out
     payload = json.loads(out)
     assert payload["ok"] is False
@@ -240,7 +242,7 @@ def test_system_exit_still_stops_the_process(monkeypatch):
 
     monkeypatch.setattr(sr, "StackReconciler", stop)
     with pytest.raises(SystemExit) as found:
-        sr.main(["deploy", "--changed-only", "--plan"])
+        sr.main(["check"])
     assert found.value.code == 7
 
 
@@ -1680,9 +1682,20 @@ def _release_store(monkeypatch, tmp_path, *, working, served,
         candidate = intent.candidate_source_root
         manifest = (candidate / "manifest.toml").read_bytes()
         declared = tomllib.loads(manifest.decode("utf-8"))["code"]["files"]
+        if intent.contract_id.value not in state:
+            state[intent.contract_id.value] = {"generation": None, "reread": None}
+            if not control.get("omit_new_ref"):
+                refs[intent.contract_id.value] = manifest_inventory.ManifestRef(
+                    contract_id=intent.contract_id, origin=intent.contract_id.origin,
+                    status=manifest_inventory.ManifestStatus.ADMITTED,
+                    source_root=tmp_path / "store",
+                    manifest_path=tmp_path / "store" / name / "manifest.toml",
+                    manifest_relative=intent.contract_id.relative_manifest,
+                    allowed_code_roots=(tmp_path / "store",),
+                )
         entry = state[intent.contract_id.value]
         previous = entry["generation"]
-        entry["generation"] = f"{previous}+"
+        entry["generation"] = f"{previous}+" if previous else f"g-{name}-1"
         entry["payloads"] = (
             manifest, (candidate / "manifest.lang_state.json").read_bytes(),
             {item: (candidate / item).read_bytes() for item in declared},
@@ -1769,13 +1782,34 @@ def test_release_admission_leaves_an_unchanged_executor_alone(monkeypatch, tmp_p
     assert reached == []
 
 
-def test_release_admission_names_an_executor_the_store_never_admitted(
+def test_release_admission_publishes_a_new_unsigned_core_through_birth(
         monkeypatch, tmp_path):
-    run, reached, _control, _root = _release_store(
+    run, reached, _control, root = _release_store(
         monkeypatch, tmp_path,
         working={"beta": {"files": {"main.py": b"new\n"}}}, served={})
-    assert run() == [{"name": "beta", "outcome": "not_installed"}]
-    assert reached == []
+    (root / "beta" / "manifest.toml.sig").unlink()
+    assert run() == [{"name": "beta", "outcome": "store_verified", "request_id": "r-beta",
+                     "candidate_id": "c-beta", "previous_generation_id": None,
+                     "current_generation_id": "g-beta-1"}]
+    assert reached == ["beta"]
+    assert not (root / "beta" / "manifest.toml.sig").exists()
+
+
+@pytest.mark.parametrize("refused", [True, False])
+def test_new_core_is_not_successful_without_birth_and_a_verified_store_reread(
+        monkeypatch, tmp_path, refused):
+    run, reached, control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={"beta": {"files": {"main.py": b"new\n"}}}, served={})
+    if refused:
+        control["refuse"] = {"beta"}
+    else:
+        control["omit_new_ref"] = True
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    assert caught.value.code == "birth_admission_failed"
+    assert caught.value.details["outcomes"][0]["outcome"] == "error"
+    assert reached == ["beta"]
 
 
 def test_release_plan_lists_every_outcome_without_birth(monkeypatch, tmp_path):
@@ -1785,7 +1819,7 @@ def test_release_plan_lists_every_outcome_without_birth(monkeypatch, tmp_path):
         working={"alpha": {"files": {"main.py": b"new\n"}}, "beta": same, "gamma": same},
         served={"alpha": {"files": {"main.py": b"old\n"}}, "gamma": same})
     assert [(row["name"], row["outcome"]) for row in run(plan=True)] == [
-        ("alpha", "changed"), ("beta", "not_installed"), ("gamma", "unchanged")]
+        ("alpha", "changed"), ("beta", "changed"), ("gamma", "unchanged")]
     assert reached == []
 
 

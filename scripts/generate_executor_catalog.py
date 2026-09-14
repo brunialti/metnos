@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the bilingual first-party executor catalog from signed manifests."""
+"""Generate the bilingual first-party source catalog, not admission evidence."""
 from __future__ import annotations
 
 import argparse
@@ -99,9 +99,8 @@ def _undo_contract(*, name: str, verb: str | None,
 def load_entries(executors_dir: Path = EXECUTORS_DIR) -> list[ExecutorEntry]:
     entries: list[ExecutorEntry] = []
     for manifest_path in sorted(executors_dir.glob("*/manifest.toml")):
-        signature = manifest_path.with_name("manifest.toml.sig")
-        if not signature.is_file():
-            raise RuntimeError(f"unsigned executor manifest: {manifest_path}")
+        # Authoring metadata is not an admission proof. A new source has no
+        # previous signature; only Birth may publish its first live contract.
         with manifest_path.open("rb") as handle:
             manifest = tomllib.load(handle)
         name = str(manifest.get("name") or "").strip()
@@ -142,11 +141,11 @@ def load_entries(executors_dir: Path = EXECUTORS_DIR) -> list[ExecutorEntry]:
 _TEXT = {
     "it": {
         "title": "Catalogo degli executor",
-        "description": "Le azioni distribuite con Metnos, raggruppate per dominio e descritte direttamente dai loro manifest firmati.",
+        "description": "Le azioni distribuite con Metnos, raggruppate per dominio e descritte direttamente dai loro manifest sorgente.",
         "back": "Guida all'architettura",
         "other": "EN",
         "lead": "Questa pagina risponde a una domanda pratica: quali azioni sono fornite con Metnos e che cosa dichiara il contratto di ciascuna? Gli executor sono raggruppati automaticamente in base al loro nome canonico; l'elenco non viene ricopiato e riordinato a mano.",
-        "generated": "L'elenco qui sotto proviene da {count} manifest firmati nella distribuzione. Non comprende le capacità interne al processo, gli executor aggiunti da skill o quelli creati nella singola installazione. Per vedere tutto ciò che l'istanza può usare in questo momento, apri <strong>Settings → Ciclo di vita → Executor</strong> nella chat web.",
+        "generated": "L'elenco qui sotto proviene da {count} manifest sorgente nella distribuzione: descrive le capacità, non ne certifica l'ammissione in esercizio. Ogni capacità deve superare Executor Birth prima di essere usata. Non comprende le capacità interne al processo, gli executor aggiunti da skill o quelli creati nella singola installazione. Per vedere tutto ciò che l'istanza può usare in questo momento, apri <strong>Settings → Ciclo di vita → Executor</strong> nella chat web.",
         "concept": "Un executor può seguire una procedura diretta oppure adattare alcuni passi entro un <a href=\"intelligent_executors.html\">mandato ristretto</a>. In entrambi i casi conserva lo stesso contratto pubblico: scopo, argomenti, autorità, collocazione e forma del risultato.",
         "properties_explanation": "Nella colonna <strong>Contratto</strong>, <code>standard</code> e <code>critico</code> indicano la classe di rischio; <code>server</code>, <code>any</code> e le piattaforme indicano dove l'executor può essere collocato. Il trattino segnala che il manifest non limita esplicitamente la piattaforma.",
         "undo_title": "Quali azioni si possono annullare",
@@ -169,15 +168,15 @@ _TEXT = {
         "critical": "critico",
         "standard": "standard",
         "system": "sistema / più domini",
-        "footer": "Fonte: manifest firmati sotto <code>executors/</code>. Rigenerazione dalla radice del repository: <code>./.venv/bin/python scripts/generate_executor_catalog.py</code>.",
+        "footer": "Fonte: manifest sorgente sotto <code>executors/</code>. Rigenerazione dalla radice del repository: <code>./.venv/bin/python scripts/generate_executor_catalog.py</code>.",
     },
     "en": {
         "title": "Executor catalog",
-        "description": "The actions distributed with Metnos, grouped by domain and described directly by their signed manifests.",
+        "description": "The actions distributed with Metnos, grouped by domain and described directly by their source manifests.",
         "back": "Architecture guide",
         "other": "IT",
         "lead": "This page answers a practical question: which actions come with Metnos, and what does each contract declare? Executors are grouped automatically from their canonical names; nobody copies and rearranges this inventory by hand.",
-        "generated": "The list below comes from {count} signed manifests in the distribution. It does not include in-process capabilities, executors added by skills, or executors created within one installation. To see everything the instance can use right now, open <strong>Settings → Lifecycle → Executors</strong> in web chat.",
+        "generated": "The list below comes from {count} source manifests in the distribution: it describes capabilities, not their live admission. Every capability must pass Executor Birth before use. It does not include in-process capabilities, executors added by skills, or executors created within one installation. To see everything the instance can use right now, open <strong>Settings → Lifecycle → Executors</strong> in web chat.",
         "concept": "An executor may follow a direct procedure or adapt some steps within a <a href=\"intelligent_executors.html\">narrow mandate</a>. Either way, it keeps the same public contract: purpose, arguments, authority, placement, and result shape.",
         "properties_explanation": "In the <strong>Contract</strong> column, <code>standard</code> and <code>critical</code> indicate the risk class; <code>server</code>, <code>any</code>, and the platform names show where the executor may run. A dash means that the manifest does not explicitly restrict the platform.",
         "undo_title": "Which actions can be undone",
@@ -200,7 +199,7 @@ _TEXT = {
         "critical": "critical",
         "standard": "standard",
         "system": "system / cross-domain",
-        "footer": "Source: signed manifests under <code>executors/</code>. Regenerate from the repository root with <code>./.venv/bin/python scripts/generate_executor_catalog.py</code>.",
+        "footer": "Source: authoring manifests under <code>executors/</code>. Regenerate from the repository root with <code>./.venv/bin/python scripts/generate_executor_catalog.py</code>.",
     },
 }
 

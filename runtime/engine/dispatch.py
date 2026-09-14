@@ -498,7 +498,7 @@ def _maybe_record_fastpath(query: str, intent: Intent,
     # `find_packages` miss used to be cached for an explicit install request:
     # the executor was healthy, but the requested side effect was absent.
     # Check the intent/framework contract before teaching L0 the plan.
-    if _dropped_required_verbs(framework, query, intent):
+    if _dropped_required_verbs(framework, query, intent, catalog):
         log.info("[L0 fastpath] skip record: required action absent from plan")
         return
     # Cacheabilità L0 (Roberto 15/6): solo pipeline multi-step che NON bakeizzano
@@ -600,7 +600,7 @@ def _enforce_missing_clauses(framework: Framework, intent, query: str,
     dell'LLM/entries. Conservativo: appende SOLO se deriva un tool reale; mai
     inventa tool. No-op senza clausole scoperte. Best-effort."""
     try:
-        still = _dropped_required_verbs(framework, query, intent)
+        still = _dropped_required_verbs(framework, query, intent, catalog)
         if not still:
             return framework
         steps = list(getattr(framework, "steps", None) or [])
@@ -2126,7 +2126,8 @@ def _is_get_inputs_misroute(framework: Framework) -> bool:
     return exec_steps == ["get_inputs"]
 
 
-def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> set:
+def _dropped_required_verbs(framework: Framework, query: str, intent=None,
+                            catalog=None) -> set:
     """Verbi RICHIESTI dalla query ma ASSENTI dal framework → decomposizione
     incompleta. Copre PRODUCER (find/read/get/list: senza i dati la pipeline è
     monca) + side-effecting espliciti (send/create/write/move/delete/share: «manda
@@ -2139,7 +2140,7 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
     """
     try:
         from prefilter import tokenize, detect_canonical_verbs_all
-        from vocab import COVERAGE_REQUIRED_VERBS, ACTIONS, DESTRUCTIVE_VERBS
+        from vocab import COVERAGE_REQUIRED_VERBS, ACTIONS, PRODUCER_VERBS
     except Exception:
         return set()
     # Detect actions clause-by-clause before falling back to the historical
@@ -2193,9 +2194,14 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
     # substitutable family.  A *single explicit mutation*, however, must not
     # disappear just because the original guard was introduced for compound
     # requests.  That gap turned "install" into a read-only package lookup.
-    if len(qverbs) < 2 and not (qverbs & set(DESTRUCTIVE_VERBS)):
+    required_effects = set(COVERAGE_REQUIRED_VERBS) - set(PRODUCER_VERBS)
+    if len(qverbs) < 2 and not (qverbs & required_effects):
         return set()
     fw_verbs = set()
+    planned_objects: dict[str, set[str]] = {}
+    by_name = {_entry_name(entry): entry for entry in (catalog or [])}
+    import naming_grammar as _ng
+    has_admin = False
     for s in framework.steps:
         t = s.tool or ""
         if not t or t == "final_answer":
@@ -2203,12 +2209,39 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
         head = t.split("_", 1)[0]
         if head in ACTIONS:
             fw_verbs.add(head)
+            nc = _ng.parse_name(t)
+            if nc:
+                objects = planned_objects.setdefault(head, set())
+                objects.add(nc.obj)
+                entry = by_name.get(t)
+                aliases = (entry.get("planning_object_aliases", ())
+                           if isinstance(entry, dict) else
+                           getattr(entry, "planning_object_aliases", ()))
+                objects.update(aliases or ())
         # `admin` is the approved system-operation gateway.  It can implement
         # a requested mutation without exposing a verb-prefixed executor
         # (apt/systemctl/mount all share this one gate).
         if t == "admin":
-            fw_verbs.update(qverbs & set(DESTRUCTIVE_VERBS))
+            has_admin = True
+            fw_verbs.update(qverbs & required_effects)
     dropped = (qverbs & set(COVERAGE_REQUIRED_VERBS)) - fw_verbs
+    # A state change on an unrelated object does not fulfil the request.
+    # The old verb-only check accepted set_preferences for set(processes),
+    # including on cache hits and recovery. Use the existing canonical intent
+    # and signed planning aliases; never infer application names or synonyms.
+    requested_actions = intent_actions or [{
+        "verb": primary_verb,
+        "object": str(getattr(intent, "object", "") or ""),
+    }]
+    if not has_admin:
+        for action in requested_actions:
+            verb, obj = action.get("verb"), action.get("object")
+            # entries is an abstract in-memory carrier, not a concrete domain.
+            if verb not in required_effects or verb not in fw_verbs or not obj or obj == "entries":
+                continue
+            actual = planned_objects.get(verb, set())
+            if obj not in actual and not any(_fs_equivalent(o, [obj]) for o in actual):
+                dropped.add(verb)
     # Famiglia PRODUTTORI interscambiabile (find/read/get/list): un produttore
     # qualunque nel framework copre ogni produttore richiesto (find_messages ==
     # read_messages, find_files copre «cerca i file», ...). Senza, «cerca...»
@@ -2506,12 +2539,14 @@ def _fix_unroutable_verbs(intent, query: str, catalog: Optional[list]) -> None:
     canonico = read → derive(read,urls)=get_urls (reale). Fix tool-existence-safe:
     flippa SOLO se il verbo attuale NON routa e il verbo-dal-testo SÌ. Usa le
     FUNZIONI canoniche (detect_canonical_verbs_all + derive_tool_name), zero
-    sinonimi cablati. Muta intent.actions in place, PRIMA del pool. No-op mono."""
+    sinonimi cablati. Muta l'intento PRIMA del pool, anche per una sola azione."""
     try:
         actions = [a for a in (getattr(intent, "actions", None) or [])
                    if isinstance(a, dict)]
-        if len(actions) < 2:
-            return
+        primary_only = not actions
+        if primary_only:
+            actions = [{"verb": getattr(intent, "verb", ""),
+                        "object": getattr(intent, "object", "")}]
         from compound_decomposer import split_query_chunks, derive_tool_name
         from prefilter import tokenize, detect_canonical_verbs_all
         names = catalog_names(catalog)
@@ -2536,6 +2571,8 @@ def _fix_unroutable_verbs(intent, query: str, catalog: Optional[list]) -> None:
                     changed = True
                     break
         if changed:
+            if primary_only:
+                intent.verb = actions[0]["verb"]
             log.info("[fix_verbs] verbi non-routabili corretti dal testo: %s",
                      [(a.get("verb"), a.get("object")) for a in actions])
     except Exception as ex:
@@ -7333,7 +7370,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                      "evidence=%s", _fp_ungrounded[:5])
             fp_hit = None
         if fp_hit is not None and _dropped_required_verbs(
-                fp_hit.framework, query, intent):
+                fp_hit.framework, query, intent, catalog):
             log.info("[L0 fastpath] fp_id=%d INVALIDATO: azione richiesta "
                      "assente dal piano → morte + fall-through", fp_hit.fp_id)
             _fp.delete(fp_hit.fp_id)
@@ -7432,7 +7469,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                      "evidence=%s", _ap_ungrounded[:5])
             ap_hit = None
         if ap_hit is not None and _dropped_required_verbs(
-                ap_hit.framework, query, intent):
+                ap_hit.framework, query, intent, catalog):
             log.info("[L1 autopath] REJECT: azione richiesta assente dal "
                      "piano → fall-through a L3")
             ap_hit = None
@@ -7563,7 +7600,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # manda" → create-only (find+send droppati) o find→create senza send (niente
     # mail). Ri-propone UNA volta. Best-effort: se la ri-proposta è incompleta si
     # procede (esecuzione/terminator danno l'esito onesto).
-    _dropped = _dropped_required_verbs(framework, query, intent)
+    _dropped = _dropped_required_verbs(framework, query, intent, catalog)
     if _dropped:
         if verbose:
             log.info("[guard] decomposizione incompleta: verbi mancanti %s "
@@ -7587,7 +7624,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             except Exception:
                 pass
         # Accetta la ri-proposta solo se copre PIÙ verbi (meno droppati).
-        if _fw2 is not None and len(_dropped_required_verbs(_fw2, query, intent)) < len(_dropped):
+        if _fw2 is not None and len(_dropped_required_verbs(
+                _fw2, query, intent, catalog)) < len(_dropped):
             framework = _fw2
 
     # Guard DETERMINISTICI di struttura (§7.9): (1) align — ri-allinea i
@@ -7647,7 +7685,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # with a harmless lookup.  Re-proposal and deterministic guards have
     # already had their chance above, so a residual means there is no safe
     # executable plan in the current catalog.
-    _missing_actions = _dropped_required_verbs(framework, query, intent)
+    _missing_actions = _dropped_required_verbs(framework, query, intent, catalog)
     if _missing_actions:
         from messages import get as _msg_get
         log.info("[intent-fulfilment] unavailable actions=%s",
@@ -7768,7 +7806,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # confident «here is what I found» for a request to install is
                 # the §2.8 anti-pattern, not a recovery.
                 _missing_alt = _dropped_required_verbs(
-                    framework_alt, query, intent)
+                    framework_alt, query, intent, catalog)
                 if _missing_alt:
                     from messages import get as _msg_get
                     log.info("[L3 recovery] REJECT: unavailable actions=%s",

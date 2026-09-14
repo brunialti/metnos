@@ -522,7 +522,7 @@ PRODUCER_VERBS = frozenset({"read", "find", "list", "get"})
 # final_answer o sono trasformatori, non azioni dovute. Multilingue: i verbi
 # sono CANONICI (detect_canonical_verbs_all normalizza già IT+EN).
 COVERAGE_REQUIRED_VERBS = PRODUCER_VERBS | frozenset({
-    "send", "create", "write", "move", "delete", "share",
+    "send", "create", "write", "move", "delete", "share", "set",
     # `install` modifica una macchina: se la query lo chiede e il piano
     # non lo porta, la decomposizione e' monca — non un dettaglio.
     "install", "run",

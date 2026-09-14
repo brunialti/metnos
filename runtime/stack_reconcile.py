@@ -715,7 +715,8 @@ def verify_named_executors(
                         None if ref is None
                         else current_contract(ref, trusted_publics=trusted)
                     )
-                    if not isinstance(current, VerifiedManifest):
+                    new_core = ref is None and origin is core
+                    if not new_core and not isinstance(current, VerifiedManifest):
                         outcomes.append({**base, "outcome": "not_installed"})
                         continue
                     # The closed candidate check refuses anything undeclared,
@@ -733,39 +734,42 @@ def verify_named_executors(
                     language_state = _read_regular(candidate, LANGUAGE_STATE_FILE)
                     declared = _declared_code_files(prepared)
                     code = {item: _read_regular(candidate, item) for item in declared}
-                    snapshot = (_release_plan_snapshot(ref, current, trusted) if plan_only
-                                else acquire_current_reattestation_snapshot(
-                            ref, current.generation_id,
-                            trusted_publics=trusted))
-                    with snapshot as served:
-                        if origin is builtin:
-                            # Regeneration owns code/schema, not the served
-                            # line's version. Normalize before changed-only
-                            # and before Birth, after the stale-copy check.
-                            document = tomlkit.parse(prepared.decode("utf-8"))
-                            served_document = tomlkit.parse(served.manifest_bytes.decode("utf-8"))
-                            if (tomlkit.dumps(document).encode("utf-8") != prepared
-                                    or tomlkit.dumps(served_document).encode("utf-8") != served.manifest_bytes):
-                                raise CandidateSnapshotError("builtin_version_roundtrip_changed", name)
-                            version = served_document.get("version")
-                            if not isinstance(version, str) or not version:
-                                raise CandidateSnapshotError("builtin_version_invalid", name)
-                            if document.get("version") != version:
-                                document["version"] = version
-                                prepared = tomlkit.dumps(document).encode("utf-8")
-                                (candidate / MANIFEST_FILE).write_bytes(prepared)
-                        same = (
-                            served.manifest_bytes == prepared
-                            and served.language_state_bytes == language_state
-                            and dict(served.code_files) == code
-                        )
-                        if plan_only:
-                            base.update(_release_plan_details(
-                                ref, current, served, prepared, language_state, code, context))
-                            base["destination_context"] = (
-                                {"status": "not_evaluated", "reason": "cutover_not_completed"}
-                                if preview_evidence is not None else
-                                {"status": "selected", "admission_context_id": context.selection.admission_context_id})
+                    same = False
+                    if not new_core:
+                        snapshot = (_release_plan_snapshot(ref, current, trusted) if plan_only
+                                    else acquire_current_reattestation_snapshot(
+                                ref, current.generation_id,
+                                trusted_publics=trusted))
+                        with snapshot as served:
+                            if origin is builtin:
+                                # Regeneration owns code/schema, not the served
+                                # line's version. Normalize before changed-only
+                                # and before Birth, after the stale-copy check.
+                                document = tomlkit.parse(prepared.decode("utf-8"))
+                                served_document = tomlkit.parse(served.manifest_bytes.decode("utf-8"))
+                                if (tomlkit.dumps(document).encode("utf-8") != prepared
+                                        or tomlkit.dumps(served_document).encode("utf-8") != served.manifest_bytes):
+                                    raise CandidateSnapshotError("builtin_version_roundtrip_changed", name)
+                                version = served_document.get("version")
+                                if not isinstance(version, str) or not version:
+                                    raise CandidateSnapshotError("builtin_version_invalid", name)
+                                if document.get("version") != version:
+                                    document["version"] = version
+                                    prepared = tomlkit.dumps(document).encode("utf-8")
+                                    (candidate / MANIFEST_FILE).write_bytes(prepared)
+                            same = (
+                                served.manifest_bytes == prepared
+                                and served.language_state_bytes == language_state
+                                and dict(served.code_files) == code
+                            )
+                            if plan_only:
+                                base.update(_release_plan_details(
+                                    ref, current, served, prepared, language_state, code, context))
+                    if plan_only:
+                        base["destination_context"] = (
+                            {"status": "not_evaluated", "reason": "cutover_not_completed"}
+                            if preview_evidence is not None else
+                            {"status": "selected", "admission_context_id": context.selection.admission_context_id})
                 except (OSError, CandidateSnapshotError, ContractStoreError) as exc:
                     outcomes.append({**base, "outcome": "error", "diagnostic": dataclasses.asdict(
                         birth_failure_diagnostic(exc, "candidate"))})
@@ -783,7 +787,7 @@ def verify_named_executors(
                     continue
                 if same or plan_only:
                     outcomes.append({**base, "outcome": "unchanged" if same else "changed",
-                                     "generation_id": current.generation_id})
+                                     "generation_id": current.generation_id if current else None})
                     continue
                 submit, kind = submitters[origin]
                 failure = ""
@@ -810,7 +814,11 @@ def verify_named_executors(
                         "current_generation_id": publication.current_generation_id,
                     })
                     try:
-                        reread = current_contract(ref, trusted_publics=trusted)
+                        # A first admission must be visible through the ordinary
+                        # store inventory, not a fabricated source reference.
+                        if new_core:
+                            ref = inventory_manifests().by_id().get(contract_id)
+                        reread = current_contract(ref, trusted_publics=trusted) if ref else None
                     except ContractStoreError as exc:
                         reread, row["error"] = None, str(exc)
                     if (isinstance(reread, VerifiedManifest) and reread.generation_id

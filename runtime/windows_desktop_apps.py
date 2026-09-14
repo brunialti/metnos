@@ -73,8 +73,14 @@ try {
   $target = $selected.target
   $session = (Get-Process -Id $PID).SessionId
   function MatchingProcesses {
-    @(Get-Process | Where-Object {
-      try { $_.SessionId -eq $session -and $_.Path -ieq $target } catch { $false }
+    @(foreach ($process in (Get-Process)) {
+      if ($process.SessionId -ne $session -or $process.ProcessName -ine [IO.Path]::GetFileNameWithoutExtension($target)) { continue }
+      try {
+        if ($process.HasExited) { continue }
+        $path = $process.Path
+        if (-not $path) { Fail 'package_process_probe_failed' }
+        if ($path -ieq $target) { $process }
+      } catch { Fail 'package_process_probe_failed' }
     })
   }
   function Receipt($process) {
@@ -91,7 +97,41 @@ try {
   }
   if ($request.operation -eq 'query') {
     $null = DesktopShell
-    Reply @{ok=$true; name=$selected.name; lifetimes=@('session')}
+    $processes = @(MatchingProcesses | ForEach-Object { Receipt $_ })
+    if ($processes.Count -gt 64) { Fail 'package_process_probe_failed' }
+    Reply @{ok=$true; name=$selected.name; lifetimes=@('session'); processes=$processes}
+  }
+  if ($request.operation -eq 'close') {
+    # Snapshot-bound identities, never executable names or guessed PIDs.
+    # Hold each kernel handle before checking and before sending any effect.
+    $targets = @()
+    foreach ($expected in $request.processes) {
+      $process = Get-Process -Id ([int]$expected.pid) -ErrorAction SilentlyContinue
+      if (-not $process) { continue }
+      $null = $process.Handle
+      if ($process.HasExited) { continue }
+      if ($process.SessionId -ne $session -or $process.Path -ine $target -or (Receipt $process).creation_time -ne [long]$expected.creation_time) {
+        Fail 'package_process_identity_mismatch'
+      }
+      $targets += $process
+    }
+    foreach ($process in $targets) {
+      if ($process.HasExited) { continue }
+      $effectsAttempted = $true
+      if ($request.force -eq $true) { $process.Kill() }
+      else { $null = $process.CloseMainWindow() }
+    }
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+      $remaining = @($targets | Where-Object { -not $_.HasExited })
+      if ($remaining.Count -eq 0) { break }
+      Start-Sleep -Milliseconds 100
+    } while ($timer.ElapsedMilliseconds -lt 5000)
+    # A prompt, a tray icon, or an independent new instance is not a stopped app.
+    $stillRunning = @(MatchingProcesses).Count
+    Reply @{ok=($stillRunning -eq 0); effects_attempted=$effectsAttempted;
+      error_code=$(if ($stillRunning -eq 0) { '' } else { 'package_close_unverified' });
+      payload=@{closed=($stillRunning -eq 0); remaining=$stillRunning}}
   }
   if ($request.operation -eq 'stop') {
     $process = Get-Process -Id ([int]$request.pid) -ErrorAction SilentlyContinue
@@ -138,7 +178,7 @@ try {
 
 def _call(request: dict) -> dict:
     unknown_result = {"ok": False, "error_code": "package_operation_failed",
-                      "effects_attempted": request.get("operation") in {"start", "stop"}}
+                      "effects_attempted": request.get("operation") in {"start", "stop", "close"}}
     if not sys.platform.startswith("win"):
         return {"ok": False, "error_code": "platform_unsupported"}
     root = os.environ.get("SystemRoot")
@@ -208,3 +248,28 @@ def call(package_id: str, operation: str, *arguments: str) -> dict:
     elif operation != "query" or arguments:
         return {"ok": False, "error_code": "package_target_invalid"}
     return _call(request)
+
+
+def valid_processes(processes) -> bool:
+    """Bounded exact process identities returned by the installed-app query."""
+    if not isinstance(processes, list) or len(processes) > 64:
+        return False
+    seen = set()
+    for process in processes:
+        if not isinstance(process, dict) or set(process) != {"pid", "creation_time"}:
+            return False
+        pid, created = process["pid"], process["creation_time"]
+        if (type(pid) is not int or not 0 < pid <= 0xFFFFFFFF
+                or type(created) is not int or not 0 < created <= 0x7FFFFFFFFFFFFFFF
+                or (pid, created) in seen):
+            return False
+        seen.add((pid, created))
+    return True
+
+
+def close(package_id: str, processes: list[dict], *, force: bool = False) -> dict:
+    if (not isinstance(package_id, str) or not IDENTITY_RE.fullmatch(package_id)
+            or not valid_processes(processes) or type(force) is not bool):
+        return {"ok": False, "error_code": "package_stop_receipt_invalid"}
+    return _call({"operation": "close", "package_id": package_id,
+                  "processes": processes, "force": force})

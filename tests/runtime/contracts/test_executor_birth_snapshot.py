@@ -54,8 +54,9 @@ def test_snapshot_owns_exact_immutable_bytes_and_cleans_up(tmp_path: Path) -> No
     assert not private.exists()
 
 
-def test_signed_authoring_tree_becomes_exact_candidate_with_fresh_digest(
-    tmp_path: Path,
+@pytest.mark.parametrize("previous_signature", [True, False])
+def test_authoring_tree_becomes_exact_candidate_with_fresh_digest(
+    tmp_path: Path, previous_signature: bool,
 ) -> None:
     source = _candidate(tmp_path / "source")
     manifest = (source / "manifest.toml").read_text(encoding="utf-8")
@@ -64,7 +65,8 @@ def test_signed_authoring_tree_becomes_exact_candidate_with_fresh_digest(
         '[code]\ndigest = "sha256:' + ('0' * 64) + '"\n',
     )
     (source / "manifest.toml").write_text(manifest, encoding="utf-8")
-    (source / "manifest.toml.sig").write_bytes(b"previous-signature")
+    if previous_signature:
+        (source / "manifest.toml.sig").write_bytes(b"previous-signature")
 
     target = materialize_birth_candidate_from_authoring(
         source, tmp_path / "candidate",
@@ -83,6 +85,23 @@ def test_signed_authoring_tree_becomes_exact_candidate_with_fresh_digest(
     assert not (target / "manifest.toml.sig").exists()
     with acquire_candidate_snapshot(target) as captured:
         assert tuple(captured.code_files) == ("main.py", "pkg/helper.py")
+
+
+@pytest.mark.parametrize("previous_signature", [True, False])
+def test_authoring_materialization_never_accepts_an_open_tree(tmp_path, previous_signature):
+    source = _candidate(tmp_path / "source")
+    if previous_signature:
+        (source / "manifest.toml.sig").write_bytes(b"old")
+    (source / "extra.py").write_bytes(b"unexpected")
+    with pytest.raises(CandidateSnapshotError, match="candidate_file_extra"):
+        materialize_birth_candidate_from_authoring(source, tmp_path / "candidate")
+    assert not (tmp_path / "candidate").exists()
+
+
+def test_unsigned_source_cannot_be_used_as_an_authenticated_current_snapshot(tmp_path):
+    source = _candidate(tmp_path / "source")
+    with pytest.raises(CandidateSnapshotError, match="candidate_file_missing"):
+        snapshot_module._acquire_authenticated_current_snapshot(source)
 
 
 @pytest.mark.parametrize("extra", ["extra.txt", "pkg/extra.py", "manifest.toml.sig"])
