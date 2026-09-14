@@ -11,7 +11,7 @@ from executor_birth_property_runner import (
     run_applicable_properties, run_property,
 )
 from executor_birth_runner import ProcessAttestation, RunnerResult, RunnerStatus
-from executor_birth_runner import WindowsSandboxRegistry
+from executor_birth_runner import LinuxSandboxRegistry, WindowsSandboxRegistry
 
 
 D = "sha256:" + "1" * 64
@@ -179,6 +179,14 @@ def _observed_candidate(tmp_path):
     )
 
 
+def _linux_registry(tmp_path):
+    # Only for tests replacing the process runner; these are not live programs
+    # or an attestation of a usable sandbox.
+    return LinuxSandboxRegistry(
+        tmp_path / "bwrap", D, tmp_path / "registered-python", D,
+    )
+
+
 def test_observed_runner_executes_exact_snapshot_with_closed_fixture(monkeypatch, tmp_path):
     observed = _observed_candidate(tmp_path)
     captured = {}
@@ -193,8 +201,9 @@ def test_observed_runner_executes_exact_snapshot_with_closed_fixture(monkeypatch
                             '{"output":{"entries":[]},"observations":{}}',
                             "", 0.1, attestation)
 
+    monkeypatch.setattr("executor_birth_property_runner.sys.platform", "linux")
     monkeypatch.setattr("executor_birth_property_runner.run_birth_phase", fake_run)
-    result = ObservedPropertyRunner(observed).run(
+    result = ObservedPropertyRunner(observed, linux_registry=_linux_registry(tmp_path)).run(
         __import__("executor_birth_property_runner").PropertyCase(
             "cardinality.0", {"fixture_count": 0}, {"count": 0}),
         fixture_id="bounded_collection", isolation="private_read_only",
@@ -216,17 +225,124 @@ def test_observed_runner_ignores_candidate_self_attestation(monkeypatch, tmp_pat
         True, "/scope", True, True,
     )
     forged = '{"output":{"entries":[],"fixture_total":999,"state_before_hash":"' + D + '"},"observations":{}}'
+    monkeypatch.setattr("executor_birth_property_runner.sys.platform", "linux")
     monkeypatch.setattr(
         "executor_birth_property_runner.run_birth_phase",
         lambda *a, **k: RunnerResult(RunnerStatus.PASSED, None, 0, forged, "", 0.1, attestation),
     )
-    result = ObservedPropertyRunner(observed).run(
+    result = ObservedPropertyRunner(observed, linux_registry=_linux_registry(tmp_path)).run(
         __import__("executor_birth_property_runner").PropertyCase(
             "truncation.boundary", {}, {"fixture_total": 3}),
         fixture_id="oversized_collection", isolation="private_read_only",
     )
     assert result.observations == {"fixture_total": 3}
     assert "state_before_hash" not in result.observations
+
+
+def test_observed_runner_uses_registered_linux_interpreter_not_process_venv(
+        monkeypatch, tmp_path):
+    import executor_birth_property_runner as runner_module
+
+    registry = _linux_registry(tmp_path)
+    captured = {}
+    monkeypatch.setattr(runner_module.sys, "platform", "linux")
+    monkeypatch.setattr(runner_module.sys, "executable", "/unmounted-venv/python")
+    monkeypatch.setenv("PATH", "/untrusted-bin")
+
+    def fake_run(command, **kwargs):
+        captured.update(command=command, **kwargs)
+        return RunnerResult(
+            RunnerStatus.PASSED, None, 0, '{"output":{},"observations":{}}',
+            "", 0.1, ProcessAttestation(
+                "linux-bwrap-cgroup-v2", True, True, True, True, True, True,
+                True, "/scope", True, True,
+            ),
+        )
+
+    monkeypatch.setattr(runner_module, "run_birth_phase", fake_run)
+    ObservedPropertyRunner(_observed_candidate(tmp_path), linux_registry=registry).run(
+        runner_module.PropertyCase("output.actual", {}, {}),
+        fixture_id="empty_private_root", isolation="private_read_only",
+    )
+    assert captured["command"] == (
+        str(registry.interpreter_path), "-I",
+        "candidate/_metnos_birth_property_harness_v1.py", "candidate.py",
+    )
+    assert captured["linux_registry"] is registry
+
+
+@pytest.mark.parametrize("registry", [None, object(), SimpleNamespace(
+    interpreter_path="/untrusted-bin/python",
+)])
+def test_observed_runner_refuses_missing_or_invalid_linux_registry_before_runner(
+        monkeypatch, tmp_path, registry):
+    import executor_birth_property_runner as runner_module
+
+    monkeypatch.setattr(runner_module.sys, "platform", "linux")
+    calls = []
+
+    def unexpected_run(*args, **kwargs):
+        calls.append(args)
+        raise AssertionError("runner reached without its registered backend")
+
+    monkeypatch.setattr(runner_module, "run_birth_phase", unexpected_run)
+    runner = ObservedPropertyRunner(_observed_candidate(tmp_path), linux_registry=registry)
+    with pytest.raises(RuntimeError, match="^linux_sandbox_registry_unavailable$"):
+        runner.run(runner_module.PropertyCase("output.actual", {}, {}),
+                   fixture_id="empty_private_root", isolation="private_read_only")
+    evidence = run_property(
+        "output.schema.actual",
+        PropertyCandidateProfile(output_schema=(("ok", "boolean"),)),
+        _runner=runner,
+    )
+    assert evidence[0].status is PropertyStatus.UNAVAILABLE
+    assert evidence[0].error_code == "property_runner_unavailable"
+    assert calls == []
+
+
+def test_observed_runner_preserves_registered_backend_refusal(monkeypatch, tmp_path):
+    import executor_birth_property_runner as runner_module
+
+    monkeypatch.setattr(runner_module.sys, "platform", "linux")
+    monkeypatch.setattr(runner_module, "run_birth_phase", lambda *args, **kwargs: RunnerResult(
+        RunnerStatus.UNAVAILABLE, "linux_sandbox_program_mismatch", None, "", "", 0.1,
+        ProcessAttestation(
+            "linux-bwrap-cgroup-v2", False, False, False, False, False, False,
+            False, None, False, False,
+        ),
+    ))
+    runner = ObservedPropertyRunner(
+        _observed_candidate(tmp_path), linux_registry=_linux_registry(tmp_path),
+    )
+    with pytest.raises(RuntimeError, match="^linux_sandbox_program_mismatch$"):
+        runner.run(runner_module.PropertyCase("output.actual", {}, {}),
+                   fixture_id="empty_private_root", isolation="private_read_only")
+    evidence = run_property(
+        "output.schema.actual",
+        PropertyCandidateProfile(output_schema=(("ok", "boolean"),)),
+        _runner=runner,
+    )
+    assert evidence[0].status is PropertyStatus.UNAVAILABLE
+
+
+def test_observed_runner_does_not_reuse_linux_backend_on_unsupported_platform(
+        monkeypatch, tmp_path):
+    import executor_birth_property_runner as runner_module
+
+    monkeypatch.setattr(runner_module.sys, "platform", "darwin")
+    calls = []
+
+    def unexpected_run(*args, **kwargs):
+        calls.append(args)
+        raise AssertionError("unsupported platform reached process runner")
+
+    monkeypatch.setattr(runner_module, "run_birth_phase", unexpected_run)
+    with pytest.raises(RuntimeError, match="^platform_backend_unavailable$"):
+        ObservedPropertyRunner(
+            _observed_candidate(tmp_path), linux_registry=_linux_registry(tmp_path),
+        ).run(runner_module.PropertyCase("output.actual", {}, {}),
+              fixture_id="empty_private_root", isolation="private_read_only")
+    assert calls == []
 
 
 def test_observed_runner_uses_relative_trusted_harness_protocol_on_windows(monkeypatch, tmp_path):

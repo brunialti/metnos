@@ -185,12 +185,17 @@ class ObservedPropertyRunner:
         if _HARNESS_PATH in candidate_files:
             raise PropertyContractError("property_candidate_invalid", "reserved_harness_path")
         candidate_files[_HARNESS_PATH] = _HARNESS_SOURCE
-        command = (
-            (_HARNESS_PATH, entrypoint)
-            if sys.platform == "win32"
-            else (sys.executable, "-I", "candidate/" + _HARNESS_PATH,
-                  entrypoint)
-        )
+        if sys.platform == "win32":
+            command = (_HARNESS_PATH, entrypoint)
+        elif sys.platform.startswith("linux"):
+            if not isinstance(self._linux_registry, LinuxSandboxRegistry):
+                raise RuntimeError("linux_sandbox_registry_unavailable")
+            # The caller's venv is not part of the sandbox. Use the registered
+            # interpreter; run_birth_phase still verifies its exact digest.
+            command = (str(self._linux_registry.interpreter_path), "-I",
+                       "candidate/" + _HARNESS_PATH, entrypoint)
+        else:
+            raise RuntimeError("platform_backend_unavailable")
         result = run_birth_phase(
             command,
             fixture_ops=self._fixture(case, fixture_id),
