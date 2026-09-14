@@ -1790,6 +1790,14 @@
    "expected": "fallthrough"
   },
   {
+   "id": "boundary-instance-location",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "posizione del server metnos",
+   "expected": "fallthrough"
+  },
+  {
    "id": "boundary-action-hash",
    "group": "boundary",
    "audience": "user",

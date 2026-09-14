@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from logging_setup import get_logger
 from messages import get as _msg
+from network_targets import NetworkTargetBinding, NetworkTargetError, bind_network_target
 import i18n as _i18n
 
 from safety.canonicalize import (
@@ -863,7 +864,8 @@ def _approved_action(pattern: object) -> str | None:
 
 
 def _operands_in_request(validated: ValidatedArgv, request_text: object, *,
-                         approved_action: str | None = None) -> bool:
+                         approved_action: str | None = None,
+                         network_binding: NetworkTargetBinding | None = None) -> bool:
     """True only if every operand not covered by the grammar is a request word.
 
     Covered: standalone flags without a value, and the action fixed by the
@@ -898,6 +900,10 @@ def _operands_in_request(validated: ValidatedArgv, request_text: object, *,
             return False
         if index == first_positional and token == approved_action:
             continue
+        if (network_binding is not None and index == network_binding.command_index
+                and token == network_binding.address
+                and network_binding.name.casefold() in {word.casefold() for word in words}):
+            continue
         if token.startswith("--") and "=" in token:
             token = token.split("=", 1)[1]
         if not token or token not in words:
@@ -913,6 +919,7 @@ def _evaluate_validated_argv(
     actor: str,
     emit_wait: Optional[Callable[[str], None]] = None,
     request_text: object = _REQUEST_NOT_CHECKED,
+    network_binding: NetworkTargetBinding | None = None,
 ) -> AdminDecision:
     """Run every authorization decision against one immutable argv view.
 
@@ -974,6 +981,7 @@ def _evaluate_validated_argv(
             or _operands_in_request(
                 validated, request_text,
                 approved_action=_approved_action(whitelisted_row.signature),
+                network_binding=network_binding,
             )
         )
         rev_class, undo_hint = _classify_reversibility(sig)
@@ -1494,7 +1502,8 @@ def _verify_consent_token(
 def _decide_for_argv(argv: list[str], *, intent_text: str,
                      actor: str = "host",
                      _validated_snapshot: ValidatedArgv | None = None,
-                     request_text: object = _REQUEST_NOT_CHECKED) -> AdminDecision:
+                     request_text: object = _REQUEST_NOT_CHECKED,
+                     network_binding: NetworkTargetBinding | None = None) -> AdminDecision:
     """Variante di decide() che salta lo stage LLM: l'argv arriva GIA'
     concreto dal PLANNER (campo `command_proposed`). Esegue solo gate +
     safety lookup + (eventuale) approval card.
@@ -1511,6 +1520,11 @@ def _decide_for_argv(argv: list[str], *, intent_text: str,
         "user_text": intent_text,
         "source": "planner_argv",
     }
+    if network_binding is not None:
+        audit["network_target"] = {
+            "name": network_binding.name, "address": network_binding.address,
+            "sources": list(network_binding.sources),
+        }
 
     # gate sintattico sul JOIN (intent_text NON e' command line)
     # PLANNER-path: sudo/doas/pkexec come wrapper sono legittimi (e necessari
@@ -1549,6 +1563,7 @@ def _decide_for_argv(argv: list[str], *, intent_text: str,
     return _evaluate_validated_argv(
         validated, audit=audit, intent_text=intent_text, actor=actor,
         request_text=request_text,
+        network_binding=network_binding,
     )
 
 
@@ -1778,6 +1793,17 @@ def _invoke_impl(*, intent: str, command_proposed: str,
         if tuple(normalized) != tuple(validated.command_argv):
             prefix = validated.argv[:len(validated.argv) - len(validated.command_argv)]
             validated = validate_argv([*prefix, *normalized])
+        # Resolve before policy, card and consent: the displayed, signed and
+        # executed argv is one snapshot. Only this runtime-produced binding
+        # can justify an alias -> address substitution in request fidelity.
+        validated, network_binding = bind_network_target(validated, actor=audit_actor)
+    except NetworkTargetError as exc:
+        return {
+            "ok": False, "decision": "reject", "signature": "",
+            "argv": argv, "approval_required": False, "approval_card": None,
+            "summary": _msg(exc.code), "error_class": "invalid_args",
+            "error_code": exc.code,
+        }
     except ArgvValidationError as exc:
         return {
             "ok": False, "decision": "reject", "signature": "",
@@ -1978,6 +2004,7 @@ def _invoke_impl(*, intent: str, command_proposed: str,
         argv, intent_text=intent or "", actor=audit_actor,
         _validated_snapshot=validated,
         request_text=request_text,
+        network_binding=network_binding,
     )
 
     # Caso A: signature gia' whitelisted/graylisted → execute via sudoer

@@ -168,6 +168,20 @@ class AgentServerRemoteTests(AioHTTPTestCase):
         self.assertIsNone(dev.last_poll)
         self.assertIn("cpu_count", dev.profile_json or "")
 
+    async def test_signed_heartbeat_network_observation_cannot_be_substituted(self):
+        observation = {"address": "192.0.2.7", "observed_at": 1000}
+        body = {"device_id": self.device.id, "profile": {"network_observation": observation}}
+        resp = await self._signed_post("/agent/heartbeat", body)
+        self.assertEqual(resp.status, 200)
+        signed = json.dumps(body).encode()
+        tampered = signed.replace(b"192.0.2.7", b"192.0.2.9")
+        resp = await self.client.post(
+            "/agent/heartbeat", data=tampered,
+            headers={"X-Metnos-Device-Sig": self._sign(signed), "Content-Type": "application/json"})
+        self.assertEqual(resp.status, 403)
+        dev = self.devices.get_device(self.device.id)
+        self.assertEqual(json.loads(dev.profile_json)["network_observation"], observation)
+
     async def test_executor_bundle_verified(self):
         resp = await self.client.get("/agent/executor/find_packages")
         self.assertEqual(resp.status, 200)

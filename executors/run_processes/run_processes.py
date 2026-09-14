@@ -265,8 +265,10 @@ def _launch_error(package_id: str, answer: dict | None, *, stopping: bool = Fals
         "package_stop_unverified": "ERR_CREATE_PROCESSES_STOP_UNVERIFIED",
         "package_process_probe_failed": "ERR_CREATE_PROCESSES_STOP_FAILED",
     } if stopping else {
-        "package_not_registered": "ERR_CREATE_PROCESSES_NOT_INSTALLED",
-        "package_operation_failed": "ERR_CREATE_PROCESSES_NOT_INSTALLED",
+        # Launcher registration is not the installed-package inventory.
+        # Its absence or a failed query cannot prove the app is uninstalled.
+        "package_not_registered": "ERR_CREATE_PROCESSES_TARGET_MISSING",
+        "package_operation_failed": "ERR_CREATE_PROCESSES_START_FAILED",
         "package_start_unsupported": "ERR_CREATE_PROCESSES_UNSUPPORTED",
         "package_persistence_unsupported": "ERR_CREATE_PROCESSES_UNSUPPORTED",
         "package_target_missing": "ERR_CREATE_PROCESSES_TARGET_MISSING",

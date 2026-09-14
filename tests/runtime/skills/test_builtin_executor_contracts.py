@@ -69,6 +69,19 @@ def test_all_planner_visible_builtins_have_valid_signed_contracts(
         assert ok, (directory.name, detail)
 
 
+def test_admin_contract_describes_unprivileged_commands_without_granting_them():
+    import scripts.generate_builtin_executor_contracts as generator
+
+    it, en, capabilities, _ = generator._META["admin"]
+    assert "anche senza privilegi" in it and "unprivileged commands" in en
+    assert "vaglio" in it and "safety gate" in en
+    assert {name for name, _ in capabilities} == {"system:admin"}
+    for description in generator._description("admin", it, en):
+        positions = [description.index(part) for part in ("SCOPO:", "PATTERN:", "NON:", "OUT:")]
+        assert positions == sorted(positions)
+        assert len(description.split("OUT:", 1)[0]) <= 240
+
+
 def test_loader_admits_builtins_only_from_their_signed_contracts(
         signed_builtin_contracts) -> None:
     from loader import invalidate_catalog_cache, load_catalog

@@ -79,6 +79,28 @@ def test_consent_card_is_localized(windows, monkeypatch, language,
     assert "PC-TEST" in result["needs_inputs"]["description"]
 
 
+@pytest.mark.parametrize("language", ["it", "en"])
+@pytest.mark.parametrize(("code", "message_key"), [
+    ("package_not_registered", "ERR_CREATE_PROCESSES_TARGET_MISSING"),
+    ("package_operation_failed", "ERR_CREATE_PROCESSES_START_FAILED"),
+])
+def test_launch_lookup_failure_does_not_claim_package_is_absent(
+        windows, monkeypatch, language, code, message_key):
+    monkeypatch.setattr(run_processes, "_msg", shim_messages.get)
+    monkeypatch.setenv("METNOS_LANG", language)
+    monkeypatch.setattr(run_processes, "_helper_call", lambda *_: {
+        "ok": False, "aligned": True, "error_code": code,
+    })
+    result = run_processes.invoke(_approved(["Vendor.DesktopApp"], "session"))
+    assert result["ok"] is False and result["ok_count"] == 0
+    failure = result["failed"][0]
+    assert failure["error_code"] == code
+    assert failure["error"] == shim_messages.get(
+        message_key, package="Vendor.DesktopApp", code=code)
+    assert failure["error"] != shim_messages.get(
+        "ERR_CREATE_PROCESSES_NOT_INSTALLED", package="Vendor.DesktopApp")
+
+
 @pytest.mark.parametrize("lifetime", ["session", "persistent"])
 def test_approved_choice_starts_only_the_exact_package(windows, lifetime):
     result = run_processes.invoke(_approved(["Vendor.Sensor"], lifetime))

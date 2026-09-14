@@ -183,6 +183,41 @@ class TestPrefilterShellIntent:
                 confidence=1.0, lang="it"), pool=pool, catalog=list(catalog), exclude_tools=())
         assert "admin" in effective
 
+    @pytest.mark.parametrize("query", [
+        "fai 2 ping a 192.168.1.137",
+        "fai 3 ping a pc-roberto",
+    ])
+    def test_quantified_command_survives_real_routing_bow_fallback(self, seeded_db, query):
+        """Il percorso del turno reale deve conservare il ripiego del vaglio."""
+        from engine.proposer import SimpleProposer
+        from engine.routing_pool import build_routing_pool
+        from engine.types import Intent
+        from loader import load_catalog
+        from prefilter import rank_with_intent
+
+        catalog = list(load_catalog(verify=False, include_synth=False))
+        intent = Intent(kind="action", verb="compute", object="numbers", lang="it")
+        # Il dominio numerico inesistente forza il ramo BoW di produzione,
+        # diverso da rank_adaptive coperto dal test precedente.
+        assert rank_with_intent(query, catalog, vars(intent), k=12) is None
+        pool = build_routing_pool(query, intent, catalog)
+        assert pool.count("admin") == 1
+        effective = SimpleProposer()._effective_pool(
+            query=query, intent=intent, pool=pool, catalog=catalog, exclude_tools=())
+        assert effective.count("admin") == 1
+
+    @pytest.mark.parametrize("query", [
+        "mandami un ping",
+        "non fare ping a example.net",
+        "leggi le mail di oggi",
+    ])
+    def test_plain_ranking_does_not_force_unrequested_commands(self, seeded_db, query):
+        from loader import load_catalog
+        from prefilter import rank
+
+        catalog = load_catalog(verify=False, include_synth=False)
+        assert "admin" not in [ex.name for ex in rank(query, catalog, k=1)]
+
     def test_message_ping_does_not_expose_admin(self, seeded_db):
         from loader import load_catalog
         from prefilter import rank_adaptive

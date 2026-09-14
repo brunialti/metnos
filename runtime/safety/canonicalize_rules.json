@@ -8,6 +8,12 @@
     "ping6": {"-c": 4, "-i": null, "-s": null, "-t": null, "-W": null, "-w": null}
   },
 
+  "_comment_network_targets": "Command syntax, not permission. Resolve only the single positional destination, with options parsed by this declaration. Unknown option syntax is never rewritten.",
+  "network_target_commands": {
+    "ping": {"value_options": ["-c", "-i", "-s", "-t", "-W", "-w", "-I", "-m", "-M", "-p", "-Q", "-S", "-T", "-e", "-l", "-N"], "boolean_options": ["-4", "-6", "-a", "-A", "-b", "-B", "-C", "-d", "-D", "-f", "-h", "-H", "-L", "-n", "-O", "-q", "-r", "-R", "-U", "-v", "-V"]},
+    "ping6": {"value_options": ["-c", "-i", "-s", "-t", "-W", "-w", "-I", "-m", "-M", "-p", "-Q", "-S", "-T", "-e", "-l", "-N"], "boolean_options": ["-a", "-A", "-b", "-B", "-C", "-d", "-D", "-f", "-h", "-H", "-L", "-n", "-O", "-q", "-r", "-R", "-U", "-v", "-V"]}
+  },
+
   "sudo_wrappers": ["sudo", "doas", "pkexec"],
 
   "sudo_own_flags_value": [

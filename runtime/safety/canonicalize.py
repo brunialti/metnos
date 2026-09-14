@@ -147,6 +147,37 @@ def command_grammar_numeric_binaries() -> frozenset[str]:
                      if options)
 
 
+def declared_network_target_index(binary: str, command_argv) -> int | None:
+    """Locate one declared network operand without mistaking an option value."""
+    spec = _RULES.get("network_target_commands", {}).get(binary)
+    if not isinstance(spec, dict):
+        return None
+    value_options = set(spec["value_options"])
+    boolean_options = set(spec["boolean_options"])
+    positional = []
+    index = 1
+    options = True
+    while index < len(command_argv):
+        token = command_argv[index]
+        if options and token == "--":
+            options = False
+        elif options and token.startswith("-"):
+            if token in value_options:
+                index += 1
+                if index == len(command_argv):
+                    return None
+            elif token in boolean_options:
+                pass
+            elif len(token) > 2 and token[:2] in value_options:
+                pass
+            else:
+                return None
+        else:
+            positional.append(index)
+        index += 1
+    return positional[0] if len(positional) == 1 else None
+
+
 def command_grammar_binaries() -> frozenset[str]:
     """Return every binary with an explicit canonicalisation grammar.
 

@@ -170,6 +170,15 @@
   interpretano con lo stesso lettore restrittivo. Guida bilingue e catalogo
   Tutor firmato descrivono il comportamento implementato.
 
+Destinazioni di rete: `runtime/network_targets.py` risolve soltanto l'operando
+dichiarato dalla grammatica centrale (inizialmente ping/ping6). IP letterali
+invariati; nomi da dispositivi del proprietario, interfaccia della rotta server
+e metadati nome/IP delle credenziali host. Il client firma indirizzo e tempo
+dell'osservazione; dati scaduti o discordanti non diventano IP indovinati.
+Il binding runtime giustifica solo quella sostituzione: numero di ping,
+vaglio e consenso sull'argv effettivo restano invariati. Test:
+`tests/runtime/remote/test_network_targets.py`.
+
 ## 3. Synth pipeline (6 stadi)
 
 | Stage | Tipo | Workload → tier (SoT: `llm_workloads.py`) | Output |

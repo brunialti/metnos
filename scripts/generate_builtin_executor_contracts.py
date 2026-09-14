@@ -24,8 +24,8 @@ sys.path.insert(0, str(RUNTIME))
 
 _META = {
     "admin": (
-        "Esegue un comando shell di sistema privilegiato solo attraverso il vaglio.",
-        "Runs one privileged system shell command only through the approval gate.",
+        "Esegue un comando shell anche senza privilegi, se manca uno strumento dedicato. Il vaglio decide se eseguire o chiedere consenso.",
+        "Runs one shell command, including unprivileged commands, when no dedicated tool exists. The safety gate controls execution.",
         [("system:admin", ["mount", "systemctl", "chmod", "chown", "apt"])],
         "{ok: bool, decision?: str, argv?: Array<str>, error?: str}",
     ),

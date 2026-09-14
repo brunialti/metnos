@@ -502,7 +502,7 @@ def affinity_score(query_tokens, executor, *,
 
 
 def rank(query, catalog, k=10, min_score=1):
-    """Forma legacy (K fisso). Usata da test esistenti."""
+    """Ranking a K fisso, anche per il ripiego da un intento incoerente."""
     catalog = _filter_dormant(catalog)
     qtokens = tokenize(query)
     if not qtokens:
@@ -526,9 +526,8 @@ def rank(query, catalog, k=10, min_score=1):
               for e in catalog]
     scored.sort(key=lambda p: (-p[0], getattr(p[1], "name", "")))
     above = [e for s, e in scored if s >= min_score]
-    if above:
-        return above[:k]
-    return [e for _, e in scored[:k]]
+    selected = above[:k] if above else [e for _, e in scored[:k]]
+    return _include_command_fallback(query, catalog, selected)
 
 
 def _confidence(scores):
@@ -925,6 +924,20 @@ def _detect_command_grammar_intent(query: str, *, command_names=None) -> bool:
     return False
 
 
+def _include_command_fallback(query, catalog, selected):
+    """Keep one guarded command candidate after any top-K ranking.
+
+    Recognition affects availability only: it neither changes the ordering
+    of dedicated tools nor constructs a command or grants permission.
+    """
+    if any(e.name == "admin" for e in selected):
+        return selected
+    admin = next((e for e in catalog if e.name == "admin"), None)
+    if admin is not None and _detect_command_grammar_intent(query):
+        return selected + [admin]
+    return selected
+
+
 def affinity_phrase_score(query, executor) -> int:
     """Return the strongest distinctive multi-token affinity match.
 
@@ -1164,19 +1177,11 @@ def rank_with_intent(query, catalog, intent, *, k=3):
     # promuoviamo comunque al top — il PLANNER deve vederlo come prima
     # opzione, non al 6° posto.
     shell_intent = _detect_shell_intent(qlow)
-    command_fallback = _detect_command_grammar_intent(qlow)
     if shell_intent:
         admin_exec = next((e for e in catalog if e.name == "admin"), None)
         if admin_exec is not None:
             primary = [(s, e) for s, e in primary if e.name != "admin"]
             primary.insert(0, (15, admin_exec))
-            seen_names.add("admin")
-    elif command_fallback and "admin" not in seen_names:
-        admin_exec = next((e for e in catalog if e.name == "admin"), None)
-        if admin_exec is not None:
-            # A recognised command is evidence for the fallback, not evidence
-            # that it should outrank a purpose-built executor.
-            primary.append((1, admin_exec))
             seen_names.add("admin")
 
     # Time intent injection (6/5/2026): "che ore sono", "what time", etc.
@@ -1211,12 +1216,7 @@ def rank_with_intent(query, catalog, intent, *, k=3):
         if e.name in primary_names and e.name not in head_names:
             forced.append(e)
             head_names.add(e.name)
-    result = head + forced
-    if command_fallback:
-        admin_exec = next((e for _s, e in primary if e.name == "admin"), None)
-        if admin_exec is not None and all(e.name != "admin" for e in result):
-            result.append(admin_exec)
-    return result
+    return _include_command_fallback(query, catalog, head + forced)
 
 
 def _filter_dormant(catalog):
@@ -1450,17 +1450,12 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
     # presente per affinity, lo promuoviamo a position 0.
     qlow_bow = (query or "").lower()
     shell_intent = _detect_shell_intent(qlow_bow)
-    command_fallback = _detect_command_grammar_intent(qlow_bow)
     if shell_intent:
         admin_exec = next((e for e in catalog if e.name == "admin"), None)
         if admin_exec is not None:
             selected = [e for e in selected if e.name != "admin"]
             selected = [admin_exec] + selected[:max(0, k_max - 1)]
-    elif command_fallback:
-        admin_exec = next((e for e in catalog if e.name == "admin"), None)
-        if admin_exec is not None and all(e.name != "admin" for e in selected):
-            # Preserve the normal top-K ordering and add one guarded fallback.
-            selected.append(admin_exec)
+    selected = _include_command_fallback(query, catalog, selected)
     _, conf = adaptive_k(scores, k_min, k_max)
     return selected, {
         "chosen_k": K,
