@@ -203,6 +203,54 @@ def test_manifest_ref_targets_authoring_inventory_not_candidate_staging(monkeypa
     assert resolved.manifest_dir != staging
 
 
+def _empty_live_inventory(monkeypatch, tmp_path):
+    import manifest_inventory as inventory
+    monkeypatch.setattr(inventory, "resolve_manifest_layout", lambda: inventory.ManifestLayout.STORE_ONLY)
+    monkeypatch.setattr(inventory, "inventory_store_manifests", lambda: ManifestInventory((), ()))
+    monkeypatch.setattr(inventory._C, "PATH_USER_STATE", tmp_path / "state")
+    monkeypatch.setattr(inventory, "inventory_authoring_manifests",
+                        lambda: pytest.fail("live creation must not scan authoring"))
+    return inventory
+
+
+def test_first_core_destination_is_structural_and_does_not_create_an_admission(monkeypatch, tmp_path):
+    inventory = _empty_live_inventory(monkeypatch, tmp_path)
+    contract = ContractId(ManifestOrigin.CORE, "set_processes/manifest.toml")
+    ref = bootstrap._manifest_ref(BirthIntent(tmp_path / "untrusted", contract, "first admission"))
+    assert ref.manifest_path == tmp_path / "state/contract-authoring/v1/core/set_processes/manifest.toml"
+    assert not ref.manifest_path.exists()
+    assert ref.allowed_code_roots == (ref.source_root,)
+    assert ref.manifest_hash is None and ref.name is None
+    assert inventory.inventory_store_manifests().manifests == ()
+
+
+@pytest.mark.parametrize("origin,relative", [
+    (ManifestOrigin.EXPLICIT, "demo/manifest.toml"),
+    (ManifestOrigin.RETIRED, "demo/manifest.toml"),
+    (ManifestOrigin.CORE, "wrong/depth/manifest.toml"),
+])
+def test_first_destination_rejects_unmapped_retired_or_invalid_topology(monkeypatch, tmp_path, origin, relative):
+    _empty_live_inventory(monkeypatch, tmp_path)
+    with pytest.raises(bootstrap.BirthBootstrapError, match="birth_authoring_target_unavailable"):
+        bootstrap._manifest_ref(BirthIntent(tmp_path / "stage", ContractId(origin, relative), "create"))
+
+
+def test_existing_live_reference_is_not_replaced_by_a_prospective_destination(monkeypatch, tmp_path):
+    inventory = _empty_live_inventory(monkeypatch, tmp_path)
+    contract = ContractId(ManifestOrigin.CORE, "demo/manifest.toml")
+    ref = inventory.prospective_manifest_ref(contract)
+    monkeypatch.setattr(inventory, "inventory_store_manifests", lambda: ManifestInventory((ref,), ()))
+    monkeypatch.setattr(inventory, "prospective_manifest_ref", lambda _: pytest.fail("existing reference replaced"))
+    assert bootstrap._manifest_ref(BirthIntent(tmp_path / "stage", contract, "edit")) is ref
+
+
+def test_first_destination_never_hides_a_corrupt_inventory(monkeypatch, tmp_path):
+    inventory = _empty_live_inventory(monkeypatch, tmp_path)
+    monkeypatch.setattr(inventory, "inventory_store_manifests", lambda: ManifestInventory((), (object(),)))
+    with pytest.raises(bootstrap.BirthBootstrapError, match="birth_authoring_inventory_invalid"):
+        bootstrap._manifest_ref(BirthIntent(tmp_path / "stage", ContractId(ManifestOrigin.CORE, "demo/manifest.toml"), "create"))
+
+
 def test_bootstrap_is_once_and_concurrent(monkeypatch, tmp_path: Path) -> None:
     sentinel = object()
     monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
@@ -710,6 +758,17 @@ def release_factory(monkeypatch, tmp_path):
         factory=factory, assembly=assembly, state=state, context=context, pin=pin,
         intent=BirthIntent(candidate, contract, "publish changed executors"),
     )
+
+
+def test_real_release_request_factory_accepts_a_first_admission(monkeypatch, tmp_path, request):
+    # Do not stub the destination lookup: that hid the production refusal.
+    lookup = bootstrap._manifest_ref
+    fixture = request.getfixturevalue("release_factory")
+    monkeypatch.setattr(bootstrap, "_manifest_ref", lookup)
+    _empty_live_inventory(monkeypatch, tmp_path)
+    result = fixture.factory(_release_selection("2"))(fixture.intent)
+    assert result.candidate_source_root == fixture.intent.candidate_source_root
+    assert result.manifest_ref.manifest_path == tmp_path / "state/contract-authoring/v1/core/consult_frontier/manifest.toml"
 
 
 @pytest.mark.parametrize("elapsed", (600, 7200))

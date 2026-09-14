@@ -2,9 +2,64 @@
 
 Autore: Codex. Sviluppo individuale autorizzato da Roberto; controllo periodico
 BACHECA disattivato. Questo rapporto **non certifica la chiusura di RM0008**.
-Base delle ultime correzioni: `3ba5d3a6`.
+Il checkpoint pomeridiano riportato più sotto è storico, non lo stato corrente.
 
-## Esito essenziale
+## Aggiornamento serale: chiusura applicazioni e risposte veritiere
+
+Correzione `fc83fa31`, successiva alla release 37. Release **38** attraversata
+con `CUTOVER_OK`; salute HTTP `ok=true`, stack `ok=true, ready=true`.
+La prima pubblicazione di `set_processes` è stata rifiutata con
+`birth_authoring_target_unavailable`: la costruzione della richiesta cercava
+un contratto già pubblicato anche per una prima ammissione. Nessuna capacità
+attivata; correzione in preparazione. Non viene dichiarata riuscita una
+chiusura reale sul PC.
+
+Evidenze riesaminate:
+
+| Turno | Risultato reale |
+|---|---|
+| `df6396d3726e4ce6` | Ping a pc-roberto: 4 pacchetti a `192.168.1.137`, 4 risposte, nessuna perdita. |
+| `7a4c989a008c4a25` | ExpressVPN: Roberto conferma di avere scelto «Fino al prossimo riavvio». Invio registrato `http_form_owner`, continuazione completata, `already_running=true`: riutilizzo di un'app già aperta, non prova di un nuovo processo. |
+| `39aafb8eb4ab471b` | «chiudi expressvpn su pc-roberto» ha modificato `sites_stealth=off` e dichiarato falsamente la disattivazione della VPN. Nessuna chiusura. Il precedente valore della preferenza non è noto: nessun ripristino arbitrario. |
+| `c04d1548c671462c` | «chiudi word su pc-roberto» ha proposto `taskkill /F /IM winword.exe` senza mantenere la destinazione. Non eseguito. Roberto precisa che Word non aveva documenti: non cambia l'errore di comportamento e risposta. |
+
+La conferma sul turno serale non rettifica retroattivamente il consenso
+contestato del turno pomeridiano `f35ee3d12afa4d57`.
+
+Correzioni generali, senza nomi applicativi nel runtime:
+
+- Verifica del verbo **e del dominio** dell'azione: modificare preferenze
+  non soddisfa la richiesta di chiudere processi, anche da cache o recupero.
+- Risoluzione di identità desktop registrate tramite `find_packages`;
+  `set_processes` osserva sul dispositivo PID e tempo di creazione e chiede
+  chiusura normale, forzata o annullamento. Nessun passaggio automatico alla
+  forzata; successo solo dopo verifica che i processi non siano più attivi.
+- Prima ammissione delle nuove sorgenti core attraverso lo stesso Producer
+  e Birth delle modifiche; nessuna firma precedente inventata, nessuna
+  pubblicazione diretta. Rilettura obbligatoria dal catalogo verificato.
+- Messaggi IT/EN e documentazione riallineati; il catalogo pubblico descrive
+  sorgenti, non pretende di attestare la disponibilità nell'istanza.
+
+Prove locali: gruppo snapshot/authoring/riconciliazione/rilascio/proprietà/
+chiusura/routing: 405 superati e 1 saltato; i 9 casi che richiedevano socket
+locali sono poi passati nell'ambiente autorizzato. Confine e catalogo:
+83 superati; manifest e documentazione dei domini: 35 superati.
+Questi conteggi non si sommano ai gruppi precedenti sovrapposti e non
+sostituiscono la prova Windows reale. Nessun consenso inviato da Codex.
+
+Release 38: build
+`sha256:2411c210be65440f913e4a07f518d2475ed443f2b6c6f49692048ce1503524ae`,
+sorgente `sha256:6b11b147bc10cee2c5550fb9f6a64ff885a92dca8b266ff6a5d89a4df442b6dc`,
+cutover `sha256:b9ee063d08cc1a5655247a285a75e1ed443ae845876aa70d3d019290ba6b57c0`.
+Evidenza amministrativa:
+`/var/lib/metnos-admin/rm0008-cycle-evidence-2411c210be65440f`.
+Documentazione statica pubblicata con successo su Cloudflare:
+`https://1b117c7d.mykleos.pages.dev`; catalogo Tutor locale non modificato
+dal comando di pubblicazione statica.
+
+## Checkpoint pomeridiano precedente — esito storico
+
+Base delle correzioni di questo checkpoint: `3ba5d3a6`.
 
 - In esercizio resta la **release 32**, recuperata dopo il fallimento del
   solo tentativo di passaggio alla 33. Nessun retry della 33, cambio di head,

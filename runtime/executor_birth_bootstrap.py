@@ -109,16 +109,22 @@ def _secure_state_db(state_dir: Path, basename: str) -> Path:
 def _manifest_ref(intent: BirthIntent) -> ManifestRef:
     from manifest_inventory import (
         ManifestLayout, inventory_authoring_manifests,
-        inventory_store_manifests, resolve_manifest_layout,
+        inventory_store_manifests, prospective_manifest_ref, resolve_manifest_layout,
     )
+    store_only = resolve_manifest_layout() is ManifestLayout.STORE_ONLY
     inventory = (
         inventory_store_manifests()
-        if resolve_manifest_layout() is ManifestLayout.STORE_ONLY
+        if store_only
         else inventory_authoring_manifests()
     )
     if inventory.problems:
         raise BirthBootstrapError("birth_authoring_inventory_invalid")
     matches = tuple(ref for ref in inventory.manifests if ref.contract_id == intent.contract_id)
+    if not matches and store_only:
+        try:
+            return prospective_manifest_ref(intent.contract_id)
+        except (OSError, ValueError) as exc:
+            raise BirthBootstrapError("birth_authoring_target_unavailable") from exc
     if len(matches) != 1:
         raise BirthBootstrapError("birth_authoring_target_unavailable")
     return matches[0]
@@ -159,8 +165,8 @@ def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
             )
         context, _pin = context_builder.preview(intent)
         # The kind of the executor is not a property of who asks for it: it
-        # comes from where the manifest of that contract lives, which the
-        # inventory already authenticated.
+        # comes from the declared contract origin. The destination lookup
+        # validates that origin's topology; only Birth admits the candidate.
         origin = executor_origin_v1(intent.contract_id.origin)
         observed = observe_candidate(
             intent.candidate_source_root, contract_id=intent.contract_id,

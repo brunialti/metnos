@@ -545,6 +545,30 @@ def _structural_location(
     return root, manifest_path, skill_name, allowed_code_roots
 
 
+def prospective_manifest_ref(contract_id: ContractId) -> ManifestRef:
+    """A first Birth destination from the origin map, never a live inventory row.
+
+    Candidate staging cannot choose its installation path. Use exactly the
+    topology and repository-authoring rebase used by the store inventory;
+    publication and its authenticated binding remain Birth's responsibility.
+    """
+    sources = [source for source in _store_authoring_sources(default_manifest_sources())
+               if source.origin is contract_id.origin]
+    if len(sources) != 1 or sources[0].default_status is ManifestStatus.RETIRED:
+        raise ValueError("contract origin has no new authoring destination")
+    source = sources[0]
+    root, path, skill, code_roots = _structural_location(source, contract_id)
+    status = source.default_status
+    if skill is not None and not _default_skill_enabled(skill):
+        status = ManifestStatus.DISABLED
+    return ManifestRef(
+        contract_id=contract_id, origin=contract_id.origin, status=status,
+        source_root=root, manifest_path=path,
+        manifest_relative=contract_id.relative_manifest,
+        allowed_code_roots=code_roots, skill_name=skill,
+    )
+
+
 def _is_empty_unbound_publication_residue_v1(
     contract_dir: Path | str,
 ) -> bool:
@@ -842,6 +866,7 @@ __all__ = [
     "ManifestStatus",
     "default_manifest_sources",
     "inventory_authoring_manifests",
+    "prospective_manifest_ref",
     "inventory_manifests",
     "inventory_store_manifests",
     "manifest_name_collisions",
