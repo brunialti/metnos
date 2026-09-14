@@ -1594,3 +1594,39 @@ La revisione successiva è pronta per un nuovo giro adversarial soltanto quando:
    admission hook, ricevuta, punto di consumo e prova di zero effetti al diniego;
 5. due agenti medium indipendenti, leggendo soltanto la roadmap e il repository,
    producono lo stesso elenco di file, transizioni, vincoli e test da realizzare.
+
+### C.5 Verifica dei fatti (Claude, 14 settembre 2026, sera)
+
+Controllo in sola lettura sul checkout principale, dopo il commit `dbf3f1d5`.
+«Confermato» vuol dire che il codice mostra ciò che il rilievo afferma.
+
+| Rilievo | Esito | Evidenza nel codice |
+|---|---|---|
+| R5-01 | confermato | `change_applier.apply_create_executor` chiama `synth_request.handle_synth_request` solo in fase di applicazione, dopo l'accettazione |
+| R5-02 | confermato (difetto di progetto) | `ChangeFacts` della scheda F5.1 non ha costruttore autorevole; reversibilità dedotta dalla sola dichiarazione |
+| R5-03 | confermato | `admin_change_action` usa l'utente amministrativo della richiesta; nessun contratto monouso per le risposte del riepilogo |
+| R5-04 | confermato | `idx_ci_fingerprint` non è univoco (`change_intents.py:93`); `upsert_intent` e `_transition` fanno SELECT e poi INSERT/UPDATE; l'effetto precede `mark_applied` |
+| R5-05 | confermato | `apply_materialize_pipeline` esegue `run_turn` una volta; `apply_cache_pattern` richiede `canonical_query` e `tool_name`; `_HANDLERS` non ha un tipo di ritiro |
+| R5-06 | confermato (difetto di progetto) | F6 non richiede un owner operativo distinto dalla provenienza |
+| R5-07 | confermato | la scheda F5.3 fa scrivere un rifiuto globale anche ai `deny` tecnici |
+| R5-08 | confermato | builtin e verb-unique passano da `invoke_tool_by_name` → `loader.invoke_verb_unique`, non da `invoke_executor` |
+| R5-09 | confermato | `_compute_intent_sig` restituisce una firma leggibile che contiene le parole chiave dell'utente; solo l'hash (16 caratteri) ne è privo |
+| R5-10 | confermato (difetto di progetto) | la scheda F4.1 non impone il join con turni `origin=user` |
+| R5-11 | confermato | in SQLite `UNIQUE` ammette più `NULL`; la scheda F2.1 non dichiara `NOT NULL` |
+| R5-12 | confermato | per `KIND_CREATE_EXECUTOR` il bersaglio assente è la norma |
+| R5-13 | confermato (difetto di progetto) | `benefit` a valore unico; soglia del 20% senza definizione operativa |
+| R5-14 | confermato | la scheda FS-A cerca solo in `runtime/`; FS-B cita `O_NOFOLLOW` solo sul file finale |
+| R5-15 | confermato (limite di metodo) | chiamate dinamiche e callback sfuggono all'analisi AST |
+| R5-16 | confermato | `cache_validity.tools_sig` usa `ROUTING_EPOCH` e il catalogo; né la politica né i rifiuti vi entrano |
+| R5-17 | confermato | `_record_lacuna(query, intent, error_class, root_cause, suggested_action)` non riceve turno, passo e owner |
+| R5-18 | confermato | le funzioni di `change_rollback` restituiscono dizionari con `error` senza sollevare eccezioni |
+| R5-19 | confermato | `final_kind` include anche `loop_break` (`agent_runtime.py:5188`); il dispatch usa `needs_inputs`; i ruoli HTTP (`anonymous`, `user`, `admin`) non sono `users.ROLES` |
+| R5-20 | confermato | `alignment_engine` restituisce `[]` su errori di formato e di invocazione |
+| R5-21 | confermato | i moduli stanno in `runtime/change_intent_adapters/`, registrati da `__init__.py`; le schede F4.2 e F4.3 omettono `runtime/` |
+| R5-22 | confermato (difetto di progetto) | P0 legge archivi vivi senza watermark |
+
+**Esito.** Il verdetto della sezione C.1 regge: la revisione 5 non è approvabile.
+- I rilievi R5-01…R5-09 sono bloccanti e fondati.
+- Gli errori di fatto nelle schede sono miei: i `final_kind` elencati, i
+  percorsi degli adapter, i tipi di intent riusati, i `deny` che diventano
+  rifiuti, il `need_sig` leggibile. Vanno corretti nella revisione 6.
