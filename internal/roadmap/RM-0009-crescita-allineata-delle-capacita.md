@@ -19,9 +19,16 @@
 > futuri: non è un gate in alcuna fase di RM-0009. Una modifica ammessa e
 > attivata deve essere resa disponibile a tutti gli utenti.
 >
+> **Obiettivo di RM-0009, definito da Roberto il 14 settembre 2026.** Un
+> sistema che **aumenta le proprie capacità, anticipa le necessità, ottimizza
+> le proprie prestazioni e realizza i fini di TELOS**. Sostituisce la
+> formulazione precedente del §1 e governa fasi, indicatori e completamento.
+> Tutto **nel modo più autonomo possibile**: «l'utente deve intervenire solo in
+> poche e semplici occasioni, il meno possibile».
+>
 > **Decisione di Roberto, 14 settembre 2026 (pomeriggio) — piano completo e sicurezza subito.**
 > (1) La roadmap resta **completa**: fasi F0-F6 e piano operativo del §12. La
-> proposta di ridurre la prima versione al solo «ricongiungere» (§11.10) è
+> proposta di ridurre la prima versione al solo «ricongiungere» è
 > respinta. (2) Le due voci **FS** partono **subito**, come lavori separati da
 > RM-0009, senza aspettarne l'approvazione: FS-A (un solo runner di nascita
 > isolato, legacy irraggiungibile) e FS-B (nessuna chiave radice esposta agli
@@ -55,10 +62,25 @@
 
 ## 1. Obiettivo — invariante
 
-**Metnos deve crescere in modo intelligente e gestito.** Deve accorgersi di ciò
-che non sa fare, proporlo, essere giudicato su fini dichiarati, nascere sotto
-una porta unica, provarsi, ed essere promosso o dimenticato — senza che una
-persona debba spingere ogni passaggio.
+**Metnos è un sistema che:**
+
+1. **aumenta le proprie capacità.** Si accorge di ciò che non sa fare, lo propone
+   e fa nascere la capacità sotto la porta unica; la prova, poi la promuove o la
+   dimentica;
+2. **anticipa le necessità.** Propone ciò che servirà prima che la richiesta
+   fallisca, partendo dagli schemi ricorrenti d'uso e dai fini di TELOS;
+3. **ottimizza le proprie prestazioni.** Rende più veloce, economico e affidabile
+   ciò che fa già: piani ripetuti, cache, guardie e executor inutilizzati;
+4. **realizza i fini di TELOS.** Ogni proposta e ogni misura dichiarano quale
+   fine servono (`workspace/TELOS.md`: tempo, ordine, puntualità, protezione,
+   discrezione, parsimonia).
+
+Tutto questo avviene in modo **gestito e il più possibile autonomo**. L'utente
+interviene solo in **poche e semplici occasioni**: una domanda chiara, con
+risposta sì o no, raccolta nel riepilogo e mai come interruzione
+(`t.discrezione`). Decide Metnos tutto ciò che è reversibile, misurabile e
+dentro le capacità già concesse; all'utente resta solo ciò che allarga
+l'autorità, non è reversibile, costa o tocca dati sensibili.
 
 Crescere in modo gestito significa anche che **non tutto ciò che nasce può fare
 tutto**: la libertà di Metnos deve essere **modulata**, e la misura di quella
@@ -771,10 +793,13 @@ La revisione avversariale deve dare risposta esplicita almeno a queste domande:
 13. come vengono revocate e ricontrollate le autorizzazioni già accodate quando
     cambiano lifecycle, generazione, politica o approvazioni.
 
-### 11.10 Review di Claude, 14 settembre 2026
+### 11.10 Review di Claude, 14 settembre 2026 — criteri di progettazione
 
-> Materiale di revisione, non norma: segue la sorte del §11 (nota editoriale).
-> Verifiche eseguite sul checkout principale, in sola lettura.
+> Materiale di revisione, non norma: segue la sorte del §11. Criteri indicati da
+> Roberto: **KISS, utilità per l'utente, soluzioni universali e non ad hoc,
+> niente hardcoding, efficienza**. La review rispetta le decisioni del 14/9
+> (piano completo F0-F6 e §12, ambito globale, FS subito): non toglie fasi,
+> propone come farle più semplici.
 
 **Fatti verificati nel codice.**
 
@@ -782,39 +807,144 @@ La revisione avversariale deve dare risposta esplicita almeno a queste domande:
 |---|---|
 | L'innesco accetta solo `out_of_scope` e `wrong_tool` | `learning_loop.py:34`: vero |
 | Il punteggio può solo salire | `change_intents.py:405`, `max(existing, new)`: vero |
-| `vaglio.judge` spento | nessun chiamante passa `vaglio_judge`; `METNOS_JUDGE_KIND` default `rule-based-v1`: vero |
-| `reject_pattern` senza consumatore | solo `change_applier` scrive e `change_rollback` cancella: vero. La doc pubblica `architecture/lifecycle.html` (it/en) ripete l'affermazione falsa |
-| `decide_preexercise` senza chiamanti | vero |
+| `vaglio.judge` spento | nessun chiamante passa `vaglio_judge`; default `rule-based-v1`: vero |
+| `reject_pattern` senza consumatore | lo scrive `change_applier` e lo cancella `change_rollback`, nessuno lo legge: vero. La doc pubblica `architecture/lifecycle.html` ripete l'affermazione falsa |
 | FS(a) test di nascita sull'host | `synth_request.py:72` lancia `python3 test_runner.py`: vero |
-| FS(b) chiavi radice esposte | `sandbox.py:549`: la capability `metnos:credentials_metadata_only` monta dentro l'executor il vault **e `admin.key`**. È più grave di quanto dica il §5, che cita solo il Vaglio |
-| `~/.config/metnos/**` fuori dai percorsi vietati | vero: c'è solo `.config/*/credentials.env` |
+| FS(b) chiavi radice esposte | `sandbox.py:549`: `metnos:credentials_metadata_only` monta nell'executor il vault **e `admin.key`** |
 
-**Rilievi.**
-1. **La norma è incoerente col §11.** I §§1-10 contengono ancora affermazioni che
-   il §11 smentisce: anello 8 «funziona»; «tre funzionano»; F0 «quattro
-   indicatori» contro i cinque del §6; «prima di F4 non c'è nulla su cui
-   decidere» contro 55 intent `proposed`; il rinvio rotto «§8.5». Va fatta la
-   revisione 5 normativa prima dello stato `ready`.
-2. **Rischio di complessità.** Il §12 introduce molte strutture nuove
-   (provenienza dei turni, registro dei componenti, valutazioni append-only,
-   `lacuna_events`, outbox, autorità d'invocazione con ricevute) e 12 decisioni
-   preliminari.
-   - La proposta di ridurre la portata è **respinta da Roberto (14/9)**: il piano
-     resta completo.
-   - Resta la raccomandazione: ogni unità deve riusare le autorità esistenti,
-     senza crearne di parallele, e restare revisionabile in un solo giro.
-     È la causa C1 misurata su RM-0008 nello stesso giorno.
-3. **Dipendenza da RM-0008 da scrivere nella norma.** Il completamento del §9
-   (nascita e prova) dipende da RM-0008 (0 nascite concluse su 59), da
-   RM-0008/F5 e da FS-A. Il §11.9 lo osserva, i §§5 e 9 no.
-4. **FS-B va ampliato nel testo normativo.** Non basta la lista del Vaglio: va
-   eliminato il mount del vault e di `admin.key` negli executor delle credenziali
-   (§12.12). Con la decisione del 14/9 parte subito.
-5. **Tracciamento.** Questo è l'unico documento di RM-0009: la copia vecchia
-   (revisione 4, 20 KB) è stata rimossa dal ramo `codex/rm0008-reboot` con il
-   commit `5e551d73` (14/9, su richiesta di Roberto). Il documento è tracciato
-   nel checkout principale dal commit `10773f44`; la baseline del §11.1 va
-   comunque congelata sulla revisione normativa approvata.
+**Verdetto per fase.** ✓ = rispetta il criterio, ~ = in parte, ✗ = no.
+
+| Fase | KISS | Utilità utente | Universale | Hardcoding | Efficienza | Intervento proposto |
+|---|---|---|---|---|---|---|
+| F0 | ✗ sei campi di provenienza | indiretta | ✓ confine autenticato | rischio sui nomi degli attori | ✓ | due campi: **origine** (`user\|test\|system`, dal tipo di principal autenticato) ed **esito** chiuso |
+| F1 | ✗ modulo registro a sei stati | ~ onestà | ✗ elenco nominale | — | ✓ | decidere e agire (collegare o togliere); un **test generico** «writer senza lettore» invece del registro |
+| F2 | ~ | indiretta | ✓ | ✓ | ~ la tabella cresce | una tabella di valutazioni (intent, dimensione, valore, valutatore, istante); proiezione = ultima per (intent, dimensione); niente `confidence` né normalizzazioni finché non servono; conservazione |
+| F3 | ✗ sette tipi di lacuna | ~ | rischio `canonical_need_id` ad hoc | — | ~ | tre tipi (`capability_absent`, `plan_error`, `unknown`); identità del bisogno = la **firma d'intento esistente** |
+| F4 | ✓ | **alta** | ✓ | soglia oggi da env | ✓ | innesco solo su `capability_absent`; soglia nel registro di politica centrale |
+| F5 | ✗ outbox nuovo | **alta** | ✗ duplica | — | ✓ | **riusare l'outbox di consegna esistente**, canale-neutrale (`durable_workloads/models.py:377`), e `/admin/changes` |
+| F6 | ✗ nonce, TTL e ricevute su tre percorsi | bassa oggi (0 nascite su 59) | ✓ se il punto è unico | — | ✗ una scrittura per invocazione | un solo punto: `invoke_executor` è già il «choke-point universale locale e remoto», e il durevole passa da `invoke_scheduled`; funzione pura in memoria; ricevuta solo sulle code remota e durevole |
+| processo §12 | ✗ | — | — | — | ✗ | vedi il punto 1 |
+
+**1. KISS.**
+- **Tre documenti in uno.** 1577 righe, di cui la norma è la parte minore. La
+  rev.5 normativa dovrebbe restare sotto circa 500 righe. Per ogni fase: beneficio
+  per l'utente, cambiamento minimo, punto di riuso, prova d'accettazione.
+- **Il §12 è pesante.** Aggiunge almeno sette strutture nuove, dodici decisioni
+  preliminari e un processo per unità: manifest JSON, cinque stati, riesecuzione
+  byte-identica da un secondo agente. Il 14/9 RM-0008 ha misurato questo costo
+  (cause C1-C3 in `internal/coordination/analisi-definitiva-ciclo-rilascio.md`,
+  worktree `rm0008-reboot`).
+  - Evidenza sufficiente: test mirati, commit e un turno reale.
+  - Il manifest JSON serve soltanto a P0, per rigenerare i numeri della baseline.
+- **Regola:** nessuna struttura nuova se ne esiste già una che fa lo stesso.
+
+**2. Utilità per l'utente.**
+- Il valore arriva solo con F4-F5; F0-F3 sono strumentazione. Si può anticipare
+  il valore già disponibile senza violare l'ordine delle fasi:
+  - **(a) `reject_pattern`.** Oggi è una funzione per l'utente che dichiara un
+    effetto e non lo produce: viola il principio §2.8 (nessun fallimento
+    silenzioso). Va sistemata subito, collegandola o togliendola dalla UI e
+    dalla doc; non aspetta F5.
+  - **(b) I 55 intent `proposed`.** Il triage del backlog in F1 dà subito un
+    beneficio all'utente: meno rumore in `/admin/changes`.
+- **Manca un indicatore di valore reale:** capacità nate e poi usate in turni
+  reali, ultimi 30 giorni. Senza di esso il ciclo può «girare» senza servire a nessuno.
+- **F6 non porta valore all'utente finché le nascite restano 0 su 59.** Resta
+  ultima, come è già.
+
+**3. Universale, non ad hoc.**
+- **Identità del bisogno.** Riusare `_compute_intent_sig`
+  (`engine/autopath.py:298`: verbo, oggetto, qualificatore), non un nuovo
+  `canonical_need_id` con regole proprie.
+- **Giudizio TELOS.** Un solo giudice per tutte le famiglie, `alignment_engine`.
+  `vaglio.judge` va ritirato, non conservato come secondo giudice.
+- **Capacità assente.** La ricerca negativa riusa prefiltro e catalogo del
+  motore, non una ricerca parallela.
+- **Componenti inerti.** Al posto del censimento nominale, un test generico che
+  fallisce se un writer del ciclo non ha lettori o una funzione pubblica del
+  ciclo non ha chiamanti. Vale anche per i componenti futuri.
+- **Collaudo o uso reale.** Lo decide il tipo di principal autenticato (un
+  utente di collaudo registrato come tale), mai i nomi degli attori.
+
+**4. Niente hardcoding.**
+- **Soglie.** Riconciliazione F3, ricorrenza F4 (oggi `METNOS_PROPOSE_SEEN=3`),
+  finestra F5 e scala F6 vivono in un solo registro di politica versionato, non
+  come letterali nei moduli.
+- **Enumerazioni.** Esito, tipi di lacuna e stati sono definiti una sola volta
+  come fonte tipizzata, come `vocab.py`, e riusati da codice, UI e test.
+- **Niente tabelle di prefissi o di stringhe per classificare gli errori**
+  (lezione di RM-0008 del 14/9): classi d'errore tipizzate.
+- **Testi per l'utente** (proposte, notifiche) solo tramite i18n.
+
+**5. Efficienza.**
+- **Tabelle append-only** (valutazioni, eventi di lacuna, decisioni F6): manca una
+  politica di conservazione. Servono una scadenza e un'aggregazione notturna,
+  altrimenti crescono senza limite.
+- **Percorso di ogni turno e invocazione** (F0, F6): calcolo in memoria, nessuna
+  scrittura sincrona per invocazione; audit aggregato o campionato.
+- **Indicatori:** li calcola il riepilogo notturno esistente
+  (`nightly_orchestrator.NIGHTLY_SEQUENCE`), non un job nuovo.
+- **Sviluppo:** una consegna per fase con test mirati e un turno reale; la
+  riesecuzione da un secondo agente resta solo per P0.
+
+**6. Copertura dell'obiettivo del 14/9.** Il piano copre bene il primo punto e
+poco gli altri tre. Proposta KISS: stesso ciclo, stesso intent, stesso giudice,
+stessa decisione; cambia soltanto la **sorgente** del segnale.
+
+| Punto dell'obiettivo | Copertura oggi nel piano | Meccanismi già esistenti da riusare | Intervento |
+|---|---|---|---|
+| Aumenta le capacità | F3 → F4 → F5, nascita via RM-0008 | lacune del motore, `learning_loop` | già nel piano |
+| Anticipa le necessità | **assente**: il piano è solo reattivo (parte dai fallimenti) | ciclo introspettivo TELOS notturno (`telos_introspect.py`, 10 lenti, famiglia `telos`: 43 intent `proposed`); autopath shadow da turni ripetuti (`engine.autopath.seed_from_run`); famiglia `observation`; routine RM-0001 (solo progetto) | una **seconda sorgente** di F4 (schemi ricorrenti e lenti TELOS) nella stessa pipeline. Per `t.discrezione` le proposte anticipate passano dal riepilogo (F5), mai da interruzioni |
+| Ottimizza le prestazioni | **assente** | promozione L0/L1 (`autopath`), `guard_stats.dormant()`, aging degli executor, telemetria LLM ed executor | una **terza sorgente** nella stessa pipeline: turno ripetuto costoso → autopath, guardia dormiente → ritiro, executor inutilizzato → aging. Indicatori: latenza e costo per turno reale, esito, hit delle cache |
+| Realizza i fini di TELOS | parziale: `alignment_engine` giudica solo la famiglia `telos` | `alignment_engine`, `telos_loader`, `workspace/TELOS.md` | ogni intent e ogni indicatore portano il **fine servito**. L'utilità per l'utente si misura per fine (per esempio `t.tempo`: incombenze ripetitive automatizzate; `t.puntualita`: scadenze intercettate; `t.parsimonia`: costo per turno) |
+
+Conseguenze sul documento:
+- il §6 riceve tre indicatori nuovi: proposte anticipate accettate e poi usate;
+  andamento di latenza e costo per turno reale; valore per fine TELOS;
+- il §9 chiude soltanto quando il ciclo ha fatto un giro reale per ciascuna
+  delle tre sorgenti (lacuna, anticipazione, ottimizzazione), ciascuno legato a
+  un fine TELOS;
+- nessuna pipeline nuova: le sorgenti sono adattatori verso gli stessi intent
+  (F2-F5).
+
+**7. Autonomia: l'utente interviene il meno possibile.** Oggi il piano mette
+una persona su ogni proposta (anello 6, `/admin/changes`, triage, riepilogo) e
+chiede dodici decisioni preliminari (§12.2). È l'opposto dell'obiettivo.
+Proposta KISS: **una sola regola deterministica** decide chi decide. È la stessa
+funzione della libertà modulata (F6), derivata dai fatti firmati e non da
+etichette.
+
+| Tipo di cambiamento | Chi decide | Come si torna indietro |
+|---|---|---|
+| Ottimizzazione dentro capacità esistenti (promozione di autopath e cache, ritiro di una guardia dormiente, aging di un executor inutilizzato) | **Metnos, da solo** | ritorno automatico se gli indicatori peggiorano oltre la soglia di politica |
+| Capacità nuova, **reversibile**, senza rete in uscita né credenziali, allineata a un fine TELOS | **Metnos, da solo**, dopo il preesercizio riuscito | undo per esecuzione e ritiro automatico se non viene usata |
+| Capacità che allarga l'autorità (scrittura irreversibile, rete in uscita, credenziali, costo), o proposta sotto la soglia di allineamento | **utente**: una domanda sì/no nel riepilogo, con il fine TELOS servito e l'effetto spiegato in una riga | rifiuto che resta: `reject_pattern` funzionante |
+| Regola globale che cambia il comportamento per tutti (per esempio un rifiuto ricorrente) | **utente**, una volta sola | rollback della regola |
+
+Conseguenze sul piano:
+- **anello 6:** da «una persona decide sempre» a «la politica decide, la persona
+  solo nei casi della tabella»;
+- **F5:** il riepilogo contiene soltanto le poche domande riservate all'utente;
+  le decisioni autonome compaiono come resoconto, senza richiedere nulla;
+- **F6 si anticipa come regola di decisione, in ombra:** calcola chi deciderebbe
+  anche prima dell'enforcement, così l'autonomia si misura fin dall'inizio;
+- **§12.2:** le dodici decisioni non vanno chieste a Roberto. Gli agenti le
+  fissano con valori prudenti nel registro di politica; a Roberto resta la sola
+  approvazione del documento;
+- **indicatore nuovo del §6:** interventi richiesti all'utente per settimana,
+  con l'obiettivo di tenerli bassi, e tempo di risposta mediano.
+
+**Priorità per la rev.5.**
+1. Riscrivere i §§1-10 incorporando il §11 e questa review; per ogni fase:
+   utilità, cambiamento minimo, riuso, prova.
+2. Ridurre il §12 a una tabella di unità (file, punto di riuso, prova), oppure
+   eliminarlo alla rev.5 come prescrive la nota editoriale.
+3. Mettere in testa a F1 `reject_pattern` (§2.8) e il triage dei 55 intent.
+4. Aggiungere agli indicatori del §6 quello del valore reale (capacità nate e usate).
+5. Allineare i §§1, 5, 6 e 9 all'obiettivo del 14/9: anticipazione e ottimizzazione
+   come sorgenti della stessa pipeline, e fine TELOS su ogni intent e indicatore.
+6. Sostituire «una persona decide» con la regola di autonomia del punto 7,
+   derivata dai fatti firmati; l'utente riceve solo domande sì/no nel riepilogo.
 
 ## 12. Analisi implementativa temporanea per agenti medium
 
