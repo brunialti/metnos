@@ -384,6 +384,26 @@ def test_non_windows_fails_honestly(monkeypatch):
     assert result["error_code"] == "platform_unsupported"
 
 
+@pytest.mark.parametrize("package,adapter,code", [
+    ("Vendor.App", "_helper_call", "helper_not_available"),
+    ("appx:Vendor.App_1.0_x64__test", "_appx_call", "platform_unsupported"),
+])
+def test_linux_client_not_available_keeps_existing_localized_refusal(monkeypatch, package, adapter, code):
+    monkeypatch.setattr(run_processes.sys, "platform", "linux")
+    monkeypatch.setenv("METNOS_CLIENT_EXE", "/unit-fixture/client")
+    monkeypatch.setattr(run_processes, "_msg", shim_messages.get)
+    calls = []
+    def helper(*arguments):
+        calls.append(arguments)
+        return {"ok": False, "error_code": code, "detail": "not user text"}
+    monkeypatch.setattr(run_processes, adapter, helper)
+    result = run_processes.invoke({"programs": [package]})
+    assert calls == [("query", "--package-id", package)]
+    assert result["error_code"] == "platform_unsupported"
+    assert result["error_class"] == "capability_missing"
+    assert result["error"] == shim_messages.get("ERR_CREATE_PROCESSES_WINDOWS_ONLY")
+
+
 def test_new_message_keys_exist_in_both_languages(monkeypatch):
     monkeypatch.setattr(run_processes, "_msg", shim_messages.get)
     keys = [

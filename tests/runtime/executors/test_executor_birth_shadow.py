@@ -19,6 +19,22 @@ D = "sha256:" + "1" * 64
 MANIFEST = Path("dist/metnos-public/executors/consult_frontier/manifest.toml").read_bytes()
 
 
+@pytest.mark.parametrize("name,capability,expected", [
+    ("run_processes", "code:exec", False),
+    ("create_files", "fs:write", False),
+    ("write_files", "fs:write", False),
+    ("delete_files", "fs:write", True),
+    ("delete_dirs", "fs:write", True),
+    ("delete_events", "provider:access", False),
+])
+def test_delete_property_requires_canonical_deletion_and_filesystem(name, capability, expected):
+    from executor_birth_shadow import _profile
+    manifest = {"name": name, "revertible": True,
+                "execution": {"effect": "mutating"},
+                "capabilities": [{"name": capability}]}
+    assert _profile(manifest).destructive_with_undo is expected
+
+
 @dataclass
 class _Snapshot:
     manifest_bytes: bytes = MANIFEST

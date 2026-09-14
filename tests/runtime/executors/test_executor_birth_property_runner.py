@@ -216,7 +216,8 @@ def test_observed_runner_executes_exact_snapshot_with_closed_fixture(monkeypatch
     assert len(supports) == 8
     assert set(captured["candidate_files"]) == {
         "candidate.py", "_metnos_birth_property_harness_v1.py",
-        "_metnos_birth_property_stdio_v1.py", *supports,
+        "_metnos_birth_property_stdio_v1.py", "_metnos_birth_helper_model_v1.py",
+        "helper", "package-app", *supports,
     }
     assert all(captured["candidate_files"][name] == payload
                for name, payload in supports.items())
@@ -383,18 +384,26 @@ def test_observed_runner_uses_relative_trusted_harness_protocol_on_windows(monke
 
 
 def test_real_linux_observed_runner_exercises_all_seven_groups_or_skips(tmp_path):
-    code = b'''import json, pathlib, shutil, sys
-r=json.load(sys.stdin); root=pathlib.Path(r["fixture_root"]); action=r["birth_property_action"]
-if r["fixture_id"] == "private_mutable_state":
-    (root/"state.json").write_text('{"value":"changed"}' if action == "forward" else '{"value":"before"}')
-if r["fixture_id"] == "private_deletion_tree" and action == "prepare_delete":
-    shutil.copyfile(root/"source.bin", root/"recovery.bin")
-if r["fixture_id"] == "private_deletion_tree" and action == "commit_delete":
-    (root/"source.bin").unlink()
-n=int(r["input"].get("fixture_count", r["input"].get("fixture_total", 0)))
-limit=r["input"].get("limit"); n=min(n, int(limit)) if limit is not None else n
-entries=[{"index":i} for i in range(n)]
-print(json.dumps({"entries":entries,"results":entries,"truncated":limit is not None and int(limit)<int(r["input"].get("fixture_total",n))}))
+    code = b'''import pathlib, shutil
+from executor_helpers import run_stdio
+root = pathlib.Path('fixture')
+def invoke(args):
+    undo = {'outcome': 'no_effect'}
+    if (root/'state.json').is_file():
+        undo = {'outcome': 'reversible', 'before': (root/'state.json').read_text()}
+        (root/'state.json').write_text('changed')
+    if (root/'source.bin').is_file():
+        if (root/'recovery.bin').is_file(): (root/'source.bin').unlink()
+        else: shutil.copyfile(root/'source.bin', root/'recovery.bin')
+    count = int(args.get('fixture_count', args.get('fixture_total', 0)))
+    limit = args.get('limit')
+    entries = [{'index': i} for i in range(min(count, int(limit)) if limit is not None else count)]
+    return {'ok': True, 'entries': entries, 'results': entries, '_undo': undo,
+            'truncated': limit is not None and int(limit) < count}
+def reverse(plan, results):
+    (root/'state.json').write_text(results['_undo']['before'])
+    return {'ok': True}
+run_stdio(invoke)
 '''
     manifest = b'[code]\nfiles=["candidate.py"]\n'
     observed = ObservedCandidate(
@@ -406,6 +415,7 @@ print(json.dumps({"entries":entries,"results":entries,"truncated":limit is not N
         output_schema=(("entries", "array"), ("results", "array"), ("truncated", "boolean")),
         collection_output=True, limit_input=True, truncation_declared=True,
         revertible=True, destructive_with_undo=True, entries_and_results=True,
+        positive_inputs=({},),
     )
     evidence = run_applicable_properties(profile, _runner=ObservedPropertyRunner(observed))
     if evidence and evidence[0].status is PropertyStatus.UNAVAILABLE:
@@ -579,7 +589,7 @@ assert os.environ['METNOS_WORKSPACE'] == str(pathlib.Path.cwd() / 'workspace')
 sys.path.insert(0, os.environ['METNOS_SHIM_DIR'])
 from executor_helpers import run_stdio
 def invoke(args):
-    assert args['birth_property_action'] == 'forward'
+    assert args == {'value': 'real input'}
     return {'ok': True, 'pid': os.getpid(), 'parent_pid': os.getppid()}
 run_stdio(invoke)
 '''
@@ -620,9 +630,244 @@ run_stdio(invoke)
     monkeypatch.setattr(runner_module.sys, "platform", "linux")
     monkeypatch.setattr(runner_module, "run_birth_phase", run_trusted_fixture)
     result = ObservedPropertyRunner(observed, linux_registry=registry).run(
-        runner_module.PropertyCase("output.actual", {}, {}),
+        runner_module.PropertyCase("output.actual", {"value": "real input"}, {}),
         fixture_id="empty_private_root", isolation="private_read_only")
     assert result.output["ok"] is True
     assert result.output["pid"] != captured["harness_pid"]
     assert result.output["parent_pid"] == captured["harness_pid"]
     assert observed.snapshot.code_files["candidate.py"] == source
+
+
+@pytest.fixture
+def controlled_property_stdio(monkeypatch, tmp_path):
+    """Real child processes over trusted test code; not a native Birth proof."""
+    import json
+    from pathlib import Path
+    import subprocess
+    import sys
+    import executor_birth_property_runner as runner_module
+    from executor_birth_runner import materialize_candidate_files, materialize_fixture
+
+    outputs = []
+    def run(command, **kwargs):
+        work = tmp_path / f"stdio-{len(outputs)}"
+        work.mkdir()
+        candidate = work / "candidate"
+        candidate.mkdir()
+        materialize_candidate_files(candidate, kwargs["candidate_files"])
+        materialize_fixture(work, kwargs["fixture_ops"])
+        environment = {f"METNOS_USER_{kind.upper()}": str(work / kind)
+                       for kind in ("data", "state", "config")}
+        result = subprocess.run(command, cwd=work, env=environment,
+                                stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
+        if result.returncode != 0:
+            pytest.fail(result.stderr.decode())
+        outputs.append(json.loads(result.stdout))
+        return RunnerResult(
+            RunnerStatus.PASSED, None, 0, result.stdout.decode(), result.stderr.decode(), .1,
+            ProcessAttestation("unit-fixture-only", False, False, False, False,
+                               False, False, False, None, False, False))
+    monkeypatch.setattr(runner_module, "run_birth_phase", run)
+    registry = LinuxSandboxRegistry(tmp_path / "not-used-bwrap", D,
+                                    Path(sys.executable).resolve(), D)
+    return registry, outputs
+
+
+def _run_processes_observation(tmp_path, *, mutation=""):
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[3] / "executors/run_processes"
+    source = (root / "run_processes.py").read_bytes()
+    if mutation:
+        marker = b'if __name__ == "__main__":'
+        assert source.count(marker) == 1
+        source = source.replace(marker, mutation.encode() + b"\n" + marker)
+    return ObservedCandidate(
+        ContractId(ManifestOrigin.CORE, "run_processes/manifest.toml"),
+        CandidateSnapshot(tmp_path, (root / "manifest.toml").read_bytes(), b"{}",
+                          MappingProxyType({"run_processes.py": source})),
+        SimpleNamespace(candidate_id=D), ExecutorOrigin.HUMAN, RevisionAuthor.HUMAN, D)
+
+
+@pytest.mark.parametrize("mutation, expected", [
+    ("", PropertyStatus.PASSED),
+    ("def invoke(args):\n    return {'ok': True, '_undo': {'outcome': 'no_effect'}}\n",
+     PropertyStatus.FAILED),
+    ("def reverse(plan, results):\n    return {'ok': True}\n", PropertyStatus.FAILED),
+    ("original_invoke = invoke\ndef invoke(args):\n    result = original_invoke(args)\n"
+     "    if result.get('_undo', {}).get('processes'):\n"
+     "        result['_undo']['processes'][0]['creation_time'] += 1\n"
+     "    return result\n", PropertyStatus.FAILED),
+    ("def invoke(args):\n    return {'ok': True, 'state_round_trip_attested': True, "
+     "'observations': {'restored': True}}\n", PropertyStatus.FAILED),
+])
+def test_real_stdio_helper_contract_roundtrip_and_counterexamples(
+        controlled_property_stdio, tmp_path, mutation, expected):
+    import tomllib
+    from executor_birth_shadow import _profile
+    observed = _run_processes_observation(tmp_path, mutation=mutation)
+    registry, outputs = controlled_property_stdio
+    profile = _profile(tomllib.loads(observed.snapshot.manifest_bytes.decode()))
+    evidence = run_property("undo.round_trip", profile,
+                           _runner=ObservedPropertyRunner(observed, linux_registry=registry))
+    assert evidence and all(item.status is expected for item in evidence)
+    assert all("helper_contract" in item.case_id for item in evidence)
+    if expected is PropertyStatus.PASSED:
+        assert outputs[0]["output"]["ok"] is True
+        observation = outputs[0]["observations"]
+        assert observation["state_before_hash"] != observation["state_after_forward_hash"]
+        assert observation["state_before_hash"] == observation["state_after_undo_hash"]
+        assert observation["fixture_contract"] == "managed_helper/v1"
+
+
+@pytest.mark.parametrize("name", [
+    "helper", "HELPER", "./helper", "helper/sub.py", "package-app",
+    "Package-App", "_metnos_birth_helper_model_v1.py",
+])
+def test_helper_fixture_support_names_cannot_be_shadowed(name):
+    import executor_birth_property_runner as runner_module
+    with pytest.raises(PropertyContractError, match="property_candidate_invalid"):
+        runner_module._candidate_files_with_support({"candidate.py": b"pass\n", name: b"pass\n"})
+
+
+def test_stdio_roundtrip_is_general_and_passes_the_original_plan(
+        controlled_property_stdio, tmp_path):
+    from dataclasses import replace
+    source = b'''import pathlib
+from executor_helpers import run_stdio
+def invoke(args):
+    assert set(args) == {'path', 'value'}
+    path = pathlib.Path(args['path'])
+    before = path.read_text()
+    path.write_text(args['value'])
+    return {'ok': True, '_undo': {'outcome': 'reversible', 'before': before}}
+def reverse(plan, results):
+    assert set(plan) == {'args'}
+    assert plan['args']['value'] == 'after'
+    pathlib.Path(plan['args']['path']).write_text(results['_undo']['before'])
+    return {'ok': True}
+run_stdio(invoke)
+'''
+    observed = _observed_candidate(tmp_path)
+    observed = replace(observed, snapshot=replace(observed.snapshot,
+        code_files=MappingProxyType({"candidate.py": source})))
+    registry, outputs = controlled_property_stdio
+    profile = PropertyCandidateProfile(revertible=True,
+        positive_inputs=({"path": "fixture/state.json", "value": "after"},))
+    evidence = run_property("undo.round_trip", profile,
+        _runner=ObservedPropertyRunner(observed, linux_registry=registry))
+    assert evidence[0].status is PropertyStatus.PASSED
+    assert "fixture_contract" not in outputs[0]["observations"]
+
+
+def test_missing_positive_case_never_invokes_the_candidate(monkeypatch, tmp_path):
+    import executor_birth_property_runner as runner_module
+    monkeypatch.setattr(runner_module, "run_birth_phase",
+                        lambda *a, **kw: pytest.fail("missing positive case reached candidate"))
+    evidence = run_property("undo.round_trip", PropertyCandidateProfile(revertible=True),
+        _runner=ObservedPropertyRunner(_observed_candidate(tmp_path),
+                                       linux_registry=_linux_registry(tmp_path)))
+    assert evidence[0].status is PropertyStatus.UNAVAILABLE
+    assert evidence[0].error_code == "property_case_unavailable"
+
+
+def test_real_linux_stdio_without_a_client_refuses_honestly(
+        controlled_property_stdio, tmp_path):
+    from executor_birth_property_runner import PropertyCase
+    registry, _outputs = controlled_property_stdio
+    observed = _run_processes_observation(tmp_path)
+    result = ObservedPropertyRunner(observed, linux_registry=registry).run(
+        PropertyCase("linux.unavailable", {"programs": ["Metnos.BirthFixture"]}, {}),
+        fixture_id="empty_private_root", isolation="private_read_only")
+    assert result.output["error_code"] == "platform_unsupported"
+    assert result.output["error_class"] == "capability_missing"
+    assert "<missing:" not in result.output["error"]
+
+
+@pytest.mark.parametrize("respond", [False, True])
+def test_helper_client_timeout_and_no_dependency_shadowing(tmp_path, respond):
+    import json
+    import socket
+    import subprocess
+    import sys
+    import threading
+    import executor_birth_property_runner as runner_module
+
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "helper").write_bytes(runner_module._HELPER_CLIENT_SOURCE)
+    (candidate / "json.py").write_text("raise RuntimeError('candidate shadow imported')\n")
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(tmp_path / "helper.sock"))
+    server.listen(1)
+    finished = threading.Event()
+    def silent():
+        with server.accept()[0] as client:
+            client.recv(4096)
+            if respond:
+                client.sendall(b'{"ok":true}\n')
+            else:
+                finished.wait(3)
+    thread = threading.Thread(target=silent, daemon=True)
+    thread.start()
+    try:
+        result = subprocess.run([sys.executable, str(candidate / "helper"),
+                                 "query", "--package-id", "Metnos.BirthFixture"],
+                                env={"PYTHONSAFEPATH": "1"}, capture_output=True, timeout=2.5)
+        expected = {"ok": True} if respond else {
+            "ok": False, "error_code": "property_helper_unavailable"}
+        assert result.returncode == 0, result.stderr.decode()
+        assert json.loads(result.stdout) == expected
+    finally:
+        finished.set()
+        server.close()
+        thread.join(timeout=3)
+
+
+def test_appx_helper_contract_preserves_preexisting_processes(
+        controlled_property_stdio, tmp_path):
+    from dataclasses import replace
+    import hashlib
+    import json
+    import tomllib
+    from executor_birth_shadow import _profile
+    observed = _run_processes_observation(tmp_path)
+    manifest = tomllib.loads(observed.snapshot.manifest_bytes.decode())
+    args = next(case["input"] for case in manifest["tests"] if case["expect"].get("ok") is True)
+    package = "appx:Metnos.BirthFixture_1.0_x64__fixture"
+    token = hashlib.sha256(json.dumps({"packages": [package], "lifetime": "session"},
+                                    sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    changed = observed.snapshot.manifest_bytes.replace(
+        args["programs"][0].encode(), package.encode()).replace(
+            args["actor_consent_token"].encode(), token.encode())
+    observed = replace(observed, snapshot=replace(observed.snapshot, manifest_bytes=changed))
+    profile = _profile(tomllib.loads(changed.decode()))
+    registry, outputs = controlled_property_stdio
+    evidence = run_property("undo.round_trip", profile,
+        _runner=ObservedPropertyRunner(observed, linux_registry=registry))
+    assert evidence[0].status is PropertyStatus.PASSED
+    receipt = outputs[0]["output"]["_undo"]["processes"][0]
+    assert receipt["preexisting_processes"]
+    assert outputs[0]["observations"]["state_before_hash"] == outputs[0]["observations"]["state_after_undo_hash"]
+
+
+def test_writing_a_fake_processes_file_cannot_forge_helper_observations(
+        controlled_property_stdio, tmp_path):
+    import tomllib
+    from executor_birth_shadow import _profile
+    mutation = '''from pathlib import Path
+def invoke(args):
+    root = Path(os.environ['METNOS_WORKSPACE']).parent / 'fixture'
+    (root / 'processes.json').write_text('fake started process')
+    return {'ok': True, '_undo': {'outcome': 'reversible'}}
+def reverse(plan, results):
+    root = Path(os.environ['METNOS_WORKSPACE']).parent / 'fixture'
+    (root / 'processes.json').unlink()
+    return {'ok': True}
+'''
+    observed = _run_processes_observation(tmp_path, mutation=mutation)
+    registry, outputs = controlled_property_stdio
+    evidence = run_property("undo.round_trip",
+        _profile(tomllib.loads(observed.snapshot.manifest_bytes.decode())),
+        _runner=ObservedPropertyRunner(observed, linux_registry=registry))
+    assert evidence[0].status is PropertyStatus.FAILED
+    assert outputs[0]["observations"]["state_before_hash"] == outputs[0]["observations"]["state_after_forward_hash"]

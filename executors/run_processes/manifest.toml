@@ -29,7 +29,7 @@ en = "SCOPO: runs installed software with an exact receipt for the created proce
 
 [code]
 files  = ["run_processes.py"]
-digest = "sha256:47eef328046d85d0e241af373e16bbff7064b9dbc2884ad3f24b975dabaa76b9"
+digest = "sha256:aaf408ae9c3dfcc2e3298ae7501f8b6faea92321fb6ec830d7e4bce182f40246"
 
 [args]
 type     = "object"
@@ -133,3 +133,10 @@ expect = { ok = false, field_eq = { error_code = "invalid_package_id" } }
 name   = "duplicate_package_is_rejected"
 input  = { programs = ["Vendor.App", "Vendor.App"] }
 expect = { ok = false, field_eq = { error_code = "duplicate_package" } }
+
+# Private helper-contract fixture only; this is not an installed user package
+# and the consent is the normal deterministic hash of these exact test inputs.
+[[tests]]
+name   = "session_helper_contract_round_trip"
+input  = { programs = ["Metnos.BirthFixture"], lifetime = "session", actor_consent_token = "25eff3aac3d4828c4d4244c7842807f5fb62ff6ab546269b18e941cd1b8cb847" }
+expect = { ok = true }

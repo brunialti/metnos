@@ -63,7 +63,7 @@ def _helper_call(*arguments: str) -> dict | None:
     create a second security implementation that could drift.
     """
     executable = os.environ.get("METNOS_CLIENT_EXE") or ""
-    if not executable or not sys.platform.startswith("win"):
+    if not executable:
         return None
     try:
         process = subprocess.run(
@@ -96,7 +96,7 @@ def _appx_call(*arguments: str) -> dict | None:
     owner's visible desktop.
     """
     executable = os.environ.get("METNOS_CLIENT_EXE") or ""
-    if not executable or not sys.platform.startswith("win"):
+    if not executable:
         return None
     try:
         process = subprocess.run(
@@ -235,6 +235,13 @@ def _launch_error(package_id: str, answer: dict | None, *, stopping: bool = Fals
             "error_code": "helper_unavailable",
             "error_class": "capability_missing",
         }
+    if (not sys.platform.startswith("win")
+            and answer.get("error_code") in {"helper_not_available", "platform_unsupported"}):
+        return {
+            "package_id": package_id, "ok": False,
+            "error": _msg("ERR_CREATE_PROCESSES_WINDOWS_ONLY"),
+            "error_code": "platform_unsupported", "error_class": "capability_missing",
+        }
     if answer.get("aligned") is False:
         update_pending = answer.get("error_code") == "helper_update_pending"
         return {
@@ -329,7 +336,7 @@ def invoke(args: dict) -> dict:
             "invalid_package_id",
             package=invalid[:80],
         )
-    if not sys.platform.startswith("win"):
+    if not sys.platform.startswith("win") and not os.environ.get("METNOS_CLIENT_EXE"):
         return _failure(
             "ERR_CREATE_PROCESSES_WINDOWS_ONLY",
             "platform_unsupported",
