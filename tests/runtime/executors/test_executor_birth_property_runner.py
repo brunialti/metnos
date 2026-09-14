@@ -211,9 +211,16 @@ def test_observed_runner_executes_exact_snapshot_with_closed_fixture(monkeypatch
     assert result.output == {"entries": []}
     assert captured["candidate_id"] == D
     assert captured["candidate_files"]["candidate.py"] == observed.snapshot.code_files["candidate.py"]
+    from executor_birth_functional import _support_files
+    supports = _support_files()
+    assert len(supports) == 8
     assert set(captured["candidate_files"]) == {
         "candidate.py", "_metnos_birth_property_harness_v1.py",
+        "_metnos_birth_property_stdio_v1.py", *supports,
     }
+    assert all(captured["candidate_files"][name] == payload
+               for name, payload in supports.items())
+    assert set(observed.snapshot.code_files) == {"candidate.py"}
     request = next(op for op in captured["fixture_ops"] if op.path == "request.json")
     assert request.payload["case_id"] == "cardinality.0"
 
@@ -296,7 +303,7 @@ def test_observed_runner_refuses_missing_or_invalid_linux_registry_before_runner
         _runner=runner,
     )
     assert evidence[0].status is PropertyStatus.UNAVAILABLE
-    assert evidence[0].error_code == "property_runner_unavailable"
+    assert evidence[0].error_code == "linux_sandbox_registry_unavailable"
     assert calls == []
 
 
@@ -466,3 +473,156 @@ def test_the_table_carries_one_stable_digest():
     assert primitive_table_digest_v1() == (
         "sha256:b63167a560356f542abcb6a3a3f30186a5906cae9508a36d4455493c11fe1de9"
     )
+
+
+@pytest.mark.parametrize("name", [
+    "_metnos_birth_property_harness_v1.py",
+    "_metnos_birth_property_stdio_v1.py",
+    "./_metnos_birth_property_harness_v1.py",
+    "_METNOS_BIRTH_PROPERTY_STDIO_V1.PY",
+    "runtime/executor_helpers.py",
+    "Runtime/Executor_Helpers.py",
+    "runtime/./executor_helpers.py",
+    "runtime/../runtime/executor_helpers.py",
+    "runtime\\executor_helpers.py",
+    "runtime",
+    "runtime/executor_helpers.py/child.py",
+    "install/data/i18n_seed.sqlite",
+    "install/data",
+])
+def test_reserved_support_paths_are_refused_before_runner(monkeypatch, tmp_path, name):
+    from dataclasses import replace
+    import executor_birth_property_runner as runner_module
+
+    observed = _observed_candidate(tmp_path)
+    files = {**observed.snapshot.code_files, name: b"raise RuntimeError('untrusted')\n"}
+    observed = replace(observed, snapshot=replace(
+        observed.snapshot, code_files=MappingProxyType(files)))
+    monkeypatch.setattr(runner_module.sys, "platform", "linux")
+
+    def unexpected_run(*args, **kwargs):
+        raise AssertionError("reserved path reached process runner")
+
+    monkeypatch.setattr(runner_module, "run_birth_phase", unexpected_run)
+    with pytest.raises(PropertyContractError, match="property_candidate_invalid"):
+        ObservedPropertyRunner(observed, linux_registry=_linux_registry(tmp_path)).run(
+            runner_module.PropertyCase("output.actual", {}, {}),
+            fixture_id="empty_private_root", isolation="private_read_only")
+
+
+@pytest.mark.parametrize("error", [OSError("private/source"), ValueError("private/content")])
+def test_missing_or_invalid_support_is_public_unavailability_before_runner(
+        monkeypatch, tmp_path, error):
+    import executor_birth_functional as functional
+    import executor_birth_property_runner as runner_module
+
+    def unavailable():
+        raise error
+
+    def unexpected_run(*args, **kwargs):
+        raise AssertionError("missing support reached process runner")
+
+    monkeypatch.setattr(functional, "_support_files", unavailable)
+    monkeypatch.setattr(runner_module.sys, "platform", "linux")
+    monkeypatch.setattr(runner_module, "run_birth_phase", unexpected_run)
+    evidence = run_property(
+        "output.schema.actual", PropertyCandidateProfile(output_schema=(("ok", "boolean"),)),
+        _runner=ObservedPropertyRunner(_observed_candidate(tmp_path),
+                                       linux_registry=_linux_registry(tmp_path)))
+    assert evidence[0].status is PropertyStatus.UNAVAILABLE
+    assert evidence[0].error_code == "property_support_unavailable"
+    assert "private/" not in repr(evidence)
+
+
+@pytest.mark.parametrize("code", [
+    "linux_sandbox_registry_unavailable", "linux_sandbox_program_unavailable",
+    "linux_sandbox_program_mismatch", "platform_backend_unavailable",
+    "property_support_unavailable",
+])
+def test_only_closed_infrastructure_reasons_are_exposed(code):
+    evidence = run_property(
+        "output.schema.actual", PropertyCandidateProfile(output_schema=(("ok", "boolean"),)),
+        _runner=Runner(error=RuntimeError(code)))
+    assert evidence[0].status is PropertyStatus.UNAVAILABLE
+    assert evidence[0].error_code == code
+
+
+@pytest.mark.parametrize("error", [
+    RuntimeError("private/path and secret"),
+    RuntimeError("linux_sandbox_program_mismatch: private/path"),
+    RuntimeError("property_support_unavailable", "private/path"),
+])
+def test_arbitrary_exception_payload_is_not_a_public_reason(error):
+    evidence = run_property(
+        "output.schema.actual", PropertyCandidateProfile(output_schema=(("ok", "boolean"),)),
+        _runner=Runner(error=error))
+    assert evidence[0].error_code == "property_runner_unavailable"
+    assert "private/" not in repr(evidence)
+
+
+def test_stdio_shim_imports_shared_helpers_only_in_separate_child(monkeypatch, tmp_path):
+    """A controlled unit fixture, NOT a native sandbox/admission proof."""
+    from dataclasses import replace
+    import json
+    from pathlib import Path
+    import subprocess
+    import sys
+    import executor_birth_property_runner as runner_module
+    from executor_birth_runner import materialize_candidate_files, materialize_fixture
+
+    source = b'''import os, pathlib, sys
+assert __name__ == '__main__', 'candidate imported by observer'
+root = pathlib.Path(__file__).resolve().parent
+assert sys.flags.isolated == 1
+assert os.environ['METNOS_SHIM_DIR'] == str(root / 'runtime')
+assert os.environ['METNOS_WORKSPACE'] == str(pathlib.Path.cwd() / 'workspace')
+sys.path.insert(0, os.environ['METNOS_SHIM_DIR'])
+from executor_helpers import run_stdio
+def invoke(args):
+    assert args['birth_property_action'] == 'forward'
+    return {'ok': True, 'pid': os.getpid(), 'parent_pid': os.getppid()}
+run_stdio(invoke)
+'''
+    observed = _observed_candidate(tmp_path)
+    observed = replace(observed, snapshot=replace(
+        observed.snapshot, code_files=MappingProxyType({"candidate.py": source})))
+    interpreter = Path(sys.executable).resolve()
+    registry = LinuxSandboxRegistry(tmp_path / "unused-bwrap", D, interpreter, D)
+    captured = {}
+
+    def run_trusted_fixture(command, **kwargs):
+        work = tmp_path / "work"
+        work.mkdir()
+        candidate = work / "candidate"
+        candidate.mkdir()
+        materialize_candidate_files(candidate, kwargs["candidate_files"])
+        materialize_fixture(work, kwargs["fixture_ops"])
+        # No ambient Metnos paths or credentials enter this unit child.
+        env = {"METNOS_USER_DATA": str(work / "data"),
+               "METNOS_USER_STATE": str(work / "state"),
+               "METNOS_USER_CONFIG": str(work / "config")}
+        with subprocess.Popen(command, cwd=work, env=env, stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
+            captured["harness_pid"] = process.pid
+            try:
+                stdout, stderr = process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+                raise
+            assert process.returncode == 0, stderr.decode("utf-8", "replace")
+        json.loads(stdout)
+        return RunnerResult(
+            RunnerStatus.PASSED, None, 0, stdout.decode(), stderr.decode(), 0.1,
+            ProcessAttestation("unit-fixture-only", False, False, False, False,
+                               False, False, False, None, False, False))
+
+    monkeypatch.setattr(runner_module.sys, "platform", "linux")
+    monkeypatch.setattr(runner_module, "run_birth_phase", run_trusted_fixture)
+    result = ObservedPropertyRunner(observed, linux_registry=registry).run(
+        runner_module.PropertyCase("output.actual", {}, {}),
+        fixture_id="empty_private_root", isolation="private_read_only")
+    assert result.output["ok"] is True
+    assert result.output["pid"] != captured["harness_pid"]
+    assert result.output["parent_pid"] == captured["harness_pid"]
+    assert observed.snapshot.code_files["candidate.py"] == source

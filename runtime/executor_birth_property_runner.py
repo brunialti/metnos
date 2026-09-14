@@ -69,6 +69,19 @@ def _attestation_hash(result: object, *, candidate_id: str, case_id: str,
 
 
 _HARNESS_PATH = "_metnos_birth_property_harness_v1.py"
+_STDIO_PATH = "_metnos_birth_property_stdio_v1.py"
+_STDIO_SOURCE = r'''
+import os, pathlib, runpy, sys
+root = pathlib.Path(__file__).resolve().parent
+entrypoint = sys.argv[1]
+# Only the child imports candidate code and its private, fixed support files.
+os.environ['METNOS_WORKSPACE'] = str(pathlib.Path.cwd() / 'workspace')
+os.environ['METNOS_SHIM_DIR'] = str(root / 'runtime')
+sys.path.insert(0, str(root / 'runtime'))
+sys.path.insert(1, str(root))
+sys.argv = [entrypoint]
+runpy.run_path(entrypoint, run_name='__main__')
+'''.encode("utf-8")
 _HARNESS_SOURCE = r'''
 import hashlib, json, pathlib, subprocess, sys
 harness_dir = pathlib.Path(__file__).resolve().parent
@@ -90,7 +103,8 @@ def file_hash(path):
     return 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
 def invoke(action):
     value = dict(request); value['birth_property_action'] = action
-    result = subprocess.run([sys.executable, entrypoint], input=json.dumps(value).encode(),
+    result = subprocess.run([sys.executable, '-I', str(harness_dir / '@@STDIO_PATH@@'), entrypoint],
+                            input=json.dumps(value).encode(),
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if result.returncode:
         sys.stderr.buffer.write(result.stderr); raise SystemExit(result.returncode)
@@ -117,7 +131,35 @@ if request['fixture_id'] == 'private_mutable_state':
                         state_after_undo_hash=restored)
 print(json.dumps({'output': output, 'observations': observations},
                  sort_keys=True, separators=(',', ':')))
-'''.encode("utf-8")
+'''.replace('@@STDIO_PATH@@', _STDIO_PATH).encode("utf-8")
+
+
+def _candidate_files_with_support(code_files: Mapping[str, bytes]) -> dict[str, bytes]:
+    from executor_birth_functional import _support_files
+    from executor_birth_snapshot import CandidateSnapshotError, _portable_relative
+
+    try:
+        owned = _support_files()
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("property_support_unavailable") from exc
+    owned.update({_HARNESS_PATH: _HARNESS_SOURCE, _STDIO_PATH: _STDIO_SOURCE})
+    reserved = tuple(PurePosixPath(name.casefold()) for name in owned)
+    for name in code_files:
+        try:
+            path = PurePosixPath(_portable_relative(name).casefold())
+        except CandidateSnapshotError as exc:
+            raise PropertyContractError("property_candidate_invalid", "support_path") from exc
+        if any(path == item or path in item.parents or item in path.parents
+               for item in reserved):
+            raise PropertyContractError("property_candidate_invalid", "reserved_support_path")
+    return {**code_files, **owned}
+
+
+_PUBLIC_UNAVAILABLE_REASONS = frozenset({
+    "linux_sandbox_registry_unavailable", "linux_sandbox_program_unavailable",
+    "linux_sandbox_program_mismatch", "platform_backend_unavailable",
+    "property_support_unavailable",
+})
 
 
 class ObservedPropertyRunner:
@@ -181,10 +223,6 @@ class ObservedPropertyRunner:
         # A fixed core harness supplies stdin from the immutable request file;
         # neither command nor candidate bytes come from the Birth caller.
         entrypoint = self._entrypoint()
-        candidate_files = dict(self._observed.snapshot.code_files)
-        if _HARNESS_PATH in candidate_files:
-            raise PropertyContractError("property_candidate_invalid", "reserved_harness_path")
-        candidate_files[_HARNESS_PATH] = _HARNESS_SOURCE
         if sys.platform == "win32":
             command = (_HARNESS_PATH, entrypoint)
         elif sys.platform.startswith("linux"):
@@ -196,6 +234,7 @@ class ObservedPropertyRunner:
                        "candidate/" + _HARNESS_PATH, entrypoint)
         else:
             raise RuntimeError("platform_backend_unavailable")
+        candidate_files = _candidate_files_with_support(self._observed.snapshot.code_files)
         result = run_birth_phase(
             command,
             fixture_ops=self._fixture(case, fixture_id),
@@ -450,7 +489,9 @@ def run_property(
             raise
         except Exception as exc:  # runner unavailability is fail-closed evidence
             status = PropertyStatus.UNAVAILABLE
-            error = "property_runner_unavailable"
+            reason = exc.args[0] if len(exc.args) == 1 else None
+            error = (reason if isinstance(reason, str) and reason in _PUBLIC_UNAVAILABLE_REASONS
+                     else "property_runner_unavailable")
             output_hash = _hash({"unavailable": type(exc).__name__})
             attestation_hash = _hash({"attestation": "unavailable"})
         else:
