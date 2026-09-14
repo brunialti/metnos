@@ -812,9 +812,9 @@ La revisione avversariale deve dare risposta esplicita almeno a queste domande:
    (§12.12). Con la decisione del 14/9 parte subito.
 5. **Tracciamento.** Questo è l'unico documento di RM-0009: la copia vecchia
    (revisione 4, 20 KB) è stata rimossa dal ramo `codex/rm0008-reboot` con il
-   commit `5e551d73` (14/9, su richiesta di Roberto). Il documento non è ancora
-   tracciato da Git nel checkout principale: va committato per non perderlo e
-   per congelare la baseline chiesta dal §11.1.
+   commit `5e551d73` (14/9, su richiesta di Roberto). Il documento è tracciato
+   nel checkout principale dal commit `10773f44`; la baseline del §11.1 va
+   comunque congelata sulla revisione normativa approvata.
 
 ## 12. Analisi implementativa temporanea per agenti medium
 
