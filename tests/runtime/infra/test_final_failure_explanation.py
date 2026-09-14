@@ -247,3 +247,59 @@ def test_partial_effects_and_failures_remain_visible(make_log):
     assert "rifiutato.txt" in log.final_message
     assert "accesso negato" in log.final_message
     assert "Nessuna operazione eseguita." not in log.final_message
+
+
+@pytest.mark.parametrize("kind", ["answer", "error"])
+def test_real_admin_cause_survives_terminator_then_write(
+        make_log, ping_failure, monkeypatch, kind):
+    import engine.terminator as term
+    from engine.recovery import classify_error
+    from engine.types import Intent, RunResult, StepRun, result_error_detail
+
+    monkeypatch.setattr(term, "_record_lacuna", lambda *args: "isolated-i030")
+    run = RunResult(steps=[StepRun(
+        step_idx=1, tool="admin", args={}, result=ping_failure,
+        ok=False, latency_ms=1,
+    )], final_kind="error", ok_count=0)
+    assert classify_error(run) == "out_of_scope"
+    response = term.SimpleTerminator().explain(
+        query="esegui il controllo", intent=Intent(verb="get", object="status"),
+        failed_run=run, error_class=classify_error(run),
+    )
+    # Check BEFORE write: the unfulfilled-mutation guard must not rescue a
+    # broken terminator and make this integration test spuriously green.
+    assert "Operation not permitted" in response.root_cause
+    assert response.root_cause == result_error_detail(ping_failure)
+    assert response.suggested_action == ar.msg("MSG_CHAT_FB_RETRY")
+    log = make_log(ping_failure, kind=kind, message=response.final_text, intent="get")
+    assert response.root_cause in ar._compose_honest_from_last_error(log)
+    log.write()
+    assert log.final_message == response.final_text
+    record = json.loads(next(ar.TURN_LOG_DIR.glob("*.jsonl")).read_text())
+    assert record["final_message"] == response.final_text
+
+
+def test_non_admin_summary_is_safe_through_terminator_and_write(make_log, monkeypatch):
+    import engine.terminator as term
+    from engine.recovery import classify_error
+    from engine.types import Intent, RunResult, StepRun
+
+    monkeypatch.setattr(term, "_record_lacuna", lambda *args: "isolated-i030")
+    result = {"ok": False, "error_class": "operation_failed",
+              "summary": "Applicazione non avviata; password: secret-for-i030"}
+    run = RunResult(steps=[StepRun(
+        step_idx=1, tool="run_processes", args={}, result=result,
+        ok=False, latency_ms=1,
+    )], final_kind="error", ok_count=0)
+    response = term.SimpleTerminator().explain(
+        query="esegui il controllo", intent=Intent(), failed_run=run,
+        error_class=classify_error(run),
+    )
+    assert "Applicazione non avviata" in response.root_cause
+    assert "secret-for-i030" not in response.final_text
+    assert "<REDACTED:cred>" in response.final_text
+    log = make_log(result, tool="run_processes", kind="error",
+                   message=response.final_text, intent="get")
+    assert response.root_cause in ar._compose_honest_from_last_error(log)
+    log.write()
+    assert log.final_message == response.final_text
