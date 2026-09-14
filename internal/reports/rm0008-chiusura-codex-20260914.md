@@ -54,6 +54,39 @@ aggiunta verifica del contratto sorgente reale (23 test del modulo superati,
 non viene alterato il contenuto della release firmata. Documentazione IT/EN
 pubblicata e verificata su `https://3370ab68.mykleos.pages.dev`.
 
+**Esito conclusivo di questo difetto: corretto in produzione nella release 43.**
+Correzione linguistica `b17f2ee1`; preparazione 1756 file, census
+`6b3dd023d5bfc7c9c7a6bf9bd1cbb09f9bfbbbb0d21a8ad73c503d33ada9655c`.
+Verificati anche tutti gli 86 stati linguistici dei manifest sorgente, senza
+ulteriori disallineamenti. Rilascio ordinario concluso rc0: `CUTOVER_OK`,
+`PREFLIGHT_VERIFIED`, `find_places=store_verified`, attivazione completata.
+
+Build 43 `sha256:803243e41a5cda103408f5550a37702127872b2271f39650c2cdafb5a4d10467`,
+sorgente `sha256:0e9b318c0279b7bdf21270dad7facf92a587e02cfcddddbad9fdc844bd2f1d3b`,
+cutover `sha256:80b2fa792b3d4b3b239a800aa466094cf4506e3c487bb263f3553949008e2f6c`,
+richiesta `sha256:239ef1cd5e3fda004bcaf5dc2c0ef3956823394d2007ac1ea39dae34afb0977f`.
+Generazione `find_places`:
+`sha256:5a50cfe672290fc99fff557c100446c318cacc7e81cda774e30dbe55d75244c2`.
+Evidenza: `/var/lib/metnos-admin/rm0008-cycle-evidence-803243e41a5cda10`.
+
+Collaudo **e2e HTTP reale**, unica ripetizione della richiesta originale dopo
+la pubblicazione completa: turno `f8302964d3de4b3f`, 15 settembre ore 00:47,
+5,950 secondi. `get_location(subject="server")` legge la posizione configurata;
+`find_places(queries=["farmacia"], near=<posizione osservata>)` restituisce
+cinque luoghi da `backend=google`, distanze ordinate 0,182 / 0,238 / 0,455 /
+0,462 / 0,523 km. `fail_count=0`, nessuna classe d'errore, nessun consenso
+pendente, nessuna mutazione. Risposta HTTP e registro persistente concordano;
+rilettura amministrativa `run-jlv6bl5u`, senza ripetere la ricerca.
+
+La distanza è in linea d'aria dal centro configurato, la cui accuratezza
+dichiarata è 150 m: non è un percorso pedonale né una garanzia di apertura.
+La tabella conserva le intestazioni tecniche preesistenti (`name`, `address`,
+`distance_km`), non localizzate: limite di presentazione ancora presente,
+non attribuito a un errore di geolocalizzazione o a mancanza di risultati.
+Salute HTTP e stack dopo l'attivazione: `ok=true`, `ready=true`.
+Questo esito chiude il difetto `ee4fc62c`, non certifica l'intera RM0008 né
+la persistenza dei permessi Windows descritta nella sezione successiva.
+
 ## Permessi di avvio riutilizzabili: richiesta successiva alla R40
 
 Roberto richiede che «fino al prossimo riavvio» non chieda di nuovo consenso
