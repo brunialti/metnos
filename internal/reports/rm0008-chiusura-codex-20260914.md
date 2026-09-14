@@ -16,8 +16,13 @@ un contratto già pubblicato anche per una prima ammissione. Corretto con
 HTTP `ok=true`, stack `ok=true, ready=true`.
 
 La prova reale della 39 ha trovato un ulteriore errore nella risposta finale.
-La correzione è in preparazione per la 40: non viene dichiarata riuscita una
-chiusura di un processo effettivamente aperto sul PC.
+Corretto con `77d00049`, distribuito nella release **40**: `CUTOVER_OK`,
+`PREFLIGHT_VERIFIED`, pubblicazione componenti completata senza cambiamenti
+aggiuntivi, codice di uscita 0. HTTP e stack pronti. La stessa richiesta
+Word ora riporta lo stato già chiuso osservato dall'esecutore, senza dichiarare
+una chiusura appena compiuta. Non viene dichiarata riuscita la chiusura di
+un processo effettivamente aperto: serve ancora la prova con Word aperto e
+conferma normale inviata da Roberto, non da Codex.
 
 Evidenze riesaminate:
 
@@ -29,6 +34,14 @@ Evidenze riesaminate:
 | `c04d1548c671462c` | «chiudi word su pc-roberto» ha proposto `taskkill /F /IM winword.exe` senza mantenere la destinazione. Non eseguito. Roberto precisa che Word non aveva documenti: non cambia l'errore di comportamento e risposta. |
 | `f50d00eb0bcf48b8` (R39) | Ricerca e `set_processes` sul PC corretto. Word osservato già chiuso: `_undo.no_effect`, messaggio dell'esecutore «Risultano già chiusi…». Il template finale lo ha falsificato in «Ho chiuso Word.»: errore riprodotto, nessun processo terminato. |
 | `aa1b75c9d56b45de` (R39) | ExpressVPN risolto e interrogato sul PC; chiesta conferma per chiusura normale/forzata con avviso sui dati. `final_kind=ask`, dialogo `a61bb0888a414b1b`. Nessuna scelta inviata da Codex, nessuna chiusura dichiarata. |
+| `8727e84ef0e94f46` (R40) | Stessa richiesta Word, stesso PC. Risposta HTTP e record persistente concordano: «Risultano già chiusi su ROBERTO_PC_HP: Word.» `find_packages` e `set_processes` riusciti, nessuna proposta amministrativa, nessuna conferma inviata. 15,584 secondi. Lo stato visivo sul PC resta da confrontare con l'utente. |
+
+Ricevuta remota R40 `inv-18d54c7d1efc9202c0516787`, sul dispositivo
+`7bd3da08649e43c2b7e0a6bdecc66ecd`: `already_closed=true`,
+`_undo.outcome=no_effect`. Registro del turno: `mutations=0`, `failures=0`,
+`false_success_detected=false`, nessuna classe d'errore. Il percorso è
+`fastpath`: la correzione funziona anche con il piano già memorizzato, senza
+cancellare o ritoccare la cache. Diagnostica in sola lettura `run-s0xs9kh8`.
 
 La conferma sul turno serale non rettifica retroattivamente il consenso
 contestato del turno pomeridiano `f35ee3d12afa4d57`.
@@ -70,6 +83,20 @@ cutover `sha256:a0a2ed8d1b390a55ad44e9cbe7c3cc404b1cd117dda57cb5a83df8aa850b96f2
 Evidenza `/var/lib/metnos-admin/rm0008-cycle-evidence-802dc2205294f2e6`.
 Generazione ammessa `set_processes`:
 `sha256:495db5b22011c3450f78ae6e67575b3a1c1368417ee243ad4fe8bbd686642296`.
+
+Release 40: build
+`sha256:4cfa7f364d6cc9bea3d41c4f149613ca0621a15becff1b3e908dccae45952959`,
+sorgente `sha256:d9e5dbb4ca001f420bf657cd52e2c87792ed1496aff284642b49dfa0f5add826`,
+cutover `sha256:f9b577470339f137dd88102c6e7094fed19832dfbc5d8f045cb11236029368b7`,
+richiesta `sha256:2a7e7109d72fdc1b645710ea69b21948b6c83680226a5e09555e8764a28fea0f`.
+Evidenza `/var/lib/metnos-admin/rm0008-cycle-evidence-4cfa7f364d6cc9be`.
+Controlli confine/catalogo: 82 superati prima della preparazione; la sola
+verifica della nuova impronta sorgente è passata dopo `prepare` (1 test).
+Non è stato rieseguito il test ExpressVPN di sola proposta: esecutore e
+percorso di conferma invariati rispetto alla prova R39 sopra riportata.
+Documentazione pubblica IT/EN aggiornata:
+`https://43644119.mykleos.pages.dev`, catalogo Tutor locale non modificato
+dal comando di pubblicazione statica.
 
 Release 38: build
 `sha256:2411c210be65440f913e4a07f518d2475ed443f2b6c6f49692048ce1503524ae`,
