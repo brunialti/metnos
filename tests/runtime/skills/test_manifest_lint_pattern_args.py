@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import sys
+import tomllib
 from pathlib import Path
+
+import pytest
 
 
 RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
@@ -11,6 +14,16 @@ from manifest_lint import (  # noqa: E402
     _pattern_call_args,
     lint_manifest,
 )
+
+
+@pytest.mark.parametrize("name", ["get_location", "find_packages", "run_processes"])
+@pytest.mark.parametrize("language", ["it", "en"])
+def test_repaired_turn_manifests_pass_the_actual_birth_linter(name, language):
+    path = RUNTIME.parent / "executors" / name / "manifest.toml"
+    manifest = tomllib.loads(path.read_text())
+    failures = [item for item in lint_manifest(manifest, language=language)
+                if item.severity == "error"]
+    assert failures == []
 
 
 def test_pattern_args_ignore_nested_callback_properties() -> None:

@@ -61,6 +61,17 @@ def test_phase_one_only_queries_and_returns_two_explicit_choices(windows):
     ]
 
 
+def test_portable_provider_does_not_import_unrelated_desktop_dependencies(windows, monkeypatch):
+    import builtins
+    original = builtins.__import__
+    def import_module(name, *args, **kwargs):
+        if name == "windows_desktop_apps":
+            raise ModuleNotFoundError(name)
+        return original(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, "__import__", import_module)
+    assert run_processes.invoke({"programs": ["Vendor.Sensor"]})["decision"] == "needs_inputs"
+
+
 @pytest.mark.parametrize(
     ("language", "session_text", "persistent_text"),
     [

@@ -123,8 +123,8 @@ def _appx_call(*arguments: str) -> dict | None:
 
 
 def _identity_family(package_id: str) -> str | None:
-    from windows_desktop_apps import IDENTITY_RE
     if package_id.startswith("desktop:"):
+        from windows_desktop_apps import IDENTITY_RE
         return "desktop" if IDENTITY_RE.fullmatch(package_id) else None
     if _APPX_PACKAGE_ID.fullmatch(package_id):
         return "appx"
