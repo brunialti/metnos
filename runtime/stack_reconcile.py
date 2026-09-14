@@ -572,40 +572,11 @@ def _release_plan_snapshot(ref, current, trusted):
         raise
 
 
-def _release_plan_receipt(ref, generation, context):
-    from contract_store import (
-        _birth_receipt_path_for_context, _existing_contract_directory, _read_regular_file,
-    )
-    from executor_birth_operational import birth_failure_diagnostic
-    from executor_birth_receipts import ReceiptError, verify_admission_receipt
-
-    try:
-        path = _birth_receipt_path_for_context(
-            _existing_contract_directory(ref.contract_id, store_root=None),
-            generation, context.selection,
-        )
-        encoded = _read_regular_file(path, code="birth_receipt_invalid")
-        receipt = verify_admission_receipt(
-            encoded, verifier_keys=context.authorities.admission.verifier_keys)
-        if (receipt.contract_id != ref.contract_id.value
-                or receipt.generation_id != generation
-                or receipt.admission_context_id != context.selection.admission_context_id
-                or encoded != _read_regular_file(path, code="birth_receipt_invalid")):
-            raise ReceiptError("birth_receipt_binding_invalid", "preview")
-        return {"status": "verified", "format": "v2", "generation_id": generation,
-                "admission_context_id": receipt.admission_context_id}
-    except Exception as exc:
-        return {"status": "error", "format": "v2", "generation_id": generation,
-                "diagnostic": dataclasses.asdict(birth_failure_diagnostic(exc, "receipt"))}
-
-
 def _release_plan_details(ref, current, served, prepared, language, code, context):
     """Informational projection of bytes, not an admission or future promise."""
     import hashlib
     import tomllib
-    from contract_store import (
-        _existing_contract_directory, _load_generation_for_commit,
-    )
+    from contract_store import inspect_birth_receipts
     from executor_birth_operational import birth_failure_diagnostic
 
     candidate, previous = tomllib.loads(prepared.decode()), tomllib.loads(served.manifest_bytes.decode())
@@ -623,37 +594,15 @@ def _release_plan_details(ref, current, served, prepared, language, code, contex
         "served_code_digest": previous.get("code", {}).get("digest"),
         "selected_head_id": context.required_head_id,
         "selected_context_id": context.selection.admission_context_id,
-        "receipt": _release_plan_receipt(ref, current.generation_id, context),
         "destination": {"status": "not_evaluated", "reason": "candidate_not_admitted"},
         "runtime_module": {"status": "not_evaluated", "reason": "verified_by_loader_at_activation"},
     }
-    # Find an exact historical destination under the ACTIVE author key only.
-    # This neither signs a candidate nor treats old admission keys as current.
-    matches = []
-    history = {"status": "complete", "matches": matches, "unverified_generations": 0}
-    row["historical_collision"] = history
     try:
-        directory = _existing_contract_directory(ref.contract_id, store_root=None)
-        author = context.authorities.author
-        active = ((author.active_key_id, author.verifier_keys[author.active_key_id]),)
-        for entry in sorted((directory / "generations").iterdir()):
-            generation = "sha256:" + entry.name
-            try:
-                payloads = _load_generation_for_commit(
-                    ref, generation, trusted_publics=active, store_root=None)
-            except Exception:
-                # A historical generation signed by another author is not an
-                # exact destination under the active key. No old key adoption.
-                history["unverified_generations"] += 1
-                continue
-            if (payloads["manifest.toml"] == prepared
-                    and payloads["manifest.lang_state.json"] == language):
-                matches.append(_release_plan_receipt(ref, generation, context))
-        if history["unverified_generations"]:
-            history.update(status="not_evaluated", reason="some_historical_signatures_unverified")
+        row.update(inspect_birth_receipts(
+            ref, current.generation_id, prepared, language, context_runtime=context))
     except Exception as exc:
-        history.update(status="not_evaluated", diagnostic=dataclasses.asdict(
-            birth_failure_diagnostic(exc, "history")))
+        row["receipts"] = {"status": "not_evaluated", "diagnostic": dataclasses.asdict(
+            birth_failure_diagnostic(exc, "receipt"))}
     return row
 
 
@@ -707,7 +656,6 @@ def verify_named_executors(
             materialize_birth_candidate_from_authoring,
         )
         from sign import list_trusted_publics
-        from contract_store import _editable_manifest
         import tomlkit
 
         from executor_birth_operational import birth_failure_diagnostic
@@ -794,8 +742,11 @@ def verify_named_executors(
                             # Regeneration owns code/schema, not the served
                             # line's version. Normalize before changed-only
                             # and before Birth, after the stale-copy check.
-                            document = _editable_manifest(prepared)
-                            served_document = _editable_manifest(served.manifest_bytes)
+                            document = tomlkit.parse(prepared.decode("utf-8"))
+                            served_document = tomlkit.parse(served.manifest_bytes.decode("utf-8"))
+                            if (tomlkit.dumps(document).encode("utf-8") != prepared
+                                    or tomlkit.dumps(served_document).encode("utf-8") != served.manifest_bytes):
+                                raise CandidateSnapshotError("builtin_version_roundtrip_changed", name)
                             version = served_document.get("version")
                             if not isinstance(version, str) or not version:
                                 raise CandidateSnapshotError("builtin_version_invalid", name)

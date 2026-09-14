@@ -5646,6 +5646,50 @@ def _required_receipt_selection(context_id=_BIRTH_DIGEST):
                    admission_context_id=context_id)
 
 
+@pytest.mark.parametrize("fault", [None, "missing_context", "wrong_key"])
+def test_readonly_birth_receipt_projection_uses_selected_context_without_writes(tmp_path, monkeypatch, fault):
+    from types import SimpleNamespace as NS
+    from executor_birth_prepared_root import RequiredContextRuntimeV1, SealedAuthoritiesV1
+
+    ref, store, first, second, selection, key, options = _historical_birth_return(tmp_path)
+    commit_birth_snapshot(ref, **options)
+    if fault == "missing_context":
+        selection = _required_receipt_selection(_birth_digest("f"))
+    keys = {"birth-test-key": (Ed25519PrivateKey.generate() if fault == "wrong_key" else key).public_key()}
+    trusted = dict(options["trusted_publics"])
+    authorities = SealedAuthoritiesV1(
+        prepared=NS(set_id=selection.set_id, prepared_admission_context_id=selection.admission_context_id,
+                    prepared_context_epoch=selection.context_epoch),
+        author=NS(active_key_id=next(iter(trusted)), verifier_keys=trusted),
+        admission=NS(verifier_keys=keys), producers={}, approval=None, semantic=None,
+        sandbox=None, context_epoch=selection.context_epoch, material=None)
+    context = RequiredContextRuntimeV1(selection, authorities, _birth_digest("e"))
+    monkeypatch.setattr(contract_store_module, "catalog_admission_lock", lambda **k: pytest.fail("store lock"))
+    monkeypatch.setattr(contract_store_module, "_writer_lock", lambda *a, **k: pytest.fail("writer lock"))
+
+    def census():
+        return {str(path): (path.read_bytes(), path.stat().st_mtime_ns)
+                for root in (store, ref.manifest_dir) for path in root.rglob("*") if path.is_file()}
+
+    before = census()
+    result = contract_store_module.inspect_birth_receipts(
+        ref, first.current_generation_id, options["snapshot"].manifest_bytes,
+        options["snapshot"].language_state_bytes, context_runtime=context, store_root=store)
+    assert result["receipt"]["status"] == ("verified" if fault is None else "error")
+    assert result["receipt"]["format"] == "v2"
+    [match] = result["historical_collision"]["matches"]
+    assert match["generation_id"] == first.current_generation_id
+    assert match["status"] == ("verified" if fault is None else "error")
+    assert before == census()
+    options["snapshot"].close()
+
+
+def test_readonly_birth_receipt_projection_rejects_a_caller_supplied_context(monkeypatch):
+    monkeypatch.setattr(contract_store_module, "current_contract", lambda *a, **k: pytest.fail("read store"))
+    with pytest.raises(ContractStoreError, match="birth_context_selection_invalid"):
+        contract_store_module.inspect_birth_receipts(None, None, b"", b"", context_runtime=object())
+
+
 def _historical_birth_return(tmp_path):
     from executor_birth_snapshot import materialize_birth_candidate_from_authoring
 

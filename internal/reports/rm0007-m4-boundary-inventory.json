@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:9bb9c983ddf181115ad67eaccdeed151d9a28b70a72bf6bc7669e1b14d5fcf6d",
+  "source_census": "sha256:bcc75468dcf03235ad05af53c6c617893a5a8304578b489c07cca7357c13966d",
   "scan_roots": [
     "runtime",
     "install",
@@ -1889,6 +1889,18 @@
         "verified_store_read"
       ],
       "destination": "sealed exact-generation and admission-receipt authority for dispatch",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "inspect_birth_receipts",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "store-owned read-only receipt projection; private layout never exported to callers",
       "phase": "M4"
     },
     {
@@ -4567,6 +4579,7 @@
       "scope": "<module>",
       "role": "administrative_tool",
       "capabilities": [
+        "authoring_write",
         "birth"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
@@ -4577,6 +4590,7 @@
       "scope": "StackReconciler.restart",
       "role": "administrative_tool",
       "capabilities": [
+        "authoring_write",
         "birth"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
@@ -4587,6 +4601,7 @@
       "scope": "StackReconciler.watchdog",
       "role": "administrative_tool",
       "capabilities": [
+        "authoring_write",
         "birth"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
@@ -4607,6 +4622,7 @@
       "scope": "main",
       "role": "administrative_tool",
       "capabilities": [
+        "authoring_write",
         "birth"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
@@ -4619,11 +4635,32 @@
       "capabilities": [
         "authoring_read",
         "authoring_verify",
+        "authoring_write",
         "birth",
         "live_artifact_read",
         "verified_store_read"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
+      "scope": "_release_plan_details",
+      "role": "live_reader",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "read-only public store projection for release preview",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
+      "scope": "_release_plan_snapshot",
+      "role": "live_reader",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "authenticated owned snapshot without creating productive store locks",
       "phase": "M4"
     },
     {
