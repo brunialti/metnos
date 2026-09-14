@@ -72,6 +72,27 @@ def test_condivisa_stantia_cede_alla_configurata(monkeypatch):
     assert out["location"]["lat"] == 1.5
 
 
+def test_server_never_uses_the_users_shared_location(monkeypatch):
+    monkeypatch.setenv("METNOS_OWNER_USER_ID", "owner")
+    monkeypatch.setattr(get_location, "get_last_location", lambda **_: pytest.fail(
+        "The user's location must not be read for a server request"))
+    monkeypatch.setattr(host_location, "configured_position", lambda *a: {
+        "lat": 1.5, "lon": 2.5, "source": "configured", "accuracy_m": 5.0})
+    out = get_location.invoke({"subject": "server"})
+    assert out["ok"] is True
+    assert out["location"]["source"] == "configured"
+    assert out["location"]["lat"] == 1.5
+    monkeypatch.setattr(host_location, "configured_position", lambda *a: None)
+    assert get_location.invoke({"subject": "server"})["error_class"] == "not_found"
+
+
+@pytest.mark.parametrize("subject", [None, "unknown", [], {}])
+def test_invalid_subject_is_rejected(subject):
+    out = get_location.invoke({"subject": subject})
+    assert out["ok"] is False
+    assert out["error_code"] == "ERR_ARG_ENUM"
+
+
 def test_senza_owner_logico_la_macchina_sa_comunque_dove_si_trova(monkeypatch):
     """Il primo anello e' owner-scoped; gli altri no. Prima di questa catena
     l'assenza di owner era un errore di autorizzazione secco."""

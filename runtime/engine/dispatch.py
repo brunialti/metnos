@@ -1742,10 +1742,9 @@ def _align_framework_objects(framework: Framework, intent,
                 for st in steps:
                     tool = getattr(st, "tool", None)
                     nc = _ng.parse_name(tool) if tool else None
-                    if (tool == "get_now" and "numbers" in all_objs):
-                        # get_now is a valid scalar producer for the numbers
-                        # clause; it is not a foreign filesystem/health
-                        # producer to be replaced by get_processes.
+                    if tool in _SINGULAR_EXECUTORS:
+                        # The second pass has the same vocabulary limitation
+                        # as the first: scalar operations have no plural peer.
                         continue
                     if (not nc or nc.verb not in _PRODV
                             or nc.obj in all_objs):
@@ -2672,7 +2671,7 @@ def _align_foreign_producers_v3(framework, producer_objs, _PRODV, _derive,
     for st in steps:
         tool = getattr(st, "tool", None)
         nc = _ng.parse_name(tool) if tool else None
-        if not nc or nc.verb not in _PRODV or nc.obj in producer_set \
+        if tool in _SINGULAR_EXECUTORS or not nc or nc.verb not in _PRODV or nc.obj in producer_set \
                 or _fs_equivalent(nc.obj, producer_set):
             continue  # non-produttore o oggetto-intent legittimo/equivalente
         if nc.obj == "entries":

@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name         = "run_processes"
-version      = "0.5.1"
+version      = "0.5.2"
 intelligence = "deterministic"
 timeout_s    = 30
 platforms    = ["windows"]

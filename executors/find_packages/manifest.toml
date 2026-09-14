@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_packages"
-version     = "0.5.2"
+version     = "0.5.3"
 platforms   = ["linux", "windows"]
 author      = "synt-multistage <synt@metnos.com>"
 affinity    = ["installato", "installed", "e' installato", "is installed",
@@ -91,7 +91,7 @@ hint = ["installed_software", "package_database"]
 # nega a winget l'accesso che gli serve — declassamento dichiarato nel result.
 [[capabilities]]
 name = "code:exec"
-hint = ["winget", "dpkg-query", "rpm", "pacman"]
+hint = ["winget", "dpkg-query", "rpm", "pacman", "powershell"]
 
 [placement]
 # Read-only: nessuna modifica alla macchina. Il device SOLO se la chat lo

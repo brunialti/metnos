@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from types import SimpleNamespace as NS
+import pytest
 
 
 from engine.dispatch import _align_framework_objects  # noqa: E402
@@ -91,6 +92,19 @@ def test_noop_when_target_tool_absent_from_catalog():
     intent = NS(actions=[{"verb": "find", "object": "contacts"}])
     _align_framework_objects(fw, intent, _CATALOG)
     assert _tools(fw) == ["find_pulls_github"]
+
+
+@pytest.mark.parametrize("engine", ["v2", "v3"])
+@pytest.mark.parametrize(("tool", "obj"), [("get_location", "places"), ("get_now", "numbers")])
+def test_scalar_producer_survives_both_alignment_passes(monkeypatch, engine, tool, obj):
+    monkeypatch.setenv("METNOS_ENGINE", engine)
+    fw = _fwa(tool, "final_answer")
+    fw.steps[0].args = {"verify": True}
+    intent = NS(actions=[], verb="get", object=obj)
+    catalog = [{"name": tool}, {"name": "get_" + obj}]
+    _align_framework_objects(fw, intent, catalog)
+    assert _tools(fw) == [tool, "final_answer"]
+    assert fw.steps[0].args == {"verify": True}
 
 
 # ── _enforce_missing_clauses (fallback deterministico, §7.9) ───────────────

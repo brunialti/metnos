@@ -27,6 +27,42 @@ from executors.find_packages import find_packages  # noqa: E402
 MANIFEST = ROOT / "executors" / "find_packages" / "manifest.toml"
 
 
+@pytest.mark.parametrize("hit", [None, {"name": "Éditeur", "resolved_id": "Vendor.Editor",
+                                       "version": "2", "source": "winget"}])
+def test_registered_desktop_app_is_detected_and_has_an_exact_launch_identity(monkeypatch, hit):
+    import windows_desktop_apps as desktop
+    package = "desktop:" + "b" * 64
+    monkeypatch.setattr(find_packages, "_probe_windows", lambda *a, **k: dict(hit) if hit else None)
+    monkeypatch.setattr(desktop, "find", lambda name: {"ok": True, "entries": [
+        {"name": "Éditeur", "resolved_id": package, "version": "", "source": "windows_start_menu"}]})
+    entry = find_packages._probe("Éditeur", {"os": "windows", "winget": "winget", "manager": ""})
+    assert entry["installed"] is True and entry["resolved_id"] == package
+    assert entry["version"] == ("2" if hit else "")
+
+
+@pytest.mark.parametrize("hit", [
+    {"name": "Editor", "source": "winget", "version": "", "also_matched": ["Editor Two"]},
+    {"name": "Editor", "source": "winget", "version": "", "resolved_id": "appx:Vendor.Editor"},
+])
+def test_desktop_does_not_override_ambiguous_inventory_or_native_appx(monkeypatch, hit):
+    import windows_desktop_apps as desktop
+    monkeypatch.setattr(find_packages, "_probe_windows", lambda *a, **k: dict(hit))
+    monkeypatch.setattr(desktop, "find", lambda _: pytest.fail("must preserve existing result"))
+    entry = find_packages._probe("Editor", {"os": "windows", "winget": "winget", "manager": ""})
+    assert entry.get("resolved_id") == hit.get("resolved_id")
+
+
+def test_unavailable_windows_inventory_is_not_reported_as_not_installed(monkeypatch):
+    import windows_desktop_apps as desktop
+    monkeypatch.setattr(find_packages, "_context", lambda: {"os": "windows", "winget": "",
+                        "manager": "", "primary_source": "windows_start_menu"})
+    monkeypatch.setattr(find_packages, "_probe_path", lambda _: None)
+    monkeypatch.setattr(desktop, "find", lambda _: {"ok": False})
+    result = find_packages.invoke({"packages": ["Editor"]})
+    assert result["ok"] is False and result["entries"] == []
+    assert result["failed"][0]["error_code"] == "package_inventory_unavailable"
+
+
 def _manifest() -> dict:
     return tomllib.loads(MANIFEST.read_text(encoding="utf-8"))
 

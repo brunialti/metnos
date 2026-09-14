@@ -3,11 +3,12 @@
 
 The canonical `run` verb is distinct from opening a web session. This
 implementation handles it without accepting an executable path, command,
-arguments, task name, or shell fragment. The elevated helper resolves an exact
-package identifier from machine-owned installation metadata (ADR 0211).
+arguments, task name, or shell fragment. An exact registered identity selects
+the provider: portable packages use the helper; AppX and desktop shortcuts
+activate in the interactive user's session.
 
 The executor is intentionally two-phase. Phase one verifies that every package
-is installed and asks whether it should run until restart or at every startup.
+is installed and asks for an explicitly supported lifetime.
 Phase two receives the runtime-owned consent token and starts the packages.
 """
 from __future__ import annotations
@@ -122,6 +123,9 @@ def _appx_call(*arguments: str) -> dict | None:
 
 
 def _identity_family(package_id: str) -> str | None:
+    from windows_desktop_apps import IDENTITY_RE
+    if package_id.startswith("desktop:"):
+        return "desktop" if IDENTITY_RE.fullmatch(package_id) else None
     if _APPX_PACKAGE_ID.fullmatch(package_id):
         return "appx"
     if _PORTABLE_PACKAGE_ID.fullmatch(package_id):
@@ -131,6 +135,9 @@ def _identity_family(package_id: str) -> str | None:
 
 def _launch_call(package_id: str, operation: str, *arguments: str) -> dict | None:
     family = _identity_family(package_id)
+    if family == "desktop":
+        from windows_desktop_apps import call
+        return call(package_id, operation, *arguments)
     if family == "appx":
         return _appx_call(operation, "--package-id", package_id, *arguments)
     if family == "portable":
@@ -143,7 +150,7 @@ def _supported_lifetimes(package_ids: list[str]) -> tuple[str, ...]:
     supported = set(_LIFETIMES)
     for package_id in package_ids:
         family = _identity_family(package_id)
-        if family == "appx":
+        if family in {"appx", "desktop"}:
             supported.intersection_update({"session"})
         elif family != "portable":
             supported.clear()
@@ -169,7 +176,8 @@ def _consent_token(package_ids: list[str], lifetime: str) -> str:
 
 def _approval_dialog(
         package_ids: list[str],
-        lifetimes: tuple[str, ...] | None = None) -> dict:
+        lifetimes: tuple[str, ...] | None = None,
+        package_names: list[str] | None = None) -> dict:
     lifetimes = lifetimes or _supported_lifetimes(package_ids)
     machine = _machine_name() or _msg("MSG_CREATE_PROCESSES_MACHINE_UNKNOWN")
 
@@ -199,11 +207,12 @@ def _approval_dialog(
     description = (
         _msg(
             "MSG_CREATE_PROCESSES_APPROVAL_DESCRIPTION",
-            packages=", ".join(package_ids),
+            packages=", ".join(package_names or package_ids),
             machine=machine,
         )
         if "persistent" in lifetimes
-        else _msg("MSG_CREATE_PROCESSES_BTN_SESSION")
+        else _msg("MSG_CREATE_PROCESSES_APPROVAL_DESCRIPTION_SESSION",
+                  packages=", ".join(package_names or package_ids), machine=machine)
     )
 
     return {
@@ -350,6 +359,7 @@ def invoke(args: dict) -> dict:
     supported_lifetimes = _supported_lifetimes(package_ids)
 
     if not consent:
+        package_names = []
         for package_id in package_ids:
             answer = _launch_call(package_id, "query")
             if not answer or not answer.get("ok") or answer.get("aligned") is False:
@@ -363,7 +373,10 @@ def invoke(args: dict) -> dict:
                     "error": failed["error"],
                     "error_code": failed["error_code"],
                     "error_class": failed["error_class"],
+                    "_undo": {"outcome": "no_effect"},
                 }
+            name = answer.get("name")
+            package_names.append(name if isinstance(name, str) and name else package_id)
         return {
             "ok": True,
             "decision": "needs_inputs",
@@ -373,7 +386,7 @@ def invoke(args: dict) -> dict:
             "ok_count": 0,
             "fail_count": 0,
             "_undo": {"outcome": "no_effect"},
-            "needs_inputs": _approval_dialog(package_ids, supported_lifetimes),
+            "needs_inputs": _approval_dialog(package_ids, supported_lifetimes, package_names),
         }
 
     if (lifetime not in supported_lifetimes
@@ -396,6 +409,12 @@ def invoke(args: dict) -> dict:
         if answer and answer.get("ok") and answer.get("aligned") is not False:
             payload = answer.get("payload")
             payload = payload if isinstance(payload, dict) else {}
+            if (_identity_family(package_id) == "desktop"
+                    and payload.get("visible_window") is not True):
+                untracked_mutation = True
+                failed.append(_launch_error(package_id, {
+                    "error_code": "package_start_unverified"}))
+                continue
             created_process = payload.get("created_process") is True
             if lifetime == "session" and created_process:
                 process = payload.get("process")
@@ -415,7 +434,7 @@ def invoke(args: dict) -> dict:
                     "pid": pid,
                     "creation_time": creation_time,
                 }
-                if _identity_family(package_id) == "appx":
+                if _identity_family(package_id) in {"appx", "desktop"}:
                     activation_boundary = payload.get("activation_boundary")
                     preexisting_processes = payload.get("preexisting_processes")
                     if (not isinstance(activation_boundary, int)
@@ -451,6 +470,8 @@ def invoke(args: dict) -> dict:
                 "already_running": not created_process,
             })
         else:
+            if answer and answer.get("effects_attempted") is True:
+                untracked_mutation = True
             failed.append(_launch_error(package_id, answer))
 
     outcome = (
@@ -515,7 +536,7 @@ def reverse(_plan: dict, results: dict) -> dict:
         arguments = [
             "--pid", str(pid), "--creation-time", str(creation_time),
         ]
-        if _identity_family(package_id) == "appx":
+        if _identity_family(package_id) in {"appx", "desktop"}:
             if (not isinstance(activation_boundary, int)
                     or isinstance(activation_boundary, bool)
                     or activation_boundary <= 0

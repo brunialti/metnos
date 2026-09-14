@@ -233,6 +233,54 @@ def test_appx_persistent_choice_is_rejected_before_activation(monkeypatch):
     assert calls == []
 
 
+def test_desktop_requires_consent_visible_window_and_exact_undo(monkeypatch, windows):
+    import windows_desktop_apps as desktop
+    package_id = "desktop:" + "a" * 64
+    calls = []
+
+    def call(package, operation, *arguments):
+        calls.append((package, operation, *arguments))
+        if operation == "query":
+            return {"ok": True, "name": "Éditeur"}
+        if operation == "stop":
+            return {"ok": True, "payload": {"restored": True, "stopped": True}}
+        return {"ok": True, "payload": {
+            "visible_window": True, "created_process": True,
+            "process": {"pid": 42, "creation_time": 200},
+            "activation_boundary": 190, "preexisting_processes": [],
+        }}
+
+    monkeypatch.setattr(desktop, "call", call)
+    monkeypatch.setattr(run_processes, "_msg", shim_messages.get)
+    monkeypatch.setenv("METNOS_LANG", "it")
+    gate = run_processes.invoke({"programs": [package_id]})
+    assert calls == [(package_id, "query")]
+    assert gate["started"] is False and gate["_undo"]["outcome"] == "no_effect"
+    card = gate["needs_inputs"]
+    assert "Éditeur" in card["description"] and "PC-TEST" in card["description"]
+    assert [c["value"] for c in card["dialog"][0]["schema"]["choices"]] == ["session", "reject"]
+    assert run_processes.invoke(_approved([package_id], "persistent"))["error_code"] == "consent_invalid"
+    assert len(calls) == 1
+    started = run_processes.invoke(_approved([package_id], "session"))
+    assert started["ok"] and started["_undo"]["outcome"] == "reversible"
+    assert run_processes.reverse({}, started)["ok"]
+    assert calls[-1] == (package_id, "stop", "--pid", "42", "--creation-time", "200",
+                         "--activation-boundary", "190")
+    assert windows == []
+
+
+@pytest.mark.parametrize("answer", [
+    {"ok": False, "error_code": "package_start_unverified", "effects_attempted": True},
+    {"ok": True, "payload": {"created_process": False}},
+])
+def test_unverified_desktop_start_is_neither_success_nor_no_effect(monkeypatch, windows, answer):
+    import windows_desktop_apps as desktop
+    monkeypatch.setattr(desktop, "call", lambda *_: answer)
+    out = run_processes.invoke(_approved(["desktop:" + "a" * 64], "session"))
+    assert out["ok"] is False and out["started"] is False
+    assert out["_undo"] == {"outcome": "irreversible"}
+
+
 def test_already_running_session_is_no_effect(windows, monkeypatch):
     monkeypatch.setattr(run_processes, "_helper_call", lambda *_: {
         "ok": True, "aligned": True,
