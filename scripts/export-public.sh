@@ -242,16 +242,19 @@ fi
 # `[code].files` non vengono toccati. Anche cambiare un commento dopo la firma
 # invaliderebbe il digest. Se un payload firmato contiene PII, il gate finale
 # deve abortire: va corretto e rifirmato nella sorgente, mai sanificato qui.
+# Also preserved: any file identical to a signed payload (its mirrored source).
 declare -A SIGNED_PAYLOADS=()
 while IFS= read -r -d '' relative; do
   SIGNED_PAYLOADS["$relative"]=1
 done < <("$PYTHON" - "$DEST" <<'PY'
+import hashlib
 import os
 import sys
 import tomllib
 from pathlib import Path
 
 root = Path(sys.argv[1]).resolve()
+payloads = {}
 for manifest_path in sorted(root.rglob("manifest.toml")):
     try:
         manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
@@ -265,7 +268,35 @@ for manifest_path in sorted(root.rglob("manifest.toml")):
             relative = payload.relative_to(root).as_posix()
         except ValueError:
             continue
+        payloads[relative] = payload
         sys.stdout.buffer.write(os.fsencode(relative) + b"\0")
+
+# A file with the bytes of a signed payload is that payload's own source: a
+# builtin copy mirrors its runtime module, and the loader requires the two
+# equal.  Rewriting only the source would make them differ, so it is
+# preserved like the payload.  Recognised by content, never by name.
+digests = {}
+for payload in payloads.values():
+    try:
+        data = payload.read_bytes()
+    except OSError:
+        continue
+    digests.setdefault(len(data), set()).add(hashlib.sha256(data).digest())
+for path in sorted(root.rglob("*")):
+    if path.is_symlink() or not path.is_file():
+        continue
+    relative = path.relative_to(root).as_posix()
+    if relative in payloads:
+        continue
+    try:
+        size = path.stat().st_size
+        if size not in digests or hashlib.sha256(path.read_bytes()).digest() not in digests[size]:
+            continue
+    except OSError:
+        continue
+    print(f"export-public: preserved, identical to a signed payload: {relative}",
+          file=sys.stderr)
+    sys.stdout.buffer.write(os.fsencode(relative) + b"\0")
 PY
 )
 while IFS= read -r -d '' f; do

@@ -880,6 +880,7 @@ def test_prepare_derives_builtin_contracts_before_pins_and_export(monkeypatch, t
     calls = []
     monkeypatch.setattr(cycle.os, "geteuid", lambda: 1000)
     monkeypatch.setattr(cycle, "run_in_worktree", lambda *command: calls.append(command))
+    monkeypatch.setattr(cycle, "builtin_module_map", lambda python: {})
     monkeypatch.setattr(cycle, "reviewed_roots", lambda: ((1, "private"), (1, "public")))
     monkeypatch.setattr(cycle, "stage", lambda source, destination: None)
     monkeypatch.setattr(cycle, "census", lambda tree: (0, "census"))
@@ -913,3 +914,52 @@ def test_activation_is_proven_per_origin_for_same_named_contracts(
     admitted = "RELEASE_EDITS_ADMITTED" in capsys.readouterr().out
     assert (result == 0) is activated_builtin
     assert admitted is activated_builtin
+
+
+def test_builtin_copy_drift_names_each_copy_unlike_its_own_module(tmp_path):
+    (tmp_path / "runtime").mkdir()
+    (tmp_path / "runtime/a.py").write_bytes(b"A")
+    (tmp_path / "runtime/b.py").write_bytes(b"B")
+    for name in ("same", "other_module"):
+        copy = tmp_path / "runtime/builtin_executor_contracts" / name
+        copy.mkdir(parents=True)
+        (copy / "implementation.py.src").write_bytes(b"A")
+    modules = {"same": "runtime/a.py", "other_module": "runtime/b.py",
+               "missing": "runtime/a.py"}
+    # Equal to some other module is still drift: only its own module counts.
+    assert cycle.builtin_copy_drift(tmp_path, modules) == ["missing", "other_module"]
+
+
+@pytest.mark.parametrize(("modules", "drift", "expected"), [
+    ({"admin": "runtime/system/admin.py"}, ["admin"], "differs from its module: admin"),
+    (None, None, "module map unavailable"),
+])
+def test_copy_drift_is_reported_without_stopping_prepare(
+        monkeypatch, tmp_path, capsys, modules, drift, expected):
+    monkeypatch.setattr(cycle.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(cycle, "run_in_worktree", lambda *command: None)
+    monkeypatch.setattr(cycle, "builtin_module_map", lambda python: modules)
+    monkeypatch.setattr(cycle, "builtin_copy_drift", lambda tree, found: drift)
+    monkeypatch.setattr(cycle, "reviewed_roots", lambda: ((1, "private"), (1, "public")))
+    monkeypatch.setattr(cycle, "stage", lambda source, destination: None)
+    monkeypatch.setattr(cycle, "census", lambda tree: (0, "census"))
+    monkeypatch.setattr(cycle, "CYCLE_DIR", tmp_path / "cycle")
+    monkeypatch.setattr(cycle, "STAGING", tmp_path / "cycle" / "export")
+    monkeypatch.setattr(cycle, "HANDOFF", tmp_path / "cycle" / "handoff.json")
+
+    assert cycle.prepare() == 0
+    assert expected in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("failure", [
+    subprocess.TimeoutExpired("probe", 10), OSError("exec failed")])
+def test_module_map_probe_failure_is_bounded_and_advisory(monkeypatch, failure):
+    seen = {}
+
+    def run(*args, **kwargs):
+        seen.update(kwargs)
+        raise failure
+
+    monkeypatch.setattr(cycle.subprocess, "run", run)
+    assert cycle.builtin_module_map("python") is None
+    assert seen["timeout"] == cycle._MODULE_MAP_TIMEOUT_S

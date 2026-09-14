@@ -229,6 +229,47 @@ def run_in_worktree(*command: str) -> None:
         raise RuntimeError("step failed: " + " ".join(command))
 
 
+# The copy/module check is advisory: its one probe never gets to hold prepare.
+_MODULE_MAP_TIMEOUT_S = 10
+_MODULE_MAP_PROBE = """\
+import importlib.util, json, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("generator", sys.argv[1])
+generator = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generator)
+root = Path.cwd().resolve()
+print(json.dumps({name: path.resolve().relative_to(root).as_posix()
+                  for name, (_spec, path) in generator._all_specs().items()}))
+"""
+
+
+def builtin_module_map(python: str) -> dict[str, str] | None:
+    """Each builtin's own module, exactly as the generator pairs them."""
+    try:
+        result = subprocess.run(
+            [python, "-c", _MODULE_MAP_PROBE, "scripts/generate_builtin_executor_contracts.py"],
+            cwd=WORKTREE, env={**os.environ, "METNOS_VENV": "/opt/metnos/.venv"},
+            stdin=subprocess.DEVNULL, capture_output=True, timeout=_MODULE_MAP_TIMEOUT_S)
+        modules = json.loads(result.stdout) if result.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        modules = None
+    return modules if isinstance(modules, dict) else None
+
+
+def builtin_copy_drift(tree: Path, modules: dict[str, str]) -> list[str]:
+    """Builtins whose copy in ``tree`` differs from their own module."""
+    drift = []
+    for name, module in sorted(modules.items()):
+        copy = tree / "runtime/builtin_executor_contracts" / name / "implementation.py.src"
+        try:
+            same = copy.read_bytes() == (tree / module).read_bytes()
+        except OSError:
+            same = False
+        if not same:
+            drift.append(name)
+    return drift
+
+
 def prepare() -> int:
     require(os.geteuid() != 0, "prepare runs as the developer, never as root")
     python = "/opt/metnos/.venv/bin/python"
@@ -249,6 +290,14 @@ def prepare() -> int:
     say("== export ==")
     scratch = Path("/tmp/metnos-release-cycle-raw")
     run_in_worktree("bash", "scripts/export-public.sh", str(scratch))
+    # The loader refuses a builtin whose copy differs from its module: say so
+    # now, in seconds, instead of after a crossing.  A warning, never a stop.
+    modules = builtin_module_map(python)
+    drift = None if modules is None else builtin_copy_drift(scratch, modules)
+    if drift is None:
+        say("   WARNING builtin module map unavailable: copies not compared")
+    elif drift:
+        say("   WARNING builtin copy differs from its module:", ", ".join(drift))
     run_in_worktree(python, "-I", "-S",
                     str(scratch / "scripts/check_contract_boundary_policy.py"))
     run_in_worktree(python, "internal/tools/rm0008_public_source_review.py",
