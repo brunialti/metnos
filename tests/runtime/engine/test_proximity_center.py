@@ -98,3 +98,11 @@ def test_server_request_cannot_reuse_a_reference_to_the_actor(catalog, source_ar
 def test_declared_centre_forms_pass_validation(catalog, near):
     fw = Framework(steps=[StepSpec("find_places", {"queries": ["farmacia"], "near": near})])
     assert Validator(catalog).check(fw).ok
+
+
+def test_shipped_find_places_language_state_matches_its_descriptions():
+    from i18n_materializer import decode_language_state
+    directory = ROOT / "executors" / "find_places"
+    manifest = tomllib.loads((directory / "manifest.toml").read_text())
+    state = decode_language_state((directory / "manifest.lang_state.json").read_bytes(), manifest=manifest)
+    assert set(state["selectors"]["args.properties.near.description"]) == {"it", "en"}

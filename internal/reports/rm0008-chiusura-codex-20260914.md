@@ -35,6 +35,25 @@ tentativo: 1756 file, census
 Nuovo rilascio e richiesta originale e2e ancora da completare: non viene
 dichiarato risolto sulla base delle sole simulazioni.
 
+Prima pubblicazione: codice `cd116cad`, release **42**, `CUTOVER_OK` e
+`PREFLIGHT_VERIFIED`, ma ammissione `find_places` rifiutata con
+`language_version_mismatch`, rc78. La descrizione IT/EN di `near` era stata
+aggiornata senza i relativi due hash nel file di stato linguistico. Omissione
+di Codex, non un'indisponibilità dei provider. Nessun aggiramento del rifiuto;
+API e stack successivi restano `ok=true`, `ready=true`.
+
+Build 42 `sha256:188bedab64bf96293c850dffbe18ea93b6a9499ee97c8af927a6f33db27e9fac`,
+sorgente `sha256:c4cc3c11310ea6f30d70208a23ea1f79375f12dd9fedb792499a97af29178820`,
+cutover `sha256:62dc01f855bedf46601fe1c183f7443941dd16c223b8b2ab5c1a7b0a3082b038`,
+richiesta `sha256:ead33397e5a5f273916cb96a8f04266456fc1fafa156d3b9d222a991afe88bc8`.
+Evidenza: `/var/lib/metnos-admin/rm0008-cycle-evidence-188bedab64bf9629`.
+
+Riallineati esclusivamente i due hash delle descrizioni già revisionate,
+aggiunta verifica del contratto sorgente reale (23 test del modulo superati,
+22 già coperti e uno nuovo). Nuova pubblicazione ordinaria necessaria;
+non viene alterato il contenuto della release firmata. Documentazione IT/EN
+pubblicata e verificata su `https://3370ab68.mykleos.pages.dev`.
+
 ## Permessi di avvio riutilizzabili: richiesta successiva alla R40
 
 Roberto richiede che «fino al prossimo riavvio» non chieda di nuovo consenso
