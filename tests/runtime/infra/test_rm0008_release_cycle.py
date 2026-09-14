@@ -874,3 +874,42 @@ def test_initial_cutover_keeps_user_profile_without_previous_catalog(monkeypatch
     monkeypatch.setattr(guard._MaintenanceProofV1, "observe", lambda self: {})
     with guard._contract_cutover_guard_core_v1(NS()):
         assert (runtime / "metnos-stack-reconcile.lock").is_file()
+
+
+def test_prepare_derives_builtin_contracts_before_pins_and_export(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(cycle.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(cycle, "run_in_worktree", lambda *command: calls.append(command))
+    monkeypatch.setattr(cycle, "reviewed_roots", lambda: ((1, "private"), (1, "public")))
+    monkeypatch.setattr(cycle, "stage", lambda source, destination: None)
+    monkeypatch.setattr(cycle, "census", lambda tree: (0, "census"))
+    monkeypatch.setattr(cycle, "CYCLE_DIR", tmp_path / "cycle")
+    monkeypatch.setattr(cycle, "STAGING", tmp_path / "cycle" / "export")
+    monkeypatch.setattr(cycle, "HANDOFF", tmp_path / "cycle" / "handoff.json")
+
+    assert cycle.prepare() == 0
+
+    steps = [next(part for part in command[1:] if part.endswith((".py", ".sh")))
+             for command in calls]
+    assert steps[0] == "scripts/generate_builtin_executor_contracts.py"
+    assert "--sign" not in calls[0]
+    assert steps.index("internal/tools/rm0008_repin_source_roots.py") > 0
+    assert steps.index("scripts/export-public.sh") > 0
+
+
+@pytest.mark.parametrize("activated_builtin", [False, True])
+def test_activation_is_proven_per_origin_for_same_named_contracts(
+        monkeypatch, release, capsys, activated_builtin):
+    core = {"name": "admin", "outcome": "store_verified", "request_id": "r-1",
+            "candidate_id": "c-1", "previous_generation_id": "g-1",
+            "current_generation_id": "g-2"}
+    builtin = {**core, "origin": "builtin", "request_id": "r-2", "candidate_id": "c-2"}
+    payload = {"ok": True, "signed": [core, builtin], "restarted": True,
+               "readiness": {"ok": True, "ready": True},
+               "activated": [core, builtin] if activated_builtin else [core]}
+    monkeypatch.setattr(cycle, "_release_edits_child", lambda *a, **k:
+                        subprocess.CompletedProcess([], 0, json.dumps(payload).encode()))
+    result = run_edits(release)
+    admitted = "RELEASE_EDITS_ADMITTED" in capsys.readouterr().out
+    assert (result == 0) is activated_builtin
+    assert admitted is activated_builtin

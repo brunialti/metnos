@@ -18,6 +18,10 @@ import pytest
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
+# The catalog is loaded from private builtin contracts derived from the working
+# code and signed by a test key; the real verifiers still run.
+pytestmark = pytest.mark.usefixtures("signed_builtin_contracts")
+
 
 @pytest.fixture
 def temp_db(monkeypatch, tmp_path):

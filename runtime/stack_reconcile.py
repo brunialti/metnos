@@ -560,7 +560,9 @@ def verify_named_executors(
             ContractStoreError, VerifiedManifest,
             acquire_current_reattestation_snapshot, current_contract,
         )
-        from executor_birth_intent import BirthIntent, submit_stack_reconcile_birth
+        from executor_birth_intent import (
+            BirthIntent, submit_builtin_generation_birth, submit_stack_reconcile_birth,
+        )
         from executor_birth_snapshot import (
             LANGUAGE_STATE_FILE, MANIFEST_FILE, CandidateSnapshotError,
             _declared_code_files, _read_regular,
@@ -569,16 +571,43 @@ def verify_named_executors(
         from sign import list_trusted_publics
 
         trusted = tuple(list_trusted_publics())
-        pending = list(names) or sorted(
+        core, builtin = ManifestOrigin.CORE, ManifestOrigin.BUILTIN
+        # ``prepare`` derives each builtin copy from the reviewed code, and
+        # Birth admits it with the builtin capability.  One list and one loop
+        # serve both origins, so a refusal always reports every later entry.
+        sources = {
+            core: root,
+            builtin: (_repo_root() / "runtime" / "builtin_executor_contracts").resolve(),
+        }
+        submitters = {core: (submit_stack_reconcile_birth, "executor"),
+                      builtin: (submit_builtin_generation_birth, "builtin")}
+        pending = [(core, name) for name in list(names) or sorted(
             path.name for path in root.iterdir()
             if (path / MANIFEST_FILE).is_file()
-        )
+        )]
+        # An explicit selection names core executors only; the whole
+        # changed-only sweep also covers the installed builtin contracts.
+        if not names and sources[builtin].is_dir():
+            pending += [(builtin, path.name) for path in sorted(sources[builtin].iterdir())
+                        if (path / MANIFEST_FILE).is_file()]
+
+        def identity(origin, name):
+            # Core rows keep their historical shape: an absent origin is core.
+            return {"name": name} if origin is core else {"name": name, "origin": origin.value}
+
         outcomes: list[dict] = []
+
+        def refuse(index, code, detail):
+            outcomes.extend({**identity(*item), "outcome": "not_attempted"}
+                            for item in pending[index + 1:])
+            return StackFailure(code, detail, details={"outcomes": outcomes})
+
         with tempfile.TemporaryDirectory(prefix="metnos-reconcile-release-") as raw:
-            for index, name in enumerate(pending):
+            for index, (origin, name) in enumerate(pending):
                 if not name or name in {".", ".."} or "/" in name or "\\" in name:
                     raise StackFailure("invalid_executor", "executor name is not canonical")
-                contract_id = ContractId(ManifestOrigin.CORE, f"{name}/manifest.toml")
+                base = identity(origin, name)
+                contract_id = ContractId(origin, f"{name}/manifest.toml")
                 ref = store_refs.get(contract_id)
                 try:
                     current = (
@@ -586,14 +615,20 @@ def verify_named_executors(
                         else current_contract(ref, trusted_publics=trusted)
                     )
                     if not isinstance(current, VerifiedManifest):
-                        outcomes.append({"name": name, "outcome": "not_installed"})
+                        outcomes.append({**base, "outcome": "not_installed"})
                         continue
                     # The closed candidate check refuses anything undeclared,
                     # caches included: an installation carries none.
                     candidate = materialize_birth_candidate_from_authoring(
-                        root / name, Path(raw) / f"candidate-{name}",
+                        sources[origin] / name,
+                        Path(raw) / f"candidate-{origin.value}-{name}",
                     )
                     prepared = _read_regular(candidate, MANIFEST_FILE)
+                    if origin is builtin and _read_regular(
+                            sources[origin] / name, MANIFEST_FILE) != prepared:
+                        # Its digest had to be recomputed: the generator did
+                        # not derive this copy from the code being released.
+                        raise CandidateSnapshotError("builtin_candidate_stale", name)
                     language_state = _read_regular(candidate, LANGUAGE_STATE_FILE)
                     declared = _declared_code_files(prepared)
                     code = {item: _read_regular(candidate, item) for item in declared}
@@ -606,31 +641,23 @@ def verify_named_executors(
                             and dict(served.code_files) == code
                         )
                 except (OSError, CandidateSnapshotError, ContractStoreError) as exc:
-                    outcomes.append({"name": name, "outcome": "error", "error": str(exc)})
-                    outcomes.extend({"name": later, "outcome": "not_attempted"}
-                                    for later in pending[index + 1:])
-                    raise StackFailure(
-                        "candidate_unavailable", f"{name}: {exc}",
-                        details={"outcomes": outcomes},
-                    ) from exc
-                if same:
-                    outcomes.append({"name": name, "outcome": "unchanged",
+                    outcomes.append({**base, "outcome": "error", "error": str(exc)})
+                    raise refuse(index, "candidate_unavailable", f"{name}: {exc}") from exc
+                if same or plan_only:
+                    outcomes.append({**base, "outcome": "unchanged" if same else "changed",
                                      "generation_id": current.generation_id})
                     continue
-                if plan_only:
-                    outcomes.append({"name": name, "outcome": "changed",
-                                     "generation_id": current.generation_id})
-                    continue
+                submit, kind = submitters[origin]
                 failure = ""
                 try:
-                    birth = submit_stack_reconcile_birth(BirthIntent(
+                    birth = submit(BirthIntent(
                         candidate_source_root=candidate,
                         contract_id=contract_id,
-                        reason=f"release edit admission executor={name}",
+                        reason=f"release edit admission {kind}={name}",
                     ))
                 except Exception as exc:
                     birth, failure = None, str(exc)
-                row = {"name": name, "outcome": "error",
+                row = {**base, "outcome": "error",
                        "request_id": getattr(birth, "request_id", None)}
                 publication = getattr(birth, "publication", None)
                 if birth is None or birth.error_code or publication is None:
@@ -653,12 +680,7 @@ def verify_named_executors(
                         row.setdefault("error", "store_generation_mismatch")
                 outcomes.append(row)
                 if row["outcome"] == "error":
-                    outcomes.extend({"name": later, "outcome": "not_attempted"}
-                                    for later in pending[index + 1:])
-                    raise StackFailure(
-                        "birth_admission_failed", f"{name}: {row['error']}",
-                        details={"outcomes": outcomes},
-                    )
+                    raise refuse(index, "birth_admission_failed", f"{name}: {row['error']}")
         return outcomes
 
     selected: list[tuple[str, Path | None, object | None]] = []
@@ -815,7 +837,8 @@ class PendingActivation:
 
     def _write(self, rows: list[dict]) -> None:
         if rows:
-            merged = {row.get("name"): row for row in (*self.rows(), *rows)}
+            merged = {(row.get("origin") or "core", row.get("name")): row
+                      for row in (*self.rows(), *rows)}
             _atomic_json(self.path, {"rows": list(merged.values())})
 
 

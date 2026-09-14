@@ -232,6 +232,10 @@ def run_in_worktree(*command: str) -> None:
 def prepare() -> int:
     require(os.geteuid() != 0, "prepare runs as the developer, never as root")
     python = "/opt/metnos/.venv/bin/python"
+    say("== builtin contracts ==")
+    # The admitted copy of each builtin is derived from the reviewed code
+    # before any pin or export; the release publishes it later through Birth.
+    run_in_worktree(python, "scripts/generate_builtin_executor_contracts.py")
     say("== reviewed roots ==")
     run_in_worktree(python, "internal/tools/rm0008_repin_source_roots.py")
     private, public = reviewed_roots()
@@ -1071,8 +1075,13 @@ def _run_release_edits(distribution, descriptor, catalog, *, plan_only: bool) ->
                             and isinstance(row.get("name"), str)
                             and isinstance(row.get("current_generation_id"), str)
                             for row in activated), error_code)
-                require({(row["name"], row["current_generation_id"]) for row in published}
-                        <= {(row["name"], row["current_generation_id"]) for row in activated},
+                # A generation id hashes the payloads, not the origin: a core
+                # and a builtin of the same name must each prove activation.
+                def activation(row):
+                    return (row.get("origin") or "core", row["name"],
+                            row["current_generation_id"])
+                require({activation(row) for row in published}
+                        <= {activation(row) for row in activated},
                         error_code)
             else:
                 require(not published, error_code)

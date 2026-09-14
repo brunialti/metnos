@@ -53,8 +53,11 @@ def _contract_dirs() -> list[Path]:
     )
 
 
-def test_all_planner_visible_builtins_have_valid_signed_contracts() -> None:
-    directories = [path for path in _contract_dirs() if path.is_dir()]
+def test_all_planner_visible_builtins_have_valid_signed_contracts(
+        signed_builtin_contracts) -> None:
+    assert {path.name for path in _contract_dirs() if path.is_dir()} == BUILTIN_NAMES
+    directories = sorted(path for path in signed_builtin_contracts.iterdir()
+                         if path.is_dir())
     assert {path.name for path in directories} == BUILTIN_NAMES
     for directory in directories:
         manifest = tomllib.loads(
@@ -66,7 +69,8 @@ def test_all_planner_visible_builtins_have_valid_signed_contracts() -> None:
         assert ok, (directory.name, detail)
 
 
-def test_loader_admits_builtins_only_from_their_signed_contracts() -> None:
+def test_loader_admits_builtins_only_from_their_signed_contracts(
+        signed_builtin_contracts) -> None:
     from loader import invalidate_catalog_cache, load_catalog
 
     invalidate_catalog_cache()
@@ -83,6 +87,23 @@ def test_loader_admits_builtins_only_from_their_signed_contracts() -> None:
         assert executor.capabilities
         assert executor.tests
         assert executor.manifest_path.parent.name == name
+
+
+def test_private_contracts_keep_signature_and_code_checks(
+        signed_builtin_contracts, tmp_path: Path) -> None:
+    import shutil
+    from loader import _load_builtin_contract
+
+    forged = tmp_path / "admin"
+    shutil.copytree(signed_builtin_contracts / "admin", forged)
+    (forged / "manifest.toml.sig").write_bytes(b"\0" * 64)
+    ok, _detail = verify_executor(forged)
+    assert not ok
+
+    changed = tmp_path / "admin.py"
+    changed.write_bytes((RUNTIME / "system" / "admin.py").read_bytes() + b"\n# changed\n")
+    with pytest.raises(ValueError, match="differs from the admitted implementation"):
+        _load_builtin_contract("admin", changed)
 
 
 def test_builtin_handler_source_registry_is_total_and_literal() -> None:

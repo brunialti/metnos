@@ -1587,7 +1587,8 @@ def _contract_name(contract_id):
     return contract_id.value.rsplit("/", 1)[0].split(":", 1)[-1]
 
 
-def _release_store(monkeypatch, tmp_path, *, working, served):
+def _release_store(monkeypatch, tmp_path, *, working, served,
+                   builtin_working=None, builtin_served=None):
     import contract_store
     import executor_birth_intent
     import manifest_inventory
@@ -1608,12 +1609,26 @@ def _release_store(monkeypatch, tmp_path, *, working, served):
             path = executors / name / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(payload)
+    builtins = executors.parent / "runtime" / "builtin_executor_contracts"
+    for name, spec in (builtin_working or {}).items():
+        manifest, lang, files = _contract_bytes(name, spec)
+        if not spec.get("stale"):
+            manifest = prepare_manifest_digest_v1(manifest, files)
+        for relative, payload in {
+            "manifest.toml": manifest, "manifest.lang_state.json": lang,
+            "manifest.toml.sig": b"stale-signature", **files,
+        }.items():
+            path = builtins / name / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
     refs = {}
     state = {}
-    for name, spec in served.items():
-        contract_id = manifest_inventory.ContractId(
-            manifest_inventory.ManifestOrigin.CORE, f"{name}/manifest.toml")
-        refs[name] = manifest_inventory.ManifestRef(
+    origins = manifest_inventory.ManifestOrigin
+    for origin, table in ((origins.CORE, served),
+                          (origins.BUILTIN, builtin_served or {})):
+      for name, spec in table.items():
+        contract_id = manifest_inventory.ContractId(origin, f"{name}/manifest.toml")
+        refs[contract_id.value] = manifest_inventory.ManifestRef(
             contract_id=contract_id, origin=contract_id.origin,
             status=manifest_inventory.ManifestStatus.ADMITTED,
             source_root=tmp_path / "store",
@@ -1622,7 +1637,7 @@ def _release_store(monkeypatch, tmp_path, *, working, served):
             allowed_code_roots=(tmp_path / "store",),
         )
         manifest, lang, files = _contract_bytes(name, spec)
-        state[name] = {
+        state[contract_id.value] = {
             "generation": f"g-{name}-1", "reread": f"g-{name}-1",
             "payloads": (prepare_manifest_digest_v1(manifest, files), lang, files),
         }
@@ -1630,7 +1645,7 @@ def _release_store(monkeypatch, tmp_path, *, working, served):
     control = {"refuse": set(), "reread_previous": False}
 
     def owner(ref):
-        return _contract_name(ref.contract_id)
+        return ref.contract_id.value
 
     def current_contract(ref, *, trusted_publics, **_kwargs):
         assert trusted_publics
@@ -1645,7 +1660,8 @@ def _release_store(monkeypatch, tmp_path, *, working, served):
     def served_snapshot(ref, generation_identifier, *, trusted_publics, **_kwargs):
         entry = state[owner(ref)]
         assert generation_identifier == entry["generation"]
-        private = tmp_path / f"served-{owner(ref)}-{generation_identifier}"
+        private = tmp_path / (f"served-{ref.contract_id.origin.value}-"
+                              f"{_contract_name(ref.contract_id)}-{generation_identifier}")
         private.mkdir(exist_ok=True)
         manifest, lang, files = entry["payloads"]
         return CandidateSnapshot(
@@ -1653,16 +1669,17 @@ def _release_store(monkeypatch, tmp_path, *, working, served):
             language_state_bytes=lang, code_files=MappingProxyType(dict(files)),
         )
 
-    def birth(intent):
+    def birth(intent, *, label=None):
         name = _contract_name(intent.contract_id)
-        reached.append(name)
-        if name in control["refuse"]:
+        label = label or name
+        reached.append(label)
+        if label in control["refuse"]:
             return SimpleNamespace(request_id=f"r-{name}", error_code="birth_refused",
                                    publication=None, report=None)
         candidate = intent.candidate_source_root
         manifest = (candidate / "manifest.toml").read_bytes()
         declared = tomllib.loads(manifest.decode("utf-8"))["code"]["files"]
-        entry = state[name]
+        entry = state[intent.contract_id.value]
         previous = entry["generation"]
         entry["generation"] = f"{previous}+"
         entry["payloads"] = (
@@ -1691,6 +1708,10 @@ def _release_store(monkeypatch, tmp_path, *, working, served):
     monkeypatch.setattr(
         contract_store, "acquire_current_reattestation_snapshot", served_snapshot)
     monkeypatch.setattr(executor_birth_intent, "submit_stack_reconcile_birth", birth)
+    monkeypatch.setattr(
+        executor_birth_intent, "submit_builtin_generation_birth",
+        lambda intent: birth(
+            intent, label=f"builtin:{_contract_name(intent.contract_id)}"))
 
     def run(*, plan=False):
         return sr.verify_named_executors(
@@ -2023,4 +2044,154 @@ def test_preview_and_admission_options_belong_to_deploy_only(monkeypatch, capsys
                  ["watchdog", "--changed-only"], ["wait-ready", "--plan"]):
         assert sr.main(argv) == 1, argv
         assert "option_invalid" in capsys.readouterr().out
+    assert reached == []
+
+
+# --- builtin contracts in the same changed-only sweep (I-037) --------------
+
+def _builtin_rows(rows):
+    return [(row["name"], row["outcome"]) for row in rows
+            if row.get("origin") == "builtin"]
+
+
+def test_plan_lists_a_changed_builtin_without_any_birth_request(monkeypatch, tmp_path):
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path, working={}, served={},
+        builtin_working={"admin": {"files": {"implementation.py.src": b"new\n"}},
+                         "list_tasks": {"files": {"implementation.py.src": b"same\n"}}},
+        builtin_served={"admin": {"files": {"implementation.py.src": b"old\n"}},
+                        "list_tasks": {"files": {"implementation.py.src": b"same\n"}}})
+    assert _builtin_rows(run(plan=True)) == [("admin", "changed"), ("list_tasks", "unchanged")]
+    assert reached == []
+
+
+def test_sign_admits_changed_builtins_through_the_builtin_capability(monkeypatch, tmp_path):
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path, working={}, served={},
+        builtin_working={"admin": {"files": {"implementation.py.src": b"new\n"}},
+                         "fresh": {"files": {"implementation.py.src": b"x\n"}},
+                         "list_tasks": {"files": {"implementation.py.src": b"same\n"}}},
+        builtin_served={"admin": {"files": {"implementation.py.src": b"old\n"}},
+                        "list_tasks": {"files": {"implementation.py.src": b"same\n"}}})
+    assert _builtin_rows(run()) == [
+        ("admin", "store_verified"), ("fresh", "not_installed"), ("list_tasks", "unchanged")]
+    assert reached == ["builtin:admin"]
+
+
+def test_explicit_selection_keeps_to_core_executors(monkeypatch, tmp_path):
+    import manifest_inventory
+
+    _run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={"alpha": {"files": {"main.py": b"new\n"}}},
+        served={"alpha": {"files": {"main.py": b"old\n"}}},
+        builtin_working={"admin": {"files": {"implementation.py.src": b"new\n"}}},
+        builtin_served={"admin": {"files": {"implementation.py.src": b"old\n"}}})
+    rows = sr.verify_named_executors(["alpha"], sign_first=True, changed_only=True)
+    assert [row["name"] for row in rows] == ["alpha"]
+    assert reached == ["alpha"]
+    assert manifest_inventory.ManifestOrigin.BUILTIN.value == "builtin"
+
+
+def test_same_name_keeps_distinct_core_and_builtin_identities(monkeypatch, tmp_path):
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={"admin": {"files": {"main.py": b"new\n"}}},
+        served={"admin": {"files": {"main.py": b"old\n"}}},
+        builtin_working={"admin": {"files": {"implementation.py.src": b"new\n"}}},
+        builtin_served={"admin": {"files": {"implementation.py.src": b"old\n"}}})
+    rows = run()
+    assert [(row["name"], row.get("origin", "core"), row["outcome"]) for row in rows] == [
+        ("admin", "core", "store_verified"), ("admin", "builtin", "store_verified")]
+    assert reached == ["admin", "builtin:admin"]
+    pending = sr.PendingActivation(tmp_path / "pending.json")
+    pending.record(rows)
+    assert len(pending.published()) == 2
+
+
+def test_builtin_refusal_stops_and_keeps_what_was_published(monkeypatch, tmp_path):
+    run, reached, control, _root = _release_store(
+        monkeypatch, tmp_path, working={}, served={},
+        builtin_working={name: {"files": {"implementation.py.src": b"new\n"}}
+                         for name in ("alpha", "beta", "gamma")},
+        builtin_served={name: {"files": {"implementation.py.src": b"old\n"}}
+                        for name in ("alpha", "beta", "gamma")})
+    control["refuse"].add("builtin:beta")
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    assert caught.value.code == "birth_admission_failed"
+    assert _builtin_rows(caught.value.details["outcomes"]) == [
+        ("alpha", "store_verified"), ("beta", "error"), ("gamma", "not_attempted")]
+    assert reached == ["builtin:alpha", "builtin:beta"]
+
+
+def test_a_copy_not_derived_from_its_code_is_refused_before_birth(monkeypatch, tmp_path):
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path, working={}, served={},
+        builtin_working={"admin": {"files": {"implementation.py.src": b"new\n"},
+                                   "stale": True}},
+        builtin_served={"admin": {"files": {"implementation.py.src": b"old\n"}}})
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    assert caught.value.code == "candidate_unavailable"
+    assert "builtin_candidate_stale" in caught.value.details["outcomes"][-1]["error"]
+    assert reached == []
+
+
+def test_a_core_refusal_reports_later_builtins_as_not_attempted(monkeypatch, tmp_path):
+    run, reached, control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={name: {"files": {"main.py": b"new\n"}} for name in ("alpha", "beta", "gamma")},
+        served={name: {"files": {"main.py": b"old\n"}} for name in ("alpha", "beta", "gamma")},
+        builtin_working={"admin": {"files": {"implementation.py.src": b"new\n"}}},
+        builtin_served={"admin": {"files": {"implementation.py.src": b"old\n"}}})
+    control["refuse"].add("beta")
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    rows = caught.value.details["outcomes"]
+    assert [(row["name"], row.get("origin", "core"), row["outcome"]) for row in rows] == [
+        ("alpha", "core", "store_verified"), ("beta", "core", "error"),
+        ("gamma", "core", "not_attempted"), ("admin", "builtin", "not_attempted")]
+    assert reached == ["alpha", "beta"]
+
+
+def test_a_candidate_write_error_keeps_the_receipts_already_published(monkeypatch, tmp_path):
+    import executor_birth_snapshot
+
+    run, reached, _control, _root = _release_store(
+        monkeypatch, tmp_path,
+        working={"alpha": {"files": {"main.py": b"new\n"}}},
+        served={"alpha": {"files": {"main.py": b"old\n"}}},
+        builtin_working={name: {"files": {"implementation.py.src": b"new\n"}}
+                         for name in ("beta", "gamma")},
+        builtin_served={name: {"files": {"implementation.py.src": b"old\n"}}
+                        for name in ("beta", "gamma")})
+    original = executor_birth_snapshot._write_private
+
+    def write(root, relative, payload):
+        if Path(root).name == "candidate-builtin-beta":
+            raise OSError("no space left on device")
+        return original(root, relative, payload)
+
+    monkeypatch.setattr(executor_birth_snapshot, "_write_private", write)
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    assert caught.value.code == "candidate_unavailable"
+    rows = caught.value.details["outcomes"]
+    assert [(row["name"], row.get("origin", "core"), row["outcome"]) for row in rows] == [
+        ("alpha", "core", "store_verified"), ("beta", "builtin", "error"),
+        ("gamma", "builtin", "not_attempted")]
+    assert reached == ["alpha"]
+
+
+def test_an_undeclared_file_in_a_builtin_copy_is_refused_like_core(monkeypatch, tmp_path):
+    run, reached, _control, root = _release_store(
+        monkeypatch, tmp_path, working={}, served={},
+        builtin_working={"admin": {"files": {"implementation.py.src": b"new\n"}}},
+        builtin_served={"admin": {"files": {"implementation.py.src": b"old\n"}}})
+    (root.parent / "runtime" / "builtin_executor_contracts" / "admin"
+     / "undeclared.txt").write_bytes(b"not part of the contract\n")
+    with pytest.raises(sr.StackFailure) as caught:
+        run()
+    assert caught.value.code == "candidate_unavailable"
     assert reached == []

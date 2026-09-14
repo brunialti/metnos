@@ -472,3 +472,59 @@ def _isolate_sites_cooldown_db(tmp_path, monkeypatch):
     monkeypatch.setenv("METNOS_SITES_COOLDOWN_DB",
                        str(tmp_path / "sites_cooldown.sqlite"))
     yield
+
+
+@pytest.fixture(scope="session")
+def _private_builtin_contracts(tmp_path_factory):
+    """Builtin contracts derived from the working code, signed by a test key.
+
+    Functional tests of the catalog run against these private copies while
+    the real verifiers still check every signature and code digest.  This is
+    never the verification of the published artifacts, which remains
+    mandatory after Birth.
+    """
+    import tomllib
+
+    import scripts.generate_builtin_executor_contracts as generator
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from i18n_materializer import migrate_language_state_bytes
+    from manifest_code_digest import prepare_manifest_digest_v1
+    from sign import sign_manifest_bytes
+
+    key = Ed25519PrivateKey.generate()
+    root = tmp_path_factory.mktemp("builtin-contracts")
+    for name, (tool_spec, module_path) in sorted(generator._all_specs().items()):
+        directory = root / name
+        directory.mkdir()
+        implementation = module_path.read_bytes()
+        manifest = prepare_manifest_digest_v1(
+            generator._render(name, tool_spec).encode("utf-8"),
+            {"implementation.py.src": implementation},
+        )
+        previous = generator.OUT / name / "manifest.lang_state.json"
+        state = migrate_language_state_bytes(
+            previous.read_bytes() if previous.is_file() else b"{}",
+            manifest=tomllib.loads(manifest.decode("utf-8")),
+        ).state_bytes
+        (directory / "manifest.toml").write_bytes(manifest)
+        (directory / "implementation.py.src").write_bytes(implementation)
+        (directory / "manifest.lang_state.json").write_bytes(state)
+        (directory / "manifest.toml.sig").write_bytes(
+            sign_manifest_bytes(manifest, private_key=key))
+    return root, ("test-builtin-author", key.public_key())
+
+
+@pytest.fixture
+def signed_builtin_contracts(_private_builtin_contracts, monkeypatch):
+    """Point the loader at the private builtin contracts and trust their key."""
+    import loader
+    import sign
+
+    root, test_key = _private_builtin_contracts
+    trusted = [*sign.list_trusted_publics(), test_key]
+    monkeypatch.setattr(loader, "BUILTIN_EXECUTOR_CONTRACTS_DIR", root)
+    monkeypatch.setattr(loader, "list_trusted_publics", lambda: list(trusted))
+    monkeypatch.setattr(sign, "list_trusted_publics", lambda: list(trusted))
+    loader.invalidate_catalog_cache()
+    yield root
+    loader.invalidate_catalog_cache()
