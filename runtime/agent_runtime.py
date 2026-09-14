@@ -5859,7 +5859,8 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
                         owner_user_id: str | None = None,
                         target_device: str | None = None,
                         turn_id: str | None = None,
-                        source_request_id: str | None = None) -> dict:
+                        source_request_id: str | None = None,
+                        request_text: str | None = None) -> dict:
     """Dispatch canonico di UN tool per nome, condiviso dal loop principale e
     dai percorsi di ripresa (post-gate/post-input, orchestration).
 
@@ -5900,6 +5901,12 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
             if not str(key).startswith("_")
         }
         call_args.setdefault("actor", actor or "host")
+        # The original request is runtime-owned: a planner value with the same
+        # name is discarded, and only builtins that opt in receive it.
+        call_args.pop("request_text", None)
+        if (verb_entry.get("accepts_request_text")
+                and isinstance(request_text, str) and request_text.strip()):
+            call_args["request_text"] = request_text
 
         def _call_verb_unique():
             return invoke_verb_unique(
@@ -6625,6 +6632,7 @@ def _run_engine(
                     target_device=_target_name,
                     turn_id=turn_id,
                     source_request_id=source_request_id,
+                    request_text=user_query_raw or query,
                 ),
             )
         exec_obj = _catalog_by_name.get(tool_name)

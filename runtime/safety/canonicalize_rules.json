@@ -2,6 +2,12 @@
   "_comment": "Canonicalisation rules for runtime/safety/canonicalize.py. Lists here are NOT safety policy — they are syntactic rules used to canonicalise an argv into a Signature. Safety policy (whitelist/blacklist/graylist/forbidden) lives in the SQLite DB, populated from safety_seeds/v*.toml. To add a new binary or flag rule, edit this file (no code change required).",
   "version": 1,
 
+  "_comment_option_numeric_values": "Options whose separated argument is a plain number (a count, an interval, a size), never a destination. Each option maps to its approved default value, or null when it has none. A value is covered only if the user's request states it, or if it equals the declared default and the request states no number at all; otherwise the command is shown for approval.",
+  "option_numeric_values": {
+    "ping": {"-c": 4, "-i": null, "-s": null, "-t": null, "-W": null, "-w": null},
+    "ping6": {"-c": 4, "-i": null, "-s": null, "-t": null, "-W": null, "-w": null}
+  },
+
   "sudo_wrappers": ["sudo", "doas", "pkexec"],
 
   "sudo_own_flags_value": [

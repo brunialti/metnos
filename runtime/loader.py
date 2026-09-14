@@ -573,6 +573,8 @@ def register_verb_unique_builtin(module) -> None:
         "callable": fn,
         "expose_to_planner": bool(module.EXPOSE_TO_PLANNER),
         "manifest_virtual": getattr(module, "MANIFEST_VIRTUAL", None),
+        # Opt-in: the runtime hands this builtin the user's original request.
+        "accepts_request_text": bool(getattr(module, "ACCEPTS_REQUEST_TEXT", False)),
     }
 
 
