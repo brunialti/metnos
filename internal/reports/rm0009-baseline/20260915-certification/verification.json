@@ -1,0 +1,304 @@
+{
+  "schema": "metnos.internal.rm0008-f5-f6-certifiability-check/1",
+  "recorded_at_utc": "2026-09-15 17:30:10 UTC",
+  "source_commit": "09a58c7cf33e2610ce1506b129db3b3d4a37b735",
+  "incorporated_product_commit": "5c1220ac25a1899b0d88aac5540fb0ab913db5ea",
+  "worktree": "/opt/metnos/.claude/worktrees/rm0009-development",
+  "branch": "codex/rm0009-development",
+  "scope": "isolated_tests_static_source_checks_and_independent_gap_review_before_f5_f6_implementation",
+  "outcome": {
+    "f5_certifiable": false,
+    "f6_certifiable": false,
+    "ext_rm0008_f5_issued": false,
+    "authorizes_activation": false,
+    "rm0009_g0_5_closed": false,
+    "rm0009_g0_6_closed": false,
+    "rm0009_g0_9_approved": false,
+    "rm0009_product_implementation_started": false
+  },
+  "tests": {
+    "command": "METNOS_USER_DATA=/tmp/metnos-rm0009-certify-final-lq7XShTM/data METNOS_USER_CONFIG=/tmp/metnos-rm0009-certify-final-lq7XShTM/config /opt/metnos/.venv/bin/python -m pytest -q tests/internal/test_rm0009_inventory_check.py tests/internal/test_rm0009_plan_check.py tests/internal/test_rm0009_test_lab.py tests/runtime/executors/test_executor_birth_lifecycle.py tests/runtime/executors/test_executor_birth_epoch_store.py tests/runtime/executors/test_executor_birth_epoch_migration.py tests/runtime/executors/test_executor_birth_durable_guard.py tests/runtime/contracts/test_executor_birth_feedback.py tests/runtime/executors/test_executor_birth_retention.py tests/runtime/executors/test_executor_birth_retention_integration.py tests/runtime/executors/test_executor_birth_preexercise.py tests/portable/test_executor_birth_retention_foundation.py",
+    "files": [
+      "tests/internal/test_rm0009_inventory_check.py",
+      "tests/internal/test_rm0009_plan_check.py",
+      "tests/internal/test_rm0009_test_lab.py",
+      "tests/runtime/executors/test_executor_birth_lifecycle.py",
+      "tests/runtime/executors/test_executor_birth_epoch_store.py",
+      "tests/runtime/executors/test_executor_birth_epoch_migration.py",
+      "tests/runtime/executors/test_executor_birth_durable_guard.py",
+      "tests/runtime/contracts/test_executor_birth_feedback.py",
+      "tests/runtime/executors/test_executor_birth_retention.py",
+      "tests/runtime/executors/test_executor_birth_retention_integration.py",
+      "tests/runtime/executors/test_executor_birth_preexercise.py",
+      "tests/portable/test_executor_birth_retention_foundation.py"
+    ],
+    "exit_code": 0,
+    "stdout": "........................................................................ [ 29%]\n........................................................................ [ 59%]\n........................................................................ [ 88%]\n............................                                             [100%]\n244 passed in 3.44s\n",
+    "passed": 244,
+    "failed": 0,
+    "skipped": 0,
+    "duration_seconds": 3.44,
+    "rm0009_preparatory_cases": 137,
+    "rm0008_foundation_cases": 107,
+    "isolation": "fresh METNOS_USER_DATA and METNOS_USER_CONFIG below /tmp; repository bootstrap creates ephemeral archives and test keys",
+    "proves": "selected isolated Linux tests only",
+    "does_not_prove": [
+      "productive F5 integration",
+      "productive retention owners or deletion",
+      "Windows",
+      "cold install",
+      "reboot",
+      "actual admission threshold or consecutive routing cycles",
+      "installed release conformance"
+    ]
+  },
+  "checks": {
+    "data": {
+      "command": "/opt/metnos/.venv/bin/python internal/tools/rm0009_inventory_check.py internal/reports/rm0009-baseline/20260915-certification/inventory-data.json --repository . --expected-commit 09a58c7cf33e2610ce1506b129db3b3d4a37b735",
+      "exit_code": 0,
+      "stdout": "{\n  \"authorizes_implementation\": false,\n  \"certifies_completeness\": false,\n  \"checked_files\": 110,\n  \"checks_file_mode\": false,\n  \"errors\": [],\n  \"expected_commit\": \"09a58c7cf33e2610ce1506b129db3b3d4a37b735\",\n  \"inventory_payload_validated\": false,\n  \"inventory_sha256\": \"d41074253174cc3cc1a734378f93dc109cac4bd0e701b084697b3ddfe620798d\",\n  \"schema_version\": 1,\n  \"scope\": \"inventory_source_content_binding_only\",\n  \"unchecked_inventory_fields\": [\n    \"certification\",\n    \"changed_input_bytes\",\n    \"comparison_commit\",\n    \"counts\",\n    \"generated_at\",\n    \"growth_ingress\",\n    \"inventory_identity\",\n    \"limitations\",\n    \"metadata_and_acl_boundary\",\n    \"prior_inventory\",\n    \"report_schema\",\n    \"scans\",\n    \"schema_candidates\",\n    \"scope\",\n    \"semantic_diff\",\n    \"source_tree\",\n    \"store_ownership\",\n    \"turn_writers\"\n  ],\n  \"valid\": true\n}\n",
+      "result": {
+        "authorizes_implementation": false,
+        "certifies_completeness": false,
+        "checked_files": 110,
+        "checks_file_mode": false,
+        "errors": [],
+        "expected_commit": "09a58c7cf33e2610ce1506b129db3b3d4a37b735",
+        "inventory_payload_validated": false,
+        "inventory_sha256": "d41074253174cc3cc1a734378f93dc109cac4bd0e701b084697b3ddfe620798d",
+        "schema_version": 1,
+        "scope": "inventory_source_content_binding_only",
+        "unchecked_inventory_fields": [
+          "certification",
+          "changed_input_bytes",
+          "comparison_commit",
+          "counts",
+          "generated_at",
+          "growth_ingress",
+          "inventory_identity",
+          "limitations",
+          "metadata_and_acl_boundary",
+          "prior_inventory",
+          "report_schema",
+          "scans",
+          "schema_candidates",
+          "scope",
+          "semantic_diff",
+          "source_tree",
+          "store_ownership",
+          "turn_writers"
+        ],
+        "valid": true
+      }
+    },
+    "security": {
+      "command": "/opt/metnos/.venv/bin/python internal/tools/rm0009_inventory_check.py internal/reports/rm0009-baseline/20260915-certification/inventory-security.json --repository . --expected-commit 09a58c7cf33e2610ce1506b129db3b3d4a37b735",
+      "exit_code": 0,
+      "stdout": "{\n  \"authorizes_implementation\": false,\n  \"certifies_completeness\": false,\n  \"checked_files\": 2411,\n  \"checks_file_mode\": false,\n  \"errors\": [],\n  \"expected_commit\": \"09a58c7cf33e2610ce1506b129db3b3d4a37b735\",\n  \"inventory_payload_validated\": false,\n  \"inventory_sha256\": \"3bbfee5db47514ddc68347c6c0250b98f71f5f80a8f18f96f2878675aa8c9b3e\",\n  \"schema_version\": 1,\n  \"scope\": \"inventory_source_content_binding_only\",\n  \"unchecked_inventory_fields\": [\n    \"audit_date\",\n    \"certification\",\n    \"counts\",\n    \"determinism\",\n    \"evidence_mode\",\n    \"exclusions\",\n    \"expansions\",\n    \"f6_call_graph\",\n    \"fs_a_inventory\",\n    \"fs_b_inventory\",\n    \"scan_definition\",\n    \"schema_version\",\n    \"semantic_recheck\",\n    \"source_delta\"\n  ],\n  \"valid\": true\n}\n",
+      "result": {
+        "authorizes_implementation": false,
+        "certifies_completeness": false,
+        "checked_files": 2411,
+        "checks_file_mode": false,
+        "errors": [],
+        "expected_commit": "09a58c7cf33e2610ce1506b129db3b3d4a37b735",
+        "inventory_payload_validated": false,
+        "inventory_sha256": "3bbfee5db47514ddc68347c6c0250b98f71f5f80a8f18f96f2878675aa8c9b3e",
+        "schema_version": 1,
+        "scope": "inventory_source_content_binding_only",
+        "unchecked_inventory_fields": [
+          "audit_date",
+          "certification",
+          "counts",
+          "determinism",
+          "evidence_mode",
+          "exclusions",
+          "expansions",
+          "f6_call_graph",
+          "fs_a_inventory",
+          "fs_b_inventory",
+          "scan_definition",
+          "schema_version",
+          "semantic_recheck",
+          "source_delta"
+        ],
+        "valid": true
+      }
+    },
+    "plan": {
+      "command": "/opt/metnos/.venv/bin/python internal/tools/rm0009_plan_check.py internal/roadmap/RM-0009-crescita-allineata-delle-capacita.md",
+      "exit_code": 0,
+      "stdout": "{\n  \"concrete\": false,\n  \"document_sha256\": \"37189fd72a065d60508ad1a393c0c91930a3af8075e37844c5c98ac520f44415\",\n  \"errors\": [],\n  \"expansion_inventory_checked\": false,\n  \"node_count\": 101,\n  \"preliminary_ancestor_count\": 66,\n  \"real_integration_ancestor_count\": 73,\n  \"scope\": \"plan_dependencies_only\",\n  \"templates\": [\n    \"D-FS-A.3.N\",\n    \"D-FS-B.3.N\"\n  ],\n  \"valid\": true\n}\n",
+      "result": {
+        "concrete": false,
+        "document_sha256": "37189fd72a065d60508ad1a393c0c91930a3af8075e37844c5c98ac520f44415",
+        "errors": [],
+        "expansion_inventory_checked": false,
+        "node_count": 101,
+        "preliminary_ancestor_count": 66,
+        "real_integration_ancestor_count": 73,
+        "scope": "plan_dependencies_only",
+        "templates": [
+          "D-FS-A.3.N",
+          "D-FS-B.3.N"
+        ],
+        "valid": true
+      }
+    },
+    "projection": {
+      "command": "/opt/metnos/.venv/bin/python scripts/check_contract_boundary_policy.py",
+      "exit_code": 0,
+      "stdout": ""
+    },
+    "product_delta": {
+      "command": "git diff --name-only 5c1220ac25a1899b0d88aac5540fb0ab913db5ea HEAD -- runtime executors client-rs helper-rs install scripts tests/runtime tests/portable",
+      "exit_code": 0,
+      "stdout": ""
+    },
+    "whitespace": {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "stdout": ""
+    }
+  },
+  "birth_closed_static_check": {
+    "command": "timeout 120 /opt/metnos/.venv/bin/python runtime/contract_boundary_guard.py --birth-closed",
+    "exit_code": 0,
+    "stdout": "",
+    "scope": "static source boundary policy and census only"
+  },
+  "negative_stale_inventory_check": {
+    "expected_exit_code": 1,
+    "actual_exit_code": 1,
+    "result": {
+      "authorizes_implementation": false,
+      "certifies_completeness": false,
+      "checked_files": 101,
+      "checks_file_mode": false,
+      "errors": [
+        {
+          "code": "checkout_digest_mismatch",
+          "path": "runtime/args_defaults.py"
+        },
+        {
+          "code": "checkout_digest_mismatch",
+          "path": "runtime/playwright_sidecar/session_broker.py"
+        },
+        {
+          "code": "checkout_digest_mismatch",
+          "path": "runtime/proposal_actions.py"
+        },
+        {
+          "code": "checkout_digest_mismatch",
+          "path": "runtime/sites_audit.py"
+        },
+        {
+          "code": "checkout_digest_mismatch",
+          "path": "runtime/telos_introspect.py"
+        },
+        {
+          "code": "checkout_digest_mismatch",
+          "path": "runtime/telos_proposals_store.py"
+        },
+        {
+          "code": "checkout_digest_mismatch",
+          "path": "runtime/telos_synth_consumer.py"
+        },
+        {
+          "code": "checkout_digest_mismatch",
+          "path": "runtime/turn_events.py"
+        },
+        {
+          "code": "checkout_digest_mismatch",
+          "path": "runtime/turn_feedback.py"
+        }
+      ],
+      "expected_commit": "1c308922839f7659a3cf54d988f995bba0f215d6",
+      "inventory_payload_validated": false,
+      "inventory_sha256": "1a79f6869ec6f59d273a7d4919bf7bb431c47555a53bd07aae7b0eabe469d974",
+      "schema_version": 1,
+      "scope": "inventory_source_content_binding_only",
+      "unchecked_inventory_fields": [
+        "counts",
+        "deletion_boundary",
+        "generated_at",
+        "global_source_decisions",
+        "growth_ingress",
+        "limitations",
+        "migrations",
+        "report_schema",
+        "roots",
+        "scans",
+        "scope",
+        "source_tree",
+        "stores",
+        "tests",
+        "turn_writers"
+      ],
+      "valid": false
+    },
+    "interpretation": "Expected rejection: nine selected input digests differ after MIT source changes. Not a runtime regression."
+  },
+  "independent_review": {
+    "reviewer": "certify_rm0008_gap_audit",
+    "role": "read-only independent architecture and integration audit",
+    "inspected_product_commit": "5c1220ac25a1899b0d88aac5540fb0ab913db5ea",
+    "conclusion": "F5 and F6 not certifiable; coordinator report correctly distinguishes foundations from integration.",
+    "followup_finding": "verification.json referenced but not yet present at review time.",
+    "resolution": "This file adds the exact 244-test execution, source binding and recorded digest evidence. No product approval inferred.",
+    "final_rm0009_g0_8_review": false
+  },
+  "user_decisions": [
+    {
+      "decision": "Completa anche RM0008 F5/F6",
+      "effect": "coordinator also owns completion of RM0008 F5/F6 under its existing normative sequence"
+    },
+    {
+      "decision": "quando hai finito f5/f6 attendi faccio esaminare quanto hai fatto",
+      "effect": "stop when F5/F6 are completed for external review; do not resume RM0009 until Roberto authorizes it"
+    }
+  ],
+  "unchanged": [
+    "installed data",
+    "production keys",
+    "services",
+    "productive authority",
+    "historical baseline reports"
+  ],
+  "file_sha256": {
+    "internal/roadmap/RM-0009-crescita-allineata-delle-capacita.md": "37189fd72a065d60508ad1a393c0c91930a3af8075e37844c5c98ac520f44415",
+    "internal/roadmap/README.md": "5e624f6ce12eddc8073a1381bdb0277c0c7f43123beadb99fa730188220094ad",
+    "internal/reports/rm0009-baseline/20260915-certification/README.md": "eff28b68f8aa0d03c6817b1e584c2335a2e6dd87e1dd5632af79dc8874654a37",
+    "internal/reports/rm0009-baseline/20260915-certification/certification-status.md": "f9169d827f8611335216d42913dbc0f95b5ec6294aaa144595ea803162ba6cc3",
+    "internal/reports/rm0009-baseline/20260915-certification/inventory-data.md": "9c18b53dbb1932040779d623e8084c576725607841119bd55e6108e375e6a42b",
+    "internal/reports/rm0009-baseline/20260915-certification/inventory-data.json": "d41074253174cc3cc1a734378f93dc109cac4bd0e701b084697b3ddfe620798d",
+    "internal/reports/rm0009-baseline/20260915-certification/inventory-security.md": "0f94b066e8766384ba3897f2c58fc13a0a808bf260e4df4e6eb282f675e27942",
+    "internal/reports/rm0009-baseline/20260915-certification/inventory-security.json": "3bbfee5db47514ddc68347c6c0250b98f71f5f80a8f18f96f2878675aa8c9b3e",
+    "tests/internal/test_rm0009_inventory_check.py": "2e451f09f6e01ecde8282e86b390f11dd4648a84d40c413aeba18d6d5114b298",
+    "tests/internal/test_rm0009_plan_check.py": "19a73a6f9aad574eaf65e7213210162e9a254e6021336794aa7f5281444b8e26",
+    "tests/internal/test_rm0009_test_lab.py": "7eeea5a21bd5fcff4a27dc1fce645c22e0479406866bcfcc081f9f7fce0314a3",
+    "tests/runtime/executors/test_executor_birth_lifecycle.py": "9d72ef5dc087c3d8b3145d5664e05884488db5769113d49f8001923327a4fb71",
+    "tests/runtime/executors/test_executor_birth_epoch_store.py": "65c3115f38b2abf61d57204a4e8810855258e9d5ac12b13ebdc855c6beb65b71",
+    "tests/runtime/executors/test_executor_birth_epoch_migration.py": "06afd24f52aea954c1227129af3317352ad501bf0e63f610e1c43c179a8a62a5",
+    "tests/runtime/executors/test_executor_birth_durable_guard.py": "3cc7b9baa829d6d5ae72f458fe13e447b9674f5100ef60997bad2388bdf3f3a7",
+    "tests/runtime/contracts/test_executor_birth_feedback.py": "39cac4babac689ea02e33e3cee82e193a81bd889fe071939a5d243e63d194d46",
+    "tests/runtime/executors/test_executor_birth_retention.py": "9a26ceb2c139c788f53fc46e9997494528af3e241e8588baff6735e6f13a672e",
+    "tests/runtime/executors/test_executor_birth_retention_integration.py": "e066b6e584e8428ec10180decbc872e1bc8fe9d049607b203801837a10a6fd07",
+    "tests/runtime/executors/test_executor_birth_preexercise.py": "af4fbd8ec9e1790c538d5008e268f055871e8165316538622c82eae2d5efdd47",
+    "tests/portable/test_executor_birth_retention_foundation.py": "83167bbd0ee18f002dfd900611bc38541cfc03dc636e04ac9b1529b954dcba59",
+    "internal/tools/rm0009_inventory_check.py": "f439bdc10be4abf13743007c61d32acc21c0e81dafc7493410100c7c0bf18df2",
+    "internal/tools/rm0009_plan_check.py": "7fd47fae9bb83336732c6eeb8889a74dc7a29f0fe6b278a704d3869e624574a6",
+    "internal/tools/rm0009_test_lab.py": "a6f88a4327e47f5fb13fb240c374508b6f55e0846ab42b5d96e3590b6025974f",
+    "scripts/check_contract_boundary_policy.py": "19a9a31b7906a046e6b6ad92821fc585062ca3fad163a8edc0db39f6f3c23229",
+    "runtime/contract_boundary_guard.py": "efdcbbf96347c467b9416c254b55fe6d5969ce614dc75950fd97959150037fff",
+    "internal/design/handover_rm0008_verifica_8_9_2026.md": "ef615f545e06f3a427d79b290076a6fa815baf555cad47927691d1504399c3bc",
+    "internal/roadmap/RM-0008-porta-unica-nascita-executor.md": "2c035e4273c254fe75152cf7d6e046a31642a649ea661c276682c1fcf3411de0"
+  },
+  "limitations": [
+    "This JSON is an unsigned internal report, not a trust or authorization artifact.",
+    "Inventory binding checks source bytes only, not file modes, semantic payloads or universal scan completeness.",
+    "Current source observations and synthetic tests do not establish installed database versions or productive integration.",
+    "F4 was previously verified per the recorded 8 September handover; its transition is not rerun or recertified here.",
+    "The source commit precedes this document-only checkpoint; tests and selected product inputs were unchanged during these checks."
+  ]
+}

@@ -29,6 +29,16 @@
 >   [baseline consolidata](../reports/rm0009-baseline/20260915-consolidated/README.md).
 >   Il codice RM-0008 e consolidato, ma F5/F6 non risultano certificate;
 >   G0.3-G0.10 non sono dichiarati conclusi e D2 resta bloccata.
+>   Alla richiesta «certifica e riprendi», il ramo RM-0009 integra anche i
+>   commit MIT/pubblicazione fino a `5c1220ac`: baseline di lavoro `09a58c7`.
+>   Il ricontrollo indipendente conferma che F5/F6 richiedono ancora codice
+>   di integrazione e prove reali, non la sola emissione di un certificato.
+>   Esito, prove isolate e inventari ricalcolati sono in
+>   [verifica di certificabilita](../reports/rm0009-baseline/20260915-certification/README.md).
+>   Nessun attestato `EXT-RM0008-F5` e emesso e nessun veto e rimosso.
+>   Roberto affida quindi allo stesso coordinatore anche il completamento
+>   RM-0008/F5-F6 e richiede una pausa alla loro conclusione per la revisione
+>   esterna. L'implementazione RM-0009 attende il successivo via libera.
 > - **Fonti:**
 >   - revisioni 1-5, con i rilievi della revisione 4, la review indipendente
 >     della revisione 5 e la sua verifica (commit `ad37442c`), nella storia Git;
@@ -65,6 +75,7 @@
 | 15/9 | **Schemi d'uso:** S2 usa anche gli schemi d'uso ripetuti di tutti gli utenti, aggregati e senza testo né valori personali. |
 | 15/9 | **Documento unico:** le due sorgenti dell'unione restano soltanto nella storia Git. |
 | 15/9 | **Incarico di sviluppo:** il coordinatore sviluppa RM-0009, puo assegnare attivita ad agenti di livello adeguato e risponde del coordinamento e della qualita finale. |
+| 15/9 | **Priorita e arresto concordato:** completare anche F5/F6 di RM-0008; alla loro conclusione fermarsi per la revisione esterna richiesta da Roberto, senza riprendere RM-0009 prima del suo via libera. |
 | 15/9 | **Coordinamento con RM-0008:** attendere che l'altro agente abbia finito e committato prima di integrare o iniziare il runtime; nell'attesa svolgere analisi profonda, sviluppi preparatori e creazione dell'ambiente di test/verifica. Un commit intermedio non prova la conclusione. |
 
 ## 1. Obiettivo e valore per l'utente
@@ -113,7 +124,12 @@ Non dipende dall'etichetta con cui la proposta è nata.
 - nessuna interruzione inutile (`t.discrezione`);
 - nessuna esposizione di dati (`t.protezione`).
 
-## 2. Stato verificato del codice (14 settembre 2026)
+## 2. Stato verificato del codice e ricontrollo del 15 settembre 2026
+
+La fotografia iniziale del 14/9 conserva sotto le proprie date i numeri
+storici. Il ricontrollo sorgente del 15/9 usa `09a58c7`, che incorpora il
+prodotto RM-0008 fino a `5c1220ac`; i risultati correnti sono nel rapporto di
+certificabilita indicato in testa. Non sono misure sugli archivi installati.
 
 Il ciclo esiste già: va ricongiunto, non costruito. Categorie:
 - `connected`: produttore, consumatore ed effetto presenti;
@@ -172,9 +188,17 @@ Il ciclo esiste già: va ricongiunto, non costruito. Categorie:
     (`host`, `guest`).
 
 **Sicurezza, verificata:**
-- `synth_request.py:72` esegue `test_runner.py` sull'host;
-- `sandbox.py:549` monta nell'executor il vault e `admin.key`;
-- i percorsi vietati del Vaglio non coprono la radice di configurazione.
+- Il precedente rilievo su `synth_request.py` e superato: il percorso attuale
+  valida i casi e consegna il candidato a Birth; non esegue il runner legacy
+  sull'host. Restano `runtime/test_runner.py` e l'importazione del solo matcher
+  `check_expect` in `executor_birth_functional.py`. FS-A non e quindi chiusa.
+- `sandbox._build_bwrap_args`, nel ramo della capability
+  `metnos:credentials_metadata_only`, rende ancora disponibili vault e
+  `credentials.ADMIN_KEY_PATH` all'executor; non e un accesso concesso
+  indistintamente a tutti gli executor. La migrazione FS-B resta necessaria.
+- I pattern di `vaglio._FORBIDDEN_PATH_PATTERNS` non costituiscono una
+  protezione completa della radice di configurazione; non sostituiscono il
+  confine FS-B previsto dal piano.
 
 **Numeri storici (3/9)**, da rigenerare in P0:
 - lacune 13/0/4;
