@@ -3,7 +3,7 @@
 # The administrative runner captures diagnostics privately. Only bounded
 # public identities, counts and error codes leave this process.
 set -euo pipefail
-case "${2:-}" in public-history|producer-policy) ;; *) exit 64 ;; esac
+case "${2:-}" in public-history|producer-policy|producer-history) ;; *) exit 64 ;; esac
 /opt/metnos/.venv/bin/python -I - "$1" "$2" <<'PY'
 import hashlib
 import importlib.util
@@ -23,6 +23,8 @@ modules = (
     "executor_birth_context_v1.py", "executor_birth_prepared_set.py",
     "executor_birth_prepared_root.py",
 )
+if sys.argv[2] == "producer-history":
+    modules += ("executor_birth_producer_store.py",)
 
 def source_hashes():
     return {
@@ -91,7 +93,17 @@ denied_events = []
 
 def read_only_audit(event, args):
     """A regression guard, not an authorization boundary for untrusted code."""
-    if event == "open":
+    if event == "sqlite3.connect":
+        # SQLite's C-level WAL bookkeeping is not covered by Python's open
+        # event. Permit only the reviewed, logically read-only connection.
+        allowed_database = (Path(os.environ["METNOS_USER_STATE"]) / "birth"
+                            / "producer_receipts.sqlite")
+        if (sys.argv[2] != "producer-history"
+                or args[0] != allowed_database.as_uri() + "?mode=ro&cache=private"):
+            denied["write_or_execution"] += 1
+            denied_events.append({"event": event})
+            raise PermissionError("proof_sqlite_connection_denied")
+    elif event == "open":
         path, _mode, flags = args
         if flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND):
             denied["write_or_execution"] += 1
@@ -160,7 +172,7 @@ try:
             raise RuntimeError("installed_dependency_root_untrusted")
     sys.path[:0] = [str(dependency_root / "runtime"), str(dependency_root)]
     result["installed_dependency_root"] = str(dependency_root)
-    # Keep the installed, signed policy unchanged. Only the three candidate
+    # Keep the installed, signed policy unchanged. Only the declared candidate
     # readers are overlaid in this process; no on-disk file is replaced.
     for filename in modules:
         name = filename.removesuffix(".py")
@@ -195,6 +207,24 @@ try:
         transition.prepared_admission_context_id
         for transition in (chain.context_transitions[0], chain.context_transitions[-1])
     )
+    if sys.argv[2] == "producer-history":
+        from executor_birth_producer_store import read_producer_history_v1
+
+        history = read_producer_history_v1()
+        states = ("available", "in_progress", "committed", "rejected")
+        result["producer_history"] = {
+            "source_path": str(history.source_path),
+            "schema_version": history.schema_version,
+            "receipt_rows": len(history.receipts),
+            "issuance_rows": len(history.issuances),
+            "state_counts": {state: sum(row.state == state for row in history.receipts)
+                             for state in states},
+            "unclassified_rows": sum(row.state not in states for row in history.receipts),
+            "field_bytes": history.field_bytes,
+            "terminal_rows": sum(row.terminal_envelope is not None for row in history.receipts),
+            "qualification": "complete_logical_snapshot_only_no_signature_or_global_frontier_proof",
+        }
+        selectors = ()
     if sys.argv[2] == "producer-policy":
         from executor_birth_distribution_manifest import file_content_hash
 
@@ -257,10 +287,11 @@ try:
     }
     if denied["private_read"] or denied["write_or_execution"]:
         raise RuntimeError("proof_forbidden_access_attempted")
-    result["status"] = (
-        "observed_authenticated_policy_sources" if sys.argv[2] == "producer-policy"
-        else "verified_selected_public_contexts"
-    )
+    result["status"] = {
+        "producer-history": "observed_complete_producer_history",
+        "producer-policy": "observed_authenticated_policy_sources",
+        "public-history": "verified_selected_public_contexts",
+    }[sys.argv[2]]
 except Exception as exc:
     errors = []
     while exc is not None and len(errors) < 8:

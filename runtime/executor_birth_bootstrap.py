@@ -31,6 +31,7 @@ from executor_birth_operational import (
     _runtime_bundle_snapshot, approval_scope, candidate_source_id,
 )
 from executor_birth_producer_store import (
+    BIRTH_STATE_BASENAME_V1, PRODUCER_RECEIPTS_BASENAME_V1,
     ProducerReceiptBinding, get_or_issue_and_claim_producer_receipt,
     get_or_issue_producer_receipt,
 )
@@ -60,8 +61,6 @@ _BOOT_STATE = "cold"
 _BOOT_ERROR: BaseException | None = None
 
 
-BIRTH_STATE_BASENAME_V1 = "birth"
-PRODUCER_RECEIPTS_BASENAME_V1 = "producer_receipts.sqlite"
 APPROVALS_BASENAME_V1 = "approvals.sqlite"
 
 
