@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
+import os
 import shutil
 import sqlite3
 import sys
@@ -363,6 +364,59 @@ class TestI18nSetVersionHash(unittest.TestCase):
             ).fetchone()[0],
             "Scelta locale",
         )
+
+    @unittest.skipUnless(os.name == "posix" and os.geteuid() != 0,
+                         "requires enforced read-only directory permissions")
+    def test_seed_upgrade_reads_a_frozen_wal_snapshot_without_sidecars(self):
+        """A protected installation must refresh old editorial text too."""
+        self.i18n.set_catalog_translations("MSG_RELEASED", {"en": "Old release"})
+        self.i18n.set("MSG_CUSTOMIZED", "en", "Owner wording")
+        target = self.i18n._open()
+        folder = self.tmp / "frozen installation #1?"
+        folder.mkdir()
+        seed = folder / "seed.sqlite"
+        source = sqlite3.connect(seed)
+        source.execute("PRAGMA journal_mode=WAL")
+        source.executescript(
+            "CREATE TABLE i18n (key TEXT, lang TEXT, text TEXT, PRIMARY KEY(key,lang));"
+            "CREATE TABLE i18n_seed_history (key TEXT, lang TEXT, version_hash TEXT);"
+        )
+        source.executemany("INSERT INTO i18n VALUES (?, ?, ?)", [
+            ("MSG_RELEASED", "en", "New release"),
+            ("MSG_CUSTOMIZED", "en", "Official wording"),
+            ("MSG_NEW", "en", "New message"),
+        ])
+        source.execute("INSERT INTO i18n_seed_history VALUES (?, ?, ?)",
+                       ("MSG_RELEASED", "en", _h_full("Old release")))
+        source.commit()
+        source.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        source.close()
+        original = seed.read_bytes()
+        self.assertEqual(original[18:20], b"\x02\x02")
+        self.assertEqual(list(folder.iterdir()), [seed])
+        seed.chmod(0o444)
+        folder.chmod(0o555)
+        try:
+            with self.assertRaises(sqlite3.OperationalError):
+                ordinary = sqlite3.connect(seed.as_uri() + "?mode=ro", uri=True)
+                try:
+                    ordinary.execute("SELECT text FROM i18n").fetchall()
+                finally:
+                    ordinary.close()
+            inserted = self.i18n._merge_missing_seed_rows(target, seed)
+            target.commit()
+            self.assertEqual(inserted, 1)
+            self.assertEqual(dict(target.execute(
+                "SELECT key,text FROM i18n WHERE lang='en' AND key IN (?,?,?)",
+                ("MSG_RELEASED", "MSG_CUSTOMIZED", "MSG_NEW"))), {
+                    "MSG_RELEASED": "New release", "MSG_CUSTOMIZED": "Owner wording",
+                    "MSG_NEW": "New message",
+                })
+            self.assertEqual(seed.read_bytes(), original)
+            self.assertEqual(list(folder.iterdir()), [seed])
+        finally:
+            folder.chmod(0o755)
+            seed.chmod(0o644)
 
     def test_mark_for_translation_requeues_existing_target_without_erasing_it(self):
         self.i18n.set_catalog_translations(

@@ -270,7 +270,11 @@ def _merge_missing_seed_rows(
     except OSError:
         pass
 
-    source = sqlite3.connect(f"file:{seed}?mode=ro", uri=True)
+    # The released seed is a checkpointed snapshot, never a live writer DB.
+    # Immutable mode also reads WAL-format snapshots in read-only installs
+    # without trying to create -wal/-shm files beside the signed artifact.
+    source = sqlite3.connect(
+        seed.resolve().as_uri() + "?mode=ro&immutable=1", uri=True)
     try:
         source_columns = {
             row[1] for row in source.execute("PRAGMA table_info(i18n)")
