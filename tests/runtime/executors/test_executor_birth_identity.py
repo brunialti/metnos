@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+import tomllib
 
 import pytest
 
@@ -182,6 +183,77 @@ def test_semantic_core_is_fail_closed_for_unknown_and_unsupported_types():
     dated = MANIFEST.replace(b'version="1.0.0"', b'version=1979-05-27T07:32:00Z')
     with pytest.raises(IdentityError, match="semantic_core_type_unsupported"):
         semantic_core_id(sample(manifest_bytes=dated))
+
+
+LRE_DECLARATION = b'''lre_plan="images.index.v1"
+[[prerequisites]]
+on_error="index_missing"
+executor="create_images_indices"
+[prerequisites.arguments.base_path]
+source="result"
+field="base_path"
+'''
+
+
+def _lre_manifest(declaration=LRE_DECLARATION):
+    # Put scalar declarations at the top level, before the existing tables.
+    return MANIFEST.replace(b"[description]", declaration + b"[description]", 1)
+
+
+@pytest.mark.parametrize("before,after", [
+    (b'images.index.v1', b'images.index.v2'),
+    (b'index_missing', b'index_outdated'),
+    (b'create_images_indices', b'create_files_indices'),
+    (b'arguments.base_path', b'arguments.source_path'),
+    (b'source="result"', b'source="args"'),
+    (b'field="base_path"', b'field="source_path"'),
+])
+def test_semantic_core_binds_every_lre_declaration_field(before, after):
+    declared = _lre_manifest()
+    baseline = semantic_core_id(sample(manifest_bytes=declared))
+    assert baseline != semantic_core_id(sample())
+    assert baseline != semantic_core_id(sample(
+        manifest_bytes=declared.replace(before, after)))
+
+
+@pytest.mark.parametrize("before,after", [
+    (b'lre_plan=', b'lre_plans='),
+    (b'[[prerequisites]]', b'[[prerequisite]]'),
+    (b'on_error=', b'on_errors='),
+    (b'executor=', b'executors='),
+    (b'arguments.base_path', b'argument.base_path'),
+    (b'source=', b'sources='),
+    (b'field=', b'fields='),
+])
+def test_semantic_core_keeps_lre_declarations_closed(before, after):
+    with pytest.raises(IdentityError, match="semantic_core_unknown_field"):
+        semantic_core_id(sample(manifest_bytes=_lre_manifest(
+            LRE_DECLARATION.replace(before, after))))
+
+
+@pytest.mark.parametrize("origin,path", [
+    (origin, path)
+    for origin, directory in (
+        (ManifestOrigin.CORE, Path("executors")),
+        (ManifestOrigin.BUILTIN, Path("runtime/builtin_executor_contracts")),
+    )
+    for path in sorted(directory.glob("*/manifest.toml"))
+], ids=lambda value: value.parent.name if isinstance(value, Path) else value.value)
+def test_every_authored_executor_has_a_birth_semantic_identity(origin, path):
+    """Exercise the real authoring inputs, not a fixture-signed catalog."""
+    manifest = path.read_bytes()
+    parsed = tomllib.loads(manifest.decode("utf-8"))
+    identity = sample(
+        contract_id=ContractId(origin, f"{path.parent.name}/manifest.toml"),
+        manifest_bytes=manifest,
+        language_state_bytes=path.with_name("manifest.lang_state.json").read_bytes(),
+        code_files={name: (path.parent / name).read_bytes()
+                    for name in parsed["code"]["files"]},
+        executor_origin=ExecutorOrigin(origin.value),
+        revision_authorship=RevisionAuthor.MAINTENANCE,
+    )
+    assert candidate_id(identity).startswith("sha256:")
+    assert semantic_core_id(identity).startswith("sha256:")
 
 
 RUN_PROCESSES_MANIFEST = Path("executors/run_processes/manifest.toml")

@@ -650,6 +650,10 @@ def verify_named_executors(
         from executor_birth_intent import (
             BirthIntent, submit_builtin_generation_birth, submit_stack_reconcile_birth,
         )
+        from executor_birth_identity import (
+            CandidateIdentityInput, ExecutorOrigin, IdentityError, RevisionAuthor,
+            semantic_core_id,
+        )
         from executor_birth_snapshot import (
             LANGUAGE_STATE_FILE, MANIFEST_FILE, CandidateSnapshotError,
             _declared_code_files, _read_regular,
@@ -766,11 +770,23 @@ def verify_named_executors(
                                 base.update(_release_plan_details(
                                     ref, current, served, prepared, language_state, code, context))
                     if plan_only:
+                        # The semantic projection ignores provenance. This
+                        # read-only input issues no identity or authority for
+                        # a future request; Birth constructs its own envelope.
+                        import hashlib
+                        base["candidate_semantic_core_id"] = semantic_core_id(
+                            CandidateIdentityInput(
+                                contract_id=contract_id, manifest_bytes=prepared,
+                                language_state_bytes=language_state, code_files=code,
+                                executor_origin=ExecutorOrigin(origin.value),
+                                revision_authorship=RevisionAuthor.MAINTENANCE,
+                                objective_hash="sha256:" + hashlib.sha256(prepared).hexdigest(),
+                            ))
                         base["destination_context"] = (
                             {"status": "not_evaluated", "reason": "cutover_not_completed"}
                             if preview_evidence is not None else
                             {"status": "selected", "admission_context_id": context.selection.admission_context_id})
-                except (OSError, CandidateSnapshotError, ContractStoreError) as exc:
+                except (OSError, CandidateSnapshotError, ContractStoreError, IdentityError) as exc:
                     outcomes.append({**base, "outcome": "error", "diagnostic": dataclasses.asdict(
                         birth_failure_diagnostic(exc, "candidate"))})
                     if plan_only:

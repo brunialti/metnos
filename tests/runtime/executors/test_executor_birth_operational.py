@@ -420,7 +420,17 @@ def test_unknown_manifest_field_is_refused_before_any_receipt_claim(monkeypatch,
     assert claims == [] and published == []
 
 
-def test_real_run_processes_with_its_candidates_key_is_admitted(tmp_path):
+@pytest.mark.parametrize("source", [
+    RUN_PROCESSES_SOURCE,
+    Path("executors/create_images_indices"),
+    Path("executors/find_images_indices"),
+    Path("executors/find_persons_indices"),
+    Path("executors/find_urls"),
+    Path("executors/read_messages"),
+    Path("executors/read_urls_html"),
+    Path("runtime/builtin_executor_contracts/start_lre"),
+], ids=lambda source: source.name)
+def test_real_release_contract_is_admitted(tmp_path, source):
     """The real manifest crosses the isolated Birth core up to a verified receipt."""
     calls = []
 
@@ -435,7 +445,7 @@ def test_real_run_processes_with_its_candidates_key_is_admitted(tmp_path):
         return PublicationResult(ref.contract_id, expected_generation_id, generation,
                                  "commit_birth_snapshot", False)
 
-    request, core = _fixture(tmp_path, publisher, RUN_PROCESSES_SOURCE)
+    request, core = _fixture(tmp_path, publisher, source)
     result = _birth_executor_for_test(request, _core=core)
     assert result.error_code is None
     assert result.report.outcome is BirthOutcome.ADMITTED

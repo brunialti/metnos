@@ -276,6 +276,11 @@ MANIFEST_FIELD_GRAMMAR_V1: dict[str, object] = {
     "critical": None, "intelligence": None, "platforms": None,
     "timeout_s": None, "superseded_by": None, "deprecated_at": None,
     "deprecation_ttl_hours": None, "origin": None,
+    "lre_plan": None,
+    "prerequisites": [{
+        "on_error": None, "executor": None,
+        "arguments": {"*": {"source": None, "field": None}},
+    }],
     "description": {"*": None}, "args": _SCHEMA_NODE,
     "code": {"files": None, "dependencies": None, "digest": None},
     "output": {"schema_inline": None},

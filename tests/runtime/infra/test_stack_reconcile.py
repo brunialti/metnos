@@ -1578,7 +1578,8 @@ def test_store_only_deploy_admits_the_edit_not_the_stale_authoring(
 def _contract_bytes(name, spec):
     files = spec["files"]
     manifest = (
-        f'name = "{name}"\ndescription = "{spec.get("description", "d")}"\n'
+        # The preview validates the same localized grammar as Birth.
+        f'name = "{name}"\ndescription = {{en = "{spec.get("description", "d")}"}}\n'
         f'version = "{spec.get("version", "1.0.0")}"\n'
         "[code]\nfiles = [" + ", ".join(f'"{item}"' for item in files) + "]\n"
         f'digest = "sha256:{"0" * 64}"\n'
@@ -1855,6 +1856,27 @@ def test_release_preview_missing_authority_is_not_evaluated_not_green(monkeypatc
     assert [row["outcome"] for row in rows] == ["not_evaluated", "not_evaluated"]
     assert all(row["diagnostic"]["phase"] == "context" for row in rows)
     assert "private authority" not in json.dumps(rows) and reached == []
+
+
+@pytest.mark.parametrize("installed", [True, False])
+def test_release_preview_rejects_unknown_semantics_before_birth(monkeypatch, tmp_path, installed):
+    same = {"files": {"main.py": b"same\n"}}
+    run, reached, _control, root = _release_store(
+        monkeypatch, tmp_path, working={"alpha": same, "beta": same},
+        served={"alpha": same, **({"beta": same} if installed else {})})
+    manifest = root / "beta" / "manifest.toml"
+    manifest.write_bytes(b'unreviewed_behavior="private input"\n' + manifest.read_bytes())
+    before = {str(path): (path.read_bytes(), path.stat().st_mtime_ns)
+              for path in root.rglob("*") if path.is_file()}
+    rows = run(plan=True)
+    assert [(row["name"], row["outcome"]) for row in rows] == [
+        ("alpha", "unchanged"), ("beta", "error")]
+    assert rows[1]["diagnostic"]["code"] == "semantic_core_unknown_field"
+    assert "private input" not in json.dumps(rows)
+    assert rows[0]["candidate_semantic_core_id"].startswith("sha256:")
+    after = {str(path): (path.read_bytes(), path.stat().st_mtime_ns)
+             for path in root.rglob("*") if path.is_file()}
+    assert before == after and reached == []
 
 
 def test_release_plan_exposes_versions_bytes_and_unknown_future(monkeypatch, tmp_path):

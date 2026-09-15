@@ -218,6 +218,30 @@ notification outbox. This verifies source inclusion and existing delivery
 contracts, not a successful automatic indexing workflow or a changed live
 Tutor answer.
 
+## Resumable-plan implementation addendum, 2026-09-15
+
+The implementation following the audit routes a signed missing-index
+prerequisite into the registered `images.index.v1` LRE plan. Discovery,
+bounded analysis groups, merge and complete-generation publication are
+resumable units. The original archive remains read-only; an incomplete
+generation never replaces a readable index. The earlier transient-build
+architecture and the audit's missing automatic dispatch describe historical
+states, not the candidate implementation.
+
+`lre_plan` and every prerequisite's error, target and argument binding are
+technical manifest fields. Birth includes them in the semantic identity;
+changing a binding is not a linguistic-only revision. The grammar remains
+closed at each nested object. The release preview computes that identity
+from captured candidate bytes before admission, without issuing a receipt
+or claiming that the candidate has been accepted.
+
+Cold-start photo E2E has passed as the service account, with real models,
+an isolated catalog and synthetic photos. Release 44 exposed a missing
+identity-grammar integration during actual Birth publication; a follow-up
+release is required. Its targeted identity, Birth, reconciliation and LRE
+group passes 598 tests. Production publication and final live verification
+are tracked separately in `internal/reports/rm0008-release-20260915.md`.
+
 ## Historical notes
 
 - Threshold 120s è euristico iniziale. Telemetria future può aggiornare.
