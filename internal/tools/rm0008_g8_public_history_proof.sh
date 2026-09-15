@@ -3,8 +3,8 @@
 # The administrative runner captures diagnostics privately. Only bounded
 # public identities, counts and error codes leave this process.
 set -euo pipefail
-test "${2:-}" = public-history
-/opt/metnos/.venv/bin/python -I - "$1" <<'PY'
+case "${2:-}" in public-history|producer-policy) ;; *) exit 64 ;; esac
+/opt/metnos/.venv/bin/python -I - "$1" "$2" <<'PY'
 import hashlib
 import importlib.util
 import json
@@ -134,6 +134,7 @@ result = {
     "configured_install_root": selected.get("METNOS_INSTALL_ROOT"),
     "configured_legacy_root": selected.get("METNOS_HOME"),
     "http_working_directory": str(working_directory),
+    "mode": sys.argv[2],
 }
 
 def deadline(_signum, _frame):
@@ -194,6 +195,33 @@ try:
         transition.prepared_admission_context_id
         for transition in (chain.context_transitions[0], chain.context_transitions[-1])
     )
+    if sys.argv[2] == "producer-policy":
+        from executor_birth_distribution_manifest import file_content_hash
+
+        # This changes the next design decision: can the historical author
+        # policy be recovered from an already retained, exact public source?
+        policy_path = "runtime/executor_birth_producer_table_v1.py"
+        with (dependency_root / policy_path).open("rb") as stream:
+            policy_source = stream.read(1024 * 1024 + 1)
+        if len(policy_source) > 1024 * 1024:
+            raise RuntimeError("policy_source_size_limit")
+        current_hash = file_content_hash(policy_path, policy_source)
+        variants = {}
+        for record in chain.authenticated_records:
+            matches = [item for item in record.files if item.path == policy_path]
+            if len(matches) != 1:
+                raise RuntimeError("historical_policy_inventory_incomplete")
+            item = matches[0]
+            variants.setdefault(item.content_hash, []).append(record.release_sequence)
+            if item.content_hash == current_hash and item.size != len(policy_source):
+                raise RuntimeError("historical_policy_size_mismatch")
+        result["producer_policy"] = {
+            "current_public_source_hash": current_hash,
+            "authenticated_release_variants": variants,
+            "exact_copy_available_for_all": set(variants) == {current_hash},
+            "qualification": "source_availability_only_no_admission_count",
+        }
+        selectors = ()
     for selector in selectors:
         evidence = load_historical_context_verifiers_v1(selector)
         if evidence.required_head_id != chain.required_head.head_id:
@@ -229,7 +257,10 @@ try:
     }
     if denied["private_read"] or denied["write_or_execution"]:
         raise RuntimeError("proof_forbidden_access_attempted")
-    result["status"] = "verified_selected_public_contexts"
+    result["status"] = (
+        "observed_authenticated_policy_sources" if sys.argv[2] == "producer-policy"
+        else "verified_selected_public_contexts"
+    )
 except Exception as exc:
     errors = []
     while exc is not None and len(errors) < 8:
@@ -250,5 +281,5 @@ finally:
         raise RuntimeError("output_size_limit")
     os.write(output, payload)
     os.close(output)
-raise SystemExit(0 if result["status"] == "verified_selected_public_contexts" else 1)
+raise SystemExit(0 if result["status"] != "not_verified" else 1)
 PY
