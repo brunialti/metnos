@@ -228,8 +228,10 @@ _SERVICE_BOUNDING_STATUS_V1 = {
 # signed catalog had dropped both addresses and paired devices were cut off.
 # 13/9/2026: every gated service keeps CAP_NET_RAW in its bounding set, so a
 # command on the allowed list (`ping`) can start (authorized by the owner).
+# 15/9/2026: the durable worker opts into the existing central scheduler;
+# resource limits and explicit serial overrides retain their authority.
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:467d690b959ff44fbd69cf3c041ffe2cbdda4b0d6791efe9ead4ae5db8cfb11b"
+    "sha256:8d657fff0dbfff0c20aa650b5147598e26c481e697458064587d83962bb1bd4f"
 )
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -853,7 +855,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:6b080abe8b44e22e65ad0c5f7f87ca208ba171c1ad93bc637ff4f911978da329"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:93b8c7bcc55a6a3e1208e6bb3cd5c904451a18a5f9ca7ef7972ed69b770986d2"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )

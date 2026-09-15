@@ -830,7 +830,11 @@ def test_contract_convergence_birth_and_source_owner_are_guarded_mutants(
         assert "boundary_scope_changed" in _codes(check(observed, inventory))
 
     with monkeypatch.context() as scoped:
-        scoped.delitem(boundary_guard.BOUNDARY_SOURCE_OWNERS, relative)
+        # Replacing the mapping preserves the shared policy's insertion order.
+        scoped.setattr(boundary_guard, "BOUNDARY_SOURCE_OWNERS", {
+            path: owner for path, owner in boundary_guard.BOUNDARY_SOURCE_OWNERS.items()
+            if path != relative
+        })
         observed = scan_file(path, repository_root=root)
         assert "birth" not in _fact(observed, "converge").capabilities
         assert "boundary_scope_changed" in _codes(check(observed, inventory))

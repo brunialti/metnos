@@ -1079,6 +1079,37 @@ def test_product_recipe_pin_admits_v3_and_rejects_rehashed_metis(engine) -> None
             preflight._service_source_identity_v1(autonomous, descriptor)
 
 
+@pytest.mark.parametrize("parallel", (None, "0", "1", "2"))
+def test_durable_scheduler_recipe_is_bound_in_both_readers(parallel) -> None:
+    """The reviewed scheduler opt-in is exact, not an arbitrary environment override."""
+    original = catalog.decode_service_catalog_v1(_catalog_bytes())
+    entries = []
+    for entry in original.entries:
+        if entry.entry_id == "service-durable-worker":
+            environment = tuple(value for value in entry.target_environment
+                                if value.name != "METNOS_EXECUTOR_PARALLEL")
+            if parallel is not None:
+                environment += (catalog.ServiceEnvironmentV1("METNOS_EXECUTOR_PARALLEL", parallel),)
+            entry = dataclasses.replace(entry, target_environment=tuple(
+                sorted(environment, key=lambda value: value.name)))
+        entries.append(entry)
+    encoded = catalog._encode_service_catalog_v1(tuple(entries), original.legacy_bindings)
+    autonomous = preflight._decode_service_catalog_v1(encoded)
+    descriptor = preflight._decode_deployment_descriptor_v1(
+        assembler.encode_deployment_descriptor_v1(_deployment_record()))
+    canonical = catalog.decode_service_catalog_v1(encoded)
+    root = "/var/lib/metnos/executor-birth/releases-v1/00000000000000000002"
+    if parallel == "1":
+        assert preflight._service_source_identity_v1(autonomous, descriptor) == (
+            preflight._EXPECTED_SERVICE_SOURCE_IDENTITY_V1)
+        catalog._source_identity(canonical, root)
+    else:
+        with pytest.raises(preflight.PreflightError, match="service source recipe"):
+            preflight._service_source_identity_v1(autonomous, descriptor)
+        with pytest.raises(catalog.ServiceCatalogError, match="source recipe"):
+            catalog._source_identity(canonical, root)
+
+
 @pytest.mark.parametrize("service_home", (
     "/var/lib/metnos", "/var/lib/metnos-service", "/srv/assistant",
 ))

@@ -53,6 +53,15 @@ def test_active_token_is_checked_even_without_known_token_prefix(monkeypatch):
     assert GATE._check_blob("example.txt", b"opaque-test-publish-credential")
 
 
+def test_updated_mail_examples_need_no_payload_exception():
+    relative = "executors/read_messages/manifest.toml"
+    content = (ROOT / relative).read_bytes()
+    assert relative not in GATE.REVIEWED_EXAMPLES
+    assert not GATE._check_blob(relative, content)
+    assert not GATE._check_blob("copied-example.toml", content + b"\n")
+    assert GATE._check_blob(relative, content + b"\nsomeone@private.org")
+
+
 def test_sensitive_filenames_and_symlinks(tmp_path):
     (tmp_path / "author_priv.bin").write_bytes(b"x" * 32)
     (tmp_path / "alias").symlink_to(tmp_path / "author_priv.bin")

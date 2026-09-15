@@ -2,7 +2,7 @@
 """Audit public bytes and the final index, without rewriting signed payloads.
 
 The owner's public attribution/name is allowed by CLAUDE.md section 7.5.
-Private account/machine identifiers are not generally allowed. Four explicitly
+Private account/machine identifiers are not generally allowed. Three explicitly
 reviewed, already-public signed examples are bound to their exact payloads.
 See internal/reports/publication-gii-20260908.md for the review rationale.
 """
@@ -75,10 +75,6 @@ REVIEWED_EXAMPLES = {
     "executors/create_events/manifest.toml": (
         "177d373dafea0e9c372d3bee676b12f53dd6212be706ecbd001ed5a07e63f96b",
         (b"alice@co.com", b"bob@co.com"),
-    ),
-    "executors/read_messages/manifest.toml": (
-        "278d057a0980f37b58e897804290aee4320035adbdb769e59d3ca04359c8fedf",
-        (b"noreply@amazon.com", b"orders@amazon.it"),
     ),
 }
 

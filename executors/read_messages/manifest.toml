@@ -92,8 +92,8 @@ en = "Exclusive end of the receipt period. Accepts the same formats as since. A 
 type        = "string"
 
 [args.properties.from_contains.description]
-it = "Substring nel mittente (campo From), case-insensitive lato IMAP server. Es. from_contains='amazon' trova mail da 'noreply@amazon.com', 'orders@amazon.it', ecc. NIENTE wildcard, e' substring puro. Combinabile con altri criteri (AND)."
-en = "Substring in the sender (From field), case-insensitive on the IMAP server side. E.g. from_contains='amazon' finds mail from 'noreply@amazon.com', 'orders@amazon.it', etc. NO wildcards, it is a pure substring. Combinable with other criteria (AND)."
+it = "Substring nel mittente (campo From), case-insensitive lato IMAP server. Es. from_contains='shop' trova mail da 'orders@shop.example.com', 'help@shop.example.org', ecc. NIENTE wildcard, e' substring puro. Combinabile con altri criteri (AND)."
+en = "Substring in the sender (From field), case-insensitive on the IMAP server side. E.g. from_contains='shop' finds mail from 'orders@shop.example.com', 'help@shop.example.org', etc. NO wildcards, it is a pure substring. Combinable with other criteria (AND)."
 
 [args.properties.subject_contains]
 type        = "string"
