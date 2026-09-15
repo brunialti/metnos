@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """credential_injection — iniezione credenziali RIPROGETTATA (spec sites §3.2).
 
 Questo modulo gira DENTRO il broker (processo sidecar). È l'UNICO punto in cui

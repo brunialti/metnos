@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Resolve manifest-declared paired-device identities in argument values.
 
 An argument opts in with ``paired_device_identity = "id" | "name"``.

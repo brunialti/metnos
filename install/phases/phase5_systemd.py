@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Phase 5 — Systemd services (user level).
 
 Writes user-level systemd units from the templates in

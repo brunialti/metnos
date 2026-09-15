@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Build and publish one signed release from a fixed received source.
 
 The productive entry point accepts only a content-addressed source identity.

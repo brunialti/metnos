@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """runtime_settings.py — config persistente runtime.toml.
 
 Fase 12 19/5/2026 v5: tuning flag runtime da env-only a

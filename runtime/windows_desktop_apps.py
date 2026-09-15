@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """User-session desktop apps registered in the Windows Start menu.
 
 Only a digest of a registered shortcut's target/arguments crosses the executor

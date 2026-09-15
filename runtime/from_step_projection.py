@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Schema-driven projection of a producer's entries into consumer arguments.
 
 ``from_step`` carries two kinds of data across a pipeline:

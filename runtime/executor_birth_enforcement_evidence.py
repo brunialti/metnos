@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Evidence that the closed-build policy bit was OBSERVED, not claimed.
 
 Point 3 of the group 7 wrapper recomputes the catalog, the effective topology

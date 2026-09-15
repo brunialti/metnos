@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """sites_audit — audit-log append-only per il dominio `sites` (spec §9 [ALTO]).
 
 Il turn-record non basta per l'incident-response di un agente-con-credenziali:

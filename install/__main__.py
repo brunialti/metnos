@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Metnos installer — orchestrator.
 
 Invoked by ``install/bootstrap.sh`` after the venv is ready, OR directly

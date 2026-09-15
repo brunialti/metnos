@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Exclusive owner of the fixed executor-startup gate.
 
 Ordinary launches already take a shared lock in the installed preflight.  The

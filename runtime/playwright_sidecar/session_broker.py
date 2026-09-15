@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """session_broker — contesti browser nominati e persistenti (spec sites §3.1/§3.3).
 
 Estende il sidecar Playwright (un solo Chromium persistente) con SESSIONI

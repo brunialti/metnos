@@ -3,7 +3,7 @@ name = "metnos-helper"
 version = "0.2.63"
 edition = "2021"
 description = "Metnos elevated helper for Windows package operations (ADR 0210)"
-license = "AGPL-3.0-only"
+license = "MIT"
 
 # Dipendenze RIDOTTE AL MINIMO, e la riduzione e' la scelta di sicurezza piu'
 # importante di questo progetto. L'aiutante e' il software piu' privilegiato

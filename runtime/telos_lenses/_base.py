@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """telos_lenses/_base.py — framework comune per le lenti.
 
 Ogni lens fornisce 3 cose:

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Helper comuni per executor — robustness al confine NL→determinismo (§2.4).
 
 Pattern §2.4 CLAUDE.md: gli executor accettano args dal PLANNER LLM che a

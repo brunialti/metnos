@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """test_faceless_upload_recompose — separazione punteggi + descrizione VLM in
 testa nel path upload-default faceless (dispatch, 1/7/2026).
 

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """turn_events.py — event log durabile per turn, indipendente dalla
 connessione HTTP del client.
 

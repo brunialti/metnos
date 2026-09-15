@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """manifest_refactor.py — refactor idempotente dei manifest.toml.
 
 Applica le 4 regole di stile (CLAUDE.md §6 + §7.12):

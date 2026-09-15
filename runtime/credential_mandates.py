@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Canonical usage mandates stored as encrypted credential metadata."""
 from __future__ import annotations
 

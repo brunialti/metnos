@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Seed RM-0005 per affinity e output naturali di codegen/store entries."""
 from __future__ import annotations
 

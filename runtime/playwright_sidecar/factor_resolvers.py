@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Bounded second-factor resolvers used inside the sites broker.
 
 The planner never sees a factor value.  A resolver receives a narrow request,

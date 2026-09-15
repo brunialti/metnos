@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Prove a full server turn from an isolated post-transition release copy.
 
 The outer process prepares a disposable source tree and a private filesystem

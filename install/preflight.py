@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Pre-flight system checks.
 
 Run before any phase. Catches the classic failures early (wrong Python,

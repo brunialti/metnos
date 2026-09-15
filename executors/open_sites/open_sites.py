@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """open_sites — apre sessioni browser autenticabili su siti (spec sites F1 §3.4).
 
 Vettoriale (§2.1): `urls: array[str]` → una sessione per url (fan-out nel

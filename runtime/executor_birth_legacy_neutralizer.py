@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Private core that performs one retirement plan, idempotently and in place.
 
 The plan is decided elsewhere (`executor_birth_legacy_retirement`), and the

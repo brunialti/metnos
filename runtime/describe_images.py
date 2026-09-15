@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """runtime.describe_images — builtin universale: IMMAGINE → descrizione VLM.
 
 Sibling-immagine di `describe_entries` (che riassume i CAMPI di una lista):

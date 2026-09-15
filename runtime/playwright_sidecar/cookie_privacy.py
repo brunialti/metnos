@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Bounded semantic cookie rejection; browser observations never grant authority."""
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """backend_resolver.py — risoluzione UNIFORME del backend/provider.
 
 Problema generale (lessons_learned.md §B): per gli OBJECT con backend multipli

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Non-destructive pilot, rollback proof and guarded HTTP scope cutover.
 
 ``prepare`` materializes the effective legacy Metnos runtime settings as a

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Lessici RM-0005 residui dei consumer runtime N-Z.
 
 I route-id, i concetti tabellari e il verbo canonico ``send`` sono identita'

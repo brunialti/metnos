@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Declarative Synth tests, executed only by the core's hermetic Birth runner.
 
 This is a pre-publication test, not an admission receipt. Producers supply

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Phase 3 — Metnos source and initial stores.
 
 By the time this runs, ``$METNOS_INSTALL_ROOT`` points at a checked-out

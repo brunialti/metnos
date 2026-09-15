@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Phase 2 — Infrastructure (embedder + LLM tiers + optional services).
 
 The LLM policy is **tier-based**, not model-based. Metnos routes every call to

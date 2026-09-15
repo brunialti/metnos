@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Risoluzione deterministica delle azioni web del dominio ``sites``.
 
 Il planner fornisce linguaggio naturale; questo modulo lo riduce a un

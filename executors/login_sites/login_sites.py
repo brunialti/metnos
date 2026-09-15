@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """login_sites — login web con credenziali cifrate (spec sites F1 §3.4).
 
 Vettoriale (§2.1): `session_ids: array[str]` (o `from_step` da open_sites) →

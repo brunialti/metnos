@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """mail_account_resolver.py — risoluzione DETERMINISTICA di «tutta la posta».
 
 Problema generale (bug live 10/6/2026): «controlla tutta la mia posta ultime

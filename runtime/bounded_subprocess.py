@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Bounded subprocess transport for durable executor invocations.
 
 ``subprocess.run(capture_output=True)`` retains all child output in memory.
