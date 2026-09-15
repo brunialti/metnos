@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """telos_proposals_store.py — Store proposte telos engine + decisioni admin.
 
 Read-only sui proposals JSONL (cui scrivono lenti + AlignmentEngine),

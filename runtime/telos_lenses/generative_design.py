@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """generative_design.py — Pareto candidates per brief composto.
 
 Per UN brief composto da piu' vincoli/obiettivi, genera 2-3 candidati

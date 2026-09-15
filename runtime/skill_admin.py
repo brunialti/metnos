@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """skill_admin — builtin in-process per AMMINISTRARE le skill da CHAT (asse 2).
 
 Espone due tool builtin al PLANNER (gemello CLI `metnos-skills`):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Azioni browser sicure su sessioni ``sites`` (spec F2 §3.4/§4.2)."""
 from __future__ import annotations
 

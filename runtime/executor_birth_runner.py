@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Hermetic execution foundation for RM-0008 birth tests.
 
 This module is deliberately independent from :mod:`test_runner`.  A birth

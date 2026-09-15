@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """vlm_client — client VLM condiviso per descrivere il CONTENUTO di un'immagine.
 
 Single source of truth della chiamata VLM ad-hoc (vs il path index-build di

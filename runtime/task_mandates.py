@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Persistent, task-scoped authority envelopes for unattended execution.
 
 The scheduler stores natural-language queries.  A mandate is the deterministic

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Composite, non-secret health surface for the local Metnos stack.
 
 The ordinary ``/agent/health`` endpoint remains a cheap liveness probe.  This

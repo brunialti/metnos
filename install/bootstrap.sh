@@ -53,7 +53,7 @@ info()   { printf "    %s%s%s\n" "$DIM" "$1" "$RESET"; }
 # ─────── 0. Welcome ───────────────────────────────────────────────
 banner "Metnos installer · bootstrap"
 printf "  %sA self-hosted architecture shaped by its installed executors.%s\n" "$DIM" "$RESET"
-printf "  %sAGPL-3.0 · metnos.com%s\n\n" "$DIM" "$RESET"
+printf "  %sMIT · metnos.com%s\n\n" "$DIM" "$RESET"
 
 # ─────── 1. Find a suitable python ────────────────────────────────
 step "Locating Python ≥ ${PYTHON_MIN_MAJOR}.${PYTHON_MIN_MINOR}"

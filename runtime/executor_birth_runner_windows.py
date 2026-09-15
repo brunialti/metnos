@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Windows process-containment proof for the RM-0008 birth runner.
 
 The primitive in this module proves only process-tree containment and resource

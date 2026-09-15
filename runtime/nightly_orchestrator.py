@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """nightly_orchestrator.py — COMPONENTE CORE: orchestrazione manutenzione notturna.
 
 Accorpamento (feedback 3/6): i ~14 task di housekeeping notturno erano 14 entry

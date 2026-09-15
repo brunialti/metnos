@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Private filesystem core that publishes one prepared distribution.
 
 This module deliberately exposes NO productive installer. It holds only the

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """output_policy.py — modalità di presentazione DETERMINISTICA.
 
 La modalità di output NON è scelta dall'LLM-proposer: è una funzione pura di

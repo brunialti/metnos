@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Strict wire adapter for the RM-0008 Windows Birth sandbox helper."""
 
 from __future__ import annotations

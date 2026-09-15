@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Universal LLM-call telemetry — a thin, PASS-THROUGH observability hook.
 
 Every provider routes its ``(system, user, result)`` through ``record(...)``.

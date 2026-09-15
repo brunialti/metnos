@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Resolve network destinations from instance data, never from model guesses.
 
 Device addresses come from the signed heartbeat's route towards this server.

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """scamper.py — lente SCAMPER (Eberle 1971, Osborn 1953).
 
 7 operatori brainstorming applicati ai top-N executor del catalog.

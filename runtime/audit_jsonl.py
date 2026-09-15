@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """audit_jsonl.py — scrittura append-only JSONL per i log di audit (§7.2: una
 sola definizione del primitivo, era duplicato ~6 volte in synt/promoter/i18n/
 change-intent/verifier/review).

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """time_window_resolver.py — estrazione DETERMINISTICA della finestra NL.
 
 Problema generale (bug live 11/6/2026, faglia 2 del routing mail):

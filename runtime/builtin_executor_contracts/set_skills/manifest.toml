@@ -15,7 +15,7 @@ en = "SCOPO: Enables or disables an installed skill. PATTERN: natural request ty
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:f211a4bdad26f9cfe0d85bb96cbc39a176bf5937ab984b8afa9a4323dcfbffe0"
+digest = "sha256:133a5c5c9a65c8227e7502b556f58785668a5fca1943087740cfaad83939cbc5"
 
 [args]
 type = "object"

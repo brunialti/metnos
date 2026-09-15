@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Phase 1 — Bootstrap.
 
 The venv and bootstrap deps (rich, httpx) are already in place by the

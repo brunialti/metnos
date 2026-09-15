@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Private core that installs a unit topology and re-reads what it wrote.
 
 Point 1 of the group 7 wrapper: install and re-read the dominant topology. This

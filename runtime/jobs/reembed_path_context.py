@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Re-embed retroattivo del testo con path_context (ADR 0166 — intelligent
 indexing). Applica all'indice ESISTENTE l'arricchimento di cartella senza
 re-eseguire il VLM: riusa le `description`, calcola `folder_path_context` (una

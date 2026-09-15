@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: MIT
 """Runtime contract shared by Playwright clients and the sidecar server.
 
 The fingerprint is deliberately content-derived instead of being a manually

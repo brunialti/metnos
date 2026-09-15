@@ -15,7 +15,7 @@ en = "SCOPO: Describes observed local images without modifying them. PATTERN: na
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:bc77c86e650213176c5e154542e0b42ba24f1aa6779c1cf70689f252a9cfe984"
+digest = "sha256:269f03e7cf7ca8430a9d50aecc211edba47c02a69335aa4e647ed0efae693ae0"
 
 [args]
 type = "object"
