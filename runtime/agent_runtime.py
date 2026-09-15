@@ -277,6 +277,14 @@ def _detect_unfulfilled_mutating_intent(log) -> str:
 
     intent_verb = (getattr(log, "intent_verb", "") or "").strip()
     intent_is_mutating = intent_verb in DESTRUCTIVE_VERBS
+    admission = getattr(log, "durable_admission", None)
+    if (getattr(log, "match_source", "") == "lre"
+            and isinstance(admission, dict) and admission.get("ok") is True
+            and admission.get("decision") == "accepted"
+            and admission.get("workload_id") and admission.get("revision_id")):
+        # Preserve the actual queued/running receipt. No executor has finished
+        # yet; lack of inline steps must not become a false admission failure.
+        return ""
 
     # §dominio + compound rule (ea1ba7e): un `send` SENZA destinatario
     # esplicito ("mandami il riassunto", "mandami in chat") NON e' outbound —
@@ -1202,7 +1210,10 @@ def planner_facing_schema(schema):
         return schema
     props = dict(schema.get("properties") or {})
     required = list(schema.get("required") or [])
-    has_entries = "entries" in props or "entries" in required
+    entries_spec = props.get("entries") or {}
+    has_entries = (("entries" in props or "entries" in required)
+                   and not (isinstance(entries_spec, dict)
+                            and entries_spec.get("runtime_resolved")))
     if has_entries:
         # Rimuovi entries dalla vista del modello: non puo' inventarle.
         props.pop("entries", None)
@@ -4043,6 +4054,7 @@ class TurnLog:
     # Non contengono testo utente e restano vuote sui record storici.
     metnos_version: str = ""
     match_source: str = ""
+    durable_admission: dict | None = None
     # Lista di proposte di cap expand emerse dal turno: ogni elemento e'
     # {step_num, executor, args, used, available_total, suggested_args}.
     # Popolata in write() per i daemon channel che gestiscono dialog
@@ -7068,6 +7080,7 @@ def _run_engine(
                         else result.error_class),
         "needs_inputs_obs": needs_inputs_obs,
         "gate_obs": gate_obs,
+        "durable_admission": getattr(result, "durable_admission", None),
     }
 
 
@@ -7081,6 +7094,7 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
     e il branch foto-allegate (engine-uploads). Comportamento byte-invariato."""
     log.steps.extend(_engine_v2_res.get("steps") or [])
     log.match_source = str(_engine_v2_res.get("match_source") or "")
+    log.durable_admission = _engine_v2_res.get("durable_admission")
     # §7.3: se Engine ha ritornato needs_inputs → handle dialog
     _ni = _engine_v2_res.get("needs_inputs_obs")
     if _ni:

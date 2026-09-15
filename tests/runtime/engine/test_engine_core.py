@@ -182,6 +182,8 @@ class TestDurableAdmissionBoundary(unittest.TestCase):
 
         self.assertEqual(result.match_source, "lre")
         self.assertEqual(result.final_text, "queued")
+        self.assertEqual(result.durable_admission,
+                         {"ok": True, "final_message_hint": "queued"})
         self.assertEqual(invoked, [])
         self.assertEqual(len(admitted), 1)
 

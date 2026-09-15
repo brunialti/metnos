@@ -18,7 +18,42 @@ from engine.proposer import SimpleProposer
 from engine.routing_pool import build_routing_pool
 from engine.types import Framework, Intent, StepSpec
 from loader import invalidate_catalog_cache, load_catalog
+import pytest
 from lre_config import LREFeatureConfiguration
+
+
+@pytest.mark.parametrize("invalid", [None, {"ok": False}, {"decision": "completed"},
+                                     {"workload_id": ""}, {"revision_id": ""}])
+def test_admission_receipt_is_not_inline_completion(invalid):
+    from agent_runtime import _detect_unfulfilled_mutating_intent
+
+    receipt = {"ok": True, "decision": "accepted", "workload_id": "fixture-job",
+               "revision_id": "fixture-revision", "state": "queued"}
+    if invalid is not None:
+        receipt.update(invalid)
+    log = SimpleNamespace(intent_verb="create", steps=[], match_source="lre",
+                          durable_admission=receipt, user_query="create an index")
+    assert _detect_unfulfilled_mutating_intent(log) == ("create" if invalid else "")
+    log.match_source = "engine"
+    assert _detect_unfulfilled_mutating_intent(log) == "create"
+
+
+def test_turn_log_preserves_real_admission_without_claiming_execution(tmp_path, monkeypatch):
+    import agent_runtime as runtime
+
+    monkeypatch.setattr(runtime, "TURN_LOG_DIR", tmp_path)
+    receipt = {"ok": True, "decision": "accepted", "workload_id": "fixture-job",
+               "revision_id": "fixture-revision", "state": "queued",
+               "final_message_hint": "LRE ha registrato il lavoro fixture-job."}
+    log = runtime.TurnLog(ts_start=0, channel="test", actor="admission-fixture")
+    runtime._finalize_engine_result(log, {
+        "steps": [], "match_source": "lre", "durable_admission": receipt,
+        "verb": "create", "final_kind": "answer",
+        "final_text": receipt["final_message_hint"],
+    }, actor="admission-fixture", channel="test", conversation_id="", turn_id="")
+    assert log.durable_admission == receipt
+    assert log.final_message == receipt["final_message_hint"]
+    assert log.steps == []
 
 
 def _configuration(enabled: bool) -> LREFeatureConfiguration:

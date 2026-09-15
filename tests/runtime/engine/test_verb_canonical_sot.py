@@ -36,8 +36,6 @@ _POLYSEMOUS_EXCEPTIONS = {
     "classifica": ("classify", "sort"),  # label entries vs rank/order them
     "etichetta": ("set", "classify"),  # persistent label vs inferred class
     "label": ("set", "classify"),       # persistent label vs inferred class
-    "indicizza": ("order", "create"),   # durable order vs create index
-    "index": ("order", "create"),       # durable order vs create index
     "order": ("order", "sort"),         # persistent order vs in-memory sort
 }
 

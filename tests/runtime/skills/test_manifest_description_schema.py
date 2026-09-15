@@ -390,6 +390,34 @@ class TestElasticPoolBudget(unittest.TestCase):
             ["short_tool", "long_tool"], [short, long])
         self.assertIn(boundary, rendered)
 
+    def test_proposer_preserves_bounded_json_defaults(self):
+        from types import SimpleNamespace
+        from engine.proposer import _render_tool_pool
+
+        properties = {
+            "enabled": {"default": False}, "count": {"default": 0},
+            "mode": {"default": "automatic"}, "items": {"default": []},
+            "unset": {"default": None}, "large": {"default": "x" * 81},
+            "private": {"default": "hidden", "runtime_resolved": True},
+        }
+        tool = SimpleNamespace(name="create_entries", description="",
+                               args_schema={"properties": properties})
+        rendered = _render_tool_pool([tool.name], [tool])
+        self.assertIn('defaults=[enabled=false; count=0; mode="automatic"; items=[]; unset=null]', rendered)
+        self.assertNotIn("large=", rendered)
+        self.assertNotIn("hidden", rendered)
+        self.assertFalse(properties["enabled"]["default"])
+
+    def test_image_worker_arguments_stay_out_of_planning(self):
+        import tomllib
+        from agent_runtime import planner_facing_schema
+        from durable_workloads.image_indexing import _PUBLIC_ARGS
+
+        schema = tomllib.loads((_RUNTIME.parent / "executors/create_images_indices/manifest.toml").read_text())["args"]
+        public = planner_facing_schema(schema)
+        self.assertEqual(set(public["properties"]), _PUBLIC_ARGS)
+        self.assertEqual(public["required"], ["base_path"])
+
 
 class TestPhotoSiblingsDisambiguation(unittest.TestCase):
     """Regressione 10/6/2026 (split static-first): col pool adiacente alla

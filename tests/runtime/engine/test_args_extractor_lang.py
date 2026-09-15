@@ -147,12 +147,8 @@ def test_regex_extract_max_results_uses_count():
     assert "max_results" not in out2
 
 
-# ── §2.9 safety-relax (9/7): vocab-OPERAZIONE non attiva i flag booleani ──────
-# `allow_dirs`/`allow_system` di move_files condividono «spostare»/«allows» nelle
-# loro description; senza esclusione, «sposta X in Y» li fabbricava =true erodendo
-# il safety-net dei move. Il fix esclude i prefissi-4 condivisi fra >=2 flag bool.
+# Boolean modes belong to semantic planning, not description-prefix matching.
 import tomllib  # noqa: E402
-from args_extractor import _operation_prefixes  # noqa: E402
 
 
 def _move_schema():
@@ -160,11 +156,14 @@ def _move_schema():
         return tomllib.load(f)["args"]
 
 
-def test_operation_vocab_excludes_shared_move_verb():
-    props = _move_schema()["properties"]
-    ops = _operation_prefixes(props)
-    assert "spos" in ops   # «spostare» condiviso allow_dirs+allow_system
-    assert "cons" in ops   # «consente» condiviso
+def test_boolean_descriptions_do_not_invent_index_modes():
+    schema = tomllib.loads((_RT.parent / "executors/create_images_indices/manifest.toml").read_text())["args"]
+    for query in ("aggiorna l'indice delle foto in /tmp/Immagini",
+                  "update the photo index in /tmp/images",
+                  "non rianalizzare tutte le foto", "do not analyze every photo again"):
+        result = regex_extract(query, schema)
+        assert "force" not in result
+        assert "dry_run" not in result
 
 
 def test_plain_move_does_not_fabricate_safety_flags():
@@ -177,7 +176,7 @@ def test_plain_move_does_not_fabricate_safety_flags():
         assert r.get("copy") is None, q   # runtime_resolved, mai estratto
 
 
-def test_distinctive_condition_still_activates_allow_system():
-    # «file di sistema» = condizione DISTINTIVA di allow_system → resta attivabile.
+def test_prose_match_cannot_grant_a_safety_exception():
+    # The semantic planner owns this flag; mere description overlap is not consent.
     r = regex_extract("sposta anche i file di sistema in /b", _move_schema())
-    assert r.get("allow_system") is True
+    assert "allow_system" not in r

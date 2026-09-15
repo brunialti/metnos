@@ -4,22 +4,24 @@
 >
 > **QUANDO AGGIORNARLO** (ex §13): nuova decisione di runtime (tier LLM, helper universale, vincolo dominio, gate/env); chiusura fase o nuovo macro-topic; sezione contraddetta dal codice (aggiornare PRIMA della PR). **NON aggiornarlo per**: bug fix puntuali (commit message); decisioni temporanee/sperimentali e stato di sessione (→ memorie); dettagli di un singolo ADR (→ l'ADR). Stile: una decisione = poche righe operative + puntatore ADR/spec/test.
 
-## S. Stato corrente (10/9/2026)
+## S. Stato corrente (15/9/2026)
 
-- **Shared temporal resolution — candidate for the next release** (15/9,
+- **Shared temporal resolution — installed** (15/9,
   ADR 0176 addendum): schema-declared dates, instants and windows use one
   timezone-aware arithmetic. Versioned language resources handle common forms;
   one bounded local `temporal.interpret` call may interpret unfamiliar wording,
   but only deterministic code computes dates. Ambiguity uses the ordinary
   selection form, not a new permission. Mail filters receipt timestamps exactly.
-- **Resumable photo indexing — candidate for the next release** (15/9,
+- **Resumable photo indexing — installed** (15/9,
   ADR 0093 addendum): missing-index prerequisites enter the registered LRE plan;
   discovery, bounded analysis groups, merge and complete-generation publication
   are resumable units. Resource reservations bound concurrency. Native VLM
   startup paths may come from the root-owned `/etc/metnos/vlm-startup.toml`
   prerequisite, shared by HTTP and the worker; ordinary model settings cannot
   select executables. Real cold-start E2E as `metnos` passed; large-archive
-  performance remains unmeasured. Evidence: `internal/reports/rm0008-image-indexing-20260915.md`.
+  performance remains unmeasured. Incremental and full maintenance use the
+  same LRE admission, including the nightly refresh. Current release, real
+  acceptance tests and open limits: `internal/reports/rm0008-release-20260915.md`.
 - **Permesso di avvio distinto dall'avvio automatico** (14/9, ADR 0218):
   una volta, fino al riavvio del PC o sempre fino a revoca. Riutilizzo per
   utente/app registrata/UUID del PC nel registro grants esistente; verifica

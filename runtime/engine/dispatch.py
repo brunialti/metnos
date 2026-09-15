@@ -134,6 +134,8 @@ class DispatchResult:
     # il runtime a valle presenta all'utente invece dell'errore secco. Popolato
     # SOLO quando final_kind == "needs_inputs". Vedi _error_disambiguation_form.
     needs_inputs_obs: Optional[dict] = None
+    # A durable admission is observable work, not inline executor completion.
+    durable_admission: Optional[dict] = None
 
 
 def _admit_finalized_long_work(
@@ -176,6 +178,7 @@ def _admit_finalized_long_work(
         framework_hash=compute_framework_hash(framework),
         elapsed_ms=int((time.time() - started_at) * 1000),
         framework=framework,
+        durable_admission=dict(outcome),
         error_class="" if accepted else str(
             outcome.get("error_class") or "operation_failed"
         ),

@@ -19,8 +19,8 @@ concurrency_key = "path"
 equivalence_gate = "verified"
 
 [description]
-it = "SCOPO: costruisce o aggiorna l'indice delle foto con unità LRE riprendibili; la generazione precedente resta leggibile fino alla pubblicazione completa. PATTERN: create_images_indices(base_path='~/foto', force=false). NON: ricerca di foto o lettura di file. OUT: ricevuta LRE; al completamento n_entries_total e index_path."
-en = "SCOPO: builds or refreshes the photo index through resumable LRE units; the previous generation remains readable until complete publication. PATTERN: create_images_indices(base_path='~/photos', force=false). NON: photo searches or file reading. OUT: LRE receipt; on completion n_entries_total and index_path."
+it = "SCOPO: costruisce o aggiorna l'indice foto con unità LRE riprendibili. PATTERN: create_images_indices(base_path='~/foto', force=false). NON: ricerca foto o lettura file. OUT: ricevuta LRE; al completamento n_entries_total e index_path."
+en = "SCOPO: builds or refreshes the photo index through resumable LRE units. PATTERN: create_images_indices(base_path='~/photos', force=false). NON: photo searches or file reading. OUT: LRE receipt; on completion n_entries_total and index_path."
 
 [code]
 files = ["create_images_indices.py"]
@@ -66,14 +66,9 @@ default = false
 it = "Conta le immagini senza analizzarle, avviare LRE o scrivere indici."
 en = "Count images without analyzing them, starting LRE or writing indexes."
 
-[args.properties.idx]
-type = "string"
-[args.properties.idx.description]
-it = "Parametro storico ignorato: esiste un solo indice immagini unificato."
-en = "Ignored legacy parameter: there is only one unified image index."
-
 [args.properties.phase]
 type = "string"
+runtime_resolved = true
 enum = ["discover", "analyze", "merge", "publish"]
 [args.properties.phase.description]
 it = "Campo tecnico riservato alle unità ammesse da LRE; non impostarlo nella richiesta pubblica."
@@ -81,6 +76,7 @@ en = "Technical field reserved for admitted LRE units; do not set it in public r
 
 [args.properties.generation]
 type = "string"
+runtime_resolved = true
 pattern = "^[A-Za-z0-9_-]{1,128}$"
 [args.properties.generation.description]
 it = "Identificativo opaco della generazione, congelato da LRE."
@@ -88,6 +84,7 @@ en = "Opaque generation identifier frozen by LRE."
 
 [args.properties.entries]
 type = "array"
+runtime_resolved = true
 items = {type = "object"}
 [args.properties.entries.description]
 it = "Ricevute di frammenti accettati e contesti cartella, forniti esclusivamente dalle dipendenze LRE."
@@ -95,6 +92,7 @@ en = "Accepted fragment receipts and folder contexts supplied exclusively by LRE
 
 [args.properties.expected_count]
 type = "integer"
+runtime_resolved = true
 minimum = 0
 maximum = 1000000
 [args.properties.expected_count.description]
@@ -103,12 +101,14 @@ en = "Sealed source count; publication requires exact coverage."
 
 [args.properties.device_id]
 type = "string"
+runtime_resolved = true
 [args.properties.device_id.description]
 it = "Identità tecnica del dispositivo sorgente, congelata da LRE."
 en = "Technical source-device identity frozen by LRE."
 
 [args.properties.max_total_bytes]
 type = "integer"
+runtime_resolved = true
 minimum = 0
 maximum = 1099511627776
 default = 1099511627776
@@ -118,6 +118,7 @@ en = "Explicit total admitted-source byte limit frozen by LRE."
 
 [args.properties.max_depth]
 type = "integer"
+runtime_resolved = true
 minimum = 0
 maximum = 64
 default = 64

@@ -36,6 +36,12 @@ YOU MUST NOT: use `get_inputs` for OPTIONAL or defaulted params (e.g. the send c
 OK: "write to Roberto: hi, see you at 8" → [send_messages(to_user="Roberto", messages=[{"body":"hi, see you at 8"}]), final_answer].
 ERROR: "write to Roberto: hi" → get_inputs(title="which channel do you prefer?").
 
+OPTIONAL PARAMETERS
+YOU MUST: omit unrequested optional arguments, preserving the defaults declared by the tool.
+YOU MUST NOT: enable additional modes or change a default without evidence in the request.
+OK: default `dry_run=false`, execution requested → omit `dry_run`; simulation requested → `dry_run=true`.
+ERROR: adding `force=true` or `dry_run=true` to an ordinary request that does not ask for them.
+
 CONCRETE VALUES (no lazy filler)
 YOU MUST: use concrete values inferred from query + tool description (defaults, enums, keywords in the description).
 YOU MUST NOT: defer to `${FILLER:...}` a value already clear from the query or offered by the description; nor invent `${RUNTIME:...}` keys outside {actor, lang, channel, actor_email} or the TIME placeholders (now, today, now_plus_Nd, now_minus_Nh).

@@ -140,6 +140,12 @@ nightly maintenance also submits incremental indexing to LRE. Both an
 incremental update and a full rebuild can be substantial background jobs,
 so they use the same resumable processing and resource limits.</p>
 
+<p>An ordinary update does not request a full rebuild or a simulation.
+For example, “Update the photo index in this folder” keeps the incremental
+behaviour. Ask explicitly if you want all photos analysed again. The first
+chat response acknowledges the background job; it does not claim that the
+index has already been updated.</p>
+
 <h2 id="flow">What happens after a request</h2>
 
 <ol>

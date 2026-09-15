@@ -138,3 +138,17 @@ def test_gap_nativo_e_esplicito_ma_il_runtime_fa_fallback(tmp_path, monkeypatch)
 
 def test_tokenizer_accetta_parole_unicode():
     assert prefilter.tokenize("Démarrer l’action") == {"démarrer", "l", "action"}
+
+
+@pytest.mark.parametrize("lang,surfaces", [
+    ("it", ["indicizza", "reindicizza", "aggiorna-indice", "ricostruisci-indice"]),
+    ("en", ["index", "reindex", "refresh-index", "update-index", "rebuild-index"]),
+])
+def test_index_maintenance_has_one_canonical_action(tmp_path, monkeypatch, lang, surfaces):
+    _fresh_catalogs(tmp_path, monkeypatch)
+    for surface in surfaces:
+        owners = {action for action, forms in vocab.action_surface_mapping(lang).items()
+                  if surface in forms}
+        assert owners == {"create"}, (lang, surface, owners)
+    for action in ("create", "order"):
+        assert vocab.action_boundary(action, lang) == vocab.ACTION_MAPPING[action]["boundary"][lang]
