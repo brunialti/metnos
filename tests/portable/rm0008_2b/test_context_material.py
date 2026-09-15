@@ -45,6 +45,43 @@ GOLDEN_CONTEXT_EPOCH = (
 REGISTRY = {"author": {"key_ids": ["one"]}}
 
 
+def test_published_v1_membership_remains_readable_by_the_successor():
+    # Published membership, not implementation bytes: those must still evolve.
+    # Changing these tuples breaks predecessor reconstruction. A new catalogue
+    # requires version-aware historical selection before it can be published.
+    published = {
+        ("standard", "1"): (
+            "executor_standard.py", "presentation_contract.py",
+            "code_file_paths.py", "naming_grammar.py",
+        ),
+        ("linter", "1"): ("manifest_lint.py", "manifest_rules.py"),
+        ("vocabulary", "1"): ("policy.py", "capabilities.py", "vocab.py"),
+        ("authority_registry", "1"): (),
+        ("sandbox_registry", "1"): ("executor_birth_sandbox_registry_v1.py",),
+        ("property_catalog", "1"): (
+            "executor_birth_properties.py", "executor_birth_property_runner.py",
+        ),
+        ("runner", "1"): (
+            "executor_birth_runner.py", "executor_birth_runner_windows_v1.py",
+            "bounded_subprocess.py",
+        ),
+        ("review_policy", "1"): (
+            "executor_birth_semantic_review.py",
+            "executor_birth_semantic_authority.py", "llm_workloads.py",
+        ),
+        ("template_allowlist", "1"): ("executor_birth_template_table_v1.py",),
+        ("primitive_allowlist", "1"): (
+            "executor_birth_properties.py", "executor_birth_primitive_table_v1.py",
+        ),
+        ("dependency_allowlist", "1"): ("code_file_paths.py",),
+    }
+    assert len(catalog.CONTEXT_CATALOG_V1) == len(published)
+    assert {
+        (name, version): files
+        for name, version, files, _state in catalog.CONTEXT_CATALOG_V1
+    } == published
+
+
 def _prepare(tmp_path: Path, monkeypatch, registry=None):
     support.stage_runtime_sources(tmp_path, monkeypatch)
     return provisioning._prepare_installed_admission_context_v1(

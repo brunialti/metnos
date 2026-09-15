@@ -634,6 +634,7 @@ class ChannelDaemon:
             str(step.get("var") or ""),
             parsed_value,
             owner_user_id=principal_owner,
+            source="telegram_chat",
         )
         if not result.get("ok"):
             self._send_text(
@@ -996,7 +997,7 @@ class ChannelDaemon:
         # Avanza lo stato
         cres = _dp.consume_pending_step(
             sender_for_state, dialog_id, var, value,
-            owner_user_id=owner_user_id)
+            owner_user_id=owner_user_id, source="telegram_chat")
         if not cres.get("ok"):
             return (_msg("MSG_DIALOG_STEP_ERROR", error=cres.get('error')),
                     False, None)
@@ -1403,7 +1404,8 @@ class ChannelDaemon:
 
         cres = _dp.consume_pending_step(sender_eff, dialog_id,
                                         cur_step.get("var"), value,
-                                        owner_user_id=principal_user_id)
+                                        owner_user_id=principal_user_id,
+                                        source="telegram_button")
         if not cres.get("ok"):
             self._send_text(msg.sender_id,
                              _msg("MSG_DIALOG_STEP_ERROR", error=cres.get('error')),

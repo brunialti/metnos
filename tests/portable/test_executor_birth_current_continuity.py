@@ -361,3 +361,47 @@ def test_successor_issues_real_receipt_and_replays_without_retesting(
     assert reattestation._execute(request, core).repeated
     assert len(written) == 1
     assert rig.holder.encoded == original_receipt
+
+
+def _ordinary_admission_fields(rig):
+    checks = {name: AdmissionCheck("v1", AdmittedCheckStatus.PASSED, D("6"))
+              for name in ("manifest_standard", "manifest_lint", "dependency_closure", "properties")}
+    checks.update({
+        "semantic_review": AdmissionCheck("v1", AdmittedCheckStatus.NOT_APPLICABLE, D("7")),
+        "approval": AdmissionCheck("v1", AdmittedCheckStatus.NOT_APPLICABLE, D("8")),
+        "authoring_install_journal_v1": AdmissionCheck("1", AdmittedCheckStatus.PASSED, D("4")),
+    })
+    return rig.fields | {
+        "kind": AdmissionKind.ADMISSION, "revision_class": RevisionClass.CODE_REVISION,
+        "candidate_id": D("9"), "birth_request_id": D("a"), "predecessor_id": D("b"),
+        "check_results": checks,
+    }
+
+
+def test_ordinary_admission_supports_next_context_without_retesting(continuity):
+    rig = continuity
+    rig.holder.encoded = issue_admission_receipt(**_ordinary_admission_fields(rig))
+    proof = reattestation._current_continuity_v1(rig.core, rig.request, rig.observed)
+    assert proof.previous_receipt_hash == "sha256:" + hashlib.sha256(rig.holder.encoded).hexdigest()
+    assert proof.contract_id == rig.request.current.ref.contract_id.value
+    assert len(rig.holder.calls) == 1
+
+
+@pytest.mark.parametrize("fault", ["context", "generation", "semantic", "journal", "missing_check", "skipped_property", "review_hash"])
+def test_ordinary_admission_continuity_rejects_inconsistent_evidence(continuity, fault):
+    rig = continuity
+    fields = _ordinary_admission_fields(rig)
+    if fault in {"context", "generation", "semantic"}:
+        fields[{"context": "admission_context_id", "generation": "generation_id",
+                "semantic": "semantic_core_id"}[fault]] = D("0")
+    elif fault == "journal":
+        fields["authoring_journal_hash"] = D("0")
+    elif fault == "missing_check":
+        del fields["check_results"]["dependency_closure"]
+    elif fault == "skipped_property":
+        fields["check_results"]["properties"] = AdmissionCheck("v1", AdmittedCheckStatus.NOT_APPLICABLE, D("6"))
+    else:
+        fields["semantic_review_hash"] = D("0")
+    rig.holder.encoded = issue_admission_receipt(**fields)
+    with pytest.raises(reattestation.BirthReattestationError, match="continuity_receipt_invalid"):
+        reattestation._current_continuity_v1(rig.core, rig.request, rig.observed)

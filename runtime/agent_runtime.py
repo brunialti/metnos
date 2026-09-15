@@ -82,18 +82,14 @@ def _authenticated_dispatch_candidate_id(
     identifier.  The productive Birth bundle owns the verifier keyring, and
     the receipt adjacent to the immutable generation is the sole authority.
     """
-    from contract_store import authenticate_execution_binding
     from executor_birth_operational import _runtime_bundle_snapshot
 
     bundle = _runtime_bundle_snapshot()
     if bundle is None:
         raise FeedbackError("feedback_binding_invalid", "candidate_id")
     try:
-        binding = authenticate_execution_binding(
-            contract_id,
-            generation_id,
-            trusted_publics=bundle.core.publisher_options["trusted_publics"],
-            admission_verifier_keys=bundle.core.admission_verifier_keys,
+        binding = bundle.core.commit_publisher.authenticate_execution_binding(
+            contract_id, generation_id,
         )
     except Exception as exc:
         raise FeedbackError("feedback_binding_invalid", "candidate_id") from exc
@@ -281,6 +277,14 @@ def _detect_unfulfilled_mutating_intent(log) -> str:
 
     intent_verb = (getattr(log, "intent_verb", "") or "").strip()
     intent_is_mutating = intent_verb in DESTRUCTIVE_VERBS
+    admission = getattr(log, "durable_admission", None)
+    if (getattr(log, "match_source", "") == "lre"
+            and isinstance(admission, dict) and admission.get("ok") is True
+            and admission.get("decision") == "accepted"
+            and admission.get("workload_id") and admission.get("revision_id")):
+        # Preserve the actual queued/running receipt. No executor has finished
+        # yet; lack of inline steps must not become a false admission failure.
+        return ""
 
     # §dominio + compound rule (ea1ba7e): un `send` SENZA destinatario
     # esplicito ("mandami il riassunto", "mandami in chat") NON e' outbound —
@@ -346,14 +350,38 @@ def _detect_unfulfilled_mutating_intent(log) -> str:
     return ""
 
 
-def _compose_honest_from_last_error(log) -> str:
+def _compose_honest_from_last_error(log, *, fallback: bool = True) -> str:
     """Compose messaggio onesto user-facing dall'ultimo step ok=False.
 
     Salta step "meta" del runtime (duplicate_call_blocked, cap_same, ecc.)
     e risale al VERO step con error semantico. Riusa il path priority
     error-first dell'invariante TurnLog.write (`MSG_VALIDATION_LOOP_FINAL`
-    o `MSG_FINAL_FALLBACK_FROM_ERROR`). Fallback MSG_FINAL_FALLBACK_GENERIC.
+    o `MSG_FINAL_FALLBACK_FROM_ERROR`). Summary e' l'ultimo ripiego, solo
+    su ok=False. Con fallback=False l'assenza di fatti restituisce vuoto.
     """
+    def _safe_detail(text: str) -> str:
+        if not isinstance(text, str) or not text.strip():
+            return ""
+        try:
+            cleaned, _ = _scrub_credentials(text.strip())
+            if _has_runtime_internal_leak(cleaned):
+                return ""
+            return cleaned.strip()
+        except Exception:
+            return ""  # mai ripiegare su dettagli non oscurati
+
+    def _humanize_error_class(raw: str) -> str:
+        # Stessa traduzione del precedente fallback terminale vuoto.
+        key = raw.split(":", 1)[0].strip()
+        if key and key.replace("_", "").isalnum():
+            try:
+                human = msg(f"ERR_{key.upper()}")
+                if human and not human.startswith("<missing:"):
+                    return human
+            except Exception:
+                pass
+        return raw
+
     for _s in reversed(getattr(log, "steps", []) or []):
         if _is_meta_step(_s):
             continue
@@ -367,42 +395,49 @@ def _compose_honest_from_last_error(log) -> str:
             # dell'executor (gia' i18n, es. "Nessuna persona 'X' nel registro").
             # Ha priorita' sull'`error` grezzo (spesso un codice tipo
             # "unknown_name") e sul fallback generico.
-            _hint = _obs.get("final_message_hint")
-            if isinstance(_hint, str) and _hint.strip():
-                return _hint.strip()
-            _err = _obs.get("error") or ""
+            _hint = _safe_detail(_obs.get("final_message_hint"))
+            if _hint:
+                return _hint
+            _err = _safe_detail(str(_obs.get("error") or ""))
+            if _err:
+                _err = _humanize_error_class(_err)
             _failed = _obs.get("failed") or []
             if not _err and isinstance(_failed, list) and _failed:
-                _err = ", ".join(
-                    str((f or {}).get("error", "")).strip()
-                    for f in _failed
-                    if isinstance(f, dict) and f.get("error")
-                )
+                _parts = [
+                    _humanize_error_class(detail)
+                    for f in _failed if isinstance(f, dict)
+                    if (detail := _safe_detail(str(f.get("error") or "")))
+                ]
+                _err = " ".join(dict.fromkeys(_parts))
             _vfails = _obs.get("validation_failures") or []
             if _vfails and isinstance(_vfails, list):
-                try:
-                    return msg(
-                        "MSG_VALIDATION_LOOP_FINAL",
-                        tool=_s.chosen_tool or "",
-                        fails="; ".join(str(v) for v in _vfails),
-                    )
-                except Exception:
-                    pass
+                _detail = _safe_detail("; ".join(str(v) for v in _vfails))
+                if _detail:
+                    try:
+                        return msg(
+                            "MSG_VALIDATION_LOOP_FINAL",
+                            tool=_s.chosen_tool or "", fails=_detail,
+                        )
+                    except Exception:
+                        pass
+            if not _err:
+                # Il riepilogo dell'executor puo' essere l'unica causa
+                # disponibile (nessun error/hint). Oscurare PRIMA del cap:
+                # tagliare un token grezzo ne impedirebbe il riconoscimento.
+                _err = _safe_detail(_obs.get("summary"))
+                if len(_err) > 1200:
+                    _err = _err[:1200].rstrip() + "…"
             if _err:
-                # Scrub leak runtime-internal dall'error stesso §2.8:
-                # se l'error contiene marker runtime (request_new_executor
-                # rejected, DUPLICATE_CALL, jaccard, ...) emettere generic
-                # fallback invece di propagare il leak nel template.
-                if _has_runtime_internal_leak(str(_err)):
-                    continue  # cerca step precedente
                 try:
                     return msg(
                         "MSG_FINAL_FALLBACK_FROM_ERROR",
                         tool=_s.chosen_tool or "",
-                        error=str(_err).strip(),
+                        error=_err,
                     )
                 except Exception:
                     return f"{_s.chosen_tool}: {_err}"
+    if not fallback:
+        return ""
     try:
         return msg("MSG_FINAL_FALLBACK_GENERIC")
     except Exception:
@@ -1175,7 +1210,10 @@ def planner_facing_schema(schema):
         return schema
     props = dict(schema.get("properties") or {})
     required = list(schema.get("required") or [])
-    has_entries = "entries" in props or "entries" in required
+    entries_spec = props.get("entries") or {}
+    has_entries = (("entries" in props or "entries" in required)
+                   and not (isinstance(entries_spec, dict)
+                            and entries_spec.get("runtime_resolved")))
     if has_entries:
         # Rimuovi entries dalla vista del modello: non puo' inventarle.
         props.pop("entries", None)
@@ -2841,7 +2879,7 @@ def _detect_unbacked_promise(final_message: str | None, steps: list) -> bool:
 # Implementazione condivisa in `pipeline_effects.py` (12/6/2026): la stessa
 # contabilità alimenta il criterio di EFFICACIA del fastpath L0
 # (engine/dispatch._maybe_record_fastpath → ineffective_mutations).
-from pipeline_effects import pipeline_effect_counts  # noqa: E402
+from pipeline_effects import pipeline_effect_counts, terminal_collection_output  # noqa: E402
 
 
 # Positive-result language is manually reviewed; the structural counters
@@ -3273,6 +3311,11 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # anche per fast-path, resume ed esecuzione remota: gli args del chiamante
     # non possono impersonare un altro attore o canale.
     args = dict(args or {})
+    # Resolved scalar strings retain exactly one value when the signed
+    # contract requires an array.  Apply this before argument-dependent
+    # controls, for ordinary plans, piping, resumes and remote invocations.
+    from executor_helpers import normalize_array_args
+    args = normalize_array_args(args, getattr(executor, "args_schema", None))
     from paired_device_arg_resolver import resolve_paired_device_args
     args = resolve_paired_device_args(
         args, getattr(executor, "args_schema", None),
@@ -3284,6 +3327,17 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # significato (righe, messaggi, valori). Nessuna regola per nome-tool.
     from executor_helpers import normalize_unique_items
     args = normalize_unique_items(args, getattr(executor, "args_schema", None))
+    # Validate temporal values again at the common invocation boundary. This
+    # also covers direct API calls and form resumes, which have no query to
+    # reinterpret. A clarification is not an additional authorization gate.
+    from temporal_resolution import resolve_temporal_args, temporal_form_request
+    temporal_form = temporal_form_request(executor.name, args, getattr(executor, "args_schema", None))
+    if temporal_form is not None:
+        return temporal_form
+    args = resolve_temporal_args(executor.name, args, "", getattr(executor, "args_schema", None))
+    temporal_form = temporal_form_request(executor.name, args, getattr(executor, "args_schema", None))
+    if temporal_form is not None:
+        return temporal_form
     if actor is not None or "_actor" in args:
         args["_actor"] = actor or "host"
     if channel is not None or "_channel" in args:
@@ -3377,6 +3431,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             return {"ok": False, "error": _pmsg(e.code, **e.fmt),
                     "error_class": "placement"}
         if _target != _placement.SERVER:
+            from program_start_consent import apply_saved
+            args = apply_saved(executor, args, owner=_who, device_id=str(_target))
             # Il wire firmato device vieta i float JSON.  I soli carrier di
             # dati runtime sono normalizzati centralmente; gli argomenti di
             # controllo float restano intatti e falliscono chiusi.
@@ -3407,6 +3463,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                 turn_id=turn_id,
                 env_injections=_remote_env or None,
                 actor=actor or "", channel=channel or "", **_remote_kwargs)
+            from program_start_consent import bind_prompt
+            _obs = bind_prompt(executor, _obs, device_id=str(_target))
             # Marca l'esecuzione REALE sul device: il tag/campo del turno si
             # basa su questo (mai un tag ottimistico su un'operazione locale).
             if isinstance(_obs, dict) and target_device:
@@ -3565,10 +3623,19 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     _t_start = time.perf_counter()
     parsed_result = None
     if execution_context is None:
-        result = subprocess.run(
-            cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
-            env=env,
-        )
+        try:
+            result = subprocess.run(
+                cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
+                env=env,
+            )
+        except subprocess.TimeoutExpired:
+            # Normalize at the common invocation boundary, including callers
+            # outside the engine. Never expose bwrap commands or host paths.
+            parsed_result = {
+                "ok": False, "error_class": "timeout",
+                "error": msg("ERR_EXECUTOR_TIMEOUT", tool=executor.name,
+                             seconds=int(timeout_s)),
+            }
     else:
         from bounded_subprocess import (
             SubprocessOutputLimitExceeded,
@@ -3656,7 +3723,29 @@ def _invoke_executor_impl_optional_context(
         executor, args, *, execution_context=None, **kwargs):
     if execution_context is not None:
         kwargs["execution_context"] = execution_context
-    return _invoke_executor_impl(executor, args, **kwargs)
+    elif getattr(executor, "lre_plan", ""):
+        # Fast paths and form resumes cross the same durable boundary as a
+        # finalized plan. Public calls cannot inject internal worker phases.
+        from engine.types import Framework, StepSpec
+        admitted = submit_automatic_lre(
+            Framework(steps=[StepSpec(executor.name, args)]), catalog=[executor],
+            owner_user_id=kwargs.get("owner_user_id") or kwargs.get("actor") or "host",
+            turn_id=kwargs.get("turn_id") or "",
+            target_device=kwargs.get("target_device"),
+        )
+        if admitted is not None:
+            return admitted
+    observation = _invoke_executor_impl(executor, args, **kwargs)
+    if execution_context is None and getattr(executor, "prerequisites", ()):
+        from executor_prerequisites import admit_prerequisite
+        return admit_prerequisite(
+            executor, args, observation, catalog_loader=load_catalog,
+            validate_args=validate_args, guard=guard_check,
+            owner_user_id=kwargs.get("owner_user_id") or kwargs.get("actor") or "host",
+            turn_id=kwargs.get("turn_id") or "",
+            target_device=kwargs.get("target_device"),
+        )
+    return observation
 
 
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
@@ -3965,6 +4054,7 @@ class TurnLog:
     # Non contengono testo utente e restano vuote sui record storici.
     metnos_version: str = ""
     match_source: str = ""
+    durable_admission: dict | None = None
     # Lista di proposte di cap expand emerse dal turno: ogni elemento e'
     # {step_num, executor, args, used, available_total, suggested_args}.
     # Popolata in write() per i daemon channel che gestiscono dialog
@@ -4523,6 +4613,7 @@ class TurnLog:
             "cap_suggested": cap_suggested,
             "args_suggested": args_suggested,
             "preview_label": preview_label,
+            "conversation_id": self.conversation_id,
         }
 
         sender_id = (
@@ -4841,8 +4932,9 @@ class TurnLog:
         # match → blocco-status completo (comportamento storico).
         _focus: set = set()
         try:
+            from tool_grammar import _strip_fs_paths
             _fmap = _detlex.mapping("health.section_focus") or {}
-            _ql = (self.user_query or "").lower()
+            _ql = _strip_fs_paths(self.user_query or "").lower()
             for _sec, _forms in _fmap.items():
                 if _detlex.match_any(_forms, _ql):
                     _focus.add(_sec)
@@ -5085,21 +5177,11 @@ class TurnLog:
             # Sostituisci con dichiarazione esplicita di incompletezza.
             _mutating_pending = _detect_unfulfilled_mutating_intent(self)
             if _mutating_pending:
-                # §2.8: se lo step mutante FALLITO porta un messaggio
-                # user-facing ESPLICITO (`final_message_hint`, es. delete_persons
-                # "Nessuna persona 'X' nel registro."), mostralo — NON mascherarlo
-                # col generico "azione non completata" (che maschera la causa
-                # reale e azionabile, come faceva "Pipeline malformata").
-                _mut_hint = ""
-                for _s in reversed(getattr(self, "steps", []) or []):
-                    _o = _s.result if isinstance(_s.result, dict) else None
-                    if isinstance(_o, dict) and _o.get("ok") is False:
-                        _h = _o.get("final_message_hint")
-                        if isinstance(_h, str) and _h.strip():
-                            _mut_hint = _h.strip()
-                            break
-                if _mut_hint:
-                    self.final_message = _mut_hint
+                # Riusa il motivo osservato, non il successo narrato dal
+                # finalizer. Senza fatti utili restano le guardie precedenti.
+                _failure = _compose_honest_from_last_error(self, fallback=False)
+                if _failure:
+                    self.final_message = _failure
                 elif self.error_class in _AUTHORITATIVE_UNFULFILLED_CLASSES:
                     # The engine already explained WHY the action did not
                     # happen (no tool can perform it).  Replacing that with
@@ -5258,6 +5340,8 @@ class TurnLog:
                   and not (self.effect_counts or {}).get("failures")):
                 self.false_success_detected = True
                 _ec = self.effect_counts or {}
+                _terminal_output = terminal_collection_output(self.steps)
+                _n = _terminal_output[2] if _terminal_output is not None else 0
                 # §2.8: un builtin che dichiara il SUO esito nel result
                 # (`final_message_hint`/`message` i18n, es. undo_last_turn
                 # «Nessuna operazione reversibile da annullare») vince sui generici — bug live
@@ -5265,16 +5349,25 @@ class TurnLog:
                 # trovato» (falso: non era una ricerca).
                 _exec_msg = ""
                 for _s in reversed(self.steps):
+                    if _s.chosen_tool == "final_answer":
+                        continue
                     _r = _s.result if isinstance(_s.result, dict) else {}
                     _declared = (_r.get("final_message_hint")
                                  or _r.get("message"))
                     if isinstance(_declared, str) and _declared.strip():
                         _exec_msg = _declared.strip()
-                        break
+                    # An upstream read's presentation cannot override a later
+                    # selection, even when the terminal result has no hint.
+                    break
                 if _exec_msg:
                     self.final_message = _exec_msg
+                elif (not _ec.get("mutating_attempted")
+                      and _terminal_output is not None and _n == 0):
+                    # A terminal filter supersedes the read/transform inputs;
+                    # processing the same rows twice is not twice the output.
+                    from engine.executor import _deterministic_zero_result
+                    self.final_message = _deterministic_zero_result(self.steps)
                 elif not _ec.get("mutating_attempted") and _ec.get("items", 0) == 0:
-                    # niente prodotto, niente mutato → no-results onesto
                     self.final_message = msg("MSG_NO_RESULTS")
                 else:
                     # qualcosa è stato letto/prodotto ma il messaggio è degenere:
@@ -5283,7 +5376,6 @@ class TurnLog:
                     # §7.13: chiavi risolte via i18n DB (lingua istanza), definite
                     # nel catalogo seed — mai testo in-linea nel sorgente. Guard:
                     # tests/runtime/i18n/test_seed_i18n_gate_keys.py.
-                    _n = _ec.get("items", 0)
                     _muts = _ec.get("mutations", 0)
                     if _muts:
                         # Mutazione RIUSCITA (es. piano da recovery, che non
@@ -5294,8 +5386,10 @@ class TurnLog:
                             "MSG_DEGENERATE_FINAL_MUTATIONS", n=_muts)
                     elif _n == 1:
                         self.final_message = msg("MSG_DEGENERATE_FINAL_ITEM_ONE")
-                    else:
+                    elif _terminal_output is not None:
                         self.final_message = msg("MSG_DEGENERATE_FINAL_ITEMS", n=_n)
+                    else:
+                        self.final_message = msg("MSG_FINAL_FALLBACK_GENERIC")
         # A.2 (fase 7): avvisi fuori-turno pendenti per QUESTO destinatario
         # (es. op remota completata DOPO il timeout del suo turno) — anteposti
         # DOPO tutte le riscritture del final (honesty/degenerate/false-success
@@ -5370,76 +5464,10 @@ class TurnLog:
         #      `_compose_final_message_from_obs` (path auto-final ufficiale).
         #   3. Fallback generico MSG_FINAL_FALLBACK_GENERIC.
         # `needs_inputs` ha dialog UX dedicata: non rientra qui.
-        def _humanize_error_class(raw: str) -> str:
-            """Traduce error_class technical (es. `no_verified_channel`) in
-            testo user-facing via i18n key `ERR_<UPPERCASE>`. Fallback al
-            raw string se la chiave non esiste. Generale §7.3: ogni
-            executor che ritorna un error_class registrato come ERR_
-            i18n diventa automaticamente user-friendly senza modifiche.
-            """
-            if not raw or not isinstance(raw, str):
-                return raw or ""
-            # Strip prefisso colon-separated tipo "channel_not_paired:telegram"
-            _key_part = raw.split(":", 1)[0].strip()
-            if not _key_part or not _key_part.replace("_", "").isalnum():
-                return raw
-            _i18n_key = f"ERR_{_key_part.upper()}"
-            try:
-                _human = msg(_i18n_key)
-            except Exception:
-                return raw
-            # `msg()` ritorna `<missing:KEY>` se assente: distingui
-            if _human and not _human.startswith("<missing:"):
-                return _human
-            return raw
-
-        def _extract_error(obs: dict) -> str:
-            if not isinstance(obs, dict):
-                return ""
-            _e = obs.get("error")
-            if isinstance(_e, str) and _e.strip():
-                return _humanize_error_class(_e.strip())
-            _failed = obs.get("failed") or []
-            if isinstance(_failed, list):
-                parts = [
-                    _humanize_error_class(str((f or {}).get("error", "")).strip())
-                    for f in _failed
-                    if isinstance(f, dict) and f.get("error")
-                ]
-                # dedup conservando ordine (stessa error_class su piu' target)
-                seen = set()
-                deduped = []
-                for p in parts:
-                    if p and p not in seen:
-                        seen.add(p)
-                        deduped.append(p)
-                if deduped:
-                    return " ".join(deduped)
-            return ""
-
         if (self.final_kind in ("answer", "ask", "error", "loop_break")
                 and not (self.final_message or "").strip()):
-            _fallback = ""
-            # (1) priorita': ultimo step ok=False con error → onestamente
-            #     reporta il fail. Non degradare a "completato (0 elementi)".
-            for _s in reversed(self.steps):
-                _obs = _s.result if isinstance(_s.result, dict) else {}
-                if not _obs:
-                    continue
-                if _s.chosen_tool == "final_answer":
-                    continue
-                if _obs.get("ok") is False:
-                    _err = _extract_error(_obs)
-                    if _err:
-                        try:
-                            _fallback = msg(
-                                "MSG_FINAL_FALLBACK_FROM_ERROR",
-                                tool=_s.chosen_tool or "",
-                                error=_err,
-                            )
-                        except Exception:
-                            _fallback = f"{_s.chosen_tool}: {_err}"
-                        break
+            # (1) Stessa priorita' e redazione della guardia unfulfilled.
+            _fallback = _compose_honest_from_last_error(self, fallback=False)
             # (2) successo silente: usa compose_from_obs
             if not _fallback:
                 for _s in reversed(self.steps):
@@ -5903,7 +5931,8 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
                         owner_user_id: str | None = None,
                         target_device: str | None = None,
                         turn_id: str | None = None,
-                        source_request_id: str | None = None) -> dict:
+                        source_request_id: str | None = None,
+                        request_text: str | None = None) -> dict:
     """Dispatch canonico di UN tool per nome, condiviso dal loop principale e
     dai percorsi di ripresa (post-gate/post-input, orchestration).
 
@@ -5944,6 +5973,12 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
             if not str(key).startswith("_")
         }
         call_args.setdefault("actor", actor or "host")
+        # The original request is runtime-owned: a planner value with the same
+        # name is discarded, and only builtins that opt in receive it.
+        call_args.pop("request_text", None)
+        if (verb_entry.get("accepts_request_text")
+                and isinstance(request_text, str) and request_text.strip()):
+            call_args["request_text"] = request_text
 
         def _call_verb_unique():
             return invoke_verb_unique(
@@ -6061,22 +6096,24 @@ def _bind_managed_dependency_resume(
         return None
 
     branches: dict[str, dict] = {}
-    for lifetime in ("session", "persistent"):
-        branch = raw_branches.get(lifetime)
+    for scope in ("once", "until_restart", "always"):
+        branch = raw_branches.get(scope)
         if not isinstance(branch, dict) or branch.get("tool") != starter_tool:
             return None
         branch_args = branch.get("args")
         if (not isinstance(branch_args, dict)
                 or set(branch_args) != {
-                    "programs", "lifetime", "actor_consent_token"}
+                    "programs", "lifetime", "authorization_scope",
+                    "authorization_boot_id", "actor_consent_token"}
                 or branch_args.get("programs") != [package_id]
-                or branch_args.get("lifetime") != lifetime):
+                or branch_args.get("lifetime") != "session"
+                or branch_args.get("authorization_scope") != scope):
             return None
         token = branch_args.get("actor_consent_token")
         if (not isinstance(token, str) or len(token) != 64
                 or any(char not in "0123456789abcdef" for char in token)):
             return None
-        branches[lifetime] = {
+        branches[scope] = {
             "tool": starter_tool,
             "args": dict(branch_args),
         }
@@ -6086,7 +6123,7 @@ def _bind_managed_dependency_resume(
         "type": "managed_dependency_resume",
         "branches": branches,
         "resume": {"tool": resume_tool, "args": dict(resume_args)},
-        "target_device": target_device,
+        "target_device": original_callback.get("target_device") or target_device,
     }
     return {
         **start_result,
@@ -6669,6 +6706,7 @@ def _run_engine(
                     target_device=_target_name,
                     turn_id=turn_id,
                     source_request_id=source_request_id,
+                    request_text=user_query_raw or query,
                 ),
             )
         exec_obj = _catalog_by_name.get(tool_name)
@@ -7043,6 +7081,7 @@ def _run_engine(
                         else result.error_class),
         "needs_inputs_obs": needs_inputs_obs,
         "gate_obs": gate_obs,
+        "durable_admission": getattr(result, "durable_admission", None),
     }
 
 
@@ -7056,6 +7095,7 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
     e il branch foto-allegate (engine-uploads). Comportamento byte-invariato."""
     log.steps.extend(_engine_v2_res.get("steps") or [])
     log.match_source = str(_engine_v2_res.get("match_source") or "")
+    log.durable_admission = _engine_v2_res.get("durable_admission")
     # §7.3: se Engine ha ritornato needs_inputs → handle dialog
     _ni = _engine_v2_res.get("needs_inputs_obs")
     if _ni:

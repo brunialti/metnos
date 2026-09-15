@@ -223,8 +223,37 @@ def _contract_cutover_guard_core_v1(
     guard_options = {"wait_s": 2}
     if catalog_trusted_owner is not None:
         guard_options["catalog_trusted_owner"] = catalog_trusted_owner
-    guard = catalog_reconcile_lock(**guard_options)
     try:
+        if release_catalog is not None:
+            from pathlib import Path
+            import pwd
+
+            from config import PATH_USER_STATE
+            from executor_birth_account_identity import (
+                metnos_xdg_layout_v1, resolve_posix_account_v1,
+            )
+            from install.executor_birth_systemd_quiescence import (
+                _plan_release_systemd_quiescence_v1,
+            )
+
+            # The successor runs before its head is selected. Its ordinary
+            # readiness reader must reject that root mismatch; use the already
+            # bound previous system catalog instead, without weakening it.
+            _plan_release_systemd_quiescence_v1(release_catalog)
+            owner = catalog_trusted_owner
+            if (type(owner) is not tuple or len(owner) != 2
+                    or any(type(value) is not int for value in owner)
+                    or owner[0] <= 0 or owner[1] < 0):
+                raise ValueError("release lifecycle owner is unavailable")
+            account = resolve_posix_account_v1(pwd.getpwuid(owner[0]).pw_name)
+            state = metnos_xdg_layout_v1(account).state
+            if ((account.uid, account.gid) != owner
+                    or not state.is_absolute() or state != Path(PATH_USER_STATE)):
+                raise ValueError("release lifecycle identity or state changed")
+            guard_options.update(
+                path=state / "metnos-stack-reconcile.lock", owner_uid=owner[0],
+            )
+        guard = catalog_reconcile_lock(**guard_options)
         guard.__enter__()
     except Exception as exc:
         raise ContractCutoverGuardError(

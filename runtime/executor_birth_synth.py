@@ -8,6 +8,7 @@ from executor_birth_intent import (
     submit_synth_multistage_birth, submit_synth_specialize_birth,
 )
 from executor_birth_operational import BirthResult
+from executor_birth_functional import SynthTestData, SynthTestReport
 from manifest_inventory import ContractId
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +51,18 @@ def submit_synth_multistage(data: SynthBirthData) -> BirthResult:
     return submit_synth_multistage_birth(_as_intent(data))
 
 
+def validate_synth_tests(data: SynthTestData) -> SynthTestReport:
+    """Functional precheck only; no receipt, publication or caller authority."""
+    if type(data) is not SynthTestData:
+        raise ValueError("synth_test_data_invalid")
+    try:
+        require_synth_birth_service()
+    except RuntimeError:
+        return SynthTestReport(error_code="test_environment_unavailable")
+    from executor_birth_operational import _validate_synth_tests
+    return _validate_synth_tests(data)
+
+
 def submit_synth_specialize(data: SynthBirthData) -> BirthResult:
     return submit_synth_specialize_birth(_as_intent(data))
 
@@ -58,5 +71,6 @@ def submit_synth_approve(data: SynthBirthData) -> BirthResult:
     return submit_synth_approve_birth(_as_intent(data))
 
 
-__all__ = ["SynthBirthData", "require_synth_birth_service", "submit_synth_multistage",
+__all__ = ["SynthBirthData", "SynthTestData", "SynthTestReport", "validate_synth_tests",
+           "require_synth_birth_service", "submit_synth_multistage",
            "submit_synth_specialize", "submit_synth_approve"]

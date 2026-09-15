@@ -30,6 +30,7 @@ from typing import Any, Callable, Optional
 
 from .types import Framework, StepSpec, StepRun, RunResult
 from messages import get as _msg  # §11: render user-facing via DB i18n
+from undo import UNDO_OUTCOMES
 import detection_lexicon_seed_runtime_safety as _runtime_safety_lexicon
 
 log = logging.getLogger(__name__)
@@ -742,6 +743,58 @@ def _referenced_producer(step, history: list):
     return None
 
 
+def _identity_choice_obs(tool: str, args: dict, context_errors: list,
+                         runtime_ctx: dict) -> dict | None:
+    """needs_inputs asking which identity each ambiguous entry denotes.
+
+    Only for a single vector projection whose unresolved entries all offer
+    distinct identities (see from_step_projection._identity_slots).  The step
+    has not run, so the callback carries the destination and conversation
+    chosen by the runtime, never an observed host.
+    """
+    if len(context_errors) != 1 or not isinstance(context_errors[0], dict):
+        return None
+    arg = context_errors[0].get("arg")
+    slots = context_errors[0].get("slots")
+    if not isinstance(arg, str) or not arg or not isinstance(slots, list):
+        return None
+    dialog: list[dict] = []
+    composed: list = []
+    for position, slot in enumerate(slots, start=1):
+        if not isinstance(slot, list):
+            composed.append(slot)
+            continue
+        var = f"{arg}_{position}"
+        dialog.append({
+            "var": var,
+            "prompt": _msg("MSG_ROUTE_DISAMBIG_PROMPT"),
+            "schema": {"kind": "choice", "choices": [{
+                "label": " ".join(part for part in (
+                    option["name"], option["version"],
+                    f"({option['value']})") if part),
+                "value": option["value"],
+            } for option in slot]},
+        })
+        composed.append({"var": var})
+    if not dialog:
+        return None
+    callback = {
+        "type": "resume_executor_with_values",
+        "executor": tool,
+        "args_base": {key: value for key, value in args.items() if key != arg},
+        "list_args": {arg: composed},
+        "conversation_id": str(runtime_ctx.get("conversation_id") or ""),
+    }
+    device = str(runtime_ctx.get("target_device") or "")
+    if device and device != "server":
+        callback["target_device"] = device
+    return {"decision": "needs_inputs", "needs_inputs": {
+        "title": _msg("MSG_ROUTE_DISAMBIG_TITLE"),
+        "dialog": dialog, "fmt": "auto", "on_complete": callback,
+        "timeout_s": 3600,
+    }}
+
+
 def _data_host_for_step(step, history: list, execution_host: str) -> str:
     """Autorita' dati dello step, distinta dall'host che esegue il codice."""
     if (execution_host == "server"
@@ -1198,7 +1251,7 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
             template = f"${{step{last.step_idx}.@count}}"
     if not template:
         return ""
-    def _sub_one(result, path):
+    def _sub_one(result, path, *, step):
         if path == "@count":
             for k in ("available_total", "ok_count", "used"):
                 v = result.get(k)
@@ -1280,7 +1333,7 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
             # ``final_message_hint`` ha però già una presentazione canonica:
             # per una mutazione/creazione la tabella dei campi tecnici
             # (ok/path/kind/rows/...) non è il risultato utile in chat.
-            _note = _sub_one(result, "@note")
+            _note = _sub_one(result, "@note", step=step)
             _hint = result.get("final_message_hint")
             if isinstance(_hint, str) and _hint.strip():
                 rendered_hint = _hint.strip()
@@ -1295,7 +1348,10 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
                     entries,
                     presentation=result.get("_presentation_contract"),
                 ) + _note
-            return _sub_one(result, "@count") + _note  # 0 entries → conteggio onesto
+            zero = _deterministic_zero_result([step])
+            if zero:
+                return zero + _note
+            return _sub_one(result, "@count", step=step) + _note
         if path == "@content":
             return _read_content(result)
         # Universal §7.9 fallback: prova path diretto, poi entries[*].field
@@ -1313,13 +1369,13 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
         path = m.group(2)
         if not (1 <= n <= len(history)):
             return ""
-        return _sub_one(history[n - 1].result, path)
+        return _sub_one(history[n - 1].result, path, step=history[n - 1])
     def _sub_steps(m):
         n = int(m.group(1))
         path = m.group(2)
         if not (0 <= n < len(history)):
             return ""
-        return _sub_one(history[n].result, path)
+        return _sub_one(history[n].result, path, step=history[n])
     out = _STEPREF_RE.sub(_sub_step, template)
     out = _STEPSREF_RE.sub(_sub_steps, out)
     return out
@@ -1749,7 +1805,9 @@ def _finalize_answer_text(framework, steps: list, query: str,
     """FINALIZER unico (ADR 0177 T5, CP2·M2): l'UNICA fonte del testo di un
     turno `answer`. Strategia dichiarata, in ordine:
 
-      1. RENDER del template del proposer (`${stepN.*}`) sulle observation;
+      1. presentazione canonica della ricevuta d'effetto terminale, se
+         dichiarata; altrimenti RENDER del template del proposer
+         (`${stepN.*}`) sulle observation;
       2. arricchimento COUNT-ONLY→bullets: render vuoto/solo-conteggio ma
          l'ultimo step ha `entries` → lista puntata onesta (§2.7,
          `MSG_RENDER_AND_MORE` per il resto oltre il cap);
@@ -1775,6 +1833,12 @@ def _finalize_answer_text(framework, steps: list, query: str,
     scalar = _deterministic_scalar_result(steps)
     if scalar:
         return scalar
+    # A pre-execution template cannot turn an observed no-op into a performed
+    # action, or overstate a partial effect. The terminal executor owns its
+    # localized receipt; read-only formatting keeps the existing render path.
+    receipt = _last_self_presentation(steps, effect_receipt_only=True)
+    if receipt:
+        return receipt
     rendered = _render_final_message(framework.final_message, steps)
     # 2. count-only → bullets (universal §7.9)
     if steps:
@@ -1812,7 +1876,8 @@ def _finalize_answer_text(framework, steps: list, query: str,
     return rendered
 
 
-def _last_self_presentation(steps: list) -> str:
+def _last_self_presentation(steps: list, *,
+                            effect_receipt_only: bool = False) -> str:
     """`final_message_hint` dell'ultimo step produttivo (non final_answer), se
     presente e non-degenere. È la presentazione canonica che il produttore fa
     del proprio output (§7.9 deterministico). "" se nessuno si auto-presenta."""
@@ -1820,6 +1885,11 @@ def _last_self_presentation(steps: list) -> str:
         if (getattr(s, "tool", "") or "") == "final_answer":
             continue
         res = getattr(s, "result", None)
+        if effect_receipt_only:
+            metadata = res.get("_undo") if isinstance(res, dict) else None
+            outcome = metadata.get("outcome") if isinstance(metadata, dict) else None
+            if not isinstance(outcome, str) or outcome not in UNDO_OUTCOMES:
+                return ""
         hint = res.get("final_message_hint") if isinstance(res, dict) else None
         if isinstance(hint, str) and hint.strip() \
                 and not hint.lstrip().startswith("<missing:"):
@@ -2027,43 +2097,28 @@ def _synthesize_final_from_steps(
 
 
 def _turn_is_zero_entries(steps) -> bool:
-    """True se il turno è genuinamente a 0 risultati: lo step più recente con
-    semantica di lista (`item_count` di describe_entries, o una chiave-payload
-    `entries`/`results`/`lines`/`matches`) è VUOTO. False se non esiste alcuno
-    step-lista (scalare puro, es. get_now → degenere per ALTRO motivo, la synth
-    LLM resta corretta) o se l'ultima lista è non-vuota. Deterministico,
-    model-independent — scandisce a ritroso e si ferma al primo segnale.
-    """
-    for s in reversed(steps or []):
-        if getattr(s, "tool", "") == "final_answer":
-            continue
-        r = getattr(s, "result", None)
-        if not isinstance(r, dict):
-            continue
-        ic = r.get("item_count")
-        if isinstance(ic, int):
-            return ic == 0
-        # Conteggio esplicito (es. count_only: entries=[] MA available_total/count
-        # > 0). §2.8: «quanti file» con entries materializzate vuote NON è zero
-        # risultati — il numero È il risultato. Va consultato prima della lista,
-        # altrimenti un conteggio legittimo viene reso «Nessun risultato».
-        for ck in ("available_total", "count", "ok_count"):
-            cv = r.get(ck)
-            if isinstance(cv, int):
-                return cv == 0
-        for k in ("entries", "results", "lines", "matches"):
-            v = r.get(k)
-            if isinstance(v, list):
-                return not v
-    return False
+    """Recognize an empty terminal collection without reviving earlier rows."""
+    from pipeline_effects import terminal_collection_output
+    output = terminal_collection_output(steps)
+    return output is not None and output[2] == 0
 
 
 def _deterministic_zero_result(steps) -> str:
-    """§7.9 (deterministico>LLM) + §2.8 (onesto): messaggio finale per i turni
-    a 0 entries, da provare PRIMA della synth LLM — evita una call `fast`
-    spesa solo per dire «niente trovato». "" se il turno NON è a 0 entries
-    (lascia la synth ai degeneri-ma-non-vuoti). Byte-riproducibile (i18n)."""
-    return _msg("MSG_NO_RESULTS") if _turn_is_zero_entries(steps) else ""
+    """Use observed selection counts for an honest localized empty result."""
+    from pipeline_effects import terminal_collection_output
+    from vocab import PROCESSOR_VERBS
+    output = terminal_collection_output(steps)
+    if output is None or output[2] != 0:
+        return ""
+    tool, result, _count = output
+    metadata = result.get("metadata")
+    if isinstance(metadata, dict) and tool.split("_", 1)[0] in PROCESSOR_VERBS:
+        count_in, count_out = metadata.get("count_in"), metadata.get("count_out")
+        if (isinstance(count_in, int) and not isinstance(count_in, bool)
+                and count_in > 0 and isinstance(count_out, int) and count_out == 0
+                and not isinstance(count_out, bool)):
+            return _msg("MSG_PROCESSOR_EMPTY", tool=tool)
+    return _msg("MSG_NO_RESULTS")
 
 
 @dataclass
@@ -2175,12 +2230,13 @@ class Executor:
                 log.debug("scope_form_request parallel-preflight noop: %r", exc)
         if self.vaglio_guard is not None:
             try:
-                allowed, _reason = self.vaglio_guard(step.tool, args)
+                from vaglio import check_executor_guard
+                allowed, _reason = check_executor_guard(
+                    self.vaglio_guard, step.tool, args,
+                    executor=self._catalog_map.get(step.tool))
             except Exception as exc:
-                # Preserve the existing guard contract; admission remains
-                # read-only even when the best-effort guard itself fails.
                 log.warning("vaglio_guard parallel-preflight raised %r", exc)
-                allowed = True
+                allowed = False
             if not allowed:
                 return False
         return True
@@ -2372,17 +2428,38 @@ class Executor:
             _context_errors = args.pop(
                 _FROM_STEP_CONTEXT_ERRORS_KEY, None)
             if isinstance(_context_errors, list) and _context_errors:
+                _choice = _identity_choice_obs(
+                    step.tool, args, _context_errors, runtime_ctx or {})
+                if _choice is not None:
+                    # The consumer has not run: ask which identity is meant.
+                    log.info("Executor: %s asks to choose an identity",
+                             step.tool)
+                    result.steps.append(StepRun(
+                        step_idx=len(result.steps) + 1, tool=step.tool,
+                        args=args, result=_choice, ok=False, latency_ms=0,
+                    ))
+                    result.final_kind = "ask"
+                    result.final_text = ""
+                    break
                 fields = ", ".join(sorted({
                     str(item.get("arg"))
                     for item in _context_errors
                     if isinstance(item, dict) and item.get("arg")
                 })) or "?"
+                unresolved_identities = all(
+                    isinstance(item, dict)
+                    and item.get("reason") == "incomplete_vector_projection"
+                    for item in _context_errors)
+                failure_code = ("ERR_FROM_STEP_IDENTITIES_UNRESOLVED"
+                                if unresolved_identities
+                                else "ERR_FROM_STEP_CONTEXT_AMBIGUOUS")
                 failure = {
                     "ok": False,
-                    "error_class": "ambiguous_source_context",
-                    "error_code": "ERR_FROM_STEP_CONTEXT_AMBIGUOUS",
-                    "error": _msg(
-                        "ERR_FROM_STEP_CONTEXT_AMBIGUOUS", fields=fields),
+                    "error_class": ("source_identity_unresolved"
+                                    if unresolved_identities
+                                    else "ambiguous_source_context"),
+                    "error_code": failure_code,
+                    "error": _msg(failure_code, fields=fields),
                     "context_errors": _context_errors,
                 }
                 log.warning(
@@ -2725,10 +2802,13 @@ class Executor:
             if (_parallel_call is None and self.vaglio_guard is not None
                     and _form_obs is None):
                 try:
-                    _ok_g, _why_g = self.vaglio_guard(_exec_tool, args)
+                    from vaglio import check_executor_guard
+                    _ok_g, _why_g = check_executor_guard(
+                        self.vaglio_guard, _exec_tool, args,
+                        executor=self._catalog_map.get(_exec_tool))
                 except Exception as _ge:
-                    _ok_g, _why_g = True, None  # best-effort: fail-open
-                    log.warning("vaglio_guard raised %r — fail-open", _ge)
+                    _ok_g, _why_g = False, "guard_check_failed"
+                    log.warning("vaglio_guard raised %r — fail-closed", _ge)
                 if not _ok_g:
                     log.warning("[vaglio guard] BLOCCO pre-invoke %s: %s",
                                 _exec_tool, _why_g)

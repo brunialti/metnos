@@ -130,7 +130,7 @@ class _BirthCommitPublisher:
     __slots__ = (
         "_author_private", "_author_ring", "_admission_private",
         "_admission_key_id", "_admission_verifiers",
-        "_admission_context_id", "_epoch",
+        "_admission_context_id", "_epoch", "_context_selection",
         "_primitive", "_registry_reconciler", "_store_root", "_seal",
     )
 
@@ -152,6 +152,7 @@ class _BirthCommitPublisher:
         # the next caller, and it cost twenty red tests before it was seen.
         registry_reconciler,
         prepared_admission_context_id: str | None = None,
+        context_selection: object | None = None,
     ) -> None:
         if token is not _PUBLISHER_TOKEN:
             raise BirthCommitLinkError("birth_commit_publisher_private")
@@ -176,6 +177,16 @@ class _BirthCommitPublisher:
             )
         ):
             raise BirthCommitLinkError("birth_commit_publisher_invalid")
+        if context_selection is not None:
+            from executor_birth_context_selection import (
+                ContextSelectionV1, is_context_selection_v1,
+            )
+            if (type(context_selection) is not ContextSelectionV1
+                    or not is_context_selection_v1(context_selection, allow_staged=True)
+                    or context_selection.admission_context_id != prepared_admission_context_id
+                    or context_selection.context_epoch != prepared_context_epoch):
+                raise BirthCommitLinkError("birth_context_selection_invalid")
+        self._context_selection = context_selection
         self._author_private = author_private
         self._author_ring = tuple(author_ring)
         self._admission_private = admission_private
@@ -207,6 +218,10 @@ class _BirthCommitPublisher:
         # a disagreement means the context moved between the observation and
         # this commit, and it is refused here rather than deeper down.
         if facts.observed_context_epoch != self._epoch:
+            raise BirthCommitLinkError("birth_context_changed")
+        if (self._context_selection is not None
+                and (self._context_selection.staged_reattestation_only
+                     or facts.admission_context_id != self._admission_context_id)):
             raise BirthCommitLinkError("birth_context_changed")
 
         issued: list[bytes] = []
@@ -252,6 +267,7 @@ class _BirthCommitPublisher:
             revision_facts_id=facts.revision_facts_id,
             context_epoch=facts.observed_context_epoch,
             context_epoch_resolver=self._resolve_epoch,
+            context_selection=self._context_selection,
         )
         publication = self._primitive(
             facts.manifest_ref,
@@ -265,6 +281,16 @@ class _BirthCommitPublisher:
             registry_reconciler=self._registry_reconciler,
         )
         return BirthCommitOutcomeV1(publication, issued[-1] if issued else None)
+
+    def authenticate_execution_binding(self, contract_id, generation_id):
+        """Authenticate a served identity with this publisher's owned authority."""
+        from contract_store import authenticate_execution_binding
+
+        return authenticate_execution_binding(
+            contract_id, generation_id, trusted_publics=self._author_ring,
+            admission_verifier_keys=self._admission_verifiers,
+            store_root=self._store_root, context_selection=self._context_selection,
+        )
 
     def admission_lock(self):
         """Return the publisher-owned catalog lock without exposing its path."""
@@ -502,6 +528,7 @@ def _build_prepared_bundle_v1(
     prepared_admission_context_id: str,
     prepared_context_epoch: str,
     store_root,
+    context_selection: object | None = None,
 ) -> _PreparedBirthBundleV1:
     """Bind the authenticated key material to one sealed publisher.
 
@@ -526,6 +553,7 @@ def _build_prepared_bundle_v1(
         primitive=commit_birth_snapshot,
         store_root=store_root,
         registry_reconciler=reconcile_published_contract_registry,
+        context_selection=context_selection,
     )
     view = PreparedBundleViewV1(
         version=1,

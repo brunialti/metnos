@@ -25,14 +25,14 @@ required = ["store"]
 type = "string"
 
 [args.properties.store.description]
-it = "<missing:MSG_STORE_ARG_NAME_DELETE>"
+it = "Nome dello store da cui eliminare."
 en = "Name of a declared runtime store."
 
 [args.properties.where]
 type = "object"
 
 [args.properties.where.description]
-it = "<missing:MSG_STORE_ARG_WHERE_DELETE>"
+it = "Filtro {campo: valore} dei record da eliminare; assente = svuota."
 en = "Exact field-value filter."
 
 [output]

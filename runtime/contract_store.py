@@ -68,6 +68,7 @@ from sign import (
 
 SHADOW_RELATIVE = Path("contract-publications-shadow")
 BINDING_FILE = "binding.json"
+_ADMISSION_RECEIPTS_V2 = "admission-receipts-v2"
 _CODE_PAYLOAD_UNAVAILABLE_CODES = frozenset({
     "code_file_missing", "code_file_invalid", "code_file_unreadable",
 })
@@ -210,6 +211,7 @@ class BirthCommitAuthorization:
     revision_facts_id: str | None = None
     context_epoch: str | None = None
     context_epoch_resolver: Callable[[], str] | None = None
+    context_selection: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2721,9 +2723,11 @@ def _direct_staging_recovery_plan(
         if not reserved:
             if entry.name not in {
                 BINDING_FILE, "current", "writer.lock", "generations",
-                "admission-receipts",
+                "admission-receipts", _ADMISSION_RECEIPTS_V2,
             }:
                 raise ContractStoreError("staging_invalid", str(entry))
+            if entry.name == _ADMISSION_RECEIPTS_V2:
+                _require_plain_directory(entry, code="staging_invalid")
             continue
         match = _DIRECT_STAGING_RE.fullmatch(entry.name)
         if match is None or _is_link_like(entry) or not entry.is_file():
@@ -3071,14 +3075,17 @@ def _verify_activation_catalog(
         }
         if (
             not required_contract_names.issubset(contract_names)
-            or contract_names - required_contract_names != (
-                {"admission-receipts"}
-                if "admission-receipts" in contract_names
-                else set()
+            or not (contract_names - required_contract_names).issubset(
+                {"admission-receipts", _ADMISSION_RECEIPTS_V2}
             )
         ):
             raise ContractStoreError(
                 "activation_contract_invalid", str(contract_dir),
+            )
+        if _ADMISSION_RECEIPTS_V2 in contract_names:
+            _require_plain_directory(
+                contract_dir / _ADMISSION_RECEIPTS_V2,
+                code="activation_contract_invalid",
             )
         binding = read_binding(contract_dir)
         if binding.contract_id != contract_id:
@@ -4162,9 +4169,6 @@ def read_current_birth_receipt(
 # rather than a gap to paper over with the older receipt.
 # ---------------------------------------------------------------------------
 
-_ADMISSION_RECEIPTS_V2 = "admission-receipts-v2"
-
-
 def admission_receipt_hash(encoded: bytes) -> str:
     """Canonical hash of the exact receipt bytes on the wire."""
     if not isinstance(encoded, bytes) or not encoded:
@@ -4190,6 +4194,28 @@ def _birth_receipt_path_v2(
         / _ADMISSION_RECEIPTS_V2
         / generation_directory_name(generation_identifier)
         / (_context_directory_name(admission_context_id) + ".json")
+    )
+
+
+def _birth_receipt_path_for_context(
+    contract_dir: Path, generation_identifier: str, selection: object | None,
+) -> Path:
+    """Select the current-context receipt; None is the initial V1 protocol.
+
+    A missing V2 receipt never falls back to history. Only a sealed context,
+    not a context string or a caller-selected path, can select V2.
+    """
+    if selection is None:
+        return _birth_receipt_path(contract_dir, generation_identifier)
+    from executor_birth_context_selection import (
+        ContextSelectionV1, is_context_selection_v1,
+    )
+    if type(selection) is not ContextSelectionV1 or not is_context_selection_v1(
+        selection, allow_staged=True,
+    ):
+        raise ContractStoreError("birth_context_selection_invalid")
+    return _birth_receipt_path_v2(
+        contract_dir, generation_identifier, selection.admission_context_id,
     )
 
 
@@ -4354,6 +4380,78 @@ def read_current_birth_receipt_v2(
             return _read_regular_file(path, code="birth_receipt_invalid")
 
 
+def inspect_birth_receipts(
+    ref: ManifestRef, generation_identifier: str, candidate_manifest: bytes,
+    candidate_language_state: bytes, *, context_runtime: object,
+    store_root: Path | str | None = None,
+) -> dict:
+    """Read receipt/history evidence without locks, repair or publication.
+
+    The context comes from the existing sealed live/transition readers. This
+    projection is informational: mutable locators are reread, but a future
+    commit must still authenticate its own state under the writer lock.
+    Private store layout remains owned here, not by administrative callers.
+    """
+    from dataclasses import asdict
+    from executor_birth_operational import birth_failure_diagnostic
+    from executor_birth_prepared_root import RequiredContextRuntimeV1, PreviousContextRuntimeV1
+    from executor_birth_receipts import verify_admission_receipt
+
+    if type(context_runtime) not in {RequiredContextRuntimeV1, PreviousContextRuntimeV1}:
+        raise ContractStoreError("birth_context_selection_invalid")
+    context = context_runtime
+    trusted = tuple(context.authorities.author.verifier_keys.items())
+    current = current_contract(ref, trusted_publics=trusted, store_root=store_root)
+    if not isinstance(current, VerifiedManifest) or current.generation_id != generation_identifier:
+        raise ContractStoreError("birth_reattestation_current_changed")
+    directory = _existing_contract_directory(ref.contract_id, store_root=store_root)
+
+    def receipt_row(identifier):
+        try:
+            path = _birth_receipt_path_for_context(directory, identifier, context.selection)
+            if path.stat(follow_symlinks=False).st_size > 64 * 1024:
+                raise ContractStoreError("birth_receipt_invalid", "size")
+            encoded = _read_regular_file(path, code="birth_receipt_invalid")
+            receipt = verify_admission_receipt(
+                encoded, verifier_keys=context.authorities.admission.verifier_keys)
+            if (receipt.contract_id != ref.contract_id.value
+                    or receipt.generation_id != identifier
+                    or receipt.admission_context_id != context.selection.admission_context_id
+                    or encoded != _read_regular_file(path, code="birth_receipt_invalid")):
+                raise ContractStoreError("birth_receipt_binding_invalid", "preview")
+            return {"status": "verified", "format": "v2", "generation_id": identifier,
+                    "admission_context_id": receipt.admission_context_id}
+        except Exception as exc:
+            return {"status": "error", "format": "v2", "generation_id": identifier,
+                    "diagnostic": asdict(birth_failure_diagnostic(exc, "receipt"))}
+
+    matches = []
+    history = {"status": "complete", "matches": matches, "unverified_generations": 0}
+    result = {"receipt": receipt_row(generation_identifier), "historical_collision": history}
+    try:
+        author = context.authorities.author
+        active = ((author.active_key_id, author.verifier_keys[author.active_key_id]),)
+        for entry in sorted((directory / "generations").iterdir()):
+            identifier = "sha256:" + entry.name
+            try:
+                payloads = _load_generation_for_commit(
+                    ref, identifier, trusted_publics=active, store_root=store_root)
+            except Exception:
+                history["unverified_generations"] += 1
+                continue
+            if (payloads["manifest.toml"] == candidate_manifest
+                    and payloads["manifest.lang_state.json"] == candidate_language_state):
+                matches.append(receipt_row(identifier))
+        if history["unverified_generations"]:
+            history.update(status="not_evaluated", reason="some_historical_signatures_unverified")
+        if current_contract(ref, trusted_publics=trusted, store_root=store_root) != current:
+            raise ContractStoreError("birth_reattestation_current_changed")
+    except Exception as exc:
+        history.update(status="not_evaluated", diagnostic=asdict(
+            birth_failure_diagnostic(exc, "history")))
+    return result
+
+
 def authenticate_execution_binding(
     contract_id: ContractId,
     generation_identifier: str,
@@ -4362,6 +4460,7 @@ def authenticate_execution_binding(
     admission_verifier_keys: Mapping[str, object],
     store_root: Path | str | None = None,
     lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+    context_selection: object | None = None,
 ) -> ExecutionContractBinding:
     """Authenticate the exact current generation and its AdmissionReceipt.
 
@@ -4414,7 +4513,9 @@ def authenticate_execution_binding(
             if not isinstance(executor_name, str) or not executor_name.strip():
                 raise ContractStoreError("execution_binding_invalid", "executor_name")
 
-            receipt_path = _birth_receipt_path(contract_dir, generation_identifier)
+            receipt_path = _birth_receipt_path_for_context(
+                contract_dir, generation_identifier, context_selection,
+            )
             try:
                 if receipt_path.stat(follow_symlinks=False).st_size > 64 * 1024:
                     raise ContractStoreError("birth_receipt_invalid", "size")
@@ -4431,6 +4532,9 @@ def authenticate_execution_binding(
             if (receipt.contract_id != contract_id.value
                     or receipt.generation_id != generation_identifier):
                 raise ContractStoreError("birth_receipt_binding_invalid", "execution")
+            if (context_selection is not None and receipt.admission_context_id
+                    != context_selection.admission_context_id):
+                raise ContractStoreError("birth_receipt_binding_invalid", "admission_context_id")
             _canonical_sha256(receipt.candidate_id, field="candidate_id")
 
             # Reopen both mutable locators after all cryptographic work.  A
@@ -4457,6 +4561,10 @@ def _validate_birth_receipt_binding(
     request_id: str | None = None,
     journal_hash: str | None = None,
 ) -> None:
+    if (authorization.context_selection is not None
+            and authorization.admission_context_id
+            != authorization.context_selection.admission_context_id):
+        raise ContractStoreError("birth_receipt_v2_context_conflict")
     expected = {
         "contract_id": ref.contract_id.value,
         "generation_id": generation_identifier,
@@ -4525,19 +4633,21 @@ def _persist_birth_receipt_locked(
     digests = MappingProxyType({
         name: _sha256(payloads[name]) for name in GENERATION_FILES
     })
-    receipt_path = _birth_receipt_path(contract_dir, generation_identifier)
-    receipt_dir = receipt_path.parent
-    if receipt_dir.exists():
-        _require_plain_directory(receipt_dir, code="birth_receipt_store_invalid")
-        _require_no_link_components(receipt_dir, code="birth_receipt_store_invalid")
-    else:
-        try:
-            receipt_dir.mkdir(mode=0o700)
-            _sync_directory(receipt_dir.parent)
-        except OSError as exc:
-            raise ContractStoreError("birth_receipt_store_invalid", str(exc)) from exc
+    receipt_path = _birth_receipt_path_for_context(
+        contract_dir, generation_identifier, authorization.context_selection,
+    )
+    for receipt_dir in (receipt_path.parent.parent, receipt_path.parent):
+        if receipt_dir.exists() or _is_link_like(receipt_dir):
+            _require_plain_directory(receipt_dir, code="birth_receipt_store_invalid")
+            _require_no_link_components(receipt_dir, code="birth_receipt_store_invalid")
+        else:
+            try:
+                receipt_dir.mkdir(mode=0o700)
+                _sync_directory(receipt_dir.parent)
+            except OSError as exc:
+                raise ContractStoreError("birth_receipt_store_invalid", str(exc)) from exc
 
-    if receipt_path.exists():
+    if receipt_path.exists() or _is_link_like(receipt_path):
         encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
     else:
         try:
@@ -5454,7 +5564,10 @@ def commit_birth_snapshot(
             if pending is not None:
                 if pending.contract_id != ref.contract_id.value:
                     raise ContractStoreError("authoring_recovery_ambiguous", "contract_id")
-                receipt_path = _birth_receipt_path(contract_dir, pending.new_generation_id)
+                receipt_path = _birth_receipt_path_for_context(
+                    contract_dir, pending.new_generation_id,
+                    birth_authorization.context_selection,
+                )
                 encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
                 try:
                     receipt = birth_authorization.verifier(encoded)
@@ -5498,7 +5611,9 @@ def commit_birth_snapshot(
                     previous == replay_desired
                     and current_payloads == replay_payloads
                 ):
-                    receipt_path = _birth_receipt_path(contract_dir, replay_desired)
+                    receipt_path = _birth_receipt_path_for_context(
+                        contract_dir, replay_desired, birth_authorization.context_selection,
+                    )
                     encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
                     try:
                         receipt = birth_authorization.verifier(encoded)
@@ -6285,13 +6400,15 @@ def diagnose_store(
                 raise ContractStoreError("binding_invalid", str(ref.contract_id))
             allowed_contract_entries = {
                 BINDING_FILE, "writer.lock", "current", "generations",
-                "admission-receipts",
+                "admission-receipts", _ADMISSION_RECEIPTS_V2,
             }
             for child in contract_dir.iterdir():
                 if child.name not in allowed_contract_entries:
                     diagnostics.append(StoreDiagnostic(
                         "contract_entry_unknown", ref.contract_id, str(child),
                     ))
+                elif child.name == _ADMISSION_RECEIPTS_V2:
+                    _require_plain_directory(child, code="birth_receipt_store_invalid")
             lock_file = contract_dir / "writer.lock"
             if not lock_file.exists():
                 diagnostics.append(StoreDiagnostic(

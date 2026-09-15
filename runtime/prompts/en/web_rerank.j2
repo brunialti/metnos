@@ -3,9 +3,9 @@ role: web_rerank
 tier: fast
 lang: en
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-11
+updated: 2026-09-15
 sha_prev: 009e461e
 --- #}
 YOU MUST: order the `candidates` list by relevance to `user_query`.
@@ -29,6 +29,6 @@ Implicitly consider:
 - For queries with an explicit year/date, boost candidates that mention it in title/snippet.
 - For news queries, boost press domains over wiki/forum.
 
-Max elements in `top`: {{ top_k }}. Include ONLY candidates with score >= 0.3. If no candidate scores above 0.3, return `{"top": []}`.
+Max elements in `top`: {{ top_k }}. Include ONLY candidates with score >= {{ min_score }}. If no candidate reaches {{ min_score }}, return `{"top": []}`.
 
 DO NOT include `why`/explanation fields: only url and score.

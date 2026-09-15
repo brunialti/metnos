@@ -109,6 +109,21 @@
     "source_lang": "en",
     "version_hash": "sha256:2fd858eef9e5581a89bc094b0463d54deab61d016e1b59efdec258ecbb8abd80"
   },
+  "image_index_context": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:5216f97282e1b684dd3a3fcea3928dd87cfa286d481fe639bcd35c989e27396a"
+  },
+  "image_index_describe": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:e7e0ffa7f22c11177c9d9b6f282522c09340dd6596b15c0445dd2ffc8e34ae25"
+  },
+  "image_index_folder": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:124791911591f724f8d84c7ae50abd378ffbb580aa0d9fc4c896d9a80f31ef03"
+  },
   "intent_extractor_scaffold": {
     "source_hash": "sha256:e266742e18eeee08c91cbce1a49ee684497f0083956b58725ca20fba0af70bd3",
     "source_lang": "en",
@@ -349,10 +364,15 @@
     "source_lang": "en",
     "version_hash": "sha256:bc8d84d11bfff5576cfea28b3256dc57af6aff6408f34a1dc5766b75c8ee755d"
   },
+  "temporal_interpret": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:ed427efbcf21db68f24b349e2318275e8d0dbbfea8d728f5d09ff59c8dacc98f"
+  },
   "tutor_compose": {
     "source_hash": null,
     "source_lang": null,
-    "version_hash": "sha256:0464f77328822dd0772900144919475da790479e9467f8e1afbb9a5eff35079a"
+    "version_hash": "sha256:18aa8a8f3d736c7e1d356443f7f93b33653d65608de3082599c2932f4b52cad4"
   },
   "tutor_mode": {
     "source_hash": "sha256:796e6cc5ca81ed9a8a645be40bc000b4c3713e8a31cb140343849bc58d814052",
@@ -385,8 +405,8 @@
     "version_hash": "sha256:b7ca3a22406d0b35180560c64bdb3bed0e6ecacfc05aaaa12a2bb466abff918f"
   },
   "web_rerank": {
-    "source_hash": "sha256:a1b2c7bb0a9bd7d00ad6026cd8459d186a8087a2060b72428fc1aec51e138e87",
-    "source_lang": "en",
-    "version_hash": "sha256:97d4f0fc212a11b752c8c44acd4641389c4b8b79ed960c449536b132cf898d8f"
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:2fc030360fe4d31bd1c05aef5bc98fdfc0a7e0f2d8661226de70620b91150c97"
   }
 }

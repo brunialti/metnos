@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import base64
 import json
+import re
 import threading
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -116,11 +117,58 @@ class BirthRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class BirthDiagnostic:
+    """Bounded technical evidence, never exception messages or request data."""
+
+    phase: str
+    code: str
+    cause: str
+
+    def __post_init__(self) -> None:
+        for value in (self.phase, self.code):
+            if not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", value):
+                raise ValueError("birth_diagnostic_invalid")
+        if (not isinstance(self.cause, str) or len(self.cause) > 1024
+                or not re.fullmatch(r"[A-Za-z0-9_.: >-]*", self.cause)):
+            raise ValueError("birth_diagnostic_invalid")
+
+
+def birth_failure_diagnostic(exc: Exception, phase: str) -> BirthDiagnostic:
+    """Keep codes and reviewed source locations instead of unsafe free text.
+
+    The location distinguishes e.g. an untrusted admission key from a bad
+    signature even when both exceptions use receipt_invalid. No detail,
+    filename from a request, argv, output or exception message is retained.
+    """
+    def code(error):
+        value = getattr(error, "code", None)
+        return value if isinstance(value, str) and re.fullmatch(
+            r"[a-z][a-z0-9_]{0,95}", value) else "birth_unavailable"
+
+    causes, seen = [], set()
+    current = exc
+    while current is not None and id(current) not in seen and len(causes) < 4:
+        seen.add(id(current))
+        location = ""
+        frame = current.__traceback__
+        while frame is not None:
+            path = Path(frame.tb_frame.f_code.co_filename)
+            if (path.parent == Path(__file__).parent and path.is_file()
+                    and re.fullmatch(r"[a-z][a-z0-9_]*\.py", path.name)):
+                location = f" {path.name}:{frame.tb_lineno}"
+            frame = frame.tb_next
+        causes.append(code(current) + location)
+        current = current.__cause__ or current.__context__
+    return BirthDiagnostic(phase, code(exc), " > ".join(causes)[:1024])
+
+
+@dataclass(frozen=True, slots=True)
 class BirthResult:
     request_id: str
     report: BirthReport
     publication: PublicationResult | None
     error_code: str | None
+    diagnostic: BirthDiagnostic | None = None
 
 
 def _terminal_envelope(
@@ -156,6 +204,11 @@ def _terminal_envelope(
         "signing_key_id": core.admission_key_id,
         "request_id": result.request_id, "schema_version": 2,
     }
+    if result.diagnostic is not None:
+        value["diagnostic"] = {
+            "phase": result.diagnostic.phase, "code": result.diagnostic.code,
+            "cause": result.diagnostic.cause,
+        }
     return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
 
 
@@ -187,7 +240,9 @@ def _decode_terminal_envelope(encoded: bytes, request: BirthRequest) -> tuple[Bi
         )
         admission = (base64.b64decode(value["admission_receipt"], validate=True)
                      if value["admission_receipt"] is not None else None)
-        return (BirthResult(request.request_id, report, publication, value["error_code"]),
+        diagnostic = value.get("diagnostic")
+        diagnostic = BirthDiagnostic(**diagnostic) if diagnostic is not None else None
+        return (BirthResult(request.request_id, report, publication, value["error_code"], diagnostic),
                 admission, signing_key_id)
     except Exception as exc:
         raise ValueError("birth_terminal_envelope_invalid") from exc
@@ -237,7 +292,7 @@ def _replay_terminal(core: "_BirthCore", request: BirthRequest, claim: object) -
             raise ValueError("birth_publication_replay_mismatch")
         if admission is not None and verified_admission not in {None, admission}:
             raise ValueError("birth_admission_replay_mismatch")
-        result = BirthResult(result.request_id, result.report, verified, result.error_code)
+        result = replace(result, publication=verified)
     return result
 
 
@@ -504,6 +559,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
     receipt_binding: ProducerReceiptBinding | None = None
     claimed = False
     publication_started = False
+    phase = "context"
     try:
         if not isinstance(core, _BirthCore) or core._seal is not _CORE_SEAL:
             raise ValueError("birth_core_untrusted")
@@ -520,6 +576,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         # The admission lock serializes receipt consumption and acquisition of
         # the only source snapshot.  All expensive checks run after release.
         with core.commit_publisher.admission_lock():
+            phase = "candidate"
             producer_preview = _peek_receipt(core, request, instant)
             observed = observe_candidate(
                 request.candidate_source_root, contract_id=request.manifest_ref.contract_id,
@@ -532,6 +589,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
                 observed.objective_hash, candidate_source_id(observed),
                 observed.executor_origin, observed.revision_authorship,
             )
+            phase = "producer_claim"
             claim = claim_producer_receipt(
                 request.producer_receipt, registry=core.producer_registry,
                 binding=receipt_binding, request_id=request.request_id,
@@ -539,6 +597,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             )
             producer = claim.receipt
             claimed = True
+        phase = "recovery"
         if claim.state == "rejected":
             return _replay_terminal(core, request, claim)
         if claim.state == "committed":
@@ -562,6 +621,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
                     terminal_envelope=envelope, terminal_auth=auth,
                 )
                 return recovered
+        phase = "predecessor"
         predecessor_snapshot, predecessor_payloads = core.predecessor_resolver(request)
         if not isinstance(predecessor_snapshot, AuthenticatedPredecessorSnapshot):
             raise ValueError("birth_predecessor_snapshot_invalid")
@@ -569,6 +629,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             predecessor_snapshot, predecessor_payloads, observed.snapshot,
         )
         revision = classify_revision(facts).revision_class
+        phase = "approval"
         approval_subject, approval_evidence = core.approval_resolver(
             request, observed, revision, instant,
         )
@@ -586,6 +647,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             approval_subject=approval_subject,
             approval_evidence=approval_evidence, now=instant,
         )
+        phase = "checks"
         report = _observe_birth_for_test(
             request.candidate_source_root, contract_id=request.manifest_ref.contract_id,
             executor_origin=producer.executor_origin,
@@ -594,7 +656,10 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             revision_facts=facts, _dependencies=borrowed_dependencies,
         )
         if report.outcome not in {BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE}:
-            rejected_result = BirthResult(request.request_id, report, None, report.error_code)
+            rejected_result = BirthResult(
+                request.request_id, report, None, report.error_code,
+                BirthDiagnostic("checks", report.error_code or "birth_not_admitted", ""),
+            )
             envelope = _terminal_envelope(core, rejected_result)
             finalize_producer_receipt(
                 request.producer_receipt, registry=core.producer_registry,
@@ -650,6 +715,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             terminal_auth=_sign_terminal(core, hint),
         )
         publication_started = True
+        phase = "publication"
         outcome = core.commit_publisher.commit(commit_facts)
         publication = outcome.publication
         issued_receipts = (
@@ -658,6 +724,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         _publication_binding(request, publication, predecessor)
         successful = BirthResult(request.request_id, report, publication, None)
         envelope = _terminal_envelope(core, successful, issued_receipts[-1] if issued_receipts else None)
+        phase = "finalization"
         finalize_producer_receipt(
             request.producer_receipt, registry=core.producer_registry,
             binding=receipt_binding, request_id=request.request_id, now=instant,
@@ -666,7 +733,8 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         )
         return successful
     except Exception as exc:
-        error_code = getattr(exc, "code", "birth_unavailable")
+        diagnostic = birth_failure_diagnostic(exc, phase)
+        error_code = diagnostic.code
         if report is None:
             report = _rejected_report(
                 request, observed=observed, facts=facts, error_code=error_code,
@@ -685,7 +753,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         # exact retry can make the publisher prove (or reject) that state.
         if claimed and not publication_started and receipt_binding is not None:
             try:
-                rejected_result = BirthResult(request.request_id, report, None, error_code)
+                rejected_result = BirthResult(request.request_id, report, None, error_code, diagnostic)
                 envelope = _terminal_envelope(core, rejected_result)
                 finalize_producer_receipt(
                     request.producer_receipt, registry=core.producer_registry,
@@ -697,7 +765,10 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             except Exception:
                 # Never replace the original failure with bookkeeping noise.
                 pass
-        return BirthResult(request.request_id, report, None, error_code)
+        # An in-progress publication retains its immutable admitted recovery
+        # hint. Its failure diagnostic travels in the result/release report;
+        # it must not overwrite the proof needed to recover a durable commit.
+        return BirthResult(request.request_id, report, None, error_code, diagnostic)
     finally:
         if observed is not None:
             observed.close()
@@ -789,6 +860,21 @@ def _runtime_author_trusted_publics_v1() -> tuple | None:
     if bundle is None:
         return None
     return tuple(sorted(bundle.author_verifier_keys.items()))
+
+
+def _validate_synth_tests(data):
+    """Use the sealed backend without exporting the bundle to a producer."""
+    from executor_birth_functional import SynthTestData, SynthTestReport, _run_synth_tests
+    if type(data) is not SynthTestData:
+        raise ValueError("synth_test_data_invalid")
+    bundle = _runtime_bundle_snapshot()
+    if bundle is None:
+        return SynthTestReport(error_code="test_environment_unavailable")
+    shadow = bundle.core.shadow_dependencies
+    return _run_synth_tests(
+        data, linux_registry=shadow.linux_sandbox_registry,
+        windows_registry=shadow.windows_sandbox_registry,
+    )
 
 
 def _execute_intent_with_capability(

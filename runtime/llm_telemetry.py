@@ -115,6 +115,16 @@ class _BoundedUsageBuffer:
 class BoundedUsageSink(_BoundedUsageBuffer):
     """Content-free attempt usage buffer, persisted by the execution bridge."""
 
+    def complete_local_capture(self) -> None:
+        """Confirm a successful in-process scope that made no provider calls.
+
+        Only the bridge can close a registered in-process invocation. Missing
+        child envelopes and calls started without usage remain unverified.
+        """
+        with self._lock:
+            if not self._calls_started and not self._records and not self._dropped:
+                self._verified_zero_calls = True
+
     __slots__ = ()
 
     def ingest_transport(

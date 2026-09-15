@@ -161,6 +161,18 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
                 enum_bits.append(f"{pname}∈{{{vals}}}")
         if enum_bits:
             bits.append(f" enums=[{'; '.join(enum_bits)}]")
+        # Preserve bounded schema defaults in the compact planning surface.
+        # Listing an optional argument without its default invites invention.
+        defaults = []
+        for pname in props:
+            decl = props_map.get(pname) or {}
+            if "default" not in decl:
+                continue
+            value = json.dumps(decl["default"], ensure_ascii=False, separators=(",", ":"))
+            if len(value) <= 80:
+                defaults.append(f"{pname}={value}")
+        if defaults:
+            bits.append(f" defaults=[{'; '.join(defaults)}]")
         lines.append("".join(bits))
     return "\n".join(lines)
 

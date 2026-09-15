@@ -17,6 +17,7 @@ import fcntl
 import json
 import os
 import pwd
+import re
 import signal
 import stat
 import subprocess
@@ -74,6 +75,15 @@ _DURABLE_NON_RESTARTABLE_REASONS = frozenset({
     "runtime_bindings_unavailable",
     "schema_incompatible",
 })
+# These refusals invalidate the shared admission authority, not just a
+# candidate. Unexpected exceptions and failed store rereads also stop the
+# sweep; ordinary contract refusals are collected before reporting failure.
+_GLOBAL_BIRTH_FAILURE_PREFIXES = (
+    "birth_context_", "birth_bootstrap_", "birth_authority_",
+    "birth_producer_registry_", "birth_commit_link_", "birth_unavailable",
+    "catalog_", "lock_", "unsafe_lock", "productive_",
+    "installation_", "store_integrity_",
+)
 
 
 class StackFailure(RuntimeError):
@@ -132,8 +142,32 @@ class ReconcileLock:
     """Process lock hardened against symlink substitution."""
 
     def __init__(self, path: Path | None = None, *, owner_uid: int | None = None):
-        runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
-        self.path = path or runtime / "metnos-stack-reconcile.lock"
+        if path is None:
+            from services_registry import service_user, stack_scope
+
+            try:
+                scope = stack_scope()
+            except ValueError as exc:
+                raise StackFailure(
+                    "stack_profile_unavailable", "installed stack profile is unavailable",
+                ) from exc
+            if scope == "system":
+                # Administrative callers and the service (including watchdog)
+                # must hold the same lock, without requiring a login session.
+                path = _state_dir() / "metnos-stack-reconcile.lock"
+                if owner_uid is None:
+                    try:
+                        owner_uid = pwd.getpwnam(service_user()).pw_uid
+                    except KeyError as exc:
+                        raise StackFailure(
+                            "service_user_invalid", "Metnos service user does not exist",
+                        ) from exc
+            else:
+                runtime = Path(os.environ.get(
+                    "XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}",
+                ))
+                path = runtime / "metnos-stack-reconcile.lock"
+        self.path = path
         self.owner_uid = os.getuid() if owner_uid is None else owner_uid
         self.fd: int | None = None
 
@@ -495,12 +529,101 @@ def _watched_service_ok(key: str, row: dict) -> bool:
     return False
 
 
-def verify_named_executors(names: list[str], *, sign_first: bool = False) -> list[dict]:
+def _release_plan_context(evidence: bytes | None = None):
+    """Read sealed authority only; never bootstrap, recover or select a head."""
+    from executor_birth_prepared_root import (
+        load_previous_context_runtime_v1, load_required_context_runtime_v1,
+    )
+    if evidence is None:
+        return load_required_context_runtime_v1()
+    from executor_birth_distribution_manifest import (
+        authenticate_distribution_record_v1, verify_current_installation_distribution_v1,
+    )
+    pair = json.loads(evidence)
+    encoded = pair["distribution"].encode("utf-8")
+    signature = bytes.fromhex(pair["signature"])
+    # Verify the successor's bytes with its reviewed policy, and N's context
+    # through the existing explicit transition reader. Never pretend N+1 is
+    # selected or feed N into N+1's live runtime bootstrap (C15).
+    verify_current_installation_distribution_v1(encoded, signature)
+    return load_previous_context_runtime_v1(
+        authenticate_distribution_record_v1(encoded, signature))
+
+
+def _release_plan_snapshot(ref, current, trusted):
+    """Owned read snapshot; no store lock creation, repair or state writes."""
+    from contract_store import ContractStoreError, current_contract
+    from executor_birth_snapshot import _acquire_authenticated_current_snapshot
+    from manifest_code_digest import code_digest_of_payloads
+
+    snapshot, signature = _acquire_authenticated_current_snapshot(ref.manifest_dir)
+    try:
+        if (snapshot.manifest_bytes != current.manifest_bytes
+                or snapshot.language_state_bytes != current.language_state_bytes
+                or signature != current.signature_bytes
+                or code_digest_of_payloads(
+                    current.parsed["code"]["files"], snapshot.code_files
+                ) != current.declared_code_digest
+                or current_contract(ref, trusted_publics=trusted) != current):
+            raise ContractStoreError("birth_reattestation_source_changed")
+        return snapshot
+    except BaseException:
+        snapshot.close()
+        raise
+
+
+def _release_plan_details(ref, current, served, prepared, language, code, context):
+    """Informational projection of bytes, not an admission or future promise."""
+    import hashlib
+    import tomllib
+    from contract_store import inspect_birth_receipts
+    from executor_birth_operational import birth_failure_diagnostic
+
+    candidate, previous = tomllib.loads(prepared.decode()), tomllib.loads(served.manifest_bytes.decode())
+    changes = [key for key, before, after in (
+        ("manifest", served.manifest_bytes, prepared),
+        ("language_state", served.language_state_bytes, language),
+        ("code", dict(served.code_files), code),
+    ) if before != after]
+    row = {
+        "changes": changes, "served_version": previous.get("version"),
+        "candidate_version": candidate.get("version"),
+        "candidate_manifest_sha256": hashlib.sha256(prepared).hexdigest(),
+        "candidate_language_sha256": hashlib.sha256(language).hexdigest(),
+        "candidate_code_digest": candidate.get("code", {}).get("digest"),
+        "served_code_digest": previous.get("code", {}).get("digest"),
+        "selected_head_id": context.required_head_id,
+        "selected_context_id": context.selection.admission_context_id,
+        "destination": {"status": "not_evaluated", "reason": "candidate_not_admitted"},
+        "runtime_module": {"status": "not_evaluated", "reason": "verified_by_loader_at_activation"},
+    }
+    try:
+        row.update(inspect_birth_receipts(
+            ref, current.generation_id, prepared, language, context_runtime=context))
+    except Exception as exc:
+        row["receipts"] = {"status": "not_evaluated", "diagnostic": dataclasses.asdict(
+            birth_failure_diagnostic(exc, "receipt"))}
+    return row
+
+
+def verify_named_executors(
+        names: list[str], *, sign_first: bool = False,
+        changed_only: bool = False, plan_only: bool = False,
+        preview_evidence: bytes | None = None) -> list[dict]:
     """Admit/verify explicitly named direct children of ``executors/``.
 
     ``sign_first`` is retained as the public compatibility flag.  It now
     means admission through the sealed Executor Birth service; it never
     selects a technical publisher.
+
+    ``changed_only`` compares each first-party executor of this installation
+    with the generation the store serves - manifest, language state and every
+    declared file by name - and admits only those that differ. ``plan_only``
+    reports that comparison without any Birth request. Each row carries one
+    outcome: ``unchanged``, ``not_installed``, ``changed`` (plan),
+    ``store_verified`` (admitted, and the store now serves that generation),
+    ``error`` or ``not_attempted``. Publications are per contract: a refusal
+    after an admission leaves the earlier admission in place and reported.
     """
     from manifest_inventory import (
         ContractId, ManifestLayout, ManifestOrigin, inventory_manifests,
@@ -514,6 +637,237 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
         inventory_manifests().by_id()
         if layout is ManifestLayout.STORE_ONLY else {}
     )
+    if changed_only or plan_only:
+        if layout is not ManifestLayout.STORE_ONLY or not (sign_first or plan_only):
+            raise StackFailure(
+                "changed_only_invalid",
+                "changed-only admission needs the store-only layout and --sign or --plan",
+            )
+        from contract_store import (
+            ContractStoreError, VerifiedManifest,
+            acquire_current_reattestation_snapshot, current_contract,
+        )
+        from executor_birth_intent import (
+            BirthIntent, submit_builtin_generation_birth, submit_stack_reconcile_birth,
+        )
+        from executor_birth_identity import (
+            CandidateIdentityInput, ExecutorOrigin, IdentityError, RevisionAuthor,
+            semantic_core_id,
+        )
+        from executor_birth_snapshot import (
+            LANGUAGE_STATE_FILE, MANIFEST_FILE, CandidateSnapshotError,
+            _declared_code_files, _read_regular,
+            materialize_birth_candidate_from_authoring,
+        )
+        from sign import list_trusted_publics
+        from i18n_materializer import LanguageStateError, decode_language_state
+        import tomllib
+        import tomlkit
+
+        from executor_birth_operational import birth_failure_diagnostic
+        context, context_error = None, None
+        if plan_only:
+            try:
+                context = _release_plan_context(preview_evidence)
+            except Exception as exc:
+                context_error = dataclasses.asdict(birth_failure_diagnostic(exc, "context"))
+        trusted = (tuple(context.authorities.author.verifier_keys.items()) if context
+                   else () if plan_only else tuple(list_trusted_publics()))
+        core, builtin = ManifestOrigin.CORE, ManifestOrigin.BUILTIN
+        # ``prepare`` derives each builtin copy from the reviewed code, and
+        # Birth admits it with the builtin capability.  One list and one loop
+        # serve both origins, so a refusal always reports every later entry.
+        sources = {
+            core: root,
+            builtin: (_repo_root() / "runtime" / "builtin_executor_contracts").resolve(),
+        }
+        submitters = {core: (submit_stack_reconcile_birth, "executor"),
+                      builtin: (submit_builtin_generation_birth, "builtin")}
+        pending = [(core, name) for name in list(names) or sorted(
+            path.name for path in root.iterdir()
+            if (path / MANIFEST_FILE).is_file()
+        )]
+        # An explicit selection names core executors only; the whole
+        # changed-only sweep also covers the installed builtin contracts.
+        if not names and sources[builtin].is_dir():
+            pending += [(builtin, path.name) for path in sorted(sources[builtin].iterdir())
+                        if (path / MANIFEST_FILE).is_file()]
+
+        def identity(origin, name):
+            # Core rows keep their historical shape: an absent origin is core.
+            return {"name": name} if origin is core else {"name": name, "origin": origin.value}
+
+        outcomes: list[dict] = []
+        first_failure: StackFailure | None = None
+
+        def refuse(index, code, detail):
+            outcomes.extend({**identity(*item), "outcome": "not_attempted"}
+                            for item in pending[index + 1:])
+            return StackFailure(code, detail, details={"outcomes": outcomes})
+
+        with tempfile.TemporaryDirectory(prefix="metnos-reconcile-release-") as raw:
+            for index, (origin, name) in enumerate(pending):
+                if not name or name in {".", ".."} or "/" in name or "\\" in name:
+                    raise StackFailure("invalid_executor", "executor name is not canonical")
+                base = identity(origin, name)
+                contract_id = ContractId(origin, f"{name}/manifest.toml")
+                ref = store_refs.get(contract_id)
+                if plan_only and context is None:
+                    outcomes.append({**base, "outcome": "not_evaluated",
+                                     "diagnostic": context_error})
+                    continue
+                try:
+                    current = (
+                        None if ref is None
+                        else current_contract(ref, trusted_publics=trusted)
+                    )
+                    new_core = ref is None and origin is core
+                    if not new_core and not isinstance(current, VerifiedManifest):
+                        outcomes.append({**base, "outcome": "not_installed"})
+                        continue
+                    # The closed candidate check refuses anything undeclared,
+                    # caches included: an installation carries none.
+                    candidate = materialize_birth_candidate_from_authoring(
+                        sources[origin] / name,
+                        Path(raw) / f"candidate-{origin.value}-{name}",
+                    )
+                    prepared = _read_regular(candidate, MANIFEST_FILE)
+                    if origin is builtin and _read_regular(
+                            sources[origin] / name, MANIFEST_FILE) != prepared:
+                        # Its digest had to be recomputed: the generator did
+                        # not derive this copy from the code being released.
+                        raise CandidateSnapshotError("builtin_candidate_stale", name)
+                    language_state = _read_regular(candidate, LANGUAGE_STATE_FILE)
+                    try:
+                        decode_language_state(
+                            language_state, manifest=tomllib.loads(prepared.decode("utf-8")))
+                    except LanguageStateError as exc:
+                        # Preview must reject the same stale companion that
+                        # publication would reject after the release cutover.
+                        raise CandidateSnapshotError(exc.code, exc.detail) from exc
+                    declared = _declared_code_files(prepared)
+                    code = {item: _read_regular(candidate, item) for item in declared}
+                    same = False
+                    if not new_core:
+                        snapshot = (_release_plan_snapshot(ref, current, trusted) if plan_only
+                                    else acquire_current_reattestation_snapshot(
+                                ref, current.generation_id,
+                                trusted_publics=trusted))
+                        with snapshot as served:
+                            if origin is builtin:
+                                # Regeneration owns code/schema, not the served
+                                # line's version. Normalize before changed-only
+                                # and before Birth, after the stale-copy check.
+                                document = tomlkit.parse(prepared.decode("utf-8"))
+                                served_document = tomlkit.parse(served.manifest_bytes.decode("utf-8"))
+                                if (tomlkit.dumps(document).encode("utf-8") != prepared
+                                        or tomlkit.dumps(served_document).encode("utf-8") != served.manifest_bytes):
+                                    raise CandidateSnapshotError("builtin_version_roundtrip_changed", name)
+                                version = served_document.get("version")
+                                if not isinstance(version, str) or not version:
+                                    raise CandidateSnapshotError("builtin_version_invalid", name)
+                                if document.get("version") != version:
+                                    document["version"] = version
+                                    prepared = tomlkit.dumps(document).encode("utf-8")
+                                    (candidate / MANIFEST_FILE).write_bytes(prepared)
+                            same = (
+                                served.manifest_bytes == prepared
+                                and served.language_state_bytes == language_state
+                                and dict(served.code_files) == code
+                            )
+                            if plan_only:
+                                base.update(_release_plan_details(
+                                    ref, current, served, prepared, language_state, code, context))
+                    if plan_only:
+                        # The semantic projection ignores provenance. This
+                        # read-only input issues no identity or authority for
+                        # a future request; Birth constructs its own envelope.
+                        import hashlib
+                        base["candidate_semantic_core_id"] = semantic_core_id(
+                            CandidateIdentityInput(
+                                contract_id=contract_id, manifest_bytes=prepared,
+                                language_state_bytes=language_state, code_files=code,
+                                executor_origin=ExecutorOrigin(origin.value),
+                                revision_authorship=RevisionAuthor.MAINTENANCE,
+                                objective_hash="sha256:" + hashlib.sha256(prepared).hexdigest(),
+                            ))
+                        base["destination_context"] = (
+                            {"status": "not_evaluated", "reason": "cutover_not_completed"}
+                            if preview_evidence is not None else
+                            {"status": "selected", "admission_context_id": context.selection.admission_context_id})
+                except (OSError, CandidateSnapshotError, ContractStoreError, IdentityError) as exc:
+                    outcomes.append({**base, "outcome": "error", "diagnostic": dataclasses.asdict(
+                        birth_failure_diagnostic(exc, "candidate"))})
+                    if plan_only:
+                        continue
+                    # Preserve the existing admission failure shape. The
+                    # read-only preview emits only the redacted diagnostic.
+                    outcomes[-1]["error"] = str(exc)
+                    if not isinstance(exc, CandidateSnapshotError):
+                        raise refuse(index, "candidate_unavailable", f"{name}: {exc}") from exc
+                    if first_failure is None:
+                        first_failure = StackFailure(
+                            "candidate_unavailable", f"{name}: {exc}", details={"outcomes": outcomes},
+                        )
+                    continue
+                if same or plan_only:
+                    outcomes.append({**base, "outcome": "unchanged" if same else "changed",
+                                     "generation_id": current.generation_id if current else None})
+                    continue
+                submit, kind = submitters[origin]
+                failure = ""
+                try:
+                    birth = submit(BirthIntent(
+                        candidate_source_root=candidate,
+                        contract_id=contract_id,
+                        reason=f"release edit admission {kind}={name}",
+                    ))
+                except Exception as exc:
+                    birth, failure = None, str(exc)
+                row = {**base, "outcome": "error",
+                       "request_id": getattr(birth, "request_id", None)}
+                if getattr(birth, "diagnostic", None) is not None:
+                    row["diagnostic"] = dataclasses.asdict(birth.diagnostic)
+                publication = getattr(birth, "publication", None)
+                if birth is None or birth.error_code or publication is None:
+                    row["error"] = failure or (birth.error_code if birth else "") \
+                        or "publication_missing"
+                else:
+                    row.update({
+                        "candidate_id": birth.report.candidate_id,
+                        "previous_generation_id": publication.previous_generation_id,
+                        "current_generation_id": publication.current_generation_id,
+                    })
+                    try:
+                        # A first admission must be visible through the ordinary
+                        # store inventory, not a fabricated source reference.
+                        if new_core:
+                            ref = inventory_manifests().by_id().get(contract_id)
+                        reread = current_contract(ref, trusted_publics=trusted) if ref else None
+                    except ContractStoreError as exc:
+                        reread, row["error"] = None, str(exc)
+                    if (isinstance(reread, VerifiedManifest) and reread.generation_id
+                            == publication.current_generation_id):
+                        row["outcome"] = "store_verified"
+                    else:
+                        row.setdefault("error", "store_generation_mismatch")
+                outcomes.append(row)
+                if row["outcome"] == "error":
+                    # A returned contract refusal is local. An unexpected
+                    # exception, lost authority or invalid publication
+                    # postcondition cannot authorize the next mutation.
+                    if (birth is None or publication is not None
+                            or str(row["error"]).startswith(_GLOBAL_BIRTH_FAILURE_PREFIXES)):
+                        raise refuse(index, "birth_admission_failed", f"{name}: {row['error']}")
+                    if first_failure is None:
+                        first_failure = StackFailure(
+                            "birth_admission_failed", f"{name}: {row['error']}",
+                            details={"outcomes": outcomes},
+                        )
+        if first_failure is not None:
+            raise first_failure
+        return outcomes
+
     selected: list[tuple[str, Path | None, object | None]] = []
     for name in names:
         if not name or name in {".", ".."} or "/" in name or "\\" in name:
@@ -523,7 +877,20 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
             ref = store_refs.get(contract_id)
             if ref is None:
                 raise StackFailure("unknown_executor", f"executor {name!r} is not installed")
-            directory = None
+            # A deploy publishes the operator's working copy; without one it
+            # re-admits the bytes the store already names.
+            working = root / name
+            directory = (
+                working.resolve() if (working / "manifest.toml").is_file()
+                else None
+            )
+            if directory is not None:
+                try:
+                    directory.relative_to(root)
+                except ValueError as exc:
+                    raise StackFailure(
+                        "invalid_executor", "executor escapes the catalog root",
+                    ) from exc
         else:
             ref = None
             directory = (root / name).resolve()
@@ -546,11 +913,11 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
                     )
 
                     staging = (
-                        materialize_birth_candidate_from_manifest_ref(
-                            ref, Path(raw_staging) / name,
-                        ) if ref is not None else
                         materialize_birth_candidate_from_authoring(
                             directory, Path(raw_staging) / name,
+                        ) if directory is not None else
+                        materialize_birth_candidate_from_manifest_ref(
+                            ref, Path(raw_staging) / name,
                         )
                     )
                     birth = submit_stack_reconcile_birth(BirthIntent(
@@ -603,6 +970,61 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
             details={"executors": failed},
         )
     return results
+
+
+class PendingActivation:
+    """A restart owed to generations the store may already serve.
+
+    The intent is written before the first Birth request and cleared only
+    once the stack is restarted and ready - or once the batch is known to
+    have admitted nothing. Anything in between (a refused restart, a reread
+    that failed after publication, a process killed mid-batch) leaves the
+    intent behind, and the next changed-only deploy restarts even when it
+    admits nothing new. Rows keep the outcome they were reported with: an
+    uncertain publication stays uncertain. An unreadable record counts as
+    owed: doubt costs one restart, never a silent no-op.
+    """
+
+    _INTENT = {"name": "*", "outcome": "intent"}
+    _UNREADABLE = {"name": "?", "outcome": "unreadable_record"}
+
+    def __init__(self, path: Path | None = None):
+        self.path = path or _state_dir() / "stack_reconcile_pending_activation.json"
+
+    def rows(self) -> list[dict]:
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return []
+        except (OSError, ValueError):
+            return [dict(self._UNREADABLE)]
+        rows = payload.get("rows") if isinstance(payload, dict) else None
+        if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+            return [dict(self._UNREADABLE)]
+        return rows
+
+    def begin(self) -> None:
+        self._write([dict(self._INTENT)])
+
+    def record(self, outcomes: list) -> None:
+        """Keep every row whose publication happened, verified or not."""
+        self._write([row for row in outcomes if isinstance(row, dict)
+                     and row.get("current_generation_id")])
+
+    def published(self) -> list[dict]:
+        return [row for row in self.rows() if row.get("current_generation_id")]
+
+    def clear(self) -> None:
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+
+    def _write(self, rows: list[dict]) -> None:
+        if rows:
+            merged = {(row.get("origin") or "core", row.get("name")): row
+                      for row in (*self.rows(), *rows)}
+            _atomic_json(self.path, {"rows": list(merged.values())})
 
 
 class CircuitBreaker:
@@ -898,18 +1320,38 @@ class StackReconciler:
 
     def restart(self, *, executor_names: list[str] | None = None,
                 sign_first: bool = False, automatic: bool = False,
-                require_sidecar: str = "auto") -> dict:
+                require_sidecar: str = "auto",
+                changed_only: bool = False) -> dict:
         from services_registry import stack_scope
 
         names = executor_names or []
         locks = contextlib.ExitStack()
         boundaries = locks.enter_context(catalog_reconcile_lock(wait_s=2))
         breaker = CircuitBreaker()
+        pending = PendingActivation() if changed_only else None
+        signed: list[dict] = []
         try:
             if automatic:
                 breaker.assert_closed()
             self.require_quiescent()
-            signed = verify_named_executors(names, sign_first=sign_first)
+            owed = pending.rows() if pending is not None else []
+            if pending is not None:
+                # Before any effect: from here a restart is owed until the
+                # batch proves it published nothing, or the stack is ready.
+                pending.begin()
+            try:
+                signed = verify_named_executors(
+                    names, sign_first=sign_first, changed_only=changed_only,
+                )
+            except StackFailure as exc:
+                if pending is not None:
+                    pending.record(exc.details.get("outcomes") or [])
+                raise
+            if pending is not None:
+                pending.record(signed)
+                if not owed and not pending.published():
+                    pending.clear()
+                    return {"ok": True, "signed": signed, "restarted": False}
             scope = stack_scope()
             target = self.systemctl.show(TARGET_UNIT, scope)
             if target.get("LoadState") in {"not-found", "error", ""}:
@@ -941,8 +1383,20 @@ class StackReconciler:
                 )
             ready = self.wait_ready(require_sidecar=require_sidecar)
             breaker.success()
-            return {"ok": True, "signed": signed, "readiness": ready}
+            if pending is None:
+                return {"ok": True, "signed": signed, "readiness": ready}
+            activated = pending.published()
+            pending.clear()
+            return {"ok": True, "signed": signed, "readiness": ready,
+                    "restarted": True, "activated": activated}
         except StackFailure as exc:
+            if pending is not None and pending.rows():
+                details = dict(exc.details)
+                if signed and "outcomes" not in details:
+                    details["outcomes"] = signed
+                details["activation_pending"] = pending.published()
+                details["restart_owed"] = True
+                exc.details = details
             # ``assert_closed`` is itself the circuit's refusal to attempt a
             # restart.  Recording that refusal as a new restart failure moves
             # ``opened_until`` forward on every watchdog tick, so the circuit
@@ -1128,6 +1582,33 @@ def _failure_payload(exc: StackFailure) -> dict:
     }
 
 
+_ERROR_TYPE_MAX = 256
+_ERROR_TYPE_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
+
+
+def _unexpected_failure_payload(exc: Exception) -> dict:
+    """Report an unforeseen failure by type only.
+
+    The message is withheld: it can quote paths, values or secrets, and the
+    caller (the release wrapper) forwards this report to operators.
+    """
+    kind = type(exc)
+    name = kind.__qualname__
+    if kind.__module__ not in ("builtins", "__main__"):
+        name = f"{kind.__module__}.{name}"
+    if len(name) > _ERROR_TYPE_MAX or not _ERROR_TYPE_RE.fullmatch(name):
+        # A name that cannot be shown whole is not shown at all: truncating
+        # it could still copy part of whatever it was built from.
+        name = "unrepresentable"
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "ok": False,
+        "error_code": "unexpected_failure",
+        "error_type": name,
+        "details": {},
+    }
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1139,6 +1620,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--executor", action="append", default=[])
     parser.add_argument("--sign", action="store_true")
+    parser.add_argument("--changed-only", action="store_true")
+    parser.add_argument("--plan", action="store_true")
+    parser.add_argument("--preview", action="store_true")
     parser.add_argument("--require-sidecar", choices=("auto", "yes", "no"), default="auto")
     parser.add_argument("--require-quiescent", action="store_true")
     parser.add_argument("--timeout", type=float, default=120)
@@ -1147,8 +1631,18 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    reconciler = StackReconciler()
     try:
+        # Built inside the report boundary: a failure here must reach the
+        # caller as a JSON report, not as an empty stdout (review C15).
+        if args.preview and not (
+                args.command == "deploy" and args.plan and args.changed_only and not args.sign):
+            raise StackFailure("option_invalid", "preview requires a read-only release plan")
+        reconciler = None if args.plan else StackReconciler()
+        if args.command != "deploy" and (args.plan or args.changed_only or args.sign):
+            raise StackFailure(
+                "option_invalid",
+                "--plan, --changed-only and --sign belong to deploy only",
+            )
         if args.command == "check":
             out = reconciler.check(
                 require_sidecar=args.require_sidecar,
@@ -1160,13 +1654,29 @@ def main(argv: list[str] | None = None) -> int:
                 require_sidecar=args.require_sidecar,
             )
         elif args.command == "deploy":
-            if args.sign and not args.executor:
-                raise StackFailure("executor_required", "--sign requires at least one --executor")
-            out = reconciler.restart(
-                executor_names=args.executor,
-                sign_first=args.sign,
-                require_sidecar=args.require_sidecar,
-            )
+            if args.plan:
+                if not args.changed_only or args.sign:
+                    raise StackFailure(
+                        "plan_invalid", "--plan needs --changed-only and no --sign",
+                    )
+                rows = verify_named_executors(
+                    args.executor, changed_only=True, plan_only=True,
+                    preview_evidence=sys.stdin.buffer.read() if args.preview else None,
+                )
+                out = {"ok": all(row["outcome"] in {"unchanged", "changed", "not_installed"}
+                                 for row in rows), "plan": rows,
+                       "admission_attempted": False}
+            else:
+                if args.sign and not args.executor and not args.changed_only:
+                    raise StackFailure(
+                        "executor_required", "--sign requires at least one --executor",
+                    )
+                out = reconciler.restart(
+                    executor_names=args.executor,
+                    sign_first=args.sign,
+                    require_sidecar=args.require_sidecar,
+                    changed_only=args.changed_only,
+                )
         elif args.command == "watchdog":
             out = reconciler.watchdog(require_sidecar=args.require_sidecar)
         elif args.command == "inventory":
@@ -1188,8 +1698,14 @@ def main(argv: list[str] | None = None) -> int:
     except StackFailure as exc:
         print(json.dumps(_failure_payload(exc), ensure_ascii=False, sort_keys=True))
         return 1
+    except Exception as exc:  # noqa: BLE001 - reported, never turned into success
+        # KeyboardInterrupt and SystemExit are not Exception: they still stop
+        # the process as before.
+        print(json.dumps(_unexpected_failure_payload(exc),
+                         ensure_ascii=False, sort_keys=True))
+        return 1
     print(json.dumps(out, ensure_ascii=False, sort_keys=True))
-    return 0
+    return 1 if args.plan and out.get("ok") is False else 0
 
 
 if __name__ == "__main__":

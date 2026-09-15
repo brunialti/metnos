@@ -731,20 +731,23 @@ _TASKS_NAMES: tuple[str, ...] = (
 _SKILLS_NAMES: tuple[str, ...] = ("list_skills", "set_skills")
 
 
-# Token candidato a path filesystem: sequenza non-spazio con almeno uno '/'.
-_RE_FS_PATH_TOKEN = re.compile(r"\S*/\S*")
-# Estensione file alla fine di un segmento (`/issues.md`, `/foo.py`).
+# A file-system candidate contains a POSIX or Windows separator.
+_RE_FS_PATH_TOKEN = re.compile(r"\S*[/\\]\S*")
+# An extension at the end of a path segment, such as /report.md.
 _RE_PATH_EXT = re.compile(r"/[^/]+\.[A-Za-z0-9]{1,5}$")
 
 
 def _looks_like_fs_path(tok: str) -> bool:
-    """True se `tok` e' CHIARAMENTE un path filesystem (non un compound di
-    dominio come 'issue/PR' ne' 'e/o'). Criteri: URL escluso; anchor esplicito
-    (`/`, `~`, `./`, `../`); oppure >=3 segmenti (a/b/c); oppure termina con
-    `/file.ext`. Cosi' '/opt/metnos/issues' e 'github/issues.md' sono path, ma
-    'issue/PR', 'e/o', 'and/or' NON lo sono (preserva i loro marker)."""
+    """Recognize structural paths without consuming URLs or prose compounds.
+
+    Explicit roots, drives, three segments or a file extension distinguish
+    paths from domain compounds such as issue/PR and and/or.
+    """
+    tok = tok.strip("\"'`").replace("\\", "/")
     if "://" in tok:
         return False
+    if re.match(r"[A-Za-z]:/", tok):
+        return True
     if tok[:1] in "/~" or tok.startswith(("./", "../")):
         return True
     if tok.count("/") >= 2:
@@ -753,10 +756,11 @@ def _looks_like_fs_path(tok: str) -> bool:
 
 
 def _strip_fs_paths(query_lc: str) -> str:
-    """Rimuove SOLO i token che sono path-filesystem (preserva URL e compound
-    di dominio). Usato prima del match dei marker: 'issues' in
-    '/opt/metnos/issues' non deve innescare il provider github, ma 'issue/PR'
-    SI'. Deterministico §7.9."""
+    """Exclude path arguments from lexical markers; preserve URLs and prose.
+
+    The same structural rule serves action tokens and provider recognition.
+    It never rewrites the original query or executor arguments.
+    """
     def _drop(m: "re.Match[str]") -> str:
         tok = m.group(0)
         return " " if _looks_like_fs_path(tok) else tok

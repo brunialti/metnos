@@ -148,14 +148,18 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     """
     if not query or not query.strip():
         return None
-    if _dl.match("undo.intent_bypass", query):
+    # Literal paths are arguments, not instructions or hardware references.
+    # Preserve the original request for the semantic model and argument binding.
+    from tool_grammar import _strip_fs_paths
+    lexical_query = _strip_fs_paths(query)
+    if _dl.match("undo.intent_bypass", lexical_query):
         return None  # signal "no canonical verb" → caller usa fallback
     # Bypass deterministico SYSTEM STATUS (9/7, §7.9): «stato del server /
     # come sta il server» = get_processes+health (Roberto: l'insieme dei dati
     # di stato). Query ellittiche al confine semantico — l'LLM fast in prod
     # (call concorrenti sul llama-server) estraeva object INSTABILE
     # (approval/numbers) → misroute a valle. Lessico i18n, zero LLM.
-    if _dl.match("system.status_query", query):
+    if _dl.match("system.status_query", lexical_query):
         return {"kind": "action", "verb": "get", "object": "processes",
                 "confidence": 1.0}
     # Bypass HARDWARE-descrittivo (9/7): domanda su una SEZIONE health (ip/gpu/
@@ -165,9 +169,9 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # Con un verbo d'azione (send/move/…) NON bypassare: potrebbe essere un
     # compound («manda l'ip del server a X») che l'LLM deve decomporre.
     try:
-        if _dl.match("machine.reference", query):
+        if _dl.match("machine.reference", lexical_query):
             _fmap = _dl.mapping("health.section_focus") or {}
-            _ql = query.lower()
+            _ql = lexical_query.lower()
             if any(_dl.match_any(f, _ql) for f in _fmap.values()):
                 from vocab import DESTRUCTIVE_VERBS
                 from prefilter import tokenize, detect_canonical_verbs_all

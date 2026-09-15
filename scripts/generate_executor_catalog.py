@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the bilingual first-party executor catalog from signed manifests."""
+"""Generate the bilingual first-party source catalog, not admission evidence."""
 from __future__ import annotations
 
 import argparse
@@ -99,9 +99,8 @@ def _undo_contract(*, name: str, verb: str | None,
 def load_entries(executors_dir: Path = EXECUTORS_DIR) -> list[ExecutorEntry]:
     entries: list[ExecutorEntry] = []
     for manifest_path in sorted(executors_dir.glob("*/manifest.toml")):
-        signature = manifest_path.with_name("manifest.toml.sig")
-        if not signature.is_file():
-            raise RuntimeError(f"unsigned executor manifest: {manifest_path}")
+        # Authoring metadata is not an admission proof. A new source has no
+        # previous signature; only Birth may publish its first live contract.
         with manifest_path.open("rb") as handle:
             manifest = tomllib.load(handle)
         name = str(manifest.get("name") or "").strip()
@@ -142,13 +141,17 @@ def load_entries(executors_dir: Path = EXECUTORS_DIR) -> list[ExecutorEntry]:
 _TEXT = {
     "it": {
         "title": "Catalogo degli executor",
-        "description": "Le azioni distribuite con Metnos, raggruppate per dominio e descritte direttamente dai loro manifest firmati.",
+        "description": "Le azioni distribuite con Metnos, raggruppate per dominio e descritte direttamente dai loro manifest sorgente.",
         "back": "Guida all'architettura",
         "other": "EN",
         "lead": "Questa pagina risponde a una domanda pratica: quali azioni sono fornite con Metnos e che cosa dichiara il contratto di ciascuna? Gli executor sono raggruppati automaticamente in base al loro nome canonico; l'elenco non viene ricopiato e riordinato a mano.",
-        "generated": "L'elenco qui sotto proviene da {count} manifest firmati nella distribuzione. Non comprende le capacità interne al processo, gli executor aggiunti da skill o quelli creati nella singola installazione. Per vedere tutto ciò che l'istanza può usare in questo momento, apri <strong>Settings → Ciclo di vita → Executor</strong> nella chat web.",
-        "concept": "Un executor può seguire una procedura diretta oppure adattare alcuni passi entro un <a href=\"intelligent_executors.html\">mandato ristretto</a>. In entrambi i casi conserva lo stesso contratto pubblico: scopo, argomenti, autorità, collocazione e forma del risultato.",
+        "generated": "L'elenco qui sotto proviene da {count} manifest sorgente nella distribuzione: descrive le capacità, non ne certifica l'ammissione in esercizio. Ogni capacità deve superare Executor Birth prima di essere usata. Non comprende le capacità interne al processo, gli executor aggiunti da skill o quelli creati nella singola installazione. Per vedere tutto ciò che l'istanza può usare in questo momento, apri <strong>Settings → Ciclo di vita → Executor</strong> nella chat web.",
+        "concept": "Un executor può seguire una procedura diretta oppure adattare alcuni passi entro un <a href=\"intelligent_executors.html\">mandato ristretto</a>. In entrambi i casi conserva lo stesso contratto pubblico: scopo, argomenti, autorità, collocazione e forma del risultato. La ricevuta finale distingue un'azione realmente compiuta da uno stato già raggiunto: per esempio, un programma già chiuso non viene contato né annunciato come appena chiuso.",
         "properties_explanation": "Nella colonna <strong>Contratto</strong>, <code>standard</code> e <code>critico</code> indicano la classe di rischio; <code>server</code>, <code>any</code> e le piattaforme indicano dove l'executor può essere collocato. Il trattino segnala che il manifest non limita esplicitamente la piattaforma.",
+        "launch_consent_title": "Per quanto tempo autorizzi l'avvio di un programma",
+        "geo_centre_title": "Dove cercare i luoghi più vicini",
+        "geo_centre": "Per una ricerca vicino a te, Metnos usa la tua posizione disponibile; se chiedi vicino al server, usa invece quella del server. Nomi di città e coordinate esplicite restano il centro richiesto. Il nome del server non viene cercato come una città. Le distanze dipendono dalla precisione della posizione e dai risultati dei servizi geografici configurati; un servizio irraggiungibile non significa che non esistano luoghi vicini.",
+        "launch_consent": "Puoi scegliere una sola volta, fino al prossimo riavvio del PC, oppure sempre fino a revoca. Negli ultimi due casi chiudere e riaprire il programma non richiede un altro consenso. Il permesso riguarda quel programma su quel PC, anche passando dalla chat web a Telegram: non abilita avvio automatico, installazione o chiusura forzata. Le conferme precedenti non vengono convertite automaticamente. Per revocare un permesso permanente è disponibile il registro amministrativo dei permessi; non ancora un pulsante nella chat.",
         "undo_title": "Quali azioni si possono annullare",
         "undo_explanation": "<p>L'annullamento non si applica nello stesso modo a tutte le azioni:</p><ul><li><strong>Annullabile</strong>: il manifest dichiara una procedura di ripristino. Alcuni executor stabiliscono l'annullabilità soltanto dopo l'esecuzione, perché dipende dall'effetto realmente prodotto e dalla ricevuta disponibile.</li><li><strong>Non annullabile</strong>: l'azione modifica lo stato, ma il contratto non offre un ripristino affidabile.</li><li><strong>Non applicabile</strong>: una lettura o un calcolo puro non lascia niente da ripristinare.</li></ul><p>La classificazione deriva dal contratto firmato e, quando previsto, dalla ricevuta della singola esecuzione. Metnos non deduce una procedura inversa dal nome dell'executor.</p>",
         "undo_question": "Il Tutor può usare questo catalogo per rispondere, per esempio: «Quali executor modificano file e quali di queste azioni posso annullare?»",
@@ -169,17 +172,21 @@ _TEXT = {
         "critical": "critico",
         "standard": "standard",
         "system": "sistema / più domini",
-        "footer": "Fonte: manifest firmati sotto <code>executors/</code>. Rigenerazione dalla radice del repository: <code>./.venv/bin/python scripts/generate_executor_catalog.py</code>.",
+        "footer": "Fonte: manifest sorgente sotto <code>executors/</code>. Rigenerazione dalla radice del repository: <code>./.venv/bin/python scripts/generate_executor_catalog.py</code>.",
     },
     "en": {
         "title": "Executor catalog",
-        "description": "The actions distributed with Metnos, grouped by domain and described directly by their signed manifests.",
+        "description": "The actions distributed with Metnos, grouped by domain and described directly by their source manifests.",
         "back": "Architecture guide",
         "other": "IT",
         "lead": "This page answers a practical question: which actions come with Metnos, and what does each contract declare? Executors are grouped automatically from their canonical names; nobody copies and rearranges this inventory by hand.",
-        "generated": "The list below comes from {count} signed manifests in the distribution. It does not include in-process capabilities, executors added by skills, or executors created within one installation. To see everything the instance can use right now, open <strong>Settings → Lifecycle → Executors</strong> in web chat.",
-        "concept": "An executor may follow a direct procedure or adapt some steps within a <a href=\"intelligent_executors.html\">narrow mandate</a>. Either way, it keeps the same public contract: purpose, arguments, authority, placement, and result shape.",
+        "generated": "The list below comes from {count} source manifests in the distribution: it describes capabilities, not their live admission. Every capability must pass Executor Birth before use. It does not include in-process capabilities, executors added by skills, or executors created within one installation. To see everything the instance can use right now, open <strong>Settings → Lifecycle → Executors</strong> in web chat.",
+        "concept": "An executor may follow a direct procedure or adapt some steps within a <a href=\"intelligent_executors.html\">narrow mandate</a>. Either way, it keeps the same public contract: purpose, arguments, authority, placement, and result shape. The final receipt distinguishes a performed action from an already-satisfied state: an application that was already closed is neither counted nor announced as newly closed.",
         "properties_explanation": "In the <strong>Contract</strong> column, <code>standard</code> and <code>critical</code> indicate the risk class; <code>server</code>, <code>any</code>, and the platform names show where the executor may run. A dash means that the manifest does not explicitly restrict the platform.",
+        "launch_consent_title": "How long you authorize launching an application",
+        "geo_centre_title": "Where to search for nearby places",
+        "geo_centre": "For a search near you, Metnos uses your available location; when you ask for places near the server, it uses the server's location instead. Explicit city names and coordinates remain the requested centre. The server name is not searched as a city. Distances depend on location accuracy and the configured geographic services' results; an unreachable service does not mean there are no nearby places.",
+        "launch_consent": "Choose once, until the PC restarts, or always until revoked. With either reusable choice, closing and reopening the application does not require another approval. Permission covers that application on that PC, including when switching between web chat and Telegram: it does not enable automatic startup, installation, or forced closure. Previous approvals are not converted automatically. Permanent permission can be revoked through the administrative grant registry; there is not yet a chat button for revocation.",
         "undo_title": "Which actions can be undone",
         "undo_explanation": "<p>Undo does not apply to every action in the same way:</p><ul><li><strong>Undoable</strong>: the manifest declares a restoration procedure. Some executors can determine reversibility only after execution, because it depends on the effect that actually occurred and the receipt available.</li><li><strong>Not undoable</strong>: the action changes state, but its contract offers no reliable restoration.</li><li><strong>Not applicable</strong>: a read or pure computation leaves nothing to restore.</li></ul><p>The classification comes from the signed contract and, where required, the receipt for that particular execution. Metnos never invents an inverse from the executor's name.</p>",
         "undo_question": "Tutor can use this catalog to answer questions such as: “Which executors modify files, and which of those actions can I undo?”",
@@ -200,7 +207,7 @@ _TEXT = {
         "critical": "critical",
         "standard": "standard",
         "system": "system / cross-domain",
-        "footer": "Source: signed manifests under <code>executors/</code>. Regenerate from the repository root with <code>./.venv/bin/python scripts/generate_executor_catalog.py</code>.",
+        "footer": "Source: authoring manifests under <code>executors/</code>. Regenerate from the repository root with <code>./.venv/bin/python scripts/generate_executor_catalog.py</code>.",
     },
 }
 
@@ -303,6 +310,10 @@ def render(entries: list[ExecutorEntry], lang: str) -> str:
 <p class="lead">{text["lead"]}</p>
 <div class="status">{generated}</div>
 <p>{text["concept"]}</p>
+<h2 id="launch-consent">{text["launch_consent_title"]}</h2>
+<p>{text["launch_consent"]}</p>
+<h2 id="geo-centre">{text["geo_centre_title"]}</h2>
+<p>{text["geo_centre"]}</p>
 <p>{text["properties_explanation"]}</p>
 {undo_summary}
 {"\n".join(sections)}

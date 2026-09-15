@@ -86,7 +86,7 @@ for TARGET in "${TARGETS[@]}"; do
 
         ( cd "$CRATE_DIR" && cargo build --release --target "$TARGET" )
 
-        SRC="$CRATE_DIR/target/$TARGET/release/$BIN_NAME"
+        SRC="${CARGO_TARGET_DIR:-$CRATE_DIR/target}/$TARGET/release/$BIN_NAME"
         [ -f "$SRC" ] || { echo "ERROR: $SRC not produced" >&2; exit 1; }
 
         DST_DIR="$CLIENT_OUT/$VERSION/$TARGET"

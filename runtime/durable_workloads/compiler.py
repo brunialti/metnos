@@ -492,6 +492,7 @@ class VerifiedCatalogResolver:
         model_bindings: Mapping[str, Mapping[str, Any]] | None = None,
         prompt_digests: Mapping[str, str] | None = None,
         prompt_languages: Mapping[str, str] | None = None,
+        hierarchical_reducers: Sequence[str] = (),
         catalog_loader: Callable[..., Any] | None = None,
     ) -> None:
         self._output_schemas = {
@@ -518,6 +519,9 @@ class VerifiedCatalogResolver:
             str(name): str(value)
             for name, value in (prompt_languages or {}).items()
         }
+        self._hierarchical_reducers = frozenset(map(str, hierarchical_reducers))
+        if not self._hierarchical_reducers <= set(self._output_schemas):
+            raise CompilationError("executor reducers must have an approved output schema")
         if not (
             set(self._model_binding_digests)
             == set(self._prompt_digests)
@@ -589,6 +593,10 @@ class VerifiedCatalogResolver:
             "execution_policy": dict(execution_policy),
             "execution_policy_declared": execution_policy_declared,
         }
+        if name in self._hierarchical_reducers:
+            contract_facts["supports_hierarchical_reduction"] = True
+        if getattr(executor, "lre_plan", ""):
+            contract_facts["lre_plan"] = executor.lre_plan
         if name in self._prompt_languages:
             binding = self._model_bindings[name]
             contract_facts.update({
@@ -643,6 +651,7 @@ class VerifiedCatalogResolver:
             model_cost_policy=contract_facts.get("model_cost_policy"),
             execution_policy=execution_policy,
             execution_policy_declared=execution_policy_declared,
+            supports_hierarchical_reduction=name in self._hierarchical_reducers,
         )
 
 
@@ -1117,9 +1126,13 @@ def compile_plan(
                 raise CompilationError(
                     f"hierarchical reduction stage {key} must output entries"
                 )
-            if len(stage["input_bindings"]) != 1:
+            if any(
+                argument != stage["cardinality"]["reduction_input"]
+                and reference["ref"] != "literal"
+                for argument, reference in stage["input_bindings"].items()
+            ):
                 raise CompilationError(
-                    f"hierarchical reduction stage {key} needs exactly one input"
+                    f"hierarchical reduction stage {key} needs exactly one variable input"
                 )
             required_invalidation = {"reduction.order", "reduction.fan_in"}
             if not required_invalidation <= set(stage["invalidation_keys"]):

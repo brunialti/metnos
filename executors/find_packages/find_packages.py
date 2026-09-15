@@ -328,6 +328,10 @@ def _probe_path(package_id):
             "path": path}
 
 
+class _DesktopInventoryUnavailable(RuntimeError):
+    pass
+
+
 def _probe(package_id, ctx):
     hit, match = None, ""
     exact_identifier = bool(_ID_RE.fullmatch(package_id))
@@ -348,10 +352,36 @@ def _probe(package_id, ctx):
             hit = _probe_linux(package_id, ctx["manager"],
                                ctx["manager_path"], by_name=True)
             match = "name" if hit else ""
+    inventory_unavailable = False
+    if (ctx["os"] == "windows" and not (hit and (
+            hit.get("candidates") or hit.get("also_matched")
+            or str(hit.get("resolved_id", "")).startswith("appx:")))):
+        # Package-manager inventory is not the user's application registry.
+        # Registered shortcuts identify individual suite applications and
+        # provide launch identities for ordinary desktop installers.
+        from windows_desktop_apps import find
+        desktop = find(hit["name"] if hit else package_id)
+        entries = desktop.get("entries") if desktop.get("ok") is True else None
+        inventory_unavailable = not isinstance(entries, list)
+        if isinstance(entries, list) and len(entries) == 1:
+            registered = entries[0]
+            if hit is None:
+                hit, match = dict(registered), "name"
+            else:
+                hit["resolved_id"] = registered["resolved_id"]
+        elif isinstance(entries, list) and len(entries) > 1:
+            hit = dict(hit) if hit else {"name": package_id, "version": "", "source": "windows_start_menu"}
+            hit.pop("resolved_id", None)
+            hit["candidates"] = entries[:6]
+            hit["candidate_count"] = len(entries)
+            hit["candidates_truncated"] = len(entries) > 6
+            match = match or "name"
     if hit is None and exact_identifier:
         hit = _probe_path(package_id)
         match = "path" if hit else ""
     if hit is None:
+        if inventory_unavailable:
+            raise _DesktopInventoryUnavailable()
         # Not an error: «not installed» is an answer, and a package the
         # machine does not have must not fail the other elements (§2.1).
         return {"package_id": package_id, "installed": False,
@@ -420,7 +450,17 @@ def invoke(args: dict) -> dict:
             continue
         if time.monotonic() >= deadline:
             break
-        entries.append(_probe(package_id, ctx))
+        try:
+            entry = _probe(package_id, ctx)
+        except _DesktopInventoryUnavailable:
+            failed.append({
+                "package_id": package_id,
+                "error": _msg("ERR_PACKAGES_INVENTORY_UNAVAILABLE"),
+                "error_code": "package_inventory_unavailable",
+                "error_class": "dependency_unavailable",
+            })
+            continue
+        entries.append(entry)
         probed += 1
 
     out = {

@@ -25,7 +25,7 @@ required = ["store", "from_step"]
 type = "string"
 
 [args.properties.store.description]
-it = "<missing:MSG_STORE_ARG_NAME_WRITE>"
+it = "Nome dello store su cui scrivere."
 en = "Name of a declared runtime store."
 
 [args.properties.from_step]
@@ -33,14 +33,14 @@ type = "integer"
 minimum = 1
 
 [args.properties.from_step.description]
-it = "<missing:MSG_STORE_ARG_FROM_STEP>"
+it = "Step che ha prodotto i record da persistere (il runtime espande in entries)."
 en = "Previous producer step supplying entries."
 
 [args.properties.key]
 type = "array"
 
 [args.properties.key.description]
-it = "<missing:MSG_STORE_ARG_KEY>"
+it = "Campi-chiave per l'upsert (conflitto). Es. [\"id\"]. Assente -> insert puro."
 en = "Fields forming the upsert key."
 
 [args.properties.key.items]
@@ -50,7 +50,7 @@ type = "string"
 type = "object"
 
 [args.properties.set_fields.description]
-it = "<missing:MSG_STORE_ARG_SET_FIELDS>"
+it = "Override {campo: valore} applicato a OGNI record prima dell'upsert (aggiorna lo stato). Es. {\"status\":\"posted\"}."
 en = "Constant fields applied to every written entry."
 
 [output]

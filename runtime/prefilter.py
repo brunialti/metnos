@@ -32,7 +32,10 @@ _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 
 
 def tokenize(text):
-    return set(_WORD_RE.findall((text or "").lower()))
+    # File-system identifiers are arguments, not natural-language actions.
+    # Reuse the same structural filter as provider-marker recognition.
+    from tool_grammar import _strip_fs_paths
+    return set(_WORD_RE.findall(_strip_fs_paths(text or "").lower()))
 
 
 # Concept identifiers are protocol, not linguistic data.  Their payloads
@@ -502,7 +505,7 @@ def affinity_score(query_tokens, executor, *,
 
 
 def rank(query, catalog, k=10, min_score=1):
-    """Forma legacy (K fisso). Usata da test esistenti."""
+    """Ranking a K fisso, anche per il ripiego da un intento incoerente."""
     catalog = _filter_dormant(catalog)
     qtokens = tokenize(query)
     if not qtokens:
@@ -526,9 +529,8 @@ def rank(query, catalog, k=10, min_score=1):
               for e in catalog]
     scored.sort(key=lambda p: (-p[0], getattr(p[1], "name", "")))
     above = [e for s, e in scored if s >= min_score]
-    if above:
-        return above[:k]
-    return [e for _, e in scored[:k]]
+    selected = above[:k] if above else [e for _, e in scored[:k]]
+    return _include_command_fallback(query, catalog, selected)
 
 
 def _confidence(scores):
@@ -732,6 +734,26 @@ _CLI_FIRST_ARGUMENT_RE = re.compile(
 )
 
 
+def _command_invocation_before(query: str, start: int, binary: str):
+    """Keep one stated quantity between a native invocation and a command.
+
+    Only the central command grammar can admit the numeric form. Ordinary
+    nouns shared with binaries do not acquire command meaning from a number.
+    This exposes a planning candidate; it does not select arguments or grant
+    execution permission.
+    """
+    import detection_lexicon as _detlex
+    from safety.canonicalize import command_grammar_numeric_binaries
+
+    span = _detlex.phrase_before("syntax.command_invocation", query, start)
+    if span is None and binary in command_grammar_numeric_binaries():
+        quantity = re.search(r"(?<!\S)[0-9]+\s+\Z", query[:start])
+        if quantity is not None:
+            span = _detlex.phrase_before(
+                "syntax.command_invocation", query, quantity.start())
+    return span
+
+
 def _clause_end(query: str, start: int) -> int:
     end = len(query)
     for boundary in ",.;:!?":
@@ -773,9 +795,7 @@ def _explicit_command_targets(
         if token in command_names and polarity_stop <= match.start() < end
     ]
     for index, (match, token) in enumerate(candidates):
-        invocation = _detlex.phrase_before(
-            "syntax.command_invocation", query, match.start(),
-        )
+        invocation = _command_invocation_before(query, match.start(), token)
         if (invocation is not None and invocation[0] >= polarity_stop
                 and not query[polarity_stop:invocation[0]].strip()):
             return {item for _match, item in candidates[index:]}
@@ -875,12 +895,12 @@ def _detect_command_grammar_intent(query: str, *, command_names=None) -> bool:
             if not _detlex.native_ready_forms(
                     "syntax.command_invocation", require_manual=True):
                 continue
-            invocation_span = _detlex.phrase_before(
-                "syntax.command_invocation", query or "", match.start())
+            invocation_span = _command_invocation_before(
+                query or "", match.start(), token)
             asserted = (
                 invocation_span is not None
                 and _detlex.asserted_at(
-                    query or "", match.start(), command_scope=True,
+                    query or "", invocation_span[1], command_scope=True,
                 )
             )
             revoked_later = _later_polarity_revokes_operation(
@@ -905,6 +925,20 @@ def _detect_command_grammar_intent(query: str, *, command_names=None) -> bool:
             if cli_asserted and not revoked_later:
                 return True
     return False
+
+
+def _include_command_fallback(query, catalog, selected):
+    """Keep one guarded command candidate after any top-K ranking.
+
+    Recognition affects availability only: it neither changes the ordering
+    of dedicated tools nor constructs a command or grants permission.
+    """
+    if any(e.name == "admin" for e in selected):
+        return selected
+    admin = next((e for e in catalog if e.name == "admin"), None)
+    if admin is not None and _detect_command_grammar_intent(query):
+        return selected + [admin]
+    return selected
 
 
 def affinity_phrase_score(query, executor) -> int:
@@ -1146,19 +1180,11 @@ def rank_with_intent(query, catalog, intent, *, k=3):
     # promuoviamo comunque al top — il PLANNER deve vederlo come prima
     # opzione, non al 6° posto.
     shell_intent = _detect_shell_intent(qlow)
-    command_fallback = _detect_command_grammar_intent(qlow)
     if shell_intent:
         admin_exec = next((e for e in catalog if e.name == "admin"), None)
         if admin_exec is not None:
             primary = [(s, e) for s, e in primary if e.name != "admin"]
             primary.insert(0, (15, admin_exec))
-            seen_names.add("admin")
-    elif command_fallback and "admin" not in seen_names:
-        admin_exec = next((e for e in catalog if e.name == "admin"), None)
-        if admin_exec is not None:
-            # A recognised command is evidence for the fallback, not evidence
-            # that it should outrank a purpose-built executor.
-            primary.append((1, admin_exec))
             seen_names.add("admin")
 
     # Time intent injection (6/5/2026): "che ore sono", "what time", etc.
@@ -1193,12 +1219,7 @@ def rank_with_intent(query, catalog, intent, *, k=3):
         if e.name in primary_names and e.name not in head_names:
             forced.append(e)
             head_names.add(e.name)
-    result = head + forced
-    if command_fallback:
-        admin_exec = next((e for _s, e in primary if e.name == "admin"), None)
-        if admin_exec is not None and all(e.name != "admin" for e in result):
-            result.append(admin_exec)
-    return result
+    return _include_command_fallback(query, catalog, head + forced)
 
 
 def _filter_dormant(catalog):
@@ -1432,17 +1453,12 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
     # presente per affinity, lo promuoviamo a position 0.
     qlow_bow = (query or "").lower()
     shell_intent = _detect_shell_intent(qlow_bow)
-    command_fallback = _detect_command_grammar_intent(qlow_bow)
     if shell_intent:
         admin_exec = next((e for e in catalog if e.name == "admin"), None)
         if admin_exec is not None:
             selected = [e for e in selected if e.name != "admin"]
             selected = [admin_exec] + selected[:max(0, k_max - 1)]
-    elif command_fallback:
-        admin_exec = next((e for e in catalog if e.name == "admin"), None)
-        if admin_exec is not None and all(e.name != "admin" for e in selected):
-            # Preserve the normal top-K ordering and add one guarded fallback.
-            selected.append(admin_exec)
+    selected = _include_command_fallback(query, catalog, selected)
     _, conf = adaptive_k(scores, k_min, k_max)
     return selected, {
         "chosen_k": K,

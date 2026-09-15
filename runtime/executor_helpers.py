@@ -36,6 +36,19 @@ from worker_policy import bounded_worker_count
 ASSUMED_YEAR_MARK = "*"
 
 
+def approval_digest(arguments: dict) -> str:
+    """Bind a reviewed choice to exact arguments; not proof of user consent.
+
+    Only the authenticated runtime may supply the resulting runtime-owned
+    argument. A digest alone never authorizes creating a reusable permission.
+    """
+    import hashlib
+    import json
+    payload = json.dumps(arguments, ensure_ascii=True, sort_keys=True,
+                         separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def date_text(value):
     """The date under an assumed-year mark, for parsing and comparison."""
     if isinstance(value, str):
@@ -389,6 +402,31 @@ def normalize_vector_result(result: dict, *,
             out.pop("partial", None)
     else:
         out.pop("partial", None)
+    return out
+
+
+def normalize_array_args(args: dict, schema) -> dict:
+    """Preserve a scalar string as one item when the contract requires an array.
+
+    Step references and resumed inputs can resolve to a single value after
+    planner validation.  Normalize their container at the invocation boundary,
+    without splitting strings, interpreting their contents, or changing item
+    validation.  Union types, nulls, existing lists and undeclared arguments
+    stay untouched.  The input is never mutated; repeated calls are no-ops.
+    """
+    if not isinstance(args, dict) or not isinstance(schema, dict):
+        return args
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return args
+    out = args
+    for name, declaration in properties.items():
+        if (isinstance(declaration, dict)
+                and declaration.get("type") == "array"
+                and isinstance(args.get(name), str)):
+            if out is args:
+                out = dict(args)
+            out[name] = [args[name]]
     return out
 
 

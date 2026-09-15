@@ -522,7 +522,7 @@ PRODUCER_VERBS = frozenset({"read", "find", "list", "get"})
 # final_answer o sono trasformatori, non azioni dovute. Multilingue: i verbi
 # sono CANONICI (detect_canonical_verbs_all normalizza già IT+EN).
 COVERAGE_REQUIRED_VERBS = PRODUCER_VERBS | frozenset({
-    "send", "create", "write", "move", "delete", "share",
+    "send", "create", "write", "move", "delete", "share", "set",
     # `install` modifica una macchina: se la query lo chiede e il piano
     # non lo porta, la decomposizione e' monca — non un dettaglio.
     "install", "run",
@@ -669,12 +669,14 @@ ACTION_MAPPING = {
     },
     "create": {
         "it": ["crea-cartella", "crea-dir", "nuova-directory", "mkdir",
-                "costruisci-indice", "crea-indice", "indicizza"],
+                "costruisci-indice", "crea-indice", "indicizza", "reindicizza",
+                "rebuilda-indice", "ricostruisci-indice", "prepara-ricerca", "aggiorna-indice"],
         "en": ["create-folder", "create-directory", "mkdir", "make-dir",
-                "build-index", "create-index", "index"],
+                "build-index", "create-index", "index", "reindex", "rebuild-index",
+                "prepare-search", "refresh-index", "update-index"],
         "boundary": {
-            "it": "Creazione di contenitori (dir) o di derivati persistenti del dominio (indici). I file con contenuto vanno a write. Per gli indici: `create_<dom>_indices` (es. create_images_indices) costruisce o aggiorna l'indice del dominio target; il qualifier `_indices` (modalita') segnala che il mezzo di ricerca e' un derivato persistente del dominio.",
-            "en": "Creates containers (directories) or persistent domain derivatives (indices). Files with content belong to write. For indices, `create_<dom>_indices` (for example create_images_indices) builds or updates the target domain index; the `_indices` mode qualifier states that the search medium is a persistent domain derivative.",
+            "it": "Crea contenitori o derivati persistenti del dominio. COSTRUIRE, AGGIORNARE e RICOSTRUIRE un INDICE sono sempre create: `create_<dom>_indices` costruisce o aggiorna l'indice; l'oggetto resta il dominio indicizzato (foto=images, documenti=files, messaggi=messages), non dirs solo perché è nominata la cartella sorgente. NON order (ordine degli elementi), NON change (modifica del contenuto sorgente), NON write (contenuto di un file).",
+            "en": "Creates containers or persistent domain derivatives. BUILDING, UPDATING and REBUILDING an INDEX are always create: `create_<dom>_indices` builds or updates the index; the object remains the indexed domain (photos=images, documents=files, messages=messages), not dirs merely because the source folder is named. NOT order (element ordering), NOT change (editing source content), NOT write (file content).",
         },
     },
     "move": {
@@ -845,13 +847,11 @@ ACTION_MAPPING = {
         },
     },
     "order": {
-        "it": ["indicizza", "costruisci-indice", "rebuilda-indice", "materializza-ordinamento",
-                "prepara-ricerca", "aggiorna-indice"],
-        "en": ["order", "index", "build-index", "materialize-order", "prepare-search",
-                "refresh-index"],
+        "it": ["materializza-ordinamento"],
+        "en": ["order", "materialize-order"],
         "boundary": {
-            "it": "Materializza un ordinamento PERSISTENTE del corpus (indice CLIP, perceptual hash, threading messages, ...) per rendere veloci query future. Distinto da sort: sort ordina una lista IN MEMORIA del turno corrente; order produce un derivato durevole su disco. Composizione naturale: order_X_y costruisce/refresha l'indice, find_X_y lo interroga. Refresh tipicamente lazy (al primo find_X_y che lo richiede) o esplicito (utente: 'ricostruisci indice').",
-            "en": "Materializes a PERSISTENT ordering of a corpus (CLIP index, perceptual hash, message threading, and similar derivatives) to accelerate future queries. Unlike sort, which orders an IN-MEMORY list for the current turn, order produces a durable derivative on disk. Natural composition: order_X_y builds or refreshes the index and find_X_y queries it. Refresh is typically lazy on the first requiring find_X_y, or explicit when the user asks to rebuild the index.",
+            "it": "Materializza un ORDINE PERSISTENTE degli elementi di un corpus. Distinto da sort, che ordina una lista in memoria nel turno corrente. NON costruzione, aggiornamento o ricostruzione di un indice di ricerca: quelle operazioni sono create, con l'oggetto del dominio indicizzato.",
+            "en": "Materializes a PERSISTENT ORDER of the elements in a corpus. Unlike sort, which orders an in-memory list in the current turn. NOT building, updating or rebuilding a search index: those operations are create, with the object of the indexed domain.",
         },
     },
     "share": {

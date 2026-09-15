@@ -1,448 +1,294 @@
-"""time_window_parser.py — risolutore deterministico di `time_window` (§7.9).
+"""Shared deterministic temporal arithmetic; no model calls in this module.
 
-Riusabile da qualsiasi executor che accetti un'unica stringa per indicare un
-intervallo temporale (read_events, find_files, find_messages, ...). Zero LLM,
-solo parsing regex + datetime.
-
-Forme accettate
----------------
-
-Canoniche (§2.1):
-  `last-Nd`, `next-Nd`, `today`
-
-Periodi estesi:
-  `yesterday`, `tomorrow`, `last-week`, `next-week`,
-  `this-week`, `last-month`, `next-month`, `this-month`,
-  `this-year`, `last-year`, `next-year`.
-
-Singolo giorno:
-  - ISO `YYYY-MM-DD` (intera giornata 00:00 -> 23:59:59)
-  - Italiano `DD/MM/YY` o `DD/MM/YYYY` (anno a 2 cifre -> 2000..2099)
-
-Intervalli:
-  - ISO range `YYYY-MM-DD/YYYY-MM-DD`
-  - Italiano «dal DD/MM al DD/MM», «dal DD/MM/YY al DD/MM/YYYY»,
-    o trattino `12/3-15/3` (anno opzionale, si eredita dalla data piu'
-    completa o, in mancanza, dall'anno corrente di `now`).
-
-Convenzioni
------------
-- Output: tuple `(start_iso, end_iso)` con timezone Europe/Rome, formato
-  `YYYY-MM-DDTHH:MM:SS+HH:MM` (offset esplicito, mai `Z`).
-- L'intervallo per i singoli giorni e per i periodi multi-giorno usa
-  `end` = `23:59:59` del giorno finale, per parita' lessicografica con le
-  date complete.
-- `this-week` parte dal lunedi'; `this-month`/`this-year` dal primo giorno.
-- `now` e' iniettabile per test deterministici.
-- ValueError viene sollevato per qualsiasi spec non riconosciuta o numero
-  invalido (es. `last-0d`, `next--3d`, `2026-13-01`, `dal 32/2 al 1/3`).
+Dates denote calendar periods, ``now-1h`` an instant, ``last-1h`` an interval.
+Natural-language interpretation belongs to ``time_window_resolver``. All
+domains use the configured IANA timezone and the same injectable clock.
+The string compatibility API retains second precision; native bounds include
+the final microsecond of each calendar period.
 """
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from dateutil.relativedelta import relativedelta
+
+import config as _C
 import detection_lexicon_seed_parsers as _parser_lex
 
-ROME = ZoneInfo("Europe/Rome")
 
-# ---------------------------------------------------------------------------
-# Regex (compilate una volta sola)
-# ---------------------------------------------------------------------------
+class TemporalError(ValueError):
+    """Machine-readable failure, localized by the caller at the UI boundary."""
 
-# Accept multiple separator styles for robustness: "next-30d" canonical,
-# "next_30_days" / "next30days" / "next 30 d" all normalized.
-_RE_LAST_ND = re.compile(r"^last[-_ ]?(\d+)[-_ ]?d(?:ays?)?$")
-_RE_NEXT_ND = re.compile(r"^next[-_ ]?(\d+)[-_ ]?d(?:ays?)?$")
-_RE_LAST_NH = re.compile(r"^last[-_ ]?(\d+)[-_ ]?h(?:ours?)?$")
-_RE_NEXT_NH = re.compile(r"^next[-_ ]?(\d+)[-_ ]?h(?:ours?)?$")
-_RE_LAST_NW = re.compile(r"^last[-_ ]?(\d+)[-_ ]?w(?:eeks?)?$")
-_RE_NEXT_NW = re.compile(r"^next[-_ ]?(\d+)[-_ ]?w(?:eeks?)?$")
-_RE_LAST_NM = re.compile(r"^last[-_ ]?(\d+)[-_ ]?m(?:in(?:utes?)?)?$")
-_RE_NEXT_NM = re.compile(r"^next[-_ ]?(\d+)[-_ ]?m(?:in(?:utes?)?)?$")
-_RE_LAST_NY = re.compile(r"^last[-_ ]?(\d+)[-_ ]?y(?:ears?)?$")
-_RE_NEXT_NY = re.compile(r"^next[-_ ]?(\d+)[-_ ]?y(?:ears?)?$")
-_RE_ISO_DAY = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
-_RE_ISO_YEAR = re.compile(r"^(\d{4})$")
-_RE_ISO_YEAR_MONTH = re.compile(r"^(\d{4})-(\d{2})$")
-_RE_ISO_RANGE = re.compile(
-    r"^(\d{4})-(\d{2})-(\d{2})/(\d{4})-(\d{2})-(\d{2})$"
-)
-_RE_DMY_DAY = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})$")
-_RE_DMY_RANGE_DASH = re.compile(
-    r"^(\d{1,2})/(\d{1,2})(?:/(\d{2}|\d{4}))?"
-    r"-(\d{1,2})/(\d{1,2})(?:/(\d{2}|\d{4}))?$"
-)
+    def __init__(self, code: str, expression: str):
+        self.code = code
+        self.expression = expression
+        super().__init__(f"{code}: {expression!r}")
 
 
-def _aware(dt_naive_or_date, t_default=None):
-    if isinstance(dt_naive_or_date, datetime):
-        if dt_naive_or_date.tzinfo is None:
-            return dt_naive_or_date.replace(tzinfo=ROME)
-        return dt_naive_or_date.astimezone(ROME)
-    if isinstance(dt_naive_or_date, date):
-        return datetime.combine(
-            dt_naive_or_date, t_default or time(0, 0, 0), tzinfo=ROME
-        )
-    raise TypeError(f"unexpected type {type(dt_naive_or_date).__name__}")
+_MONTHS_IMAP = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_DURATION = re.compile(r"(\d+(?:\.\d+)?)(min|s|h|d|w|m|y)")
+_ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
+_IMAP_DAY = re.compile(r"(\d{1,2})-([A-Za-z]{3})-(\d{4})\Z")
 
 
-def _fmt(dt):
-    """ISO 8601 con offset esplicito (`+HH:MM`), mai `Z`."""
-    s = dt.astimezone(ROME).strftime("%Y-%m-%dT%H:%M:%S%z")
-    return s[:-2] + ":" + s[-2:]
+def temporal_now(now=None, *, tz=None):
+    """An explicit zone wins; an injected aware clock otherwise keeps its zone."""
+    zone = ZoneInfo(tz) if isinstance(tz, str) else tz
+    zone = zone or ZoneInfo(_C.DEFAULT_TIMEZONE)
+    if now is None:
+        return datetime.now(zone)
+    if isinstance(now, date) and not isinstance(now, datetime):
+        now = datetime.combine(now, time())
+    if not isinstance(now, datetime):
+        raise TypeError("now must be a date or datetime")
+    if now.tzinfo is None:
+        return _localize(now, zone)
+    return now.astimezone(zone) if tz is not None else now
 
 
-def _full_day(d):
-    return _aware(d, time(0, 0, 0)), _aware(d, time(23, 59, 59))
+def _localize(value, zone):
+    """Refuse nonexistent or ambiguous wall times at daylight-saving changes."""
+    candidates = []
+    for fold in (0, 1):
+        candidate = value.replace(tzinfo=zone, fold=fold)
+        back = candidate.astimezone(timezone.utc).astimezone(zone)
+        if back.replace(tzinfo=None) == value:
+            if not any(item.utcoffset() == candidate.utcoffset() for item in candidates):
+                candidates.append(candidate)
+    if len(candidates) != 1:
+        code = "ambiguous_local_time" if candidates else "nonexistent_local_time"
+        raise TemporalError(code, value.isoformat())
+    return candidates[0]
 
 
-def _safe_date(year, month, day):
-    try:
-        return date(year, month, day)
-    except ValueError as e:
-        raise ValueError(
-            f"invalid date {year:04d}-{month:02d}-{day:02d}: {e}"
-        ) from None
+def _full_day(day, zone):
+    return (_localize(datetime.combine(day, time()), zone),
+            _localize(datetime.combine(day, time.max), zone))
 
 
-def _expand_short_year(yy):
-    if not 0 <= yy <= 99:
-        raise ValueError(f"invalid 2-digit year: {yy}")
-    return 2000 + yy
+def _duration_parts(spec):
+    matches = list(_DURATION.finditer(spec))
+    if not matches or "".join(m.group(0) for m in matches) != spec:
+        raise TemporalError("invalid_duration", spec)
+    values = {}
+    for match in matches:
+        amount, unit = float(match.group(1)), match.group(2)
+        if amount <= 0 or amount > 9999 or unit in values:
+            raise TemporalError("invalid_duration", spec)
+        if unit in {"m", "y"} and not amount.is_integer():
+            raise TemporalError("invalid_duration", spec)
+        values[unit] = amount
+    return values
 
 
-def _parse_it_year(token, fallback_year):
-    if token is None or token == "":
-        return fallback_year
-    if len(token) == 2:
-        return _expand_short_year(int(token))
-    return int(token)
+def _shift(anchor, duration, sign):
+    parts = _duration_parts(duration)
+    calendar = relativedelta(years=int(parts.get("y", 0)) * sign,
+                             months=int(parts.get("m", 0)) * sign)
+    shifted = anchor + calendar if calendar else anchor
+    if calendar:
+        shifted = _localize(shifted.replace(tzinfo=None), anchor.tzinfo)
+    seconds = sum(parts.get(unit, 0) * scale for unit, scale in (
+        ("w", 7 * 86400), ("d", 86400), ("h", 3600), ("min", 60), ("s", 1)))
+    return (shifted.astimezone(timezone.utc) + timedelta(seconds=sign * seconds)).astimezone(anchor.tzinfo)
 
 
-def _start_of_week(d):
-    return d - timedelta(days=d.weekday())
+def _point(spec, now):
+    """Resolve an endpoint to (start, end), preserving its precision."""
+    if "@" in spec:
+        base, clock = spec.rsplit("@", 1)
+        if not re.fullmatch(r"\d{2}:\d{2}(?::\d{2})?", clock):
+            raise TemporalError("invalid_time", spec)
+        start, end = _point(base, now)
+        if start.date() != end.date():
+            raise TemporalError("ambiguous_date", spec)
+        value = _localize(datetime.combine(start.date(), time.fromisoformat(clock)), now.tzinfo)
+        return value, value
+    if spec == "now":
+        return now, now
+    match = re.fullmatch(r"now([+-])(.+)", spec)
+    if match:
+        value = _shift(now, match.group(2), 1 if match.group(1) == "+" else -1)
+        return value, value
+    day_offset = {"today": 0, "yesterday": -1, "tomorrow": 1}.get(spec)
+    if day_offset is not None:
+        return _full_day(now.date() + timedelta(days=day_offset), now.tzinfo)
+    match = re.fullmatch(r"today([+-])(\d+)([dwmy])", spec)
+    if match:
+        sign, amount, unit = match.groups()
+        n = int(amount) * (1 if sign == "+" else -1)
+        if abs(n) > 9999:
+            raise TemporalError("invalid_duration", spec)
+        delta = relativedelta(**{{"d": "days", "w": "weeks", "m": "months", "y": "years"}[unit]: n})
+        return _full_day(now.date() + delta, now.tzinfo)
+    match = re.fullmatch(r"weekday-([0-6])(?:-(last|next|this))?", spec)
+    if match:
+        weekday, direction = int(match.group(1)), match.group(2)
+        if direction is None:
+            raise TemporalError("ambiguous_weekday", spec)
+        offset = weekday - now.weekday()
+        if direction == "last":
+            offset = -((now.weekday() - weekday - 1) % 7 + 1)
+        elif direction == "next":
+            offset = (offset - 1) % 7 + 1
+        return _full_day(now.date() + timedelta(days=offset), now.tzinfo)
+    if _ISO_DAY.fullmatch(spec):
+        return _full_day(date.fromisoformat(spec), now.tzinfo)
+    match = re.fullmatch(r"date-(\d{2})-(\d{2})", spec)
+    if match:
+        return _full_day(date(now.year, *map(int, match.groups())), now.tzinfo)
+    match = _IMAP_DAY.fullmatch(spec)
+    if match:
+        day, month, year = match.groups()
+        months = [value.casefold() for value in _MONTHS_IMAP]
+        if month.casefold() not in months:
+            raise TemporalError("invalid_date", spec)
+        return _full_day(date(int(year), months.index(month.casefold()) + 1, int(day)), now.tzinfo)
+    if re.match(r"^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}", spec):
+        value = datetime.fromisoformat(spec.replace("z", "+00:00").replace("Z", "+00:00"))
+        value = value.astimezone(now.tzinfo) if value.tzinfo else _localize(value, now.tzinfo)
+        return value, value
+    raise TemporalError("unknown time_window", spec)
 
 
-def _start_of_month(d):
-    return d.replace(day=1)
-
-
-def _add_months(d, months):
-    m = d.month - 1 + months
-    y = d.year + m // 12
-    m = m % 12 + 1
-    return date(y, m, 1)
-
-
-def _resolve_canonical(spec, now):
-    today = now.date()
-
-    if spec == "today":
-        return _full_day(today)
-    if spec == "yesterday":
-        return _full_day(today - timedelta(days=1))
-    if spec == "tomorrow":
-        return _full_day(today + timedelta(days=1))
-
-    m = _RE_LAST_ND.match(spec)
-    if m:
-        n = int(m.group(1))
-        if n <= 0:
-            raise ValueError(f"last-Nd requires N>=1, got {spec!r}")
-        s = now - timedelta(days=n)
-        return _aware(s), _aware(now)
-    m = _RE_NEXT_ND.match(spec)
-    if m:
-        n = int(m.group(1))
-        if n <= 0:
-            raise ValueError(f"next-Nd requires N>=1, got {spec!r}")
-        e = now + timedelta(days=n)
-        return _aware(now), _aware(e)
-    # Hours
-    m = _RE_LAST_NH.match(spec) or _RE_NEXT_NH.match(spec)
-    if m:
-        n = int(m.group(1))
-        if n <= 0:
-            raise ValueError(f"last/next-Nh requires N>=1, got {spec!r}")
-        delta = timedelta(hours=n)
-        if spec.startswith("last"):
-            return _aware(now - delta), _aware(now)
-        return _aware(now), _aware(now + delta)
-    # Weeks (N*7 giorni). «ultime 2 settimane» → "last-2w".
-    m = _RE_LAST_NW.match(spec) or _RE_NEXT_NW.match(spec)
-    if m:
-        n = int(m.group(1))
-        if n <= 0:
-            raise ValueError(f"last/next-Nw requires N>=1, got {spec!r}")
-        delta = timedelta(weeks=n)
-        if spec.startswith("last"):
-            return _aware(now - delta), _aware(now)
-        return _aware(now), _aware(now + delta)
-    # Months (approx 30 giorni). Pattern §2.1: l'utente dice "prossimi 3
-    # mesi" → "next-3m"; il delta e' calcolato in giorni (3*30=90).
-    m = _RE_LAST_NM.match(spec) or _RE_NEXT_NM.match(spec)
-    if m:
-        n = int(m.group(1))
-        if n <= 0:
-            raise ValueError(f"last/next-Nm requires N>=1, got {spec!r}")
-        delta = timedelta(days=n * 30)
-        if spec.startswith("last"):
-            return _aware(now - delta), _aware(now)
-        return _aware(now), _aware(now + delta)
-    # Years (approx 365 giorni)
-    m = _RE_LAST_NY.match(spec) or _RE_NEXT_NY.match(spec)
-    if m:
-        n = int(m.group(1))
-        if n <= 0:
-            raise ValueError(f"last/next-Ny requires N>=1, got {spec!r}")
-        delta = timedelta(days=n * 365)
-        if spec.startswith("last"):
-            return _aware(now - delta), _aware(now)
-        return _aware(now), _aware(now + delta)
-
-    if spec == "this-week":
-        mon = _start_of_week(today)
-        sun = mon + timedelta(days=6)
-        return _aware(mon, time(0, 0, 0)), _aware(sun, time(23, 59, 59))
-    if spec == "last-week":
-        mon_this = _start_of_week(today)
-        mon_prev = mon_this - timedelta(days=7)
-        sun_prev = mon_prev + timedelta(days=6)
-        return (
-            _aware(mon_prev, time(0, 0, 0)),
-            _aware(sun_prev, time(23, 59, 59)),
-        )
-    if spec == "next-week":
-        mon_next = _start_of_week(today) + timedelta(days=7)
-        sun_next = mon_next + timedelta(days=6)
-        return (
-            _aware(mon_next, time(0, 0, 0)),
-            _aware(sun_next, time(23, 59, 59)),
-        )
-
-    if spec == "this-month":
-        first = _start_of_month(today)
-        next_first = _add_months(first, 1)
-        last = next_first - timedelta(days=1)
-        return _aware(first, time(0, 0, 0)), _aware(last, time(23, 59, 59))
-    if spec == "last-month":
-        first_prev = _add_months(_start_of_month(today), -1)
-        first_this = _start_of_month(today)
-        last_prev = first_this - timedelta(days=1)
-        return (
-            _aware(first_prev, time(0, 0, 0)),
-            _aware(last_prev, time(23, 59, 59)),
-        )
-    if spec == "next-month":
-        first_next = _add_months(_start_of_month(today), 1)
-        first_after = _add_months(first_next, 1)
-        last_next = first_after - timedelta(days=1)
-        return (
-            _aware(first_next, time(0, 0, 0)),
-            _aware(last_next, time(23, 59, 59)),
-        )
-
-    if spec == "this-year":
-        first = date(today.year, 1, 1)
-        last = date(today.year, 12, 31)
-        return _aware(first, time(0, 0, 0)), _aware(last, time(23, 59, 59))
-    if spec == "last-year":
-        y = today.year - 1
-        return (
-            _aware(date(y, 1, 1), time(0, 0, 0)),
-            _aware(date(y, 12, 31), time(23, 59, 59)),
-        )
-    if spec == "next-year":
-        y = today.year + 1
-        return (
-            _aware(date(y, 1, 1), time(0, 0, 0)),
-            _aware(date(y, 12, 31), time(23, 59, 59)),
-        )
-
-    return None
-
-
-def _resolve_iso(spec):
-    m = _RE_ISO_RANGE.match(spec)
-    if m:
-        y1, mo1, d1, y2, mo2, d2 = map(int, m.groups())
-        a = _safe_date(y1, mo1, d1)
-        b = _safe_date(y2, mo2, d2)
-        if b < a:
-            a, b = b, a
-        return _aware(a, time(0, 0, 0)), _aware(b, time(23, 59, 59))
-    m = _RE_ISO_DAY.match(spec)
-    if m:
-        y, mo, d = map(int, m.groups())
-        return _full_day(_safe_date(y, mo, d))
-    # Anno solo `YYYY` → tutto l'anno (1 gennaio 00:00 → 31 dicembre 23:59:59).
-    m = _RE_ISO_YEAR.match(spec)
-    if m:
-        y = int(m.group(1))
-        a = _safe_date(y, 1, 1)
-        b = _safe_date(y, 12, 31)
-        return _aware(a, time(0, 0, 0)), _aware(b, time(23, 59, 59))
-    # Anno-mese `YYYY-MM` → tutto il mese.
-    m = _RE_ISO_YEAR_MONTH.match(spec)
-    if m:
-        y, mo = int(m.group(1)), int(m.group(2))
-        a = _safe_date(y, mo, 1)
-        # Ultimo giorno del mese: vai al primo del mese successivo - 1 giorno.
-        if mo == 12:
-            b_next = _safe_date(y + 1, 1, 1)
+def _calendar_period(spec, now):
+    match = re.fullmatch(r"(last|this|next)-(week|month|year)", spec)
+    if match:
+        direction, unit = match.groups()
+        offset = {"last": -1, "this": 0, "next": 1}[direction]
+        day = now.date()
+        if unit == "week":
+            first = day - timedelta(days=day.weekday()) + timedelta(weeks=offset)
+            after = first + timedelta(weeks=1)
+        elif unit == "month":
+            first = day.replace(day=1) + relativedelta(months=offset)
+            after = first + relativedelta(months=1)
         else:
-            b_next = _safe_date(y, mo + 1, 1)
-        from datetime import timedelta
-        b = b_next - timedelta(days=1)
-        return _aware(a, time(0, 0, 0)), _aware(b, time(23, 59, 59))
-    return None
+            first = date(day.year + offset, 1, 1)
+            after = date(first.year + 1, 1, 1)
+    elif re.fullmatch(r"\d{4}(?:-\d{2})?", spec):
+        parts = [int(part) for part in spec.split("-")]
+        first = date(parts[0], parts[1] if len(parts) == 2 else 1, 1)
+        after = first + (relativedelta(months=1) if len(parts) == 2 else relativedelta(years=1))
+    else:
+        return None
+    return _full_day(first, now.tzinfo)[0], _full_day(after - timedelta(days=1), now.tzinfo)[1]
 
 
-def _phrase_alt(forms) -> str:
-    return "|".join(
-        re.escape(str(form)).replace(r"\ ", r"\s+")
-        for form in sorted(set(forms or ()), key=lambda item: (-len(item), item))
-        if str(form).strip()
-    )
+def _phrase_alt(forms):
+    return "|".join(re.escape(str(form)).replace(r"\ ", r"\s+")
+                    for form in sorted(set(forms or ()), key=lambda item: (-len(item), item))
+                    if str(form).strip())
 
 
-def _resolve_localized_dmy(spec, now):
-    # DMY is a numeric input convention, but it is enabled only with a fully
-    # materialized parser family.  A partial locale cannot borrow connectors
-    # from a fallback language and silently authorize a different parse.
+def _localized_numeric(spec, now):
     lexicon = _parser_lex.load_family("time_parser")
     if lexicon is None:
         return None
-    m = _RE_DMY_DAY.match(spec)
-    if m:
-        dd, mm, yy = m.groups()
-        y = _parse_it_year(yy, now.year)
-        return _full_day(_safe_date(y, int(mm), int(dd)))
-
+    point = r"(\d{1,2})/(\d{1,2})(?:/(\d{2}|\d{4}))?"
+    single = re.fullmatch(point, spec)
     connectors = lexicon["parser.time.range_connector"]
-    from_alt = _phrase_alt(connectors.get("from", ()))
-    to_alt = _phrase_alt(connectors.get("to", ()))
-    if from_alt and to_alt:
-        range_rx = re.compile(
-            rf"^(?:{from_alt})\s+(\d{{1,2}})/(\d{{1,2}})"
-            rf"(?:/(\d{{2}}|\d{{4}}))?\s+(?:{to_alt})\s+"
-            rf"(\d{{1,2}})/(\d{{1,2}})(?:/(\d{{2}}|\d{{4}}))?$",
-            re.IGNORECASE | re.UNICODE,
-        )
-        m = range_rx.match(spec)
-        if m:
-            d1, mo1, y1, d2, mo2, y2 = m.groups()
-            return _build_it_range(d1, mo1, y1, d2, mo2, y2, now)
-
-    m = _RE_DMY_RANGE_DASH.match(spec)
-    if m:
-        d1, mo1, y1, d2, mo2, y2 = m.groups()
-        return _build_it_range(d1, mo1, y1, d2, mo2, y2, now)
-
+    left, right = (_phrase_alt(connectors.get(key, ())) for key in ("from", "to"))
+    pair = re.fullmatch(point + "-" + point, spec)
+    if pair is None and left and right:
+        pair = re.fullmatch(rf"(?:{left})\s+{point}\s+(?:{right})\s+{point}", spec, re.I)
+    def as_date(day, month, year, fallback):
+        y = int(year) if year else fallback
+        if year and len(year) == 2:
+            y += 2000
+        return date(y, int(month), int(day))
+    if single:
+        return _full_day(as_date(*single.groups(), now.year), now.tzinfo)
+    if pair:
+        d1, m1, y1, d2, m2, y2 = pair.groups()
+        a = as_date(d1, m1, y1 or y2, now.year)
+        b = as_date(d2, m2, y2 or y1, now.year)
+        a, b = sorted((a, b))  # established numeric-range compatibility
+        return _full_day(a, now.tzinfo)[0], _full_day(b, now.tzinfo)[1]
     return None
 
 
-def _build_it_range(d1, mo1, y1, d2, mo2, y2, now):
-    if y1 is None and y2 is None:
-        ya = yb = now.year
-    elif y1 is None:
-        yb = _parse_it_year(y2, now.year)
-        ya = yb
-    elif y2 is None:
-        ya = _parse_it_year(y1, now.year)
-        yb = ya
-    else:
-        ya = _parse_it_year(y1, now.year)
-        yb = _parse_it_year(y2, now.year)
-    a = _safe_date(ya, int(mo1), int(d1))
-    b = _safe_date(yb, int(mo2), int(d2))
-    if b < a:
-        a, b = b, a
-    return _aware(a, time(0, 0, 0)), _aware(b, time(23, 59, 59))
+def _normalize_llm_spec(spec):
+    value = re.sub(r"(?<=\d)t(?=\d{2}:)", "T", spec.strip().casefold())
+    # Protocol spellings, not a privileged natural language.
+    match = re.fullmatch(r"now[_ -]*(minus|plus)[_ -]*(.+)", value)
+    if match:
+        return ("last-" if match.group(1) == "minus" else "next-") + match.group(2)
+    match = re.fullmatch(r"(last|next)[_ -]?(\d+)[_ -]?([a-z]+)", value)
+    if match and match.group(3) in {"s", "min", "h", "d", "w", "m", "y"}:
+        return f"{match.group(1)}-{match.group(2)}{match.group(3)}"
+    from time_window_resolver import parse_query_time_window
+    canonical = parse_query_time_window(value, exact=True)
+    if canonical:
+        return canonical
+    # Compatibility surfaces from the former mail parser are now shared.
+    # Only the versioned lexicon supplies words; it never supplies arithmetic.
+    import detection_lexicon_seed_residual_am as legacy
+    mapping = legacy.ready_mapping(legacy.MAIL_TIME_WINDOW)
+    for key, target in (("today", "today"), ("yesterday", "yesterday"),
+                        ("preset_week", "last-week"),
+                        ("preset_month", "last-month"), ("preset_year", "last-year")):
+        if value in [str(form).casefold() for form in mapping.get(key, ())]:
+            return target
+    units = {str(form).casefold(): target
+             for key, target in (("day_unit", "d"), ("hour_unit", "h"),
+                                 ("week_unit", "w"), ("month_unit", "m"), ("year_unit", "y"))
+             for form in mapping.get(key, ())}
+    markers = _phrase_alt(mapping.get("relative_marker", ()))
+    if units:
+        quantity = rf"(?P<count>\d+)\s*[-_ ]?\s*(?P<unit>{_phrase_alt(units)})"
+        match = re.fullmatch(rf"(?:(?:{markers})[-_ ]?)?{quantity}(?:[-_ ]?(?:{markers}))?", value)
+        if match and int(match.group("count")) > 0:
+            return f"last-{match.group('count')}{units[match.group('unit')]}"
+    return value
 
 
-def _normalize_llm_spec(s: str) -> str:
-    """Normalizza le varianti che l'LLM INVENTA verso le forme canoniche
-    (deterministico §7.9). L'LLM emette spesso `now_plus_7d`/`in 3 days`/
-    `prossimi 7 giorni` invece di `next-7d` → qui le canonicalizziamo cosi'
-    il resolver le accetta (fix q11 read_events 4/6/2026). Generale: vale per
-    ogni executor che usa parse_time_window. Non-match → invariato."""
-    t = s.strip().lower()
-    m = (re.match(r"^now[\s_+]*plus[\s_]*(\d+)[\s_]*d(?:ays?)?$", t)
-         or re.match(r"^now\s*\+\s*(\d+)\s*d(?:ays?)?$", t))
-    if m:
-        return f"next-{m.group(1)}d"
-    m = (re.match(r"^now[\s_]*minus[\s_]*(\d+)[\s_]*d(?:ays?)?$", t)
-         or re.match(r"^now\s*-\s*(\d+)\s*d(?:ays?)?$", t))
-    if m:
-        return f"last-{m.group(1)}d"
-    lexicon = _parser_lex.load_family("time_parser")
-    if lexicon is None:
-        return s
-    days = _phrase_alt(lexicon["parser.time.day_word"])
-    future_offset = _phrase_alt(
-        lexicon["parser.time.future_offset_prefix"])
-    future_determiner = _phrase_alt(
-        lexicon["parser.time.future_determiner"])
-    past_determiner = _phrase_alt(
-        lexicon["parser.time.normalizer_past_determiner"])
-    past_suffix = _phrase_alt(
-        lexicon["parser.time.past_offset_suffix"])
-    if days and future_offset:
-        m = re.match(
-            rf"^(?:{future_offset})[\s_]+(\d+)[\s_]+(?:{days})$", t,
-            re.IGNORECASE | re.UNICODE,
-        )
-        if m:
-            return f"next-{m.group(1)}d"
-    if days and future_determiner:
-        m = re.match(
-            rf"^(?:{future_determiner})[\s_]+(\d+)[\s_]+(?:{days})$", t,
-            re.IGNORECASE | re.UNICODE,
-        )
-        if m:
-            return f"next-{m.group(1)}d"
-    if days and past_suffix:
-        m = re.match(
-            rf"^(\d+)[\s_]+(?:{days})[\s_]+(?:{past_suffix})$", t,
-            re.IGNORECASE | re.UNICODE,
-        )
-        if m:
-            return f"last-{m.group(1)}d"
-    if days and past_determiner:
-        m = re.match(
-            rf"^(?:{past_determiner})[\s_]+(\d+)[\s_]+(?:{days})$", t,
-            re.IGNORECASE | re.UNICODE,
-        )
-        if m:
-            return f"last-{m.group(1)}d"
-    return s
+def resolve_time_bounds(spec, now=None, *, tz=None):
+    """Aware bounds, or (None, None) for the explicit unbounded window 'all'."""
+    if not isinstance(spec, str) or not spec.strip() or len(spec) > 512:
+        raise TemporalError("invalid_time_window", str(spec))
+    anchor = temporal_now(now, tz=tz)
+    value = _normalize_llm_spec(spec)
+    if value == "all":
+        return None, None
+    localized = _localized_numeric(value, anchor)
+    if localized is not None:
+        return localized
+    calendar = _calendar_period(value, anchor)
+    if calendar is not None:
+        return calendar
+    rolling = re.fullmatch(r"(last|next)-(.+)", value)
+    if rolling:
+        other = _shift(anchor, rolling.group(2), -1 if rolling.group(1) == "last" else 1)
+        return (other, anchor) if rolling.group(1) == "last" else (anchor, other)
+    if value.count("/") == 1:
+        left, right = value.split("/", 1)
+        left, right = _normalize_llm_spec(left), _normalize_llm_spec(right)
+        start = (_calendar_period(left, anchor) or _point(left, anchor))[0]
+        end = (_calendar_period(right, anchor) or _point(right, anchor))[1]
+        if start.astimezone(timezone.utc) > end.astimezone(timezone.utc):
+            raise TemporalError("reversed_time_window", spec)
+        return start, end
+    return _point(value, anchor)
 
 
-def parse_time_window(spec, now=None):
-    """Risolve `spec` in `(start_iso, end_iso)` aware su Europe/Rome.
+def parse_time_window(spec, now=None, *, tz=None):
+    """Compatibility adapter: ISO bounds with explicit timezone offsets."""
+    start, end = resolve_time_bounds(spec, now, tz=tz)
+    return (start.isoformat(timespec="seconds") if start is not None else None,
+            end.isoformat(timespec="seconds") if end is not None else None)
 
-    Solleva ValueError se `spec` non e' riconosciuta o se contiene un
-    parametro non valido (giorno 32, mese 13, N<=0, eccetera).
-    """
-    if not isinstance(spec, str) or not spec.strip():
-        raise ValueError("time_window must be a non-empty string")
-    s = _normalize_llm_spec(spec.strip())
 
-    if now is None:
-        now = datetime.now(tz=ROME)
-    else:
-        now = _aware(now)
-
-    out = _resolve_canonical(s, now)
-    if out is None:
-        out = _resolve_iso(s)
-    if out is None:
-        out = _resolve_localized_dmy(s, now)
-    if out is None:
-        raise ValueError(f"unknown time_window: {spec!r}")
-
-    start, end = out
-    return _fmt(start), _fmt(end)
+def parse_datetime(spec, now=None, *, tz=None):
+    """Resolve a date/time field; do not silently collapse an interval."""
+    start, end = resolve_time_bounds(spec, now, tz=tz)
+    if start is None or end is None:
+        raise TemporalError("date_time_requires_an_instant", spec)
+    if start != end and (start.date() != end.date()
+                         or start.time() != time()
+                         or end.time() != time.max):
+        raise TemporalError("interval_not_instant", spec)
+    return start

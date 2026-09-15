@@ -472,13 +472,59 @@ def process_completion_callback(sender_id: str, dialog_id: str,
                                   ) -> "CompletionResult":
     """Wrapper pubblico: normalizza l'esito dei dispatch a CompletionResult
     (i dispatch legacy ritornano str; quelli full-turn CompletionResult)."""
-    out = _dispatch_completion(
-        sender_id, dialog_id, actor=actor, channel=channel,
-        owner_user_id=owner_user_id,
-        host_override=host_override)
-    if isinstance(out, CompletionResult):
-        return out
-    return CompletionResult(text=str(out) if out is not None else "")
+    state = dialog_pending.load_pending(
+        sender_id, dialog_id, owner_user_id=owner_user_id) or {}
+    callback = state.get("on_complete")
+    callback = callback if isinstance(callback, dict) else {}
+    gated = callback.get("type") in {
+        "gate_dispatch", "managed_dependency_resume", "resume_engine_gate",
+        "resume_executor_gate_tail",
+    }
+    nonce = str(callback.get("nonce") or dialog_id)
+    if gated:
+        # Stored values alone are not evidence of a submission. In particular
+        # never replay old completed gates whose accepting boundary is absent.
+        submitted = state.get("submissions") or {}
+        steps = state.get("dialog") or []
+        if not steps or any(
+                not isinstance(submitted.get(step.get("var")), dict)
+                or submitted[step.get("var")].get("source") not in {
+                    "http_chat", "http_form_owner", "http_form_capability",
+                    "telegram_chat", "telegram_button"}
+                for step in steps):
+            return CompletionResult(text=_msg(
+                "MSG_ORCH_CONTINUATION_FAILED", detail="consent_submission_unverified"))
+        claim = dialog_pending.begin_callback_once(
+            sender_id, dialog_id, nonce, owner_user_id=owner_user_id)
+        if claim.get("status") == "completed":
+            return _completion_from_receipt(claim["receipt"])
+        if claim.get("status") != "claimed":
+            return CompletionResult(text=_msg(
+                "MSG_ORCH_CONTINUATION_FAILED",
+                detail="callback_" + str(claim.get("status") or "invalid")))
+    try:
+        if gated:
+            from program_start_consent import remember_verified_dialog
+            remember_verified_dialog(state, actor=actor, owner=owner_user_id)
+        out = _dispatch_completion(
+            sender_id, dialog_id, actor=actor, channel=channel,
+            owner_user_id=owner_user_id,
+            host_override=host_override)
+        result = (out if isinstance(out, CompletionResult) else
+                  CompletionResult(text=str(out) if out is not None else ""))
+    except Exception:
+        if not gated:
+            raise
+        log.exception("Consent continuation failed dialog=%s", dialog_id)
+        result = CompletionResult(text=_msg(
+            "MSG_ORCH_CONTINUATION_FAILED", detail="callback_failed"))
+    if gated:
+        result.turn_id = result.turn_id or str(state.get("origin_turn_id") or "")
+        if not dialog_pending.complete_callback_once(
+                sender_id, dialog_id, nonce, _completion_receipt(result),
+                owner_user_id=owner_user_id):
+            log.error("Consent result outbox commit failed dialog=%s", dialog_id)
+    return result
 
 
 def _dispatch_completion(sender_id: str, dialog_id: str,
@@ -525,6 +571,8 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
         return _msg("MSG_ORCH_DIALOG_NOT_FOUND", dialog_id=dialog_id)
     if not state.get("completed"):
         return _msg("MSG_ORCH_DIALOG_INCOMPLETE")
+    if state.get("cancelled") or dialog_pending.is_expired(state):
+        return _msg("MSG_DIALOG_EXPIRED")
     on_complete = state.get("on_complete")
     if not isinstance(on_complete, dict):
         # Niente callback dichiarato: solo conferma generica.
@@ -1221,7 +1269,7 @@ def _process_managed_dependency_resume(
     decision = next(iter(values.values()), None) if values else None
     branches = on_complete.get("branches")
     branch = branches.get(decision) if isinstance(branches, dict) else None
-    if decision not in {"session", "persistent"} or not isinstance(branch, dict):
+    if decision not in {"once", "until_restart", "always"} or not isinstance(branch, dict):
         return _msg("MSG_GATE_NO_ACTION")
     owner = str(on_complete.get("owner_user_id") or "")
     target = str(on_complete.get("target_device") or "") or None
@@ -1264,7 +1312,8 @@ def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
                                channel: str | None,
                                owner_user_id: str,
                                turn_id: str = "",
-                               source_request_id: str = ""):
+                               source_request_id: str = "",
+                               target_device: str | None = None):
     """Esegue un branch dichiarativo e conserva il result strutturato."""
     if not isinstance(branch, dict):
         return {"ok": False, "orchestration_error": True,
@@ -1274,7 +1323,7 @@ def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
         dict(branch.get("args") or {}),
         actor=actor, channel=channel, owner_user_id=owner_user_id,
         turn_id=turn_id, source_request_id=source_request_id,
-        contesto="executor gate branch")
+        target_device=target_device, contesto="executor gate branch")
 
 
 def _carry_executor_tail_to_nested_gate(
@@ -1323,6 +1372,7 @@ def _carry_executor_tail_to_nested_gate(
         "conversation_id": parent_callback.get("conversation_id") or "",
         "turn_id": parent_callback.get("turn_id") or "",
         "source_request_id": parent_callback.get("source_request_id") or "",
+        "target_device": parent_callback.get("target_device") or "",
     }
     dialog_pending.save_pending(sender, dialog_id, state)
     log.info("orchestration: coda executor trasferita al gate annidato %s "
@@ -1342,20 +1392,24 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
     coda a quel dialogo e si sospende ancora, per un numero arbitrario di gate.
     """
     approve = on_complete.get("gate_approve_value", "approve")
+    # Every step of the resumed pipeline runs where the paused step belonged.
+    device = str(on_complete.get("target_device") or "") or None
     decision = next(iter((values or {}).values()), None) if values else None
     if decision != approve:
         rejected = _invoke_gate_branch_result(
             on_complete.get("gate_on_reject"), actor=actor, channel=channel,
             owner_user_id=str(on_complete.get("owner_user_id") or ""),
             turn_id=str(on_complete.get("turn_id") or ""),
-            source_request_id=str(on_complete.get("source_request_id") or ""))
+            source_request_id=str(on_complete.get("source_request_id") or ""),
+            target_device=device)
         return _shape_result_for_chat(rejected)
 
     branch_result = _invoke_gate_branch_result(
         on_complete.get("gate_on_approve"), actor=actor, channel=channel,
         owner_user_id=str(on_complete.get("owner_user_id") or ""),
         turn_id=str(on_complete.get("turn_id") or ""),
-        source_request_id=str(on_complete.get("source_request_id") or ""))
+        source_request_id=str(on_complete.get("source_request_id") or ""),
+        target_device=device)
     if not isinstance(branch_result, dict) or not branch_result.get("ok"):
         return _shape_result_for_chat(branch_result)
 
@@ -1375,6 +1429,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                 "original_query": on_complete.get("original_query") or "",
                 "conversation_id": on_complete.get("conversation_id") or "",
                 "source_request_id": on_complete.get("source_request_id") or "",
+                "target_device": device or "",
             })
             payload["on_complete"] = nested_callback
         conversation_id = str(on_complete.get("conversation_id") or "")
@@ -1452,7 +1507,8 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                 tool_name, args, catalog=catalog, actor=actor, channel=channel,
                 owner_user_id=str(on_complete.get("owner_user_id") or ""),
                 source_request_id=str(
-                    on_complete.get("source_request_id") or ""))
+                    on_complete.get("source_request_id") or ""),
+                target_device=device)
 
         seed = StepRun(
             step_idx=1, tool="@approved_executor_gate", args={},
@@ -1467,6 +1523,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                     "conversation_id": on_complete.get("conversation_id") or "",
                     "source_request_id": (
                         on_complete.get("source_request_id") or ""),
+                    "target_device": device or "",
                 })
         if getattr(run, "gate_dialog_id", ""):
             from engine.dispatch import _inject_gate_resume_if_paused
@@ -1477,7 +1534,8 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                  "user_query_raw": on_complete.get("original_query") or "",
                  "conversation_id": on_complete.get("conversation_id") or "",
                  "source_request_id": (
-                     on_complete.get("source_request_id") or "")},
+                     on_complete.get("source_request_id") or ""),
+                 "target_device": device or ""},
                 framework=framework)
 
         attachments = []
@@ -1580,18 +1638,10 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
     args_base (lo scopo della disambiguation e' aggiungere campi).
     """
     executor = on_complete.get("executor") or ""
-    args_base = dict(on_complete.get("args_base") or {})
-    merge_into = on_complete.get("merge_into")
-
     if not executor:
         return _msg("MSG_ORCH_RESUME_EXEC_MISSING")
 
-    if merge_into:
-        nested = dict(args_base.get(merge_into) or {})
-        nested.update(values)
-        args_base[merge_into] = nested
-    else:
-        args_base.update(values)
+    args_base = _apply_dialog_values(on_complete, values)
 
     res = _esegui_ramo(
         executor, args_base, actor=actor, channel=channel,
@@ -1623,6 +1673,32 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
     return _shape_result_for_chat(res)
 
 
+def _apply_dialog_values(on_complete: dict, values: dict | None) -> dict:
+    """`args_base` completed with the dialog values.
+
+    `list_args` rebuilds an array argument in its original order: literal
+    slots stay, `{"var": name}` slots take the collected value.  Remaining
+    values merge as before (nested under `merge_into`, or top level).
+    """
+    args = dict(on_complete.get("args_base") or {})
+    remaining = dict(values or {})
+    list_args = on_complete.get("list_args")
+    for name, slots in (list_args.items() if isinstance(list_args, dict) else ()):
+        args[name] = [
+            remaining.pop(slot["var"], None)
+            if isinstance(slot, dict) and "var" in slot else slot
+            for slot in (slots if isinstance(slots, list) else ())
+        ]
+    merge_into = on_complete.get("merge_into")
+    if merge_into:
+        nested = dict(args.get(merge_into) or {})
+        nested.update(remaining)
+        args[merge_into] = nested
+    else:
+        args.update(remaining)
+    return args
+
+
 def _process_resume_executor_values_tail(on_complete: dict, values: dict, *,
                                          actor: str = "host",
                                          channel: str | None = None):
@@ -1635,16 +1711,10 @@ def _process_resume_executor_values_tail(on_complete: dict, values: dict, *,
     executor = str(on_complete.get("executor") or "")
     if not executor:
         return _msg("MSG_ORCH_RESUME_EXEC_MISSING")
-    args = dict(on_complete.get("args_base") or {})
-    merge_into = on_complete.get("merge_into")
-    if merge_into:
-        nested = dict(args.get(merge_into) or {})
-        nested.update(values or {})
-        args[merge_into] = nested
-    else:
-        args.update(values or {})
+    args = _apply_dialog_values(on_complete, values)
     callback = {
         "owner_user_id": on_complete.get("owner_user_id"),
+        "target_device": on_complete.get("target_device") or "",
         "gate_approve_value": "approve",
         "gate_on_approve": {"tool": executor, "args": args},
         "gate_on_reject": None,

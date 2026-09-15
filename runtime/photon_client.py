@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
 """photon_client — adapter REST per il geocoder Photon (suprastructure/geo).
 
-Photon e' self-hosted su .33:2322. Vantaggio rispetto a Nominatim:
-distance_sort=true nativo + niente rate limit.
+Endpoint dal registro servizi, con override METNOS_PHOTON_URL.
 
 API simmetrica a `nominatim_client` per swap drop-in:
 - forward_search(query, max_results, near?, radius_km?, bounded?)
 - reverse_geocode(lat, lon)
 
-Backend selection (1/5/2026): env METNOS_GEO_BACKEND=photon|nominatim
-(default photon se Photon raggiungibile, altrimenti fallback nominatim).
+La selezione dei provider appartiene a geo_provider.
 """
 from __future__ import annotations
 
 import json
 import math
-import os
 import urllib.error
 import urllib.parse
 import urllib.request
 
-PHOTON_BASE = os.environ.get("METNOS_PHOTON_URL", "http://192.0.2.10:2322")
+from services_registry import endpoint
+
+PHOTON_BASE = endpoint("photon")
 PHOTON_TIMEOUT = 7.0
 
 def _osm_surface_tags() -> dict[str, str]:
@@ -192,6 +191,10 @@ def forward_search(query: str, max_results: int = 5, near: dict | None = None,
                                      radius_km=r, lang=lang, osm_tag=auto_tag, with_bbox=True)
             matches, src = _photon_call(params, center_lat, center_lon)
             last_source = src
+            if src != "photon":
+                # Enlarging a search area cannot repair transport/quota
+                # failures. Stop before repeated timeouts exhaust the turn.
+                return [], src
             if matches:
                 # accumula (potrebbe duplicare: dedup per osm_id+coords)
                 seen = {(m.get("osm_type"), m.get("osm_id"), m.get("lat"), m.get("lon")) for m in best_matches}

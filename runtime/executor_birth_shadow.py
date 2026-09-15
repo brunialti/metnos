@@ -321,6 +321,9 @@ def _manifest(observed: ObservedCandidate) -> dict[str, object]:
 
 
 def _profile(manifest: Mapping[str, object]) -> PropertyCandidateProfile:
+    from executor_birth_property_runner import _uses_managed_helper
+    from naming_grammar import parse_name
+
     output = manifest.get("output")
     output_map = output if isinstance(output, Mapping) else {}
     properties = output_map.get("properties")
@@ -333,15 +336,27 @@ def _profile(manifest: Mapping[str, object]) -> PropertyCandidateProfile:
     args_map = args if isinstance(args, Mapping) else {}
     arg_properties = args_map.get("properties")
     arg_properties = arg_properties if isinstance(arg_properties, Mapping) else {}
-    execution = manifest.get("execution")
-    execution = execution if isinstance(execution, Mapping) else {}
+    components = parse_name(manifest.get("name"))
+    capabilities = manifest.get("capabilities")
+    capabilities = capabilities if isinstance(capabilities, (list, tuple)) else ()
+    filesystem_write = any(isinstance(cap, Mapping) and cap.get("name") == "fs:write"
+                           for cap in capabilities)
+    tests = manifest.get("tests")
+    tests = tests if isinstance(tests, list) else ()
+    positive_inputs = tuple(dict(case["input"]) for case in tests
+                            if isinstance(case, Mapping)
+                            and isinstance(case.get("input"), Mapping)
+                            and isinstance(case.get("expect"), Mapping)
+                            and case["expect"].get("ok") is True)
     names = {name for name, _ in schema}
     return PropertyCandidateProfile(
         output_schema=tuple(schema), collection_output=bool(names & {"entries", "results"}),
         limit_input="limit" in arg_properties, truncation_declared="truncated" in names,
         revertible=manifest.get("revertible") is True or manifest.get("reversible") is True,
-        destructive_with_undo=(manifest.get("revertible") is True and execution.get("effect") == "mutating"),
+        destructive_with_undo=(manifest.get("revertible") is True and filesystem_write
+                               and components is not None and components.verb == "delete"),
         entries_and_results={"entries", "results"}.issubset(names),
+        positive_inputs=positive_inputs, helper_contract=_uses_managed_helper(manifest),
     )
 
 
@@ -497,13 +512,15 @@ def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, de
         observed, windows_registry=deps.windows_sandbox_registry,
         linux_registry=deps.linux_sandbox_registry,
     )
-    evidence = run_applicable_properties(_profile(_manifest(observed)), _runner=runner)
+    profile = _profile(_manifest(observed))
+    evidence = run_applicable_properties(profile, _runner=runner)
     digest = _shadow_evidence("properties", observed.identities.candidate_id,
                               *(f"{item.property_id}:{item.case_id}:{item.status.value}:{item.output_hash}" for item in evidence))
     failed = next((item for item in evidence if item.status in {PropertyStatus.FAILED, PropertyStatus.UNAVAILABLE}), None)
     if failed:
         return CheckResult("properties", "v1", CheckStatus.FAILED, failed.error_code, digest, failed.property_id)
-    return CheckResult("properties", "v1", CheckStatus.PASSED, None, digest, f"{len(evidence)} cases")
+    kind = "helper_contract_fixture: " if profile.helper_contract and profile.revertible else ""
+    return CheckResult("properties", "v1", CheckStatus.PASSED, None, digest, f"{kind}{len(evidence)} cases")
 
 
 def _semantic_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:

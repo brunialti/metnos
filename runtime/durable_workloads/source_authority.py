@@ -523,6 +523,8 @@ class SourceAuthority:
         limits: InventoryLimits,
         valid_until: datetime,
         chunk_bytes: int = 1_048_576,
+        accept: Callable[[Path], bool] | None = None,
+        recursive: bool = True,
     ) -> Mapping[str, Any]:
         """Atomically register concrete locators while sealing the inventory."""
 
@@ -594,11 +596,13 @@ class SourceAuthority:
                 inventory = seal_local_inventory(
                     roots,
                     device_id=device,
-                limits=limits,
-                chunk_bytes=chunk_bytes,
-                on_source=register,
-                checkpoint=self._checkpoint,
-            )
+                    limits=limits,
+                    chunk_bytes=chunk_bytes,
+                    on_source=register,
+                    checkpoint=self._checkpoint,
+                    accept=accept,
+                    recursive=recursive,
+                )
             return inventory
         except BaseException:
             if inventory is not None:

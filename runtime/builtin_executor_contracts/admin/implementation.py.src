@@ -39,9 +39,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from logging_setup import get_logger
 from messages import get as _msg
+from network_targets import NetworkTargetBinding, NetworkTargetError, bind_network_target
 import i18n as _i18n
 
 from safety.canonicalize import (
+    apply_declared_option_defaults,
+    declared_numeric_option_values,
     ArgvValidationError,
     ValidatedArgv,
     render_argv_for_display,
@@ -60,6 +63,9 @@ log = get_logger(__name__)
 # invisibile e invocabile solo dal modulo admin stesso.
 NOT_IN_VOCAB = True
 EXPOSE_TO_PLANNER = True
+# The runtime passes the user's original request to this builtin; a value
+# with the same name coming from the planner is always discarded.
+ACCEPTS_REQUEST_TEXT = True
 AUTHORISED_CALLERS = (
     "runtime.dispatcher", "agent_runtime",  # PLANNER lo invoca via runtime
     "builtins.admin", "builtins.sudoer",
@@ -71,7 +77,7 @@ VERB = "admin"
 # Equivalente in-code del manifest TOML degli executor handcrafted: il
 # loader lo importa per costruire l'`Executor` dataclass visibile al
 # PLANNER. Description ~1500 char, leggibile da LLM medium (modello locale
-# planner): pattern DEVI/NON DEVI/OK/ERRORE come da CLAUDE.md §6.
+# planner): DEVI/NON DEVI/OK/ERRORE pattern per the prompt style rules §6.
 MANIFEST_VIRTUAL = {
     "name": "admin",
     "version": "1.1.0",
@@ -831,6 +837,80 @@ def _enqueue_whitelist_request(*, signature: str, argv: list[str],
 
 # ── Main flow ─────────────────────────────────────────────────────────
 
+# A whitelisted command runs without a card only when the user's request names
+# every literal operand the approved pattern does not already cover.  The rule
+# is structural and language-neutral, never a list of names: an operand the
+# request does not contain gets the ordinary approval card, so a substituted
+# target is shown to the user before it runs.
+_REQUEST_NOT_CHECKED = object()
+_STANDALONE_FLAG_RE = re.compile(r"-[A-Za-z0-9]|--[A-Za-z0-9][A-Za-z0-9-]*")
+_NUMBER_WORD_RE = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def _request_words(request_text: str) -> frozenset[str]:
+    """Words of the request exactly as written: nothing is ever removed.
+
+    Any character can belong to a target (``1::``, ``/tmp/note)``), so a word
+    carrying extra punctuation simply does not match and the command gets
+    the ordinary card.
+    """
+    return frozenset(request_text.split())
+
+
+def _approved_action(pattern: object) -> str | None:
+    """The action a whitelist pattern fixes literally, or None for ``*``."""
+    parts = str(pattern).split(":", 2)
+    return parts[1] if len(parts) > 1 and parts[1] != "*" else None
+
+
+def _operands_in_request(validated: ValidatedArgv, request_text: object, *,
+                         approved_action: str | None = None,
+                         network_binding: NetworkTargetBinding | None = None) -> bool:
+    """True only if every operand not covered by the grammar is a request word.
+
+    Covered: standalone flags without a value, and the action fixed by the
+    matched whitelist pattern in the first positional slot.  An option value
+    the central grammar declares numeric is covered when the request states
+    it, or when it equals the declared default and the request states no
+    number at all.  Everything else, compact flags and ``--key=value`` values
+    included, must appear verbatim in the request.  Without a request text
+    there is no silent execution.
+    """
+    if not isinstance(request_text, str) or not request_text.strip():
+        return False
+    words = _request_words(request_text)
+    argv = validated.command_argv
+    declared = declared_numeric_option_values(validated.signature.binary, argv)
+    request_states_a_number = any(_NUMBER_WORD_RE.fullmatch(word) for word in words)
+    first_positional = next(
+        (index for index in range(1, len(argv)) if not argv[index].startswith("-")),
+        None,
+    )
+    for index in range(1, len(argv)):
+        token = argv[index]
+        if _STANDALONE_FLAG_RE.fullmatch(token):
+            continue
+        if index in declared:
+            default = declared[index]
+            if token in words or (
+                default is not None and not request_states_a_number
+                and float(token) == default
+            ):
+                continue
+            return False
+        if index == first_positional and token == approved_action:
+            continue
+        if (network_binding is not None and index == network_binding.command_index
+                and token == network_binding.address
+                and network_binding.name.casefold() in {word.casefold() for word in words}):
+            continue
+        if token.startswith("--") and "=" in token:
+            token = token.split("=", 1)[1]
+        if not token or token not in words:
+            return False
+    return True
+
+
 def _evaluate_validated_argv(
     validated: ValidatedArgv,
     *,
@@ -838,8 +918,15 @@ def _evaluate_validated_argv(
     intent_text: str,
     actor: str,
     emit_wait: Optional[Callable[[str], None]] = None,
+    request_text: object = _REQUEST_NOT_CHECKED,
+    network_binding: NetworkTargetBinding | None = None,
 ) -> AdminDecision:
-    """Run every authorization decision against one immutable argv view."""
+    """Run every authorization decision against one immutable argv view.
+
+    When ``request_text`` is given, a whitelist hit runs silently only if the
+    request names every operand the approved pattern does not cover; otherwise
+    it yields the ordinary approval card.
+    """
     argv = list(validated.argv)
     sig = validated.signature
     audit["argv"] = argv
@@ -889,8 +976,17 @@ def _evaluate_validated_argv(
             if whitelisted_row:
                 break
 
+        silent_allowed = whitelisted_row is not None and (
+            request_text is _REQUEST_NOT_CHECKED
+            or _operands_in_request(
+                validated, request_text,
+                approved_action=_approved_action(whitelisted_row.signature),
+                network_binding=network_binding,
+            )
+        )
         rev_class, undo_hint = _classify_reversibility(sig)
-        if whitelisted_row is not None and _is_admin_actor(actor):
+        if (whitelisted_row is not None and _is_admin_actor(actor)
+                and silent_allowed):
             new_uses = store.record_use(whitelisted_row.signature)
             age_class = (
                 "permanent" if whitelisted_kind == "whitelist" else "graylist"
@@ -907,8 +1003,10 @@ def _evaluate_validated_argv(
                 validated_argv=validated,
             )
 
-        if whitelisted_row is not None:
+        if whitelisted_row is not None and not _is_admin_actor(actor):
             audit["guest_policy"] = "card_required_no_execution"
+        elif whitelisted_row is not None:
+            audit["silent_withheld"] = "operands_not_in_request"
 
         if emit_wait is not None:
             emit_wait(_msg(WAIT_HIGH))
@@ -1403,7 +1501,9 @@ def _verify_consent_token(
 
 def _decide_for_argv(argv: list[str], *, intent_text: str,
                      actor: str = "host",
-                     _validated_snapshot: ValidatedArgv | None = None) -> AdminDecision:
+                     _validated_snapshot: ValidatedArgv | None = None,
+                     request_text: object = _REQUEST_NOT_CHECKED,
+                     network_binding: NetworkTargetBinding | None = None) -> AdminDecision:
     """Variante di decide() che salta lo stage LLM: l'argv arriva GIA'
     concreto dal PLANNER (campo `command_proposed`). Esegue solo gate +
     safety lookup + (eventuale) approval card.
@@ -1420,6 +1520,11 @@ def _decide_for_argv(argv: list[str], *, intent_text: str,
         "user_text": intent_text,
         "source": "planner_argv",
     }
+    if network_binding is not None:
+        audit["network_target"] = {
+            "name": network_binding.name, "address": network_binding.address,
+            "sources": list(network_binding.sources),
+        }
 
     # gate sintattico sul JOIN (intent_text NON e' command line)
     # PLANNER-path: sudo/doas/pkexec come wrapper sono legittimi (e necessari
@@ -1457,6 +1562,8 @@ def _decide_for_argv(argv: list[str], *, intent_text: str,
         )
     return _evaluate_validated_argv(
         validated, audit=audit, intent_text=intent_text, actor=actor,
+        request_text=request_text,
+        network_binding=network_binding,
     )
 
 
@@ -1520,7 +1627,7 @@ def _format_credentials_required(domain: str, ctx: dict) -> str:
     riesce a invocare get_inputs (es. modulo dialog_pending mancante,
     storage non scrivibile). NON e' piu' il path UX principale.
 
-    Pattern dialog manager (CLAUDE.md §10.6, project_dialog_manager_authorization_ux):
+    Dialog-manager pattern (project rules §10.6, project_dialog_manager_authorization_ux):
     riga 1 = «cosa serve», riga 2-3 = parametri tecnici, riga 4 = come fornirle,
     riga 5 = alternative.
     """
@@ -1603,6 +1710,7 @@ def _invoke_impl(*, intent: str, command_proposed: str,
                  credentials_domain: str | None = None,
                  actor_consent_token: str | None = None,
                  actor: str = "host",
+                 request_text: str | None = None,
                  **_extra) -> dict:
     """Entrypoint per il PLANNER (ADR 0088).
 
@@ -1678,6 +1786,24 @@ def _invoke_impl(*, intent: str, command_proposed: str,
 
     try:
         validated = validate_argv(argv)
+        # Declared option defaults join the command before any card or
+        # consent, so what the user sees and approves is exactly what runs.
+        normalized = apply_declared_option_defaults(
+            validated.signature.binary, validated.command_argv)
+        if tuple(normalized) != tuple(validated.command_argv):
+            prefix = validated.argv[:len(validated.argv) - len(validated.command_argv)]
+            validated = validate_argv([*prefix, *normalized])
+        # Resolve before policy, card and consent: the displayed, signed and
+        # executed argv is one snapshot. Only this runtime-produced binding
+        # can justify an alias -> address substitution in request fidelity.
+        validated, network_binding = bind_network_target(validated, actor=audit_actor)
+    except NetworkTargetError as exc:
+        return {
+            "ok": False, "decision": "reject", "signature": "",
+            "argv": argv, "approval_required": False, "approval_card": None,
+            "summary": _msg(exc.code), "error_class": "invalid_args",
+            "error_code": exc.code,
+        }
     except ArgvValidationError as exc:
         return {
             "ok": False, "decision": "reject", "signature": "",
@@ -1838,6 +1964,9 @@ def _invoke_impl(*, intent: str, command_proposed: str,
                         "intent": intent or "",
                         "command_proposed": command_proposed or "",
                         "credentials_domain": target_domain,
+                        # Server-side pending state keeps the original
+                        # request, so the resumed call is judged on it too.
+                        "request_text": request_text or "",
                         # actor_consent_token NON va qui: l'orchestratore
                         # NON simula consent. Al resume, admin emette una
                         # carta vaglio standard (signature mount.cifs:
@@ -1874,6 +2003,8 @@ def _invoke_impl(*, intent: str, command_proposed: str,
     decision = _decide_for_argv(
         argv, intent_text=intent or "", actor=audit_actor,
         _validated_snapshot=validated,
+        request_text=request_text,
+        network_binding=network_binding,
     )
 
     # Caso A: signature gia' whitelisted/graylisted → execute via sudoer
@@ -2062,7 +2193,7 @@ def _format_card_summary(decision: AdminDecision, *, intent_text: str) -> str:
     """Genera una summary ~3 righe della carta vaglio per il PLANNER.
 
     Il PLANNER la ricicla nella final_answer del turno (cap-pending fase 1).
-    Pattern dialog manager (CLAUDE.md §10.6, project_dialog_manager_authorization_ux):
+    Dialog-manager pattern (project rules §10.6, project_dialog_manager_authorization_ux):
     riga 1 = «cosa», riga 2 = «come», riga 3 = «scelte».
     """
     argv_pretty = render_argv_for_display(

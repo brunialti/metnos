@@ -61,12 +61,90 @@ least ten minutes. This decision uses structured metadata, not words such as
  <tbody>
   <tr><td>The plan contains no action above the threshold.</td><td>Metnos uses the ordinary interactive path. LRE is not involved.</td></tr>
   <tr><td>The plan contains one independent long action; its executor is active, signed, and deterministic; its arguments, effect, and destination can be frozen.</td><td>Metnos creates the LRE plan during the turn, queues the workload, and returns a receipt. No profile is required.</td></tr>
+  <tr><td>The workload has an integrated LRE plan, such as photo indexing.</td><td>Metnos uses that resumable plan, with its steps and model bindings defined before startup. Access checks and resource limits still apply.</td></tr>
   <tr><td>The long action first requires approval.</td><td>Metnos suspends execution and requests approval. After approval, it checks the resumed plan again and, when eligible, hands it to LRE exactly once.</td></tr>
   <tr><td>The instance switch is disabled.</td><td>No new workload enters LRE. Ordinary chat and access to existing workload history continue to work.</td></tr>
-  <tr><td>The plan contains a long action, but also dependent actions, unresolved references, a model binding that is not fully frozen, or an ambiguous remote destination.</td><td>Metnos states that the workload was not started. It neither executes the long part through the interactive path nor promises recovery it cannot guarantee.</td></tr>
+  <tr><td>The workload has no integrated LRE plan and contains dependent actions, unresolved references, a model binding that is not fully frozen, or an ambiguous remote destination.</td><td>Metnos states that the long workload was not started. It neither executes the long part through the interactive path nor promises recovery it cannot guarantee.</td></tr>
   <tr><td>Configuration is invalid or the execution service is unavailable.</td><td>Admission fails with a precise explanation. No unit bypasses the check.</td></tr>
  </tbody>
 </table>
+
+<h2 id="photo-indexing">Photo indexing: first use and subsequent searches</h2>
+
+<p>Searching the <strong>content of photographs</strong> uses a persistent
+index: image descriptions, visual features and, when available, faces and
+location. Searching a filename or listing a directory does not require this
+preparation. The mere presence of photos in a directory does not mean their
+content has already been indexed.</p>
+
+<p>To search, name the archive and describe the content you want. For example:
+“In the holiday archive, find photos of mountains.” This is a search request:
+you do not need to issue an index-creation command first.</p>
+
+<h3 id="photo-first-search">First search and automatic indexing</h3>
+
+<p>Yes: at the first content search, Metnos automatically requests indexing
+if the local archive has no index. No manual start is needed: LRE, the
+long-running engine, handles preparation. LRE must be enabled, the archive
+accessible and the models configured. A receipt arrives only after admission;
+if a check fails, preparation has not started. A repeat request reuses the
+active workload; an empty result alone does not cause rebuilding. Work runs
+in the background and large archives may take hours. The outcome stays in the
+LRE console and is notified through available associated channels. A receipt
+does not mean the index is ready: wait for completion, then repeat the search.
+Subsequent searches reuse the index and are generally faster.</p>
+
+<h3 id="photo-indexing-resume">Small, resumable steps</h3>
+
+<p>LRE discovers the files in the background, prepares folder context and
+analyses the photos in small groups. Independent units may overlap within the
+configured resource limits; model capacity is not unlimited. Completed units
+and their verified outputs survive a worker restart, so processing can resume
+without repeating accepted work. The local vision model starts when needed
+and may stop after an idle period. The new index becomes visible only when its
+complete generation is published; an earlier complete index remains usable
+during a rebuild. A model or file error remains visible as a workload problem,
+not a successful index.</p>
+
+<h3 id="photo-indexing-duration">Why initial preparation can take a long time</h3>
+
+<p>Building the index requires reading and analysing the photographs. Duration
+depends on file count and size, the requested analyses, disk speed, models and
+available resources. Large archives can take a long time, including hours. Any
+estimate is indicative, not a guaranteed deadline; waiting must not be
+presented as an absence of matching results.</p>
+
+<h3 id="photo-indexing-progress">Asynchronous work, progress and completion notification</h3>
+
+<p>When processing is actually accepted by LRE, chat returns a receipt and the
+asynchronous engine continues the work separately: you can use Metnos for
+other requests or close the page. Status and outcome remain available in the
+LRE console; completion, completion-with-errors and failure notifications are
+delivered through Telegram when the owner has a valid association. A workload
+that was not admitted has not started and will not produce an indexing
+completion notification. The initial receipt does not mean the index is ready.</p>
+
+<h3 id="photo-index-reuse">Why subsequent searches are normally faster</h3>
+
+<p><strong>After indexing has completed</strong>, subsequent searches of the
+same archive reuse the work already done: they are normally much faster
+because they do not have to analyse every photo again. Merely issuing a second
+request is not enough if preparation is still running or has failed. New or
+modified photos require an index update; an incremental update reuses
+unchanged photos, while a full rebuild repeats the analysis. None of these
+operations makes every search instantaneous.</p>
+
+<p>Searching an existing index does not itself start an update on every
+request. You can ask Metnos to update the archive's index; the scheduled
+nightly maintenance also submits incremental indexing to LRE. Both an
+incremental update and a full rebuild can be substantial background jobs,
+so they use the same resumable processing and resource limits.</p>
+
+<p>An ordinary update does not request a full rebuild or a simulation.
+For example, “Update the photo index in this folder” keeps the incremental
+behaviour. Ask explicitly if you want all photos analysed again. The first
+chat response acknowledges the background job; it does not claim that the
+index has already been updated.</p>
 
 <h2 id="flow">What happens after a request</h2>
 

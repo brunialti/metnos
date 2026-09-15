@@ -275,6 +275,9 @@ def _discover(
     roots: Sequence[str | os.PathLike[str]],
     limits: InventoryLimits,
     checkpoint: Callable[[str], None],
+    *,
+    accept: Callable[[Path], bool] | None = None,
+    recursive: bool = True,
 ) -> tuple[_InventorySpool, int]:
     if (
         isinstance(roots, (str, bytes, os.PathLike))
@@ -308,6 +311,10 @@ def _discover(
 
     def add_candidate(path: Path, locator: str) -> None:
         nonlocal source_count
+        # Selection belongs to the approved caller, before counting, hashing,
+        # or granting a source. It cannot relax traversal and stability checks.
+        if accept is not None and not accept(path):
+            return
         try:
             locator_key = locator.encode("utf-8")
         except UnicodeEncodeError as exc:
@@ -388,6 +395,8 @@ def _discover(
                             if entry.is_symlink():
                                 continue
                             if entry.is_dir(follow_symlinks=False):
+                                if not recursive:
+                                    continue
                                 if depth >= limits.max_depth:
                                     raise InventorySealError(
                                         "inventory directory depth exceeds "
@@ -554,6 +563,8 @@ def seal_local_inventory(
     before_final_stat: Callable[[Path], None] | None = None,
     on_source: Callable[[Mapping[str, Any], Path], None] | None = None,
     checkpoint: Callable[[str], None] | None = None,
+    accept: Callable[[Path], bool] | None = None,
+    recursive: bool = True,
 ) -> Mapping[str, Any]:
     """Discover and seal regular local files without persisting absolute paths."""
 
@@ -569,10 +580,16 @@ def seal_local_inventory(
         )
     if on_source is not None and not callable(on_source):
         raise InventorySealError("on_source must be callable")
+    if accept is not None and not callable(accept):
+        raise InventorySealError("accept must be callable")
+    if type(recursive) is not bool:
+        raise InventorySealError("recursive must be a boolean")
     fault = checked_checkpoint(checkpoint)
 
     fault("inventory_before_discovery")
-    spool, source_count = _discover(roots, limits, fault)
+    spool, source_count = _discover(
+        roots, limits, fault, accept=accept, recursive=recursive,
+    )
     total_bytes = 0
     ordinal = 0
     try:

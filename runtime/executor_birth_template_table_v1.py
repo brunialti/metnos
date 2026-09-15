@@ -4,9 +4,9 @@ Group 2 left ``template_allowlist`` in the admission context as an identity
 with nothing behind it: it listed no template, so changing its digest
 governed no resolution at all.
 
-The two templates that exist are owned here, once: the program the Linux
-runner launches inside the sandbox, and the instruction the isolated
-semantic reviewer receives.  A consumer obtains one only by naming an
+The templates are owned here, once: the Linux launcher, the functional stdin
+adapter, and the instruction the isolated semantic reviewer receives.
+A consumer obtains one only by naming an
 admitted identifier; an unlisted name is a refusal, not an empty string.
 The digest is derived from the text itself, so what the context attests and
 what actually runs cannot drift apart.
@@ -26,6 +26,12 @@ TEMPLATE_TABLE_DOMAIN_V1 = b"metnos.executor-birth.template-table/v1\0"
 _RUNNER_LAUNCHER_V1 = """
 import json, os, subprocess, sys
 scope, status, *args = sys.argv[1:]
+# The administrator temporarily adopts the service's effective identity.
+# A child must not retain its real/saved root identity: bwrap refuses mixed
+# IDs, and a candidate must never be able to regain administrative rights.
+uid, gid = os.geteuid(), os.getegid()
+os.setresgid(gid, gid, gid)
+os.setresuid(uid, uid, uid)
 open(scope + '/cgroup.procs', 'w').write(str(os.getpid()))
 r, w = os.pipe()
 args = [str(w) if item == '{STATUS_FD}' else item for item in args]
@@ -64,8 +70,23 @@ exactly: verdict, observed_effects, undeclared_effects, reason, tests, confidenc
 Tests contain only test_id, kind (example or metamorphic), and description.
 """
 
+_FUNCTIONAL_STDIN_V1 = """
+import os, pathlib, runpy, sys
+root = pathlib.Path(__file__).resolve().parent
+entrypoint = root / sys.argv[1]
+# Fixed paths wholly inside the private work area, never caller environment.
+os.environ['METNOS_WORKSPACE'] = str(pathlib.Path.cwd() / 'workspace')
+sys.path.insert(0, str(root / 'runtime'))
+sys.path.insert(1, str(root))
+sys.argv = [str(entrypoint)]
+with (root / '_metnos_functional_input.json').open('rb') as source:
+    os.dup2(source.fileno(), 0)
+    runpy.run_path(str(entrypoint), run_name='__main__')
+"""
+
 TEMPLATE_TABLE_V1: Mapping[str, str] = MappingProxyType({
     "runner.linux_launcher": _RUNNER_LAUNCHER_V1,
+    "runner.functional_stdin": _FUNCTIONAL_STDIN_V1,
     "semantic_review.system": _SEMANTIC_REVIEW_SYSTEM_V1,
 })
 

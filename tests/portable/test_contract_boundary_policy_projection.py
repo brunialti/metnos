@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT = ROOT / "runtime" / "executor_birth_admin_preflight.py"
 TOOL = ROOT / "internal" / "tools" / "render_contract_boundary_policy.py"
 GOLDEN_DIGEST_V1 = (
-    "sha256:b23324d1233d82884912664dd7191b2a454bcdbee35a2934d62821c47957fff1"
+    "sha256:c87b10ccac70f19288d37d470873be47440050755bc03ded686efb4bf6f88448"
 )
 
 POLICY_NAMES = (

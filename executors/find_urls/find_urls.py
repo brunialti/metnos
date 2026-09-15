@@ -45,6 +45,7 @@ import fnmatch
 import http.cookiejar
 import json
 import math
+import mimetypes
 import os
 import re
 import sys
@@ -109,14 +110,12 @@ SEARXNG_URL_DEFAULT = _service_endpoint("searxng", include_env=False)
 # max_request_timeout istanza) lascia completare l'aggregazione. Tuning via env
 # senza re-sign (report searxng 4/6 §5.A.2/§5.A.4; §7.11 config-hierarchy).
 SEARXNG_TIMEOUT_S = float(os.environ.get("METNOS_SEARXNG_TIMEOUT_S", "12.0"))
-# Budget di tempo del rerank LLM: oltre questo, fallback all'ordine SearXNG.
-# Senza budget, sotto contesa GPU col planner la chat si appende e
-# l'executor va in timeout (bug ARK/people-search). Override via env.
+# A relevance timeout is an explicit dependency failure, never permission to
+# present unverified candidates.  The gateway receives this actual deadline.
 _RERANK_TIMEOUT_S = float(os.environ.get("METNOS_FINDURLS_RERANK_TIMEOUT_S", "8.0"))
-# Risultati FINALI (seed per BFS). NB: il rerank NON è affamato da questo — vede
-# `wide_n` candidati (METNOS_FIND_URLS_RERANK_WIDE, default 30) e ne promuove i
-# migliori top_n (recupera i rank 6-15: report §7 crit.1 già soddisfatto). Default
-# 5 invariato; env-override per tuning senza re-sign (report §5.A.4).
+_RERANK_MIN_SCORE = 0.3
+# The final result cap is independent of the wider relevance candidate pool.
+# Explicit crawl modes may also use these vetted URLs as their starting set.
 SEARXNG_TOP_N = int(os.environ.get("METNOS_SEARXNG_TOP_N", "5"))
 
 
@@ -665,35 +664,34 @@ def _within_window(epoch: float | None, window: str) -> bool:
 # ─── BM25 scoring ───────────────────────────────────────────────────────
 
 def _tokenize(s: str) -> list[str]:
-    return re.findall(r"[a-zA-ZÀ-ſ]{2,}", (s or "").lower())
+    return re.findall(r"[^\W\d_]{2,}", (s or "").casefold())
 
 
-def _bm25_score(query_terms: list[str], docs: list[str], doc_idx: int,
-                k1: float = 1.5, b: float = 0.75) -> float:
-    """BM25 minimale: doc i' tokens, calcoliamo idf su tutti i docs."""
+def _bm25_scores(query_terms: list[str], docs: list[str],
+                 k1: float = 1.5, b: float = 0.75) -> list[float]:
+    """Score a collection with one tokenization and one document-frequency pass."""
     if not query_terms or not docs:
-        return 0.0
-    tokenized = [_tokenize(d) for d in docs]
-    doc_lens = [len(t) for t in tokenized]
+        return [0.0] * len(docs)
+    counts = [collections.Counter(_tokenize(doc)) for doc in docs]
+    doc_lens = [sum(counter.values()) for counter in counts]
     avgdl = sum(doc_lens) / max(1, len(doc_lens))
     n_docs = len(docs)
-    score = 0.0
-    if doc_idx >= len(tokenized):
-        return 0.0
-    doc_tokens = tokenized[doc_idx]
-    if not doc_tokens:
-        return 0.0
-    for term in query_terms:
-        df = sum(1 for t in tokenized if term in t)
-        if df == 0:
-            continue
-        idf = math.log((n_docs - df + 0.5) / (df + 0.5) + 1)
-        tf = doc_tokens.count(term)
-        if tf == 0:
-            continue
-        denom = tf + k1 * (1 - b + b * doc_lens[doc_idx] / max(1, avgdl))
-        score += idf * (tf * (k1 + 1)) / denom
-    return score
+    frequency = collections.Counter(term for counter in counts for term in counter)
+    weights = {
+        term: math.log((n_docs - frequency[term] + 0.5) / (frequency[term] + 0.5) + 1)
+        for term in query_terms if frequency[term]
+    }
+    scores = []
+    for counter, length in zip(counts, doc_lens):
+        score = 0.0
+        for term in query_terms:
+            tf = counter[term]
+            if not tf:
+                continue
+            denom = tf + k1 * (1 - b + b * length / max(1, avgdl))
+            score += weights[term] * (tf * (k1 + 1)) / denom
+        scores.append(score)
+    return scores
 
 
 # ─── Path filtering ─────────────────────────────────────────────────────
@@ -857,7 +855,7 @@ def _deep_search_phase(entries: list, topic_terms: list[str], *,
         # BM25 content (su singolo doc sintetico).
         text_low = text.lower()
         hit_terms = [t for t in topic_terms if t in text_low]
-        bm25 = _bm25_score(topic_terms, [text], 0)
+        bm25 = _bm25_scores(topic_terms, [text])[0]
         # Embedding cosine.
         cos = 0.0
         if query_vec is not None and emb is not None:
@@ -951,7 +949,8 @@ def _time_window_to_searxng_range(window: str) -> str | None:
 def _searxng_search_full(query: str, top_n: int = SEARXNG_TOP_N,
                           base_url: str | None = None,
                           timeout_s: float = SEARXNG_TIMEOUT_S,
-                          time_range: str | None = None
+                          time_range: str | None = None,
+                          metadata: dict | None = None,
                           ) -> tuple[list[dict], str | None]:
     """Interroga SearXNG e ritorna ([{url, title, snippet}], error_class).
 
@@ -968,7 +967,8 @@ def _searxng_search_full(query: str, top_n: int = SEARXNG_TOP_N,
     # "AMD ROCm" → congressi medici IT invece di AMD-chip/ROCm). La lingua giusta
     # è un OUTCOME della rilevanza (rerank topico + relevance-gate), non un input
     # da indovinare. Override esplicito a 'all' = neutro multi-lingua.
-    params = {"q": query, "format": "json", "language": "all"}
+    params = {"q": query, "format": "json", "language": "all",
+              "categories": "general"}
     if time_range:
         params["time_range"] = time_range
     qs = urllib.parse.urlencode(params)
@@ -988,6 +988,9 @@ def _searxng_search_full(query: str, top_n: int = SEARXNG_TOP_N,
     items = data.get("results") if isinstance(data, dict) else None
     if not isinstance(items, list):
         return ([], "search_backend_invalid")
+    if metadata is not None:
+        metadata["backend_result_count"] = len(items)
+        metadata["unresponsive_engines"] = data.get("unresponsive_engines", [])
     blocked = _load_json(BLOCKED_FILE) or {}
     blocked_hosts = blocked.get("hosts", []) if isinstance(blocked, dict) else []
     out: list[dict] = []
@@ -1009,46 +1012,46 @@ def _searxng_search_full(query: str, top_n: int = SEARXNG_TOP_N,
             continue
         title = str(it.get("title") or "")[:300]
         snippet = str(it.get("content") or "")[:600]
-        out.append({"url": u, "title": title, "snippet": snippet})
+        sources = it.get("engines") or [it.get("engine")]
+        if isinstance(sources, str):
+            sources = [sources]
+        if not isinstance(sources, list):
+            sources = []
+        out.append({
+            "url": u, "title": title, "snippet": snippet,
+            "search_engines": [s for s in sources if isinstance(s, str)],
+            "lastmod": _parse_iso_to_epoch(str(it.get("publishedDate") or "")),
+        })
         if len(out) >= top_n:
             break
-    if not out:
-        return ([], "search_backend_invalid")
     return (out, None)
 
 
 def _llm_rerank_candidates(user_query: str, candidates: list[dict],
                            top_k: int = 10) -> tuple[list[str], dict]:
-    """Re-rank LLM general-purpose dei candidati SearXNG (ADR 0118).
+    """Select relevant candidates; a valid empty selection is authoritative.
 
-    Lingua/dominio/topic-agnostic: il modello (Gemma 4 26B locale)
-    riceve query + [{url, title, snippet}] e ritorna `{top: [{url, score}]}`.
-
-    Ritorna (urls_ordered, meta). Su qualsiasi errore (LLM down, JSON
-    malformato, top vuoto) ritorna i candidati nell'ordine originale —
-    non blocca mai il flusso (graceful degradation §2.8 invariata: il
-    fallback non e' silenzioso, finisce in `meta.error`).
+    A failed relevance check has no approved URLs. The caller must report
+    that failure instead of turning unverified candidates into search hits.
     """
     if not candidates:
         return ([], {"used": False, "reason": "no_candidates"})
     n = len(candidates)
-    if n <= 1:
-        return ([c["url"] for c in candidates],
-                {"used": False, "reason": "trivial_size"})
     try:
         # runtime/ già su sys.path dalla bootstrap a riga 380 (METNOS_RUNTIME-aware).
         from prompt_loader import get as _prompt_get  # type: ignore
         from llm_helpers import call_llm as _call_llm  # type: ignore
         from config import DEFAULT_LANG as _lang  # type: ignore
     except Exception as ex:
-        return ([c["url"] for c in candidates],
+        return ([],
                 {"used": False, "reason": "import_failed",
                  "error": repr(ex)[:120]})
 
     try:
-        prompt = _prompt_get("web_rerank", _lang or "it", top_k=top_k)
+        prompt = _prompt_get("web_rerank", _lang or "it", top_k=top_k,
+                             min_score=_RERANK_MIN_SCORE)
     except Exception as ex:
-        return ([c["url"] for c in candidates],
+        return ([],
                 {"used": False, "reason": "prompt_failed",
                  "error": repr(ex)[:120]})
 
@@ -1069,9 +1072,11 @@ def _llm_rerank_candidates(user_query: str, candidates: list[dict],
         text, meta = _call_llm(
             payload, prompt, tier=tier_for("urls.rerank"),
             max_tokens=900,
+            max_query_chars=65536,
+            timeout_s=_RERANK_TIMEOUT_S,
         )
     except Exception as ex:
-        return ([c["url"] for c in candidates],
+        return ([],
                 {"used": False, "reason": "llm_unavailable",
                  "error": repr(ex)[:120]})
 
@@ -1092,18 +1097,17 @@ def _llm_rerank_candidates(user_query: str, candidates: list[dict],
             try:
                 obj = json.loads(raw[i:j + 1])
             except json.JSONDecodeError:
-                return ([c["url"] for c in candidates],
+                return ([],
                         {"used": False, "reason": "json_invalid",
                          "raw_head": raw[:200]})
         else:
-            return ([c["url"] for c in candidates],
+            return ([],
                     {"used": False, "reason": "json_invalid",
                      "raw_head": raw[:200]})
 
     top = obj.get("top") if isinstance(obj, dict) else None
-    if not isinstance(top, list) or not top:
-        return ([c["url"] for c in candidates],
-                {"used": False, "reason": "empty_top"})
+    if not isinstance(top, list):
+        return ([], {"used": False, "reason": "invalid_top"})
 
     valid_urls = {c["url"] for c in candidates}
     seen_out: set[str] = set()
@@ -1112,30 +1116,116 @@ def _llm_rerank_candidates(user_query: str, candidates: list[dict],
         if not isinstance(item, dict):
             continue
         u = item.get("url")
-        s = item.get("score", 0.0)
+        s = item.get("score")
         if not isinstance(u, str) or u not in valid_urls or u in seen_out:
             continue
         try:
             sc = float(s)
         except (TypeError, ValueError):
-            sc = 0.0
+            continue
+        if isinstance(s, bool) or not math.isfinite(sc) or not 0.0 <= sc <= 1.0:
+            continue
         ranked.append((u, sc))
         seen_out.add(u)
 
-    if not ranked:
-        return ([c["url"] for c in candidates],
+    if top and not ranked:
+        return ([],
                 {"used": False, "reason": "no_valid_in_top"})
 
+    ranked = [(u, score) for u, score in ranked if score >= _RERANK_MIN_SCORE]
     ranked.sort(key=lambda t: t[1], reverse=True)
     urls_ordered = [u for (u, _) in ranked[:top_k]]
     return (urls_ordered, {
         "used": True,
         "n_candidates": n,
         "n_kept": len(urls_ordered),
+        "reason": "selected" if urls_ordered else "no_relevant_candidates",
+        "scores": {u: score for u, score in ranked[:top_k]},
         "in_tokens": meta.get("in_tokens"),
         "out_tokens": meta.get("out_tokens"),
         "latency_ms": meta.get("latency_ms"),
     })
+
+
+def _search_failure(query: str, error_class: str, metadata: dict) -> dict:
+    """Keep empty search results distinct from an unavailable dependency."""
+    out = {
+        "ok": False, "ok_count": 0, "entries": [],
+        "error_class": error_class, "search_query": query,
+        "metadata": metadata,
+    }
+    if error_class == "search_no_results":
+        out["error"] = _msg("MSG_NO_RESULTS")
+    else:
+        out["error_code"] = "ERR_EXT_SVC_UNAVAILABLE"
+        out["error"] = _msg("ERR_EXT_SVC_UNAVAILABLE")
+    return out
+
+
+def _search_results(candidates: list[dict], urls: list[str], metadata: dict,
+                    args: dict, topic_terms: list[str]) -> dict:
+    """Project verified search hits without downloading or expanding their pages."""
+    by_url = {item["url"]: item for item in candidates}
+    selected = [by_url[url] for url in urls if url in by_url]
+    docs = [f"{item.get('title', '')} {item.get('snippet', '')}" for item in selected]
+    lexical_scores = _bm25_scores(topic_terms, docs)
+    relevance_scores = metadata.get("rerank", {}).get("scores", {})
+    path_include = args.get("path_include") or []
+    path_exclude = args.get("path_exclude", _DEFAULT_PATH_EXCLUDE) or []
+    time_window = str(args.get("time_window", "all"))
+    min_score = args.get("min_score")
+    max_per_domain = max(0, int(args.get("max_per_domain", 3) or 0))
+    per_domain: collections.Counter = collections.Counter()
+    entries = []
+    for candidate, lexical_score in zip(selected, lexical_scores):
+        url = candidate["url"]
+        parsed = urllib.parse.urlparse(url)
+        path = parsed.path or "/"
+        if _matches_any(path, path_exclude):
+            continue
+        if path_include and not _matches_any(path, path_include):
+            continue
+        if not _within_window(candidate.get("lastmod"), time_window):
+            continue
+        if min_score is not None and lexical_score < float(min_score):
+            continue
+        domain = ".".join((parsed.hostname or "").split(".")[-2:])
+        if max_per_domain and per_domain[domain] >= max_per_domain:
+            continue
+        per_domain[domain] += 1
+        ext = _doc_ext_for(url)
+        entries.append({
+            **candidate, "rank": len(entries) + 1,
+            "score": relevance_scores.get(url, lexical_score),
+            "depth": 0, "fetched_at": None,
+            "content_type": mimetypes.guess_type(path)[0] or "",
+            "is_document": ext is not None, "doc_ext": ext or "",
+        })
+    metadata = {**metadata, "max_depth_used": 0, "pages_fetched": 0,
+                "time_window": time_window, "topic_terms": topic_terms}
+    if not entries:
+        return _search_failure(metadata["search_query"], "search_no_results", metadata)
+    cap = int(args.get("max_pages") or 0)
+    limit = min(cap, len(entries)) if cap > 0 else len(entries)
+    visible = entries[:limit]
+    out = {
+        "ok": True, "ok_count": len(visible), "fail_count": 0,
+        "entries": visible, "discovery_strategy": "search",
+        "discovered_documents": [
+            {"url": e["url"], "ext": e["doc_ext"], "anchor_text": e["title"],
+             "score": e["score"], "parent_url": ""}
+            for e in visible if e["is_document"]
+        ],
+        "robots_skipped": [], "metadata": metadata,
+    }
+    if len(entries) > limit:
+        out.update({
+            "truncated": True, "truncated_what": _msg("MSG_OBJECT_URLS"),
+            "used": limit, "available_total": len(entries),
+            "cap_field": "max_pages", "cap_value": cap,
+            "truncated_intentional": True,
+        })
+    return out
 
 
 # ─── Main invoke ────────────────────────────────────────────────────────
@@ -1149,10 +1239,7 @@ def _invoke_default(args: dict) -> dict:
     if not isinstance(seed_urls, list):
         seed_urls = []
 
-    # SearXNG seed-discoverer (ADR 0115): se l'utente ha passato
-    # `search_query`, interroga SearXNG per ottenere i top-N URL e usali
-    # come seed. Se anche `seed_urls` e' settato, i risultati di SearXNG
-    # vengono PRIMA (probabilmente piu' rilevanti per la query).
+    # Search owns its candidate sources; caller seeds belong to explicit crawl.
     # Robustezza NL→determinismo (§2.4): il planner a volte emette `query`
     # (alias naturale) invece del canonico `search_query`. Senza questo
     # alias la query web cadeva in invalid_args→terminator ("Pipeline
@@ -1177,6 +1264,7 @@ def _invoke_default(args: dict) -> dict:
         wide_n = 30
     wide_n = max(top_n, min(50, wide_n))
     search_meta: dict = {}
+    candidates_full: list[dict] = []
     if isinstance(search_query, str) and search_query.strip():
         # Fetch wide-N (default 30) per dare materiale al re-rank.
         # Se rerank disabilitato, equivalente al vecchio comportamento.
@@ -1187,68 +1275,35 @@ def _invoke_default(args: dict) -> dict:
         _sx_tr = _time_window_to_searxng_range(
             str(args.get("time_window", "all")),
         )
+        backend_meta: dict = {}
+        search_started = time.monotonic()
         candidates_full, err_class = _searxng_search_full(
             search_query.strip(), top_n=n_fetch, time_range=_sx_tr,
+            metadata=backend_meta,
         )
+        search_ms = round((time.monotonic() - search_started) * 1000)
         urls_from_search: list[str] = [c["url"] for c in candidates_full]
         rerank_meta: dict = {"used": False, "reason": "disabled"}
-        if err_class is None and rerank_on and len(candidates_full) > top_n:
-            urls_ranked, rerank_meta = _llm_rerank_candidates(
+        rerank_started = time.monotonic()
+        if err_class is None and rerank_on and candidates_full:
+            urls_from_search, rerank_meta = _llm_rerank_candidates(
                 search_query.strip(), candidates_full, top_k=top_n,
             )
-            if rerank_meta.get("used"):
-                urls_from_search = urls_ranked
-            else:
-                # Fallback: tronca a top_n dell'ordine originale SearXNG.
-                urls_from_search = urls_from_search[:top_n]
+            if not rerank_meta.get("used"):
+                err_class = "search_relevance_unavailable"
         else:
             urls_from_search = urls_from_search[:top_n]
-        if err_class is None:
-            # 10/5/2026 fix architetturale (Roberto): in `search_query`
-            # mode, SearXNG e' la fonte autoritativa dei seed_urls. I
-            # seed_urls passati dal caller (tipicamente PLANNER guess
-            # dal training, es. `https://www.usr.lazio.it/`) introducono
-            # bias non verificabile. Politica: DROP universale dei caller
-            # seeds quando search_query e' driver primario. SearXNG sa
-            # piu' di Gemma su quale dominio ha la risposta.
-            #
-            # Caso d'uso «cerca su sito X argomento Y» rimane supportato
-            # senza search_query (mode=deep_search con seed_urls=[X] +
-            # topic=[Y]) — vedi planner.j2 (B/B.bis).
-            caller_seeds_dropped = list(seed_urls)
-            seed_urls = list(urls_from_search)
-            search_meta = {
-                "search_query": search_query.strip(),
-                "search_results_used": len(urls_from_search),
-                "search_top_n": top_n,
-                "search_wide_n": n_fetch,
-                "rerank": rerank_meta,
-                "caller_seeds_dropped": caller_seeds_dropped,
-            }
-        else:
-            # Backend non disponibile: se l'utente NON ha fornito seed_urls,
-            # non possiamo procedere. §2.8 no silent failure.
-            if not seed_urls:
-                return {
-                    "ok": False,
-                    "error": (
-                        "search backend unavailable "
-                        "(SearXNG @ "
-                        f"{_service_endpoint('searxng')})"
-                        " and no seed_urls fallback"
-                    ),
-                    "error_class": err_class,
-                    "entries": [],
-                    "search_query": search_query.strip(),
-                }
-            # Backend down ma seed_urls esistono: procedi con quelli e
-            # segnala warning nei metadata (no fatal).
-            search_meta = {
-                "search_query": search_query.strip(),
-                "search_results_used": 0,
-                "search_top_n": top_n,
-                "search_error_class": err_class,
-            }
+        search_meta = {
+            **backend_meta, "search_query": search_query.strip(),
+            "search_results_used": len(urls_from_search),
+            "search_top_n": top_n, "search_wide_n": n_fetch,
+            "rerank": rerank_meta, "caller_seeds_dropped": list(seed_urls),
+            "timings_ms": {"search": search_ms,
+                           "rerank": round((time.monotonic() - rerank_started) * 1000)},
+        }
+        if err_class is not None:
+            return _search_failure(search_query.strip(), err_class, search_meta)
+        seed_urls = list(urls_from_search)
 
     # 10/5/2026 fix universale: droppa seed_urls che sono home di motori
     # di ricerca (Google.it, Bing, ...). Vale ANCHE quando search_query
@@ -1273,17 +1328,7 @@ def _invoke_default(args: dict) -> dict:
         # risultati (o e' down e nessun fallback). PLANNER deve passare a
         # final_answer onesto, niente retry stesso tool.
         if isinstance(search_query, str) and search_query.strip():
-            return {
-                "ok": False,
-                "error": (
-                    f"motore di ricerca senza risultati per "
-                    f"'{search_query.strip()[:80]}'. "
-                    f"Riformula la query con dettagli specifici (sito, tipo file, ente)."
-                ),
-                "error_class": "search_no_results",
-                "entries": [],
-                "search_query": search_query.strip(),
-            }
+            return _search_failure(search_query.strip(), "search_no_results", search_meta)
         return {
             "ok": False,
             "error": _msg("ERR_ARG_MISSING_ONE_OF", options="seed_urls, search_query"),
@@ -1308,18 +1353,12 @@ def _invoke_default(args: dict) -> dict:
         topic_terms = _tokenize(search_query)
 
     mode = args.get("mode", "default")
+    if (search_meta and mode == "default"
+            and int(args.get("max_depth") or 0) == 0):
+        return _search_results(candidates_full, seed_urls, search_meta, args, topic_terms)
     trust = args.get("trust", "auto")
-    # 10/5/2026: quando search_query guida la ricerca E il caller non
-    # ha specificato max_depth, default a 1 (SearXNG roots + 1 hop di
-    # cross-link). Sufficiente per scoprire documenti linkati dalle
-    # pagine risultato (PDF circolari linkate da news aggregator). Non
-    # rumoroso perche' search engine homes gia' filtrate dai seeds e
-    # `same_origin_only=True` (default) limita ai domini SearXNG.
-    if (isinstance(search_query, str) and search_query.strip()
-            and "max_depth" not in args):
-        max_depth = 1
-    else:
-        max_depth = max(0, min(10, int(args.get("max_depth", 2))))
+    # Ordinary search returned above. This branch handles explicit crawling.
+    max_depth = max(0, min(10, int(args.get("max_depth", 2))))
     same_origin_only = bool(args.get("same_origin_only", True))
     include_subdomains = bool(args.get("include_subdomains", True))
     path_include = args.get("path_include") or []
@@ -1823,8 +1862,8 @@ def _invoke_default(args: dict) -> dict:
     if topic_terms:
         # BM25: doc = title + " " + snippet
         docs = [(e.get("title", "") + " " + e.get("snippet", "")) for e in entries]
-        for i, e in enumerate(entries):
-            base = _bm25_score(topic_terms, docs, i)
+        scores = _bm25_scores(topic_terms, docs)
+        for e, base in zip(entries, scores):
             # bonus se la keyword appare nel path o nel netloc dell'URL: peso
             # forte (5.0) perche' quando title+snippet non matchano (es.
             # homepage di un giornale) il path/sub-domain e' l'unico segnale

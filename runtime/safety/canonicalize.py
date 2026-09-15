@@ -88,6 +88,94 @@ _BINARY_TARGET_HINTS: dict[tuple[str, str], str] = {
     (h["binary"], h["subcommand"]): h["target_kind"]
     for h in _RULES["binary_target_hints"]
 }
+_OPTION_NUMERIC_VALUES: dict[str, dict[str, float | None]] = {
+    binary: {option: (None if default is None else float(default))
+             for option, default in options.items()}
+    for binary, options in _RULES.get("option_numeric_values", {}).items()
+}
+_NUMERIC_VALUE_RE = re.compile(r"\d+(?:\.\d+)?")
+
+
+def apply_declared_option_defaults(
+    binary: str, command_argv: tuple[str, ...] | list[str],
+) -> tuple[str, ...]:
+    """Return ``command_argv`` with each declared default added when absent.
+
+    Derived from the argv alone, so the same proposal always yields the same
+    command.  An option already present, separated or attached (``-c 3`` or
+    ``-c3``), is never overridden.  Missing defaults follow the binary.
+    """
+    argv = tuple(command_argv)
+    added: list[str] = []
+    for option, default in _OPTION_NUMERIC_VALUES.get(binary, {}).items():
+        if default is None:
+            continue
+        present = any(
+            token == option
+            or (len(option) == 2 and token.startswith(option) and len(token) > 2)
+            for token in argv[1:]
+        )
+        if not present:
+            added += [option, str(int(default)) if default.is_integer() else str(default)]
+    return argv[:1] + tuple(added) + argv[1:] if added else argv
+
+
+def declared_numeric_option_values(
+    binary: str, command_argv: tuple[str, ...] | list[str],
+) -> dict[int, float | None]:
+    """Map the index of each declared numeric option value to its default.
+
+    Only the separated form (``-c 4``) of an option listed for ``binary`` in
+    ``option_numeric_values`` qualifies, and only for a plain decimal number.
+    The mapped default is the approved value when the request states none,
+    or None.  Every other token, attached forms like ``-c4`` included, stays
+    an operand.
+    """
+    declared = _OPTION_NUMERIC_VALUES.get(binary, {})
+    argv = tuple(command_argv)
+    return {
+        index + 1: declared[argv[index]]
+        for index in range(1, len(argv) - 1)
+        if argv[index] in declared and _NUMERIC_VALUE_RE.fullmatch(argv[index + 1])
+    }
+
+
+
+def command_grammar_numeric_binaries() -> frozenset[str]:
+    """Commands with declared numeric arguments; syntax, never permission."""
+    return frozenset(binary for binary, options in _OPTION_NUMERIC_VALUES.items()
+                     if options)
+
+
+def declared_network_target_index(binary: str, command_argv) -> int | None:
+    """Locate one declared network operand without mistaking an option value."""
+    spec = _RULES.get("network_target_commands", {}).get(binary)
+    if not isinstance(spec, dict):
+        return None
+    value_options = set(spec["value_options"])
+    boolean_options = set(spec["boolean_options"])
+    positional = []
+    index = 1
+    options = True
+    while index < len(command_argv):
+        token = command_argv[index]
+        if options and token == "--":
+            options = False
+        elif options and token.startswith("-"):
+            if token in value_options:
+                index += 1
+                if index == len(command_argv):
+                    return None
+            elif token in boolean_options:
+                pass
+            elif len(token) > 2 and token[:2] in value_options:
+                pass
+            else:
+                return None
+        else:
+            positional.append(index)
+        index += 1
+    return positional[0] if len(positional) == 1 else None
 
 
 def command_grammar_binaries() -> frozenset[str]:

@@ -35,6 +35,14 @@ TIME_RESOLVER_CONCEPTS = (
     "parser.time.past_postfix.m",
     "parser.time.past_postfix.y",
     "parser.time.relative_day",
+    "parser.time.number",
+    "parser.time.weekday",
+    "parser.time.direction",
+    "parser.time.calendar_period",
+    "parser.time.month",
+    "parser.time.future_offset_prefix",
+    "parser.time.future_determiner",
+    "parser.time.past_offset_suffix",
     "parser.time.absolute_year_prefix",
     "parser.time.absolute_year_suffix",
 )
@@ -103,6 +111,11 @@ _KINDS = {
     "parser.time.past_postfix.m": "phrases",
     "parser.time.past_postfix.y": "phrases",
     "parser.time.relative_day": "mapping",
+    "parser.time.number": "mapping",
+    "parser.time.weekday": "mapping",
+    "parser.time.direction": "mapping",
+    "parser.time.calendar_period": "mapping",
+    "parser.time.month": "mapping",
     "parser.time.absolute_year_prefix": "phrases",
     "parser.time.absolute_year_suffix": "phrases",
     "parser.time.range_connector": "mapping",
@@ -135,6 +148,23 @@ _KINDS = {
 }
 
 _registered_target: tuple[str, int] | None = None
+
+
+def register_temporal_messages() -> None:
+    """Versioned UI sources for the common temporal selection form."""
+    import i18n
+    i18n.register_key_if_missing("MSG_TEMPORAL_TITLE",
+                                "Chiarisci data o intervallo", "Clarify date or interval")
+    i18n.register_key_if_missing("MSG_TEMPORAL_CHOOSE",
+                                "Quale data o intervallo intendi per {field}?",
+                                "Which date or interval do you mean for {field}?")
+    for kind, text_it, text_en in (
+        ("DATE", "la data", "the date"),
+        ("DATE_TIME", "la data e l'ora", "the date and time"),
+        ("WINDOW", "il periodo", "the period"),
+        ("TIMEZONE", "il fuso orario", "the timezone"),
+    ):
+        i18n.register_key_if_missing("MSG_TEMPORAL_FIELD_" + kind, text_it, text_en)
 
 
 def register_all() -> None:
@@ -239,6 +269,8 @@ def register_all() -> None:
       en=["last", "past"])
     R("parser.time.unit", "mapping", match_mode="word",
       it={
+          "s": ["secondo", "secondi", "s"],
+          "min": ["minuto", "minuti", "min"],
           "h": ["ora", "ore", "h"],
           "d": ["giorno", "giorni", "gg", "d"],
           "w": ["settimana", "settimane", "sett", "w"],
@@ -246,6 +278,8 @@ def register_all() -> None:
           "y": ["anno", "anni", "y"],
       },
       en={
+          "s": ["second", "seconds", "sec", "s"],
+          "min": ["minute", "minutes", "mins", "min"],
           "h": ["hour", "hours", "hr", "hrs", "h"],
           "d": ["day", "days", "d"],
           "w": ["week", "weeks", "w"],
@@ -267,8 +301,58 @@ def register_all() -> None:
         R(f"parser.time.past_postfix.{unit}", "phrases", match_mode="word",
           it=forms, en=forms)
     R("parser.time.relative_day", "mapping", match_mode="word",
-      it={"today": ["oggi"], "yesterday": ["ieri"]},
-      en={"today": ["today"], "yesterday": ["yesterday"]})
+      it={"today": ["oggi"], "yesterday": ["ieri"],
+          "tomorrow": ["domani"], "today+2d": ["dopodomani", "dopo domani"],
+          "today-2d": ["avantieri", "l'altro ieri", "l’altro ieri"]},
+      en={"today": ["today"], "yesterday": ["yesterday"],
+          "tomorrow": ["tomorrow"], "today+2d": ["the day after tomorrow", "day after tomorrow"],
+          "today-2d": ["the day before yesterday", "day before yesterday"]})
+    # Cardinal surfaces are localization data, not branches in a parser.
+    R("parser.time.number", "mapping", match_mode="word",
+      it={"0": ["zero"], "1": ["uno", "una", "un", "un'", "un’"],
+          "2": ["due"], "3": ["tre"], "4": ["quattro"], "5": ["cinque"],
+          "6": ["sei"], "7": ["sette"], "8": ["otto"], "9": ["nove"],
+          "10": ["dieci"], "11": ["undici"], "12": ["dodici"],
+          "13": ["tredici"], "14": ["quattordici"], "15": ["quindici"],
+          "16": ["sedici"], "17": ["diciassette"], "18": ["diciotto"],
+          "19": ["diciannove"], "20": ["venti"]},
+      en={"0": ["zero"], "1": ["one", "a", "an"], "2": ["two"],
+          "3": ["three"], "4": ["four"], "5": ["five"], "6": ["six"],
+          "7": ["seven"], "8": ["eight"], "9": ["nine"], "10": ["ten"],
+          "11": ["eleven"], "12": ["twelve"], "13": ["thirteen"],
+          "14": ["fourteen"], "15": ["fifteen"], "16": ["sixteen"],
+          "17": ["seventeen"], "18": ["eighteen"], "19": ["nineteen"],
+          "20": ["twenty"]})
+    R("parser.time.weekday", "mapping", match_mode="word",
+      it={"0": ["lunedì", "lunedi", "lunedi'"],
+          "1": ["martedì", "martedi", "martedi'"],
+          "2": ["mercoledì", "mercoledi", "mercoledi'"],
+          "3": ["giovedì", "giovedi", "giovedi'"],
+          "4": ["venerdì", "venerdi", "venerdi'"],
+          "5": ["sabato"], "6": ["domenica"]},
+      en={"0": ["monday"], "1": ["tuesday"], "2": ["wednesday"],
+          "3": ["thursday"], "4": ["friday"], "5": ["saturday"],
+          "6": ["sunday"]})
+    R("parser.time.direction", "mapping", match_mode="word",
+      it={"last": ["scorso", "scorsa", "passato", "passata"],
+          "next": ["prossimo", "prossima"], "this": ["questo", "questa"]},
+      en={"last": ["last", "previous"], "next": ["next"], "this": ["this"]})
+    R("parser.time.calendar_period", "mapping", match_mode="word",
+      it={"week": ["settimana"], "month": ["mese"], "year": ["anno"]},
+      en={"week": ["week"], "month": ["month"], "year": ["year"]})
+    R("parser.time.month", "mapping", match_mode="word",
+      it={"1": ["gennaio", "gen"], "2": ["febbraio", "feb"],
+          "3": ["marzo", "mar"], "4": ["aprile", "apr"],
+          "5": ["maggio", "mag"], "6": ["giugno", "giu"],
+          "7": ["luglio", "lug"], "8": ["agosto", "ago"],
+          "9": ["settembre", "set"], "10": ["ottobre", "ott"],
+          "11": ["novembre", "nov"], "12": ["dicembre", "dic"]},
+      en={"1": ["january", "jan"], "2": ["february", "feb"],
+          "3": ["march", "mar"], "4": ["april", "apr"],
+          "5": ["may"], "6": ["june", "jun"], "7": ["july", "jul"],
+          "8": ["august", "aug"], "9": ["september", "sep", "sept"],
+          "10": ["october", "oct"], "11": ["november", "nov"],
+          "12": ["december", "dec"]})
     R("parser.time.absolute_year_prefix", "phrases", match_mode="word",
       it=["dell'anno", "dell anno", "nell'anno", "nell anno", "anno",
           "del", "dal", "nel"],
@@ -283,7 +367,7 @@ def register_all() -> None:
     R("parser.time.future_offset_prefix", "phrases", match_mode="word",
       it=["in", "fra", "tra"], en=["in"])
     R("parser.time.future_determiner", "phrases", match_mode="word",
-      it=["prossimi", "prossime"], en=["prossimi", "prossime"])
+      it=["prossimi", "prossime"], en=["next", "coming"])
     R("parser.time.day_word", "phrases", match_mode="word",
       it=["giorni"], en=["day", "days"])
     R("parser.time.past_offset_suffix", "phrases", match_mode="word",

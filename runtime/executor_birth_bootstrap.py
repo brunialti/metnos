@@ -109,16 +109,22 @@ def _secure_state_db(state_dir: Path, basename: str) -> Path:
 def _manifest_ref(intent: BirthIntent) -> ManifestRef:
     from manifest_inventory import (
         ManifestLayout, inventory_authoring_manifests,
-        inventory_store_manifests, resolve_manifest_layout,
+        inventory_store_manifests, prospective_manifest_ref, resolve_manifest_layout,
     )
+    store_only = resolve_manifest_layout() is ManifestLayout.STORE_ONLY
     inventory = (
         inventory_store_manifests()
-        if resolve_manifest_layout() is ManifestLayout.STORE_ONLY
+        if store_only
         else inventory_authoring_manifests()
     )
     if inventory.problems:
         raise BirthBootstrapError("birth_authoring_inventory_invalid")
     matches = tuple(ref for ref in inventory.manifests if ref.contract_id == intent.contract_id)
+    if not matches and store_only:
+        try:
+            return prospective_manifest_ref(intent.contract_id)
+        except (OSError, ValueError) as exc:
+            raise BirthBootstrapError("birth_authoring_target_unavailable") from exc
     if len(matches) != 1:
         raise BirthBootstrapError("birth_authoring_target_unavailable")
     return matches[0]
@@ -134,15 +140,33 @@ def _hash(domain: bytes, *parts: str) -> str:
 
 def _request_factory(authority: _ProducerAuthority, registry: IssuerRegistry,
                      db_path: Path, ttl_seconds: int, now: Callable[[], datetime],
-                     context_builder: object):
+                     context_builder: object, *, selection: object | None = None):
+    from executor_birth_context_selection import is_context_selection_v1
+    from executor_birth_intent import _STACK_RECONCILE
+
+    if selection is not None and not is_context_selection_v1(selection):
+        raise BirthBootstrapError("birth_context_selection_invalid")
+    release_build_id = (
+        selection.distribution.identity.closed_build_id
+        if selection is not None and authority.capability is _STACK_RECONCILE
+        else None
+    )
+
     def create(intent: BirthIntent) -> BirthRequest:
         if not isinstance(intent, BirthIntent):
             raise BirthBootstrapError("birth_intent_invalid")
         objective = _hash(b"metnos.executor-birth.objective/v1\0", intent.reason, *intent.approval_refs)
+        if release_build_id is not None:
+            # Same-build retries retain their identity; a new verified build
+            # gets its own release edit without replacing any old receipt.
+            objective = _hash(
+                b"metnos.executor-birth.release-edit-objective/v1\0",
+                objective, release_build_id,
+            )
         context, _pin = context_builder.preview(intent)
         # The kind of the executor is not a property of who asks for it: it
-        # comes from where the manifest of that contract lives, which the
-        # inventory already authenticated.
+        # comes from the declared contract origin. The destination lookup
+        # validates that origin's topology; only Birth admits the candidate.
         origin = executor_origin_v1(intent.contract_id.origin)
         observed = observe_candidate(
             intent.candidate_source_root, contract_id=intent.contract_id,
@@ -443,16 +467,19 @@ def _is_cutover_reattestation_factory_v2(value: object) -> bool:
 
 class _PostconditionAdapter:
     def __init__(self, *, trusted_publics: tuple, verifier_keys: Mapping[str, Ed25519PublicKey],
-                 store_root: Path | None = None) -> None:
+                 store_root: Path | None = None,
+                 context_selection: object | None = None) -> None:
         self.trusted_publics = trusted_publics
         self.verifier_keys = verifier_keys
         self.store_root = store_root
+        self.context_selection = context_selection
 
     def verify(self, request: BirthRequest, expected: object, admission: bytes | None):
         from executor_birth_postcondition import verify_birth_postcondition
         return verify_birth_postcondition(
             request, expected, admission, trusted_publics=self.trusted_publics,
             admission_verifier_keys=self.verifier_keys, store_root=self.store_root,
+            context_selection=self.context_selection,
         )
 
     def recover_authoring(self) -> None:
@@ -465,7 +492,8 @@ class _PostconditionAdapter:
         )
         from contract_store import (
             DEFAULT_LOCK_TIMEOUT,
-            _birth_receipt_path, _publication_base_locked, _writer_lock,
+            _birth_receipt_path_for_context, _publication_base_locked,
+            _read_regular_file, _writer_lock,
             catalog_admission_lock,
         )
         from executor_birth_receipts import verify_admission_receipt
@@ -489,9 +517,10 @@ class _PostconditionAdapter:
                             store_root=self.store_root, technical_base=True,
                         )
                         try:
-                            encoded = _birth_receipt_path(
-                                contract_dir, pending.new_generation_id,
-                            ).read_bytes()
+                            receipt_path = _birth_receipt_path_for_context(
+                                contract_dir, pending.new_generation_id, self.context_selection,
+                            )
+                            encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
                             receipt = verify_admission_receipt(
                                 encoded, verifier_keys=self.verifier_keys,
                             )
@@ -508,6 +537,9 @@ class _PostconditionAdapter:
                             "admission_context_id": pending.admission_context_id,
                         }
                         if any(getattr(receipt, field) != wanted for field, wanted in bindings.items()):
+                            raise BirthBootstrapError("birth_authoring_recovery_receipt_conflict")
+                        if (self.context_selection is not None and receipt.admission_context_id
+                                != self.context_selection.admission_context_id):
                             raise BirthBootstrapError("birth_authoring_recovery_receipt_conflict")
                         if current == pending.new_generation_id:
                             if authoring_tree_id(observe_tree(control.canonical)) != pending.new_tree_id:
@@ -601,6 +633,7 @@ def _prepare_sealed_birth_assembly_v1(
     now: Callable[[], datetime],
     store_root: Path | None = None,
     initial_current_adoption_transition_id: str | None = None,
+    context_selection: object | None = None,
 ) -> _SealedBirthAssemblyV1:
     """Build one core from authorities read once under the root barrier.
 
@@ -645,6 +678,7 @@ def _prepare_sealed_birth_assembly_v1(
         prepared_admission_context_id=sealed.prepared.prepared_admission_context_id,
         prepared_context_epoch=sealed.prepared.prepared_context_epoch,
         store_root=store_root,
+        context_selection=context_selection,
     )
     context_builder = ProductionContextBuilder(
         BuiltAdmissionContext(sealed.material.context, sealed.material.pin, {})
@@ -654,6 +688,7 @@ def _prepare_sealed_birth_assembly_v1(
         trusted_publics=trusted_publics,
         verifier_keys=sealed.admission.verifier_keys,
         store_root=store_root,
+        context_selection=context_selection,
     )
     verifier.recover_authoring()
 
@@ -875,6 +910,7 @@ def _build_staged_reattestation_runtime_v2(
     assembly = _prepare_sealed_birth_assembly_v1(
         staged_context.authorities, now=now, store_root=store_root,
         initial_current_adoption_transition_id=initial_adoption,
+        context_selection=selection,
     )
     factory = _reattestation_factory_for_assembly_v1(
         assembly, selection=selection,
@@ -917,8 +953,9 @@ def _build_sealed(
         if required_context is not None
         else load_sealed_authorities_v1()
     )
+    selection = None if required_context is None else required_context.selection
     assembly = _prepare_sealed_birth_assembly_v1(
-        sealed, now=now, store_root=store_root,
+        sealed, now=now, store_root=store_root, context_selection=selection,
     )
     factories = {
         cap: _request_factory(
@@ -928,14 +965,12 @@ def _build_sealed(
             assembly.ttl_seconds,
             assembly.now,
             assembly.context_builder,
+            selection=selection,
         )
         for cap, auth in assembly.authorities.items()
     }
     reattestation_factory = _reattestation_factory_for_assembly_v1(
-        assembly,
-        selection=(
-            None if required_context is None else required_context.selection
-        ),
+        assembly, selection=selection,
     )
     return _assemble_birth_runtime_bundle(
         assembly.core, factories, reattestation_factory,

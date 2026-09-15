@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:5c150ce78dbe22953c0c401ebb7b6c561a7d552db916d4e3448ffad43a08cca0",
+  "source_census": "sha256:d08440cdcf4e7db8bab178a611c9768d25795e6241f186da615984a2a7462660",
   "scan_roots": [
     "runtime",
     "install",
@@ -38,6 +38,16 @@
         "store_write"
       ],
       "destination": "sealed receipt-completion checkpoint under the deployment lock",
+      "phase": "M4"
+    },
+    {
+      "path": "install/birth_authority_provisioner.py",
+      "scope": "_held_or_new_deployment_lock_v2",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "caller-held or call-scoped deployment lock session for completion (review A-05, §17 decision of Roberto 2026-09-11)",
       "phase": "M4"
     },
     {
@@ -880,6 +890,16 @@
     },
     {
       "path": "install/executor_birth_transition.py",
+      "scope": "_complete_closed_v1",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "deployment lock held from completion through activation and the final selection reread (review A-05, §17 decision of Roberto 2026-09-11)",
+      "phase": "M4"
+    },
+    {
+      "path": "install/executor_birth_transition.py",
       "scope": "_provisioned_service_environment_v1",
       "role": "store_owner",
       "capabilities": [
@@ -1198,6 +1218,16 @@
         "live_artifact_read"
       ],
       "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/agent_runtime.py",
+      "scope": "_invoke_executor_impl_optional_context",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog callback for signed prerequisite resolution; ordinary guards and durable admission retain execution authority",
       "phase": "M4"
     },
     {
@@ -1936,6 +1966,18 @@
         "verified_store_read"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "inspect_birth_receipts",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "store-owned read-only receipt projection; private layout never exported to callers",
       "phase": "M4"
     },
     {
@@ -3497,6 +3539,16 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/executor_birth_snapshot.py",
+      "scope": "materialize_birth_candidate_from_authoring",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write"
+      ],
+      "destination": "closed untrusted candidate staging only; no signing, store mutation or live admission",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/executor_birth_transition_chain_policy.py",
       "scope": "_transition_chain_authority_source_v2",
       "role": "store_owner",
@@ -4160,6 +4212,16 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/program_start_consent.py",
+      "scope": "remember_verified_dialog",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/proposal_evaluator.py",
       "scope": "_check_affinity_overlap",
       "role": "live_reader",
@@ -4207,6 +4269,16 @@
         "live_artifact_read"
       ],
       "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/scheduler_v2/builtin_callbacks.py",
+      "scope": "task_images_index_refresh",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog for ordinary guarded LRE maintenance submission; no authoring or publication",
       "phase": "M4"
     },
     {
@@ -4527,6 +4599,7 @@
       "scope": "<module>",
       "role": "administrative_tool",
       "capabilities": [
+        "authoring_write",
         "birth"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
@@ -4537,6 +4610,7 @@
       "scope": "StackReconciler.restart",
       "role": "administrative_tool",
       "capabilities": [
+        "authoring_write",
         "birth"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
@@ -4547,6 +4621,7 @@
       "scope": "StackReconciler.watchdog",
       "role": "administrative_tool",
       "capabilities": [
+        "authoring_write",
         "birth"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
@@ -4564,9 +4639,30 @@
     },
     {
       "path": "runtime/stack_reconcile.py",
+      "scope": "_release_plan_details",
+      "role": "live_reader",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "read-only public store projection for release preview",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
+      "scope": "_release_plan_snapshot",
+      "role": "live_reader",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "authenticated owned snapshot without creating productive store locks",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
       "scope": "main",
       "role": "administrative_tool",
       "capabilities": [
+        "authoring_write",
         "birth"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
@@ -4579,6 +4675,7 @@
       "capabilities": [
         "authoring_read",
         "authoring_verify",
+        "authoring_write",
         "birth",
         "live_artifact_read",
         "verified_store_read"

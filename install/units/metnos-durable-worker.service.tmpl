@@ -21,6 +21,7 @@ Environment=METNOS_INSTALL_ROOT=@REPO_DIR@
 Environment=METNOS_USER_DATA=@DATA_DIR@
 Environment=METNOS_USER_CONFIG=@CONFIG_DIR@
 Environment=METNOS_USER_STATE=@STATE_DIR@
+Environment=METNOS_EXECUTOR_PARALLEL=1
 # The worker reads the private lre.env through Metnos' strict shared parser.
 # systemd must not interpret the file with different acceptance rules.
 SyslogIdentifier=metnos-durable-worker

@@ -564,6 +564,14 @@ def test_signed_http_target_preserves_the_production_v3_engine(monkeypatch) -> N
     assert is_v3() is True
 
 
+def test_signed_durable_target_uses_the_central_scheduler_without_fixed_lanes():
+    entry = next(item for item in _entries() if item.entry_id == "service-durable-worker")
+    environment = {item.name: item.value for item in entry.target_environment}
+    assert environment["METNOS_EXECUTOR_PARALLEL"] == "1"
+    assert "METNOS_DURABLE_WORKERS" not in environment
+    assert not any(name.startswith("METNOS_DURABLE_RESOURCE_") for name in environment)
+
+
 def test_source_compiler_binds_targets_environment_and_supplementary_groups() -> None:
     entries = catalog._compile_service_source_v1(_context(
         supplementary_gids=(1001, 1002),
@@ -1044,3 +1052,25 @@ def test_no_service_forbids_the_namespaces_its_own_sandbox_needs() -> None:
         == ("Service", "RestrictNamespaces")
     )
     assert offenders == []
+
+
+def test_paired_devices_and_the_home_network_can_reach_metnos() -> None:
+    """The legacy units served devices and the console on every interface.
+
+    The first signed catalog kept the data paths of those units and dropped
+    the two listening addresses, so from 3/9 a paired PC had nothing to
+    connect to and Metnos reported it offline while it was in use. The
+    public tunnel still reaches the console on loopback; the device port is
+    never routed through it.
+    """
+    entries = catalog._compile_service_source_v1(_context())
+    by_id = {item.entry_id: item for item in entries}
+    daemon = {
+        item.name: item.value
+        for item in by_id["service-telegram-daemon"].target_environment
+    }
+    assert daemon["METNOS_AGENT_HOST"] == "0.0.0.0"
+    http_args = by_id["service-http"].target_args
+    assert http_args[http_args.index("--host") + 1] == "0.0.0.0"
+    sidecar_args = by_id["service-playwright"].target_args
+    assert sidecar_args[sidecar_args.index("--host") + 1] == "127.0.0.1"

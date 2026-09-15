@@ -134,6 +134,8 @@ class DispatchResult:
     # il runtime a valle presenta all'utente invece dell'errore secco. Popolato
     # SOLO quando final_kind == "needs_inputs". Vedi _error_disambiguation_form.
     needs_inputs_obs: Optional[dict] = None
+    # A durable admission is observable work, not inline executor completion.
+    durable_admission: Optional[dict] = None
 
 
 def _admit_finalized_long_work(
@@ -176,6 +178,7 @@ def _admit_finalized_long_work(
         framework_hash=compute_framework_hash(framework),
         elapsed_ms=int((time.time() - started_at) * 1000),
         framework=framework,
+        durable_admission=dict(outcome),
         error_class="" if accepted else str(
             outcome.get("error_class") or "operation_failed"
         ),
@@ -498,7 +501,7 @@ def _maybe_record_fastpath(query: str, intent: Intent,
     # `find_packages` miss used to be cached for an explicit install request:
     # the executor was healthy, but the requested side effect was absent.
     # Check the intent/framework contract before teaching L0 the plan.
-    if _dropped_required_verbs(framework, query, intent):
+    if _dropped_required_verbs(framework, query, intent, catalog):
         log.info("[L0 fastpath] skip record: required action absent from plan")
         return
     # Cacheabilità L0 (Roberto 15/6): solo pipeline multi-step che NON bakeizzano
@@ -600,7 +603,7 @@ def _enforce_missing_clauses(framework: Framework, intent, query: str,
     dell'LLM/entries. Conservativo: appende SOLO se deriva un tool reale; mai
     inventa tool. No-op senza clausole scoperte. Best-effort."""
     try:
-        still = _dropped_required_verbs(framework, query, intent)
+        still = _dropped_required_verbs(framework, query, intent, catalog)
         if not still:
             return framework
         steps = list(getattr(framework, "steps", None) or [])
@@ -1067,12 +1070,14 @@ def _ensure_health_arg(framework: Framework, query: str,
         steps = getattr(framework, "steps", None) or []
         if not query:
             return framework
-        hw = _dl_match("system.status_query", query)
+        from tool_grammar import _strip_fs_paths
+        lexical_query = _strip_fs_paths(query)
+        hw = _dl_match("system.status_query", lexical_query)
         focus_sections: set[str] = set()
         try:
             import detection_lexicon as _dl
             fmap = _dl.mapping("health.section_focus") or {}
-            ql = query.lower()
+            ql = lexical_query.lower()
             focus_sections = {
                 str(section) for section, forms in fmap.items()
                 if _dl.match_any(forms, ql)
@@ -1083,7 +1088,7 @@ def _ensure_health_arg(framework: Framework, query: str,
             (getattr(s, "tool", "") or "") == "get_processes"
             for s in steps)
         if (not hw and focus_sections
-                and (_dl_match("machine.reference", query)
+                and (_dl_match("machine.reference", lexical_query)
                      or has_process_step)):
             hw = True
         # Compound file+health (turn ddd828a6, 20/7): l'align per oggetto può
@@ -1282,7 +1287,7 @@ def _enrich_move_source_dir(framework: Framework, query: str,
 # contract, not a tool name: any executor declaring it takes part in the guard
 # below, and `find_places` is only its first consumer.
 _GEO_CENTER_ARG = "near"
-# The single authority on where the asking user is.  The guard never reads a
+# The single authority on where the requested subject is. The guard never reads a
 # position itself: it wires the plan to this producer, so freshness, source
 # ranking and the "I do not know where you are" outcome stay in one place.
 _GEO_CENTER_PRODUCER = "get_location"
@@ -1354,12 +1359,10 @@ def _ensure_proximity_center(framework: Framework, query: str,
     in Rome.  The machine did know where it stood — `get_location` reads the
     installation position — but nothing in the plan asked it.
 
-    The guard inserts that producer and wires the centre to it.  It fires only
-    when the request carries a proximity form referred to the asker
-    (`geo.self_proximity`, multilingual lexicon) and the step declares the
-    centre argument without a value: a request that names its own place
-    ("pharmacy in Padova") keeps it, and an explicit centre is never
-    overwritten.  Idempotent, so re-running the pipeline is a no-op.
+    Missing centres use the actor, or the explicitly requested server subject.
+    A centre naming that server is an identity to resolve, not a city to append
+    to a POI query. Real coordinates, named places and producer references stay
+    intact. Reuse only a producer for the same subject. Idempotent on cache hits.
     """
     try:
         if not (query and _dl_match("geo.self_proximity", query)):
@@ -1370,6 +1373,14 @@ def _ensure_proximity_center(framework: Framework, query: str,
         steps = list(getattr(framework, "steps", None) or [])
         if not steps:
             return framework
+        import target_device
+        target = target_device.resolve_target(query, [])
+        # Execution adjuncts ("search on the server near me") do not make the
+        # server the geographic subject. Nominal subject mentions stay intact
+        # in the resolver's cleaned query; execution adjuncts are removed.
+        query_subject = ("server" if target.status == "ok" and target.explicit
+                         and target.target == target_device.SERVER
+                         and target.cleaned_query == query else "actor")
         from .types import StepSpec
         for consumer in list(steps):
             tool = getattr(consumer, "tool", "") or ""
@@ -1377,8 +1388,25 @@ def _ensure_proximity_center(framework: Framework, query: str,
                 continue
             args = getattr(consumer, "args", None)
             args = args if isinstance(args, dict) else {}
-            if _geo_center_is_usable(args.get(_GEO_CENTER_ARG)):
+            centre = args.get(_GEO_CENTER_ARG)
+            server_centre = target_device.is_server_reference(centre)
+            # A planned reference is not authority to substitute the actor
+            # for an explicitly requested server. Repair only references to
+            # the known location producer, leaving all other data untouched.
+            wrong_subject = False
+            ref = (re.fullmatch(r"\$\{step([1-9][0-9]*)(?:\.location)?\}", centre)
+                   if isinstance(centre, str) else None)
+            if query_subject == "server" and ref:
+                current_steps = list(framework.steps)
+                index = int(ref.group(1)) - 1
+                if index < len(current_steps):
+                    source = current_steps[index]
+                    wrong_subject = (source.tool == _GEO_CENTER_PRODUCER
+                                     and ((source.args or {}).get("subject", "actor") != "server"
+                                          or (source.args or {}).get("verify")))
+            if not server_centre and not wrong_subject and _geo_center_is_usable(centre):
                 continue
+            subject = "server" if server_centre else query_subject
             # Identity, not equality: two structurally identical steps are
             # distinct positions in the plan and `index()` would return the
             # first one for both.
@@ -1387,18 +1415,22 @@ def _ensure_proximity_center(framework: Framework, query: str,
             if pos < 0:
                 continue
             producer_1b = next(
-                (i + 1 for i, s in enumerate(steps[:pos])
-                 if (getattr(s, "tool", "") or "") == _GEO_CENTER_PRODUCER),
+                (i + 1 for i, s in reversed(list(enumerate(steps[:pos])))
+                 if (getattr(s, "tool", "") or "") == _GEO_CENTER_PRODUCER
+                 and (s.args or {}).get("subject", "actor") == subject
+                 and not (s.args or {}).get("verify")),
                 0)
             if not producer_1b:
                 insert_steps(framework, pos,
-                             [StepSpec(tool=_GEO_CENTER_PRODUCER, args={})])
+                             [StepSpec(tool=_GEO_CENTER_PRODUCER,
+                                       args={"subject": subject})])
                 producer_1b = pos + 1
-            consumer.args = dict(args)
+            # insert_steps has already remapped any other step references.
+            consumer.args = dict(consumer.args or {})
             consumer.args[_GEO_CENTER_ARG] = (
                 "${step%d.%s}" % (producer_1b, _GEO_CENTER_FIELD))
             log.info("[proximity §7.9] %s: search centre taken from the "
-                     "actor position (step %d)", tool, producer_1b)
+                     "%s position (step %d)", tool, subject, producer_1b)
         return framework
     except Exception as ex:  # noqa: BLE001 — best-effort
         log.warning("ensure_proximity_center noop (best-effort): %r", ex)
@@ -1742,10 +1774,9 @@ def _align_framework_objects(framework: Framework, intent,
                 for st in steps:
                     tool = getattr(st, "tool", None)
                     nc = _ng.parse_name(tool) if tool else None
-                    if (tool == "get_now" and "numbers" in all_objs):
-                        # get_now is a valid scalar producer for the numbers
-                        # clause; it is not a foreign filesystem/health
-                        # producer to be replaced by get_processes.
+                    if tool in _SINGULAR_EXECUTORS:
+                        # The second pass has the same vocabulary limitation
+                        # as the first: scalar operations have no plural peer.
                         continue
                     if (not nc or nc.verb not in _PRODV
                             or nc.obj in all_objs):
@@ -2127,7 +2158,8 @@ def _is_get_inputs_misroute(framework: Framework) -> bool:
     return exec_steps == ["get_inputs"]
 
 
-def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> set:
+def _dropped_required_verbs(framework: Framework, query: str, intent=None,
+                            catalog=None) -> set:
     """Verbi RICHIESTI dalla query ma ASSENTI dal framework → decomposizione
     incompleta. Copre PRODUCER (find/read/get/list: senza i dati la pipeline è
     monca) + side-effecting espliciti (send/create/write/move/delete/share: «manda
@@ -2140,7 +2172,7 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
     """
     try:
         from prefilter import tokenize, detect_canonical_verbs_all
-        from vocab import COVERAGE_REQUIRED_VERBS, ACTIONS, DESTRUCTIVE_VERBS
+        from vocab import COVERAGE_REQUIRED_VERBS, ACTIONS, PRODUCER_VERBS
     except Exception:
         return set()
     # Detect actions clause-by-clause before falling back to the historical
@@ -2194,9 +2226,14 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
     # substitutable family.  A *single explicit mutation*, however, must not
     # disappear just because the original guard was introduced for compound
     # requests.  That gap turned "install" into a read-only package lookup.
-    if len(qverbs) < 2 and not (qverbs & set(DESTRUCTIVE_VERBS)):
+    required_effects = set(COVERAGE_REQUIRED_VERBS) - set(PRODUCER_VERBS)
+    if len(qverbs) < 2 and not (qverbs & required_effects):
         return set()
     fw_verbs = set()
+    planned_objects: dict[str, set[str]] = {}
+    by_name = {_entry_name(entry): entry for entry in (catalog or [])}
+    import naming_grammar as _ng
+    has_admin = False
     for s in framework.steps:
         t = s.tool or ""
         if not t or t == "final_answer":
@@ -2204,12 +2241,39 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
         head = t.split("_", 1)[0]
         if head in ACTIONS:
             fw_verbs.add(head)
+            nc = _ng.parse_name(t)
+            if nc:
+                objects = planned_objects.setdefault(head, set())
+                objects.add(nc.obj)
+                entry = by_name.get(t)
+                aliases = (entry.get("planning_object_aliases", ())
+                           if isinstance(entry, dict) else
+                           getattr(entry, "planning_object_aliases", ()))
+                objects.update(aliases or ())
         # `admin` is the approved system-operation gateway.  It can implement
         # a requested mutation without exposing a verb-prefixed executor
         # (apt/systemctl/mount all share this one gate).
         if t == "admin":
-            fw_verbs.update(qverbs & set(DESTRUCTIVE_VERBS))
+            has_admin = True
+            fw_verbs.update(qverbs & required_effects)
     dropped = (qverbs & set(COVERAGE_REQUIRED_VERBS)) - fw_verbs
+    # A state change on an unrelated object does not fulfil the request.
+    # The old verb-only check accepted set_preferences for set(processes),
+    # including on cache hits and recovery. Use the existing canonical intent
+    # and signed planning aliases; never infer application names or synonyms.
+    requested_actions = intent_actions or [{
+        "verb": primary_verb,
+        "object": str(getattr(intent, "object", "") or ""),
+    }]
+    if not has_admin:
+        for action in requested_actions:
+            verb, obj = action.get("verb"), action.get("object")
+            # entries is an abstract in-memory carrier, not a concrete domain.
+            if verb not in required_effects or verb not in fw_verbs or not obj or obj == "entries":
+                continue
+            actual = planned_objects.get(verb, set())
+            if obj not in actual and not any(_fs_equivalent(o, [obj]) for o in actual):
+                dropped.add(verb)
     # Famiglia PRODUTTORI interscambiabile (find/read/get/list): un produttore
     # qualunque nel framework copre ogni produttore richiesto (find_messages ==
     # read_messages, find_files copre «cerca i file», ...). Senza, «cerca...»
@@ -2507,12 +2571,14 @@ def _fix_unroutable_verbs(intent, query: str, catalog: Optional[list]) -> None:
     canonico = read → derive(read,urls)=get_urls (reale). Fix tool-existence-safe:
     flippa SOLO se il verbo attuale NON routa e il verbo-dal-testo SÌ. Usa le
     FUNZIONI canoniche (detect_canonical_verbs_all + derive_tool_name), zero
-    sinonimi cablati. Muta intent.actions in place, PRIMA del pool. No-op mono."""
+    sinonimi cablati. Muta l'intento PRIMA del pool, anche per una sola azione."""
     try:
         actions = [a for a in (getattr(intent, "actions", None) or [])
                    if isinstance(a, dict)]
-        if len(actions) < 2:
-            return
+        primary_only = not actions
+        if primary_only:
+            actions = [{"verb": getattr(intent, "verb", ""),
+                        "object": getattr(intent, "object", "")}]
         from compound_decomposer import split_query_chunks, derive_tool_name
         from prefilter import tokenize, detect_canonical_verbs_all
         names = catalog_names(catalog)
@@ -2537,6 +2603,8 @@ def _fix_unroutable_verbs(intent, query: str, catalog: Optional[list]) -> None:
                     changed = True
                     break
         if changed:
+            if primary_only:
+                intent.verb = actions[0]["verb"]
             log.info("[fix_verbs] verbi non-routabili corretti dal testo: %s",
                      [(a.get("verb"), a.get("object")) for a in actions])
     except Exception as ex:
@@ -2672,7 +2740,7 @@ def _align_foreign_producers_v3(framework, producer_objs, _PRODV, _derive,
     for st in steps:
         tool = getattr(st, "tool", None)
         nc = _ng.parse_name(tool) if tool else None
-        if not nc or nc.verb not in _PRODV or nc.obj in producer_set \
+        if tool in _SINGULAR_EXECUTORS or not nc or nc.verb not in _PRODV or nc.obj in producer_set \
                 or _fs_equivalent(nc.obj, producer_set):
             continue  # non-produttore o oggetto-intent legittimo/equivalente
         if nc.obj == "entries":
@@ -6251,8 +6319,8 @@ GUARD_PIPELINE: tuple = (
     Guard("ensure_proximity_center",
           lambda fw, i, q, c: _ensure_proximity_center(fw, q, c),
           scope="cross-clause", writes=frozenset({"args.near", "step"}),
-          reads=frozenset({"query", "catalog", "step.tool", "args.near"}),
-          rationale="§7.9 (turn 7e0f69a1): «the nearest pharmacy to where I am» without a centre makes the provider rank by fame — namesakes across the whole country. Concept geo.self_proximity plus a declared and empty `near` argument insert get_location and wire the centre to it. A request naming its own place does not match, and an explicit centre is never overwritten",
+          reads=frozenset({"query", "catalog", "step.tool", "args.near", "args.subject", "args.verify"}),
+          rationale="§7.9: proximity searches need a real centre. Empty near or an exact server identity resolve through get_location for the requested actor/server subject. Reuse only a matching producer; preserve coordinates, named places and existing references",
           adr="0177"),
     Guard("route_folder_size",
           lambda fw, i, q, c: _route_folder_size(fw, q, c),
@@ -6807,6 +6875,12 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
             if isinstance(callback, dict) and _device and _device != "server":
                 callback.setdefault("target_device", _device)
             if (isinstance(callback, dict)
+                    and callback.get("type") == "resume_executor_with_values"):
+                # The resumed executor belongs to the conversation that
+                # paused it, with or without a tail.
+                callback.setdefault("conversation_id", str(
+                    (runtime_ctx or {}).get("conversation_id") or ""))
+            if (isinstance(callback, dict)
                     and callback.get("type") == "resume_executor_with_values"
                     and callback.get("executor") == paused_tool):
                 paused_idx = int(getattr(paused_input, "step_idx", 0) or 0)
@@ -7328,7 +7402,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                      "evidence=%s", _fp_ungrounded[:5])
             fp_hit = None
         if fp_hit is not None and _dropped_required_verbs(
-                fp_hit.framework, query, intent):
+                fp_hit.framework, query, intent, catalog):
             log.info("[L0 fastpath] fp_id=%d INVALIDATO: azione richiesta "
                      "assente dal piano → morte + fall-through", fp_hit.fp_id)
             _fp.delete(fp_hit.fp_id)
@@ -7427,7 +7501,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                      "evidence=%s", _ap_ungrounded[:5])
             ap_hit = None
         if ap_hit is not None and _dropped_required_verbs(
-                ap_hit.framework, query, intent):
+                ap_hit.framework, query, intent, catalog):
             log.info("[L1 autopath] REJECT: azione richiesta assente dal "
                      "piano → fall-through a L3")
             ap_hit = None
@@ -7558,7 +7632,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # manda" → create-only (find+send droppati) o find→create senza send (niente
     # mail). Ri-propone UNA volta. Best-effort: se la ri-proposta è incompleta si
     # procede (esecuzione/terminator danno l'esito onesto).
-    _dropped = _dropped_required_verbs(framework, query, intent)
+    _dropped = _dropped_required_verbs(framework, query, intent, catalog)
     if _dropped:
         if verbose:
             log.info("[guard] decomposizione incompleta: verbi mancanti %s "
@@ -7582,7 +7656,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             except Exception:
                 pass
         # Accetta la ri-proposta solo se copre PIÙ verbi (meno droppati).
-        if _fw2 is not None and len(_dropped_required_verbs(_fw2, query, intent)) < len(_dropped):
+        if _fw2 is not None and len(_dropped_required_verbs(
+                _fw2, query, intent, catalog)) < len(_dropped):
             framework = _fw2
 
     # Guard DETERMINISTICI di struttura (§7.9): (1) align — ri-allinea i
@@ -7642,7 +7717,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # with a harmless lookup.  Re-proposal and deterministic guards have
     # already had their chance above, so a residual means there is no safe
     # executable plan in the current catalog.
-    _missing_actions = _dropped_required_verbs(framework, query, intent)
+    _missing_actions = _dropped_required_verbs(framework, query, intent, catalog)
     if _missing_actions:
         from messages import get as _msg_get
         log.info("[intent-fulfilment] unavailable actions=%s",
@@ -7763,7 +7838,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # confident «here is what I found» for a request to install is
                 # the §2.8 anti-pattern, not a recovery.
                 _missing_alt = _dropped_required_verbs(
-                    framework_alt, query, intent)
+                    framework_alt, query, intent, catalog)
                 if _missing_alt:
                     from messages import get as _msg_get
                     log.info("[L3 recovery] REJECT: unavailable actions=%s",

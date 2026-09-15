@@ -46,7 +46,7 @@ from generated_executor_contract import (  # noqa: E402
 )
 from executor_birth_synth import (  # noqa: E402
     SynthBirthData, require_synth_birth_service, submit_synth_approve,
-    submit_synth_specialize,
+    submit_synth_specialize, SynthTestData, validate_synth_tests,
 )
 from manifest_inventory import ContractId, ManifestOrigin  # noqa: E402
 
@@ -849,97 +849,21 @@ class Synt:
             out["tests"] = tests
             return out
 
-        # Esegue ogni test via subprocess sul file Python del proposal
-        code_path = gp.proposal_dir / f"{gp.name}.py"
-        results = []
-        passed_count = 0
-        for t in tests:
-            r = self._exec_birth_test(code_path, t)
-            results.append(r)
-            if r["passed"]:
-                passed_count += 1
-        out["tests"] = results
-        out["passed_count"] = passed_count
-        out["total_count"] = len(results)
-        out["all_passed"] = (passed_count == len(results) and len(results) >= 3)
-        if out["all_passed"]:
-            out["summary"] = f"{passed_count}/{len(results)} passed"
-        else:
-            failed = [r["name"] for r in results if not r["passed"]]
-            out["summary"] = (
-                f"{passed_count}/{len(results)} passed; failed: {failed}"
+        # Same data-only precheck as reactive multistage: no host subprocess.
+        try:
+            data = SynthTestData.from_cases(
+                f"{gp.name}.py", gp.python_code.encode("utf-8"), tests,
             )
+            report = validate_synth_tests(data)
+        except ValueError:
+            out["summary"] = "synth_test_candidate_invalid"
+            return out
+        out["tests"] = list(report.tests)
+        out["passed_count"] = report.passed_count
+        out["total_count"] = len(tests)
+        out["all_passed"] = report.all_passed
+        out["summary"] = report.summary
         return out
-
-    @staticmethod
-    def _exec_birth_test(code_path: Path, t: dict) -> dict:
-        """Esegue un singolo birth-test e valuta gli expect."""
-        import subprocess
-        name = t.get("name", "(unnamed)")
-        inp = t.get("input") or {}
-        expect = t.get("expect") or {}
-        result = {
-            "name": name,
-            "input": inp,
-            "expect": expect,
-            "passed": False,
-            "reason": "",
-            "stdout": "",
-            "stderr": "",
-            "returncode": None,
-        }
-        try:
-            proc = subprocess.run(
-                ["python3", str(code_path)],
-                input=json.dumps(inp), capture_output=True, text=True,
-                timeout=15,
-            )
-        except subprocess.TimeoutExpired:
-            result["reason"] = "timeout"
-            return result
-        result["stdout"] = proc.stdout[:2000]
-        result["stderr"] = proc.stderr[:1000]
-        result["returncode"] = proc.returncode
-        if proc.returncode != 0:
-            result["reason"] = f"non-zero return: {proc.returncode}"
-            return result
-        try:
-            out = json.loads(proc.stdout)
-        except json.JSONDecodeError as e:
-            result["reason"] = f"stdout not JSON: {e}"
-            return result
-
-        # Valuta expect clauses (devono passare TUTTE quelle dichiarate)
-        if "ok" in expect and out.get("ok") is not expect["ok"]:
-            result["reason"] = f"expected ok={expect['ok']}, got ok={out.get('ok')}"
-            return result
-        if "content_contains" in expect:
-            content = out.get("content", "")
-            if not isinstance(content, str) or expect["content_contains"] not in content:
-                result["reason"] = (
-                    f"expected content_contains={expect['content_contains']!r}, "
-                    f"got content={str(content)[:120]!r}"
-                )
-                return result
-        if "error_contains" in expect:
-            err = out.get("error", "")
-            if not isinstance(err, str) or expect["error_contains"] not in err:
-                result["reason"] = (
-                    f"expected error_contains={expect['error_contains']!r}, "
-                    f"got error={str(err)[:120]!r}"
-                )
-                return result
-        if "metadata_field_eq" in expect:
-            md = out.get("metadata") or {}
-            for k, v in expect["metadata_field_eq"].items():
-                if md.get(k) != v:
-                    result["reason"] = (
-                        f"expected metadata.{k}={v!r}, got {md.get(k)!r}"
-                    )
-                    return result
-        result["passed"] = True
-        result["reason"] = "ok"
-        return result
 
     @staticmethod
     def _validate_executor_code(code: str) -> tuple[bool, str, list[str]]:

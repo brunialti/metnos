@@ -295,7 +295,7 @@ def _activation_fixture(repository: Path, namespace: str) -> _ActivationFixture:
         ),
         catalog.ServiceDirectiveV1(
             "Service", "CapabilityBoundingSet", "scalar",
-            ("CAP_SETGID CAP_SETPCAP CAP_SETUID",),
+            ("CAP_NET_RAW CAP_SETGID CAP_SETPCAP CAP_SETUID",),
         ),
         catalog.ServiceDirectiveV1(
             "Service", "ExecStart", "argv",
@@ -1429,8 +1429,9 @@ def test_signed_systemd_cell_denies_then_admits_real_timer(
         status = payload["status"]
         assert status["NoNewPrivs"] == "1"
         assert status["Groups"].split() == [str(item) for item in expected_groups]
+        assert status["CapBnd"] == "0000000000002000"
         assert all(status[name] == "0000000000000000" for name in (
-            "CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb",
+            "CapInh", "CapPrm", "CapEff", "CapAmb",
         ))
         marker_info = fixture.marker_path.stat()
         assert (marker_info.st_uid, marker_info.st_gid) == (

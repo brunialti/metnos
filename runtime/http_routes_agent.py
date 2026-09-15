@@ -423,14 +423,37 @@ def _http_sender_id(principal_id: str, conv_id: str) -> str:
     return f"http:{principal_id}:{conv_id or '_'}"
 
 
-def _http_has_pending(sender_id: str, actor: str,
-                      owner_user_id: str) -> bool:
+def _dialog_conversation(dialog: dict) -> str:
+    """Conversation recorded by a pending dialog, or "" when it has none."""
+    recorded = dialog.get("conversation_id")
+    on_complete = dialog.get("on_complete")
+    if not recorded and isinstance(on_complete, dict):
+        recorded = on_complete.get("conversation_id")
+    return str(recorded or "")
+
+
+def _same_conversation(pending: list[dict],
+                       conversation_id: str) -> list[dict]:
+    """Keep the legacy ``channel:actor`` dialogs of this conversation only.
+
+    That coordinate is shared by every chat of the actor, so a dialog opened
+    in one chat must not answer, cancel or flag a request from another.  A
+    dialog without a recorded conversation matches only a request without
+    one; nothing is inferred.
+    """
+    current = str(conversation_id or "")
+    return [dlg for dlg in pending if _dialog_conversation(dlg) == current]
+
+
+def _http_has_pending(sender_id: str, actor: str, owner_user_id: str,
+                      conversation_id: str) -> bool:
     """Read-only pending probe used only to annotate a tutor answer."""
     try:
         from dialog_pending import list_pending
         if (list_pending(sender_id, owner_user_id=owner_user_id)
-                or list_pending(
-                    f"http:{actor}", owner_user_id=owner_user_id)):
+                or _same_conversation(list_pending(
+                    f"http:{actor}", owner_user_id=owner_user_id),
+                    conversation_id)):
             return True
     except Exception:
         pass
@@ -446,7 +469,8 @@ async def _apply_tutor_http(request: web.Request, *, query: str, actor: str,
                             user_id: str, conversation_id: str,
                             sender_id: str, turn_id_hint: str = ""):
     """Pure-help escape before pending consumers; never consumes state."""
-    has_pending = _http_has_pending(sender_id, actor, user_id)
+    has_pending = _http_has_pending(
+        sender_id, actor, user_id, conversation_id)
     app = getattr(request, "app", None)
     gate = (
         app_setdefault(app, TUTOR_GATE,
@@ -690,8 +714,8 @@ def _apply_dialog_pending(sender_id: str, query: str,
     if not pending:
         alt_sender = f"{channel}:{actor}" if channel else actor
         if alt_sender != sender_id:
-            pending = list_pending(
-                alt_sender, owner_user_id=owner_user_id)
+            pending = _same_conversation(list_pending(
+                alt_sender, owner_user_id=owner_user_id), conversation_id)
             if pending:
                 sender_id_used = alt_sender
     if not pending:
@@ -759,7 +783,7 @@ def _apply_dialog_pending(sender_id: str, query: str,
     # Avanza dialog con valore raccolto
     consume_res = consume_pending_step(
         sender_id_used, dialog_id, current_var, parsed_value,
-        owner_user_id=owner_user_id)
+        owner_user_id=owner_user_id, source="http_chat")
     if not consume_res.get("ok"):
         # A value that does not satisfy a declared dialog schema is not a new
         # operational query.  Keep the pending interaction and reprompt just
@@ -1055,7 +1079,7 @@ def _consume_http_get_inputs_response(
 
     cres = _dp.consume_pending_step(
         sender_for_state, dialog_id, var, value,
-        owner_user_id=owner_user_id)
+        owner_user_id=owner_user_id, source="http_chat")
     if not cres.get("ok"):
         _cap_pending_clear(sender_id)
         return (query, proposal, _msg(
@@ -2188,18 +2212,23 @@ async def dialog_submit(request: web.Request) -> web.Response:
     # incrementali, niente bypass).
     import dialog_pending
     sender_id = state.get("__sender_id") or "host"
+    submission_source = (
+        "http_form_owner" if str(request.get("authenticated_user_id") or "")
+        == str(state.get("owner_user_id") or "") else "http_form_capability")
     for step in dialog:
         var = step.get("var")
         if var in values and values[var] is not None:
             consumed = dialog_pending.consume_pending_step(
                 sender_id, dialog_id, var, values[var],
                 owner_user_id=str(state.get("owner_user_id") or ""),
+                source=submission_source,
             )
         else:
             # Optional skipped: avanza con None per coerenza idx.
             consumed = dialog_pending.consume_pending_step(
                 sender_id, dialog_id, var, None,
                 owner_user_id=str(state.get("owner_user_id") or ""),
+                source=submission_source,
             )
         if not consumed.get("ok"):
             return web.json_response(

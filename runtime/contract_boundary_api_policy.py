@@ -64,6 +64,7 @@ BOUNDARY_API_OWNERS_V1 = (
         ('current_contract', ('verified_store_read',)),
         ('current_manifest', ('verified_store_read',)),
         ('diagnose_store', ('verified_store_read',)),
+        ('inspect_birth_receipts', ('verified_store_read',)),
         ('publish_localization', ('publish_localization',)),
         ('publish_technical_update', ('publish_technical',)),
         ('publish_signed_source', ('publish_bootstrap',)),

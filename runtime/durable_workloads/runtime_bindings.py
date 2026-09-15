@@ -404,6 +404,8 @@ class RuntimeFactory:
                 remote_attestor=self._remote_attestor,
             )
             registry = self.registry()
+            from .resource_readiness import ensure_model_resource
+
             bridge = DurableExecutionBridge(
                 store,
                 runners=registry.runners,
@@ -411,6 +413,7 @@ class RuntimeFactory:
                 source_resolver=authority.resolve,
                 workload_invoker=registry.invoke_workload,
                 internal_runners=approved_internal_runners(artifacts),
+                resource_readiness=ensure_model_resource,
             )
 
             def maintain_source_authority() -> None:
