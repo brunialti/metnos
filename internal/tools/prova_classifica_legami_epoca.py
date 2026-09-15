@@ -491,7 +491,9 @@ def _(base: Path) -> list[str]:
     errori = []
     if e["conteggio"].get(C.IGNOTA) != 1:
         errori.append(f"l'identita' estranea non ha bloccato: {e['conteggio']}")
-    if "nessun gemello verificato" not in e["motivi"]:
+    # The signed publication names a different contract from durable issuance.
+    # The shared decoder must reject that binding before any twin lookup.
+    if "busta terminale non canonica V2" not in e["motivi"]:
         errori.append(f"motivo inatteso: {e['motivi']}")
     return errori
 

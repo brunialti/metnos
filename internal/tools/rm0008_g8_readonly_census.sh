@@ -2,7 +2,7 @@
 # Inspect only schema and aggregate lifecycle counts in the running service's
 # configured stores. No product imports, keys, row contents or schema changes.
 set -euo pipefail
-case "${2:-}" in census|producer-metadata) ;; *) exit 64 ;; esac
+case "${2:-}" in census|producer-metadata|producer-terminal-shape) ;; *) exit 64 ;; esac
 /usr/bin/python3 -I - "$1" "$2" <<'PY'
 import json
 import os
@@ -46,7 +46,7 @@ sources = {
     "statistics": Path(environment.get("METNOS_EXECUTOR_STATS_DB", str(state / "executor_stats.db"))),
     "promotions": Path(environment.get("METNOS_PROMOTER_DB", str(data / "promoter.sqlite"))),
 }
-if sys.argv[2] == "producer-metadata":
+if sys.argv[2] in {"producer-metadata", "producer-terminal-shape"}:
     sources = {"producer_metadata": state / "birth" / "producer_receipts.sqlite"}
 if any(not path.is_absolute() for path in sources.values()):
     raise RuntimeError("relative_store_path_requires_owner_resolution")
@@ -94,6 +94,35 @@ for kind, path in sources.items():
                     "pending", "promoted_grace", "promoted_finalized", "rolled_back", "archived", "review_needed",
                 )}
                 item["unclassified_rows"] = item["rows"] - sum(item["state_counts"].values())
+            elif sys.argv[2] == "producer-terminal-shape":
+                # Aggregate wire shape only: never expose request text,
+                # diagnostics, signatures or receipt payloads.
+                columns = ("encoded", "terminal_envelope", "terminal_auth")
+                item["maximum_bytes"] = dict(zip(columns, connection.execute(
+                    "SELECT MAX(length(encoded)),MAX(length(terminal_envelope)),"
+                    "MAX(length(terminal_auth)) FROM birth_producer_receipts"
+                ).fetchone()))
+                item["terminal_rows"] = connection.execute(
+                    "SELECT COUNT(*) FROM birth_producer_receipts WHERE terminal_envelope IS NOT NULL"
+                ).fetchone()[0]
+                item["invalid_json_rows"] = connection.execute(
+                    "SELECT COUNT(*) FROM birth_producer_receipts WHERE terminal_envelope IS NOT NULL "
+                    "AND NOT json_valid(terminal_envelope)"
+                ).fetchone()[0]
+                profiles = {}
+                for field in (
+                    "$.schema_version", "$.error_code", "$.diagnostic", "$.admission_receipt",
+                    "$.publication", "$.publication.operation", "$.report.changed_dimensions",
+                    "$.report.checks", "$.report.candidate_id", "$.report.admission_context_id",
+                    "$.report.revision_class", "$.report.error_code",
+                ):
+                    profiles[field] = {kind or "missing": count for kind, count in connection.execute(
+                        "SELECT json_type(terminal_envelope,?),COUNT(*) FROM birth_producer_receipts "
+                        "WHERE json_valid(terminal_envelope) GROUP BY json_type(terminal_envelope,?)",
+                        (field, field),
+                    )}
+                item["field_type_counts"] = profiles
+                item["qualification"] = "wire_shape_only_no_authentication_or_admission_count"
             else:
                 item["rows"] = connection.execute("SELECT COUNT(*) FROM birth_producer_receipts").fetchone()[0]
                 item["state_counts"] = {value: connection.execute(

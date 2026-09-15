@@ -636,7 +636,10 @@ def test_schema_two_terminal_without_diagnostic_remains_readable(tmp_path):
     envelope = operational._terminal_envelope(core, old)
     assert json.loads(envelope)["schema_version"] == 2
     assert "diagnostic" not in json.loads(envelope)
-    assert operational._decode_terminal_envelope(envelope, request)[0] == old
+    assert operational._decode_terminal_envelope(
+        envelope, expected_request_id=request.request_id,
+        expected_contract_id=request.manifest_ref.contract_id,
+    )[0] == old
 
 
 @pytest.mark.parametrize("field,value", [

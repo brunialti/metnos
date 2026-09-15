@@ -297,7 +297,9 @@ def legami_del_negozio(negozio: Path, autorita: Autorita,
     if inventario.problems:
         for problema in inventario.problems:
             bloccanti.append(f"problema d'inventario: {problema}")
-    fidate = list_trusted_publics()
+    # The explicit fixture state does not verify live generations and must
+    # not acquire the installation's author authority as an unused side effect.
+    fidate = list_trusted_publics() if stato_finto is None else ()
 
     risultato: list[Legame] = []
     cartelle_viste: set[Path] = set()
@@ -459,7 +461,7 @@ def _verifica_busta_terminale(encoded: bytes, firma: bytes | None,
 def _decodifica_canonica(documento, grezzo: bytes, riferimenti: dict,
                          conn) -> str:
     """Run the productive V2 decoder over the terminal envelope."""
-    from executor_birth_operational import BirthRequest, _decode_terminal_envelope
+    from executor_birth_operational import _decode_terminal_envelope
 
     # Exactly one issuance row, and every field it shares with the row and the
     # signed receipt must be equal.  Reading only the contract left the durable
@@ -500,14 +502,10 @@ def _decodifica_canonica(documento, grezzo: bytes, riferimenti: dict,
     if ref is None:
         return f"il contratto {contratto} non e' nell'inventario autenticato"
     try:
-        richiesta = BirthRequest(
-            request_id=str(documento.get("request_id") or ""),
-            manifest_ref=ref, producer_receipt=bytes(documento["encoded"]),
-            actor="censimento", reason="classificazione dei legami",
-            approval_refs=(), operation_hint="diagnostica",
-            candidate_source_root=Path("/"),
+        _decode_terminal_envelope(
+            grezzo, expected_request_id=str(documento.get("request_id") or ""),
+            expected_contract_id=ref.contract_id,
         )
-        _decode_terminal_envelope(grezzo, richiesta)
     except Exception as exc:  # noqa: BLE001
         return f"busta terminale non canonica V2: {type(exc).__name__}"
     return ""
