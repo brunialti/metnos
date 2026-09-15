@@ -21,6 +21,10 @@ orchestrator commands must use the installation environment:
 ./.venv/bin/python -m install
 ```
 
+The shell handoff prepends both the selected repository root and its `runtime/`
+directory to `PYTHONPATH`. This is required by the runtime's reviewed flat peer
+imports; an inherited path can never select modules from another checkout.
+
 `bash install/bootstrap.sh --check` may create or update `.venv` before it
 reaches the Python pre-flight. When that environment already exists,
 `./.venv/bin/python -m install --check` is the read-only pre-flight: it must not
@@ -40,15 +44,24 @@ byte unchanged.
 Phase 3 prepares an **inactive** Birth authority set. It does not activate the
 Birth runtime and it migrates no caller.
 
-Before Phase 3 the administrator installs two public registries in the fixed
-location `$METNOS_USER_CONFIG/birth/operator-input-v1/`:
+Before Phase 3 the administrator uses the public, idempotent procedure:
+
+```bash
+sudo "$PWD/.venv/bin/python" -m install.operator_authority --user "$USER"
+```
+
+The procedure creates two fresh private keys in the root-only fixed location
+`/var/lib/metnos-operator-authority/<uid>/` and installs two public registries
+in `$METNOS_USER_CONFIG/birth/operator-input-v1/`:
 
 - `approval-authority.json` — public approver keys, actors and scopes;
 - `semantic-authority.json` plus `semantic-public/<name>.pub` — the public
   semantic reviewer keys the document references.
 
 The corresponding private keys must never be placed there, in the authority set
-or anywhere the Birth process can read. Phase 3 performs a read-only preflight
+or anywhere the Birth process can read. The procedure refuses a root target,
+symlinks, unexpected objects, changed bytes, owners or modes; re-entry verifies
+an exact completed result. Phase 3 performs a read-only preflight
 of these two documents before it publishes the executor contracts: a missing or
 malformed registry stops the phase with a distinct error rather than being
 completed by a generated key.

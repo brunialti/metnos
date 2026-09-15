@@ -15,8 +15,11 @@ the installer reports which capability remains dormant and why.
 ```bash
 git clone https://github.com/brunialti/metnos.git
 cd metnos
+sudo apt-get update
+sudo apt-get install -y $(python3 -c 'import tomllib; p=tomllib.load(open("install/manifest.toml","rb"))["system_packages"]; print(" ".join(p["debian"]+p["debian_optional"]+p["ubuntu_24_04_all_local"]))')
+bash install/bootstrap.sh --check
+sudo "$PWD/.venv/bin/python" -m install.operator_authority --user "$USER"
 bash install/bootstrap.sh          # interactive
-bash install/bootstrap.sh --help   # see all options
 ```
 
 `bootstrap.sh` finds a Python ≥ 3.12, creates the virtualenv at
@@ -32,6 +35,15 @@ clone whose venv is already populated you can call the orchestrator directly:
 
 On the first run, `--yes` does not bypass the language choice or the explicit
 acceptance required by the safety notice.
+
+The package command above selects the complete Ubuntu 24.04 inventory for all
+local components. For a smaller installation, install the `debian` group and
+only the optional groups for the components you select. The authority command
+is an explicit administrator step: it creates fresh keys, retains the private
+operator and reviewer keys under the root-only
+`/var/lib/metnos-operator-authority/<uid>/`, and installs only their public
+registries under the Metnos account. It is safe to re-run for verification and
+never reads an authority from another installation.
 
 ## What it does: the six phases
 
