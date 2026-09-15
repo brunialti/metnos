@@ -32,7 +32,10 @@ _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 
 
 def tokenize(text):
-    return set(_WORD_RE.findall((text or "").lower()))
+    # File-system identifiers are arguments, not natural-language actions.
+    # Reuse the same structural filter as provider-marker recognition.
+    from tool_grammar import _strip_fs_paths
+    return set(_WORD_RE.findall(_strip_fs_paths(text or "").lower()))
 
 
 # Concept identifiers are protocol, not linguistic data.  Their payloads

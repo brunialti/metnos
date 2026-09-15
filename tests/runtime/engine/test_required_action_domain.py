@@ -88,3 +88,26 @@ def test_existing_primary_action_is_never_replaced():
     intent = Intent(verb="act", object="sites", actions=[])
     _fix_unroutable_verbs(intent, "chiudi la finestra", [SimpleNamespace(name="act_sites")])
     assert intent.verb == "act"
+
+
+@pytest.mark.parametrize("path", [
+    "/var/lib/example/.local/share/app/workspace/live-check-123/photos",
+    "/tmp/read-send-delete/photos", "~/share/check/photos", "./read/send/photos",
+    "../read/send/photos", r"C:\share\check\photos", r"\\server\share\delete",
+    "'/tmp/read-send/photos'", '"/tmp/read-send/photos"', "`/tmp/read-send/photos`",
+])
+def test_path_components_do_not_invent_required_actions(path):
+    from prefilter import tokenize
+    query = "aggiorna l'indice delle foto nella cartella " + path
+    intent = Intent(verb="create", object="images", actions=[])
+    assert not {"read", "send", "delete", "share", "check"} & tokenize(query)
+    assert not _dropped_required_verbs(plan("create_images_indices"), query, intent)
+    # The actual requested mutation must still be covered.
+    assert _dropped_required_verbs(plan("find_images_indices"), query, intent) == {"create"}
+
+
+def test_real_actions_outside_paths_remain_required():
+    query = "leggi i file in /tmp/delete/share e cancella i file in /tmp/read/check"
+    intent = Intent(verb="read", object="files", actions=[
+        {"verb": "read", "object": "files"}, {"verb": "delete", "object": "files"}])
+    assert _dropped_required_verbs(plan("read_files"), query, intent) == {"delete"}
